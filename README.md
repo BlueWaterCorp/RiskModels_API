@@ -133,7 +133,7 @@ curl -X GET "https://riskmodels.net/api/metrics/NVDA" \
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
 
-**Implementation:** The live API and agent manifest are served from the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo (Next.js, Supabase). Backend Supabase tables include `ticker_factor_metrics`, `erm3_ticker_returns`, `erm3_l3_decomposition`, `erm3_betas`, `erm3_rankings`, and billing/agent tables—see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) for the full list and direct DB access. That repo also includes app-only routes (auth, Stripe, Plaid, admin, user API keys, etc.) not covered in this public API reference.
+**Implementation:** The live API and agent manifest are served from the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo (Next.js, Supabase). Backend Supabase tables include `ticker_factor_metrics`, `erm3_ticker_returns`, `erm3_l3_decomposition`, `erm3_betas` (with `fact_level` / `level_label`), `erm3_rankings`, and billing/agent tables—see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) and [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for the full list and `erm3_betas` schema. That repo also includes app-only routes (auth, Stripe, Plaid, admin, user API keys, etc.) not covered in this public API reference.
 
 ---
 

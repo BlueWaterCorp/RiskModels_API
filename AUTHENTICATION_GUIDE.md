@@ -92,6 +92,15 @@ const { data } = await supabase
   .from('ticker_factor_metrics')
   .select('*')
   .eq('ticker', 'NVDA');
+
+// Example: factor betas with level (market/sector/subsector)
+const { data: betas } = await supabase
+  .from('erm3_betas')
+  .select('ticker, date, fact, fact_level, level_label, beta')
+  .eq('ticker', 'NVDA')
+  .eq('fact_level', 1)
+  .order('date', { ascending: false })
+  .limit(30);
 ```
 
 Row Level Security (RLS) is enforced — users can only access data they are authorised for.
@@ -124,7 +133,7 @@ The live platform ([Risk_Models](https://github.com/Cerebellum-Archive/Risk_Mode
 | `ticker_factor_metrics_free` | View for free-tier access (subset of metrics) |
 | `ticker_metadata` | Ticker symbols, names, sector/ETF mappings |
 | `erm3_ticker_returns`, `erm3_l3_decomposition`, `erm3_time_index`, `erm3_etf_returns` | Time series and decomposition data (Zarr-backed or synced) |
-| `erm3_betas` | Factor betas per ticker/date (or per ticker latest); synced from ERM3/Zarr pipeline |
+| `erm3_betas` | Factor betas per ticker/date/fact with `fact_level` (1/2/3) and `level_label` (l1_market, l2_sector, l3_subsector); unique on (market_factor_etf, universe, ticker, date, fact, fact_level); synced from ERM3/Zarr |
 | `erm3_rankings` | Ticker rankings (e.g. risk, factor exposure) for screening and API responses |
 | `agent_accounts`, `agent_api_keys` | Agent keys and provisioning |
 | `billing_events`, `agent_invoices`, `balance_top_ups`, `user_generated_api_keys` | Billing and prepaid balance |
