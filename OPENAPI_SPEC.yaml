@@ -1,17 +1,52 @@
 openapi: 3.0.3
 info:
   title: RiskModels API
-  version: 2.0.0-agent
+  version: 3.0.0-agent
   description: >
+    Precision equity risk intelligence platform with AI agent integration.
+    
     Institutional-grade equity risk analysis for AI agents and quantitative applications.
     Provides daily factor hedge ratios, explained-risk decompositions, and portfolio-level
     risk attribution for ~3,000 US equities.
+
+
+    **New in v3.0.0-agent:**
+
+    - OAuth2 client credentials flow for machine-to-machine auth
+
+    - Plaid Investments integration for live portfolio sync
+
+    - MCP (Model Context Protocol) server for AI agent tools
+
+    - Compliance manifests for AI marketplace integration
+
+    - Per-key rate limiting and scoped access control
 
 
     **Data**: Universe `uni_mc_3000` (top ~3,000 US stocks by market cap), date range
     2006-01-04 to present, updated daily end-of-day. Backend: Zarr v2 on Google Cloud Storage,
     computed by the ERM3 regression system (Huber/Ridge). Supabase tables `erm3_betas` and
     `erm3_rankings` provide factor betas and ticker rankings for direct DB and API use.
+
+
+    **Authentication Methods:**
+
+    1. Session cookies (web app)
+
+    2. API Key/Secret via Bearer token (external integrations)
+
+    3. OAuth2 client credentials (AI agents, npm package)
+
+
+    **Security Features:**
+
+    - GCP KMS envelope encryption for portfolio data
+
+    - Cryptographic shredding on key deletion
+
+    - HMAC-SHA256 webhook verification
+
+    - Row-level security (RLS) via Supabase
 
 
     **Pricing**: Per-request billing with prepaid balance. Cached responses are free.
@@ -22,6 +57,7 @@ info:
     email: api-support@riskmodels.net
     url: https://riskmodels.net
 
+  termsOfService: https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/API_TERMS.md
   license:
     name: Commercial
     url: https://riskmodels.net/terms
@@ -37,9 +73,22 @@ components:
       scheme: bearer
       bearerFormat: rm_agent_{environment}_{random}_{checksum}
       description: >
-        API key in format `rm_agent_{live|test}_{random}_{checksum}`.
+        API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`.
         Obtain via `POST /api/auth/provision` or from riskmodels.net/settings → API Keys.
         Include as: `Authorization: Bearer rm_agent_live_...`
+    
+    OAuth2ClientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://riskmodels.net/api/auth/token
+          scopes:
+            ticker-returns: Access ticker returns and historical data
+            risk-decomposition: Access L3 risk decomposition
+            batch-analysis: Perform portfolio batch analysis
+            chat-risk-analyst: Use AI risk analyst
+            plaid:holdings: Access Plaid-synced portfolio holdings
+            "*": Full API access
 
   schemas:
     AgentMeta:
@@ -277,10 +326,538 @@ components:
               type: string
               example: "Check for typos or use ticker search endpoint"
 
+    OAuth2TokenRequest:
+      type: object
+      required:
+        - grant_type
+        - client_id
+        - client_secret
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials]
+          description: Must be "client_credentials"
+        client_id:
+          type: string
+          pattern: '^rm_(user|agent)_[a-z0-9_]{32,}$'
+          example: rm_agent_live_abc123
+          description: API key prefix (first segment)
+        client_secret:
+          type: string
+          format: password
+          example: rm_agent_live_abc123_xyz789_checksum
+          description: Full API key
+        scope:
+          type: string
+          example: 'ticker-returns risk-decomposition'
+          description: Space-separated list of requested scopes
+
+    OAuth2TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          format: jwt
+          description: JWT access token (use as Bearer token)
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          example: 900
+          description: Token lifetime in seconds (900 = 15 minutes)
+        scope:
+          type: string
+          description: Space-separated list of granted scopes
+
+    OAuth2Error:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_grant
+            - unsupported_grant_type
+            - server_error
+        error_description:
+          type: string
+
+    PlaidHolding:
+      type: object
+      properties:
+        account_id:
+          type: string
+        security_id:
+          type: string
+        institution_value:
+          type: number
+          description: Current value in USD
+        quantity:
+          type: number
+        ticker:
+          type: string
+          description: Normalized ticker symbol
+        name:
+          type: string
+          description: Security name
+        risk_metrics:
+          $ref: '#/components/schemas/RiskMetrics'
+
+    RiskMetrics:
+      type: object
+      properties:
+        annualized_volatility:
+          type: number
+          nullable: true
+        sharpe_ratio:
+          type: number
+          nullable: true
+        l3_market_hr:
+          type: number
+          nullable: true
+        l3_sector_hr:
+          type: number
+          nullable: true
+        l3_subsector_hr:
+          type: number
+          nullable: true
+        l3_residual_er:
+          type: number
+          nullable: true
+
+    MCPTool:
+      type: object
+      properties:
+        name:
+          type: string
+          enum: 
+            - riskmodels_list_endpoints
+            - riskmodels_get_capability
+            - riskmodels_get_schema
+            - analyze_portfolio
+            - hedge_portfolio
+            - get_risk_decomposition
+        description:
+          type: string
+        inputSchema:
+          type: object
+        outputSchema:
+          type: object
+
 security:
   - BearerAuth: []
 
 paths:
+
+  /auth/token:
+    post:
+      summary: Generate OAuth2 Access Token
+      description: >
+        OAuth 2.0 client credentials flow for machine-to-machine authentication.
+        Exchange API credentials for a short-lived JWT token (15 minutes).
+        
+        
+        **Use Cases:**
+
+        - AI agents connecting to the API
+
+        - Server-to-server integrations
+
+        - npm package authentication
+
+        - MCP client authentication
+      operationId: generateOAuthToken
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuth2TokenRequest'
+            example:
+              grant_type: client_credentials
+              client_id: rm_agent_live_abc123
+              client_secret: rm_agent_live_abc123_xyz789_checksum
+              scope: ticker-returns risk-decomposition
+      responses:
+        '200':
+          description: Access token generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                token_type: Bearer
+                expires_in: 900
+                scope: ticker-returns risk-decomposition batch-analysis
+        '400':
+          description: Invalid request (missing or invalid grant_type)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+
+  /mcp/sse:
+    get:
+      summary: MCP Server SSE Connection
+      description: >
+        Server-Sent Events endpoint for Model Context Protocol communication.
+        Establishes a persistent connection for real-time MCP protocol messages.
+        
+        
+        **Connection:**
+
+        - Protocol: Server-Sent Events (SSE)
+
+        - Authentication: Required (Bearer token)
+
+        - Keep-alive: 30-second heartbeat
+        
+        
+        **Usage:**
+
+        ```javascript
+
+        const eventSource = new EventSource('https://riskmodels.net/api/mcp/sse', {
+          headers: { 'Authorization': 'Bearer rm_agent_...' }
+        });
+
+        ```
+      operationId: mcpServerSSE
+      tags:
+        - MCP
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: ['*']
+      responses:
+        '200':
+          description: SSE connection established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: event-stream
+              example: |
+                data: {"jsonrpc":"2.0","method":"notifications/initialized","params":{...}}
+                
+                data: {"jsonrpc":"2.0","method":"notifications/ping","params":{"timestamp":1234567890}}
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    post:
+      summary: MCP JSON-RPC Request
+      description: >
+        Send JSON-RPC 2.0 messages to the MCP server.
+        
+        
+        **Available methods:**
+
+        - `tools/list` - List available MCP tools
+
+        - `tools/call` - Invoke an MCP tool
+
+        - `resources/list` - List available resources
+
+        - `resources/read` - Read a resource
+      operationId: mcpServerRPC
+      tags:
+        - MCP
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: ['*']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jsonrpc
+                - method
+                - id
+              properties:
+                jsonrpc:
+                  type: string
+                  enum: ['2.0']
+                method:
+                  type: string
+                  example: tools/call
+                params:
+                  type: object
+                id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+            example:
+              jsonrpc: '2.0'
+              method: tools/call
+              params:
+                name: riskmodels_get_capability
+                arguments:
+                  id: ticker-returns
+              id: 1
+      responses:
+        '200':
+          description: JSON-RPC response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jsonrpc:
+                    type: string
+                    enum: ['2.0']
+                  result:
+                    type: object
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: integer
+                      message:
+                        type: string
+                  id:
+                    oneOf:
+                      - type: string
+                      - type: integer
+
+  /.well-known/ai-plugin.json:
+    get:
+      summary: OpenAI GPT Plugin Manifest
+      description: >
+        Plugin manifest for OpenAI GPT Store integration.
+        Enables ChatGPT and other OpenAI models to discover and use the RiskModels API.
+      operationId: getAIPluginManifest
+      tags:
+        - Compliance
+        - Discovery
+      security: []
+      responses:
+        '200':
+          description: Plugin manifest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version:
+                    type: string
+                    example: v1
+                  name_for_human:
+                    type: string
+                    example: RiskModels
+                  name_for_model:
+                    type: string
+                    example: riskmodels
+                  description_for_human:
+                    type: string
+                  description_for_model:
+                    type: string
+                  auth:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [service_http]
+                      authorization_type:
+                        type: string
+                        enum: [bearer]
+                  api:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [openapi]
+                      url:
+                        type: string
+                        format: uri
+                  logo_url:
+                    type: string
+                    format: uri
+                  contact_email:
+                    type: string
+                    format: email
+
+  /.well-known/agentic-disclosure.json:
+    get:
+      summary: Agentic Privacy Disclosure
+      description: >
+        Comprehensive data handling and privacy disclosure for AI marketplace compliance.
+        Documents encryption, retention, third-party sharing, and regulatory compliance.
+        
+        
+        **Key sections:**
+
+        - Data handling (AES-256-GCM, GCP KMS)
+
+        - Cryptographic shredding for GDPR compliance
+
+        - Third-party sharing policy (none)
+
+        - AI model usage (no training on user data)
+
+        - Compliance (GDPR, SOC2, PCI-DSS)
+      operationId: getAgenticDisclosure
+      tags:
+        - Compliance
+        - Privacy
+      security: []
+      responses:
+        '200':
+          description: Privacy disclosure document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: object
+                  data_handling:
+                    type: object
+                  compliance:
+                    type: object
+                  security:
+                    type: object
+                  transparency:
+                    type: object
+
+  /.well-known/mcp.json:
+    get:
+      summary: MCP Server Manifest
+      description: >
+        Model Context Protocol server connection manifest.
+        Enables AI model clients to discover and connect to the RiskModels MCP server.
+      operationId: getMCPManifest
+      tags:
+        - MCP
+        - Discovery
+      security: []
+      responses:
+        '200':
+          description: MCP server manifest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mcpServers:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        url:
+                          type: string
+                          format: uri
+                        transport:
+                          type: string
+                          enum: [sse, stdio]
+                        auth:
+                          type: object
+                        capabilities:
+                          type: object
+                        tools:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/MCPTool'
+
+  /plaid/holdings:
+    get:
+      summary: Fetch Plaid-synced portfolio holdings
+      description: >
+        Returns enriched holdings from connected Plaid accounts with risk metrics.
+        
+        
+        **Features:**
+
+        - Automatic ticker resolution and normalization
+
+        - Risk enrichment with factor exposures
+
+        - Real-time portfolio valuation
+
+        - Multi-account aggregation
+        
+        
+        **Authentication:** Required (API Key or OAuth2 with plaid:holdings scope)
+
+        **Billing:** $0.01 per request
+
+        **Rate Limit:** 60 requests/minute
+      operationId: getPlaidHoldings
+      tags:
+        - Plaid Integration
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: [plaid:holdings]
+      responses:
+        '200':
+          description: Enriched holdings with risk metrics
+          headers:
+            X-API-Cost-USD:
+              schema: {type: string}
+            X-RateLimit-Limit:
+              schema: {type: integer}
+            X-RateLimit-Remaining:
+              schema: {type: integer}
+            X-RateLimit-Reset:
+              schema: {type: integer}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  holdings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlaidHolding'
+                  summary:
+                    type: object
+                    properties:
+                      total_value:
+                        type: number
+                      account_count:
+                        type: integer
+                      position_count:
+                        type: integer
+                  _agent:
+                    $ref: '#/components/schemas/AgentMeta'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '402':
+          description: Insufficient balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /metrics/{ticker}:
     get:
@@ -289,8 +866,18 @@ paths:
         Returns the most recent row from `ticker_factor_metrics` for the given ticker.
         Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility,
         Sharpe ratio, sector codes, market cap, and close price.
+
+
+        **Authentication:** Required (API Key or OAuth2)
+
+        **Billing:** $0.005 per request (deducted from account balance)
+
+        **Rate Limit:** 60 requests/minute (default)
       operationId: getMetrics
       tags: [Risk Metrics]
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: [ticker-returns]
       parameters:
         - name: ticker
           in: path
@@ -310,22 +897,57 @@ paths:
               schema: {type: string, enum: [HIT, MISS, BYPASS]}
             X-Data-Freshness:
               schema: {type: string, format: date-time}
+            X-RateLimit-Limit:
+              schema: {type: integer}
+              description: Request limit per minute
+            X-RateLimit-Remaining:
+              schema: {type: integer}
+              description: Remaining requests in current window
+            X-RateLimit-Reset:
+              schema: {type: integer}
+              description: Unix timestamp when limit resets
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TickerMetrics"
-        "404":
-          description: Ticker not found in universe.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Missing or invalid Bearer token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Insufficient balance
+                  balance_usd:
+                    type: number
+        "404":
+          description: Ticker not found in universe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema: {type: integer}
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Rate limit exceeded. Try again at 2026-03-07T12:34:56Z
 
   /ticker-returns:
     get:
@@ -874,4 +1496,14 @@ tags:
   - name: Account
     description: Balance, billing, and invoice management.
   - name: Authentication
-    description: API key provisioning.
+    description: API key provisioning and OAuth2 token management.
+  - name: MCP
+    description: Model Context Protocol server endpoints for AI agents.
+  - name: Plaid Integration
+    description: Live portfolio synchronization via Plaid Investments API.
+  - name: Compliance
+    description: AI marketplace compliance and discovery manifests.
+  - name: Privacy
+    description: Data handling and privacy disclosure.
+  - name: Discovery
+    description: Service discovery and capability manifests.

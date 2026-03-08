@@ -1,10 +1,10 @@
 # Authentication Guide
 
-The RiskModels API supports three authentication modes. Choose based on your application type.
+The RiskModels API supports four authentication modes (as of v3.0.0-agent). Choose based on your application type.
 
 ---
 
-## Mode 1 — Bearer Token (Recommended for External API Consumers)
+## Mode 1 — Bearer Token (Direct API Key)
 
 All external API calls use a Bearer token in the `Authorization` header.
 
@@ -12,7 +12,7 @@ All external API calls use a Bearer token in the `Authorization` header.
 Authorization: Bearer rm_agent_live_<random>_<checksum>
 ```
 
-**Token format:** `rm_agent_{environment}_{random}_{checksum}`
+**Token format:** `rm_agent_{environment}_{random}_{checksum}` or `rm_user_{random}_{checksum}`
 - `environment`: `live` (production) or `test` (sandbox)
 - Tokens are long-lived but can be rotated from the dashboard
 
@@ -72,7 +72,216 @@ Tokens use a **prepaid balance** model:
 
 ---
 
-## Mode 2 — Supabase JWT (Browser / Mobile Apps)
+## Mode 2 — OAuth2 Client Credentials (Recommended for AI Agents)
+
+**New in v3.0.0-agent:** OAuth2 client credentials flow for machine-to-machine authentication.
+
+### Overview
+
+Exchange API credentials for a short-lived JWT access token (15 minutes). This is the recommended method for:
+- AI agents and LLM applications
+- Server-to-server integrations
+- npm packages and CLI tools
+- MCP clients
+
+### Benefits
+
+- **Short-lived tokens** - 15-minute expiry reduces security risk
+- **Scoped access** - Request only the scopes you need
+- **Standard protocol** - OAuth2 is widely supported
+- **Automatic refresh** - SDKs can refresh tokens automatically
+
+### OAuth2 Flow
+
+#### Step 1: Exchange credentials for access token
+
+```bash
+curl -X POST https://riskmodels.net/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "rm_agent_live_abc123",
+    "client_secret": "rm_agent_live_abc123_xyz789_checksum",
+    "scope": "ticker-returns risk-decomposition"
+  }'
+```
+
+**Request Parameters:**
+- `grant_type` (required): Must be `"client_credentials"`
+- `client_id` (required): Your API key prefix (e.g., `rm_agent_live_abc123`)
+- `client_secret` (required): Your full API key
+- `scope` (optional): Space-separated list of requested scopes
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "scope": "ticker-returns risk-decomposition batch-analysis"
+}
+```
+
+#### Step 2: Use access token in API requests
+
+```bash
+curl -X GET https://riskmodels.net/api/metrics/NVDA \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+#### Step 3: Refresh token when expired
+
+Tokens expire after 15 minutes. Request a new token using the same OAuth2 endpoint.
+
+### Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `ticker-returns` | Access ticker returns and historical data |
+| `risk-decomposition` | Access L3 risk decomposition |
+| `batch-analysis` | Perform portfolio batch analysis |
+| `chat-risk-analyst` | Use AI risk analyst |
+| `plaid:holdings` | Access Plaid-synced portfolio holdings |
+| `*` | Full API access (all scopes) |
+
+### Python Example
+
+```python
+import requests
+from datetime import datetime, timedelta
+
+class RiskModelsClient:
+    def __init__(self, client_id: str, client_secret: str):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.access_token = None
+        self.token_expiry = None
+    
+    def get_access_token(self) -> str:
+        """Get cached token or request new one if expired."""
+        if self.access_token and self.token_expiry > datetime.now():
+            return self.access_token
+        
+        # Request new token
+        response = requests.post(
+            'https://riskmodels.net/api/auth/token',
+            json={
+                'grant_type': 'client_credentials',
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
+                'scope': 'ticker-returns risk-decomposition'
+            }
+        )
+        data = response.json()
+        
+        self.access_token = data['access_token']
+        self.token_expiry = datetime.now() + timedelta(seconds=data['expires_in'] - 60)  # 60s buffer
+        
+        return self.access_token
+    
+    def get_metrics(self, ticker: str):
+        """Fetch metrics with automatic token refresh."""
+        token = self.get_access_token()
+        response = requests.get(
+            f'https://riskmodels.net/api/metrics/{ticker}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        return response.json()
+
+# Usage
+client = RiskModelsClient('rm_agent_live_abc123', 'rm_agent_live_abc123_xyz789_checksum')
+metrics = client.get_metrics('NVDA')
+```
+
+### TypeScript Example
+
+```typescript
+interface OAuth2TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  scope: string;
+}
+
+class RiskModelsClient {
+  private clientId: string;
+  private clientSecret: string;
+  private accessToken: string | null = null;
+  private tokenExpiry: Date | null = null;
+
+  constructor(clientId: string, clientSecret: string) {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+  }
+
+  private async getAccessToken(): Promise<string> {
+    // Return cached token if still valid
+    if (this.accessToken && this.tokenExpiry && this.tokenExpiry > new Date()) {
+      return this.accessToken;
+    }
+
+    // Request new token
+    const response = await fetch('https://riskmodels.net/api/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+        scope: 'ticker-returns risk-decomposition'
+      })
+    });
+
+    const data: OAuth2TokenResponse = await response.json();
+    
+    this.accessToken = data.access_token;
+    this.tokenExpiry = new Date(Date.now() + (data.expires_in - 60) * 1000); // 60s buffer
+    
+    return this.accessToken;
+  }
+
+  async getMetrics(ticker: string) {
+    const token = await this.getAccessToken();
+    const response = await fetch(`https://riskmodels.net/api/metrics/${ticker}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.json();
+  }
+}
+
+// Usage
+const client = new RiskModelsClient('rm_agent_live_abc123', 'rm_agent_live_abc123_xyz789_checksum');
+const metrics = await client.getMetrics('NVDA');
+```
+
+### Error Handling
+
+**400 Bad Request** - Invalid grant_type or missing parameters
+```json
+{
+  "error": "invalid_request",
+  "error_description": "grant_type must be 'client_credentials'"
+}
+```
+
+**401 Unauthorized** - Invalid credentials
+```json
+{
+  "error": "invalid_client",
+  "error_description": "Invalid client_id or client_secret"
+}
+```
+
+### Configuration
+
+Set token TTL via environment variable (server-side only):
+```env
+OAUTH_TOKEN_TTL_SECONDS=900  # 15 minutes (default)
+```
+
+---
+
+## Mode 3 — Supabase JWT (Browser / Mobile Apps)
 
 For applications that directly query Supabase (the underlying database), use the public anon key with user authentication.
 
@@ -107,7 +316,7 @@ Row Level Security (RLS) is enforced — users can only access data they are aut
 
 ---
 
-## Mode 3 — Service Role Key (Server-Side Internal)
+## Mode 4 — Service Role Key (Server-Side Internal)
 
 For server-side applications with direct Supabase access. Bypasses RLS — full database access.
 
@@ -180,15 +389,51 @@ Recommended pattern for LLM agents integrating with the RiskModels API:
 
 ---
 
-## Rate Limits
+## Rate Limits (v3.0.0-agent)
 
-| Tier | Requests / Minute | Burst |
-|---|---|---|
-| Default (pay-as-you-go) | 60 | 100 |
-| Premium | 300 | 500 |
-| Max concurrent | 10 | — |
+**Per-API-Key Rate Limiting:** All authenticated endpoints are rate limited on a per-API-key basis using a sliding window algorithm backed by Upstash Redis.
 
-Rate-limit responses return HTTP 429 with a `Retry-After` header. Implement exponential backoff starting at 1 second.
+| Tier | Requests / Minute | Daily Limit | Burst |
+|---|---|---|---|
+| Default (pay-as-you-go) | 60 | Unlimited | 100 |
+| Premium (`rate:300` scope) | 300 | Unlimited | 500 |
+| Max concurrent | 10 | — | — |
+
+### Rate Limit Headers
+
+All responses include rate limit information:
+
+```http
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1709856000
+```
+
+- `X-RateLimit-Limit` - Total requests allowed per minute
+- `X-RateLimit-Remaining` - Requests remaining in current window
+- `X-RateLimit-Reset` - Unix timestamp when limit resets
+
+### 429 Too Many Requests
+
+When rate limit is exceeded, you'll receive:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 23
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1709856023
+
+{
+  "error": "Rate limit exceeded. Try again at 2026-03-08T12:34:56Z"
+}
+```
+
+**Best Practice:** Implement exponential backoff starting at the `Retry-After` value.
+
+### Premium Rate Limits
+
+To request premium rate limits, contact api-support@riskmodels.net to add the `rate:300` scope to your API key.
 
 ---
 
@@ -199,3 +444,14 @@ Rate-limit responses return HTTP 429 with a `Retry-After` header. Implement expo
 - Rotate keys from the dashboard if compromised
 - Service role key must never appear in browser-side code
 - Test keys (`rm_agent_test_...`) return simulated responses and do not deduct balance
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| **3.0.0-agent** | March 8, 2026 | Added OAuth2 client credentials flow, enhanced rate limiting, scope-based access control |
+| **2.0.0-agent** | February 2026 | Initial agent-ready API with Bearer token auth |
+
+See [MIGRATION_V3.md](./MIGRATION_V3.md) for upgrade instructions.

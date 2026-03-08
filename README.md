@@ -13,6 +13,30 @@
 
 ---
 
+## 🚀 What's New in v3.0.0-agent
+
+The RiskModels platform has been upgraded with comprehensive AI agent integration capabilities:
+
+### New Features
+
+✅ **OAuth2 Client Credentials Flow** - Machine-to-machine authentication for AI agents  
+✅ **Plaid Investments Integration** - Live portfolio sync with automatic risk enrichment  
+✅ **MCP Server** - Model Context Protocol support for Cursor, Claude Desktop, and other AI IDEs  
+✅ **Compliance Manifests** - OpenAI GPT Store, Anthropic marketplace ready  
+✅ **Enhanced Security** - Per-key rate limiting, scope-based access control, GCP KMS encryption  
+
+### Breaking Changes
+
+⚠️ **All protected endpoints now require authentication** - Session cookies alone are insufficient for API access  
+⚠️ **API keys must be scoped** - Use `POST /api/auth/token` for OAuth2 tokens  
+⚠️ **Rate limits enforced** - 60 req/min default, 300 req/min premium (via scope)
+
+### Migration Guide
+
+See [MIGRATION_V3.md](./MIGRATION_V3.md) for detailed upgrade instructions.
+
+---
+
 ## 🚀 Quick Start (CLI - Recommended)
 
 The RiskModels CLI is the fastest way to access risk model data from your terminal or AI agents.
@@ -119,17 +143,32 @@ curl -X GET "https://riskmodels.net/api/metrics/NVDA" \
 
 | Endpoint | Method | Description | Cost |
 |---|---|---|---|
+| **Authentication & OAuth2** |
+| `/api/auth/token` | POST | Generate OAuth2 access token (client credentials flow) | Free |
+| `/api/auth/provision` | POST | Provision long-lived API key | Free |
+| **Risk Metrics** |
 | `/api/ticker-returns` | GET | Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y | $0.005/call |
 | `/api/metrics/{ticker}` | GET | Latest snapshot: all 22 HR/ER fields, vol, Sharpe, sector, market cap | $0.005/call |
 | `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | $0.01/call |
 | `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | $0.002/position |
+| **Plaid Integration** |
+| `/api/plaid/holdings` | GET | Enriched holdings from Plaid-synced accounts with risk metrics | $0.01/call |
+| `/api/plaid/link/token/create` | POST | Create Plaid Link token for account connection | Free |
+| `/api/plaid/exchange-token` | POST | Exchange Plaid public token for access token | Free |
+| **MCP Server** |
+| `/api/mcp/sse` | GET/POST | Model Context Protocol SSE endpoint for AI agents | Free |
+| **Compliance & Discovery** |
+| `/.well-known/ai-plugin.json` | GET | OpenAI GPT Store plugin manifest | Free |
+| `/.well-known/agentic-disclosure.json` | GET | Privacy and data handling disclosure | Free |
+| `/.well-known/mcp.json` | GET | MCP server discovery manifest | Free |
+| `/.well-known/agent-manifest` | GET | AI agent discovery manifest | Free |
+| **Utility** |
 | `/api/tickers` | GET | Ticker universe search, MAG7 shortcut | $0.001/call |
 | `/api/telemetry` | GET | Performance and reliability metrics by capability | $0.002/call |
 | `/api/chat` | POST | AI Risk Analyst — natural language risk Q&A (GPT-4) | Per token |
 | `/api/balance` | GET | Account balance and rate limits | Free |
 | `/api/invoices` | GET | Invoice history and spend summary | Free |
 | `/api/health` | GET | Service health | Free |
-| `/.well-known/agent-manifest` | GET | AI agent discovery manifest | Free |
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
 
@@ -175,6 +214,7 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 | Document | Description |
 |---|---|
+| [API_TERMS.md](API_TERMS.md) | **API Terms of Service** — legal terms for API use; separate terms may apply to non-API clients |
 | [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) | Complete OpenAPI 3.0.3 contract with request/response schemas |
 | [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | Field definitions, units, formulas, and dataset coverage |
 | [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) | Bearer token, Supabase JWT, AI agent provisioning flow |
@@ -241,12 +281,46 @@ Full details: [mcp-server/README.md](mcp-server/README.md).
 
 ## Authentication
 
-All data endpoints require:
+By using the API, you agree to the [API Terms of Service](API_TERMS.md). All data endpoints require authentication via one of three methods:
+
+### Method 1: API Key (Direct Bearer Token)
 ```
 Authorization: Bearer rm_agent_live_<random>_<checksum>
 ```
 
-Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → API Keys, or provision via `POST /api/auth/provision`. See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md).
+Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → API Keys.
+
+### Method 2: OAuth2 Client Credentials (Recommended for AI Agents)
+
+```bash
+# Step 1: Exchange API key for short-lived JWT token (15 minutes)
+curl -X POST https://riskmodels.net/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "rm_agent_live_abc123",
+    "client_secret": "rm_agent_live_abc123_xyz789_checksum",
+    "scope": "ticker-returns risk-decomposition"
+  }'
+
+# Response:
+# {
+#   "access_token": "eyJhbGc...",
+#   "token_type": "Bearer",
+#   "expires_in": 900,
+#   "scope": "ticker-returns risk-decomposition"
+# }
+
+# Step 2: Use access token in requests
+curl -X GET https://riskmodels.net/api/metrics/NVDA \
+  -H "Authorization: Bearer eyJhbGc..."
+```
+
+### Method 3: Session Cookies (Web App Only)
+
+Session-based authentication with HTTP-only cookies. Used by the web application at riskmodels.net.
+
+See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) for detailed OAuth2 flow, scope management, and token refresh patterns.
 
 ### Option 1: CLI
 
@@ -313,6 +387,7 @@ RiskModels_API/
 │   ├── CLI_COMMAND_TESTING.md    # Comprehensive CLI tests
 │   ├── API_ENDPOINT_TESTING.md   # API test examples
 │   └── PHASE_*.md               # Implementation phases
+├── API_TERMS.md                  # API Terms of Service (legal)
 ├── AUTHENTICATION_GUIDE.md       # Auth details
 ├── RESPONSE_METADATA.md          # Response formats
 ├── ERROR_SCHEMA.md              # Error handling
@@ -383,6 +458,6 @@ MIT
 
 ---
 
-**Last Updated**: February 27, 2026  
+**Last Updated**: March 8, 2026  
 **CLI Version**: 1.0.0  
-**API Version**: 1.0.0
+**API Version**: 3.0.0-agent
