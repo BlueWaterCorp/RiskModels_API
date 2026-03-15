@@ -241,6 +241,16 @@ components:
           type: integer
           nullable: true
           description: FactSet industry code.
+        sector_etf:
+          type: string
+          nullable: true
+          description: Sector hedge ETF (e.g. XLK, SOXX). From V3 symbols table.
+          example: XLK
+        subsector_etf:
+          type: string
+          nullable: true
+          description: Subsector hedge ETF (e.g. XOP, XME). From fs_industry_code via FS_INDUSTRY_TO_SUBSECTOR_ETFS. Fallback to sector_etf when unavailable.
+          example: XOP
         market_cap:
           type: number
           format: float
@@ -459,6 +469,15 @@ components:
         outputSchema:
           type: object
           description: JSON Schema describing the tool's output structure.
+
+    RankingMetricKeys:
+      type: object
+      description: >
+        V3 security_history ranking metric keys (when rankings are exposed via API).
+        Pattern: rank_ord_{window}_{cohort}_{metric}, cohort_size_{window}_{cohort}_{metric}.
+        Windows: 1d, 21d, 63d, 252d. Cohorts: universe, sector, subsector.
+        Metrics: mkt_cap, gross_return, sector_residual, subsector_residual, er_l1, er_l2, er_l3.
+        rank_percentile computed client-side: (1 - (rank_ord - 1) / cohort_size) * 100.
 
     InsufficientBalance:
       type: object
@@ -1279,6 +1298,20 @@ paths:
                         status:
                           type: string
                           enum: [success, error, not_found]
+                        metadata:
+                          type: object
+                          nullable: true
+                          description: Per-ticker identity from V3 symbols. Included when ticker is found.
+                          properties:
+                            sector_etf:
+                              type: string
+                              nullable: true
+                              example: XLK
+                            subsector_etf:
+                              type: string
+                              nullable: true
+                              description: Subsector hedge ETF. Fallback to sector_etf when unavailable.
+                              example: XOP
                         hedge_ratios:
                           type: object
                           nullable: true

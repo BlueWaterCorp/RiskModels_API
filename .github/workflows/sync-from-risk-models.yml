@@ -1,23 +1,26 @@
-# Sync API_TERMS.md and OpenAPI spec from Risk_Models (source of truth)
+# Specialized hand-off: RiskModels_API is the source. Build JSON, deliver to Risk_Models.
+#
+# Flow:
+# 1. RiskModels_API (source): Edit OPENAPI_SPEC.yaml (full version: rankings, ETFs, etc.)
+# 2. Build: Convert YAML -> openapi.json
+# 3. Delivery: Push openapi.json to Risk_Models/mcp-server/data/
+# 4. Risk_Models (consumer): App and Supabase serve the API using the updated JSON
 #
 # Required secret: REPO_ACCESS_TOKEN
-#   - Must have repo scope and read access to the source repo
-#   - Used to checkout source (required if that repo is private)
-#
-# Source repo: Cerebellum-Archive/Risk_Models
-#
-# Trigger: When API_TERMS.md or openapi.json change in the source repo,
-# the workflow at .github/workflows/trigger-api-sync.yml sends repository_dispatch
-# with event-type: sync_api_assets to run this workflow.
+#   - Read: Risk_Models (API_TERMS.md)
+#   - Write: Risk_Models (push openapi.json to mcp-server/data/)
 #
 name: Sync from Risk Models
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "OPENAPI_SPEC.yaml"
   workflow_dispatch:
   repository_dispatch:
     types: [sync_api_assets]
   schedule:
-    # Weekly on Sunday 00:00 UTC
     - cron: "0 0 * * 0"
 
 jobs:
@@ -43,35 +46,42 @@ jobs:
         run: |
           cp risk-models/riskmodels_com/docs/api/API_TERMS.md API_TERMS.md
 
-      - name: Copy OpenAPI spec (JSON)
-        run: |
-          cp risk-models/riskmodels_com/mcp-server/data/openapi.json OPENAPI_SPEC.json
-
-      - name: Convert JSON to YAML
+      - name: Build openapi.json from OPENAPI_SPEC.yaml
         run: |
           pip install pyyaml
           python3 -c "
-          import json, yaml
-          with open('OPENAPI_SPEC.json') as f:
-              j = json.load(f)
-          with open('OPENAPI_SPEC.yaml', 'w') as f:
-              yaml.dump(j, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+          import yaml, json
+          with open('OPENAPI_SPEC.yaml') as f:
+              spec = yaml.safe_load(f)
+          with open('OPENAPI_SPEC.json', 'w') as f:
+              json.dump(spec, f, indent=2)
+          with open('mcp-server/data/openapi.json', 'w') as f:
+              json.dump(spec, f, indent=2)
           "
-
-      - name: Update mcp-server openapi.json
-        run: |
-          cp OPENAPI_SPEC.json mcp-server/data/openapi.json
 
       - name: Validate OpenAPI spec
         run: |
           npx @apidevtools/swagger-cli validate OPENAPI_SPEC.yaml
 
-      - name: Commit and push changes
+      - name: Commit and push (RiskModels_API)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: sync API_TERMS and OpenAPI spec from Risk_Models [skip ci]"
+          commit_message: "chore: sync API_TERMS, regenerate openapi.json from YAML [skip ci]"
           file_pattern: |
             API_TERMS.md
             OPENAPI_SPEC.json
-            OPENAPI_SPEC.yaml
             mcp-server/data/openapi.json
+
+      - name: Deliver openapi.json to Risk_Models
+        run: |
+          cp mcp-server/data/openapi.json risk-models/riskmodels_com/mcp-server/data/openapi.json
+          cd risk-models
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add riskmodels_com/mcp-server/data/openapi.json
+          if git diff --staged --quiet; then
+            echo "No changes to openapi.json, skip push"
+          else
+            git commit -m "chore: sync openapi.json from RiskModels_API [skip ci]"
+            git push origin HEAD
+          fi
