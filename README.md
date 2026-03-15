@@ -172,7 +172,7 @@ curl -X GET "https://riskmodels.net/api/metrics/NVDA" \
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
 
-**Implementation:** The live API and agent manifest are served from the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo (Next.js, Supabase). Backend Supabase tables include `ticker_factor_metrics`, `erm3_ticker_returns`, `erm3_l3_decomposition`, `erm3_betas` (with `fact_level` / `level_label`), `erm3_rankings`, and billing/agent tables—see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) and [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for the full list and `erm3_betas` schema. That repo also includes app-only routes (auth, Stripe, Plaid, admin, user API keys, etc.) not covered in this public API reference.
+**Implementation:** The live API and agent manifest are served from the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo (Next.js, Supabase). Backend uses the V3 schema: `symbols`, `security_history`, `security_history_latest`, `erm3_landing_chart_cache`, `trading_calendar`, and billing/agent tables—see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) and [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for the full reference. That repo also includes app-only routes (auth, Stripe, Plaid, admin, user API keys, etc.) not covered in this public API reference.
 
 ---
 
@@ -218,7 +218,7 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 | [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) | Complete OpenAPI 3.0.3 contract with request/response schemas |
 | [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | Field definitions, units, formulas, and dataset coverage |
 | [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) | Bearer token, Supabase JWT, AI agent provisioning flow |
-| [SUPABASE_TABLES.md](SUPABASE_TABLES.md) | Supabase table reference (metrics, erm3_*, erm3_betas, erm3_rankings, billing) |
+| [SUPABASE_TABLES.md](SUPABASE_TABLES.md) | Supabase V3 table reference (symbols, security_history, security_history_latest, billing) |
 | [RESPONSE_METADATA.md](RESPONSE_METADATA.md) | `_agent` block schema, response headers, pricing table, cache behaviour |
 | [ERROR_SCHEMA.md](ERROR_SCHEMA.md) | All error codes, HTTP statuses, and recovery patterns |
 | [VALIDATION_HELPERS.md](VALIDATION_HELPERS.md) | Python + TypeScript data quality checks |

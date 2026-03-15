@@ -298,18 +298,21 @@ await supabase.auth.signInWithOtp({ email: 'user@example.com' });
 
 // After sign-in, JWT is automatically attached to queries
 const { data } = await supabase
-  .from('ticker_factor_metrics')
-  .select('*')
-  .eq('ticker', 'NVDA');
+  .from('security_history_latest')
+  .select('symbol, returns_gross, vol_23d, l3_mkt_hr, l3_sec_hr, l3_sub_hr')
+  .eq('symbol', 'NVDA.US')
+  .eq('periodicity', 'daily');
 
-// Example: factor betas with level (market/sector/subsector)
-const { data: betas } = await supabase
-  .from('erm3_betas')
-  .select('ticker, date, fact, fact_level, level_label, beta')
-  .eq('ticker', 'NVDA')
-  .eq('fact_level', 1)
-  .order('date', { ascending: false })
-  .limit(30);
+// Example: time-series history from security_history
+const { data: history } = await supabase
+  .from('security_history')
+  .select('teo, metric_key, metric_value')
+  .eq('symbol', 'NVDA.US')
+  .eq('periodicity', 'daily')
+  .in('metric_key', ['returns_gross', 'l3_mkt_hr', 'l3_sec_hr', 'l3_sub_hr'])
+  .gte('teo', '2024-01-01')
+  .order('teo', { ascending: false })
+  .limit(100);
 ```
 
 Row Level Security (RLS) is enforced — users can only access data they are authorised for.
@@ -327,28 +330,28 @@ supabase = create_client(
     os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 )
 
-response = supabase.table('ticker_factor_metrics').select('*').execute()
+response = supabase.table('security_history_latest').select('*').execute()
 ```
 
 ---
 
 ## Implementation — Supabase Tables (Risk_Models)
 
-The live platform ([Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models)) uses Supabase for persistence. Tables relevant to the public API and agent features:
+The live platform ([Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models)) uses Supabase for persistence. **V3 schema** (see [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for full reference):
 
-| Table / view | Purpose |
-|--------------|---------|
-| `ticker_factor_metrics` | Latest risk metrics per ticker (HR/ER, vol, sector, etc.); RLS for paid access |
-| `ticker_factor_metrics_free` | View for free-tier access (subset of metrics) |
-| `ticker_metadata` | Ticker symbols, names, sector/ETF mappings |
-| `erm3_ticker_returns`, `erm3_l3_decomposition`, `erm3_time_index`, `erm3_etf_returns` | Time series and decomposition data (Zarr-backed or synced) |
-| `erm3_betas` | Factor betas per ticker/date/fact with `fact_level` (1/2/3) and `level_label` (l1_market, l2_sector, l3_subsector); unique on (market_factor_etf, universe, ticker, date, fact, fact_level); synced from ERM3/Zarr |
-| `erm3_rankings` | Ticker rankings (e.g. risk, factor exposure) for screening and API responses |
+| Table | Purpose |
+|-------|---------|
+| `symbols` | Identity registry (symbol, ticker, name, asset_type, sector_etf) |
+| `security_history` | Long-form temporal engine: (symbol, teo, periodicity, metric_key, metric_value) |
+| `security_history_latest` | Latest metrics per symbol/periodicity (cards, tape, treemap) |
+| `erm3_landing_chart_cache` | Landing page chart (pre-computed cumulative returns) |
+| `trading_calendar` | Canonical trading dates |
+| `erm3_sync_state_v3` | Sync health and freshness |
 | `agent_accounts`, `agent_api_keys` | Agent keys and provisioning |
 | `billing_events`, `agent_invoices`, `balance_top_ups`, `user_generated_api_keys` | Billing and prepaid balance |
 | `ticker_request_logs` | Request logging / analytics (internal) |
 
-Backend data is also served from Zarr on Google Cloud Storage (`gs://rm_api_data/`: returns, betas, hedge weights). Supabase tables `erm3_betas` and `erm3_rankings` are populated from the same pipeline or from Zarr for low-latency API and direct DB access. This reference repo documents the HTTP API only; for direct DB access use the table names above with Mode 2 or Mode 3 as appropriate.
+Backend data is also served from Zarr on Google Cloud Storage (`gs://rm_api_data/`). For direct DB access use the table names above with Mode 2 or Mode 3 as appropriate.
 
 ---
 
