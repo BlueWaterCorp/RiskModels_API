@@ -7,7 +7,7 @@
 # 4. Risk_Models (consumer): App and Supabase serve the API using the updated JSON
 #
 # Required secret: REPO_ACCESS_TOKEN
-#   - Read: Risk_Models (API_TERMS.md)
+#   - Read: Risk_Models (API_TERMS.md, notebooks/riskmodels_quickstart.ipynb)
 #   - Write: Risk_Models (push openapi.json to mcp-server/data/)
 #
 name: Sync from Risk Models
@@ -46,6 +46,10 @@ jobs:
         run: |
           cp risk-models/riskmodels_com/docs/api/API_TERMS.md API_TERMS.md
 
+      - name: Copy Colab notebook
+        run: |
+          cp risk-models/riskmodels_com/docs/notebooks/riskmodels_quickstart.ipynb notebooks/riskmodels_quickstart.ipynb
+
       - name: Build openapi.json from OPENAPI_SPEC.yaml
         run: |
           pip install pyyaml
@@ -66,9 +70,10 @@ jobs:
       - name: Commit and push (RiskModels_API)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: sync API_TERMS, regenerate openapi.json from YAML [skip ci]"
+          commit_message: "chore: sync API_TERMS, Colab notebook, regenerate openapi.json from YAML [skip ci]"
           file_pattern: |
             API_TERMS.md
+            notebooks/riskmodels_quickstart.ipynb
             OPENAPI_SPEC.json
             mcp-server/data/openapi.json
 
