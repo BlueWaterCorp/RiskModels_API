@@ -53,15 +53,19 @@ jobs:
       - name: Check for sensitive data
         run: |
           echo "🔍 Checking for accidentally committed secrets..."
-          if grep -rE "sk_live_|sk_test_[a-zA-Z0-9]{20,}" . --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null; then
-            echo "❌ Found Stripe secret key"
+          if grep -rE "sk_live_[a-zA-Z0-9]{20,}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
+            echo "❌ Found Stripe live secret key"
             exit 1
           fi
-          if grep -rE "AKIA[0-9A-Z]{16}" . --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null; then
+          if grep -rE "sk_test_[a-zA-Z0-9]{20,}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
+            echo "❌ Found Stripe test secret key"
+            exit 1
+          fi
+          if grep -rE "AKIA[0-9A-Z]{16}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
             echo "❌ Found AWS access key"
             exit 1
           fi
-          if grep -r "SUPABASE_SERVICE_ROLE_KEY=eyJ" . --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null; then
+          if grep -r "SUPABASE_SERVICE_ROLE_KEY=eyJ" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
             echo "❌ Found Supabase service role key"
             exit 1
           fi

@@ -1161,12 +1161,10 @@ paths:
               schema:
                 type: string
                 format: binary
-              description: Parquet file when format=parquet or Accept application/x-parquet.
             text/csv:
               schema:
                 type: string
                 format: text
-              description: CSV file when format=csv or Accept text/csv.
             application/json:
               schema:
                 type: object
@@ -1482,12 +1480,10 @@ paths:
           description: Batch results keyed by ticker (JSON) or flattened tabular data (parquet/csv).
           content:
             application/x-parquet:
-              description: Parquet when format=parquet in request body. Columns ticker, date, gross_return, l1, l2, l3.
               schema:
                 type: string
                 format: binary
             text/csv:
-              description: CSV when format=csv in request body.
               schema:
                 type: string
                 format: text
