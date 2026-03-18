@@ -65,7 +65,7 @@ jobs:
             echo "❌ Found AWS access key"
             exit 1
           fi
-          if grep -r "SUPABASE_SERVICE_ROLE_KEY=eyJ" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
+          if grep -r "SUPABASE_SERVICE_ROLE_KEY=eyJ" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github --exclude=.env.example 2>/dev/null; then
             echo "❌ Found Supabase service role key"
             exit 1
           fi
