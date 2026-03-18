@@ -1,12 +1,23 @@
-# Specialized hand-off: RiskModels_API is the source. Build JSON, deliver to Risk_Models.
+# =============================================================================
+# Sync from Risk Models
+# =============================================================================
 #
-# Flow:
-# 1. RiskModels_API (source): Edit OPENAPI_SPEC.yaml (full version: rankings, ETFs, etc.)
-# 2. Build: Convert YAML -> openapi.json
-# 3. Delivery: Push openapi.json to Risk_Models/mcp-server/data/
-# 4. Risk_Models (consumer): App and Supabase serve the API using the updated JSON
+# BRANCHING: This repo uses a single branch, main. All workflows run on main.
 #
-# Required secret: REPO_ACCESS_TOKEN
+# CROSS-REPO TRIGGERS: This workflow can be started by other repos in the org:
+#   - Risk_Models can send repository_dispatch(sync_api_assets) to kick off a sync
+#   - Other workflows (here or in Risk_Models) may push to main, causing divergence
+#   - The "Reset to latest remote main" step ensures we always sync from the
+#     current tip of main before committing, avoiding non-fast-forward push errors
+#
+# FLOW:
+#   1. RiskModels_API (this repo): Edit OPENAPI_SPEC.yaml (full spec: rankings, ETFs, etc.)
+#   2. Build: Convert YAML -> openapi.json
+#   3. Pull-in: Copy API_TERMS.md and Colab notebook FROM Risk_Models into this repo
+#   4. Push-out: Deliver openapi.json TO Risk_Models/mcp-server/data/
+#   5. Risk_Models (consumer): App and Supabase serve the API using the updated JSON
+#
+# REQUIRED SECRET: REPO_ACCESS_TOKEN
 #   - Read: Risk_Models (API_TERMS.md, notebooks/riskmodels_quickstart.ipynb)
 #   - Write: Risk_Models (push openapi.json to mcp-server/data/)
 #
@@ -34,6 +45,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Align with remote main before making changes. Needed because other repos
+      # (e.g. Risk_Models) or re-runs can push to main; without this, push fails
+      # with "non-fast-forward" when our branch has diverged.
+      - name: Reset to latest remote main
+        run: git fetch origin main && git reset --hard origin/main
 
       - name: Checkout Risk_Models
         uses: actions/checkout@v4

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Risk Metadata",
+  "description": "Lineage and provenance metadata for all data responses. Included as _metadata in response body and as X-Risk-* headers.",
+  "type": "object",
+  "properties": {
+    "model_version": {
+      "type": "string",
+      "description": "ERM3 model version (e.g. ERM3-L3-v30)"
+    },
+    "data_as_of": {
+      "type": "string",
+      "format": "date",
+      "description": "Latest trading date in security_history"
+    },
+    "factor_set_id": {
+      "type": "string",
+      "description": "Factor set identifier"
+    },
+    "universe_size": {
+      "type": "integer",
+      "description": "Number of stocks in the universe"
+    },
+    "wiki_uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "Methodology documentation URL"
+    },
+    "factors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "L3 factor ETF tickers (market + 11 sectors)"
+    }
+  }
+}
