@@ -30,3 +30,4 @@ repomix*
 # Generated files
 public/openapi.json
 
+.vercel
