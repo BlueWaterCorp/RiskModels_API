@@ -9,7 +9,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 import { getAppUrl } from '@/lib/app-url';
 const FREE_CREDIT_USD = 20;
+/** When the user enables auto-refill later, charges run when balance is below this (USD). */
 const DEFAULT_REFILL_THRESHOLD = 5.0;
+/** Preferred refill size (USD) — stored for when they opt in; auto-refill is off at signup. */
 const DEFAULT_REFILL_AMOUNT = 50.0;
 
 export async function GET(req: NextRequest) {
@@ -54,7 +56,7 @@ export async function GET(req: NextRequest) {
       const current = parseFloat(String(existingAccount.balance_usd ?? 0));
       const updates: Record<string, unknown> = {
         stripe_customer_id: session.customer as string,
-        auto_top_up: true,
+        auto_top_up: false,
         auto_top_up_threshold: DEFAULT_REFILL_THRESHOLD,
         auto_top_up_amount: DEFAULT_REFILL_AMOUNT,
         updated_at: new Date().toISOString(),
@@ -73,7 +75,7 @@ export async function GET(req: NextRequest) {
         contact_email: email,
         balance_usd: FREE_CREDIT_USD,
         stripe_customer_id: session.customer as string,
-        auto_top_up: true,
+        auto_top_up: false,
         auto_top_up_threshold: DEFAULT_REFILL_THRESHOLD,
         auto_top_up_amount: DEFAULT_REFILL_AMOUNT,
         status: 'active',

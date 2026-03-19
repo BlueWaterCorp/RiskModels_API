@@ -1,6 +1,8 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
 import CodeBlock from '@/components/CodeBlock';
-import { CheckCircle2, ArrowRight } from 'lucide-react';
+import QuickstartCodeExamples from '@/components/QuickstartCodeExamples';
+import { ArrowRight } from 'lucide-react';
 
 const pythonExample = `import requests
 
@@ -8,13 +10,14 @@ API_KEY  = "rm_agent_live_..."
 BASE_URL = "https://riskmodels.net/api"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
-# Get latest metrics for NVDA
+# Get latest metrics for NVDA (V3: fields live under "metrics")
 resp = requests.get(f"{BASE_URL}/metrics/NVDA", headers=HEADERS)
-metrics = resp.json()
+body = resp.json()
+m = body["metrics"]
 
-print(f"Residual Risk:  {metrics['l3_residual_er']:.1%}")
-print(f"Market Hedge:   {metrics['l3_market_hr']:.2f}")
-print(f"Volatility:     {metrics['volatility']:.1%}")`;
+print(f"Residual Risk:  {(m.get('l3_res_er') or 0):.1%}")
+print(f"Market Hedge:   {(m.get('l3_mkt_hr') or 0):.2f}")
+print(f"Vol (23d):      {(m.get('vol_23d') or 0):.1%}")`;
 
 const typescriptExample = `const API_KEY  = "rm_agent_live_...";
 const BASE_URL = "https://riskmodels.net/api";
@@ -23,11 +26,12 @@ const resp = await fetch(\`\${BASE_URL}/metrics/NVDA\`, {
   headers: { Authorization: \`Bearer \${API_KEY}\` }
 });
 
-const metrics = await resp.json();
+const body = await resp.json();
+const m = body.metrics;
 
-console.log(\`Residual Risk:  \${(metrics.l3_residual_er * 100).toFixed(1)}%\`);
-console.log(\`Market Hedge:   \${metrics.l3_market_hr.toFixed(2)}\`);
-console.log(\`Volatility:     \${(metrics.volatility * 100).toFixed(1)}%\`);`;
+console.log(\`Residual Risk:  \${((m.l3_res_er ?? 0) * 100).toFixed(1)}%\`);
+console.log(\`Market Hedge:   \${(m.l3_mkt_hr ?? 0).toFixed(2)}\`);
+console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 
 const curlExample = `curl -X GET "https://riskmodels.net/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
@@ -38,9 +42,10 @@ export default function QuickstartPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-12">
-          <h1 className="text-4xl font-bold text-zinc-100 mb-4">Quickstart Guide</h1>
+          <h1 className="text-4xl font-bold text-zinc-100 mb-4">Quickstart</h1>
           <p className="text-lg text-zinc-400">
-            Get started with the RiskModels API in under 5 minutes
+            Get an API key, run your first request, then use longer Python and
+            TypeScript examples—all in one place.
           </p>
         </div>
 
@@ -143,14 +148,26 @@ export default function QuickstartPage() {
           </div>
         </div>
 
-        {/* Step 4 */}
+        <div className="mb-12">
+          <Suspense
+            fallback={
+              <div className="animate-pulse rounded-lg border border-zinc-800 bg-zinc-900/40 p-8 text-sm text-zinc-500">
+                Loading examples…
+              </div>
+            }
+          >
+            <QuickstartCodeExamples />
+          </Suspense>
+        </div>
+
+        {/* Step 5 */}
         <div className="mb-12">
           <div className="flex items-start gap-4 mb-6">
             <div className="flex-shrink-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold">
-              4
+              5
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-zinc-100 mb-3">Explore More</h2>
+              <h2 className="text-2xl font-bold text-zinc-100 mb-3">Explore more</h2>
               <p className="text-zinc-400 mb-6">
                 Now that you have your first request working, explore the full API capabilities.
               </p>
@@ -165,18 +182,6 @@ export default function QuickstartPage() {
                   </h3>
                   <p className="text-sm text-zinc-400">
                     Complete OpenAPI specification with all endpoints and schemas
-                  </p>
-                </Link>
-
-                <Link
-                  href="/examples"
-                  className="p-6 bg-zinc-900/50 border border-zinc-800 rounded-lg hover:border-primary/50 transition-colors group"
-                >
-                  <h3 className="text-lg font-semibold text-zinc-100 mb-2 group-hover:text-primary transition-colors">
-                    Code Examples
-                  </h3>
-                  <p className="text-sm text-zinc-400">
-                    Production-ready examples for common use cases
                   </p>
                 </Link>
 
@@ -208,40 +213,6 @@ export default function QuickstartPage() {
           </div>
         </div>
 
-        {/* Key Features */}
-        <div className="p-8 bg-zinc-900/50 border border-zinc-800 rounded-lg">
-          <h3 className="text-xl font-bold text-zinc-100 mb-6">What You Can Do</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="text-primary flex-shrink-0 mt-1" size={20} />
-              <div>
-                <h4 className="font-semibold text-zinc-100">Daily Factor Decompositions</h4>
-                <p className="text-sm text-zinc-400">Market, sector, subsector explained risk</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="text-primary flex-shrink-0 mt-1" size={20} />
-              <div>
-                <h4 className="font-semibold text-zinc-100">Hedge Ratios (L1/L2/L3)</h4>
-                <p className="text-sm text-zinc-400">Dollar-denominated ETF hedge amounts</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="text-primary flex-shrink-0 mt-1" size={20} />
-              <div>
-                <h4 className="font-semibold text-zinc-100">Historical Time Series</h4>
-                <p className="text-sm text-zinc-400">15+ years of rolling hedge ratios</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="text-primary flex-shrink-0 mt-1" size={20} />
-              <div>
-                <h4 className="font-semibold text-zinc-100">Batch Analysis</h4>
-                <p className="text-sm text-zinc-400">Analyze up to 100 tickers at once</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

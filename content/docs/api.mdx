@@ -43,6 +43,20 @@ This repository is the **authoritative public API reference** for the RiskModels
     </div>
     <p className="text-xs text-zinc-500 leading-relaxed">Hierarchical factor model math, hedge ratio derivations, and explained risk formulas.</p>
   </a>
+  <a href="/docs/erm3-engine" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <div className="flex items-center gap-3">
+      <span className="text-xl">🧠</span>
+      <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">ERM3 Engine</span>
+    </div>
+    <p className="text-xs text-zinc-500 leading-relaxed">Quant-oriented explanation of time safety, Security Master design, and executable ETF hedging.</p>
+  </a>
+  <a href="/docs/plaid-holdings" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <div className="flex items-center gap-3">
+      <span className="text-xl">🏦</span>
+      <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Plaid Holdings</span>
+    </div>
+    <p className="text-xs text-zinc-500 leading-relaxed">How to connect brokerage accounts and fetch holdings via the API.</p>
+  </a>
   <a href="https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md" target="_blank" rel="noopener noreferrer" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 hover:bg-zinc-900 transition-all">
     <div className="flex items-center gap-3">
       <span className="text-xl">🔖</span>
@@ -92,7 +106,36 @@ The RiskModels API provides institutional-grade equity risk analysis for AI agen
 - **Tradeable in practice** — hedge ratios are designed to remain executable with liquid raw ETFs, not just synthetic factors
 - **Built on adjusted returns** — split- and dividend-adjusted return series improve consistency through corporate actions and long horizons
 
-For the mathematical detail behind L1/L2/L3 decomposition and hedge construction, see [Methodology](/docs/methodology).
+For the mathematical detail behind L1/L2/L3 decomposition and hedge construction, see [Methodology](/docs/methodology). For the design choices behind time safety, identity continuity, and tradeable hedge outputs, see [ERM3 Engine](/docs/erm3-engine).
+
+## Choose Your Workflow
+
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-8 not-prose">
+  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+    <div className="flex items-center gap-3 mb-3">
+      <span className="text-xl">📈</span>
+      <h3 className="text-sm font-semibold text-zinc-100 m-0">Quant Research and Hedging</h3>
+    </div>
+    <p className="text-xs text-zinc-500 leading-relaxed mb-4">Use the core RiskModels endpoints when you want factor decomposition, hedge ratios, residual risk, and historical return analytics on securities or portfolios.</p>
+    <div className="flex flex-wrap gap-2">
+      <a href="/docs/erm3-engine" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">ERM3 Engine</a>
+      <a href="/docs/methodology" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">Methodology</a>
+      <a href="/api-reference" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">API Reference</a>
+    </div>
+  </div>
+  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+    <div className="flex items-center gap-3 mb-3">
+      <span className="text-xl">🏦</span>
+      <h3 className="text-sm font-semibold text-zinc-100 m-0">Brokerage-Linked Portfolio Holdings</h3>
+    </div>
+    <p className="text-xs text-zinc-500 leading-relaxed mb-4">Use Plaid when you want a user to connect a real brokerage account in the web app once, then pull holdings through the API with the same account identity.</p>
+    <div className="flex flex-wrap gap-2">
+      <a href="/docs/plaid-holdings" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">Plaid Holdings</a>
+      <a href="/docs/authentication" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">Authentication</a>
+      <a href="/get-key" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">Get API Key</a>
+    </div>
+  </div>
+</div>
 
 ## Core Endpoints
 
@@ -149,17 +192,21 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 ## Related
 
-<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 not-prose">
   <a href="/docs/authentication" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
     <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🔐 Authentication</span>
     <p className="text-xs text-zinc-500">Get an API key, configure OAuth2, and understand the prepaid billing model.</p>
+  </a>
+  <a href="/docs/erm3-engine" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🧠 ERM3 Engine</span>
+    <p className="text-xs text-zinc-500">Time safety, Security Master design, and why the hedge outputs are built to be tradeable.</p>
   </a>
   <a href="/docs/methodology" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
     <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📐 Methodology</span>
     <p className="text-xs text-zinc-500">The math behind L1/L2/L3 hedge ratios, explained risk, and factor decompositions.</p>
   </a>
-  <a href="/docs/agent-integration" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
-    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🤖 Agent Integration</span>
-    <p className="text-xs text-zinc-500">Use RiskModels with Cursor, Claude Desktop, or Zed via the npm CLI or MCP server.</p>
+  <a href="/docs/plaid-holdings" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🏦 Plaid Holdings</span>
+    <p className="text-xs text-zinc-500">Connect a brokerage in the web app once, then fetch holdings through the API.</p>
   </a>
 </div>

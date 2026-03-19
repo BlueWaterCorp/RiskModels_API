@@ -1,0 +1,151 @@
+---
+title: Plaid Holdings User Experience
+description: How users connect brokerage accounts and fetch holdings via the API
+---
+
+# Plaid Holdings: User Experience
+
+This document describes how users connect their brokerage accounts and fetch holdings via the RiskModels API. Plaid Link is a **browser-based flow** — there is no way to connect a brokerage purely via API.
+
+This is the portfolio-ingestion side of the docs. If you want the risk-engine side of the platform, see [ERM3 Engine Design](/docs/erm3-engine) and [Methodology](/docs/methodology).
+
+---
+
+## Summary
+
+| Step | Plaid UI? | Where |
+|------|-----------|-------|
+| Connect brokerage | **Yes** | Plaid Link modal (or OAuth redirect) in the web app |
+| Fetch holdings | **No** | `GET /api/plaid/holdings` with Bearer token |
+
+**For API-only users:** They must first connect via the web app (riskmodels.net). After that, they can use the API with their Bearer token to fetch holdings without any further Plaid UI.
+
+**Security note:** Stored portfolio data uses **GCP KMS-backed envelope encryption**. Plaid access tokens are encrypted at rest and used server-side only.
+
+---
+
+## One-Time Setup: Plaid Link (Web UI Required)
+
+Plaid Link is a hosted UI that Plaid provides. Users must go through it at least once to connect their brokerage.
+
+### Flow
+
+1. **User visits riskmodels.net** and signs in (web app).
+2. **User starts connection** — e.g. "Connect bank" or "Link brokerage" in Settings or the dashboard.
+3. **App fetches a link token:** `POST /api/plaid/link-token` (with session cookie or Bearer token).
+4. **Plaid Link opens** — a modal/popup from the `react-plaid-link` SDK:
+   - User selects institution (Fidelity, Schwab, Robinhood, etc.).
+   - **Non-OAuth institutions:** User enters credentials in Plaid's hosted form.
+   - **OAuth institutions (e.g. Schwab):** User is redirected to the institution's login page, then back to `riskmodels.net/plaid-oauth`, where Plaid Link completes the handshake.
+5. **On success**, Plaid returns a short-lived `public_token` to the client.
+6. **App exchanges it:** `POST /api/plaid/exchange-public-token` with `{ public_token }`.
+7. **Server stores** the encrypted access token in `plaid_items` for that user.
+
+The result is that connected holdings can be retrieved through the API without exposing Plaid credentials to the client, while stored portfolio data remains protected with KMS-backed envelope encryption.
+
+### Endpoints Used
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/plaid/link-token` | POST | Create a one-time link token for Plaid Link |
+| `/api/plaid/exchange-public-token` | POST | Exchange Plaid's public token for a stored access token |
+
+Both require authentication (session cookie or Bearer token).
+
+---
+
+## Ongoing API Use: Fetching Holdings
+
+After the account is connected:
+
+- **`GET /api/plaid/holdings`** — returns holdings, accounts, and securities for all connected items.
+- No Plaid UI is involved; the server uses the stored access token to call Plaid's API.
+- Requires Bearer token (or session cookie) and `plaid:holdings` scope if using OAuth2.
+
+### Example
+
+```bash
+curl -X GET https://riskmodels.net/api/plaid/holdings \
+  -H "Authorization: Bearer rm_agent_live_..."
+```
+
+### Response
+
+```json
+{
+  "holdings": [...],
+  "accounts": [...],
+  "securities": [...],
+  "connections_count": 1
+}
+```
+
+### Status Codes
+
+- **200** — Holdings returned successfully.
+- **202** — Some account data is still processing (e.g. `PRODUCT_NOT_READY`); holdings may be partial.
+- **401** — Unauthorized.
+- **403** — Plaid disabled or missing scope.
+
+---
+
+## Webhooks
+
+Plaid sends webhooks to `POST /api/plaid/webhook` for lifecycle events:
+
+- `INITIAL_UPDATE` — Account data ready.
+- `INVESTMENTS_TRANSACTIONS_DEFAULT_UPDATE` — Holdings ready (important for Schwab).
+- `HISTORICAL_UPDATE` — Historical sync complete.
+- `ITEM_LOGIN_REQUIRED` — User must re-authenticate.
+- `ERROR` — Item error.
+- `ITEM_REMOVED` — User removed the connection.
+
+These are internal; API users do not interact with them directly.
+
+---
+
+## For API-Only Developers
+
+If you are building an integration that uses `GET /api/plaid/holdings`:
+
+1. **One-time:** User must visit riskmodels.net, sign in, and connect their brokerage via Plaid Link.
+2. **Ongoing:** Your app can call `GET /api/plaid/holdings` with the user's Bearer token (obtained via `POST /api/auth/provision` or OAuth2).
+
+There is no way to complete the Plaid connection flow without the web browser. Plaid requires their hosted UI for security and compliance.
+
+### How the API Key and Plaid Connection Are Linked
+
+The API key and Plaid connection are tied to the **same user account**. There is no separate "link" step — both use the same `user_id` on the server.
+
+**What is "the same account"?** For web signup and `POST /api/auth/provision`, the account is identified by **email**. You sign in at riskmodels.net with that email and password. Your API key and any Plaid connections you create while signed in belong to that same email-based account.
+
+| How you got your API key | Account type | How to connect Plaid |
+|--------------------------|--------------|------------------------|
+| **Settings at riskmodels.net** | Email + password | You're already signed in. Go to Settings → Connect brokerage. Same account. |
+| **`POST /api/auth/provision`** | Email (password set via "Forgot password") | Go to riskmodels.net → Sign in with the same email you used in provision → Settings → Connect brokerage. |
+| **`POST /api/auth/provision-free`** | No email; anonymous ID only | No web login exists. **Plaid/Holdings are not available.** Use provision or web signup if you need holdings. |
+
+**Summary:** Sign in at riskmodels.net with the **same email** that owns your API key, then connect Plaid in Settings. After that, `GET /api/plaid/holdings` with your Bearer token returns that account's holdings.
+
+---
+
+## Related
+
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 not-prose">
+  <a href="/docs/authentication" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🔐 Authentication</span>
+    <p className="text-xs text-zinc-500">Bearer tokens, OAuth2, and the plaid:holdings scope.</p>
+  </a>
+  <a href="/docs/api" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📄 API Docs</span>
+    <p className="text-xs text-zinc-500">All endpoints, costs, and response schemas.</p>
+  </a>
+  <a href="/docs/erm3-engine" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🧠 ERM3 Engine</span>
+    <p className="text-xs text-zinc-500">Understand the engine behind the risk outputs you may apply to those holdings.</p>
+  </a>
+  <a href="/api-reference" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">⚡ API Reference</span>
+    <p className="text-xs text-zinc-500">Interactive OpenAPI viewer for Plaid and other endpoints.</p>
+  </a>
+</div>

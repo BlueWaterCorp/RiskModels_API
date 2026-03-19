@@ -11,7 +11,6 @@ export default function Navbar() {
   const navLinks = [
     { href: '/docs/api', label: 'Docs' },
     { href: '/api-reference', label: 'Reference' },
-    { href: '/examples', label: 'Examples' },
     { href: '/quickstart', label: 'Quickstart' },
     { href: '/pricing', label: 'Pricing' },
   ];

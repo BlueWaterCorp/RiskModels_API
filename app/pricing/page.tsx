@@ -44,6 +44,27 @@ const rateLimitRows = [
   },
 ];
 
+const refillTiers = [
+  {
+    amount: "$20",
+    name: "Small",
+    audience: "Individual",
+    detail: "~1M tokens per charge — great for experiments and light scripts.",
+  },
+  {
+    amount: "$50",
+    name: "Growth",
+    audience: "Standard",
+    detail: "~2.5M tokens per charge — default suggested tier when you enable auto-refill.",
+  },
+  {
+    amount: "$100",
+    name: "Business",
+    audience: "Production",
+    detail: "~5M tokens per charge — fewer interruptions for high-volume workloads.",
+  },
+];
+
 const faqs = [
   {
     q: "Do my free credits expire?",
@@ -51,7 +72,7 @@ const faqs = [
   },
   {
     q: "What happens when I run out of credits?",
-    a: "Without auto-refill enabled, API calls return 402 Payment Required and you manually top up from your developer dashboard. With auto-refill on, your card on file is charged for your chosen refill amount (e.g. $50 for 2.5M tokens) and requests continue without interruption. Auto-refill is optional and off by default.",
+    a: "Auto-refill is off by default when you add a card. With it off, you top up manually and API calls return 402 Payment Required if your balance is too low. If you turn auto-refill on, you pick a refill tier ($20, $50, or $100); when your balance falls below your threshold (default $5), your card is charged for that tier and tokens are added. You can disable auto-refill or change tier anytime via your billing settings or PATCH /api/user/billing-config.",
   },
   {
     q: "Can I set a monthly spend cap?",
@@ -59,7 +80,7 @@ const faqs = [
   },
   {
     q: "Is there a volume discount?",
-    a: "For high-volume usage (10M+ tokens / month) we offer custom Enterprise pricing with dedicated rate limits (100+ req/min), committed-use discounts, priority support, SLA guarantees, and custom integration assistance. Contact us for a quote.",
+    a: "If you're doing serious volume (think 10M+ tokens/month), email contact@riskmodels.net—we can usually do higher rate limits (100+ req/min), a better per-token rate when you commit to volume, and help getting integrated. We'll keep it straightforward.",
   },
   {
     q: "Is my API data encrypted?",
@@ -135,7 +156,7 @@ export default function PricingPage() {
                       clipRule="evenodd"
                     />
                   </svg>
-                  Free $20 to start — no card required
+                  $20 free credits after card setup
                 </span>
                 <p className="text-xs text-zinc-500">Credits never expire</p>
               </div>
@@ -157,7 +178,7 @@ export default function PricingPage() {
                 "TypeScript, Python, cURL examples",
                 "OpenAPI 3.0 spec",
                 "OAuth2 / AI-agent provisioning",
-                "Optional auto-refill",
+                "Optional auto-refill (off by default)",
                 "Monthly spend cap controls",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-2 text-sm text-zinc-300">
@@ -264,27 +285,80 @@ export default function PricingPage() {
         </p>
       </section>
 
+      {/* ── Auto-refill tiers ── */}
+      <section className="mx-auto max-w-4xl px-6 py-8">
+        <Divider />
+        <SectionLabel>Auto-refill</SectionLabel>
+        <h2 className="text-2xl font-bold text-white mb-2">Refill tiers</h2>
+        <p className="text-zinc-400 mb-8 max-w-3xl">
+          Auto-refill stays <span className="text-zinc-200 font-medium">off</span> until you
+          turn it on. When enabled, your card is charged for the tier you select
+          whenever your balance drops below your threshold (default{" "}
+          <span className="text-zinc-200 font-mono">$5</span>
+          ). Only these amounts are allowed:
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {refillTiers.map((tier) => (
+            <div
+              key={tier.amount}
+              className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col"
+            >
+              <p className="text-3xl font-bold text-white mb-1">{tier.amount}</p>
+              <p className="text-sm font-semibold text-blue-400 mb-1">
+                {tier.name}{" "}
+                <span className="text-zinc-500 font-normal">· {tier.audience}</span>
+              </p>
+              <p className="text-sm text-zinc-400 leading-relaxed mt-2 flex-1">
+                {tier.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-6 text-sm text-zinc-500">
+          Manage auto-refill, tier, and threshold with{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+            GET
+          </code>{" "}
+          /{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
+            PATCH
+          </code>{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-blue-300">
+            /api/user/billing-config
+          </code>{" "}
+          (authenticated).
+        </p>
+      </section>
+
       {/* ── Enterprise ── */}
       <section className="mx-auto max-w-4xl px-6 py-8">
         <Divider />
         <div className="rounded-2xl border border-zinc-700 bg-zinc-900/60 p-8">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
             <div className="flex-1">
-              <SectionLabel>Enterprise</SectionLabel>
+              <SectionLabel>High volume</SectionLabel>
               <h2 className="text-2xl font-bold text-white mb-3">
                 10M+ tokens / month?
               </h2>
               <p className="text-zinc-400 mb-6">
-                High-volume users get committed-use discounts, dedicated rate
-                limits, and priority support.
+                If you&apos;re in that ballpark, mail{" "}
+                <a
+                  href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
+                  className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+                >
+                  contact@riskmodels.net
+                </a>
+                —we can raise rate limits, sharpen pricing for steady usage, and
+                help you wire things up. We&apos;ll reply and keep it simple.
               </p>
               <ul className="space-y-2">
                 {[
-                  "100+ req / min dedicated rate limits",
-                  "Committed-use volume discounts",
-                  "Priority support & SLA guarantees",
-                  "Custom integration assistance",
-                  "Dedicated onboarding",
+                  "Higher rate limits (100+ req/min) when you need them",
+                  "Volume pricing if you're consistently heavy",
+                  "Straightforward support—real replies, not a ticket black hole",
+                  "Help integrating (batch flows, auth, whatever you're stuck on)",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-2 text-sm text-zinc-300">
                     <svg
@@ -305,10 +379,10 @@ export default function PricingPage() {
             </div>
             <div className="sm:shrink-0">
               <a
-                href="mailto:contact@riskmodels.net?subject=Enterprise%20Pricing"
+                href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
                 className="inline-flex items-center gap-2 rounded-lg border border-zinc-600 hover:border-zinc-400 text-zinc-200 hover:text-white font-medium px-6 py-3 transition-colors text-sm"
               >
-                Contact sales
+                Email us
                 <svg
                   className="w-4 h-4"
                   fill="none"

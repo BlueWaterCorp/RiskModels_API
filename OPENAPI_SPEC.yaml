@@ -50,7 +50,8 @@ info:
 
 
     **Pricing**: Per-request billing with prepaid balance. Cached responses are free.
-    Check `_agent.cost_usd` in each response body, or the `X-API-Cost-USD` response header.
+    Many metered responses include `_agent.cost_usd` in the JSON body; others bill silently — always
+    check the `X-API-Cost-USD` response header when present.
 
     **Lineage**: All data responses include `_metadata` (model version, data_as_of, factor set)
     and headers `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`.
@@ -211,162 +212,199 @@ components:
           type: string
           example: "Actual cost may vary. Cached responses are free."
 
-    TickerMetrics:
+    MetricsV3:
       type: object
-      description: Latest risk metrics snapshot for a single ticker.
+      description: >
+        V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property.
+        Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual.
+        Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1).
       properties:
-        ticker:
-          type: string
-          example: NVDA
-        symbol:
-          type: string
-          example: NVDA
-        date:
-          type: string
-          format: date
-          example: "2026-02-21"
-        volatility:
+        vol_23d:
           type: number
           format: float
           nullable: true
-          description: Annualised realised volatility as a decimal fraction (e.g. 0.32 = 32%).
-          example: 0.48
-        sharpe_ratio:
+          description: Annualised realised volatility (23 trading days), decimal fraction.
+        price_close:
           type: number
           format: float
           nullable: true
-          example: 1.82
-        l1_market_hr:
-          type: number
-          format: float
-          nullable: true
-          description: "SPY hedge ratio for L1 (market-only) hedge. Unit: dollar_ratio."
-          example: 1.72
-        l1_market_er:
-          type: number
-          format: float
-          nullable: true
-          description: Fraction of variance explained by market factor at L1 (R-squared).
-          example: 0.42
-        l2_market_hr:
-          type: number
-          format: float
-          nullable: true
-          example: 1.41
-        l2_sector_hr:
-          type: number
-          format: float
-          nullable: true
-          example: 0.31
-        l2_market_er:
-          type: number
-          format: float
-          nullable: true
-          example: 0.38
-        l2_sector_er:
-          type: number
-          format: float
-          nullable: true
-          example: 0.09
-        l3_market_hr:
-          type: number
-          format: float
-          nullable: true
-          example: 1.28
-        l3_sector_hr:
-          type: number
-          format: float
-          nullable: true
-          example: 0.24
-        l3_subsector_hr:
-          type: number
-          format: float
-          nullable: true
-          description: "Can be negative (long position). Unit: dollar_ratio."
-          example: -0.06
-        l3_market_er:
-          type: number
-          format: float
-          nullable: true
-          example: 0.35
-        l3_sector_er:
-          type: number
-          format: float
-          nullable: true
-          example: 0.07
-        l3_subsector_er:
-          type: number
-          format: float
-          nullable: true
-          example: 0.04
-        l3_residual_er:
-          type: number
-          format: float
-          nullable: true
-          description: Idiosyncratic variance fraction — cannot be hedged with ETFs.
-          example: 0.54
-        bw_sector_code:
-          type: integer
-          nullable: true
-          description: Barra World sector classification code.
-        fs_sector_code:
-          type: integer
-          nullable: true
-          description: FactSet sector code.
-        fs_industry_code:
-          type: integer
-          nullable: true
-          description: FactSet industry code.
-        sector_etf:
-          type: string
-          nullable: true
-          description: Sector hedge ETF (e.g. XLK, SOXX). From V3 symbols table.
-          example: XLK
-        subsector_etf:
-          type: string
-          nullable: true
-          description: Subsector hedge ETF (e.g. XOP, XME). From fs_industry_code via FS_INDUSTRY_TO_SUBSECTOR_ETFS. Fallback to sector_etf when unavailable.
-          example: XOP
         market_cap:
           type: number
           format: float
           nullable: true
-          description: Market capitalisation in USD.
-          example: 3200000000000
-        close_price:
+        stock_var:
           type: number
           format: float
           nullable: true
-          description: Most recent closing price in USD.
-          example: 131.50
+        l1_mkt_hr:
+          type: number
+          format: float
+          nullable: true
+        l1_mkt_er:
+          type: number
+          format: float
+          nullable: true
+        l1_res_er:
+          type: number
+          format: float
+          nullable: true
+        l2_mkt_hr:
+          type: number
+          format: float
+          nullable: true
+        l2_sec_hr:
+          type: number
+          format: float
+          nullable: true
+        l2_mkt_er:
+          type: number
+          format: float
+          nullable: true
+        l2_sec_er:
+          type: number
+          format: float
+          nullable: true
+        l2_res_er:
+          type: number
+          format: float
+          nullable: true
+        l3_mkt_hr:
+          type: number
+          format: float
+          nullable: true
+        l3_sec_hr:
+          type: number
+          format: float
+          nullable: true
+        l3_sub_hr:
+          type: number
+          format: float
+          nullable: true
+        l3_mkt_er:
+          type: number
+          format: float
+          nullable: true
+        l3_sec_er:
+          type: number
+          format: float
+          nullable: true
+        l3_sub_er:
+          type: number
+          format: float
+          nullable: true
+        l3_res_er:
+          type: number
+          format: float
+          nullable: true
+          description: Idiosyncratic variance fraction at L3.
 
-    TickerReturnsRow:
+    MetricsSnapshotResponse:
       type: object
+      description: >
+        Wire response for `GET /metrics/{ticker}`. Numeric fields live under `metrics`;
+        `teo` is the observation date (V3 time-end).
+      required:
+        - symbol
+        - ticker
+        - teo
+        - periodicity
+        - metrics
+        - display
+        - meta
+      properties:
+        symbol:
+          type: string
+          description: Canonical symbol key in V3 registry.
+        ticker:
+          type: string
+          example: NVDA
+        teo:
+          type: string
+          format: date
+          description: Latest observation date for the metrics row.
+        periodicity:
+          type: string
+          example: daily
+        metrics:
+          $ref: "#/components/schemas/MetricsV3"
+        display:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional display labels for metric keys (e.g. UI column titles).
+        meta:
+          type: object
+          properties:
+            sector_etf:
+              type: string
+              nullable: true
+            asset_type:
+              type: string
+              nullable: true
+
+    TickerReturnsDailyRow:
+      type: object
+      description: One trading day in `GET /ticker-returns` `data` array (V3 security_history fields).
       properties:
         date:
           type: string
           format: date
-          example: "2026-02-21"
-        stock:
+        returns_gross:
           type: number
           format: float
           description: Daily gross return of the stock.
-          example: 0.0234
-        l1:
+        l3_mkt_hr:
           type: number
           format: float
-          description: Rolling L1 combined market hedge ratio for that day.
-          example: 1.71
-        l2:
+          nullable: true
+          description: Rolling L3 market hedge ratio (SPY-notional per $1 stock).
+        l3_sec_hr:
           type: number
           format: float
-          description: Rolling L2 combined hedge ratio (market + sector).
-          example: 1.69
-        l3:
+          nullable: true
+        l3_sub_hr:
           type: number
           format: float
-          description: Rolling L3 combined hedge ratio (market + sector + subsector).
-          example: 1.61
+          nullable: true
+        l3_mkt_er:
+          type: number
+          format: float
+          nullable: true
+        l3_sec_er:
+          type: number
+          format: float
+          nullable: true
+        l3_sub_er:
+          type: number
+          format: float
+          nullable: true
+        l3_res_er:
+          type: number
+          format: float
+          nullable: true
+
+    TickerReturnsResponseV3:
+      type: object
+      required:
+        - symbol
+        - ticker
+        - periodicity
+        - data
+        - meta
+      properties:
+        symbol:
+          type: string
+        ticker:
+          type: string
+        periodicity:
+          type: string
+          example: daily
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TickerReturnsDailyRow"
+        meta:
+          $ref: "#/components/schemas/TickerReturnsMeta"
 
     TickerReturnsMeta:
       type: object
@@ -380,6 +418,255 @@ components:
         subsector_etf:
           type: string
           example: XSD
+        universe:
+          type: string
+          example: US_EQUITY
+
+    BatchHedgeRatios:
+      type: object
+      description: Present when `metrics` includes `hedge_ratios`. Dollar HRs per $1 stock.
+      properties:
+        l1_market:
+          type: number
+          format: float
+          nullable: true
+        l2_market:
+          type: number
+          format: float
+          nullable: true
+        l2_sector:
+          type: number
+          format: float
+          nullable: true
+        l3_market:
+          type: number
+          format: float
+          nullable: true
+        l3_sector:
+          type: number
+          format: float
+          nullable: true
+        l3_subsector:
+          type: number
+          format: float
+          nullable: true
+
+    BatchReturnsPayload:
+      type: object
+      description: >
+        Present when `metrics` includes `returns`. Arrays are parallel by index.
+        Fields `l1`, `l2`, `l3` hold daily rolling hedge ratios from V3 (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` history), not combined L1/L2/L3 model levels.
+      properties:
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+        values:
+          type: array
+          items:
+            type: number
+          description: Daily gross returns (`returns_gross`).
+        l1:
+          type: array
+          items:
+            type: number
+            nullable: true
+        l2:
+          type: array
+          items:
+            type: number
+            nullable: true
+        l3:
+          type: array
+          items:
+            type: number
+            nullable: true
+
+    BatchFullMetrics:
+      type: object
+      description: Present when `metrics` includes `full_metrics`. Flat snapshot for batch consumers.
+      properties:
+        ticker:
+          type: string
+        date:
+          type: string
+          format: date
+          nullable: true
+        volatility:
+          type: number
+          format: float
+          nullable: true
+        l3_market_hr:
+          type: number
+          format: float
+          nullable: true
+        l3_sector_hr:
+          type: number
+          format: float
+          nullable: true
+        l3_subsector_hr:
+          type: number
+          format: float
+          nullable: true
+        l3_market_er:
+          type: number
+          format: float
+          nullable: true
+        l3_sector_er:
+          type: number
+          format: float
+          nullable: true
+        l3_subsector_er:
+          type: number
+          format: float
+          nullable: true
+        l3_residual_er:
+          type: number
+          format: float
+          nullable: true
+        market_cap:
+          type: number
+          format: float
+          nullable: true
+        close_price:
+          type: number
+          format: float
+          nullable: true
+
+    BatchAnalyzeTickerResult:
+      type: object
+      description: One entry in `POST /batch/analyze` `results` map (keyed by upper-case ticker).
+      required:
+        - ticker
+        - status
+      properties:
+        ticker:
+          type: string
+        status:
+          type: string
+          enum: [success, error]
+        error:
+          type: string
+          description: Present when status is `error`.
+        returns:
+          $ref: "#/components/schemas/BatchReturnsPayload"
+        hedge_ratios:
+          $ref: "#/components/schemas/BatchHedgeRatios"
+        full_metrics:
+          $ref: "#/components/schemas/BatchFullMetrics"
+        meta:
+          type: object
+          nullable: true
+          properties:
+            market_etf:
+              type: string
+              example: SPY
+            sector_etf:
+              type: string
+              nullable: true
+            subsector_etf:
+              type: string
+              nullable: true
+
+    BatchAnalyzeResponse:
+      type: object
+      required:
+        - results
+        - summary
+        - _agent
+      properties:
+        results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/BatchAnalyzeTickerResult"
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            success:
+              type: integer
+            errors:
+              type: integer
+        _agent:
+          $ref: "#/components/schemas/AgentMeta"
+
+    L3DecompositionResponse:
+      type: object
+      description: >
+        Columnar L3 decomposition from V3 `security_history` (daily points; arrays are parallel by index).
+        Field names use readable suffixes (`l3_market_er`, …). No `_agent` block in the current response body.
+      required:
+        - ticker
+        - dates
+        - l3_market_hr
+        - l3_sector_hr
+        - l3_subsector_hr
+        - l3_market_er
+        - l3_sector_er
+        - l3_subsector_er
+        - l3_residual_er
+        - market_factor_etf
+        - universe
+        - data_source
+      properties:
+        ticker:
+          type: string
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+        l3_market_hr:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_sector_hr:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_subsector_hr:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_market_er:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_sector_er:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_subsector_er:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_residual_er:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        market_factor_etf:
+          type: string
+        universe:
+          type: string
+        data_source:
+          type: string
+          example: factset
 
     ErrorResponse:
       type: object
@@ -493,11 +780,27 @@ components:
 
     RiskMetrics:
       type: object
+      description: Optional risk enrichment on Plaid holdings; names may match batch `full_metrics` or V3 `metrics` keys depending on pipeline version.
       properties:
         annualized_volatility:
           type: number
           nullable: true
+        volatility:
+          type: number
+          nullable: true
         sharpe_ratio:
+          type: number
+          nullable: true
+        l3_mkt_hr:
+          type: number
+          nullable: true
+        l3_sec_hr:
+          type: number
+          nullable: true
+        l3_sub_hr:
+          type: number
+          nullable: true
+        l3_res_er:
           type: number
           nullable: true
         l3_market_hr:
@@ -1018,9 +1321,10 @@ paths:
     get:
       summary: Latest risk metrics snapshot
       description: >
-        Returns the most recent row from `ticker_factor_metrics` for the given ticker.
-        Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility,
-        Sharpe ratio, sector codes, market cap, and close price.
+        Returns the latest V3 daily metrics for the ticker. Numeric fields are under the
+        `metrics` object using abbreviated keys (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`,
+        `l3_mkt_er`, `l3_res_er`, `vol_23d`, etc.). The observation date is `teo`.
+        Optional `display` maps keys to human-readable labels.
 
 
         **Authentication:** Required (API Key or OAuth2)
@@ -1064,7 +1368,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TickerMetrics"
+                $ref: "#/components/schemas/MetricsSnapshotResponse"
         "401":
           description: Missing or invalid Bearer token.
           content:
@@ -1084,7 +1388,7 @@ paths:
                   balance_usd:
                     type: number
         "404":
-          description: Ticker not found in universe.
+          description: Symbol not found or no metrics row (see error message).
           content:
             application/json:
               schema:
@@ -1108,10 +1412,12 @@ paths:
     get:
       summary: Daily returns time series with rolling hedge ratios
       description: >
-        Returns a daily time series of gross stock returns and rolling L1/L2/L3 combined
-        hedge ratios going back up to 15 years. The `l1/l2/l3` columns are the combined
-        (rolling) hedge ratios for each day — for the six separate HR components use
-        `/metrics/{ticker}`. Cost: $0.005/call regardless of years pulled.
+        Returns a daily time series of gross stock returns (`returns_gross`) and V3 rolling
+        hedge ratios and explained-risk fields per day: `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`,
+        `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er`. Up to 15 years per request.
+        For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use
+        `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent`
+        block; billing is applied server-side. Cost: $0.005/call regardless of years pulled.
       operationId: getTickerReturns
       tags: [Risk Metrics]
       parameters:
@@ -1150,12 +1456,12 @@ paths:
             enum: [json, parquet, csv]
             default: json
           description: >
-            Response format. `json` (default) returns full structure with meta and _agent.
-            `parquet` or `csv` returns tabular data only (date, stock, l1, l2, l3) as binary/text.
-            Use Accept header `application/x-parquet` or `text/csv` as alternative.
+            Response format. `json` (default) returns `TickerReturnsResponseV3` (symbol, ticker,
+            `data` rows with V3 field names, `meta`). Export formats may differ — confirm column
+            names in your client when using `parquet` or `csv`.
       responses:
         "200":
-          description: Time series of daily returns and rolling hedge ratios.
+          description: Time series of daily returns and V3 rolling HR/ER fields.
           content:
             application/x-parquet:
               schema:
@@ -1167,16 +1473,7 @@ paths:
                 format: text
             application/json:
               schema:
-                type: object
-                properties:
-                  meta:
-                    $ref: "#/components/schemas/TickerReturnsMeta"
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/TickerReturnsRow"
-                  _agent:
-                    $ref: "#/components/schemas/AgentMeta"
+                $ref: "#/components/schemas/TickerReturnsResponseV3"
         "401":
           description: Missing or invalid Bearer token.
           content:
@@ -1299,11 +1596,12 @@ paths:
 
   /l3-decomposition:
     get:
-      summary: Monthly L3 factor decomposition time series
+      summary: L3 factor decomposition time series
       description: >
-        Returns monthly historical explained-risk fractions (ER) for all four L3 components:
-        market, sector, subsector, and residual. Response is columnar (arrays, not rows) for
-        efficient numerical processing. Cost: $0.005/call.
+        Returns columnar time series of L3 hedge ratios and explained-risk fractions (parallel arrays
+        by trading date) from V3 `security_history`. Components: market, sector, subsector, residual.
+        Includes `ticker`, `universe`, and `data_source`. This route does not append `_agent` to the JSON body
+        in the current implementation; use headers / account balance for billing if applicable.
       operationId: getL3Decomposition
       tags: [Risk Metrics]
       parameters:
@@ -1319,90 +1617,14 @@ paths:
           schema:
             type: string
             default: SPY
-          description: Market factor ETF to use in decomposition.
-        - name: universe
-          in: query
-          required: false
-          schema:
-            type: string
-            default: uni_mc_3000
-        - name: from
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date
-          description: Start date (ISO 8601). Defaults to earliest available.
-        - name: to
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date
-          description: End date (ISO 8601). Defaults to most recent.
+          description: Market factor ETF (passed through to the decomposition service).
       responses:
         "200":
-          description: Columnar monthly ER time series.
+          description: Columnar L3 HR/ER time series (V3).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  dates:
-                    type: array
-                    items:
-                      type: string
-                      format: date
-                  l3_market_er:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  l3_sector_er:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  l3_subsector_er:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  l3_residual_er:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  l3_market_hr:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  l3_sector_hr:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  l3_subsector_hr:
-                    type: array
-                    items:
-                      type: number
-                      format: float
-                    nullable: true
-                  market_factor_etf:
-                    type: string
-                    example: SPY
-                  universe:
-                    type: string
-                    example: uni_mc_3000
-                  _agent:
-                    $ref: "#/components/schemas/AgentMeta"
+                $ref: "#/components/schemas/L3DecompositionResponse"
         "401":
           description: Missing or invalid Bearer token.
           content:
@@ -1435,9 +1657,11 @@ paths:
     post:
       summary: Multi-ticker batch analysis (25% discount)
       description: >
-        Fetch metrics for up to 100 tickers in a single call. 25% cheaper per position
-        than individual `/metrics/{ticker}` calls. Cost: $0.002/position, minimum $0.01/call.
-        Supported metrics: `returns`, `l3_decomposition`, `hedge_ratios`.
+        Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker).
+        Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` HR columns from V3 history),
+        `hedge_ratios` (latest six HR names), `full_metrics` (flat snapshot with `l3_market_hr`-style keys
+        for notionals and ER). The `l3_decomposition` flag is accepted by the server type but is not
+        populated in the current implementation. Cost: $0.002/position, minimum $0.01/call.
       operationId: batchAnalyze
       tags: [Risk Metrics]
       requestBody:
@@ -1459,9 +1683,9 @@ paths:
                   type: array
                   items:
                     type: string
-                    enum: [returns, l3_decomposition, hedge_ratios]
-                  description: Which data types to fetch for each ticker.
-                  example: ["hedge_ratios"]
+                    enum: [returns, l3_decomposition, hedge_ratios, full_metrics]
+                  description: Which payloads to include per ticker (`full_metrics` recommended for portfolio screens).
+                  example: ["full_metrics"]
                 years:
                   type: integer
                   minimum: 1
@@ -1473,11 +1697,10 @@ paths:
                   enum: [json, parquet, csv]
                   default: json
                   description: >
-                    When `parquet` or `csv`, returns flattened tabular data (ticker, date, gross_return, l1, l2, l3)
-                    instead of nested JSON. Useful for bulk export and pandas/polars.
+                    Parquet/CSV export shapes may differ from JSON; validate columns in your pipeline.
       responses:
         "200":
-          description: Batch results keyed by ticker (JSON) or flattened tabular data (parquet/csv).
+          description: Batch results keyed by ticker (JSON) or export formats when implemented.
           content:
             application/x-parquet:
               schema:
@@ -1489,53 +1712,7 @@ paths:
                 format: text
             application/json:
               schema:
-                type: object
-                properties:
-                  results:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      properties:
-                        status:
-                          type: string
-                          enum: [success, error, not_found]
-                        metadata:
-                          type: object
-                          nullable: true
-                          description: Per-ticker identity from V3 symbols. Included when ticker is found.
-                          properties:
-                            sector_etf:
-                              type: string
-                              nullable: true
-                              example: XLK
-                            subsector_etf:
-                              type: string
-                              nullable: true
-                              description: Subsector hedge ETF. Fallback to sector_etf when unavailable.
-                              example: XOP
-                        hedge_ratios:
-                          type: object
-                          nullable: true
-                          description: "Null if ticker not found. Keys: l1_market, l2_market, l2_sector, l3_market, l3_sector, l3_subsector."
-                        returns:
-                          type: array
-                          nullable: true
-                          items:
-                            $ref: "#/components/schemas/TickerReturnsRow"
-                        l3_decomposition:
-                          type: object
-                          nullable: true
-                  summary:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      success:
-                        type: integer
-                      errors:
-                        type: integer
-                  _agent:
-                    $ref: "#/components/schemas/AgentMeta"
+                $ref: "#/components/schemas/BatchAnalyzeResponse"
         "400":
           description: Invalid request body or too many tickers (> 100).
           content:
