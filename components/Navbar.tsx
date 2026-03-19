@@ -13,6 +13,7 @@ export default function Navbar() {
     { href: '/api-reference', label: 'Reference' },
     { href: '/examples', label: 'Examples' },
     { href: '/quickstart', label: 'Quickstart' },
+    { href: '/pricing', label: 'Pricing' },
   ];
 
   return (
