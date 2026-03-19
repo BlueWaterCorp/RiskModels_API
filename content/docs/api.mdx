@@ -7,8 +7,14 @@ description: Complete reference for the RiskModels API
 
 This repository is the **authoritative public API reference** for the RiskModels equity risk model API.
 
-- **Live interactive docs:** [API Reference](/api-reference)
-- **Computation engine:** [conradgann/ERM3](https://github.com/conradgann/ERM3) (Python, Huber/Ridge regression)
+**Documentation:**
+- **OpenAPI Spec:** [OPENAPI_SPEC.yaml](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/OPENAPI_SPEC.yaml) — Complete OpenAPI 3.0.3 contract with request/response schemas
+- **API Reference:** [Interactive docs](/api-reference) — Live OpenAPI viewer
+- **Authentication Guide:** [Authentication](/docs/authentication) — Bearer token, OAuth2, Supabase JWT, AI agent provisioning flow
+- **Methodology:** [Methodology](/docs/methodology) — Hierarchical factor model math, hedge ratios, explained risk
+- **Field Definitions:** [SEMANTIC_ALIASES.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) — Field definitions, units, formulas, and dataset coverage
+- **Response Metadata:** [RESPONSE_METADATA.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/RESPONSE_METADATA.md) — `_agent` block schema, response headers, pricing table, cache behaviour
+- **Error Handling:** [ERROR_SCHEMA.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/ERROR_SCHEMA.md) — All error codes, HTTP statuses, and recovery patterns
 - **Issues & feature requests:** [Open an issue](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
 
 ## Overview
@@ -40,49 +46,13 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 ## Key Concepts
 
-### RR — Residual Risk
-
-**Definition:** Unexplained variance after hedging all three factors (market, sector, subsector).
-
-**Formula:** `RR = 1 - (l3_market_er + l3_sector_er + l3_subsector_er)`
-
-**Use cases:**
-- Screen for high RR (> 0.5) to identify alpha opportunities
-- Risk budgeting: allocate capital to stocks with sufficient idiosyncratic capacity
-- Portfolio construction: balance factor exposure vs. stock-specific risk
-
-### HR — Hedge Ratio
-
-**Definition:** Dollar amount of factor ETF to short per $1 of stock position.
-
-**Example:** `l3_market_hr = 1.28` means short $1.28 of SPY for every $1.00 long in the stock.
-
-**Use cases:**
-- Construct market-neutral or factor-neutral portfolios
-- Calculate hedge notionals: `hedge_notional = position_size_usd × hr_field`
-
-### ER — Explained Risk
-
-**Definition:** Fraction of stock variance explained by the factor regression (R-squared).
-
-**Hierarchy:**
-- **L1**: Market-only (SPY) — 1 hedge trade
-- **L2**: Market + GICS sector ETF — 2 hedge trades
-- **L3**: Market + sector + GICS subsector ETF — 3 hedge trades, maximum granularity
-
-## Documentation
-
-| Document | Description |
+| Term | Definition |
 |---|---|
-| [OPENAPI_SPEC.yaml](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/OPENAPI_SPEC.yaml) | Complete OpenAPI 3.0.3 contract with request/response schemas |
-| [Authentication Guide](/docs/authentication) | Bearer token, OAuth2, Supabase JWT, AI agent provisioning flow |
-| [Methodology](/docs/methodology) | Hierarchical factor model math, hedge ratios, explained risk |
-| [SEMANTIC_ALIASES.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) | Field definitions, units, formulas, and dataset coverage |
-| [RESPONSE_METADATA.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/RESPONSE_METADATA.md) | `_agent` block schema, response headers, pricing table, cache behaviour |
-| [ERROR_SCHEMA.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/ERROR_SCHEMA.md) | All error codes, HTTP statuses, and recovery patterns |
+| **RR — Residual Risk** | Unexplained variance after hedging all three factors (market, sector, subsector).<br/><br/>**Formula:** `RR = 1 - (l3_market_er + l3_sector_er + l3_subsector_er)`<br/><br/>**Use cases:** Screen for high RR (> 0.5) to identify alpha opportunities; Risk budgeting; Portfolio construction to balance factor exposure vs. stock-specific risk |
+| **HR — Hedge Ratio** | Dollar amount of factor ETF to short per \$1 of stock position.<br/><br/>**Example:** `l3_market_hr = 1.28` means short \$1.28 of SPY for every \$1.00 long in the stock.<br/><br/>**Use cases:** Construct market-neutral or factor-neutral portfolios; Calculate hedge notionals: `hedge_notional = position_size_usd × hr_field` |
+| **ER — Explained Risk** | Fraction of stock variance explained by the factor regression (R-squared).<br/><br/>**Hierarchy:**<br/>• **L1**: Market-only (SPY) — 1 hedge trade<br/>• **L2**: Market + GICS sector ETF — 2 hedge trades<br/>• **L3**: Market + sector + GICS subsector ETF — 3 hedge trades, maximum granularity |
 
 ## Support
 
 - **Issues & feature requests:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
-- **API support email:** [api-support@riskmodels.net](mailto:api-support@riskmodels.net)
-- **Interactive docs:** [API Reference](/api-reference)
+- **Email:** [contact@riskmodels.net](mailto:contact@riskmodels.net)

@@ -163,7 +163,7 @@ We welcome pull requests, especially to improve the **OpenAPI spec** — clearer
 
 ## 📧 Support
 
-- **API Support:** [api-support@riskmodels.net](mailto:api-support@riskmodels.net)
+- **API Support:** [contact@riskmodels.net](mailto:contact@riskmodels.net)
 - **Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
 - **Status:** [riskmodels.net/status](https://riskmodels.net/status)
 
