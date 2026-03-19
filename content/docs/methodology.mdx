@@ -7,6 +7,14 @@ description: Methodology wiki — math and intuition behind the three-level hier
 
 Welcome to the methodology wiki. This page explains the math and intuition behind our three-level hierarchical factor model. Whether you're a portfolio manager trying to understand your exposures or a quant looking to replicate the analysis, this guide will walk you through the key concepts.
 
+This page focuses on the **mathematics and portfolio interpretation** of the model. If you want the engine-design view of time safety, Security Master discipline, and why the hedge outputs are built to remain executable with raw ETFs, read [ERM3 Engine Design](/docs/erm3-engine).
+
+<div className="not-prose my-6 rounded-xl border border-primary/30 bg-primary/5 p-5">
+  <p className="text-sm text-zinc-300 leading-relaxed mb-0">
+    <strong className="text-zinc-100">Use this split:</strong> <a href="/docs/erm3-engine" className="text-primary hover:underline">ERM3 Engine</a> explains the modeling assumptions and data-engineering choices; <strong className="text-zinc-100">Methodology</strong> explains the regression cascade, orthogonalization, and hedge-ratio math.
+  </p>
+</div>
+
 ---
 
 ## Why This Method Matters
@@ -316,17 +324,25 @@ The residual $\varepsilon$ at L3 is your true idiosyncratic return. Positive res
 
 ## Related
 
-<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 not-prose">
+  <a href="/docs/erm3-engine" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🧠 ERM3 Engine</span>
+    <p className="text-xs text-zinc-500">Design choices behind time safety, identity continuity, and executable ETF hedging.</p>
+  </a>
   <a href="/api-reference" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
     <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">⚡ API Reference</span>
     <p className="text-xs text-zinc-500">Live interactive OpenAPI viewer — try the decomposition and metrics endpoints directly in the browser.</p>
+  </a>
+  <a href="/docs/api" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📄 API Docs</span>
+    <p className="text-xs text-zinc-500">Coverage, endpoint map, pricing, and quick links for the main research workflow.</p>
   </a>
   <a href="/docs/agent-integration" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
     <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🤖 Agent Integration</span>
     <p className="text-xs text-zinc-500">Ask Cursor or Claude to graph residuals and compute hedge notionals from natural language.</p>
   </a>
-  <a href="/examples" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
-    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">💡 Examples</span>
-    <p className="text-xs text-zinc-500">Production-ready code for market-neutral portfolios, batch analysis, and more.</p>
+  <a href="/docs/plaid-holdings" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🏦 Plaid Holdings</span>
+    <p className="text-xs text-zinc-500">Bring real brokerage holdings into the API after a one-time web-based Plaid connection.</p>
   </a>
 </div>

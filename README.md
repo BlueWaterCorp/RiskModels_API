@@ -158,7 +158,9 @@ Borrowed visual style from [Risk_Models](https://github.com/Cerebellum-Archive/R
 | Document | Description |
 |---|---|
 | [README_API.md](README_API.md) | Complete API overview, endpoints, key concepts |
+| [PLAID_HOLDINGS_UX.md](PLAID_HOLDINGS_UX.md) | Plaid connection flow and holdings API user experience |
 | [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) | Bearer token, OAuth2, Supabase JWT, rate limits |
+| [DOCS_PROCESS.md](DOCS_PROCESS.md) | Process for adding new documentation |
 | [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | Field definitions, units, formulas |
 | [RESPONSE_METADATA.md](RESPONSE_METADATA.md) | `_agent` block, response headers, pricing |
 | [ERROR_SCHEMA.md](ERROR_SCHEMA.md) | Error codes and recovery patterns |

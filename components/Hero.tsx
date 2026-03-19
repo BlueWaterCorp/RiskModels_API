@@ -61,8 +61,8 @@ export default function Hero() {
               <Link href="/api-reference" className="text-primary hover:underline">
                 API Spec →
               </Link>
-              <Link href="/examples" className="text-primary hover:underline">
-                Examples →
+              <Link href="/quickstart#code-examples" className="text-primary hover:underline">
+                Quickstart →
               </Link>
             </div>
           </div>

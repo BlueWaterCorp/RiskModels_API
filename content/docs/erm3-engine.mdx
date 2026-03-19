@@ -1,0 +1,159 @@
+---
+title: ERM3 Engine Design
+description: Quant-oriented explanation of the engine choices behind the RiskModels API
+---
+
+# ERM3 Engine Design
+
+This page explains the model-engineering choices behind the RiskModels API. It is not the full mathematical derivation of L1/L2/L3 hedging; it is the design-level explanation of why the engine is built the way it is.
+
+If you want formulas, regression structure, and hedge-ratio math, start with [Methodology](/docs/methodology). If you want the implementation assumptions that make those outputs more defensible in production, start here.
+
+<div className="not-prose my-6 rounded-xl border border-primary/30 bg-primary/5 p-5">
+  <p className="text-sm text-zinc-300 leading-relaxed mb-0">
+    <strong className="text-zinc-100">Read this page if:</strong> you care about point-in-time identity, ticker recycling, historical shares, industry hierarchy, and whether published hedge ratios are actually executable with raw ETFs.
+  </p>
+</div>
+
+---
+
+## Why This Page Exists
+
+Many model descriptions jump directly to regression math. That is useful, but it skips the engineering assumptions that determine whether the outputs remain trustworthy in backtests, portfolio diagnostics, and live neutralization workflows.
+
+For a quant user, a good model is not only a set of equations. It is also:
+
+- built on historically defensible identifiers
+- resistant to common forms of forward contamination
+- explicit about classification structure
+- designed so the published hedge ratios can be traded in practice
+
+That is the role of ERM3.
+
+---
+
+## 1. Time Safety
+
+For ERM3, time safety means more than "no lookahead in returns." It also means not silently rewriting identity, shares, or universe membership with information that only became known later.
+
+The engine is designed around a few protections:
+
+- **Validity-window joins** so point-in-time lookups resolve the record version that was actually active on a given date
+- **Ticker recycling awareness** so reused symbols do not collapse multiple securities into one false historical series
+- **Historical shares logic** so market cap inputs are built from dated shares records rather than today's snapshot backfilled into the past
+- **Contemporaneous output masking** so final outputs are filtered by date-valid universe membership, not only by the latest live universe
+- **Expand-only symbol alignment** so historical coverage is preserved when names leave the universe instead of being retroactively deleted
+
+This does not make the model magically perfect, but it does reduce several common sources of forward contamination that break otherwise plausible backtests.
+
+---
+
+## 2. Security Master Discipline
+
+The Security Master is the identity layer underneath the model. Its job is to provide a stable key for:
+
+- identifier resolution
+- historical symbol changes
+- classification lookup
+- shares history
+
+The identifier strategy is intentionally conservative:
+
+- **FIGI** when available
+- **ISIN** as the next fallback
+- **ticker** only when stronger identifiers are unavailable
+
+That matters because the API is built over long horizons, and ticker strings are the least stable identifier in the stack.
+
+For API users, the practical consequence is simple: ticker-level outputs sit on top of something stronger than a plain ticker-to-row mapping.
+
+---
+
+## 3. Hierarchical Industry Structure
+
+ERM3 is deliberately not a flat factor model. It is structured as a three-level hierarchy:
+
+- **L1:** market ETF
+- **L2:** market plus sector ETF
+- **L3:** market plus sector plus subsector ETF
+
+This matters for two reasons.
+
+First, it creates a more interpretable decomposition of explained risk. Instead of one opaque beta vector, the output separates broad market exposure, sector structure, and finer industry exposure.
+
+Second, it supports hedging that remains executable with liquid raw ETFs. Internally, ERM3 uses hierarchical estimation and link-beta adjustments so that:
+
+- stock returns are decomposed layer by layer
+- published hedge ratios can still be applied directly to raw ETF returns at trade time
+
+The orthogonalization happens during estimation. Downstream users do not need to recreate synthetic factors in production just to use the model outputs.
+
+---
+
+## 4. Built for Executable Hedging
+
+A common failure mode in factor research is producing elegant exposures that are hard to trade. ERM3 is designed to avoid that.
+
+The published hedge outputs are meant to work with liquid ETFs that users can actually short or size against in live portfolios. That makes the API useful for:
+
+- market-neutral and sector-neutral overlays
+- risk budgeting
+- tactical factor reduction without liquidating core positions
+- portfolio diagnostics where the hedge needs to be implementable, not merely descriptive
+
+If you want the actual formulas behind those hedge ratios, see [Methodology](/docs/methodology).
+
+---
+
+## 5. Adjusted Return Series
+
+The engine uses split- and dividend-adjusted return series so long-horizon decomposition is more economically consistent through corporate actions.
+
+That is especially important when you are:
+
+- comparing exposures across years
+- measuring residual behavior over long windows
+- using the API for backtests instead of only current snapshots
+
+---
+
+## What This Means for Quant Users
+
+In practical terms, these design choices make the API better suited for:
+
+- backtests where identity continuity matters
+- rank-based universes that need date-consistent market cap inputs
+- sector and subsector neutralization workflows
+- portfolio diagnostics that need more structure than market beta alone
+
+They do **not** eliminate normal model risk. The outputs are still statistical estimates built from historical returns and maintained classification mappings.
+
+---
+
+## Scope and Caveats
+
+A few caveats are worth stating directly:
+
+- ERM3 is **hierarchical and ETF-based**, not a full fundamental multi-factor risk platform
+- "time-safe" means the engine tries to preserve point-in-time identity, shares, and membership logic; it does not imply every upstream vendor field is historically perfect
+- subsector mapping quality still depends on the maintained registry and classification inputs available to the engine
+- hedge ratios and explained-risk fields are best treated as **portfolio construction tools**, not forecasts
+
+---
+
+## Related
+
+<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">
+  <a href="/docs/methodology" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📐 Methodology</span>
+    <p className="text-xs text-zinc-500">L1/L2/L3 regression structure, orthogonalization, and hedge-ratio formulas.</p>
+  </a>
+  <a href="/docs/api" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📄 API Docs</span>
+    <p className="text-xs text-zinc-500">Endpoints, pricing, coverage, and canonical field definitions.</p>
+  </a>
+  <a href="/api-reference" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">⚡ API Reference</span>
+    <p className="text-xs text-zinc-500">Inspect the live schemas for metrics, decomposition, and historical returns.</p>
+  </a>
+</div>

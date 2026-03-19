@@ -6,6 +6,14 @@ import Link from 'next/link';
 
 const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? null;
 
+/**
+ * Aligns with Risk_Models billing: $20 starter credit; one-time low-balance email when
+ * balance drops below $5 (`LOW_BALANCE_THRESHOLD_USD` in sibling repo
+ * `Risk_Models/riskmodels_com/src/lib/agent/billing.ts`).
+ */
+const PRICING_BADGE =
+  '$0 upfront · $20 free tier · Usage-based · No subscription · $5 low-balance email';
+
 export default function TryFree() {
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -23,12 +31,15 @@ export default function TryFree() {
     return (
       <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-zinc-950 border-t border-zinc-900">
         <div className="max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-4">
-            <Zap size={12} />
-            No credit card · No email required
+          <div className="mx-auto mb-4 flex max-w-xl flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-center text-xs font-semibold text-emerald-400">
+            <Zap size={12} className="shrink-0" />
+            <span>{PRICING_BADGE}</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">Try it free</h2>
-          <p className="text-zinc-400 text-sm mb-6">Get a free API key and query the MAG7 risk data instantly.</p>
+          <p className="text-zinc-400 text-sm mb-6">
+            Sign in to get a key (card on file for billing). You&apos;re only charged for API
+            usage—no subscription or upfront fee.
+          </p>
           <Link
             href="/get-key"
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-all text-sm"
@@ -45,15 +56,16 @@ export default function TryFree() {
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-4">
-            <Zap size={12} />
-            No credit card · No email required
+          <div className="mx-auto mb-4 flex max-w-xl flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-center text-xs font-semibold text-emerald-400">
+            <Zap size={12} className="shrink-0" />
+            <span>{PRICING_BADGE}</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">
             Try it free in 30 seconds
           </h2>
           <p className="text-zinc-400 text-sm">
-            Use the public demo key below to query MAG7 risk data right now.
+            Use the public demo key below—no signup. Full universe access uses the same usage-based
+            pricing (card on file; no upfront charge).
           </p>
         </div>
 
