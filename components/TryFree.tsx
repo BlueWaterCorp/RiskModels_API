@@ -81,11 +81,11 @@ export default function TryFree() {
           </div>
 
           {/* Step 2 — Curl */}
-          <div className="p-6">
+          <div className="p-6 border-b border-zinc-800">
             <div className="flex items-center gap-3 mb-3">
               <span className="w-6 h-6 rounded-full bg-primary/20 border border-primary/40 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
               <span className="text-sm font-semibold text-zinc-100">Run this in your terminal</span>
-              <span className="ml-auto text-xs text-zinc-600">AAPL · MSFT · NVDA · GOOGL · AMZN · META · TSLA</span>
+              <span className="ml-auto text-xs text-zinc-600">returns MAG7 ticker list</span>
             </div>
             <div className="relative bg-zinc-950 border border-zinc-700 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
@@ -101,11 +101,35 @@ export default function TryFree() {
               </div>
               <pre className="px-4 py-4 text-sm text-zinc-300 font-mono overflow-x-auto whitespace-pre">{curlCmd}</pre>
             </div>
+          </div>
 
+          {/* Step 3 — What full access looks like */}
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-6 h-6 rounded-full bg-zinc-700 border border-zinc-600 text-zinc-400 text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
+              <span className="text-sm font-semibold text-zinc-100">With a full key — live risk metrics</span>
+              <span className="ml-auto text-xs text-zinc-500">$0.005 / call</span>
+            </div>
+            <div className="relative bg-zinc-950 border border-zinc-700 rounded-lg overflow-hidden opacity-80">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+                <span className="text-xs text-zinc-600 font-mono">GET /api/metrics/META → response</span>
+              </div>
+              <pre className="px-4 py-4 text-xs text-zinc-400 font-mono overflow-x-auto whitespace-pre">{`{
+  "ticker": "META",
+  "metrics": {
+    "vol_23d":    0.392,
+    "l3_mkt_hr":  1.284,   // short $1.28 SPY per $1 META
+    "l3_sec_hr":  0.371,   // short $0.37 XLC per $1 META
+    "l3_sub_hr":  0.198,   // short $0.20 subsector ETF
+    "l3_mkt_er":  0.431,   // 43% variance from market
+    "l3_sec_er":  0.089,   // 9% from sector
+    "l3_sub_er":  0.043,   // 4% from subsector
+    "l3_res_er":  0.437    // 44% idiosyncratic (alpha)
+  }
+}`}</pre>
+            </div>
             <div className="flex items-center justify-between mt-4">
-              <p className="text-xs text-zinc-600">
-                Want hedge ratios, decompositions, and batch analysis?
-              </p>
+              <p className="text-xs text-zinc-600">Hedge ratios, decompositions, batch analysis, 15yr history.</p>
               <Link href="/get-key" className="text-xs text-primary hover:underline font-medium">
                 Get full access →
               </Link>
