@@ -16,10 +16,24 @@ The RiskModels API provides institutional-grade equity risk analysis for AI agen
 
 - **Daily factor decompositions** — market, sector, and subsector explained-risk fractions for ~3,000 US equities
 - **Hedge ratios** — dollar-denominated ETF hedge amounts at three precision levels (L1 market-only, L2 market+sector, L3 full three-ETF)
-- **Historical time series** — daily returns and rolling hedge ratios going back to 2006
+- **Historical time series** — split- and dividend-adjusted daily returns plus rolling hedge ratios going back to 2006
 - **AI-agent ready** — machine-readable manifest at `/.well-known/agent-manifest`, per-request billing via prepaid balance
 
 **Data coverage:** Universe `uni_mc_3000` (~3,000 top US stocks), date range 2006-01-04 to present, updated daily.
+
+---
+
+## Why The Engine Is Different
+
+RiskModels is not built on a naive ticker-snapshot pipeline. The ERM3 engine is designed around a few choices that matter for quantitative users:
+
+- **Time-safe construction** — the engine is built to avoid common forms of forward contamination, including recycled tickers, snapshot shares, and retroactive universe contraction
+- **Security Master discipline** — ticker-level outputs sit on top of a point-in-time identity layer designed for symbol changes, identifier continuity, classification lookup, and historically defensible shares data
+- **Hierarchical structure** — the model explicitly separates market, sector, and subsector risk rather than flattening everything into a single omnibus factor view
+- **Executable hedge outputs** — the published hedge ratios are intended to be used directly with liquid raw ETFs at trade time, even though hierarchical estimation happens under the hood
+- **Adjusted return series** — split- and dividend-adjusted returns improve economic consistency across long horizons and corporate actions
+
+These choices do not eliminate model risk, but they make the API better suited for backtests, neutralization workflows, and portfolio diagnostics where identity continuity and tradeable hedges matter.
 
 ---
 

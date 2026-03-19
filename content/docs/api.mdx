@@ -79,10 +79,20 @@ The RiskModels API provides institutional-grade equity risk analysis for AI agen
 
 - **Daily factor decompositions** — market, sector, and subsector explained-risk fractions for ~3,000 US equities
 - **Hedge ratios** — dollar-denominated ETF hedge amounts at three precision levels (L1 market-only, L2 market+sector, L3 full three-ETF)
-- **Historical time series** — daily returns and rolling hedge ratios going back to 2006
+- **Historical time series** — split- and dividend-adjusted daily returns plus rolling hedge ratios going back to 2006
 - **AI-agent ready** — machine-readable manifest at `/.well-known/agent-manifest`, per-request billing via prepaid balance
 
 **Data coverage:** Universe `uni_mc_3000` (~3,000 top US stocks), date range 2006-01-04 to present, updated daily.
+
+## Why The Engine Matters
+
+- **Built to be time-safe** — the engine is designed to avoid common sources of forward contamination such as recycled tickers, snapshot shares, and retroactive universe contraction
+- **Backed by a real Security Master** — point-in-time identity, classification, and shares logic support more stable ticker-level outputs
+- **Hierarchical by design** — market, sector, and subsector structure are modeled explicitly rather than compressed into a flat beta view
+- **Tradeable in practice** — hedge ratios are designed to remain executable with liquid raw ETFs, not just synthetic factors
+- **Built on adjusted returns** — split- and dividend-adjusted return series improve consistency through corporate actions and long horizons
+
+For the mathematical detail behind L1/L2/L3 decomposition and hedge construction, see [Methodology](/docs/methodology).
 
 ## Core Endpoints
 

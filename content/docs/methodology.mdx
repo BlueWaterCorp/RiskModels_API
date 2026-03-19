@@ -9,6 +9,20 @@ Welcome to the methodology wiki. This page explains the math and intuition behin
 
 ---
 
+## Why This Method Matters
+
+RiskModels is designed to be more than a descriptive analytics layer. The ERM3 engine is built around a few choices that matter for practical quantitative use:
+
+- **Time-safe construction** — the engine is designed to avoid common forward-contamination errors such as recycled tickers, snapshot shares, and retroactive universe contraction
+- **Security Master discipline** — ticker-level outputs sit on top of a point-in-time identity layer that supports symbol changes, classification lookup, and historically defensible shares data
+- **Hierarchical structure** — market, sector, and subsector are modeled explicitly rather than folded into a single flat factor view
+- **Executable hedge ratios** — the published hedge outputs are designed to work with liquid raw ETFs at trade time, not only with orthogonalized synthetic factors
+- **Adjusted return series** — split- and dividend-adjusted returns make the decomposition more economically consistent across long horizons and corporate actions
+
+These design choices do not remove normal model risk, but they help explain why the API is suited to backtests, neutralization workflows, and portfolio diagnostics rather than just surface-level screening.
+
+---
+
 ## The Big Picture
 
 ### What is a Hierarchical Factor Model?
