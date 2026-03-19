@@ -1,0 +1,119 @@
+---
+title: Agent Integration
+description: Use RiskModels with Cursor, Claude Desktop, and other AI agents
+---
+
+# Agent Integration
+
+Use the RiskModels API with your AI assistant of choice to perform quant research, graph residuals, and analyze hedge ratios—all from natural language.
+
+<div className="not-prose my-6 space-y-3">
+
+  <div className="rounded-xl border border-primary/40 bg-zinc-900/80 overflow-hidden">
+    <div className="px-5 py-2 bg-primary/10 border-b border-primary/20">
+      <span className="text-xs font-semibold text-primary uppercase tracking-widest">Fastest — Start in 60 seconds</span>
+    </div>
+    <div className="flex items-start gap-4 px-5 pt-4 pb-2">
+      <svg className="w-7 h-7 text-zinc-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+      <div className="flex-1">
+        <span className="text-sm font-semibold text-zinc-100">Any Terminal</span>
+        <p className="text-xs text-zinc-400 mt-1">Install the npm package globally. No AI configuration needed — your agent can also call these commands from its terminal panel.</p>
+      </div>
+    </div>
+    <div className="px-5 pb-4 space-y-2">
+      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200">
+        <span>npm install -g riskmodels</span>
+        <button onclick="navigator.clipboard.writeText('npm install -g riskmodels');this.textContent='✓';setTimeout(()=>this.textContent='Copy',1500)" className="ml-4 text-xs text-zinc-500 hover:text-zinc-200 transition-colors flex-shrink-0">Copy</button>
+      </div>
+      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200">
+        <span>riskmodels config set apiKey YOUR_API_KEY</span>
+        <button onclick="navigator.clipboard.writeText('riskmodels config set apiKey YOUR_API_KEY');this.textContent='✓';setTimeout(()=>this.textContent='Copy',1500)" className="ml-4 text-xs text-zinc-500 hover:text-zinc-200 transition-colors flex-shrink-0">Copy</button>
+      </div>
+      <p className="text-xs text-zinc-600 pt-1">Get your API key at <a href="/get-key" className="text-primary hover:underline">riskmodels.app/get-key</a></p>
+    </div>
+  </div>
+
+  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 overflow-hidden">
+    <div className="px-5 py-2 bg-zinc-800/50 border-b border-zinc-800">
+      <span className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Enhanced — Native AI tool calls via MCP</span>
+    </div>
+    <div className="divide-y divide-zinc-800">
+      <div className="flex items-center gap-4 px-5 py-4">
+        <img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=64" alt="Cursor" width="28" height="28" className="rounded flex-shrink-0" />
+        <div>
+          <span className="text-sm font-semibold text-zinc-100">Cursor</span>
+          <p className="text-xs text-zinc-500 mt-0.5">Paste the Rules for AI prompt below so Cursor understands RiskModels field names automatically. Optionally add the MCP server for live inline tool calls inside the chat panel.</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-4 px-5 py-4">
+        <img src="https://www.google.com/s2/favicons?domain=claude.ai&sz=64" alt="Claude Desktop" width="28" height="28" className="rounded flex-shrink-0" />
+        <div>
+          <span className="text-sm font-semibold text-zinc-100">Claude Desktop</span>
+          <p className="text-xs text-zinc-500 mt-0.5">Add the RiskModels MCP server to your Claude Desktop config so Claude can fetch live risk data, compute hedge ratios, and generate plots autonomously.</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-4 px-5 py-4">
+        <img src="https://avatars.githubusercontent.com/u/98986645?s=64" alt="Zed" width="28" height="28" className="rounded flex-shrink-0" />
+        <div>
+          <span className="text-sm font-semibold text-zinc-100">Zed</span>
+          <p className="text-xs text-zinc-500 mt-0.5">Add the MCP server to your Zed assistant config. Zed auto-discovers available tools so you can query live risk data inline as you code. <a href="#mcp-server-setup" className="text-primary hover:underline">See MCP setup ↓</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+---
+
+## Cursor Rules for AI Prompt
+
+Paste this into **Project Settings → Rules for AI** (or save as `.cursorrules` in your project root):
+
+```
+You are a RiskModels Analyst. Your goal is to help me perform quant research.
+
+1. Use the `riskmodels` MCP server tools for all data fetching.
+2. When asked to "graph the residuals," use `riskmodels_get_risk_decomposition`.
+3. Plot the `l3_residual_er` column to visualize the idiosyncratic risk.
+4. For hedge ratios, use the `l3_mkt_hr`, `l3_sec_hr`, and `l3_sub_hr` canonical keys.
+5. Refer to `SEMANTIC_ALIASES.md` in the workspace for math definitions.
+
+If I ask: "Graph market residuals for META," immediately fetch the 3-year L3
+decomposition and generate a Python plot.
+```
+
+<h2 id="mcp-server-setup">MCP Server Setup</h2>
+
+Add to `.cursor/mcp.json` (or your Claude Desktop / Zed config):
+
+```json
+{
+  "mcpServers": {
+    "riskmodels-api": {
+      "command": "node",
+      "args": ["/absolute/path/to/RiskModels_API/mcp-server/dist/index.js"]
+    }
+  }
+}
+```
+
+Restart your editor after saving. See the [MCP server README](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/mcp-server/README.md) for full setup.
+
+---
+
+## Related
+
+<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">
+  <a href="/docs/authentication" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🔐 Authentication</span>
+    <p className="text-xs text-zinc-500">Bearer tokens, OAuth2, and AI agent provisioning</p>
+  </a>
+  <a href="/docs/api" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📄 API Docs</span>
+    <p className="text-xs text-zinc-500">Endpoints, pricing, and field definitions</p>
+  </a>
+  <a href="/docs/methodology" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📐 Methodology</span>
+    <p className="text-xs text-zinc-500">Factor model math and hedge ratio formulas</p>
+  </a>
+</div>

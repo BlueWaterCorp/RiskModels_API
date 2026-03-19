@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Health Status Response",
+  "type": "object",
+  "required": [
+    "status",
+    "timestamp",
+    "version"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "degraded",
+        "down"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "string"
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "degraded",
+              "down"
+            ]
+          },
+          "latency_ms": {
+            "type": "integer"
+          },
+          "last_update": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "degraded",
+              "unavailable"
+            ]
+          },
+          "avg_latency_ms_24h": {
+            "type": "integer"
+          },
+          "success_rate_24h": {
+            "type": "number"
+          },
+          "current_load": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

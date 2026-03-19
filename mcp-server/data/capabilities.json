@@ -1,0 +1,391 @@
+[
+  {
+    "id": "ticker-returns",
+    "name": "Get Ticker Returns",
+    "description": "Retrieve daily returns with L1/L2/L3 hedge ratios and risk decomposition for any stock ticker",
+    "endpoint": "/api/ticker-returns",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol (e.g., AAPL, NVDA, TSLA)"
+      },
+      "years": {
+        "type": "integer",
+        "required": false,
+        "description": "Years of historical data to return",
+        "default": 1,
+        "min": 1,
+        "max": 15
+      },
+      "array": {
+        "type": "string",
+        "required": false,
+        "description": "Array name for returns data",
+        "default": "return"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.005,
+      "currency": "USD",
+      "billing_code": "ticker_returns_v2"
+    },
+    "performance": {
+      "avg_latency_ms": 150,
+      "p95_latency_ms": 250,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "market_data",
+        "proprietary_models",
+        "erm3_regression"
+      ],
+      "methodology_url": "https://riskmodels.net/docs/methodology"
+    },
+    "tags": [
+      "returns",
+      "hedging",
+      "risk-analysis"
+    ],
+    "examples": [
+      {
+        "request": {
+          "ticker": "NVDA",
+          "years": 2
+        },
+        "response": {
+          "ticker": "NVDA",
+          "return": [
+            0.012,
+            -0.008,
+            0.025
+          ],
+          "dates": [
+            "2023-01-01",
+            "2023-01-02",
+            "2023-01-03"
+          ],
+          "l1_market_hr": 0.98,
+          "l2_sector_hr": 0.85,
+          "l3_subsector_hr": 0.72
+        }
+      }
+    ]
+  },
+  {
+    "id": "risk-decomposition",
+    "name": "L3 Risk Decomposition",
+    "description": "Decompose stock risk into market, sector, and idiosyncratic components using 3-level hierarchical model",
+    "endpoint": "/api/l3-decomposition",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol"
+      },
+      "date": {
+        "type": "string",
+        "required": false,
+        "description": "Specific date for decomposition (YYYY-MM-DD format)",
+        "default": "latest"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.01,
+      "currency": "USD",
+      "billing_code": "l3_decomp_v2"
+    },
+    "performance": {
+      "avg_latency_ms": 120,
+      "p95_latency_ms": 200,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "daily",
+      "sources": [
+        "erm3_models",
+        "factor_regression"
+      ],
+      "methodology_url": "https://riskmodels.net/docs/l3-methodology"
+    },
+    "tags": [
+      "risk-analysis",
+      "decomposition",
+      "factors"
+    ]
+  },
+  {
+    "id": "chat-risk-analyst",
+    "name": "AI Risk Analyst",
+    "description": "Natural language risk analysis and insights via conversational AI powered by GPT-4",
+    "endpoint": "/api/chat",
+    "method": "POST",
+    "parameters": {
+      "messages": {
+        "type": "array",
+        "required": true,
+        "description": "Conversation messages",
+        "items": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "user",
+                "assistant"
+              ],
+              "required": true
+            },
+            "content": {
+              "type": "string",
+              "required": true
+            }
+          }
+        }
+      },
+      "model": {
+        "type": "string",
+        "required": false,
+        "description": "AI model to use",
+        "default": "gpt-4o-mini"
+      }
+    },
+    "pricing": {
+      "model": "per_token",
+      "input_cost_per_1k": 0.001,
+      "output_cost_per_1k": 0.002,
+      "currency": "USD",
+      "billing_code": "chat_risk_analyst_v2"
+    },
+    "performance": {
+      "avg_latency_ms": 2000,
+      "p95_latency_ms": 5000,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 30
+    },
+    "confidence": {
+      "data_quality_score": 0.95,
+      "update_frequency": "real-time",
+      "sources": [
+        "openai_gpt4",
+        "riskmodels_data"
+      ]
+    },
+    "tags": [
+      "ai",
+      "chat",
+      "analysis",
+      "natural-language"
+    ]
+  },
+  {
+    "id": "batch-analysis",
+    "name": "Portfolio Batch Analysis",
+    "description": "Analyze multiple positions for risk exposures, correlations, and hedge recommendations",
+    "endpoint": "/api/batch/analyze",
+    "method": "POST",
+    "parameters": {
+      "positions": {
+        "type": "array",
+        "required": true,
+        "description": "Portfolio positions to analyze",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ticker": {
+              "type": "string",
+              "required": true
+            },
+            "quantity": {
+              "type": "number",
+              "required": true
+            },
+            "cost_basis": {
+              "type": "number",
+              "required": true
+            }
+          }
+        }
+      },
+      "analysis_type": {
+        "type": "string",
+        "required": false,
+        "description": "Type of analysis to perform",
+        "default": "comprehensive",
+        "enum": [
+          "risk",
+          "hedging",
+          "correlation",
+          "comprehensive"
+        ]
+      }
+    },
+    "pricing": {
+      "model": "per_position",
+      "cost_usd": 0.002,
+      "currency": "USD",
+      "min_charge": 0.01,
+      "billing_code": "batch_analysis_v2"
+    },
+    "performance": {
+      "avg_latency_ms": 300,
+      "p95_latency_ms": 500,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 20
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "portfolio_models",
+        "correlation_matrices"
+      ]
+    },
+    "tags": [
+      "portfolio",
+      "batch",
+      "analysis",
+      "hedging"
+    ]
+  },
+  {
+    "id": "ticker-search",
+    "name": "Ticker Search",
+    "description": "Search for tickers by symbol or company name with metadata",
+    "endpoint": "/api/tickers",
+    "method": "GET",
+    "parameters": {
+      "search": {
+        "type": "string",
+        "required": false,
+        "description": "Search query for ticker symbol or company name"
+      },
+      "mag7": {
+        "type": "boolean",
+        "required": false,
+        "description": "Return only Magnificent 7 tickers",
+        "default": false
+      },
+      "include_metadata": {
+        "type": "boolean",
+        "required": false,
+        "description": "Include company names and sectors",
+        "default": false
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.001,
+      "currency": "USD",
+      "billing_code": "ticker_search_v2"
+    },
+    "performance": {
+      "avg_latency_ms": 80,
+      "p95_latency_ms": 150,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "daily",
+      "sources": [
+        "ticker_metadata",
+        "company_data"
+      ]
+    },
+    "tags": [
+      "search",
+      "tickers",
+      "metadata"
+    ]
+  },
+  {
+    "id": "health-status",
+    "name": "Health Status",
+    "description": "Real-time health status of all API services and capabilities",
+    "endpoint": "/api/health",
+    "method": "GET",
+    "parameters": {},
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0,
+      "currency": "USD",
+      "billing_code": "health_check"
+    },
+    "performance": {
+      "avg_latency_ms": 50,
+      "p95_latency_ms": 100,
+      "availability_sla": 99.99,
+      "rate_limit_per_minute": 300
+    },
+    "confidence": {
+      "data_quality_score": 1,
+      "update_frequency": "real-time",
+      "sources": [
+        "system_monitoring"
+      ]
+    },
+    "tags": [
+      "health",
+      "status",
+      "monitoring"
+    ]
+  },
+  {
+    "id": "telemetry-metrics",
+    "name": "Telemetry Metrics",
+    "description": "Detailed performance and reliability metrics for API capabilities",
+    "endpoint": "/api/telemetry",
+    "method": "GET",
+    "parameters": {
+      "capability": {
+        "type": "string",
+        "required": false,
+        "description": "Specific capability to get metrics for"
+      },
+      "days": {
+        "type": "integer",
+        "required": false,
+        "description": "Number of days of historical data",
+        "default": 30,
+        "min": 1,
+        "max": 90
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.002,
+      "currency": "USD",
+      "billing_code": "telemetry_v2"
+    },
+    "performance": {
+      "avg_latency_ms": 100,
+      "p95_latency_ms": 200,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "hourly",
+      "sources": [
+        "telemetry_system",
+        "performance_metrics"
+      ]
+    },
+    "tags": [
+      "telemetry",
+      "metrics",
+      "performance"
+    ]
+  }
+]

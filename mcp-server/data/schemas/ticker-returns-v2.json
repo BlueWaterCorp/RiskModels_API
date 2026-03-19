@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ticker Returns Response",
+  "type": "object",
+  "required": [
+    "meta",
+    "data"
+  ],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": [
+        "market_etf",
+        "sector_etf",
+        "subsector_etf"
+      ],
+      "properties": {
+        "market_etf": {
+          "type": "string",
+          "description": "Market ETF ticker (e.g., SPY)"
+        },
+        "sector_etf": {
+          "type": "string",
+          "description": "Sector ETF ticker (e.g., XLK)"
+        },
+        "subsector_etf": {
+          "type": "string",
+          "description": "Subsector ETF ticker"
+        }
+      }
+    },
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "date",
+          "stock",
+          "l1",
+          "l2",
+          "l3"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date in YYYY-MM-DD format"
+          },
+          "stock": {
+            "type": "number",
+            "description": "Daily gross return"
+          },
+          "l1": {
+            "type": "number",
+            "description": "Level 1 (market) hedge ratio"
+          },
+          "l2": {
+            "type": "number",
+            "description": "Level 2 (market + sector) hedge ratio"
+          },
+          "l3": {
+            "type": "number",
+            "description": "Level 3 (full multi-factor) hedge ratio"
+          }
+        }
+      }
+    },
+    "_metadata": {
+      "type": "object",
+      "description": "Lineage metadata (model_version, data_as_of, factor_set_id, universe_size, wiki_uri, factors)",
+      "properties": {
+        "model_version": { "type": "string" },
+        "data_as_of": { "type": "string", "format": "date" },
+        "factor_set_id": { "type": "string" },
+        "universe_size": { "type": "integer" },
+        "wiki_uri": { "type": "string", "format": "uri" },
+        "factors": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "_agent": {
+      "type": "object",
+      "description": "Agent-specific metadata",
+      "properties": {
+        "cost_usd": {
+          "type": "number",
+          "description": "Cost of this request in USD"
+        },
+        "latency_ms": {
+          "type": "integer",
+          "description": "Response latency in milliseconds"
+        },
+        "request_id": {
+          "type": "string",
+          "description": "Unique request identifier"
+        },
+        "confidence": {
+          "type": "object",
+          "properties": {
+            "overall": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "factors": {
+              "type": "object",
+              "properties": {
+                "data_completeness": {
+                  "type": "number"
+                },
+                "data_freshness": {
+                  "type": "number"
+                },
+                "model_accuracy": {
+                  "type": "number"
+                },
+                "historical_coverage": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

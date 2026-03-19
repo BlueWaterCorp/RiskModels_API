@@ -1,0 +1,318 @@
+---
+title: The RiskModels Hierarchical Factor Model
+description: Methodology wiki — math and intuition behind the three-level hierarchical factor model
+---
+
+# The RiskModels Hierarchical Factor Model
+
+Welcome to the methodology wiki. This page explains the math and intuition behind our three-level hierarchical factor model. Whether you're a portfolio manager trying to understand your exposures or a quant looking to replicate the analysis, this guide will walk you through the key concepts.
+
+---
+
+## The Big Picture
+
+### What is a Hierarchical Factor Model?
+
+A hierarchical factor model breaks down stock returns into layers of systematic risk, **from broad to granular**:
+
+1. **Market (L1):** How much does the overall market (S&P 500) explain?
+2. **Sector (L2):** How much additional variance comes from industry sectors (Tech, Financials, Healthcare, etc.)?
+3. **Subsector (L3):** How much comes from narrower industries within sectors (semiconductors, biotech, etc.)?
+4. **Residual:** What's left is idiosyncratic risk — the stock-specific component
+
+At each level, the model produces three key metrics:
+
+| Label | Name | What it tells you |
+| --- | --- | --- |
+| HR | Hedge Ratio | Dollars of ETF to trade per $1 of stock to neutralize that factor |
+| ER | Explained Risk | Percentage of the stock's variance explained by that factor |
+| RR | Residual Risk | Portion of variance not explained by factors — the idiosyncratic remainder |
+
+### Why Three Levels?
+
+- Three levels align with how institutional investors think: market timing, sector rotation, and stock selection.
+- Too many levels lead to overfitting and unstable estimates.
+- Too few (just market) miss important sectoral dynamics — a tech stock isn't just "market + noise."
+
+> **Key insight:** Each level captures incremental explanatory power not already explained by higher levels, achieved through orthogonalization.
+
+---
+
+## The Three Levels: L1, L2, L3
+
+### The Cascade
+
+The core idea: regress, take the residual, regress again. Each level strips out one more layer of systematic risk, and the leftover $\varepsilon$ feeds into the next level.
+
+| Step | Regression | What it captures |
+| --- | --- | --- |
+| L1 | $r_s = \beta_m \cdot r_m + \varepsilon_1$ | Broad market (SPY) exposure |
+| L2 | $\varepsilon_1 = \beta_s \cdot r_s^* + \varepsilon_2$ | Sector exposure (incremental to market) |
+| L3 | $\varepsilon_2 = \beta_u \cdot r_u^* + \varepsilon_3$ | Subsector exposure (incremental to L2) |
+
+*Notation: $r_s$ = stock return, $r_m$ = SPY return, $r_s^*$ = cleaned sector ETF return, $r_u^*$ = cleaned subsector ETF return.*
+
+**Example:** If NVDA has $\beta_m = 1.3$ and SPY returns +1%, we expect NVDA to move +1.3% from market exposure alone. The leftover $\varepsilon_1$ goes to L2 (Tech sector, XLK). What remains ($\varepsilon_2$) goes to L3 (semiconductors, SOXX). The final residual $\varepsilon_3$ is pure alpha.
+
+### Orthogonalization: Why We Clean the Factors
+
+Sector ETFs like XLK aren't independent of the market — XLK has its own market beta. Using raw XLK returns at L2 would double-count the market exposure already captured at L1.
+
+**The fix:** Before regressing at each level, strip out higher-level exposures using *link betas* ($\lambda$):
+
+$$
+r_\text{sector}^* = r_\text{sector} - \lambda_{s \to m} \cdot r_m
+$$
+
+$$
+r_\text{sub}^* = r_\text{sub} - \lambda_{u \to m} \cdot r_m - \lambda_{u \to s} \cdot r_\text{sector}^*
+$$
+
+Here $\lambda_{A \to B}$ is the beta of ETF $A$ regressed on ETF $B$ (or its cleaned version), precomputed from historical data.
+
+This ensures each $\beta$ captures **only the incremental effect** of its own level — no double-counting.
+
+---
+
+## Hedge Ratios: Making It Tradeable
+
+### What Are Hedge Ratios?
+
+A **Hedge Ratio (HR)** tells you how many dollars of an ETF to trade per $1 of stock position to neutralize a specific factor exposure.
+
+| HR Sign | Action | Meaning |
+| --- | --- | --- |
+| Negative | Short the ETF | Hedge out factor exposure |
+| Positive | Long the ETF | Add factor exposure |
+
+### L1: Market Only
+
+$$
+HR_m^{L1} = -\beta_m
+$$
+
+If $\beta_m = 1.2$, short $1.20 of SPY per $1 long the stock.
+
+### L2: Market + Sector
+
+Sector HR is the direct beta:
+
+$$
+HR_s^{L2} = -\beta_s
+$$
+
+The market HR must be adjusted because shorting the sector ETF also implicitly shorts the market:
+
+$$
+HR_m^{L2} = HR_m^{L1} + \beta_s \cdot \lambda_{s \to m}
+$$
+
+### L3: Market + Sector + Subsector
+
+Subsector HR is the direct beta:
+
+$$
+HR_u^{L3} = -\beta_u
+$$
+
+Sector and market HRs are further adjusted for the market and sector exposure embedded in the subsector ETF:
+
+$$
+HR_s^{L3} = HR_s^{L2} + \beta_u \cdot \lambda_{u \to s}
+$$
+
+$$
+HR_m^{L3} = HR_m^{L2} + \beta_u \cdot \lambda_{u \to m}
+$$
+
+> **Consistency check:** Applied to raw ETF returns, these adjusted HRs satisfy the replication identity — decomposition into factor contributions plus residual reconciles back to the actual stock return. Verified at runtime for every stock, every date.
+
+---
+
+## Explained Risk: Variance Decomposition
+
+### What Is Explained Risk (ER)?
+
+Explained Risk (ER) measures what percentage of a stock's return variance comes from factor exposures. It is the R² from the factor regression:
+
+$$
+ER = 1 - \frac{Var(\varepsilon)}{Var(r_s)}
+$$
+
+### The Additive Property
+
+Because the factors are orthogonalized, ERs add up perfectly:
+
+$$
+ER_{L1} + ER_{L2} + ER_{L3} + RR = 1.0
+$$
+
+This is **guaranteed by construction** and is verified at runtime to within **0.1%** as a data-integrity check.
+
+### Interpretation
+
+- **Low ER** (e.g., below 50%): High idiosyncratic risk — more alpha opportunity or diversifiable risk.
+- **High ER** (e.g., 85%+): The stock is mostly a leveraged sector bet — systematic risk dominates.
+- If $ER_{L2} > ER_{L1}$, sector dynamics dominate market timing for this stock.
+
+---
+
+## Putting It All Together: The Replication Equation
+
+### The Core Identity
+
+The ERM3 model lets us perfectly decompose any stock's return using **only raw ETF returns** — no orthogonalization required at trading time:
+
+$$
+r_s = \sum_i H_i \cdot r_i + \varepsilon
+$$
+
+| Symbol | Description |
+| --- | --- |
+| $H_i$ | Hedge ratio (exposure) to ETF $i$ |
+| $r_i$ | Raw total return of ETF $i$ — not residualized |
+| $\varepsilon$ | Residual idiosyncratic return — very small by construction |
+
+This is a mathematical **identity**. At runtime, we verify it holds to within **0.1%** for every stock on every date.
+
+> **Why this matters:** You can hedge almost any stock or portfolio using only highly liquid ETFs. No custom baskets. No exotic derivatives. Just SPY, sector ETFs, and subsector ETFs.
+
+---
+
+## Worked Example: Walmart (WMT)
+
+### Step 1 — Regression Betas
+
+| Parameter | ETF | Value |
+| --- | --- | --- |
+| $\beta_m$ | SPY | 0.50 |
+| $\beta_s$ | XLP (Consumer Staples) | 0.30 |
+| $\beta_u$ | PBJ (Food & Beverage) | 0.20 |
+
+### Step 2 — Link Betas
+
+| Relationship | Meaning | Value |
+| --- | --- | --- |
+| XLP → SPY | Consumer Staples' market beta | 0.60 |
+| PBJ → SPY | Food & Beverage's market beta | 0.40 |
+| PBJ → XLP | Food & Beverage's sector beta | 0.70 |
+
+### Step 3 — Build Hedge Ratios (Bottom-Up: L3 → L2 → L1)
+
+**L3 — Subsector (PBJ)**
+
+$$
+HR_u = -\beta_u = -0.20
+$$
+
+**L2 — Sector (XLP)**
+
+$$
+HR_s = -0.30 + (-0.20 \times 0.70) = -0.30 + 0.14 = -0.16
+$$
+
+**L1 — Market (SPY)**
+
+$$
+HR_m = -0.50 + (-0.16 \times 0.60) + (-0.20 \times 0.40) = -0.50 + 0.096 + 0.080 = -0.324
+$$
+
+### Final Hedge Ratios
+
+| Level | ETF | Direct Beta | Link Adjustment | Final HR |
+| --- | --- | --- | --- | --- |
+| L1 Market | SPY | 0.50 | +0.176 | **−0.324** |
+| L2 Sector | XLP | 0.30 | +0.14 | **−0.16** |
+| L3 Subsector | PBJ | 0.20 | — | **−0.20** |
+
+### Verification — Sample Day
+
+| Instrument | Return |
+| --- | --- |
+| SPY | +1.00% |
+| XLP | +0.80% |
+| PBJ | +1.20% |
+| WMT | +1.10% |
+
+$$
+(-0.324)(1.00\%) + (-0.16)(0.80\%) + (-0.20)(1.20\%) = -0.692\%
+$$
+
+$$
+\varepsilon = 1.10\% - 0.692\% = +0.408\%
+$$
+
+This +0.408% is pure stock-specific return — idiosyncratic alpha after neutralizing all factor exposures.
+
+---
+
+## Why This Matters for Trading
+
+### Direct Hedging
+
+Unlike academic factor models that output abstract "factor loadings," our model gives you **actionable hedge ratios** executable with liquid ETFs on any brokerage platform.
+
+### Tax-Efficient Risk Scaling
+
+Want to reduce tech exposure without selling NVDA and triggering capital gains? Short XLK proportionally. The adjusted hedge ratios ensure you're not accidentally double-hedging the market.
+
+### Alpha Measurement
+
+The residual $\varepsilon$ at L3 is your true idiosyncratic return. Positive residuals over time = alpha. Negative = underperformance that can't be attributed to "the market was down."
+
+---
+
+## How We Compare to Traditional Risk Models
+
+| Feature | RiskModels | Barra / Axioma |
+| --- | --- | --- |
+| Factor composition | Directly tradeable liquid ETFs (SPY, XLK, etc.) | Synthetic factors (Value, Momentum, PCA-derived) |
+| Hedging execution | Short the ETF directly | Requires custom factor-mimicking baskets |
+| Model structure | Hierarchical, orthogonal per level | Multivariate, hundreds of factors |
+| Responsiveness | Short lookback — responsive to market shifts | Long history — stable but slower to adapt |
+| Primary use case | Active hedging, tactical PM | Institutional reporting, long-term attribution |
+
+---
+
+## Glossary
+
+| Term | Definition |
+| --- | --- |
+| L1 (Market) | First level: broad market (SPY) exposure |
+| L2 (Sector) | Second level: sector-specific exposure (e.g., XLK, XLF) |
+| L3 (Subsector) | Third level: granular industry exposure (e.g., SOXX, XBI) |
+| β (beta) | Sensitivity coefficient: `β = Cov(r_s, r_f) / Var(r_f)` |
+| HR | Dollar amount of ETF per \$1 of stock to neutralize factor exposure |
+| ER | Variance fraction explained by factors: `1 - Var(ε) / Var(r)` |
+| λ (link beta) | Beta between ETFs at different levels |
+| Orthogonalization | Removing higher-level exposure from lower-level factors |
+| ε (residual) | Idiosyncratic return unexplained by any factor — stock-specific alpha |
+
+---
+
+## Additional Resources
+
+- **How It Works:** [Visual walkthrough at riskmodels.net/how-it-works](https://riskmodels.net/how-it-works)
+- **Interactive Demo:** Try the model on 16,495 tickers at [riskmodels.net](https://riskmodels.net/)
+- **API Reference:** [Full endpoint documentation](/api-reference)
+
+*Last updated: February 2026*
+
+---
+
+## Related
+
+<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">
+  <a href="/api-reference" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">⚡ API Reference</span>
+    <p className="text-xs text-zinc-500">Live interactive OpenAPI viewer — try the decomposition and metrics endpoints directly in the browser.</p>
+  </a>
+  <a href="/docs/agent-integration" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🤖 Agent Integration</span>
+    <p className="text-xs text-zinc-500">Ask Cursor or Claude to graph residuals and compute hedge notionals from natural language.</p>
+  </a>
+  <a href="/examples" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">💡 Examples</span>
+    <p className="text-xs text-zinc-500">Production-ready code for market-neutral portfolios, batch analysis, and more.</p>
+  </a>
+</div>

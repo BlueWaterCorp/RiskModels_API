@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tickers List Response",
+  "type": "object",
+  "properties": {
+    "tickers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          },
+          "sector_etf": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ticker": {
+      "type": "string"
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string"
+          },
+          "company_name": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "_agent": {
+      "type": "object",
+      "properties": {
+        "cost_usd": {
+          "type": "number"
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

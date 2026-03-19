@@ -1,0 +1,109 @@
+# =============================================================================
+# Sync from Risk Models
+# =============================================================================
+#
+# BRANCHING: This repo uses a single branch, main. All workflows run on main.
+#
+# CROSS-REPO TRIGGERS: This workflow can be started by other repos in the org:
+#   - Risk_Models can send repository_dispatch(sync_api_assets) to kick off a sync
+#   - Other workflows (here or in Risk_Models) may push to main, causing divergence
+#   - The "Reset to latest remote main" step ensures we always sync from the
+#     current tip of main before committing, avoiding non-fast-forward push errors
+#
+# FLOW:
+#   1. RiskModels_API (this repo): Edit OPENAPI_SPEC.yaml (full spec: rankings, ETFs, etc.)
+#   2. Build: Convert YAML -> openapi.json
+#   3. Pull-in: Copy API_TERMS.md and Colab notebook FROM Risk_Models into this repo
+#   4. Push-out: Deliver openapi.json TO Risk_Models/mcp-server/data/
+#   5. Risk_Models (consumer): App and Supabase serve the API using the updated JSON
+#
+# REQUIRED SECRET: REPO_ACCESS_TOKEN
+#   - Read: Risk_Models (API_TERMS.md, notebooks/riskmodels_quickstart.ipynb)
+#   - Write: Risk_Models (push openapi.json to mcp-server/data/)
+#
+name: Sync from Risk Models
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "OPENAPI_SPEC.yaml"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [sync_api_assets]
+  schedule:
+    - cron: "0 0 * * 0"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout RiskModels_API
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Align with remote main before making changes. Needed because other repos
+      # (e.g. Risk_Models) or re-runs can push to main; without this, push fails
+      # with "non-fast-forward" when our branch has diverged.
+      - name: Reset to latest remote main
+        run: git fetch origin main && git reset --hard origin/main
+
+      - name: Checkout Risk_Models
+        uses: actions/checkout@v4
+        with:
+          repository: Cerebellum-Archive/Risk_Models
+          path: risk-models
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Copy API_TERMS.md
+        run: |
+          cp risk-models/riskmodels_com/docs/api/API_TERMS.md API_TERMS.md
+
+      - name: Copy Colab notebook
+        run: |
+          cp risk-models/riskmodels_com/docs/notebooks/riskmodels_quickstart.ipynb notebooks/riskmodels_quickstart.ipynb
+
+      - name: Build openapi.json from OPENAPI_SPEC.yaml
+        run: |
+          pip install pyyaml
+          python3 -c "
+          import yaml, json
+          with open('OPENAPI_SPEC.yaml') as f:
+              spec = yaml.safe_load(f)
+          with open('OPENAPI_SPEC.json', 'w') as f:
+              json.dump(spec, f, indent=2)
+          with open('mcp-server/data/openapi.json', 'w') as f:
+              json.dump(spec, f, indent=2)
+          "
+
+      - name: Validate OpenAPI spec
+        run: |
+          npx @apidevtools/swagger-cli validate OPENAPI_SPEC.yaml
+
+      - name: Commit and push (RiskModels_API)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: sync API_TERMS, Colab notebook, regenerate openapi.json from YAML [skip ci]"
+          file_pattern: |
+            API_TERMS.md
+            notebooks/riskmodels_quickstart.ipynb
+            OPENAPI_SPEC.json
+            mcp-server/data/openapi.json
+
+      - name: Deliver openapi.json to Risk_Models
+        run: |
+          cp mcp-server/data/openapi.json risk-models/riskmodels_com/mcp-server/data/openapi.json
+          cd risk-models
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add riskmodels_com/mcp-server/data/openapi.json
+          if git diff --staged --quiet; then
+            echo "No changes to openapi.json, skip push"
+          else
+            git commit -m "chore: sync openapi.json from RiskModels_API [skip ci]"
+            git push origin HEAD
+          fi

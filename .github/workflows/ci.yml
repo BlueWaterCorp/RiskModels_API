@@ -1,0 +1,72 @@
+name: CI
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    name: Lint, TypeCheck & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # Sync from .env.local: ./scripts/sync-secrets-to-gh.sh
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.demo' }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL || 'https://riskmodels.app' }}
+
+  secrets-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for sensitive data
+        run: |
+          echo "🔍 Checking for accidentally committed secrets..."
+          if grep -rE "sk_live_[a-zA-Z0-9]{20,}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
+            echo "❌ Found Stripe live secret key"
+            exit 1
+          fi
+          if grep -rE "sk_test_[a-zA-Z0-9]{20,}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
+            echo "❌ Found Stripe test secret key"
+            exit 1
+          fi
+          if grep -rE "AKIA[0-9A-Z]{16}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github 2>/dev/null; then
+            echo "❌ Found AWS access key"
+            exit 1
+          fi
+          if grep -r "SUPABASE_SERVICE_ROLE_KEY=eyJ" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github --exclude=.env.example 2>/dev/null; then
+            echo "❌ Found Supabase service role key"
+            exit 1
+          fi
+          echo "✅ No obvious secrets detected"

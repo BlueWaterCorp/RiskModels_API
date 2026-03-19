@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Error Response",
+  "type": "object",
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "string",
+      "description": "Error message"
+    },
+    "error_code": {
+      "type": "string",
+      "description": "Machine-readable error code"
+    },
+    "message": {
+      "type": "string",
+      "description": "Detailed error message"
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional error details (dev only)"
+    },
+    "_agent": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "retry",
+            "top_up",
+            "upgrade",
+            "contact_support"
+          ]
+        },
+        "retry_after_seconds": {
+          "type": "integer"
+        },
+        "top_up_url": {
+          "type": "string"
+        },
+        "upgrade_url": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

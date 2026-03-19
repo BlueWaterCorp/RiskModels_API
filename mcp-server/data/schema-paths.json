@@ -1,0 +1,10 @@
+[
+  "/schemas/ticker-returns-v2.json",
+  "/schemas/l3-decomposition-v1.json",
+  "/schemas/tickers-list-v1.json",
+  "/schemas/estimate-v1.json",
+  "/schemas/risk-metadata-v1.json",
+  "/schemas/error-v1.json",
+  "/schemas/health-v1.json",
+  "/schemas/telemetry-v1.json"
+]

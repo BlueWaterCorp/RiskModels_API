@@ -1,0 +1,33 @@
+# Local env and secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+
+# Misc
+*.log
+*.tsbuildinfo
+next-env.d.ts
+
+# OS
+.DS_Store
+repomix*
+
+# Generated files
+public/openapi.json
+
+.vercel

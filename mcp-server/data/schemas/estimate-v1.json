@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cost Estimate Response",
+  "type": "object",
+  "required": [
+    "estimated_cost_usd",
+    "capability",
+    "pricing_model",
+    "note"
+  ],
+  "properties": {
+    "estimated_cost_usd": {
+      "type": "number",
+      "description": "Predicted cost in USD"
+    },
+    "estimated_tokens": {
+      "type": "integer",
+      "description": "Equivalent token count at $0.00002/token"
+    },
+    "estimated_rows": {
+      "type": "integer",
+      "description": "Estimated row count for time-series endpoints"
+    },
+    "estimated_bytes": {
+      "type": "integer",
+      "description": "Estimated response size in bytes"
+    },
+    "capability": {
+      "type": "string",
+      "description": "Capability ID (e.g. ticker-returns, batch-analysis)"
+    },
+    "pricing_model": {
+      "type": "string",
+      "enum": ["per_request", "per_position", "per_token", "subscription"]
+    },
+    "unit_cost_usd": {
+      "type": "number",
+      "description": "Per-request or per-position unit cost"
+    },
+    "min_charge": {
+      "type": "number",
+      "description": "Minimum charge for batch endpoints"
+    },
+    "note": {
+      "type": "string",
+      "description": "Disclaimer about actual cost variance"
+    }
+  }
+}

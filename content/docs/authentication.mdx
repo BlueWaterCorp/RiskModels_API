@@ -1,0 +1,218 @@
+---
+title: Authentication Guide
+description: Four authentication modes for the RiskModels API
+---
+
+# Authentication Guide
+
+The RiskModels API supports four authentication modes (as of v3.0.0-agent). Choose based on your application type.
+
+## Mode 1 — Bearer Token (Direct API Key)
+
+All external API calls use a Bearer token in the `Authorization` header.
+
+```
+Authorization: Bearer rm_agent_live_<random>_<checksum>
+```
+
+**Token format:** `rm_agent_{environment}_{random}_{checksum}` or `rm_user_{random}_{checksum}`
+- `environment`: `live` (production) or `test` (sandbox)
+- Tokens are long-lived but can be rotated from the dashboard
+
+### Obtaining a Token
+
+**Option A — Dashboard:**
+1. [Get your API key](/get-key) (sign up if you haven't already)
+2. Generate a new key and copy the token
+3. Store securely in your environment variables
+
+**Option B — API provisioning endpoint (for AI agents):**
+```bash
+curl -X POST https://riskmodels.net/api/auth/provision \
+  -H "Authorization: Bearer <session-jwt>" \
+  -H "Content-Type: application/json"
+```
+
+### Billing
+
+Tokens use a **prepaid balance** model:
+- [Add credit via Stripe](/get-key) (scroll to "Add Credit" section)
+- Each metered request deducts from your balance
+- Check balance: `GET /api/balance`
+- Cached responses are **free** (`cost_usd: 0` in the `_agent` block)
+- Minimum top-up: $10.00 USD
+
+## Mode 2 — OAuth2 Client Credentials (Recommended for AI Agents)
+
+**New in v3.0.0-agent:** OAuth2 client credentials flow for machine-to-machine authentication.
+
+### Overview
+
+Exchange API credentials for a short-lived JWT access token (15 minutes). This is the recommended method for:
+- AI agents and LLM applications
+- Server-to-server integrations
+- npm packages and CLI tools
+- MCP clients
+
+### Benefits
+
+- **Short-lived tokens** - 15-minute expiry reduces security risk
+- **Scoped access** - Request only the scopes you need
+- **Standard protocol** - OAuth2 is widely supported
+- **Automatic refresh** - SDKs can refresh tokens automatically
+
+### OAuth2 Flow
+
+#### Step 1: Exchange credentials for access token
+
+```bash
+curl -X POST https://riskmodels.net/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "rm_agent_live_abc123",
+    "client_secret": "rm_agent_live_abc123_xyz789_checksum",
+    "scope": "ticker-returns risk-decomposition"
+  }'
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "scope": "ticker-returns risk-decomposition batch-analysis"
+}
+```
+
+#### Step 2: Use access token in API requests
+
+```bash
+curl -X GET https://riskmodels.net/api/metrics/NVDA \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+### Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `ticker-returns` | Access ticker returns and historical data |
+| `risk-decomposition` | Access L3 risk decomposition |
+| `batch-analysis` | Perform portfolio batch analysis |
+| `chat-risk-analyst` | Use AI risk analyst |
+| `plaid:holdings` | Access Plaid-synced portfolio holdings |
+| `*` | Full API access (all scopes) |
+
+## Mode 3 — Supabase JWT (Browser / Mobile Apps)
+
+For applications that directly query Supabase (the underlying database), use the public anon key with user authentication.
+
+```typescript
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  'https://your-project.supabase.co',
+  'your-anon-key'  // Safe to expose in client-side code
+);
+
+// Sign in (passwordless magic link)
+await supabase.auth.signInWithOtp({ email: 'user@example.com' });
+
+// After sign-in, JWT is automatically attached to queries
+const { data } = await supabase
+  .from('security_history_latest')
+  .select('symbol, returns_gross, vol_23d, l3_mkt_hr, l3_sec_hr, l3_sub_hr')
+  .eq('symbol', 'NVDA.US')
+  .eq('periodicity', 'daily');
+```
+
+Row Level Security (RLS) is enforced — users can only access data they are authorised for.
+
+## AI Agent Provisioning Flow
+
+Recommended pattern for LLM agents integrating with the RiskModels API:
+
+1. **Discover capabilities**
+   ```
+   GET /.well-known/agent-manifest
+   ```
+   Returns service metadata, all endpoint capabilities, pricing, and the provisioning URL.
+
+2. **Provision a token**
+   ```
+   POST /api/auth/provision
+   ```
+   Exchange a session JWT for a long-lived Bearer API key.
+
+3. **Check balance before starting a workflow**
+   ```
+   GET /api/balance
+   ```
+   Verify `status.can_make_requests` is `true` and `balance_usd` is sufficient.
+
+4. **Make data requests**
+   ```
+   Authorization: Bearer rm_agent_live_...
+   ```
+
+5. **Monitor cost per request**
+   Read `_agent.cost_usd` in each response body, or the `X-API-Cost-USD` header.
+
+## Rate Limits
+
+**Per-API-Key Rate Limiting:** All authenticated endpoints are rate limited on a per-API-key basis using a sliding window algorithm.
+
+| Tier | Requests / Minute | Daily Limit | Burst |
+|---|---|---|---|
+| Default (pay-as-you-go) | 60 | Unlimited | 100 |
+| Premium (`rate:300` scope) | 300 | Unlimited | 500 |
+| Max concurrent | 10 | — | — |
+
+### Rate Limit Headers
+
+All responses include rate limit information:
+
+```http
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1709856000
+```
+
+### 429 Too Many Requests
+
+When rate limit is exceeded, you'll receive:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 23
+```
+
+**Best Practice:** Implement exponential backoff starting at the `Retry-After` value.
+
+## Security Notes
+
+- Never commit API keys to source control
+- Use environment variables: `RISKMODELS_API_KEY=rm_agent_live_...`
+- Rotate keys from the dashboard if compromised
+- Service role key must never appear in browser-side code
+- Test keys (`rm_agent_test_...`) return simulated responses and do not deduct balance
+
+---
+
+## Related
+
+<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">
+  <a href="/get-key" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🔑 Get an API Key</span>
+    <p className="text-xs text-zinc-500">Sign up, generate your token, and add credit to get started immediately.</p>
+  </a>
+  <a href="/docs/agent-integration" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">🤖 Agent Integration</span>
+    <p className="text-xs text-zinc-500">Configure your key in Cursor, Claude Desktop, Zed, or the npm CLI.</p>
+  </a>
+  <a href="/docs/api" className="group flex flex-col gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-primary/50 hover:bg-zinc-900 transition-all">
+    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">📄 API Docs</span>
+    <p className="text-xs text-zinc-500">All endpoints, costs, and response field definitions.</p>
+  </a>
+</div>

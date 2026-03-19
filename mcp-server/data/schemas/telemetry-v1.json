@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Telemetry Metrics Response",
+  "type": "object",
+  "required": [
+    "capability",
+    "period",
+    "metrics"
+  ],
+  "properties": {
+    "capability": {
+      "type": "string"
+    },
+    "period": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer"
+            },
+            "successful": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "success_rate": {
+              "type": "number"
+            }
+          }
+        },
+        "latency": {
+          "type": "object",
+          "properties": {
+            "avg_ms": {
+              "type": "integer"
+            },
+            "p50_ms": {
+              "type": "integer"
+            },
+            "p95_ms": {
+              "type": "integer"
+            },
+            "p99_ms": {
+              "type": "integer"
+            },
+            "max_ms": {
+              "type": "integer"
+            }
+          }
+        },
+        "pricing": {
+          "type": "object",
+          "properties": {
+            "avg_cost_per_request_usd": {
+              "type": "number"
+            },
+            "total_revenue_usd": {
+              "type": "number"
+            }
+          }
+        },
+        "data_quality": {
+          "type": "object",
+          "properties": {
+            "freshness_avg_hours": {
+              "type": "number"
+            },
+            "coverage_percent": {
+              "type": "number"
+            },
+            "accuracy_score": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "uptime": {
+      "type": "object",
+      "properties": {
+        "overall_percent": {
+          "type": "number"
+        },
+        "downtime_minutes": {
+          "type": "integer"
+        },
+        "incidents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "duration_minutes": {
+                "type": "integer"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "minor",
+                  "major",
+                  "critical"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
