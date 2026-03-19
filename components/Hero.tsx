@@ -14,38 +14,43 @@ export default function Hero() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold">
           <Zap size={16} />
-          Institutional-Grade Risk Intelligence
+          MCP-Ready · OpenAPI 3.0 · Pay-as-you-go
         </div>
 
         {/* Headline */}
         <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white">
-          RiskModels API
+          Hedge Any Stock With Three ETFs
         </h1>
         
         <p className="text-xl sm:text-2xl md:text-3xl text-zinc-400 font-medium">
-          Precise Factor-Based Equity Risk & Hedging
+          Institutional factor decompositions without the six-figure contract.
         </p>
 
         {/* Subheadline */}
         <p className="max-w-3xl mx-auto text-lg text-zinc-400 leading-relaxed">
-          Daily factor decompositions, hedge ratios, and risk attribution for ~3,000 US equities. 
-          AI-agent ready with machine-readable manifests. Historical data back to 2006.
+          Market, sector, and subsector hedge ratios for ~3,000 US equities — 
+          executable with liquid ETFs, updated daily, history back to 2006. 
+          Start free with $20 in credits.
+        </p>
+
+        <p className="text-sm text-zinc-500">
+          No subscription. No seat fees. $20 free credits · never expire.
         </p>
 
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
           <Link
-            href="/quickstart"
+            href="/pricing"
             className="group px-8 py-4 bg-primary hover:bg-primary/90 text-white text-lg font-semibold rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/30"
           >
             Get Started
             <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
           </Link>
           <Link
-            href="/api-reference"
+            href="/docs/api"
             className="px-8 py-4 bg-zinc-800/50 hover:bg-zinc-800 text-white text-lg font-semibold rounded-lg border border-zinc-700 transition-all"
           >
-            View API Spec
+            Read the Docs
           </Link>
         </div>
 
