@@ -22,9 +22,9 @@ Authorization: Bearer rm_agent_live_<random>_<checksum>
 ### Obtaining a Token
 
 **Option A — Dashboard:**
-1. Sign up at [riskmodels.net](https://riskmodels.net)
-2. Go to Settings → API Keys
-3. Click "Generate Key" and copy the token
+1. [Get your API key](/get-key) (sign up if you haven't already)
+2. Generate a new key and copy the token
+3. Store securely in your environment variables
 
 **Option B — API provisioning endpoint (for AI agents):**
 ```bash
@@ -36,7 +36,7 @@ curl -X POST https://riskmodels.net/api/auth/provision \
 ### Billing
 
 Tokens use a **prepaid balance** model:
-- Add credit via [riskmodels.net/settings](https://riskmodels.net/settings) (Stripe)
+- [Add credit via Stripe](/get-key) (scroll to "Add Credit" section)
 - Each metered request deducts from your balance
 - Check balance: `GET /api/balance`
 - Cached responses are **free** (`cost_usd: 0` in the `_agent` block)

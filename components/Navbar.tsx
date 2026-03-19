@@ -10,11 +10,9 @@ export default function Navbar() {
 
   const navLinks = [
     { href: '/docs/api', label: 'Docs' },
-    { href: '/docs/methodology', label: 'Methodology' },
-    { href: '/api-reference', label: 'API Reference' },
+    { href: '/api-reference', label: 'Reference' },
     { href: '/examples', label: 'Examples' },
     { href: '/quickstart', label: 'Quickstart' },
-    { href: '/docs/authentication', label: 'Authentication' },
   ];
 
   return (

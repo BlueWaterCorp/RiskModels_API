@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run build:openapi && next build",
+    "vercel:sync-env": "./scripts/sync-env-to-vercel.sh",
     "build:openapi": "node scripts/yaml-to-json.js",
     "start": "next start",
     "lint": "next lint",

@@ -5,9 +5,9 @@ description: Complete reference for the RiskModels API
 
 # RiskModels API Documentation
 
-This repository is the **authoritative public API reference** for the [RiskModels](https://riskmodels.net) equity risk model API.
+This repository is the **authoritative public API reference** for the RiskModels equity risk model API.
 
-- **Live interactive docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
+- **Live interactive docs:** [API Reference](/api-reference)
 - **Computation engine:** [conradgann/ERM3](https://github.com/conradgann/ERM3) (Python, Huber/Ridge regression)
 - **Issues & feature requests:** [Open an issue](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
 
@@ -26,15 +26,15 @@ The RiskModels API provides institutional-grade equity risk analysis for AI agen
 
 | Endpoint | Method | Description | Cost |
 |---|---|---|---|
-| `/api/ticker-returns` | GET | Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y | $0.005/call |
-| `/api/metrics/{ticker}` | GET | Latest snapshot: all 22 HR/ER fields, vol, Sharpe, sector, market cap | $0.005/call |
-| `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | $0.005/call |
-| `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | $0.002/position |
-| `/api/tickers` | GET | Ticker universe search, MAG7 shortcut | Free |
-| `/api/balance` | GET | Account balance and rate limits | Free |
-| `/api/invoices` | GET | Invoice history and spend summary | Free |
-| `/api/health` | GET | Service health | Free |
-| `/.well-known/agent-manifest` | GET | AI agent discovery manifest | Free |
+| `/api/ticker-returns` | GET | Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y | `$0.005/call` |
+| `/api/metrics/{ticker}` | GET | Latest snapshot: all 22 HR/ER fields, vol, Sharpe, sector, market cap | `$0.005/call` |
+| `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | `$0.005/call` |
+| `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | `$0.002/position` |
+| `/api/tickers` | GET | Ticker universe search, MAG7 shortcut | `Free` |
+| `/api/balance` | GET | Account balance and rate limits | `Free` |
+| `/api/invoices` | GET | Invoice history and spend summary | `Free` |
+| `/api/health` | GET | Service health | `Free` |
+| `/.well-known/agent-manifest` | GET | AI agent discovery manifest | `Free` |
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
 
@@ -85,5 +85,4 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 - **Issues & feature requests:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
 - **API support email:** [api-support@riskmodels.net](mailto:api-support@riskmodels.net)
-- **Interactive docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
-- **Status:** [riskmodels.net/status](https://riskmodels.net/status)
+- **Interactive docs:** [API Reference](/api-reference)

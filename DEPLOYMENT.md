@@ -11,7 +11,13 @@
 
 ## 2. Environment Variables
 
-In Vercel → Project → Settings → Environment Variables, add:
+**Option A — Sync from .env.local:**
+```bash
+npx vercel link   # if not already linked
+npm run vercel:sync-env
+```
+
+**Option B — Manual:** In Vercel → Project → Settings → Environment Variables, add:
 
 | Variable | Required | Environments | Notes |
 |----------|----------|--------------|-------|

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Code2, Zap, Shield } from 'lucide-react';
+import { ArrowRight, Terminal, Bot, Shield, Zap } from 'lucide-react';
 
 export default function Hero() {
   return (
@@ -52,27 +52,51 @@ export default function Hero() {
         {/* Feature highlights */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-16 max-w-4xl mx-auto">
           <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-            <Code2 className="text-primary mb-3" size={28} />
+            <Terminal className="text-primary mb-3" size={28} />
             <h3 className="text-lg font-semibold text-white mb-2">Developer-First</h3>
-            <p className="text-sm text-zinc-400">
-              Clean REST API with TypeScript, Python, and cURL examples. OpenAPI 3.0 spec included.
+            <p className="text-sm text-zinc-400 mb-4">
+              OpenAPI 3.0 spec, TypeScript/Python/cURL examples. Clean REST API with full type safety.
             </p>
+            <div className="flex gap-3 text-xs">
+              <Link href="/api-reference" className="text-primary hover:underline">
+                API Spec →
+              </Link>
+              <Link href="/examples" className="text-primary hover:underline">
+                Examples →
+              </Link>
+            </div>
           </div>
           
           <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-            <Zap className="text-primary mb-3" size={28} />
+            <Bot className="text-primary mb-3" size={28} />
             <h3 className="text-lg font-semibold text-white mb-2">AI-Agent Ready</h3>
-            <p className="text-sm text-zinc-400">
-              OAuth2 client credentials, per-request billing, and machine-readable manifests.
+            <p className="text-sm text-zinc-400 mb-4">
+              Agent manifest at <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded">/.well-known/agent-manifest</code>, per-request billing, MCP-ready.
             </p>
+            <div className="flex gap-3 text-xs">
+              <Link href="/docs/authentication" className="text-primary hover:underline">
+                Agent Guide →
+              </Link>
+              <Link href="/get-key" className="text-primary hover:underline">
+                Get Key →
+              </Link>
+            </div>
           </div>
           
           <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
             <Shield className="text-primary mb-3" size={28} />
             <h3 className="text-lg font-semibold text-white mb-2">Institutional Grade</h3>
-            <p className="text-sm text-zinc-400">
-              Powered by ERM3 regression system with daily updates and 15+ years of history.
+            <p className="text-sm text-zinc-400 mb-4">
+              ~3,000 tickers, 15+ years history, daily updates. Powered by ERM3 regression engine.
             </p>
+            <div className="flex gap-3 text-xs">
+              <Link href="/docs/methodology" className="text-primary hover:underline">
+                Methodology →
+              </Link>
+              <Link href="/docs/api" className="text-primary hover:underline">
+                Docs →
+              </Link>
+            </div>
           </div>
         </div>
       </div>
