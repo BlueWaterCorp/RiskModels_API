@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ symbol: string }> },
 ) {
+  const denied = verifyGatewayAuth(request);
+  if (denied) return denied;
+
   const { symbol } = await params;
   if (!symbol) {
     return NextResponse.json({ error: "symbol is required" }, { status: 400 });
