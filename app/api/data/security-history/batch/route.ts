@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic";
  * }
  */
 export async function POST(request: NextRequest) {
+  const denied = verifyGatewayAuth(request);
+  if (denied) return denied;
+
   let body: {
     symbols?: string[];
     keys?: string[];

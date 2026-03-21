@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,10 @@ export const dynamic = "force-dynamic";
  * Risk model metadata: latest data date, universe size, model version.
  * Mirrors Risk_Models' getRiskMetadata() from lib/dal/risk-metadata.ts.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = verifyGatewayAuth(request);
+  if (denied) return denied;
+
   const supabase = createAdminClient();
 
   // Latest date in security_history

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,9 @@ export const dynamic = "force-dynamic";
  * Pipeline-maintained table for instant chart rendering.
  */
 export async function GET(request: NextRequest) {
+  const denied = verifyGatewayAuth(request);
+  if (denied) return denied;
+
   const sp = request.nextUrl.searchParams;
   const limit = Math.min(Number(sp.get("limit") ?? 10000), 50000);
 

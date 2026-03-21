@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,12 @@ export const dynamic = "force-dynamic";
  * Returns normalized metadata (falls back to metadata JSONB for name/sector_etf).
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ ticker: string }> },
 ) {
+  const denied = verifyGatewayAuth(request);
+  if (denied) return denied;
+
   const { ticker } = await params;
   if (!ticker) {
     return NextResponse.json({ error: "ticker is required" }, { status: 400 });
@@ -24,7 +28,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("symbols")
     .select(
-      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata",
+      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata, latest_metrics, latest_vol, latest_teo",
     )
     .eq("ticker", upper)
     .maybeSingle();
@@ -53,6 +57,10 @@ export async function GET(
     subsector_etf: data.subsector_etf,
     is_adr: data.is_adr,
     isin: data.isin,
+    metadata: data.metadata,
+    latest_metrics: data.latest_metrics,
+    latest_vol: data.latest_vol,
+    latest_teo: data.latest_teo,
   };
 
   return NextResponse.json(normalized);
