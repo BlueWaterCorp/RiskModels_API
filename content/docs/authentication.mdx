@@ -131,7 +131,7 @@ await supabase.auth.signInWithOtp({ email: 'user@example.com' });
 const { data } = await supabase
   .from('security_history_latest')
   .select('symbol, returns_gross, vol_23d, l3_mkt_hr, l3_sec_hr, l3_sub_hr')
-  .eq('symbol', 'NVDA.US')
+  .eq('symbol', 'BW-US67066G1040')
   .eq('periodicity', 'daily');
 ```
 

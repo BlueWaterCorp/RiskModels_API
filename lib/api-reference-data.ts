@@ -43,7 +43,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Latest risk metrics snapshot',
         description:
-          'Returns the most recent row from ticker_factor_metrics for the given ticker. Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility, Sharpe ratio, sector codes, market cap, and close price. Cost: $0.005/request.',
+          'Returns the most recent row from security_history_latest for the given ticker. Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility, Sharpe ratio, sector codes, market cap, and close price. Cost: $0.005/request.',
         operationId: 'getMetrics',
         tag: 'Risk Metrics',
         params: [

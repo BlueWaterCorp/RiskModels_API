@@ -300,14 +300,14 @@ await supabase.auth.signInWithOtp({ email: 'user@example.com' });
 const { data } = await supabase
   .from('security_history_latest')
   .select('symbol, returns_gross, vol_23d, l3_mkt_hr, l3_sec_hr, l3_sub_hr')
-  .eq('symbol', 'NVDA.US')
+  .eq('symbol', 'BW-US67066G1040')
   .eq('periodicity', 'daily');
 
 // Example: time-series history from security_history
 const { data: history } = await supabase
   .from('security_history')
   .select('teo, metric_key, metric_value')
-  .eq('symbol', 'NVDA.US')
+  .eq('symbol', 'BW-US67066G1040')
   .eq('periodicity', 'daily')
   .in('metric_key', ['returns_gross', 'l3_mkt_hr', 'l3_sec_hr', 'l3_sub_hr'])
   .gte('teo', '2024-01-01')
