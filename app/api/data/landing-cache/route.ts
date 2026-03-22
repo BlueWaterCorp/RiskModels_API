@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/data/landing-cache?limit=10000
  *
- * Fetch pre-computed cumulative returns from erm3_landing_chart_cache.
- * Pipeline-maintained table for instant chart rendering.
+ * Fetch raw daily returns from erm3_landing_chart_cache.
+ * Pipeline-maintained table; caller accumulates returns for any start date.
  */
 export async function GET(request: NextRequest) {
   const denied = verifyGatewayAuth(request);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("erm3_landing_chart_cache")
     .select(
-      "ticker, date, cum_stock, cum_market, cum_sector, cum_subsector, sector_etf, subsector_etf",
+      "ticker, date, ret_stock, ret_market, ret_sector, ret_subsector, sector_etf, subsector_etf",
     )
     .limit(limit);
 
