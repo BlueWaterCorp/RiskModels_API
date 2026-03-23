@@ -24,7 +24,7 @@ export default function TryFree() {
   }
 
   const curlCmd = DEMO_KEY
-    ? `curl "https://riskmodels.net/api/tickers?mag7=true" \\\n  -H "Authorization: Bearer ${DEMO_KEY}"`
+    ? `curl "https://riskmodels.app/api/tickers?mag7=true" \\\n  -H "Authorization: Bearer ${DEMO_KEY}"`
     : '';
 
   if (!DEMO_KEY) {

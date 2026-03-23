@@ -106,7 +106,7 @@ def check_ticker_in_universe(ticker, headers):
     Use before querying /metrics or /ticker-returns to avoid 404 charges.
     """
     resp = requests.get(
-        "https://riskmodels.net/api/tickers",
+        "https://riskmodels.app/api/tickers",
         params={"search": ticker},
         headers=headers
     )

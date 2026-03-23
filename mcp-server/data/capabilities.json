@@ -46,7 +46,7 @@
         "proprietary_models",
         "erm3_regression"
       ],
-      "methodology_url": "https://riskmodels.net/docs/methodology"
+      "methodology_url": "https://riskmodels.app/docs/methodology"
     },
     "tags": [
       "returns",
@@ -116,7 +116,7 @@
         "erm3_models",
         "factor_regression"
       ],
-      "methodology_url": "https://riskmodels.net/docs/l3-methodology"
+      "methodology_url": "https://riskmodels.app/docs/l3-methodology"
     },
     "tags": [
       "risk-analysis",

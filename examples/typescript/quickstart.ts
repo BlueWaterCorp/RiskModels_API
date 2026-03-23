@@ -9,7 +9,7 @@
  */
 
 const API_KEY  = "PASTE_YOUR_KEY_HERE";  // <-- paste your RiskModels API key
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 const HEADERS  = { Authorization: `Bearer ${API_KEY}` };
 
 if (API_KEY === "PASTE_YOUR_KEY_HERE") {

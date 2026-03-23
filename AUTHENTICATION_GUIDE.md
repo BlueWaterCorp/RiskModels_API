@@ -25,7 +25,7 @@ Authorization: Bearer rm_agent_live_<random>_<checksum>
 
 **Option B — API provisioning endpoint (for AI agents):**
 ```bash
-curl -X POST https://riskmodels.net/api/auth/provision \
+curl -X POST https://riskmodels.app/api/auth/provision \
   -H "Authorization: Bearer <session-jwt>" \
   -H "Content-Type: application/json"
 ```
@@ -44,7 +44,7 @@ Response:
 import requests
 
 API_KEY  = "rm_agent_live_..."
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
 resp = requests.get(f"{BASE_URL}/metrics/NVDA", headers=HEADERS)
@@ -53,7 +53,7 @@ data = resp.json()
 
 ```typescript
 const API_KEY  = "rm_agent_live_...";
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 
 const resp = await fetch(`${BASE_URL}/metrics/NVDA`, {
   headers: { Authorization: `Bearer ${API_KEY}` },
@@ -96,7 +96,7 @@ Exchange API credentials for a short-lived JWT access token (15 minutes). This i
 #### Step 1: Exchange credentials for access token
 
 ```bash
-curl -X POST https://riskmodels.net/api/auth/token \
+curl -X POST https://riskmodels.app/api/auth/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "client_credentials",
@@ -125,7 +125,7 @@ curl -X POST https://riskmodels.net/api/auth/token \
 #### Step 2: Use access token in API requests
 
 ```bash
-curl -X GET https://riskmodels.net/api/metrics/NVDA \
+curl -X GET https://riskmodels.app/api/metrics/NVDA \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -164,7 +164,7 @@ class RiskModelsClient:
         
         # Request new token
         response = requests.post(
-            'https://riskmodels.net/api/auth/token',
+            'https://riskmodels.app/api/auth/token',
             json={
                 'grant_type': 'client_credentials',
                 'client_id': self.client_id,
@@ -183,7 +183,7 @@ class RiskModelsClient:
         """Fetch metrics with automatic token refresh."""
         token = self.get_access_token()
         response = requests.get(
-            f'https://riskmodels.net/api/metrics/{ticker}',
+            f'https://riskmodels.app/api/metrics/{ticker}',
             headers={'Authorization': f'Bearer {token}'}
         )
         return response.json()
@@ -221,7 +221,7 @@ class RiskModelsClient {
     }
 
     // Request new token
-    const response = await fetch('https://riskmodels.net/api/auth/token', {
+    const response = await fetch('https://riskmodels.app/api/auth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -242,7 +242,7 @@ class RiskModelsClient {
 
   async getMetrics(ticker: string) {
     const token = await this.getAccessToken();
-    const response = await fetch(`https://riskmodels.net/api/metrics/${ticker}`, {
+    const response = await fetch(`https://riskmodels.app/api/metrics/${ticker}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     return response.json();
@@ -363,7 +363,7 @@ Backend data is also served from Zarr on Google Cloud Storage (`gs://rm_api_data
 
 | Property | Value |
 |----------|-------|
-| **SSE Endpoint** | `https://riskmodels.net/api/mcp/sse` |
+| **SSE Endpoint** | `https://riskmodels.app/api/mcp/sse` |
 | **Discovery** | `https://riskmodels.net/.well-known/mcp.json` |
 | **Authentication** | Bearer token (API key or OAuth2 JWT) |
 | **Protocol** | Server-Sent Events (SSE) with JSON-RPC 2.0 |
@@ -372,7 +372,7 @@ Backend data is also served from Zarr on Google Cloud Storage (`gs://rm_api_data
 
 ```javascript
 // Browser/SSE client
-const eventSource = new EventSource('https://riskmodels.net/api/mcp/sse', {
+const eventSource = new EventSource('https://riskmodels.app/api/mcp/sse', {
   headers: { 'Authorization': 'Bearer rm_agent_live_...' }
 });
 
@@ -388,7 +388,7 @@ import requests
 
 headers = {"Authorization": "Bearer rm_agent_live_..."}
 response = requests.get(
-    "https://riskmodels.net/api/mcp/sse",
+    "https://riskmodels.app/api/mcp/sse",
     headers=headers,
     stream=True
 )

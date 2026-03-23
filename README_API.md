@@ -42,7 +42,7 @@ These choices do not eliminate model risk, but they make the API better suited f
 ### TypeScript (Browser / Node.js)
 
 ```typescript
-const resp = await fetch("https://riskmodels.net/api/metrics/NVDA", {
+const resp = await fetch("https://riskmodels.app/api/metrics/NVDA", {
   headers: { Authorization: "Bearer rm_agent_live_..." },
 });
 const m = await resp.json();
@@ -62,7 +62,7 @@ API_KEY  = "rm_agent_live_..."
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
 # Get latest metrics for NVDA
-m = requests.get("https://riskmodels.net/api/metrics/NVDA", headers=HEADERS).json()
+m = requests.get("https://riskmodels.app/api/metrics/NVDA", headers=HEADERS).json()
 print(f"Residual Risk:  {m['l3_residual_er']:.1%}")   # 54.0%
 print(f"Market Hedge:   {m['l3_market_hr']:.2f}")     # 1.28 (short $1.28 SPY per $1 NVDA)
 print(f"Volatility:     {m['volatility']:.1%}")       # 48.0% annualised
@@ -71,7 +71,7 @@ print(f"Volatility:     {m['volatility']:.1%}")       # 48.0% annualised
 ### cURL
 
 ```bash
-curl -X GET "https://riskmodels.net/api/metrics/NVDA" \
+curl -X GET "https://riskmodels.app/api/metrics/NVDA" \
   -H "Authorization: Bearer rm_agent_live_..."
 ```
 

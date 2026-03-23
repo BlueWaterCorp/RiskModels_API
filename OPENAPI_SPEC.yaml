@@ -58,16 +58,16 @@ info:
 
   contact:
     name: RiskModels Support
-    email: api-support@riskmodels.net
-    url: https://riskmodels.net
+    email: api-support@riskmodels.app
+    url: https://riskmodels.app
 
-  termsOfService: https://riskmodels.net/terms/api
+  termsOfService: https://riskmodels.app/legal
   license:
     name: Commercial
-    url: https://riskmodels.net/terms
+    url: https://riskmodels.app/legal
 
 servers:
-  - url: https://riskmodels.net/api
+  - url: https://riskmodels.app/api
     description: Production
 
 components:
@@ -78,14 +78,14 @@ components:
       bearerFormat: rm_agent_{environment}_{random}_{checksum}
       description: >
         API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`.
-        Obtain via `POST /api/auth/provision` or from riskmodels.net/settings → API Keys.
+        Obtain via `POST /api/auth/provision` or from riskmodels.app/settings → API Keys.
         Include as: `Authorization: Bearer rm_agent_live_...`
 
     OAuth2ClientCredentials:
       type: oauth2
       flows:
         clientCredentials:
-          tokenUrl: https://riskmodels.net/api/auth/token
+          tokenUrl: https://riskmodels.app/api/auth/token
           scopes:
             ticker-returns: Access ticker returns and historical data
             risk-decomposition: Access L3 risk decomposition
@@ -166,7 +166,7 @@ components:
           type: string
           format: uri
           description: Methodology documentation URL.
-          example: "https://riskmodels.net/docs/methodology/erm3-l3"
+          example: "https://riskmodels.app/docs/methodology/erm3-l3"
         factors:
           type: array
           items:
@@ -903,8 +903,8 @@ components:
       type: object
       description: >
         MCP tool descriptor as returned by `tools/list`. Tools are discoverable via
-        `https://riskmodels.net/.well-known/mcp.json` or by connecting to the SSE
-        endpoint at `https://riskmodels.net/api/mcp/sse` and calling `tools/list`.
+        `https://riskmodels.app/.well-known/mcp.json` or by connecting to the SSE
+        endpoint at `https://riskmodels.app/api/mcp/sse` and calling `tools/list`.
       properties:
         name:
           type: string
@@ -951,7 +951,7 @@ components:
           example: INSUFFICIENT_BALANCE
         message:
           type: string
-          example: "Insufficient balance. Current balance: $0.00. Top up at https://riskmodels.net/billing"
+          example: "Insufficient balance. Current balance: $0.00. Top up at https://riskmodels.app/billing"
         balance_usd:
           type: number
           format: float
@@ -959,7 +959,7 @@ components:
         top_up_url:
           type: string
           format: uri
-          example: https://riskmodels.net/billing
+          example: https://riskmodels.app/billing
 
     RateLimitExceeded:
       type: object
@@ -1052,7 +1052,7 @@ paths:
 
 
         **Discovery:** The MCP server manifest is published at
-        `https://riskmodels.net/.well-known/mcp.json` for automated client discovery.
+        `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.
         Clients should read that manifest to obtain the SSE URL, supported tools, and auth requirements.
 
 
@@ -1069,7 +1069,7 @@ paths:
 
         ```javascript
 
-        const eventSource = new EventSource('https://riskmodels.net/api/mcp/sse', {
+        const eventSource = new EventSource('https://riskmodels.app/api/mcp/sse', {
           headers: { 'Authorization': 'Bearer rm_agent_...' }
         });
 
@@ -2255,6 +2255,171 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/provision-free:
+    post:
+      summary: Provision a free-tier API key
+      description: >
+        Generate a free API key with limited daily usage (100 req/day, 10 req/min).
+        No payment or email required. Returns the key once — store it immediately.
+      operationId: provisionFreeToken
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_name]
+              properties:
+                agent_name:
+                  type: string
+                  minLength: 3
+                  description: Display name for the free-tier agent (≥ 3 characters).
+                  example: my-research-bot
+                purpose:
+                  type: string
+                  description: Optional description of intended use.
+                  default: development
+      responses:
+        "201":
+          description: Free API key created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account:
+                    type: object
+                    properties:
+                      user_id: { type: string }
+                      agent_name: { type: string }
+                      tier: { type: string, enum: [free] }
+                      limits:
+                        type: object
+                        properties:
+                          queries_per_day: { type: integer, example: 100 }
+                          queries_per_minute: { type: integer, example: 10 }
+                  credentials:
+                    type: object
+                    properties:
+                      api_key:
+                        type: string
+                        description: Shown only once. Store securely.
+                        example: rm_agent_live_abc123_xyz
+                      prefix: { type: string }
+        "400":
+          description: Invalid agent_name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/free-tier-status:
+    get:
+      summary: Free-tier usage status
+      description: >
+        Returns current daily usage and remaining quota for a free-tier API key.
+        Authenticated with Bearer token. Returns HTTP 200 with `tier` field for
+        non-free accounts.
+      operationId: getFreeTierStatus
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Free-tier usage status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tier: { type: string, example: free }
+                  user_id: { type: string }
+                  usage:
+                    type: object
+                    properties:
+                      queries_today: { type: integer }
+                      queries_this_month: { type: integer }
+                      remaining_today: { type: integer }
+                  limits:
+                    type: object
+                    properties:
+                      queries_per_day: { type: integer, example: 100 }
+                      queries_per_minute: { type: integer, example: 10 }
+                  reset_date: { type: string, format: date-time }
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No account found for this API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cli/query:
+    post:
+      summary: Raw SQL query (SELECT only)
+      description: >
+        Execute a read-only SQL SELECT against the RiskModels database. Only SELECT
+        statements are permitted; DML and DDL are rejected. Results capped at 10,000
+        rows. Billed as `cli-query` capability. Requires valid Bearer token with
+        billing balance.
+      operationId: cliQuery
+      tags: [Utility]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sql]
+              properties:
+                sql:
+                  type: string
+                  description: SELECT statement to execute. Multi-statement and DML/DDL are rejected.
+                  example: SELECT ticker, symbol FROM symbols LIMIT 10
+                limit:
+                  type: integer
+                  description: Max rows to return if no LIMIT clause in sql (default 100, max 10000).
+                  default: 100
+      responses:
+        "200":
+          description: Query results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items: { type: object }
+                  count: { type: integer }
+                  sql: { type: string, description: Executed SQL (may have LIMIT appended). }
+        "400":
+          description: Invalid or disallowed SQL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
 
   /telemetry:
     get:

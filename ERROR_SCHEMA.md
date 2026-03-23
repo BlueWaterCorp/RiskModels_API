@@ -77,7 +77,7 @@ def make_request_with_retry(url, headers, max_retries=1):
 
 ```python
 def check_balance_before_workflow(headers, min_balance=1.0):
-    resp = requests.get("https://riskmodels.net/api/balance", headers=headers)
+    resp = requests.get("https://riskmodels.app/api/balance", headers=headers)
     balance = resp.json()
     if balance["balance_usd"] < min_balance:
         raise ValueError(
@@ -128,7 +128,7 @@ def resilient_request(url, headers, max_retries=3):
 Before running a batch workflow, verify the service is healthy:
 
 ```python
-health = requests.get("https://riskmodels.net/api/health").json()
+health = requests.get("https://riskmodels.app/api/health").json()
 if health["status"] != "up":
     print(f"Service degraded: {health['status']}")
     # Check health["services"] for which component is affected

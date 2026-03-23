@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { ENDPOINT_GROUPS, getEndpointById, type Endpoint, type HttpMethod } from '@/lib/api-reference-data';
 import { cn } from '@/lib/cn';
 
-const BASE_URL = 'https://riskmodels.net/api';
+const BASE_URL = 'https://riskmodels.app/api';
 
 function methodVariant(m: HttpMethod): 'get' | 'post' | 'put' | 'delete' | 'patch' {
   return m in { get: 1, post: 1, put: 1, delete: 1, patch: 1 } ? m : 'get';
