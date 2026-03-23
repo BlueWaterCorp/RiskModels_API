@@ -1,10 +1,10 @@
 /**
  * Gateway Auth — validates service-to-service requests to /api/data/* endpoints.
  *
- * Expects: Authorization: Bearer <GATEWAY_SERVICE_KEY>
+ * Expects: Authorization: Bearer <RISKMODELS_API_SERVICE_KEY>
  *
- * The key is set via the GATEWAY_SERVICE_KEY env var on RiskModels_API.
- * Risk_Models sends it via RISKMODELS_API_SERVICE_KEY.
+ * Preferred env var on RiskModels_API: RISKMODELS_API_SERVICE_KEY.
+ * Legacy alias supported during migration: GATEWAY_SERVICE_KEY.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -18,9 +18,10 @@ import { NextResponse, type NextRequest } from "next/server";
  *   if (denied) return denied;
  */
 export function verifyGatewayAuth(request: NextRequest): NextResponse | null {
-  const key = process.env.GATEWAY_SERVICE_KEY;
+  const key =
+    process.env.RISKMODELS_API_SERVICE_KEY ?? process.env.GATEWAY_SERVICE_KEY;
 
-  // If GATEWAY_SERVICE_KEY is not set, allow all requests (dev mode)
+  // If no service key is set, allow all requests (dev mode)
   if (!key) return null;
 
   const authHeader = request.headers.get("authorization");

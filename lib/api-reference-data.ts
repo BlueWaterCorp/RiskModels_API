@@ -123,7 +123,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         tag: 'Risk Metrics',
         params: [
           { name: 'tickers', in: 'body', type: 'array', required: true, description: 'List of ticker symbols (max 100).' },
-          { name: 'metrics', in: 'body', type: 'array', required: true, description: 'Data types: returns, l3_decomposition, hedge_ratios.' },
+          { name: 'metrics', in: 'body', type: 'array', required: true, description: 'Whitelist: returns, hedge_ratios (6 HR short keys), full_metrics (L1/L2/L3 ER/HR flat keys). See docs/ERM3_ZARR_API_PARITY.md for zarr L*_ER/L*_HR mapping.' },
           { name: 'years', in: 'body', type: 'integer', required: false, description: 'Years of history.', default: '1' },
         ],
         requestBody: {

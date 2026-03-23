@@ -1,0 +1,4 @@
+# Optional: `doppler setup --no-interactive` in this repo root.
+setup:
+  - project: erm3
+    config: dev

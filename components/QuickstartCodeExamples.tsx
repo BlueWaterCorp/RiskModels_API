@@ -247,7 +247,8 @@ const pythonBatch = `#!/usr/bin/env python3
 """
 Batch analysis — up to 100 tickers in one request (lower cost per name).
 
-Request metrics: ["full_metrics"] for per-ticker HR/ER snapshot + notionals.
+Request metrics: ["full_metrics", "hedge_ratios"] for full L1–L3 HR (short keys in hedge_ratios)
+plus flat ER/HR in full_metrics (zarr parity: docs/ERM3_ZARR_API_PARITY.md).
 pip install requests
 """
 
@@ -267,7 +268,7 @@ tickers = [p["ticker"] for p in portfolio]
 resp = requests.post(
     f"{BASE_URL}/batch/analyze",
     headers=HEADERS,
-    json={"tickers": tickers, "metrics": ["full_metrics"]},
+    json={"tickers": tickers, "metrics": ["full_metrics", "hedge_ratios"]},
 )
 resp.raise_for_status()
 body = resp.json()
@@ -327,7 +328,7 @@ async function main() {
     headers: { ...HEADERS, "Content-Type": "application/json" },
     body: JSON.stringify({
       tickers: holdings.map((h) => h.ticker),
-      metrics: ["full_metrics"],
+      metrics: ["full_metrics", "hedge_ratios"],
     }),
   });
 
@@ -393,7 +394,7 @@ const EXAMPLE_META: Record<
   batch: {
     label: 'Batch analysis',
     title: 'Batch analysis',
-    body: 'Analyze up to 100 tickers in one call (lower cost per position) — POST /batch/analyze with metrics: ["full_metrics"].',
+    body: 'Analyze up to 100 tickers in one call — POST /batch/analyze with metrics: ["full_metrics","hedge_ratios"] for full ER/HR + zarr-style parity (see docs/ERM3_ZARR_API_PARITY.md).',
     endpoint: '/batch/analyze',
   },
 };

@@ -4,7 +4,7 @@ info:
   version: 3.0.0-agent
   description: >
     Precision equity risk intelligence platform with AI agent integration.
-    
+
     Institutional-grade equity risk analysis for AI agents and quantitative applications.
     Provides daily factor hedge ratios, explained-risk decompositions, and portfolio-level
     risk attribution for ~3,000 US equities.
@@ -80,7 +80,7 @@ components:
         API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`.
         Obtain via `POST /api/auth/provision` or from riskmodels.net/settings → API Keys.
         Include as: `Authorization: Bearer rm_agent_live_...`
-    
+
     OAuth2ClientCredentials:
       type: oauth2
       flows:
@@ -172,7 +172,21 @@ components:
           items:
             type: string
           description: L3 factor ETF tickers (market + 11 sectors).
-          example: ["SPY", "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC"]
+          example:
+            [
+              "SPY",
+              "XLK",
+              "XLF",
+              "XLV",
+              "XLE",
+              "XLI",
+              "XLY",
+              "XLP",
+              "XLU",
+              "XLB",
+              "XLRE",
+              "XLC",
+            ]
 
     EstimateResponse:
       type: object
@@ -424,32 +438,42 @@ components:
 
     BatchHedgeRatios:
       type: object
-      description: Present when `metrics` includes `hedge_ratios`. Dollar HRs per $1 stock.
+      description: >
+        Present when `metrics` includes `hedge_ratios`. Dollar HRs per $1 stock (same economics as
+        `full_metrics` `*_hr` fields). Property names are **short** (`l1_market`, …); ERM3 zarr
+        hedge-weight naming `L1_market_HR` … `L3_subsector_HR` maps row-wise to these keys — see
+        docs/ERM3_ZARR_API_PARITY.md.
       properties:
         l1_market:
           type: number
           format: float
           nullable: true
+          description: Zarr-style alias `L1_market_HR`; same as `full_metrics.l1_market_hr`.
         l2_market:
           type: number
           format: float
           nullable: true
+          description: Zarr-style alias `L2_market_HR`; same as `full_metrics.l2_market_hr`.
         l2_sector:
           type: number
           format: float
           nullable: true
+          description: Zarr-style alias `L2_sector_HR`; same as `full_metrics.l2_sector_hr`.
         l3_market:
           type: number
           format: float
           nullable: true
+          description: Zarr-style alias `L3_market_HR`; same as `full_metrics.l3_market_hr`.
         l3_sector:
           type: number
           format: float
           nullable: true
+          description: Zarr-style alias `L3_sector_HR`; same as `full_metrics.l3_sector_hr`.
         l3_subsector:
           type: number
           format: float
           nullable: true
+          description: Zarr-style alias `L3_subsector_HR`; same as `full_metrics.l3_subsector_hr`.
 
     BatchReturnsPayload:
       type: object
@@ -485,7 +509,12 @@ components:
 
     BatchFullMetrics:
       type: object
-      description: Present when `metrics` includes `full_metrics`. Flat snapshot for batch consumers.
+      description: >
+        Present when `metrics` includes `full_metrics`. Flat snapshot for batch consumers: L1/L2/L3
+        explained-risk and hedge-ratio fields when available from the backend (see
+        docs/ERM3_ZARR_API_PARITY.md for zarr `L*_ER` / `L*_HR` mapping). Zarr topic-level
+        `wmean_*` features are computed **client-side** as holdings-weighted means of these fields.
+        Nulls mean missing or not modelled for that ticker — not omitted keys.
       properties:
         ticker:
           type: string
@@ -493,38 +522,86 @@ components:
           type: string
           format: date
           nullable: true
+          description: Observation date (`teo`) for the snapshot; align with `X-Data-As-Of` / `_metadata.data_as_of`.
         volatility:
           type: number
           format: float
           nullable: true
+        l1_market_hr:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L1_market_HR`; mirrors `hedge_ratios.l1_market`.
+        l2_market_hr:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L2_market_HR`; mirrors `hedge_ratios.l2_market`.
+        l2_sector_hr:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L2_sector_HR`; mirrors `hedge_ratios.l2_sector`.
         l3_market_hr:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_market_HR`; mirrors `hedge_ratios.l3_market`.
         l3_sector_hr:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_sector_HR`; mirrors `hedge_ratios.l3_sector`.
         l3_subsector_hr:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_subsector_HR`; mirrors `hedge_ratios.l3_subsector`.
+        l1_market_er:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L1_market_ER`.
+        l1_residual_er:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L1_residual_ER`.
+        l2_market_er:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L2_market_ER`.
+        l2_sector_er:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L2_sector_ER`.
+        l2_residual_er:
+          type: number
+          format: float
+          nullable: true
+          description: Zarr-style `L2_residual_ER`.
         l3_market_er:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_market_ER`.
         l3_sector_er:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_sector_ER`.
         l3_subsector_er:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_subsector_ER`.
         l3_residual_er:
           type: number
           format: float
           nullable: true
+          description: Zarr-style `L3_residual_ER`.
         market_cap:
           type: number
           format: float
@@ -591,6 +668,12 @@ components:
               type: integer
         _agent:
           $ref: "#/components/schemas/AgentMeta"
+        _metadata:
+          $ref: "#/components/schemas/RiskMetadata"
+          description: >
+            Lineage for PIT tests: model version, as-of date, factor set, universe size. Also emitted
+            as `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size` headers
+            when the gateway attaches them.
 
     L3DecompositionResponse:
       type: object
@@ -712,7 +795,7 @@ components:
           description: Must be "client_credentials"
         client_id:
           type: string
-          pattern: '^rm_(user|agent)_[a-z0-9_]{32,}$'
+          pattern: "^rm_(user|agent)_[a-z0-9_]{32,}$"
           example: rm_agent_live_abc123
           description: API key prefix (first segment)
         client_secret:
@@ -722,7 +805,7 @@ components:
           description: Full API key
         scope:
           type: string
-          example: 'ticker-returns risk-decomposition'
+          example: "ticker-returns risk-decomposition"
           description: Space-separated list of requested scopes
 
     OAuth2TokenResponse:
@@ -776,7 +859,7 @@ components:
           type: string
           description: Security name
         risk_metrics:
-          $ref: '#/components/schemas/RiskMetrics'
+          $ref: "#/components/schemas/RiskMetrics"
 
     RiskMetrics:
       type: object
@@ -903,15 +986,14 @@ security:
   - BearerAuth: []
 
 paths:
-
   /auth/token:
     post:
       summary: Generate OAuth2 Access Token
       description: >
         OAuth 2.0 client credentials flow for machine-to-machine authentication.
         Exchange API credentials for a short-lived JWT token (15 minutes).
-        
-        
+
+
         **Use Cases:**
 
         - AI agents connecting to the API
@@ -930,36 +1012,36 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OAuth2TokenRequest'
+              $ref: "#/components/schemas/OAuth2TokenRequest"
             example:
               grant_type: client_credentials
               client_id: rm_agent_live_abc123
               client_secret: rm_agent_live_abc123_xyz789_checksum
               scope: ticker-returns risk-decomposition
       responses:
-        '200':
+        "200":
           description: Access token generated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2TokenResponse'
+                $ref: "#/components/schemas/OAuth2TokenResponse"
               example:
                 access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
                 token_type: Bearer
                 expires_in: 900
                 scope: ticker-returns risk-decomposition batch-analysis
-        '400':
+        "400":
           description: Invalid request (missing or invalid grant_type)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
-        '401':
+                $ref: "#/components/schemas/OAuth2Error"
+        "401":
           description: Invalid credentials
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: "#/components/schemas/OAuth2Error"
 
   /mcp/sse:
     get:
@@ -997,9 +1079,9 @@ paths:
         - MCP
       security:
         - BearerAuth: []
-        - OAuth2ClientCredentials: ['*']
+        - OAuth2ClientCredentials: ["*"]
       responses:
-        '200':
+        "200":
           description: SSE connection established
           content:
             text/event-stream:
@@ -1008,21 +1090,36 @@ paths:
                 format: event-stream
               example: |
                 data: {"jsonrpc":"2.0","method":"notifications/initialized","params":{...}}
-                
+
                 data: {"jsonrpc":"2.0","method":"notifications/ping","params":{"timestamp":1234567890}}
-        '401':
+        "401":
           description: Authentication required
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
     post:
       summary: MCP JSON-RPC Request
       description: >
         Send JSON-RPC 2.0 messages to the MCP server.
-        
-        
+
+
         **Available methods:**
 
         - `tools/list` - List available MCP tools
@@ -1037,7 +1134,7 @@ paths:
         - MCP
       security:
         - BearerAuth: []
-        - OAuth2ClientCredentials: ['*']
+        - OAuth2ClientCredentials: ["*"]
       requestBody:
         required: true
         content:
@@ -1051,7 +1148,7 @@ paths:
               properties:
                 jsonrpc:
                   type: string
-                  enum: ['2.0']
+                  enum: ["2.0"]
                 method:
                   type: string
                   example: tools/call
@@ -1062,7 +1159,7 @@ paths:
                     - type: string
                     - type: integer
             example:
-              jsonrpc: '2.0'
+              jsonrpc: "2.0"
               method: tools/call
               params:
                 name: riskmodels_get_capability
@@ -1070,7 +1167,7 @@ paths:
                   id: ticker-returns
               id: 1
       responses:
-        '200':
+        "200":
           description: JSON-RPC response
           content:
             application/json:
@@ -1079,7 +1176,7 @@ paths:
                 properties:
                   jsonrpc:
                     type: string
-                    enum: ['2.0']
+                    enum: ["2.0"]
                   result:
                     type: object
                   error:
@@ -1093,6 +1190,27 @@ paths:
                     oneOf:
                       - type: string
                       - type: integer
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /.well-known/ai-plugin.json:
     get:
@@ -1106,7 +1224,7 @@ paths:
         - Discovery
       security: []
       responses:
-        '200':
+        "200":
           description: Plugin manifest
           content:
             application/json:
@@ -1157,8 +1275,8 @@ paths:
       description: >
         Comprehensive data handling and privacy disclosure for AI marketplace compliance.
         Documents encryption, retention, third-party sharing, and regulatory compliance.
-        
-        
+
+
         **Key sections:**
 
         - Data handling (AES-256-GCM, GCP KMS)
@@ -1176,7 +1294,7 @@ paths:
         - Privacy
       security: []
       responses:
-        '200':
+        "200":
           description: Privacy disclosure document
           content:
             application/json:
@@ -1206,7 +1324,7 @@ paths:
         - Discovery
       security: []
       responses:
-        '200':
+        "200":
           description: MCP server manifest
           content:
             application/json:
@@ -1235,15 +1353,15 @@ paths:
                         tools:
                           type: array
                           items:
-                            $ref: '#/components/schemas/MCPTool'
+                            $ref: "#/components/schemas/MCPTool"
 
   /plaid/holdings:
     get:
       summary: Fetch Plaid-synced portfolio holdings
       description: >
         Returns enriched holdings from connected Plaid accounts with risk metrics.
-        
-        
+
+
         **Features:**
 
         - Automatic ticker resolution and normalization
@@ -1253,8 +1371,8 @@ paths:
         - Real-time portfolio valuation
 
         - Multi-account aggregation
-        
-        
+
+
         **Authentication:** Required (API Key or OAuth2 with plaid:holdings scope)
 
         **Billing:** $0.01 per request
@@ -1267,17 +1385,17 @@ paths:
         - BearerAuth: []
         - OAuth2ClientCredentials: [plaid:holdings]
       responses:
-        '200':
+        "200":
           description: Enriched holdings with risk metrics
           headers:
             X-API-Cost-USD:
-              schema: {type: string}
+              schema: { type: string }
             X-RateLimit-Limit:
-              schema: {type: integer}
+              schema: { type: integer }
             X-RateLimit-Remaining:
-              schema: {type: integer}
+              schema: { type: integer }
             X-RateLimit-Reset:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -1286,7 +1404,7 @@ paths:
                   holdings:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PlaidHolding'
+                      $ref: "#/components/schemas/PlaidHolding"
                   summary:
                     type: object
                     properties:
@@ -1297,25 +1415,28 @@ paths:
                       position_count:
                         type: integer
                   _agent:
-                    $ref: '#/components/schemas/AgentMeta'
-        '401':
+                    $ref: "#/components/schemas/AgentMeta"
+        "401":
           description: Authentication required
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '402':
-          description: Insufficient balance
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Rate limit exceeded
+                $ref: "#/components/schemas/InsufficientBalance"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /metrics/{ticker}:
     get:
@@ -1350,20 +1471,20 @@ paths:
           description: Latest metrics snapshot.
           headers:
             X-API-Cost-USD:
-              schema: {type: string}
+              schema: { type: string }
               description: Cost deducted for this request (e.g. "0.005").
             X-Cache-Status:
-              schema: {type: string, enum: [HIT, MISS, BYPASS]}
+              schema: { type: string, enum: [HIT, MISS, BYPASS] }
             X-Data-Freshness:
-              schema: {type: string, format: date-time}
+              schema: { type: string, format: date-time }
             X-RateLimit-Limit:
-              schema: {type: integer}
+              schema: { type: integer }
               description: Request limit per minute
             X-RateLimit-Remaining:
-              schema: {type: integer}
+              schema: { type: integer }
               description: Remaining requests in current window
             X-RateLimit-Reset:
-              schema: {type: integer}
+              schema: { type: integer }
               description: Unix timestamp when limit resets
           content:
             application/json:
@@ -1376,17 +1497,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "402":
-          description: Insufficient balance
+          description: Insufficient balance.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: Insufficient balance
-                  balance_usd:
-                    type: number
+                $ref: "#/components/schemas/InsufficientBalance"
         "404":
           description: Symbol not found or no metrics row (see error message).
           content:
@@ -1394,19 +1509,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
-          description: Rate limit exceeded
+          description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
               description: Seconds to wait before retrying
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: Rate limit exceeded. Try again at 2026-03-07T12:34:56Z
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /ticker-returns:
     get:
@@ -1496,7 +1607,7 @@ paths:
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
               description: Seconds to wait before retrying.
           content:
             application/json:
@@ -1541,12 +1652,38 @@ paths:
                   symbol: { type: string }
                   ticker: { type: string }
                   periodicity: { type: string }
-                  returns_gross: { type: array, items: { type: "number", nullable: true } }
+                  returns_gross:
+                    { type: array, items: { type: "number", nullable: true } }
                   _metadata: { $ref: "#/components/schemas/RiskMetadata" }
         "400":
           description: Missing ticker.
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
         "404":
           description: Ticker not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /etf-returns:
     get:
@@ -1587,12 +1724,38 @@ paths:
                   ticker: { type: string }
                   periodicity: { type: string }
                   dates: { type: array, items: { type: string } }
-                  returns_gross: { type: array, items: { type: "number", nullable: true } }
+                  returns_gross:
+                    { type: array, items: { type: "number", nullable: true } }
                   _metadata: { $ref: "#/components/schemas/RiskMetadata" }
         "400":
           description: Missing etf.
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
         "404":
           description: ETF not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /l3-decomposition:
     get:
@@ -1647,7 +1810,7 @@ paths:
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -1658,10 +1821,13 @@ paths:
       summary: Multi-ticker batch analysis (25% discount)
       description: >
         Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker).
-        Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` HR columns from V3 history),
-        `hedge_ratios` (latest six HR names), `full_metrics` (flat snapshot with `l3_market_hr`-style keys
-        for notionals and ER). The `l3_decomposition` flag is accepted by the server type but is not
-        populated in the current implementation. Cost: $0.002/position, minimum $0.01/call.
+        Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation
+        schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …),
+        `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …).
+        Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity
+        (`L*_ER` / `L*_HR`), request `["full_metrics","hedge_ratios"]` and see docs/ERM3_ZARR_API_PARITY.md.
+        The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost:
+        $0.002/position, minimum $0.01/call.
       operationId: batchAnalyze
       tags: [Risk Metrics]
       requestBody:
@@ -1683,7 +1849,8 @@ paths:
                   type: array
                   items:
                     type: string
-                    enum: [returns, l3_decomposition, hedge_ratios, full_metrics]
+                    enum:
+                      [returns, l3_decomposition, hedge_ratios, full_metrics]
                   description: Which payloads to include per ticker (`full_metrics` recommended for portfolio screens).
                   example: ["full_metrics"]
                 years:
@@ -1701,6 +1868,23 @@ paths:
       responses:
         "200":
           description: Batch results keyed by ticker (JSON) or export formats when implemented.
+          headers:
+            X-Risk-Model-Version:
+              schema: { type: string }
+              description: ERM3 model version (align with zarr slice / `_metadata.model_version`).
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: Latest trading date for the batch snapshot.
+            X-Factor-Set-Id:
+              schema: { type: string }
+              description: Factor set identifier (e.g. SPY_uni_mc_3000).
+            X-Universe-Size:
+              schema: { type: integer }
+              description: Universe count for this model build.
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Request-ID:
+              schema: { type: string }
           content:
             application/x-parquet:
               schema:
@@ -1735,7 +1919,7 @@ paths:
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -1817,7 +2001,7 @@ paths:
         - Billing
       security:
         - BearerAuth: []
-        - OAuth2ClientCredentials: ['*']
+        - OAuth2ClientCredentials: ["*"]
       requestBody:
         required: true
         content:
@@ -1835,16 +2019,29 @@ paths:
                   description: Same params as the target endpoint
                   example: { ticker: "AAPL", years: 5 }
       responses:
-        '200':
+        "200":
           description: Cost estimate
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EstimateResponse'
-        '400':
+                $ref: "#/components/schemas/EstimateResponse"
+        "400":
           description: Unknown endpoint or invalid request
-        '401':
+        "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /health:
     get:
@@ -1933,11 +2130,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
         "429":
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -2004,11 +2207,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
         "429":
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -2090,7 +2299,7 @@ paths:
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -2141,7 +2350,7 @@ paths:
           description: Rate limit exceeded.
           headers:
             Retry-After:
-              schema: {type: integer}
+              schema: { type: integer }
           content:
             application/json:
               schema:

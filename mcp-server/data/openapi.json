@@ -478,37 +478,43 @@
       },
       "BatchHedgeRatios": {
         "type": "object",
-        "description": "Present when `metrics` includes `hedge_ratios`. Dollar HRs per $1 stock.",
+        "description": "Present when `metrics` includes `hedge_ratios`. Dollar HRs per $1 stock (same economics as `full_metrics` `*_hr` fields). Property names are **short** (`l1_market`, …); ERM3 zarr hedge-weight naming `L1_market_HR` … `L3_subsector_HR` maps row-wise to these keys — see docs/ERM3_ZARR_API_PARITY.md.\n",
         "properties": {
           "l1_market": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style alias `L1_market_HR`; same as `full_metrics.l1_market_hr`."
           },
           "l2_market": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style alias `L2_market_HR`; same as `full_metrics.l2_market_hr`."
           },
           "l2_sector": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style alias `L2_sector_HR`; same as `full_metrics.l2_sector_hr`."
           },
           "l3_market": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style alias `L3_market_HR`; same as `full_metrics.l3_market_hr`."
           },
           "l3_sector": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style alias `L3_sector_HR`; same as `full_metrics.l3_sector_hr`."
           },
           "l3_subsector": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style alias `L3_subsector_HR`; same as `full_metrics.l3_subsector_hr`."
           }
         }
       },
@@ -555,7 +561,7 @@
       },
       "BatchFullMetrics": {
         "type": "object",
-        "description": "Present when `metrics` includes `full_metrics`. Flat snapshot for batch consumers.",
+        "description": "Present when `metrics` includes `full_metrics`. Flat snapshot for batch consumers: L1/L2/L3 explained-risk and hedge-ratio fields when available from the backend (see docs/ERM3_ZARR_API_PARITY.md for zarr `L*_ER` / `L*_HR` mapping). Zarr topic-level `wmean_*` features are computed **client-side** as holdings-weighted means of these fields. Nulls mean missing or not modelled for that ticker — not omitted keys.\n",
         "properties": {
           "ticker": {
             "type": "string"
@@ -563,47 +569,103 @@
           "date": {
             "type": "string",
             "format": "date",
-            "nullable": true
+            "nullable": true,
+            "description": "Observation date (`teo`) for the snapshot; align with `X-Data-As-Of` / `_metadata.data_as_of`."
           },
           "volatility": {
             "type": "number",
             "format": "float",
             "nullable": true
           },
+          "l1_market_hr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L1_market_HR`; mirrors `hedge_ratios.l1_market`."
+          },
+          "l2_market_hr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L2_market_HR`; mirrors `hedge_ratios.l2_market`."
+          },
+          "l2_sector_hr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L2_sector_HR`; mirrors `hedge_ratios.l2_sector`."
+          },
           "l3_market_hr": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_market_HR`; mirrors `hedge_ratios.l3_market`."
           },
           "l3_sector_hr": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_sector_HR`; mirrors `hedge_ratios.l3_sector`."
           },
           "l3_subsector_hr": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_subsector_HR`; mirrors `hedge_ratios.l3_subsector`."
+          },
+          "l1_market_er": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L1_market_ER`."
+          },
+          "l1_residual_er": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L1_residual_ER`."
+          },
+          "l2_market_er": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L2_market_ER`."
+          },
+          "l2_sector_er": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L2_sector_ER`."
+          },
+          "l2_residual_er": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Zarr-style `L2_residual_ER`."
           },
           "l3_market_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_market_ER`."
           },
           "l3_sector_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_sector_ER`."
           },
           "l3_subsector_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_subsector_ER`."
           },
           "l3_residual_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Zarr-style `L3_residual_ER`."
           },
           "market_cap": {
             "type": "number",
@@ -698,6 +760,10 @@
           },
           "_agent": {
             "$ref": "#/components/schemas/AgentMeta"
+          },
+          "_metadata": {
+            "$ref": "#/components/schemas/RiskMetadata",
+            "description": "Lineage for PIT tests: model version, as-of date, factor set, universe size. Also emitted as `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size` headers when the gateway attaches them.\n"
           }
         }
       },
@@ -2170,7 +2236,7 @@
     "/batch/analyze": {
       "post": {
         "summary": "Multi-ticker batch analysis (25% discount)",
-        "description": "Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` HR columns from V3 history), `hedge_ratios` (latest six HR names), `full_metrics` (flat snapshot with `l3_market_hr`-style keys for notionals and ER). The `l3_decomposition` flag is accepted by the server type but is not populated in the current implementation. Cost: $0.002/position, minimum $0.01/call.\n",
+        "description": "Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.002/position, minimum $0.01/call.\n",
         "operationId": "batchAnalyze",
         "tags": [
           "Risk Metrics"
@@ -2241,6 +2307,43 @@
         "responses": {
           "200": {
             "description": "Batch results keyed by ticker (JSON) or export formats when implemented.",
+            "headers": {
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "ERM3 model version (align with zarr slice / `_metadata.model_version`)."
+              },
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "Latest trading date for the batch snapshot."
+              },
+              "X-Factor-Set-Id": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Factor set identifier (e.g. SPY_uni_mc_3000)."
+              },
+              "X-Universe-Size": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Universe count for this model build."
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/x-parquet": {
                 "schema": {

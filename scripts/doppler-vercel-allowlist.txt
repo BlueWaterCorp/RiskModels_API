@@ -1,0 +1,14 @@
+# Keys to copy from Doppler → Vercel for riskmodels-api (one name per line).
+# Lines starting with # are ignored.
+
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+NEXT_PUBLIC_APP_URL
+NEXT_PUBLIC_DEMO_API_KEY
+
+SUPABASE_SERVICE_ROLE_KEY
+STRIPE_SECRET_KEY
+
+# Canonical gateway secret (preferred). Legacy GATEWAY_SERVICE_KEY is still read by the app if set.
+RISKMODELS_API_SERVICE_KEY
+GATEWAY_SERVICE_KEY

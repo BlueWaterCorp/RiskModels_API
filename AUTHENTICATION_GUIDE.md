@@ -355,6 +355,83 @@ Backend data is also served from Zarr on Google Cloud Storage (`gs://rm_api_data
 
 ---
 
+## MCP Server Connection
+
+**New in v3.0.0-agent:** RiskModels supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) for AI agent integration.
+
+### Connection Details
+
+| Property | Value |
+|----------|-------|
+| **SSE Endpoint** | `https://riskmodels.net/api/mcp/sse` |
+| **Discovery** | `https://riskmodels.net/.well-known/mcp.json` |
+| **Authentication** | Bearer token (API key or OAuth2 JWT) |
+| **Protocol** | Server-Sent Events (SSE) with JSON-RPC 2.0 |
+
+### Connecting with Bearer Auth
+
+```javascript
+// Browser/SSE client
+const eventSource = new EventSource('https://riskmodels.net/api/mcp/sse', {
+  headers: { 'Authorization': 'Bearer rm_agent_live_...' }
+});
+
+eventSource.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  console.log('MCP message:', message);
+};
+```
+
+```python
+# Python SSE client
+import requests
+
+headers = {"Authorization": "Bearer rm_agent_live_..."}
+response = requests.get(
+    "https://riskmodels.net/api/mcp/sse",
+    headers=headers,
+    stream=True
+)
+
+for line in response.iter_lines():
+    if line:
+        print(f"Received: {line.decode('utf-8')}")
+```
+
+### Available MCP Tools
+
+Once connected, call `tools/list` via JSON-RPC to discover available tools:
+
+| Tool | Description |
+|------|-------------|
+| `riskmodels_list_endpoints` | List all API endpoints with summaries, tags, and costs |
+| `riskmodels_get_capability` | Get detailed schema for a specific capability |
+| `riskmodels_get_schema` | Fetch JSON response schema for an endpoint path |
+| `analyze_portfolio` | Analyze portfolio positions with risk metrics |
+| `hedge_portfolio` | Compute optimal hedge notionals (L1/L2/L3) |
+| `get_risk_decomposition` | Get L3 factor risk decomposition time series |
+
+### Example: Calling a Tool
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "analyze_portfolio",
+    "arguments": {
+      "positions": [
+        {"ticker": "AAPL", "weight": 0.4},
+        {"ticker": "MSFT", "weight": 0.6}
+      ]
+    }
+  },
+  "id": 1
+}
+```
+
+---
+
 ## AI Agent Provisioning Flow
 
 Recommended pattern for LLM agents integrating with the RiskModels API:

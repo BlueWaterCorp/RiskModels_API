@@ -20,6 +20,7 @@ This repository is the **authoritative public API reference** for the [RiskModel
 - **Developer Portal:** [riskmodels.app](https://riskmodels.app)
 - **Live API Docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
 - **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key)
+- **API Terms:** [riskmodels.net/terms/api](https://riskmodels.net/terms/api)
 - **Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
 
 ---
@@ -51,9 +52,22 @@ For a deeper explanation of the engine design choices behind these claims, see t
 
 ---
 
-## 🤖 MCP Server
+## 🤖 MCP Server (v3.0.0-agent)
 
 RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, enabling AI agents to directly query risk data and perform factor analysis.
+
+**MCP Connection:**
+- **SSE Endpoint:** `https://riskmodels.net/api/mcp/sse`
+- **Authentication:** Bearer token (API key or OAuth2 JWT)
+- **Discovery:** `https://riskmodels.net/.well-known/mcp.json`
+
+**Available Tools:**
+- `riskmodels_list_endpoints` — List all available API endpoints with summaries, tags, and costs
+- `riskmodels_get_capability` — Get detailed schema for a specific capability (e.g., "ticker-returns", "metrics")
+- `riskmodels_get_schema` — Fetch JSON response schema for a given endpoint path
+- `analyze_portfolio` — Analyze portfolio positions with risk metrics and hedge ratios
+- `hedge_portfolio` — Compute optimal hedge notionals using ERM3 factor model
+- `get_risk_decomposition` — Get monthly L3 factor risk decomposition time series
 
 See the [mcp-server/](./mcp-server/) directory for installation and usage instructions.
 
@@ -158,13 +172,14 @@ Borrowed visual style from [Risk_Models](https://github.com/Cerebellum-Archive/R
 | Document | Description |
 |---|---|
 | [README_API.md](README_API.md) | Complete API overview, endpoints, key concepts |
+| [API_TERMS.md](API_TERMS.md) | API Terms of Service ([riskmodels.net/terms/api](https://riskmodels.net/terms/api)) |
 | [PLAID_HOLDINGS_UX.md](PLAID_HOLDINGS_UX.md) | Plaid connection flow and holdings API user experience |
 | [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) | Bearer token, OAuth2, Supabase JWT, rate limits |
 | [DOCS_PROCESS.md](DOCS_PROCESS.md) | Process for adding new documentation |
 | [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | Field definitions, units, formulas |
 | [RESPONSE_METADATA.md](RESPONSE_METADATA.md) | `_agent` block, response headers, pricing |
 | [ERROR_SCHEMA.md](ERROR_SCHEMA.md) | Error codes and recovery patterns |
-| [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) | OpenAPI 3.0.3 specification |
+| [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) | OpenAPI 3.0.3 specification (v3.0.0-agent) |
 
 ---
 

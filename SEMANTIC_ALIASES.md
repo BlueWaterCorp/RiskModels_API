@@ -107,6 +107,10 @@ For the **six separate components** (individual SPY / sector / subsector notiona
 
 ---
 
+## ERM3 zarr parity (`L*_ER` / `L*_HR`)
+
+Batch responses use **`full_metrics`** (long keys like `l3_market_hr`) and **`hedge_ratios`** (short keys like `l1_market` for the same six hedge ratios). **`GET /metrics/{ticker}`** uses abbreviated keys (`l3_mkt_hr`, …). For a **zarr ↔ API name mapping**, holdings-weighted topic features, and example request JSON, see [docs/ERM3_ZARR_API_PARITY.md](docs/ERM3_ZARR_API_PARITY.md).
+
 ## Dataset Coverage
 
 - **Universe**: ~3,000 US equities (`uni_mc_3000` — top market cap)
