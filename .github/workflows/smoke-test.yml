@@ -1,0 +1,98 @@
+name: Production Smoke Test
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Daily at 7 AM UTC, after overnight data refresh
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: riskmodels.app Health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Health check
+        run: |
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" https://riskmodels.app/api/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ /api/health returned $STATUS"
+            exit 1
+          fi
+          echo "✅ /api/health → $STATUS"
+
+      - name: OpenAPI spec accessible
+        run: |
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" https://riskmodels.app/api/mcp/openapi)
+          # 200 (public) or 401 (auth-gated) are both fine — anything else is broken
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
+            echo "❌ /api/mcp/openapi returned $STATUS"
+            exit 1
+          fi
+          echo "✅ /api/mcp/openapi → $STATUS"
+
+      - name: Unauthenticated endpoints return 401
+        run: |
+          for ENDPOINT in \
+            "/api/tickers" \
+            "/api/estimate" \
+            "/api/balance" \
+            "/api/cli/query"; do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "https://riskmodels.app${ENDPOINT}")
+            if [ "$STATUS" != "401" ] && [ "$STATUS" != "400" ]; then
+              echo "❌ ${ENDPOINT} should require auth, got $STATUS"
+              exit 1
+            fi
+            echo "✅ ${ENDPOINT} → $STATUS (auth enforced)"
+          done
+
+      - name: Authenticated endpoints (with TEST_API_KEY)
+        if: ${{ secrets.TEST_API_KEY != '' }}
+        env:
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: |
+          # Tickers search
+          RESPONSE=$(curl -sf -H "Authorization: Bearer $TEST_API_KEY" \
+            "https://riskmodels.app/api/tickers?search=AAPL")
+          if ! echo "$RESPONSE" | grep -qi "AAPL"; then
+            echo "❌ /api/tickers did not return AAPL"
+            echo "$RESPONSE" | head -5
+            exit 1
+          fi
+          echo "✅ /api/tickers search → AAPL found"
+
+          # Free-tier status (should be 200 or 401, never 5xx)
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TEST_API_KEY" \
+            "https://riskmodels.app/api/auth/free-tier-status")
+          if [[ "$STATUS" == 5* ]]; then
+            echo "❌ /api/auth/free-tier-status returned $STATUS"
+            exit 1
+          fi
+          echo "✅ /api/auth/free-tier-status → $STATUS"
+
+      - name: Notify on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 riskmodels.app smoke test failed',
+              body: [
+                '## Production Smoke Test Failure',
+                '',
+                `**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                `**Time:** ${new Date().toISOString()}`,
+                '',
+                'Check the workflow logs above for the failing endpoint.',
+              ].join('\n'),
+              labels: ['bug', 'api', 'automated'],
+            });
