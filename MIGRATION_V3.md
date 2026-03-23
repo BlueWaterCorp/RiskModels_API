@@ -18,13 +18,13 @@ Version 3.0.0-agent introduces significant enhancements to the RiskModels API, i
 **v2.0.0 (Old):**
 ```bash
 # Session cookies were sufficient for some endpoints
-curl https://riskmodels.net/api/ticker-returns?ticker=NVDA
+curl https://riskmodels.app/api/ticker-returns?ticker=NVDA
 ```
 
 **v3.0.0-agent (New):**
 ```bash
 # All protected endpoints now require Bearer token
-curl https://riskmodels.net/api/ticker-returns?ticker=NVDA \
+curl https://riskmodels.app/api/ticker-returns?ticker=NVDA \
   -H "Authorization: Bearer rm_agent_live_..."
 ```
 
@@ -75,7 +75,7 @@ curl https://riskmodels.net/api/ticker-returns?ticker=NVDA \
 **Example:**
 ```bash
 # Exchange API credentials for short-lived JWT token
-curl -X POST https://riskmodels.net/api/auth/token \
+curl -X POST https://riskmodels.app/api/auth/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "client_credentials",
@@ -93,7 +93,7 @@ curl -X POST https://riskmodels.net/api/auth/token \
 # }
 
 # Use access token in subsequent requests
-curl -X GET https://riskmodels.net/api/metrics/NVDA \
+curl -X GET https://riskmodels.app/api/metrics/NVDA \
   -H "Authorization: Bearer eyJhbGc..."
 ```
 
@@ -114,7 +114,7 @@ curl -X GET https://riskmodels.net/api/metrics/NVDA \
 **Example:**
 ```bash
 # Fetch enriched holdings from connected Plaid accounts
-curl -X GET https://riskmodels.net/api/plaid/holdings \
+curl -X GET https://riskmodels.app/api/plaid/holdings \
   -H "Authorization: Bearer rm_agent_live_..."
 
 # Response includes risk metrics for each holding
@@ -162,10 +162,10 @@ curl -X GET https://riskmodels.net/api/plaid/holdings \
 
 ```typescript
 // Before (v2.0.0)
-const response = await fetch('https://riskmodels.net/api/metrics/NVDA');
+const response = await fetch('https://riskmodels.app/api/metrics/NVDA');
 
 // After (v3.0.0-agent)
-const response = await fetch('https://riskmodels.net/api/metrics/NVDA', {
+const response = await fetch('https://riskmodels.app/api/metrics/NVDA', {
   headers: {
     'Authorization': 'Bearer rm_agent_live_...'
   }
@@ -177,7 +177,7 @@ const response = await fetch('https://riskmodels.net/api/metrics/NVDA', {
 ```typescript
 // Step 1: Get OAuth2 token
 async function getAccessToken(clientId: string, clientSecret: string) {
-  const response = await fetch('https://riskmodels.net/api/auth/token', {
+  const response = await fetch('https://riskmodels.app/api/auth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -194,7 +194,7 @@ async function getAccessToken(clientId: string, clientSecret: string) {
 // Step 2: Use access token (cache for 15 minutes)
 const token = await getAccessToken('rm_agent_live_abc123', 'rm_agent_live_abc123_xyz789_checksum');
 
-const response = await fetch('https://riskmodels.net/api/metrics/NVDA', {
+const response = await fetch('https://riskmodels.app/api/metrics/NVDA', {
   headers: {
     'Authorization': `Bearer ${token}`
   }

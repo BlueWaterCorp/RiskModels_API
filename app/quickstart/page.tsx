@@ -7,7 +7,7 @@ import { ArrowRight } from 'lucide-react';
 const pythonExample = `import requests
 
 API_KEY  = "rm_agent_live_..."
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
 # Get latest metrics for NVDA (V3: fields live under "metrics")
@@ -20,7 +20,7 @@ print(f"Market Hedge:   {(m.get('l3_mkt_hr') or 0):.2f}")
 print(f"Vol (23d):      {(m.get('vol_23d') or 0):.1%}")`;
 
 const typescriptExample = `const API_KEY  = "rm_agent_live_...";
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 
 const resp = await fetch(\`\${BASE_URL}/metrics/NVDA\`, {
   headers: { Authorization: \`Bearer \${API_KEY}\` }
@@ -33,7 +33,7 @@ console.log(\`Residual Risk:  \${((m.l3_res_er ?? 0) * 100).toFixed(1)}%\`);
 console.log(\`Market Hedge:   \${(m.l3_mkt_hr ?? 0).toFixed(2)}\`);
 console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 
-const curlExample = `curl -X GET "https://riskmodels.net/api/metrics/NVDA" \\
+const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
 export default function QuickstartPage() {

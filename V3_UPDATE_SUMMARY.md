@@ -82,7 +82,7 @@ securitySchemes:
     type: oauth2
     flows:
       clientCredentials:
-        tokenUrl: https://riskmodels.net/api/auth/token
+        tokenUrl: https://riskmodels.app/api/auth/token
         scopes:
           ticker-returns: Access ticker returns
           risk-decomposition: Access L3 risk decomposition

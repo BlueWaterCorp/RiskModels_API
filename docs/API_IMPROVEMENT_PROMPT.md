@@ -8,7 +8,7 @@ This document is an **actionable cross-functional brief** for:
 - **SRE / on-call** — triage with reproducible evidence; correlate logs/traces (this doc is **not** a runbook).
 - **Technical writing** — align OpenAPI, interactive reference, and public MDX with production.
 
-**Scope:** Production behavior at `https://riskmodels.net/api` (and site-origin discovery) versus the **public contract** in this repo and what integrators read in docs.
+**Scope:** Production behavior at `https://riskmodels.app/api` (and site-origin discovery) versus the **public contract** in this repo and what integrators read in docs.
 
 **Expected outputs:**
 
@@ -78,7 +78,7 @@ Use this to avoid shipping contradictory spec and behavior.
 Standardize new findings so SRE and engineering can act without re-discovery.
 
 - **Request:** Minimal repro (`curl` one-liner or smoke case id + params).
-- **Environment:** `https://riskmodels.net/api` vs site origin; date/time (UTC).
+- **Environment:** `https://riskmodels.app/api` vs site origin; date/time (UTC).
 - **Response:** HTTP status, latency, response body snippet (redact secrets).
 - **Correlation:** `request_id` from JSON `_agent` / headers if present; trace id from internal tools.
 - **Source:** smoke row, manual call, or telemetry-only (label which).
@@ -102,7 +102,7 @@ Standardize new findings so SRE and engineering can act without re-discovery.
 
 ## Finding 1: `/.well-known/*` vs API base URL
 
-**Observation:** OpenAPI lists paths such as `/.well-known/mcp.json` under `servers[0].url` = `https://riskmodels.net/api`, which implies `https://riskmodels.net/api/.well-known/...`. Those URLs return **404** (HTML). The live manifests are served at **`https://riskmodels.net/.well-known/...`** (site origin, no `/api` prefix).
+**Observation:** OpenAPI lists paths such as `/.well-known/mcp.json` under `servers[0].url` = `https://riskmodels.app/api`, which implies `https://riskmodels.app/api/.well-known/...`. Those URLs return **404** (HTML). The live manifests are served at **`https://riskmodels.net/.well-known/...`** (site origin, no `/api` prefix).
 
 **Ask:**
 

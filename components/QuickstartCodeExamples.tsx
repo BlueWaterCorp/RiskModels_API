@@ -22,7 +22,7 @@ pip install requests
 import requests
 
 API_KEY = "rm_agent_live_..."
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 ticker = "NVDA"
@@ -52,7 +52,7 @@ const typescriptDecomposition = `/**
  */
 
 const API_KEY = "rm_agent_live_...";
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 const HEADERS = { Authorization: \`Bearer \${API_KEY}\` };
 
 interface L3Body {
@@ -99,7 +99,7 @@ pip install requests
 import requests
 
 API_KEY = "rm_agent_live_..."
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 ticker = "NVDA"
@@ -124,7 +124,7 @@ const typescriptHedgeSnapshot = `/**
  */
 
 const API_KEY = "rm_agent_live_...";
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 const HEADERS = { Authorization: \`Bearer \${API_KEY}\` };
 
 interface MetricsBody {
@@ -172,7 +172,7 @@ import requests
 import pandas as pd
 
 API_KEY = "rm_agent_live_..."
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 ticker = "NVDA"
@@ -205,7 +205,7 @@ const typescriptHistorical = `/**
  */
 
 const API_KEY = "rm_agent_live_...";
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 const HEADERS = { Authorization: \`Bearer \${API_KEY}\` };
 
 interface TickerReturnsResponse {
@@ -255,7 +255,7 @@ pip install requests
 import requests
 
 API_KEY = "rm_agent_live_..."
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 portfolio = [
@@ -296,7 +296,7 @@ const typescriptBatch = `/**
  */
 
 const API_KEY = "rm_agent_live_...";
-const BASE_URL = "https://riskmodels.net/api";
+const BASE_URL = "https://riskmodels.app/api";
 const HEADERS = { Authorization: \`Bearer \${API_KEY}\` };
 
 interface FullMetrics {

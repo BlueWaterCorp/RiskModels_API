@@ -57,7 +57,7 @@ For a deeper explanation of the engine design choices behind these claims, see t
 RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, enabling AI agents to directly query risk data and perform factor analysis.
 
 **MCP Connection:**
-- **SSE Endpoint:** `https://riskmodels.net/api/mcp/sse`
+- **SSE Endpoint:** `https://riskmodels.app/api/mcp/sse`
 - **Authentication:** Bearer token (API key or OAuth2 JWT)
 - **Discovery:** `https://riskmodels.net/.well-known/mcp.json`
 
