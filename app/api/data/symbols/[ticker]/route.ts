@@ -36,7 +36,7 @@ export async function GET(
     .maybeSingle();
 
   if (error) {
-    console.error(`[data/symbols] Error resolving ${upper}:`, error);
+    console.error(`[data/symbols] Error resolving ${canonicalTicker}:`, error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 
