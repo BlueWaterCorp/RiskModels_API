@@ -3,6 +3,14 @@
  *
  * Expects: Authorization: Bearer <RISKMODELS_API_SERVICE_KEY>
  *
+ * Two modes:
+ *   verifyGatewayAuth()  — "soft" auth: if a Bearer token is provided it must
+ *                          be valid, but unauthenticated requests pass through.
+ *                          Use for public read endpoints (symbols, history, etc.)
+ *
+ *   requireGatewayAuth() — "strict" auth: a valid Bearer token is required.
+ *                          Use for write/admin endpoints (Phase 2+).
+ *
  * Preferred env var on RiskModels_API: RISKMODELS_API_SERVICE_KEY.
  * Legacy alias supported during migration: GATEWAY_SERVICE_KEY.
  */
@@ -10,18 +18,36 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Returns a 401 NextResponse if the request is not authorized,
- * or null if the request is valid.
- *
- * Usage in route handlers:
- *   const denied = verifyGatewayAuth(request);
- *   if (denied) return denied;
+ * Soft auth — allows unauthenticated requests through, but rejects
+ * requests that provide an invalid token. Returns null to proceed.
  */
 export function verifyGatewayAuth(request: NextRequest): NextResponse | null {
   const key =
     process.env.RISKMODELS_API_SERVICE_KEY ?? process.env.GATEWAY_SERVICE_KEY;
 
   // If no service key is set, allow all requests (dev mode)
+  if (!key) return null;
+
+  const authHeader = request.headers.get("authorization");
+
+  // No token provided — allow through (public read access)
+  if (!authHeader) return null;
+
+  // Token provided — validate it
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  if (token !== key) {
+    return NextResponse.json({ error: "Invalid service key" }, { status: 401 });
+  }
+
+  return null;
+}
+
+/**
+ * Strict auth — requires a valid Bearer token. Use for non-public endpoints.
+ */
+export function requireGatewayAuth(request: NextRequest): NextResponse | null {
+  const key = process.env.GATEWAY_SERVICE_KEY;
+
   if (!key) return null;
 
   const authHeader = request.headers.get("authorization");
@@ -34,10 +60,7 @@ export function verifyGatewayAuth(request: NextRequest): NextResponse | null {
 
   const token = authHeader.replace(/^Bearer\s+/i, "");
   if (token !== key) {
-    return NextResponse.json(
-      { error: "Invalid service key" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Invalid service key" }, { status: 401 });
   }
 
   return null;
