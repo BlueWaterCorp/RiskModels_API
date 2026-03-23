@@ -59,15 +59,6 @@ export interface HealthStatus {
   >;
 }
 
-// Lazy initialization to avoid build-time errors
-let supabase: ReturnType<typeof createAdminClient> | null = null;
-function getSupabase() {
-  if (!supabase) {
-    supabase = createAdminClient();
-  }
-  return supabase;
-}
-
 /**
  * Log a telemetry event
  * Non-blocking - failures are silently ignored
@@ -77,7 +68,7 @@ export async function logTelemetry(event: TelemetryEvent): Promise<void> {
     // Insert into billing_events table for now
     // In production, this might go to a separate telemetry table
     // or a time-series database like TimescaleDB
-    const { error } = await getSupabase().from("billing_events").insert({
+    const { error } = await createAdminClient().from("billing_events").insert({
       user_id: event.user_id,
       request_id: event.request_id,
       capability_id: event.capability_id,
@@ -112,7 +103,7 @@ export async function getHealthStatus(): Promise<HealthStatus> {
   const dbStart = Date.now();
   let dbStatus: HealthStatus["services"]["database"] = { status: "healthy" };
   try {
-    const { error } = await getSupabase()
+    const { error } = await createAdminClient()
       .from("symbols")
       .select("count")
       .limit(1);
@@ -133,7 +124,7 @@ export async function getHealthStatus(): Promise<HealthStatus> {
     now.getTime() - 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: recentEvents, error: telemetryError } = await getSupabase()
+  const { data: recentEvents, error: telemetryError } = await createAdminClient()
     .from("billing_events")
     .select("capability_id, success, latency_ms")
     .gte("created_at", twentyFourHoursAgo);
@@ -207,7 +198,7 @@ export async function getTelemetryMetrics(
     Date.now() - days * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: events, error } = await getSupabase()
+  const { data: events, error } = await createAdminClient()
     .from("billing_events")
     .select("success, latency_ms, cost_usd")
     .eq("capability_id", capabilityId)

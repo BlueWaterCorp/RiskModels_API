@@ -6,8 +6,6 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const supabase = createAdminClient();
-
 export interface FreeTierLimits {
   queries_per_day: number;
   queries_per_minute: number;
@@ -37,6 +35,8 @@ export async function checkFreeTierLimit(
   limits: FreeTierLimits = DEFAULT_FREE_LIMITS,
 ): Promise<FreeTierStatus> {
   try {
+    const supabase = createAdminClient();
+
     // Get account tier
     const { data: account } = await supabase
       .from("agent_accounts")
@@ -140,7 +140,7 @@ export async function incrementFreeTierUsage(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Use raw SQL to atomically increment or create the record
-    const { error } = await supabase.rpc("increment_free_tier_usage", {
+    const { error } = await createAdminClient().rpc("increment_free_tier_usage", {
       p_user_id: userId,
     });
 
@@ -165,6 +165,8 @@ async function incrementFreeTierUsageFallback(
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const supabase = createAdminClient();
+
     // Check if record exists
     const { data: existing, error: selectError } = await supabase
       .from("free_tier_usage")
