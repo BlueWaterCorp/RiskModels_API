@@ -31,3 +31,4 @@ repomix*
 public/openapi.json
 
 .vercel
+.env*.local
