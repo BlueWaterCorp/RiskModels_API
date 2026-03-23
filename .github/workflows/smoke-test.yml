@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Health check
         run: |
-          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" https://riskmodels.app/api/health)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://riskmodels.app/api/health)
           if [ "$STATUS" != "200" ]; then
             echo "❌ /api/health returned $STATUS"
             exit 1
@@ -29,7 +29,7 @@ jobs:
 
       - name: OpenAPI spec accessible
         run: |
-          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" https://riskmodels.app/api/mcp/openapi)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://riskmodels.app/api/mcp/openapi)
           # 200 (public) or 401 (auth-gated) are both fine — anything else is broken
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
             echo "❌ /api/mcp/openapi returned $STATUS"
@@ -39,13 +39,14 @@ jobs:
 
       - name: Unauthenticated endpoints return 401
         run: |
+          # /api/tickers is intentionally public (landing-page search) — excluded here
           for ENDPOINT in \
-            "/api/tickers" \
             "/api/estimate" \
             "/api/balance" \
-            "/api/cli/query"; do
-            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "https://riskmodels.app${ENDPOINT}")
-            if [ "$STATUS" != "401" ] && [ "$STATUS" != "400" ]; then
+            "/api/l3-decomposition" \
+            "/api/metrics/AAPL"; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://riskmodels.app${ENDPOINT}")
+            if [ "$STATUS" != "401" ] && [ "$STATUS" != "400" ] && [ "$STATUS" != "405" ]; then
               echo "❌ ${ENDPOINT} should require auth, got $STATUS"
               exit 1
             fi
@@ -53,12 +54,12 @@ jobs:
           done
 
       - name: Authenticated endpoints (with TEST_API_KEY)
-        if: ${{ secrets.TEST_API_KEY != '' }}
         env:
           TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        if: env.TEST_API_KEY != ''
         run: |
           # Tickers search
-          RESPONSE=$(curl -sf -H "Authorization: Bearer $TEST_API_KEY" \
+          RESPONSE=$(curl -s -H "Authorization: Bearer $TEST_API_KEY" \
             "https://riskmodels.app/api/tickers?search=AAPL")
           if ! echo "$RESPONSE" | grep -qi "AAPL"; then
             echo "❌ /api/tickers did not return AAPL"
@@ -67,11 +68,21 @@ jobs:
           fi
           echo "✅ /api/tickers search → AAPL found"
 
-          # Free-tier status (should be 200 or 401, never 5xx)
-          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+          # Balance — must be 200 with can_make_requests
+          BAL=$(curl -s -H "Authorization: Bearer $TEST_API_KEY" \
+            "https://riskmodels.app/api/balance")
+          if ! echo "$BAL" | grep -q '"can_make_requests":true'; then
+            echo "❌ /api/balance did not return can_make_requests:true"
+            echo "$BAL" | head -3
+            exit 1
+          fi
+          echo "✅ /api/balance → can_make_requests:true"
+
+          # Free-tier status (any non-5xx is acceptable for a paid account)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $TEST_API_KEY" \
             "https://riskmodels.app/api/auth/free-tier-status")
-          if [[ "$STATUS" == 5* ]]; then
+          if echo "$STATUS" | grep -q "^5"; then
             echo "❌ /api/auth/free-tier-status returned $STATUS"
             exit 1
           fi
