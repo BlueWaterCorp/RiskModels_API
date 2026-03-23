@@ -16,7 +16,7 @@
 
 **Usage**:
 ```bash
-curl -X POST https://riskmodels.net/api/auth/provision-free \
+curl -X POST https://riskmodels.app/api/auth/provision-free \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-testing-agent"}'
 ```
@@ -48,7 +48,7 @@ curl -X POST https://riskmodels.net/api/auth/provision-free \
 **Usage**:
 ```bash
 curl -H "Authorization: Bearer rm_agent_free_abc123" \
-  https://riskmodels.net/api/auth/free-tier-status
+  https://riskmodels.app/api/auth/free-tier-status
 ```
 
 **Response**:

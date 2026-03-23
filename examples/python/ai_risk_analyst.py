@@ -14,7 +14,7 @@ pip install requests pandas openai
 # ── Configuration ──────────────────────────────────────────────────────────────
 API_KEY        = "PASTE_YOUR_KEY_HERE"      # <-- your RiskModels API key
 OPENAI_API_KEY = "PASTE_YOUR_OPENAI_KEY"    # <-- your OpenAI API key
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
 import requests

@@ -121,7 +121,7 @@ npm install -g riskmodels-cli
 
 #### 2. Get Free API Key (No Payment)
 ```bash
-curl -X POST https://riskmodels.net/api/auth/provision-free \
+curl -X POST https://riskmodels.app/api/auth/provision-free \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent"}'
 
@@ -149,7 +149,7 @@ riskmodels manifest --format openai
 #### 5. Check Usage
 ```bash
 curl -H "Authorization: Bearer rm_agent_free_xxx" \
-  https://riskmodels.net/api/auth/free-tier-status
+  https://riskmodels.app/api/auth/free-tier-status
 ```
 
 ---

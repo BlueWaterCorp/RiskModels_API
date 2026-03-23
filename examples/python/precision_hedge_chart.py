@@ -11,7 +11,7 @@ pip install requests pandas matplotlib numpy
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 API_KEY  = "PASTE_YOUR_KEY_HERE"   # <-- paste your RiskModels API key here
-BASE_URL = "https://riskmodels.net/api"
+BASE_URL = "https://riskmodels.app/api"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
 import requests

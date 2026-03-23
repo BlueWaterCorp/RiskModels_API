@@ -33,7 +33,7 @@ Install the RiskModels CLI to query equity risk models...
 npm install -g riskmodels-cli
 
 # Get a free API key
-curl -X POST https://riskmodels.net/api/auth/provision-free ...
+curl -X POST https://riskmodels.app/api/auth/provision-free ...
 
 # Configure and query
 riskmodels config set apiKey rm_agent_xxx
@@ -121,7 +121,7 @@ riskmodels manifest --format zed
 
 2. **Get free API key** (no payment, no email required):
    ```bash
-   curl -X POST https://riskmodels.net/api/auth/provision-free \
+   curl -X POST https://riskmodels.app/api/auth/provision-free \
      -H "Content-Type: application/json" \
      -d '{"agent_name": "my-agent"}'
    ```

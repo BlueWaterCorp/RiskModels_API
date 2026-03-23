@@ -7,17 +7,17 @@
     "contact": {
       "name": "RiskModels Support",
       "email": "api-support@riskmodels.net",
-      "url": "https://riskmodels.net"
+      "url": "https://riskmodels.app"
     },
-    "termsOfService": "https://riskmodels.net/terms/api",
+    "termsOfService": "https://riskmodels.app/terms/api",
     "license": {
       "name": "Commercial",
-      "url": "https://riskmodels.net/terms"
+      "url": "https://riskmodels.app/terms"
     }
   },
   "servers": [
     {
-      "url": "https://riskmodels.net/api",
+      "url": "https://riskmodels.app/api",
       "description": "Production"
     }
   ],
@@ -27,13 +27,13 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "rm_agent_{environment}_{random}_{checksum}",
-        "description": "API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`. Obtain via `POST /api/auth/provision` or from riskmodels.net/settings → API Keys. Include as: `Authorization: Bearer rm_agent_live_...`\n"
+        "description": "API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`. Obtain via `POST /api/auth/provision` or from riskmodels.app/settings → API Keys. Include as: `Authorization: Bearer rm_agent_live_...`\n"
       },
       "OAuth2ClientCredentials": {
         "type": "oauth2",
         "flows": {
           "clientCredentials": {
-            "tokenUrl": "https://riskmodels.net/api/auth/token",
+            "tokenUrl": "https://riskmodels.app/api/auth/token",
             "scopes": {
               "ticker-returns": "Access ticker returns and historical data",
               "risk-decomposition": "Access L3 risk decomposition",
@@ -136,7 +136,7 @@
             "type": "string",
             "format": "uri",
             "description": "Methodology documentation URL.",
-            "example": "https://riskmodels.net/docs/methodology/erm3-l3"
+            "example": "https://riskmodels.app/docs/methodology/erm3-l3"
           },
           "factors": {
             "type": "array",
@@ -1062,7 +1062,7 @@
       },
       "MCPTool": {
         "type": "object",
-        "description": "MCP tool descriptor as returned by `tools/list`. Tools are discoverable via `https://riskmodels.net/.well-known/mcp.json` or by connecting to the SSE endpoint at `https://riskmodels.net/api/mcp/sse` and calling `tools/list`.\n",
+        "description": "MCP tool descriptor as returned by `tools/list`. Tools are discoverable via `https://riskmodels.app/.well-known/mcp.json` or by connecting to the SSE endpoint at `https://riskmodels.app/api/mcp/sse` and calling `tools/list`.\n",
         "properties": {
           "name": {
             "type": "string",
@@ -1106,7 +1106,7 @@
           },
           "message": {
             "type": "string",
-            "example": "Insufficient balance. Current balance: $0.00. Top up at https://riskmodels.net/billing"
+            "example": "Insufficient balance. Current balance: $0.00. Top up at https://riskmodels.app/billing"
           },
           "balance_usd": {
             "type": "number",
@@ -1116,7 +1116,7 @@
           "top_up_url": {
             "type": "string",
             "format": "uri",
-            "example": "https://riskmodels.net/billing"
+            "example": "https://riskmodels.app/billing"
           }
         }
       },
@@ -1224,7 +1224,7 @@
     "/mcp/sse": {
       "get": {
         "summary": "MCP Server SSE Connection",
-        "description": "Server-Sent Events endpoint for Model Context Protocol communication. Establishes a persistent connection for real-time MCP protocol messages.\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.net/.well-known/mcp.json` for automated client discovery. Clients should read that manifest to obtain the SSE URL, supported tools, and auth requirements.\n\n**Connection:**\n- Protocol: Server-Sent Events (SSE)\n- Authentication: Required (Bearer token)\n- Keep-alive: 30-second heartbeat\n\n**Usage:**\n```javascript\nconst eventSource = new EventSource('https://riskmodels.net/api/mcp/sse', {\n  headers: { 'Authorization': 'Bearer rm_agent_...' }\n});\n```\n",
+        "description": "Server-Sent Events endpoint for Model Context Protocol communication. Establishes a persistent connection for real-time MCP protocol messages.\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery. Clients should read that manifest to obtain the SSE URL, supported tools, and auth requirements.\n\n**Connection:**\n- Protocol: Server-Sent Events (SSE)\n- Authentication: Required (Bearer token)\n- Keep-alive: 30-second heartbeat\n\n**Usage:**\n```javascript\nconst eventSource = new EventSource('https://riskmodels.app/api/mcp/sse', {\n  headers: { 'Authorization': 'Bearer rm_agent_...' }\n});\n```\n",
         "operationId": "mcpServerSSE",
         "tags": [
           "MCP"

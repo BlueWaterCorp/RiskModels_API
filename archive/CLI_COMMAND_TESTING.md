@@ -148,7 +148,7 @@ riskmodels schema --table "'; DROP TABLE ticker_metadata; --"
 ## 11. HTTP API (curl, for agents)
 
 ```bash
-curl -X POST https://riskmodels.net/api/cli/query \
+curl -X POST https://riskmodels.app/api/cli/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer rm_agent_live_xxx" \
   -d '{"sql": "SELECT ticker FROM ticker_metadata LIMIT 3"}'
