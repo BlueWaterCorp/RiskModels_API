@@ -38,22 +38,30 @@ function getResponseExample(endpoint: Endpoint): string {
   if (endpoint.operationId === 'getMetrics') {
     return JSON.stringify(
       {
+        symbol: 'NVDA-US',
         ticker: 'NVDA',
-        symbol: 'NVDA',
-        date: '2026-02-21',
-        volatility: 0.48,
-        sharpe_ratio: 1.82,
-        l1_market_hr: 1.72,
-        l1_market_er: 0.42,
-        l2_market_hr: 1.41,
-        l2_sector_hr: 0.31,
-        l3_market_hr: 1.28,
-        l3_sector_hr: 0.24,
-        l3_subsector_hr: -0.06,
-        sector_etf: 'XLK',
-        subsector_etf: 'XOP',
-        market_cap: 3200000000000,
-        close_price: 131.5,
+        teo: '2026-03-17',
+        periodicity: 'daily',
+        metrics: {
+          vol_23d: 0.48,
+          price_close: 131.5,
+          market_cap: 3200000000000,
+          l3_mkt_hr: 1.28,
+          l3_sec_hr: 0.24,
+          l3_sub_hr: -0.06,
+          l3_mkt_er: 0.42,
+          l3_sec_er: 0.15,
+          l3_sub_er: 0.08,
+          l3_res_er: 0.35,
+        },
+        meta: {
+          sector_etf: 'XLK',
+          asset_type: 'EQUITY',
+        },
+        _metadata: {
+          model_version: 'ERM3-L3-v30',
+          data_as_of: '2026-03-17',
+        },
         _agent: { cost_usd: 0.005, latency_ms: 145, request_id: 'req_abc123' },
       },
       null,
@@ -63,12 +71,79 @@ function getResponseExample(endpoint: Endpoint): string {
   if (endpoint.operationId === 'getTickerReturns') {
     return JSON.stringify(
       {
-        meta: { ticker: 'NVDA', years: 1, rows: 252 },
+        symbol: 'NVDA-US',
+        ticker: 'NVDA',
+        periodicity: 'daily',
         data: [
-          { date: '2026-02-21', gross_return: 0.012, l1: 1.72, l2: 1.65, l3: 1.58 },
-          { date: '2026-02-20', gross_return: -0.008, l1: 1.71, l2: 1.64, l3: 1.57 },
+          {
+            date: '2026-03-17',
+            returns_gross: 0.012,
+            price_close: 131.5,
+            l3_mkt_hr: 1.28,
+            l3_sec_hr: 0.24,
+            l3_sub_hr: -0.06,
+          },
+          {
+            date: '2026-03-16',
+            returns_gross: -0.008,
+            price_close: 130.2,
+            l3_mkt_hr: 1.27,
+            l3_sec_hr: 0.23,
+            l3_sub_hr: -0.05,
+          },
         ],
-        _agent: { cost_usd: 0.005, cache_status: 'HIT' },
+        meta: {
+          market_etf: 'SPY',
+          sector_etf: 'XLK',
+          universe: 'US_EQUITY',
+        },
+        _metadata: {
+          data_as_of: '2026-03-17',
+        },
+      },
+      null,
+      2
+    );
+  }
+  if (endpoint.operationId === 'batchAnalyze') {
+    return JSON.stringify(
+      {
+        results: {
+          NVDA: {
+            ticker: 'NVDA',
+            status: 'success',
+            full_metrics: {
+              ticker: 'NVDA',
+              date: '2026-03-17',
+              volatility: 0.48,
+              l3_mkt_hr: 1.28,
+              l3_sec_hr: 0.24,
+              l3_sub_hr: -0.06,
+            },
+          },
+        },
+        summary: { total: 1, success: 1, errors: 0 },
+        _agent: { cost_usd: 0.01, request_id: 'req_batch123' },
+      },
+      null,
+      2
+    );
+  }
+  if (endpoint.operationId === 'getL3Decomposition') {
+    return JSON.stringify(
+      {
+        ticker: 'NVDA',
+        dates: ['2026-03-17', '2026-03-16'],
+        l3_mkt_hr: [1.28, 1.27],
+        l3_sec_hr: [0.24, 0.23],
+        l3_sub_hr: [-0.06, -0.05],
+        l3_mkt_er: [0.42, 0.41],
+        l3_sec_er: [0.15, 0.14],
+        l3_sub_er: [0.08, 0.07],
+        l3_res_er: [0.35, 0.38],
+        market_factor_etf: 'SPY',
+        universe: 'US_EQUITY',
+        data_source: 'factset',
       },
       null,
       2
@@ -78,7 +153,7 @@ function getResponseExample(endpoint: Endpoint): string {
     return JSON.stringify(
       {
         estimated_cost_usd: 0.005,
-        estimated_rows: 1260,
+        estimated_rows: 252,
         capability: 'ticker-returns',
         pricing_model: 'per_request',
         unit_cost_usd: 0.005,

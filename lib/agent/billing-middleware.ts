@@ -329,8 +329,11 @@ export function withBilling(
       };
 
       // 5. Process the request
+      const handlerStart = Date.now();
       const response = await handler(req, context);
       const latencyMs = Date.now() - startTime;
+      const fetchLatencyMs = Number(response.headers.get("X-Data-Fetch-Latency-Ms")) || (Date.now() - handlerStart);
+      const agentDecisionLatencyMs = latencyMs - fetchLatencyMs;
       const success = response.status < 400;
 
       // 6. Atomically deduct balance on success (only if cost > 0).
@@ -376,11 +379,17 @@ export function withBilling(
         success,
         cost_usd: success ? costUsd : 0, // Only charge on success
         timestamp: new Date().toISOString(),
+        metadata: {
+          fetch_latency_ms: fetchLatencyMs,
+          agent_decision_latency_ms: agentDecisionLatencyMs,
+        },
       }).catch(console.error);
 
       // 8. Add billing headers to response
       response.headers.set("X-Request-ID", requestId);
       response.headers.set("X-Response-Latency-Ms", String(latencyMs));
+      response.headers.set("X-Agent-Decision-Latency-Ms", String(agentDecisionLatencyMs));
+      response.headers.set("X-Data-Fetch-Latency-Ms", String(fetchLatencyMs));
       response.headers.set("X-API-Cost-USD", String(success ? costUsd : 0));
       response.headers.set("X-API-Cost-Currency", "USD");
       response.headers.set(
