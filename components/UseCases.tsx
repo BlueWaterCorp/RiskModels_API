@@ -1,119 +1,162 @@
-import { Zap, Radar, ArrowLeftRight, Scale, Activity, RefreshCw, Shield } from 'lucide-react';
+import Link from 'next/link';
+import { Zap, ArrowLeftRight, Scale, Activity, RefreshCw, Shield } from 'lucide-react';
 
-const useCases = [
-  {
-    icon: Shield,
-    title: 'Pre-Trade Risk Check',
-    subtitle: 'Factor-exposure guardrails',
-    description:
-      'Before every execution, the agent evaluates the trade\'s marginal factor impact. Automatically blocks orders that would push any factor exposure beyond your defined thresholds.',
-    example: 'Block order: size exposure would exceed 2.0σ limit',
-    color: 'emerald',
+const accentClass = {
+  emerald: {
+    iconWrap: 'bg-emerald-500/10 border-emerald-500/20',
+    icon: 'text-emerald-400',
+    subtitle: 'text-emerald-400/75',
   },
-  {
-    icon: Activity,
-    title: 'Drift Monitoring',
-    subtitle: 'Intraday alerts',
-    description:
-      'Set a target factor profile. The agent monitors intraday and fires alerts when portfolio beta, sector tilt, or size exposure drifts beyond your defined sigma bands.',
-    example: 'Alert: momentum tilt +1.8σ above target',
-    color: 'amber',
+  amber: {
+    iconWrap: 'bg-amber-500/10 border-amber-500/20',
+    icon: 'text-amber-400',
+    subtitle: 'text-amber-400/75',
   },
+  blue: {
+    iconWrap: 'bg-blue-500/10 border-blue-500/20',
+    icon: 'text-blue-400',
+    subtitle: 'text-blue-400/75',
+  },
+  purple: {
+    iconWrap: 'bg-purple-500/10 border-purple-500/20',
+    icon: 'text-purple-400',
+    subtitle: 'text-purple-400/75',
+  },
+} as const;
+
+/** Hedge first (anchor); remaining three are implementation patterns. */
+const patterns = [
   {
+    id: 'hedge',
     icon: ArrowLeftRight,
     title: 'Hedge Recommendations',
-    subtitle: 'Hedging optimization + position-sizing',
+    subtitle: 'Core capability',
     description:
-      'Given current factor exposures and your hedging universe, the agent calculates the minimum-cost hedge to neutralize unwanted risk — optimal position sizes included.',
-    example: 'Hedge: short QQQ $47K, long XLU $12K',
-    color: 'blue',
+      'L1/L2/L3 hedge ratios, sector/subsector ETFs, and explained risk — ready to map to notionals without rebuilding the model.',
+    docsHref: '/docs/methodology',
+    color: 'blue' as const,
+    core: true,
   },
   {
+    id: 'pretrade',
+    icon: Shield,
+    title: 'Pre-Trade Risk',
+    subtitle: 'Implementation pattern',
+    description:
+      'Provide the data layer for automated factor-impact guardrails — marginal beta, sector, and subsector deltas your rules engine evaluates before execution.',
+    docsHref: '/docs/api',
+    color: 'emerald' as const,
+  },
+  {
+    id: 'drift',
+    icon: Activity,
+    title: 'Drift Monitoring',
+    subtitle: 'Implementation pattern',
+    description:
+      'Calculate real-time sigma-band drift against targets from daily L1/L2/L3 fields — feed results into your monitoring stack or custom alert logic.',
+    docsHref: '/docs/api',
+    color: 'amber' as const,
+  },
+  {
+    id: 'rebalance',
     icon: RefreshCw,
     title: 'Rebalance Triggers',
-    subtitle: 'Factor-tilt portfolio management',
+    subtitle: 'Agentic pattern',
     description:
-      'The agent identifies when cumulative factor drift warrants a full rebalance, surfaces specific positions causing the tilt, and suggests trade directions to restore alignment.',
-    example: 'Trigger: tech sector concentration > 35%',
-    color: 'purple',
+      'Detect when factor tilts breach policy using decomposition and exposure series — the API surfaces calculated trade directions implied by the structure; you own rebalance timing.',
+    docsHref: '/docs/agent-integration',
+    color: 'purple' as const,
   },
-];
+] as const;
 
 export default function UseCases() {
   return (
-    <section className="relative w-full py-24 lg:py-32 px-4 sm:px-6 lg:px-8 bg-zinc-950">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-600/30 to-transparent"
-        aria-hidden
-      />
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-14 lg:mb-16">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-sm font-medium mb-6">
-            <Zap size={16} className="text-primary" />
-            What Funds Are Building With It
+    <section
+      id="what-you-can-do"
+      className="relative z-[1] -mt-16 scroll-mt-20 w-full bg-transparent px-4 pt-6 pb-16 sm:px-6 sm:pt-7 sm:pb-16 lg:px-8 lg:pb-20"
+    >
+      <div className="mx-auto max-w-4xl min-w-0 lg:max-w-5xl">
+        <div className="mb-6 text-center lg:mb-7">
+          <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-400 sm:text-sm">
+            <Zap size={14} className="shrink-0 text-primary sm:h-4 sm:w-4" />
+            Hedge ratios first — patterns you orchestrate
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tighter mb-4">
-            Four Patterns. Complete Coverage.
+          <h2 className="mb-2 text-2xl font-bold tracking-tighter text-white sm:text-3xl md:text-4xl">
+            The Foundation for Risk Agents
           </h2>
-          <p className="text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
-            These patterns cover most of what a risk team does manually today. Now automated.
+          <p className="mx-auto max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
+            Hedge recommendations are our deepest, most turnkey surface. The rest is structured data you
+            connect to guards, monitors, and autonomous workflows.
           </p>
         </div>
 
-        {/* Use Cases Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
-          {useCases.map((useCase) => {
-            const Icon = useCase.icon;
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5">
+          {patterns.map((pattern) => {
+            const Icon = pattern.icon;
+            const a = accentClass[pattern.color];
+            const isCore = 'core' in pattern && pattern.core;
+
             return (
               <div
-                key={useCase.title}
-                className="group p-8 rounded-xl border border-zinc-800 bg-zinc-900/20 hover:bg-zinc-900/40 hover:border-zinc-700 transition-all"
+                key={pattern.id}
+                className={`group relative flex min-w-0 flex-col rounded-lg border bg-zinc-900/25 p-3.5 transition-colors sm:p-4 ${
+                  isCore
+                    ? 'border-blue-500/40 ring-1 ring-blue-500/15 bg-blue-500/[0.06] hover:border-blue-500/50 hover:bg-blue-500/[0.09]'
+                    : 'border-zinc-800/90 hover:border-zinc-600/80 hover:bg-zinc-900/40'
+                }`}
               >
-                {/* Icon & Title */}
-                <div className="flex items-start gap-4 mb-4">
-                  <div className={`w-12 h-12 rounded-lg bg-${useCase.color}-500/10 border border-${useCase.color}-500/20 flex items-center justify-center flex-shrink-0`}>
-                    <Icon className={`text-${useCase.color}-400`} size={24} />
+                <div
+                  className={`mb-2 flex min-w-0 items-start justify-between gap-2 ${isCore ? 'pr-[5.5rem] sm:pr-28' : ''}`}
+                >
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${a.iconWrap}`}
+                    >
+                      <Icon className={a.icon} size={18} />
+                    </div>
+                    <div className="min-w-0 pt-0.5">
+                      <h3 className="text-sm font-semibold leading-snug text-white sm:text-base">
+                        {pattern.title}
+                      </h3>
+                      <p className={`mt-0.5 text-[11px] font-medium sm:text-xs ${a.subtitle}`}>
+                        {pattern.subtitle}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-semibold text-white group-hover:text-primary transition-colors">
-                      {useCase.title}
-                    </h3>
-                    <p className={`text-sm text-${useCase.color}-400/80 mt-0.5`}>
-                      {useCase.subtitle}
-                    </p>
-                  </div>
+                  {isCore && (
+                    <span className="absolute right-2 top-2 shrink-0 rounded border border-blue-500/35 bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-300 sm:right-2.5 sm:top-2.5 sm:text-[10px]">
+                      CORE ENDPOINT
+                    </span>
+                  )}
                 </div>
 
-                {/* Description */}
-                <p className="text-zinc-400 leading-relaxed mb-4">
-                  {useCase.description}
+                <p className="mb-2.5 flex-1 text-[11px] leading-relaxed text-zinc-400 sm:text-xs">
+                  {pattern.description}
                 </p>
 
-                {/* Example */}
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-zinc-600">→</span>
-                  <span className="text-zinc-300 font-mono bg-zinc-950 px-2 py-1 rounded">
-                    {useCase.example}
-                  </span>
-                </div>
+                <Link
+                  href={pattern.docsHref}
+                  className={`mt-auto inline-flex text-[11px] font-semibold sm:text-xs ${
+                    isCore ? 'text-primary hover:text-primary/85' : 'text-zinc-400 hover:text-primary'
+                  }`}
+                >
+                  View Pattern Docs →
+                </Link>
               </div>
             );
           })}
         </div>
 
-        {/* Architecture Note */}
-        <div className="mt-16 p-6 rounded-xl border border-zinc-800 bg-zinc-900/20">
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Scale className="text-primary" size={20} />
+        <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-900/20 p-3.5 sm:mt-6 sm:p-4">
+          <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+              <Scale className="text-primary" size={18} />
             </div>
-            <div className="flex-1">
-              <h4 className="text-lg font-semibold text-white mb-1">
-                Works alongside your existing systems
-              </h4>
-              <p className="text-zinc-400 text-sm">
-                Webhooks, polling, or streaming — wire alerts to Slack, email, or your OMS directly.
-                The agent integrates without disrupting your current workflow.
+            <div className="min-w-0 flex-1">
+              <h4 className="text-sm font-semibold text-white sm:text-base">Plugs into your stack</h4>
+              <p className="text-[11px] leading-relaxed text-zinc-500 sm:text-xs">
+                REST, batch, Parquet/CSV exports, and MCP — you wire JSON into OMS, Slack, or agents; we do
+                not sit in your execution path.
               </p>
             </div>
           </div>

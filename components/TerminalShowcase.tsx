@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { JetBrains_Mono } from 'next/font/google';
 
 const jetbrains = JetBrains_Mono({
@@ -284,13 +284,20 @@ const scenarioE: Scenario = {
 
 const SCENARIOS: Scenario[] = [scenarioA, scenarioB, scenarioC, scenarioD, scenarioE];
 
+export interface TerminalShowcaseProps {
+  /** When true, renders only inner content (e.g. inside ProductWorkbench). */
+  embedded?: boolean;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function TerminalShowcase() {
+export default function TerminalShowcase({ embedded = false }: TerminalShowcaseProps) {
   const [activeId, setActiveId] = useState(SCENARIOS[0].id);
   const [phase, setPhase] = useState<Phase>('typing');
   const [typedCount, setTypedCount] = useState(0);
   const [visibleLines, setVisibleLines] = useState<Set<number>>(new Set());
   const [cursorVisible, setCursorVisible] = useState(true);
+  /** Bumps on every effect cleanup so stale timeouts (Strict Mode, tab switch) never advance state. */
+  const animSessionRef = useRef(0);
 
   const active = SCENARIOS.find((s) => s.id === activeId)!;
 
@@ -313,13 +320,16 @@ export default function TerminalShowcase() {
    * nested timeouts and left the UI frozen at `$` with no command typing).
    */
   useEffect(() => {
-    let cancelled = false;
+    const sessionId = ++animSessionRef.current;
+    const isLive = () => animSessionRef.current === sessionId;
+
     const pending = new Set<ReturnType<typeof setTimeout>>();
 
     const schedule = (fn: () => void, ms: number) => {
       const id = setTimeout(() => {
         pending.delete(id);
-        if (!cancelled) fn();
+        if (!isLive()) return;
+        fn();
       }, ms);
       pending.add(id);
     };
@@ -333,14 +343,14 @@ export default function TerminalShowcase() {
     const cmd = scenario.command;
 
     const runFullCycle = () => {
-      if (cancelled) return;
+      if (!isLive()) return;
       setPhase('typing');
       setTypedCount(0);
       setVisibleLines(new Set());
 
       let i = 0;
       const typeStep = () => {
-        if (cancelled) return;
+        if (!isLive()) return;
         if (i < cmd.length) {
           i += 1;
           setTypedCount(i);
@@ -351,18 +361,18 @@ export default function TerminalShowcase() {
       };
 
       const startOutput = () => {
-        if (cancelled) return;
+        if (!isLive()) return;
         setPhase('output');
         scenario.lines.forEach((line) => {
           schedule(() => {
-            if (cancelled) return;
+            if (!isLive()) return;
             setVisibleLines((prev) => new Set(prev).add(line.id));
           }, line.delayMs);
         });
         const lastDelay =
           scenario.lines.length > 0 ? scenario.lines[scenario.lines.length - 1].delayMs : 0;
         schedule(() => {
-          if (cancelled) return;
+          if (!isLive()) return;
           setPhase('done');
           schedule(runFullCycle, REPLAY_DELAY_MS);
         }, lastDelay + 700);
@@ -371,11 +381,14 @@ export default function TerminalShowcase() {
       schedule(typeStep, TYPING_SPEED_MS);
     };
 
-    runFullCycle();
+    queueMicrotask(() => {
+      if (!isLive()) return;
+      runFullCycle();
+    });
 
     return () => {
-      cancelled = true;
       clearPending();
+      animSessionRef.current += 1;
     };
   }, [activeId]);
 
@@ -393,34 +406,30 @@ export default function TerminalShowcase() {
     />
   );
 
-  return (
-    <section className="relative w-full -mt-8 sm:-mt-14 z-[3] px-4 sm:px-6 lg:px-8 pt-0 pb-24 lg:pb-32 bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-950">
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950 to-transparent"
-        aria-hidden
-      />
-      <div className="relative max-w-5xl mx-auto">
-        {/* Section heading — visually locked to hero */}
-        <div className="text-center mb-6 sm:mb-8">
-          <span className="inline-block text-xs font-mono font-semibold tracking-widest uppercase text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full mb-2.5">
-            Live Demo
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tighter mb-2">
-            See the API in Action
-          </h2>
-          <p className="text-zinc-400 max-w-2xl mx-auto text-base leading-relaxed">
-            Five real interaction patterns — CLI agent commands, raw REST calls, pre-flight cost estimation,
-            and MCP tool invocations.
-          </p>
-        </div>
+  const heading = (
+    <div className="text-center mb-2 sm:mb-2.5">
+      <span className="inline-block text-xs font-mono font-semibold tracking-widest uppercase text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full mb-1.5">
+        Live Demo
+      </span>
+      <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tighter mb-1.5">
+        See the API in Action
+      </h2>
+      <p className="text-zinc-400 max-w-2xl mx-auto text-base leading-relaxed px-1">
+        Five real interaction patterns — CLI agent commands, raw REST calls, pre-flight cost estimation,
+        and MCP tool invocations.
+      </p>
+    </div>
+  );
 
-        {/* Terminal window — glass shell over dark canvas */}
-        <div
-          className={`${jetbrains.className} relative z-10 isolate rounded-2xl overflow-hidden border border-white/10 bg-zinc-950/70 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_25px_80px_-20px_rgba(0,0,0,0.65),0_0_100px_-30px_rgba(59,130,246,0.25)] ring-1 ring-white/5`}
-        >
+  const terminalChrome = embedded
+    ? `${jetbrains.className} relative z-10 isolate max-w-full min-w-0 rounded-xl overflow-hidden border border-white/10 bg-[#06080c]/95 ring-1 ring-white/[0.04]`
+    : `${jetbrains.className} relative z-10 isolate max-w-full min-w-0 rounded-2xl overflow-hidden border border-white/10 bg-zinc-950/70 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_25px_80px_-20px_rgba(0,0,0,0.65),0_0_100px_-30px_rgba(59,130,246,0.25)] ring-1 ring-white/5`;
+
+  const terminal = (
+    <div className={terminalChrome}>
           {/* macOS title bar */}
           <div
-            className="flex items-center gap-2 px-5 py-3 border-b border-white/10 select-none bg-zinc-950/80"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-3 border-b border-white/10 select-none bg-zinc-950/80 min-w-0"
           >
             {/* Traffic lights */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -452,8 +461,7 @@ export default function TerminalShowcase() {
 
           {/* Tab bar */}
           <div
-            className="flex overflow-x-auto border-b border-white/10 bg-zinc-900/90"
-            style={{ scrollbarWidth: 'none' }}
+            className="flex overflow-x-auto border-b border-white/10 bg-zinc-900/90 max-w-full min-w-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {SCENARIOS.map((scenario) => (
               <button
@@ -474,8 +482,8 @@ export default function TerminalShowcase() {
           {/* Terminal body — key resets subtree when switching scenarios (line ids repeat per tab). */}
           <div
             key={activeId}
-            className="px-6 pt-5 pb-7 text-sm leading-[1.7] overflow-x-auto overflow-y-visible bg-[#0B0E14] text-left"
-            style={{ minHeight: 'min(460px, 70vh)' }}
+            className="px-3 sm:px-6 pt-5 pb-7 text-sm leading-[1.7] overflow-x-auto overflow-y-visible bg-[#0B0E14] text-left max-w-full min-w-0"
+            style={{ minHeight: 'min(340px, 52vh)' }}
           >
             {/* Prompt + typed command */}
             <div className="flex items-baseline gap-2 whitespace-nowrap">
@@ -511,7 +519,27 @@ export default function TerminalShowcase() {
               </div>
             )}
           </div>
-        </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="w-full min-w-0">
+        {heading}
+        {terminal}
+      </div>
+    );
+  }
+
+  return (
+    <section className="relative w-full z-[3] bg-zinc-950 px-4 py-16 sm:px-6 lg:px-8">
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950 to-transparent"
+        aria-hidden
+      />
+      <div className="relative max-w-5xl mx-auto min-w-0">
+        {heading}
+        {terminal}
       </div>
     </section>
   );

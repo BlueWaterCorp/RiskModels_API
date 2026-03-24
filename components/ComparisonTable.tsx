@@ -1,4 +1,4 @@
-import { Check, X, Zap } from 'lucide-react';
+import { ArrowRight, Check, X } from 'lucide-react';
 import Link from 'next/link';
 
 const features = [
@@ -14,14 +14,14 @@ const features = [
 
 export default function ComparisonTable() {
   return (
-    <section className="relative w-full py-24 lg:py-32 px-4 sm:px-6 lg:px-8 bg-zinc-950">
+    <section className="relative w-full bg-transparent px-4 pt-16 pb-10 sm:px-6 sm:pb-11 lg:px-8 lg:pb-12">
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-600/35 to-transparent"
         aria-hidden
       />
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-12 lg:mb-14">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tighter mb-3">
+        <div className="mb-6 text-center lg:mb-7">
+          <h2 className="mb-2 text-3xl font-bold tracking-tighter text-white sm:text-4xl">
             Enterprise Analytics.
             <span className="text-zinc-500"> Not Enterprise Pricing.</span>
           </h2>
@@ -131,10 +131,10 @@ export default function ComparisonTable() {
                 <div className="px-3 sm:px-5 py-4 text-center flex items-center justify-center md:scale-[1.04] md:origin-bottom bg-gradient-to-t from-primary/[0.1] to-transparent rounded-b-xl border border-t-0 border-primary/15">
                   <Link
                     href="/get-key"
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-lg transition-all shadow-md shadow-primary/20"
+                    className="group inline-flex items-center gap-2 px-8 py-4 bg-primary hover:bg-primary/90 text-white text-lg font-semibold rounded-lg transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30"
                   >
-                    Get API Key
-                    <Zap size={14} />
+                    Get Started
+                    <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                   </Link>
                 </div>
               </div>
@@ -142,8 +142,8 @@ export default function ComparisonTable() {
           </div>
         </div>
 
-        <div className="text-center mt-10">
-          <p className="text-zinc-500 text-sm leading-relaxed mb-3 max-w-xl mx-auto">
+        <div className="mt-4 text-center">
+          <p className="mx-auto mb-2 max-w-xl text-sm leading-relaxed text-zinc-500">
             RiskModels is built for teams that want institutional-grade risk analytics without the 6-month
             sales cycle.
           </p>

@@ -1,23 +1,13 @@
 import Hero from '@/components/Hero';
-import HeroFeatureGrid from '@/components/HeroFeatureGrid';
-import TryFree from '@/components/TryFree';
-import { WhatYouCanDo } from '@/components/WhatYouCanDo';
-import AgenticSection from '@/components/AgenticSection';
-import UseCases from '@/components/UseCases';
-import ComparisonTable from '@/components/ComparisonTable';
-import TerminalShowcase from '@/components/TerminalShowcase';
+import ProductWorkbench from '@/components/landing/ProductWorkbench';
+import LandingLower from '@/components/landing/LandingLower';
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen w-full max-w-[90rem] mx-auto">
+    <div className="min-h-screen w-full max-w-[90rem] mx-auto overflow-x-hidden">
       <Hero />
-      <TerminalShowcase />
-      <HeroFeatureGrid />
-      <AgenticSection />
-      <UseCases />
-      <WhatYouCanDo />
-      <ComparisonTable />
-      <TryFree />
+      <ProductWorkbench />
+      <LandingLower />
     </div>
   );
 }
