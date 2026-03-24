@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-SDK_VERSION = "0.1.0"
+SDK_VERSION = "0.2.0"
 
 # Parameters use JSON-friendly keys (required: bool) for discover(format="json") / tool builders.
 _SDK_METHODS: list[dict[str, Any]] = [

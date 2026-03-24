@@ -1,4 +1,5 @@
 import { getDocBySlug, getAllDocSlugs } from '@/lib/mdx';
+import CopyPythonSnippet from '@/components/docs/CopyPythonSnippet';
 import { MDXRemote } from 'next-mdx-remote/rsc';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -44,6 +45,7 @@ export default async function DocPage({ params }: { params: Promise<{ slug?: str
         <article className="prose prose-invert max-w-none prose-headings:font-bold prose-h1:text-4xl prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h3:text-xl prose-h3:mt-6 prose-p:text-zinc-400 prose-a:text-primary hover:prose-a:text-primary/80 prose-code:text-zinc-200 prose-code:bg-zinc-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 prose-table:border-zinc-800 prose-th:border-zinc-700 prose-td:border-zinc-800 prose-hr:border-zinc-800 prose-hr:my-10">
           <MDXRemote
             source={doc.content}
+            components={{ CopyPythonSnippet }}
             options={{
               mdxOptions: {
                 remarkPlugins: [remarkMath, remarkGfm],

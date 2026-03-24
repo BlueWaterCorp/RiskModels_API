@@ -86,34 +86,58 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
   <h2 className="text-xl sm:text-2xl font-bold text-zinc-100 m-0 mb-2 tracking-tight">ERM3 factor logic: the strategic value</h2>
   <p className="text-sm text-zinc-500 m-0 mb-6 max-w-3xl">Actionable quant framing—what each construct buys you in research and execution, and which semantic field to read in the SDK or API.</p>
   <div className="overflow-x-auto rounded-lg border border-zinc-800">
-    <table className="w-full min-w-[640px] text-left text-sm border-collapse">
+    <table className="w-full min-w-[900px] text-left text-sm border-collapse">
       <thead>
         <tr className="border-b border-zinc-700 bg-zinc-950/80">
-          <th className="py-3 px-4 font-semibold text-zinc-200 w-[22%]">Concept</th>
+          <th className="py-3 px-4 font-semibold text-zinc-200 w-[18%]">Concept</th>
           <th className="py-3 px-4 font-semibold text-zinc-200">The quant edge</th>
-          <th className="py-3 px-4 font-semibold text-zinc-200 w-[26%]">Key field</th>
+          <th className="py-3 px-4 font-semibold text-zinc-200 w-[22%]">Key field (SDK)</th>
+          <th className="py-3 px-4 font-semibold text-zinc-200 w-[28%]">SDK example</th>
         </tr>
       </thead>
       <tbody className="text-zinc-400">
         <tr className="border-b border-zinc-800 align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Residual Risk (RR)</td>
           <td className="py-3 px-4"><strong className="text-zinc-300">Uncover alpha.</strong> RR is idiosyncratic variance after L3 hedges. High RR (e.g. above 0.50) flags names where SPY and sector ETFs explain less—room for stock-specific edge.</td>
-          <td className="py-3 px-4"><code className="rounded bg-zinc-950 px-2 py-1 text-[13px] text-blue-300">l3_residual_er</code></td>
+          <td className="py-3 px-4"><code className="rounded bg-zinc-950 px-2 py-1 text-xs text-blue-300">l3_residual_er</code></td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[&quot;l3_residual_er&quot;].iloc[0]</code></td>
         </tr>
         <tr className="border-b border-zinc-800 align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Hedge Ratio (HR)</td>
-          <td className="py-3 px-4"><strong className="text-zinc-300">Precision hedging.</strong> Not a single beta—ERM3 gives dollar ETF per {'$'}1 stock at each layer (L1/L2/L3). Example scalar: <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_market_hr</code> for market neutralization.</td>
-          <td className="py-3 px-4"><code className="rounded bg-zinc-950 px-2 py-1 text-[13px] text-blue-300">l3_market_hr</code> <span className="text-zinc-600">(+ sector/subsector HRs)</span></td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Precision hedging.</strong> Not a single beta—ERM3 gives dollars of ETF per {'$'}1 stock at each L3 layer (market, sector, subsector).</td>
+          <td className="py-3 px-4">
+            <div className="flex flex-col gap-1.5">
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_market_hr</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_sector_hr</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_subsector_hr</code>
+            </div>
+          </td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[[&quot;l3_market_hr&quot;,&quot;l3_sector_hr&quot;,&quot;l3_subsector_hr&quot;]]</code></td>
         </tr>
         <tr className="border-b border-zinc-800 align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Explained Risk (ER)</td>
-          <td className="py-3 px-4"><strong className="text-zinc-300">Risk attribution.</strong> Variance share from market, sector, and subsector factors (orthogonalized). At L3, explained components + residual sum to ~1.0 within tolerance.</td>
-          <td className="py-3 px-4"><code className="rounded bg-zinc-950 px-2 py-1 text-[13px] text-blue-300">l3_market_er</code> <span className="text-zinc-600">(plus sector/subsector/residual ER)</span></td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Risk attribution.</strong> Variance share from market, sector, and subsector factors (orthogonalized). At L3, <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_market_er</code> + <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_sector_er</code> + <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_er</code> + <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_residual_er</code> ≈ 1.0 within tolerance.</td>
+          <td className="py-3 px-4">
+            <div className="flex flex-col gap-1.5">
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_market_er</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_sector_er</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_subsector_er</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_residual_er</code>
+            </div>
+          </td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[[&quot;l3_market_er&quot;,&quot;l3_sector_er&quot;,&quot;l3_subsector_er&quot;,&quot;l3_residual_er&quot;]]</code></td>
         </tr>
         <tr className="align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Sign convention</td>
-          <td className="py-3 px-4"><strong className="text-zinc-300">Model safety.</strong> Market and sector HRs are expected ≥ 0 under normal modelling; only <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_hr</code> may be negative (long subsector ETF).</td>
-          <td className="py-3 px-4"><code className="rounded bg-zinc-950 px-2 py-1 text-[13px] text-blue-300">l3_subsector_hr</code></td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Model safety.</strong> Under normal modelling, <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_market_hr</code> and <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_sector_hr</code> are expected ≥ 0; only <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_hr</code> may be negative (long subsector ETF).</td>
+          <td className="py-3 px-4">
+            <div className="flex flex-col gap-1.5">
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_market_hr</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_sector_hr</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_subsector_hr</code>
+            </div>
+          </td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">float(client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[&quot;l3_subsector_hr&quot;].iloc[0])  # may be &lt; 0</code></td>
         </tr>
       </tbody>
     </table>
@@ -172,17 +196,86 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
 
 ## Core Endpoints
 
-| Endpoint | Method | Description | Cost |
-|---|---|---|---|
-| `/api/ticker-returns` | GET | Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y | `$0.005/call` |
-| `/api/metrics/{ticker}` | GET | Latest snapshot: all 22 HR/ER fields, vol, Sharpe, sector, market cap | `$0.005/call` |
-| `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | `$0.005/call` |
-| `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | `$0.002/position` |
-| `/api/tickers` | GET | Ticker universe search, MAG7 shortcut | `Free` |
-| `/api/balance` | GET | Account balance and rate limits | `Free` |
-| `/api/invoices` | GET | Invoice history and spend summary | `Free` |
-| `/api/health` | GET | Service health | `Free` |
-| `/.well-known/agent-manifest` | GET | AI agent discovery manifest | `Free` |
+<div className="not-prose my-6 overflow-x-auto rounded-lg border border-zinc-800">
+  <table className="w-full min-w-[960px] text-left text-sm border-collapse">
+    <thead>
+      <tr className="border-b border-zinc-700 bg-zinc-950/80">
+        <th className="py-3 px-3 font-semibold text-zinc-200">Endpoint</th>
+        <th className="py-3 px-3 font-semibold text-zinc-200 w-16">Method</th>
+        <th className="py-3 px-3 font-semibold text-zinc-200">Description</th>
+        <th className="py-3 px-3 font-semibold text-zinc-200 w-24">Cost</th>
+        <th className="py-3 px-3 font-semibold text-zinc-200 min-w-[280px]">SDK example (Python)</th>
+      </tr>
+    </thead>
+    <tbody className="text-zinc-400">
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/ticker-returns</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y</td>
+        <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_ticker_returns("NVDA", years=5)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/metrics/{'{ticker}'}</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Latest snapshot: HR/ER fields (semantic columns in SDK), vol, Sharpe, sector, market cap</td>
+        <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_metrics("NVDA", as_dataframe=True)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/l3-decomposition</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Monthly historical HR/ER time series</td>
+        <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_l3_decomposition("NVDA")' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/batch/analyze</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Multi-ticker batch up to 100, 25% cheaper per position</td>
+        <td className="py-3 px-3 text-zinc-500">$0.002/position</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().batch_analyze(["NVDA","AAPL"], ["returns","full_metrics"], years=2)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/tickers</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Ticker universe search, MAG7 shortcut</td>
+        <td className="py-3 px-3 text-zinc-500">Free</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().search_tickers(search="NVDA")' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/balance</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Account balance and rate limits</td>
+        <td className="py-3 px-3 text-zinc-500">Free</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env()._transport.request("GET", "/balance")[0]' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/invoices</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Invoice history and spend summary</td>
+        <td className="py-3 px-3 text-zinc-500">Free</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env()._transport.request("GET", "/invoices")[0]' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/health</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Service health</td>
+        <td className="py-3 px-3 text-zinc-500">Free</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env()._transport.request("GET", "/health")[0]' /></td>
+      </tr>
+      <tr className="align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/.well-known/agent-manifest</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">AI agent discovery manifest</td>
+        <td className="py-3 px-3 text-zinc-500">Free</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='import httpx; httpx.get("https://riskmodels.app/.well-known/agent-manifest", timeout=30).json()' /></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<span className="block text-sm text-zinc-500 not-prose my-4">Account routes (<code className="text-zinc-400">/balance</code>, <code className="text-zinc-400">/invoices</code>, <code className="text-zinc-400">/health</code>) use the SDK transport with the same OAuth or API key as data methods. The well-known manifest is fetched from the site root (no auth).</span>
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
 
