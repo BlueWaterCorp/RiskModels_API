@@ -105,7 +105,7 @@ const faqs: PricingFaqItem[] = [
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-widest text-blue-400 mb-3">
+    <p className="text-xs font-semibold uppercase tracking-widest text-blue-400 mb-1.5">
       {children}
     </p>
   );
@@ -125,18 +125,18 @@ export default function PricingPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* ── Hero ── */}
-      <section className="mx-auto max-w-4xl px-6 pt-24 pb-16 text-center">
+      <section className="mx-auto max-w-4xl px-6 pt-12 pb-8 text-center">
         <SectionLabel>Pricing</SectionLabel>
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white mb-4">
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
           Simple, pay-as-you-go
         </h1>
-        <p className="text-lg text-zinc-400 max-w-2xl mx-auto mb-3">
+        <p className="text-base text-zinc-400 max-w-2xl mx-auto mb-2 leading-snug">
           Built for{" "}
           <span className="text-blue-400 font-semibold">agentic</span> workflows — MCP tools,
           batch analysis, and structured outputs your automations can act on. No subscriptions.
           No seat fees.
         </p>
-        <p className="text-base text-zinc-500 max-w-2xl mx-auto">
+        <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
           Start free with{" "}
           <span className="text-white font-semibold">$20 in credits</span> — then pay{" "}
           <span className="text-white font-semibold">$20 per million tokens</span>.
@@ -144,27 +144,27 @@ export default function PricingPage() {
       </section>
 
       {/* ── Main pricing card ── */}
-      <section className="mx-auto max-w-4xl px-6 py-20 pt-0">
-        <div className="rounded-2xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md overflow-hidden shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
+      <section className="mx-auto max-w-4xl px-6 pb-10 pt-0">
+        <div className="rounded-xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md overflow-hidden shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
           {/* Card header */}
-          <div className="px-8 pt-8 pb-6 border-b border-zinc-800/80">
-            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="px-5 pt-5 pb-4 border-b border-zinc-800/80">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
               <div>
-                <p className="text-sm font-medium text-zinc-400 mb-1">
+                <p className="text-xs font-medium text-zinc-400 mb-0">
                   Pay-as-You-Go
                 </p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-white">$20</span>
-                  <span className="text-zinc-400 text-lg">/ 1M tokens</span>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-4xl font-bold text-white tabular-nums">$20</span>
+                  <span className="text-zinc-400 text-base">/ 1M tokens</span>
                 </div>
-                <p className="text-sm text-zinc-500 mt-1">
+                <p className="text-xs text-zinc-500 mt-0.5 font-mono">
                   = $0.000020 per token
                 </p>
               </div>
-              <div className="flex flex-col items-start sm:items-end gap-2">
-                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-400 bg-green-400/10 border border-green-400/20 rounded-full px-3 py-1 backdrop-blur-sm">
+              <div className="flex flex-col items-start sm:items-end gap-1 sm:mt-0">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400 bg-green-400/10 border border-green-400/20 rounded-md px-2 py-0.5 backdrop-blur-sm">
                   <svg
-                    className="w-3.5 h-3.5"
+                    className="w-3 h-3 shrink-0"
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -176,17 +176,17 @@ export default function PricingPage() {
                   </svg>
                   $20 free credits after card setup
                 </span>
-                <p className="text-xs text-zinc-500">Credits never expire</p>
+                <p className="text-[11px] text-zinc-500">Credits never expire</p>
               </div>
             </div>
           </div>
 
           {/* Includes */}
-          <div className="px-8 py-6 border-b border-zinc-800/80">
-            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-4">
+          <div className="px-5 py-4 border-b border-zinc-800/80">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
               Included with every account
             </p>
-            <ul className="grid sm:grid-cols-2 gap-3">
+            <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
               {[
                 "Full access to all ~3,000 US equities",
                 "41-factor ERM3 risk decompositions",
@@ -199,9 +199,9 @@ export default function PricingPage() {
                 "Optional auto-refill (off by default)",
                 "Monthly spend cap controls",
               ].map((item) => (
-                <li key={item} className="flex items-start gap-2 text-sm text-zinc-300">
+                <li key={item} className="flex items-start gap-1.5 text-sm text-zinc-300 leading-snug">
                   <svg
-                    className="w-4 h-4 text-blue-400 mt-0.5 shrink-0"
+                    className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0"
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -218,11 +218,11 @@ export default function PricingPage() {
           </div>
 
           {/* CTA */}
-          <div className="px-8 py-6">
-            <div className="flex flex-col sm:flex-row gap-3">
+          <div className="px-5 py-4">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Link
                 href="/get-key"
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-3 transition-colors text-sm"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
               >
                 Get your free API key
                 <svg
@@ -241,7 +241,7 @@ export default function PricingPage() {
               </Link>
               <Link
                 href="/quickstart"
-                className="inline-flex items-center justify-center rounded-lg border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-6 py-3 transition-colors text-sm"
+                className="inline-flex items-center justify-center rounded-md border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
               >
                 View quickstart guide
               </Link>
@@ -253,12 +253,12 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Token usage + estimator ── */}
-      <section className="mx-auto max-w-4xl px-6 py-20">
+      <section className="mx-auto max-w-4xl px-6 py-10">
         <SectionLabel>Token usage</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-2">
+        <h2 className="text-xl font-bold text-white mb-1">
           How many tokens does a request use?
         </h2>
-        <p className="text-zinc-400 mb-10 max-w-3xl">
+        <p className="text-sm text-zinc-400 mb-5 max-w-3xl leading-snug">
           Token costs scale with complexity. Use the estimator to stress-test monthly spend, then
           compare with the reference table. Rows marked with{" "}
           <Sparkles className="inline h-3.5 w-3.5 text-blue-400 -mt-0.5" aria-hidden /> are
@@ -266,21 +266,21 @@ export default function PricingPage() {
           calls.
         </p>
 
-        <div className="mb-12">
+        <div className="mb-6">
           <PricingEstimator />
         </div>
 
-        <div className="max-w-4xl mx-auto rounded-xl border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
+        <div className="max-w-4xl mx-auto rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Request type
                 </th>
-                <th className="text-right px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Tokens
                 </th>
-                <th className="text-right px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Yield per $20
                 </th>
               </tr>
@@ -291,7 +291,7 @@ export default function PricingPage() {
                   key={row.action}
                   className="hover:bg-zinc-800/25 transition-colors"
                 >
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-2">
                     <span className="inline-flex items-center gap-2 font-medium">
                       {row.agentic ? (
                         <Sparkles
@@ -305,11 +305,11 @@ export default function PricingPage() {
                     </span>
                   </td>
                   <td
-                    className={`px-5 py-4 text-right font-mono ${row.agentic ? "text-blue-400" : "text-zinc-400"}`}
+                    className={`px-4 py-2 text-right font-mono text-xs ${row.agentic ? "text-blue-400" : "text-zinc-400"}`}
                   >
                     {row.tokens}
                   </td>
-                  <td className="px-5 py-4 text-right text-blue-400/90 font-medium">
+                  <td className="px-4 py-2 text-right text-blue-400/90 font-medium text-xs">
                     {row.yield}
                   </td>
                 </tr>
@@ -318,7 +318,7 @@ export default function PricingPage() {
           </table>
         </div>
 
-        <p className="mt-4 text-sm text-zinc-500 max-w-4xl mx-auto">
+        <p className="mt-2 text-xs text-zinc-500 max-w-4xl mx-auto leading-snug">
           Base rate: 1M tokens = $20. Token counts are per API call, not per ticker. Batch endpoints
           are the most efficient way to analyze large universes.
         </p>
@@ -327,10 +327,10 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Starter gift + Credit packs ── */}
-      <section className="mx-auto max-w-4xl px-6 py-20">
+      <section className="mx-auto max-w-4xl px-6 py-10">
         <SectionLabel>Auto-refill</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-2">Credits & refills</h2>
-        <p className="text-zinc-400 mb-10 max-w-3xl">
+        <h2 className="text-xl font-bold text-white mb-1">Credits & refills</h2>
+        <p className="text-sm text-zinc-400 mb-5 max-w-3xl leading-snug">
           Auto-refill stays <span className="text-zinc-200 font-medium">off</span> until you turn
           it on. When enabled, your card is charged for the pack you select whenever your balance
           drops below your threshold (default{" "}
@@ -339,22 +339,22 @@ export default function PricingPage() {
 
         {/* Starter gift — free $20 credits */}
         <div
-          className="mb-10 rounded-2xl border border-blue-400/35 bg-zinc-900/35 backdrop-blur-md px-6 py-6 sm:px-8 sm:py-7 relative overflow-hidden
+          className="mb-5 rounded-xl border border-blue-400/35 bg-zinc-900/35 backdrop-blur-md px-4 py-4 sm:px-5 sm:py-4 relative overflow-hidden
             shadow-[0_0_48px_-8px_rgba(59,130,246,0.45),0_0_1px_0_rgba(96,165,250,0.5)]"
         >
           <div
             className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-500/[0.08] via-transparent to-transparent"
             aria-hidden
           />
-          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1">
                 Starter gift
               </p>
-              <p className="text-2xl sm:text-3xl font-bold text-white mb-1">
+              <p className="text-xl sm:text-2xl font-bold text-white mb-0.5">
                 $20 in free credits
               </p>
-              <p className="text-sm text-zinc-400 max-w-xl leading-relaxed">
+              <p className="text-xs text-zinc-400 max-w-xl leading-snug">
                 Add a card to activate your key — we credit <span className="text-zinc-200">$20</span>{" "}
                 instantly. No upfront charge. This is not a refill pack; it&apos;s our welcome
                 balance so you can ship an agentic integration before you spend.
@@ -362,42 +362,42 @@ export default function PricingPage() {
             </div>
             <Link
               href="/get-key"
-              className="shrink-0 inline-flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 text-sm transition-colors"
+              className="shrink-0 inline-flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 text-sm transition-colors"
             >
               Claim credits
             </Link>
           </div>
         </div>
 
-        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
           Credit packs (paid refills)
         </p>
-        <div className="flex flex-col lg:flex-row gap-4 max-w-4xl mx-auto">
+        <div className="flex flex-col lg:flex-row gap-3 max-w-4xl mx-auto">
           {refillTiers.map((tier) => (
             <div
               key={tier.amount}
-              className={`relative flex-1 rounded-xl border bg-zinc-900/40 backdrop-blur-md p-6 flex flex-col min-h-[200px] ${
+              className={`relative flex-1 rounded-lg border bg-zinc-900/40 backdrop-blur-md p-4 flex flex-col min-h-0 ${
                 tier.popular
                   ? "border-blue-500/50 ring-1 ring-blue-500/20 shadow-[0_0_40px_-12px_rgba(59,130,246,0.35)]"
                   : "border-zinc-800/80"
               }`}
             >
               {tier.popular ? (
-                <div className="absolute top-0 right-0 rounded-bl-lg rounded-tr-xl bg-gradient-to-r from-blue-600 to-blue-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+                <div className="absolute top-0.5 right-0.5 rounded-bl-md rounded-tr-lg bg-gradient-to-r from-blue-600 to-blue-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-md">
                   Most popular
                 </div>
               ) : null}
-              <p className="text-3xl font-bold text-white mb-1 pr-24 lg:pr-0">{tier.amount}</p>
-              <p className="text-sm font-semibold text-blue-400 mb-1">
+              <p className="text-2xl font-bold text-white mb-0 pr-20 lg:pr-0 tabular-nums">{tier.amount}</p>
+              <p className="text-xs font-semibold text-blue-400 mb-0">
                 {tier.name}{" "}
                 <span className="text-zinc-500 font-normal">· {tier.audience}</span>
               </p>
-              <p className="text-sm text-zinc-400 leading-relaxed mt-2 flex-1">{tier.detail}</p>
+              <p className="text-xs text-zinc-400 leading-snug mt-1.5 flex-1">{tier.detail}</p>
             </div>
           ))}
         </div>
 
-        <p className="mt-8 text-sm text-zinc-500 max-w-4xl mx-auto">
+        <p className="mt-4 text-xs text-zinc-500 max-w-4xl mx-auto leading-snug">
           Manage auto-refill, tier, and threshold with{" "}
           <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">GET</code>{" "}
           /{" "}
@@ -412,15 +412,15 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Enterprise ── */}
-      <section className="mx-auto max-w-4xl px-6 py-20">
-        <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/35 backdrop-blur-md p-8">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
+      <section className="mx-auto max-w-4xl px-6 py-10">
+        <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/35 backdrop-blur-md p-5">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="flex-1">
               <SectionLabel>High volume</SectionLabel>
-              <h2 className="text-2xl font-bold text-white mb-3">
+              <h2 className="text-xl font-bold text-white mb-1">
                 10M+ tokens / month?
               </h2>
-              <p className="text-zinc-400 mb-6">
+              <p className="text-sm text-zinc-400 mb-3 leading-snug">
                 If you&apos;re in that ballpark, mail{" "}
                 <a
                   href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
@@ -431,16 +431,16 @@ export default function PricingPage() {
                 —we can raise rate limits, sharpen pricing for steady usage, and help you wire
                 things up. We&apos;ll reply and keep it simple.
               </p>
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {[
                   "Higher rate limits (100+ req/min) when you need them",
                   "Volume pricing if you're consistently heavy",
                   "Straightforward support—real replies, not a ticket black hole",
                   "Help integrating (batch flows, auth, whatever you're stuck on)",
                 ].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-sm text-zinc-300">
+                  <li key={item} className="flex items-center gap-1.5 text-sm text-zinc-300 leading-snug">
                     <svg
-                      className="w-4 h-4 text-zinc-500 shrink-0"
+                      className="w-3.5 h-3.5 text-zinc-500 shrink-0"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
@@ -458,7 +458,7 @@ export default function PricingPage() {
             <div className="sm:shrink-0">
               <a
                 href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-600 hover:border-zinc-400 text-zinc-200 hover:text-white font-medium px-6 py-3 transition-colors text-sm"
+                className="inline-flex items-center gap-2 rounded-md border border-zinc-600 hover:border-zinc-400 text-zinc-200 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
               >
                 Email us
                 <svg
@@ -483,24 +483,24 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Rate limits ── */}
-      <section className="mx-auto max-w-4xl px-6 py-20">
+      <section className="mx-auto max-w-4xl px-6 py-10">
         <SectionLabel>Rate limits</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-2">Requests per minute</h2>
-        <p className="text-zinc-400 mb-10">
+        <h2 className="text-xl font-bold text-white mb-1">Requests per minute</h2>
+        <p className="text-sm text-zinc-400 mb-5 leading-snug">
           Limits are per API key and reset every minute.
         </p>
 
-        <div className="max-w-4xl mx-auto rounded-xl border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
+        <div className="max-w-4xl mx-auto rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Tier
                 </th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Rate limit
                 </th>
-                <th className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Best for
                 </th>
               </tr>
@@ -508,9 +508,9 @@ export default function PricingPage() {
             <tbody className="divide-y divide-zinc-800/60">
               {rateLimitRows.map((row) => (
                 <tr key={row.tier} className="hover:bg-zinc-800/25 transition-colors">
-                  <td className="px-5 py-4 text-zinc-200 font-medium">{row.tier}</td>
-                  <td className="px-5 py-4 font-mono text-blue-400">{row.limit}</td>
-                  <td className="px-5 py-4 text-zinc-400">{row.best}</td>
+                  <td className="px-4 py-2 text-zinc-200 font-medium text-sm">{row.tier}</td>
+                  <td className="px-4 py-2 font-mono text-blue-400 text-xs">{row.limit}</td>
+                  <td className="px-4 py-2 text-zinc-400 text-sm">{row.best}</td>
                 </tr>
               ))}
             </tbody>
@@ -521,22 +521,22 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── FAQ ── */}
-      <section className="mx-auto max-w-4xl px-6 py-20 pb-16">
+      <section className="mx-auto max-w-4xl px-6 py-10 pb-12">
         <SectionLabel>FAQ</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-8">Common questions</h2>
+        <h2 className="text-xl font-bold text-white mb-3">Common questions</h2>
 
         <PricingFAQ items={faqs} />
 
         {/* Bottom CTA */}
-        <div className="mt-16 max-w-4xl mx-auto rounded-2xl border border-zinc-800/80 bg-zinc-900/35 backdrop-blur-md p-8 text-center">
-          <h3 className="text-xl font-bold text-white mb-2">Ready to start?</h3>
-          <p className="text-zinc-400 mb-6 text-sm">
+        <div className="mt-8 max-w-4xl mx-auto rounded-xl border border-zinc-800/80 bg-zinc-900/35 backdrop-blur-md p-5 text-center">
+          <h3 className="text-lg font-bold text-white mb-1">Ready to start?</h3>
+          <p className="text-zinc-400 mb-4 text-xs leading-snug">
             Get your free API key in under a minute. No password required.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
             <Link
               href="/get-key"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-3 transition-colors text-sm"
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
             >
               Get free API key
               <svg
@@ -555,7 +555,7 @@ export default function PricingPage() {
             </Link>
             <Link
               href="/docs/api"
-              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-6 py-3 transition-colors text-sm"
+              className="inline-flex items-center justify-center rounded-md border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
             >
               Read the docs
             </Link>
