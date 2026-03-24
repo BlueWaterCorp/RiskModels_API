@@ -18,6 +18,10 @@ function methodVariant(m: HttpMethod): 'get' | 'post' | 'put' | 'delete' | 'patc
   return m in { get: 1, post: 1, put: 1, delete: 1, patch: 1 } ? m : 'get';
 }
 
+function getRequestLanguage(endpoint: Endpoint): 'http' | 'json' {
+  return endpoint.method === 'get' ? 'http' : 'json';
+}
+
 function getRequestExample(endpoint: Endpoint): string {
   if (endpoint.method === 'get') {
     const path = endpoint.path.replace('{ticker}', 'NVDA');
@@ -90,7 +94,7 @@ function getResponseExample(endpoint: Endpoint): string {
 const ESTIMATE_REQUEST_BODY = { endpoint: 'ticker-returns', params: { ticker: 'AAPL', years: 5 } };
 
 export default function ApiReferencePage() {
-  const [selectedId, setSelectedId] = useState<string>('getMetrics');
+  const [selectedId, setSelectedId] = useState<string>('getTickerReturns');
   const [search, setSearch] = useState('');
   const [estimateApiKey, setEstimateApiKey] = useState('');
   const [estimateResponse, setEstimateResponse] = useState<Record<string, unknown> | null>(null);
@@ -173,16 +177,23 @@ export default function ApiReferencePage() {
                           type="button"
                           onClick={() => setSelectedId(ep.operationId)}
                           className={cn(
-                            'w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors',
+                            'w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200',
                             selectedId === ep.operationId
-                              ? 'bg-zinc-800 border-l-4 border-blue-500 text-white'
-                              : 'hover:bg-zinc-800/70 text-zinc-400 hover:text-zinc-200'
+                              ? [
+                                  'bg-primary/10 text-white',
+                                  'ring-1 ring-primary/35',
+                                  'shadow-[0_0_24px_-6px_hsl(var(--primary)_/_0.5)]',
+                                  'border-l-2 border-primary',
+                                ]
+                              : 'border-l-2 border-transparent hover:bg-zinc-800/60 text-zinc-400 hover:text-zinc-200'
                           )}
                         >
                           <Badge variant={methodVariant(ep.method)} className="shrink-0">
                             {ep.method.toUpperCase()}
                           </Badge>
-                          <span className="truncate font-mono text-xs">{ep.sidebarLabel ?? ep.path}</span>
+                          <span className="truncate font-mono text-xs tabular-nums">
+                            {ep.sidebarLabel ?? ep.path}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -211,7 +222,10 @@ export default function ApiReferencePage() {
               <Badge variant={methodVariant(selected.method)} className="text-base px-4 py-1">
                 {selected.method.toUpperCase()}
               </Badge>
-              <code className="text-xl lg:text-2xl font-mono text-zinc-200">{BASE_URL}{selected.path}</code>
+              <code className="text-xl lg:text-2xl font-mono tabular-nums text-zinc-200">
+                {BASE_URL}
+                {selected.path}
+              </code>
             </div>
 
             <p className="text-zinc-400 text-base leading-relaxed max-w-3xl">{selected.description}</p>
@@ -225,20 +239,24 @@ export default function ApiReferencePage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Param</TableHead>
-                      <TableHead>Type</TableHead>
+                      <TableHead className="text-slate-400 normal-case tracking-normal">Type</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Required</TableHead>
+                      <TableHead className="text-slate-400 normal-case tracking-normal">Default</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {selected.params.map((p) => (
                       <TableRow key={p.name}>
                         <TableCell>
-                          <code className="font-mono text-zinc-200">{p.name}</code>
+                          <code className="font-mono text-sm tabular-nums text-zinc-200">{p.name}</code>
                         </TableCell>
-                        <TableCell className="text-zinc-400">{p.type}</TableCell>
-                        <TableCell>{p.description}</TableCell>
-                        <TableCell>{p.required ? 'Yes' : p.default ? `Default: ${p.default}` : 'No'}</TableCell>
+                        <TableCell className="text-slate-400">{p.type}</TableCell>
+                        <TableCell className="text-zinc-400">{p.description}</TableCell>
+                        <TableCell className="text-zinc-400">{p.required ? 'Yes' : 'No'}</TableCell>
+                        <TableCell className="text-slate-400 font-mono text-xs tabular-nums">
+                          {p.default ?? '—'}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -268,10 +286,7 @@ export default function ApiReferencePage() {
                   label: 'Request',
                   content: (
                     <div className="space-y-4 mt-2">
-                      <CodeBlock
-                        code={getRequestExample(selected)}
-                        showCopy
-                      />
+                      <CodeBlock code={getRequestExample(selected)} language={getRequestLanguage(selected)} showCopy />
                       {selectedId === 'estimateCost' && (
                         <div className="pt-4 border-t border-zinc-800 space-y-3">
                           <h4 className="text-sm font-semibold text-zinc-200">Try it out</h4>
@@ -305,8 +320,8 @@ export default function ApiReferencePage() {
                               <p className="text-xs text-zinc-500 mb-1">Response</p>
                               <CodeBlock
                                 code={JSON.stringify(estimateResponse, null, 2)}
-                                showCopy
                                 language="json"
+                                showCopy
                               />
                             </div>
                           )}
@@ -324,7 +339,7 @@ export default function ApiReferencePage() {
                         <StatusBadge status={200} />
                         <span className="text-xs text-zinc-400">Success</span>
                       </div>
-                      <CodeBlock code={getResponseExample(selected)} showCopy />
+                      <CodeBlock code={getResponseExample(selected)} language="json" showCopy />
                     </div>
                   ),
                 },

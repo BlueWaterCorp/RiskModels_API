@@ -4,6 +4,9 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Sparkles } from "lucide-react";
+import PricingEstimator from "@/components/pricing/PricingEstimator";
+import PricingFAQ, { type PricingFaqItem } from "@/components/pricing/PricingFAQ";
 
 export const metadata: Metadata = {
   title: "Pricing — RiskModels API",
@@ -18,16 +21,19 @@ const usageRows = [
     action: "Risk decomposition (full)",
     tokens: "500",
     yield: "~2,000 per $20",
+    agentic: true,
   },
   {
     action: "Ticker returns lookup",
     tokens: "250",
     yield: "~4,000 per $20",
+    agentic: false,
   },
   {
     action: "Batch position analysis",
     tokens: "100 / position",
     yield: "~10,000 per $20",
+    agentic: true,
   },
 ];
 
@@ -50,22 +56,25 @@ const refillTiers = [
     name: "Small",
     audience: "Individual",
     detail: "~1M tokens per charge — great for experiments and light scripts.",
+    popular: false,
   },
   {
     amount: "$50",
     name: "Growth",
     audience: "Standard",
     detail: "~2.5M tokens per charge — default suggested tier when you enable auto-refill.",
+    popular: false,
   },
   {
     amount: "$100",
     name: "Business",
     audience: "Production",
     detail: "~5M tokens per charge — fewer interruptions for high-volume workloads.",
+    popular: true,
   },
 ];
 
-const faqs = [
+const faqs: PricingFaqItem[] = [
   {
     q: "Do my free credits expire?",
     a: "Your $20 in free credits never expire. However, your API key requires at least one call every 90 days to stay active. After 90 days of complete inactivity the key is automatically deactivated — not deleted — for security. You can reactivate instantly from your dashboard or by making any API call.",
@@ -102,8 +111,12 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Divider() {
-  return <hr className="border-zinc-800 my-16" />;
+function SectionDivider() {
+  return (
+    <div className="max-w-4xl mx-auto px-6">
+      <hr className="border-zinc-800/80" />
+    </div>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -112,24 +125,29 @@ export default function PricingPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* ── Hero ── */}
-      <section className="mx-auto max-w-4xl px-6 pt-24 pb-12 text-center">
+      <section className="mx-auto max-w-4xl px-6 pt-24 pb-16 text-center">
         <SectionLabel>Pricing</SectionLabel>
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white mb-4">
           Simple, pay-as-you-go
         </h1>
-        <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-          No subscriptions. No seat fees. No surprise bills. Start free with{" "}
-          <span className="text-white font-semibold">$20 in credits</span>{" "}
-          — then pay{" "}
+        <p className="text-lg text-zinc-400 max-w-2xl mx-auto mb-3">
+          Built for{" "}
+          <span className="text-blue-400 font-semibold">agentic</span> workflows — MCP tools,
+          batch analysis, and structured outputs your automations can act on. No subscriptions.
+          No seat fees.
+        </p>
+        <p className="text-base text-zinc-500 max-w-2xl mx-auto">
+          Start free with{" "}
+          <span className="text-white font-semibold">$20 in credits</span> — then pay{" "}
           <span className="text-white font-semibold">$20 per million tokens</span>.
         </p>
       </section>
 
       {/* ── Main pricing card ── */}
-      <section className="mx-auto max-w-4xl px-6 pb-8">
-        <div className="rounded-2xl border border-blue-500/30 bg-zinc-900 overflow-hidden">
+      <section className="mx-auto max-w-4xl px-6 py-32 pt-0">
+        <div className="rounded-2xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md overflow-hidden shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
           {/* Card header */}
-          <div className="px-8 pt-8 pb-6 border-b border-zinc-800">
+          <div className="px-8 pt-8 pb-6 border-b border-zinc-800/80">
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-zinc-400 mb-1">
@@ -144,7 +162,7 @@ export default function PricingPage() {
                 </p>
               </div>
               <div className="flex flex-col items-start sm:items-end gap-2">
-                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-400 bg-green-400/10 border border-green-400/20 rounded-full px-3 py-1">
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-400 bg-green-400/10 border border-green-400/20 rounded-full px-3 py-1 backdrop-blur-sm">
                   <svg
                     className="w-3.5 h-3.5"
                     fill="currentColor"
@@ -164,7 +182,7 @@ export default function PricingPage() {
           </div>
 
           {/* Includes */}
-          <div className="px-8 py-6 border-b border-zinc-800">
+          <div className="px-8 py-6 border-b border-zinc-800/80">
             <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-4">
               Included with every account
             </p>
@@ -232,23 +250,30 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* ── Token usage table ── */}
-      <section className="mx-auto max-w-4xl px-6 py-8">
-        <Divider />
+      <SectionDivider />
+
+      {/* ── Token usage + estimator ── */}
+      <section className="mx-auto max-w-4xl px-6 py-32">
         <SectionLabel>Token usage</SectionLabel>
         <h2 className="text-2xl font-bold text-white mb-2">
           How many tokens does a request use?
         </h2>
-        <p className="text-zinc-400 mb-8">
-          Token costs scale with the complexity of the request. Most developers
-          start with free credits to understand their usage patterns before
-          topping up.
+        <p className="text-zinc-400 mb-10 max-w-3xl">
+          Token costs scale with complexity. Use the estimator to stress-test monthly spend, then
+          compare with the reference table. Rows marked with{" "}
+          <Sparkles className="inline h-3.5 w-3.5 text-blue-400 -mt-0.5" aria-hidden /> are
+          typical <span className="text-blue-400 font-medium">agentic</span> / portfolio-heavy
+          calls.
         </p>
 
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+        <div className="mb-12">
+          <PricingEstimator />
+        </div>
+
+        <div className="max-w-4xl mx-auto rounded-xl border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-900 border-b border-zinc-800">
+              <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
                 <th className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
                   Request type
                 </th>
@@ -260,16 +285,31 @@ export default function PricingPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-zinc-950 divide-y divide-zinc-800/60">
+            <tbody className="divide-y divide-zinc-800/60">
               {usageRows.map((row) => (
-                <tr key={row.action} className="hover:bg-zinc-900/50 transition-colors">
-                  <td className="px-5 py-4 text-zinc-200 font-medium">
-                    {row.action}
+                <tr
+                  key={row.action}
+                  className="hover:bg-zinc-800/25 transition-colors"
+                >
+                  <td className="px-5 py-4">
+                    <span className="inline-flex items-center gap-2 font-medium">
+                      {row.agentic ? (
+                        <Sparkles
+                          className="h-4 w-4 text-blue-400 shrink-0"
+                          aria-label="Agentic workflow"
+                        />
+                      ) : null}
+                      <span className={row.agentic ? "text-blue-100" : "text-zinc-200"}>
+                        {row.action}
+                      </span>
+                    </span>
                   </td>
-                  <td className="px-5 py-4 text-right text-zinc-400 font-mono">
+                  <td
+                    className={`px-5 py-4 text-right font-mono ${row.agentic ? "text-blue-400" : "text-zinc-400"}`}
+                  >
                     {row.tokens}
                   </td>
-                  <td className="px-5 py-4 text-right text-blue-400 font-medium">
+                  <td className="px-5 py-4 text-right text-blue-400/90 font-medium">
                     {row.yield}
                   </td>
                 </tr>
@@ -278,53 +318,90 @@ export default function PricingPage() {
           </table>
         </div>
 
-        <p className="mt-4 text-sm text-zinc-500">
-          Base rate: 1M tokens = $20. Token counts are per API call, not per
-          ticker. Batch endpoints are the most efficient way to analyze large
-          universes.
+        <p className="mt-4 text-sm text-zinc-500 max-w-4xl mx-auto">
+          Base rate: 1M tokens = $20. Token counts are per API call, not per ticker. Batch endpoints
+          are the most efficient way to analyze large universes.
         </p>
       </section>
 
-      {/* ── Auto-refill tiers ── */}
-      <section className="mx-auto max-w-4xl px-6 py-8">
-        <Divider />
+      <SectionDivider />
+
+      {/* ── Starter gift + Credit packs ── */}
+      <section className="mx-auto max-w-4xl px-6 py-32">
         <SectionLabel>Auto-refill</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-2">Refill tiers</h2>
-        <p className="text-zinc-400 mb-8 max-w-3xl">
-          Auto-refill stays <span className="text-zinc-200 font-medium">off</span> until you
-          turn it on. When enabled, your card is charged for the tier you select
-          whenever your balance drops below your threshold (default{" "}
-          <span className="text-zinc-200 font-mono">$5</span>
-          ). Only these amounts are allowed:
+        <h2 className="text-2xl font-bold text-white mb-2">Credits & refills</h2>
+        <p className="text-zinc-400 mb-10 max-w-3xl">
+          Auto-refill stays <span className="text-zinc-200 font-medium">off</span> until you turn
+          it on. When enabled, your card is charged for the pack you select whenever your balance
+          drops below your threshold (default{" "}
+          <span className="text-zinc-200 font-mono">$5</span>).
         </p>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* Starter gift — free $20 credits */}
+        <div
+          className="mb-10 rounded-2xl border border-blue-400/35 bg-zinc-900/35 backdrop-blur-md px-6 py-6 sm:px-8 sm:py-7 relative overflow-hidden
+            shadow-[0_0_48px_-8px_rgba(59,130,246,0.45),0_0_1px_0_rgba(96,165,250,0.5)]"
+        >
+          <div
+            className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-500/[0.08] via-transparent to-transparent"
+            aria-hidden
+          />
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2">
+                Starter gift
+              </p>
+              <p className="text-2xl sm:text-3xl font-bold text-white mb-1">
+                $20 in free credits
+              </p>
+              <p className="text-sm text-zinc-400 max-w-xl leading-relaxed">
+                Add a card to activate your key — we credit <span className="text-zinc-200">$20</span>{" "}
+                instantly. No upfront charge. This is not a refill pack; it&apos;s our welcome
+                balance so you can ship an agentic integration before you spend.
+              </p>
+            </div>
+            <Link
+              href="/get-key"
+              className="shrink-0 inline-flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 text-sm transition-colors"
+            >
+              Claim credits
+            </Link>
+          </div>
+        </div>
+
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-4">
+          Credit packs (paid refills)
+        </p>
+        <div className="flex flex-col lg:flex-row gap-4 max-w-4xl mx-auto">
           {refillTiers.map((tier) => (
             <div
               key={tier.amount}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col"
+              className={`relative flex-1 rounded-xl border bg-zinc-900/40 backdrop-blur-md p-6 flex flex-col min-h-[200px] ${
+                tier.popular
+                  ? "border-blue-500/50 ring-1 ring-blue-500/20 shadow-[0_0_40px_-12px_rgba(59,130,246,0.35)]"
+                  : "border-zinc-800/80"
+              }`}
             >
-              <p className="text-3xl font-bold text-white mb-1">{tier.amount}</p>
+              {tier.popular ? (
+                <div className="absolute top-0 right-0 rounded-bl-lg rounded-tr-xl bg-gradient-to-r from-blue-600 to-blue-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+                  Most popular
+                </div>
+              ) : null}
+              <p className="text-3xl font-bold text-white mb-1 pr-24 lg:pr-0">{tier.amount}</p>
               <p className="text-sm font-semibold text-blue-400 mb-1">
                 {tier.name}{" "}
                 <span className="text-zinc-500 font-normal">· {tier.audience}</span>
               </p>
-              <p className="text-sm text-zinc-400 leading-relaxed mt-2 flex-1">
-                {tier.detail}
-              </p>
+              <p className="text-sm text-zinc-400 leading-relaxed mt-2 flex-1">{tier.detail}</p>
             </div>
           ))}
         </div>
 
-        <p className="mt-6 text-sm text-zinc-500">
+        <p className="mt-8 text-sm text-zinc-500 max-w-4xl mx-auto">
           Manage auto-refill, tier, and threshold with{" "}
-          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
-            GET
-          </code>{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">GET</code>{" "}
           /{" "}
-          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
-            PATCH
-          </code>{" "}
+          <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">PATCH</code>{" "}
           <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-blue-300">
             /api/user/billing-config
           </code>{" "}
@@ -332,10 +409,11 @@ export default function PricingPage() {
         </p>
       </section>
 
+      <SectionDivider />
+
       {/* ── Enterprise ── */}
-      <section className="mx-auto max-w-4xl px-6 py-8">
-        <Divider />
-        <div className="rounded-2xl border border-zinc-700 bg-zinc-900/60 p-8">
+      <section className="mx-auto max-w-4xl px-6 py-32">
+        <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/35 backdrop-blur-md p-8">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
             <div className="flex-1">
               <SectionLabel>High volume</SectionLabel>
@@ -350,8 +428,8 @@ export default function PricingPage() {
                 >
                   contact@riskmodels.net
                 </a>
-                —we can raise rate limits, sharpen pricing for steady usage, and
-                help you wire things up. We&apos;ll reply and keep it simple.
+                —we can raise rate limits, sharpen pricing for steady usage, and help you wire
+                things up. We&apos;ll reply and keep it simple.
               </p>
               <ul className="space-y-2">
                 {[
@@ -402,21 +480,20 @@ export default function PricingPage() {
         </div>
       </section>
 
+      <SectionDivider />
+
       {/* ── Rate limits ── */}
-      <section className="mx-auto max-w-4xl px-6 py-8">
-        <Divider />
+      <section className="mx-auto max-w-4xl px-6 py-32">
         <SectionLabel>Rate limits</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-2">
-          Requests per minute
-        </h2>
-        <p className="text-zinc-400 mb-8">
+        <h2 className="text-2xl font-bold text-white mb-2">Requests per minute</h2>
+        <p className="text-zinc-400 mb-10">
           Limits are per API key and reset every minute.
         </p>
 
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+        <div className="max-w-4xl mx-auto rounded-xl border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-900 border-b border-zinc-800">
+              <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
                 <th className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
                   Tier
                 </th>
@@ -428,15 +505,11 @@ export default function PricingPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-zinc-950 divide-y divide-zinc-800/60">
+            <tbody className="divide-y divide-zinc-800/60">
               {rateLimitRows.map((row) => (
-                <tr key={row.tier} className="hover:bg-zinc-900/50 transition-colors">
-                  <td className="px-5 py-4 text-zinc-200 font-medium">
-                    {row.tier}
-                  </td>
-                  <td className="px-5 py-4 font-mono text-blue-400">
-                    {row.limit}
-                  </td>
+                <tr key={row.tier} className="hover:bg-zinc-800/25 transition-colors">
+                  <td className="px-5 py-4 text-zinc-200 font-medium">{row.tier}</td>
+                  <td className="px-5 py-4 font-mono text-blue-400">{row.limit}</td>
                   <td className="px-5 py-4 text-zinc-400">{row.best}</td>
                 </tr>
               ))}
@@ -445,33 +518,18 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* ── FAQ ── */}
-      <section className="mx-auto max-w-4xl px-6 py-8 pb-24">
-        <Divider />
-        <SectionLabel>FAQ</SectionLabel>
-        <h2 className="text-2xl font-bold text-white mb-10">
-          Common questions
-        </h2>
+      <SectionDivider />
 
-        <div className="space-y-8">
-          {faqs.map((item) => (
-            <div
-              key={item.q}
-              className="border-l-2 border-zinc-800 pl-6"
-            >
-              <h3 className="text-base font-semibold text-white mb-2">
-                {item.q}
-              </h3>
-              <p className="text-sm text-zinc-400 leading-relaxed">{item.a}</p>
-            </div>
-          ))}
-        </div>
+      {/* ── FAQ ── */}
+      <section className="mx-auto max-w-4xl px-6 py-32 pb-28">
+        <SectionLabel>FAQ</SectionLabel>
+        <h2 className="text-2xl font-bold text-white mb-8">Common questions</h2>
+
+        <PricingFAQ items={faqs} />
 
         {/* Bottom CTA */}
-        <div className="mt-16 rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <h3 className="text-xl font-bold text-white mb-2">
-            Ready to start?
-          </h3>
+        <div className="mt-16 max-w-4xl mx-auto rounded-2xl border border-zinc-800/80 bg-zinc-900/35 backdrop-blur-md p-8 text-center">
+          <h3 className="text-xl font-bold text-white mb-2">Ready to start?</h3>
           <p className="text-zinc-400 mb-6 text-sm">
             Get your free API key in under a minute. No password required.
           </p>

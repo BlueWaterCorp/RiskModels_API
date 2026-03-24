@@ -41,20 +41,22 @@ const useCases = [
 
 export default function UseCases() {
   return (
-    <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-zinc-950">
+    <section className="relative w-full py-24 lg:py-32 px-4 sm:px-6 lg:px-8 bg-zinc-950">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-600/30 to-transparent"
+        aria-hidden
+      />
       <div className="max-w-6xl mx-auto">
-        {/* Section Header */}
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 text-sm font-medium mb-6">
+        <div className="text-center mb-14 lg:mb-16">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-sm font-medium mb-6">
             <Zap size={16} className="text-primary" />
             What Funds Are Building With It
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tighter mb-4">
             Four Patterns. Complete Coverage.
           </h2>
-          <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-            These patterns cover most of what a risk team does manually today.
-            Now automated.
+          <p className="text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
+            These patterns cover most of what a risk team does manually today. Now automated.
           </p>
         </div>
 
