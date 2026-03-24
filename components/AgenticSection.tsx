@@ -33,16 +33,20 @@ const AGENTIC_CAPABILITY_STEPS: { label: string; mapsTo: string }[] = [
 
 export default function AgenticSection() {
   return (
-    <section className="relative w-full py-24 lg:py-32 px-4 sm:px-6 lg:px-8 bg-zinc-950 overflow-hidden">
+    <section className="relative z-[1] w-full overflow-hidden bg-transparent px-4 pt-10 pb-16 sm:px-6 sm:pt-12 sm:pb-16 lg:px-8 lg:pb-20">
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-600/35 to-transparent"
         aria-hidden
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-blue-950/[0.07] via-transparent to-transparent pointer-events-none" />
+      {/* Local vignette — complements page-level blue mesh */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgb(30_58_138/0.06),transparent_50%)]"
+        aria-hidden
+      />
 
-      <div className="relative max-w-6xl mx-auto">
-        <div className="text-center mb-14 lg:mb-16">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tighter mb-4">
+      <div className="relative max-w-6xl mx-auto min-w-0">
+        <div className="text-center mb-7 lg:mb-8">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tighter mb-3">
             What Makes It <span className="text-primary">Agentic</span>
           </h2>
           <p className="text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
@@ -51,17 +55,17 @@ export default function AgenticSection() {
         </div>
 
         {/* Comparison — Traditional | VS | Agentic */}
-        <div className="flex flex-col md:flex-row md:items-stretch gap-6 md:gap-0 mb-16 lg:mb-20">
-          {/* Traditional API — muted */}
-          <div className="flex-1 min-w-0 p-7 lg:p-8 rounded-2xl md:rounded-r-none border border-zinc-800/80 bg-zinc-950/80 opacity-[0.82] saturate-[0.65] contrast-[0.97] md:border-r-0">
+        <div className="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-stretch md:gap-0 lg:mb-8">
+          {/* Traditional API — readable secondary */}
+          <div className="flex-1 min-w-0 p-7 lg:p-8 rounded-2xl md:rounded-r-none border border-zinc-800/80 bg-zinc-950/90 md:border-r-0">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-11 h-11 rounded-lg bg-zinc-900 flex items-center justify-center border border-zinc-800">
-                <Terminal className="text-zinc-500" size={22} />
+                <Terminal className="text-zinc-400" size={22} />
               </div>
-              <h3 className="text-lg font-semibold text-zinc-500 tracking-tight">Traditional APIs</h3>
+              <h3 className="text-lg font-semibold text-zinc-400 tracking-tight">Traditional APIs</h3>
             </div>
 
-            <p className="text-xs uppercase tracking-wider text-zinc-600 mb-5 font-medium">You own every step</p>
+            <p className="text-xs uppercase tracking-wider text-zinc-500 mb-5 font-medium">You own every step</p>
 
             <ul className="space-y-3.5">
               {[
@@ -73,15 +77,15 @@ export default function AgenticSection() {
                 'You decide what hedge to use',
                 'You implement the trade',
               ].map((step, i) => (
-                <li key={i} className="flex items-start gap-3 text-sm text-zinc-500 leading-relaxed">
-                  <span className="text-zinc-700 mt-0.5 font-mono text-xs">→</span>
+                <li key={i} className="flex items-start gap-3 text-sm text-zinc-400 leading-relaxed">
+                  <span className="text-zinc-600 mt-0.5 font-mono text-xs">→</span>
                   {step}
                 </li>
               ))}
             </ul>
 
             <div className="mt-8 pt-5 border-t border-zinc-800/60">
-              <p className="text-zinc-600 text-sm leading-relaxed">
+              <p className="text-zinc-500 text-sm leading-relaxed">
                 You = the risk engine. API = a data pipe.
               </p>
             </div>
@@ -105,9 +109,11 @@ export default function AgenticSection() {
           </div>
 
           {/* Agentic — emphasis */}
-          <div className="flex-1 min-w-0 p-7 lg:p-8 rounded-2xl md:rounded-l-none border border-primary/35 bg-gradient-to-br from-primary/[0.08] via-zinc-950/90 to-zinc-950 shadow-[0_0_0_1px_rgba(59,130,246,0.12),0_0_72px_-12px_rgba(59,130,246,0.35),0_0_120px_-40px_rgba(59,130,246,0.2)] md:border-l-0 relative">
+          <div
+            className="flex-1 min-w-0 p-7 lg:p-8 rounded-2xl md:rounded-l-none border border-blue-500/20 bg-gradient-to-br from-primary/[0.08] via-zinc-950/90 to-zinc-950 shadow-[0_0_30px_-15px_rgba(59,130,246,0.5),0_0_0_1px_rgba(59,130,246,0.15)] md:border-l-0 relative"
+          >
             <div
-              className="pointer-events-none absolute inset-0 rounded-2xl md:rounded-l-none ring-1 ring-inset ring-primary/20"
+              className="pointer-events-none absolute inset-0 rounded-2xl md:rounded-l-none ring-1 ring-inset ring-blue-500/20"
               aria-hidden
             />
             <div className="relative">
@@ -145,55 +151,13 @@ export default function AgenticSection() {
           </div>
         </div>
 
-        {/* Code Example */}
-        <div className="rounded-2xl border border-zinc-800/90 bg-zinc-950/80 overflow-hidden backdrop-blur-sm">
-          <div className="px-6 py-4 border-b border-zinc-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full bg-red-500/80" />
-              <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
-              <span className="w-3 h-3 rounded-full bg-green-500/80" />
-            </div>
-            <span className="text-xs text-zinc-600 font-mono">agentic-workflow.sh</span>
-          </div>
-          <div className="p-6 overflow-x-auto">
-            <pre className="text-sm font-mono leading-relaxed">
-              <code className="text-zinc-300">
-                <span className="text-zinc-500">{'# Install the CLI'}</span>
-                <br />
-                <span className="text-emerald-400">$ npm install -g riskmodels-cli</span>
-                <br />
-                <br />
-                <span className="text-zinc-500">{'# Configure your API key'}</span>
-                <br />
-                <span className="text-white">$ riskmodels</span>{' '}
-                <span className="text-blue-400">config</span>{' '}
-                <span className="text-zinc-500">set apiKey rm_live_...</span>
-                <br />
-                <br />
-                <span className="text-zinc-500">{'# Multi-ticker metrics + hedges (see Quickstart § batch)'}</span>
-                <br />
-                <span className="text-white">$ curl -X POST</span>{' '}
-                <span className="text-blue-400">https://riskmodels.app/api/batch/analyze</span>
-                <span className="text-zinc-500"> ...</span>
-                <br />
-                <br />
-                <span className="text-zinc-500">{'# MCP: analyze_portfolio · hedge_portfolio (OpenAPI + /.well-known/mcp.json)'}</span>
-                <br />
-                <span className="text-zinc-500">{'# → Per-ticker L3 hedge ratios & explained risk in JSON'}</span>
-                <br />
-                <span className="text-zinc-500">{'# → POST /estimate previews token cost before batch runs'}</span>
-              </code>
-            </pre>
-          </div>
-        </div>
-
-        <div className="text-center mt-12">
+        <div className="text-center">
           <Link
             href="/quickstart"
-            className="group inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-all shadow-lg shadow-primary/15"
+            className="group inline-flex items-center gap-2 px-8 py-4 bg-primary hover:bg-primary/90 text-white text-lg font-semibold rounded-lg transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30"
           >
             Try the Agentic API
-            <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+            <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
       </div>

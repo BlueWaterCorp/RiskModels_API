@@ -144,7 +144,7 @@ export default function PricingPage() {
       </section>
 
       {/* ── Main pricing card ── */}
-      <section className="mx-auto max-w-4xl px-6 py-32 pt-0">
+      <section className="mx-auto max-w-4xl px-6 py-20 pt-0">
         <div className="rounded-2xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md overflow-hidden shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
           {/* Card header */}
           <div className="px-8 pt-8 pb-6 border-b border-zinc-800/80">
@@ -253,7 +253,7 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Token usage + estimator ── */}
-      <section className="mx-auto max-w-4xl px-6 py-32">
+      <section className="mx-auto max-w-4xl px-6 py-20">
         <SectionLabel>Token usage</SectionLabel>
         <h2 className="text-2xl font-bold text-white mb-2">
           How many tokens does a request use?
@@ -327,7 +327,7 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Starter gift + Credit packs ── */}
-      <section className="mx-auto max-w-4xl px-6 py-32">
+      <section className="mx-auto max-w-4xl px-6 py-20">
         <SectionLabel>Auto-refill</SectionLabel>
         <h2 className="text-2xl font-bold text-white mb-2">Credits & refills</h2>
         <p className="text-zinc-400 mb-10 max-w-3xl">
@@ -412,7 +412,7 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Enterprise ── */}
-      <section className="mx-auto max-w-4xl px-6 py-32">
+      <section className="mx-auto max-w-4xl px-6 py-20">
         <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/35 backdrop-blur-md p-8">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
             <div className="flex-1">
@@ -483,7 +483,7 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── Rate limits ── */}
-      <section className="mx-auto max-w-4xl px-6 py-32">
+      <section className="mx-auto max-w-4xl px-6 py-20">
         <SectionLabel>Rate limits</SectionLabel>
         <h2 className="text-2xl font-bold text-white mb-2">Requests per minute</h2>
         <p className="text-zinc-400 mb-10">
@@ -521,7 +521,7 @@ export default function PricingPage() {
       <SectionDivider />
 
       {/* ── FAQ ── */}
-      <section className="mx-auto max-w-4xl px-6 py-32 pb-28">
+      <section className="mx-auto max-w-4xl px-6 py-20 pb-16">
         <SectionLabel>FAQ</SectionLabel>
         <h2 className="text-2xl font-bold text-white mb-8">Common questions</h2>
 
