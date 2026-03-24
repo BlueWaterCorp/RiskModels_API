@@ -5,21 +5,11 @@ import { resolveSymbolByTicker, fetchHistory, pivotHistory } from "@/lib/dal/ris
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { formatResponse } from "@/lib/api/format-response";
+import { BatchAnalyzeRequestSchema } from "@/lib/api/schemas";
+import { getCorsHeaders } from "@/lib/cors";
 
 function getSupabase() {
   return createAdminClient();
-}
-
-interface BatchRequest {
-  tickers: string[];
-  metrics?: (
-    | "returns"
-    | "l3_decomposition"
-    | "hedge_ratios"
-    | "full_metrics"
-  )[];
-  years?: number;
-  format?: "json" | "parquet" | "csv";
 }
 
 // Helper: Map FactSet sector codes to representative ETFs
@@ -93,7 +83,7 @@ export const dynamic = "force-dynamic";
 async function getBatchItemCount(req: NextRequest): Promise<number | undefined> {
   try {
     const clone = req.clone();
-    const body = (await clone.json()) as BatchRequest;
+    const body = await clone.json();
     return body.tickers?.length;
   } catch {
     return undefined;
@@ -102,27 +92,37 @@ async function getBatchItemCount(req: NextRequest): Promise<number | undefined> 
 
 export const POST = withBilling(
   async (request: NextRequest, context: BillingContext) => {
-    let body: BatchRequest;
+    const origin = request.headers.get("origin");
+    let rawBody: any;
     try {
-      body = await request.json();
+      rawBody = await request.json();
     } catch {
       return NextResponse.json(
         { error: "Invalid request body", message: "Expected JSON body" },
-        { status: 400 },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
 
-    const { tickers, metrics = ["returns"], years = 1, format: reqFormat = "json" } = body;
+    const validation = BatchAnalyzeRequestSchema.safeParse(rawBody);
 
-    if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
+    if (!validation.success) {
       return NextResponse.json(
         {
-          error: "Invalid tickers",
-          message: "tickers must be a non-empty array",
+          error: "Invalid request",
+          message: validation.error.issues[0].message,
         },
-        { status: 400 },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
+
+    const {
+      tickers,
+      metrics,
+      years,
+      format: reqFormat,
+    } = validation.data;
+
+    const fetchStart = performance.now();
 
     const { count, error: countError } = await getSupabase()
       .from("symbols")
@@ -145,6 +145,7 @@ export const POST = withBilling(
       reqFormat === "parquet" || reqFormat === "csv" ? reqFormat : "json";
 
     if (format !== "json") {
+      const fetchLatency = Math.round(performance.now() - fetchStart);
       const rows: Record<string, unknown>[] = [];
       for (const r of results) {
         if (r.status === "success" && r.returns) {
@@ -166,11 +167,16 @@ export const POST = withBilling(
         rows,
         format,
         filename,
+        extraHeaders: {
+          ...getCorsHeaders(origin),
+          "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+        } as Record<string, string>,
       });
       addMetadataHeaders(response, metadata);
       return response;
     }
 
+    const fetchLatency = Math.round(performance.now() - fetchStart);
     const response = NextResponse.json({
       results: Object.fromEntries(results.map((r) => [r.ticker, r])),
       summary: {
@@ -180,6 +186,11 @@ export const POST = withBilling(
       },
       _agent: { cost_usd: context.costUsd, request_id: context.requestId },
       _metadata: buildMetadataBody(metadata),
+    }, {
+      headers: {
+        ...getCorsHeaders(origin),
+        "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+      }
     });
     addMetadataHeaders(response, metadata);
     return response;
