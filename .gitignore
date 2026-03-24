@@ -23,6 +23,9 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 
+# Internal maintainer docs (not for public repo)
+AGENTS_INTERNAL.md
+
 # OS
 .DS_Store
 repomix*

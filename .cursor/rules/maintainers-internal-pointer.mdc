@@ -1,0 +1,11 @@
+---
+description: Points maintainers at local AGENTS_INTERNAL.md (gitignored). Public AGENTS.md stays for API-consumer agents.
+alwaysApply: true
+---
+
+# Maintainer vs public agent instructions
+
+- **`AGENTS.md`** (committed): instructions for agents helping **end users** with the RiskModels API (tickers, factors, hedges). Use that framing for product/support-style questions.
+- **`AGENTS_INTERNAL.md`** (optional, **gitignored**, create locally): **maintainer / cross-repo** instructions (schemas, OpenAPI, MCP sync, BWMACRO ↔ Risk_Models). If this file exists in the repo root, **read it and follow it** for any maintenance, schema, sync, or repo-operations work.
+
+If `AGENTS_INTERNAL.md` is missing, rely on **`SKILL.md`**, **`.agents/skills/repo-sync/`**, and **`.cursor/rules/repo-sync-enforcer.mdc`** for schema and sync discipline.
