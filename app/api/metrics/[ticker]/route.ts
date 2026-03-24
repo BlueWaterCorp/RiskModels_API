@@ -4,32 +4,40 @@ import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import { resolveSymbolByTicker, fetchLatestMetrics } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
+import { MetricsRequestSchema } from "@/lib/api/schemas";
 
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
-    const ticker = request.nextUrl.pathname.split("/").pop();
+    const rawTicker = request.nextUrl.pathname.split("/").pop();
     const origin = request.headers.get("origin");
 
-    if (!ticker) {
+    const validation = MetricsRequestSchema.safeParse({ ticker: rawTicker });
+    if (!validation.success) {
       return NextResponse.json(
-        { error: "Ticker parameter is required" },
-        { status: 400 },
+        {
+          error: "Malformed ticker",
+          message: validation.error.issues[0].message,
+        },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
+
+    const { ticker } = validation.data;
 
     try {
     console.log(`[Metrics API] Fetching ${ticker} from V3 contract...`);
 
-    const symbolRecord = await resolveSymbolByTicker(ticker.toUpperCase());
+    const symbolRecord = await resolveSymbolByTicker(ticker);
 
     if (!symbolRecord) {
       console.warn(`[Metrics API] No symbol found for ${ticker}`);
       const metadata = await getRiskMetadata();
-      const response = NextResponse.json({ error: "Symbol not found" }, { status: 404 });
+      const response = NextResponse.json({ error: "Symbol not found" }, { status: 404, headers: getCorsHeaders(origin) });
       addMetadataHeaders(response, metadata);
       return response;
     }
 
+    const fetchStart = performance.now();
     const latestData = await fetchLatestMetrics(symbolRecord.symbol, [
       "vol_23d",
       "price_close",
@@ -92,11 +100,13 @@ export const GET = withBilling(
       `[Metrics API] Successfully fetched ${ticker} from V3, hasL3: ${formattedData.metrics.l3_mkt_hr !== null}`,
     );
 
+    const fetchLatency = Math.round(performance.now() - fetchStart);
     const response = NextResponse.json(responseBody, {
       headers: {
         ...getCorsHeaders(origin),
         "Content-Type": "application/json",
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        "X-Data-Fetch-Latency-Ms": String(fetchLatency),
       },
     });
     addMetadataHeaders(response, metadata);

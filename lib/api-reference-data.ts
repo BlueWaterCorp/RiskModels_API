@@ -43,11 +43,11 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Latest risk metrics snapshot',
         description:
-          'Returns the most recent row from security_history_latest for the given ticker. Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility, Sharpe ratio, sector codes, market cap, and close price. Cost: $0.005/request.',
+          'Returns the latest V3 daily metrics for the ticker. Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility (vol_23d), sector codes, market cap, and close price. Cost: $0.005/request.',
         operationId: 'getMetrics',
         tag: 'Risk Metrics',
         params: [
-          { name: 'ticker', in: 'path', type: 'string', required: true, description: 'Ticker symbol (case-insensitive).' },
+          { name: 'ticker', in: 'path', type: 'string', required: true, description: 'Ticker symbol (case-insensitive, max 12 chars).' },
         ],
         responses: [
           { status: 200, description: 'Latest metrics snapshot.' },
@@ -62,13 +62,13 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Daily returns time series with rolling hedge ratios',
         description:
-          'Returns a daily time series of gross stock returns and rolling L1/L2/L3 combined hedge ratios going back up to 15 years. Cost: $0.005/call regardless of years pulled.',
+          'Returns a daily time series of gross stock returns (returns_gross) and V3 rolling hedge ratios (l3_mkt_hr, l3_sec_hr, l3_sub_hr) going back up to 15 years. Cost: $0.005/call.',
         operationId: 'getTickerReturns',
         tag: 'Risk Metrics',
         params: [
           { name: 'ticker', in: 'query', type: 'string', required: true, description: 'Ticker symbol.' },
           { name: 'years', in: 'query', type: 'integer', required: false, description: 'Years of history (1–15).', default: '1' },
-          { name: 'format', in: 'query', type: 'string', required: false, description: 'json (default), parquet (Content-Type application/vnd.apache.parquet), or csv (text/csv; charset=utf-8). Tabular formats omit _metadata in body; use X-Risk-* headers.', default: 'json' },
+          { name: 'format', in: 'query', type: 'string', required: false, description: 'json (default), parquet, or csv. Tabular formats omit _metadata in body; use X-Risk-* headers.', default: 'json' },
         ],
         responses: [
           { status: 200, description: 'Time series of daily returns and rolling hedge ratios.' },

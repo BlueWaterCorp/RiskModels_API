@@ -5,18 +5,30 @@ import { resolveSymbolByTicker, fetchHistory, pivotHistory } from "@/lib/dal/ris
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody, buildEtag, maybe304 } from "@/lib/dal/response-headers";
 import { formatResponse, parseFormat } from "@/lib/api/format-response";
+import { TickerReturnsRequestSchema } from "@/lib/api/schemas";
 
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const { searchParams } = new URL(request.url);
     const origin = request.headers.get("origin");
-    const ticker = searchParams.get("ticker")?.toUpperCase();
-    const years = parseInt(searchParams.get("years") || "1", 10);
-    const format = parseFormat(searchParams, request.headers.get("accept"));
 
-    if (!ticker) {
-      return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: getCorsHeaders(origin) });
+    const validation = TickerReturnsRequestSchema.safeParse({
+      ticker: searchParams.get("ticker"),
+      years: searchParams.get("years") || "1",
+      format: parseFormat(searchParams, request.headers.get("accept")),
+    });
+
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid request",
+          message: validation.error.issues[0].message,
+        },
+        { status: 400, headers: getCorsHeaders(origin) },
+      );
     }
+
+    const { ticker, years, format } = validation.data;
 
     const symbolRecord = await resolveSymbolByTicker(ticker);
     if (!symbolRecord) {
@@ -36,6 +48,7 @@ export const GET = withBilling(
     startDate.setFullYear(startDate.getFullYear() - years);
     const startDateStr = startDate.toISOString().split("T")[0];
 
+    const fetchStart = performance.now();
     const rows = await fetchHistory(symbolRecord.symbol, [
       "returns_gross",
       "price_close",
@@ -68,12 +81,17 @@ export const GET = withBilling(
 
     const ext = format === "parquet" ? "parquet" : format === "csv" ? "csv" : "json";
     const filename = `${ticker}_returns_${years}y.${ext}`;
+    const fetchLatency = Math.round(performance.now() - fetchStart);
 
     const response = await formatResponse({
       rows: data,
       format,
       filename,
-      extraHeaders: { ...getCorsHeaders(origin), ETag: etag } as Record<string, string>,
+      extraHeaders: {
+        ...getCorsHeaders(origin),
+        ETag: etag,
+        "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+      } as Record<string, string>,
       jsonPayload: {
         symbol: symbolRecord.symbol,
         ticker: symbolRecord.ticker,
