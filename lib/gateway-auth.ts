@@ -10,9 +10,6 @@
  *
  *   requireGatewayAuth() — "strict" auth: a valid Bearer token is required.
  *                          Use for write/admin endpoints (Phase 2+).
- *
- * Preferred env var on RiskModels_API: RISKMODELS_API_SERVICE_KEY.
- * Legacy alias supported during migration: GATEWAY_SERVICE_KEY.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -22,8 +19,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * requests that provide an invalid token. Returns null to proceed.
  */
 export function verifyGatewayAuth(request: NextRequest): NextResponse | null {
-  const key =
-    process.env.RISKMODELS_API_SERVICE_KEY ?? process.env.GATEWAY_SERVICE_KEY;
+  const key = process.env.RISKMODELS_API_SERVICE_KEY;
 
   // If no service key is set, allow all requests (dev mode)
   if (!key) return null;
@@ -46,7 +42,7 @@ export function verifyGatewayAuth(request: NextRequest): NextResponse | null {
  * Strict auth — requires a valid Bearer token. Use for non-public endpoints.
  */
 export function requireGatewayAuth(request: NextRequest): NextResponse | null {
-  const key = process.env.GATEWAY_SERVICE_KEY;
+  const key = process.env.RISKMODELS_API_SERVICE_KEY;
 
   if (!key) return null;
 

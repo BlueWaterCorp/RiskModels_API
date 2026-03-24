@@ -42,7 +42,7 @@ npm run vercel:sync-env
 
 For **Preview** deployments, `NEXT_PUBLIC_APP_URL` is optional — the app falls back to `VERCEL_URL` (auto-set by Vercel) for Stripe redirects.
 
-`GATEWAY_SERVICE_KEY` is still accepted as a temporary legacy alias in code, but new deploys should set only `RISKMODELS_API_SERVICE_KEY`.
+Set only `RISKMODELS_API_SERVICE_KEY` for gateway authentication.
 
 ## 3. Supabase Auth Redirect URLs
 

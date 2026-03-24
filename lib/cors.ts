@@ -2,21 +2,20 @@
  * CORS utilities for API routes
  */
 
-/**
- * Get allowed CORS origins
- * In development, allow localhost. In production, only allow the app URL.
- */
 export function getAllowedOrigins(): string[] {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   const isDev = process.env.NODE_ENV === "development";
 
-  const origins: string[] = [];
+  const origins: string[] = [
+    "https://riskmodels.app",
+    "https://www.riskmodels.app",
+    "https://riskmodels.net"
+  ];
 
-  if (appUrl) {
+  if (appUrl && !origins.includes(appUrl)) {
     origins.push(appUrl);
   }
 
-  // In development, also allow localhost variants
   if (isDev) {
     origins.push("http://localhost:3000");
     origins.push("http://localhost:3001");
@@ -26,35 +25,31 @@ export function getAllowedOrigins(): string[] {
   return origins;
 }
 
-/**
- * Get CORS headers for API responses
- * Restricts to allowed origins only
- */
 export function getCorsHeaders(
   requestOrigin?: string | null,
 ): Record<string, string> {
   const allowedOrigins = getAllowedOrigins();
+  
+  // Hardened base headers based on your review
+  const baseHeaders = {
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin", // Critical for preventing CDN caching issues
+  };
 
-  // If request has an origin and it's in our allowlist, allow it
+  // If request has an origin and it's allowed, echo it back
   if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
     return {
+      ...baseHeaders,
       "Access-Control-Allow-Origin": requestOrigin,
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Access-Control-Max-Age": "86400", // 24 hours
     };
   }
 
-  // Default to first allowed origin (usually the app URL)
-  const defaultOrigin =
-    allowedOrigins[0] ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "https://riskmodels.net";
-
+  // Fallback to primary domain
   return {
-    "Access-Control-Allow-Origin": defaultOrigin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": "86400",
+    ...baseHeaders,
+    "Access-Control-Allow-Origin": allowedOrigins[0],
   };
 }

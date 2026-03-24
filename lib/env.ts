@@ -14,5 +14,5 @@ export const env = {
 // Re-export the gateway service key helper used by api-gateway-client in Risk_Models.
 // Not used in RiskModels_API itself but exported so any copied file that imports it compiles.
 export function riskmodelsGatewayServiceKey(): string | undefined {
-  return process.env.RISKMODELS_API_SERVICE_KEY ?? process.env.GATEWAY_SERVICE_KEY;
+  return process.env.RISKMODELS_API_SERVICE_KEY;
 }

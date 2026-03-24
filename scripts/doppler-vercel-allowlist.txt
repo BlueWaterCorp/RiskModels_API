@@ -9,6 +9,5 @@ NEXT_PUBLIC_DEMO_API_KEY
 SUPABASE_SERVICE_ROLE_KEY
 STRIPE_SECRET_KEY
 
-# Canonical gateway secret (preferred). Legacy GATEWAY_SERVICE_KEY is still read by the app if set.
+# Gateway service key for trusted server-to-server API access
 RISKMODELS_API_SERVICE_KEY
-GATEWAY_SERVICE_KEY

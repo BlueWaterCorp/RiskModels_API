@@ -127,12 +127,14 @@ When adding a new doc (e.g. "Plaid Holdings UX"):
 
 ---
 
-## Sync from Risk_Models
+## Ownership
 
-If the doc lives in Risk_Models and should be synced to RiskModels_API:
+**RiskModels_API owns all documentation files directly.**
 
-1. Add the file to the sync workflow in `.github/workflows/sync-from-risk-models.yml` (if applicable)
-2. Or document the manual copy process here
+Edit these files in this repo:
+- `API_TERMS.md`
+- `notebooks/riskmodels_quickstart.ipynb`
+- `OPENAPI_SPEC.yaml` (canonical spec; generates `openapi.json`)
 
 ---
 

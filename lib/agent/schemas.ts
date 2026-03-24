@@ -182,6 +182,19 @@ export const HealthStatusSchema = {
         },
       },
     },
+    teo_coverage: {
+      type: 'object',
+      description:
+        'Gross-return coverage at latest returns_gross teo; sparse = EODHD/session still filling.',
+      properties: {
+        latest_teo: { type: ['string', 'null'], format: 'date' },
+        universe_stock_count: { type: 'integer', minimum: 0 },
+        non_null_returns_symbol_count: { type: 'integer', minimum: 0 },
+        latest_teo_coverage_pct: { type: ['number', 'null'] },
+        eodhd_latest_session_pending: { type: 'boolean' },
+        query_error: { type: 'string' },
+      },
+    },
   },
 };
 

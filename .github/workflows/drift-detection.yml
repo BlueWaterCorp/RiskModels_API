@@ -1,0 +1,163 @@
+# =============================================================================
+# Cross-Repo Drift Detection
+# =============================================================================
+#
+# This workflow detects drift between canonical files in RiskModels_API and
+# their copies in Risk_Models. It fails PRs if files are out of sync.
+#
+# TRIGGERS: Pull requests modifying schema files or OpenAPI spec
+#
+# REQUIRED SECRET: REPO_ACCESS_TOKEN
+#   - Read access to Cerebellum-Archive/Risk_Models (private repo)
+#
+name: Cross-Repo Drift Detection
+
+on:
+  pull_request:
+    paths:
+      - "mcp-server/data/schema-paths.json"
+      - "mcp-server/data/schemas/**"
+      - "OPENAPI_SPEC.yaml"
+  workflow_dispatch:
+
+jobs:
+  detect-drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout RiskModels_API
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout Risk_Models (private)
+        uses: actions/checkout@v4
+        with:
+          repository: Cerebellum-Archive/Risk_Models
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          path: risk_models
+          fetch-depth: 1
+
+      - name: Check schema-paths.json drift
+        id: schema_paths
+        run: |
+          echo "Comparing schema-paths.json..."
+
+          LOCAL="mcp-server/data/schema-paths.json"
+          REMOTE="risk_models/riskmodels_com/mcp-server/data/schema-paths.json"
+
+          if [ ! -f "$LOCAL" ]; then
+            echo "❌ Local schema-paths.json not found at $LOCAL"
+            exit 1
+          fi
+
+          if [ ! -f "$REMOTE" ]; then
+            echo "❌ Remote schema-paths.json not found at $REMOTE"
+            exit 1
+          fi
+
+          if diff -q "$LOCAL" "$REMOTE" > /dev/null 2>&1; then
+            echo "✅ schema-paths.json is in sync"
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          else
+            echo "❌ DRIFT DETECTED: schema-paths.json differs between repos"
+            echo ""
+            echo "=== Canonical (RiskModels_API) ==="
+            cat "$LOCAL"
+            echo ""
+            echo "=== Risk_Models Copy ==="
+            cat "$REMOTE"
+            echo ""
+            echo "=== Diff ==="
+            diff "$LOCAL" "$REMOTE" || true
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Check schema files drift
+        id: schemas
+        if: always()
+        run: |
+          echo "Comparing schema files..."
+
+          LOCAL_SCHEMAS="mcp-server/data/schemas"
+          REMOTE_SCHEMAS="risk_models/riskmodels_com/mcp-server/data/schemas"
+
+          if [ ! -d "$LOCAL_SCHEMAS" ]; then
+            echo "❌ Local schemas directory not found"
+            exit 1
+          fi
+
+          if [ ! -d "$REMOTE_SCHEMAS" ]; then
+            echo "❌ Remote schemas directory not found"
+            exit 1
+          fi
+
+          DRIFT_FOUND=0
+
+          # Get all schema files from local
+          for local_file in "$LOCAL_SCHEMAS"/*.json; do
+            if [ -f "$local_file" ]; then
+              filename=$(basename "$local_file")
+              remote_file="$REMOTE_SCHEMAS/$filename"
+
+              if [ ! -f "$remote_file" ]; then
+                echo "❌ Schema missing in Risk_Models: $filename"
+                DRIFT_FOUND=1
+                continue
+              fi
+
+              if ! diff -q "$local_file" "$remote_file" > /dev/null 2>&1; then
+                echo "❌ Schema drift: $filename"
+                DRIFT_FOUND=1
+              fi
+            fi
+          done
+
+          # Check for extra files in remote
+          for remote_file in "$REMOTE_SCHEMAS"/*.json; do
+            if [ -f "$remote_file" ]; then
+              filename=$(basename "$remote_file")
+              local_file="$LOCAL_SCHEMAS/$filename"
+
+              if [ ! -f "$local_file" ]; then
+                echo "❌ Extra schema in Risk_Models (not in canonical): $filename"
+                DRIFT_FOUND=1
+              fi
+            fi
+          done
+
+          if [ $DRIFT_FOUND -eq 0 ]; then
+            echo "✅ All schema files are in sync"
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          else
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "========================================"
+          echo "Drift Detection Summary"
+          echo "========================================"
+
+          if [ "${{ steps.schema_paths.outcome }}" == "success" ] && [ "${{ steps.schemas.outcome }}" == "success" ]; then
+            echo "✅ All checks passed - no drift detected"
+          else
+            echo "❌ Drift detected! Please sync files:"
+            echo ""
+            echo "Manual sync steps:"
+            echo "1. Copy schemas from RiskModels_API to Risk_Models:"
+            echo "   cp RiskModels_API/mcp-server/data/schemas/*.json \\"
+            echo "      Risk_Models/riskmodels_com/mcp-server/data/schemas/"
+            echo ""
+            echo "2. Copy schema-paths.json:"
+            echo "   cp RiskModels_API/mcp-server/data/schema-paths.json \\"
+            echo "      Risk_Models/riskmodels_com/mcp-server/data/schema-paths.json"
+            echo ""
+            echo "See AGENTS.md for full sync rules."
+          fi

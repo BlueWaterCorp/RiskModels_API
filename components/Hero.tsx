@@ -14,23 +14,25 @@ export default function Hero() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold">
           <Zap size={16} />
-          MCP-Ready · OpenAPI 3.0 · Pay-as-you-go
+          First Agentic Risk API · MCP-Ready · Pay-as-you-go
         </div>
 
         {/* Headline */}
         <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white">
-          Hedge Any Stock With Three ETFs
+          Stop Querying Risk Data.
+          <br />
+          <span className="text-primary">Start Delegating Decisions.</span>
         </h1>
-        
+
         <p className="text-xl sm:text-2xl md:text-3xl text-zinc-400 font-medium">
-          Institutional factor decompositions without the six-figure contract.
+          The first autonomous risk intelligence layer for portfolios.
         </p>
 
         {/* Subheadline */}
         <p className="max-w-3xl mx-auto text-lg text-zinc-400 leading-relaxed">
-          Market, sector, and subsector hedge ratios for ~3,000 US equities — 
-          executable with liquid ETFs, updated daily, history back to 2006. 
-          Start free with $20 in credits.
+          Delegate portfolio analysis to an agent that decomposes exposures, flags drift,
+          and suggests hedges — all without writing the logic. Or query traditionally
+          via REST API. $20 free credits, never expire.
         </p>
 
         <p className="text-sm text-zinc-500">
@@ -74,9 +76,10 @@ export default function Hero() {
           
           <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
             <Bot className="text-primary mb-3" size={28} />
-            <h3 className="text-lg font-semibold text-white mb-2">AI-Agent Ready</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">Agentic Delegation</h3>
             <p className="text-sm text-zinc-400 mb-4">
-              Agent manifest at <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded">/.well-known/agent-manifest</code>, per-request billing, MCP-ready.
+              Pass your portfolio and a task — the agent returns factor exposures,
+              drift alerts, and hedge suggestions. No query logic required.
             </p>
             <div className="flex gap-3 text-xs">
               <Link href="/docs/authentication" className="text-primary hover:underline">

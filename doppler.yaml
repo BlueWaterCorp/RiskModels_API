@@ -1,4 +1,17 @@
-# Optional: `doppler setup --no-interactive` in this repo root.
+# Doppler configuration for RiskModels_API
+# Run `doppler setup` to initialize, or use `doppler setup --no-interactive` for CI
+#
+# Available configs in erm3 project:
+#   - dev    (local development)
+#   - stg    (staging/preview deployments)
+#   - prd    (production - riskmodels.app)
+#
+# Common commands:
+#   doppler secrets                    # List all secrets
+#   doppler secrets get STRIPE_SECRET_KEY   # Get a specific secret
+#   npm run doppler:env                # Export to .env.local (for curl testing)
+#   npm run vercel:sync-env:doppler    # Push prd secrets to Vercel production
+
 setup:
   - project: erm3
     config: dev

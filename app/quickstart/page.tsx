@@ -36,6 +36,37 @@ console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
+const agenticCliExample = `# Agentic workflow — delegate tasks to the RiskModels agent
+# Install the CLI first: npm install -g riskmodels-cli
+
+# Configure your API key
+$ riskmodels config set apiKey rm_live_...
+
+# Delegate portfolio decomposition
+$ riskmodels agent decompose --portfolio ./positions.json
+
+# Set up drift monitoring
+$ riskmodels agent monitor --portfolio ./positions.json --threshold 2.0
+
+# Get pre-trade risk check
+$ riskmodels agent check --trade ./new_trade.json --portfolio ./current.json`;
+
+const agenticConfigExample = `# Agentic configuration file (~/.riskmodels/agent-config.yaml)
+# Define your factor targets and alert thresholds
+
+targets:
+  market_beta: 0.85
+  momentum: 0.10
+  size: -0.05
+
+alert_thresholds:
+  sigma: 2.0
+  min_position_usd: 10000
+
+webhooks:
+  drift_alert: https://your-app.com/webhooks/drift
+  rebalance_trigger: https://your-app.com/webhooks/rebalance`;
+
 export default function QuickstartPage() {
   return (
     <div className="min-h-screen py-16 px-4 sm:px-6 lg:px-8 bg-zinc-950">
@@ -148,6 +179,65 @@ export default function QuickstartPage() {
           </div>
         </div>
 
+        {/* Step 4: Agentic API */}
+        <div className="mb-12">
+          <div className="flex items-start gap-4 mb-6">
+            <div className="flex-shrink-0 w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold">
+              4
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-3">
+                <h2 className="text-2xl font-bold text-zinc-100">Try the Agentic CLI</h2>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                  Beta
+                </span>
+              </div>
+              <p className="text-zinc-400 mb-6">
+                Instead of constructing API queries, delegate tasks to the RiskModels agent via CLI.
+                Configure once, then let the agent monitor, analyze, and alert on your portfolio.
+              </p>
+
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">Install CLI</h3>
+                  <CodeBlock
+                    code="npm install -g riskmodels-cli"
+                    language="bash"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">CLI Commands</h3>
+                  <CodeBlock
+                    code={agenticCliExample}
+                    language="bash"
+                    filename="agentic-commands.sh"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">Configuration</h3>
+                  <CodeBlock
+                    code={agenticConfigExample}
+                    language="yaml"
+                    filename="~/.riskmodels/agent-config.yaml"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
+                <p className="text-sm text-zinc-400">
+                  <strong className="text-zinc-300">Available agent tasks:</strong>{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">decompose</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">monitor</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">check</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">rebalance</code>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-12">
           <Suspense
             fallback={
@@ -160,7 +250,7 @@ export default function QuickstartPage() {
           </Suspense>
         </div>
 
-        {/* Step 5 */}
+        {/* Step 6 */}
         <div className="mb-12">
           <div className="flex items-start gap-4 mb-6">
             <div className="flex-shrink-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold">

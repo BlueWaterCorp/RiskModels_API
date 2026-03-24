@@ -52,7 +52,7 @@ This rule applies when editing schemas, OpenAPI specs, MCP data, or tracking doc
 
 When adding parameters (e.g. `format=parquet` on `/returns`, `/etf-returns`):
 - Edit `RiskModels_API/OPENAPI_SPEC.yaml`
-- Add response content types (`application/x-parquet`, `text/csv`) where applicable
+- Add response content types (`application/vnd.apache.parquet`, `text/csv`) where applicable
 - GitHub Actions sync builds `openapi.json` and pushes to Risk_Models
 
 ## Before Committing

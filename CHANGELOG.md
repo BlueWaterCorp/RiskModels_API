@@ -4,6 +4,22 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Added
+
+- **Agentic API landing page integration** — Homepage now features agentic-first messaging with new sections:
+  - `AgenticSection` component with "Stop Querying. Start Delegating." value proposition
+  - `UseCases` component highlighting four agentic patterns (Pre-Trade Risk Check, Drift Monitoring, Hedge Recommendations, Rebalance Triggers)
+  - `ComparisonTable` component with competitive pricing vs MSCI Barra and Northfield
+  - Updated `Hero` with "First Agentic Risk API" badge and new headline
+  - Quickstart page now includes Agentic API examples (Python/TypeScript)
+  - Cross-linking between traditional REST API and agentic delegation workflows
+
+- **`GET /api/health` T coverage** — Response includes `teo_coverage` (`latest_teo`, `latest_teo_coverage_pct`, `non_null_returns_symbol_count`, `universe_stock_count`, `eodhd_latest_session_pending`) derived from `security_history` `returns_gross` vs `symbols` (stocks), using the same 10% sparse threshold as ERM3 EODHD T coverage. `health-v1.json` schema updated; copy synced to Risk_Models.
+
+### Changed
+
+- **OpenAPI tabular exports** — Finalized Parquet/CSV documentation: `application/vnd.apache.parquet` (matches runtime `Content-Type`), shared `FormatQueryTabular` parameter, row schemas `GrossReturnDailyRow` and `BatchAnalyzeExportRow`, `TickerReturnsDailyRow.price_close`, batch export semantics (returns-only long table), CSV examples, and `build:openapi` now mirrors `mcp-server/data/openapi.json`.
+
 ## [2026-03-23] — Phase 2–4 migration: self-contained API
 
 ### Added

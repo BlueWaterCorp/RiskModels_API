@@ -68,7 +68,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         params: [
           { name: 'ticker', in: 'query', type: 'string', required: true, description: 'Ticker symbol.' },
           { name: 'years', in: 'query', type: 'integer', required: false, description: 'Years of history (1–15).', default: '1' },
-          { name: 'format', in: 'query', type: 'string', required: false, description: 'Response format: json, parquet, csv.', default: 'json' },
+          { name: 'format', in: 'query', type: 'string', required: false, description: 'json (default), parquet (Content-Type application/vnd.apache.parquet), or csv (text/csv; charset=utf-8). Tabular formats omit _metadata in body; use X-Risk-* headers.', default: 'json' },
         ],
         responses: [
           { status: 200, description: 'Time series of daily returns and rolling hedge ratios.' },
@@ -86,7 +86,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         tag: 'Risk Metrics',
         params: [
           { name: 'ticker', in: 'query', type: 'string', required: true, description: 'Ticker symbol.' },
-          { name: 'format', in: 'query', type: 'string', required: false, description: 'Response format.', default: 'json' },
+          { name: 'format', in: 'query', type: 'string', required: false, description: 'json, parquet, or csv; see OPENAPI_SPEC tabular export section.', default: 'json' },
         ],
         responses: [
           { status: 200, description: 'Daily returns.' },
@@ -105,7 +105,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         params: [
           { name: 'ticker', in: 'query', type: 'string', required: true, description: 'Ticker symbol.' },
           { name: 'years', in: 'query', type: 'integer', required: false, description: 'Years of history.', default: '1' },
-          { name: 'format', in: 'query', type: 'string', required: false, description: 'Response format.', default: 'json' },
+          { name: 'format', in: 'query', type: 'string', required: false, description: 'json, parquet, or csv; see OPENAPI_SPEC tabular export section.', default: 'json' },
         ],
         responses: [
           { status: 200, description: 'L3 decomposition data.' },

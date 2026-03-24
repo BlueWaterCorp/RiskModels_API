@@ -53,8 +53,20 @@ info:
     Many metered responses include `_agent.cost_usd` in the JSON body; others bill silently — always
     check the `X-API-Cost-USD` response header when present.
 
-    **Lineage**: All data responses include `_metadata` (model version, data_as_of, factor set)
+    **Lineage**: JSON data responses include `_metadata` (model version, data_as_of, factor set)
     and headers `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`.
+    Parquet and CSV bodies omit `_metadata`; use the same `X-Risk-*` headers on the HTTP response.
+
+    **Tabular exports (Parquet / CSV):** For bulk historical loads, time-series endpoints accept
+    `format=parquet` or `format=csv`, or (when `format` is omitted) `Accept: application/vnd.apache.parquet`
+    or `Accept: text/csv`. Successful responses use `Content-Type: application/vnd.apache.parquet` or
+    `text/csv; charset=utf-8` and `Content-Disposition: attachment` with a descriptive filename.
+    Each export is a single flat table; column names and types match the per-operation schemas referenced
+    in the response media type descriptions (aligned with JSON row objects or zipped parallel arrays).
+    Parquet is produced via schema inference from the first row (UTF8 strings, DOUBLE floats, INT64 integers,
+    BOOLEAN, TIMESTAMP_MILLIS for JavaScript Date values). CSV uses a header row, comma separators, UTF-8,
+    and RFC 4180-style quoting when needed. Prefer Parquet for typed columnar stacks (pandas, Polars, Arrow);
+    use CSV for spreadsheets and lightweight scripting.
 
   contact:
     name: RiskModels Support
@@ -93,6 +105,22 @@ components:
             chat-risk-analyst: Use AI risk analyst
             plaid:holdings: Access Plaid-synced portfolio holdings
             "*": Full API access
+
+  parameters:
+    FormatQueryTabular:
+      name: format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [json, parquet, csv]
+        default: json
+      description: >
+        Response carrier. `json` (default): structured payload for this operation (body includes
+        `_metadata` where documented). `parquet` / `csv`: a single flat table of time-series rows only —
+        lineage comes from `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`.
+        When this parameter is omitted, `Accept: application/vnd.apache.parquet` or `Accept: text/csv`
+        selects the tabular format.
 
   schemas:
     AgentMeta:
@@ -367,6 +395,11 @@ components:
           type: number
           format: float
           description: Daily gross return of the stock.
+        price_close:
+          type: number
+          format: float
+          nullable: true
+          description: End-of-day price when available from history.
         l3_mkt_hr:
           type: number
           format: float
@@ -396,6 +429,53 @@ components:
           type: number
           format: float
           nullable: true
+
+    GrossReturnDailyRow:
+      type: object
+      description: >
+        One trading day in Parquet/CSV for `GET /returns` and `GET /etf-returns`: long table
+        with the same fields as zipping JSON parallel arrays `dates` and `returns_gross` by index.
+      properties:
+        date:
+          type: string
+          format: date
+        returns_gross:
+          type: number
+          format: float
+          nullable: true
+          description: Daily gross return (same series as JSON `returns_gross` array).
+
+    BatchAnalyzeExportRow:
+      type: object
+      description: >
+        One row in Parquet/CSV from `POST /batch/analyze` when `format` is `parquet` or `csv`.
+        Emitted only for tickers that succeeded with `returns` data; tickers with errors are omitted.
+      properties:
+        ticker:
+          type: string
+        date:
+          type: string
+          format: date
+        gross_return:
+          type: number
+          format: float
+          nullable: true
+          description: Daily gross return (JSON `returns.values` at the same index as `date`).
+        l1:
+          type: number
+          format: float
+          nullable: true
+          description: Rolling L3 market HR history (`returns.l1` in JSON).
+        l2:
+          type: number
+          format: float
+          nullable: true
+          description: Rolling L3 sector HR history (`returns.l2` in JSON).
+        l3:
+          type: number
+          format: float
+          nullable: true
+          description: Rolling L3 subsector HR history (`returns.l3` in JSON).
 
     TickerReturnsResponseV3:
       type: object
@@ -1559,29 +1639,45 @@ paths:
           schema:
             type: boolean
           description: Bypass cache (incurs cost even if identical request was recently made).
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [json, parquet, csv]
-            default: json
-          description: >
-            Response format. `json` (default) returns `TickerReturnsResponseV3` (symbol, ticker,
-            `data` rows with V3 field names, `meta`). Export formats may differ — confirm column
-            names in your client when using `parquet` or `csv`.
+        - $ref: "#/components/parameters/FormatQueryTabular"
       responses:
         "200":
-          description: Time series of daily returns and V3 rolling HR/ER fields.
+          description: >
+            Time series of daily returns, `price_close`, and V3 rolling HR/ER fields. JSON wraps rows
+            in `data` with `symbol`, `ticker`, `meta`, `_metadata`. Parquet/CSV are a single table:
+            one row per trading day; columns match `#/components/schemas/TickerReturnsDailyRow` in a
+            stable key order (same field names as JSON object keys in each `data` element).
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: >
+                Weak ETag (`W/"..."`). Clients may send `If-None-Match` to obtain `304 Not Modified`
+                when the series is unchanged for this ticker, `years`, and format.
+            X-Risk-Model-Version:
+              schema: { type: string }
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+            X-Factor-Set-Id:
+              schema: { type: string }
+            X-Universe-Size:
+              schema: { type: integer }
           content:
-            application/x-parquet:
+            application/vnd.apache.parquet:
               schema:
                 type: string
                 format: binary
+              description: >
+                Apache Parquet (one table). Row schema equals `#/components/schemas/TickerReturnsDailyRow`.
+                No `_metadata` columns; use response headers for lineage.
             text/csv:
               schema:
                 type: string
-                format: text
+              description: >
+                UTF-8 CSV: header row then one row per trading day; columns match the Parquet export.
+              example: |
+                date,returns_gross,price_close,l3_mkt_hr,l3_sec_hr,l3_sub_hr,l3_mkt_er,l3_sec_er,l3_sub_er,l3_res_er
+                2025-03-20,0.0123,950.25,0.95,0.12,0.03,0.41,0.22,0.08,0.29
             application/json:
               schema:
                 $ref: "#/components/schemas/TickerReturnsResponseV3"
@@ -1629,22 +1725,36 @@ paths:
           schema:
             type: string
           example: AAPL
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [json, parquet, csv]
-            default: json
-          description: Response format. Parquet/CSV return tabular (date, returns_gross).
+        - $ref: "#/components/parameters/FormatQueryTabular"
       responses:
         "200":
-          description: Daily returns.
+          description: >
+            Daily gross returns. JSON uses a parallel `returns_gross` array (see schema). Parquet/CSV
+            use a long table `#/components/schemas/GrossReturnDailyRow` (`date`, `returns_gross` per row).
+          headers:
+            X-Risk-Model-Version:
+              schema: { type: string }
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+            X-Factor-Set-Id:
+              schema: { type: string }
+            X-Universe-Size:
+              schema: { type: integer }
           content:
-            application/x-parquet:
-              schema: { type: string, format: binary }
+            application/vnd.apache.parquet:
+              schema:
+                type: string
+                format: binary
+              description: >
+                Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.
             text/csv:
-              schema: { type: string, format: text }
+              schema:
+                type: string
+              description: >
+                UTF-8 CSV with header `date,returns_gross`.
+              example: |
+                date,returns_gross
+                2025-03-20,0.0123
             application/json:
               schema:
                 type: object
@@ -1700,22 +1810,36 @@ paths:
             type: string
           example: SPY
           description: ETF ticker symbol.
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [json, parquet, csv]
-            default: json
-          description: Response format. Parquet/CSV return tabular (date, returns_gross).
+        - $ref: "#/components/parameters/FormatQueryTabular"
       responses:
         "200":
-          description: Daily ETF returns.
+          description: >
+            Daily ETF gross returns. JSON exposes parallel `dates` and `returns_gross` arrays. Parquet/CSV
+            flatten to `#/components/schemas/GrossReturnDailyRow`.
+          headers:
+            X-Risk-Model-Version:
+              schema: { type: string }
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+            X-Factor-Set-Id:
+              schema: { type: string }
+            X-Universe-Size:
+              schema: { type: integer }
           content:
-            application/x-parquet:
-              schema: { type: string, format: binary }
+            application/vnd.apache.parquet:
+              schema:
+                type: string
+                format: binary
+              description: >
+                Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.
             text/csv:
-              schema: { type: string, format: text }
+              schema:
+                type: string
+              description: >
+                UTF-8 CSV with header `date,returns_gross`.
+              example: |
+                date,returns_gross
+                2025-03-20,0.0012
             application/json:
               schema:
                 type: object
@@ -1828,6 +1952,12 @@ paths:
         (`L*_ER` / `L*_HR`), request `["full_metrics","hedge_ratios"]` and see docs/ERM3_ZARR_API_PARITY.md.
         The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost:
         $0.002/position, minimum $0.01/call.
+
+        **Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table
+        of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`.
+        Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and
+        `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the
+        table may be empty.
       operationId: batchAnalyze
       tags: [Risk Metrics]
       requestBody:
@@ -1864,10 +1994,14 @@ paths:
                   enum: [json, parquet, csv]
                   default: json
                   description: >
-                    Parquet/CSV export shapes may differ from JSON; validate columns in your pipeline.
+                    `json` (default): `BatchAnalyzeResponse` with `results`, `summary`, `_agent`, `_metadata`.
+                    `parquet` / `csv`: long-format daily table only — see operation description and
+                    `#/components/schemas/BatchAnalyzeExportRow`. Requires `returns` in `metrics` for non-empty data.
       responses:
         "200":
-          description: Batch results keyed by ticker (JSON) or export formats when implemented.
+          description: >
+            Batch results as JSON (`results` map) or as a single Parquet/CSV table of merged daily `returns`
+            rows across tickers.
           headers:
             X-Risk-Model-Version:
               schema: { type: string }
@@ -1886,14 +2020,22 @@ paths:
             X-Request-ID:
               schema: { type: string }
           content:
-            application/x-parquet:
+            application/vnd.apache.parquet:
               schema:
                 type: string
                 format: binary
+              description: >
+                Apache Parquet long table; columns per `#/components/schemas/BatchAnalyzeExportRow`.
+                Tickers without `returns` data are omitted; failed tickers are omitted.
             text/csv:
               schema:
                 type: string
-                format: text
+              description: >
+                UTF-8 CSV with header `ticker,date,gross_return,l1,l2,l3`; semantics match Parquet.
+              example: |
+                ticker,date,gross_return,l1,l2,l3
+                AAPL,2025-03-20,0.005,0.92,0.15,0.04
+                MSFT,2025-03-20,-0.002,0.88,0.11,0.03
             application/json:
               schema:
                 $ref: "#/components/schemas/BatchAnalyzeResponse"
@@ -2046,7 +2188,7 @@ paths:
   /health:
     get:
       summary: Service health check
-      description: Returns current service status, version, and capability availability. Free, no auth required.
+      description: Returns current service status, version, capability availability, and latest-session gross-return coverage (EODHD completeness signal). Free, no auth required.
       operationId: getHealth
       tags: [Utility]
       security: []
@@ -2060,7 +2202,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [up, degraded, down]
+                    enum: [healthy, degraded, down]
                   timestamp:
                     type: string
                     format: date-time
@@ -2069,10 +2211,30 @@ paths:
                     example: 3.0.0-agent
                   services:
                     type: object
-                    additionalProperties:
-                      type: string
+                    additionalProperties: true
                   capabilities:
                     type: object
+                    additionalProperties: true
+                  teo_coverage:
+                    type: object
+                    description: Coverage of returns_gross at the newest teo in security_history vs stock universe; sparse values suggest EODHD not yet published for that session (10% threshold, same as ERM3 T check).
+                    properties:
+                      latest_teo:
+                        type: string
+                        format: date
+                        nullable: true
+                      universe_stock_count:
+                        type: integer
+                      non_null_returns_symbol_count:
+                        type: integer
+                      latest_teo_coverage_pct:
+                        type: number
+                        nullable: true
+                        description: Percent 0–100 of universe with non-null gross return at latest_teo.
+                      eodhd_latest_session_pending:
+                        type: boolean
+                      query_error:
+                        type: string
 
   /balance:
     get:

@@ -6,6 +6,10 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getTeoCoverageHealth,
+  type TeoCoverageHealth,
+} from "@/lib/dal/teo-coverage-health";
 
 export interface TelemetryEvent {
   request_id: string;
@@ -57,6 +61,8 @@ export interface HealthStatus {
       current_load?: number;
     }
   >;
+  /** Gross-return coverage at latest `teo` (EODHD / session completeness signal). */
+  teo_coverage: TeoCoverageHealth;
 }
 
 /**
@@ -99,6 +105,8 @@ export async function getHealthStatus(): Promise<HealthStatus> {
   const now = new Date();
   const version = process.env.API_VERSION || "2.0.0-agent";
 
+  const teoCoveragePromise = getTeoCoverageHealth();
+
   // Check database health
   const dbStart = Date.now();
   let dbStatus: HealthStatus["services"]["database"] = { status: "healthy" };
@@ -118,6 +126,8 @@ export async function getHealthStatus(): Promise<HealthStatus> {
   } catch (err) {
     dbStatus = { status: "down", error: String(err) };
   }
+
+  const teo_coverage = await teoCoveragePromise;
 
   // Get recent telemetry for capability health
   const twentyFourHoursAgo = new Date(
@@ -184,6 +194,7 @@ export async function getHealthStatus(): Promise<HealthStatus> {
       database: dbStatus,
     },
     capabilities,
+    teo_coverage,
   };
 }
 

@@ -34,9 +34,6 @@ echo ""
 
 for key in "${KEYS[@]}"; do
   val=$(grep -E "^${key}=" "$LOCAL_ENV" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
-  if [ -z "$val" ] && [ "$key" = "RISKMODELS_API_SERVICE_KEY" ]; then
-    val=$(grep -E "^GATEWAY_SERVICE_KEY=" "$LOCAL_ENV" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
-  fi
   if [ -z "$val" ]; then
     echo "⊘ $key (not found)"
     continue

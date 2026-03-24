@@ -3,16 +3,16 @@
   "info": {
     "title": "RiskModels API",
     "version": "3.0.0-agent",
-    "description": "Precision equity risk intelligence platform with AI agent integration.\nInstitutional-grade equity risk analysis for AI agents and quantitative applications. Provides daily factor hedge ratios, explained-risk decompositions, and portfolio-level risk attribution for ~3,000 US equities.\n\n**New in v3.0.0-agent:**\n- OAuth2 client credentials flow for machine-to-machine auth\n- Plaid Investments integration for live portfolio sync\n- MCP (Model Context Protocol) server for AI agent tools\n- Compliance manifests for AI marketplace integration\n- Per-key rate limiting and scoped access control\n\n**Data**: Universe `uni_mc_3000` (top ~3,000 US stocks by market cap), date range 2006-01-04 to present, updated daily end-of-day. Backend: Zarr v2 on Google Cloud Storage, computed by the ERM3 regression system (Huber/Ridge). Supabase tables `erm3_betas` and `erm3_rankings` provide factor betas and ticker rankings for direct DB and API use.\n\n**Authentication Methods:**\n1. Session cookies (web app)\n2. API Key/Secret via Bearer token (external integrations)\n3. OAuth2 client credentials (AI agents, npm package)\n\n**Security Features:**\n- GCP KMS envelope encryption for portfolio data\n- Cryptographic shredding on key deletion\n- HMAC-SHA256 webhook verification\n- Row-level security (RLS) via Supabase\n\n**Pricing**: Per-request billing with prepaid balance. Cached responses are free. Many metered responses include `_agent.cost_usd` in the JSON body; others bill silently — always check the `X-API-Cost-USD` response header when present.\n**Lineage**: All data responses include `_metadata` (model version, data_as_of, factor set) and headers `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`.\n",
+    "description": "Precision equity risk intelligence platform with AI agent integration.\nInstitutional-grade equity risk analysis for AI agents and quantitative applications. Provides daily factor hedge ratios, explained-risk decompositions, and portfolio-level risk attribution for ~3,000 US equities.\n\n**New in v3.0.0-agent:**\n- OAuth2 client credentials flow for machine-to-machine auth\n- Plaid Investments integration for live portfolio sync\n- MCP (Model Context Protocol) server for AI agent tools\n- Compliance manifests for AI marketplace integration\n- Per-key rate limiting and scoped access control\n\n**Data**: Universe `uni_mc_3000` (top ~3,000 US stocks by market cap), date range 2006-01-04 to present, updated daily end-of-day. Backend: Zarr v2 on Google Cloud Storage, computed by the ERM3 regression system (Huber/Ridge). Supabase tables `erm3_betas` and `erm3_rankings` provide factor betas and ticker rankings for direct DB and API use.\n\n**Authentication Methods:**\n1. Session cookies (web app)\n2. API Key/Secret via Bearer token (external integrations)\n3. OAuth2 client credentials (AI agents, npm package)\n\n**Security Features:**\n- GCP KMS envelope encryption for portfolio data\n- Cryptographic shredding on key deletion\n- HMAC-SHA256 webhook verification\n- Row-level security (RLS) via Supabase\n\n**Pricing**: Per-request billing with prepaid balance. Cached responses are free. Many metered responses include `_agent.cost_usd` in the JSON body; others bill silently — always check the `X-API-Cost-USD` response header when present.\n**Lineage**: JSON data responses include `_metadata` (model version, data_as_of, factor set) and headers `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`. Parquet and CSV bodies omit `_metadata`; use the same `X-Risk-*` headers on the HTTP response.\n**Tabular exports (Parquet / CSV):** For bulk historical loads, time-series endpoints accept `format=parquet` or `format=csv`, or (when `format` is omitted) `Accept: application/vnd.apache.parquet` or `Accept: text/csv`. Successful responses use `Content-Type: application/vnd.apache.parquet` or `text/csv; charset=utf-8` and `Content-Disposition: attachment` with a descriptive filename. Each export is a single flat table; column names and types match the per-operation schemas referenced in the response media type descriptions (aligned with JSON row objects or zipped parallel arrays). Parquet is produced via schema inference from the first row (UTF8 strings, DOUBLE floats, INT64 integers, BOOLEAN, TIMESTAMP_MILLIS for JavaScript Date values). CSV uses a header row, comma separators, UTF-8, and RFC 4180-style quoting when needed. Prefer Parquet for typed columnar stacks (pandas, Polars, Arrow); use CSV for spreadsheets and lightweight scripting.\n",
     "contact": {
       "name": "RiskModels Support",
-      "email": "contact@riskmodels.net",
+      "email": "api-support@riskmodels.app",
       "url": "https://riskmodels.app"
     },
-    "termsOfService": "https://riskmodels.app/terms/api",
+    "termsOfService": "https://riskmodels.app/legal",
     "license": {
       "name": "Commercial",
-      "url": "https://riskmodels.app/terms"
+      "url": "https://riskmodels.app/legal"
     }
   },
   "servers": [
@@ -44,6 +44,23 @@
             }
           }
         }
+      }
+    },
+    "parameters": {
+      "FormatQueryTabular": {
+        "name": "format",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "json",
+            "parquet",
+            "csv"
+          ],
+          "default": "json"
+        },
+        "description": "Response carrier. `json` (default): structured payload for this operation (body includes `_metadata` where documented). `parquet` / `csv`: a single flat table of time-series rows only — lineage comes from `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`. When this parameter is omitted, `Accept: application/vnd.apache.parquet` or `Accept: text/csv` selects the tabular format.\n"
       }
     },
     "schemas": {
@@ -386,6 +403,12 @@
             "format": "float",
             "description": "Daily gross return of the stock."
           },
+          "price_close": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "End-of-day price when available from history."
+          },
           "l3_mkt_hr": {
             "type": "number",
             "format": "float",
@@ -421,6 +444,59 @@
             "type": "number",
             "format": "float",
             "nullable": true
+          }
+        }
+      },
+      "GrossReturnDailyRow": {
+        "type": "object",
+        "description": "One trading day in Parquet/CSV for `GET /returns` and `GET /etf-returns`: long table with the same fields as zipping JSON parallel arrays `dates` and `returns_gross` by index.\n",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "returns_gross": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily gross return (same series as JSON `returns_gross` array)."
+          }
+        }
+      },
+      "BatchAnalyzeExportRow": {
+        "type": "object",
+        "description": "One row in Parquet/CSV from `POST /batch/analyze` when `format` is `parquet` or `csv`. Emitted only for tickers that succeeded with `returns` data; tickers with errors are omitted.\n",
+        "properties": {
+          "ticker": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily gross return (JSON `returns.values` at the same index as `date`)."
+          },
+          "l1": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Rolling L3 market HR history (`returns.l1` in JSON)."
+          },
+          "l2": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Rolling L3 sector HR history (`returns.l2` in JSON)."
+          },
+          "l3": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Rolling L3 subsector HR history (`returns.l3` in JSON)."
           }
         }
       },
@@ -1261,6 +1337,33 @@
                 }
               }
             }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
           }
         }
       },
@@ -1371,6 +1474,43 @@
                       ]
                     }
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
@@ -1653,21 +1793,28 @@
             }
           },
           "402": {
-            "description": "Insufficient balance",
+            "description": "Insufficient balance.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/InsufficientBalance"
                 }
               }
             }
           },
           "429": {
-            "description": "Rate limit exceeded",
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
@@ -1769,20 +1916,11 @@
             }
           },
           "402": {
-            "description": "Insufficient balance",
+            "description": "Insufficient balance.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Insufficient balance"
-                    },
-                    "balance_usd": {
-                      "type": "number"
-                    }
-                  }
+                  "$ref": "#/components/schemas/InsufficientBalance"
                 }
               }
             }
@@ -1798,7 +1936,7 @@
             }
           },
           "429": {
-            "description": "Rate limit exceeded",
+            "description": "Rate limit exceeded.",
             "headers": {
               "Retry-After": {
                 "schema": {
@@ -1810,13 +1948,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Rate limit exceeded. Try again at 2026-03-07T12:34:56Z"
-                    }
-                  }
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
@@ -1873,36 +2005,55 @@
             "description": "Bypass cache (incurs cost even if identical request was recently made)."
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "json",
-                "parquet",
-                "csv"
-              ],
-              "default": "json"
-            },
-            "description": "Response format. `json` (default) returns `TickerReturnsResponseV3` (symbol, ticker, `data` rows with V3 field names, `meta`). Export formats may differ — confirm column names in your client when using `parquet` or `csv`.\n"
+            "$ref": "#/components/parameters/FormatQueryTabular"
           }
         ],
         "responses": {
           "200": {
-            "description": "Time series of daily returns and V3 rolling HR/ER fields.",
+            "description": "Time series of daily returns, `price_close`, and V3 rolling HR/ER fields. JSON wraps rows in `data` with `symbol`, `ticker`, `meta`, `_metadata`. Parquet/CSV are a single table: one row per trading day; columns match `#/components/schemas/TickerReturnsDailyRow` in a stable key order (same field names as JSON object keys in each `data` element).\n",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Weak ETag (`W/\"...\"`). Clients may send `If-None-Match` to obtain `304 Not Modified` when the series is unchanged for this ticker, `years`, and format.\n"
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Factor-Set-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Universe-Size": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
-              "application/x-parquet": {
+              "application/vnd.apache.parquet": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
-                }
+                },
+                "description": "Apache Parquet (one table). Row schema equals `#/components/schemas/TickerReturnsDailyRow`. No `_metadata` columns; use response headers for lineage.\n"
               },
               "text/csv": {
                 "schema": {
-                  "type": "string",
-                  "format": "text"
-                }
+                  "type": "string"
+                },
+                "description": "UTF-8 CSV: header row then one row per trading day; columns match the Parquet export.\n",
+                "example": "date,returns_gross,price_close,l3_mkt_hr,l3_sec_hr,l3_sub_hr,l3_mkt_er,l3_sec_er,l3_sub_er,l3_res_er\n2025-03-20,0.0123,950.25,0.95,0.12,0.03,0.41,0.22,0.08,0.29\n"
               },
               "application/json": {
                 "schema": {
@@ -1981,36 +2132,49 @@
             "example": "AAPL"
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "json",
-                "parquet",
-                "csv"
-              ],
-              "default": "json"
-            },
-            "description": "Response format. Parquet/CSV return tabular (date, returns_gross)."
+            "$ref": "#/components/parameters/FormatQueryTabular"
           }
         ],
         "responses": {
           "200": {
-            "description": "Daily returns.",
+            "description": "Daily gross returns. JSON uses a parallel `returns_gross` array (see schema). Parquet/CSV use a long table `#/components/schemas/GrossReturnDailyRow` (`date`, `returns_gross` per row).\n",
+            "headers": {
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Factor-Set-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Universe-Size": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
-              "application/x-parquet": {
+              "application/vnd.apache.parquet": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
-                }
+                },
+                "description": "Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.\n"
               },
               "text/csv": {
                 "schema": {
-                  "type": "string",
-                  "format": "text"
-                }
+                  "type": "string"
+                },
+                "description": "UTF-8 CSV with header `date,returns_gross`.\n",
+                "example": "date,returns_gross\n2025-03-20,0.0123\n"
               },
               "application/json": {
                 "schema": {
@@ -2043,8 +2207,52 @@
           "400": {
             "description": "Missing ticker."
           },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
           "404": {
-            "description": "Ticker not found."
+            "description": "Ticker not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
           }
         }
       }
@@ -2069,36 +2277,49 @@
             "description": "ETF ticker symbol."
           },
           {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "json",
-                "parquet",
-                "csv"
-              ],
-              "default": "json"
-            },
-            "description": "Response format. Parquet/CSV return tabular (date, returns_gross)."
+            "$ref": "#/components/parameters/FormatQueryTabular"
           }
         ],
         "responses": {
           "200": {
-            "description": "Daily ETF returns.",
+            "description": "Daily ETF gross returns. JSON exposes parallel `dates` and `returns_gross` arrays. Parquet/CSV flatten to `#/components/schemas/GrossReturnDailyRow`.\n",
+            "headers": {
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Factor-Set-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Universe-Size": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
-              "application/x-parquet": {
+              "application/vnd.apache.parquet": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
-                }
+                },
+                "description": "Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.\n"
               },
               "text/csv": {
                 "schema": {
-                  "type": "string",
-                  "format": "text"
-                }
+                  "type": "string"
+                },
+                "description": "UTF-8 CSV with header `date,returns_gross`.\n",
+                "example": "date,returns_gross\n2025-03-20,0.0012\n"
               },
               "application/json": {
                 "schema": {
@@ -2137,8 +2358,52 @@
           "400": {
             "description": "Missing etf."
           },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
           "404": {
-            "description": "ETF not found."
+            "description": "ETF not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
           }
         }
       }
@@ -2236,7 +2501,7 @@
     "/batch/analyze": {
       "post": {
         "summary": "Multi-ticker batch analysis (25% discount)",
-        "description": "Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.002/position, minimum $0.01/call.\n",
+        "description": "Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.002/position, minimum $0.01/call.\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
         "operationId": "batchAnalyze",
         "tags": [
           "Risk Metrics"
@@ -2297,7 +2562,7 @@
                       "csv"
                     ],
                     "default": "json",
-                    "description": "Parquet/CSV export shapes may differ from JSON; validate columns in your pipeline.\n"
+                    "description": "`json` (default): `BatchAnalyzeResponse` with `results`, `summary`, `_agent`, `_metadata`. `parquet` / `csv`: long-format daily table only — see operation description and `#/components/schemas/BatchAnalyzeExportRow`. Requires `returns` in `metrics` for non-empty data.\n"
                   }
                 }
               }
@@ -2306,7 +2571,7 @@
         },
         "responses": {
           "200": {
-            "description": "Batch results keyed by ticker (JSON) or export formats when implemented.",
+            "description": "Batch results as JSON (`results` map) or as a single Parquet/CSV table of merged daily `returns` rows across tickers.\n",
             "headers": {
               "X-Risk-Model-Version": {
                 "schema": {
@@ -2345,17 +2610,19 @@
               }
             },
             "content": {
-              "application/x-parquet": {
+              "application/vnd.apache.parquet": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
-                }
+                },
+                "description": "Apache Parquet long table; columns per `#/components/schemas/BatchAnalyzeExportRow`. Tickers without `returns` data are omitted; failed tickers are omitted.\n"
               },
               "text/csv": {
                 "schema": {
-                  "type": "string",
-                  "format": "text"
-                }
+                  "type": "string"
+                },
+                "description": "UTF-8 CSV with header `ticker,date,gross_return,l1,l2,l3`; semantics match Parquet.\n",
+                "example": "ticker,date,gross_return,l1,l2,l3\nAAPL,2025-03-20,0.005,0.92,0.15,0.04\nMSFT,2025-03-20,-0.002,0.88,0.11,0.03\n"
               },
               "application/json": {
                 "schema": {
@@ -2575,7 +2842,31 @@
             "description": "Unknown endpoint or invalid request"
           },
           "401": {
-            "description": "Authentication required"
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
           }
         }
       }
@@ -2583,7 +2874,7 @@
     "/health": {
       "get": {
         "summary": "Service health check",
-        "description": "Returns current service status, version, and capability availability. Free, no auth required.",
+        "description": "Returns current service status, version, capability availability, and latest-session gross-return coverage (EODHD completeness signal). Free, no auth required.",
         "operationId": "getHealth",
         "tags": [
           "Utility"
@@ -2600,7 +2891,7 @@
                     "status": {
                       "type": "string",
                       "enum": [
-                        "up",
+                        "healthy",
                         "degraded",
                         "down"
                       ]
@@ -2615,12 +2906,39 @@
                     },
                     "services": {
                       "type": "object",
-                      "additionalProperties": {
-                        "type": "string"
-                      }
+                      "additionalProperties": true
                     },
                     "capabilities": {
-                      "type": "object"
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "teo_coverage": {
+                      "type": "object",
+                      "description": "Coverage of returns_gross at the newest teo in security_history vs stock universe; sparse values suggest EODHD not yet published for that session (10% threshold, same as ERM3 T check).",
+                      "properties": {
+                        "latest_teo": {
+                          "type": "string",
+                          "format": "date",
+                          "nullable": true
+                        },
+                        "universe_stock_count": {
+                          "type": "integer"
+                        },
+                        "non_null_returns_symbol_count": {
+                          "type": "integer"
+                        },
+                        "latest_teo_coverage_pct": {
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Percent 0–100 of universe with non-null gross return at latest_teo."
+                        },
+                        "eodhd_latest_session_pending": {
+                          "type": "boolean"
+                        },
+                        "query_error": {
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -2707,6 +3025,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
                 }
               }
             }
@@ -2826,6 +3154,16 @@
               }
             }
           },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limit exceeded.",
             "headers": {
@@ -2888,6 +3226,293 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/provision-free": {
+      "post": {
+        "summary": "Provision a free-tier API key",
+        "description": "Generate a free API key with limited daily usage (100 req/day, 10 req/min). No payment or email required. Returns the key once — store it immediately.\n",
+        "operationId": "provisionFreeToken",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "agent_name"
+                ],
+                "properties": {
+                  "agent_name": {
+                    "type": "string",
+                    "minLength": 3,
+                    "description": "Display name for the free-tier agent (≥ 3 characters).",
+                    "example": "my-research-bot"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "description": "Optional description of intended use.",
+                    "default": "development"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Free API key created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "account": {
+                      "type": "object",
+                      "properties": {
+                        "user_id": {
+                          "type": "string"
+                        },
+                        "agent_name": {
+                          "type": "string"
+                        },
+                        "tier": {
+                          "type": "string",
+                          "enum": [
+                            "free"
+                          ]
+                        },
+                        "limits": {
+                          "type": "object",
+                          "properties": {
+                            "queries_per_day": {
+                              "type": "integer",
+                              "example": 100
+                            },
+                            "queries_per_minute": {
+                              "type": "integer",
+                              "example": 10
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "credentials": {
+                      "type": "object",
+                      "properties": {
+                        "api_key": {
+                          "type": "string",
+                          "description": "Shown only once. Store securely.",
+                          "example": "rm_agent_live_abc123_xyz"
+                        },
+                        "prefix": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid agent_name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/free-tier-status": {
+      "get": {
+        "summary": "Free-tier usage status",
+        "description": "Returns current daily usage and remaining quota for a free-tier API key. Authenticated with Bearer token. Returns HTTP 200 with `tier` field for non-free accounts.\n",
+        "operationId": "getFreeTierStatus",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Free-tier usage status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tier": {
+                      "type": "string",
+                      "example": "free"
+                    },
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "usage": {
+                      "type": "object",
+                      "properties": {
+                        "queries_today": {
+                          "type": "integer"
+                        },
+                        "queries_this_month": {
+                          "type": "integer"
+                        },
+                        "remaining_today": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "queries_per_day": {
+                          "type": "integer",
+                          "example": 100
+                        },
+                        "queries_per_minute": {
+                          "type": "integer",
+                          "example": 10
+                        }
+                      }
+                    },
+                    "reset_date": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No account found for this API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cli/query": {
+      "post": {
+        "summary": "Raw SQL query (SELECT only)",
+        "description": "Execute a read-only SQL SELECT against the RiskModels database. Only SELECT statements are permitted; DML and DDL are rejected. Results capped at 10,000 rows. Billed as `cli-query` capability. Requires valid Bearer token with billing balance.\n",
+        "operationId": "cliQuery",
+        "tags": [
+          "Utility"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "sql"
+                ],
+                "properties": {
+                  "sql": {
+                    "type": "string",
+                    "description": "SELECT statement to execute. Multi-statement and DML/DDL are rejected.",
+                    "example": "SELECT ticker, symbol FROM symbols LIMIT 10"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "description": "Max rows to return if no LIMIT clause in sql (default 100, max 10000).",
+                    "default": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Query results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "sql": {
+                      "type": "string",
+                      "description": "Executed SQL (may have LIMIT appended)."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or disallowed SQL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
                 }
               }
             }
