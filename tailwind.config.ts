@@ -12,7 +12,14 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
-        mono: ['ui-monospace', 'Courier New', 'Fira Code', 'monospace'],
+        mono: [
+          'var(--font-mono)',
+          'JetBrains Mono',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'monospace',
+        ],
       },
       colors: {
         background: 'hsl(var(--background))',

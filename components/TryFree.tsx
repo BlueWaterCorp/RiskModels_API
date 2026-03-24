@@ -29,14 +29,18 @@ export default function TryFree() {
 
   if (!DEMO_KEY) {
     return (
-      <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-zinc-950 border-t border-zinc-900">
+      <section className="relative w-full py-24 lg:py-32 px-4 sm:px-6 lg:px-8 bg-zinc-950">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-600/30 to-transparent"
+          aria-hidden
+        />
         <div className="max-w-3xl mx-auto text-center">
           <div className="mx-auto mb-4 flex max-w-xl flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-center text-xs font-semibold text-emerald-400">
             <Zap size={12} className="shrink-0" />
             <span>{PRICING_BADGE}</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">Try it free</h2>
-          <p className="text-zinc-400 text-sm mb-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tighter mb-3">Try it free</h2>
+          <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
             Sign in to get a key (card on file for billing). You&apos;re only charged for API
             usage—no subscription or upfront fee.
           </p>
@@ -52,18 +56,21 @@ export default function TryFree() {
   }
 
   return (
-    <section className="w-full py-20 px-4 sm:px-6 lg:px-8 bg-zinc-950 border-t border-zinc-900">
+    <section className="relative w-full py-24 lg:py-32 px-4 sm:px-6 lg:px-8 bg-zinc-950">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-600/30 to-transparent"
+        aria-hidden
+      />
       <div className="max-w-3xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 flex max-w-xl flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-center text-xs font-semibold text-emerald-400">
             <Zap size={12} className="shrink-0" />
             <span>{PRICING_BADGE}</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tighter mb-3">
             Try it free in 30 seconds
           </h2>
-          <p className="text-zinc-400 text-sm">
+          <p className="text-zinc-400 text-sm leading-relaxed max-w-xl mx-auto">
             Use the public demo key below—no signup. Full universe access uses the same usage-based
             pricing (card on file; no upfront charge).
           </p>

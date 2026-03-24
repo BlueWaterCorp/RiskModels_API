@@ -2,8 +2,8 @@ import { cn } from '@/lib/cn';
 
 export function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-800">
-      <table className={cn('w-full text-sm', className)} {...props} />
+    <div className="overflow-x-auto">
+      <table className={cn('w-full text-sm border-separate border-spacing-0', className)} {...props} />
     </div>
   );
 }
@@ -17,18 +17,31 @@ export function TableBody({ ...props }: React.ComponentProps<'tbody'>) {
 }
 
 export function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
-  return <tr className={cn('border-b border-zinc-800 last:border-0 transition-colors hover:bg-zinc-900/50', className)} {...props} />;
+  return (
+    <tr
+      className={cn(
+        'border-b border-zinc-800/25 transition-colors last:border-0 hover:bg-zinc-900/40',
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
   return (
     <th
-      className={cn('px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400', className)}
+      className={cn(
+        'px-0 py-2.5 pr-6 text-left text-xs font-medium uppercase tracking-wide text-zinc-500 first:pl-0 last:pr-0',
+        className
+      )}
       {...props}
     />
   );
 }
 
 export function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
-  return <td className={cn('px-4 py-3 text-zinc-300', className)} {...props} />;
+  return (
+    <td className={cn('px-0 py-3 pr-6 align-top text-zinc-300 first:pl-0 last:pr-0', className)} {...props} />
+  );
 }

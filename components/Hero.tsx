@@ -1,16 +1,22 @@
 import Link from 'next/link';
-import { ArrowRight, Terminal, Bot, Shield, Zap } from 'lucide-react';
+import { ArrowRight, Zap } from 'lucide-react';
 
 export default function Hero() {
   return (
-    <section className="relative min-h-[90vh] flex items-center justify-center px-4 sm:px-6 lg:px-8 overflow-hidden">
+    <section className="relative flex flex-col justify-center px-4 sm:px-6 lg:px-8 pt-14 sm:pt-20 pb-2 sm:pb-3 overflow-hidden min-h-[min(62vh,720px)] sm:min-h-[min(58vh,680px)]">
       {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-blue-950/20" />
-      
+      <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-blue-950/25" />
+
       {/* Grid overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#18181b_1px,transparent_1px),linear-gradient(to_bottom,#18181b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
 
-      <div className="relative max-w-5xl mx-auto text-center space-y-8">
+      {/* Fade into terminal band */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-40 sm:h-48 bg-gradient-to-t from-zinc-950 via-zinc-950/85 to-transparent z-[1]"
+        aria-hidden
+      />
+
+      <div className="relative z-[2] max-w-5xl mx-auto text-center space-y-3 sm:space-y-4">
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-semibold">
           <Zap size={16} />
@@ -18,29 +24,19 @@ export default function Hero() {
         </div>
 
         {/* Headline */}
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white">
-          Stop Querying Risk Data.
-          <br />
-          <span className="text-primary">Start Delegating Decisions.</span>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tighter text-white">
+          An Agentic Approach to Managing{' '}
+          <span className="text-primary">Equity Risk.</span>
         </h1>
 
-        <p className="text-xl sm:text-2xl md:text-3xl text-zinc-400 font-medium">
-          The first autonomous risk intelligence layer for portfolios.
+        <p className="max-w-3xl mx-auto text-base sm:text-lg md:text-xl text-zinc-400 font-medium leading-relaxed">
+          From Market, Sector, and Subsector Attribution to Automated Hedging Logic—Directly Calibrate
+          Your Entire Risk Stack via a Single Institutional-Grade API.
         </p>
 
-        {/* Subheadline */}
-        <p className="max-w-3xl mx-auto text-lg text-zinc-400 leading-relaxed">
-          Delegate portfolio analysis to an agent that decomposes exposures, flags drift,
-          and suggests hedges — all without writing the logic. Or query traditionally
-          via REST API. $20 free credits, never expire.
-        </p>
+        <p className="text-sm text-zinc-500 leading-relaxed -mt-0.5">No subscription. No seat fees.</p>
 
-        <p className="text-sm text-zinc-500">
-          No subscription. No seat fees. $20 free credits · never expire.
-        </p>
-
-        {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pt-0.5 pb-0">
           <Link
             href="/pricing"
             className="group px-8 py-4 bg-primary hover:bg-primary/90 text-white text-lg font-semibold rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/30"
@@ -54,58 +50,6 @@ export default function Hero() {
           >
             Read the Docs
           </Link>
-        </div>
-
-        {/* Feature highlights */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-16 max-w-4xl mx-auto">
-          <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-            <Terminal className="text-primary mb-3" size={28} />
-            <h3 className="text-lg font-semibold text-white mb-2">Developer-First</h3>
-            <p className="text-sm text-zinc-400 mb-4">
-              OpenAPI 3.0 spec, TypeScript/Python/cURL examples. Clean REST API with full type safety.
-            </p>
-            <div className="flex gap-3 text-xs">
-              <Link href="/api-reference" className="text-primary hover:underline">
-                API Spec →
-              </Link>
-              <Link href="/quickstart#code-examples" className="text-primary hover:underline">
-                Quickstart →
-              </Link>
-            </div>
-          </div>
-          
-          <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-            <Bot className="text-primary mb-3" size={28} />
-            <h3 className="text-lg font-semibold text-white mb-2">Agentic Delegation</h3>
-            <p className="text-sm text-zinc-400 mb-4">
-              Pass your portfolio and a task — the agent returns factor exposures,
-              drift alerts, and hedge suggestions. No query logic required.
-            </p>
-            <div className="flex gap-3 text-xs">
-              <Link href="/docs/authentication" className="text-primary hover:underline">
-                Agent Guide →
-              </Link>
-              <Link href="/get-key" className="text-primary hover:underline">
-                Get Key →
-              </Link>
-            </div>
-          </div>
-          
-          <div className="p-6 rounded-lg bg-zinc-900/50 border border-zinc-800 backdrop-blur-sm">
-            <Shield className="text-primary mb-3" size={28} />
-            <h3 className="text-lg font-semibold text-white mb-2">Institutional Grade</h3>
-            <p className="text-sm text-zinc-400 mb-4">
-              ~3,000 tickers, 15+ years history, daily updates. Powered by ERM3 regression engine.
-            </p>
-            <div className="flex gap-3 text-xs">
-              <Link href="/docs/methodology" className="text-primary hover:underline">
-                Methodology →
-              </Link>
-              <Link href="/docs/api" className="text-primary hover:underline">
-                Docs →
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     </section>
