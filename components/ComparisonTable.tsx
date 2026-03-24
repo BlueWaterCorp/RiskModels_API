@@ -8,7 +8,7 @@ const features = [
   { label: 'API-first access', barra: false, northfield: false, riskmodels: true },
   { label: 'Same-day provisioning', barra: false, northfield: false, riskmodels: true },
   { label: 'Open-source methodology', barra: false, northfield: false, riskmodels: true },
-  { label: 'Real-time / intraday', barra: false, northfield: false, riskmodels: true },
+  { label: 'Real-time / intraday', barra: false, northfield: false, riskmodels: 'Coming soon' },
   { label: 'Usage-based pricing', barra: false, northfield: false, riskmodels: true },
 ];
 
