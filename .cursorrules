@@ -1,0 +1,39 @@
+# RiskModels SDK Expert Rules
+
+When writing or editing Python code that calls the **RiskModels API**, prefer the **`riskmodels`** package in this repo at `packages/riskmodels/` (import name `riskmodels`, distribution `riskmodels-py`). Do not invent REST paths or wire JSON shapes from memory; align with `OPENAPI_SPEC.yaml` and `SEMANTIC_ALIASES.md`.
+
+## Canonical math and field names (ERM3)
+
+- **Hedge ratios (HR)** are **dollars of ETF per $1 of stock** (`dollar_ratio`). Hedge notional ≈ `position_usd * hr`.
+- Use **semantic column names** as returned by the SDK (e.g. `l3_market_hr`, `l3_sector_hr`, `l3_subsector_hr`), **not** raw V3 wire keys in user-facing tables (`l3_mkt_hr` is normalized away in DataFrames).
+- **Explained risk (ER)** values are **variance fractions** in `[0, 1]`. At **L3**, `l3_market_er + l3_sector_er + l3_subsector_er + l3_residual_er ≈ 1`.
+- **Sign convention**: only **`l3_subsector_hr`** may be negative (long subsector ETF). Market and sector HRs are expected **≥ 0** under normal modelling.
+- **`GET /metrics/{ticker}`** returns numbers under JSON **`metrics`**; the SDK flattens to semantic names. Do not read flat `l1_market_hr` at the top level of the raw JSON unless mirroring legacy examples.
+- **`POST /batch/analyze`** Parquet/CSV long table: wire columns **`l1`, `l2`, `l3`** are the **three rolling L3 component HR series** (market, sector, subsector), **not** “L1 model / L2 model / L3 model” levels. The SDK renames them to `l3_market_hr`, `l3_sector_hr`, `l3_subsector_hr`.
+- **Portfolio-level hedge ratios** in the SDK are **holdings-weighted means** of per-ticker scalar HRs (same idea as zarr `wmean_*` in `docs/ERM3_ZARR_API_PARITY.md`). This is **not** a full portfolio optimization; it is explicit client-side aggregation.
+
+## Agent-native SDK usage
+
+- Instantiate with `RiskModelsClient.from_env()` or explicit `api_key` / OAuth client credentials.
+- For LLM prompts, use **`to_llm_context(obj)`** from `riskmodels` so tables include lineage and the ERM3 legend.
+- **Every `pandas.DataFrame` returned by the client** should carry **`df.attrs["legend"]`** (short ERM3 text) plus **`riskmodels_lineage`**, **`riskmodels_kind`**, and **`riskmodels_semantic_cheatsheet`** where `attach_sdk_metadata` ran. Prefer reading **`df.attrs["legend"]`** or **`df.attrs.get("riskmodels_semantic_cheatsheet")`** instead of guessing column meanings.
+- Call **`client.discover(format="json", to_stdout=False)`** when you need a structured capability list: each method includes **`description`**, **`parameters`** (for JSON Schema / tool defs), and **`returns`**. Follow **`tool_definition_hints`** in the JSON root for Claude Desktop–style tools.
+- **Ticker aliases** (e.g. GOOGL→GOOG): the SDK logs and emits **`ValidationWarning`** — treat as a signal to use the **canonical** symbol everywhere afterward.
+- Validation: client defaults to **`validate="warn"`**; use **`validate="error"`** to fail fast on ER sum / HR sign issues. Warning and error strings follow **`Warning:` / `Error:` … `Fix:`** for self-correction.
+
+## File pointers
+
+- SDK source: `packages/riskmodels/riskmodels/`
+- Field semantics: `SEMANTIC_ALIASES.md`, `docs/ERM3_ZARR_API_PARITY.md`
+- API contract: `OPENAPI_SPEC.yaml`
+
+## Portal docs (MDX)
+
+- **`content/docs/*.mdx`** is compiled with **`remark-math`** (see `app/docs/[[...slug]]/page.tsx`). A literal **`$` before a number** is treated as **inline math** and can **break JSX**, producing escaped markup or hydration errors.
+- **Rule of thumb:** inside MDX, any **`$` before a digit** in JSX (or other tricky spots) should be written as **`{'$'}`** or a numeric entity (**`&#36;`**) when **`remark-math`** is enabled (e.g. `per {'$'}1 of stock`, not `per $1 of stock`).
+- Heavy custom layouts in MDX: wrap in **`not-prose`** and avoid **`<p>`** wrappers around block-level JSX so Tailwind **`prose`** does not create invalid **`p`** nesting.
+
+## Don’t
+
+- Do not use **`l1` / `l2` / `l3`** batch column names in user docs or LLM tables after SDK normalization; use the semantic **`l3_market_hr`**, **`l3_sector_hr`**, **`l3_subsector_hr`** names.
+- Do not imply a true portfolio R² from weighted averages of per-name ER; treat weighted ER as a descriptive aggregate unless the user explicitly defines a different estimator.

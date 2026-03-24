@@ -123,6 +123,52 @@ def resilient_request(url, headers, max_retries=3):
 
 ---
 
+## SDK Validation (Instructional Warnings)
+
+The `riskmodels-py` Python SDK provides client-side validation with instructional error messages. These supplement the HTTP errors above and help agents and developers self-correct.
+
+### ValidationWarning (default mode)
+
+When `validate="warn"` (default), the SDK emits Python warnings for data-quality issues:
+
+```python
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()
+pa = client.analyze({"GOOGL": 0.6, "NVDA": 0.4})  # GOOGL is an alias
+
+# Output:
+# Warning: Ticker alias detected: GOOGL → GOOG (canonical in universe uni_mc_3000).
+# Fix: Use GOOG in all future API calls to avoid ambiguity and ensure consistent identity.
+```
+
+**Format:** `Warning: {issue description} Fix: {recommended action}`
+
+### RiskModelsValidationError (strict mode)
+
+When `validate="error"`, the SDK raises exceptions instead of warnings:
+
+```python
+client = RiskModelsClient.from_env(validate="error")
+pa = client.analyze({"NVDA": 1.0})
+
+# Raises RiskModelsValidationError if ER sum is out of tolerance:
+# Error: L3 explained-risk components sum to 1.0523, expected 1.0 ± 0.05.
+# Fix: Treat as a data-quality flag; verify model version and as-of date match your research slice.
+```
+
+### Common validation checks
+
+| Check | Trigger | Fix |
+|---|---|---|
+| **Ticker alias** | GOOGL, BRK-B, BF-B, or other remapped symbols | Use the canonical ticker logged in the warning |
+| **ER sum out of tolerance** | `l3_market_er + l3_sector_er + l3_subsector_er + l3_residual_er` ≠ 1.0 ± 0.05 | Verify model version matches your slice; may indicate partial modelling |
+| **Negative HR (non-subsector)** | `l3_market_hr` or `l3_sector_hr` < 0 | Check data quality; only `l3_subsector_hr` should be negative under normal modelling |
+
+All validation issues include a `Fix:` line so agents can self-correct without manual intervention.
+
+---
+
 ## Checking Service Status
 
 Before running a batch workflow, verify the service is healthy:

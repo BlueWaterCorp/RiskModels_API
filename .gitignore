@@ -9,6 +9,10 @@ out/
 build/
 dist/
 
+# Python venvs (e.g. packages/riskmodels/.venv)
+.venv/
+venv/
+
 # Dependencies
 node_modules/
 .pnp

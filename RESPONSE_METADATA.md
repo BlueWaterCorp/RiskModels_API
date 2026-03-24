@@ -52,13 +52,17 @@ All API responses include these headers:
 | Header | Description | Example |
 |---|---|---|
 | `X-Request-ID` | Unique request identifier (same as `_agent.request_id`) | `req_abc123xyz` |
-| `X-Response-Latency-Ms` | Server processing time in ms | `145` |
+| `X-Response-Latency-Ms` | Total server processing time in ms | `145` |
+| `X-Data-Fetch-Latency-Ms` | Time spent fetching data from upstream sources (DB, cache) in ms | `120` |
+| `X-Agent-Decision-Latency-Ms` | Time spent on server-side processing beyond data fetch (validation, transformation, aggregation) in ms | `25` |
 | `X-API-Cost-USD` | Cost deducted for this request as a string | `"0.005"` |
 | `X-API-Cost-Currency` | Always `"USD"` | `"USD"` |
 | `X-API-Billing-Code` | Internal billing classification | `"ticker_returns_v2"` |
 | `X-Confidence-Score` | Data reliability score 0–1 | `"0.98"` |
 | `X-Data-Freshness` | ISO timestamp of the data's as-of date | `"2026-02-21T10:30:00Z"` |
 | `X-Cache-Status` | Cache result: `HIT`, `MISS`, or `BYPASS` | `"MISS"` |
+
+**Note:** `X-Response-Latency-Ms` = `X-Data-Fetch-Latency-Ms` + `X-Agent-Decision-Latency-Ms`. The split helps distinguish I/O time from server-side computation. Present on billing-wrapped routes (most metered endpoints).
 
 ---
 

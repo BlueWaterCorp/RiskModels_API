@@ -1,5 +1,6 @@
 import { getDocBySlug, getAllDocSlugs } from '@/lib/mdx';
 import { MDXRemote } from 'next-mdx-remote/rsc';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { notFound } from 'next/navigation';
@@ -45,7 +46,7 @@ export default async function DocPage({ params }: { params: Promise<{ slug?: str
             source={doc.content}
             options={{
               mdxOptions: {
-                remarkPlugins: [remarkMath],
+                remarkPlugins: [remarkMath, remarkGfm],
                 rehypePlugins: [
                   [rehypeKatex, { output: 'html', throwOnError: false, strict: false }],
                 ],

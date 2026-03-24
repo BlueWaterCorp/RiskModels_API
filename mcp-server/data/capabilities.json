@@ -46,7 +46,7 @@
         "proprietary_models",
         "erm3_regression"
       ],
-      "methodology_url": "https://riskmodels.app/docs/methodology"
+      "methodology_url": "https://riskmodels.net/docs/methodology"
     },
     "tags": [
       "returns",
@@ -61,21 +61,110 @@
         },
         "response": {
           "ticker": "NVDA",
-          "return": [
-            0.012,
-            -0.008,
-            0.025
-          ],
-          "dates": [
-            "2023-01-01",
-            "2023-01-02",
-            "2023-01-03"
-          ],
-          "l1_market_hr": 0.98,
-          "l2_sector_hr": 0.85,
-          "l3_subsector_hr": 0.72
+          "data": [
+            {
+              "date": "2023-01-01",
+              "returns_gross": 0.012,
+              "l3_mkt_hr": 0.98,
+              "l3_sec_hr": 0.85,
+              "l3_sub_hr": 0.72
+            }
+          ]
         }
       }
+    ]
+  },
+  {
+    "id": "metrics",
+    "name": "Latest Risk Metrics",
+    "description": "Fetch latest hedge ratios (HR), explained risk (ER), volatility, and stock variance for a ticker from security_history (V3)",
+    "endpoint": "/api/metrics/{ticker}",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol (e.g., AAPL, NVDA)"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.001,
+      "currency": "USD",
+      "billing_code": "metrics_v3"
+    },
+    "performance": {
+      "avg_latency_ms": 80,
+      "p95_latency_ms": 150,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "security_history",
+        "erm3_regression"
+      ]
+    },
+    "tags": [
+      "metrics",
+      "hedge-ratios",
+      "explained-risk"
+    ]
+  },
+  {
+    "id": "rankings",
+    "name": "Cross-Sectional Rankings",
+    "description": "Fetch cross-sectional rankings for a ticker by metric, cohort, and window. Returns rank_ordinal, cohort_size, rank_percentile (100=best).",
+    "endpoint": "/api/rankings/{ticker}",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol"
+      },
+      "metric": {
+        "type": "string",
+        "required": false,
+        "description": "Metric: subsector_residual, sector_residual, gross_return, mkt_cap, er_l1, er_l2, er_l3"
+      },
+      "cohort": {
+        "type": "string",
+        "required": false,
+        "description": "Cohort: universe, sector, subsector"
+      },
+      "window": {
+        "type": "string",
+        "required": false,
+        "description": "Window: 1d, 21d, 63d, 252d"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.001,
+      "currency": "USD",
+      "billing_code": "rankings_v3"
+    },
+    "performance": {
+      "avg_latency_ms": 80,
+      "p95_latency_ms": 150,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "security_history",
+        "erm3_regression"
+      ]
+    },
+    "tags": [
+      "rankings",
+      "cross-sectional",
+      "percentile"
     ]
   },
   {
@@ -116,7 +205,7 @@
         "erm3_models",
         "factor_regression"
       ],
-      "methodology_url": "https://riskmodels.app/docs/l3-methodology"
+      "methodology_url": "https://riskmodels.net/docs/l3-methodology"
     },
     "tags": [
       "risk-analysis",
@@ -127,7 +216,7 @@
   {
     "id": "chat-risk-analyst",
     "name": "AI Risk Analyst",
-    "description": "Natural language risk analysis and insights via conversational AI powered by GPT-4",
+    "description": "Natural language risk analysis with optional hybrid streaming of validated A2UI catalog blocks",
     "endpoint": "/api/chat",
     "method": "POST",
     "parameters": {
@@ -158,6 +247,17 @@
         "required": false,
         "description": "AI model to use",
         "default": "gpt-4o-mini"
+      },
+      "response_mode": {
+        "type": "string",
+        "required": false,
+        "description": "Streaming mode: markdown preserves legacy text, hybrid emits text deltas plus approved A2UI catalog blocks",
+        "default": "markdown",
+        "enum": [
+          "markdown",
+          "catalog",
+          "hybrid"
+        ]
       }
     },
     "pricing": {
@@ -185,7 +285,9 @@
       "ai",
       "chat",
       "analysis",
-      "natural-language"
+      "natural-language",
+      "a2ui",
+      "streaming"
     ]
   },
   {
@@ -261,14 +363,14 @@
   {
     "id": "ticker-search",
     "name": "Ticker Search",
-    "description": "Search for tickers by symbol or company name with metadata",
+    "description": "Search for tickers by symbol or company name with metadata. Searches symbols first; falls back to internal company registry for broader company-name coverage.",
     "endpoint": "/api/tickers",
     "method": "GET",
     "parameters": {
       "search": {
         "type": "string",
         "required": false,
-        "description": "Search query for ticker symbol or company name"
+        "description": "Search query for ticker symbol or company name. Falls back to internal company registry when symbols has no match."
       },
       "mag7": {
         "type": "boolean",
@@ -279,7 +381,7 @@
       "include_metadata": {
         "type": "boolean",
         "required": false,
-        "description": "Include company names and sectors",
+        "description": "Include company name, sector, and sector_etf per ticker. Enriched from internal sources when symbols lacks company_name.",
         "default": false
       }
     },
@@ -299,7 +401,7 @@
       "data_quality_score": 0.99,
       "update_frequency": "daily",
       "sources": [
-        "ticker_metadata",
+        "symbols",
         "company_data"
       ]
     },
@@ -386,6 +488,263 @@
       "telemetry",
       "metrics",
       "performance"
+    ]
+  },
+  {
+    "id": "metrics-snapshot",
+    "name": "Metrics Snapshot",
+    "description": "Latest risk metrics snapshot for a single ticker (volatility, hedge ratios, explained risk)",
+    "endpoint": "/api/metrics",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.001,
+      "currency": "USD",
+      "billing_code": "metrics_snapshot_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 80,
+      "p95_latency_ms": 150,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "security_history",
+        "symbols"
+      ]
+    },
+    "tags": [
+      "metrics",
+      "snapshot",
+      "risk"
+    ]
+  },
+  {
+    "id": "l3-decomposition",
+    "name": "L3 Decomposition",
+    "description": "Decompose stock risk into market, sector, and idiosyncratic components",
+    "endpoint": "/api/l3-decomposition",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol"
+      },
+      "market_factor_etf": {
+        "type": "string",
+        "required": false,
+        "description": "Market factor ETF",
+        "default": "SPY"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.005,
+      "currency": "USD",
+      "billing_code": "l3_decomposition_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 120,
+      "p95_latency_ms": 200,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "daily",
+      "sources": [
+        "erm3_models",
+        "security_history"
+      ]
+    },
+    "tags": [
+      "risk",
+      "decomposition",
+      "l3"
+    ]
+  },
+  {
+    "id": "portfolio-returns",
+    "name": "Portfolio Returns",
+    "description": "Batch fetch returns for multiple tickers (portfolio analytics)",
+    "endpoint": "/api/portfolio/returns",
+    "method": "POST",
+    "parameters": {
+      "tickers": {
+        "type": "array",
+        "required": true,
+        "description": "Array of ticker symbols",
+        "items": {
+          "type": "string"
+        }
+      },
+      "years": {
+        "type": "integer",
+        "required": false,
+        "description": "Years of history",
+        "default": 3
+      }
+    },
+    "pricing": {
+      "model": "per_position",
+      "cost_usd": 0.002,
+      "currency": "USD",
+      "min_charge": 0.01,
+      "billing_code": "portfolio_returns_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 200,
+      "p95_latency_ms": 400,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 30
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "security_history"
+      ]
+    },
+    "tags": [
+      "portfolio",
+      "returns",
+      "batch"
+    ]
+  },
+  {
+    "id": "portfolio-risk-index",
+    "name": "Portfolio Risk Index",
+    "description": "Compute Portfolio Risk Index (variance decomposition)",
+    "endpoint": "/api/portfolio/risk-index",
+    "method": "POST",
+    "parameters": {
+      "positions": {
+        "type": "array",
+        "required": true,
+        "description": "Array of { ticker, weight }",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ticker": {
+              "type": "string"
+            },
+            "weight": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "timeSeries": {
+        "type": "boolean",
+        "required": false,
+        "description": "Return PRI time series",
+        "default": false
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.005,
+      "currency": "USD",
+      "billing_code": "portfolio_risk_index_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 300,
+      "p95_latency_ms": 500,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 20
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "security_history",
+        "symbols"
+      ]
+    },
+    "tags": [
+      "portfolio",
+      "risk",
+      "pri"
+    ]
+  },
+  {
+    "id": "cli-query",
+    "name": "CLI SQL Query",
+    "description": "Execute SQL SELECT queries against risk model data via CLI or programmatic access",
+    "endpoint": "/api/cli/query",
+    "method": "POST",
+    "parameters": {
+      "sql": {
+        "type": "string",
+        "required": true,
+        "description": "SQL SELECT query to execute"
+      },
+      "limit": {
+        "type": "integer",
+        "required": false,
+        "description": "Maximum rows to return",
+        "default": 100,
+        "min": 1,
+        "max": 10000
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.003,
+      "currency": "USD",
+      "billing_code": "cli_query_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 200,
+      "p95_latency_ms": 500,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": [
+        "supabase_db",
+        "exec_sql_rpc"
+      ]
+    },
+    "tags": [
+      "cli",
+      "sql",
+      "query",
+      "data-access"
+    ],
+    "examples": [
+      {
+        "request": {
+          "sql": "SELECT ticker, latest_er_total FROM symbols LIMIT 5"
+        },
+        "response": {
+          "results": [
+            {
+              "ticker": "AAPL",
+              "l3_residual_er": 0.54
+            },
+            {
+              "ticker": "NVDA",
+              "l3_residual_er": 0.38
+            }
+          ],
+          "count": 2,
+          "cost_usd": 0.003
+        }
+      }
     ]
   }
 ]

@@ -4,7 +4,13 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP data sync** — Ran `sync-mcp-from-risk-models.sh`; `mcp-server/data/capabilities.json`, `schema-paths.json`, and `schemas/*.json` mirrored from Risk_Models `riskmodels_com` generator output.
+
 ### Added
+
+- **Python SDK (`packages/riskmodels`)** — `riskmodels-py` on PyPI layout: `RiskModelsClient` (Bearer + OAuth2 client credentials, optional `httpx` injection for tests), batch portfolio weighted hedge ratios, Parquet/CSV tabular paths, optional `[xarray]` `get_dataset`, agent helpers (`discover` Markdown/JSON, `to_llm_context`, attrs + ERM3 legend, ticker alias map e.g. GOOGL→GOOG, `validate=warn|error|off`). See [packages/riskmodels/README.md](packages/riskmodels/README.md).
 
 - **Agentic API landing page integration** — Homepage now features agentic-first messaging with new sections:
   - `AgenticSection` component with "Stop Querying. Start Delegating." value proposition

@@ -44,6 +44,14 @@ For **Preview** deployments, `NEXT_PUBLIC_APP_URL` is optional — the app falls
 
 Set only `RISKMODELS_API_SERVICE_KEY` for gateway authentication.
 
+## GitHub Actions (smoke test)
+
+The workflow [`.github/workflows/smoke-test.yml`](.github/workflows/smoke-test.yml) exercises production `riskmodels.app`.
+
+**Repository secret (required for full coverage):** add **`TEST_API_KEY`** in GitHub → **Settings → Secrets and variables → Actions** with a valid **live** RiskModels API key (`rm_agent_live_…` or equivalent). The workflow uses it as `Authorization: Bearer …` for `/api/tickers`, `/api/balance`, and `/api/auth/free-tier-status`.
+
+If `TEST_API_KEY` is **unset**, the authenticated step is **skipped** (health + OpenAPI + 401 checks still run), so the workflow can appear green without billing/auth coverage. Set the secret so maintainers get alerted when authenticated paths regress.
+
 ## 3. Supabase Auth Redirect URLs
 
 In Supabase → Authentication → URL Configuration:

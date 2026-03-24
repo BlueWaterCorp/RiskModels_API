@@ -4,20 +4,38 @@ import CodeBlock from '@/components/CodeBlock';
 import QuickstartCodeExamples from '@/components/QuickstartCodeExamples';
 import { ArrowRight } from 'lucide-react';
 
-const pythonExample = `import requests
+const pythonSdkExample = `from riskmodels import RiskModelsClient, to_llm_context
+
+# Auto-discover from environment (RISKMODELS_API_KEY)
+client = RiskModelsClient.from_env()
+
+# Analyze portfolio with semantic fields and ticker normalization
+pa = client.analyze({"NVDA": 0.4, "GOOGL": 0.6})  # GOOGL→GOOG aliased
+
+# Holdings-weighted hedge ratios (pre-aggregated client-side)
+hr = pa.portfolio_hedge_ratios
+print(f"Market HR:  {hr['l3_market_hr']:.2f}")
+print(f"Sector HR:  {hr['l3_sector_hr']:.2f}")
+
+# LLM-ready context: includes lineage, legend, semantic cheatsheet
+print(to_llm_context(pa))`;
+
+const pythonRawExample = `import requests
 
 API_KEY  = "rm_agent_live_..."
 BASE_URL = "https://riskmodels.app/api"
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
-# Get latest metrics for NVDA (V3: fields live under "metrics")
+# Get latest metrics for NVDA (V3: fields nest under "metrics")
 resp = requests.get(f"{BASE_URL}/metrics/NVDA", headers=HEADERS)
 body = resp.json()
-m = body["metrics"]
+m = body["metrics"]  # Wire keys (l3_mkt_hr) need manual remap
 
 print(f"Residual Risk:  {(m.get('l3_res_er') or 0):.1%}")
 print(f"Market Hedge:   {(m.get('l3_mkt_hr') or 0):.2f}")
-print(f"Vol (23d):      {(m.get('vol_23d') or 0):.1%}")`;
+print(f"Vol (23d):      {(m.get('vol_23d') or 0):.1%}")
+
+# Note: No ticker alias detection, no semantic normalization, no validation`;
 
 const typescriptExample = `const API_KEY  = "rm_agent_live_...";
 const BASE_URL = "https://riskmodels.app/api";
@@ -75,8 +93,7 @@ export default function QuickstartPage() {
         <div className="mb-12">
           <h1 className="text-4xl font-bold text-zinc-100 mb-4">Quickstart</h1>
           <p className="text-lg text-zinc-400">
-            Get an API key, run your first request, then use longer Python and
-            TypeScript examples—all in one place.
+            Get an API key, install the Python SDK, run your first portfolio analysis — all under 60 seconds.
           </p>
         </div>
 
@@ -109,14 +126,22 @@ export default function QuickstartPage() {
               2
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-zinc-100 mb-3">Install Dependencies</h2>
+              <h2 className="text-2xl font-bold text-zinc-100 mb-3">Install the SDK</h2>
               <p className="text-zinc-400 mb-4">
-                Choose your language and install the required packages.
+                The Python SDK handles ticker resolution, semantic field names, validation, and LLM context formatting. Install with the xarray extra for multi-dimensional portfolio math.
               </p>
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Python</h3>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Python SDK (Recommended)</h3>
+                  <CodeBlock
+                    code="pip install riskmodels-py[xarray]"
+                    language="bash"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Raw REST (Python)</h3>
                   <CodeBlock
                     code="pip install requests pandas pyarrow"
                     language="bash"
@@ -145,17 +170,32 @@ export default function QuickstartPage() {
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-zinc-100 mb-3">Make Your First Request</h2>
               <p className="text-zinc-400 mb-6">
-                Fetch risk metrics for any ticker in the universe (e.g., NVDA, AAPL, MSFT).
+                Analyze portfolios or fetch risk metrics for any ticker (e.g., NVDA, AAPL, MSFT). The SDK auto-normalizes ticker aliases and wire field names.
               </p>
 
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">Python</h3>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">Python SDK (Recommended)</h3>
                   <CodeBlock
-                    code={pythonExample}
+                    code={pythonSdkExample}
                     language="python"
-                    filename="quickstart.py"
+                    filename="quickstart_sdk.py"
                   />
+                  <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
+                    The SDK emits <code className="text-zinc-400 bg-zinc-800 px-1 rounded">ValidationWarning</code> for ticker aliases (GOOGL→GOOG) and returns semantic column names (<code className="text-zinc-400 bg-zinc-800 px-1 rounded">l3_market_hr</code> instead of raw <code className="text-zinc-400 bg-zinc-800 px-1 rounded">l3_mkt_hr</code>). See <Link href="/docs/api" className="text-blue-400 hover:text-blue-300 underline">Agent-Native Helpers</Link> for all SDK features.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">Raw REST (Python)</h3>
+                  <CodeBlock
+                    code={pythonRawExample}
+                    language="python"
+                    filename="quickstart_raw.py"
+                  />
+                  <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
+                    Raw REST requires manual parsing of nested <code className="text-zinc-400 bg-zinc-800 px-1 rounded">body[&quot;metrics&quot;]</code> objects, no ticker alias detection, and OAuth token rotation logic for production use. The SDK handles all of this.
+                  </p>
                 </div>
 
                 <div>

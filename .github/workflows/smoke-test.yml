@@ -1,3 +1,6 @@
+# Full coverage: set repo secret TEST_API_KEY (live API key) in GitHub → Settings → Secrets.
+# If empty, the "Authenticated endpoints" step is skipped. See DEPLOYMENT.md → GitHub Actions.
+
 name: Production Smoke Test
 
 concurrency:

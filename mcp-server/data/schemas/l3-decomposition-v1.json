@@ -25,24 +25,18 @@
         "format": "date"
       }
     },
-    "_metadata": {
-      "type": "object",
-      "description": "Lineage metadata (model_version, data_as_of, factor_set_id, universe_size, wiki_uri, factors)",
-      "properties": {
-        "model_version": { "type": "string" },
-        "data_as_of": { "type": "string", "format": "date" },
-        "factor_set_id": { "type": "string" },
-        "universe_size": { "type": "integer" },
-        "wiki_uri": { "type": "string", "format": "uri" },
-        "factors": { "type": "array", "items": { "type": "string" } }
-      }
-    },
     "_agent": {
       "type": "object",
       "properties": {
-        "cost_usd": { "type": "number" },
-        "latency_ms": { "type": "integer" },
-        "request_id": { "type": "string" }
+        "cost_usd": {
+          "type": "number"
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        }
       }
     }
   }

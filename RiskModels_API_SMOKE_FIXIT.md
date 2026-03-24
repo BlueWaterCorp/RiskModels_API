@@ -53,8 +53,8 @@ Requires in `.env.local`:
 
 ### Billed app (not hosted on `riskmodels.app`)
 
-| Name | Method | URL | HTTP |
-|------|--------|-----|------|
+| Name | Method | URL | HTTP | Notes |
+|------|--------|-----|------|-------|
 | `net_cli_query_smoke` | POST | `{APP_URL}/api/cli/query` | **200** | SQL: `SELECT 1 AS one` |
 
 ---

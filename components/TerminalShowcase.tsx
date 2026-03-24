@@ -282,7 +282,65 @@ const scenarioE: Scenario = {
   ],
 };
 
-const SCENARIOS: Scenario[] = [scenarioA, scenarioB, scenarioC, scenarioD, scenarioE];
+// ─── Scenario F: Python SDK (Agent-Native) ────────────────────────────────────
+const scenarioF: Scenario = {
+  id: 'python-sdk',
+  label: 'Python SDK',
+  titleBarLabel: 'python portfolio_llm.py — agent-native portfolio analysis',
+  contextBadge: 'NVDA 40% · GOOGL 60%',
+  command: 'python portfolio_llm.py',
+  lines: [
+    {
+      id: 0, delayMs: 0,
+      content: <><span style={{ color: C.info }}>[INFO]</span> <span style={{ color: C.muted }}>RiskModelsClient.from_env() → authenticated via RISKMODELS_API_KEY</span></>,
+    },
+    {
+      id: 1, delayMs: 500,
+      content: <><span style={{ color: C.info }}>[INFO]</span> <span style={{ color: C.muted }}>Ticker alias detected: GOOGL → GOOG (canonical)</span></>,
+    },
+    {
+      id: 2, delayMs: 900,
+      content: <><span style={{ color: C.info }}>[INFO]</span> <span style={{ color: C.muted }}>POST /batch/analyze → 2 tickers, 252 dates, semantic normalization complete</span></>,
+    },
+    { id: 3, delayMs: 1200, content: <span>&nbsp;</span> },
+    {
+      id: 4, delayMs: 1340,
+      content: <span style={{ color: C.dim }}>## Portfolio Hedge Ratios (Holdings-Weighted)</span>,
+    },
+    { id: 5, delayMs: 1500, content: <span>&nbsp;</span> },
+    {
+      id: 6, delayMs: 1640,
+      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.key }}>metric</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.key }}>value</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.key }}>unit</span><span style={{ color: C.dim }}> |</span></span>,
+    },
+    {
+      id: 7, delayMs: 1780,
+      content: <span style={{ color: C.dim }}>|--------|-------|------|</span>,
+    },
+    {
+      id: 8, delayMs: 1920,
+      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_market_hr</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.91</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>$/$ SPY</span><span style={{ color: C.dim }}> |</span></span>,
+    },
+    {
+      id: 9, delayMs: 2060,
+      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_sector_hr</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.13</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>$/$ XLK</span><span style={{ color: C.dim }}> |</span></span>,
+    },
+    {
+      id: 10, delayMs: 2200,
+      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_subsector_hr</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.07</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>$/$ SOXX</span><span style={{ color: C.dim }}> |</span></span>,
+    },
+    {
+      id: 11, delayMs: 2340,
+      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_residual_er</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.24</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>variance fraction</span><span style={{ color: C.dim }}> |</span></span>,
+    },
+    { id: 12, delayMs: 2520, content: <span>&nbsp;</span> },
+    {
+      id: 13, delayMs: 2660,
+      content: <span style={{ color: C.dim }}><span style={{ color: C.muted }}>Lineage: ERM3-L3-v30 · 2026-03-20 · 2,987 universe</span></span>,
+    },
+  ],
+};
+
+const SCENARIOS: Scenario[] = [scenarioA, scenarioB, scenarioF, scenarioC, scenarioD, scenarioE];
 
 export interface TerminalShowcaseProps {
   /** When true, renders only inner content (e.g. inside ProductWorkbench). */
@@ -415,7 +473,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         See the API in Action
       </h2>
       <p className="text-zinc-400 max-w-2xl mx-auto text-base leading-relaxed px-1">
-        Five real interaction patterns — CLI agent commands, raw REST calls, pre-flight cost estimation,
+        Six real interaction patterns — Python SDK, CLI agent commands, raw REST calls, pre-flight cost estimation,
         and MCP tool invocations.
       </p>
     </div>

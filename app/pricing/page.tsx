@@ -132,9 +132,7 @@ export default function PricingPage() {
         </h1>
         <p className="text-base text-zinc-400 max-w-2xl mx-auto mb-2 leading-snug">
           Built for{" "}
-          <span className="text-blue-400 font-semibold">agentic</span> workflows — MCP tools,
-          batch analysis, and structured outputs your automations can act on. No subscriptions.
-          No seat fees.
+          <span className="text-blue-400 font-semibold">agentic</span> workflows — the Python SDK handles ticker resolution, semantic field normalization, and portfolio aggregation client-side so agents focus on strategy. API responses expose latency breakdown headers (<code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">X-Agent-Decision-Latency-Ms</code>) for transparency.
         </p>
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
           Start free with{" "}
@@ -263,7 +261,7 @@ export default function PricingPage() {
           compare with the reference table. Rows marked with{" "}
           <Sparkles className="inline h-3.5 w-3.5 text-blue-400 -mt-0.5" aria-hidden /> are
           typical <span className="text-blue-400 font-medium">agentic</span> / portfolio-heavy
-          calls.
+          calls. Advanced users: install <code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">riskmodels-py[xarray]</code> for multi-dimensional factor cube workflows (see <Link href="/docs/methodology#xarray-cube" className="text-blue-400 hover:text-blue-300 underline">Methodology</Link>).
         </p>
 
         <div className="mb-6">

@@ -70,37 +70,6 @@
           }
         }
       }
-    },
-    "teo_coverage": {
-      "type": "object",
-      "description": "Gross-return coverage at the latest returns_gross teo in security_history; sparse values usually mean EODHD has not fully published for that session (aligned with ERM3 T coverage threshold 10%).",
-      "properties": {
-        "latest_teo": {
-          "type": ["string", "null"],
-          "format": "date",
-          "description": "Latest calendar date with returns_gross rows, or null if none."
-        },
-        "universe_stock_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "non_null_returns_symbol_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "latest_teo_coverage_pct": {
-          "type": ["number", "null"],
-          "description": "100 * (non_null / universe) at latest_teo; null if universe is zero or count failed."
-        },
-        "eodhd_latest_session_pending": {
-          "type": "boolean",
-          "description": "True when latest_teo_coverage_pct implies ratio below 10% vs universe."
-        },
-        "query_error": {
-          "type": "string",
-          "description": "Present when Supabase queries for coverage failed."
-        }
-      }
     }
   }
 }

@@ -10,9 +10,9 @@ Welcome to the methodology wiki. This page explains the math and intuition behin
 This page focuses on the **mathematics and portfolio interpretation** of the model. If you want the engine-design view of time safety, Security Master discipline, and why the hedge outputs are built to remain executable with raw ETFs, read [ERM3 Engine Design](/docs/erm3-engine).
 
 <div className="not-prose my-6 rounded-xl border border-primary/30 bg-primary/5 p-5">
-  <p className="text-sm text-zinc-300 leading-relaxed mb-0">
+  <div className="text-sm text-zinc-300 leading-relaxed mb-0">
     <strong className="text-zinc-100">Use this split:</strong> <a href="/docs/erm3-engine" className="text-primary hover:underline">ERM3 Engine</a> explains the modeling assumptions and data-engineering choices; <strong className="text-zinc-100">Methodology</strong> explains the regression cascade, orthogonalization, and hedge-ratio math.
-  </p>
+  </div>
 </div>
 
 ---
@@ -198,6 +198,46 @@ $$
 This is a mathematical **identity**. At runtime, we verify it holds to within **0.1%** for every stock on every date.
 
 > **Why this matters:** You can hedge almost any stock or portfolio using only highly liquid ETFs. No custom baskets. No exotic derivatives. Just SPY, sector ETFs, and subsector ETFs.
+
+---
+
+## Institutional Modellers: Multi-Dimensional Factor Cube
+
+For advanced quantitative workflows, the Python SDK supports `xarray` to work with returns and hedge ratios as a multi-dimensional data structure (Tickers × Dates × Metrics). This enables broadcasted portfolio math without manual DataFrame pivots.
+
+### Install with xarray support
+
+```bash
+pip install riskmodels-py[xarray]
+```
+
+### Portfolio-level hedge ratio time series
+
+```python
+from riskmodels import RiskModelsClient
+import xarray as xr
+
+client = RiskModelsClient.from_env()
+
+# Fetch multi-ticker batch as xarray Dataset
+tickers = ["NVDA", "AAPL", "MSFT", "META"]
+ds = client.get_dataset(tickers, years=2, format="parquet")
+
+# Define holdings weights (aligned on ticker dimension)
+weights = xr.DataArray(
+    [0.4, 0.3, 0.2, 0.1],
+    dims=["ticker"],
+    coords={"ticker": tickers}
+)
+
+# Broadcast multiply and sum to get portfolio-level L3 market HR time series
+portfolio_market_hr = (ds["l3_market_hr"] * weights).sum(dim="ticker")
+
+# Result: 1D time series of holdings-weighted L3 market hedge ratio
+print(portfolio_market_hr)
+```
+
+This computes the holdings-weighted mean of per-ticker L3 market hedge ratios as a rolling time series. It is a descriptive aggregate aligned with the portfolio math in the SDK, not a full portfolio optimizer. For details on how the SDK aggregates batch results, see the `portfolio_math.py` module and [`.cursorrules`](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/.cursorrules).
 
 ---
 

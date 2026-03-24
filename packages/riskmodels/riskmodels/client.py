@@ -1,0 +1,363 @@
+"""High-level RiskModels API client."""
+
+from __future__ import annotations
+
+import json
+import os
+from collections.abc import Mapping
+from typing import Any, Literal
+from urllib.parse import quote
+
+import httpx
+import pandas as pd
+
+from .auth import OAuthClientCredentialsAuth, StaticBearerAuth
+from .capabilities import DISCOVER_SPEC, discover_markdown
+from .lineage import RiskLineage
+from .mapping import TICKER_RETURNS_COLUMN_RENAME
+from .metadata_attach import attach_sdk_metadata
+from .parsing import (
+    batch_returns_long_normalize,
+    csv_bytes_to_dataframe,
+    l3_decomposition_json_to_dataframe,
+    parquet_bytes_to_dataframe,
+    ticker_returns_json_to_dataframe,
+)
+from .portfolio_math import analyze_batch_to_portfolio, metrics_body_to_row, normalize_positions
+from .ticker_resolve import resolve_ticker
+from .transport import Transport
+from .validation import ValidateMode, run_validation
+from .xarray_convert import long_df_to_dataset
+
+FormatType = Literal["json", "parquet", "csv"]
+DiscoverFormat = Literal["markdown", "json"]
+
+
+DEFAULT_SCOPE = "ticker-returns risk-decomposition batch-analysis"
+DEFAULT_BASE_URL = "https://riskmodels.app/api"
+
+
+class RiskModelsClient:
+    def __init__(
+        self,
+        base_url: str = DEFAULT_BASE_URL,
+        *,
+        api_key: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        default_scope: str = DEFAULT_SCOPE,
+        timeout: float = 120.0,
+        validate: ValidateMode = "warn",
+        er_tolerance: float = 0.05,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self._validate_default = validate
+        self._er_tolerance = er_tolerance
+        base_url = base_url.rstrip("/")
+        self._base_url = base_url
+        if api_key:
+            auth: Any = StaticBearerAuth(api_key)
+        elif client_id and client_secret:
+            auth = OAuthClientCredentialsAuth(
+                base_url,
+                client_id,
+                client_secret,
+                default_scope,
+                timeout=timeout,
+            )
+        else:
+            raise ValueError("Provide api_key or (client_id and client_secret)")
+        self._transport = Transport(base_url, auth, timeout=timeout, http_client=http_client)
+
+    @classmethod
+    def from_env(cls) -> RiskModelsClient:
+        base = os.environ.get("RISKMODELS_BASE_URL", DEFAULT_BASE_URL)
+        key = os.environ.get("RISKMODELS_API_KEY")
+        cid = os.environ.get("RISKMODELS_CLIENT_ID")
+        csec = os.environ.get("RISKMODELS_CLIENT_SECRET")
+        scope = os.environ.get("RISKMODELS_OAUTH_SCOPE", DEFAULT_SCOPE)
+        if key:
+            return cls(base_url=base, api_key=key)
+        if cid and csec:
+            return cls(base_url=base, client_id=cid, client_secret=csec, default_scope=scope)
+        raise ValueError("Set RISKMODELS_API_KEY or RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET")
+
+    def close(self) -> None:
+        self._transport.close()
+
+    def __enter__(self) -> RiskModelsClient:
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+    def discover(
+        self,
+        *,
+        format: DiscoverFormat = "markdown",
+        to_stdout: bool = True,
+        live: bool = False,
+    ) -> str | dict[str, Any]:
+        spec = dict(DISCOVER_SPEC)
+        if live:
+            try:
+                _, lin, _ = self._transport.request("GET", "/tickers", params={"search": "AAPL"})
+                spec["live_tickers_ping"] = {"ok": True, "lineage": lin.to_dict()}
+            except Exception as e:
+                spec["live_tickers_ping"] = {"ok": False, "error": str(e)}
+        if format == "json":
+            out: dict[str, Any] = spec
+            if to_stdout:
+                print(json.dumps(out, indent=2))
+            return out
+        text = discover_markdown(spec)
+        if to_stdout:
+            print(text)
+        return text
+
+    def get_metrics(
+        self,
+        ticker: str,
+        *,
+        as_dataframe: bool = False,
+        validate: ValidateMode | None = None,
+    ) -> dict[str, Any] | pd.DataFrame:
+        t, _ = resolve_ticker(ticker, self)
+        path = f"/metrics/{quote(t, safe='')}"
+        body, lineage, _r = self._transport.request("GET", path)
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+        row = metrics_body_to_row(body)
+        mode = validate if validate is not None else self._validate_default
+        run_validation(row, mode=mode, er_tolerance=self._er_tolerance)
+        if not as_dataframe:
+            return row
+        df = pd.DataFrame([row])
+        attach_sdk_metadata(df, lineage, kind="metrics_snapshot")
+        return df
+
+    def get_ticker_returns(
+        self,
+        ticker: str,
+        *,
+        years: int = 1,
+        limit: int | None = None,
+        format: FormatType = "json",
+        nocache: bool | None = None,
+        validate: ValidateMode | None = None,
+    ) -> pd.DataFrame:
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"ticker": t, "years": years, "format": format}
+        if limit is not None:
+            params["limit"] = limit
+        if nocache is not None:
+            params["nocache"] = nocache
+        mode = validate if validate is not None else self._validate_default
+        if format == "json":
+            body, hdr_lineage, _r = self._transport.request("GET", "/ticker-returns", params=params)
+            meta = body.get("_metadata") if isinstance(body, dict) else None
+            lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+            df = ticker_returns_json_to_dataframe(body)
+        else:
+            content, lineage, _r = self._transport.request(
+                "GET",
+                "/ticker-returns",
+                params=params,
+                expect_json=False,
+            )
+            if format == "parquet":
+                df = parquet_bytes_to_dataframe(content)
+            else:
+                df = csv_bytes_to_dataframe(content)
+            df = df.rename(
+                columns={k: v for k, v in TICKER_RETURNS_COLUMN_RENAME.items() if k in df.columns}
+            )
+        if not df.empty and mode != "off":
+            last = df.iloc[-1].to_dict()
+            run_validation(last, mode=mode, er_tolerance=self._er_tolerance)
+        attach_sdk_metadata(df, lineage, kind="ticker_returns")
+        return df
+
+    def get_returns(
+        self,
+        ticker: str,
+        *,
+        years: int = 1,
+        format: FormatType = "json",
+    ) -> pd.DataFrame | dict[str, Any]:
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"ticker": t, "years": years, "format": format}
+        if format == "json":
+            body, _lineage, _ = self._transport.request("GET", "/returns", params=params)
+            return body
+        content, lineage, _ = self._transport.request(
+            "GET", "/returns", params=params, expect_json=False
+        )
+        df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
+        attach_sdk_metadata(df, lineage, kind="returns")
+        return df
+
+    def get_etf_returns(
+        self,
+        symbol: str,
+        *,
+        years: int = 1,
+        format: FormatType = "json",
+    ) -> pd.DataFrame | dict[str, Any]:
+        params: dict[str, Any] = {"ticker": symbol, "years": years, "format": format}
+        if format == "json":
+            body, lineage, _ = self._transport.request("GET", "/etf-returns", params=params)
+            return body
+        content, lineage, _ = self._transport.request(
+            "GET", "/etf-returns", params=params, expect_json=False
+        )
+        df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
+        attach_sdk_metadata(df, lineage, kind="etf_returns")
+        return df
+
+    def get_l3_decomposition(
+        self,
+        ticker: str,
+        *,
+        market_factor_etf: str | None = None,
+        validate: ValidateMode | None = None,
+    ) -> pd.DataFrame:
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"ticker": t}
+        if market_factor_etf:
+            params["market_factor_etf"] = market_factor_etf
+        body, lineage, _ = self._transport.request("GET", "/l3-decomposition", params=params)
+        df = l3_decomposition_json_to_dataframe(body)
+        mode = validate if validate is not None else self._validate_default
+        if not df.empty and mode != "off":
+            last = df.iloc[-1].to_dict()
+            run_validation(last, mode=mode, er_tolerance=self._er_tolerance)
+        attach_sdk_metadata(df, lineage, kind="l3_decomposition")
+        return df
+
+    def batch_analyze(
+        self,
+        tickers: list[str],
+        metrics: list[str],
+        *,
+        years: int = 1,
+        format: FormatType = "json",
+    ) -> dict[str, Any] | tuple[pd.DataFrame, RiskLineage]:
+        payload = {
+            "tickers": [str(x).strip().upper() for x in tickers],
+            "metrics": metrics,
+            "years": years,
+            "format": format,
+        }
+        if format == "json":
+            body, lineage, _ = self._transport.request("POST", "/batch/analyze", json=payload)
+            meta = body.get("_metadata") if isinstance(body, dict) else None
+            lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+            return body
+        content, lineage, _ = self._transport.request(
+            "POST", "/batch/analyze", json=payload, expect_json=False
+        )
+        df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
+        df = batch_returns_long_normalize(df)
+        attach_sdk_metadata(df, lineage, kind="batch_returns_long")
+        return df, lineage
+
+    def analyze_portfolio(
+        self,
+        positions: Mapping[str, float],
+        *,
+        metrics: tuple[str, ...] | list[str] | None = None,
+        years: int = 1,
+        validate: ValidateMode | None = None,
+        include_returns_panel: bool = False,
+        er_tolerance: float | None = None,
+    ) -> Any:
+        weights = normalize_positions(positions)
+        mlist = list(metrics) if metrics is not None else ["full_metrics", "hedge_ratios"]
+        if include_returns_panel and "returns" not in mlist:
+            mlist.append("returns")
+        body, lineage = self._batch_json_for_portfolio(list(weights.keys()), mlist, years)
+        tol = er_tolerance if er_tolerance is not None else self._er_tolerance
+        mode = validate if validate is not None else self._validate_default
+        pa = analyze_batch_to_portfolio(
+            body,
+            weights,
+            validate=mode,
+            er_tolerance=tol,
+            include_returns_long=include_returns_panel,
+            response_lineage=lineage,
+        )
+        if include_returns_panel and pa.returns_long is not None and not pa.returns_long.empty:
+            try:
+                pa.panel = long_df_to_dataset(pa.returns_long, pa.lineage)
+            except ImportError:
+                pa.panel = None
+        return pa
+
+    analyze = analyze_portfolio
+
+    def _batch_json_for_portfolio(
+        self, tickers: list[str], metrics: list[str], years: int
+    ) -> tuple[dict[str, Any], RiskLineage]:
+        payload = {"tickers": tickers, "metrics": metrics, "years": years, "format": "json"}
+        body, lineage, _ = self._transport.request("POST", "/batch/analyze", json=payload)
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+        return body, lineage
+
+    def get_dataset(
+        self,
+        tickers: list[str],
+        *,
+        years: int = 1,
+        format: FormatType = "parquet",
+    ) -> Any:
+        if format == "json":
+            raise ValueError("get_dataset requires format='parquet' or 'csv' (use batch_analyze for JSON).")
+        out = self.batch_analyze(tickers, ["returns"], years=years, format=format)
+        if isinstance(out, dict):
+            raise TypeError("Expected tabular batch response")
+        df, lineage = out
+        return long_df_to_dataset(df, lineage)
+
+    def search_tickers(
+        self,
+        *,
+        search: str | None = None,
+        mag7: bool | None = None,
+        include_metadata: bool | None = None,
+        as_dataframe: bool = True,
+    ) -> pd.DataFrame | list[Any]:
+        params: dict[str, Any] = {}
+        if search is not None:
+            params["search"] = search
+        if mag7 is not None:
+            params["mag7"] = mag7
+        if include_metadata is not None:
+            params["include_metadata"] = include_metadata
+        body, lin, _ = self._transport.request("GET", "/tickers", params=params or None)
+        if isinstance(body, list):
+            if as_dataframe:
+                df = pd.DataFrame(body)
+                attach_sdk_metadata(df, lin, kind="tickers_universe")
+                return df
+            return body
+        if isinstance(body, dict):
+            rows = body.get("tickers") or body.get("data") or []
+            if as_dataframe:
+                df = pd.DataFrame(rows if isinstance(rows, list) else [body])
+                attach_sdk_metadata(df, lin, kind="tickers_universe")
+                return df
+            return rows if isinstance(rows, list) else [body]
+        df = pd.DataFrame()
+        attach_sdk_metadata(df, lin, kind="tickers_universe")
+        return df
+
+    # --- Semantic aliases (agent-native) ---
+    get_risk = get_metrics
+    get_history = get_ticker_returns
+    get_returns_series = get_ticker_returns
+    batch = batch_analyze
+    analyze = analyze_portfolio
+    get_cube = get_dataset
+    get_panel = get_dataset
