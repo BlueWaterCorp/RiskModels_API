@@ -6,6 +6,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **Docs & portal copy (API / MCP / CLI)** — Aligned marketing and guides with shipped behavior: local [`mcp-server/`](mcp-server/) exposes only `riskmodels_list_endpoints`, `riskmodels_get_capability`, and `riskmodels_get_schema`; portfolio and decomposition flows are REST/SDK. MCP discovery URL documented as `https://riskmodels.app/.well-known/mcp.json` (with OpenAPI). Quickstart CLI step, [`content/docs/agent-integration.mdx`](content/docs/agent-integration.mdx), [`SKILL.md`](SKILL.md), [`AgenticSection`](components/AgenticSection.tsx), and [`TerminalShowcase`](components/TerminalShowcase.tsx) updated; [`AUTHENTICATION_GUIDE.md`](AUTHENTICATION_GUIDE.md) and [`MIGRATION_V3.md`](MIGRATION_V3.md) MCP tool tables corrected.
+
 - **MCP data sync** — Ran `sync-mcp-from-risk-models.sh`; `mcp-server/data/capabilities.json`, `schema-paths.json`, and `schemas/*.json` mirrored from Risk_Models `riskmodels_com` generator output.
 
 ### Added
