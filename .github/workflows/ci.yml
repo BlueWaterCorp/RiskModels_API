@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Parse OpenAPI YAML
+        run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('OPENAPI_SPEC.yaml','utf8')); console.log('OPENAPI_SPEC.yaml: OK');"
+
       - name: TypeScript check
         run: npm run typecheck
 
@@ -69,4 +72,71 @@ jobs:
             echo "❌ Found Supabase service role key"
             exit 1
           fi
+          if grep -rE "RISKMODELS_API_SERVICE_KEY=rm_service_[A-Za-z0-9_-]{12,}" . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github --exclude=.env.example 2>/dev/null; then
+            echo "❌ Found RiskModels gateway service key (RISKMODELS_API_SERVICE_KEY)"
+            exit 1
+          fi
           echo "✅ No obvious secrets detected"
+
+  public-safety:
+    name: Public safety audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Block committed user home paths
+        run: |
+          echo "🔍 Checking for absolute local paths..."
+          if grep -rIq "/Users/" . \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            --exclude-dir=.github \
+            --exclude-dir=.next; then
+            echo "❌ Found /Users/... paths (do not commit machine-specific directories)"
+            grep -rI "/Users/" . \
+              --exclude-dir=node_modules \
+              --exclude-dir=.git \
+              --exclude-dir=.github \
+              --exclude-dir=.next || true
+            exit 1
+          fi
+          if grep -rIq "C:/Users/" . \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            --exclude-dir=.github \
+            --exclude-dir=.next; then
+            echo "❌ Found C:/Users/... style paths"
+            grep -rI "C:/Users/" . \
+              --exclude-dir=node_modules \
+              --exclude-dir=.git \
+              --exclude-dir=.github \
+              --exclude-dir=.next || true
+            exit 1
+          fi
+          echo "✅ No user-specific absolute paths detected"
+
+      - name: Ensure sensitive env files are not tracked
+        run: |
+          echo "🔍 Checking tracked files for local/production env files..."
+          TRACKED=$(git ls-files | grep -E '\.env\.(local|production)$' || true)
+          if [ -n "$TRACKED" ]; then
+            echo "❌ Sensitive environment files must not be tracked:"
+            echo "$TRACKED"
+            exit 1
+          fi
+          echo "✅ No .env.local / .env.production in git index"
+
+      - name: Public docs must not reference localhost
+        run: |
+          if [ ! -d content/docs ]; then
+            echo "✅ No content/docs directory — skipping"
+            exit 0
+          fi
+          echo "🔍 Checking published docs for localhost URLs..."
+          if grep -RIq "localhost:3000" content/docs; then
+            echo "❌ Published docs should use production URLs, not localhost:3000"
+            grep -RI "localhost:3000" content/docs || true
+            exit 1
+          fi
+          echo "✅ No localhost:3000 in content/docs"

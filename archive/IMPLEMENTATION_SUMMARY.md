@@ -61,7 +61,7 @@ All tasks from the plan have been successfully completed. The RiskModels_API rep
 
 ### Install Dependencies
 ```bash
-cd /Users/conradgann/BW_Code/RiskModels_API
+cd /path/to/RiskModels_API   # your clone root
 npm install
 ```
 
