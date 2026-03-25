@@ -106,9 +106,9 @@ const scenarioA: Scenario = {
 const scenarioB: Scenario = {
   id: 'metrics',
   label: 'REST /metrics',
-  titleBarLabel: 'GET riskmodels.app/api/metrics/NVDA',
+  titleBarLabel: 'GET https://riskmodels.app/api/metrics/NVDA',
   contextBadge: 'ticker: NVDA',
-  command: 'curl -H "Authorization: Bearer rm_agent_live_..." riskmodels.app/api/metrics/NVDA',
+  command: 'curl -H "Authorization: Bearer rm_agent_live_..." https://riskmodels.app/api/metrics/NVDA',
   lines: [
     { id: 0, delayMs: 0,   content: <span style={{ color: C.dim }}>{'{'}</span> },
     { id: 1, delayMs: 200, content: <span>&nbsp;&nbsp;<span style={{ color: C.key }}>&quot;ticker&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.str }}>&quot;NVDA&quot;</span><span style={{ color: C.dim }}>,</span></span> },
@@ -229,12 +229,12 @@ const scenarioE: Scenario = {
   id: 'mcp',
   label: 'MCP Agent',
   titleBarLabel: 'riskmodels.app/api/mcp/sse — JSON-RPC 2.0 tool call',
-  contextBadge: 'SSE · tool: get_ticker_returns',
-  command: 'curl -N -H "Authorization: Bearer rm_agent_live_..." riskmodels.app/api/mcp/sse',
+  contextBadge: 'SSE · tool: riskmodels_get_capability',
+  command: 'curl -N -H "Authorization: Bearer rm_agent_live_..." https://riskmodels.app/api/mcp/sse',
   lines: [
     {
       id: 0, delayMs: 0,
-      content: <><span style={{ color: C.green }}>[SSE]</span> <span style={{ color: C.muted }}>Connected to riskmodels.app/api/mcp/sse</span></>,
+      content: <><span style={{ color: C.green }}>[SSE]</span> <span style={{ color: C.muted }}>Connected to https://riskmodels.app/api/mcp/sse</span></>,
     },
     {
       id: 1, delayMs: 380,
@@ -243,20 +243,20 @@ const scenarioE: Scenario = {
     { id: 2, delayMs: 650, content: <span>&nbsp;</span> },
     {
       id: 3, delayMs: 800,
-      content: <span><span style={{ color: C.mcp_fwd }}>→ tool_call: </span><span style={{ color: C.bright }}>get_ticker_returns</span></span>,
+      content: <span><span style={{ color: C.mcp_fwd }}>→ tool_call: </span><span style={{ color: C.bright }}>riskmodels_get_capability</span></span>,
     },
     {
       id: 4, delayMs: 1000,
-      content: <span>&nbsp;&nbsp;<span style={{ color: C.dim }}>{'{'} </span><span style={{ color: C.key }}>&quot;ticker&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.str }}>&quot;NVDA&quot;</span><span style={{ color: C.dim }}>, </span><span style={{ color: C.key }}>&quot;years&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.num }}>1</span><span style={{ color: C.dim }}> {'}'}</span></span>,
+      content: <span>&nbsp;&nbsp;<span style={{ color: C.dim }}>{'{'} </span><span style={{ color: C.key }}>&quot;id&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.str }}>&quot;ticker-returns&quot;</span><span style={{ color: C.dim }}> {'}'}</span></span>,
     },
     { id: 5, delayMs: 1200, content: <span>&nbsp;</span> },
     {
       id: 6, delayMs: 1350,
-      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>Streaming from /api/ticker-returns?ticker=NVDA&years=1...</span></>,
+      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>Returning capability metadata for ticker-returns (then call REST /api/ticker-returns for rows).</span></>,
     },
     {
       id: 7, delayMs: 1800,
-      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>252 rows returned. Factor decomposition attached (ERM3-L3-v30).</span></>,
+      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>Example: GET https://riskmodels.app/api/ticker-returns?ticker=NVDA&amp;years=1</span></>,
     },
     { id: 8, delayMs: 2100, content: <span>&nbsp;</span> },
     {
@@ -473,8 +473,10 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         See the API in Action
       </h2>
       <p className="text-zinc-400 max-w-2xl mx-auto text-base leading-relaxed px-1">
-        Six real interaction patterns — Python SDK, CLI agent commands, raw REST calls, pre-flight cost estimation,
-        and MCP tool invocations.
+        Stylized demos (not live recordings) — REST and SDK shapes match the API; CLI &apos;agent&apos; and some MCP
+        tool names illustrate product workflows. Use{' '}
+        <span className="text-zinc-300">riskmodels --help</span> and MCP{' '}
+        <span className="text-zinc-300">tools/list</span> for what your install actually exposes.
       </p>
     </div>
   );

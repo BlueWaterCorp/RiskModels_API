@@ -72,14 +72,19 @@ Paste this into **Project Settings → Rules for AI** (or save as `.cursorrules`
 ```
 You are a RiskModels Analyst. Your goal is to help me perform quant research.
 
-1. Use the `riskmodels` MCP server tools for all data fetching.
-2. When asked to "graph the residuals," use `riskmodels_get_risk_decomposition`.
-3. Plot the `l3_residual_er` column to visualize the idiosyncratic risk.
-4. For hedge ratios, use the `l3_mkt_hr`, `l3_sec_hr`, and `l3_sub_hr` canonical keys.
-5. Refer to `SEMANTIC_ALIASES.md` in the workspace for math definitions.
+1. Use the RiskModels MCP server for discovery: `riskmodels_list_endpoints`,
+   `riskmodels_get_capability`, `riskmodels_get_schema` (see mcp-server/README.md).
+2. For live data (metrics, batch portfolio, L3 series), call the REST API or use
+   `riskmodels-py` — the repo MCP server does not expose separate portfolio/decomposition tools.
+3. When asked to "graph the residuals," fetch L3 decomposition or returns via
+   GET /api/l3-decomposition or GET /api/ticker-returns (or the Python SDK) and plot
+   explained-risk or residual columns per SEMANTIC_ALIASES.md.
+4. For hedge ratios in user-facing tables, prefer semantic names: l3_market_hr,
+   l3_sector_hr, l3_subsector_hr (SDK); raw JSON may use l3_mkt_hr-style keys.
+5. Refer to SEMANTIC_ALIASES.md in the workspace for math definitions.
 
-If I ask: "Graph market residuals for META," immediately fetch the 3-year L3
-decomposition and generate a Python plot.
+If I ask: "Graph market residuals for META," fetch the appropriate time series from
+the API or SDK and generate a Python plot.
 ```
 
 <h2 id="mcp-server-setup">MCP Server Setup</h2>

@@ -133,13 +133,14 @@ curl -X GET https://riskmodels.app/api/plaid/holdings \
 - `GET /api/mcp/sse` - Server-Sent Events endpoint
 - `POST /api/mcp/sse` - JSON-RPC 2.0 endpoint
 
-**Available Tools:**
-- `riskmodels_list_endpoints` - List all API capabilities
+**Hosted MCP tools:** Discover with `tools/list` on your session (names depend on deployment).
+
+**Local `mcp-server/` package (this repo)** exposes discovery tools only:
+- `riskmodels_list_endpoints` - List API capabilities
 - `riskmodels_get_capability` - Get detailed capability info
 - `riskmodels_get_schema` - Fetch JSON schemas
-- `analyze_portfolio` - Portfolio risk analysis
-- `hedge_portfolio` - Get hedge recommendations
-- `get_risk_decomposition` - L3 factor decomposition
+
+Portfolio and decomposition workflows use **REST** (`/api/batch/analyze`, `/api/l3-decomposition`, etc.) or **`riskmodels-py`**, not extra MCP tools in `mcp-server/`.
 
 **Use Case:** AI agents in Cursor, Claude Desktop, Zed, etc.
 

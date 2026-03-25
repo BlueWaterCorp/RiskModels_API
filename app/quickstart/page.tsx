@@ -54,36 +54,32 @@ console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
-const agenticCliExample = `# Agentic workflow — delegate tasks to the RiskModels agent
-# Install the CLI first: npm install -g riskmodels-cli
+const agenticCliExample = `# riskmodels-cli — install: npm install -g riskmodels-cli
 
-# Configure your API key
-$ riskmodels config set apiKey rm_live_...
+# API key (billed mode; default base URL https://riskmodels.app)
+riskmodels config set apiKey rm_agent_live_...
 
-# Delegate portfolio decomposition
-$ riskmodels agent decompose --portfolio ./positions.json
+# Read-only SQL against your account (see /api/cli/query)
+riskmodels query "SELECT ticker, company_name FROM ticker_metadata LIMIT 5"
 
-# Set up drift monitoring
-$ riskmodels agent monitor --portfolio ./positions.json --threshold 2.0
+# Account balance
+riskmodels balance
 
-# Get pre-trade risk check
-$ riskmodels agent check --trade ./new_trade.json --portfolio ./current.json`;
+# Static tool manifest for agents (no auth)
+riskmodels manifest --format anthropic
 
-const agenticConfigExample = `# Agentic configuration file (~/.riskmodels/agent-config.yaml)
-# Define your factor targets and alert thresholds
+# Portfolio automation: use REST POST /api/batch/analyze, Python SDK, or MCP discovery + HTTP — not via agent subcommands yet
+riskmodels agent decompose --help   # placeholder; see CLI README`;
 
-targets:
-  market_beta: 0.85
-  momentum: 0.10
-  size: -0.05
-
-alert_thresholds:
-  sigma: 2.0
-  min_position_usd: 10000
-
-webhooks:
-  drift_alert: https://your-app.com/webhooks/drift
-  rebalance_trigger: https://your-app.com/webhooks/rebalance`;
+const agenticConfigExample = `# CLI stores settings in ~/.config/riskmodels/config.json
+# Example keys (use "riskmodels config init" or "riskmodels config set"):
+#
+# Billed mode:
+#   apiKey      — rm_agent_* key
+#   apiBaseUrl  — https://riskmodels.app (optional)
+#
+# Direct Supabase dev mode:
+#   supabaseUrl, serviceRoleKey — see archive/CLI_COMMAND_TESTING.md`;
 
 export default function QuickstartPage() {
   return (
@@ -227,14 +223,16 @@ export default function QuickstartPage() {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-3">
-                <h2 className="text-2xl font-bold text-zinc-100">Try the Agentic CLI</h2>
+                <h2 className="text-2xl font-bold text-zinc-100">Try the CLI (`riskmodels-cli`)</h2>
                 <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
                   Beta
                 </span>
               </div>
               <p className="text-zinc-400 mb-6">
-                Instead of constructing API queries, delegate tasks to the RiskModels agent via CLI.
-                Configure once, then let the agent monitor, analyze, and alert on your portfolio.
+                Global install gives you <code className="text-zinc-300">riskmodels</code>: config, billed SQL{' '}
+                <code className="text-zinc-300">query</code>, <code className="text-zinc-300">balance</code>, and{' '}
+                <code className="text-zinc-300">manifest</code> for agents. Portfolio decomposition and drift monitoring
+                are available via the REST API and Python SDK; CLI <code className="text-zinc-300">agent</code> commands are placeholders.
               </p>
 
               <div className="space-y-6">
@@ -259,19 +257,23 @@ export default function QuickstartPage() {
                   <h3 className="text-sm font-semibold text-zinc-300 mb-3">Configuration</h3>
                   <CodeBlock
                     code={agenticConfigExample}
-                    language="yaml"
-                    filename="~/.riskmodels/agent-config.yaml"
+                    language="bash"
+                    filename="config-hints.txt"
                   />
                 </div>
               </div>
 
               <div className="mt-6 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
                 <p className="text-sm text-zinc-400">
-                  <strong className="text-zinc-300">Available agent tasks:</strong>{' '}
-                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">decompose</code>,{' '}
-                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">monitor</code>,{' '}
-                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">check</code>,{' '}
-                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">rebalance</code>
+                  <strong className="text-zinc-300">CLI commands shipped today:</strong>{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">config</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">query</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">schema</code> (direct mode),{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">balance</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">manifest</code>,{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">agent</code> (stubs). For full portfolio flows use{' '}
+                  <Link href="/docs/api" className="text-primary hover:underline">API docs</Link> or{' '}
+                  <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded">riskmodels-py</code>.
                 </p>
               </div>
             </div>

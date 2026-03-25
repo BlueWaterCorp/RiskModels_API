@@ -23,7 +23,7 @@ const AGENTIC_CAPABILITY_STEPS: { label: string; mapsTo: string }[] = [
   },
   {
     label: 'Portfolio hedge notionals from the same factor model',
-    mapsTo: 'MCP hedge_portfolio · batch hedge_ratios · POST /estimate before spend',
+    mapsTo: 'POST /api/batch/analyze (hedge_ratios) · POST /api/estimate before spend',
   },
   {
     label: 'Machine-readable output for OMS, sheets, or copilots',

@@ -364,7 +364,7 @@ Backend data is also served from Zarr on Google Cloud Storage (`gs://rm_api_data
 | Property | Value |
 |----------|-------|
 | **SSE Endpoint** | `https://riskmodels.app/api/mcp/sse` |
-| **Discovery** | `https://riskmodels.net/.well-known/mcp.json` |
+| **Discovery** | `https://riskmodels.app/.well-known/mcp.json` |
 | **Authentication** | Bearer token (API key or OAuth2 JWT) |
 | **Protocol** | Server-Sent Events (SSE) with JSON-RPC 2.0 |
 
@@ -400,16 +400,17 @@ for line in response.iter_lines():
 
 ### Available MCP Tools
 
-Once connected, call `tools/list` via JSON-RPC to discover available tools:
+After connecting, use JSON-RPC **`tools/list`** to discover tools exposed by **that** session. Names and behavior can differ between the **hosted** MCP endpoint and the **local** stdio server in this repo’s [`mcp-server/`](../mcp-server/).
+
+**Local `mcp-server/` (this repository)** exposes discovery-only tools:
 
 | Tool | Description |
 |------|-------------|
-| `riskmodels_list_endpoints` | List all API endpoints with summaries, tags, and costs |
-| `riskmodels_get_capability` | Get detailed schema for a specific capability |
-| `riskmodels_get_schema` | Fetch JSON response schema for an endpoint path |
-| `analyze_portfolio` | Analyze portfolio positions with risk metrics |
-| `hedge_portfolio` | Compute optimal hedge notionals (L1/L2/L3) |
-| `get_risk_decomposition` | Get L3 factor risk decomposition time series |
+| `riskmodels_list_endpoints` | List API capabilities (id, method, endpoint, short description) |
+| `riskmodels_get_capability` | Full capability record by id |
+| `riskmodels_get_schema` | JSON Schema for a response path / filename |
+
+Portfolio analysis, hedging, and L3 decomposition are **REST/SDK** concerns (e.g. `POST /api/batch/analyze`, `GET /api/l3-decomposition`, `riskmodels-py`), not implemented as separate MCP tools in `mcp-server/`.
 
 ### Example: Calling a Tool
 
@@ -418,12 +419,9 @@ Once connected, call `tools/list` via JSON-RPC to discover available tools:
   "jsonrpc": "2.0",
   "method": "tools/call",
   "params": {
-    "name": "analyze_portfolio",
+    "name": "riskmodels_get_capability",
     "arguments": {
-      "positions": [
-        {"ticker": "AAPL", "weight": 0.4},
-        {"ticker": "MSFT", "weight": 0.6}
-      ]
+      "id": "risk-decomposition"
     }
   },
   "id": 1
