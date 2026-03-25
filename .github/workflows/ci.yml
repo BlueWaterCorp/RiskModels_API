@@ -36,7 +36,8 @@ jobs:
           npm run build
 
       - name: Parse OpenAPI YAML
-        run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('OPENAPI_SPEC.yaml','utf8')); console.log('OPENAPI_SPEC.yaml: OK');"
+        # Avoid ": " inside the shell string — YAML treats it as a mapping and breaks the workflow.
+        run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('OPENAPI_SPEC.yaml','utf8')); console.log('OPENAPI_SPEC.yaml OK');"
 
       - name: TypeScript check
         run: npm run typecheck
