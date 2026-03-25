@@ -52,6 +52,28 @@ The workflow [`.github/workflows/smoke-test.yml`](.github/workflows/smoke-test.y
 
 If `TEST_API_KEY` is **unset**, the authenticated step is **skipped** (health + OpenAPI + 401 checks still run), so the workflow can appear green without billing/auth coverage. Set the secret so maintainers get alerted when authenticated paths regress.
 
+### Debugging Actions with the GitHub CLI (`gh`)
+
+Useful when a workflow shows **failure in ~0s** and **no job logs** — often **invalid workflow YAML** (GitHub will not schedule jobs; `gh run rerun` may say the workflow file is broken).
+
+```bash
+# Recent runs (JSON)
+gh run list --limit 15 --json conclusion,displayTitle,workflowName,url,createdAt
+
+# Filter by workflow file
+gh run list --workflow ci.yml --limit 5
+
+# Open a run in the browser (replace RUN_ID)
+gh run view RUN_ID --web
+
+# Jobs for a run (empty job list ⇒ workflow never started)
+gh api repos/OWNER/REPO/actions/runs/RUN_ID/jobs
+```
+
+Replace `OWNER/REPO` (e.g. `Cerebellum-Archive/RiskModels_API`) and `RUN_ID`. Repo-local shorthand: run these from a clone with `gh` authenticated (`gh auth login`).
+
+Main CI workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (lint, typecheck, Next build, `cli/` build). Smoke test: [`.github/workflows/smoke-test.yml`](.github/workflows/smoke-test.yml).
+
 ## 3. Supabase Auth Redirect URLs
 
 In Supabase → Authentication → URL Configuration:
