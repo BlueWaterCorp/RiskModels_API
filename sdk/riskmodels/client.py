@@ -344,14 +344,22 @@ class RiskModelsClient:
         body, lin, _ = self._transport.request("GET", "/tickers", params=params or None)
         if isinstance(body, list):
             if as_dataframe:
-                df = pd.DataFrame(body)
+                if body and isinstance(body[0], str):
+                    df = pd.DataFrame({"ticker": body})
+                else:
+                    df = pd.DataFrame(body)
                 attach_sdk_metadata(df, lin, kind="tickers_universe")
                 return df
             return body
         if isinstance(body, dict):
             rows = body.get("tickers") or body.get("data") or []
             if as_dataframe:
-                df = pd.DataFrame(rows if isinstance(rows, list) else [body])
+                if isinstance(rows, list) and rows and isinstance(rows[0], str):
+                    df = pd.DataFrame({"ticker": rows})
+                elif isinstance(rows, list):
+                    df = pd.DataFrame(rows)
+                else:
+                    df = pd.DataFrame([rows])
                 attach_sdk_metadata(df, lin, kind="tickers_universe")
                 return df
             return rows if isinstance(rows, list) else [body]

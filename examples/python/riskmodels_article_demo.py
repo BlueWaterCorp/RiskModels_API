@@ -7,6 +7,8 @@ feeds or private backends.
 
 Setup:
   pip install riskmodels-py pandas
+  # optional (10y cumulative return chart):
+  pip install matplotlib
   # or from this repo: pip install -e ./sdk
 
 Auth (pick one):
@@ -16,6 +18,7 @@ Auth (pick one):
 
 Optional:
   export RISKMODELS_BASE_URL=https://riskmodels.app/api
+  export RISKMODELS_DEMO_OUTPUT_DIR=.   # where PNG is written
 
 This script loads `.env.local` / `.env` from the current working directory only for
 variables that are not already set in the environment (so a bad `export` wins
@@ -24,15 +27,41 @@ until you `unset RISKMODELS_API_KEY`).
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
+from pathlib import Path
+
+import pandas as pd
 
 from riskmodels import APIError, RiskModelsClient
+from riskmodels.mapping import (
+    merge_batch_hedge_ratios_into_full_metrics,
+    normalize_metrics_v3,
+    omit_nan_float_fields,
+)
+from riskmodels.portfolio_math import normalize_positions
 
 # API keys are long-lived Bearer tokens (see OPENAPI BearerAuth: rm_agent_* / rm_user_*).
 _KEY_RE = re.compile(r"^rm_(?:agent|user)_[a-z0-9_]+$", re.IGNORECASE)
+
+# History window for batch returns + cumulative portfolio chart (API max 15y).
+RETURNS_YEARS = 10
+
+_METRICS_TABLE_COLS = (
+    "ticker",
+    "date",
+    "volatility",
+    "l3_market_hr",
+    "l3_sector_hr",
+    "l3_subsector_hr",
+    "l3_market_er",
+    "l3_sector_er",
+    "l3_subsector_er",
+    "l3_residual_er",
+    "market_cap",
+    "close_price",
+)
 
 
 def _wrong_key_hint(key: str) -> str | None:
@@ -100,17 +129,98 @@ def _print_auth_help() -> None:
     print("    • OAuth: set RISKMODELS_CLIENT_ID and RISKMODELS_CLIENT_SECRET instead.")
 
 
+def _section(title: str) -> None:
+    print("\n" + "─" * 72)
+    print(f"  {title}")
+    print("─" * 72)
+
+
+def _print_df_table(df: pd.DataFrame, *, max_rows: int | None = None) -> None:
+    if df.empty:
+        print("  (empty)")
+        return
+    out = df if max_rows is None else df.head(max_rows)
+    # Fixed-width monospace table
+    with pd.option_context(
+        "display.max_columns",
+        None,
+        "display.width",
+        200,
+        "display.max_colwidth",
+        18,
+        "display.float_format",
+        lambda x: f"{x:,.6g}",
+    ):
+        print(out.to_string(index=False))
+
+
+def _portfolio_daily_returns(
+    returns_long: pd.DataFrame,
+    weights: dict[str, float],
+) -> tuple[pd.Series, pd.DataFrame]:
+    """
+    Share-normalized weights × daily gross returns; inner-join dates where all tickers have a row.
+    Returns (portfolio daily return series indexed by date, wide panel used).
+    """
+    if returns_long.empty or "returns_gross" not in returns_long.columns:
+        return pd.Series(dtype=float), returns_long
+    df = returns_long.copy()
+    df["ticker"] = df["ticker"].astype(str).str.upper()
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values(["ticker", "date"]).drop_duplicates(subset=["ticker", "date"], keep="last")
+    tickers = [t for t in weights if t in df["ticker"].unique()]
+    if not tickers:
+        return pd.Series(dtype=float), df
+    sub = df[df["ticker"].isin(tickers)]
+    wide = sub.pivot(index="date", columns="ticker", values="returns_gross")
+    wide = wide[tickers].dropna(how="any").sort_index()
+    w = pd.Series({t: weights[t] for t in tickers}, dtype=float)
+    w = w / w.sum()
+    port = wide.mul(w, axis=1).sum(axis=1)
+    return port, wide
+
+
+def _cumulative_total_return(daily: pd.Series) -> pd.Series:
+    """Cumulative total return: prod(1+r)-1 over time."""
+    if daily.empty:
+        return daily
+    return (1.0 + daily).cumprod() - 1.0
+
+
+def _save_returns_chart(
+    cum: pd.Series,
+    *,
+    out_path: Path,
+    title: str,
+) -> bool:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return False
+    fig, ax = plt.subplots(figsize=(10, 5), layout="constrained")
+    ax.plot(cum.index, 100.0 * cum.values, color="#1d4ed8", linewidth=1.2)
+    ax.axhline(0.0, color="#94a3b8", linewidth=0.8, linestyle="--")
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Cumulative total return (%)")
+    ax.grid(True, alpha=0.35)
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+    return True
+
+
 class ArticleDemo:
     """Demonstrates article concepts using the public RiskModels API."""
 
     auth_ok: bool
 
-    # Large, liquid names — stable sector exposures; NVDA/TSLA are valid tickers but often
-    # noisier (valuation, idiosyncratic factor) for demo screenshots and ER completeness.
+    # Large, liquid names across tech, financials, energy, and growth (NVDA/TSLA).
     DEMO_METRICS_TICKER = "AAPL"
     PORTFOLIO = {
         "AAPL": {"shares": 100},
         "MSFT": {"shares": 120},
+        "NVDA": {"shares": 90},
+        "TSLA": {"shares": 110},
         "JPM": {"shares": 180},
         "XOM": {"shares": 280},
     }
@@ -143,54 +253,71 @@ class ArticleDemo:
         body, _, _ = self.client._transport.request("GET", path)
         return body if isinstance(body, dict) else None
 
-    def test_endpoint(self, name: str, path: str) -> dict | None:
-        print(f"\n  Testing {name} ({path})...")
-        try:
-            result = self._get_json(path)
-            if result is None:
-                print("  ⚠️  Empty response")
-                return None
-            keys = list(result.keys())[:8]
-            print(f"  ✓ Success — sample keys: {keys}")
-            return result
-        except APIError as e:
-            print(f"  ⚠️  {e}")
-            return None
-
     def run(self) -> None:
-        print("\n" + "=" * 60)
-        print("RISKMODELS API DEMO (public)")
-        print("=" * 60)
+        print("\n" + "=" * 72)
+        print("  RISKMODELS API DEMO (public)")
+        print("=" * 72)
+
+        tickers = list(self.PORTFOLIO.keys())
+        shares = {t: float(d["shares"]) for t, d in self.PORTFOLIO.items()}
+        weights = normalize_positions(shares)
+
+        # --- Positions (always printable)
+        _section("Portfolio positions (normalized weights)")
+        pos_df = pd.DataFrame(
+            [{"ticker": t, "shares": shares[t], "weight": weights[t]} for t in tickers]
+        )
+        pos_df["weight_pct"] = (pos_df["weight"] * 100.0).map(lambda x: f"{x:.2f}%")
+        _print_df_table(pos_df.drop(columns=["weight"]).rename(columns={"weight_pct": "weight"}))
 
         if self.auth_ok:
-            bal = self.test_endpoint("Balance", "/balance")
-            if bal and "balance_usd" in bal:
-                print(f"  Balance: ${bal.get('balance_usd', 'N/A')}")
+            bal = self._get_json("/balance")
+            _section("Account balance")
+            if bal:
+                bdf = pd.DataFrame(
+                    [
+                        {
+                            "balance_usd": bal.get("balance_usd"),
+                            "balance_tokens": bal.get("balance_tokens"),
+                            "currency": bal.get("currency"),
+                            "account_type": bal.get("account_type"),
+                        }
+                    ]
+                )
+                _print_df_table(bdf)
+            else:
+                print("  ⚠️  No balance payload")
 
-            print(f"\n  Testing Metrics {self.DEMO_METRICS_TICKER} (SDK get_metrics)...")
+            _section(f"Metrics snapshot — {self.DEMO_METRICS_TICKER} (SDK get_metrics)")
             try:
-                # validate="warn" surfaces ER sum / market HR sign issues for API/data QA.
                 row = self.client.get_metrics(self.DEMO_METRICS_TICKER, validate="warn")
                 if isinstance(row, dict):
-                    sample = {k: row[k] for k in list(row)[:6]}
-                    print(f"  ✓ Success — sample fields: {json.dumps(sample, default=str)[:200]}...")
+                    cols = [c for c in _METRICS_TABLE_COLS if c in row]
+                    mdf = pd.DataFrame([{c: row.get(c) for c in cols}])
+                    _print_df_table(mdf)
             except APIError as e:
                 print(f"  ⚠️  {e}")
         else:
             print("\n  Skipping balance and metrics (fix auth first).")
 
-        print("\n  Testing ticker universe (GET /tickers, mag7)...")
+        _section("Ticker universe (GET /tickers, mag7)")
         try:
             df = self.client.search_tickers(mag7=True, as_dataframe=True)
-            print(f"  ✓ MAG7 rows: {len(df)}")
+            if df.empty:
+                print("  (empty)")
+            else:
+                mag = df.head(12)
+                print(f"  Rows: {len(df)} (showing up to 12)\n")
+                keep = [c for c in ("ticker", "name", "sector") if c in mag.columns]
+                if keep:
+                    _print_df_table(mag[keep])
+                else:
+                    _print_df_table(mag.iloc[:, : min(6, mag.shape[1])])
         except APIError as e:
             print(f"  ⚠️  {e}")
 
-        tickers = list(self.PORTFOLIO.keys())
-        shares = {t: float(d["shares"]) for t, d in self.PORTFOLIO.items()}
-
         if self.auth_ok:
-            print("\n  Testing POST /batch/analyze (SDK batch_analyze)...")
+            _section("POST /batch/analyze — fundamentals & hedge ratios (SDK batch_analyze)")
             try:
                 batch = self.client.batch_analyze(
                     tickers,
@@ -200,27 +327,123 @@ class ArticleDemo:
                 )
                 if isinstance(batch, dict):
                     results = batch.get("results") or {}
-                    print(f"  ✓ Tickers in results: {list(results.keys())[:8]}")
+                    print(f"  Tickers in results: {list(results.keys())}\n")
+                    rows_out: list[dict[str, object]] = []
+                    for tk, entry in results.items():
+                        if not isinstance(entry, dict) or entry.get("status") != "success":
+                            continue
+                        fm_raw = dict(entry.get("full_metrics") or {})
+                        merged = merge_batch_hedge_ratios_into_full_metrics(
+                            fm_raw,
+                            entry.get("hedge_ratios"),
+                        )
+                        merged = omit_nan_float_fields(merged)
+                        norm = normalize_metrics_v3(merged)
+                        rows_out.append(
+                            {
+                                "ticker": tk,
+                                "date": norm.get("date") or fm_raw.get("date"),
+                                "l3_market_hr": norm.get("l3_market_hr"),
+                                "l3_sector_hr": norm.get("l3_sector_hr"),
+                                "l3_subsector_hr": norm.get("l3_subsector_hr"),
+                                "l3_market_er": norm.get("l3_market_er"),
+                                "l3_sector_er": norm.get("l3_sector_er"),
+                                "l3_subsector_er": norm.get("l3_subsector_er"),
+                            }
+                        )
+                    if rows_out:
+                        _print_df_table(pd.DataFrame(rows_out))
             except APIError as e:
                 print(f"  ⚠️  {e}")
 
-            print("\n  Testing portfolio aggregation (SDK analyze_portfolio)...")
+            _section("Portfolio aggregation — hedge ratios (SDK analyze_portfolio)")
             try:
                 pa = self.client.analyze_portfolio(shares, validate="warn")
                 phr = pa.portfolio_hedge_ratios
                 l3_keys = ("l3_market_hr", "l3_sector_hr", "l3_subsector_hr")
-                l3_sample = {k: phr.get(k) for k in l3_keys}
-                print(f"  ✓ Portfolio hedge ratios (L3 w-mean): {l3_sample}")
+                l3_port = {k: phr.get(k) for k in l3_keys}
+                print("  Holdings-weighted mean (portfolio):\n")
+                _print_df_table(pd.DataFrame([l3_port]))
                 if not pa.per_ticker.empty:
-                    print(f"  ✓ per_ticker columns: {list(pa.per_ticker.columns)[:10]}")
+                    pt = pa.per_ticker.reset_index(drop=True)
+                    hr_cols = [
+                        c
+                        for c in [
+                            "ticker",
+                            "weight",
+                            "l3_market_hr",
+                            "l3_sector_hr",
+                            "l3_subsector_hr",
+                        ]
+                        if c in pt.columns
+                    ]
+                    print("\n  Per name:\n")
+                    _print_df_table(pt[hr_cols])
+            except APIError as e:
+                print(f"  ⚠️  {e}")
+
+            _section(f"Total return — last {RETURNS_YEARS} years (share-weighted portfolio)")
+            out_dir = Path(os.environ.get("RISKMODELS_DEMO_OUTPUT_DIR", ".")).resolve()
+            png_path = out_dir / "riskmodels_demo_portfolio_cumulative_return_10y.png"
+            try:
+                raw = self.client.batch_analyze(
+                    tickers,
+                    ["returns"],
+                    years=RETURNS_YEARS,
+                    format="parquet",
+                )
+                if isinstance(raw, tuple):
+                    ret_df, _lin = raw
+                else:
+                    ret_df = raw
+                if not isinstance(ret_df, pd.DataFrame) or ret_df.empty:
+                    print("  ⚠️  No returns rows from batch (parquet).")
+                else:
+                    port_daily, _wide = _portfolio_daily_returns(ret_df, weights)
+                    cum = _cumulative_total_return(port_daily)
+                    if cum.empty:
+                        print("  ⚠️  Could not align daily returns across all names (missing dates).")
+                    else:
+                        total = float(cum.iloc[-1])
+                        n_years = RETURNS_YEARS
+                        cagr = (1.0 + total) ** (1.0 / n_years) - 1.0 if n_years > 0 else float("nan")
+                        stats = pd.DataFrame(
+                            [
+                                {
+                                    "trading_days": len(cum),
+                                    "start": str(cum.index.min().date()),
+                                    "end": str(cum.index.max().date()),
+                                    "total_return": total,
+                                    "total_return_pct": total * 100.0,
+                                    f"cagr_{n_years}y": cagr,
+                                    "cagr_pct": cagr * 100.0,
+                                }
+                            ]
+                        )
+                        print("  Summary:\n")
+                        _print_df_table(stats)
+                        if _save_returns_chart(
+                            cum,
+                            out_path=png_path,
+                            title=(
+                                f"Portfolio cumulative total return ({RETURNS_YEARS}y, "
+                                "weights = share counts normalized)"
+                            ),
+                        ):
+                            print(f"\n  Chart saved: {png_path}")
+                        else:
+                            print(
+                                "\n  (Install matplotlib to write PNG: pip install matplotlib)\n"
+                                f"  Intended path: {png_path}"
+                            )
             except APIError as e:
                 print(f"  ⚠️  {e}")
         else:
-            print("\n  Skipping batch analyze and portfolio (fix auth first).")
+            print("\n  Skipping batch analyze, portfolio, and returns history (fix auth first).")
 
-        print("\n" + "=" * 60)
-        print("DONE")
-        print("=" * 60)
+        print("\n" + "=" * 72)
+        print("  DONE")
+        print("=" * 72)
 
 
 def main() -> None:
