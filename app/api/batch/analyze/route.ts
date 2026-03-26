@@ -5,8 +5,7 @@ import {
   resolveSymbolByTicker,
   fetchHistory,
   pivotHistory,
-  latestPivotedRow,
-  type PivotedHistoryRow,
+  fetchLatestMetricsWithFallback,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
@@ -70,12 +69,12 @@ interface PositionAnalysis {
     dates: string[];
   };
   hedge_ratios?: {
-    l1_market: number;
-    l2_market: number;
-    l2_sector: number;
-    l3_market: number;
-    l3_sector: number;
-    l3_subsector: number;
+    l1_market: number | null;
+    l2_market: number | null;
+    l2_sector: number | null;
+    l3_market: number | null;
+    l3_sector: number | null;
+    l3_subsector: number | null;
   };
   full_metrics?: any;
   meta?: {
@@ -352,57 +351,59 @@ async function analyzeTicker(
     }
 
     if (metrics.includes("hedge_ratios") || metrics.includes("full_metrics")) {
-      // Fetch latest metrics from V3 contract
-      const latestRows = await fetchHistory(symbolRecord.symbol, [
-        "vol_23d",
-        "price_close",
-        "market_cap",
-        "l1_mkt_hr",
-        "l2_mkt_hr",
-        "l2_sec_hr",
-        "l3_mkt_hr",
-        "l3_sec_hr",
-        "l3_sub_hr",
-        "l3_mkt_er",
-        "l3_sec_er",
-        "l3_sub_er",
-        "l3_res_er"
-      ], {
-        periodicity: "daily",
-        orderBy: "desc",
-      });
+      // Same semantics as GET /metrics/{ticker}: prefer security_history_latest, then
+      // fetchHistory with a date that has all requested keys (not a single pivoted row
+      // that may be sparse on the newest teo).
+      const latestData = await fetchLatestMetricsWithFallback(
+        symbolRecord.symbol,
+        [
+          "vol_23d",
+          "price_close",
+          "market_cap",
+          "l1_mkt_hr",
+          "l2_mkt_hr",
+          "l2_sec_hr",
+          "l3_mkt_hr",
+          "l3_sec_hr",
+          "l3_sub_hr",
+          "l3_mkt_er",
+          "l3_sec_er",
+          "l3_sub_er",
+          "l3_res_er",
+        ],
+        "daily",
+      );
 
-      const latestPivoted = pivotHistory(latestRows);
-      const latest: PivotedHistoryRow =
-        latestPivotedRow(latestPivoted) ?? ({} as PivotedHistoryRow);
+      const m = latestData?.metrics;
+      const teo = latestData?.teo ?? null;
 
       if (metrics.includes("hedge_ratios")) {
         result.hedge_ratios = {
-          l1_market: latest.l1_mkt_hr as number ?? null,
-          l2_market: latest.l2_mkt_hr as number ?? null,
-          l2_sector: latest.l2_sec_hr as number ?? null,
-          l3_market: latest.l3_mkt_hr as number ?? null,
-          l3_sector: latest.l3_sec_hr as number ?? null,
-          l3_subsector: latest.l3_sub_hr as number ?? null,
+          l1_market: m?.l1_mkt_hr ?? null,
+          l2_market: m?.l2_mkt_hr ?? null,
+          l2_sector: m?.l2_sec_hr ?? null,
+          l3_market: m?.l3_mkt_hr ?? null,
+          l3_sector: m?.l3_sec_hr ?? null,
+          l3_subsector: m?.l3_sub_hr ?? null,
         };
       }
       if (metrics.includes("full_metrics")) {
         result.full_metrics = {
           ticker: symbolRecord.ticker,
-          date: latest.teo,
-          volatility: latest.vol_23d as number ?? null,
-          l1_mkt_hr: latest.l1_mkt_hr as number ?? null,
-          l2_mkt_hr: latest.l2_mkt_hr as number ?? null,
-          l2_sec_hr: latest.l2_sec_hr as number ?? null,
-          l3_mkt_hr: latest.l3_mkt_hr as number ?? null,
-          l3_sec_hr: latest.l3_sec_hr as number ?? null,
-          l3_sub_hr: latest.l3_sub_hr as number ?? null,
-          l3_mkt_er: latest.l3_mkt_er as number ?? null,
-          l3_sec_er: latest.l3_sec_er as number ?? null,
-          l3_sub_er: latest.l3_sub_er as number ?? null,
-          l3_res_er: latest.l3_res_er as number ?? null,
-          market_cap: latest.market_cap as number ?? null,
-          close_price: latest.price_close as number ?? null,
+          date: teo,
+          volatility: m?.vol_23d ?? null,
+          l1_mkt_hr: m?.l1_mkt_hr ?? null,
+          l2_mkt_hr: m?.l2_mkt_hr ?? null,
+          l2_sec_hr: m?.l2_sec_hr ?? null,
+          l3_mkt_hr: m?.l3_mkt_hr ?? null,
+          l3_sec_hr: m?.l3_sec_hr ?? null,
+          l3_sub_hr: m?.l3_sub_hr ?? null,
+          l3_mkt_er: m?.l3_mkt_er ?? null,
+          l3_sec_er: m?.l3_sec_er ?? null,
+          l3_sub_er: m?.l3_sub_er ?? null,
+          l3_res_er: m?.l3_res_er ?? null,
+          market_cap: m?.market_cap ?? null,
+          close_price: m?.price_close ?? null,
         };
       }
     }
