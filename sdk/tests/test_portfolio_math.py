@@ -84,6 +84,28 @@ def test_analyze_portfolio_merges_hedge_ratios_when_full_metrics_hr_is_nan():
     assert not math.isnan(pa.per_ticker.loc["AAPL", "l3_market_hr"])
 
 
+def test_analyze_portfolio_wire_v3_hr_keys_normalize_for_weighted_mean():
+    """Batch JSON uses V3 wire keys (l3_mkt_hr, …); SDK maps to semantic names for PHR."""
+    body = {
+        "results": {
+            "AAPL": {
+                "ticker": "AAPL",
+                "status": "success",
+                "full_metrics": {
+                    "l3_mkt_hr": 0.1,
+                    "l3_sec_hr": 0.2,
+                    "l3_sub_hr": 0.3,
+                },
+            },
+        },
+        "_metadata": {},
+    }
+    pa = analyze_batch_to_portfolio(body, {"AAPL": 1.0}, validate="off")
+    assert pa.portfolio_hedge_ratios["l3_market_hr"] == pytest.approx(0.1)
+    assert pa.portfolio_hedge_ratios["l3_sector_hr"] == pytest.approx(0.2)
+    assert pa.portfolio_hedge_ratios["l3_subsector_hr"] == pytest.approx(0.3)
+
+
 def test_analyze_portfolio_merges_hedge_ratios_when_full_metrics_hr_missing():
     """Gateway often fills `hedge_ratios` (short keys) while full_metrics HR slots are null."""
     body = {

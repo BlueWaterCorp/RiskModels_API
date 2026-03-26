@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from riskmodels.lineage import RiskLineage
-from riskmodels.portfolio_math import analyze_batch_to_portfolio, normalize_positions
+from riskmodels.portfolio_math import (
+    analyze_batch_to_portfolio,
+    normalize_positions,
+    renormalize_weights,
+)
 
 
 def test_normalize_positions_empty_raises():
@@ -24,6 +28,12 @@ def test_normalize_positions_zero_sum_weights_equal_split():
     assert len(w) == 2
     assert w["AAPL"] == pytest.approx(0.5)
     assert w["MSFT"] == pytest.approx(0.5)
+
+
+def test_renormalize_weights_empty_intersection_falls_back_to_equal():
+    """Batch result keys may not match portfolio keys (e.g. GOOG vs GOOGL)."""
+    w = renormalize_weights({"GOOGL": 1.0}, ["GOOG"])
+    assert w == {"GOOG": 1.0}
 
 
 def test_analyze_portfolio_with_negative_position_weights_succeeds():

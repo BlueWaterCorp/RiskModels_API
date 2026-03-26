@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { resolveSymbolByTicker, fetchHistory, pivotHistory } from "@/lib/dal/risk-engine-v3";
+import {
+  resolveSymbolByTicker,
+  fetchHistory,
+  pivotHistory,
+  latestPivotedRow,
+  type PivotedHistoryRow,
+} from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { formatResponse } from "@/lib/api/format-response";
@@ -367,7 +373,8 @@ async function analyzeTicker(
       });
 
       const latestPivoted = pivotHistory(latestRows);
-      const latest = latestPivoted[0] || {};
+      const latest: PivotedHistoryRow =
+        latestPivotedRow(latestPivoted) ?? ({} as PivotedHistoryRow);
 
       if (metrics.includes("hedge_ratios")) {
         result.hedge_ratios = {
