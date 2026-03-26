@@ -129,7 +129,13 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
         </tr>
         <tr className="align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Sign convention</td>
-          <td className="py-3 px-4"><strong className="text-zinc-300">Model safety.</strong> Under normal modelling, <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_market_hr</code> and <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_sector_hr</code> are expected ≥ 0; only <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_hr</code> may be negative (long subsector ETF).</td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Model safety.</strong>{' '}
+            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_market_hr</code> is typically ≥ 0.{' '}
+            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_sector_hr</code> and{' '}
+            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_hr</code> may be negative
+            from orthogonalization or a long subsector ETF hedge — see{' '}
+            <a href="/docs/methodology" className="text-primary hover:underline">Methodology</a>;{' '}
+            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">validate=&quot;warn&quot;</code> may flag edge cases.</td>
           <td className="py-3 px-4">
             <div className="flex flex-col gap-1.5">
               <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_market_hr</code>
@@ -211,7 +217,7 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
       <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/ticker-returns</td>
         <td className="py-3 px-3">GET</td>
-        <td className="py-3 px-3">Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y</td>
+        <td className="py-3 px-3">Daily returns + rolling V3 hedge ratios and explained-risk fractions, up to 15y</td>
         <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_ticker_returns("NVDA", years=5)' /></td>
       </tr>
@@ -275,6 +281,15 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
   </table>
 </div>
 
+<p className="text-sm text-zinc-500 not-prose my-4">
+  <strong className="text-zinc-400">MCP coverage note:</strong>{' '}
+  <code className="text-zinc-400">riskmodels_list_endpoints</code> returns capability bundles,
+  not a 1:1 mirror of every route above. Account routes (<code className="text-zinc-400">/balance</code>,{' '}
+  <code className="text-zinc-400">/invoices</code>) and the agent manifest (
+  <code className="text-zinc-400">/.well-known/agent-manifest</code>) are documented here but
+  do not appear as separate MCP tool IDs.
+</p>
+
 <span className="block text-sm text-zinc-500 not-prose my-4">Account routes (<code className="text-zinc-400">/balance</code>, <code className="text-zinc-400">/invoices</code>, <code className="text-zinc-400">/health</code>) use the SDK transport with the same OAuth or API key as data methods. The well-known manifest is fetched from the site root (no auth).</span>
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
@@ -294,6 +309,24 @@ The `riskmodels-py` package includes methods and metadata designed for agent wor
 | **`df.attrs["legend"]`** | Every tabular result includes a short ERM3 legend (same as `SHORT_ERM3_LEGEND`). Read this instead of guessing column semantics. |
 | **`df.attrs["riskmodels_semantic_cheatsheet"]`** | JSON + bullet list mapping wire keys → semantic names + units. Ground truth for field interpretation. |
 | **`df.attrs["riskmodels_lineage"]`** | JSON string: model version, as-of date, factor set, universe size. Provenance for all API responses. |
+
+<p className="text-sm text-zinc-500 not-prose my-4 leading-relaxed">
+  <strong className="text-zinc-300">Grounding wire keys in docs:</strong>{' '}
+  <code className="text-zinc-400">to_llm_context()</code> pulls legend, lineage, and{' '}
+  <code className="text-zinc-400">riskmodels_semantic_cheatsheet</code> from object attrs — aligned with the same
+  wire↔semantic definitions as{' '}
+  <a
+    href="https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md"
+    className="text-primary hover:underline"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    SEMANTIC_ALIASES.md
+  </a>
+  . Treat that file as narrative ground truth when explaining API JSON: e.g. wire{' '}
+  <code className="text-zinc-400">l3_res_er</code> → idiosyncratic variance share (
+  <code className="text-zinc-400">l3_residual_er</code> in SDK output) so agents self-correct instead of guessing meanings.
+</p>
 
 Install with xarray support for multi-dimensional portfolio math:
 

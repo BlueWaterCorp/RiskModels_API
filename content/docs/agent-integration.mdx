@@ -91,6 +91,11 @@ the API or SDK and generate a Python plot.
 
 Add to `.cursor/mcp.json` (or your Claude Desktop / Zed config):
 
+```bash
+# Build the MCP server first (required before first use)
+cd mcp-server && npm ci && npm run build
+```
+
 ```json
 {
   "mcpServers": {
@@ -101,6 +106,8 @@ Add to `.cursor/mcp.json` (or your Claude Desktop / Zed config):
   }
 }
 ```
+
+The `args` path must point to `mcp-server/dist/index.js` — the compiled output. If `dist/` does not exist, run the build command above.
 
 Restart your editor after saving. See the [MCP server README](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/mcp-server/README.md) for full setup.
 

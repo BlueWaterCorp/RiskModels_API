@@ -12,6 +12,21 @@ The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US 
 - **MCP Server:** [mcp-server/](./mcp-server/)
 - **Skill Guide:** [SKILL.md](./SKILL.md)
 - **Authentication:** OAuth2 client credentials flow
+- **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key) — OAuth/magic-link; key copy UX is post-login under Account → Usage.
+
+## Next.js portal + `cli/` (Vercel builds)
+
+The developer portal is the **repo root** Next app. The **CLI** lives in [`cli/`](./cli/) with its **own** [`cli/package.json`](./cli/package.json).
+
+- Root [`tsconfig.json`](./tsconfig.json) includes `**/*.ts`, so `next build` **typechecks** `cli/src/**/*.ts` using dependencies from the **root** [`package.json`](./package.json) only.
+- **Vercel** runs `npm ci` at the **root**. It does **not** install `cli/package.json` unless you add a custom install step. If the CLI imports a package that exists only under `cli/`, the local CLI folder may work while **Vercel fails** with “Cannot find module …”.
+
+**Do one of the following when adding or changing CLI-only imports:**
+
+1. **Recommended for current layout:** Add the same **runtime** packages to the **root** `dependencies` (and any needed `@types/*` to root `devDependencies`), run `npm install`, and commit **`package-lock.json`**. Keep versions aligned with `cli/package.json` when practical.
+2. **Alternative:** Narrow root `tsconfig.json` `include` / add `"exclude": ["cli"]` so the portal build does not typecheck the CLI, and rely on `cd cli && npm ci && npm run build` (e.g. in CI) for CLI correctness.
+
+**Related gotcha:** Commander’s `optsWithGlobals` is not typed as generic; use `(cmd.optsWithGlobals() as { json?: boolean })` (or similar) instead of `optsWithGlobals<{…}>()` so `next build` passes under `strict`.
 
 ## Agentic Workflows
 

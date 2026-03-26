@@ -3,11 +3,15 @@
 Capture full-page screenshots of localhost:3000 and all linked internal pages.
 Screenshots overwrite previous versions (no timestamps in filenames).
 
+PREREQUISITE: Start the Next.js dev server first:
+    npm run dev
+
 Usage: python capture_site.py
 """
 
 import asyncio
 import os
+import sys
 import urllib.parse
 
 from playwright.async_api import async_playwright
@@ -15,19 +19,21 @@ from playwright.async_api import async_playwright
 BASE_URL = "http://localhost:3000"
 
 
-# Map URLs to descriptive filenames (edit these as needed)
+# Map URLs to descriptive filenames matching audit naming convention
+# Format: 00_{description}.png for docs pages
 URL_TO_NAME = {
     "/": "01_landing_page",
-    "/docs": "02_documentation",
-    "/api": "03_api_reference",
-    "/about": "04_about",
+    "/docs": "00_docs_index",
+    "/docs/api": "00_docs_api",
+    "/docs/methodology": "00_docs_methodology",
+    "/docs/agent-integration": "00_docs_agent_integration",
+    "/docs/authentication": "00_docs_authentication",
+    "/api-reference": "00_api_reference",
+    "/get-key": "00_get_key",
+    "/account/usage": "00_account_usage",
+    "/quickstart": "00_quickstart",
     "/pricing": "05_pricing",
-    "/contact": "06_contact",
-    "/login": "07_login",
-    "/signup": "08_signup",
-    "/dashboard": "09_dashboard",
-    "/profile": "10_profile",
-    "/settings": "11_settings",
+    "/legal": "00_legal",
 }
 
 
@@ -79,15 +85,57 @@ async def get_all_internal_links(page) -> set[str]:
     return normalized
 
 
-async def capture_page(page, url: str, output_path: str) -> str:
-    """Capture screenshot of a single page."""
-    print(f"  Navigating to {url}...")
-    await page.goto(url, wait_until="networkidle")
-    await asyncio.sleep(0.5)
+async def check_server_health(page) -> tuple[bool, str]:
+    """Check if the dev server is running and returning valid pages."""
+    try:
+        response = await page.goto(BASE_URL, wait_until="networkidle", timeout=5000)
+        if response is None:
+            return False, "No response from server"
+        if response.status >= 500:
+            return False, f"Server error (HTTP {response.status})"
+        if response.status >= 400:
+            return False, f"Client error (HTTP {response.status})"
+        
+        # Check for error page indicators
+        title = await page.title()
+        content = await page.content()
+        
+        if "Internal Server Error" in content or "Internal Server Error" in title:
+            return False, "Page shows 'Internal Server Error'"
+        if "Error" in title and response.status >= 400:
+            return False, f"Error page detected (title: {title})"
+            
+        return True, f"OK (HTTP {response.status})"
+    except Exception as e:
+        return False, f"Connection failed: {e}"
 
-    await page.screenshot(path=output_path, full_page=True)
-    print(f"  ✓ Saved: {output_path}")
-    return output_path
+
+async def capture_page(page, url: str, output_path: str) -> str | None:
+    """Capture screenshot of a single page. Returns None if page has errors."""
+    print(f"  Navigating to {url}...")
+    
+    try:
+        response = await page.goto(url, wait_until="networkidle")
+        await asyncio.sleep(0.5)
+        
+        # Check for server errors
+        if response and response.status >= 500:
+            print(f"  ✗ SKIPPED: Server error (HTTP {response.status})")
+            return None
+            
+        # Check for error text in page
+        content = await page.content()
+        if "Internal Server Error" in content:
+            print(f"  ✗ SKIPPED: Page shows 'Internal Server Error'")
+            return None
+        
+        await page.screenshot(path=output_path, full_page=True)
+        print(f"  ✓ Saved: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        print(f"  ✗ SKIPPED: Navigation failed ({e})")
+        return None
 
 
 async def capture_all_screenshots() -> list[str]:
@@ -96,11 +144,24 @@ async def capture_all_screenshots() -> list[str]:
     os.makedirs(output_dir, exist_ok=True)
 
     captured = []
+    skipped = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         await page.set_viewport_size({"width": 1280, "height": 720})
+
+        # Step 0: Health check
+        print(f"\n🔍 Checking server health at {BASE_URL}...")
+        healthy, message = await check_server_health(page)
+        if not healthy:
+            print(f"\n❌ SERVER NOT READY: {message}")
+            print(f"\nMake sure the Next.js dev server is running:")
+            print(f"   npm run dev")
+            print(f"\nThen re-run this script.")
+            await browser.close()
+            sys.exit(1)
+        print(f"  ✓ Server healthy: {message}")
 
         # Step 1: Navigate to landing page and get all links
         print(f"\n📍 Landing page: {BASE_URL}")
@@ -124,9 +185,11 @@ async def capture_all_screenshots() -> list[str]:
         # Step 2: Capture landing page
         landing_filename = f"{url_to_filename(BASE_URL)}.png"
         landing_path = os.path.join(output_dir, landing_filename)
-        await page.screenshot(path=landing_path, full_page=True)
-        print(f"  ✓ Saved: {landing_path}")
-        captured.append(landing_path)
+        result = await capture_page(page, BASE_URL, landing_path)
+        if result:
+            captured.append(landing_path)
+        else:
+            skipped.append("/")
 
         # Step 3: Capture each linked page
         if internal_links:
@@ -141,19 +204,35 @@ async def capture_all_screenshots() -> list[str]:
                 output_path = os.path.join(output_dir, filename)
 
                 print(f"\n{link}")
-                try:
-                    await capture_page(page, link, output_path)
+                result = await capture_page(page, link, output_path)
+                if result:
                     captured.append(output_path)
-                except Exception as e:
-                    print(f"  ✗ Error: {e}")
+                else:
+                    skipped.append(urllib.parse.urlparse(link).path)
 
         await browser.close()
 
-    print(f"\n✅ Captured {len(captured)} screenshot(s) to ./{output_dir}/")
+    # Summary
+    print(f"\n{'='*50}")
+    print(f"✅ Captured {len(captured)} screenshot(s) to ./{output_dir}/")
+    if skipped:
+        print(f"⚠️  Skipped {len(skipped)} page(s) with errors:")
+        for path in skipped:
+            print(f"   - {path}")
+    print(f"{'='*50}")
+    
     return captured
 
 
 def main():
+    print("="*60)
+    print("RiskModels Site Screenshot Capture")
+    print("="*60)
+    print(f"\nTarget: {BASE_URL}")
+    print(f"Output:  site_images/")
+    print(f"\nPrerequisite: npm run dev (must be running)")
+    print("-"*60)
+    
     asyncio.run(capture_all_screenshots())
 
 

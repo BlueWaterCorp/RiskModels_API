@@ -62,7 +62,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Daily returns time series with rolling hedge ratios',
         description:
-          'Returns a daily time series of gross stock returns (returns_gross) and V3 rolling hedge ratios (l3_mkt_hr, l3_sec_hr, l3_sub_hr) going back up to 15 years. Cost: $0.005/call.',
+          'Returns a daily time series of gross stock returns (returns_gross), V3 rolling hedge ratios (l3_mkt_hr, l3_sec_hr, l3_sub_hr), and explained-risk fractions (l3_mkt_er, l3_sec_er, l3_sub_er, l3_res_er) going back up to 15 years. Wire keys use abbreviated names; the Python SDK renames them to semantic form (l3_market_hr, etc.) via TICKER_RETURNS_COLUMN_RENAME. Cost: $0.005/call.',
         operationId: 'getTickerReturns',
         tag: 'Risk Metrics',
         params: [

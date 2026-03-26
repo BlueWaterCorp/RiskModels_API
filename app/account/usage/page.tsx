@@ -104,6 +104,18 @@ export default function UsagePage() {
           >
             Get API key / Sign in
           </Link>
+          <p className="text-xs text-zinc-500 mt-3 leading-relaxed">
+            Sign in via{' '}
+            <Link href="/get-key" className="text-primary hover:underline">
+              Get API key
+            </Link>
+            , then return here for usage. After sign-in, create or copy your key under{' '}
+            <span className="text-zinc-400">Account → Usage</span>. See{' '}
+            <Link href="/docs/authentication" className="text-primary hover:underline">
+              Authentication
+            </Link>{' '}
+            for scopes and billing details.
+          </p>
         </div>
       </div>
     );

@@ -94,16 +94,32 @@ These codes are used internally to assign sector and subsector ETFs for L2 and L
 
 ## `/ticker-returns` Column Aliases
 
-The `/api/ticker-returns` endpoint returns a **rolling** (time-varying) combined hedge ratio per day, not the six individual HR components. The column mapping used in the quickstart notebook:
+The `/api/ticker-returns` endpoint returns a daily time series. Each row contains:
 
-| Response Column | Meaning | Relation to HR Fields |
-|---|---|---|
-| `stock` | Daily gross return of the stock | — |
-| `l1` | Rolling L1 combined market hedge ratio | Equivalent to `l1_market_hr` (rolling) |
-| `l2` | Rolling L2 combined (market + sector) hedge ratio | Sum of `l2_market_hr` + `l2_sector_hr` (weighted) |
-| `l3` | Rolling L3 combined (full) hedge ratio | Sum of `l3_market_hr` + `l3_sector_hr` + `l3_subsector_hr` (weighted) |
+| Wire Key (JSON) | SDK Name (after `TICKER_RETURNS_COLUMN_RENAME`) | Unit | Description |
+|---|---|---|---|
+| `date` | `date` | ISO 8601 | Trading date |
+| `returns_gross` | `returns_gross` | decimal | Daily gross stock return |
+| `price_close` | `price_close` | USD | Closing price |
+| `l3_mkt_hr` | `l3_market_hr` | dollar_ratio | SPY component of L3 hedge |
+| `l3_sec_hr` | `l3_sector_hr` | dollar_ratio | Sector ETF component of L3 hedge |
+| `l3_sub_hr` | `l3_subsector_hr` | dollar_ratio | Subsector ETF component (may be negative) |
+| `l3_mkt_er` | `l3_market_er` | decimal_fraction | Market variance share at L3 |
+| `l3_sec_er` | `l3_sector_er` | decimal_fraction | Sector variance share at L3 |
+| `l3_sub_er` | `l3_subsector_er` | decimal_fraction | Subsector variance share at L3 |
+| `l3_res_er` | `l3_residual_er` | decimal_fraction | Idiosyncratic variance share at L3 |
 
-For the **six separate components** (individual SPY / sector / subsector notionals), use `/api/metrics/{ticker}`.
+**Wire vs SDK:** Raw JSON uses abbreviated keys (`l3_mkt_hr`, …). The Python SDK
+(`riskmodels-py`) renames them to semantic names via `TICKER_RETURNS_COLUMN_RENAME`
+in `packages/riskmodels/riskmodels/mapping.py`.
+
+**Nulls:** Trailing rows (near the end of the time series) may have null HR/ER
+values where the rolling regression window has insufficient data.
+
+**Negative ratios:** You may observe negative values for `l3_sec_hr` or
+`l3_sub_hr`. This occurs due to the orthogonalization process defined in the
+Methodology (neutralizing factors against one another) and does not indicate a
+sign-error in the underlying data.
 
 ---
 

@@ -332,6 +332,17 @@ function GetKeyPage() {
               <p className="text-center text-xs text-zinc-500">New accounts are created automatically.</p>
             </div>
           )}
+          <p className="text-xs text-zinc-500 mt-3">
+            After sign-in, create or copy your API key from{' '}
+            <Link href="/account/usage" className="text-primary hover:underline">
+              Account → Usage
+            </Link>
+            . See{' '}
+            <Link href="/docs/authentication" className="text-primary hover:underline">
+              Authentication
+            </Link>{' '}
+            for scopes and billing details.
+          </p>
         </div>
       </div>
     );

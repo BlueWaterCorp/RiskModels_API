@@ -94,6 +94,8 @@ Here $\lambda_{A \to B}$ is the beta of ETF $A$ regressed on ETF $B$ (or its cle
 
 This ensures each $\beta$ captures **only the incremental effect** of its own level — no double-counting.
 
+Because factors are orthogonalized against one another, **published L3 component hedge ratios** (`l3_sector_hr`, `l3_subsector_hr` in SDK naming; `l3_sec_hr`, `l3_sub_hr` on the wire) **can occasionally be negative** even when the economic story is long the stock. That outcome is a **mathematically valid** feature of the neutralization construction, not a data bug — and it is why the Python SDK may emit `validate="warn"` on names like TSLA when sign checks are enabled.
+
 ---
 
 ## Hedge Ratios: Making It Tradeable
@@ -197,6 +199,19 @@ $$
 
 This is a mathematical **identity**. At runtime, we verify it holds to within **0.1%** for every stock on every date.
 
+<div className="not-prose my-4 rounded-lg border border-amber-500/30 bg-amber-900/10 px-5 py-3 text-sm">
+  <strong>ε vs <code>l3_residual_er</code></strong> — The residual ε in the
+  return equation is a <em>daily return</em> (units: decimal return). It is
+  <strong>not</strong> directly exposed as a per-day series on{' '}
+  <code>GET /ticker-returns</code>. The API field{' '}
+  <code>l3_residual_er</code> (wire: <code>l3_res_er</code>) is a{' '}
+  <strong>variance fraction</strong> — the share of total variance not explained
+  by the orthogonalized market, sector, and subsector factors in the rolling L3
+  window. Use <code>l3_residual_er</code> from <code>/metrics</code> or{' '}
+  <code>/ticker-returns</code> for idiosyncratic risk sizing;
+  use the return equation to understand the factor model conceptually.
+</div>
+
 > **Why this matters:** You can hedge almost any stock or portfolio using only highly liquid ETFs. No custom baskets. No exotic derivatives. Just SPY, sector ETFs, and subsector ETFs.
 
 ---
@@ -230,6 +245,10 @@ weights = xr.DataArray(
     coords={"ticker": tickers}
 )
 
+# SDK names (after TICKER_RETURNS_COLUMN_RENAME for /ticker-returns tabular data):
+#   l3_market_hr, l3_sector_hr, l3_subsector_hr
+# Wire JSON keys:
+#   l3_mkt_hr,    l3_sec_hr,    l3_sub_hr
 # Broadcast multiply and sum to get portfolio-level L3 market HR time series
 portfolio_market_hr = (ds["l3_market_hr"] * weights).sum(dim="ticker")
 

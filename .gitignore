@@ -30,9 +30,15 @@ next-env.d.ts
 # Internal maintainer docs (not for public repo)
 AGENTS_INTERNAL.md
 
+# Local audit outputs (screenshot validation, fix prompts)
+audit_findings/
+
 # OS
 .DS_Store
 repomix*
+
+# Local audit outputs (zero-trust doc validation; not committed)
+audit_findings/
 
 # Generated files
 public/openapi.json

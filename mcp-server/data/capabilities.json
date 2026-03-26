@@ -2,7 +2,7 @@
   {
     "id": "ticker-returns",
     "name": "Get Ticker Returns",
-    "description": "Retrieve daily returns with L1/L2/L3 hedge ratios and risk decomposition for any stock ticker",
+    "description": "Retrieve daily returns with L3 component hedge ratios (HR) and explained risk (ER) variance fractions. Returns include: l3_mkt_hr, l3_sec_hr, l3_sub_hr (market/sector/subsector hedge ratios) and l3_mkt_er, l3_sec_er, l3_sub_er, l3_res_er (explained risk fractions that sum to ~1.0). Note: Negative sector/subsector HRs are valid due to orthogonalization.",
     "endpoint": "/api/ticker-returns",
     "method": "GET",
     "parameters": {
@@ -66,8 +66,12 @@
               "date": "2023-01-01",
               "returns_gross": 0.012,
               "l3_mkt_hr": 0.98,
-              "l3_sec_hr": 0.85,
-              "l3_sub_hr": 0.72
+              "l3_sec_hr": -0.15,
+              "l3_sub_hr": 0.25,
+              "l3_mkt_er": 0.45,
+              "l3_sec_er": 0.12,
+              "l3_sub_er": 0.18,
+              "l3_res_er": 0.25
             }
           ]
         }

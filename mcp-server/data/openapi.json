@@ -413,37 +413,43 @@
             "type": "number",
             "format": "float",
             "nullable": true,
-            "description": "Rolling L3 market hedge ratio (SPY-notional per $1 stock)."
+            "description": "Rolling L3 market hedge ratio (SPY notional per $1 stock). Null in trailing rows where the rolling regression window has insufficient data.\n"
           },
           "l3_sec_hr": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Rolling L3 sector ETF hedge ratio (dollar_ratio). Null when the rolling window has insufficient data. May be negative due to orthogonalization (factor neutralization); not a sign error in the data.\n"
           },
           "l3_sub_hr": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Rolling L3 subsector ETF hedge ratio (dollar_ratio); may be negative (long subsector ETF). Null when the rolling window has insufficient data. Negative values can also arise from orthogonalization; not a sign error in the data.\n"
           },
           "l3_mkt_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Market variance share at L3 (explained risk, 0–1). Null in trailing rows where the rolling window has insufficient data.\n"
           },
           "l3_sec_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Sector variance share at L3 (explained risk, 0–1). Null when the rolling window has insufficient data.\n"
           },
           "l3_sub_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Subsector variance share at L3 (explained risk, 0–1). Null when the rolling window has insufficient data.\n"
           },
           "l3_res_er": {
             "type": "number",
             "format": "float",
-            "nullable": true
+            "nullable": true,
+            "description": "Idiosyncratic (residual) variance share at L3 (0–1); SDK semantic name `l3_residual_er`. Null when the rolling window has insufficient data.\n"
           }
         }
       },
