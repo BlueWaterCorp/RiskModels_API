@@ -44,6 +44,29 @@ For **Preview** deployments, `NEXT_PUBLIC_APP_URL` is optional — the app falls
 
 Set only `RISKMODELS_API_SERVICE_KEY` for gateway authentication.
 
+### Which keys are “new”? (webhooks and other features)
+
+The table above is the **baseline** production set—assume you need all of them for a full portal deploy unless you know you omit a feature (e.g. Stripe in a throwaway env).
+
+| What you’re enabling | New Vercel / Doppler keys? | What you do |
+|----------------------|----------------------------|-------------|
+| **Outbound webhooks** (`POST /api/webhooks/subscribe`, `batch.completed` notifications) | **None.** Signing uses **per-subscription secrets in Supabase**, not a global env var. | Apply [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql). Keep **`SUPABASE_SERVICE_ROLE_KEY`** set so the API can read/write `webhook_subscriptions`. |
+| **Trusted gateway** (`/api/data/*` with service key) | **`RISKMODELS_API_SERVICE_KEY`** is the key for that pattern (already in the table). | Not webhook-specific—same variable as gateway auth. |
+| **PyPI Python SDK (`riskmodels-py`)** | **None** on Vercel | Users install from PyPI; no extra server env for “0.2.0 SDK” itself. |
+| **Landing “Live Demo”** / hashed API keys | Often **`NEXT_PUBLIC_DEMO_API_KEY`**, **`API_KEY_SECRET`**, **`API_KEY_SALT`** | Listed in [`.env.example`](./.env.example); **not** in `npm run vercel:sync-env`—set manually in Vercel or Doppler if you use those features. |
+
+So: **webhooks did not add a new row to the Vercel env table**—they rely on **Supabase + the migration** plus the service role key you already use for server-side DB access.
+
+### `npm run vercel:sync-env` allowlist
+
+[`scripts/sync-env-to-vercel.sh`](scripts/sync-env-to-vercel.sh) only pushes a **fixed list** of keys (e.g. Supabase public URL/keys, `SUPABASE_SERVICE_ROLE_KEY`, `RISKMODELS_API_SERVICE_KEY`, `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_APP_URL`). It does **not** mirror every line in `.env.local`. Secrets such as **`API_KEY_SECRET`** (API key hashing) must be set **manually** in Vercel (or via Doppler’s Vercel integration) if you use them—see [`scripts/sync-secrets-to-gh.sh`](scripts/sync-secrets-to-gh.sh) for policies on what never syncs to GitHub.
+
+### Webhooks (outbound subscriptions)
+
+- **Not** a separate “webhook signing” env var: outbound `X-RiskModels-Signature` uses **per-subscription secrets** stored in Supabase (`webhook_subscriptions`), not `API_KEY_SECRET`. Maintainer-only webhook documentation: `internal/WEBHOOKS_GUIDE.md` (gitignored; see [`internal/README.md`](./internal/README.md)).
+- Apply [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql) before enabling `POST /api/webhooks/subscribe` in production.
+- Clients register at **`POST /api/webhooks/subscribe`** (not `/subscribe`).
+
 ## GitHub Actions (smoke test)
 
 The workflow [`.github/workflows/smoke-test.yml`](.github/workflows/smoke-test.yml) exercises production `riskmodels.app`.
@@ -107,3 +130,9 @@ In Vercel → Project → Settings → Domains:
 ### Preview deployments
 
 Stripe redirects use `getAppUrl()` which falls back to `VERCEL_URL` when `NEXT_PUBLIC_APP_URL` is unset. Preview deployments work without extra config. For production, set `NEXT_PUBLIC_APP_URL=https://riskmodels.app`.
+
+---
+
+## Maintainer workflows
+
+For Vercel + Supabase + cross-repo sync (MCP data, drift CI, webhook rollout), see [MAINTENANCE_GUIDE.md](./MAINTENANCE_GUIDE.md).

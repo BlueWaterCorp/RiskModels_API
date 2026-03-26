@@ -30,15 +30,23 @@ next-env.d.ts
 # Internal maintainer docs (not for public repo)
 AGENTS_INTERNAL.md
 
-# Local audit outputs (screenshot validation, fix prompts)
+# Internal operator docs (e.g. WEBHOOKS_GUIDE.md — not committed; see internal/README.md)
+internal/*
+!internal/README.md
+
+# Local audit outputs (screenshot validation, fix prompts, zero-trust QA).
+# If these paths were ever committed, check git history and rotate any leaked material.
 audit_findings/
+
+# QA / marketing screenshots — may show real keys, emails, or balances if captured from a logged-in session.
+site_images/
+
+# Archived runbooks and drafts — low secret risk; optional noise for a public clone.
+archive/
 
 # OS
 .DS_Store
 repomix*
-
-# Local audit outputs (zero-trust doc validation; not committed)
-audit_findings/
 
 # Generated files
 public/openapi.json

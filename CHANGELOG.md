@@ -10,7 +10,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
-- **Webhooks** — `webhook_subscriptions` table (see [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql)), [`POST|GET|DELETE /api/webhooks/subscribe`](./app/api/webhooks/subscribe/route.ts), HMAC-signed outbound delivery in [`lib/api/webhooks.ts`](./lib/api/webhooks.ts), and `batch.completed` notifications after [`POST /api/batch/analyze`](./app/api/batch/analyze/route.ts). User guide: [`WEBHOOKS_GUIDE.md`](./WEBHOOKS_GUIDE.md).
+- **Webhooks** — `webhook_subscriptions` table (see [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql)), [`POST|GET|DELETE /api/webhooks/subscribe`](./app/api/webhooks/subscribe/route.ts), HMAC-signed outbound delivery in [`lib/api/webhooks.ts`](./lib/api/webhooks.ts), and `batch.completed` notifications after [`POST /api/batch/analyze`](./app/api/batch/analyze/route.ts). Maintainer-only doc: `internal/WEBHOOKS_GUIDE.md` (gitignored; see [`internal/README.md`](./internal/README.md)).
 
 ### Changed
 
