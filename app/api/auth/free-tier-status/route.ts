@@ -47,21 +47,42 @@ export async function GET(request: NextRequest) {
     const userId = validation.userId;
     const supabase = createAdminClient();
 
-    // Get account tier
-    const { data: account, error: accountError } = await supabase
+    // Get account tier (avoid .single(): 0 rows is not invalid key; 2+ rows is data issue)
+    const { data: accountRows, error: accountError } = await supabase
       .from("agent_accounts")
       .select("tier, rate_limit_per_minute")
       .eq("user_id", userId)
-      .single();
+      .limit(2);
 
-    if (accountError || !account) {
+    if (accountError) {
+      console.error("[Free Tier Status] agent_accounts:", accountError);
       return NextResponse.json(
         {
-          error: "Account not found",
-          message: "No account found for this API key",
+          error: "Database error",
+          message: "Could not load billing profile",
           _agent: { latency_ms: Date.now() - startTime },
         },
-        { status: 404 },
+        { status: 500 },
+      );
+    }
+
+    const account = accountRows?.[0];
+    if (!account) {
+      return NextResponse.json(
+        {
+          tier: "unlinked",
+          message:
+            "No agent_accounts row for this user. Use GET /balance after onboarding, or contact support if billing works but this persists.",
+          _agent: { latency_ms: Date.now() - startTime },
+        },
+        { status: 200 },
+      );
+    }
+
+    if (accountRows && accountRows.length > 1) {
+      console.warn(
+        "[Free Tier Status] duplicate agent_accounts for user_id",
+        userId,
       );
     }
 
@@ -82,10 +103,22 @@ export async function GET(request: NextRequest) {
       .from("free_tier_usage")
       .select("queries_today, queries_this_month, reset_date, last_query_at")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (usageError) {
-      // If no usage record exists, return zeros
+      console.error("[Free Tier Status] free_tier_usage:", usageError);
+      return NextResponse.json(
+        {
+          error: "Database error",
+          message: "Could not load free tier usage",
+          _agent: { latency_ms: Date.now() - startTime },
+        },
+        { status: 500 },
+      );
+    }
+
+    if (!usage) {
+      // No usage row yet — same defaults as before
       return NextResponse.json(
         {
           tier: "free",

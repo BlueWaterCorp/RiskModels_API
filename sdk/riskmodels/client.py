@@ -73,8 +73,14 @@ class RiskModelsClient:
     def from_env(cls) -> RiskModelsClient:
         base = os.environ.get("RISKMODELS_BASE_URL", DEFAULT_BASE_URL)
         key = os.environ.get("RISKMODELS_API_KEY")
+        if key is not None:
+            key = key.strip()
         cid = os.environ.get("RISKMODELS_CLIENT_ID")
         csec = os.environ.get("RISKMODELS_CLIENT_SECRET")
+        if cid is not None:
+            cid = cid.strip()
+        if csec is not None:
+            csec = csec.strip()
         scope = os.environ.get("RISKMODELS_OAUTH_SCOPE", DEFAULT_SCOPE)
         if key:
             return cls(base_url=base, api_key=key)

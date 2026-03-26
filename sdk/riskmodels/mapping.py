@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+from typing import Any
+
 # Curated share-class shortcuts (upper-case keys). Expand as needed.
 TICKER_ALIAS_MAP: dict[str, str] = {
     "GOOGL": "GOOG",
@@ -45,6 +48,16 @@ TICKER_RETURNS_COLUMN_RENAME: dict[str, str] = {
     "l3_res_er": "l3_residual_er",
 }
 
+# POST /batch/analyze `hedge_ratios` uses short keys; same economics as full_metrics *_hr.
+HEDGE_RATIOS_SHORT_TO_SEMANTIC_HR: dict[str, str] = {
+    "l1_market": "l1_market_hr",
+    "l2_market": "l2_market_hr",
+    "l2_sector": "l2_sector_hr",
+    "l3_market": "l3_market_hr",
+    "l3_sector": "l3_sector_hr",
+    "l3_subsector": "l3_subsector_hr",
+}
+
 COLUMN_AGENT_HINTS: dict[str, str] = {
     "l1_market_hr": "SPY notional per $1 stock for L1 (market-only) hedge.",
     "l2_market_hr": "SPY component of L2 hedge.",
@@ -55,6 +68,36 @@ COLUMN_AGENT_HINTS: dict[str, str] = {
     "l3_residual_er": "Idiosyncratic variance share at L3 (not hedgeable with these ETFs).",
     "returns_gross": "Daily gross stock return.",
 }
+
+
+def _missing_value_for_hr_merge(v: Any) -> bool:
+    """True if we should overwrite with hedge_ratios (None or NaN — not zero)."""
+    if v is None:
+        return True
+    if isinstance(v, float) and math.isnan(v):
+        return True
+    return False
+
+
+def omit_nan_float_fields(d: dict[str, Any]) -> dict[str, Any]:
+    """Drop float NaN entries so wire keys do not overwrite merged values during normalize."""
+    return {k: v for k, v in d.items() if not (isinstance(v, float) and math.isnan(v))}
+
+
+def merge_batch_hedge_ratios_into_full_metrics(full_metrics: dict, hedge_ratios: Any) -> dict:
+    """Copy dollar HRs from `hedge_ratios` into long `*_hr` keys when missing or null in full_metrics."""
+    out = dict(full_metrics)
+    if not isinstance(hedge_ratios, dict):
+        return out
+    for short_k, sem_k in HEDGE_RATIOS_SHORT_TO_SEMANTIC_HR.items():
+        if short_k not in hedge_ratios:
+            continue
+        v = hedge_ratios[short_k]
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            continue
+        if sem_k not in out or _missing_value_for_hr_merge(out.get(sem_k)):
+            out[sem_k] = v
+    return out
 
 
 def normalize_metrics_v3(metrics: dict) -> dict:

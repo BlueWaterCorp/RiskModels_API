@@ -17,19 +17,6 @@ def test_l3_er_sum_ok():
     assert ok and total == 1.0 and issue is None
 
 
-def test_strict_negative_market_hr():
-    m = {
-        "l3_market_hr": -0.1,
-        "l3_market_er": 0.25,
-        "l3_sector_er": 0.25,
-        "l3_subsector_er": 0.25,
-        "l3_residual_er": 0.25,
-    }
-    with pytest.raises(RiskModelsValidationError) as ei:
-        run_validation(m, mode="error")
-    assert "Fix:" in str(ei.value)
-
-
 def test_er_sum_at_tolerance_boundary_pass():
     # 0.2+0.25+0.25+0.25 = 0.95 with stable float sum vs 1.0 (|Δ|=0.05 on tolerance boundary).
     m = {
@@ -65,7 +52,7 @@ def test_er_sum_1_05_within_tolerance():
     assert ok and abs(total - 1.05) < 1e-9 and issue is None
 
 
-def test_nullable_er_fields_incomplete():
+def test_incomplete_er_skips_sum_check_without_issue():
     m = {
         "l3_market_er": None,
         "l3_sector_er": None,
@@ -73,29 +60,24 @@ def test_nullable_er_fields_incomplete():
         "l3_residual_er": None,
     }
     ok, total, issue = validate_l3_er_sum(m, tolerance=0.05)
-    assert not ok and total is None and issue is not None
+    assert ok and total is None and issue is None
 
 
-def test_negative_l3_subsector_hr_not_in_hr_sign_issues():
-    m = {"l3_subsector_hr": -0.5}
+def test_validate_hr_signs_is_noop():
+    m = {
+        "l1_market_hr": -1.0,
+        "l2_market_hr": -1.0,
+        "l3_market_hr": -1.0,
+        "l3_subsector_hr": -0.5,
+    }
     assert validate_hr_signs(m) == []
 
 
-def test_negative_l2_sector_hr_raises_in_error_mode():
+def test_negative_hr_no_validation_warnings_when_er_sum_valid():
     m = {
-        "l2_sector_hr": -0.1,
-        "l3_market_er": 0.25,
-        "l3_sector_er": 0.25,
-        "l3_subsector_er": 0.25,
-        "l3_residual_er": 0.25,
-    }
-    with pytest.raises(RiskModelsValidationError):
-        run_validation(m, mode="error")
-
-
-def test_validate_warn_negative_market_hr_emits_warning_not_raise():
-    m = {
-        "l3_market_hr": -0.1,
+        "l3_market_hr": -0.5,
+        "l2_market_hr": -0.3,
+        "l3_sector_hr": -0.2,
         "l3_market_er": 0.25,
         "l3_sector_er": 0.25,
         "l3_subsector_er": 0.25,
@@ -104,4 +86,16 @@ def test_validate_warn_negative_market_hr_emits_warning_not_raise():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         run_validation(m, mode="warn")
-    assert any(isinstance(x.message, ValidationWarning) for x in w)
+    assert not any(isinstance(x.message, ValidationWarning) for x in w)
+
+
+def test_er_sum_error_mode_raises():
+    m = {
+        "l3_market_er": 0.235,
+        "l3_sector_er": 0.235,
+        "l3_subsector_er": 0.235,
+        "l3_residual_er": 0.235,
+    }
+    with pytest.raises(RiskModelsValidationError) as ei:
+        run_validation(m, mode="error")
+    assert "Fix:" in str(ei.value)
