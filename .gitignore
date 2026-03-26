@@ -9,7 +9,7 @@ out/
 build/
 dist/
 
-# Python venvs (e.g. packages/riskmodels/.venv)
+# Python venvs (e.g. sdk/.venv)
 .venv/
 venv/
 

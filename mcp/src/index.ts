@@ -172,7 +172,7 @@ server.registerResource(
       };
     }
     return {
-      contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify({ info: { title: "RiskModels API" }, _note: "Add openapi.json or openapi.yaml to mcp-server/data/" }) }],
+      contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify({ info: { title: "RiskModels API" }, _note: "Add openapi.json or openapi.yaml to mcp/data/" }) }],
     };
   }
 );

@@ -56,7 +56,7 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
         <img src="https://avatars.githubusercontent.com/u/98986645?s=64" alt="Zed" width="28" height="28" className="rounded flex-shrink-0" />
         <div>
           <span className="text-sm font-semibold text-zinc-100">Zed</span>
-          <p className="text-xs text-zinc-500 mt-0.5">Add the MCP server to your Zed assistant config. Zed auto-discovers available tools so you can query live risk data inline as you code. <a href="#mcp-server-setup" className="text-primary hover:underline">See MCP setup ↓</a></p>
+          <p className="text-xs text-zinc-500 mt-0.5">Add the MCP server to your Zed assistant config. Zed auto-discovers available tools so you can query live risk data inline as you code. <a href="#mcp-setup" className="text-primary hover:underline">See MCP setup ↓</a></p>
         </div>
       </div>
     </div>
@@ -73,7 +73,7 @@ Paste this into **Project Settings → Rules for AI** (or save as `.cursorrules`
 You are a RiskModels Analyst. Your goal is to help me perform quant research.
 
 1. Use the RiskModels MCP server for discovery: `riskmodels_list_endpoints`,
-   `riskmodels_get_capability`, `riskmodels_get_schema` (see mcp-server/README.md).
+   `riskmodels_get_capability`, `riskmodels_get_schema` (see mcp/README.md).
 2. For live data (metrics, batch portfolio, L3 series), call the REST API or use
    `riskmodels-py` — the repo MCP server does not expose separate portfolio/decomposition tools.
 3. When asked to "graph the residuals," fetch L3 decomposition or returns via
@@ -87,13 +87,13 @@ If I ask: "Graph market residuals for META," fetch the appropriate time series f
 the API or SDK and generate a Python plot.
 ```
 
-<h2 id="mcp-server-setup">MCP Server Setup</h2>
+<h2 id="mcp-setup">MCP Server Setup</h2>
 
 Add to `.cursor/mcp.json` (or your Claude Desktop / Zed config):
 
 ```bash
 # Build the MCP server first (required before first use)
-cd mcp-server && npm ci && npm run build
+cd mcp && npm ci && npm run build
 ```
 
 ```json
@@ -101,15 +101,15 @@ cd mcp-server && npm ci && npm run build
   "mcpServers": {
     "riskmodels-api": {
       "command": "node",
-      "args": ["/absolute/path/to/RiskModels_API/mcp-server/dist/index.js"]
+      "args": ["/absolute/path/to/RiskModels_API/mcp/dist/index.js"]
     }
   }
 }
 ```
 
-The `args` path must point to `mcp-server/dist/index.js` — the compiled output. If `dist/` does not exist, run the build command above.
+The `args` path must point to `mcp/dist/index.js` — the compiled output. If `dist/` does not exist, run the build command above.
 
-Restart your editor after saving. See the [MCP server README](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/mcp-server/README.md) for full setup.
+Restart your editor after saving. See the [MCP server README](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/mcp/README.md) for full setup.
 
 ---
 

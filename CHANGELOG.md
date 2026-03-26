@@ -6,13 +6,21 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
-- **Docs & portal copy (API / MCP / CLI)** — Aligned marketing and guides with shipped behavior: local [`mcp-server/`](mcp-server/) exposes only `riskmodels_list_endpoints`, `riskmodels_get_capability`, and `riskmodels_get_schema`; portfolio and decomposition flows are REST/SDK. MCP discovery URL documented as `https://riskmodels.app/.well-known/mcp.json` (with OpenAPI). Quickstart CLI step, [`content/docs/agent-integration.mdx`](content/docs/agent-integration.mdx), [`SKILL.md`](SKILL.md), [`AgenticSection`](components/AgenticSection.tsx), and [`TerminalShowcase`](components/TerminalShowcase.tsx) updated; [`AUTHENTICATION_GUIDE.md`](AUTHENTICATION_GUIDE.md) and [`MIGRATION_V3.md`](MIGRATION_V3.md) MCP tool tables corrected.
-
-- **MCP data sync** — Ran `sync-mcp-from-risk-models.sh`; `mcp-server/data/capabilities.json`, `schema-paths.json`, and `schemas/*.json` mirrored from Risk_Models `riskmodels_com` generator output.
+- **Repository layout** — Python SDK source moved from `packages/riskmodels/` to [`sdk/`](./sdk/); local MCP package renamed from `mcp-server/` to [`mcp/`](./mcp/). CI scripts, drift detection, OpenAPI mirror path, and docs updated; Risk_Models sync still reads from `riskmodels_com/mcp-server/data` as the upstream generator output.
 
 ### Added
 
-- **Python SDK (`packages/riskmodels`)** — `riskmodels-py` on PyPI layout: `RiskModelsClient` (Bearer + OAuth2 client credentials, optional `httpx` injection for tests), batch portfolio weighted hedge ratios, Parquet/CSV tabular paths, optional `[xarray]` `get_dataset`, agent helpers (`discover` Markdown/JSON, `to_llm_context`, attrs + ERM3 legend, ticker alias map e.g. GOOGL→GOOG, `validate=warn|error|off`). See [packages/riskmodels/README.md](packages/riskmodels/README.md).
+- **Webhooks** — `webhook_subscriptions` table (see [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql)), [`POST|GET|DELETE /api/webhooks/subscribe`](./app/api/webhooks/subscribe/route.ts), HMAC-signed outbound delivery in [`lib/api/webhooks.ts`](./lib/api/webhooks.ts), and `batch.completed` notifications after [`POST /api/batch/analyze`](./app/api/batch/analyze/route.ts). User guide: [`WEBHOOKS_GUIDE.md`](./WEBHOOKS_GUIDE.md).
+
+### Changed
+
+- **Docs & portal copy (API / MCP / CLI)** — Aligned marketing and guides with shipped behavior: local [`mcp/`](mcp/) exposes only `riskmodels_list_endpoints`, `riskmodels_get_capability`, and `riskmodels_get_schema`; portfolio and decomposition flows are REST/SDK. MCP discovery URL documented as `https://riskmodels.app/.well-known/mcp.json` (with OpenAPI). Quickstart CLI step, [`content/docs/agent-integration.mdx`](content/docs/agent-integration.mdx), [`SKILL.md`](SKILL.md), [`AgenticSection`](components/AgenticSection.tsx), and [`TerminalShowcase`](components/TerminalShowcase.tsx) updated; [`AUTHENTICATION_GUIDE.md`](AUTHENTICATION_GUIDE.md) and [`MIGRATION_V3.md`](MIGRATION_V3.md) MCP tool tables corrected.
+
+- **MCP data sync** — Ran `sync-mcp-from-risk-models.sh`; `mcp/data/capabilities.json`, `schema-paths.json`, and `schemas/*.json` mirrored from Risk_Models `riskmodels_com` generator output.
+
+### Added
+
+- **Python SDK (`sdk`)** — `riskmodels-py` on PyPI layout: `RiskModelsClient` (Bearer + OAuth2 client credentials, optional `httpx` injection for tests), batch portfolio weighted hedge ratios, Parquet/CSV tabular paths, optional `[xarray]` `get_dataset`, agent helpers (`discover` Markdown/JSON, `to_llm_context`, attrs + ERM3 legend, ticker alias map e.g. GOOGL→GOOG, `validate=warn|error|off`). See [sdk/README.md](sdk/README.md).
 
 - **Agentic API landing page integration** — Homepage now features agentic-first messaging with new sections:
   - `AgenticSection` component with "Stop Querying. Start Delegating." value proposition
@@ -26,7 +34,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
-- **OpenAPI tabular exports** — Finalized Parquet/CSV documentation: `application/vnd.apache.parquet` (matches runtime `Content-Type`), shared `FormatQueryTabular` parameter, row schemas `GrossReturnDailyRow` and `BatchAnalyzeExportRow`, `TickerReturnsDailyRow.price_close`, batch export semantics (returns-only long table), CSV examples, and `build:openapi` now mirrors `mcp-server/data/openapi.json`.
+- **OpenAPI tabular exports** — Finalized Parquet/CSV documentation: `application/vnd.apache.parquet` (matches runtime `Content-Type`), shared `FormatQueryTabular` parameter, row schemas `GrossReturnDailyRow` and `BatchAnalyzeExportRow`, `TickerReturnsDailyRow.price_close`, batch export semantics (returns-only long table), CSV examples, and `build:openapi` now mirrors `mcp/data/openapi.json`.
 
 ## [0.2.0] — 2026-03-24
 
@@ -36,7 +44,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
-- **`riskmodels-py` 0.2.0** (package `packages/riskmodels`) — Version and `__version__` bumped from 0.1.0. **`RiskModelsClient.analyze`** is a documented alias for **`analyze_portfolio`**. **`get_dataset`** (aliases **`get_cube`**, **`get_panel`**) returns an **`xarray.Dataset`** from batch Parquet/CSV long tables when the **`[xarray]`** extra is installed. PyPI trove classifier **Development Status :: 4 - Beta** (was Alpha).
+- **`riskmodels-py` 0.2.0** (package `sdk`) — Published on PyPI: [pypi.org/project/riskmodels-py](https://pypi.org/project/riskmodels-py/) (`pip install riskmodels-py==0.2.0`). Version and `__version__` bumped from 0.1.0. **`RiskModelsClient.analyze`** is a documented alias for **`analyze_portfolio`**. **`get_dataset`** (aliases **`get_cube`**, **`get_panel`**) returns an **`xarray.Dataset`** from batch Parquet/CSV long tables when the **`[xarray]`** extra is installed. PyPI trove classifier **Development Status :: 4 - Beta** (was Alpha).
 
 ## [2026-03-23] — Phase 2–4 migration: self-contained API
 

@@ -400,9 +400,9 @@ for line in response.iter_lines():
 
 ### Available MCP Tools
 
-After connecting, use JSON-RPC **`tools/list`** to discover tools exposed by **that** session. Names and behavior can differ between the **hosted** MCP endpoint and the **local** stdio server in this repo’s [`mcp-server/`](../mcp-server/).
+After connecting, use JSON-RPC **`tools/list`** to discover tools exposed by **that** session. Names and behavior can differ between the **hosted** MCP endpoint and the **local** stdio server in this repo’s [`mcp/`](../mcp/).
 
-**Local `mcp-server/` (this repository)** exposes discovery-only tools:
+**Local `mcp/` (this repository)** exposes discovery-only tools:
 
 | Tool | Description |
 |------|-------------|
@@ -410,7 +410,7 @@ After connecting, use JSON-RPC **`tools/list`** to discover tools exposed by **t
 | `riskmodels_get_capability` | Full capability record by id |
 | `riskmodels_get_schema` | JSON Schema for a response path / filename |
 
-Portfolio analysis, hedging, and L3 decomposition are **REST/SDK** concerns (e.g. `POST /api/batch/analyze`, `GET /api/l3-decomposition`, `riskmodels-py`), not implemented as separate MCP tools in `mcp-server/`.
+Portfolio analysis, hedging, and L3 decomposition are **REST/SDK** concerns (e.g. `POST /api/batch/analyze`, `GET /api/l3-decomposition`, `riskmodels-py`), not implemented as separate MCP tools in `mcp/`.
 
 ### Example: Calling a Tool
 

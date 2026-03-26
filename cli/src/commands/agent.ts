@@ -8,7 +8,7 @@ function stub(name: string, hint: string) {
     console.log(
       chalk.yellow(
         `${name} is not implemented in riskmodels-cli v1.0.1.\n` +
-          `Use the HTTP API, MCP server (mcp-server/ in the RiskModels_API repo), or Python SDK.\n` +
+          `Use the HTTP API, MCP server (mcp/ in the RiskModels_API repo), or Python SDK.\n` +
           `Docs: ${DOCS}\n` +
           `Hint: ${hint}`,
       ),

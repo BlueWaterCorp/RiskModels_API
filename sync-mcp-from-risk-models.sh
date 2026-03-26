@@ -15,7 +15,7 @@ ROOT_DIR="$SCRIPT_DIR"
 RISK_MODELS_REPO="${RISK_MODELS_REPO:-$ROOT_DIR/../Risk_Models}"
 RM_COM="$RISK_MODELS_REPO/riskmodels_com"
 SRC_DATA="$RM_COM/mcp-server/data"
-DST_DATA="$ROOT_DIR/mcp-server/data"
+DST_DATA="$ROOT_DIR/mcp/data"
 
 if [[ ! -d "$RISK_MODELS_REPO" ]]; then
   echo "Error: Risk_Models repo not found at: $RISK_MODELS_REPO"

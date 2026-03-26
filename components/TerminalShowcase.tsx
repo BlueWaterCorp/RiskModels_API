@@ -282,60 +282,178 @@ const scenarioE: Scenario = {
   ],
 };
 
-// ─── Scenario F: Python SDK (Agent-Native) ────────────────────────────────────
+// ─── Scenario F: Python SDK (PyPI install + agent-native run) ────────────────
 const scenarioF: Scenario = {
   id: 'python-sdk',
   label: 'Python SDK',
-  titleBarLabel: 'python portfolio_llm.py — agent-native portfolio analysis',
-  contextBadge: 'NVDA 40% · GOOGL 60%',
-  command: 'python portfolio_llm.py',
+  titleBarLabel: 'pip install riskmodels-py[xarray] → portfolio_llm.py',
+  contextBadge: 'PyPI · NVDA 40% · GOOGL 60%',
+  command: 'pip install riskmodels-py[xarray] && python portfolio_llm.py',
   lines: [
     {
-      id: 0, delayMs: 0,
-      content: <><span style={{ color: C.info }}>[INFO]</span> <span style={{ color: C.muted }}>RiskModelsClient.from_env() → authenticated via RISKMODELS_API_KEY</span></>,
+      id: 0,
+      delayMs: 0,
+      content: (
+        <>
+          <span style={{ color: C.muted }}>Collecting riskmodels-py</span>
+        </>
+      ),
     },
     {
-      id: 1, delayMs: 500,
-      content: <><span style={{ color: C.info }}>[INFO]</span> <span style={{ color: C.muted }}>Ticker alias detected: GOOGL → GOOG (canonical)</span></>,
+      id: 1,
+      delayMs: 320,
+      content: (
+        <>
+          <span style={{ color: C.muted }}> </span>
+          <span style={{ color: C.muted }}>Downloading riskmodels_py-0.2.0-py3-none-any.whl (35 kB)</span>
+        </>
+      ),
     },
     {
-      id: 2, delayMs: 900,
-      content: <><span style={{ color: C.info }}>[INFO]</span> <span style={{ color: C.muted }}>POST /batch/analyze → 2 tickers, 252 dates, semantic normalization complete</span></>,
+      id: 2,
+      delayMs: 620,
+      content: (
+        <>
+          <span style={{ color: C.muted }}>Installing collected packages: riskmodels-py</span>
+        </>
+      ),
     },
-    { id: 3, delayMs: 1200, content: <span>&nbsp;</span> },
     {
-      id: 4, delayMs: 1340,
+      id: 3,
+      delayMs: 900,
+      content: (
+        <>
+          <span style={{ color: C.green }}>Successfully installed riskmodels-py-0.2.0</span>
+        </>
+      ),
+    },
+    { id: 4, delayMs: 1120, content: <span>&nbsp;</span> },
+    {
+      id: 5,
+      delayMs: 1280,
+      content: (
+        <>
+          <span style={{ color: C.info }}>[INFO]</span>{' '}
+          <span style={{ color: C.muted }}>RiskModelsClient.from_env() → authenticated via RISKMODELS_API_KEY</span>
+        </>
+      ),
+    },
+    {
+      id: 6,
+      delayMs: 1680,
+      content: (
+        <>
+          <span style={{ color: C.info }}>[INFO]</span>{' '}
+          <span style={{ color: C.muted }}>Ticker alias detected: GOOGL → GOOG (canonical)</span>
+        </>
+      ),
+    },
+    {
+      id: 7,
+      delayMs: 2080,
+      content: (
+        <>
+          <span style={{ color: C.info }}>[INFO]</span>{' '}
+          <span style={{ color: C.muted }}>POST /batch/analyze → 2 tickers, 252 dates, semantic normalization complete</span>
+        </>
+      ),
+    },
+    { id: 8, delayMs: 2380, content: <span>&nbsp;</span> },
+    {
+      id: 9,
+      delayMs: 2520,
       content: <span style={{ color: C.dim }}>## Portfolio Hedge Ratios (Holdings-Weighted)</span>,
     },
-    { id: 5, delayMs: 1500, content: <span>&nbsp;</span> },
+    { id: 10, delayMs: 2680, content: <span>&nbsp;</span> },
     {
-      id: 6, delayMs: 1640,
-      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.key }}>metric</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.key }}>value</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.key }}>unit</span><span style={{ color: C.dim }}> |</span></span>,
+      id: 11,
+      delayMs: 2820,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.key }}>metric</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.key }}>value</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.key }}>unit</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
     },
     {
-      id: 7, delayMs: 1780,
+      id: 12,
+      delayMs: 2960,
       content: <span style={{ color: C.dim }}>|--------|-------|------|</span>,
     },
     {
-      id: 8, delayMs: 1920,
-      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_market_hr</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.91</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>$/$ SPY</span><span style={{ color: C.dim }}> |</span></span>,
+      id: 13,
+      delayMs: 3100,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_market_hr</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.91</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>$/$ SPY</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
     },
     {
-      id: 9, delayMs: 2060,
-      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_sector_hr</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.13</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>$/$ XLK</span><span style={{ color: C.dim }}> |</span></span>,
+      id: 14,
+      delayMs: 3240,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_sector_hr</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.13</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>$/$ XLK</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
     },
     {
-      id: 10, delayMs: 2200,
-      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_subsector_hr</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.07</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>$/$ SOXX</span><span style={{ color: C.dim }}> |</span></span>,
+      id: 15,
+      delayMs: 3380,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_subsector_hr</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.07</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>$/$ SOXX</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
     },
     {
-      id: 11, delayMs: 2340,
-      content: <span><span style={{ color: C.dim }}>| </span><span style={{ color: C.bright }}>l3_residual_er</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.num }}>0.24</span><span style={{ color: C.dim }}> | </span><span style={{ color: C.muted }}>variance fraction</span><span style={{ color: C.dim }}> |</span></span>,
+      id: 16,
+      delayMs: 3520,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_residual_er</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.24</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>variance fraction</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
     },
-    { id: 12, delayMs: 2520, content: <span>&nbsp;</span> },
+    { id: 17, delayMs: 3700, content: <span>&nbsp;</span> },
     {
-      id: 13, delayMs: 2660,
-      content: <span style={{ color: C.dim }}><span style={{ color: C.muted }}>Lineage: ERM3-L3-v30 · 2026-03-20 · 2,987 universe</span></span>,
+      id: 18,
+      delayMs: 3840,
+      content: (
+        <span style={{ color: C.dim }}>
+          <span style={{ color: C.muted }}>Lineage: ERM3-L3-v30 · 2026-03-20 · 2,987 universe</span>
+        </span>
+      ),
     },
   ],
 };
@@ -439,10 +557,14 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
       schedule(typeStep, TYPING_SPEED_MS);
     };
 
-    queueMicrotask(() => {
+    // Use the same `schedule` helper (setTimeout) so the kickoff is tracked in `pending`
+    // and cleared on unmount. `queueMicrotask` is not cancelled by cleanup — combined with
+    // React Strict Mode in dev, the first microtask could run after the remount session bump
+    // and leave the terminal stuck at `$` with no typing.
+    schedule(() => {
       if (!isLive()) return;
       runFullCycle();
-    });
+    }, 0);
 
     return () => {
       clearPending();
@@ -476,7 +598,25 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         Stylized demos (not live recordings) — REST and SDK shapes match the API; CLI &apos;agent&apos; and some MCP
         tool names illustrate product workflows. Use{' '}
         <span className="text-zinc-300">riskmodels --help</span> and MCP{' '}
-        <span className="text-zinc-300">tools/list</span> for what your install actually exposes.
+        <span className="text-zinc-300">tools/list</span> for what your install actually exposes. Python SDK:{' '}
+        <a
+          href="https://pypi.org/project/riskmodels-py/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          PyPI
+        </a>
+        {' · '}
+        <a
+          href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          source (sdk/)
+        </a>
+        .
       </p>
     </div>
   );

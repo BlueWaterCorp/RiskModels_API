@@ -460,7 +460,7 @@ export default function QuickstartCodeExamples() {
             </a>{' '}
             scripts mirror raw REST; for shorter, agent-friendly code prefer{' '}
             <a
-              href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/packages/riskmodels"
+              href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"

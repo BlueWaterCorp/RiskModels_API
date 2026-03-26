@@ -6,6 +6,7 @@ import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { formatResponse } from "@/lib/api/format-response";
 import { BatchAnalyzeRequestSchema } from "@/lib/api/schemas";
+import { dispatchWebhookEvent } from "@/lib/api/webhooks";
 import { getCorsHeaders } from "@/lib/cors";
 
 function getSupabase() {
@@ -173,6 +174,18 @@ export const POST = withBilling(
         } as Record<string, string>,
       });
       addMetadataHeaders(response, metadata);
+      void dispatchWebhookEvent(context.userId, "batch.completed", {
+        request_id: context.requestId,
+        format,
+        summary: {
+          total: tickers.length,
+          success: successCount,
+          errors: errorCount,
+        },
+        ticker_count: tickers.length,
+      }).catch((err) =>
+        console.error("[Batch/analyze] webhook dispatch", err),
+      );
       return response;
     }
 
@@ -193,6 +206,16 @@ export const POST = withBilling(
       }
     });
     addMetadataHeaders(response, metadata);
+    void dispatchWebhookEvent(context.userId, "batch.completed", {
+      request_id: context.requestId,
+      format: "json",
+      summary: {
+        total: tickers.length,
+        success: successCount,
+        errors: errorCount,
+      },
+      ticker_count: tickers.length,
+    }).catch((err) => console.error("[Batch/analyze] webhook dispatch", err));
     return response;
   },
   {

@@ -111,7 +111,7 @@ The `/api/ticker-returns` endpoint returns a daily time series. Each row contain
 
 **Wire vs SDK:** Raw JSON uses abbreviated keys (`l3_mkt_hr`, …). The Python SDK
 (`riskmodels-py`) renames them to semantic names via `TICKER_RETURNS_COLUMN_RENAME`
-in `packages/riskmodels/riskmodels/mapping.py`.
+in `sdk/riskmodels/mapping.py`.
 
 **Nulls:** Trailing rows (near the end of the time series) may have null HR/ER
 values where the rolling regression window has insufficient data.

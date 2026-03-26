@@ -38,7 +38,7 @@ Global flag: `--json` for machine-readable output.
 `riskmodels agent decompose` and related flows are **not implemented** in this CLI version. Use:
 
 - HTTP API: `POST /api/batch/analyze`, `GET /api/metrics/{ticker}`, etc. ([docs](https://riskmodels.net/docs/api))
-- MCP server in this repo: `mcp-server/`
+- MCP server in this repo: `mcp/`
 - Python SDK: `riskmodels` on PyPI
 
 ## Develop

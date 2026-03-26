@@ -1,5 +1,5 @@
 {
-  "name": "riskmodels-mcp-server",
+  "name": "riskmodels-mcp",
   "version": "1.0.1",
   "description": "MCP server for RiskModels API visibility (resources + tools)",
   "type": "module",

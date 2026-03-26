@@ -1,6 +1,6 @@
 # RiskModels SDK Expert Rules
 
-When writing or editing Python code that calls the **RiskModels API**, prefer the **`riskmodels`** package in this repo at `packages/riskmodels/` (import name `riskmodels`, distribution `riskmodels-py`). Do not invent REST paths or wire JSON shapes from memory; align with `OPENAPI_SPEC.yaml` and `SEMANTIC_ALIASES.md`.
+When writing or editing Python code that calls the **RiskModels API**, prefer the **`riskmodels`** package in this repo at `sdk/` (import name `riskmodels`, distribution `riskmodels-py`). Do not invent REST paths or wire JSON shapes from memory; align with `OPENAPI_SPEC.yaml` and `SEMANTIC_ALIASES.md`.
 
 ## Canonical math and field names (ERM3)
 
@@ -23,7 +23,7 @@ When writing or editing Python code that calls the **RiskModels API**, prefer th
 
 ## File pointers
 
-- SDK source: `packages/riskmodels/riskmodels/`
+- SDK source: `sdk/riskmodels/`
 - Field semantics: `SEMANTIC_ALIASES.md`, `docs/ERM3_ZARR_API_PARITY.md`
 - API contract: `OPENAPI_SPEC.yaml`
 

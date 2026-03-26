@@ -15,8 +15,8 @@ name: Cross-Repo Drift Detection
 on:
   pull_request:
     paths:
-      - "mcp-server/data/schema-paths.json"
-      - "mcp-server/data/schemas/**"
+      - "mcp/data/schema-paths.json"
+      - "mcp/data/schemas/**"
       - "OPENAPI_SPEC.yaml"
   workflow_dispatch:
 
@@ -46,7 +46,7 @@ jobs:
         run: |
           echo "Comparing schema-paths.json..."
 
-          LOCAL="mcp-server/data/schema-paths.json"
+          LOCAL="mcp/data/schema-paths.json"
           REMOTE="risk_models/riskmodels_com/mcp-server/data/schema-paths.json"
 
           if [ ! -f "$LOCAL" ]; then
@@ -83,7 +83,7 @@ jobs:
         run: |
           echo "Comparing schema files..."
 
-          LOCAL_SCHEMAS="mcp-server/data/schemas"
+          LOCAL_SCHEMAS="mcp/data/schemas"
           REMOTE_SCHEMAS="risk_models/riskmodels_com/mcp-server/data/schemas"
 
           if [ ! -d "$LOCAL_SCHEMAS" ]; then
@@ -152,11 +152,11 @@ jobs:
             echo ""
             echo "Manual sync steps:"
             echo "1. Copy schemas from RiskModels_API to Risk_Models:"
-            echo "   cp RiskModels_API/mcp-server/data/schemas/*.json \\"
+            echo "   cp RiskModels_API/mcp/data/schemas/*.json \\"
             echo "      Risk_Models/riskmodels_com/mcp-server/data/schemas/"
             echo ""
             echo "2. Copy schema-paths.json:"
-            echo "   cp RiskModels_API/mcp-server/data/schema-paths.json \\"
+            echo "   cp RiskModels_API/mcp/data/schema-paths.json \\"
             echo "      Risk_Models/riskmodels_com/mcp-server/data/schema-paths.json"
             echo ""
             echo "See AGENTS.md for full sync rules."

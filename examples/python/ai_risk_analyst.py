@@ -9,7 +9,7 @@ natural-language questions about your portfolio. Pattern:
   3. Ask any hedging or risk question — the model reasons over real numbers
 
 For a maintained client (nested V3 `metrics`, validation, `to_llm_context`), use the
-Python SDK in `packages/riskmodels` (pip install from that path or future `riskmodels-py`).
+Python SDK in `sdk` (pip install from that path or future `riskmodels-py`).
 
 pip install requests pandas openai
 """

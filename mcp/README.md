@@ -24,10 +24,16 @@ MCP server that exposes **RiskModels API** visibility inside [Cursor](https://cu
 
 ---
 
+## Python SDK on PyPI
+
+This MCP server exposes **discovery** (capabilities, schemas, OpenAPI). For live **`/metrics`**, **`/batch/analyze`**, **`/l3-decomposition`**, and other data routes, call the REST API or install **`riskmodels-py`** from [PyPI](https://pypi.org/project/riskmodels-py/) ([`sdk/README.md`](../sdk/README.md)).
+
+---
+
 ## Setup
 
 ```bash
-cd mcp-server
+cd mcp
 npm install
 npm run build
 ```
@@ -39,7 +45,7 @@ Add the server to Cursor (e.g. `.cursor/mcp.json` in your project):
   "mcpServers": {
     "riskmodels-api": {
       "command": "node",
-      "args": ["/absolute/path/to/RiskModels_API/mcp-server/dist/index.js"]
+      "args": ["/absolute/path/to/RiskModels_API/mcp/dist/index.js"]
     }
   }
 }
@@ -48,7 +54,7 @@ Add the server to Cursor (e.g. `.cursor/mcp.json` in your project):
 If you use **RiskModels_API** as your Cursor workspace, you can use a relative path:
 
 ```json
-"args": ["mcp-server/dist/index.js"]
+"args": ["mcp/dist/index.js"]
 ```
 
 Restart Cursor after editing the config.
@@ -59,7 +65,7 @@ Restart Cursor after editing the config.
 
 ## Maintenance (for API / repo maintainers)
 
-The MCP server serves static data from `mcp-server/data/`. When the live RiskModels API gains new endpoints, changes pricing, or updates response schemas, this data should be updated so Cursor and other MCP clients stay in sync.
+The MCP server serves static data from `mcp/data/`. When the live RiskModels API gains new endpoints, changes pricing, or updates response schemas, this data should be updated so Cursor and other MCP clients stay in sync.
 
 ### What gets updated
 
@@ -70,15 +76,15 @@ The MCP server serves static data from `mcp-server/data/`. When the live RiskMod
 
 ### How to update
 
-The **canonical API and capabilities** live in the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo. From that repo you can run `npm run generate-mcp-data` (in `riskmodels_com/`) to regenerate `capabilities.json`, `schema-paths.json`, and `schemas/*.json` from the app’s `lib/agent` registry; then copy the updated files into this repo’s `mcp-server/data/`. The `openapi.json` here is a subset of the full [OPENAPI_SPEC.yaml](../OPENAPI_SPEC.yaml) and should be updated when new public endpoints are added.
+The **canonical API and capabilities** live in the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo. From that repo you can run `npm run generate-mcp-data` (in `riskmodels_com/`) to regenerate `capabilities.json`, `schema-paths.json`, and `schemas/*.json` from the app’s `lib/agent` registry; then copy the updated files into this repo’s `mcp/data/`. The `openapi.json` here is a subset of the full [OPENAPI_SPEC.yaml](../OPENAPI_SPEC.yaml) and should be updated when new public endpoints are added.
 
 1. **Obtain updated data** from the canonical source (Risk_Models) or by hand from the API application’s capabilities and schema registry.
-2. **Replace** the contents of `mcp-server/data/`:
+2. **Replace** the contents of `mcp/data/`:
    - `capabilities.json`
    - `schema-paths.json`
    - `schemas/*.json`
    - `openapi.json` (if used)
-3. **If server code changed** (e.g. new resources or tools): update `mcp-server/src/index.ts` (and any other source files), then run `npm run build` inside `mcp-server/`.
+3. **If server code changed** (e.g. new resources or tools): update `mcp/src/index.ts` (and any other source files), then run `npm run build` inside `mcp/`.
 4. **Commit and push** so users who clone RiskModels_API get the latest MCP behavior and data.
 
 ### When to update

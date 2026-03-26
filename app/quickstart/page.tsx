@@ -167,6 +167,17 @@ export default function QuickstartPage() {
                     code="pip install riskmodels-py[xarray]"
                     language="bash"
                   />
+                  <p className="text-sm text-zinc-500 mt-2">
+                    <a
+                      href="https://pypi.org/project/riskmodels-py/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      PyPI
+                    </a>{' '}
+                    — package <code className="text-zinc-400 bg-zinc-800 px-1 rounded">riskmodels-py</code>
+                  </p>
                 </div>
 
                 <div>

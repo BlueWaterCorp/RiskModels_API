@@ -8,7 +8,7 @@ You are an expert at using the `riskmodels` npm package and the associated MCP s
 ## Instructions for Research Requests
 When a user asks to "graph," "analyze," or "compare" tickers:
 1. **Discovery:** Use MCP tools `riskmodels_get_capability` / `riskmodels_list_endpoints` to confirm endpoint ids and parameters.
-2. **Fetch Data:** Load L1/L2/L3 or returns via the **REST API** or **`riskmodels-py`** (e.g. `GET /api/l3-decomposition`, `GET /api/ticker-returns`, or `RiskModelsClient` methods) — the bundled `mcp-server` does not implement a separate decomposition tool.
+2. **Fetch Data:** Load L1/L2/L3 or returns via the **REST API** or **`riskmodels-py`** (e.g. `GET /api/l3-decomposition`, `GET /api/ticker-returns`, or `RiskModelsClient` methods) — the bundled `mcp` does not implement a separate decomposition tool.
 3. **Normalize:** Always convert ISO date strings to datetime objects.
 4. **Graphing:** Use `matplotlib` or `plotly`.
    - Primary Y-axis: Returns or Residuals.

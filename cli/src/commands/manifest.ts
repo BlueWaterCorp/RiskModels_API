@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
-/** Aligned with mcp-server/data/capabilities.json (subset). */
+/** Aligned with mcp/data/capabilities.json (subset). */
 const TOOLS: Array<{
   name: string;
   description: string;

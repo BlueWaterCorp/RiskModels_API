@@ -5,7 +5,7 @@ const yaml = require('js-yaml');
 
 const yamlPath = path.join(__dirname, '../OPENAPI_SPEC.yaml');
 const jsonPath = path.join(__dirname, '../public/openapi.json');
-const mcpJsonPath = path.join(__dirname, '../mcp-server/data/openapi.json');
+const mcpJsonPath = path.join(__dirname, '../mcp/data/openapi.json');
 
 try {
   const yamlContent = fs.readFileSync(yamlPath, 'utf8');
@@ -26,7 +26,7 @@ try {
     fs.mkdirSync(mcpDir, { recursive: true });
   }
   fs.writeFileSync(mcpJsonPath, jsonText);
-  console.log('✓ Mirrored to mcp-server/data/openapi.json');
+  console.log('✓ Mirrored to mcp/data/openapi.json');
 } catch (error) {
   console.error('Error converting YAML to JSON:', error);
   process.exit(1);

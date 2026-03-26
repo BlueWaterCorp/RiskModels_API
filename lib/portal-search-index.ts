@@ -58,9 +58,9 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
   },
   {
     title: 'Quickstart',
-    description: 'Install riskmodels-py, first calls, SDK vs raw HTTP, environment variables.',
+    description: 'Install riskmodels-py from PyPI, first calls, SDK vs raw HTTP, environment variables.',
     href: '/quickstart',
-    keywords: 'python pip xarray from_env',
+    keywords: 'python pip pypi xarray from_env',
   },
   {
     title: 'Pricing',

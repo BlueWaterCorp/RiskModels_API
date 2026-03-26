@@ -1,5 +1,9 @@
 # riskmodels-py
 
+[![PyPI version](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
+
+Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`).
+
 Python SDK for the [RiskModels API](https://riskmodels.app) (ERM3 factor model: hedge ratios, explained risk, batch portfolio analysis).
 
 ## Install
@@ -13,7 +17,7 @@ pip install riskmodels-py[xarray]
 From this monorepo:
 
 ```bash
-cd packages/riskmodels && pip install -e ".[dev]"
+cd sdk && pip install -e ".[dev]"
 ```
 
 Requires **Python 3.10+**.
@@ -62,6 +66,31 @@ Use these so agents and humans **never guess wire names or ERM3 semantics**:
 **Tip for agents:** Prefer `get_metrics(..., as_dataframe=True)` so you get attrs; the plain `dict` return has no `attrs`.
 
 **Cursor:** [`.cursorrules`](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/.cursorrules) (math, naming, batch semantics).
+
+## PyPI distribution name vs import
+
+- **Install from PyPI:** `pip install riskmodels-py` (and optionally `pip install riskmodels-py[xarray]`).
+- **Import in Python:** `from riskmodels import …` — the **distribution** on PyPI is `riskmodels-py`; the **package** directory is `riskmodels`.
+
+Core runtime dependencies are **pandas**, **pyarrow**, and **httpx** (HTTP). **xarray** is optional (`[xarray]` extra). The SDK does not depend on `requests`.
+
+## Publishing to PyPI (maintainers)
+
+Build and upload from this directory (**`sdk/`**, not `packages/riskmodels/` — that layout was retired; see repo `CHANGELOG.md`).
+
+1. Bump **`version`** in [`pyproject.toml`](./pyproject.toml) for every upload (PyPI rejects duplicate versions).
+2. Build and verify:
+
+```bash
+cd sdk
+python3 -m pip install -U build twine
+python3 -m build
+python3 -m twine check dist/*
+```
+
+3. **TestPyPI (optional):** `python3 -m twine upload --repository testpypi dist/*` — install with  
+   `pip install --index-url https://test.pypi.org/simple/ riskmodels-py`
+4. **Production:** `python3 -m twine upload dist/*` — use PyPI username `__token__` and an API token as the password.
 
 ## License
 

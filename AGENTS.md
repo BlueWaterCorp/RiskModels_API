@@ -9,7 +9,8 @@ The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US 
 
 - **API Base URL:** `https://riskmodels.app`
 - **OpenAPI Spec:** [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml)
-- **MCP Server:** [mcp-server/](./mcp-server/)
+- **MCP Server:** [mcp/](./mcp/)
+- **Python SDK (source):** [sdk/](./sdk/) — [`riskmodels-py` on PyPI](https://pypi.org/project/riskmodels-py/)
 - **Skill Guide:** [SKILL.md](./SKILL.md)
 - **Authentication:** OAuth2 client credentials flow
 - **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key) — OAuth/magic-link; key copy UX is post-login under Account → Usage.

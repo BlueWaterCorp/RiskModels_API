@@ -11,22 +11,22 @@ When editing schemas, OpenAPI specs, MCP data, or tracking docs across the RiskM
 
 | Asset | Canonical Repo | Path |
 |-------|----------------|------|
-| JSON schemas | RiskModels_API | `mcp-server/data/schemas/*.json` |
-| schema-paths.json | RiskModels_API (edit first) | `mcp-server/data/schema-paths.json` |
+| JSON schemas | RiskModels_API | `mcp/data/schemas/*.json` |
+| schema-paths.json | RiskModels_API (edit first) | `mcp/data/schema-paths.json` |
 | OPENAPI_SPEC.yaml | RiskModels_API | `OPENAPI_SPEC.yaml` |
 | CHANGELOG | RiskModels_API | `CHANGELOG.md` |
 | current_state.md, Known Gaps | BWMACRO | `docs/api_roadmap/current_state.md` |
 
 ## Step 2: New Schema Workflow
 
-1. **Create/edit schema** in `RiskModels_API/mcp-server/data/schemas/`
+1. **Create/edit schema** in `RiskModels_API/mcp/data/schemas/`
 2. **Add to schema-paths.json** in RiskModels_API:
    ```json
    "/schemas/NEW_SCHEMA-v1.json"
    ```
 3. **Copy schema to Risk_Models**:
    ```bash
-   cp RiskModels_API/mcp-server/data/schemas/NEW_SCHEMA-v1.json \
+   cp RiskModels_API/mcp/data/schemas/NEW_SCHEMA-v1.json \
       Risk_Models/riskmodels_com/mcp-server/data/schemas/
    ```
 4. **Update schema-paths.json** in Risk_Models (same entry)

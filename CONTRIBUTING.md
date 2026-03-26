@@ -17,7 +17,7 @@ The canonical spec lives at [`OPENAPI_SPEC.yaml`](OPENAPI_SPEC.yaml). Contributi
 ### How to Submit a Spec PR
 
 1. Fork the repo and create a branch
-2. Edit `OPENAPI_SPEC.yaml` (or `mcp-server/data/schemas/*.json` for schema-only changes)
+2. Edit `OPENAPI_SPEC.yaml` (or `mcp/data/schemas/*.json` for schema-only changes)
 3. Run `npm run build:openapi` to regenerate `public/openapi.json`
 4. Open a PR with a clear description of the change
 5. We’ll review and merge; the portal will reflect updates on the next deploy

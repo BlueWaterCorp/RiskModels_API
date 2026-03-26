@@ -25,6 +25,22 @@ export default function HeroFeatureGrid({ embedded = false }: HeroFeatureGridPro
           <Link href="/quickstart#code-examples" className="text-primary hover:underline">
             Quickstart →
           </Link>
+          <a
+            href="https://pypi.org/project/riskmodels-py/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            PyPI (riskmodels-py) →
+          </a>
+          <a
+            href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            SDK source →
+          </a>
         </div>
       </div>
 

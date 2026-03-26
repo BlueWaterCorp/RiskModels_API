@@ -16,10 +16,11 @@ export function HeroGetStartedPulse() {
       className="inline-flex rounded-lg will-change-transform"
       animate={{
         scale: [1, 1.02, 1],
-        filter: [
-          'drop-shadow(0 10px 15px rgb(0 0 0 / 0.15)) drop-shadow(0 0 0 transparent)',
-          'drop-shadow(0 12px 20px rgb(0 0 0 / 0.2)) drop-shadow(0 0 22px rgb(59 130 246 / 0.42))',
-          'drop-shadow(0 10px 15px rgb(0 0 0 / 0.15)) drop-shadow(0 0 0 transparent)',
+        // boxShadow animates reliably across browsers; animating `filter` often breaks in dev / WebKit.
+        boxShadow: [
+          '0 10px 15px rgb(0 0 0 / 0.15), 0 0 0 transparent',
+          '0 14px 28px rgb(0 0 0 / 0.22), 0 0 28px rgb(59 130 246 / 0.38)',
+          '0 10px 15px rgb(0 0 0 / 0.15), 0 0 0 transparent',
         ],
       }}
       transition={pulseTransition}
