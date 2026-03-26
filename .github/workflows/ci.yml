@@ -35,6 +35,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: CLI smoke (help, version)
+        run: |
+          node cli/dist/index.js --help
+          node cli/dist/index.js --version
+          node cli/dist/index.js manifest --help
+
       - name: Parse OpenAPI YAML
         # Avoid ": " inside the shell string — YAML treats it as a mapping and breaks the workflow.
         run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('OPENAPI_SPEC.yaml','utf8')); console.log('OPENAPI_SPEC.yaml OK');"
@@ -52,6 +58,27 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.demo' }}
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL || 'https://riskmodels.app' }}
+
+  sdk-tests:
+    name: SDK (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: sdk/pyproject.toml
+
+      - name: Install SDK & run tests
+        working-directory: sdk
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[dev]"
+          python -m pytest
 
   secrets-scan:
     name: Secret Detection

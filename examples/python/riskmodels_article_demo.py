@@ -7,7 +7,7 @@ feeds or private backends.
 
 Setup:
   pip install riskmodels-py pandas
-  # optional (10y cumulative return chart):
+  # optional (10y chart: per-ticker + share-weighted portfolio cumulative returns):
   pip install matplotlib
   # or from this repo: pip install -e ./sdk
 
@@ -187,23 +187,55 @@ def _cumulative_total_return(daily: pd.Series) -> pd.Series:
     return (1.0 + daily).cumprod() - 1.0
 
 
-def _save_returns_chart(
-    cum: pd.Series,
+def _cumulative_total_return_by_ticker(wide: pd.DataFrame) -> pd.DataFrame:
+    """Per-column cumulative total return; columns share the same date index (aligned panel)."""
+    if wide.empty:
+        return wide
+    return wide.apply(_cumulative_total_return, axis=0)
+
+
+def _save_cumulative_returns_multiline(
+    cum_by_ticker: pd.DataFrame,
+    cum_portfolio: pd.Series,
     *,
     out_path: Path,
     title: str,
 ) -> bool:
+    """Plot each name's cumulative return plus the share-weighted portfolio (same start date)."""
     try:
         import matplotlib.pyplot as plt
     except ImportError:
         return False
-    fig, ax = plt.subplots(figsize=(10, 5), layout="constrained")
-    ax.plot(cum.index, 100.0 * cum.values, color="#1d4ed8", linewidth=1.2)
+    fig, ax = plt.subplots(figsize=(11, 5.5), layout="constrained")
     ax.axhline(0.0, color="#94a3b8", linewidth=0.8, linestyle="--")
+    cmap = plt.get_cmap("tab10")
+    for i, col in enumerate(cum_by_ticker.columns):
+        s = cum_by_ticker[col].dropna()
+        if s.empty:
+            continue
+        ax.plot(
+            s.index,
+            100.0 * s.values,
+            color=cmap(i % 10),
+            linewidth=1.0,
+            alpha=0.9,
+            label=str(col),
+        )
+    cp = cum_portfolio.dropna()
+    if not cp.empty:
+        ax.plot(
+            cp.index,
+            100.0 * cp.values,
+            color="#0f172a",
+            linewidth=2.0,
+            linestyle="--",
+            label="Portfolio (w-mean)",
+        )
     ax.set_title(title)
     ax.set_xlabel("Date")
     ax.set_ylabel("Cumulative total return (%)")
     ax.grid(True, alpha=0.35)
+    ax.legend(loc="upper left", fontsize=8, ncol=2)
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
     return True
@@ -356,17 +388,39 @@ class ArticleDemo:
             except APIError as e:
                 print(f"  ⚠️  {e}")
 
-            _section("Portfolio aggregation — hedge ratios (SDK analyze_portfolio)")
             try:
                 pa = self.client.analyze_portfolio(shares, validate="warn")
                 phr = pa.portfolio_hedge_ratios
+                pt = pa.per_ticker.reset_index(drop=True) if not pa.per_ticker.empty else pd.DataFrame()
+
+                _section("Portfolio aggregation — L1 hedge ratios (SDK analyze_portfolio)")
+                l1_port = {"l1_market_hr": phr.get("l1_market_hr")}
+                print("  Holdings-weighted mean (portfolio):\n")
+                _print_df_table(pd.DataFrame([l1_port]))
+                if not pt.empty:
+                    l1_cols = [c for c in ("ticker", "weight", "l1_market_hr") if c in pt.columns]
+                    if len(l1_cols) > 2:
+                        print("\n  Per name:\n")
+                        _print_df_table(pt[l1_cols])
+
+                _section("Portfolio aggregation — L2 hedge ratios (SDK analyze_portfolio)")
+                l2_keys = ("l2_market_hr", "l2_sector_hr")
+                l2_port = {k: phr.get(k) for k in l2_keys}
+                print("  Holdings-weighted mean (portfolio):\n")
+                _print_df_table(pd.DataFrame([l2_port]))
+                if not pt.empty:
+                    l2_cols = [c for c in ("ticker", "weight", *l2_keys) if c in pt.columns]
+                    if len(l2_cols) > 2:
+                        print("\n  Per name:\n")
+                        _print_df_table(pt[l2_cols])
+
+                _section("Portfolio aggregation — L3 hedge ratios (SDK analyze_portfolio)")
                 l3_keys = ("l3_market_hr", "l3_sector_hr", "l3_subsector_hr")
                 l3_port = {k: phr.get(k) for k in l3_keys}
                 print("  Holdings-weighted mean (portfolio):\n")
                 _print_df_table(pd.DataFrame([l3_port]))
-                if not pa.per_ticker.empty:
-                    pt = pa.per_ticker.reset_index(drop=True)
-                    hr_cols = [
+                if not pt.empty:
+                    l3_cols = [
                         c
                         for c in [
                             "ticker",
@@ -377,14 +431,15 @@ class ArticleDemo:
                         ]
                         if c in pt.columns
                     ]
-                    print("\n  Per name:\n")
-                    _print_df_table(pt[hr_cols])
+                    if len(l3_cols) > 2:
+                        print("\n  Per name:\n")
+                        _print_df_table(pt[l3_cols])
             except APIError as e:
                 print(f"  ⚠️  {e}")
 
-            _section(f"Total return — last {RETURNS_YEARS} years (share-weighted portfolio)")
+            _section(f"Total return — last {RETURNS_YEARS} years (per ticker + portfolio)")
             out_dir = Path(os.environ.get("RISKMODELS_DEMO_OUTPUT_DIR", ".")).resolve()
-            png_path = out_dir / "riskmodels_demo_portfolio_cumulative_return_10y.png"
+            png_path = out_dir / "riskmodels_demo_cumulative_returns_portfolio_and_names_10y.png"
             try:
                 raw = self.client.batch_analyze(
                     tickers,
@@ -399,20 +454,21 @@ class ArticleDemo:
                 if not isinstance(ret_df, pd.DataFrame) or ret_df.empty:
                     print("  ⚠️  No returns rows from batch (parquet).")
                 else:
-                    port_daily, _wide = _portfolio_daily_returns(ret_df, weights)
-                    cum = _cumulative_total_return(port_daily)
-                    if cum.empty:
+                    port_daily, wide = _portfolio_daily_returns(ret_df, weights)
+                    cum_port = _cumulative_total_return(port_daily)
+                    cum_by_name = _cumulative_total_return_by_ticker(wide)
+                    if cum_port.empty:
                         print("  ⚠️  Could not align daily returns across all names (missing dates).")
                     else:
-                        total = float(cum.iloc[-1])
+                        total = float(cum_port.iloc[-1])
                         n_years = RETURNS_YEARS
                         cagr = (1.0 + total) ** (1.0 / n_years) - 1.0 if n_years > 0 else float("nan")
                         stats = pd.DataFrame(
                             [
                                 {
-                                    "trading_days": len(cum),
-                                    "start": str(cum.index.min().date()),
-                                    "end": str(cum.index.max().date()),
+                                    "trading_days": len(cum_port),
+                                    "start": str(cum_port.index.min().date()),
+                                    "end": str(cum_port.index.max().date()),
                                     "total_return": total,
                                     "total_return_pct": total * 100.0,
                                     f"cagr_{n_years}y": cagr,
@@ -420,14 +476,15 @@ class ArticleDemo:
                                 }
                             ]
                         )
-                        print("  Summary:\n")
+                        print("  Portfolio summary (share-weighted daily returns):\n")
                         _print_df_table(stats)
-                        if _save_returns_chart(
-                            cum,
+                        if _save_cumulative_returns_multiline(
+                            cum_by_name,
+                            cum_port,
                             out_path=png_path,
                             title=(
-                                f"Portfolio cumulative total return ({RETURNS_YEARS}y, "
-                                "weights = share counts normalized)"
+                                f"Cumulative total return by name + portfolio ({RETURNS_YEARS}y, "
+                                "same calendar dates; weights = share counts normalized)"
                             ),
                         ):
                             print(f"\n  Chart saved: {png_path}")

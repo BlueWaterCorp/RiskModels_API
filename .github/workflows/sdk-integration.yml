@@ -1,0 +1,35 @@
+# Live SDK calls against riskmodels.app. Requires repo secret TEST_API_KEY (same as smoke-test.yml).
+# Runs on a daily schedule (after production smoke) and manual dispatch. Skips entirely if secret is unset.
+
+name: SDK Integration (live API)
+
+on:
+  schedule:
+    # 7:30 UTC — after Production Smoke Test (7:00 UTC)
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  integration:
+    name: SDK pytest integration
+    runs-on: ubuntu-latest
+    if: ${{ secrets.TEST_API_KEY != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: sdk/pyproject.toml
+
+      - name: Install SDK & run integration tests
+        working-directory: sdk
+        env:
+          RISKMODELS_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[dev]"
+          python -m pytest -m integration -v

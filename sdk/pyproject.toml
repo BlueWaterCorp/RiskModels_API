@@ -56,4 +56,7 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = ["-q", "-m", "not integration"]
+markers = [
+    "integration: live HTTP tests against the RiskModels API (requires RISKMODELS_API_KEY)",
+]

@@ -80,6 +80,12 @@ jobs:
           fi
           echo "✅ /api/balance → can_make_requests:true"
 
+          # Metrics — V3 JSON shape (ticker + metrics object with L3 keys)
+          MET=$(curl -s -H "Authorization: Bearer $TEST_API_KEY" \
+            "https://riskmodels.app/api/metrics/AAPL")
+          echo "$MET" | python3 -c "import sys,json;d=json.load(sys.stdin);assert d.get('ticker'),d;assert isinstance(d.get('metrics'),dict),d;m=d['metrics'];assert any(k in m for k in ('l3_mkt_hr','l3_mkt_er','l3_sec_hr','l3_sub_hr','l3_res_er')),list(m.keys())"
+          echo "✅ /api/metrics/AAPL → ticker + metrics (V3 keys)"
+
           # Free-tier status (any non-5xx is acceptable for a paid account)
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $TEST_API_KEY" \
