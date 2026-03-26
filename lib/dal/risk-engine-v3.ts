@@ -607,6 +607,12 @@ export function pivotHistory(rows: SecurityHistoryRow[]): PivotedHistoryRow[] {
   return Array.from(pivot.values()).sort((a, b) => a.teo.localeCompare(b.teo));
 }
 
+/** Most recent row after `pivotHistory` (pivoted rows are sorted ascending by `teo`). */
+export function latestPivotedRow(pivoted: PivotedHistoryRow[]): PivotedHistoryRow | null {
+  if (pivoted.length === 0) return null;
+  return pivoted[pivoted.length - 1];
+}
+
 export function extractMetric(row: PivotedHistoryRow, key: V3MetricKey): number | null {
   const value = row[key];
   return typeof value === "number" ? value : null;

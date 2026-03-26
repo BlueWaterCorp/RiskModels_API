@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numbers
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +37,34 @@ PORTFOLIO_L3_ER_KEYS = [
 ]
 
 
+def _is_metric_scalar(v: Any) -> bool:
+    """True for JSON / numpy scalars we should keep on per-ticker rows (exclude bool)."""
+    if v is None:
+        return True
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, (int, float)):
+        return True
+    if isinstance(v, numbers.Real):
+        return True
+    try:
+        import numpy as np
+
+        return isinstance(v, (np.floating, np.integer))
+    except ImportError:
+        return False
+
+
+def _df_scalar(df: pd.DataFrame, idx: str, col: str) -> Any:
+    """Single cell; duplicate index returns first row."""
+    if col not in df.columns or idx not in df.index:
+        return None
+    raw = df.loc[idx, col]
+    if isinstance(raw, pd.Series):
+        raw = raw.iloc[0]
+    return raw
+
+
 def normalize_positions(positions: Mapping[str, float]) -> dict[str, float]:
     tickers = {str(k).strip().upper(): float(v) for k, v in positions.items()}
     if not tickers:
@@ -48,7 +77,17 @@ def normalize_positions(positions: Mapping[str, float]) -> dict[str, float]:
 
 
 def renormalize_weights(weights: dict[str, float], successful: list[str]) -> dict[str, float]:
+    """Intersect portfolio weights with successful batch tickers; renormalize to sum 1.
+
+    If none of `successful` appear in `weights` (symbol mismatch), fall back to equal
+    weights over `successful` so portfolio HR aggregation still runs.
+    """
     ws = {t: weights[t] for t in successful if t in weights}
+    if not ws:
+        if not successful:
+            return {}
+        n = len(successful)
+        return {t: 1.0 / n for t in successful}
     s = sum(ws.values())
     if s <= 0:
         n = len(ws)
@@ -161,16 +200,12 @@ def analyze_batch_to_portfolio(
         for k, v in fm_norm.items():
             if k in ("ticker", "date"):
                 row[k] = v
-            elif isinstance(v, (int, float)) or v is None:
+            elif _is_metric_scalar(v):
                 row[k] = v
         rows.append(row)
         successful.append(ticker)
 
-        m = {
-            k: fm_norm[k]
-            for k in fm_norm
-            if isinstance(fm_norm[k], (int, float)) or fm_norm[k] is None
-        }
+        m = {k: fm_norm[k] for k in fm_norm if _is_metric_scalar(fm_norm[k])}
         collected_issues.extend(run_validation(m, mode=validate, er_tolerance=er_tolerance))
 
     w_eff = renormalize_weights(weights, successful)
@@ -187,7 +222,7 @@ def analyze_batch_to_portfolio(
         for t in successful:
             v = None
             if not per_ticker.empty and t in per_ticker.index:
-                raw = per_ticker.loc[t, hk] if hk in per_ticker.columns else None
+                raw = _df_scalar(per_ticker, t, hk)
                 v = float(raw) if raw is not None and pd.notna(raw) else None
             if v is None:
                 continue
@@ -203,7 +238,7 @@ def analyze_batch_to_portfolio(
         for t in successful:
             if per_ticker.empty or t not in per_ticker.index or ek not in per_ticker.columns:
                 continue
-            raw = per_ticker.loc[t, ek]
+            raw = _df_scalar(per_ticker, t, ek)
             if raw is None or pd.isna(raw):
                 continue
             w = w_eff.get(t, 0.0)

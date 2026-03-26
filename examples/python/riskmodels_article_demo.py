@@ -208,8 +208,9 @@ class ArticleDemo:
             try:
                 pa = self.client.analyze_portfolio(shares, validate="warn")
                 phr = pa.portfolio_hedge_ratios
-                sample = {k: phr.get(k) for k in list(phr)[:4]}
-                print(f"  ✓ Portfolio hedge ratios (sample): {sample}")
+                l3_keys = ("l3_market_hr", "l3_sector_hr", "l3_subsector_hr")
+                l3_sample = {k: phr.get(k) for k in l3_keys}
+                print(f"  ✓ Portfolio hedge ratios (L3 w-mean): {l3_sample}")
                 if not pa.per_ticker.empty:
                     print(f"  ✓ per_ticker columns: {list(pa.per_ticker.columns)[:10]}")
             except APIError as e:
