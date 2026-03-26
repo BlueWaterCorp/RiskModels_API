@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { ensureStarterCredits } from '@/lib/agent/billing';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 
 export async function GET() {
@@ -34,6 +35,20 @@ export async function POST(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));
+
+  try {
+    await ensureStarterCredits(user.id);
+  } catch (e) {
+    console.error('[agent-keys] ensureStarterCredits failed:', e);
+    return NextResponse.json(
+      {
+        error: 'Account setup failed',
+        message:
+          'Could not link your API key to a billing account. Please try again or contact support.',
+      },
+      { status: 500 },
+    );
+  }
 
   const admin = createAdminClient();
 

@@ -10,7 +10,11 @@ import pandas as pd
 
 from .legends import SHORT_ERM3_LEGEND
 from .lineage import RiskLineage
-from .mapping import normalize_metrics_v3
+from .mapping import (
+    merge_batch_hedge_ratios_into_full_metrics,
+    normalize_metrics_v3,
+    omit_nan_float_fields,
+)
 from .metadata_attach import attach_sdk_metadata
 from .parsing import batch_returns_long_normalize
 from .validation import RiskModelsValidationIssue, ValidateMode, run_validation
@@ -141,12 +145,20 @@ def analyze_batch_to_portfolio(
         if entry.get("status") != "success":
             errors[ticker] = str(entry.get("error") or "error")
             continue
-        fm = entry.get("full_metrics")
-        if not fm:
+        raw_fm = entry.get("full_metrics")
+        if raw_fm is None:
             errors[ticker] = "missing full_metrics"
             continue
+        # Batch often puts HRs under `hedge_ratios` (short keys); merge before normalize.
+        fm_merged = merge_batch_hedge_ratios_into_full_metrics(
+            dict(raw_fm),
+            entry.get("hedge_ratios"),
+        )
+        fm_merged = omit_nan_float_fields(fm_merged)
+        # Wire keys (l3_mkt_er, …) → semantic names so ER/HR validation matches GET /metrics.
+        fm_norm = normalize_metrics_v3(dict(fm_merged))
         row: dict[str, Any] = {"ticker": ticker, "weight": weights.get(ticker, 0.0)}
-        for k, v in fm.items():
+        for k, v in fm_norm.items():
             if k in ("ticker", "date"):
                 row[k] = v
             elif isinstance(v, (int, float)) or v is None:
@@ -154,7 +166,11 @@ def analyze_batch_to_portfolio(
         rows.append(row)
         successful.append(ticker)
 
-        m = {k: fm[k] for k in fm if isinstance(fm[k], (int, float)) or fm[k] is None}
+        m = {
+            k: fm_norm[k]
+            for k in fm_norm
+            if isinstance(fm_norm[k], (int, float)) or fm_norm[k] is None
+        }
         collected_issues.extend(run_validation(m, mode=validate, er_tolerance=er_tolerance))
 
     w_eff = renormalize_weights(weights, successful)

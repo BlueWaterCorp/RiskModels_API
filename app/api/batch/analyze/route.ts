@@ -351,6 +351,9 @@ async function analyzeTicker(
         "vol_23d",
         "price_close",
         "market_cap",
+        "l1_mkt_hr",
+        "l2_mkt_hr",
+        "l2_sec_hr",
         "l3_mkt_hr",
         "l3_sec_hr",
         "l3_sub_hr",
@@ -368,9 +371,9 @@ async function analyzeTicker(
 
       if (metrics.includes("hedge_ratios")) {
         result.hedge_ratios = {
-          l1_market: latest.l3_mkt_hr as number ?? null,
-          l2_market: latest.l3_mkt_hr as number ?? null,
-          l2_sector: latest.l3_sec_hr as number ?? null,
+          l1_market: latest.l1_mkt_hr as number ?? null,
+          l2_market: latest.l2_mkt_hr as number ?? null,
+          l2_sector: latest.l2_sec_hr as number ?? null,
           l3_market: latest.l3_mkt_hr as number ?? null,
           l3_sector: latest.l3_sec_hr as number ?? null,
           l3_subsector: latest.l3_sub_hr as number ?? null,
@@ -381,6 +384,9 @@ async function analyzeTicker(
           ticker: symbolRecord.ticker,
           date: latest.teo,
           volatility: latest.vol_23d as number ?? null,
+          l1_mkt_hr: latest.l1_mkt_hr as number ?? null,
+          l2_mkt_hr: latest.l2_mkt_hr as number ?? null,
+          l2_sec_hr: latest.l2_sec_hr as number ?? null,
           l3_mkt_hr: latest.l3_mkt_hr as number ?? null,
           l3_sec_hr: latest.l3_sec_hr as number ?? null,
           l3_sub_hr: latest.l3_sub_hr as number ?? null,

@@ -146,6 +146,19 @@ def test_oauth_concurrent_authorization_header_stable():
     assert 1 <= len(posts) <= 8
 
 
+def test_from_env_strips_api_key_whitespace(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("RISKMODELS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("RISKMODELS_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("RISKMODELS_BASE_URL", raising=False)
+    monkeypatch.setenv("RISKMODELS_API_KEY", "  env-key  \n")
+
+    client = RiskModelsClient.from_env()
+    try:
+        assert client._transport._auth._token == "env-key"
+    finally:
+        client.close()
+
+
 def test_from_env_api_key(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("RISKMODELS_CLIENT_ID", raising=False)
     monkeypatch.delenv("RISKMODELS_CLIENT_SECRET", raising=False)

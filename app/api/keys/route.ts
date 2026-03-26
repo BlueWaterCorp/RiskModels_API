@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { ensureStarterCredits } from '@/lib/agent/billing';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 
 const MAX_KEYS = 10;
@@ -54,6 +55,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: `Maximum of ${MAX_KEYS} active keys reached. Revoke one first.` },
       { status: 429 },
+    );
+  }
+
+  try {
+    await ensureStarterCredits(user.id);
+  } catch (e) {
+    console.error('[keys] ensureStarterCredits failed:', e);
+    return NextResponse.json(
+      {
+        error: 'Account setup failed',
+        message:
+          'Could not link your API key to a billing account. Please try again or contact support.',
+      },
+      { status: 500 },
     );
   }
 

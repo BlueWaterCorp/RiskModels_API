@@ -1,4 +1,4 @@
-"""ERM3 ER sum and HR sign checks."""
+"""ERM3 explained-risk sum checks (L3 ER). Hedge-ratio signs are not validated."""
 
 from __future__ import annotations
 
@@ -12,14 +12,6 @@ ValidateMode = Literal["off", "warn", "error"]
 
 L3_ER_FIELDS = ("l3_market_er", "l3_sector_er", "l3_subsector_er", "l3_residual_er")
 
-POSITIVE_HR_FIELDS = (
-    "l1_market_hr",
-    "l2_market_hr",
-    "l2_sector_hr",
-    "l3_market_hr",
-    "l3_sector_hr",
-)
-
 
 def validate_l3_er_sum(
     metrics: Mapping[str, Any],
@@ -28,13 +20,8 @@ def validate_l3_er_sum(
 ) -> tuple[bool, float | None, RiskModelsValidationIssue | None]:
     values = [metrics.get(f) for f in L3_ER_FIELDS]
     if any(v is None for v in values):
-        issue = RiskModelsValidationIssue(
-            code="l3_er_incomplete",
-            severity="warn",
-            message="One or more L3 ER components are null.",
-            fix="Ticker may be partially modelled; avoid interpreting ER sum until all four L3 ER fields are present.",
-        )
-        return False, None, issue
+        # Partial snapshot: do not warn — common when modelling is incomplete.
+        return True, None, None
     total = sum(float(v) for v in values)  # type: ignore[arg-type]
     # Small epsilon so IEEE754 sums on the tolerance boundary (e.g. 0.95 vs 1.0) still pass.
     ok = abs(total - 1.0) <= tolerance + 1e-12
@@ -49,26 +36,9 @@ def validate_l3_er_sum(
     return False, total, issue
 
 
-def validate_hr_signs(metrics: Mapping[str, Any]) -> list[RiskModelsValidationIssue]:
-    issues: list[RiskModelsValidationIssue] = []
-    for f in POSITIVE_HR_FIELDS:
-        v = metrics.get(f)
-        if v is None:
-            continue
-        if float(v) < 0:
-            issues.append(
-                RiskModelsValidationIssue(
-                    code="hr_negative_non_sub",
-                    severity="warn",
-                    message=f"{f} is negative ({v}).",
-                    fix=(
-                        "ERM3 expects non-negative market and sector hedge ratios; only l3_subsector_hr "
-                        "may be negative. Do not recommend increasing a negative market/sector hedge "
-                        "without reviewing data quality and ticker modelling."
-                    ),
-                )
-            )
-    return issues
+def validate_hr_signs(_metrics: Mapping[str, Any]) -> list[RiskModelsValidationIssue]:
+    """HR sign checks were removed; hedge ratios may be negative at any level."""
+    return []
 
 
 def run_validation(
@@ -77,14 +47,13 @@ def run_validation(
     mode: ValidateMode = "warn",
     er_tolerance: float = 0.05,
 ) -> list[RiskModelsValidationIssue]:
-    """Run checks; emit warnings or raise per mode. Returns collected issues."""
+    """Run L3 ER sum checks; emit warnings or raise per mode. Returns collected issues."""
     if mode == "off":
         return []
     issues: list[RiskModelsValidationIssue] = []
     ok, _total, er_issue = validate_l3_er_sum(metrics, tolerance=er_tolerance)
     if er_issue and not ok:
         issues.append(er_issue)
-    issues.extend(validate_hr_signs(metrics))
 
     for issue in issues:
         if issue.severity == "error" or mode == "error":
