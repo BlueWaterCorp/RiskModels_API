@@ -17,15 +17,23 @@ from .metadata_attach import (
     ensure_dataframe_legend,
 )
 from .portfolio_math import PortfolioAnalysis
+from .visual_refinement import (
+    MatPlotAgent,
+    RefinementResult,
+    generate_refined_plot,
+)
 
 __all__ = [
     "APIError",
     "AuthError",
+    "MatPlotAgent",
+    "RefinementResult",
     "RiskLineage",
     "RiskModelsClient",
     "attach_sdk_metadata",
     "build_semantic_cheatsheet_md",
     "ensure_dataframe_legend",
+    "generate_refined_plot",
     "RiskModelsValidationError",
     "RiskModelsValidationIssue",
     "PortfolioAnalysis",

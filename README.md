@@ -27,6 +27,18 @@ This repository is the **authoritative public API reference** for the [RiskModel
 - **Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
 - **PyPI (Python SDK):** [riskmodels-py](https://pypi.org/project/riskmodels-py/)
 
+### Canonical URLs (REST, OpenAPI, and docs)
+
+Use these **only** for integrations and tooling:
+
+| What | URL |
+|------|-----|
+| **REST base** (OpenAPI `servers`) | `https://riskmodels.app/api` |
+| **Deployed OpenAPI JSON** (same spec as [`OPENAPI_SPEC.yaml`](./OPENAPI_SPEC.yaml)) | `https://riskmodels.app/openapi.json` |
+| **Interactive API reference** (this portal) | [`/api-reference`](https://riskmodels.app/api-reference) |
+
+**Important:** The hostname **`api.riskmodels.app`** is not used for the public API or machine-readable docs. Older links or docs that mention it should be treated as obsolete; use **`riskmodels.app`** (apex) as above.
+
 ---
 
 ## 📖 API Overview

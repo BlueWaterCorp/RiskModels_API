@@ -33,7 +33,7 @@ FormatType = Literal["json", "parquet", "csv"]
 DiscoverFormat = Literal["markdown", "json"]
 
 
-DEFAULT_SCOPE = "ticker-returns risk-decomposition batch-analysis"
+DEFAULT_SCOPE = "ticker-returns risk-decomposition batch-analysis factor-correlation"
 DEFAULT_BASE_URL = "https://riskmodels.app/api"
 
 
@@ -175,9 +175,7 @@ class RiskModelsClient:
                 df = parquet_bytes_to_dataframe(content)
             else:
                 df = csv_bytes_to_dataframe(content)
-            df = df.rename(
-                columns={k: v for k, v in TICKER_RETURNS_COLUMN_RENAME.items() if k in df.columns}
-            )
+            df = df.rename(columns={k: v for k, v in TICKER_RETURNS_COLUMN_RENAME.items() if k in df.columns})
         if not df.empty and mode != "off":
             last = df.iloc[-1].to_dict()
             run_validation(last, mode=mode, er_tolerance=self._er_tolerance)
@@ -196,9 +194,7 @@ class RiskModelsClient:
         if format == "json":
             body, _lineage, _ = self._transport.request("GET", "/returns", params=params)
             return body
-        content, lineage, _ = self._transport.request(
-            "GET", "/returns", params=params, expect_json=False
-        )
+        content, lineage, _ = self._transport.request("GET", "/returns", params=params, expect_json=False)
         df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
         attach_sdk_metadata(df, lineage, kind="returns")
         return df
@@ -214,9 +210,7 @@ class RiskModelsClient:
         if format == "json":
             body, lineage, _ = self._transport.request("GET", "/etf-returns", params=params)
             return body
-        content, lineage, _ = self._transport.request(
-            "GET", "/etf-returns", params=params, expect_json=False
-        )
+        content, lineage, _ = self._transport.request("GET", "/etf-returns", params=params, expect_json=False)
         df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
         attach_sdk_metadata(df, lineage, kind="etf_returns")
         return df
@@ -241,6 +235,31 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lineage, kind="l3_decomposition")
         return df
 
+    def get_factor_correlation(
+        self,
+        ticker: str | list[str],
+        *,
+        factors: list[str] | None = None,
+        return_type: str = "l3_residual",
+        window_days: int = 252,
+        method: str = "pearson",
+    ) -> dict[str, Any]:
+        """POST /correlation — stock vs macro factor correlations (see OPENAPI FactorCorrelationRequest)."""
+        payload: dict[str, Any] = {
+            "return_type": return_type,
+            "window_days": window_days,
+            "method": method,
+        }
+        if isinstance(ticker, list):
+            payload["ticker"] = [resolve_ticker(str(x), self)[0] for x in ticker]
+        else:
+            t, _ = resolve_ticker(ticker, self)
+            payload["ticker"] = t
+        if factors is not None:
+            payload["factors"] = factors
+        body, _lineage, _ = self._transport.request("POST", "/correlation", json=payload)
+        return body
+
     def batch_analyze(
         self,
         tickers: list[str],
@@ -260,9 +279,7 @@ class RiskModelsClient:
             meta = body.get("_metadata") if isinstance(body, dict) else None
             lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
             return body
-        content, lineage, _ = self._transport.request(
-            "POST", "/batch/analyze", json=payload, expect_json=False
-        )
+        content, lineage, _ = self._transport.request("POST", "/batch/analyze", json=payload, expect_json=False)
         df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
         df = batch_returns_long_normalize(df)
         attach_sdk_metadata(df, lineage, kind="batch_returns_long")
@@ -366,6 +383,75 @@ class RiskModelsClient:
         df = pd.DataFrame()
         attach_sdk_metadata(df, lin, kind="tickers_universe")
         return df
+
+    # --- Visual Refinement (MatPlotAgent Pattern) ---
+    def generate_refined_plot(
+        self,
+        plot_description: str,
+        output_path: str | None = None,
+        *,
+        llm_client: Any | None = None,
+        max_iterations: int = 10,
+        llm_provider: Literal["openai", "anthropic"] = "openai",
+        model: str | None = None,
+    ) -> Any:
+        """Generate a refined plot through recursive Vision-LLM feedback.
+
+        Automates the loop between Python execution and Vision-LLM evaluation to
+        produce professional financial visualizations following RiskModels standards.
+
+        Args:
+            plot_description: Description of the desired plot (e.g., "L3 risk
+                decomposition stacked area chart for NVDA over 2 years")
+            output_path: Path to save the PNG (defaults to temp file)
+            llm_client: LLM client instance (OpenAI or Anthropic). Must be
+                provided either here or pre-configured via the agent.
+            max_iterations: Maximum refinement iterations (default 10)
+            llm_provider: Which LLM provider to use ("openai" or "anthropic")
+            model: Vision model name (provider-specific defaults used if None)
+
+        Returns:
+            RefinementResult with success status, output path, iteration count,
+            final code, and evaluation history.
+
+        Raises:
+            ImportError: If visual_refinement module dependencies are missing
+            ValueError: If llm_client is not provided
+
+        Example:
+            >>> from openai import OpenAI
+            >>> from riskmodels import RiskModelsClient
+            >>> client = RiskModelsClient.from_env()
+            >>> llm = OpenAI(api_key="sk-...")
+            >>> result = client.generate_refined_plot(
+            ...     "L3 hedge ratio time series for AAPL with proper financial styling",
+            ...     output_path="aapl_hedge.png",
+            ...     llm_client=llm,
+            ...     max_iterations=5
+            ... )
+            >>> print(f"Iterations: {result.iterations}")
+            >>> print(f"Output: {result.output_path}")
+        """
+        if llm_client is None:
+            raise ValueError(
+                "llm_client is required. Provide an OpenAI or Anthropic client instance. "
+                "Example: client.generate_refined_plot(..., llm_client=openai_client)"
+            )
+
+        # Import here to avoid hard dependency on LLM libraries
+        from .visual_refinement import MatPlotAgent, RefinementResult
+
+        agent = MatPlotAgent(
+            client=self,
+            llm_client=llm_client,
+            llm_provider=llm_provider,
+            model=model,
+        )
+        return agent.generate_refined_plot(
+            plot_description=plot_description,
+            output_path=output_path,
+            max_iterations=max_iterations,
+        )
 
     # --- Semantic aliases (agent-native) ---
     get_risk = get_metrics

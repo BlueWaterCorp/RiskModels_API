@@ -683,6 +683,70 @@
     ]
   },
   {
+    "id": "factor-correlation",
+    "name": "Macro factor correlation",
+    "description": "Pearson or Spearman correlation between a stock return series (gross or ERM3 L1/L2/L3 residual) and daily macro factor returns from macro_factors. Use POST /api/correlation or GET /api/metrics/{ticker}/correlation.",
+    "endpoint": "/api/correlation",
+    "method": "POST",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker or array of tickers (batch)"
+      },
+      "factors": {
+        "type": "array",
+        "required": false,
+        "description": "Macro factor keys: bitcoin, gold, oil, dxy, vix, ust10y2y (default all six)"
+      },
+      "return_type": {
+        "type": "string",
+        "required": false,
+        "description": "gross | l1 | l2 | l3_residual",
+        "default": "l3_residual"
+      },
+      "window_days": {
+        "type": "integer",
+        "required": false,
+        "description": "Trailing paired observations",
+        "default": 252,
+        "min": 20,
+        "max": 2000
+      },
+      "method": {
+        "type": "string",
+        "required": false,
+        "description": "pearson | spearman",
+        "default": "pearson"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.002,
+      "currency": "USD",
+      "billing_code": "factor_correlation_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 120,
+      "p95_latency_ms": 250,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.95,
+      "update_frequency": "daily",
+      "sources": [
+        "security_history",
+        "macro_factors"
+      ]
+    },
+    "tags": [
+      "correlation",
+      "macro",
+      "factors"
+    ]
+  },
+  {
     "id": "cli-query",
     "name": "CLI SQL Query",
     "description": "Execute SQL SELECT queries against risk model data via CLI or programmatic access",

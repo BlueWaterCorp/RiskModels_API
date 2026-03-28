@@ -854,6 +854,134 @@ components:
           type: string
           example: factset
 
+    FactorCorrelationRequest:
+      type: object
+      required:
+        - ticker
+      properties:
+        ticker:
+          oneOf:
+            - type: string
+              example: NVDA
+            - type: array
+              items:
+                type: string
+              maxItems: 50
+        factors:
+          type: array
+          items:
+            type: string
+            enum: [bitcoin, gold, oil, dxy, vix, ust10y2y]
+          description: Defaults to all six when omitted.
+        return_type:
+          type: string
+          enum: [gross, l1, l2, l3_residual]
+          default: l3_residual
+        window_days:
+          type: integer
+          minimum: 20
+          maximum: 2000
+          default: 252
+        method:
+          type: string
+          enum: [pearson, spearman]
+          default: pearson
+
+    FactorCorrelationSingleResponse:
+      allOf:
+        - $ref: "#/components/schemas/FactorCorrelationResultBody"
+        - type: object
+          properties:
+            _metadata:
+              $ref: "#/components/schemas/RiskMetadata"
+            _agent:
+              type: object
+              properties:
+                latency_ms:
+                  type: integer
+                request_id:
+                  type: string
+
+    FactorCorrelationResponse:
+      oneOf:
+        - allOf:
+            - $ref: "#/components/schemas/FactorCorrelationResultBody"
+            - type: object
+              properties:
+                _metadata:
+                  $ref: "#/components/schemas/RiskMetadata"
+                _agent:
+                  type: object
+                  properties:
+                    latency_ms:
+                      type: integer
+                    request_id:
+                      type: string
+        - type: object
+          required:
+            - results
+          properties:
+            results:
+              type: array
+              items:
+                oneOf:
+                  - $ref: "#/components/schemas/FactorCorrelationResultBody"
+                  - type: object
+                    required:
+                      - ticker
+                      - error
+                      - status
+                    properties:
+                      ticker:
+                        type: string
+                      error:
+                        type: string
+                      status:
+                        type: integer
+            _metadata:
+              $ref: "#/components/schemas/RiskMetadata"
+            _agent:
+              type: object
+              properties:
+                latency_ms:
+                  type: integer
+                request_id:
+                  type: string
+
+    FactorCorrelationResultBody:
+      type: object
+      required:
+        - ticker
+        - return_type
+        - window_days
+        - method
+        - correlations
+        - overlap_days
+        - warnings
+      properties:
+        ticker:
+          type: string
+        return_type:
+          type: string
+          enum: [gross, l1, l2, l3_residual]
+        window_days:
+          type: integer
+        method:
+          type: string
+          enum: [pearson, spearman]
+        correlations:
+          type: object
+          additionalProperties:
+            type: number
+            nullable: true
+        overlap_days:
+          type: integer
+          description: Largest number of paired observations used among requested factors.
+        warnings:
+          type: array
+          items:
+            type: string
+
     ErrorResponse:
       type: object
       properties:
@@ -1958,6 +2086,139 @@ paths:
           headers:
             Retry-After:
               schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /correlation:
+    post:
+      summary: Correlation vs macro factor returns
+      description: >
+        Computes Pearson or Spearman correlation between a stock return series and daily macro factor
+        returns stored in `macro_factors` (e.g. bitcoin, vix). Stock series may be gross returns or
+        ERM3 residual returns (L1/L2/L3) using the replication identity with SPY and sector/subsector ETFs.
+        Request body accepts a single ticker or an array for batch (`results` array). Cost: $0.002 per ticker.
+      operationId: postFactorCorrelation
+      tags: [Risk Metrics]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FactorCorrelationRequest"
+      responses:
+        "200":
+          description: Correlations per macro factor (null when insufficient overlap or missing data).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactorCorrelationResponse"
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Ticker not found or insufficient history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /metrics/{ticker}/correlation:
+    get:
+      summary: Correlation vs macro factors (query convenience)
+      description: Same computation as POST /correlation; pass macro keys as comma-separated `factors` query param.
+      operationId: getFactorCorrelationByTicker
+      tags: [Risk Metrics]
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          example: NVDA
+        - name: factors
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated factor keys (bitcoin,gold,...); default all six.
+        - name: return_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [gross, l1, l2, l3_residual]
+            default: l3_residual
+        - name: window_days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 20
+            maximum: 2000
+            default: 252
+        - name: method
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pearson, spearman]
+            default: pearson
+      responses:
+        "200":
+          description: Correlations and lineage metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactorCorrelationSingleResponse"
+        "400":
+          description: Invalid ticker or query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Ticker not found or insufficient history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
           content:
             application/json:
               schema:

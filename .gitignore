@@ -44,6 +44,9 @@ site_images/
 # Archived runbooks and drafts — low secret risk; optional noise for a public clone.
 archive/
 
+# Documentation build output
+docs/
+
 # OS
 .DS_Store
 repomix*

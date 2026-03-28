@@ -97,3 +97,18 @@ export const WebhookSubscribePostSchema = z
   });
 
 export type WebhookSubscribePost = z.infer<typeof WebhookSubscribePostSchema>;
+
+const MacroFactorKeySchema = z.enum(["bitcoin", "gold", "oil", "dxy", "vix", "ust10y2y"]);
+
+/**
+ * POST /api/correlation — stock vs macro factor correlations.
+ */
+export const FactorCorrelationRequestSchema = z.object({
+  ticker: z.union([TickerSchema, z.array(TickerSchema).min(1).max(50)]),
+  factors: z.array(MacroFactorKeySchema).optional(),
+  return_type: z.enum(["gross", "l1", "l2", "l3_residual"]).default("l3_residual"),
+  window_days: z.coerce.number().int().min(20).max(2000).default(252),
+  method: z.enum(["pearson", "spearman"]).default("pearson"),
+});
+
+export type FactorCorrelationRequest = z.infer<typeof FactorCorrelationRequestSchema>;

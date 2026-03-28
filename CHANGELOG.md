@@ -10,6 +10,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **Macro factor correlation** — Supabase table [`macro_factors`](./supabase/migrations/20260327120000_macro_factors.sql) (daily `factor_key` + `teo` + `return_gross`), on-demand math in [`lib/risk/factor-correlation-service.ts`](./lib/risk/factor-correlation-service.ts), [`POST /api/correlation`](./app/api/correlation/route.ts), [`GET /api/metrics/{ticker}/correlation`](./app/api/metrics/[ticker]/correlation/route.ts), capability `factor-correlation`, OpenAPI + [`mcp/data/schemas/factor-correlation-v1.json`](./mcp/data/schemas/factor-correlation-v1.json), and SDK `get_factor_correlation`. Stock series support `gross` and ERM3 replication residuals (L1/L2/L3) vs SPY and sector/subsector ETFs; macro series are cached in Redis. Populate `macro_factors` via your ingest job before correlations are non-null.
+
 - **Webhooks** — `webhook_subscriptions` table (see [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql)), [`POST|GET|DELETE /api/webhooks/subscribe`](./app/api/webhooks/subscribe/route.ts), HMAC-signed outbound delivery in [`lib/api/webhooks.ts`](./lib/api/webhooks.ts), and `batch.completed` notifications after [`POST /api/batch/analyze`](./app/api/batch/analyze/route.ts). Maintainer-only doc: `internal/WEBHOOKS_GUIDE.md` (gitignored; see [`internal/README.md`](./internal/README.md)).
 
 ### Changed
