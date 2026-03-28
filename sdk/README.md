@@ -34,6 +34,42 @@ print(pa.portfolio_hedge_ratios["l3_market_hr"])
 print(pa.to_llm_context())
 ```
 
+## Recursive Visual Refinement (MatPlotAgent)
+
+Generate professional financial visualizations through automated Vision-LLM feedback:
+
+```python
+from openai import OpenAI
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()
+llm = OpenAI(api_key="...")
+
+result = client.generate_refined_plot(
+    plot_description="L3 risk decomposition stacked area chart for NVDA over 2 years",
+    output_path="nvda_risk.png",
+    llm_client=llm,
+    max_iterations=5,
+)
+
+print(f"Generated in {result.iterations} iterations")
+print(f"Saved to: {result.output_path}")
+```
+
+The `generate_refined_plot` method implements the **MatPlotAgent Pattern**:
+1. **Execute**: Runs generated matplotlib code in a subprocess
+2. **Capture**: Collects execution errors or output PNG
+3. **See**: Sends the image to a Vision-LLM (GPT-4o or Claude 3.5 Sonnet)
+4. **Evaluate**: LLM audits for overlapping text, legibility, legend accuracy, styling
+5. **Refine**: Iterates until "COMPLETE" or max iterations reached
+
+**Requirements**: `pip install openai matplotlib` (or `anthropic`)
+
+**Financial Color Standards** (enforced automatically):
+- Market Risk (SPY): **Indigo** (#4B0082)
+- Sector Risk: **Green** (#228B22)  
+- Residual/Idiosyncratic: **Gray** (#808080)
+
 Environment variables:
 
 - `RISKMODELS_API_KEY` — static Bearer token, or

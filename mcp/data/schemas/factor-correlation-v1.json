@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riskmodels.app/schemas/factor-correlation-v1.json",
+  "title": "FactorCorrelationResponse",
+  "type": "object",
+  "required": ["ticker", "return_type", "window_days", "method", "correlations", "overlap_days", "warnings"],
+  "properties": {
+    "ticker": { "type": "string" },
+    "return_type": {
+      "type": "string",
+      "enum": ["gross", "l1", "l2", "l3_residual"]
+    },
+    "window_days": { "type": "integer", "minimum": 20, "maximum": 2000 },
+    "method": { "type": "string", "enum": ["pearson", "spearman"] },
+    "correlations": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] }
+    },
+    "overlap_days": { "type": "integer" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "_metadata": { "type": "object" },
+    "_agent": {
+      "type": "object",
+      "properties": {
+        "latency_ms": { "type": "integer" },
+        "request_id": { "type": "string" }
+      }
+    }
+  }
+}

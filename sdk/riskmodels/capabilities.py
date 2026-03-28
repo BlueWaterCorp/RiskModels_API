@@ -173,6 +173,51 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "pandas.DataFrame", "description": "Columns l3_market_hr, l3_*_er, …"},
     },
     {
+        "name": "get_factor_correlation",
+        "aliases": [],
+        "summary": "Correlation vs macro factors (POST /correlation).",
+        "description": (
+            "Pearson/Spearman correlation between stock returns (gross or ERM3 residual) and daily "
+            "macro factor returns (macro_factors table). Pass one ticker or a list for batch."
+        ),
+        "scopes": ["factor-correlation"],
+        "parameters": [
+            {
+                "name": "ticker",
+                "type": "string | array",
+                "required": True,
+                "description": "Symbol or list of symbols (batch).",
+            },
+            {
+                "name": "factors",
+                "type": "array",
+                "required": False,
+                "description": "bitcoin, gold, oil, dxy, vix, ust10y2y (default all six).",
+            },
+            {
+                "name": "return_type",
+                "type": "string",
+                "required": False,
+                "default": "l3_residual",
+                "enum": ["gross", "l1", "l2", "l3_residual"],
+            },
+            {
+                "name": "window_days",
+                "type": "integer",
+                "required": False,
+                "default": 252,
+            },
+            {
+                "name": "method",
+                "type": "string",
+                "required": False,
+                "default": "pearson",
+                "enum": ["pearson", "spearman"],
+            },
+        ],
+        "returns": {"type": "dict", "description": "JSON body with correlations, _metadata, _agent."},
+    },
+    {
         "name": "batch_analyze",
         "aliases": ["batch"],
         "summary": "Up to 100 tickers: returns, hedge_ratios, full_metrics.",
