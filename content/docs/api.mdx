@@ -137,6 +137,17 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
           </td>
           <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[[&quot;l3_market_er&quot;,&quot;l3_sector_er&quot;,&quot;l3_subsector_er&quot;,&quot;l3_residual_er&quot;]]</code></td>
         </tr>
+        <tr className="border-b border-zinc-800 align-top">
+          <td className="py-3 px-4 font-semibold text-zinc-100">Macro factor correlation</td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Cross-asset context.</strong> Rolling correlation vs macro factors (VIX, Bitcoin, Gold, Oil, DXY, UST 10y-2y) helps identify hedging regimes and factor crowding. Helps quantify macro exposure not captured by L3 equity factors.</td>
+          <td className="py-3 px-4">
+            <div className="flex flex-col gap-1.5">
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">correlations</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-zinc-300 w-fit">(via factor_correlation)</code>
+            </div>
+          </td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_factor_correlation_single(&quot;NVDA&quot;, factors=[&quot;vix&quot;,&quot;bitcoin&quot;])</code></td>
+        </tr>
         <tr className="align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Sign convention</td>
           <td className="py-3 px-4"><strong className="text-zinc-300">Model safety.</strong>{' '}
@@ -244,6 +255,13 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3">Monthly historical HR/ER time series</td>
         <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_l3_decomposition("NVDA")' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/correlation<br/>/api/metrics/{'{ticker}'}/correlation</td>
+        <td className="py-3 px-3">POST<br/>GET</td>
+        <td className="py-3 px-3">Macro factor correlation (VIX, Bitcoin, Gold, Oil, DXY, UST 10y-2y). Use POST for batch, GET for single-ticker.</td>
+        <td className="py-3 px-3 text-zinc-500">$0.002–0.005/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_factor_correlation_single("NVDA", factors=["vix","bitcoin"])' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/batch/analyze</td>

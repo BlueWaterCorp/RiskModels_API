@@ -244,7 +244,24 @@ class RiskModelsClient:
         window_days: int = 252,
         method: str = "pearson",
     ) -> dict[str, Any]:
-        """POST /correlation — stock vs macro factor correlations (see OPENAPI FactorCorrelationRequest)."""
+        """POST /correlation — stock vs macro factor correlations (batch-capable).
+
+        Use this for batch requests (list of tickers) or when you need full
+        control over the request body. For single-ticker GET requests, see
+        `get_factor_correlation_single()`.
+
+        Args:
+            ticker: Single ticker or list of tickers to analyze.
+            factors: Optional list of macro factor keys (e.g., ["vix", "bitcoin"]).
+                     Defaults to all six factors if not specified.
+            return_type: Which return series to use ("gross", "l1", "l2", "l3_residual").
+            window_days: Trailing window for correlation (20-2000).
+            method: "pearson" or "spearman".
+
+        Returns:
+            For single ticker: FactorCorrelationResponse dict.
+            For batch: Dict with "results" key containing list of responses.
+        """
         payload: dict[str, Any] = {
             "return_type": return_type,
             "window_days": window_days,
@@ -258,6 +275,62 @@ class RiskModelsClient:
         if factors is not None:
             payload["factors"] = factors
         body, _lineage, _ = self._transport.request("POST", "/correlation", json=payload)
+        return body
+
+    def get_factor_correlation_single(
+        self,
+        ticker: str,
+        *,
+        factors: list[str] | None = None,
+        return_type: str = "l3_residual",
+        window_days: int = 252,
+        method: str = "pearson",
+    ) -> dict[str, Any]:
+        """GET /metrics/{ticker}/correlation — single ticker factor correlations.
+
+        Lightweight GET endpoint for single-ticker correlation queries.
+        Preferred over `get_factor_correlation()` when analyzing one ticker
+        at a time, as it uses URL parameters and is more cache-friendly.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., "AAPL", "NVDA").
+            factors: Optional comma-separated list via query param.
+                     Provide as Python list (e.g., ["vix", "bitcoin"]).
+            return_type: Which return series ("gross", "l1", "l2", "l3_residual").
+            window_days: Trailing window for correlation (20-2000, default 252).
+            method: "pearson" or "spearman" (default "pearson").
+
+        Returns:
+            FactorCorrelationResponse dict with keys:
+            - ticker: Resolved ticker symbol
+            - return_type: The return series used
+            - window_days: Actual window used
+            - method: Correlation method used
+            - correlations: Dict mapping factor_key to correlation value
+            - overlap_days: Number of paired observations
+            - warnings: List of any warnings
+            - _metadata: Risk model lineage metadata
+            - _agent: Request telemetry (latency_ms, request_id)
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> result = client.get_factor_correlation_single(
+            ...     "NVDA",
+            ...     factors=["vix", "bitcoin"],
+            ...     window_days=126
+            ... )
+            >>> print(result["correlations"]["vix"])
+            0.42
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {
+            "return_type": return_type,
+            "window_days": str(window_days),
+            "method": method,
+        }
+        if factors is not None:
+            params["factors"] = ",".join(factors)
+        body, _lineage, _ = self._transport.request("GET", f"/metrics/{t}/correlation", params=params)
         return body
 
     def batch_analyze(

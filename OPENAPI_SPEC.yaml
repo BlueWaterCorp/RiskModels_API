@@ -102,6 +102,7 @@ components:
             ticker-returns: Access ticker returns and historical data
             risk-decomposition: Access L3 risk decomposition
             batch-analysis: Perform portfolio batch analysis
+            factor-correlation: Correlate stocks with macro factors (VIX, Bitcoin, Gold, etc.)
             chat-risk-analyst: Use AI risk analyst
             plaid:holdings: Access Plaid-synced portfolio holdings
             "*": Full API access
@@ -2847,7 +2848,11 @@ paths:
                     type: array
                     items: { type: object }
                   count: { type: integer }
-                  sql: { type: string, description: Executed SQL (may have LIMIT appended). }
+                  sql:
+                    {
+                      type: string,
+                      description: Executed SQL (may have LIMIT appended).,
+                    }
         "400":
           description: Invalid or disallowed SQL.
           content:

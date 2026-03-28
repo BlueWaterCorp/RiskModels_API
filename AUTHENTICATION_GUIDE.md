@@ -140,6 +140,7 @@ Tokens expire after 15 minutes. Request a new token using the same OAuth2 endpoi
 | `ticker-returns` | Access ticker returns and historical data |
 | `risk-decomposition` | Access L3 risk decomposition |
 | `batch-analysis` | Perform portfolio batch analysis |
+| `factor-correlation` | Correlate stocks with macro factors (VIX, Bitcoin, Gold, etc.) |
 | `chat-risk-analyst` | Use AI risk analyst |
 | `plaid:holdings` | Access Plaid-synced portfolio holdings |
 | `*` | Full API access (all scopes) |

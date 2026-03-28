@@ -218,6 +218,52 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "dict", "description": "JSON body with correlations, _metadata, _agent."},
     },
     {
+        "name": "get_factor_correlation_single",
+        "aliases": [],
+        "summary": "Single-ticker correlation via GET (cache-friendly).",
+        "description": (
+            "Lightweight GET endpoint for single-ticker factor correlation. Preferred over "
+            "get_factor_correlation() when analyzing one ticker at a time. Uses URL parameters "
+            "and is more cache-friendly than the POST endpoint."
+        ),
+        "scopes": ["factor-correlation"],
+        "parameters": [
+            {
+                "name": "ticker",
+                "type": "string",
+                "required": True,
+                "description": "Symbol (e.g., 'AAPL', 'NVDA').",
+            },
+            {
+                "name": "factors",
+                "type": "array",
+                "required": False,
+                "description": "bitcoin, gold, oil, dxy, vix, ust10y2y (default all six).",
+            },
+            {
+                "name": "return_type",
+                "type": "string",
+                "required": False,
+                "default": "l3_residual",
+                "enum": ["gross", "l1", "l2", "l3_residual"],
+            },
+            {
+                "name": "window_days",
+                "type": "integer",
+                "required": False,
+                "default": 252,
+            },
+            {
+                "name": "method",
+                "type": "string",
+                "required": False,
+                "default": "pearson",
+                "enum": ["pearson", "spearman"],
+            },
+        ],
+        "returns": {"type": "dict", "description": "FactorCorrelationResponse with correlations, _metadata, _agent."},
+    },
+    {
         "name": "batch_analyze",
         "aliases": ["batch"],
         "summary": "Up to 100 tickers: returns, hedge_ratios, full_metrics.",
@@ -259,9 +305,7 @@ _SDK_METHODS: list[dict[str, Any]] = [
         ],
         "returns": {
             "type": "dict | tuple",
-            "description": (
-                "JSON BatchAnalyzeResponse, or (pandas.DataFrame, RiskLineage) for parquet/csv export."
-            ),
+            "description": ("JSON BatchAnalyzeResponse, or (pandas.DataFrame, RiskLineage) for parquet/csv export."),
         },
     },
     {
@@ -493,9 +537,7 @@ def discover_markdown(spec: dict[str, Any] | None = None) -> str:
             req = "required" if p.get("required") else "optional"
             dflt = f", default={p['default']!r}" if "default" in p else ""
             en = f", enum={p['enum']}" if p.get("enum") else ""
-            lines.append(
-                f"  - `{p['name']}` ({p.get('type', 'any')}, {req}{dflt}{en}): {p.get('description', '')}"
-            )
+            lines.append(f"  - `{p['name']}` ({p.get('type', 'any')}, {req}{dflt}{en}): {p.get('description', '')}")
         ret = m.get("returns")
         if ret:
             lines.append(f"  Returns: **{ret.get('type', '')}** — {ret.get('description', '')}")
