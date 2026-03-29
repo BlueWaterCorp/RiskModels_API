@@ -2,6 +2,10 @@
 """
 Generate static PNGs for the GitHub README and portal docs using live RiskModels API data.
 
+Every numeric cell in the charts comes from API responses (correlation + rankings). There is no
+random or placeholder data. The only static fallback is the MAG7 ticker list if
+``search_tickers(mag7=True)`` returns no rows.
+
 Requires ``RISKMODELS_API_KEY`` (free tier is enough: MAG7 + rankings + correlation).
 
 Outputs:
@@ -399,6 +403,11 @@ def main() -> int:
         dest = args.public_dir / src.name
         dest.write_bytes(src.read_bytes())
 
+    base_display = (
+        os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+    )
+    n_factors = matrix.shape[1]
+    factor_cols = ", ".join(str(c) for c in matrix.columns)
     print(
         "Wrote",
         macro_path,
@@ -406,6 +415,19 @@ def main() -> int:
         needle_path,
         hero_path,
         f"(mirrored to {args.public_dir})",
+    )
+    print(
+        "\n--- README assets: live API data (no synthetic series) ---\n"
+        f"  Base URL: {base_display}\n"
+        f"  MAG7 tickers ({len(mag7)}): {', '.join(mag7)}\n"
+        f"  Macro heatmap + hero left: Pearson macro_corr_* for [{factor_cols}] — "
+        f"{rt_label}, 252d (POST /correlation or GET /metrics/{{ticker}}/correlation).\n"
+        f"  Rankings charts: GET /rankings/{ranking_ticker} — metric={args.metric}, "
+        f"window={args.window} (all cohort rows returned by the API).\n"
+        f"  Needle + hero right: rank_percentile from the {args.cohort} cohort row "
+        f"(same API response as the bars, filtered in-script).\n"
+        "---\n",
+        file=sys.stderr,
     )
     return 0
 
