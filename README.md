@@ -104,19 +104,29 @@ print(to_llm_context(pa))
 
 ## Risk intelligence
 
-Charts below are **generated from live API data** (MAG7 batch correlation + `get_rankings`) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/` so GitHub and the portal both render the same PNGs.
+Charts below are **generated from live API data** (MAG7 batch correlation + `get_rankings`) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/`.
 
 ### Macro sensitivity
 
-![MAG7 macro correlation matrix](./assets/macro_heatmap.png)
+<p align="center">
+  <img src="./assets/macro_heatmap.png" width="680" alt="MAG7 macro correlation matrix" />
+  <br>
+  <sub>Pearson correlations of L3 residual returns vs macro factors — <code>POST /correlation</code></sub>
+</p>
 
-Pearson correlations of L3 residual returns vs macro factors (**VIX**, **Gold**, **BTC**) from `POST /correlation` — rendered with [`save_macro_sensitivity_matrix`](./sdk/riskmodels/visual_refinement.py).
+### Cross-sectional rankings
 
-### Sector rankings
+<p align="center">
+  <img src="./assets/ranking_snapshot.png" width="680" alt="Ticker ranking needle" />
+  <br>
+  <sub>Universe rank percentile from <code>get_rankings</code></sub>
+</p>
 
-![Ticker ranking](./assets/ranking_snapshot.png)
-
-Cross-sectional rank percentile from `get_rankings` — [`save_ranking_chart`](./sdk/riskmodels/visual_refinement.py).
+<p align="center">
+  <img src="./assets/ranking_cohorts.png" width="680" alt="Ranking by cohort" />
+  <br>
+  <sub>Universe / sector / subsector rank percentile breakdown</sub>
+</p>
 
 ---
 

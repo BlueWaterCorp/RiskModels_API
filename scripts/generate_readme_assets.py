@@ -11,8 +11,10 @@ Outputs:
 Run from repo root. You can set ``RISKMODELS_API_KEY`` (and optional ``RISKMODELS_BASE_URL``)
 in ``.env.local`` — the script loads it via ``python-dotenv`` (install SDK with ``[dev]``).
 
-Or export in the shell (quote values so ``#`` does not break ``export``)::
+``echo RISKMODELS_BASE_URL=...`` **does not** set the variable (it only prints). Use ``export`` or
+``.env.local``. Local API example::
 
+    export RISKMODELS_BASE_URL=http://localhost:3000/api   # npm run dev
     export RISKMODELS_API_KEY='rm_agent_...'
     python scripts/generate_readme_assets.py
 
@@ -142,6 +144,15 @@ def _print_api_error(exc: BaseException) -> None:
             "\nKey may be missing the factor-correlation scope. Check Account → API key scopes.",
             file=sys.stderr,
         )
+    if exc.status_code == 401:
+        print(
+            "\n401: Auth failed. Common fixes:\n"
+            "  • Export only the key value:  export RISKMODELS_API_KEY='rm_agent_...'\n"
+            "    (do not nest RISKMODELS_API_KEY= inside the value or paste from a KEY=value line twice.)\n"
+            "  • Local Next (localhost): ensure the same key works against your dev DB, or unset\n"
+            "    RISKMODELS_BASE_URL to call https://riskmodels.app/api with your key.",
+            file=sys.stderr,
+        )
     if exc.status_code == 500:
         print(
             "\nServer error on correlation. With the default script, l3_residual is retried as gross "
@@ -166,6 +177,19 @@ def _correlation_matrix(client, tickers: list[str], *, mode: str, return_type: s
         print("POST /correlation failed; retrying with sequential GET /metrics/{ticker}/correlation …", file=sys.stderr)
         _print_api_error(e)
         return _correlation_matrix_sequential(client, tickers, return_type=return_type)
+
+
+def _warn_if_malformed_api_key() -> None:
+    """Detect common copy-paste mistakes (nested KEY=value in the secret)."""
+    k = os.environ.get("RISKMODELS_API_KEY", "").strip()
+    if not k:
+        return
+    if "RISKMODELS_API_KEY" in k or k.startswith("export "):
+        print(
+            "Warning: RISKMODELS_API_KEY should be only the token (e.g. rm_agent_...), not a full KEY=value line.",
+            "Example:  export RISKMODELS_API_KEY='rm_agent_...'",
+            file=sys.stderr,
+        )
 
 
 def _correlation_matrix_with_gross_fallback(
@@ -252,6 +276,8 @@ def main() -> int:
         print("RISKMODELS_API_KEY is required (free-tier key works).", file=sys.stderr)
         return 1
 
+    _warn_if_malformed_api_key()
+
     from riskmodels.client import RiskModelsClient
     from riskmodels.visual_refinement import (
         save_macro_sensitivity_matrix,
@@ -261,11 +287,18 @@ def main() -> int:
     )
 
     client = RiskModelsClient.from_env()
+    base_url_set = "RISKMODELS_BASE_URL" in os.environ
     print(
         "Using RISKMODELS_BASE_URL =",
         repr(os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api (default via SDK)")),
         file=sys.stderr,
     )
+    if not base_url_set:
+        print(
+            "Tip: for localhost, `export RISKMODELS_BASE_URL=http://localhost:3000/api` "
+            "(or add it to .env.local). `echo VAR=...` does not set the environment.",
+            file=sys.stderr,
+        )
     mag7 = _mag7_tickers(client)
     ranking_ticker = args.ranking_ticker or mag7[0]
 
@@ -295,18 +328,20 @@ def main() -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     args.public_dir.mkdir(parents=True, exist_ok=True)
 
+    readme_dpi = 300
     macro_path = args.out_dir / "macro_heatmap.png"
     save_macro_sensitivity_matrix(
         matrix,
         str(macro_path),
         title=f"MAG7 — macro correlations ({rt_label}, 252d)",
-        dpi=160,
+        dpi=readme_dpi,
+        style="readme_dark",
     )
 
+    # Fetch ALL cohorts for the bar chart (universe, sector, subsector)
     rank_df = client.get_rankings(
         ranking_ticker,
         metric=args.metric,
-        cohort=args.cohort,
         window=args.window,
         as_dataframe=True,
     )
@@ -321,7 +356,7 @@ def main() -> int:
         metric=args.metric,
         window=args.window,
         ticker=ranking_ticker,
-        transparent=True,
+        readme_dark=True,
     )
 
     sub = rank_df
@@ -329,6 +364,10 @@ def main() -> int:
         sub = sub.loc[sub["metric"].astype(str) == args.metric]
     if "window" in sub.columns:
         sub = sub.loc[sub["window"].astype(str) == args.window]
+    if "cohort" in sub.columns:
+        sub_cohort = sub.loc[sub["cohort"].astype(str) == args.cohort]
+        if not sub_cohort.empty:
+            sub = sub_cohort
     if sub.empty:
         sub = rank_df
     row = sub.iloc[0]
@@ -339,8 +378,9 @@ def main() -> int:
         row,
         str(needle_path),
         subtitle=subtitle,
-        theme="transparent",
-        transparent=True,
+        theme="readme_dark",
+        transparent=False,
+        dpi=readme_dpi,
     )
 
     hero_path = args.out_dir / "readme_inspiration.png"
@@ -351,8 +391,8 @@ def main() -> int:
         str(hero_path),
         macro_title=f"MAG7 — macro correlations ({rt_label}, 252d)",
         ranking_subtitle=subtitle,
-        theme="github_light",
-        dpi=150,
+        theme="readme_dark",
+        dpi=readme_dpi,
     )
 
     for src in (macro_path, bar_path, needle_path, hero_path):
