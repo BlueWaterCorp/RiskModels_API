@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_MACRO_FACTORS, normalizeMacroFactorKeys } from "@/lib/risk/macro-factor-keys";
 
 /**
  * Common schema for ticker symbols.
@@ -98,14 +99,21 @@ export const WebhookSubscribePostSchema = z
 
 export type WebhookSubscribePost = z.infer<typeof WebhookSubscribePostSchema>;
 
-const MacroFactorKeySchema = z.enum(["bitcoin", "gold", "oil", "dxy", "vix", "ust10y2y"]);
-
 /**
  * POST /api/correlation — stock vs macro factor correlations.
  */
 export const FactorCorrelationRequestSchema = z.object({
   ticker: z.union([TickerSchema, z.array(TickerSchema).min(1).max(50)]),
-  factors: z.array(MacroFactorKeySchema).optional(),
+  factors: z
+    .array(z.string().min(1))
+    .optional()
+    .transform((arr) => (arr?.length ? normalizeMacroFactorKeys(arr).keys : undefined))
+    .refine(
+      (keys) => keys === undefined || keys.length > 0,
+      {
+        message: `No valid macro factors after normalization. Canonical keys: ${DEFAULT_MACRO_FACTORS.join(", ")}`,
+      },
+    ),
   return_type: z.enum(["gross", "l1", "l2", "l3_residual"]).default("l3_residual"),
   window_days: z.coerce.number().int().min(20).max(2000).default(252),
   method: z.enum(["pearson", "spearman"]).default("pearson"),
@@ -117,7 +125,8 @@ export type FactorCorrelationRequest = z.infer<typeof FactorCorrelationRequestSc
  * Schema for POST /api/portfolio/risk-index
  *
  * Positions: array of { ticker, weight } where weights are fractional (sum ≈ 1.0)
- * or dollar amounts (will be normalized).
+ * or dollar amounts (will be normalized). May be empty: API returns `status: "syncing"` when
+ * holdings are not ready yet (e.g. Plaid initial sync).
  */
 export const PortfolioRiskIndexRequestSchema = z.object({
   positions: z
@@ -127,10 +136,25 @@ export const PortfolioRiskIndexRequestSchema = z.object({
         weight: z.coerce.number().positive("Weight must be positive"),
       })
     )
-    .min(1, "At least one position is required")
     .max(100, "Maximum 100 positions"),
   timeSeries: z.boolean().default(false),
   years: YearsSchema,
 });
 
 export type PortfolioRiskIndexRequest = z.infer<typeof PortfolioRiskIndexRequestSchema>;
+
+const ChatMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().min(1, "Message content is required"),
+});
+
+/**
+ * POST /api/chat — AI risk analyst (OpenAI).
+ */
+export const ChatPostSchema = z.object({
+  messages: z.array(ChatMessageSchema).min(1, "At least one message is required"),
+  model: z.string().min(1).optional(),
+  response_mode: z.enum(["markdown", "catalog", "hybrid"]).optional(),
+});
+
+export type ChatPostBody = z.infer<typeof ChatPostSchema>;

@@ -9,6 +9,7 @@ import {
   computeFactorCorrelation,
   DEFAULT_MACRO_FACTORS,
 } from "@/lib/risk/factor-correlation-service";
+import { normalizeMacroFactorKeys } from "@/lib/risk/macro-factor-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +22,6 @@ const QuerySchema = z.object({
   window_days: z.coerce.number().int().min(20).max(2000).default(252),
   method: z.enum(["pearson", "spearman"]).default("pearson"),
 });
-
-const FactorKeySchema = z.enum(["bitcoin", "gold", "oil", "dxy", "vix", "ust10y2y"]);
 
 export const GET = withBilling(
   async (request: NextRequest, context: BillingContext) => {
@@ -62,17 +61,17 @@ export const GET = withBilling(
 
     let factorList: string[] = [...DEFAULT_MACRO_FACTORS];
     if (q.data.factors?.length) {
-      factorList = [];
-      for (const f of q.data.factors) {
-        const one = FactorKeySchema.safeParse(f);
-        if (!one.success) {
-          return NextResponse.json(
-            { error: "Invalid factor key", message: `Unknown factor: ${f}` },
-            { status: 400, headers: getCorsHeaders(origin) },
-          );
-        }
-        factorList.push(one.data);
+      const { keys } = normalizeMacroFactorKeys(q.data.factors);
+      if (keys.length === 0) {
+        return NextResponse.json(
+          {
+            error: "Invalid factor key",
+            message: `Unknown macro factor(s). Canonical keys: ${DEFAULT_MACRO_FACTORS.join(", ")}`,
+          },
+          { status: 400, headers: getCorsHeaders(origin) },
+        );
       }
+      factorList = [...keys];
     }
 
     const fetchStart = performance.now();

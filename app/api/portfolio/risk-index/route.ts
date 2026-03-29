@@ -127,6 +127,28 @@ export const POST = withBilling(
     const { positions, timeSeries, years } = validation.data;
     const fetchStart = performance.now();
 
+    if (positions.length === 0) {
+      const metadata = await getRiskMetadata();
+      const body = {
+        status: "syncing" as const,
+        message:
+          "No holdings loaded yet. If you just linked a brokerage (e.g. Plaid), wait for the initial sync to finish.",
+        _metadata: buildMetadataBody(metadata),
+        _agent: {
+          cost_usd: context.costUsd,
+          request_id: context.requestId,
+        },
+      };
+      const response = NextResponse.json(body, {
+        headers: {
+          ...getCorsHeaders(origin),
+          "X-Data-Fetch-Latency-Ms": "0",
+        },
+      });
+      addMetadataHeaders(response, metadata);
+      return response;
+    }
+
     // Normalize weights
     const normalized = normalizeWeights(positions);
     const weightMap = new Map(normalized.map((p) => [p.ticker, p.weight]));

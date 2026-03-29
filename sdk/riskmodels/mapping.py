@@ -59,14 +59,27 @@ HEDGE_RATIOS_SHORT_TO_SEMANTIC_HR: dict[str, str] = {
 }
 
 COLUMN_AGENT_HINTS: dict[str, str] = {
-    "l1_market_hr": "SPY notional per $1 stock for L1 (market-only) hedge.",
-    "l2_market_hr": "SPY component of L2 hedge.",
-    "l2_sector_hr": "Sector ETF component of L2 hedge.",
-    "l3_market_hr": "SPY component of L3 hedge.",
-    "l3_sector_hr": "Sector ETF component of L3 hedge.",
-    "l3_subsector_hr": "Subsector ETF component; may be negative (long ETF).",
+    "l1_market_hr": "SPY notional per $1 stock for L1 (market-only) hedge; may be negative.",
+    "l2_market_hr": "SPY component of L2 hedge; may be negative (common).",
+    "l2_sector_hr": "Sector ETF component of L2 hedge; may be negative.",
+    "l3_market_hr": "SPY component of L3 hedge; may be negative (common).",
+    "l3_sector_hr": "Sector ETF component of L3 hedge; may be negative.",
+    "l3_subsector_hr": "Subsector ETF component; may be negative.",
     "l3_residual_er": "Idiosyncratic variance share at L3 (not hedgeable with these ETFs).",
     "returns_gross": "Daily gross stock return.",
+    "macro_corr_bitcoin": "Pearson/Spearman vs bitcoin daily return; not a hedge ratio.",
+    "macro_corr_gold": "Pearson/Spearman vs gold daily return; not a hedge ratio.",
+    "macro_corr_oil": "Pearson/Spearman vs oil daily return; not a hedge ratio.",
+    "macro_corr_dxy": "Pearson/Spearman vs DXY daily return; not a hedge ratio.",
+    "macro_corr_vix": "Pearson/Spearman vs VIX daily return; not a hedge ratio.",
+    "macro_corr_ust10y2y": "Pearson/Spearman vs UST 10y–2y spread daily return; not a hedge ratio.",
+    "macro_return_type": "Stock return series used for correlation: gross | l1 | l2 | l3_residual.",
+    "macro_window_days": "Requested trailing paired-day window for correlation.",
+    "macro_corr_method": "pearson or spearman.",
+    "macro_overlap_days": "Largest paired observation count among requested factors.",
+    "macro_warnings": "API warnings (e.g. sparse macro_factors).",
+    "macro_batch_error": "Batch item error message when POST /correlation fails for one ticker.",
+    "macro_batch_status": "HTTP-style status for a failed batch correlation item.",
 }
 
 

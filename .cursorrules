@@ -7,7 +7,7 @@ When writing or editing Python code that calls the **RiskModels API**, prefer th
 - **Hedge ratios (HR)** are **dollars of ETF per $1 of stock** (`dollar_ratio`). Hedge notional ≈ `position_usd * hr`.
 - Use **semantic column names** as returned by the SDK (e.g. `l3_market_hr`, `l3_sector_hr`, `l3_subsector_hr`), **not** raw V3 wire keys in user-facing tables (`l3_mkt_hr` is normalized away in DataFrames).
 - **Explained risk (ER)** values are **variance fractions** in `[0, 1]`. At **L3**, `l3_market_er + l3_sector_er + l3_subsector_er + l3_residual_er ≈ 1`.
-- **Sign convention**: only **`l3_subsector_hr`** may be negative (long subsector ETF). Market and sector HRs are expected **≥ 0** under normal modelling.
+- **Sign convention**: **any** HR may be negative (orthogonalization / long ETF leg); **most common** negatives are often the **market factor** at **L2 or L3** (`l2_market_hr`, `l3_market_hr`). Do not treat a negative sector or subsector HR as automatically wrong.
 - **`GET /metrics/{ticker}`** returns numbers under JSON **`metrics`**; the SDK flattens to semantic names. Do not read flat `l1_market_hr` at the top level of the raw JSON unless mirroring legacy examples.
 - **`POST /batch/analyze`** Parquet/CSV long table: wire columns **`l1`, `l2`, `l3`** are the **three rolling L3 component HR series** (market, sector, subsector), **not** “L1 model / L2 model / L3 model” levels. The SDK renames them to `l3_market_hr`, `l3_sector_hr`, `l3_subsector_hr`.
 - **Portfolio-level hedge ratios** in the SDK are **holdings-weighted means** of per-ticker scalar HRs (same idea as zarr `wmean_*` in `docs/ERM3_ZARR_API_PARITY.md`). This is **not** a full portfolio optimization; it is explicit client-side aggregation.

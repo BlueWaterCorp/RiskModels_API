@@ -18,7 +18,8 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     title: 'API Documentation',
     description: 'Strategic hub for ERM3 — integration, methodology, field semantics, Python SDK.',
     href: '/docs/api',
-    keywords: 'openapi endpoints core batch metrics ticker returns',
+    keywords:
+      'openapi endpoints core batch metrics ticker returns correlation macro factors vix bitcoin gold oil dxy ust10y2y spearman pearson',
   },
   {
     title: 'Methodology',
@@ -54,7 +55,14 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     title: 'API Reference',
     description: 'Interactive OpenAPI / Redoc — live schemas and request examples.',
     href: '/api-reference',
-    keywords: 'openapi redoc swagger rest',
+    keywords: 'openapi redoc swagger rest correlation macro factors vix bitcoin',
+  },
+  {
+    title: 'Macro factor correlation',
+    description:
+      'Pearson or Spearman correlation of stock returns (gross or L1/L2/L3 residual) vs Bitcoin, Gold, Oil, DXY, VIX, UST 10y–2y.',
+    href: '/docs/api#risk-metrics',
+    keywords: 'correlation macro vix bitcoin gold oil dxy ust10y2y spearman pearson POST correlation',
   },
   {
     title: 'Quickstart',

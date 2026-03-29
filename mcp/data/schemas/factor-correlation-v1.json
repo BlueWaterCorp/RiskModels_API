@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://riskmodels.app/schemas/factor-correlation-v1.json",
   "title": "FactorCorrelationResponse",
+  "description": "Successful single-ticker 200 body for POST /api/correlation (and GET /api/metrics/{ticker}/correlation). Batch POST responses wrap per-ticker items in results (see OpenAPI). POST request body: factor-correlation-request-v1.json.",
   "type": "object",
   "required": ["ticker", "return_type", "window_days", "method", "correlations", "overlap_days", "warnings"],
   "properties": {

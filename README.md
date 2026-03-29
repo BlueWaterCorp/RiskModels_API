@@ -100,6 +100,24 @@ print(to_llm_context(pa))
 
 ---
 
+## Risk intelligence
+
+Track **Plaid-linked** portfolios against systemic macro shifts. PNGs are produced by [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py) (or CI) with `RISKMODELS_API_KEY`; commit them under `./assets/` for GitHub rendering.
+
+### Macro sensitivity
+
+![Macro correlation heatmap](./assets/macro_heatmap.png)
+
+Real-time correlation against VIX, gold, and BTC (build a numeric matrix in the SDK and call `save_macro_heatmap`).
+
+### Sector rankings
+
+![Ticker ranking](./assets/ranking_snapshot.png)
+
+Percentile positioning for alpha and residual risk (`get_rankings`, `save_ranking_chart`).
+
+---
+
 ## 🤖 MCP Server (v3.0.0-agent)
 
 RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, enabling AI agents to directly query risk data and perform factor analysis.

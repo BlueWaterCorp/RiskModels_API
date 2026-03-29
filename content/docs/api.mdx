@@ -221,6 +221,43 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
   </div>
 </div>
 
+<h2 id="risk-metrics" className="text-2xl sm:text-3xl font-bold text-zinc-100 mt-14 mb-2 tracking-tight scroll-mt-24">
+  Risk Metrics
+</h2>
+<p className="text-sm text-zinc-500 m-0 mb-6 not-prose max-w-3xl">
+  Beyond static HR/ER snapshots, RiskModels exposes on-demand correlation of equity returns against daily macro factor returns (cross-asset context for regimes and crowding).
+</p>
+<div className="not-prose my-6">
+  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 max-w-2xl">
+    <div className="flex items-center gap-3 mb-3">
+      <span className="text-xl">📊</span>
+      <h3 className="text-sm font-semibold text-zinc-100 m-0">Macro factor correlation</h3>
+    </div>
+    <p className="text-xs text-zinc-500 leading-relaxed m-0 mb-4">
+      Correlate a stock&apos;s daily returns—<strong className="text-zinc-400">gross</strong> or{' '}
+      <strong className="text-zinc-400">ERM3 residuals</strong> (L1 market-only, L2 market+sector, or L3 full hedge)—against{' '}
+      <strong className="text-zinc-400">Bitcoin</strong>, <strong className="text-zinc-400">Gold</strong>,{' '}
+      <strong className="text-zinc-400">Oil</strong>, <strong className="text-zinc-400">DXY</strong>,{' '}
+      <strong className="text-zinc-400">VIX</strong>, and <strong className="text-zinc-400">UST 10y–2y</strong>.{' '}
+      Use <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[11px]">POST /api/correlation</code> for single-ticker or batch;{' '}
+      <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[11px]">GET /api/metrics/{'{ticker}'}/correlation</code> for query-string convenience.
+    </p>
+    <div className="flex flex-wrap gap-2">
+      <a href="/api-reference" className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors">
+        API Reference
+      </a>
+      <a
+        href="https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs rounded-md border border-zinc-700 px-2.5 py-1.5 text-zinc-300 hover:border-primary/50 hover:text-zinc-100 transition-colors"
+      >
+        Macro factors (SEMANTIC_ALIASES)
+      </a>
+    </div>
+  </div>
+</div>
+
 ## Core Endpoints
 
 <div className="not-prose my-6 overflow-x-auto rounded-lg border border-zinc-800">

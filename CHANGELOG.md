@@ -6,9 +6,31 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **Plaid setup routes** — [`POST /api/plaid/link-token`](./app/api/plaid/link-token/route.ts) and [`POST /api/plaid/exchange-public-token`](./app/api/plaid/exchange-public-token/route.ts) use [`withBilling`](./lib/agent/billing-middleware.ts) with `skipBilling: true` and new capabilities `plaid-link-token` / `plaid-exchange-public-token` so responses get `X-Request-ID`, latency, and zero-cost headers like other instrumented routes.
+
+- **OpenAPI `GET /health`** — Response schema documents optional `macro_factors` (status, `latest_teos`, row counts, staleness) aligned with [`getHealthStatus`](./lib/agent/telemetry.ts).
+
+- **Python SDK** — `RiskModelsClient.get_plaid_holdings()` (`GET /plaid/holdings`); discover snippet and capability entry.
+
+- **Macro factor correlation (docs & OpenAPI)** — [`SEMANTIC_ALIASES.md`](./SEMANTIC_ALIASES.md) macro-factor section; [`content/docs/api.mdx`](./content/docs/api.mdx) Risk Metrics card (`#risk-metrics`); [`lib/portal-search-index.ts`](./lib/portal-search-index.ts) discovery keywords + search item; [`README_API.md`](./README_API.md) core endpoint row. OpenAPI: `externalDocs` on `POST /correlation` and `GET /metrics/{ticker}/correlation` pointing at [`factor-correlation-v1.json`](./mcp/data/schemas/factor-correlation-v1.json); GET documents `factor` as a synonym for `factors`. Regenerated [`public/openapi.json`](./public/openapi.json) and [`mcp/data/openapi.json`](./mcp/data/openapi.json).
+
 - **Repository layout** — Python SDK source moved from `packages/riskmodels/` to [`sdk/`](./sdk/); local MCP package renamed from `mcp-server/` to [`mcp/`](./mcp/). CI scripts, drift detection, OpenAPI mirror path, and docs updated; Risk_Models sync still reads from `riskmodels_com/mcp-server/data` as the upstream generator output.
 
+- **`GET|PATCH /api/user/billing-config`** — Uses [`authenticateRequest`](./lib/supabase/auth-helper.ts) (API key / JWT / session) with CORS headers for parity with other account routes.
+
 ### Added
+
+- **Python SDK (`riskmodels-py` 0.2.1)** — `get_metrics_with_macro_correlation()` (ERM3 metrics + `macro_corr_*` in one row); `as_dataframe=True` on `get_factor_correlation` / `get_factor_correlation_single`; parsing helpers `factor_correlation_body_to_row` / `factor_correlation_batch_item_to_row`; `SHORT_MACRO_CORR_LEGEND` / `COMBINED_ERM3_MACRO_LEGEND`; `to_llm_context` handles raw correlation dicts. See [`sdk/README.md`](./sdk/README.md).
+
+- **MCP JSON Schema — `POST /correlation` request** — [`mcp/data/schemas/factor-correlation-request-v1.json`](./mcp/data/schemas/factor-correlation-request-v1.json) (`$id` `https://riskmodels.app/schemas/factor-correlation-request-v1.json`) for validating request bodies via `riskmodels_get_schema` / schema list. Registered in [`mcp/data/schema-paths.json`](./mcp/data/schema-paths.json). [`factor-correlation-v1.json`](./mcp/data/schemas/factor-correlation-v1.json) documents single-ticker success; batch `results` remains OpenAPI-only. **Risk_Models:** copy the new file and merge `schema-paths.json` entry.
+
+- **OpenAPI parity** — Documented existing routes in [`OPENAPI_SPEC.yaml`](./OPENAPI_SPEC.yaml): `POST /portfolio/risk-index`, `GET|POST|DELETE /webhooks/subscribe`, `PATCH /balance`, `GET|PATCH /user/billing-config`, `GET /rankings/{ticker}`; added Plaid `POST /plaid/link-token` and `POST /plaid/exchange-public-token`; expanded `GET /plaid/holdings` and `POST /chat` response schemas. Regenerates [`public/openapi.json`](./public/openapi.json) and [`mcp/data/openapi.json`](./mcp/data/openapi.json) via `npm run build:openapi`.
+
+- **`GET /api/rankings/{ticker}`** — [`app/api/rankings/[ticker]/route.ts`](./app/api/rankings/[ticker]/route.ts) exposes [`fetchRankingsFromSecurityHistory`](./lib/dal/risk-engine-v3.ts) with optional `metric`, `cohort`, `window` query filters and billing capability `rankings`.
+
+- **`POST /api/chat`** — AI Risk Analyst route ([`app/api/chat/route.ts`](./app/api/chat/route.ts)) using the OpenAI SDK; requires `OPENAI_API_KEY`. Billing uses capability `chat-risk-analyst` with [`getTokenEstimates`](./lib/agent/billing-middleware.ts) for upfront per-token cost estimation.
+
+- **Plaid Investments (API)** — [`app/api/plaid/link-token`](./app/api/plaid/link-token/route.ts), [`exchange-public-token`](./app/api/plaid/exchange-public-token/route.ts), and [`holdings`](./app/api/plaid/holdings/route.ts); AES-256-GCM encryption via [`lib/plaid/token-crypto.ts`](./lib/plaid/token-crypto.ts) (`PLAID_TOKEN_ENCRYPTION_SECRET`). Table `plaid_items` is created and evolved by the migration chain starting at [`supabase/migrations/20251222000000_create_plaid_items_table.sql`](./supabase/migrations/20251222000000_create_plaid_items_table.sql) (including token and uniqueness follow-ons through `20260330120001_plaid_items_user_id_item_id_unique.sql`). Env: `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` (`sandbox` | `development` | `production`), optional `PLAID_CLIENT_DISPLAY_NAME`. Holdings billing capability `plaid-holdings` (`mcp/data/capabilities.json` updated).
 
 - **Macro factor correlation** — Supabase table [`macro_factors`](./supabase/migrations/20260327120000_macro_factors.sql) (daily `factor_key` + `teo` + `return_gross`), on-demand math in [`lib/risk/factor-correlation-service.ts`](./lib/risk/factor-correlation-service.ts), [`POST /api/correlation`](./app/api/correlation/route.ts), [`GET /api/metrics/{ticker}/correlation`](./app/api/metrics/[ticker]/correlation/route.ts), capability `factor-correlation`, OpenAPI + [`mcp/data/schemas/factor-correlation-v1.json`](./mcp/data/schemas/factor-correlation-v1.json), and SDK `get_factor_correlation`. Stock series support `gross` and ERM3 replication residuals (L1/L2/L3) vs SPY and sector/subsector ETFs; macro series are cached in Redis. Populate `macro_factors` via your ingest job before correlations are non-null.
 

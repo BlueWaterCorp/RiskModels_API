@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import quote
 
 import httpx
@@ -13,14 +13,22 @@ import pandas as pd
 
 from .auth import OAuthClientCredentialsAuth, StaticBearerAuth
 from .capabilities import DISCOVER_SPEC, discover_markdown
+from .legends import COMBINED_ERM3_MACRO_LEGEND, SHORT_RANKINGS_LEGEND
 from .lineage import RiskLineage
 from .mapping import TICKER_RETURNS_COLUMN_RENAME
 from .metadata_attach import attach_sdk_metadata
 from .parsing import (
     batch_returns_long_normalize,
+    build_rankings_small_cohort_warnings,
     csv_bytes_to_dataframe,
+    factor_correlation_batch_item_to_row,
+    factor_correlation_body_to_row,
     l3_decomposition_json_to_dataframe,
     parquet_bytes_to_dataframe,
+    rankings_grid_headline,
+    rankings_grid_to_dataframe,
+    rankings_leaderboard_headline,
+    rankings_top_to_dataframe,
     ticker_returns_json_to_dataframe,
 )
 from .portfolio_math import analyze_batch_to_portfolio, metrics_body_to_row, normalize_positions
@@ -32,8 +40,20 @@ from .xarray_convert import long_df_to_dataset
 FormatType = Literal["json", "parquet", "csv"]
 DiscoverFormat = Literal["markdown", "json"]
 
+RankingMetric = Literal[
+    "mkt_cap",
+    "gross_return",
+    "sector_residual",
+    "subsector_residual",
+    "er_l1",
+    "er_l2",
+    "er_l3",
+]
+RankingCohort = Literal["universe", "sector", "subsector"]
+RankingWindow = Literal["1d", "21d", "63d", "252d"]
 
-DEFAULT_SCOPE = "ticker-returns risk-decomposition batch-analysis factor-correlation"
+
+DEFAULT_SCOPE = "ticker-returns risk-decomposition batch-analysis factor-correlation rankings"
 DEFAULT_BASE_URL = "https://riskmodels.app/api"
 
 
@@ -142,6 +162,57 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lineage, kind="metrics_snapshot")
         return df
 
+    def get_metrics_with_macro_correlation(
+        self,
+        ticker: str,
+        *,
+        factors: list[str] | None = None,
+        return_type: str = "l3_residual",
+        window_days: int = 252,
+        method: str = "pearson",
+        validate: ValidateMode | None = None,
+    ) -> pd.DataFrame:
+        """One-row snapshot: `get_metrics` + macro factor correlations (two HTTP calls).
+
+        Merges lineage from both responses. Columns are ERM3 metrics plus ``macro_corr_*`` and
+        macro parameters (see ``SHORT_MACRO_CORR_LEGEND`` / ``COMBINED_ERM3_MACRO_LEGEND``).
+
+        Use ``return_type="gross"`` for total-equity co-movement vs macro, or ``"l3_residual"``
+        for the idiosyncratic sleeve vs macro factors.
+        """
+        df_m = self.get_metrics(ticker, as_dataframe=True, validate=validate)
+        df_c = self.get_factor_correlation_single(
+            ticker,
+            factors=factors,
+            return_type=return_type,
+            window_days=window_days,
+            method=method,
+            as_dataframe=True,
+        )
+        macro_cols = [c for c in df_c.columns if c != "ticker"]
+        out = pd.concat(
+            [df_m.reset_index(drop=True), df_c[macro_cols].reset_index(drop=True)],
+            axis=1,
+        )
+
+        def _lineage_from_frame(df: pd.DataFrame) -> RiskLineage:
+            raw = df.attrs.get("riskmodels_lineage")
+            if raw:
+                try:
+                    return RiskLineage(**json.loads(raw))
+                except Exception:
+                    pass
+            return RiskLineage()
+
+        merged = RiskLineage.merge(_lineage_from_frame(df_m), _lineage_from_frame(df_c))
+        attach_sdk_metadata(
+            out,
+            merged,
+            kind="metrics_macro_snapshot",
+            legend=COMBINED_ERM3_MACRO_LEGEND,
+        )
+        return out
+
     def get_ticker_returns(
         self,
         ticker: str,
@@ -215,6 +286,225 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lineage, kind="etf_returns")
         return df
 
+    def get_plaid_holdings(self) -> dict[str, Any]:
+        """GET /plaid/holdings — investment holdings synced via Plaid for the authenticated user.
+
+        Returns the API JSON (``holdings``, ``accounts``, ``securities``, ``summary``, ``_metadata``, ``_agent``).
+
+        **API keys:** if the key has explicit OAuth-style scopes, it must include ``plaid:holdings``
+        (or ``*``). Keys with no scopes keep legacy full access. Link flow uses session auth
+        (``POST /plaid/link-token`` and ``POST /plaid/exchange-public-token`` in the browser).
+        """
+        body, _lineage, _ = self._transport.request("GET", "/plaid/holdings")
+        return body
+
+    def post_portfolio_risk_index(
+        self,
+        positions: list[dict[str, Any]] | list[tuple[str, float]],
+        *,
+        time_series: bool = False,
+        years: int = 1,
+    ) -> dict[str, Any]:
+        """POST /portfolio/risk-index — holdings-weighted L3 ER decomposition (+ optional time series).
+
+        If ``positions`` is empty (e.g. user linked Plaid but the first holdings sync has not
+        finished), the API returns HTTP 200 with ``status: "syncing"`` and a ``message`` instead
+        of ``portfolio_risk_index``. Treat that as a non-error polling state, not a failed chart.
+        """
+        rows: list[dict[str, Any]] = []
+        for p in positions:
+            if isinstance(p, dict):
+                t = str(p.get("ticker", "")).strip()
+                w = float(p["weight"])
+                rows.append({"ticker": t, "weight": w})
+            else:
+                rows.append({"ticker": str(p[0]).strip(), "weight": float(p[1])})
+        for r in rows:
+            if r["ticker"]:
+                canon, _ = resolve_ticker(r["ticker"], self)
+                r["ticker"] = canon
+        payload: dict[str, Any] = {
+            "positions": rows,
+            "timeSeries": time_series,
+            "years": years,
+        }
+        body, _lineage, _ = self._transport.request("POST", "/portfolio/risk-index", json=payload)
+        return body
+
+    def get_rankings(
+        self,
+        ticker: str,
+        *,
+        metric: RankingMetric | None = None,
+        cohort: RankingCohort | None = None,
+        window: RankingWindow | None = None,
+        as_dataframe: bool = True,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """GET /rankings/{ticker} — cross-sectional rank grid for one name.
+
+        Each row is one (metric, cohort, window) with ``rank_ordinal``, ``cohort_size``,
+        ``rank_percentile`` (100 = best). When ``as_dataframe=True`` (default), the frame
+        includes ``ranking_key`` (``{window}_{cohort}_{metric}``), ``attrs['legend']``,
+        ``riskmodels_warnings`` for small cohorts (N < 10), and ``riskmodels_rankings_headline``.
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, str] = {}
+        if metric is not None:
+            params["metric"] = cast(str, metric)
+        if cohort is not None:
+            params["cohort"] = cast(str, cohort)
+        if window is not None:
+            params["window"] = cast(str, window)
+        body, hdr_lineage, _ = self._transport.request(
+            "GET",
+            f"/rankings/{quote(t, safe='')}",
+            params=params or None,
+        )
+        if not as_dataframe:
+            return body
+        df = rankings_grid_to_dataframe(body)
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="rankings_snapshot",
+            legend=SHORT_RANKINGS_LEGEND,
+            include_cheatsheet=False,
+        )
+        warn = build_rankings_small_cohort_warnings(df)
+        if warn:
+            df.attrs["riskmodels_warnings"] = warn
+        hl = rankings_grid_headline(df)
+        if hl:
+            df.attrs["riskmodels_rankings_headline"] = hl
+        return df
+
+    def get_top_rankings(
+        self,
+        *,
+        metric: RankingMetric,
+        cohort: RankingCohort,
+        window: RankingWindow,
+        limit: int = 10,
+        as_dataframe: bool = True,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """GET /rankings/top — leaderboard (best ``rank_ordinal`` first at latest ``teo``).
+
+        Requires ``metric``, ``cohort``, and ``window``. ``limit`` is clamped server-side to 1–100.
+        """
+        cap = max(1, min(100, int(limit)))
+        params = {
+            "metric": metric,
+            "cohort": cohort,
+            "window": window,
+            "limit": str(cap),
+        }
+        body, hdr_lineage, _ = self._transport.request("GET", "/rankings/top", params=params)
+        if not as_dataframe:
+            return body
+        df = rankings_top_to_dataframe(body)
+        if not df.empty:
+            df = df.copy()
+            df["metric"] = metric
+            df["cohort"] = cohort
+            df["window"] = window
+            df["ranking_key"] = f"{window}_{cohort}_{metric}"
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="rankings_leaderboard",
+            legend=SHORT_RANKINGS_LEGEND,
+            include_cheatsheet=False,
+        )
+        df.attrs["riskmodels_rankings_query"] = json.dumps(
+            {
+                "teo": body.get("teo"),
+                "metric": metric,
+                "cohort": cohort,
+                "window": window,
+                "limit": cap,
+            },
+        )
+        df.attrs["riskmodels_rankings_headline"] = rankings_leaderboard_headline(
+            teo=body.get("teo"),
+            metric=metric,
+            cohort=cohort,
+            window=window,
+            limit=cap,
+            row_count=len(df),
+        )
+        warn = build_rankings_small_cohort_warnings(df)
+        if warn:
+            df.attrs["riskmodels_warnings"] = warn
+        return df
+
+    def filter_universe_by_ranking(
+        self,
+        *,
+        metric: RankingMetric,
+        cohort: RankingCohort,
+        window: RankingWindow,
+        min_percentile: float = 90.0,
+        limit: int = 500,
+    ) -> pd.DataFrame:
+        """Subset leaderboard rows with ``rank_percentile`` >= ``min_percentile`` (default top decile).
+
+        Fetches up to ``min(limit, 100)`` names from ``get_top_rankings`` (API cap) then filters
+        client-side. Rows with null ``rank_percentile`` are dropped.
+        """
+        cap = max(1, min(100, int(limit)))
+        df = self.get_top_rankings(
+            metric=metric,
+            cohort=cohort,
+            window=window,
+            limit=cap,
+            as_dataframe=True,
+        )
+        assert isinstance(df, pd.DataFrame)
+        if "rank_percentile" not in df.columns:
+            return df.iloc[0:0].copy()
+        sub = df.dropna(subset=["rank_percentile"])
+        out = cast(
+            pd.DataFrame,
+            sub[sub["rank_percentile"] >= float(min_percentile)].copy(),
+        )
+        meta = df.attrs.get("riskmodels_lineage")
+        if meta:
+            out.attrs["riskmodels_lineage"] = meta
+        out.attrs["legend"] = df.attrs.get("legend", SHORT_RANKINGS_LEGEND)
+        out.attrs["riskmodels_kind"] = "rankings_filtered"
+        note = (
+            f"Filtered rank_percentile>={min_percentile} from top {cap} "
+            f"({metric}/{cohort}/{window})."
+        )
+        out.attrs["riskmodels_filter_note"] = note
+        if df.attrs.get("riskmodels_warnings"):
+            out.attrs["riskmodels_warnings"] = df.attrs["riskmodels_warnings"]
+        if df.attrs.get("riskmodels_rankings_headline"):
+            out.attrs["riskmodels_parent_headline"] = df.attrs["riskmodels_rankings_headline"]
+        return out
+
+    def filter_universe(
+        self,
+        *,
+        metric: RankingMetric,
+        cohort: RankingCohort,
+        window: RankingWindow,
+        min_percentile: float = 90.0,
+        limit: int = 500,
+    ) -> pd.DataFrame:
+        """Alias for :meth:`filter_universe_by_ranking` (same parameters)."""
+        return self.filter_universe_by_ranking(
+            metric=metric,
+            cohort=cohort,
+            window=window,
+            min_percentile=min_percentile,
+            limit=limit,
+        )
+
     def get_l3_decomposition(
         self,
         ticker: str,
@@ -243,7 +533,8 @@ class RiskModelsClient:
         return_type: str = "l3_residual",
         window_days: int = 252,
         method: str = "pearson",
-    ) -> dict[str, Any]:
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
         """POST /correlation — stock vs macro factor correlations (batch-capable).
 
         Use this for batch requests (list of tickers) or when you need full
@@ -257,10 +548,11 @@ class RiskModelsClient:
             return_type: Which return series to use ("gross", "l1", "l2", "l3_residual").
             window_days: Trailing window for correlation (20-2000).
             method: "pearson" or "spearman".
+            as_dataframe: If True, return a DataFrame with SDK attrs (one row per ticker;
+                batch error rows use ``macro_batch_error`` / ``macro_batch_status``).
 
         Returns:
-            For single ticker: FactorCorrelationResponse dict.
-            For batch: Dict with "results" key containing list of responses.
+            Raw API dict unless ``as_dataframe=True`` (then ``pandas.DataFrame``).
         """
         payload: dict[str, Any] = {
             "return_type": return_type,
@@ -274,8 +566,33 @@ class RiskModelsClient:
             payload["ticker"] = t
         if factors is not None:
             payload["factors"] = factors
-        body, _lineage, _ = self._transport.request("POST", "/correlation", json=payload)
-        return body
+        body, hdr_lineage, _ = self._transport.request("POST", "/correlation", json=payload)
+        if not as_dataframe:
+            return body
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+        if isinstance(ticker, list):
+            results = body.get("results")
+            if not isinstance(results, list):
+                raise ValueError("Batch correlation response missing results array")
+            rows = [factor_correlation_batch_item_to_row(x) for x in results]
+            df = pd.DataFrame(rows)
+            attach_sdk_metadata(
+                df,
+                lineage,
+                kind="macro_correlation_batch",
+                legend=COMBINED_ERM3_MACRO_LEGEND,
+            )
+            return df
+        row = factor_correlation_body_to_row(body)
+        df = pd.DataFrame([row])
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="macro_correlation",
+            legend=COMBINED_ERM3_MACRO_LEGEND,
+        )
+        return df
 
     def get_factor_correlation_single(
         self,
@@ -285,7 +602,8 @@ class RiskModelsClient:
         return_type: str = "l3_residual",
         window_days: int = 252,
         method: str = "pearson",
-    ) -> dict[str, Any]:
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
         """GET /metrics/{ticker}/correlation — single ticker factor correlations.
 
         Lightweight GET endpoint for single-ticker correlation queries.
@@ -299,18 +617,11 @@ class RiskModelsClient:
             return_type: Which return series ("gross", "l1", "l2", "l3_residual").
             window_days: Trailing window for correlation (20-2000, default 252).
             method: "pearson" or "spearman" (default "pearson").
+            as_dataframe: If True, return a one-row DataFrame with ``macro_corr_*`` columns
+                and SDK attrs (legend includes macro correlation semantics).
 
         Returns:
-            FactorCorrelationResponse dict with keys:
-            - ticker: Resolved ticker symbol
-            - return_type: The return series used
-            - window_days: Actual window used
-            - method: Correlation method used
-            - correlations: Dict mapping factor_key to correlation value
-            - overlap_days: Number of paired observations
-            - warnings: List of any warnings
-            - _metadata: Risk model lineage metadata
-            - _agent: Request telemetry (latency_ms, request_id)
+            API dict or one-row ``pandas.DataFrame`` when ``as_dataframe=True``.
 
         Example:
             >>> client = RiskModelsClient.from_env()
@@ -330,8 +641,20 @@ class RiskModelsClient:
         }
         if factors is not None:
             params["factors"] = ",".join(factors)
-        body, _lineage, _ = self._transport.request("GET", f"/metrics/{t}/correlation", params=params)
-        return body
+        body, hdr_lineage, _ = self._transport.request("GET", f"/metrics/{t}/correlation", params=params)
+        if not as_dataframe:
+            return body
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+        row = factor_correlation_body_to_row(body)
+        df = pd.DataFrame([row])
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="macro_correlation",
+            legend=COMBINED_ERM3_MACRO_LEGEND,
+        )
+        return df
 
     def batch_analyze(
         self,

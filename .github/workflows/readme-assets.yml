@@ -1,0 +1,39 @@
+# Optional: regenerate static README charts with the Python SDK.
+# Add repo secret RISKMODELS_API_KEY. Uncomment the commit step to push PNGs back to main.
+name: Readme risk assets
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 12 * * *"
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SDK + viz deps
+        run: pip install -e "./sdk[dev]"
+
+      - name: Generate PNGs
+        env:
+          RISKMODELS_API_KEY: ${{ secrets.RISKMODELS_API_KEY }}
+          RISKMODELS_BASE_URL: ${{ vars.RISKMODELS_BASE_URL }}
+        run: python scripts/generate_readme_assets.py --out-dir assets
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: readme-risk-pngs
+          path: assets/*.png
+
+      # - name: Commit assets
+      #   run: |
+      #     git config user.name github-actions
+      #     git config user.email github-actions@github.com
+      #     git add assets/*.png
+      #     git diff --staged --quiet || (git commit -m "chore: refresh readme risk assets" && git push)

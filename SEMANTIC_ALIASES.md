@@ -17,12 +17,12 @@ To compute hedge notional: `hedge_notional_usd = position_size_usd × hr_field`
 | `l2_sector_hr` | Sector ETF component of the L2 hedge | 0.1 – 0.6 |
 | `l3_market_hr` | SPY component of the L3 (full, three-ETF) hedge | 0.2 – 1.1 |
 | `l3_sector_hr` | Sector ETF component of the L3 hedge | 0.1 – 0.5 |
-| `l3_subsector_hr` | Subsector ETF component of the L3 hedge — **can be negative** (long position) | -0.3 – 0.4 |
+| `l3_subsector_hr` | Subsector ETF component of the L3 hedge | -0.3 – 0.4 |
 
-### Sign Convention
+### Sign convention (hedge ratios)
 
-- `l3_subsector_hr` is the only HR field that can be **negative**. A negative value means a long (not short) position in the subsector ETF is required for L3 hedging.
-- All other HR fields are positive under normal conditions. A negative `l1_market_hr` is unusual and may indicate a ticker not well-modelled by SPY — check with `GET /api/tickers?search=SYMBOL`.
+- **Any HR field may be negative** (orthogonalization / factor neutralization, or a long ETF leg when the economic hedge is expressed that way). A negative value is not automatically a data or sign error.
+- **Most often**, negative HRs show up on the **market factor** (`l2_market_hr`, `l3_market_hr`) at L2 or L3; subsector and other components can also be negative depending on the name and window.
 
 ### Hedge Levels
 
@@ -80,6 +80,45 @@ High RR (> 0.5) indicates a stock with significant idiosyncratic return — usef
 
 ---
 
+## Macro factors (`POST /correlation`, `GET /metrics/{ticker}/correlation`)
+
+**POST body (JSON Schema):** `https://riskmodels.app/schemas/factor-correlation-request-v1.json` (also listed in MCP `schema-paths` as `factor-correlation-request-v1.json`). **Single-ticker success body:** `https://riskmodels.app/schemas/factor-correlation-v1.json` (batch responses use a `results` array; see OpenAPI).
+
+Daily **macro factor returns** are stored in Supabase `macro_factors` as `return_gross` per `factor_key` and trading date (`teo`). The correlation endpoints align **stock** daily returns (gross or ERM3 residual) with those series and compute **Pearson** or **Spearman** correlation over the last `window_days` **paired** observations per factor (after date alignment). The implementation requires **at least about 30** overlapping paired days per factor; otherwise that factor’s entry is `null`.
+
+### Factor keys (`factors` in JSON body; comma-separated `factors` or `factor` on GET)
+
+| Key | Typical meaning |
+|---|---|
+| `bitcoin` | Bitcoin (digital asset) daily return |
+| `gold` | Gold daily return |
+| `oil` | Oil / energy-linked daily return |
+| `dxy` | US Dollar Index (DXY) daily return |
+| `vix` | VIX (volatility index) daily return |
+| `ust10y2y` | US Treasury 10y minus 2y spread daily return |
+
+Omit `factors` to use **all six** keys. **`null` in `correlations`** means insufficient overlap, missing `macro_factors` rows for that window, or too few points — it is **not** a sign error. **Negative** correlation (e.g. with `vix`) is **expected** for many names and is not a data bug.
+
+### `return_type` (stock return series correlated to each macro factor)
+
+| Value | Stock series |
+|---|---|
+| `gross` | Daily gross stock return (`returns_gross`). |
+| `l1` | Residual vs **market only**: gross return minus `l1_market_hr` × SPY daily return. |
+| `l2` | Residual vs **market + sector**: gross return minus (`l2_market_hr` × SPY return + `l2_sector_hr` × sector ETF return). Requires a **sector ETF** on the symbol; otherwise **400**. |
+| `l3_residual` | Residual after **L3** hedge replication: gross return minus (`l3_market_hr` × SPY + `l3_sector_hr` × sector ETF + `l3_subsector_hr` × subsector ETF). Requires **sector and subsector** ETFs on the symbol; otherwise **400**. |
+
+### Response fields (success)
+
+| Field | Description |
+|---|---|
+| `correlations` | Object mapping each requested `factor_key` to a correlation coefficient (`number`) or `null`. |
+| `overlap_days` | Largest count of paired observations used **among** the requested factors (after slicing to `window_days`). |
+| `warnings` | Strings (e.g. empty `macro_factors` coverage for the window). |
+| `_metadata` / `_agent` | Same lineage and telemetry pattern as other Risk Metrics routes (see response metadata docs). |
+
+---
+
 ## Classification Fields
 
 | Field | Description |
@@ -101,7 +140,7 @@ The `/api/ticker-returns` endpoint returns a daily time series. Each row contain
 | `price_close` | `price_close` | USD | Closing price |
 | `l3_mkt_hr` | `l3_market_hr` | dollar_ratio | SPY component of L3 hedge |
 | `l3_sec_hr` | `l3_sector_hr` | dollar_ratio | Sector ETF component of L3 hedge |
-| `l3_sub_hr` | `l3_subsector_hr` | dollar_ratio | Subsector ETF component (may be negative) |
+| `l3_sub_hr` | `l3_subsector_hr` | dollar_ratio | Subsector ETF component (sign can be negative; see Sign convention) |
 | `l3_mkt_er` | `l3_market_er` | decimal_fraction | Market variance share at L3 |
 | `l3_sec_er` | `l3_sector_er` | decimal_fraction | Sector variance share at L3 |
 | `l3_sub_er` | `l3_subsector_er` | decimal_fraction | Subsector variance share at L3 |
@@ -114,10 +153,11 @@ in `sdk/riskmodels/mapping.py`.
 **Nulls:** Trailing rows (near the end of the time series) may have null HR/ER
 values where the rolling regression window has insufficient data.
 
-**Negative ratios:** You may observe negative values for `l3_sec_hr` or
-`l3_sub_hr`. This occurs due to the orthogonalization process defined in the
-Methodology (neutralizing factors against one another) and does not indicate a
-sign-error in the underlying data.
+**Negative ratios:** You may observe **negative values on any HR column** in the
+time series (e.g. `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`). That is expected under
+orthogonalization (neutralizing factors against one another); **negative market
+HR at L2 or L3 is especially common**. It does not by itself indicate a sign
+error in the underlying data.
 
 ---
 

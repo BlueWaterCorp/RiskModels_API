@@ -55,14 +55,18 @@ def attach_sdk_metadata(
     *,
     kind: str,
     include_cheatsheet: bool = True,
+    legend: str | None = None,
 ) -> None:
-    """Set attrs used by agents and `to_llm_context`."""
+    """Set attrs used by agents and `to_llm_context`.
+
+    If ``legend`` is None, uses ``SHORT_ERM3_LEGEND``. Pass a combined legend for macro / snapshot frames.
+    """
     if lineage is None:
         lineage = RiskLineage()
     attrs = getattr(obj, "attrs", None)
     if attrs is None:
         return
-    attrs["legend"] = SHORT_ERM3_LEGEND
+    attrs["legend"] = legend if legend is not None else SHORT_ERM3_LEGEND
     attrs["riskmodels_kind"] = kind
     attrs["riskmodels_lineage"] = lineage.to_json()
     if include_cheatsheet:
@@ -75,6 +79,9 @@ def ensure_dataframe_legend(df: Any, lineage: RiskLineage | None, *, kind: str) 
     """Idempotent: attach full SDK attrs if missing legend (e.g. user-constructed frames)."""
     if not hasattr(df, "attrs"):
         return df
-    if df.attrs.get("legend") != SHORT_ERM3_LEGEND:
+    from .legends import COMBINED_ERM3_MACRO_LEGEND, SHORT_RANKINGS_LEGEND
+
+    leg = df.attrs.get("legend")
+    if leg not in (SHORT_ERM3_LEGEND, COMBINED_ERM3_MACRO_LEGEND, SHORT_RANKINGS_LEGEND):
         attach_sdk_metadata(df, lineage, kind=kind)
     return df
