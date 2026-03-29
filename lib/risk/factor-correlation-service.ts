@@ -225,6 +225,44 @@ async function loadMacroFactorMaps(
   return out;
 }
 
+/**
+ * Redis / JSON round-trip turns `Map` into plain objects; restore `.get` support.
+ */
+function reviveMacroFactorMaps(
+  raw: Map<string, Map<string, number>> | Record<string, unknown>,
+): Map<string, Map<string, number>> {
+  if (raw instanceof Map) {
+    const out = new Map<string, Map<string, number>>();
+    for (const [factorKey, teoMap] of raw) {
+      if (teoMap instanceof Map) {
+        out.set(factorKey, teoMap);
+      } else if (teoMap && typeof teoMap === "object") {
+        out.set(
+          factorKey,
+          new Map(
+            Object.entries(teoMap as Record<string, number>).map(([teo, val]) => [
+              teo,
+              typeof val === "number" ? val : Number(val),
+            ]),
+          ),
+        );
+      }
+    }
+    return out;
+  }
+  const out = new Map<string, Map<string, number>>();
+  for (const [factorKey, teoVal] of Object.entries(raw)) {
+    if (!teoVal || typeof teoVal !== "object") continue;
+    const inner = new Map<string, number>();
+    for (const [teo, val] of Object.entries(teoVal as Record<string, unknown>)) {
+      const n = typeof val === "number" ? val : Number(val);
+      if (!Number.isNaN(n)) inner.set(teo, n);
+    }
+    out.set(factorKey, inner);
+  }
+  return out;
+}
+
 export async function getMacroFactorMapsCached(
   factorKeys: string[],
   startDate: string,
@@ -234,11 +272,12 @@ export async function getMacroFactorMapsCached(
     start: startDate,
     f: sorted.join(","),
   });
-  return getOrCompute(
+  const raw = await getOrCompute(
     key,
     () => loadMacroFactorMaps(sorted, startDate),
     CACHE_TTL.DAILY,
   );
+  return reviveMacroFactorMaps(raw as Map<string, Map<string, number>> | Record<string, unknown>);
 }
 
 export async function computeFactorCorrelation(

@@ -26,6 +26,8 @@ Requires **Python 3.10+**.
 
 With `pip install -e ".[dev]"` or `pip install "riskmodels-py[dotenv]"`, `RiskModelsClient.from_env()` loads **`.env`** then **`.env.local`** from the current working directory (walking up to the first directory that contains either file). **Existing environment variables are never overwritten** (shell exports and CI secrets win). Among files only, `.env.local` overrides `.env` for keys not already set.
 
+To call a **local** Next app (`npm run dev`), set **`RISKMODELS_BASE_URL=http://localhost:3000/api`** in `.env.local` (see repo root `MAINTENANCE_GUIDE.md`).
+
 ## Quickstart
 
 ```python
