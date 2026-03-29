@@ -69,7 +69,18 @@ class Transport:
                     body = r.json()
                 except Exception:
                     body = r.text
-                msg = str(body) if not isinstance(body, dict) else body.get("message") or body.get("error") or str(body)
+                if isinstance(body, dict):
+                    msg = (
+                        body.get("message")
+                        or body.get("error")
+                        or (body.get("detail") if isinstance(body.get("detail"), str) else None)
+                        or str(body)
+                    )
+                else:
+                    msg = str(body) if body else ""
+                text_fallback = (r.text or "").strip()
+                if not (msg and str(msg).strip()):
+                    msg = text_fallback[:2000] if text_fallback else f"HTTP {r.status_code} (empty error body)"
                 exc: type[APIError] = AuthError if r.status_code == 401 else APIError
                 raise exc(str(msg), status_code=r.status_code, body=body)
             if expect_json:

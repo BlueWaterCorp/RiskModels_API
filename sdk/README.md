@@ -22,12 +22,16 @@ cd sdk && pip install -e ".[dev]"
 
 Requires **Python 3.10+**.
 
+### Local env files (monorepo / Next.js parity)
+
+With `pip install -e ".[dev]"` or `pip install "riskmodels-py[dotenv]"`, `RiskModelsClient.from_env()` loads **`.env`** then **`.env.local`** from the current working directory (walking up to the first directory that contains either file). **Existing environment variables are never overwritten** (shell exports and CI secrets win). Among files only, `.env.local` overrides `.env` for keys not already set.
+
 ## Quickstart
 
 ```python
 from riskmodels import RiskModelsClient
 
-client = RiskModelsClient.from_env()  # RISKMODELS_API_KEY or OAuth client env vars
+client = RiskModelsClient.from_env()  # RISKMODELS_API_KEY or OAuth client env vars; optional .env / .env.local (see below)
 df = client.get_metrics("NVDA", as_dataframe=True)
 pa = client.analyze({"NVDA": 0.5, "AAPL": 0.5})  # alias for analyze_portfolio
 print(pa.portfolio_hedge_ratios["l3_market_hr"])
@@ -51,6 +55,19 @@ snap = client.get_metrics_with_macro_correlation(
 print(snap["macro_corr_bitcoin"].iloc[0], snap["l3_market_hr"].iloc[0])
 print(to_llm_context(snap))
 ```
+
+## README and docs site PNGs (maintainers)
+
+From the **repository root** (not `sdk/`), with a free-tier `RISKMODELS_API_KEY`:
+
+```bash
+export RISKMODELS_API_KEY='paste-your-key-here'
+python scripts/generate_readme_assets.py
+```
+
+Use single quotes around the key. If you add an end-of-line comment, it must start with `#` (ASCII). Otherwise put the comment on its own line above.
+
+This calls **MAG7** `POST /correlation` and `get_rankings`, then writes `assets/*.png` and mirrors the same files to `public/docs/readme/` for the Next.js docs hub. Commit both trees so GitHub and the portal stay in sync.
 
 ## Recursive Visual Refinement (MatPlotAgent)
 

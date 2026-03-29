@@ -465,11 +465,15 @@ export function withBilling(
       // 8.5. Add token bucket headers ($20 = 1M tokens, so 1 token = $0.00002)
       const TOKEN_PRICE_USD = 0.00002;
       const tokensConsumed = Math.ceil(costUsd / TOKEN_PRICE_USD);
-      const balanceRemaining = await getUserBalance(userId);
-      const tokensRemaining = Math.floor(balanceRemaining / TOKEN_PRICE_USD);
-
       response.headers.set("X-Tokens-Consumed", String(tokensConsumed));
-      response.headers.set("X-Balance-Remaining", String(tokensRemaining));
+      try {
+        const balanceRemaining = await getUserBalance(userId);
+        const tokensRemaining = Math.floor(balanceRemaining / TOKEN_PRICE_USD);
+        response.headers.set("X-Balance-Remaining", String(tokensRemaining));
+      } catch (balanceHeaderErr) {
+        // Never fail the response after a successful handler — balance read is best-effort for headers only
+        console.error("[Billing] Failed to read balance for response headers:", balanceHeaderErr);
+      }
 
       // 8.6. Add monthly spend cap headers (if user has a cap set)
       try {
