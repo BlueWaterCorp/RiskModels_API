@@ -28,16 +28,13 @@ export interface L3DecompositionResult {
 
 export class L3DecompositionService {
   /**
-   * Get L3 risk decomposition for a ticker
+   * Get L3 risk decomposition for a ticker from V3 `security_history`.
    * @param ticker Stock ticker symbol (e.g. AAPL)
    * @param marketFactorEtf Market factor ETF (default: SPY)
-   * @param dataSource Data source: 'factset' (default, from security_history)
-   * @returns L3 decomposition data with time series
    */
   async getDecomposition(
     ticker: string,
     marketFactorEtf: string = 'SPY',
-    dataSource: string = 'factset'
   ): Promise<L3DecompositionResult | null> {
     const upperTicker = ticker.toUpperCase();
 
@@ -85,7 +82,7 @@ export class L3DecompositionService {
       l3_res_er: pivoted.map(p => p.l3_res_er as number ?? null),
       market_factor_etf: marketFactorEtf,
       universe: 'US_EQUITY',
-      data_source: 'factset',
+      data_source: 'security_history',
     };
     } catch (err) {
       console.error('[L3DecompositionService] Error for', ticker, ':', err instanceof Error ? err.message : err);

@@ -112,3 +112,25 @@ export const FactorCorrelationRequestSchema = z.object({
 });
 
 export type FactorCorrelationRequest = z.infer<typeof FactorCorrelationRequestSchema>;
+
+/**
+ * Schema for POST /api/portfolio/risk-index
+ *
+ * Positions: array of { ticker, weight } where weights are fractional (sum ≈ 1.0)
+ * or dollar amounts (will be normalized).
+ */
+export const PortfolioRiskIndexRequestSchema = z.object({
+  positions: z
+    .array(
+      z.object({
+        ticker: TickerSchema,
+        weight: z.coerce.number().positive("Weight must be positive"),
+      })
+    )
+    .min(1, "At least one position is required")
+    .max(100, "Maximum 100 positions"),
+  timeSeries: z.boolean().default(false),
+  years: YearsSchema,
+});
+
+export type PortfolioRiskIndexRequest = z.infer<typeof PortfolioRiskIndexRequestSchema>;

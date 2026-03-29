@@ -37,13 +37,7 @@ Its role is to provide a stable key for:
 - classification lookup
 - shares history
 
-The canonical identifier strategy is intentionally conservative:
-
-- **FIGI** is preferred when available
-- **ISIN** is the next fallback
-- **ticker** is used only when stronger identifiers are unavailable
-
-That ordering is useful because the model is built over long horizons and ticker strings are the least stable identifier in the stack.
+The canonical identifier strategy is intentionally conservative: stronger vendor or exchange identifiers are preferred when available, with **other fallbacks including ticker** when needed. Ticker strings are the least stable identifier over long horizons, so the stack avoids relying on them alone when better keys exist.
 
 Operationally, the Security Master contributes three things to the model quality:
 
@@ -69,7 +63,7 @@ ERM3 is deliberately not a flat factor model. The model uses a three-level hiera
 The sector and subsector assignments are driven by structured classification fields in the engine:
 
 - **sector level:** BW sector code
-- **subsector level:** FactSet industry code mapped into a maintained subsector ETF registry
+- **subsector level:** industry-level classification mapped into a maintained subsector ETF registry
 
 This matters for two reasons.
 
