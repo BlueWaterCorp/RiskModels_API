@@ -853,7 +853,7 @@ components:
           type: string
         data_source:
           type: string
-          example: factset
+          example: security_history
 
     FactorCorrelationRequest:
       type: object

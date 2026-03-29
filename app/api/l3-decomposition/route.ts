@@ -28,12 +28,11 @@ export const GET = withBilling(
     }
 
     const { ticker, market_factor_etf } = validation.data;
-    const dataSource = "factset";
 
     try {
       const fetchStart = performance.now();
       const service = getL3DecompositionService();
-      const result = await service.getDecomposition(ticker, market_factor_etf, dataSource);
+      const result = await service.getDecomposition(ticker, market_factor_etf);
 
       if (!result) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });

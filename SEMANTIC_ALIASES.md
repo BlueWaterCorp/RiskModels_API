@@ -85,10 +85,8 @@ High RR (> 0.5) indicates a stock with significant idiosyncratic return — usef
 | Field | Description |
 |---|---|
 | `bw_sector_code` | Barra World (BW) sector classification integer |
-| `fs_sector_code` | FactSet sector code integer |
-| `fs_industry_code` | FactSet industry code integer |
 
-These codes are used internally to assign sector and subsector ETFs for L2 and L3 regressions.
+`bw_sector_code` and internal industry-level mapping are used to assign sector and subsector ETFs for L2 and L3 regressions.
 
 ---
 

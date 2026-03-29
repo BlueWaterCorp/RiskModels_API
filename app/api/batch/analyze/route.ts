@@ -18,7 +18,7 @@ function getSupabase() {
   return createAdminClient();
 }
 
-// Helper: Map FactSet sector codes to representative ETFs
+// Helper: Map sector codes to representative ETFs
 function sectorCodeToETF(sectorCode: string): string {
   const sectorMap: Record<string, string> = {
     "10": "XLK", // Technology
@@ -36,7 +36,7 @@ function sectorCodeToETF(sectorCode: string): string {
   return sectorMap[sectorCode] || "XLK";
 }
 
-// Helper: Map FactSet industry codes to representative ETFs
+// Helper: Map industry codes to representative ETFs
 function industryCodeToETF(industryCode: string): string {
   // For now, map to sector ETFs - can be expanded for finer granularity
   const industryMap: Record<string, string> = {

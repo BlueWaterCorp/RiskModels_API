@@ -943,7 +943,7 @@
           },
           "data_source": {
             "type": "string",
-            "example": "factset"
+            "example": "security_history"
           }
         }
       },

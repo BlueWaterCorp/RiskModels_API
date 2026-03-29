@@ -143,7 +143,7 @@ function getResponseExample(endpoint: Endpoint): string {
         l3_res_er: [0.35, 0.38],
         market_factor_etf: 'SPY',
         universe: 'US_EQUITY',
-        data_source: 'factset',
+        data_source: 'security_history',
       },
       null,
       2
