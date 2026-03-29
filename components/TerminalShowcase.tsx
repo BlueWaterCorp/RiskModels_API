@@ -282,20 +282,20 @@ const scenarioE: Scenario = {
   ],
 };
 
-// ─── Scenario F: Python SDK (PyPI install + agent-native run) ────────────────
+// ─── Scenario F: RiskModels CLI (pip install + agent decompose) ────────────
 const scenarioF: Scenario = {
-  id: 'python-sdk',
-  label: 'Python SDK',
-  titleBarLabel: 'pip install riskmodels-py[xarray] → portfolio_llm.py',
+  id: 'riskmodels-cli',
+  label: 'RiskModels CLI',
+  titleBarLabel: 'pip install riskmodels-cli → agent decompose',
   contextBadge: 'PyPI · NVDA 40% · GOOGL 60%',
-  command: 'pip install riskmodels-py[xarray] && python portfolio_llm.py',
+  command: 'pip install riskmodels-cli && riskmodels agent decompose --portfolio ./positions.json',
   lines: [
     {
       id: 0,
       delayMs: 0,
       content: (
         <>
-          <span style={{ color: C.muted }}>Collecting riskmodels-py</span>
+          <span style={{ color: C.muted }}>Collecting riskmodels-cli</span>
         </>
       ),
     },
@@ -305,7 +305,7 @@ const scenarioF: Scenario = {
       content: (
         <>
           <span style={{ color: C.muted }}> </span>
-          <span style={{ color: C.muted }}>Downloading riskmodels_py-0.2.0-py3-none-any.whl (35 kB)</span>
+          <span style={{ color: C.muted }}>Downloading riskmodels_cli-1.0.1-py3-none-any.whl (42 kB)</span>
         </>
       ),
     },
@@ -314,7 +314,7 @@ const scenarioF: Scenario = {
       delayMs: 620,
       content: (
         <>
-          <span style={{ color: C.muted }}>Installing collected packages: riskmodels-py</span>
+          <span style={{ color: C.muted }}>Installing collected packages: riskmodels-cli</span>
         </>
       ),
     },
@@ -323,7 +323,7 @@ const scenarioF: Scenario = {
       delayMs: 900,
       content: (
         <>
-          <span style={{ color: C.green }}>Successfully installed riskmodels-py-0.2.0</span>
+          <span style={{ color: C.green }}>Successfully installed riskmodels-cli-1.0.1</span>
         </>
       ),
     },
@@ -334,7 +334,7 @@ const scenarioF: Scenario = {
       content: (
         <>
           <span style={{ color: C.info }}>[INFO]</span>{' '}
-          <span style={{ color: C.muted }}>RiskModelsClient.from_env() → authenticated via RISKMODELS_API_KEY</span>
+          <span style={{ color: C.muted }}>riskmodels 1.0.1 — RISKMODELS_API_KEY from environment</span>
         </>
       ),
     },
