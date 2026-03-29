@@ -77,7 +77,9 @@ Prefer the Python SDK over raw REST for agent-native workflows — ticker resolu
 [![PyPI version](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
 
 ```bash
-pip install riskmodels-py[xarray]
+pip install riskmodels-py
+# Optional — xarray cube from batch Parquet/CSV:
+# pip install riskmodels-py[xarray]
 ```
 
 **Quickstart:**

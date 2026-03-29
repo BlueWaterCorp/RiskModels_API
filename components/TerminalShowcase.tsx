@@ -138,6 +138,195 @@ const scenarioB: Scenario = {
   ],
 };
 
+// ─── Scenario Py: Python SDK (PyPI riskmodels-py — separate from npm CLI) ───
+const scenarioPythonSdk: Scenario = {
+  id: 'python-sdk',
+  label: 'Python SDK',
+  titleBarLabel: 'pip install riskmodels-py (PyPI) → portfolio analyze',
+  contextBadge: 'PyPI · NVDA 40% · GOOGL 60%',
+  command: 'pip install riskmodels-py && python portfolio_analyze.py',
+  lines: [
+    {
+      id: 0,
+      delayMs: 0,
+      content: (
+        <>
+          <span style={{ color: C.muted }}>Collecting riskmodels-py</span>
+        </>
+      ),
+    },
+    {
+      id: 1,
+      delayMs: 320,
+      content: (
+        <>
+          <span style={{ color: C.muted }}> </span>
+          <span style={{ color: C.muted }}>Downloading riskmodels_py-0.2.0-py3-none-any.whl (35 kB)</span>
+        </>
+      ),
+    },
+    {
+      id: 2,
+      delayMs: 620,
+      content: (
+        <>
+          <span style={{ color: C.muted }}>Installing collected packages: riskmodels-py</span>
+        </>
+      ),
+    },
+    {
+      id: 3,
+      delayMs: 900,
+      content: (
+        <>
+          <span style={{ color: C.green }}>Successfully installed riskmodels-py-0.2.0</span>
+        </>
+      ),
+    },
+    {
+      id: 4,
+      delayMs: 1080,
+      content: (
+        <>
+          <span style={{ color: C.dim }}>
+            <span style={{ color: C.muted }}>
+              Optional: pip install riskmodels-py[xarray] for get_dataset / xarray cubes
+            </span>
+          </span>
+        </>
+      ),
+    },
+    { id: 5, delayMs: 1280, content: <span>&nbsp;</span> },
+    {
+      id: 6,
+      delayMs: 1440,
+      content: (
+        <>
+          <span style={{ color: C.info }}>[INFO]</span>{' '}
+          <span style={{ color: C.muted }}>RiskModelsClient.from_env() → RISKMODELS_API_KEY</span>
+        </>
+      ),
+    },
+    {
+      id: 7,
+      delayMs: 1840,
+      content: (
+        <>
+          <span style={{ color: C.info }}>[INFO]</span>{' '}
+          <span style={{ color: C.muted }}>Ticker alias detected: GOOGL → GOOG (canonical)</span>
+        </>
+      ),
+    },
+    {
+      id: 8,
+      delayMs: 2240,
+      content: (
+        <>
+          <span style={{ color: C.info }}>[INFO]</span>{' '}
+          <span style={{ color: C.muted }}>POST /batch/analyze → 2 tickers, 252 dates, semantic normalization complete</span>
+        </>
+      ),
+    },
+    { id: 9, delayMs: 2540, content: <span>&nbsp;</span> },
+    {
+      id: 10,
+      delayMs: 2680,
+      content: <span style={{ color: C.dim }}>## Portfolio Hedge Ratios (Holdings-Weighted)</span>,
+    },
+    { id: 11, delayMs: 2840, content: <span>&nbsp;</span> },
+    {
+      id: 12,
+      delayMs: 2980,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.key }}>metric</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.key }}>value</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.key }}>unit</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
+    },
+    {
+      id: 13,
+      delayMs: 3120,
+      content: <span style={{ color: C.dim }}>|--------|-------|------|</span>,
+    },
+    {
+      id: 14,
+      delayMs: 3260,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_market_hr</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.91</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>$/$ SPY</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
+    },
+    {
+      id: 15,
+      delayMs: 3400,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_sector_hr</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.13</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>$/$ XLK</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
+    },
+    {
+      id: 16,
+      delayMs: 3540,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_subsector_hr</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.07</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>$/$ SOXX</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
+    },
+    {
+      id: 17,
+      delayMs: 3680,
+      content: (
+        <span>
+          <span style={{ color: C.dim }}>| </span>
+          <span style={{ color: C.bright }}>l3_residual_er</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.num }}>0.24</span>
+          <span style={{ color: C.dim }}> | </span>
+          <span style={{ color: C.muted }}>variance fraction</span>
+          <span style={{ color: C.dim }}> |</span>
+        </span>
+      ),
+    },
+    { id: 18, delayMs: 3860, content: <span>&nbsp;</span> },
+    {
+      id: 19,
+      delayMs: 4000,
+      content: (
+        <span style={{ color: C.dim }}>
+          <span style={{ color: C.muted }}>Lineage: ERM3-L3-v30 · 2026-03-20 · 2,987 universe</span>
+        </span>
+      ),
+    },
+  ],
+};
+
 // ─── Scenario C: Drift Monitor ────────────────────────────────────────────────
 const scenarioC: Scenario = {
   id: 'monitor',
@@ -282,20 +471,20 @@ const scenarioE: Scenario = {
   ],
 };
 
-// ─── Scenario F: RiskModels CLI (pip install + agent decompose) ────────────
+// ─── Scenario F: RiskModels CLI (npm global install — matches README + quickstart)
 const scenarioF: Scenario = {
   id: 'riskmodels-cli',
   label: 'RiskModels CLI',
-  titleBarLabel: 'pip install riskmodels-cli → agent decompose',
-  contextBadge: 'PyPI · NVDA 40% · GOOGL 60%',
-  command: 'pip install riskmodels-cli && riskmodels agent decompose --portfolio ./positions.json',
+  titleBarLabel: 'npm install -g riskmodels-cli → agent decompose',
+  contextBadge: 'npm · NVDA 40% · GOOGL 60%',
+  command: 'npm install -g riskmodels-cli && riskmodels agent decompose --portfolio ./positions.json',
   lines: [
     {
       id: 0,
       delayMs: 0,
       content: (
         <>
-          <span style={{ color: C.muted }}>Collecting riskmodels-cli</span>
+          <span style={{ color: C.muted }}>npm install -g riskmodels-cli</span>
         </>
       ),
     },
@@ -305,7 +494,7 @@ const scenarioF: Scenario = {
       content: (
         <>
           <span style={{ color: C.muted }}> </span>
-          <span style={{ color: C.muted }}>Downloading riskmodels_cli-1.0.1-py3-none-any.whl (42 kB)</span>
+          <span style={{ color: C.muted }}>added 47 packages, and audited 48 packages in 2s</span>
         </>
       ),
     },
@@ -314,7 +503,7 @@ const scenarioF: Scenario = {
       delayMs: 620,
       content: (
         <>
-          <span style={{ color: C.muted }}>Installing collected packages: riskmodels-cli</span>
+          <span style={{ color: C.muted }}>1 package is looking for funding</span>
         </>
       ),
     },
@@ -323,7 +512,7 @@ const scenarioF: Scenario = {
       delayMs: 900,
       content: (
         <>
-          <span style={{ color: C.green }}>Successfully installed riskmodels-cli-1.0.1</span>
+          <span style={{ color: C.green }}>found 0 vulnerabilities · riskmodels-cli@1.0.1</span>
         </>
       ),
     },
@@ -458,7 +647,15 @@ const scenarioF: Scenario = {
   ],
 };
 
-const SCENARIOS: Scenario[] = [scenarioA, scenarioB, scenarioF, scenarioC, scenarioD, scenarioE];
+const SCENARIOS: Scenario[] = [
+  scenarioA,
+  scenarioB,
+  scenarioPythonSdk,
+  scenarioF,
+  scenarioC,
+  scenarioD,
+  scenarioE,
+];
 
 export interface TerminalShowcaseProps {
   /** When true, renders only inner content (e.g. inside ProductWorkbench). */
@@ -596,9 +793,10 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
       </h2>
       <p className="text-zinc-400 max-w-2xl mx-auto text-base leading-relaxed px-1">
         Stylized demos (not live recordings) — REST and SDK shapes match the API; CLI &apos;agent&apos; and some MCP
-        tool names illustrate product workflows. Use{' '}
-        <span className="text-zinc-300">riskmodels --help</span> and MCP{' '}
-        <span className="text-zinc-300">tools/list</span> for what your install actually exposes. Python SDK:{' '}
+        tool names illustrate product workflows.{' '}
+        <span className="font-medium text-zinc-300">Python SDK:</span>{' '}
+        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">pip install riskmodels-py</code>
+        {' on '}
         <a
           href="https://pypi.org/project/riskmodels-py/"
           target="_blank"
@@ -607,14 +805,37 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         >
           PyPI
         </a>
-        {' · '}
+        {' '}
+        (<code className="text-zinc-400 text-[0.8rem]">[xarray]</code> optional for cubes).{' '}
+        <span className="font-medium text-zinc-300">CLI:</span>{' '}
+        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">npm install -g riskmodels-cli</code>
+        {' on '}
+        <a
+          href="https://www.npmjs.com/package/riskmodels-cli"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          npm
+        </a>
+        . Use <span className="text-zinc-300">riskmodels --help</span> and MCP{' '}
+        <span className="text-zinc-300">tools/list</span> for what your install exposes.{' '}
         <a
           href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary hover:underline"
         >
-          source (sdk/)
+          sdk/
+        </a>
+        {' · '}
+        <a
+          href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/cli"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          cli/
         </a>
         .
       </p>
