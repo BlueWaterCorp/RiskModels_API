@@ -12,8 +12,11 @@ import re
 import subprocess
 import tempfile
 import textwrap
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
+
+import pandas as pd
 
 if TYPE_CHECKING:
     from .client import RiskModelsClient
@@ -38,6 +41,24 @@ FINANCIAL_COLOR_STANDARDS: dict[str, str] = {
     "subsector_risk": "#4169E1",  # Royal Blue for Subsector
 }
 
+# GitHub-flavored contrast (README light/dark backgrounds)
+GITHUB_LIGHT = {
+    "canvas": "#f6f8fa",
+    "fg": "#24292f",
+    "muted": "#6e7781",
+    "green": "#1a7f37",
+    "red": "#cf222e",
+}
+GITHUB_DARK = {
+    "canvas": "#0d1117",
+    "fg": "#e6edf3",
+    "muted": "#8b949e",
+    "green": "#3fb950",
+    "red": "#f85149",
+}
+
+GitHubChartTheme = Literal["github_light", "github_dark", "transparent"]
+
 # System context for the agent
 SYSTEM_CONTEXT = """You are a Quant Visual Auditor specialized in financial data visualization.
 
@@ -45,6 +66,9 @@ SDK USAGE RULES:
 - ALWAYS use semantic field names: l3_market_hr, l3_sector_hr, l3_subsector_hr (NOT wire keys like l3_mkt_hr)
 - Use client.get_l3_decomposition() for factor decomposition data
 - Use client.get_ticker_returns() for returns data
+- Use client.get_rankings(ticker) for cross-sectional rank_percentile by universe / sector / subsector;
+  use save_ranking_percentile_bar_chart() for cohort bars or save_ranking_chart() for a single “needle” on 0–100
+- For README / GitHub embedding: save PNGs with transparent=True (and bbox_inches='tight') unless a solid theme is required
 
 FINANCIAL COLOR STANDARDS (MUST FOLLOW):
 - Market Risk (SPY): Indigo (#4B0082)
@@ -58,6 +82,8 @@ GRAPH REQUIREMENTS:
 3. Legend must be accurate and not obscure data
 4. Professional styling suitable for institutional presentations
 5. Use plt.tight_layout() to prevent clipping
+6. For rankings: cohort order universe → sector → subsector; x-axis rank_percentile (0–100, 100=best)
+7. For GitHub README/PR embeds, prefer PNG with transparent=True and bbox_inches='tight'
 
 Your response must be either:
 - "COMPLETE" if the graph meets all professional standards
@@ -90,7 +116,8 @@ RULES FOR CORRECTED CODE:
 4. Follow financial color standards: Market=Indigo, Sector=Green, Residual=Gray
 5. Save the output to: {output_path}
 6. Include plt.tight_layout() before saving
-7. Add appropriate title, labels, and legend
+7. For PNGs intended for GitHub README/Issues, use fig.savefig(..., transparent=True, bbox_inches='tight', dpi=150)
+8. Add appropriate title, labels, and legend
 
 Provide ONLY the Python code, no markdown formatting or explanations.
 """
@@ -105,6 +132,7 @@ SDK USAGE:
 - Use: from riskmodels import RiskModelsClient; client = RiskModelsClient.from_env()
 - Use semantic names: l3_market_hr, l3_sector_hr, l3_subsector_hr, l3_residual_er
 - Fetch data using client.get_l3_decomposition() or client.get_ticker_returns()
+- For ranking percentile bars: df = client.get_rankings('TICKER'); slice one metric+window; then save_ranking_percentile_bar_chart(slice, path, ...)
 
 STYLING REQUIREMENTS:
 - Market Risk (SPY): Indigo (#4B0082)
@@ -113,11 +141,256 @@ STYLING REQUIREMENTS:
 - Subsector Risk: Royal Blue (#4169E1)
 - Use plt.tight_layout() to prevent clipping
 - Professional fonts and sizing
+- For GitHub markdown embeds, prefer transparent=True on savefig with bbox_inches='tight'
 
 OUTPUT:
-Save the figure to: {output_path}
+Save the figure to: {output_path} (use transparent=True for README-friendly PNGs when appropriate)
 Provide ONLY the Python code, no markdown formatting or explanations.
 """
+
+
+_COHORT_BAR_ORDER = ["universe", "sector", "subsector"]
+_COHORT_BAR_COLORS: dict[str, str] = {
+    "universe": FINANCIAL_COLOR_STANDARDS["market_risk"],
+    "sector": FINANCIAL_COLOR_STANDARDS["sector_risk"],
+    "subsector": FINANCIAL_COLOR_STANDARDS["subsector_risk"],
+}
+
+
+def save_ranking_percentile_bar_chart(
+    df: pd.DataFrame,
+    output_path: str,
+    *,
+    metric: str | None = None,
+    window: str | None = None,
+    title: str | None = None,
+    ticker: str | None = None,
+    transparent: bool = False,
+) -> str:
+    """Horizontal bar chart of ``rank_percentile`` by ``cohort`` (universe / sector / subsector).
+
+    Expects a slice of ``client.get_rankings()`` with columns ``cohort`` and ``rank_percentile``.
+    Optional ``metric`` / ``window`` filter when those columns exist. Requires matplotlib.
+
+    Returns:
+        Path written (same as ``output_path``).
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "save_ranking_percentile_bar_chart requires matplotlib; pip install matplotlib",
+        ) from e
+
+    plot_df = df.copy()
+    if metric is not None and "metric" in plot_df.columns:
+        plot_df = plot_df.loc[plot_df["metric"].astype(str) == metric]
+    if window is not None and "window" in plot_df.columns:
+        plot_df = plot_df.loc[plot_df["window"].astype(str) == window]
+    need = {"cohort", "rank_percentile"}
+    if not need.issubset(plot_df.columns):
+        raise ValueError(f"DataFrame must include columns {sorted(need)}")
+    plot_df = plot_df.dropna(subset=["rank_percentile", "cohort"])
+    if plot_df.empty:
+        raise ValueError("No rows with non-null cohort and rank_percentile")
+
+    def _cohort_key(c: str) -> int:
+        s = str(c).lower()
+        return _COHORT_BAR_ORDER.index(s) if s in _COHORT_BAR_ORDER else 99
+
+    plot_df = plot_df.assign(_sort=plot_df["cohort"].map(_cohort_key)).sort_values("_sort")
+    cohorts = [str(c) for c in plot_df["cohort"]]
+    vals = plot_df["rank_percentile"].astype(float).tolist()
+    colors = [_COHORT_BAR_COLORS.get(str(c).lower(), "#555555") for c in cohorts]
+
+    fig, ax = plt.subplots(figsize=(8, 3.2))
+    if transparent:
+        fig.patch.set_facecolor("none")
+        ax.set_facecolor("none")
+    y_pos = range(len(cohorts))
+    ax.barh(y_pos, vals, color=colors, height=0.55)
+    ax.set_yticks(list(y_pos))
+    ax.set_yticklabels([c.title() for c in cohorts])
+    ax.set_xlabel("Rank percentile (100 = best)")
+    ax.set_xlim(0, 100)
+    ax.axvline(50, color="#cccccc", linestyle="--", linewidth=0.8)
+    parts: list[str] = []
+    if ticker:
+        parts.append(str(ticker))
+    if metric:
+        parts.append(str(metric))
+    if window:
+        parts.append(str(window))
+    ax.set_title(title or " — ".join(parts) or "Cross-sectional rank percentiles")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight", transparent=transparent)
+    plt.close(fig)
+    return output_path
+
+
+def _ranking_percentile_from_mapping(ranking_data: Mapping[str, Any] | pd.Series) -> float:
+    if isinstance(ranking_data, pd.Series):
+        d = ranking_data.to_dict()
+    else:
+        d = dict(ranking_data)
+    v = d.get("rank_percentile", d.get("percentile"))
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        raise ValueError("ranking_data must include rank_percentile or percentile")
+    return float(v)
+
+
+def save_ranking_chart(
+    ticker: str,
+    ranking_data: Mapping[str, Any] | pd.Series,
+    path: str = "ranking_snapshot.png",
+    *,
+    subtitle: str | None = None,
+    theme: GitHubChartTheme = "github_light",
+    transparent: bool | None = None,
+    dpi: int = 150,
+) -> str:
+    """Single-ticker “needle” on a 0–100 cross-sectional scale (``rank_percentile``, 100 = best).
+
+    Draws a light Gaussian “ghost” band and a vertical marker at the percentile. Optimized for
+    static PNGs in GitHub README / Issues (no seaborn; matplotlib only).
+
+    ``theme`` selects GitHub-like palettes; ``transparent`` defaults to True when ``theme`` is
+    ``\"transparent\"``, else False.
+    """
+    import math
+
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as e:  # pragma: no cover
+        raise ImportError("save_ranking_chart requires matplotlib; pip install matplotlib") from e
+
+    pct = _ranking_percentile_from_mapping(ranking_data)
+    pct = max(0.0, min(100.0, pct))
+
+    if transparent is None:
+        transparent = theme == "transparent"
+
+    if theme == "github_light":
+        pal = GITHUB_LIGHT
+    elif theme == "github_dark":
+        pal = GITHUB_DARK
+    else:
+        pal = GITHUB_LIGHT
+
+    fig, ax = plt.subplots(figsize=(8, 2.2))
+    if transparent:
+        fig.patch.set_facecolor("none")
+        ax.set_facecolor("none")
+    else:
+        fig.patch.set_facecolor(pal["canvas"])
+        ax.set_facecolor(pal["canvas"])
+
+    xs = [i * 0.5 for i in range(201)]
+    mu, sigma = 50.0, 22.0
+    ys = [math.exp(-0.5 * ((x - mu) / sigma) ** 2) for x in xs]
+    ym = max(ys) or 1.0
+    ys = [y / ym for y in ys]
+    fill_c = pal["green"] if theme != "transparent" else "#238636"
+    ax.fill_between(xs, 0, ys, color=fill_c, alpha=0.38, linewidth=0)
+
+    needle = pal["red"] if theme != "transparent" else "#f85149"
+    ax.axvline(pct, color=needle, linewidth=3.0, zorder=5)
+
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 1.05)
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    fg = pal["fg"]
+    title_txt = f"{ticker} rank percentile: {pct:.1f}"
+    ax.set_title(title_txt, color=fg, fontsize=12, fontweight="semibold", loc="left", pad=12)
+    if subtitle:
+        ax.text(
+            0.0,
+            -0.35,
+            subtitle,
+            transform=ax.transAxes,
+            color=pal["muted"],
+            fontsize=9,
+        )
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    plt.close(fig)
+    return path
+
+
+def save_macro_heatmap(
+    portfolio_df: pd.DataFrame,
+    path: str = "macro_heatmap.png",
+    *,
+    title: str = "Portfolio macro sensitivity",
+    annot: bool = True,
+    figsize: tuple[float, float] = (10, 6),
+    transparent: bool = False,
+    dpi: int = 150,
+) -> str:
+    """Correlation heatmap for numeric columns (e.g. tickers × ``macro_corr_*`` or returns).
+
+    Uses a red–yellow–green diverging map centered at zero. Matplotlib only (no seaborn).
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import TwoSlopeNorm
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "save_macro_heatmap requires matplotlib; pip install matplotlib",
+        ) from e
+
+    num = portfolio_df.select_dtypes(include=["number"])
+    if num.shape[1] < 2:
+        raise ValueError("portfolio_df needs at least two numeric columns for a correlation matrix")
+    corr = num.corr()
+    arr = corr.to_numpy(dtype=float)
+    n, m = arr.shape
+    norm = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    if transparent:
+        fig.patch.set_facecolor("none")
+        ax.set_facecolor("none")
+    im = ax.imshow(arr, cmap="RdYlGn", norm=norm, aspect="auto")
+    ax.set_xticks(range(m))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(list(corr.columns), rotation=45, ha="right")
+    ax.set_yticklabels(list(corr.index))
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    if annot:
+        for i in range(n):
+            for j in range(m):
+                val = arr[i, j]
+                if val != val:  # NaN
+                    continue
+                t = f"{val:.2f}"
+                ax.text(
+                    j,
+                    i,
+                    t,
+                    ha="center",
+                    va="center",
+                    color="#1a1a1a" if abs(val) < 0.55 else "#f6f8fa",
+                    fontsize=8,
+                )
+    fig.tight_layout()
+    fig.savefig(path, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    plt.close(fig)
+    return path
 
 
 @dataclass
@@ -408,7 +681,7 @@ class MatPlotAgent:
                     "code": current_code,
                     "execution_success": True,
                     "evaluation_error": str(e),
-                )
+                })
                 return RefinementResult(
                     success=False,
                     output_path=output_path,

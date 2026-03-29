@@ -408,7 +408,8 @@ components:
           nullable: true
           description: >
             Rolling L3 market hedge ratio (SPY notional per $1 stock). Null in trailing rows
-            where the rolling regression window has insufficient data.
+            where the rolling regression window has insufficient data. May be negative
+            (orthogonalization); negative market HR at L2/L3 is common.
         l3_sec_hr:
           type: number
           format: float
@@ -422,9 +423,9 @@ components:
           format: float
           nullable: true
           description: >
-            Rolling L3 subsector ETF hedge ratio (dollar_ratio); may be negative (long subsector ETF).
-            Null when the rolling window has insufficient data. Negative values can also arise from
-            orthogonalization; not a sign error in the data.
+            Rolling L3 subsector ETF hedge ratio (dollar_ratio). Null when the rolling window has
+            insufficient data. May be negative (orthogonalization or long subsector ETF leg); not a
+            sign error in the data.
         l3_mkt_er:
           type: number
           format: float
@@ -619,6 +620,8 @@ components:
         docs/ERM3_ZARR_API_PARITY.md for zarr `L*_ER` / `L*_HR` mapping). Zarr topic-level
         `wmean_*` features are computed **client-side** as holdings-weighted means of these fields.
         Nulls mean missing or not modelled for that ticker — not omitted keys.
+        Hedge ratios may be negative at any level (orthogonalization); negative **market** HR
+        at L2 or L3 is especially common.
       properties:
         ticker:
           type: string
@@ -872,8 +875,9 @@ components:
           type: array
           items:
             type: string
-            enum: [bitcoin, gold, oil, dxy, vix, ust10y2y]
-          description: Defaults to all six when omitted.
+          description: >
+            Macro factor keys matching `macro_factors.factor_key` (lowercase: bitcoin, gold, oil, dxy, vix, ust10y2y).
+            Server normalizes common aliases (e.g. btc → bitcoin). Defaults to all six when omitted.
         return_type:
           type: string
           enum: [gross, l1, l2, l3_residual]
@@ -1587,6 +1591,82 @@ paths:
                           items:
                             $ref: "#/components/schemas/MCPTool"
 
+  /plaid/link-token:
+    post:
+      summary: Create Plaid Link token (Investments)
+      description: >
+        One-time `link_token` for Plaid Link in the browser. Requires an authenticated user.
+        After Link succeeds, exchange the `public_token` via `POST /plaid/exchange-public-token`.
+        **No per-request charge.**
+      operationId: createPlaidLinkToken
+      tags: [Plaid Integration]
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: [plaid:holdings]
+      responses:
+        "200":
+          description: Link token for Plaid Link SDK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link_token:
+                    type: string
+                  expiration:
+                    type: string
+                    description: RFC-3339 datetime when the link_token expires.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Plaid or configuration error.
+
+  /plaid/exchange-public-token:
+    post:
+      summary: Exchange Plaid public token for stored item
+      description: >
+        Exchanges the short-lived `public_token` from Plaid Link for an access token, encrypted
+        and stored server-side. Repeat connections create/update one row per Plaid `item_id`.
+        **No per-request charge.**
+      operationId: exchangePlaidPublicToken
+      tags: [Plaid Integration]
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: [plaid:holdings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [public_token]
+              properties:
+                public_token:
+                  type: string
+                  description: From Plaid Link onSuccess.
+      responses:
+        "200":
+          description: Item stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item_id:
+                    type: string
+                  request_id:
+                    type: string
+        "400":
+          description: Missing or invalid body.
+        "401":
+          description: Unauthorized.
+        "500":
+          description: Plaid or storage error.
+
   /plaid/holdings:
     get:
       summary: Fetch Plaid-synced portfolio holdings
@@ -1637,6 +1717,21 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/PlaidHolding"
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                    description: Plaid account objects from Investments Holdings (per connected item).
+                  securities:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                    description: Plaid security objects referenced by holdings.
+                  connections_count:
+                    type: integer
+                    description: Number of connected Plaid items for this user.
                   summary:
                     type: object
                     properties:
@@ -1646,10 +1741,19 @@ paths:
                         type: integer
                       position_count:
                         type: integer
+                  _metadata:
+                    type: object
+                    additionalProperties: true
                   _agent:
                     $ref: "#/components/schemas/AgentMeta"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: API key missing `plaid:holdings` scope.
           content:
             application/json:
               schema:
@@ -1669,6 +1773,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
+        "503":
+          description: Plaid or token encryption not configured.
 
   /metrics/{ticker}:
     get:
@@ -2100,7 +2206,13 @@ paths:
         returns stored in `macro_factors` (e.g. bitcoin, vix). Stock series may be gross returns or
         ERM3 residual returns (L1/L2/L3) using the replication identity with SPY and sector/subsector ETFs.
         Request body accepts a single ticker or an array for batch (`results` array). Cost: $0.002 per ticker.
+        Factor strings are normalized to lowercase canonical keys matching `macro_factors.factor_key` (aliases such as btc → bitcoin).
+        JSON Schema (MCP / validation): request body https://riskmodels.app/schemas/factor-correlation-request-v1.json ;
+        single-ticker 200 body https://riskmodels.app/schemas/factor-correlation-v1.json .
       operationId: postFactorCorrelation
+      externalDocs:
+        description: JSON Schema for POST /correlation request body (MCP validate before call).
+        url: https://riskmodels.app/schemas/factor-correlation-request-v1.json
       tags: [Risk Metrics]
       requestBody:
         required: true
@@ -2149,8 +2261,13 @@ paths:
   /metrics/{ticker}/correlation:
     get:
       summary: Correlation vs macro factors (query convenience)
-      description: Same computation as POST /correlation; pass macro keys as comma-separated `factors` query param.
+      description: >
+        Same computation as POST /correlation. Pass macro keys as a comma-separated `factors` query param
+        (alias: `factor` is accepted as a synonym).
       operationId: getFactorCorrelationByTicker
+      externalDocs:
+        description: JSON Schema for the single-ticker success body (correlations, overlap_days, warnings, optional _metadata / _agent).
+        url: https://riskmodels.app/schemas/factor-correlation-v1.json
       tags: [Risk Metrics]
       parameters:
         - name: ticker
@@ -2164,7 +2281,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Comma-separated factor keys (bitcoin,gold,...); default all six.
+          description: Comma-separated factor keys (bitcoin,gold,...); default all six. Same as query param `factor`.
         - name: return_type
           in: query
           required: false
@@ -2218,6 +2335,307 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /rankings/{ticker}:
+    get:
+      summary: Cross-sectional rankings snapshot
+      description: >
+        Latest V3 cross-sectional ranks from `security_history` for the ticker’s symbol.
+        Optional query filters narrow to one metric, cohort, and/or window; omit them for the full grid.
+        See `#/components/schemas/RankingMetricKeys` for key patterns. `rank_percentile` is 100 = best.
+      operationId: getRankingsByTicker
+      tags: [Risk Metrics]
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          example: AAPL
+        - name: metric
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - mkt_cap
+              - gross_return
+              - sector_residual
+              - subsector_residual
+              - er_l1
+              - er_l2
+              - er_l3
+        - name: cohort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [universe, sector, subsector]
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1d, 21d, 63d, 252d]
+      responses:
+        "200":
+          description: Rankings and lineage metadata.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Data-Fetch-Latency-Ms:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticker: { type: string }
+                  symbol: { type: string }
+                  teo:
+                    type: string
+                    format: date
+                    nullable: true
+                  rankings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        metric: { type: string }
+                        cohort: { type: string }
+                        window: { type: string }
+                        rank_ordinal:
+                          type: integer
+                          nullable: true
+                        cohort_size:
+                          type: integer
+                          nullable: true
+                        rank_percentile:
+                          type: number
+                          nullable: true
+                  filters:
+                    type: object
+                    properties:
+                      metric: { type: string, nullable: true }
+                      cohort: { type: string, nullable: true }
+                      window: { type: string, nullable: true }
+                  _metadata:
+                    type: object
+                    additionalProperties: true
+                  _agent:
+                    $ref: "#/components/schemas/AgentMeta"
+        "400":
+          description: Invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Ticker not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /rankings/{ticker}/badge:
+    get:
+      summary: Shields.io-style rank badge (JSON)
+      description: >
+        Public JSON for [Shields Endpoint badges](https://shields.io/badges/endpoint-badge).
+        No API key by default; optional shared secret via env `RANKINGS_BADGE_TOKEN` and query `token=`.
+        Defaults: metric=subsector_residual, cohort=subsector, window=252d. `rank_percentile` 100 = best.
+        Cached at the edge; per-IP rate limit when Upstash Redis is configured (`RANKINGS_BADGE_IP_RPM`, default 120).
+      operationId: getRankingsBadge
+      tags: [Risk Metrics]
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          example: AAPL
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Required when server sets RANKINGS_BADGE_TOKEN.
+        - name: metric
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - mkt_cap
+              - gross_return
+              - sector_residual
+              - subsector_residual
+              - er_l1
+              - er_l2
+              - er_l3
+            default: subsector_residual
+        - name: cohort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [universe, sector, subsector]
+            default: subsector
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1d, 21d, 63d, 252d]
+            default: 252d
+      responses:
+        "200":
+          description: Shields endpoint JSON (schemaVersion 1).
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schemaVersion]
+                properties:
+                  schemaVersion: { type: integer, enum: [1] }
+                  label: { type: string }
+                  message: { type: string }
+                  color: { type: string }
+                  isError: { type: boolean }
+        "400":
+          description: Invalid ticker or query parameter.
+        "401":
+          description: Missing or invalid token when RANKINGS_BADGE_TOKEN is set.
+        "404":
+          description: Ticker or ranking row not found.
+
+  /rankings/top:
+    get:
+      summary: Cross-sectional rankings leaderboard
+      description: >
+        Best names (lowest rank_ordinal) at the latest `teo` for one metric × cohort × window.
+        Same `rank_percentile` rule as GET /rankings/{ticker} (100 = best). Requires all three filters.
+      operationId: getRankingsTop
+      tags: [Risk Metrics]
+      parameters:
+        - name: metric
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - mkt_cap
+              - gross_return
+              - sector_residual
+              - subsector_residual
+              - er_l1
+              - er_l2
+              - er_l3
+        - name: cohort
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [universe, sector, subsector]
+        - name: window
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [1d, 21d, 63d, 252d]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        "200":
+          description: Leaderboard rows and lineage metadata.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Data-Fetch-Latency-Ms:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teo:
+                    type: string
+                    format: date
+                    nullable: true
+                  metric: { type: string }
+                  cohort: { type: string }
+                  window: { type: string }
+                  limit: { type: integer }
+                  rankings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol: { type: string }
+                        ticker: { type: string }
+                        rank_ordinal: { type: integer }
+                        cohort_size:
+                          type: integer
+                          nullable: true
+                        rank_percentile:
+                          type: number
+                          nullable: true
+                  _metadata:
+                    type: object
+                    additionalProperties: true
+                  _agent:
+                    $ref: "#/components/schemas/AgentMeta"
+        "400":
+          description: Missing or invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
         "429":
           description: Rate limit exceeded.
           content:
@@ -2352,6 +2770,267 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /portfolio/risk-index:
+    post:
+      summary: Portfolio risk index (L3 variance decomposition)
+      description: >
+        Holdings-weighted L3 explained-risk decomposition (market, sector, subsector, residual),
+        approximate portfolio volatility (weighted `vol_23d`), and optional daily time series of
+        portfolio ER over `years`. Partial resolution: unresolved tickers appear in `errors`;
+        computation uses resolved positions only. Metered; includes `_agent` and `_metadata`.
+      operationId: postPortfolioRiskIndex
+      tags: [Risk Metrics]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positions]
+              properties:
+                positions:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [ticker, weight]
+                    properties:
+                      ticker:
+                        type: string
+                      weight:
+                        type: number
+                        format: float
+                        exclusiveMinimum: 0
+                        description: Fractional weights (normalized server-side) or dollar notionals.
+                  description: >
+                    May be empty when holdings are not yet available (e.g. Plaid initial sync). In that case the API returns HTTP 200 with `status: "syncing"` and a message instead of portfolio aggregates.
+                timeSeries:
+                  type: boolean
+                  default: false
+                  description: When true, include `time_series` of daily portfolio ER.
+                years:
+                  type: integer
+                  minimum: 1
+                  maximum: 15
+                  default: 1
+                  description: History span when `timeSeries` is true.
+      responses:
+        "200":
+          description: >-
+            Portfolio aggregates, per-ticker breakdown, optional time series; or status "syncing" when
+            positions is empty (Plaid / holdings not ready).
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Data-Fetch-Latency-Ms:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [syncing]
+                    description: Present only when `positions` was empty (holdings not ready).
+                  message:
+                    type: string
+                    description: Human-readable hint when status is syncing.
+                  portfolio_risk_index:
+                    type: object
+                    properties:
+                      variance_decomposition:
+                        type: object
+                        properties:
+                          market: { type: number, nullable: true }
+                          sector: { type: number, nullable: true }
+                          subsector: { type: number, nullable: true }
+                          residual: { type: number, nullable: true }
+                          systematic: { type: number, nullable: true }
+                      portfolio_volatility_23d: { type: number, nullable: true }
+                      position_count: { type: integer }
+                  per_ticker:
+                    type: object
+                    additionalProperties: true
+                  summary:
+                    type: object
+                    properties:
+                      total_positions: { type: integer }
+                      resolved: { type: integer }
+                      errors: { type: integer }
+                  time_series:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date }
+                        market_er: { type: number }
+                        sector_er: { type: number }
+                        subsector_er: { type: number }
+                        residual_er: { type: number }
+                        systematic_er: { type: number }
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticker: { type: string }
+                        error: { type: string }
+                  _agent:
+                    $ref: "#/components/schemas/AgentMeta"
+                  _metadata:
+                    type: object
+                    additionalProperties: true
+        "400":
+          description: Invalid body or no resolvable tickers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /webhooks/subscribe:
+    get:
+      summary: List webhook subscriptions
+      description: Returns active webhook subscriptions for the authenticated user (secrets omitted).
+      operationId: listWebhookSubscriptions
+      tags: [Webhooks]
+      responses:
+        "200":
+          description: Subscription list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        url: { type: string, format: uri }
+                        events:
+                          type: array
+                          items: { type: string, enum: [batch.completed] }
+                        active: { type: boolean }
+                        created_at: { type: string, format: date-time }
+                        updated_at: { type: string, format: date-time }
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error.
+    post:
+      summary: Create webhook subscription
+      description: >
+        Register an HTTPS URL for outbound events (e.g. `batch.completed`). The `secret` is returned
+        once in the response; store it to verify `X-RiskModels-Signature` (HMAC-SHA256).
+      operationId: createWebhookSubscription
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  maxLength: 2048
+                  description: Must use https://
+                events:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [batch.completed]
+                active:
+                  type: boolean
+                  default: true
+                secret:
+                  type: string
+                  minLength: 24
+                  maxLength: 512
+                  description: Optional custom secret; otherwise server-generated.
+      responses:
+        "201":
+          description: Created; `secret` included in body for verification.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscription:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      url: { type: string, format: uri }
+                      events:
+                        type: array
+                        items: { type: string }
+                      active: { type: boolean }
+                      created_at: { type: string, format: date-time }
+                      secret: { type: string }
+        "400":
+          description: Invalid URL or body.
+        "401":
+          description: Unauthorized.
+        "500":
+          description: Server error.
+    delete:
+      summary: Delete webhook subscription
+      description: Remove a subscription by id (`?id=` query parameter).
+      operationId: deleteWebhookSubscription
+      tags: [Webhooks]
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+        "400":
+          description: Missing id.
+        "401":
+          description: Unauthorized.
+        "404":
+          description: Subscription not found.
+
   /tickers:
     get:
       summary: Ticker universe search
@@ -2473,7 +3152,10 @@ paths:
   /health:
     get:
       summary: Service health check
-      description: Returns current service status, version, capability availability, and latest-session gross-return coverage (EODHD completeness signal). Free, no auth required.
+      description: >
+        Returns current service status, version, capability availability (from recent billing_events),
+        latest-session gross-return coverage (EODHD completeness signal), and optional macro_factors
+        freshness for the correlation API (see macro_factors in the response). Free, no auth required.
       operationId: getHealth
       tags: [Utility]
       security: []
@@ -2520,6 +3202,35 @@ paths:
                         type: boolean
                       query_error:
                         type: string
+                  macro_factors:
+                    type: object
+                    nullable: true
+                    description: >
+                      Daily macro factor return series freshness in Supabase macro_factors (POST /correlation,
+                      GET /metrics/{ticker}/correlation). Omitted or partial if the table is empty or the query fails.
+                    properties:
+                      status:
+                        type: string
+                        enum: [healthy, stale, unavailable]
+                      latest_teos:
+                        type: object
+                        additionalProperties:
+                          type: string
+                          nullable: true
+                        description: Most recent teo observed per factor_key (e.g. bitcoin, vix).
+                      row_count_last_7d:
+                        type: integer
+                      newest_teo:
+                        type: string
+                        format: date
+                        nullable: true
+                      oldest_teo:
+                        type: string
+                        format: date
+                        nullable: true
+                      stale:
+                        type: boolean
+                        description: True when newest_teo is older than roughly three trading days.
 
   /balance:
     get:
@@ -2592,6 +3303,122 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
+    patch:
+      summary: Update auto-refill settings
+      description: >
+        Updates prepaid auto-refill on `agent_accounts`. When `enabled` is true, `refill_amount_usd`
+        (20, 50, or 100) and `min_threshold_tokens` (maps to USD threshold between $5 and $50) are required.
+      operationId: patchBalanceAutoRefill
+      tags: [Account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                  description: Enable or disable auto top-up.
+                refill_amount_usd:
+                  type: number
+                  enum: [20, 50, 100]
+                  description: Required when enabling auto-refill.
+                min_threshold_tokens:
+                  type: number
+                  description: >
+                    Token threshold; converted to USD for storage. Implied USD must be between 5 and 50
+                    when enabling.
+      responses:
+        "200":
+          description: Updated settings or current state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Validation error.
+        "401":
+          description: Unauthorized.
+        "500":
+          description: Server error.
+
+  /user/billing-config:
+    get:
+      summary: Auto-refill billing preferences
+      description: >
+        Current auto-refill flags and amounts from `agent_accounts`. Same semantics as portal settings;
+        use `PATCH /balance` for the alternate auto-refill field names (`enabled`, `refill_amount_usd`).
+      operationId: getUserBillingConfig
+      tags: [Account]
+      responses:
+        "200":
+          description: Billing preferences.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auto_top_up: { type: boolean }
+                  auto_top_up_amount: { type: number }
+                  auto_top_up_threshold: { type: number }
+                  has_payment_method: { type: boolean }
+                  allowed_refill_amounts:
+                    type: array
+                    items: { type: number }
+                  threshold_bounds:
+                    type: object
+                    properties:
+                      min: { type: number }
+                      max: { type: number }
+        "401":
+          description: Unauthorized.
+        "404":
+          description: Agent account not found.
+        "500":
+          description: Server error.
+    patch:
+      summary: Update auto-refill billing preferences
+      description: >
+        Partial update of `auto_top_up`, `auto_top_up_amount` (must be 20, 50, or 100), and/or
+        `auto_top_up_threshold` (USD, 5–50). Requires a saved payment method to enable auto-refill.
+      operationId: patchUserBillingConfig
+      tags: [Account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                auto_top_up: { type: boolean }
+                auto_top_up_amount:
+                  type: number
+                  enum: [20, 50, 100]
+                auto_top_up_threshold:
+                  type: number
+                  minimum: 5
+                  maximum: 50
+      responses:
+        "200":
+          description: Updated fields.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  auto_top_up: { type: boolean }
+                  auto_top_up_amount: { type: number }
+                  auto_top_up_threshold: { type: number }
+        "400":
+          description: Validation or missing payment method.
+        "401":
+          description: Unauthorized.
+        "500":
+          description: Server error.
 
   /invoices:
     get:
@@ -2947,9 +3774,52 @@ paths:
                 model:
                   type: string
                   description: AI model to use (default gpt-4o-mini)
+                response_mode:
+                  type: string
+                  enum: [markdown, catalog, hybrid]
+                  description: Reserved for future streaming / A2UI modes; non-streaming JSON today.
       responses:
         "200":
-          description: Assistant reply and optional tool calls.
+          description: Assistant reply, token usage (when provided by the model), and lineage metadata.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Data-Fetch-Latency-Ms:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role:
+                        type: string
+                        enum: [assistant]
+                      content:
+                        type: string
+                  model:
+                    type: string
+                  usage:
+                    type: object
+                    nullable: true
+                    properties:
+                      prompt_tokens: { type: integer }
+                      completion_tokens: { type: integer }
+                      total_tokens: { type: integer }
+                  _metadata:
+                    type: object
+                    additionalProperties: true
+                  _agent:
+                    $ref: "#/components/schemas/AgentMeta"
+        "400":
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Missing or invalid Bearer token.
           content:
@@ -2971,6 +3841,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
+        "502":
+          description: Upstream AI provider error.
+        "503":
+          description: Chat not configured (e.g. missing OPENAI_API_KEY).
 
 tags:
   - name: Risk Metrics
@@ -2979,6 +3853,8 @@ tags:
     description: Ticker search, health, and service discovery.
   - name: Account
     description: Balance, billing, and invoice management.
+  - name: Webhooks
+    description: Outbound webhook subscriptions (e.g. batch completion).
   - name: Authentication
     description: API key provisioning and OAuth2 token management.
   - name: MCP

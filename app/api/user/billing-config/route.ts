@@ -3,10 +3,13 @@
  * PATCH /api/user/billing-config — Update auto_top_up, amount, and/or threshold.
  *
  * Refill amounts must be exactly $20, $50, or $100 when provided.
+ *
+ * Auth: API key, Bearer JWT, or session (see authenticateRequest).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { authenticateRequest } from '@/lib/supabase/auth-helper';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCorsHeaders } from '@/lib/cors';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,14 +21,14 @@ function isAllowedRefillAmount(n: number): boolean {
   return ALLOWED_REFILL_AMOUNTS.some((a) => Math.abs(a - n) < 1e-6);
 }
 
-export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+export async function GET(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const { user, error: authError } = await authenticateRequest(request);
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: getCorsHeaders(origin) },
+    );
   }
 
   const admin = createAdminClient();
@@ -41,22 +44,28 @@ export async function GET() {
     console.error('[billing-config] GET error:', error);
     return NextResponse.json(
       { error: 'Failed to load billing settings' },
-      { status: 500 },
+      { status: 500, headers: getCorsHeaders(origin) },
     );
   }
 
   if (!account) {
-    return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'Account not found' },
+      { status: 404, headers: getCorsHeaders(origin) },
+    );
   }
 
-  return NextResponse.json({
-    auto_top_up: Boolean(account.auto_top_up),
-    auto_top_up_amount: parseFloat(String(account.auto_top_up_amount ?? 50)),
-    auto_top_up_threshold: parseFloat(String(account.auto_top_up_threshold ?? 5)),
-    has_payment_method: Boolean(account.stripe_payment_method_id),
-    allowed_refill_amounts: [...ALLOWED_REFILL_AMOUNTS],
-    threshold_bounds: { min: MIN_THRESHOLD, max: MAX_THRESHOLD },
-  });
+  return NextResponse.json(
+    {
+      auto_top_up: Boolean(account.auto_top_up),
+      auto_top_up_amount: parseFloat(String(account.auto_top_up_amount ?? 50)),
+      auto_top_up_threshold: parseFloat(String(account.auto_top_up_threshold ?? 5)),
+      has_payment_method: Boolean(account.stripe_payment_method_id),
+      allowed_refill_amounts: [...ALLOWED_REFILL_AMOUNTS],
+      threshold_bounds: { min: MIN_THRESHOLD, max: MAX_THRESHOLD },
+    },
+    { headers: getCorsHeaders(origin) },
+  );
 }
 
 type PatchBody = {
@@ -66,13 +75,13 @@ type PatchBody = {
 };
 
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const origin = request.headers.get('origin');
+  const { user, error: authError } = await authenticateRequest(request);
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: getCorsHeaders(origin) },
+    );
   }
 
   let body: PatchBody;
@@ -81,7 +90,7 @@ export async function PATCH(request: NextRequest) {
   } catch {
     return NextResponse.json(
       { error: 'Invalid JSON body' },
-      { status: 400 },
+      { status: 400, headers: getCorsHeaders(origin) },
     );
   }
 
@@ -98,14 +107,14 @@ export async function PATCH(request: NextRequest) {
         message:
           'Provide at least one of: auto_top_up, auto_top_up_amount, auto_top_up_threshold',
       },
-      { status: 400 },
+      { status: 400, headers: getCorsHeaders(origin) },
     );
   }
 
   if (auto_top_up !== undefined && typeof auto_top_up !== 'boolean') {
     return NextResponse.json(
       { error: 'auto_top_up must be a boolean' },
-      { status: 400 },
+      { status: 400, headers: getCorsHeaders(origin) },
     );
   }
 
@@ -113,7 +122,7 @@ export async function PATCH(request: NextRequest) {
     if (typeof auto_top_up_amount !== 'number' || Number.isNaN(auto_top_up_amount)) {
       return NextResponse.json(
         { error: 'auto_top_up_amount must be a number' },
-        { status: 400 },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
     if (!isAllowedRefillAmount(auto_top_up_amount)) {
@@ -123,7 +132,7 @@ export async function PATCH(request: NextRequest) {
           message: `Must be one of: ${ALLOWED_REFILL_AMOUNTS.join(', ')}`,
           allowed: [...ALLOWED_REFILL_AMOUNTS],
         },
-        { status: 400 },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
   }
@@ -140,7 +149,7 @@ export async function PATCH(request: NextRequest) {
           error: 'Invalid auto_top_up_threshold',
           message: `Must be between ${MIN_THRESHOLD} and ${MAX_THRESHOLD} (USD)`,
         },
-        { status: 400 },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
   }
@@ -160,7 +169,7 @@ export async function PATCH(request: NextRequest) {
           error: 'No payment method',
           message: 'Add a card before enabling auto-refill',
         },
-        { status: 400 },
+        { status: 400, headers: getCorsHeaders(origin) },
       );
     }
   }
@@ -185,7 +194,7 @@ export async function PATCH(request: NextRequest) {
     console.error('[billing-config] PATCH error:', updateError);
     return NextResponse.json(
       { error: 'Failed to update billing settings' },
-      { status: 500 },
+      { status: 500, headers: getCorsHeaders(origin) },
     );
   }
 
@@ -195,10 +204,13 @@ export async function PATCH(request: NextRequest) {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  return NextResponse.json({
-    success: true,
-    auto_top_up: Boolean(updated?.auto_top_up),
-    auto_top_up_amount: parseFloat(String(updated?.auto_top_up_amount ?? 50)),
-    auto_top_up_threshold: parseFloat(String(updated?.auto_top_up_threshold ?? 5)),
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      auto_top_up: Boolean(updated?.auto_top_up),
+      auto_top_up_amount: parseFloat(String(updated?.auto_top_up_amount ?? 50)),
+      auto_top_up_threshold: parseFloat(String(updated?.auto_top_up_threshold ?? 5)),
+    },
+    { headers: getCorsHeaders(origin) },
+  );
 }

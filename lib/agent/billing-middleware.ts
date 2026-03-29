@@ -114,9 +114,18 @@ export interface BillingOptions {
   itemCount?: number;
   /** Resolve item count from request (e.g. for batch endpoints). Uses cloned request to avoid consuming body. */
   getItemCount?: (req: NextRequest) => Promise<number | undefined> | number | undefined;
+  /** For per-token capabilities (e.g. chat): estimate tokens from a cloned request body before billing. */
+  getTokenEstimates?: (
+    req: NextRequest,
+  ) => Promise<{ inputTokens?: number; outputTokens?: number } | undefined>;
   inputTokens?: number;
   outputTokens?: number;
   skipBilling?: boolean; // For free endpoints or internal use
+  /**
+   * When `skipBilling` is true, optionally still rate-limit by caller IP (Upstash Redis).
+   * Use for public JSON intended for Shields.io or README embeds so traffic does not bypass all limits.
+   */
+  publicIpRateLimitPerMinute?: number;
 }
 
 export interface BillingContext {
@@ -154,7 +163,45 @@ export function withBilling(
 
     // Skip billing if configured (for free endpoints)
     if (options.skipBilling) {
-      const capability = getCapability(options.capabilityId);
+      const rpm = options.publicIpRateLimitPerMinute;
+      if (rpm != null && rpm > 0) {
+        const limiter = getRatelimiter(rpm);
+        if (limiter) {
+          const forwarded = req.headers.get("x-forwarded-for");
+          const ipRaw =
+            forwarded?.split(",")[0]?.trim() ||
+            req.headers.get("x-real-ip") ||
+            req.headers.get("cf-connecting-ip") ||
+            "unknown";
+          const ip = ipRaw.slice(0, 128);
+          const { success, limit, remaining, reset } = await limiter.limit(
+            `public:${options.capabilityId}:${ip}`,
+          );
+          if (!success) {
+            const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
+            // 200 so Shields.io Endpoint badges show a grey error badge instead of a transport failure
+            return new NextResponse(
+              JSON.stringify({
+                schemaVersion: 1,
+                isError: true,
+                label: "riskmodels",
+                message: "rate limited",
+              }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Retry-After": String(retryAfterSecs),
+                  "X-RateLimit-Limit": String(limit),
+                  "X-RateLimit-Remaining": String(remaining),
+                  "X-RateLimit-Reset": String(reset),
+                },
+              },
+            );
+          }
+        }
+      }
+
       const context: BillingContext = {
         userId: "",
         requestId,
@@ -259,11 +306,29 @@ export function withBilling(
         const resolved = await options.getItemCount(req);
         if (resolved !== undefined) itemCount = resolved;
       }
-      const costUsd = calculateEstimatedCost(options.capabilityId, {
+
+      let inputTokens = options.inputTokens;
+      let outputTokens = options.outputTokens;
+      if (options.getTokenEstimates) {
+        try {
+          const est = await options.getTokenEstimates(req);
+          if (est?.inputTokens !== undefined) inputTokens = est.inputTokens;
+          if (est?.outputTokens !== undefined) outputTokens = est.outputTokens;
+        } catch {
+          // Fall back to static options / zero
+        }
+      }
+
+      let costUsd = calculateEstimatedCost(options.capabilityId, {
         itemCount,
-        inputTokens: options.inputTokens,
-        outputTokens: options.outputTokens,
+        inputTokens,
+        outputTokens,
       });
+
+      // Empty portfolio probe (e.g. Plaid sync not finished): no charge.
+      if (options.capabilityId === "portfolio-risk-index" && itemCount === 0) {
+        costUsd = 0;
+      }
 
       // 3. Check free tier limits (if tier is free)
       let freeTierCheck: any = null;

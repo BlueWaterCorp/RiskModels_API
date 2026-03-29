@@ -84,6 +84,7 @@ curl -X GET "https://riskmodels.app/api/metrics/NVDA" \
 | `/api/ticker-returns` | GET | Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y | $0.005/call |
 | `/api/metrics/{ticker}` | GET | Latest snapshot: all 22 HR/ER fields, vol, Sharpe, sector, market cap | $0.005/call |
 | `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | $0.005/call |
+| `/api/correlation` / `/api/metrics/{ticker}/correlation` | POST / GET | Macro factor correlation (VIX, Bitcoin, Gold, Oil, DXY, UST 10y–2y); see [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | $0.002–$0.005/call |
 | `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | $0.002/position |
 | `/api/tickers` | GET | Ticker universe search, MAG7 shortcut | Free |
 | `/api/balance` | GET | Account balance and rate limits | Free |

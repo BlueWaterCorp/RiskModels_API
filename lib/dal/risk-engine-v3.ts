@@ -594,6 +594,124 @@ export async function fetchRankingsFromSecurityHistory(
   }
 }
 
+/** One row for GET /rankings/top (best rank ordinal first). */
+export interface TopRankingRow {
+  symbol: string;
+  ticker: string;
+  rank_ordinal: number;
+  cohort_size: number | null;
+  rank_percentile: number | null;
+}
+
+/**
+ * Cross-sectional leaderboard: symbols with lowest rank_ordinal at latest `teo` for
+ * `rank_ord_{window}_{cohort}_{metric}` (rank 1 = best; percentile 100 = best).
+ */
+export async function fetchTopRankingsSnapshot(params: {
+  metric: string;
+  cohort: string;
+  window: string;
+  limit: number;
+}): Promise<{ teo: string | null; rows: TopRankingRow[] }> {
+  const { metric, cohort, window, limit } = params;
+  const cap = Math.min(100, Math.max(1, Math.floor(limit)));
+  const prefix = `${window}_${cohort}_${metric}`;
+  const rankKey = `rank_ord_${prefix}` as V3MetricKey;
+  const cohortKey = `cohort_size_${prefix}` as V3MetricKey;
+
+  try {
+    const admin = createAdminClient();
+    const { data: teoRow, error: teoErr } = await admin
+      .from("security_history")
+      .select("teo")
+      .eq("metric_key", rankKey)
+      .eq("periodicity", "daily")
+      .order("teo", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (teoErr || !teoRow?.teo) {
+      return { teo: null, rows: [] };
+    }
+    const teo = teoRow.teo as string;
+
+    const { data: rankRows, error: rankErr } = await admin
+      .from("security_history")
+      .select("symbol, metric_value")
+      .eq("metric_key", rankKey)
+      .eq("periodicity", "daily")
+      .eq("teo", teo)
+      .not("metric_value", "is", null)
+      .order("metric_value", { ascending: true })
+      .limit(cap);
+
+    if (rankErr || !rankRows?.length) {
+      return { teo, rows: [] };
+    }
+
+    const symbols = [...new Set(rankRows.map((r: { symbol: string }) => r.symbol))];
+
+    const { data: cohortRows } = await admin
+      .from("security_history")
+      .select("symbol, metric_value")
+      .eq("metric_key", cohortKey)
+      .eq("periodicity", "daily")
+      .eq("teo", teo)
+      .in("symbol", symbols);
+
+    const cohortBySymbol = new Map<string, number | null>();
+    for (const r of cohortRows ?? []) {
+      const sym = (r as { symbol: string }).symbol;
+      const mv = (r as { metric_value: number | null }).metric_value;
+      cohortBySymbol.set(
+        sym,
+        mv != null && typeof mv === "number" ? Math.round(mv) : null,
+      );
+    }
+
+    const { data: symRows } = await admin
+      .from("symbols")
+      .select("symbol, ticker")
+      .in("symbol", symbols);
+
+    const tickerBySymbol = new Map<string, string>();
+    for (const r of symRows ?? []) {
+      tickerBySymbol.set(
+        (r as { symbol: string; ticker: string }).symbol,
+        (r as { symbol: string; ticker: string }).ticker,
+      );
+    }
+
+    const rows: TopRankingRow[] = [];
+    for (const r of rankRows as { symbol: string; metric_value: number }[]) {
+      const rankOrdinal =
+        r.metric_value != null && typeof r.metric_value === "number"
+          ? Math.round(r.metric_value)
+          : null;
+      if (rankOrdinal == null || rankOrdinal < 1) continue;
+
+      const cohortSizeVal = cohortBySymbol.get(r.symbol) ?? null;
+      const rankPercentile =
+        cohortSizeVal != null && cohortSizeVal > 0
+          ? (1 - (rankOrdinal - 1) / cohortSizeVal) * 100
+          : null;
+
+      rows.push({
+        symbol: r.symbol,
+        ticker: tickerBySymbol.get(r.symbol) ?? r.symbol,
+        rank_ordinal: rankOrdinal,
+        cohort_size: cohortSizeVal,
+        rank_percentile: rankPercentile,
+      });
+    }
+
+    return { teo, rows };
+  } catch (error) {
+    console.error("[V3 DAL] Error fetching top rankings:", error);
+    return { teo: null, rows: [] };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers (identical to Risk_Models source)
 // ---------------------------------------------------------------------------

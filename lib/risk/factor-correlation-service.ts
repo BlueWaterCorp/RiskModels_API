@@ -13,17 +13,14 @@ import {
   type SecurityHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import {
+  DEFAULT_MACRO_FACTORS,
+  normalizeMacroFactorKeys,
+  type MacroFactorKey,
+} from "@/lib/risk/macro-factor-keys";
 
-export const DEFAULT_MACRO_FACTORS = [
-  "bitcoin",
-  "gold",
-  "oil",
-  "dxy",
-  "vix",
-  "ust10y2y",
-] as const;
-
-export type MacroFactorKey = (typeof DEFAULT_MACRO_FACTORS)[number];
+export { DEFAULT_MACRO_FACTORS };
+export type { MacroFactorKey };
 
 export type StockReturnType = "gross" | "l1" | "l2" | "l3_residual";
 
@@ -197,11 +194,16 @@ async function loadMacroFactorMaps(
   factorKeys: string[],
   startDate: string,
 ): Promise<Map<string, Map<string, number>>> {
+  const keysForDb = normalizeMacroFactorKeys(factorKeys).keys;
+  if (keysForDb.length === 0) {
+    return new Map();
+  }
+
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("macro_factors")
     .select("factor_key, teo, return_gross")
-    .in("factor_key", factorKeys)
+    .in("factor_key", keysForDb)
     .gte("teo", startDate)
     .order("teo", { ascending: true });
 
@@ -227,7 +229,7 @@ export async function getMacroFactorMapsCached(
   factorKeys: string[],
   startDate: string,
 ): Promise<Map<string, Map<string, number>>> {
-  const sorted = [...factorKeys].sort();
+  const sorted = normalizeMacroFactorKeys(factorKeys).keys.sort();
   const key = generateCacheKey("macro_factors", "v1", {
     start: startDate,
     f: sorted.join(","),
@@ -244,6 +246,16 @@ export async function computeFactorCorrelation(
 ): Promise<FactorCorrelationResult | { error: string; status: number }> {
   const ticker = params.ticker.trim().toUpperCase();
   const warnings: string[] = [];
+
+  const factorSource = params.factors?.length ? params.factors : [...DEFAULT_MACRO_FACTORS];
+  const { keys: factorsCanon, warnings: factorNormWarnings } = normalizeMacroFactorKeys(factorSource);
+  warnings.push(...factorNormWarnings);
+  if (factorsCanon.length === 0) {
+    return {
+      error: "No valid macro factor keys (check spelling; DB uses lowercase e.g. bitcoin, vix)",
+      status: 400,
+    };
+  }
 
   const symbolRecord = await resolveSymbolByTicker(ticker);
   if (!symbolRecord) {
@@ -326,7 +338,7 @@ export async function computeFactorCorrelation(
     };
   }
 
-  const macroMaps = await getMacroFactorMapsCached(params.factors, startDateStr);
+  const macroMaps = await getMacroFactorMapsCached(factorsCanon, startDateStr);
   if (macroMaps.size === 0) {
     warnings.push(
       "No rows in macro_factors for this date range — ingest macro factor returns to populate correlations.",
@@ -336,7 +348,7 @@ export async function computeFactorCorrelation(
   const correlations: Record<string, number | null> = {};
   let maxOverlap = 0;
 
-  for (const factor of params.factors) {
+  for (const factor of factorsCanon) {
     const m = macroMaps.get(factor);
     if (!m || m.size === 0) {
       correlations[factor] = null;

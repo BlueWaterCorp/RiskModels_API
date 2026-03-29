@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "riskmodels-py"
-version = "0.2.0"
+version = "0.2.4"
 description = "Python SDK for the RiskModels API (ERM3 factors, hedge ratios, explained risk)"
 readme = "README.md"
 license = { text = "Proprietary" }
@@ -31,6 +31,7 @@ dependencies = [
 xarray = ["xarray>=2024.1"]
 dev = [
   "build>=1.2",
+  "matplotlib>=3.8,<4",
   "pytest>=8,<9",
   "pytest-httpx>=0.35,<1",
   "ruff>=0.6",

@@ -159,7 +159,7 @@ export const CAPABILITIES: Capability[] = [
     id: "rankings",
     name: "Cross-Sectional Rankings",
     description:
-      "Fetch cross-sectional rankings for a ticker by metric, cohort, and window. Returns rank_ordinal, cohort_size, rank_percentile (100=best).",
+      "Analyzes where a security sits in its sector/universe percentile for risk and return. Per-ticker grid: GET /api/rankings/{ticker}. Leaderboard: GET /api/rankings/top?metric=&cohort=&window=&limit=. Shields badge JSON: GET /api/rankings/{ticker}/badge (public; optional RANKINGS_BADGE_TOKEN + ?token=). rank_percentile 100=best.",
     endpoint: "/api/rankings/{ticker}",
     method: "GET",
     parameters: {
@@ -301,6 +301,87 @@ export const CAPABILITIES: Capability[] = [
       sources: ["openai_gpt4", "riskmodels_data"],
     },
     tags: ["ai", "chat", "analysis", "natural-language", "a2ui", "streaming"],
+  },
+  {
+    id: "plaid-link-token",
+    name: "Plaid Link token (setup)",
+    description:
+      "Create a Plaid Link token for the authenticated user (Investments). Free setup step; session auth.",
+    endpoint: "/api/plaid/link-token",
+    method: "POST",
+    parameters: {},
+    pricing: {
+      model: "per_request",
+      cost_usd: 0,
+      currency: "USD",
+      billing_code: "plaid_link_token_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 30,
+    },
+    confidence: {
+      data_quality_score: 1,
+      update_frequency: "real-time",
+      sources: ["plaid"],
+    },
+    tags: ["plaid", "setup"],
+  },
+  {
+    id: "plaid-exchange-public-token",
+    name: "Plaid public token exchange (setup)",
+    description:
+      "Exchange Plaid public_token for access_token and store encrypted item for holdings sync. Free setup step; session auth.",
+    endpoint: "/api/plaid/exchange-public-token",
+    method: "POST",
+    parameters: {},
+    pricing: {
+      model: "per_request",
+      cost_usd: 0,
+      currency: "USD",
+      billing_code: "plaid_exchange_v1",
+    },
+    performance: {
+      avg_latency_ms: 400,
+      p95_latency_ms: 1000,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 30,
+    },
+    confidence: {
+      data_quality_score: 1,
+      update_frequency: "real-time",
+      sources: ["plaid"],
+    },
+    tags: ["plaid", "setup"],
+  },
+  {
+    id: "plaid-holdings",
+    name: "Plaid investment holdings",
+    description:
+      "Fetch Plaid-synced investment holdings, accounts, and securities for the authenticated user",
+    endpoint: "/api/plaid/holdings",
+    method: "GET",
+    parameters: {},
+    pricing: {
+      model: "per_request",
+      cost_usd: 0.01,
+      currency: "USD",
+      billing_code: "plaid_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 400,
+      p95_latency_ms: 1200,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "real-time",
+      sources: ["plaid_investments"],
+    },
+    tags: ["plaid", "holdings", "portfolio"],
   },
   {
     id: "batch-analysis",
@@ -624,7 +705,7 @@ export const CAPABILITIES: Capability[] = [
     id: "factor-correlation",
     name: "Macro factor correlation",
     description:
-      "Pearson or Spearman correlation between a stock return series (gross or ERM3 L1/L2/L3 residual) and daily macro factor returns from macro_factors (e.g. bitcoin, vix). POST /api/correlation or GET /api/metrics/{ticker}/correlation.",
+      "Measures exposure to macro-economic drivers like interest rates and volatility. Pearson or Spearman correlation between a stock return series (gross or ERM3 L1/L2/L3 residual) and daily macro factor returns from macro_factors. POST /api/correlation or GET /api/metrics/{ticker}/correlation. JSON Schema POST body: factor-correlation-request-v1.json; single-ticker success: factor-correlation-v1.json (MCP schema list).",
     endpoint: "/api/correlation",
     method: "POST",
     parameters: {

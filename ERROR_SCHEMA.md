@@ -163,7 +163,7 @@ pa = client.analyze({"NVDA": 1.0})
 |---|---|---|
 | **Ticker alias** | GOOGL, BRK-B, BF-B, or other remapped symbols | Use the canonical ticker logged in the warning |
 | **ER sum out of tolerance** | `l3_market_er + l3_sector_er + l3_subsector_er + l3_residual_er` ≠ 1.0 ± 0.05 | Verify model version matches your slice; may indicate partial modelling |
-| **Negative HR (non-subsector)** | `l3_market_hr` or `l3_sector_hr` < 0 | Check data quality; only `l3_subsector_hr` should be negative under normal modelling |
+| **Negative HR** | Any `*_hr` < 0 | Usually valid (orthogonalization); **market HR at L2/L3 is often negative**. Use `validate="error"` only when you have explicit QA rules; do not assume a sign bug. |
 
 All validation issues include a `Fix:` line so agents can self-correct without manual intervention.
 

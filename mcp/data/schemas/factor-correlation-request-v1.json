@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://riskmodels.app/schemas/factor-correlation-request-v1.json",
+  "title": "FactorCorrelationRequest",
+  "description": "JSON body for POST /api/correlation. Matches OpenAPI components.schemas.FactorCorrelationRequest and FactorCorrelationRequestSchema in lib/api/schemas.ts. Use integer types for window_days; the API may coerce numeric strings at runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ticker"],
+  "properties": {
+    "ticker": {
+      "description": "Single US equity ticker, or batch: 1–50 tickers (200 response returns a results array).",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 12
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12
+          }
+        }
+      ]
+    },
+    "factors": {
+      "type": "array",
+      "description": "Macro factor keys (lowercase canonical: bitcoin, gold, oil, dxy, vix, ust10y2y). Server normalizes aliases (e.g. btc → bitcoin). Omit to use all six.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "return_type": {
+      "type": "string",
+      "enum": ["gross", "l1", "l2", "l3_residual"],
+      "default": "l3_residual"
+    },
+    "window_days": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 2000,
+      "default": 252
+    },
+    "method": {
+      "type": "string",
+      "enum": ["pearson", "spearman"],
+      "default": "pearson"
+    }
+  }
+}

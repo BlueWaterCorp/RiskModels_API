@@ -1,6 +1,7 @@
 [
   "/schemas/ticker-returns-v2.json",
   "/schemas/factor-correlation-v1.json",
+  "/schemas/factor-correlation-request-v1.json",
   "/schemas/l3-decomposition-v1.json",
   "/schemas/tickers-list-v1.json",
   "/schemas/error-v1.json",

@@ -34,6 +34,24 @@ print(pa.portfolio_hedge_ratios["l3_market_hr"])
 print(pa.to_llm_context())
 ```
 
+### Metrics + macro factor correlation (one row)
+
+ERM3 snapshot plus `macro_corr_*` columns (Pearson/Spearman vs bitcoin, VIX, etc.). `macro_corr_*` values are **return correlations**, not dollar hedges (`l3_market_hr`) or variance shares (`l3_residual_er`). Use `return_type="gross"` for total-equity co-movement with macro; use `"l3_residual"` for the idiosyncratic sleeve vs macro.
+
+```python
+from riskmodels import RiskModelsClient, to_llm_context
+
+client = RiskModelsClient.from_env()
+snap = client.get_metrics_with_macro_correlation(
+    "NVDA",
+    factors=["bitcoin", "vix"],
+    return_type="l3_residual",
+    window_days=252,
+)
+print(snap["macro_corr_bitcoin"].iloc[0], snap["l3_market_hr"].iloc[0])
+print(to_llm_context(snap))
+```
+
 ## Recursive Visual Refinement (MatPlotAgent)
 
 Generate professional financial visualizations through automated Vision-LLM feedback:

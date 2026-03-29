@@ -65,28 +65,29 @@ def validate_er_components(metrics, tolerance=0.05):
 
 ---
 
-### 3. HR Sign Convention Check
+### 3. HR magnitude check (optional)
 
-Market and sector hedge ratios should be positive (short positions). Subsector can be negative (long). Flag unusual values.
+Hedge ratios **may be negative at any level** (orthogonalization / long ETF leg); **negative market HR at L2 or L3 is common**. Do not flag a negative sign as a default data-quality error. If you want heuristics, only flag **extreme magnitudes** (tune thresholds to your universe).
 
 ```python
-def check_hr_signs(metrics):
+def check_hr_magnitudes(metrics, abs_cap: float = 3.0):
     """
-    Check hedge ratio sign conventions.
-    l3_subsector_hr can be legitimately negative.
-    Returns list of warning strings (empty = all ok).
+    Optional: flag |HR| above abs_cap for manual review.
+    Negative signs alone are not treated as errors.
     """
     issues = []
-    always_positive = ['l1_market_hr', 'l2_market_hr', 'l2_sector_hr',
-                        'l3_market_hr', 'l3_sector_hr']
-    for field in always_positive:
+    hr_fields = [
+        "l1_market_hr",
+        "l2_market_hr",
+        "l2_sector_hr",
+        "l3_market_hr",
+        "l3_sector_hr",
+        "l3_subsector_hr",
+    ]
+    for field in hr_fields:
         val = metrics.get(field)
-        if val is not None and val < 0:
-            issues.append(f"{field} = {val:.4f} (negative — unusual, verify ticker)")
-
-    subsector = metrics.get('l3_subsector_hr')
-    if subsector is not None and abs(subsector) > 1.0:
-        issues.append(f"l3_subsector_hr = {subsector:.4f} (magnitude > 1.0 — verify)")
+        if val is not None and abs(val) > abs_cap:
+            issues.append(f"{field} = {val:.4f} (|HR| > {abs_cap} — verify ticker / window)")
 
     return issues
 ```

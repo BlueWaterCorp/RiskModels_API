@@ -5,7 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any
 
-SDK_VERSION = "0.2.0"
+SDK_VERSION = "0.2.4"
+
+_RANKING_METRICS = [
+    "mkt_cap",
+    "gross_return",
+    "sector_residual",
+    "subsector_residual",
+    "er_l1",
+    "er_l2",
+    "er_l3",
+]
+_RANKING_COHORTS = ["universe", "sector", "subsector"]
+_RANKING_WINDOWS = ["1d", "21d", "63d", "252d"]
 
 # Parameters use JSON-friendly keys (required: bool) for discover(format="json") / tool builders.
 _SDK_METHODS: list[dict[str, Any]] = [
@@ -43,6 +55,60 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {
             "type": "pandas.DataFrame | dict",
             "description": "Semantic metrics row; dict path omits DataFrame attrs.",
+        },
+    },
+    {
+        "name": "get_metrics_with_macro_correlation",
+        "aliases": [],
+        "summary": "One-row ERM3 metrics plus macro_corr_* (two HTTP calls).",
+        "description": (
+            "Calls get_metrics(as_dataframe=True) then get_factor_correlation_single(as_dataframe=True); "
+            "concatenates columns and merges lineage. Use for post-close / agent snapshots. "
+            "macro_corr_* are return correlations, not hedge notionals (see COMBINED_ERM3_MACRO_LEGEND)."
+        ),
+        "scopes": ["ticker-returns (OAuth)", "factor-correlation"],
+        "parameters": [
+            {"name": "ticker", "type": "string", "required": True, "description": "US equity symbol."},
+            {
+                "name": "factors",
+                "type": "array",
+                "required": False,
+                "description": "Macro keys; default all six.",
+            },
+            {
+                "name": "return_type",
+                "type": "string",
+                "required": False,
+                "default": "l3_residual",
+                "enum": ["gross", "l1", "l2", "l3_residual"],
+                "description": "Stock return series for correlation vs macro (gross vs ERM3 residuals).",
+            },
+            {
+                "name": "window_days",
+                "type": "integer",
+                "required": False,
+                "default": 252,
+                "description": "Trailing paired-day window for correlation (20–2000).",
+            },
+            {
+                "name": "method",
+                "type": "string",
+                "required": False,
+                "default": "pearson",
+                "enum": ["pearson", "spearman"],
+                "description": "Correlation estimator.",
+            },
+            {
+                "name": "validate",
+                "type": "string",
+                "required": False,
+                "enum": ["off", "warn", "error"],
+                "description": "Passed through to get_metrics.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame",
+            "description": "Single row: ERM3 fields + macro_corr_* + macro_* parameter columns.",
         },
     },
     {
@@ -149,6 +215,210 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "dict | pandas.DataFrame", "description": "JSON or tabular."},
     },
     {
+        "name": "get_plaid_holdings",
+        "aliases": [],
+        "summary": "Plaid-synced brokerage holdings (GET /plaid/holdings).",
+        "description": (
+            "Returns holdings, accounts, securities, and summary for the authenticated user. "
+            "Requires API key scope plaid:holdings when scopes are set. Use with link-token + "
+            "exchange-public-token in the web app to connect accounts first."
+        ),
+        "scopes": ["plaid-holdings", "plaid:holdings"],
+        "parameters": [
+            {
+                "name": "authorization",
+                "type": "http_header",
+                "required": True,
+                "description": "Bearer token; API keys with explicit scopes need plaid:holdings (or *).",
+            },
+        ],
+        "returns": {
+            "type": "dict",
+            "description": "holdings, accounts, securities, summary, _metadata, _agent.",
+        },
+    },
+    {
+        "name": "post_portfolio_risk_index",
+        "aliases": [],
+        "summary": "Portfolio L3 variance decomposition (POST /portfolio/risk-index).",
+        "description": (
+            "Weighted portfolio ER breakdown and optional time series. Empty ``positions`` returns "
+            "HTTP 200 with ``status: 'syncing'`` when holdings are not loaded yet (e.g. Plaid sync)."
+        ),
+        "scopes": ["ticker-returns"],
+        "parameters": [
+            {
+                "name": "positions",
+                "type": "array",
+                "required": True,
+                "description": "List of {ticker, weight} dicts or (ticker, weight) tuples; may be empty for sync polling.",
+            },
+            {
+                "name": "time_series",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+                "description": "Include daily portfolio ER time series.",
+            },
+            {
+                "name": "years",
+                "type": "integer",
+                "required": False,
+                "default": 1,
+                "description": "History span when time_series is True (1–15).",
+            },
+        ],
+        "returns": {
+            "type": "dict",
+            "description": "portfolio_risk_index, per_ticker, summary, _metadata; or status=syncing when positions empty.",
+        },
+    },
+    {
+        "name": "get_rankings",
+        "aliases": [],
+        "summary": "Cross-sectional rank grid for one ticker (GET /rankings/{ticker}).",
+        "description": (
+            "Analyzes where a security sits in its sector/universe percentile for risk and return. "
+            "Returns one row per (metric, cohort, window) with rank_ordinal, cohort_size, "
+            "rank_percentile (100=best). DataFrame includes ranking_key, attrs['riskmodels_rankings_headline'], "
+            "and riskmodels_warnings when cohort_size < 10. Default as_dataframe=True."
+        ),
+        "scopes": ["rankings"],
+        "parameters": [
+            {"name": "ticker", "type": "string", "required": True, "description": "US equity symbol."},
+            {
+                "name": "metric",
+                "type": "string",
+                "required": False,
+                "enum": _RANKING_METRICS,
+                "description": "Optional filter; omit for full grid.",
+            },
+            {
+                "name": "cohort",
+                "type": "string",
+                "required": False,
+                "enum": _RANKING_COHORTS,
+                "description": "universe | sector | subsector; optional filter.",
+            },
+            {
+                "name": "window",
+                "type": "string",
+                "required": False,
+                "enum": _RANKING_WINDOWS,
+                "description": "Return window tag; optional filter.",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": True,
+                "description": "If True, return pandas.DataFrame with SDK attrs (default).",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame | dict",
+            "description": "Long rankings table or raw JSON.",
+        },
+    },
+    {
+        "name": "get_top_rankings",
+        "aliases": [],
+        "summary": "Leaderboard: best rank_ordinal first at latest teo (GET /rankings/top).",
+        "description": (
+            "Requires metric, cohort, window. limit 1–100 (default 10). Rows include ticker, "
+            "rank_ordinal, cohort_size, rank_percentile; metric/cohort/window/ranking_key are "
+            "broadcast for small-cohort warnings. attrs include riskmodels_rankings_headline and "
+            "riskmodels_rankings_query JSON."
+        ),
+        "scopes": ["rankings"],
+        "parameters": [
+            {
+                "name": "metric",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_METRICS,
+                "description": "Ranking metric key.",
+            },
+            {
+                "name": "cohort",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_COHORTS,
+                "description": "Peer cohort.",
+            },
+            {
+                "name": "window",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_WINDOWS,
+                "description": "Trailing window tag.",
+            },
+            {
+                "name": "limit",
+                "type": "integer",
+                "required": False,
+                "default": 10,
+                "description": "Max names (1–100).",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": True,
+                "description": "If True, return pandas.DataFrame with SDK attrs.",
+            },
+        ],
+        "returns": {"type": "pandas.DataFrame | dict", "description": "Leaderboard table or raw JSON."},
+    },
+    {
+        "name": "filter_universe_by_ranking",
+        "aliases": ["filter_universe"],
+        "summary": "Top names by rank_percentile (client-side filter on get_top_rankings).",
+        "description": (
+            "Fetches up to min(limit, 100) rows from get_top_rankings (API cap), then keeps rows with "
+            "rank_percentile >= min_percentile (default 90). attrs include riskmodels_filter_note."
+        ),
+        "scopes": ["rankings"],
+        "parameters": [
+            {
+                "name": "metric",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_METRICS,
+                "description": "Ranking metric key.",
+            },
+            {
+                "name": "cohort",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_COHORTS,
+                "description": "Peer cohort.",
+            },
+            {
+                "name": "window",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_WINDOWS,
+                "description": "Trailing window tag.",
+            },
+            {
+                "name": "min_percentile",
+                "type": "number",
+                "required": False,
+                "default": 90.0,
+                "description": "Minimum rank_percentile inclusive (100 = best).",
+            },
+            {
+                "name": "limit",
+                "type": "integer",
+                "required": False,
+                "default": 500,
+                "description": "Desired fetch size; server returns at most 100 rows per call.",
+            },
+        ],
+        "returns": {"type": "pandas.DataFrame", "description": "Filtered leaderboard subset."},
+    },
+    {
         "name": "get_l3_decomposition",
         "aliases": [],
         "summary": "L3 HR/ER time series (parallel arrays as DataFrame).",
@@ -177,6 +447,7 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "aliases": [],
         "summary": "Correlation vs macro factors (POST /correlation).",
         "description": (
+            "Measures exposure to macro-economic drivers like interest rates and volatility. "
             "Pearson/Spearman correlation between stock returns (gross or ERM3 residual) and daily "
             "macro factor returns (macro_factors table). Pass one ticker or a list for batch."
         ),
@@ -200,12 +471,14 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "required": False,
                 "default": "l3_residual",
                 "enum": ["gross", "l1", "l2", "l3_residual"],
+                "description": "Stock return series vs macro (gross or ERM3 residual).",
             },
             {
                 "name": "window_days",
                 "type": "integer",
                 "required": False,
                 "default": 252,
+                "description": "Trailing paired-day window (20–2000).",
             },
             {
                 "name": "method",
@@ -213,9 +486,20 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "required": False,
                 "default": "pearson",
                 "enum": ["pearson", "spearman"],
+                "description": "Correlation estimator.",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+                "description": "If True, one row per ticker (batch) or one row (single); SDK attrs + macro_corr_*.",
             },
         ],
-        "returns": {"type": "dict", "description": "JSON body with correlations, _metadata, _agent."},
+        "returns": {
+            "type": "dict | pandas.DataFrame",
+            "description": "Raw JSON or DataFrame with flattened macro_corr_* columns.",
+        },
     },
     {
         "name": "get_factor_correlation_single",
@@ -246,12 +530,14 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "required": False,
                 "default": "l3_residual",
                 "enum": ["gross", "l1", "l2", "l3_residual"],
+                "description": "Stock return series vs macro (gross or ERM3 residual).",
             },
             {
                 "name": "window_days",
                 "type": "integer",
                 "required": False,
                 "default": 252,
+                "description": "Trailing paired-day window (20–2000).",
             },
             {
                 "name": "method",
@@ -259,9 +545,20 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "required": False,
                 "default": "pearson",
                 "enum": ["pearson", "spearman"],
+                "description": "Correlation estimator.",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+                "description": "If True, one-row DataFrame with macro_corr_* and combined ERM3+macro legend attrs.",
             },
         ],
-        "returns": {"type": "dict", "description": "FactorCorrelationResponse with correlations, _metadata, _agent."},
+        "returns": {
+            "type": "dict | pandas.DataFrame",
+            "description": "API JSON or one-row frame with macro_corr_* columns and SDK attrs.",
+        },
     },
     {
         "name": "batch_analyze",
@@ -482,7 +779,9 @@ DISCOVER_SPEC: dict[str, Any] = {
             "Static API key: RISKMODELS_API_KEY → Bearer token (no refresh).",
             "OAuth2 client credentials: RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET; JWT ~15m refresh.",
         ],
-        "default_oauth_scope": "ticker-returns risk-decomposition batch-analysis",
+        "default_oauth_scope": (
+            "ticker-returns risk-decomposition batch-analysis factor-correlation rankings"
+        ),
     },
     "costs": {
         "metrics_per_request_usd": "~0.005",
@@ -498,6 +797,24 @@ DISCOVER_SPEC: dict[str, Any] = {
     "methods": _SDK_METHODS,
     "snippets": {
         "metrics": "client.get_metrics('NVDA', as_dataframe=True)",
+        "metrics_macro": (
+            "client.get_metrics_with_macro_correlation('NVDA', factors=['bitcoin','vix'], return_type='l3_residual')"
+        ),
+        "plaid_holdings": "client.get_plaid_holdings()  # API key needs plaid:holdings scope when scopes are set",
+        "portfolio_risk_index": "client.post_portfolio_risk_index([])  # empty → check body['status']=='syncing'",
+        "rankings_ticker": "client.get_rankings('NVDA', as_dataframe=True)",
+        "rankings_top": (
+            "client.get_top_rankings(metric='subsector_residual', cohort='subsector', window='252d', limit=10)"
+        ),
+        "rankings_filter": (
+            "client.filter_universe_by_ranking(metric='er_l3', cohort='universe', window='252d', min_percentile=90)"
+        ),
+        "rankings_badge_shields": (
+            "https://img.shields.io/endpoint?url=https://riskmodels.app/api/rankings/AAPL/badge"
+        ),
+        "github_ranking_png": (
+            "save_ranking_chart('NVDA', {'rank_percentile': 92.4}, 'assets/ranking_snapshot.png')"
+        ),
         "portfolio": "client.analyze_portfolio({'NVDA': 0.4, 'AAPL': 0.6})",
         "xarray": "ds = client.get_dataset(['AAPL','MSFT'], years=5)  # pip install riskmodels-py[xarray]",
         "discover_json": 'spec = client.discover(format="json", to_stdout=False)',
