@@ -91,6 +91,9 @@ class RiskModelsClient:
 
     @classmethod
     def from_env(cls) -> RiskModelsClient:
+        from .env import load_repo_dotenv
+
+        load_repo_dotenv()
         base = os.environ.get("RISKMODELS_BASE_URL", DEFAULT_BASE_URL)
         key = os.environ.get("RISKMODELS_API_KEY")
         if key is not None:

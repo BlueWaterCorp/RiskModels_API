@@ -9,6 +9,8 @@ RiskModels provides factor decompositions and ETF-executable hedge ratios for US
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-85ea2d)](OPENAPI_SPEC.yaml)
 [![PyPI](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
 
+![RiskModels — MAG7 macro correlations & cross-sectional rank snapshot](./assets/readme_inspiration.png)
+
 This repository is the **authoritative public API reference** for the [RiskModels](https://riskmodels.net) equity risk model API, featuring:
 
 - 📚 **Comprehensive API Documentation** — OpenAPI 3.0.3 specification, guides, and examples
@@ -102,19 +104,19 @@ print(to_llm_context(pa))
 
 ## Risk intelligence
 
-Track **Plaid-linked** portfolios against systemic macro shifts. PNGs are produced by [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py) (or CI) with `RISKMODELS_API_KEY`; commit them under `./assets/` for GitHub rendering.
+Charts below are **generated from live API data** (MAG7 batch correlation + `get_rankings`) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/` so GitHub and the portal both render the same PNGs.
 
 ### Macro sensitivity
 
-![Macro correlation heatmap](./assets/macro_heatmap.png)
+![MAG7 macro correlation matrix](./assets/macro_heatmap.png)
 
-Real-time correlation against VIX, gold, and BTC (build a numeric matrix in the SDK and call `save_macro_heatmap`).
+Pearson correlations of L3 residual returns vs macro factors (**VIX**, **Gold**, **BTC**) from `POST /correlation` — rendered with [`save_macro_sensitivity_matrix`](./sdk/riskmodels/visual_refinement.py).
 
 ### Sector rankings
 
 ![Ticker ranking](./assets/ranking_snapshot.png)
 
-Percentile positioning for alpha and residual risk (`get_rankings`, `save_ranking_chart`).
+Cross-sectional rank percentile from `get_rankings` — [`save_ranking_chart`](./sdk/riskmodels/visual_refinement.py).
 
 ---
 

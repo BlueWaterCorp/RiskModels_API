@@ -242,39 +242,16 @@ def _ranking_percentile_from_mapping(ranking_data: Mapping[str, Any] | pd.Series
     return float(v)
 
 
-def save_ranking_chart(
+def _plot_ranking_needle_on_axes(
+    ax: Any,
     ticker: str,
-    ranking_data: Mapping[str, Any] | pd.Series,
-    path: str = "ranking_snapshot.png",
+    pct: float,
     *,
-    subtitle: str | None = None,
-    theme: GitHubChartTheme = "github_light",
-    transparent: bool | None = None,
-    dpi: int = 150,
-) -> str:
-    """Single-ticker “needle” on a 0–100 cross-sectional scale (``rank_percentile``, 100 = best).
-
-    Draws a light Gaussian “ghost” band and a vertical marker at the percentile. Optimized for
-    static PNGs in GitHub README / Issues (no seaborn; matplotlib only).
-
-    ``theme`` selects GitHub-like palettes; ``transparent`` defaults to True when ``theme`` is
-    ``\"transparent\"``, else False.
-    """
+    subtitle: str | None,
+    theme: GitHubChartTheme,
+) -> None:
+    """Draw the rank-percentile needle on an existing matplotlib Axes."""
     import math
-
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError as e:  # pragma: no cover
-        raise ImportError("save_ranking_chart requires matplotlib; pip install matplotlib") from e
-
-    pct = _ranking_percentile_from_mapping(ranking_data)
-    pct = max(0.0, min(100.0, pct))
-
-    if transparent is None:
-        transparent = theme == "transparent"
 
     if theme == "github_light":
         pal = GITHUB_LIGHT
@@ -283,13 +260,7 @@ def save_ranking_chart(
     else:
         pal = GITHUB_LIGHT
 
-    fig, ax = plt.subplots(figsize=(8, 2.2))
-    if transparent:
-        fig.patch.set_facecolor("none")
-        ax.set_facecolor("none")
-    else:
-        fig.patch.set_facecolor(pal["canvas"])
-        ax.set_facecolor(pal["canvas"])
+    pct = max(0.0, min(100.0, float(pct)))
 
     xs = [i * 0.5 for i in range(201)]
     mu, sigma = 50.0, 22.0
@@ -320,6 +291,54 @@ def save_ranking_chart(
             color=pal["muted"],
             fontsize=9,
         )
+
+
+def save_ranking_chart(
+    ticker: str,
+    ranking_data: Mapping[str, Any] | pd.Series,
+    path: str = "ranking_snapshot.png",
+    *,
+    subtitle: str | None = None,
+    theme: GitHubChartTheme = "github_light",
+    transparent: bool | None = None,
+    dpi: int = 150,
+) -> str:
+    """Single-ticker “needle” on a 0–100 cross-sectional scale (``rank_percentile``, 100 = best).
+
+    Draws a light Gaussian “ghost” band and a vertical marker at the percentile. Optimized for
+    static PNGs in GitHub README / Issues (no seaborn; matplotlib only).
+
+    ``theme`` selects GitHub-like palettes; ``transparent`` defaults to True when ``theme`` is
+    ``\"transparent\"``, else False.
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as e:  # pragma: no cover
+        raise ImportError("save_ranking_chart requires matplotlib; pip install matplotlib") from e
+
+    pct = _ranking_percentile_from_mapping(ranking_data)
+    if transparent is None:
+        transparent = theme == "transparent"
+
+    if theme == "github_light":
+        pal = GITHUB_LIGHT
+    elif theme == "github_dark":
+        pal = GITHUB_DARK
+    else:
+        pal = GITHUB_LIGHT
+
+    fig, ax = plt.subplots(figsize=(8, 2.2))
+    if transparent:
+        fig.patch.set_facecolor("none")
+        ax.set_facecolor("none")
+    else:
+        fig.patch.set_facecolor(pal["canvas"])
+        ax.set_facecolor(pal["canvas"])
+
+    _plot_ranking_needle_on_axes(ax, ticker, pct, subtitle=subtitle, theme=theme)
 
     fig.tight_layout()
     fig.savefig(path, dpi=dpi, bbox_inches="tight", transparent=transparent)
@@ -389,6 +408,148 @@ def save_macro_heatmap(
                 )
     fig.tight_layout()
     fig.savefig(path, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    plt.close(fig)
+    return path
+
+
+def _draw_macro_sensitivity_matrix_on_axes(
+    ax: Any,
+    sensitivity: pd.DataFrame,
+    *,
+    title: str,
+    annot: bool,
+) -> None:
+    """Draw a ticker × factor correlation matrix (values in ~[-1, 1]) on ``ax``."""
+    from matplotlib.colors import TwoSlopeNorm
+
+    if sensitivity.shape[1] < 1:
+        raise ValueError("sensitivity needs at least one factor column")
+    arr = sensitivity.astype(float).to_numpy()
+    n, m = arr.shape
+    norm = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
+    im = ax.imshow(arr, cmap="RdYlGn", norm=norm, aspect="auto")
+    ax.set_xticks(range(m))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(list(sensitivity.columns), rotation=35, ha="right")
+    ax.set_yticklabels(list(sensitivity.index))
+    ax.set_title(title)
+    fig = ax.get_figure()
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    if annot:
+        for i in range(n):
+            for j in range(m):
+                val = arr[i, j]
+                if val != val:
+                    continue
+                t = f"{val:.2f}"
+                ax.text(
+                    j,
+                    i,
+                    t,
+                    ha="center",
+                    va="center",
+                    color="#1a1a1a" if abs(val) < 0.55 else "#f6f8fa",
+                    fontsize=8,
+                )
+
+
+def save_macro_sensitivity_matrix(
+    sensitivity: pd.DataFrame,
+    path: str = "macro_sensitivity.png",
+    *,
+    title: str = "Macro factor sensitivity (L3 residual vs macro returns)",
+    annot: bool = True,
+    figsize: tuple[float, float] | None = None,
+    transparent: bool = False,
+    dpi: int = 150,
+) -> str:
+    """Heatmap of API ``macro_corr_*`` values: index = tickers, columns = factor labels.
+
+    Expects a numeric matrix only (no extra metadata columns). Values are typically Pearson or
+    Spearman correlations in ``[-1, 1]``.
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "save_macro_sensitivity_matrix requires matplotlib; pip install matplotlib",
+        ) from e
+
+    num = sensitivity.select_dtypes(include=["number"])
+    if num.shape[1] < 1:
+        raise ValueError("sensitivity needs at least one numeric factor column")
+    if figsize is None:
+        figsize = (max(7.0, 0.55 * num.shape[1] + 4.0), max(3.5, 0.45 * num.shape[0] + 2.0))
+
+    fig, ax = plt.subplots(figsize=figsize)
+    if transparent:
+        fig.patch.set_facecolor("none")
+        ax.set_facecolor("none")
+    _draw_macro_sensitivity_matrix_on_axes(ax, num, title=title, annot=annot)
+    fig.tight_layout()
+    fig.savefig(path, dpi=dpi, bbox_inches="tight", transparent=transparent)
+    plt.close(fig)
+    return path
+
+
+def save_risk_intel_inspiration_figure(
+    macro_matrix: pd.DataFrame,
+    ranking_ticker: str,
+    ranking_data: Mapping[str, Any] | pd.Series,
+    path: str = "readme_inspiration.png",
+    *,
+    macro_title: str = "MAG7 — macro correlations (L3 residual)",
+    ranking_subtitle: str | None = None,
+    theme: GitHubChartTheme = "github_light",
+    dpi: int = 140,
+) -> str:
+    """Wide figure for README / docs: macro sensitivity matrix + rank-percentile needle."""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "save_risk_intel_inspiration_figure requires matplotlib; pip install matplotlib",
+        ) from e
+
+    pct = _ranking_percentile_from_mapping(ranking_data)
+    pal = GITHUB_LIGHT if theme == "github_light" else GITHUB_DARK
+
+    fig, axes = plt.subplots(
+        1,
+        2,
+        figsize=(14.5, 4.2),
+        gridspec_kw={"width_ratios": [1.45, 1.0], "wspace": 0.28},
+        constrained_layout=True,
+    )
+    ax_m, ax_r = axes
+    fig.patch.set_facecolor(pal["canvas"])
+    ax_m.set_facecolor("#ffffff")
+    ax_r.set_facecolor(pal["canvas"])
+
+    num = macro_matrix.select_dtypes(include=["number"])
+    _draw_macro_sensitivity_matrix_on_axes(ax_m, num, title=macro_title, annot=True)
+    _plot_ranking_needle_on_axes(
+        ax_r,
+        ranking_ticker,
+        pct,
+        subtitle=ranking_subtitle,
+        theme=theme,
+    )
+
+    fig.suptitle(
+        "RiskModels — cross-sectional ranks & macro sensitivity",
+        fontsize=13,
+        fontweight="semibold",
+        color=pal["fg"],
+        y=1.06,
+    )
+    fig.savefig(path, dpi=dpi, bbox_inches="tight", transparent=False)
     plt.close(fig)
     return path
 

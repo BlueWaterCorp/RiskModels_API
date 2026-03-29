@@ -813,7 +813,7 @@ DISCOVER_SPEC: dict[str, Any] = {
             "https://img.shields.io/endpoint?url=https://riskmodels.app/api/rankings/AAPL/badge"
         ),
         "github_ranking_png": (
-            "save_ranking_chart('NVDA', {'rank_percentile': 92.4}, 'assets/ranking_snapshot.png')"
+            "scripts/generate_readme_assets.py  # writes assets/*.png from get_rankings + MAG7 POST /correlation"
         ),
         "portfolio": "client.analyze_portfolio({'NVDA': 0.4, 'AAPL': 0.6})",
         "xarray": "ds = client.get_dataset(['AAPL','MSFT'], years=5)  # pip install riskmodels-py[xarray]",

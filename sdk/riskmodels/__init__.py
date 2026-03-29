@@ -1,6 +1,7 @@
 """RiskModels API — Python SDK (ERM3 hedge ratios and explained risk)."""
 
 from .client import RiskModelsClient
+from .env import load_repo_dotenv
 from .exceptions import (
     APIError,
     AuthError,
@@ -28,8 +29,10 @@ from .visual_refinement import (
     RefinementResult,
     generate_refined_plot,
     save_macro_heatmap,
+    save_macro_sensitivity_matrix,
     save_ranking_chart,
     save_ranking_percentile_bar_chart,
+    save_risk_intel_inspiration_figure,
 )
 
 __all__ = [
@@ -39,13 +42,16 @@ __all__ = [
     "RefinementResult",
     "RiskLineage",
     "RiskModelsClient",
+    "load_repo_dotenv",
     "attach_sdk_metadata",
     "build_semantic_cheatsheet_md",
     "ensure_dataframe_legend",
     "generate_refined_plot",
     "save_macro_heatmap",
+    "save_macro_sensitivity_matrix",
     "save_ranking_chart",
     "save_ranking_percentile_bar_chart",
+    "save_risk_intel_inspiration_figure",
     "RiskModelsValidationError",
     "RiskModelsValidationIssue",
     "PortfolioAnalysis",

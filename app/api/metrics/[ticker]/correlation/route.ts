@@ -26,83 +26,95 @@ const QuerySchema = z.object({
 export const GET = withBilling(
   async (request: NextRequest, context: BillingContext) => {
     const origin = request.headers.get("origin");
-    const pathMatch = request.nextUrl.pathname.match(/\/api\/metrics\/([^/]+)\/correlation\/?$/);
-    const rawTicker = pathMatch?.[1];
-    const { searchParams } = new URL(request.url);
+    try {
+      const pathMatch = request.nextUrl.pathname.match(/\/api\/metrics\/([^/]+)\/correlation\/?$/);
+      const rawTicker = pathMatch?.[1];
+      const { searchParams } = new URL(request.url);
 
-    if (!rawTicker) {
-      return NextResponse.json(
-        { error: "Invalid path", message: "Expected /api/metrics/{ticker}/correlation" },
-        { status: 400, headers: getCorsHeaders(origin) },
-      );
-    }
-
-    const tickerParse = TickerSchema.safeParse(rawTicker);
-    if (!tickerParse.success) {
-      return NextResponse.json(
-        { error: "Invalid ticker", message: tickerParse.error.issues[0]?.message },
-        { status: 400, headers: getCorsHeaders(origin) },
-      );
-    }
-
-    const q = QuerySchema.safeParse({
-      factors: searchParams.get("factors") ?? searchParams.get("factor") ?? undefined,
-      return_type: searchParams.get("return_type") ?? undefined,
-      window_days: searchParams.get("window_days") ?? undefined,
-      method: searchParams.get("method") ?? undefined,
-    });
-
-    if (!q.success) {
-      return NextResponse.json(
-        { error: "Invalid query", message: q.error.issues[0]?.message },
-        { status: 400, headers: getCorsHeaders(origin) },
-      );
-    }
-
-    let factorList: string[] = [...DEFAULT_MACRO_FACTORS];
-    if (q.data.factors?.length) {
-      const { keys } = normalizeMacroFactorKeys(q.data.factors);
-      if (keys.length === 0) {
+      if (!rawTicker) {
         return NextResponse.json(
-          {
-            error: "Invalid factor key",
-            message: `Unknown macro factor(s). Canonical keys: ${DEFAULT_MACRO_FACTORS.join(", ")}`,
-          },
+          { error: "Invalid path", message: "Expected /api/metrics/{ticker}/correlation" },
           { status: 400, headers: getCorsHeaders(origin) },
         );
       }
-      factorList = [...keys];
-    }
 
-    const fetchStart = performance.now();
-    const metadata = await getRiskMetadata();
+      const tickerParse = TickerSchema.safeParse(rawTicker);
+      if (!tickerParse.success) {
+        return NextResponse.json(
+          { error: "Invalid ticker", message: tickerParse.error.issues[0]?.message },
+          { status: 400, headers: getCorsHeaders(origin) },
+        );
+      }
 
-    const result = await computeFactorCorrelation({
-      ticker: tickerParse.data,
-      factors: [...factorList],
-      return_type: q.data.return_type,
-      window_days: q.data.window_days,
-      method: q.data.method,
-    });
+      const q = QuerySchema.safeParse({
+        factors: searchParams.get("factors") ?? searchParams.get("factor") ?? undefined,
+        return_type: searchParams.get("return_type") ?? undefined,
+        window_days: searchParams.get("window_days") ?? undefined,
+        method: searchParams.get("method") ?? undefined,
+      });
 
-    if ("error" in result && "status" in result) {
+      if (!q.success) {
+        return NextResponse.json(
+          { error: "Invalid query", message: q.error.issues[0]?.message },
+          { status: 400, headers: getCorsHeaders(origin) },
+        );
+      }
+
+      let factorList: string[] = [...DEFAULT_MACRO_FACTORS];
+      if (q.data.factors?.length) {
+        const { keys } = normalizeMacroFactorKeys(q.data.factors);
+        if (keys.length === 0) {
+          return NextResponse.json(
+            {
+              error: "Invalid factor key",
+              message: `Unknown macro factor(s). Canonical keys: ${DEFAULT_MACRO_FACTORS.join(", ")}`,
+            },
+            { status: 400, headers: getCorsHeaders(origin) },
+          );
+        }
+        factorList = [...keys];
+      }
+
+      const fetchStart = performance.now();
+      const metadata = await getRiskMetadata();
+
+      const result = await computeFactorCorrelation({
+        ticker: tickerParse.data,
+        factors: [...factorList],
+        return_type: q.data.return_type,
+        window_days: q.data.window_days,
+        method: q.data.method,
+      });
+
+      if ("error" in result && "status" in result) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: result.status, headers: getCorsHeaders(origin) },
+        );
+      }
+
+      const latency = Math.round(performance.now() - fetchStart);
+      const response = NextResponse.json({
+        ...result,
+        _metadata: buildMetadataBody(metadata),
+        _agent: {
+          latency_ms: latency,
+          request_id: context.requestId,
+        },
+      });
+      addMetadataHeaders(response, metadata);
+      return response;
+    } catch (err) {
+      console.error("[correlation] GET failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
       return NextResponse.json(
-        { error: result.error },
-        { status: result.status, headers: getCorsHeaders(origin) },
+        {
+          error: "Correlation handler failed",
+          message,
+        },
+        { status: 500, headers: getCorsHeaders(origin) },
       );
     }
-
-    const latency = Math.round(performance.now() - fetchStart);
-    const response = NextResponse.json({
-      ...result,
-      _metadata: buildMetadataBody(metadata),
-      _agent: {
-        latency_ms: latency,
-        request_id: context.requestId,
-      },
-    });
-    addMetadataHeaders(response, metadata);
-    return response;
   },
   { capabilityId: "factor-correlation" },
 );
