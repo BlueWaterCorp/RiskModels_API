@@ -9,6 +9,9 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/examples', destination: '/quickstart#code-examples', permanent: true },
+      { source: '/api-docs', destination: '/api-docs.html', permanent: true },
+      { source: '/documentation', destination: '/docs/api', permanent: true },
+      { source: '/docs', destination: '/docs/api', permanent: true },
     ];
   },
   images: {
