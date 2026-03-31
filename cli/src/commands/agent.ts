@@ -1,38 +1,83 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import { loadConfig } from "../lib/config.js";
+import { requireResolvedAuth } from "../lib/credentials.js";
+import { apiFetchJson } from "../lib/api-client.js";
+import { printResults } from "../lib/display.js";
 
 const DOCS = "https://riskmodels.net/docs/api";
 
-function stub(name: string, hint: string) {
-  return () => {
-    console.log(
-      chalk.yellow(
-        `${name} is not implemented in riskmodels-cli v1.0.1.\n` +
-          `Use the HTTP API, MCP server (mcp/ in the RiskModels_API repo), or Python SDK.\n` +
-          `Docs: ${DOCS}\n` +
-          `Hint: ${hint}`,
-      ),
-    );
-  };
+function parseTickers(s: string): string[] {
+  return s
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
 }
 
 export function agentCommand(): Command {
-  const agent = new Command("agent").description(
-    "Portfolio / agent workflows (placeholders — use API or MCP for full functionality)",
-  );
+  const agent = new Command("agent").description("Shortcuts for portfolio-style workflows (wraps REST endpoints)");
 
   agent
     .command("decompose")
-    .description("L3 portfolio attribution (not implemented in CLI)")
-    .option("--portfolio <file>", "Path to positions JSON (ignored)")
-    .action(stub("decompose", "POST /api/batch/analyze with positions[], or use the riskmodels Python package."));
+    .description("Batch L3-style screen: POST /batch/analyze with full_metrics (+ hedge_ratios)")
+    .requiredOption("--tickers <symbols>", "Comma or space separated tickers (max 100)")
+    .option("--years <n>", "Years when returns blocks are requested", "1")
+    .action(async (opts: { tickers: string; years?: string }, cmd: Command) => {
+      const json = (cmd.optsWithGlobals() as { json?: boolean }).json ?? false;
+      const cfg = await loadConfig();
+      const auth = requireResolvedAuth(cfg, chalk.yellow);
+      if (!auth) return;
+
+      const tickers = parseTickers(opts.tickers);
+      if (tickers.length === 0 || tickers.length > 100) {
+        console.error(chalk.red("Provide 1–100 tickers."));
+        process.exitCode = 1;
+        return;
+      }
+      const years = parseInt(String(opts.years ?? "1"), 10) || 1;
+
+      try {
+        const { body, costUsd } = await apiFetchJson(auth, "POST", "/batch/analyze", {
+          jsonBody: {
+            tickers,
+            metrics: ["full_metrics", "hedge_ratios"],
+            years,
+            format: "json",
+          },
+        });
+        printResults(body, json);
+        if (!json && costUsd) console.log(chalk.dim(`Cost: $${costUsd}`));
+      } catch (e) {
+        console.error(chalk.red(e instanceof Error ? e.message : String(e)));
+        process.exitCode = 1;
+      }
+    });
 
   agent
     .command("monitor")
-    .description("Factor drift monitoring (not implemented in CLI)")
-    .option("--portfolio <file>", "Path to positions JSON (ignored)")
-    .option("--threshold <n>", "Drift threshold (ignored)")
-    .action(stub("monitor", "Poll GET /api/metrics/{ticker} for holdings or integrate MCP tools."));
+    .description("Latest risk snapshot for one holding: GET /metrics/{ticker}")
+    .argument("<ticker>", "Symbol to poll")
+    .action(async (ticker: string, _opts: unknown, cmd: Command) => {
+      const json = (cmd.optsWithGlobals() as { json?: boolean }).json ?? false;
+      const cfg = await loadConfig();
+      const auth = requireResolvedAuth(cfg, chalk.yellow);
+      if (!auth) return;
+
+      const enc = encodeURIComponent(ticker.trim());
+      try {
+        const { body, costUsd } = await apiFetchJson(auth, "GET", `/metrics/${enc}`);
+        printResults(body, json);
+        if (!json && costUsd) console.log(chalk.dim(`Cost: $${costUsd}`));
+      } catch (e) {
+        console.error(chalk.red(e instanceof Error ? e.message : String(e)));
+        process.exitCode = 1;
+      }
+    });
+
+  agent.addHelpText(
+    "after",
+    `\n${chalk.dim(`More endpoints: ${DOCS} — or run \`riskmodels --help\` for the full CLI.`)}`,
+  );
 
   return agent;
 }

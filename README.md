@@ -155,7 +155,7 @@ See [mcp/README.md](./mcp/README.md) for install and config.
 
 The npm package in [`cli/`](./cli/) installs the `riskmodels` binary: config, SQL query (billed API or direct Supabase), schema introspection, balance, and static agent manifests.
 
-**Install from npm (after you publish `cli/`):**
+**Install from npm:**
 
 ```bash
 npm install -g riskmodels-cli
@@ -171,7 +171,7 @@ npm run build
 npm run install:global   # optional: npm link for local testing
 ```
 
-**Publish** (maintainers only): run `npm publish` from the `cli/` directory, not the repo root. The root app is `private` and is not published to npm.
+**Publish to npm** (maintainers): procedure is documented in the private **BWMACRO** monorepo (`docs/RISKMODELS_CLI_NPM_PUBLISHING.md`), not here. Only publish from the **`cli/`** directory — the repo root Next.js app is not published to npm.
 
 ---
 

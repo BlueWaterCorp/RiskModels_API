@@ -24,10 +24,12 @@ from datetime import datetime, timezone
 
 _DEFAULT_TICKER = "NVDA"
 
+MIN_RISKMODELS_PY_VERSION = os.environ.get("RISKMODELS_PY_MIN_VERSION", "0.2.4")
+
 _DEFAULT_SDK_UPGRADE_MESSAGE = (
     "Upgrade the Python SDK (riskmodels-py) so you have the latest helpers (e.g. format_metrics_snapshot). "
-    "Run: pip install -U riskmodels-py. "
-    "Editable from this repo: pip install -e . (from packages/riskmodels). "
+    f"Run: pip install -U \"riskmodels-py>={MIN_RISKMODELS_PY_VERSION}\". "
+    "Editable from this repo: pip install -e ../../sdk (RiskModels_API/sdk). "
     "From BWMACRO: pip install -r requirements-sdk-tests.txt"
 )
 
@@ -45,6 +47,44 @@ def _pypi_gap_note(installed_version: str) -> str:
 def log_event(message: str, level: str = "INFO") -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{ts}] [{level}] {message}", file=sys.stderr, flush=True)
+
+
+def _parse_version_tuple(v: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for seg in v.split(".")[:4]:
+        num = ""
+        for c in seg:
+            if c.isdigit():
+                num += c
+            else:
+                break
+        parts.append(int(num) if num else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
+
+
+def _require_min_riskmodels_py_version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        installed = version("riskmodels-py")
+    except PackageNotFoundError:
+        log_event(
+            "riskmodels-py is not installed. "
+            f'Install: pip install "riskmodels-py>={MIN_RISKMODELS_PY_VERSION}"',
+            level="ERROR",
+        )
+        raise SystemExit(1) from None
+    if _parse_version_tuple(installed) < _parse_version_tuple(MIN_RISKMODELS_PY_VERSION):
+        log_event(
+            f"riskmodels-py {installed} is below the minimum {MIN_RISKMODELS_PY_VERSION}. "
+            f'Update: pip install -U "riskmodels-py>={MIN_RISKMODELS_PY_VERSION}"',
+            level="ERROR",
+        )
+        raise SystemExit(1) from None
+    log_event(f"riskmodels-py version OK ({installed}, minimum {MIN_RISKMODELS_PY_VERSION})")
+    return installed
 
 
 def _fetch_sdk_python_upgrade_message() -> str:
@@ -90,6 +130,8 @@ def _require_format_metrics_snapshot():
 
 
 def main() -> None:
+    _require_min_riskmodels_py_version()
+
     from riskmodels import APIError, RiskModelsClient
 
     format_metrics_snapshot = _require_format_metrics_snapshot()
