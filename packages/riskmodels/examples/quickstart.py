@@ -18,9 +18,28 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 _DEFAULT_TICKER = "NVDA"
+
+_DEFAULT_SDK_UPGRADE_MESSAGE = (
+    "Upgrade the Python SDK (riskmodels-py) so you have the latest helpers (e.g. format_metrics_snapshot). "
+    "Run: pip install -U riskmodels-py. "
+    "Editable from this repo: pip install -e . (from packages/riskmodels). "
+    "From BWMACRO: pip install -r requirements-sdk-tests.txt"
+)
+
+
+def _pypi_gap_note(installed_version: str) -> str:
+    if installed_version in ("0.2.0", "0.1.0"):
+        return (
+            "The PyPI release riskmodels-py "
+            f"{installed_version} does not include format_metrics_snapshot; "
+            "pip install -U riskmodels-py will not add it until a newer release is published. "
+        )
+    return ""
 
 
 def log_event(message: str, level: str = "INFO") -> None:
@@ -28,8 +47,52 @@ def log_event(message: str, level: str = "INFO") -> None:
     print(f"[{ts}] [{level}] {message}", file=sys.stderr, flush=True)
 
 
+def _fetch_sdk_python_upgrade_message() -> str:
+    """Canonical copy from GET {RISKMODELS_BASE_URL}/sdk/python; falls back to _DEFAULT_SDK_UPGRADE_MESSAGE."""
+    base = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+    url = f"{base}/sdk/python"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode())
+        msg = data.get("upgrade_message")
+        api_msg = str(msg).strip() if msg else ""
+        return api_msg or _DEFAULT_SDK_UPGRADE_MESSAGE
+    except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError, TypeError, AttributeError):
+        return _DEFAULT_SDK_UPGRADE_MESSAGE
+
+
+def _require_format_metrics_snapshot():
+    try:
+        from riskmodels import format_metrics_snapshot
+
+        return format_metrics_snapshot
+    except ImportError:
+        pass
+    try:
+        from riskmodels.metrics_snapshot import format_metrics_snapshot
+
+        return format_metrics_snapshot
+    except ImportError:
+        ver = "unknown"
+        try:
+            from importlib.metadata import version
+
+            ver = version("riskmodels-py")
+        except Exception:
+            pass
+        upgrade_msg = _pypi_gap_note(ver) + _fetch_sdk_python_upgrade_message()
+        log_event(
+            f"`format_metrics_snapshot` is not available (installed riskmodels-py: {ver}). {upgrade_msg}",
+            level="ERROR",
+        )
+        raise SystemExit(1) from None
+
+
 def main() -> None:
-    from riskmodels import APIError, RiskModelsClient, format_metrics_snapshot
+    from riskmodels import APIError, RiskModelsClient
+
+    format_metrics_snapshot = _require_format_metrics_snapshot()
 
     ticker = os.environ.get("RISKMODELS_QUICKSTART_TICKER", _DEFAULT_TICKER).strip() or _DEFAULT_TICKER
 
