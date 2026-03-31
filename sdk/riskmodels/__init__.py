@@ -23,6 +23,7 @@ from .metadata_attach import (
     build_semantic_cheatsheet_md,
     ensure_dataframe_legend,
 )
+from .metrics_snapshot import format_metrics_snapshot
 from .portfolio_math import PortfolioAnalysis
 from .visual_refinement import (
     MatPlotAgent,
@@ -55,6 +56,7 @@ __all__ = [
     "RiskModelsValidationError",
     "RiskModelsValidationIssue",
     "PortfolioAnalysis",
+    "format_metrics_snapshot",
     "COMBINED_ERM3_MACRO_LEGEND",
     "RANKINGS_SMALL_COHORT_THRESHOLD",
     "SHORT_ERM3_LEGEND",

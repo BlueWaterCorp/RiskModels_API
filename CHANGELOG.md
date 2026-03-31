@@ -4,6 +4,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Added
+
+- **Python SDK** — `format_metrics_snapshot(row)` for human-readable L3 metrics text from a `get_metrics` dict row; `examples/quickstart.py` CLI demo. See [packages/riskmodels/README.md](packages/riskmodels/README.md).
+
 ### Changed
 
 - **User API key billing floor** — [`ensureMinimumBalanceForUserKeyHolder`](./lib/agent/billing.ts) tops up `agent_accounts` to $20 once per user (deduped via `billing_events.capability_id = user_key_floor_credit`) for active `rm_user_*` keys; runs after [`ensureStarterCredits`](./lib/agent/billing.ts) in [`withBilling`](./lib/agent/billing-middleware.ts). Supabase migration [`20260328131000_backfill_rm_user_key_balance.sql`](./supabase/migrations/20260328131000_backfill_rm_user_key_balance.sql) backfills balance for existing key holders.

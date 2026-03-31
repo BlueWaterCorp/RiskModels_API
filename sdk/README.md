@@ -40,6 +40,15 @@ print(pa.portfolio_hedge_ratios["l3_market_hr"])
 print(pa.to_llm_context())
 ```
 
+**Readable metrics snapshot (CLI):** after `pip install -e ".[dev]"` from `sdk/`, run:
+
+```bash
+export RISKMODELS_API_KEY=...
+python examples/quickstart.py
+```
+
+Optional: `RISKMODELS_QUICKSTART_TICKER=AAPL`. The script prints L3 hedge ratios, explained risk, optional market fields, and the ERM3 legend. Use `format_metrics_snapshot(row)` in your own code for the same text layout from a `get_metrics` dict row.
+
 ### Metrics + macro factor correlation (one row)
 
 ERM3 snapshot plus `macro_corr_*` columns (Pearson/Spearman vs bitcoin, VIX, etc.). `macro_corr_*` values are **return correlations**, not dollar hedges (`l3_market_hr`) or variance shares (`l3_residual_er`). Use `return_type="gross"` for total-equity co-movement with macro; use `"l3_residual"` for the idiosyncratic sleeve vs macro.
