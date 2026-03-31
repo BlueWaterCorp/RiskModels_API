@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Zap, Copy, Check } from 'lucide-react';
-import Link from 'next/link';
+import { useState } from "react";
+import { Zap, Copy, Check } from "lucide-react";
+import Link from "next/link";
 
 const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? null;
 
@@ -12,7 +12,7 @@ const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? null;
  * `Risk_Models/riskmodels_com/src/lib/agent/billing.ts`).
  */
 const PRICING_BADGE =
-  '$0 upfront · $20 free tier · Usage-based · No subscription · $5 low-balance email';
+  "$0 upfront · $20 free tier · Usage-based · No subscription · $5 low-balance email";
 
 export default function TryFree() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -24,8 +24,8 @@ export default function TryFree() {
   }
 
   const curlCmd = DEMO_KEY
-    ? `curl "https://riskmodels.app/api/tickers?mag7=true" \\\n  -H "Authorization: Bearer ${DEMO_KEY}"`
-    : '';
+    ? `curl "https://riskmodels.app/api/tickers?mag7=true" -H "Authorization: Bearer ${DEMO_KEY}"`
+    : "";
 
   if (!DEMO_KEY) {
     return (
@@ -35,10 +35,12 @@ export default function TryFree() {
             <Zap size={12} className="shrink-0" />
             <span>{PRICING_BADGE}</span>
           </div>
-          <h2 className="mb-2 text-2xl font-bold tracking-tighter text-white sm:text-3xl">Try it free</h2>
+          <h2 className="mb-2 text-2xl font-bold tracking-tighter text-white sm:text-3xl">
+            Try it free
+          </h2>
           <p className="mb-4 text-sm leading-relaxed text-zinc-400">
-            Sign in to get a key (card on file for billing). You&apos;re only charged for API
-            usage—no subscription or upfront fee.
+            Sign in to get a key (card on file for billing). You&apos;re only
+            charged for API usage—no subscription or upfront fee.
           </p>
           <Link
             href="/get-key"
@@ -63,8 +65,8 @@ export default function TryFree() {
             Try it free in 30 seconds
           </h2>
           <p className="text-zinc-400 text-sm leading-relaxed max-w-xl mx-auto">
-            Use the public demo key below—no signup. Full universe access uses the same usage-based
-            pricing (card on file; no upfront charge).
+            Use the public demo key below—no signup. Full universe access uses
+            the same usage-based pricing (card on file; no upfront charge).
           </p>
         </div>
 
@@ -72,58 +74,96 @@ export default function TryFree() {
           {/* Step 1 — Key */}
           <div className="p-6 border-b border-zinc-800">
             <div className="flex items-center gap-3 mb-3">
-              <span className="w-6 h-6 rounded-full bg-primary/20 border border-primary/40 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
-              <span className="text-sm font-semibold text-zinc-100">Your public demo API key</span>
-              <span className="ml-auto text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">MAG7 access</span>
+              <span className="w-6 h-6 rounded-full bg-primary/20 border border-primary/40 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
+                1
+              </span>
+              <span className="text-sm font-semibold text-zinc-100">
+                Your public demo API key
+              </span>
+              <span className="ml-auto text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                MAG7 access
+              </span>
             </div>
             <div className="flex items-center gap-2 bg-zinc-950 border border-emerald-700/50 rounded-lg px-4 py-3">
-              <code className="flex-1 text-emerald-400 text-sm font-mono truncate">{DEMO_KEY}</code>
+              <code className="flex-1 text-emerald-400 text-sm font-mono truncate">
+                {DEMO_KEY}
+              </code>
               <button
-                onClick={() => copy(DEMO_KEY, 'key')}
+                onClick={() => copy(DEMO_KEY, "key")}
                 className="text-zinc-500 hover:text-zinc-200 transition-colors flex-shrink-0 flex items-center gap-1 text-xs"
                 title="Copy key"
               >
-                {copied === 'key'
-                  ? <><Check size={14} className="text-emerald-400" /> Copied</>
-                  : <><Copy size={14} /> Copy</>}
+                {copied === "key" ? (
+                  <>
+                    <Check size={14} className="text-emerald-400" /> Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy size={14} /> Copy
+                  </>
+                )}
               </button>
             </div>
-            <p className="text-xs text-zinc-600 mt-2">Read-only · MAG7 tickers only · Rate limited</p>
+            <p className="text-xs text-zinc-600 mt-2">
+              Read-only · MAG7 tickers only · Rate limited
+            </p>
           </div>
 
           {/* Step 2 — Curl */}
           <div className="p-6 border-b border-zinc-800">
             <div className="flex items-center gap-3 mb-3">
-              <span className="w-6 h-6 rounded-full bg-primary/20 border border-primary/40 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
-              <span className="text-sm font-semibold text-zinc-100">Run this in your terminal</span>
-              <span className="ml-auto text-xs text-zinc-600">returns MAG7 ticker list</span>
+              <span className="w-6 h-6 rounded-full bg-primary/20 border border-primary/40 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
+                2
+              </span>
+              <span className="text-sm font-semibold text-zinc-100">
+                Run this in your terminal
+              </span>
+              <span className="ml-auto text-xs text-zinc-600">
+                returns MAG7 ticker list
+              </span>
             </div>
             <div className="relative bg-zinc-950 border border-zinc-700 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
                 <span className="text-xs text-zinc-600 font-mono">bash</span>
                 <button
-                  onClick={() => copy(curlCmd, 'curl')}
+                  onClick={() => copy(curlCmd, "curl")}
                   className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors flex items-center gap-1"
                 >
-                  {copied === 'curl'
-                    ? <><Check size={12} className="text-emerald-400" /> Copied</>
-                    : <><Copy size={12} /> Copy</>}
+                  {copied === "curl" ? (
+                    <>
+                      <Check size={12} className="text-emerald-400" /> Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} /> Copy
+                    </>
+                  )}
                 </button>
               </div>
-              <pre className="px-4 py-4 text-sm text-zinc-300 font-mono overflow-x-auto whitespace-pre">{curlCmd}</pre>
+              <pre className="px-4 py-4 text-sm text-zinc-300 font-mono overflow-x-auto whitespace-pre">
+                {curlCmd}
+              </pre>
             </div>
           </div>
 
           {/* Step 3 — What full access looks like */}
           <div className="p-6">
             <div className="flex items-center gap-3 mb-3">
-              <span className="w-6 h-6 rounded-full bg-zinc-700 border border-zinc-600 text-zinc-400 text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
-              <span className="text-sm font-semibold text-zinc-100">With a full key — live risk metrics</span>
-              <span className="ml-auto text-xs text-zinc-500">$0.005 / call</span>
+              <span className="w-6 h-6 rounded-full bg-zinc-700 border border-zinc-600 text-zinc-400 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                3
+              </span>
+              <span className="text-sm font-semibold text-zinc-100">
+                With a full key — live risk metrics
+              </span>
+              <span className="ml-auto text-xs text-zinc-500">
+                $0.005 / call
+              </span>
             </div>
             <div className="relative bg-zinc-950 border border-zinc-700 rounded-lg overflow-hidden opacity-80">
               <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
-                <span className="text-xs text-zinc-600 font-mono">GET /api/metrics/META → response</span>
+                <span className="text-xs text-zinc-600 font-mono">
+                  GET /api/metrics/META → response
+                </span>
               </div>
               <pre className="px-4 py-4 text-xs text-zinc-400 font-mono overflow-x-auto whitespace-pre">{`{
   "ticker": "META",
@@ -140,8 +180,13 @@ export default function TryFree() {
 }`}</pre>
             </div>
             <div className="flex items-center justify-between mt-4">
-              <p className="text-xs text-zinc-600">Hedge ratios, decompositions, batch analysis, 15yr history.</p>
-              <Link href="/get-key" className="text-xs text-primary hover:underline font-medium">
+              <p className="text-xs text-zinc-600">
+                Hedge ratios, decompositions, batch analysis, 15yr history.
+              </p>
+              <Link
+                href="/get-key"
+                className="text-xs text-primary hover:underline font-medium"
+              >
                 Get full access →
               </Link>
             </div>
