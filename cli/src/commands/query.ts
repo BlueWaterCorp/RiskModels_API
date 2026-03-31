@@ -2,45 +2,21 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { createClient } from "@supabase/supabase-js";
 import ora from "ora";
-import {
-  loadConfig,
-  isBilledReady,
-  isDirectReady,
-  needsConfigMessage,
-  needsApiKeyMessage,
-  DEFAULT_API_BASE,
-} from "../lib/config.js";
+import { loadConfig, isDirectReady, needsConfigMessage, needsApiKeyMessage } from "../lib/config.js";
+import { resolveApiAuth } from "../lib/credentials.js";
+import { apiFetchJson } from "../lib/api-client.js";
 import { validateQuery, ensureLimitClause } from "../lib/sql-validation.js";
 import { printResults } from "../lib/display.js";
 
 async function runBilledQuery(
-  apiBase: string,
-  apiKey: string,
+  auth: NonNullable<ReturnType<typeof resolveApiAuth>>,
   sql: string,
   limit: number,
 ): Promise<{ body: unknown; costUsd?: string }> {
   const finalSql = ensureLimitClause(sql, limit);
-  const url = `${apiBase.replace(/\/$/, "")}/api/cli/query`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ sql: finalSql, limit }),
+  const { body, costUsd } = await apiFetchJson(auth, "POST", "/cli/query", {
+    jsonBody: { sql: finalSql, limit },
   });
-  const costUsd = res.headers.get("x-api-cost-usd") ?? undefined;
-  const text = await res.text();
-  let body: unknown;
-  try {
-    body = JSON.parse(text) as unknown;
-  } catch {
-    body = { raw: text };
-  }
-  if (!res.ok) {
-    const err = body as { error?: string };
-    throw new Error(err?.error ?? `HTTP ${res.status}: ${text.slice(0, 200)}`);
-  }
   return { body, costUsd };
 }
 
@@ -70,7 +46,7 @@ export function queryCommand(): Command {
       const limit = parseInt(String(opts.limit ?? "100"), 10) || 100;
       const cfg = await loadConfig();
 
-      if (!isBilledReady(cfg) && !isDirectReady(cfg)) {
+      if (!isDirectReady(cfg) && !resolveApiAuth(cfg)) {
         if (cfg?.mode === "direct") {
           console.error(chalk.yellow(needsConfigMessage()));
         } else {
@@ -87,11 +63,11 @@ export function queryCommand(): Command {
         return;
       }
 
-      if (isBilledReady(cfg)) {
-        const apiBase = cfg!.apiBaseUrl ?? DEFAULT_API_BASE;
+      const auth = resolveApiAuth(cfg);
+      if (auth && !isDirectReady(cfg)) {
         const spinner = json ? null : ora("Running query…").start();
         try {
-          const { body, costUsd } = await runBilledQuery(apiBase, cfg!.apiKey!, validation.sanitized, limit);
+          const { body, costUsd } = await runBilledQuery(auth, validation.sanitized, limit);
           spinner?.succeed("Done");
           printResults(body, json);
           if (!json && costUsd) {

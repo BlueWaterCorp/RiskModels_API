@@ -9,6 +9,10 @@ export interface RiskmodelsConfig {
   apiKey?: string;
   /** Base URL without trailing slash, e.g. https://riskmodels.app */
   apiBaseUrl?: string;
+  /** OAuth client credentials (billed mode); scope defaults match the Python SDK. */
+  clientId?: string;
+  clientSecret?: string;
+  oauthScope?: string;
   supabaseUrl?: string;
   serviceRoleKey?: string;
 }
@@ -42,7 +46,11 @@ export function maskSecret(value: string | undefined, visible = 6): string {
 }
 
 export function isBilledReady(cfg: RiskmodelsConfig | null): boolean {
-  return !!cfg && cfg.mode === "billed" && !!cfg.apiKey?.trim();
+  return (
+    !!cfg &&
+    cfg.mode === "billed" &&
+    (!!cfg.apiKey?.trim() || (!!cfg.clientId?.trim() && !!cfg.clientSecret?.trim()))
+  );
 }
 
 export function isDirectReady(cfg: RiskmodelsConfig | null): boolean {

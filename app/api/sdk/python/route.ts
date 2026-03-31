@@ -8,16 +8,16 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-/** Keep in sync with packages/riskmodels/pyproject.toml version policy when bumping features. */
-const DEFAULT_MIN_VERSION = process.env.RISKMODELS_PY_MIN_VERSION ?? "0.2.0";
+/** Keep in sync with sdk/pyproject.toml when bumping features. */
+const DEFAULT_MIN_VERSION = process.env.RISKMODELS_PY_MIN_VERSION ?? "0.2.4";
 
 export async function GET() {
   const upgrade_message =
     process.env.RISKMODELS_PY_UPGRADE_MESSAGE?.trim() ||
     [
       "Upgrade the Python SDK (riskmodels-py) so you have the latest helpers (e.g. format_metrics_snapshot).",
-      "Run: pip install -U riskmodels-py",
-      "Editable from a clone: pip install -e RiskModels_API/packages/riskmodels",
+      `Run: pip install -U "riskmodels-py>=${DEFAULT_MIN_VERSION}"`,
+      "Editable from a clone: pip install -e RiskModels_API/sdk",
       "From BWMACRO: pip install -r requirements-sdk-tests.txt",
     ].join(" ");
 

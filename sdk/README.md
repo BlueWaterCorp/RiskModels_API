@@ -156,23 +156,9 @@ Use these so agents and humans **never guess wire names or ERM3 semantics**:
 
 Core runtime dependencies are **pandas**, **pyarrow**, and **httpx** (HTTP). **xarray** is optional (`[xarray]` extra). The SDK does not depend on `requests`.
 
-## Publishing to PyPI (maintainers)
+## PyPI releases (maintainers)
 
-Build and upload from this directory (**`sdk/`**, not `packages/riskmodels/` — that layout was retired; see repo `CHANGELOG.md`).
-
-1. Bump **`version`** in [`pyproject.toml`](./pyproject.toml) for every upload (PyPI rejects duplicate versions).
-2. Build and verify:
-
-```bash
-cd sdk
-python3 -m pip install -U build twine
-python3 -m build
-python3 -m twine check dist/*
-```
-
-3. **TestPyPI (optional):** `python3 -m twine upload --repository testpypi dist/*` — install with  
-   `pip install --index-url https://test.pypi.org/simple/ riskmodels-py`
-4. **Production:** `python3 -m twine upload dist/*` — use PyPI username `__token__` and an API token as the password.
+Upload steps (version bump, `build`, `twine`, PyPI token format) are **not** in this public README. They are maintained in the private **BWMACRO** monorepo at **`docs/RISKMODELS_PY_PYPI_PUBLISHING.md`** — open that file from your internal BWMACRO clone.
 
 ## License
 

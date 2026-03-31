@@ -12,6 +12,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **`GET /api/sdk/python`** — Default `min_version` and bundled `upgrade_message` now target **`riskmodels-py` ≥ 0.2.4** and the editable path **`RiskModels_API/sdk`** (aligned with `sdk/pyproject.toml`).
+
 - **MCP data sync** — Ran `sync-mcp-from-risk-models.sh`; `mcp-server/data/capabilities.json`, `schema-paths.json`, and `schemas/*.json` mirrored from Risk_Models `riskmodels_com` generator output.
 
 ### Added
