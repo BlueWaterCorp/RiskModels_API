@@ -1,13 +1,14 @@
 /**
  * GET /api/stripe/setup-success?session_id=...
  * Called by Stripe after Setup Mode checkout completes.
- * Provisions agent_accounts with $20 free credits and generates an API key.
+ * Provisions agent_accounts with $20 free credits and generates a user API key (rm_user_*).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 import { getAppUrl } from '@/lib/app-url';
+
 const FREE_CREDIT_USD = 20;
 /** When the user enables auto-refill later, charges run when balance is below this (USD). */
 const DEFAULT_REFILL_THRESHOLD = 5.0;
@@ -35,17 +36,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/get-key?stripe=error`);
     }
 
-    // Get the saved payment method from the SetupIntent
     const setupIntent = session.setup_intent
       ? await stripe.setupIntents.retrieve(session.setup_intent as string)
       : null;
     const paymentMethodId = setupIntent?.payment_method as string | undefined;
 
-    // Get user email
     const { data: { user } } = await admin.auth.admin.getUserById(userId);
     const email = user?.email || '';
 
-    // Upsert agent_accounts record with Stripe info and $20 credit
     const { data: existingAccount } = await admin
       .from('agent_accounts')
       .select('id, balance_usd')
@@ -56,6 +54,8 @@ export async function GET(req: NextRequest) {
       const current = parseFloat(String(existingAccount.balance_usd ?? 0));
       const updates: Record<string, unknown> = {
         stripe_customer_id: session.customer as string,
+        stripe_payment_method_id: paymentMethodId ?? null,
+        contact_email: email,
         auto_top_up: false,
         auto_top_up_threshold: DEFAULT_REFILL_THRESHOLD,
         auto_top_up_amount: DEFAULT_REFILL_AMOUNT,
@@ -65,8 +65,13 @@ export async function GET(req: NextRequest) {
         updates.balance_usd = FREE_CREDIT_USD;
       }
       const { error: updateErr } = await admin
-        .from('agent_accounts').update(updates).eq('id', existingAccount.id);
-      if (updateErr) console.error('[setup-success] update error:', updateErr);
+        .from('agent_accounts')
+        .update(updates)
+        .eq('id', existingAccount.id);
+      if (updateErr) {
+        console.error('[setup-success] agent_accounts update error:', updateErr);
+        return NextResponse.redirect(`${appUrl}/get-key?stripe=account_error`);
+      }
     } else {
       const { error: insertErr } = await admin.from('agent_accounts').insert({
         user_id: userId,
@@ -75,38 +80,47 @@ export async function GET(req: NextRequest) {
         contact_email: email,
         balance_usd: FREE_CREDIT_USD,
         stripe_customer_id: session.customer as string,
+        stripe_payment_method_id: paymentMethodId ?? null,
         auto_top_up: false,
         auto_top_up_threshold: DEFAULT_REFILL_THRESHOLD,
         auto_top_up_amount: DEFAULT_REFILL_AMOUNT,
         status: 'active',
       });
-      if (insertErr) console.error('[setup-success] insert error:', insertErr);
+      if (insertErr) {
+        console.error('[setup-success] agent_accounts insert error:', insertErr);
+        return NextResponse.redirect(`${appUrl}/get-key?stripe=account_error`);
+      }
     }
 
-    // Check if user already has an active API key
-    const { data: existingKey } = await admin
-      .from('agent_api_keys')
+    const { data: existingUserKey } = await admin
+      .from('user_generated_api_keys')
       .select('id')
       .eq('user_id', userId)
       .is('revoked_at', null)
       .maybeSingle();
 
-    if (!existingKey) {
-      const { plainKey, hashedKey, prefix } = generateUserApiKey('live');
+    if (!existingUserKey) {
+      const keyMaterial = generateUserApiKey('live');
       const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
-      await admin.from('agent_api_keys').insert({
+      const { error: keyErr } = await admin.from('user_generated_api_keys').insert({
         user_id: userId,
-        key_hash: hashedKey,
-        key_prefix: prefix,
+        key_hash: keyMaterial.hashedKey,
+        key_prefix: keyMaterial.prefix,
         name: 'API Key (Card Verified)',
-        scopes: ['*'],
+        scopes: ['read'],
         rate_limit_per_minute: 60,
         expires_at: expiresAt,
       });
 
-      // Pass key prefix as a hint so the dashboard can show a reveal prompt
-      return NextResponse.redirect(`${appUrl}/get-key?stripe=success&kp=${encodeURIComponent(prefix)}`);
+      if (keyErr) {
+        console.error('[setup-success] user_generated_api_keys insert error:', keyErr);
+        return NextResponse.redirect(`${appUrl}/get-key?stripe=key_error`);
+      }
+
+      return NextResponse.redirect(
+        `${appUrl}/get-key?stripe=success&kp=${encodeURIComponent(keyMaterial.prefix)}`,
+      );
     }
 
     return NextResponse.redirect(`${appUrl}/get-key?stripe=success`);

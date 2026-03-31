@@ -6,6 +6,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **User API key billing floor** — [`ensureMinimumBalanceForUserKeyHolder`](./lib/agent/billing.ts) tops up `agent_accounts` to $20 once per user (deduped via `billing_events.capability_id = user_key_floor_credit`) for active `rm_user_*` keys; runs after [`ensureStarterCredits`](./lib/agent/billing.ts) in [`withBilling`](./lib/agent/billing-middleware.ts). Supabase migration [`20260328131000_backfill_rm_user_key_balance.sql`](./supabase/migrations/20260328131000_backfill_rm_user_key_balance.sql) backfills balance for existing key holders.
+
+- **Stripe setup-success + agent API keys** — [`GET /api/stripe/setup-success`](./app/api/stripe/setup-success/route.ts) now inserts card-verified `rm_user_*` keys into `user_generated_api_keys` (matching [`validateApiKey`](./lib/agent/api-keys.ts)); checks for an existing active user key in that table; persists `stripe_payment_method_id` and `contact_email` on `agent_accounts`; redirects with `stripe=account_error` or `stripe=key_error` when DB writes fail instead of continuing silently. [`POST /api/agent-keys`](./app/api/agent-keys/route.ts) uses [`generateApiKey`](./lib/agent/api-keys.ts) so keys stored in `agent_api_keys` use the `rm_agent_*` format.
+
 - **Plaid setup routes** — [`POST /api/plaid/link-token`](./app/api/plaid/link-token/route.ts) and [`POST /api/plaid/exchange-public-token`](./app/api/plaid/exchange-public-token/route.ts) use [`withBilling`](./lib/agent/billing-middleware.ts) with `skipBilling: true` and new capabilities `plaid-link-token` / `plaid-exchange-public-token` so responses get `X-Request-ID`, latency, and zero-cost headers like other instrumented routes.
 
 - **OpenAPI `GET /health`** — Response schema documents optional `macro_factors` (status, `latest_teos`, row counts, staleness) aligned with [`getHealthStatus`](./lib/agent/telemetry.ts).
