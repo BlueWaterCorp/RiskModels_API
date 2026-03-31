@@ -202,9 +202,11 @@ export async function addBalance(
   amountUsd: number,
   description: string,
   metadata?: Record<string, any>,
+  options?: { capabilityId?: string },
 ): Promise<void> {
   try {
     const client = getSupabase();
+    const capabilityId = options?.capabilityId ?? "balance_credit";
 
     // Get current balance
     const { data: agentAccount } = await client
@@ -237,7 +239,7 @@ export async function addBalance(
     const { error: billingError } = await client.from("billing_events").insert({
       user_id: userId,
       request_id: `credit_${Date.now()}`,
-      capability_id: "balance_credit",
+      capability_id: capabilityId,
       cost_usd: -amountUsd, // Negative for credit
       balance_after_usd: newBalance,
       type: "credit",
@@ -375,6 +377,59 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
   console.log(
     `[Billing] Provisioned starter credit ($${STARTER_CREDIT_USD}) for first-time user ${userId}`,
   );
+}
+
+const USER_KEY_FLOOR_CAPABILITY = "user_key_floor_credit";
+
+/**
+ * Holders of active `rm_user_*` keys use `user_generated_api_keys` + `agent_accounts`.
+ * One-time top-up to {@link STARTER_CREDIT_USD} when balance is below that (deduped via billing_events).
+ */
+export async function ensureMinimumBalanceForUserKeyHolder(
+  userId: string,
+): Promise<void> {
+  const client = getSupabase();
+
+  const { data: keyRows } = await client
+    .from("user_generated_api_keys")
+    .select("id, expires_at")
+    .eq("user_id", userId)
+    .is("revoked_at", null)
+    .ilike("key_prefix", "rm_user%");
+
+  const now = new Date();
+  const hasActiveUserKey = (keyRows ?? []).some(
+    (k) => !k.expires_at || new Date(k.expires_at) > now,
+  );
+  if (!hasActiveUserKey) return;
+
+  await ensureStarterCredits(userId).catch(() => {});
+
+  const { data: account } = await client
+    .from("agent_accounts")
+    .select("balance_usd")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!account) return;
+
+  const bal = parseFloat(String(account.balance_usd ?? 0));
+  if (bal >= STARTER_CREDIT_USD) return;
+
+  const { data: priorFloor } = await client
+    .from("billing_events")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("capability_id", USER_KEY_FLOOR_CAPABILITY)
+    .limit(1)
+    .maybeSingle();
+
+  if (priorFloor) return;
+
+  const delta = STARTER_CREDIT_USD - bal;
+  await addBalance(userId, delta, "Minimum balance for rm_user API key", {
+    source: "user_key_floor_credit",
+  }, { capabilityId: USER_KEY_FLOOR_CAPABILITY });
 }
 
 /**

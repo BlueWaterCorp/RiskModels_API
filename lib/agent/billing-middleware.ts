@@ -10,7 +10,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCapability, calculateEstimatedCost } from "./capabilities";
-import { checkBalance, deductBalance, ensureStarterCredits, getUserBalance } from "./billing";
+import {
+  checkBalance,
+  deductBalance,
+  ensureMinimumBalanceForUserKeyHolder,
+  ensureStarterCredits,
+  getUserBalance,
+} from "./billing";
 import { createPaymentRequiredResponse, createMonthlyCapExceededResponse } from "./errors";
 import { generateRequestId, logTelemetry } from "./telemetry";
 import { extractApiKey, validateApiKey } from "./api-keys";
@@ -357,6 +363,7 @@ export function withBilling(
       // 3.5. Ensure starter credits for first-time users (before balance check)
       if (costUsd > 0) {
         await ensureStarterCredits(userId).catch(() => {});
+        await ensureMinimumBalanceForUserKeyHolder(userId).catch(() => {});
       }
 
       // 4. Check balance and monthly spend cap (if cost > 0 and not free tier)

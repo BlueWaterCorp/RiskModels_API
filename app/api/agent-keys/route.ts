@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ensureStarterCredits } from '@/lib/agent/billing';
-import { generateUserApiKey } from '@/lib/user-api-keys';
+import { generateApiKey } from '@/lib/agent/api-keys';
 
 export async function GET() {
   const supabase = await createClient();
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     name = `API Key ${(count ?? 0) + 1}`;
   }
 
-  const { plainKey, hashedKey, prefix } = generateUserApiKey('live');
+  const { plainKey, hashedKey, prefix } = generateApiKey('live');
 
   const { data: newKey, error: insertErr } = await admin
     .from('agent_api_keys')
