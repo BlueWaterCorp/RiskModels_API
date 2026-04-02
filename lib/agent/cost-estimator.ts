@@ -23,6 +23,7 @@ export interface EstimateResult {
   estimated_rows?: number;
   estimated_bytes?: number;
   capability: string;
+  tier: "baseline" | "premium";
   pricing_model: string;
   unit_cost_usd?: number;
   min_charge?: number;
@@ -42,6 +43,8 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "portfolio-returns": "portfolio-returns",
   "portfolio-risk-index": "portfolio-risk-index",
   "macro-factors": "macro-factor-series",
+  "portfolio-risk-snapshot": "portfolio-risk-snapshot",
+  "risk-snapshot": "portfolio-risk-snapshot",
 };
 
 function getItemCount(params: Record<string, unknown> | undefined): number | undefined {
@@ -147,6 +150,7 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
     estimated_rows: estimatedRows,
     estimated_bytes: estimatedBytes,
     capability: capabilityId,
+    tier: pricing.tier,
     pricing_model: pricingModel,
     unit_cost_usd: pricing.cost_usd,
     min_charge: pricing.min_charge,

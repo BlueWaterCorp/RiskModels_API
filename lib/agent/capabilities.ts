@@ -21,6 +21,7 @@ export interface ParameterSpec {
 
 export interface PricingModel {
   model: "per_request" | "per_token" | "per_position" | "subscription";
+  tier: "baseline" | "premium";
   cost_usd?: number;
   currency: "USD";
   billing_code: string;
@@ -93,6 +94,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.005,
       currency: "USD",
       billing_code: "ticker_returns_v2",
@@ -138,6 +140,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.001,
       currency: "USD",
       billing_code: "metrics_v3",
@@ -186,6 +189,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.001,
       currency: "USD",
       billing_code: "rankings_v3",
@@ -225,9 +229,10 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
-      cost_usd: 0.01,
+      tier: "premium",
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "l3_decomp_v2",
+      billing_code: "l3_decomp_v3",
     },
     performance: {
       avg_latency_ms: 120,
@@ -284,6 +289,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_token",
+      tier: "premium",
       input_cost_per_1k: 0.001,
       output_cost_per_1k: 0.002,
       currency: "USD",
@@ -312,6 +318,7 @@ export const CAPABILITIES: Capability[] = [
     parameters: {},
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0,
       currency: "USD",
       billing_code: "plaid_link_token_v1",
@@ -339,6 +346,7 @@ export const CAPABILITIES: Capability[] = [
     parameters: {},
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0,
       currency: "USD",
       billing_code: "plaid_exchange_v1",
@@ -366,9 +374,10 @@ export const CAPABILITIES: Capability[] = [
     parameters: {},
     pricing: {
       model: "per_request",
-      cost_usd: 0.01,
+      tier: "premium",
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "plaid_holdings_v1",
+      billing_code: "plaid_holdings_v2",
     },
     performance: {
       avg_latency_ms: 400,
@@ -414,10 +423,11 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_position",
-      cost_usd: 0.002,
+      tier: "premium",
+      cost_usd: 0.005,
       currency: "USD",
       min_charge: 0.01,
-      billing_code: "batch_analysis_v2",
+      billing_code: "batch_analysis_v3",
     },
     performance: {
       avg_latency_ms: 300,
@@ -462,6 +472,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.001,
       currency: "USD",
       billing_code: "ticker_search_v2",
@@ -488,6 +499,7 @@ export const CAPABILITIES: Capability[] = [
     parameters: {},
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.0,
       currency: "USD",
       billing_code: "health_check",
@@ -529,6 +541,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.002,
       currency: "USD",
       billing_code: "telemetry_v2",
@@ -561,6 +574,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.001,
       currency: "USD",
       billing_code: "metrics_snapshot_v1",
@@ -599,9 +613,10 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
-      cost_usd: 0.005,
+      tier: "premium",
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "l3_decomposition_v1",
+      billing_code: "l3_decomposition_v2",
     },
     performance: {
       avg_latency_ms: 120,
@@ -638,10 +653,11 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_position",
-      cost_usd: 0.002,
+      tier: "premium",
+      cost_usd: 0.004,
       currency: "USD",
       min_charge: 0.01,
-      billing_code: "portfolio_returns_v1",
+      billing_code: "portfolio_returns_v2",
     },
     performance: {
       avg_latency_ms: 200,
@@ -684,9 +700,10 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
-      cost_usd: 0.005,
+      tier: "premium",
+      cost_usd: 0.03,
       currency: "USD",
-      billing_code: "portfolio_risk_index_v1",
+      billing_code: "portfolio_risk_index_v2",
     },
     performance: {
       avg_latency_ms: 300,
@@ -700,6 +717,64 @@ export const CAPABILITIES: Capability[] = [
       sources: ["security_history", "symbols"],
     },
     tags: ["portfolio", "risk", "pri"],
+  },
+  {
+    id: "portfolio-risk-snapshot",
+    name: "Portfolio risk snapshot",
+    description:
+      "One-page portfolio risk report as PDF or structured JSON: L3 explained-risk decomposition, hedge ratios, and per-position breakdown. Single bundled charge; uses internal data access only (no double-billing).",
+    endpoint: "/api/portfolio/risk-snapshot",
+    method: "POST",
+    parameters: {
+      positions: {
+        type: "array",
+        required: true,
+        description: "Portfolio positions { ticker, weight }",
+        items: {
+          type: "object",
+          properties: {
+            ticker: { type: "string", required: true },
+            weight: { type: "number", required: true },
+          },
+        },
+      },
+      title: {
+        type: "string",
+        required: false,
+        description: "Optional report title",
+      },
+      as_of_date: {
+        type: "string",
+        required: false,
+        description: "Optional display date YYYY-MM-DD (data still latest available)",
+      },
+      format: {
+        type: "string",
+        required: false,
+        description: "pdf | json (png planned)",
+        enum: ["pdf", "json", "png"],
+        default: "json",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.25,
+      currency: "USD",
+      billing_code: "risk_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 800,
+      p95_latency_ms: 2500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["security_history", "symbols"],
+    },
+    tags: ["portfolio", "pdf", "risk", "report"],
   },
   {
     id: "factor-correlation",
@@ -744,6 +819,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.002,
       currency: "USD",
       billing_code: "factor_correlation_v1",
@@ -788,6 +864,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.001,
       currency: "USD",
       billing_code: "macro_factor_series_v1",
@@ -829,6 +906,7 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
+      tier: "baseline",
       cost_usd: 0.003,
       currency: "USD",
       billing_code: "cli_query_v1",

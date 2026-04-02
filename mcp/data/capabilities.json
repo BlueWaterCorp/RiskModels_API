@@ -170,9 +170,9 @@
     },
     "pricing": {
       "model": "per_request",
-      "cost_usd": 0.01,
+      "cost_usd": 0.02,
       "currency": "USD",
-      "billing_code": "l3_decomp_v2"
+      "billing_code": "l3_decomp_v3"
     },
     "performance": {
       "avg_latency_ms": 120,
@@ -309,9 +309,9 @@
     "parameters": {},
     "pricing": {
       "model": "per_request",
-      "cost_usd": 0.01,
+      "cost_usd": 0.02,
       "currency": "USD",
-      "billing_code": "plaid_holdings_v1"
+      "billing_code": "plaid_holdings_v2"
     },
     "performance": {
       "avg_latency_ms": 400,
@@ -365,10 +365,10 @@
     },
     "pricing": {
       "model": "per_position",
-      "cost_usd": 0.002,
+      "cost_usd": 0.005,
       "currency": "USD",
       "min_charge": 0.01,
-      "billing_code": "batch_analysis_v2"
+      "billing_code": "batch_analysis_v3"
     },
     "performance": {
       "avg_latency_ms": 300,
@@ -546,9 +546,9 @@
     },
     "pricing": {
       "model": "per_request",
-      "cost_usd": 0.005,
+      "cost_usd": 0.02,
       "currency": "USD",
-      "billing_code": "l3_decomposition_v1"
+      "billing_code": "l3_decomposition_v2"
     },
     "performance": {
       "avg_latency_ms": 120,
@@ -587,10 +587,10 @@
     },
     "pricing": {
       "model": "per_position",
-      "cost_usd": 0.002,
+      "cost_usd": 0.004,
       "currency": "USD",
       "min_charge": 0.01,
-      "billing_code": "portfolio_returns_v1"
+      "billing_code": "portfolio_returns_v2"
     },
     "performance": {
       "avg_latency_ms": 200,
@@ -637,9 +637,9 @@
     },
     "pricing": {
       "model": "per_request",
-      "cost_usd": 0.005,
+      "cost_usd": 0.03,
       "currency": "USD",
-      "billing_code": "portfolio_risk_index_v1"
+      "billing_code": "portfolio_risk_index_v2"
     },
     "performance": {
       "avg_latency_ms": 300,
@@ -653,6 +653,54 @@
       "sources": ["security_history", "symbols"]
     },
     "tags": ["portfolio", "risk", "pri"]
+  },
+  {
+    "id": "portfolio-risk-snapshot",
+    "name": "Portfolio risk snapshot",
+    "description": "One-page portfolio risk report as PDF or structured JSON (L3 decomposition, hedge ratios). Bundled charge; internal DAL only.",
+    "endpoint": "/api/portfolio/risk-snapshot",
+    "method": "POST",
+    "parameters": {
+      "positions": {
+        "type": "array",
+        "required": true,
+        "description": "Positions { ticker, weight }",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ticker": { "type": "string", "required": true },
+            "weight": { "type": "number", "required": true }
+          }
+        }
+      },
+      "title": { "type": "string", "required": false, "description": "Optional title" },
+      "as_of_date": { "type": "string", "required": false, "description": "YYYY-MM-DD label" },
+      "format": {
+        "type": "string",
+        "required": false,
+        "description": "pdf | json | png (png not implemented)",
+        "enum": ["pdf", "json", "png"],
+        "default": "json"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.25,
+      "currency": "USD",
+      "billing_code": "risk_snapshot_pdf_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 800,
+      "p95_latency_ms": 2500,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 20
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["security_history", "symbols"]
+    },
+    "tags": ["portfolio", "pdf", "risk", "report"]
   },
   {
     "id": "factor-correlation",

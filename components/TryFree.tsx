@@ -12,7 +12,7 @@ const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? null;
  * `Risk_Models/riskmodels_com/src/lib/agent/billing.ts`).
  */
 const PRICING_BADGE =
-  "$0 upfront · $20 free tier · Usage-based · No subscription · $5 low-balance email";
+  "$0 upfront · Baseline & Premium · $20 credits · Usage-based · $5 low-balance email";
 
 export default function TryFree() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -39,8 +39,9 @@ export default function TryFree() {
             Try it free
           </h2>
           <p className="mb-4 text-sm leading-relaxed text-zinc-400">
-            Sign in to get a key (card on file for billing). You&apos;re only
-            charged for API usage—no subscription or upfront fee.
+            Sign in to get a key (card on file for billing). Baseline calls start around
+            $0.001–$0.005; Premium covers L3 decomposition, portfolio indexing, batch analytics, and
+            PDFs. No subscription or upfront fee.
           </p>
           <Link
             href="/get-key"
@@ -65,8 +66,8 @@ export default function TryFree() {
             Try it free in 30 seconds
           </h2>
           <p className="text-zinc-400 text-sm leading-relaxed max-w-xl mx-auto">
-            Use the public demo key below—no signup. Full universe access uses
-            the same usage-based pricing (card on file; no upfront charge).
+            Use the public demo key below—no signup. Full universe access uses the same Baseline &
+            Premium per-call pricing (card on file; no upfront charge).
           </p>
         </div>
 

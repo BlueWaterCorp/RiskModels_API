@@ -143,6 +143,29 @@ export const PortfolioRiskIndexRequestSchema = z.object({
 
 export type PortfolioRiskIndexRequest = z.infer<typeof PortfolioRiskIndexRequestSchema>;
 
+/**
+ * POST /api/portfolio/risk-snapshot — bundled portfolio risk report (JSON or PDF).
+ */
+export const PortfolioRiskSnapshotRequestSchema = z.object({
+  positions: z
+    .array(
+      z.object({
+        ticker: TickerSchema,
+        weight: z.coerce.number().positive("Weight must be positive"),
+      }),
+    )
+    .min(1, "At least one position is required")
+    .max(100, "Maximum 100 positions"),
+  title: z.string().max(200).optional(),
+  as_of_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of_date must be YYYY-MM-DD")
+    .optional(),
+  format: z.enum(["pdf", "png", "json"]).default("json"),
+});
+
+export type PortfolioRiskSnapshotRequest = z.infer<typeof PortfolioRiskSnapshotRequestSchema>;
+
 const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string().min(1, "Message content is required"),

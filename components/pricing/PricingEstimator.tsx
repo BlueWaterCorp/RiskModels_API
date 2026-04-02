@@ -3,29 +3,10 @@
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/cn';
 
-/** $20 per 1M tokens */
-const USD_PER_MILLION_TOKENS = 20;
-
-const USE_CASES = [
-  {
-    id: 'simple',
-    label: 'Simple metrics & lookups',
-    description: 'Light endpoints (e.g. ticker returns, single-field metrics).',
-    tokensPerRequest: 250,
-  },
-  {
-    id: 'mixed',
-    label: 'Mixed workflows',
-    description: 'Typical mix of metrics calls and heavier factor reads.',
-    tokensPerRequest: 375,
-  },
-  {
-    id: 'full',
-    label: 'Full portfolio analysis',
-    description: 'Full risk decomposition, batch-style analysis per request.',
-    tokensPerRequest: 500,
-  },
-] as const;
+/** Weighted typical average for baseline-style calls (metrics, macro, returns mix). */
+const BASELINE_AVG_COST_USD = 0.002;
+/** Weighted typical average for premium-style calls (L3, PRI, batch mix). */
+const PREMIUM_AVG_COST_USD = 0.025;
 
 function formatUsd(n: number) {
   if (!Number.isFinite(n)) return '—';
@@ -38,16 +19,14 @@ function formatUsd(n: number) {
 }
 
 export default function PricingEstimator() {
-  const [monthlyRequests, setMonthlyRequests] = useState(5000);
-  const [useCaseId, setUseCaseId] = useState<(typeof USE_CASES)[number]['id']>('mixed');
+  const [baselineMonthly, setBaselineMonthly] = useState(5000);
+  const [premiumMonthly, setPremiumMonthly] = useState(500);
 
-  const useCase = USE_CASES.find((u) => u.id === useCaseId) ?? USE_CASES[1];
-
-  const { estimatedTokens, estimatedCost } = useMemo(() => {
-    const tokens = monthlyRequests * useCase.tokensPerRequest;
-    const cost = (tokens / 1_000_000) * USD_PER_MILLION_TOKENS;
-    return { estimatedTokens: tokens, estimatedCost: cost };
-  }, [monthlyRequests, useCase.tokensPerRequest]);
+  const { baselineCost, premiumCost, totalCost } = useMemo(() => {
+    const b = baselineMonthly * BASELINE_AVG_COST_USD;
+    const p = premiumMonthly * PREMIUM_AVG_COST_USD;
+    return { baselineCost: b, premiumCost: p, totalCost: b + p };
+  }, [baselineMonthly, premiumMonthly]);
 
   return (
     <div
@@ -58,38 +37,44 @@ export default function PricingEstimator() {
     >
       <div className="flex flex-col gap-0.5 mb-3">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-400">
-          Pricing estimator
+          Baseline vs Premium
         </p>
         <h3 className="text-lg font-bold text-white tracking-tight">
           Model your monthly spend
         </h3>
-        <p className="text-xs text-zinc-400 max-w-2xl leading-snug">
-          One request maps to a token count by use case. We use{' '}
-          <span className="text-zinc-300 font-medium">$20 per 1M tokens</span> — same as the table
-          below.
+        <p className="text-xs text-zinc-300 max-w-2xl leading-snug">
+          Baseline features ($0.001–$0.005/call) power everyday risk checks and time series. Premium
+          capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots,
+          and batch analytics — perfect for agents and power users.
+        </p>
+        <p className="text-xs text-zinc-500 max-w-2xl leading-snug">
+          Slide request volumes by tier. Averages (
+          <span className="font-mono text-zinc-300">{formatUsd(BASELINE_AVG_COST_USD)}</span> baseline,{' '}
+          <span className="font-mono text-zinc-300">{formatUsd(PREMIUM_AVG_COST_USD)}</span> premium)
+          approximate a typical mix — use the tables below for exact per-endpoint prices.
         </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div>
             <label
-              htmlFor="pricing-monthly-requests"
+              htmlFor="pricing-baseline-requests"
               className="flex items-baseline justify-between text-xs font-medium text-zinc-300 mb-1"
             >
-              <span>Monthly requests</span>
+              <span>Baseline requests / month</span>
               <span className="font-mono text-blue-400 tabular-nums">
-                {monthlyRequests.toLocaleString()}
+                {baselineMonthly.toLocaleString()}
               </span>
             </label>
             <input
-              id="pricing-monthly-requests"
+              id="pricing-baseline-requests"
               type="range"
               min={100}
               max={100000}
               step={100}
-              value={monthlyRequests}
-              onChange={(e) => setMonthlyRequests(Number(e.target.value))}
+              value={baselineMonthly}
+              onChange={(e) => setBaselineMonthly(Number(e.target.value))}
               className="w-full h-2 rounded-full appearance-none cursor-pointer bg-zinc-800 accent-blue-500"
             />
             <div className="flex justify-between text-[10px] text-zinc-600 mt-0.5 font-mono">
@@ -99,30 +84,29 @@ export default function PricingEstimator() {
           </div>
 
           <div>
-            <label htmlFor="pricing-use-case" className="block text-xs font-medium text-zinc-300 mb-1">
-              Primary use case
-            </label>
-            <select
-              id="pricing-use-case"
-              value={useCaseId}
-              onChange={(e) =>
-                setUseCaseId(e.target.value as (typeof USE_CASES)[number]['id'])
-              }
-              className="w-full rounded-md border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
+            <label
+              htmlFor="pricing-premium-requests"
+              className="flex items-baseline justify-between text-xs font-medium text-zinc-300 mb-1"
             >
-              {USE_CASES.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-[11px] text-zinc-500 leading-snug">
-              {useCase.description}{" "}
-              <span className="text-zinc-600">
-                (1 request ={" "}
-                <span className="font-mono text-zinc-400">{useCase.tokensPerRequest}</span> tokens.)
+              <span>Premium requests / month</span>
+              <span className="font-mono text-blue-400 tabular-nums">
+                {premiumMonthly.toLocaleString()}
               </span>
-            </p>
+            </label>
+            <input
+              id="pricing-premium-requests"
+              type="range"
+              min={0}
+              max={10000}
+              step={10}
+              value={premiumMonthly}
+              onChange={(e) => setPremiumMonthly(Number(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer bg-zinc-800 accent-blue-500"
+            />
+            <div className="flex justify-between text-[10px] text-zinc-600 mt-0.5 font-mono">
+              <span>0</span>
+              <span>10k</span>
+            </div>
           </div>
         </div>
 
@@ -130,19 +114,23 @@ export default function PricingEstimator() {
           <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500 mb-1">
             Estimated monthly cost
           </p>
-          <p className="text-3xl sm:text-4xl font-bold text-white tabular-nums tracking-tight mb-0.5">
-            {formatUsd(estimatedCost)}
+          <p className="text-3xl sm:text-4xl font-bold text-white tabular-nums tracking-tight mb-2">
+            {formatUsd(totalCost)}
           </p>
-          <p className="text-xs text-zinc-400 mb-2">
-            ≈{' '}
-            <span className="font-mono text-zinc-300">
-              {estimatedTokens.toLocaleString()}
-            </span>{' '}
-            tokens / month
-          </p>
+          <ul className="text-xs text-zinc-400 space-y-0.5 mb-2">
+            <li className="flex justify-between gap-2">
+              <span>Baseline ({baselineMonthly.toLocaleString()} × avg)</span>
+              <span className="font-mono text-zinc-300 tabular-nums">{formatUsd(baselineCost)}</span>
+            </li>
+            <li className="flex justify-between gap-2">
+              <span>Premium ({premiumMonthly.toLocaleString()} × avg)</span>
+              <span className="font-mono text-zinc-300 tabular-nums">{formatUsd(premiumCost)}</span>
+            </li>
+          </ul>
           <p className="text-[11px] text-zinc-600 leading-snug border-t border-zinc-800/80 pt-2">
-            Formula: ({monthlyRequests.toLocaleString()} requests × {useCase.tokensPerRequest} tokens)
-            ÷ 1M × ${USD_PER_MILLION_TOKENS}. Your first $20 in credits are free after card setup.
+            ({baselineMonthly.toLocaleString()} baseline × {formatUsd(BASELINE_AVG_COST_USD)} avg) + (
+            {premiumMonthly.toLocaleString()} premium × {formatUsd(PREMIUM_AVG_COST_USD)} avg). Your
+            first $20 in credits are free after card setup.
           </p>
         </div>
       </div>
