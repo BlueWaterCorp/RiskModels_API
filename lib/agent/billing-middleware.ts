@@ -225,6 +225,10 @@ export function withBilling(
         String(Date.now() - startTime),
       );
       response.headers.set("X-API-Cost-USD", "0");
+      const skipCapability = getCapability(options.capabilityId);
+      if (skipCapability) {
+        response.headers.set("X-Pricing-Tier", skipCapability.pricing.tier);
+      }
 
       return response;
     }
@@ -374,7 +378,12 @@ export function withBilling(
         const currentBalance = await getUserBalance(userId);
         // Block if balance is negative (user is in debt) or insufficient
         if (currentBalance < 0 || currentBalance < costUsd) {
-          return createPaymentRequiredResponse(costUsd, Math.max(0, currentBalance));
+          const payRes = createPaymentRequiredResponse(
+            costUsd,
+            Math.max(0, currentBalance),
+          );
+          payRes.headers.set("X-Pricing-Tier", capability.pricing.tier);
+          return payRes;
         }
 
         // Check monthly spend cap
@@ -430,7 +439,9 @@ export function withBilling(
           ) {
             // Balance exhausted by a concurrent request — return 402
             const currentBalance = await getUserBalance(userId);
-            return createPaymentRequiredResponse(costUsd, currentBalance);
+            const payRes = createPaymentRequiredResponse(costUsd, currentBalance);
+            payRes.headers.set("X-Pricing-Tier", capability.pricing.tier);
+            return payRes;
           }
           console.error("[Billing] Failed to deduct balance:", deductError);
         }
@@ -468,6 +479,7 @@ export function withBilling(
         "X-API-Billing-Code",
         capability.pricing.billing_code,
       );
+      response.headers.set("X-Pricing-Tier", capability.pricing.tier);
 
       // 8.5. Add token bucket headers ($20 = 1M tokens, so 1 token = $0.00002)
       const TOKEN_PRICE_USD = 0.00002;
@@ -565,6 +577,7 @@ export function withBillingHeaders(
           "X-API-Billing-Code",
           capability.pricing.billing_code,
         );
+        response.headers.set("X-Pricing-Tier", capability.pricing.tier);
       }
 
       return response;
@@ -678,6 +691,10 @@ export async function finalizeBilling(
   res.headers.set("X-Request-ID", context.requestId);
   res.headers.set("X-Response-Latency-Ms", String(latencyMs));
   res.headers.set("X-API-Cost-USD", String(success ? costUsd : 0));
+  const capMeta = getCapability(context.capabilityId);
+  if (capMeta) {
+    res.headers.set("X-Pricing-Tier", capMeta.pricing.tier);
+  }
 
   return res;
 }

@@ -4,38 +4,100 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
 import PricingEstimator from "@/components/pricing/PricingEstimator";
 import PricingFAQ, { type PricingFaqItem } from "@/components/pricing/PricingFAQ";
 
 export const metadata: Metadata = {
   title: "Pricing — RiskModels API",
   description:
-    "Simple pay-as-you-go pricing for the RiskModels API. Start free with $20 in credits. No subscriptions, no seat fees — pay only for what you use.",
+    "Baseline vs Premium: everyday risk checks from $0.001–$0.005/call; Premium unlocks L3 decomposition, portfolio risk indexing, PDF snapshots, and batch analytics. $20 free credits — no subscriptions.",
 };
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const usageRows = [
+const baselineRows = [
   {
-    action: "Risk decomposition (full)",
-    tokens: "500",
-    yield: "~2,000 per $20",
-    agentic: true,
+    endpoint: "Risk metrics / rankings / search",
+    cost: "$0.001",
+    callsPer20: "20,000",
+    tier: "baseline" as const,
   },
   {
-    action: "Ticker returns lookup",
-    tokens: "250",
-    yield: "~4,000 per $20",
-    agentic: false,
+    endpoint: "Macro factors / correlations",
+    cost: "$0.002",
+    callsPer20: "10,000",
+    tier: "baseline" as const,
   },
   {
-    action: "Batch position analysis",
-    tokens: "100 / position",
-    yield: "~10,000 per $20",
-    agentic: true,
+    endpoint: "CLI query",
+    cost: "$0.003",
+    callsPer20: "6,667",
+    tier: "baseline" as const,
+  },
+  {
+    endpoint: "Ticker returns (any history length)",
+    cost: "$0.005",
+    callsPer20: "4,000",
+    tier: "baseline" as const,
   },
 ];
+
+const premiumRows = [
+  {
+    endpoint: "L3 risk decomposition",
+    cost: "$0.02",
+    callsPer20: "1,000",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "Plaid holdings sync",
+    cost: "$0.02",
+    callsPer20: "1,000",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "Portfolio Risk Index",
+    cost: "$0.03",
+    callsPer20: "667",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "Batch portfolio analysis",
+    cost: "$0.005/pos",
+    callsPer20: "varies",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "AI risk analyst (chat)",
+    cost: "~$0.003/turn",
+    callsPer20: "~6,600",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "PDF risk snapshot",
+    cost: "$0.25",
+    callsPer20: "80",
+    tier: "premium" as const,
+  },
+];
+
+const tierComparisonRows = [
+  {
+    aspect: "Typical price band",
+    baseline: "$0.001–$0.005 per successful call",
+    premium: "From ~$0.02/call; batch per position (min $0.01); PDF snapshot $0.25",
+  },
+  {
+    aspect: "What you get",
+    baseline: "Metrics, rankings, search, macro factors, correlations, returns, CLI",
+    premium: "L3 decomposition, Portfolio Risk Index, Plaid sync, batch analytics, chat agent, PDF reports",
+  },
+  {
+    aspect: "Best for",
+    baseline: "Dashboards, monitoring, light automation, time-series workflows",
+    premium: "Agents, quant stacks, portfolio deliverables, heavier analytics",
+  },
+] as const;
 
 const rateLimitRows = [
   {
@@ -55,33 +117,37 @@ const refillTiers = [
     amount: "$20",
     name: "Small",
     audience: "Individual",
-    detail: "~1M tokens per charge — great for experiments and light scripts.",
+    detail: "Adds $20 to your API balance — great for experiments and light scripts.",
     popular: false,
   },
   {
     amount: "$50",
     name: "Growth",
     audience: "Standard",
-    detail: "~2.5M tokens per charge — default suggested tier when you enable auto-refill.",
+    detail: "Adds $50 to your API balance — default suggested tier when you enable auto-refill.",
     popular: false,
   },
   {
     amount: "$100",
     name: "Business",
     audience: "Production",
-    detail: "~5M tokens per charge — fewer interruptions for high-volume workloads.",
+    detail: "Adds $100 to your API balance — fewer interruptions for high-volume workloads.",
     popular: true,
   },
 ];
 
 const faqs: PricingFaqItem[] = [
   {
+    q: "What is the difference between Baseline and Premium?",
+    a: "Baseline features ($0.001–$0.005/call) power everyday risk checks and time series — metrics, rankings, macro/correlation endpoints, ticker returns, and CLI access. Premium capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots, batch portfolio analysis, Plaid holdings sync, and the AI risk analyst chat. Same API key for both; each call is billed at the rate for that endpoint. See the comparison table and per-endpoint tables on this page.",
+  },
+  {
     q: "Do my free credits expire?",
     a: "Your $20 in free credits never expire. However, your API key requires at least one call every 90 days to stay active. After 90 days of complete inactivity the key is automatically deactivated — not deleted — for security. You can reactivate instantly from your dashboard or by making any API call.",
   },
   {
     q: "What happens when I run out of credits?",
-    a: "Auto-refill is off by default when you add a card. With it off, you top up manually and API calls return 402 Payment Required if your balance is too low. If you turn auto-refill on, you pick a refill tier ($20, $50, or $100); when your balance falls below your threshold (default $5), your card is charged for that tier and tokens are added. You can disable auto-refill or change tier anytime via your billing settings or PATCH /api/user/billing-config.",
+    a: "Auto-refill is off by default when you add a card. With it off, you top up manually and API calls return 402 Payment Required if your balance is too low. If you turn auto-refill on, you pick a refill tier ($20, $50, or $100); when your balance falls below your threshold (default $5), your card is charged for that tier and your API balance is credited. You can disable auto-refill or change tier anytime via your billing settings or PATCH /api/user/billing-config.",
   },
   {
     q: "Can I set a monthly spend cap?",
@@ -89,7 +155,7 @@ const faqs: PricingFaqItem[] = [
   },
   {
     q: "Is there a volume discount?",
-    a: "If you're doing serious volume (think 10M+ tokens/month), email contact@riskmodels.net—we can usually do higher rate limits (100+ req/min), a better per-token rate when you commit to volume, and help getting integrated. We'll keep it straightforward.",
+    a: "If your monthly API spend consistently exceeds $100, email contact@riskmodels.net — we can sharpen pricing for steady usage, raise rate limits (100+ req/min), and help you get integrated. We keep it straightforward.",
   },
   {
     q: "Is my API data encrypted?",
@@ -128,16 +194,69 @@ export default function PricingPage() {
       <section className="mx-auto max-w-4xl px-6 pt-12 pb-8 text-center">
         <SectionLabel>Pricing</SectionLabel>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
-          Simple, pay-as-you-go
+          Baseline vs Premium — pay as you go
         </h1>
-        <p className="text-base text-zinc-400 max-w-2xl mx-auto mb-2 leading-snug">
+        <p className="text-base text-zinc-200 max-w-2xl mx-auto mb-3 leading-relaxed">
+          Baseline features ($0.001–$0.005/call) power everyday risk checks and time series. Premium
+          capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots,
+          and batch analytics — perfect for agents and power users.
+        </p>
+        <p className="text-sm text-zinc-500 max-w-2xl mx-auto mb-2 leading-snug">
           Built for{" "}
-          <span className="text-blue-400 font-semibold">agentic</span> workflows — the Python SDK handles ticker resolution, semantic field normalization, and portfolio aggregation client-side so agents focus on strategy. API responses expose latency breakdown headers (<code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">X-Agent-Decision-Latency-Ms</code>) for transparency.
+          <span className="text-blue-400 font-semibold">agentic</span> workflows — the Python SDK
+          handles ticker resolution, semantic field normalization, and portfolio aggregation
+          client-side. Responses include latency headers like{" "}
+          <code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">
+            X-Agent-Decision-Latency-Ms
+          </code>
+          .
         </p>
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
-          Start free with{" "}
-          <span className="text-white font-semibold">$20 in credits</span> — then pay{" "}
-          <span className="text-white font-semibold">$20 per million tokens</span>.
+          Start free with <span className="text-white font-semibold">$20 in credits</span> — then pay
+          per successful call by tier. No subscription, no seat fees.
+        </p>
+      </section>
+
+      {/* ── Baseline vs Premium comparison ── */}
+      <section className="mx-auto max-w-4xl px-6 pb-8">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-400 mb-2 text-center">
+          At a glance
+        </p>
+        <h2 className="text-lg font-bold text-white mb-3 text-center">Compare tiers</h2>
+        <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/30 backdrop-blur-md overflow-x-auto">
+          <table className="w-full text-sm min-w-[320px]">
+            <thead>
+              <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 w-[28%]">
+                  &nbsp;
+                </th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-300">
+                  Baseline
+                </th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-blue-400">
+                  Premium
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/60">
+              {tierComparisonRows.map((row) => (
+                <tr key={row.aspect} className="hover:bg-zinc-800/20 transition-colors align-top">
+                  <td className="px-4 py-3 font-medium text-zinc-400 text-xs sm:text-sm whitespace-nowrap sm:whitespace-normal">
+                    {row.aspect}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-300 text-xs sm:text-sm leading-snug">
+                    {row.baseline}
+                  </td>
+                  <td className="px-4 py-3 text-blue-100/90 text-xs sm:text-sm leading-snug">
+                    {row.premium}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-center text-[11px] text-zinc-500 max-w-2xl mx-auto leading-snug">
+          One account covers both — you are charged per call based on the endpoint&apos;s tier.
         </p>
       </section>
 
@@ -149,15 +268,20 @@ export default function PricingPage() {
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
               <div>
                 <p className="text-xs font-medium text-zinc-400 mb-0">
-                  Pay-as-You-Go
+                  Pay-as-you-go · same key, tiered pricing
                 </p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-4xl font-bold text-white tabular-nums">$20</span>
-                  <span className="text-zinc-400 text-base">/ 1M tokens</span>
+                <div className="space-y-0.5 mt-0.5">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-sm font-medium text-zinc-400">Baseline</span>
+                    <span className="text-2xl font-bold text-white tabular-nums">$0.001</span>
+                    <span className="text-zinc-500 text-sm">/ request</span>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-sm font-medium text-blue-400">Premium</span>
+                    <span className="text-2xl font-bold text-white tabular-nums">$0.02</span>
+                    <span className="text-zinc-500 text-sm">/ request</span>
+                  </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5 font-mono">
-                  = $0.000020 per token
-                </p>
               </div>
               <div className="flex flex-col items-start sm:items-end gap-1 sm:mt-0">
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400 bg-green-400/10 border border-green-400/20 rounded-md px-2 py-0.5 backdrop-blur-sm">
@@ -250,65 +374,95 @@ export default function PricingPage() {
 
       <SectionDivider />
 
-      {/* ── Token usage + estimator ── */}
+      {/* ── Pricing tables + estimator ── */}
       <section className="mx-auto max-w-4xl px-6 py-10">
-        <SectionLabel>Token usage</SectionLabel>
+        <SectionLabel>Baseline vs Premium</SectionLabel>
         <h2 className="text-xl font-bold text-white mb-1">
-          How many tokens does a request use?
+          Per-endpoint prices
         </h2>
         <p className="text-sm text-zinc-400 mb-5 max-w-3xl leading-snug">
-          Token costs scale with complexity. Use the estimator to stress-test monthly spend, then
-          compare with the reference table. Rows marked with{" "}
-          <Sparkles className="inline h-3.5 w-3.5 text-blue-400 -mt-0.5" aria-hidden /> are
-          typical <span className="text-blue-400 font-medium">agentic</span> / portfolio-heavy
-          calls. Advanced users: install <code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">riskmodels-py[xarray]</code> for multi-dimensional factor cube workflows (see <Link href="/docs/methodology#xarray-cube" className="text-blue-400 hover:text-blue-300 underline">Methodology</Link>).
+          Calls are either <span className="text-zinc-200 font-medium">Baseline</span> or{" "}
+          <span className="text-blue-400 font-medium">Premium</span> — flat per successful request
+          (batch: per position, minimum $0.01). No token math on data endpoints. Use the estimator
+          for a monthly rough cut, then use the tables for exact rates. Advanced users: install{" "}
+          <code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">riskmodels-py[xarray]</code>{" "}
+          for multi-dimensional factor cube workflows (see{" "}
+          <Link
+            href="/docs/methodology#xarray-cube"
+            className="text-blue-400 hover:text-blue-300 underline"
+          >
+            Methodology
+          </Link>
+          ).
         </p>
 
         <div className="mb-6">
           <PricingEstimator />
         </div>
 
+        <p className="text-xs font-semibold text-zinc-300 mb-2 uppercase tracking-widest">
+          Baseline — Data Access
+        </p>
+        <div className="max-w-4xl mx-auto rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Endpoint
+                </th>
+                <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Cost per call
+                </th>
+                <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Calls per $20
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/60">
+              {baselineRows.map((row) => (
+                <tr key={row.endpoint} className="hover:bg-zinc-800/25 transition-colors">
+                  <td className="px-4 py-2 font-medium text-zinc-200">{row.endpoint}</td>
+                  <td className="px-4 py-2 text-right font-mono text-xs text-zinc-400">
+                    {row.cost}
+                  </td>
+                  <td className="px-4 py-2 text-right text-zinc-300 font-medium text-xs">
+                    {row.callsPer20}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-widest">
+          Premium — Analytics &amp; Deliverables
+        </p>
         <div className="max-w-4xl mx-auto rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
                 <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                  Request type
+                  Endpoint
                 </th>
                 <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                  Tokens
+                  Cost per call
                 </th>
                 <th className="text-right px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                  Yield per $20
+                  Calls per $20
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
-              {usageRows.map((row) => (
-                <tr
-                  key={row.action}
-                  className="hover:bg-zinc-800/25 transition-colors"
-                >
-                  <td className="px-4 py-2">
-                    <span className="inline-flex items-center gap-2 font-medium">
-                      {row.agentic ? (
-                        <Sparkles
-                          className="h-4 w-4 text-blue-400 shrink-0"
-                          aria-label="Agentic workflow"
-                        />
-                      ) : null}
-                      <span className={row.agentic ? "text-blue-100" : "text-zinc-200"}>
-                        {row.action}
-                      </span>
-                    </span>
+              {premiumRows.map((row) => (
+                <tr key={row.endpoint} className="hover:bg-zinc-800/25 transition-colors">
+                  <td className="px-4 py-2 font-medium text-blue-100">
+                    {row.endpoint}
                   </td>
-                  <td
-                    className={`px-4 py-2 text-right font-mono text-xs ${row.agentic ? "text-blue-400" : "text-zinc-400"}`}
-                  >
-                    {row.tokens}
+                  <td className="px-4 py-2 text-right font-mono text-xs text-blue-400/90">
+                    {row.cost}
                   </td>
-                  <td className="px-4 py-2 text-right text-blue-400/90 font-medium text-xs">
-                    {row.yield}
+                  <td className="px-4 py-2 text-right text-blue-400/80 font-medium text-xs">
+                    {row.callsPer20}
                   </td>
                 </tr>
               ))}
@@ -317,8 +471,8 @@ export default function PricingPage() {
         </div>
 
         <p className="mt-2 text-xs text-zinc-500 max-w-4xl mx-auto leading-snug">
-          Base rate: 1M tokens = $20. Token counts are per API call, not per ticker. Batch endpoints
-          are the most efficient way to analyze large universes.
+          All prices are per successful API call. Cached responses are free. Batch endpoints charge
+          per position with a $0.01 minimum.
         </p>
       </section>
 
@@ -416,17 +570,17 @@ export default function PricingPage() {
             <div className="flex-1">
               <SectionLabel>High volume</SectionLabel>
               <h2 className="text-xl font-bold text-white mb-1">
-                10M+ tokens / month?
+                $100+ / month API spend?
               </h2>
               <p className="text-sm text-zinc-400 mb-3 leading-snug">
-                If you&apos;re in that ballpark, mail{" "}
+                If you&apos;re consistently in that range, mail{" "}
                 <a
                   href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
                   className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
                 >
                   contact@riskmodels.net
                 </a>
-                —we can raise rate limits, sharpen pricing for steady usage, and help you wire
+                — we can raise rate limits, sharpen pricing for steady usage, and help you wire
                 things up. We&apos;ll reply and keep it simple.
               </p>
               <ul className="space-y-1.5">
@@ -521,7 +675,11 @@ export default function PricingPage() {
       {/* ── FAQ ── */}
       <section className="mx-auto max-w-4xl px-6 py-10 pb-12">
         <SectionLabel>FAQ</SectionLabel>
-        <h2 className="text-xl font-bold text-white mb-3">Common questions</h2>
+        <h2 className="text-xl font-bold text-white mb-1">Common questions</h2>
+        <p className="text-sm text-zinc-500 mb-3 max-w-2xl">
+          Baseline vs Premium, credits, billing, and security — start with the first item for the
+          tier overview.
+        </p>
 
         <PricingFAQ items={faqs} />
 

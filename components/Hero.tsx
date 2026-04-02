@@ -22,7 +22,7 @@ export default function Hero() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary">
           <Zap size={16} />
-          First Agentic Risk API · MCP-Ready · Pay-as-you-go
+          Baseline &amp; Premium · First Agentic Risk API · MCP-ready
         </div>
 
         {/* Headline */}
@@ -31,9 +31,18 @@ export default function Hero() {
           <span className="text-primary">Equity Risk.</span>
         </h1>
 
-        <p className="mx-auto max-w-3xl text-base font-medium leading-relaxed text-zinc-400 sm:text-lg md:text-xl">
-          From Market, Sector, and Subsector Attribution to Automated Hedging Logic—Directly Calibrate
-          Your Entire Risk Stack via a Single Institutional-Grade API.
+        <p className="mx-auto max-w-3xl text-sm font-semibold uppercase tracking-widest text-blue-400">
+          Baseline vs Premium
+        </p>
+        <p className="mx-auto max-w-3xl text-base font-medium leading-relaxed text-zinc-200 sm:text-lg md:text-xl">
+          Baseline features ($0.001–$0.005/call) power everyday risk checks and time series. Premium
+          capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots,
+          and batch analytics — perfect for agents and power users.
+        </p>
+
+        <p className="mx-auto max-w-3xl text-sm leading-relaxed text-zinc-500 sm:text-base">
+          From market, sector, and subsector attribution to automated hedging logic — calibrate your
+          whole stack through one institutional-grade API.
         </p>
 
         {/* CTAs */}
@@ -49,7 +58,7 @@ export default function Hero() {
 
         {/* Pricing summary — directly under CTAs */}
         <p className="mx-auto max-w-xl pt-1 text-sm leading-relaxed text-zinc-500">
-          $0 upfront · $20 free credits · Usage-based · No subscription · No seat fees
+          $0 upfront · $20 free credits · Pay per tiered call · No subscription · No seat fees
         </p>
 
         <TrustTechBar />

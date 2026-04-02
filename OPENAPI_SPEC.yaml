@@ -51,7 +51,10 @@ info:
 
     **Pricing**: Per-request billing with prepaid balance. Cached responses are free.
     Many metered responses include `_agent.cost_usd` in the JSON body; others bill silently — always
-    check the `X-API-Cost-USD` response header when present.
+    check the `X-API-Cost-USD` response header when present. Metered operations also expose
+    `x-pricing` (OpenAPI extension) with `capability_id`, `tier` (`baseline` | `premium`), `model`,
+    `cost_usd`, `billing_code`, and optional `min_charge` / per-token fields — aligned with
+    `GET /pricing` and `lib/agent/capabilities.ts`.
 
     **Lineage**: JSON data responses include `_metadata` (model version, data_as_of, factor set)
     and headers `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size`.
@@ -1662,6 +1665,13 @@ paths:
         **No per-request charge.**
       operationId: createPlaidLinkToken
       tags: [Plaid Integration]
+      x-pricing:
+        capability_id: plaid-link-token
+        tier: baseline
+        model: per_request
+        cost_usd: 0
+        currency: USD
+        billing_code: plaid_link_token_v1
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: [plaid:holdings]
@@ -1696,6 +1706,13 @@ paths:
         **No per-request charge.**
       operationId: exchangePlaidPublicToken
       tags: [Plaid Integration]
+      x-pricing:
+        capability_id: plaid-exchange-public-token
+        tier: baseline
+        model: per_request
+        cost_usd: 0
+        currency: USD
+        billing_code: plaid_exchange_v1
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: [plaid:holdings]
@@ -1749,12 +1766,19 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2 with plaid:holdings scope)
 
-        **Billing:** $0.01 per request
+        **Billing:** $0.02 per request
 
         **Rate Limit:** 60 requests/minute
       operationId: getPlaidHoldings
       tags:
         - Plaid Integration
+      x-pricing:
+        capability_id: plaid-holdings
+        tier: premium
+        model: per_request
+        cost_usd: 0.02
+        currency: USD
+        billing_code: plaid_holdings_v2
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: [plaid:holdings]
@@ -1850,11 +1874,18 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.005 per request (deducted from account balance)
+        **Billing:** $0.001 per request (deducted from account balance)
 
         **Rate Limit:** 60 requests/minute (default)
       operationId: getMetrics
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: metrics
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: metrics_v3
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: [ticker-returns]
@@ -1872,7 +1903,7 @@ paths:
           headers:
             X-API-Cost-USD:
               schema: { type: string }
-              description: Cost deducted for this request (e.g. "0.005").
+              description: Cost deducted for this request (e.g. "0.001").
             X-Cache-Status:
               schema: { type: string, enum: [HIT, MISS, BYPASS] }
             X-Data-Freshness:
@@ -1931,6 +1962,13 @@ paths:
         block; billing is applied server-side. Cost: $0.005/call regardless of years pulled.
       operationId: getTickerReturns
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: ticker-returns
+        tier: baseline
+        model: per_request
+        cost_usd: 0.005
+        currency: USD
+        billing_code: ticker_returns_v2
       parameters:
         - name: ticker
           in: query
@@ -2038,6 +2076,13 @@ paths:
         (no hedge ratios). Cost: $0.005/call.
       operationId: getReturns
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: ticker-returns
+        tier: baseline
+        model: per_request
+        cost_usd: 0.005
+        currency: USD
+        billing_code: ticker_returns_v2
       parameters:
         - name: ticker
           in: query
@@ -2122,6 +2167,13 @@ paths:
         Returns daily gross returns for an ETF (e.g. SPY, XLK). Cost: $0.005/call.
       operationId: getEtfReturns
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: ticker-returns
+        tier: baseline
+        model: per_request
+        cost_usd: 0.005
+        currency: USD
+        billing_code: ticker_returns_v2
       parameters:
         - name: etf
           in: query
@@ -2209,8 +2261,17 @@ paths:
         by trading date) from V3 `security_history`. Components: market, sector, subsector, residual.
         Includes `ticker`, `universe`, and `data_source`. This route does not append `_agent` to the JSON body
         in the current implementation; use headers / account balance for billing if applicable.
+
+        **Billing:** $0.02 per request.
       operationId: getL3Decomposition
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: l3-decomposition
+        tier: premium
+        model: per_request
+        cost_usd: 0.02
+        currency: USD
+        billing_code: l3_decomposition_v2
       parameters:
         - name: ticker
           in: query
@@ -2276,6 +2337,13 @@ paths:
         description: JSON Schema for POST /correlation request body (MCP validate before call).
         url: https://riskmodels.app/schemas/factor-correlation-request-v1.json
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: factor-correlation
+        tier: baseline
+        model: per_request
+        cost_usd: 0.002
+        currency: USD
+        billing_code: factor_correlation_v1
       requestBody:
         required: true
         content:
@@ -2331,6 +2399,13 @@ paths:
         description: JSON Schema for the single-ticker success body (correlations, overlap_days, warnings, optional _metadata / _agent).
         url: https://riskmodels.app/schemas/factor-correlation-v1.json
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: factor-correlation
+        tier: baseline
+        model: per_request
+        cost_usd: 0.002
+        currency: USD
+        billing_code: factor_correlation_v1
       parameters:
         - name: ticker
           in: path
@@ -2419,6 +2494,13 @@ paths:
         description: JSON Schema for GET /macro-factors 200 response body.
         url: https://riskmodels.app/schemas/macro-factors-series-v1.json
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: macro-factor-series
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: macro_factor_series_v1
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: [macro-factor-series]
@@ -2487,6 +2569,13 @@ paths:
         See `#/components/schemas/RankingMetricKeys` for key patterns. `rank_percentile` is 100 = best.
       operationId: getRankingsByTicker
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: rankings
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: rankings_v3
       parameters:
         - name: ticker
           in: path
@@ -2607,6 +2696,13 @@ paths:
         Cached at the edge; per-IP rate limit when Upstash Redis is configured (`RANKINGS_BADGE_IP_RPM`, default 120).
       operationId: getRankingsBadge
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: rankings
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: rankings_v3
       parameters:
         - name: ticker
           in: path
@@ -2680,6 +2776,13 @@ paths:
         Same `rank_percentile` rule as GET /rankings/{ticker} (100 = best). Requires all three filters.
       operationId: getRankingsTop
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: rankings
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: rankings_v3
       parameters:
         - name: metric
           in: query
@@ -2781,7 +2884,7 @@ paths:
 
   /batch/analyze:
     post:
-      summary: Multi-ticker batch analysis (25% discount)
+      summary: Multi-ticker batch analysis
       description: >
         Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker).
         Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation
@@ -2790,7 +2893,7 @@ paths:
         Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity
         (`L*_ER` / `L*_HR`), request `["full_metrics","hedge_ratios"]` and see docs/ERM3_ZARR_API_PARITY.md.
         The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost:
-        $0.002/position, minimum $0.01/call.
+        $0.005/position, minimum $0.01/call.
 
         **Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table
         of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`.
@@ -2799,6 +2902,14 @@ paths:
         table may be empty.
       operationId: batchAnalyze
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: batch-analysis
+        tier: premium
+        model: per_position
+        cost_usd: 0.005
+        min_charge: 0.01
+        currency: USD
+        billing_code: batch_analysis_v3
       requestBody:
         required: true
         content:
@@ -2914,8 +3025,17 @@ paths:
         approximate portfolio volatility (weighted `vol_23d`), and optional daily time series of
         portfolio ER over `years`. Partial resolution: unresolved tickers appear in `errors`;
         computation uses resolved positions only. Metered; includes `_agent` and `_metadata`.
+
+        **Billing:** $0.03 per request (empty `positions` / syncing placeholder responses are not charged).
       operationId: postPortfolioRiskIndex
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-risk-index
+        tier: premium
+        model: per_request
+        cost_usd: 0.03
+        currency: USD
+        billing_code: portfolio_risk_index_v2
       requestBody:
         required: true
         content:
@@ -3045,6 +3165,166 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /portfolio/risk-snapshot:
+    post:
+      summary: Portfolio risk snapshot (bundled PDF or JSON)
+      description: >
+        One bundled report for a weighted portfolio: L3 explained-risk decomposition, per-name hedge ratios,
+        and volatility. Uses internal data access only (no separate charges for underlying metrics calls).
+        `format=json` returns structured data; `format=pdf` returns `application/pdf`. `format=png` is not
+        implemented yet (501). Identical requests are cached 24 hours per user; cache hits return `X-Cache: HIT`
+        and `X-API-Cost-USD: 0`.
+
+        **Billing:** $0.25 per successful response (not charged on cache hit).
+      operationId: postPortfolioRiskSnapshot
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-risk-snapshot
+        tier: premium
+        model: per_request
+        cost_usd: 0.25
+        currency: USD
+        billing_code: risk_snapshot_pdf_v1
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: ["*"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positions]
+              properties:
+                positions:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [ticker, weight]
+                    properties:
+                      ticker: { type: string }
+                      weight:
+                        type: number
+                        format: float
+                        exclusiveMinimum: 0
+                title:
+                  type: string
+                  maxLength: 200
+                  description: Optional report title.
+                as_of_date:
+                  type: string
+                  format: date
+                  description: Optional label date (YYYY-MM-DD); data is still latest available from V3.
+                format:
+                  type: string
+                  enum: [pdf, json, png]
+                  default: json
+      responses:
+        "200":
+          description: JSON snapshot or PDF bytes.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Cache:
+              schema: { type: string }
+              description: MISS on first generation; HIT when served from 24h cache.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Invalid body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "501":
+          description: format=png not supported.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics/{ticker}/snapshot.pdf:
+    get:
+      summary: Single-ticker risk snapshot PDF
+      description: >
+        Convenience endpoint for one-name PDF snapshot (implicit weight 1.0). Same capability and $0.25
+        pricing as `POST /portfolio/risk-snapshot` with `format=pdf`. Cached 24h per authenticated user and ticker.
+
+        **Billing:** $0.25 per successful response (not charged on cache hit).
+      operationId: getMetricsTickerSnapshotPdf
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-risk-snapshot
+        tier: premium
+        model: per_request
+        cost_usd: 0.25
+        currency: USD
+        billing_code: risk_snapshot_pdf_v1
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: ["*"]
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          description: US equity ticker (case-insensitive).
+      responses:
+        "200":
+          description: PDF snapshot.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Cache:
+              schema: { type: string }
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid ticker.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Ticker could not be resolved.
+
   /webhooks/subscribe:
     get:
       summary: List webhook subscriptions
@@ -3171,11 +3451,18 @@ paths:
     get:
       summary: Ticker universe search
       description: >
-        List tickers in the universe or search by name/symbol. Free endpoint (no charge).
+        List tickers in the universe or search by name/symbol. Billed per request ($0.001).
         Use the `mag7` flag to retrieve the MAG7 tickers. Use `include_metadata` for
         sector and ETF assignment per ticker.
       operationId: getTickers
       tags: [Utility]
+      x-pricing:
+        capability_id: ticker-search
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: ticker_search_v2
       security: []
       parameters:
         - name: array
@@ -3241,6 +3528,10 @@ paths:
       operationId: estimateCost
       tags:
         - Billing
+      x-pricing:
+        metered: false
+        cost_usd: 0
+        note: Pre-flight cost estimate; not deducted from balance.
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: ["*"]
@@ -3294,6 +3585,13 @@ paths:
         freshness for macro factor APIs (see macro_factors in the response). Free, no auth required.
       operationId: getHealth
       tags: [Utility]
+      x-pricing:
+        capability_id: health-status
+        tier: baseline
+        model: per_request
+        cost_usd: 0
+        currency: USD
+        billing_code: health_check
       security: []
       responses:
         "200":
@@ -3781,6 +4079,13 @@ paths:
         billing balance.
       operationId: cliQuery
       tags: [Utility]
+      x-pricing:
+        capability_id: cli-query
+        tier: baseline
+        model: per_request
+        cost_usd: 0.003
+        currency: USD
+        billing_code: cli_query_v1
       security:
         - BearerAuth: []
       requestBody:
@@ -3843,6 +4148,13 @@ paths:
         capability and number of days. Cost: $0.002/call.
       operationId: getTelemetry
       tags: [Utility]
+      x-pricing:
+        capability_id: telemetry-metrics
+        tier: baseline
+        model: per_request
+        cost_usd: 0.002
+        currency: USD
+        billing_code: telemetry_v2
       parameters:
         - name: capability
           in: query
@@ -3892,6 +4204,14 @@ paths:
         includes messages array and optional model (default gpt-4o-mini). Billed per token.
       operationId: postChat
       tags: [Risk Metrics]
+      x-pricing:
+        capability_id: chat-risk-analyst
+        tier: premium
+        model: per_token
+        currency: USD
+        billing_code: chat_risk_analyst_v2
+        input_cost_per_1k: 0.001
+        output_cost_per_1k: 0.002
       requestBody:
         required: true
         content:
@@ -3981,6 +4301,24 @@ paths:
           description: Upstream AI provider error.
         "503":
           description: Chat not configured (e.g. missing OPENAI_API_KEY).
+
+  /pricing:
+    get:
+      summary: Public capability pricing manifest
+      description: >
+        Machine-readable pricing for all registered capabilities (tier, model, `cost_usd`, token rates,
+        `min_charge`, `billing_code`). Public; no authentication. Cached at the edge.
+      operationId: getPricingManifest
+      tags: [Discovery]
+      security: []
+      responses:
+        "200":
+          description: Pricing manifest JSON (`version`, `currency`, `tiers`, `endpoints`, `estimate_endpoint`, `docs`).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
 
 tags:
   - name: Risk Metrics
