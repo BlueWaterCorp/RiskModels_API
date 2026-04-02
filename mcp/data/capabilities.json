@@ -41,18 +41,10 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "market_data",
-        "proprietary_models",
-        "erm3_regression"
-      ],
-      "methodology_url": "https://riskmodels.net/docs/methodology"
+      "sources": ["market_data", "proprietary_models", "erm3_regression"],
+      "methodology_url": "https://riskmodels.app/docs/methodology"
     },
-    "tags": [
-      "returns",
-      "hedging",
-      "risk-analysis"
-    ],
+    "tags": ["returns", "hedging", "risk-analysis"],
     "examples": [
       {
         "request": {
@@ -106,16 +98,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "security_history",
-        "erm3_regression"
-      ]
+      "sources": ["security_history", "erm3_regression"]
     },
-    "tags": [
-      "metrics",
-      "hedge-ratios",
-      "explained-risk"
-    ]
+    "tags": ["metrics", "hedge-ratios", "explained-risk"]
   },
   {
     "id": "rankings",
@@ -160,16 +145,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "security_history",
-        "erm3_regression"
-      ]
+      "sources": ["security_history", "erm3_regression"]
     },
-    "tags": [
-      "rankings",
-      "cross-sectional",
-      "percentile"
-    ]
+    "tags": ["rankings", "cross-sectional", "percentile"]
   },
   {
     "id": "risk-decomposition",
@@ -205,17 +183,10 @@
     "confidence": {
       "data_quality_score": 0.99,
       "update_frequency": "daily",
-      "sources": [
-        "erm3_models",
-        "factor_regression"
-      ],
-      "methodology_url": "https://riskmodels.net/docs/l3-methodology"
+      "sources": ["erm3_models", "factor_regression"],
+      "methodology_url": "https://riskmodels.app/docs/l3-methodology"
     },
-    "tags": [
-      "risk-analysis",
-      "decomposition",
-      "factors"
-    ]
+    "tags": ["risk-analysis", "decomposition", "factors"]
   },
   {
     "id": "chat-risk-analyst",
@@ -233,10 +204,7 @@
           "properties": {
             "role": {
               "type": "string",
-              "enum": [
-                "user",
-                "assistant"
-              ],
+              "enum": ["user", "assistant"],
               "required": true
             },
             "content": {
@@ -257,11 +225,7 @@
         "required": false,
         "description": "Streaming mode: markdown preserves legacy text, hybrid emits text deltas plus approved A2UI catalog blocks",
         "default": "markdown",
-        "enum": [
-          "markdown",
-          "catalog",
-          "hybrid"
-        ]
+        "enum": ["markdown", "catalog", "hybrid"]
       }
     },
     "pricing": {
@@ -280,19 +244,9 @@
     "confidence": {
       "data_quality_score": 0.95,
       "update_frequency": "real-time",
-      "sources": [
-        "openai_gpt4",
-        "riskmodels_data"
-      ]
+      "sources": ["openai_gpt4", "riskmodels_data"]
     },
-    "tags": [
-      "ai",
-      "chat",
-      "analysis",
-      "natural-language",
-      "a2ui",
-      "streaming"
-    ]
+    "tags": ["ai", "chat", "analysis", "natural-language", "a2ui", "streaming"]
   },
   {
     "id": "plaid-link-token",
@@ -406,12 +360,7 @@
         "required": false,
         "description": "Type of analysis to perform",
         "default": "comprehensive",
-        "enum": [
-          "risk",
-          "hedging",
-          "correlation",
-          "comprehensive"
-        ]
+        "enum": ["risk", "hedging", "correlation", "comprehensive"]
       }
     },
     "pricing": {
@@ -430,17 +379,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "portfolio_models",
-        "correlation_matrices"
-      ]
+      "sources": ["portfolio_models", "correlation_matrices"]
     },
-    "tags": [
-      "portfolio",
-      "batch",
-      "analysis",
-      "hedging"
-    ]
+    "tags": ["portfolio", "batch", "analysis", "hedging"]
   },
   {
     "id": "ticker-search",
@@ -482,16 +423,9 @@
     "confidence": {
       "data_quality_score": 0.99,
       "update_frequency": "daily",
-      "sources": [
-        "symbols",
-        "company_data"
-      ]
+      "sources": ["symbols", "company_data"]
     },
-    "tags": [
-      "search",
-      "tickers",
-      "metadata"
-    ]
+    "tags": ["search", "tickers", "metadata"]
   },
   {
     "id": "health-status",
@@ -515,15 +449,9 @@
     "confidence": {
       "data_quality_score": 1,
       "update_frequency": "real-time",
-      "sources": [
-        "system_monitoring"
-      ]
+      "sources": ["system_monitoring"]
     },
-    "tags": [
-      "health",
-      "status",
-      "monitoring"
-    ]
+    "tags": ["health", "status", "monitoring"]
   },
   {
     "id": "telemetry-metrics",
@@ -561,16 +489,9 @@
     "confidence": {
       "data_quality_score": 0.99,
       "update_frequency": "hourly",
-      "sources": [
-        "telemetry_system",
-        "performance_metrics"
-      ]
+      "sources": ["telemetry_system", "performance_metrics"]
     },
-    "tags": [
-      "telemetry",
-      "metrics",
-      "performance"
-    ]
+    "tags": ["telemetry", "metrics", "performance"]
   },
   {
     "id": "metrics-snapshot",
@@ -600,16 +521,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "security_history",
-        "symbols"
-      ]
+      "sources": ["security_history", "symbols"]
     },
-    "tags": [
-      "metrics",
-      "snapshot",
-      "risk"
-    ]
+    "tags": ["metrics", "snapshot", "risk"]
   },
   {
     "id": "l3-decomposition",
@@ -645,16 +559,9 @@
     "confidence": {
       "data_quality_score": 0.99,
       "update_frequency": "daily",
-      "sources": [
-        "erm3_models",
-        "security_history"
-      ]
+      "sources": ["erm3_models", "security_history"]
     },
-    "tags": [
-      "risk",
-      "decomposition",
-      "l3"
-    ]
+    "tags": ["risk", "decomposition", "l3"]
   },
   {
     "id": "portfolio-returns",
@@ -694,15 +601,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "security_history"
-      ]
+      "sources": ["security_history"]
     },
-    "tags": [
-      "portfolio",
-      "returns",
-      "batch"
-    ]
+    "tags": ["portfolio", "returns", "batch"]
   },
   {
     "id": "portfolio-risk-index",
@@ -749,16 +650,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "security_history",
-        "symbols"
-      ]
+      "sources": ["security_history", "symbols"]
     },
-    "tags": [
-      "portfolio",
-      "risk",
-      "pri"
-    ]
+    "tags": ["portfolio", "risk", "pri"]
   },
   {
     "id": "factor-correlation",
@@ -813,16 +707,9 @@
     "confidence": {
       "data_quality_score": 0.95,
       "update_frequency": "daily",
-      "sources": [
-        "security_history",
-        "macro_factors"
-      ]
+      "sources": ["security_history", "macro_factors"]
     },
-    "tags": [
-      "correlation",
-      "macro",
-      "factors"
-    ]
+    "tags": ["correlation", "macro", "factors"]
   },
   {
     "id": "cli-query",
@@ -860,17 +747,9 @@
     "confidence": {
       "data_quality_score": 0.98,
       "update_frequency": "daily",
-      "sources": [
-        "supabase_db",
-        "exec_sql_rpc"
-      ]
+      "sources": ["supabase_db", "exec_sql_rpc"]
     },
-    "tags": [
-      "cli",
-      "sql",
-      "query",
-      "data-access"
-    ],
+    "tags": ["cli", "sql", "query", "data-access"],
     "examples": [
       {
         "request": {

@@ -59,7 +59,7 @@ If you use **RiskModels_API** as your Cursor workspace, you can use a relative p
 
 Restart Cursor after editing the config.
 
-**Optional:** Set `RISKMODELS_API_BASE=https://riskmodels.net` so the manifest resource fetches the live agent manifest from the API.
+**Optional:** Set `RISKMODELS_API_BASE=https://riskmodels.app` so the manifest resource fetches the live agent manifest from the API.
 
 ---
 
