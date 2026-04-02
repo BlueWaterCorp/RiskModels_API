@@ -5,7 +5,7 @@ import { requireResolvedAuth } from "../lib/credentials.js";
 import { apiFetchJson } from "../lib/api-client.js";
 import { printResults } from "../lib/display.js";
 
-const DOCS = "https://riskmodels.net/docs/api";
+const DOCS = "https://riskmodels.app/docs/api";
 
 function parseTickers(s: string): string[] {
   return s
@@ -15,12 +15,19 @@ function parseTickers(s: string): string[] {
 }
 
 export function agentCommand(): Command {
-  const agent = new Command("agent").description("Shortcuts for portfolio-style workflows (wraps REST endpoints)");
+  const agent = new Command("agent").description(
+    "Shortcuts for portfolio-style workflows (wraps REST endpoints)",
+  );
 
   agent
     .command("decompose")
-    .description("Batch L3-style screen: POST /batch/analyze with full_metrics (+ hedge_ratios)")
-    .requiredOption("--tickers <symbols>", "Comma or space separated tickers (max 100)")
+    .description(
+      "Batch L3-style screen: POST /batch/analyze with full_metrics (+ hedge_ratios)",
+    )
+    .requiredOption(
+      "--tickers <symbols>",
+      "Comma or space separated tickers (max 100)",
+    )
     .option("--years <n>", "Years when returns blocks are requested", "1")
     .action(async (opts: { tickers: string; years?: string }, cmd: Command) => {
       const json = (cmd.optsWithGlobals() as { json?: boolean }).json ?? false;
@@ -37,14 +44,19 @@ export function agentCommand(): Command {
       const years = parseInt(String(opts.years ?? "1"), 10) || 1;
 
       try {
-        const { body, costUsd } = await apiFetchJson(auth, "POST", "/batch/analyze", {
-          jsonBody: {
-            tickers,
-            metrics: ["full_metrics", "hedge_ratios"],
-            years,
-            format: "json",
+        const { body, costUsd } = await apiFetchJson(
+          auth,
+          "POST",
+          "/batch/analyze",
+          {
+            jsonBody: {
+              tickers,
+              metrics: ["full_metrics", "hedge_ratios"],
+              years,
+              format: "json",
+            },
           },
-        });
+        );
         printResults(body, json);
         if (!json && costUsd) console.log(chalk.dim(`Cost: $${costUsd}`));
       } catch (e) {
@@ -65,7 +77,11 @@ export function agentCommand(): Command {
 
       const enc = encodeURIComponent(ticker.trim());
       try {
-        const { body, costUsd } = await apiFetchJson(auth, "GET", `/metrics/${enc}`);
+        const { body, costUsd } = await apiFetchJson(
+          auth,
+          "GET",
+          `/metrics/${enc}`,
+        );
         printResults(body, json);
         if (!json && costUsd) console.log(chalk.dim(`Cost: $${costUsd}`));
       } catch (e) {

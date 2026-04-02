@@ -22,9 +22,14 @@ const program = new Command();
 
 program
   .name("riskmodels")
-  .description("RiskModels CLI — REST API, SQL query, schema, billing, and agent manifests")
+  .description(
+    "RiskModels CLI — REST API, SQL query, schema, billing, and agent manifests",
+  )
   .version("2.0.0", "-V, --version", "output version")
-  .option("--json", "JSON output for supported commands (query, schema, balance, API calls, config list)")
+  .option(
+    "--json",
+    "JSON output for supported commands (query, schema, balance, API calls, config list)",
+  )
   .configureHelp({ sortSubcommands: true })
   .addHelpText(
     "after",
@@ -36,7 +41,7 @@ ${chalk.bold("Quick start")}
   ${chalk.dim("$")} riskmodels query ${chalk.green('"SELECT ticker FROM ticker_metadata LIMIT 3"')}
   ${chalk.dim("$")} riskmodels manifest --format anthropic
 
-${chalk.bold("Docs")} https://riskmodels.net/docs/api`,
+${chalk.bold("Docs")} https://riskmodels.app/docs/api`,
   );
 
 program.addCommand(configCommand());

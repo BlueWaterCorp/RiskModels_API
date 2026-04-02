@@ -1,6 +1,6 @@
 # riskmodels-cli
 
-Command-line interface for [RiskModels](https://riskmodels.net): call the REST API (metrics, batch, portfolio, returns, rankings, etc.), run billed SQL queries, explore schema in direct (Supabase) mode, check balance, and export agent tool manifests.
+Command-line interface for [RiskModels](https://riskmodels.app): call the REST API (metrics, batch, portfolio, returns, rankings, etc.), run billed SQL queries, explore schema in direct (Supabase) mode, check balance, and export agent tool manifests.
 
 ## Install
 
