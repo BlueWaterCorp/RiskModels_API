@@ -13,7 +13,7 @@ import pandas as pd
 
 from .auth import OAuthClientCredentialsAuth, StaticBearerAuth
 from .capabilities import DISCOVER_SPEC, discover_markdown
-from .legends import COMBINED_ERM3_MACRO_LEGEND, SHORT_RANKINGS_LEGEND
+from .legends import COMBINED_ERM3_MACRO_LEGEND, SHORT_MACRO_SERIES_LEGEND, SHORT_RANKINGS_LEGEND
 from .lineage import RiskLineage
 from .mapping import TICKER_RETURNS_COLUMN_RENAME
 from .metadata_attach import attach_sdk_metadata
@@ -53,7 +53,9 @@ RankingCohort = Literal["universe", "sector", "subsector"]
 RankingWindow = Literal["1d", "21d", "63d", "252d"]
 
 
-DEFAULT_SCOPE = "ticker-returns risk-decomposition batch-analysis factor-correlation rankings"
+DEFAULT_SCOPE = (
+    "ticker-returns risk-decomposition batch-analysis factor-correlation macro-factor-series rankings"
+)
 DEFAULT_BASE_URL = "https://riskmodels.app/api"
 
 
@@ -656,6 +658,52 @@ class RiskModelsClient:
             lineage,
             kind="macro_correlation",
             legend=COMBINED_ERM3_MACRO_LEGEND,
+        )
+        return df
+
+    def get_macro_factor_series(
+        self,
+        *,
+        factors: list[str] | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """GET /macro-factors — daily macro factor returns (no ticker).
+
+        Long-format rows from Supabase ``macro_factors``: ``factor_key``, ``teo``, ``return_gross``.
+        Omit ``factors`` to use all six canonical keys. Default range: five calendar years through today (UTC);
+        server enforces a 20-year maximum span.
+
+        Args:
+            factors: Optional list of factor keys (e.g. ``[\"bitcoin\", \"vix\"]``).
+            start: Inclusive start date ``YYYY-MM-DD``.
+            end: Inclusive end date ``YYYY-MM-DD``.
+            as_dataframe: If True, return only the ``series`` rows as a DataFrame with SDK attrs.
+
+        Returns:
+            Full API JSON (``factors_requested``, ``series``, ``warnings``, …) or a long DataFrame.
+        """
+        params: dict[str, Any] = {}
+        if factors is not None:
+            params["factors"] = ",".join(factors)
+        if start is not None:
+            params["start"] = start
+        if end is not None:
+            params["end"] = end
+        body, hdr_lineage, _ = self._transport.request("GET", "/macro-factors", params=params)
+        if not as_dataframe:
+            return body
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+        series = body.get("series") if isinstance(body, dict) else None
+        rows = series if isinstance(series, list) else []
+        df = pd.DataFrame(rows)
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="macro_factor_series",
+            legend=SHORT_MACRO_SERIES_LEGEND,
         )
         return df
 

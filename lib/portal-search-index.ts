@@ -52,6 +52,14 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     keywords: 'brokerage portfolio link',
   },
   {
+    title: 'Macro factors and correlation',
+    description:
+      'Canonical macro keys, stock–macro correlation (gross and L1/L2/L3 residuals), and raw GET /macro-factors time series.',
+    href: '/docs/macro-factors',
+    keywords:
+      'macro_factors bitcoin vix gold oil dxy ust10y2y correlation return_type l3_residual GET macro-factors series',
+  },
+  {
     title: 'API Reference',
     description: 'Interactive OpenAPI / Redoc — live schemas and request examples.',
     href: '/api-reference',

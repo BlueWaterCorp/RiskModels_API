@@ -80,9 +80,11 @@ High RR (> 0.5) indicates a stock with significant idiosyncratic return — usef
 
 ---
 
-## Macro factors (`POST /correlation`, `GET /metrics/{ticker}/correlation`)
+## Macro factors (`POST /correlation`, `GET /metrics/{ticker}/correlation`, `GET /macro-factors`)
 
 **POST body (JSON Schema):** `https://riskmodels.app/schemas/factor-correlation-request-v1.json` (also listed in MCP `schema-paths` as `factor-correlation-request-v1.json`). **Single-ticker success body:** `https://riskmodels.app/schemas/factor-correlation-v1.json` (batch responses use a `results` array; see OpenAPI).
+
+**Raw series (no ticker):** `GET /api/macro-factors` returns long-format rows from `macro_factors` for a requested date range. **JSON Schema:** `https://riskmodels.app/schemas/macro-factors-series-v1.json`. Query params: optional comma-separated `factors` (or `factor`), optional `start` / `end` (`YYYY-MM-DD`). Defaults: all six canonical keys, `end` = today (UTC), `start` = five calendar years before `end`; maximum span 20 years.
 
 Daily **macro factor returns** are stored in Supabase `macro_factors` as `return_gross` per `factor_key` and trading date (`teo`). The correlation endpoints align **stock** daily returns (gross or ERM3 residual) with those series and compute **Pearson** or **Spearman** correlation over the last `window_days` **paired** observations per factor (after date alignment). The implementation requires **at least about 30** overlapping paired days per factor; otherwise that factor’s entry is `null`.
 

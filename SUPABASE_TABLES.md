@@ -25,6 +25,7 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | **`erm3_landing_chart_cache`** | Landing page chart: pre-computed cumulative returns (ticker, date, cum_stock, cum_market, cum_sector, cum_subsector). Last 3 years. |
 | **`security_history_latest`** | Latest metrics per symbol/periodicity: returns_gross, vol_23d, L3 HR/ER. Used by cards, tape, treemap. |
 | **`trading_calendar`** | Canonical trading dates (teo, periodicity). Replaces mining distinct dates from security_history. |
+| **`macro_factors`** | Daily macro factor total returns: one row per (`factor_key`, `teo`) with `return_gross` and optional `metadata` jsonb. Canonical `factor_key` values: `bitcoin`, `gold`, `oil`, `dxy`, `vix`, `ust10y2y` (see [`lib/risk/macro-factor-keys.ts`](lib/risk/macro-factor-keys.ts)). Used by `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation`, and `GET /api/macro-factors`. |
 
 ### security_history metric_key values
 

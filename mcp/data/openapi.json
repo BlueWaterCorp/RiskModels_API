@@ -39,6 +39,7 @@
               "risk-decomposition": "Access L3 risk decomposition",
               "batch-analysis": "Perform portfolio batch analysis",
               "factor-correlation": "Correlate stocks with macro factors (VIX, Bitcoin, Gold, etc.)",
+              "macro-factor-series": "Download daily macro factor return series (no ticker)",
               "chat-risk-analyst": "Use AI risk analyst",
               "plaid:holdings": "Access Plaid-synced portfolio holdings",
               "*": "Full API access"
@@ -1157,6 +1158,89 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "MacroFactorsSeriesRow": {
+        "type": "object",
+        "required": [
+          "factor_key",
+          "teo"
+        ],
+        "properties": {
+          "factor_key": {
+            "type": "string",
+            "example": "bitcoin"
+          },
+          "teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "return_gross": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Present only when non-empty in `macro_factors.metadata`."
+          }
+        }
+      },
+      "MacroFactorsSeriesResponse": {
+        "type": "object",
+        "required": [
+          "factors_requested",
+          "start",
+          "end",
+          "row_count",
+          "series",
+          "warnings"
+        ],
+        "properties": {
+          "factors_requested": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          },
+          "row_count": {
+            "type": "integer"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MacroFactorsSeriesRow"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "_metadata": {
+            "$ref": "#/components/schemas/RiskMetadata"
+          },
+          "_agent": {
+            "type": "object",
+            "properties": {
+              "latency_ms": {
+                "type": "integer"
+              },
+              "request_id": {
+                "type": "string"
+              }
             }
           }
         }
@@ -3100,6 +3184,120 @@
         }
       }
     },
+    "/macro-factors": {
+      "get": {
+        "summary": "Macro factor daily return series",
+        "description": "Returns long-format rows from Supabase `macro_factors` (`factor_key`, `teo`, `return_gross`) for the requested date range. No stock ticker is required. Omit `factors` to use all six canonical keys (bitcoin, gold, oil, dxy, vix, ust10y2y); aliases such as `btc` normalize to `bitcoin`. Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today. Maximum span: 20 years. Cost: $0.001 per request. JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json\n",
+        "operationId": "getMacroFactorSeries",
+        "externalDocs": {
+          "description": "JSON Schema for GET /macro-factors 200 response body.",
+          "url": "https://riskmodels.app/schemas/macro-factors-series-v1.json"
+        },
+        "tags": [
+          "Risk Metrics"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2ClientCredentials": [
+              "macro-factor-series"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "factors",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated factor keys; synonym query param `factor` is also accepted by the server."
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive start (YYYY-MM-DD)."
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive end (YYYY-MM-DD). Defaults to today (UTC)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Macro factor rows and lineage metadata.",
+            "headers": {
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MacroFactorsSeriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query (date range, factors, or span).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/rankings/{ticker}": {
       "get": {
         "summary": "Cross-sectional rankings snapshot",
@@ -4459,7 +4657,7 @@
     "/health": {
       "get": {
         "summary": "Service health check",
-        "description": "Returns current service status, version, capability availability (from recent billing_events), latest-session gross-return coverage (EODHD completeness signal), and optional macro_factors freshness for the correlation API (see macro_factors in the response). Free, no auth required.\n",
+        "description": "Returns current service status, version, capability availability (from recent billing_events), latest-session gross-return coverage (EODHD completeness signal), and optional macro_factors freshness for macro factor APIs (see macro_factors in the response). Free, no auth required.\n",
         "operationId": "getHealth",
         "tags": [
           "Utility"
@@ -4528,7 +4726,7 @@
                     "macro_factors": {
                       "type": "object",
                       "nullable": true,
-                      "description": "Daily macro factor return series freshness in Supabase macro_factors (POST /correlation, GET /metrics/{ticker}/correlation). Omitted or partial if the table is empty or the query fails.\n",
+                      "description": "Daily macro factor return series freshness in Supabase macro_factors (POST /correlation, GET /metrics/{ticker}/correlation, GET /macro-factors). Omitted or partial if the table is empty or the query fails.\n",
                       "properties": {
                         "status": {
                           "type": "string",

@@ -142,6 +142,18 @@ const TOOLS: Array<{
     required: ["ticker"],
   },
   {
+    name: "riskmodels_macro_factor_series",
+    description: "Raw macro factor daily returns. GET /api/macro-factors",
+    method: "GET",
+    path: "/api/macro-factors",
+    properties: {
+      factors: { type: "string", description: "Comma-separated factor keys" },
+      start: { type: "string", description: "YYYY-MM-DD" },
+      end: { type: "string", description: "YYYY-MM-DD" },
+    },
+    required: [],
+  },
+  {
     name: "riskmodels_rankings_snapshot",
     description: "Cross-sectional ranks for one ticker. GET /api/rankings/{ticker}",
     method: "GET",

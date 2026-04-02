@@ -762,6 +762,50 @@ export const CAPABILITIES: Capability[] = [
     tags: ["correlation", "macro", "factors"],
   },
   {
+    id: "macro-factor-series",
+    name: "Macro factor time series",
+    description:
+      "Read-only daily macro factor total returns from Supabase `macro_factors` (no stock ticker). GET /api/macro-factors with optional `factors`, `start`, `end` (YYYY-MM-DD). JSON Schema for 200 body: macro-factors-series-v1.json (MCP schema list).",
+    endpoint: "/api/macro-factors",
+    method: "GET",
+    parameters: {
+      factors: {
+        type: "string",
+        required: false,
+        description:
+          "Comma-separated factor keys (bitcoin, gold, oil, dxy, vix, ust10y2y); aliases e.g. btc → bitcoin. Default all six.",
+      },
+      start: {
+        type: "string",
+        required: false,
+        description: "Inclusive start date (YYYY-MM-DD). Default: five calendar years before `end`.",
+      },
+      end: {
+        type: "string",
+        required: false,
+        description: "Inclusive end date (YYYY-MM-DD). Default: today (UTC).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      cost_usd: 0.001,
+      currency: "USD",
+      billing_code: "macro_factor_series_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 200,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "daily",
+      sources: ["macro_factors"],
+    },
+    tags: ["macro", "factors", "time-series"],
+  },
+  {
     id: "cli-query",
     name: "CLI SQL Query",
     description:

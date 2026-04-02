@@ -57,7 +57,7 @@
     },
     "macro_factors": {
       "type": "object",
-      "description": "Macro factors data health for correlation surface",
+      "description": "Macro factors data health for correlation and GET /macro-factors series",
       "properties": {
         "status": {
           "type": "string",

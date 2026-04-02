@@ -141,6 +141,7 @@ Tokens expire after 15 minutes. Request a new token using the same OAuth2 endpoi
 | `risk-decomposition` | Access L3 risk decomposition |
 | `batch-analysis` | Perform portfolio batch analysis |
 | `factor-correlation` | Correlate stocks with macro factors (VIX, Bitcoin, Gold, etc.) |
+| `macro-factor-series` | Download daily macro factor return series (`GET /api/macro-factors`, no ticker) |
 | `chat-risk-analyst` | Use AI risk analyst |
 | `plaid:holdings` | Access Plaid-synced portfolio holdings |
 | `*` | Full API access (all scopes) |

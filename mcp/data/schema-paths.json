@@ -1,5 +1,6 @@
 [
   "/schemas/ticker-returns-v2.json",
+  "/schemas/macro-factors-series-v1.json",
   "/schemas/factor-correlation-v1.json",
   "/schemas/factor-correlation-request-v1.json",
   "/schemas/l3-decomposition-v1.json",

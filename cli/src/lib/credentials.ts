@@ -5,7 +5,7 @@ import { fetchOAuthAccessToken, invalidateOAuthToken } from "./oauth.js";
 
 /** Matches sdk/riskmodels/client.py DEFAULT_SCOPE. */
 export const DEFAULT_OAUTH_SCOPE =
-  "ticker-returns risk-decomposition batch-analysis factor-correlation rankings";
+  "ticker-returns risk-decomposition batch-analysis factor-correlation macro-factor-series rankings";
 
 export type ResolvedApiAuth = {
   apiRoot: string;

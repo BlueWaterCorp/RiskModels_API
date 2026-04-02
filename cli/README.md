@@ -43,6 +43,7 @@ Config file: `~/.config/riskmodels/config.json`
 | `riskmodels returns ticker\|stock\|etf` | `GET /api/ticker-returns`, `/returns`, `/etf-returns` |
 | `riskmodels l3 <ticker>` | `GET /api/l3-decomposition` |
 | `riskmodels correlation post\|metrics` | `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation` |
+| `riskmodels macro-factors` | `GET /api/macro-factors` (daily macro returns, no ticker) |
 | `riskmodels rankings snapshot\|badge\|top` | Rankings endpoints |
 | `riskmodels tickers` | Universe search (`GET /api/tickers`, no auth) |
 | `riskmodels health` | `GET /api/health` (no auth) |

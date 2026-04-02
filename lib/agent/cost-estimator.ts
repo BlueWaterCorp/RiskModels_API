@@ -41,6 +41,7 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "l3-decomposition": "l3-decomposition",
   "portfolio-returns": "portfolio-returns",
   "portfolio-risk-index": "portfolio-risk-index",
+  "macro-factors": "macro-factor-series",
 };
 
 function getItemCount(params: Record<string, unknown> | undefined): number | undefined {
