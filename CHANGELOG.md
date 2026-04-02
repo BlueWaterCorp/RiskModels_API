@@ -6,6 +6,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **`GET /api/macro-factors`** — Read-only long-format daily macro factor returns from `macro_factors` (`factor_key`, `teo`, `return_gross`) with optional `start` / `end` / `factors`; capability **`macro-factor-series`**, OAuth scope **`macro-factor-series`**, JSON Schema **`mcp/data/schemas/macro-factors-series-v1.json`**. Python SDK **`get_macro_factor_series`**, CLI **`riskmodels macro-factors`**, portal doc **`content/docs/macro-factors.mdx`**.
+
+- **CI** — Root **`npm test`** (Vitest) covers **`FactorCorrelationRequestSchema`** and **`parseMacroFactorsSeriesQuery`**.
+
 - **Public Python SDK hints** — `GET /api/sdk/python` returns JSON (`package`, `min_version`, `upgrade_message`, `docs_url`) for notebooks and CLIs; no auth. Override copy with `RISKMODELS_PY_UPGRADE_MESSAGE` and minimum version with `RISKMODELS_PY_MIN_VERSION` (see `app/api/sdk/python/route.ts`).
 
 - **Python SDK** — `format_metrics_snapshot(row)` for human-readable L3 metrics text from a `get_metrics` dict row; `examples/quickstart.py` CLI demo. See [packages/riskmodels/README.md](packages/riskmodels/README.md).

@@ -1,5 +1,7 @@
 """Tests for factor correlation endpoints."""
 
+import json
+
 import httpx
 import pytest
 
@@ -272,3 +274,125 @@ def test_get_factor_correlation_single_ticker_alias():
     # GOOGL should resolve to GOOG in the URL
     assert "/metrics/GOOG/correlation" in captured["url"]
     assert result["ticker"] == "GOOG"
+
+
+def test_get_factor_correlation_post_single_mock():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        captured["body"] = request.content.decode() if request.content else ""
+        return httpx.Response(
+            200,
+            json={
+                "ticker": "MSFT",
+                "return_type": "l1",
+                "window_days": 200,
+                "method": "pearson",
+                "correlations": {"bitcoin": 0.11},
+                "overlap_days": 199,
+                "warnings": [],
+                "_metadata": {},
+                "_agent": {},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=httpx.Client(transport=transport),
+    )
+    out = client.get_factor_correlation(
+        "MSFT",
+        factors=["bitcoin"],
+        return_type="l1",
+        window_days=200,
+    )
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/correlation")
+    body_json = json.loads(captured["body"])
+    assert body_json["ticker"] == "MSFT"
+    assert body_json["return_type"] == "l1"
+    assert body_json["factors"] == ["bitcoin"]
+    assert out["correlations"]["bitcoin"] == 0.11
+
+
+def test_get_factor_correlation_post_batch_dataframe():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "ticker": "AAPL",
+                        "return_type": "l3_residual",
+                        "window_days": 252,
+                        "method": "pearson",
+                        "correlations": {"vix": 0.2},
+                        "overlap_days": 250,
+                        "warnings": [],
+                    },
+                    {"ticker": "BAD", "error": "not found", "status": 404},
+                ],
+                "_metadata": {},
+                "_agent": {},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=httpx.Client(transport=transport),
+    )
+    df = client.get_factor_correlation(["AAPL", "BAD"], as_dataframe=True)
+    assert len(df) == 2
+    err_row = df[df["ticker"] == "BAD"].iloc[0]
+    assert err_row["macro_batch_status"] == 404
+    assert err_row["macro_batch_error"] == "not found"
+
+
+def test_get_macro_factor_series_mock():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "factors_requested": ["bitcoin"],
+                "start": "2024-01-01",
+                "end": "2024-01-31",
+                "row_count": 2,
+                "series": [
+                    {"factor_key": "bitcoin", "teo": "2024-01-02", "return_gross": 0.01},
+                    {"factor_key": "bitcoin", "teo": "2024-01-03", "return_gross": -0.02},
+                ],
+                "warnings": [],
+                "_metadata": {},
+                "_agent": {},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=httpx.Client(transport=transport),
+    )
+    df = client.get_macro_factor_series(
+        factors=["bitcoin"],
+        start="2024-01-01",
+        end="2024-01-31",
+        as_dataframe=True,
+    )
+    assert "/macro-factors" in captured["url"]
+    assert "factors=bitcoin" in captured["url"]
+    assert df.attrs.get("riskmodels_kind") == "macro_factor_series"
+    assert len(df) == 2
+    assert df.iloc[0]["return_gross"] == 0.01

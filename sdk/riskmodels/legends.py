@@ -17,6 +17,10 @@ Use return_type gross vs l3_residual depending on whether you want total equity 
 
 COMBINED_ERM3_MACRO_LEGEND = SHORT_ERM3_LEGEND + "\n\n" + SHORT_MACRO_CORR_LEGEND
 
+SHORT_MACRO_SERIES_LEGEND = """Daily macro factor total returns from macro_factors (long table: factor_key, teo, return_gross).
+These are the same underlying series used for stock–macro correlation; this endpoint does not require a ticker.
+return_gross is a simple daily return for that macro factor; it is not an equity hedge ratio (HR) or explained risk (ER)."""
+
 SHORT_RANKINGS_LEGEND = """Cross-sectional rankings from security_history: rank_ordinal (1 = best within cohort),
 cohort_size (N names in cohort), rank_percentile (0–100, 100 = best). Low cohort_size (<10) is statistically weak;
 see attrs riskmodels_warnings. Wire storage uses keys rank_ord_{window}_{cohort}_{metric}; the SDK uses structured columns."""

@@ -67,6 +67,10 @@ print(snap["macro_corr_bitcoin"].iloc[0], snap["l3_market_hr"].iloc[0])
 print(to_llm_context(snap))
 ```
 
+### Raw macro factor series (no ticker)
+
+`get_macro_factor_series()` calls **`GET /macro-factors`** — long table of `factor_key`, `teo`, `return_gross` for charts or offline checks. Requires the **`macro-factor-series`** scope on your API key (included in the SDK default scope string).
+
 ## README and docs site PNGs (maintainers)
 
 From the **repository root** (not `sdk/`), with a free-tier `RISKMODELS_API_KEY`:

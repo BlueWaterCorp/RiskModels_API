@@ -561,6 +561,48 @@ _SDK_METHODS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_macro_factor_series",
+        "aliases": [],
+        "summary": "Raw macro factor daily returns (GET /macro-factors).",
+        "description": (
+            "Long-format rows from macro_factors (factor_key, teo, return_gross) without a stock ticker. "
+            "Use for charts or offline checks; correlation vs equities uses get_factor_correlation / "
+            "get_factor_correlation_single."
+        ),
+        "scopes": ["macro-factor-series"],
+        "parameters": [
+            {
+                "name": "factors",
+                "type": "array",
+                "required": False,
+                "description": "bitcoin, gold, oil, dxy, vix, ust10y2y (default all six).",
+            },
+            {
+                "name": "start",
+                "type": "string",
+                "required": False,
+                "description": "Inclusive YYYY-MM-DD (default: five calendar years before end).",
+            },
+            {
+                "name": "end",
+                "type": "string",
+                "required": False,
+                "description": "Inclusive YYYY-MM-DD (default: today UTC).",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+                "description": "If True, return only series[] as a long DataFrame with attrs.",
+            },
+        ],
+        "returns": {
+            "type": "dict | pandas.DataFrame",
+            "description": "Full API JSON or long DataFrame of macro factor rows.",
+        },
+    },
+    {
         "name": "batch_analyze",
         "aliases": ["batch"],
         "summary": "Up to 100 tickers: returns, hedge_ratios, full_metrics.",
@@ -780,7 +822,7 @@ DISCOVER_SPEC: dict[str, Any] = {
             "OAuth2 client credentials: RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET; JWT ~15m refresh.",
         ],
         "default_oauth_scope": (
-            "ticker-returns risk-decomposition batch-analysis factor-correlation rankings"
+            "ticker-returns risk-decomposition batch-analysis factor-correlation macro-factor-series rankings"
         ),
     },
     "costs": {

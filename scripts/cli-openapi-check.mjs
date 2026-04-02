@@ -24,6 +24,7 @@ const CLI_COVERED = new Set([
   "/etf-returns",
   "/health",
   "/l3-decomposition",
+  "/macro-factors",
   "/metrics/{ticker}",
   "/metrics/{ticker}/correlation",
   "/portfolio/risk-index",

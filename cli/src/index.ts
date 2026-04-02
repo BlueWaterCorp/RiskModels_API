@@ -16,6 +16,7 @@ import { estimateCommand } from "./commands/estimate.js";
 import { returnsCommand } from "./commands/returns.js";
 import { l3Command } from "./commands/l3.js";
 import { correlationCommand } from "./commands/correlation.js";
+import { macroFactorsCommand } from "./commands/macro-factors.js";
 import { rankingsCommand } from "./commands/rankings.js";
 
 const program = new Command();
@@ -52,6 +53,7 @@ program.addCommand(portfolioCommand());
 program.addCommand(returnsCommand());
 program.addCommand(l3Command());
 program.addCommand(correlationCommand());
+program.addCommand(macroFactorsCommand());
 program.addCommand(rankingsCommand());
 program.addCommand(tickersCommand());
 program.addCommand(healthCommand());
