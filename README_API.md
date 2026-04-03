@@ -172,6 +172,6 @@ Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → A
 ## Support
 
 - **Issues & feature requests:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
-- **API support email:** [contact@riskmodels.net](mailto:contact@riskmodels.net)
+- **API support email:** [service@riskmodels.app](mailto:service@riskmodels.app)
 - **Interactive docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
 - **Status:** [riskmodels.net/status](https://riskmodels.net/status)

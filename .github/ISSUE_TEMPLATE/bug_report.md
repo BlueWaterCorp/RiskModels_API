@@ -48,4 +48,4 @@ assignees: ''
 
 ---
 
-**Support:** [contact@riskmodels.net](mailto:contact@riskmodels.net) — include your `request_id` for faster triage.
+**Support:** [service@riskmodels.app](mailto:service@riskmodels.app) — include your `request_id` for faster triage.

@@ -269,7 +269,7 @@ See [MIGRATION_V3.md](./MIGRATION_V3.md) for detailed upgrade instructions.
 - **Migration Guide:** [MIGRATION_V3.md](./MIGRATION_V3.md)
 - **Authentication Guide:** [AUTHENTICATION_GUIDE.md](./AUTHENTICATION_GUIDE.md)
 - **OpenAPI Spec:** [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml)
-- **Email Support:** contact@riskmodels.net
+- **Email Support:** service@riskmodels.app
 - **Status Page:** https://riskmodels.net/status
 
 ---

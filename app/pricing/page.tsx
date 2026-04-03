@@ -155,7 +155,7 @@ const faqs: PricingFaqItem[] = [
   },
   {
     q: "Is there a volume discount?",
-    a: "If your monthly API spend consistently exceeds $100, email contact@riskmodels.net — we can sharpen pricing for steady usage, raise rate limits (100+ req/min), and help you get integrated. We keep it straightforward.",
+    a: "If your monthly API spend consistently exceeds $100, email service@riskmodels.app — we can sharpen pricing for steady usage, raise rate limits (100+ req/min), and help you get integrated. We keep it straightforward.",
   },
   {
     q: "Is my API data encrypted?",
@@ -575,10 +575,10 @@ export default function PricingPage() {
               <p className="text-sm text-zinc-400 mb-3 leading-snug">
                 If you&apos;re consistently in that range, mail{" "}
                 <a
-                  href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
+                  href="mailto:service@riskmodels.app?subject=High%20volume%20pricing"
                   className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
                 >
-                  contact@riskmodels.net
+                  service@riskmodels.app
                 </a>
                 — we can raise rate limits, sharpen pricing for steady usage, and help you wire
                 things up. We&apos;ll reply and keep it simple.
@@ -609,7 +609,7 @@ export default function PricingPage() {
             </div>
             <div className="sm:shrink-0">
               <a
-                href="mailto:contact@riskmodels.net?subject=High%20volume%20pricing"
+                href="mailto:service@riskmodels.app?subject=High%20volume%20pricing"
                 className="inline-flex items-center gap-2 rounded-md border border-zinc-600 hover:border-zinc-400 text-zinc-200 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
               >
                 Email us

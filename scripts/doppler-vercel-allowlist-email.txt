@@ -1,0 +1,9 @@
+# Resend only — use when you do not want to touch Supabase / Stripe / other Vercel env vars.
+# From repo root:
+#   ALLOWLIST=scripts/doppler-vercel-allowlist-email.txt npm run vercel:sync-env:doppler
+#
+# Lines starting with # are ignored.
+
+RESEND_API_KEY
+RESEND_FROM_EMAIL
+RESEND_BCC_EMAIL

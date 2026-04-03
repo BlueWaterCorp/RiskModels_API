@@ -513,7 +513,7 @@ X-RateLimit-Reset: 1709856023
 
 ### Premium Rate Limits
 
-To request premium rate limits, contact contact@riskmodels.net to add the `rate:300` scope to your API key.
+To request premium rate limits, contact service@riskmodels.app to add the `rate:300` scope to your API key.
 
 ---
 

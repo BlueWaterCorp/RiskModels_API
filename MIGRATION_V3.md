@@ -289,7 +289,7 @@ If you need to temporarily revert to v2.0.0 behavior:
 1. **Keep using direct API keys** (not OAuth2)
 2. **Session cookies still work** for web app routes
 3. **Old endpoints remain unchanged** - only new endpoints added
-4. **Rate limits can be increased** - contact contact@riskmodels.net
+4. **Rate limits can be increased** - contact service@riskmodels.app
 
 **Note:** v2.0.0 is deprecated and will be removed in v4.0.0 (Q3 2026).
 
@@ -297,7 +297,7 @@ If you need to temporarily revert to v2.0.0 behavior:
 
 ## Support
 
-- **Migration Issues:** contact@riskmodels.net
+- **Migration Issues:** service@riskmodels.app
 - **Documentation:** [riskmodels.net/docs](https://riskmodels.net/docs)
 - **Status Page:** [riskmodels.net/status](https://riskmodels.net/status)
 - **GitHub Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
@@ -316,7 +316,7 @@ A: Yes. Existing `rm_agent_*` and `rm_user_*` keys work with both v2.0.0 and v3.
 
 ### Q: How do I get premium rate limits?
 
-A: Contact contact@riskmodels.net to add the `rate:300` scope to your API key.
+A: Contact service@riskmodels.app to add the `rate:300` scope to your API key.
 
 ### Q: Can I use OAuth2 with the CLI?
 

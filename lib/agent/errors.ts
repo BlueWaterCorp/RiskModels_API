@@ -165,7 +165,7 @@ export function createAgentErrorResponse(
       ...(action === "top_up" && { top_up_url: "/api/billing/top-up" }),
       ...(action === "upgrade" && { upgrade_url: "/pricing" }),
       ...(action === "contact_support" && {
-        support_email: "contact@riskmodels.net",
+        support_email: "service@riskmodels.app",
       }),
     },
     ...(details && { details }),

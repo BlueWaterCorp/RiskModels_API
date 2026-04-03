@@ -129,7 +129,7 @@ export default function LegalPage() {
           </div>
           <div className="flex flex-wrap gap-3">
             <a
-              href="mailto:contact@riskmodels.net"
+              href="mailto:service@riskmodels.app"
               className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
             >
               Contact

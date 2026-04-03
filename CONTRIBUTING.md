@@ -40,5 +40,5 @@ The canonical spec lives at [`OPENAPI_SPEC.yaml`](OPENAPI_SPEC.yaml). Contributi
 
 ## Questions?
 
-- **Email:** [contact@riskmodels.net](mailto:contact@riskmodels.net)
+- **Email:** [service@riskmodels.app](mailto:service@riskmodels.app)
 - **Issues:** [GitHub Issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)

@@ -938,7 +938,7 @@ export async function checkAndNotifyLowBalance(
 
   // Lazy import to avoid circular dependency (email-service imports billing indirectly)
   const { sendEmail } = await import("@/lib/email-service");
-  await sendEmail({
+  const sent = await sendEmail({
     to: contactEmail,
     subject: "Your RiskModels API balance is running low",
     template: "low-balance",
@@ -950,6 +950,18 @@ export async function checkAndNotifyLowBalance(
     },
     userId,
   });
+
+  if (!sent.success) {
+    await client
+      .from("agent_accounts")
+      .update({ low_balance_notified_at: null })
+      .eq("user_id", userId);
+    console.error(
+      "[Billing] Low-balance email failed; cleared notify flag for retry:",
+      sent.error,
+    );
+    return;
+  }
 
   console.log(
     `[Billing] Sent low-balance alert to ${contactEmail} (balance: $${newBalance.toFixed(4)})`,

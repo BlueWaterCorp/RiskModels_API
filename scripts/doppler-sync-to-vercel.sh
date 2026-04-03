@@ -9,11 +9,19 @@
 #
 # Usage:
 #   DOPPLER_PROJECT=erm3 DOPPLER_CONFIG=prd VERCEL_ENVS=production ./scripts/doppler-sync-to-vercel.sh
+#
+# Default allowlist syncs every listed key that exists in Doppler (each overwrites Vercel). To push
+# only Resend vars and avoid touching Supabase, Stripe, etc.:
+#   ALLOWLIST=scripts/doppler-vercel-allowlist-email.txt npm run vercel:sync-env:doppler
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# ALLOWLIST may be relative to REPO_ROOT (e.g. scripts/doppler-vercel-allowlist-email.txt)
+if [[ -n "${ALLOWLIST:-}" && "${ALLOWLIST}" != /* ]]; then
+  ALLOWLIST="$REPO_ROOT/$ALLOWLIST"
+fi
 ALLOWLIST="${ALLOWLIST:-$SCRIPT_DIR/doppler-vercel-allowlist.txt}"
 
 DOPPLER_PROJECT="${DOPPLER_PROJECT:-erm3}"

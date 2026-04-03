@@ -21,7 +21,7 @@ export default function Footer() {
               GitHub
             </a>
             <a
-              href="mailto:contact@riskmodels.net"
+              href="mailto:service@riskmodels.app"
               className="hover:text-zinc-100 transition-colors"
             >
               Contact

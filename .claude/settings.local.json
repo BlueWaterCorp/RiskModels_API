@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(LC_ALL=C sed -i '' 's/contact@riskmodels\\\\.net/service@riskmodels.app/g' .env.local repomix-output.xml)",
+      "Bash(grep -r \"2.5\\\\|model\\\\|provider\" /Users/conradgann/BW_Code/RiskModels_API/*.md)",
+      "Bash(find /Users/conradgann/BW_Code/RiskModels_API -type f -name *.json ! -path */node_modules/* ! -path */.next/* ! -path */.venv/* -exec grep -l \"model\\\\|provider\" {})",
+      "Bash(2)",
+      "Read(//Users/conradgann/.local/share/uv/tools/kimi-cli/bin/**)",
+      "Bash(/Users/conradgann/.local/bin/kimi --version)",
+      "Bash(/Users/conradgann/.local/bin/kimi --help)",
+      "Bash(/Users/conradgann/.local/bin/kimi acp:*)",
+      "Bash(pip show:*)",
+      "Bash(uv tool:*)",
+      "Bash(pip index:*)",
+      "Read(//Users/conradgann/.config/kimi/**)",
+      "Read(//Users/conradgann/.kimi/**)"
+    ]
+  }
+}

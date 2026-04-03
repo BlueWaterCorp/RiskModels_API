@@ -9,5 +9,10 @@ NEXT_PUBLIC_DEMO_API_KEY
 SUPABASE_SERVICE_ROLE_KEY
 STRIPE_SECRET_KEY
 
+# Resend (transactional email — low-balance alerts, etc.)
+RESEND_API_KEY
+RESEND_FROM_EMAIL
+RESEND_BCC_EMAIL
+
 # Gateway service key for trusted server-to-server API access
 RISKMODELS_API_SERVICE_KEY

@@ -28,4 +28,4 @@ assignees: ''
 
 ---
 
-**Faster answer:** Check [SEMANTIC_ALIASES.md](../../SEMANTIC_ALIASES.md) for field definitions or [AUTHENTICATION_GUIDE.md](../../AUTHENTICATION_GUIDE.md) for auth questions. Email [contact@riskmodels.net](mailto:contact@riskmodels.net) for urgent issues.
+**Faster answer:** Check [SEMANTIC_ALIASES.md](../../SEMANTIC_ALIASES.md) for field definitions or [AUTHENTICATION_GUIDE.md](../../AUTHENTICATION_GUIDE.md) for auth questions. Email [service@riskmodels.app](mailto:service@riskmodels.app) for urgent issues.

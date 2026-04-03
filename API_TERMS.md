@@ -133,7 +133,7 @@ For material changes that materially restrict your rights, we will provide at le
 - **Severability.** If any provision is held invalid or unenforceable, the remaining provisions remain in effect.
 - **Waiver.** Our failure to enforce any right does not waive that right.
 - **Governing Law.** These API Terms are governed by the laws of the State of Delaware, without regard to conflict of law principles. Any disputes shall be resolved in the state or federal courts located in Delaware.
-- **Contact.** For questions about these API Terms, contact contact@riskmodels.net.
+- **Contact.** For questions about these API Terms, contact service@riskmodels.app.
 
 ---
 

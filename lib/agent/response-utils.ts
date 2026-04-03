@@ -289,7 +289,7 @@ export function createAgentErrorResponse(
         request_id: requestIdFinal,
         capability_id: capabilityId,
         timestamp: new Date().toISOString(),
-        support: 'contact@riskmodels.net',
+        support: 'service@riskmodels.app',
         documentation: 'https://riskmodels.net/docs/api',
         ...additionalContext
       }

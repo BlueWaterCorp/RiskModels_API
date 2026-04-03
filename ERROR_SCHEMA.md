@@ -180,4 +180,4 @@ if health["status"] != "up":
     # Check health["services"] for which component is affected
 ```
 
-Report persistent issues at [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues) or email [contact@riskmodels.net](mailto:contact@riskmodels.net).
+Report persistent issues at [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues) or email [service@riskmodels.app](mailto:service@riskmodels.app).
