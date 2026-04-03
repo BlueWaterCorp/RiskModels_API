@@ -22,6 +22,9 @@ node_modules/
 coverage/
 .nyc_output
 
+# Claude Code / Cursor local tooling (machine-specific paths)
+.claude/
+
 # Misc
 *.log
 *.tsbuildinfo
