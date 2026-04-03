@@ -274,6 +274,50 @@ _SDK_METHODS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "post_portfolio_risk_snapshot",
+        "aliases": [],
+        "summary": "Portfolio risk snapshot JSON or PDF (POST /portfolio/risk-snapshot).",
+        "description": (
+            "One-page PDF or JSON with L3 explained risk and hedge ratios. "
+            "``format='pdf'`` returns bytes; ``format='json'`` returns dict. "
+            "Optional ``title`` (display name) and ``as_of_date`` (YYYY-MM-DD). "
+            "Premium/cached endpoint — see OpenAPI and portal pricing."
+        ),
+        "scopes": ["portfolio-risk-snapshot"],
+        "parameters": [
+            {
+                "name": "positions",
+                "type": "array",
+                "required": True,
+                "description": "List of {ticker, weight} dicts or (ticker, weight) tuples.",
+            },
+            {
+                "name": "format",
+                "type": "string",
+                "required": False,
+                "default": "json",
+                "enum": ["json", "pdf", "png"],
+                "description": "json=dict; pdf=bytes; png not implemented (501).",
+            },
+            {
+                "name": "title",
+                "type": "string",
+                "required": False,
+                "description": "Optional report title (use title, not name).",
+            },
+            {
+                "name": "as_of_date",
+                "type": "string",
+                "required": False,
+                "description": "Optional YYYY-MM-DD override.",
+            },
+        ],
+        "returns": {
+            "type": "dict | bytes",
+            "description": "JSON body or raw PDF bytes when format=pdf.",
+        },
+    },
+    {
         "name": "get_rankings",
         "aliases": [],
         "summary": "Cross-sectional rank grid for one ticker (GET /rankings/{ticker}).",
@@ -844,6 +888,9 @@ DISCOVER_SPEC: dict[str, Any] = {
         ),
         "plaid_holdings": "client.get_plaid_holdings()  # API key needs plaid:holdings scope when scopes are set",
         "portfolio_risk_index": "client.post_portfolio_risk_index([])  # empty → check body['status']=='syncing'",
+        "portfolio_risk_snapshot_pdf": (
+            "pdf_bytes = client.post_portfolio_risk_snapshot([('NVDA', 0.5), ('AAPL', 0.5)], format='pdf')"
+        ),
         "rankings_ticker": "client.get_rankings('NVDA', as_dataframe=True)",
         "rankings_top": (
             "client.get_top_rankings(metric='subsector_residual', cohort='subsector', window='252d', limit=10)"

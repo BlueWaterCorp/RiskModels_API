@@ -1,6 +1,19 @@
 # RiskModels SDK Expert Rules
 
-When writing or editing Python code that calls the **RiskModels API**, prefer the **`riskmodels`** package in this repo at `sdk/` (import name `riskmodels`, distribution `riskmodels-py`). Do not invent REST paths or wire JSON shapes from memory; align with `OPENAPI_SPEC.yaml` and `SEMANTIC_ALIASES.md`.
+## Discovery Protocol (before any new API client or integration)
+
+**Before building or changing any API client** (HTTP wrappers, SDK methods, CLI commands, example scripts, or MCP-aligned tools), discover the **current** contract and provisioning metadata from the live tool surface—not from memory:
+
+1. **MCP (preferred when the RiskModels MCP server is enabled in Cursor):** Call **`riskmodels_list_endpoints`** first to load the latest endpoint index (ids, methods, paths, summaries, billing hints). For the endpoints you will implement, follow with **`riskmodels_get_capability`** (by capability id) and/or **`riskmodels_get_schema`** (by path) for request/response shapes and examples.
+2. **Repo fallback (always valid):** If MCP tools are unavailable in this session, read **`OPENAPI_SPEC.yaml`** and **`mcp/data/openapi.json`** (generated/synced from the same contract) before writing code.
+
+Do not ship new client code based only on stale chat context or older snippets. For the full step-by-step workflow, follow the project skill **RiskModels API discovery** (`.cursor/skills/riskmodels-api-discovery/SKILL.md`).
+
+**Cursor channel:** Dynamic MCP tool lists and capability updates are easiest to rely on when Cursor’s **Nightly** update channel is enabled (Settings → Beta → Update channel → Nightly). The agent cannot toggle this for you; enable it locally if you want on-demand capability refresh behavior.
+
+---
+
+When writing or editing Python code that calls the **RiskModels API**, prefer the **`riskmodels`** package in this repo at `sdk/` (import name `riskmodels`, distribution `riskmodels-py`). Do not invent REST paths or wire JSON shapes from memory; align with `OPENAPI_SPEC.yaml` and `SEMANTIC_ALIASES.md` **after** running the Discovery Protocol above.
 
 ## Canonical math and field names (ERM3)
 

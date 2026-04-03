@@ -115,6 +115,23 @@ fig.show()
 # pdf_bytes = client.portfolio.current.pdf(positions=positions)
 ```
 
+**Portfolio risk snapshot PDF** (`POST /portfolio/risk-snapshot`) — raw bytes without the visuals namespace:
+
+```python
+from pathlib import Path
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()
+pdf_bytes = client.post_portfolio_risk_snapshot(
+    [("NVDA", 0.3), ("AAPL", 0.25), ("MSFT", 0.25), ("GOOGL", 0.2)],
+    format="pdf",
+    title="My sleeve",
+)
+Path("snapshot.pdf").write_bytes(pdf_bytes)
+```
+
+Stdlib-only example from repo root: `python examples/python/portfolio_risk_snapshot_pdf.py` (see `docs/portfolio-risk-snapshot-runbook.md`).
+
 ### Publication PNGs (Kaleido)
 
 With `pip install riskmodels-py[viz]` (Plotly + Kaleido), you can save finished charts in one or two lines. Defaults target **~1600×1000** logical pixels with **scale=3** for crisp PNGs; optional **`dpi`** maps to Kaleido scale as **`dpi / 96`** (96 dpi baseline). Optional **`figsize=(width_px, height_px)`** overrides **`width`** / **`height`**.
