@@ -55,6 +55,13 @@ jobs:
             echo "✅ ${ENDPOINT} → $STATUS (auth enforced)"
           done
 
+      # Smoke runs on push immediately; Vercel often has not finished deploying the same commit yet.
+      - name: Wait for Vercel deploy (push to main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Waiting 90s so riskmodels.app can serve the commit that triggered this workflow..."
+          sleep 90
+
       - name: Authenticated endpoints (with TEST_API_KEY)
         env:
           TEST_API_KEY: ${{ secrets.TEST_API_KEY }}

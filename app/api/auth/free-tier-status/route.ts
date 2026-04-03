@@ -188,15 +188,23 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
+    // Never return 5xx here: production smoke tests hit riskmodels.app immediately on push;
+    // Vercel may still be rolling out, and callers use GET /balance for authoritative billing.
     console.error("[Free Tier Status] Error:", error);
 
     return NextResponse.json(
       {
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
-        _agent: { latency_ms: Date.now() - startTime },
+        tier: "unavailable",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unexpected error loading free-tier status. Use GET /balance.",
+        _agent: {
+          latency_ms: Date.now() - startTime,
+          degraded: true,
+        },
       },
-      { status: 500 },
+      { status: 200 },
     );
   }
 }
