@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 from riskmodels.client import RiskModelsClient
@@ -67,6 +69,57 @@ def test_post_portfolio_risk_index_empty_returns_syncing():
     assert out.get("status") == "syncing"
     assert "/portfolio/risk-index" in captured["url"]
     assert "positions" in captured["body"] and "[]" in captured["body"]
+
+
+def test_post_portfolio_risk_snapshot_json_and_pdf():
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        raw = request.content.decode()
+        captured["body"] = raw
+        if request.url.path.endswith("/portfolio/risk-snapshot"):
+            payload = json.loads(raw)
+            if payload.get("format") == "pdf":
+                return httpx.Response(
+                    200,
+                    content=b"%PDF-1.4 fake pdf bytes for test",
+                    headers={"Content-Type": "application/pdf"},
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "title": payload.get("title") or "Test",
+                    "as_of": "2026-01-01",
+                    "portfolio_risk_index": {"variance_decomposition": {}},
+                    "per_ticker": {},
+                    "summary": {"total_positions": 2, "resolved": 2, "errors": 0},
+                },
+            )
+        return httpx.Response(404, json={"error": "not found"})
+
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    out_json = client.post_portfolio_risk_snapshot(
+        [("NVDA", 0.5), ("AAPL", 0.5)],
+        format="json",
+        title="Demo",
+    )
+    assert isinstance(out_json, dict)
+    assert out_json.get("title") == "Demo"
+    assert "/portfolio/risk-snapshot" in captured["url"]
+    assert json.loads(captured["body"]).get("title") == "Demo"
+
+    out_pdf = client.post_portfolio_risk_snapshot(
+        [("NVDA", 0.5), ("AAPL", 0.5)],
+        format="pdf",
+    )
+    assert isinstance(out_pdf, bytes)
+    assert out_pdf.startswith(b"%PDF")
 
 
 def test_get_plaid_holdings_calls_endpoint():

@@ -38,7 +38,9 @@ npm install
 npm run build
 ```
 
-Add the server to Cursor (e.g. `.cursor/mcp.json` in your project):
+This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.js` (relative to the **RiskModels_API** workspace root). After `cd mcp && npm ci && npm run build`, open **RiskModels_API** as a folder in Cursor (or add it in a multi-root workspace), then **restart Cursor** or reload MCP so **`riskmodels_list_endpoints`** appears.
+
+If you configure manually instead, add the server under Cursor Settings → MCP, or use a project file:
 
 ```json
 {
@@ -51,7 +53,7 @@ Add the server to Cursor (e.g. `.cursor/mcp.json` in your project):
 }
 ```
 
-If you use **RiskModels_API** as your Cursor workspace, you can use a relative path:
+If **RiskModels_API** is the workspace root, a relative path is enough:
 
 ```json
 "args": ["mcp/dist/index.js"]

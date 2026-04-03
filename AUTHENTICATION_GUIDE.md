@@ -144,6 +144,7 @@ Tokens expire after 15 minutes. Request a new token using the same OAuth2 endpoi
 | `macro-factor-series` | Download daily macro factor return series (`GET /api/macro-factors`, no ticker) |
 | `chat-risk-analyst` | Use AI risk analyst |
 | `plaid:holdings` | Access Plaid-synced portfolio holdings |
+| `portfolio-risk-snapshot` | `POST /portfolio/risk-snapshot` (JSON or PDF one-page report) |
 | `*` | Full API access (all scopes) |
 
 ### Python Example

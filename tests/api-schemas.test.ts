@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { FactorCorrelationRequestSchema } from "@/lib/api/schemas";
+import {
+  FactorCorrelationRequestSchema,
+  PortfolioRiskSnapshotRequestSchema,
+} from "@/lib/api/schemas";
 import { parseMacroFactorsSeriesQuery } from "@/lib/api/macro-factors-series-query";
 
 describe("FactorCorrelationRequestSchema", () => {
@@ -38,6 +41,62 @@ describe("FactorCorrelationRequestSchema", () => {
       ticker: "XOM",
       window_days: 10,
     });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("PortfolioRiskSnapshotRequestSchema", () => {
+  it("accepts minimal valid body and defaults format to json", () => {
+    const r = PortfolioRiskSnapshotRequestSchema.safeParse({
+      positions: [{ ticker: "NVDA", weight: 1 }],
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.format).toBe("json");
+      expect(r.data.positions).toHaveLength(1);
+    }
+  });
+
+  it("accepts pdf with optional title and as_of_date", () => {
+    const r = PortfolioRiskSnapshotRequestSchema.safeParse({
+      positions: [
+        { ticker: "AAPL", weight: 0.5 },
+        { ticker: "MSFT", weight: 0.5 },
+      ],
+      format: "pdf",
+      title: "Tech sleeve",
+      as_of_date: "2026-01-15",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.format).toBe("pdf");
+      expect(r.data.title).toBe("Tech sleeve");
+      expect(r.data.as_of_date).toBe("2026-01-15");
+    }
+  });
+
+  it("rejects invalid as_of_date", () => {
+    const r = PortfolioRiskSnapshotRequestSchema.safeParse({
+      positions: [{ ticker: "XOM", weight: 1 }],
+      as_of_date: "01-15-2026",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects empty positions", () => {
+    const r = PortfolioRiskSnapshotRequestSchema.safeParse({
+      positions: [],
+      format: "json",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects more than 100 positions", () => {
+    const positions = Array.from({ length: 101 }, (_, i) => ({
+      ticker: `T${i}`,
+      weight: 1 / 101,
+    }));
+    const r = PortfolioRiskSnapshotRequestSchema.safeParse({ positions });
     expect(r.success).toBe(false);
   });
 });
