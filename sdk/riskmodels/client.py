@@ -816,7 +816,14 @@ class RiskModelsClient:
                 return df
             return body
         if isinstance(body, dict):
-            rows = body.get("tickers") or body.get("data") or []
+            rows = body.get("tickers") or body.get("data")
+            if rows is None:
+                rows = []
+            # GET /tickers?search=… returns { ticker } or { ticker, suggestions } — not tickers[]
+            if not rows and isinstance(body.get("suggestions"), list) and body["suggestions"]:
+                rows = body["suggestions"]
+            if not rows and body.get("ticker") is not None:
+                rows = [{"ticker": str(body["ticker"]).strip().upper()}]
             if as_dataframe:
                 if isinstance(rows, list) and rows and isinstance(rows[0], str):
                     df = pd.DataFrame({"ticker": rows})

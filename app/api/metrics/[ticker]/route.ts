@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { resolveSymbolByTicker, fetchLatestMetrics } from "@/lib/dal/risk-engine-v3";
+import { resolveSymbolByTicker, fetchLatestMetricsWithFallback } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
@@ -38,7 +38,7 @@ export const GET = withBilling(
     }
 
     const fetchStart = performance.now();
-    const latestData = await fetchLatestMetrics(symbolRecord.symbol, [
+    const latestData = await fetchLatestMetricsWithFallback(symbolRecord.symbol, [
       "vol_23d",
       "price_close",
       "market_cap",

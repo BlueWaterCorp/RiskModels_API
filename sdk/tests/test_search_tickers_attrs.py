@@ -22,6 +22,26 @@ def test_search_tickers_dataframe_has_legend():
     assert df.attrs.get("riskmodels_kind") == "tickers_universe"
 
 
+def test_search_tickers_single_ticker_dict_from_search_param():
+    """GET /tickers?search=AAPL returns { ticker: 'AAPL' } on exact match."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ticker": "AAPL"})
+
+    transport = httpx.MockTransport(handler)
+    http_client = httpx.Client(transport=transport)
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=http_client,
+    )
+    df = client.search_tickers(search="AAPL")
+    assert not df.empty
+    assert "ticker" in df.columns
+    assert df["ticker"].astype(str).str.upper().eq("AAPL").any()
+
+
 def test_search_tickers_string_list_uses_ticker_column():
     """Fast mag7 path returns { tickers: ["AAPL", ...] } — not rows of dicts."""
 
