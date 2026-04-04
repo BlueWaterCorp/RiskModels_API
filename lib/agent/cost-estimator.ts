@@ -7,6 +7,7 @@
 
 import { getCapabilityById, calculateRequestCost } from "./capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CHAT_TOOLS_REGISTRY } from "@/lib/chat/tools";
 
 const TRADING_DAYS_PER_YEAR = 252;
 const TOKEN_PRICE_USD = 0.00002;
@@ -28,6 +29,12 @@ export interface EstimateResult {
   unit_cost_usd?: number;
   min_charge?: number;
   note: string;
+  /** POST /chat — per-tool reference prices (actual usage depends on the model). */
+  available_tools?: Array<{
+    name: string;
+    capability_id: string | null;
+    cost_per_call_usd: number;
+  }>;
 }
 
 const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
@@ -45,6 +52,7 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "macro-factors": "macro-factor-series",
   "portfolio-risk-snapshot": "portfolio-risk-snapshot",
   "risk-snapshot": "portfolio-risk-snapshot",
+  chat: "chat-risk-analyst",
 };
 
 function getItemCount(params: Record<string, unknown> | undefined): number | undefined {
@@ -59,6 +67,24 @@ function getItemCount(params: Record<string, unknown> | undefined): number | und
 function getYears(params: Record<string, unknown> | undefined): number {
   if (!params || typeof params.years !== "number") return 1;
   return Math.min(15, Math.max(1, params.years));
+}
+
+function estimateChatTokensFromParams(params: Record<string, unknown> | undefined): {
+  inputTokens: number;
+  outputTokens: number;
+} {
+  const messages = params?.messages as { content?: string }[] | undefined;
+  if (!messages?.length) {
+    return { inputTokens: 500, outputTokens: 2000 };
+  }
+  let chars = 0;
+  for (const m of messages) {
+    chars += m.content?.length ?? 0;
+  }
+  return {
+    inputTokens: Math.min(100_000, Math.max(120, Math.ceil(chars / 3) + 3000)),
+    outputTokens: 2000,
+  };
 }
 
 /**
@@ -119,7 +145,18 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
   if (!capability) return null;
 
   const itemCount = getItemCount(req.params);
-  const costUsd = calculateRequestCost(capabilityId, undefined, undefined, itemCount);
+  const chatTokens =
+    capabilityId === "chat-risk-analyst"
+      ? estimateChatTokensFromParams(req.params)
+      : null;
+  const costUsd =
+    chatTokens != null
+      ? calculateRequestCost(
+          capabilityId,
+          chatTokens.inputTokens,
+          chatTokens.outputTokens,
+        )
+      : calculateRequestCost(capabilityId, undefined, undefined, itemCount);
 
   const pricing = capability.pricing;
   const pricingModel =
@@ -144,6 +181,17 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
     ? estimatedRows * BYTES_PER_ROW
     : undefined;
 
+  const available_tools =
+    capabilityId === "chat-risk-analyst"
+      ? CHAT_TOOLS_REGISTRY.map((t) => ({
+          name: t.name,
+          capability_id: t.capabilityId,
+          cost_per_call_usd: t.capabilityId
+            ? calculateRequestCost(t.capabilityId)
+            : 0,
+        }))
+      : undefined;
+
   return {
     estimated_cost_usd: costUsd,
     estimated_tokens: estimatedTokens,
@@ -154,6 +202,10 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
     pricing_model: pricingModel,
     unit_cost_usd: pricing.cost_usd,
     min_charge: pricing.min_charge,
-    note: "Actual cost may vary. Cached responses are free.",
+    note:
+      capabilityId === "chat-risk-analyst"
+        ? "LLM token estimate only; each tool call is billed separately (see available_tools). search_tickers is free."
+        : "Actual cost may vary. Cached responses are free.",
+    ...(available_tools ? { available_tools } : {}),
   };
 }

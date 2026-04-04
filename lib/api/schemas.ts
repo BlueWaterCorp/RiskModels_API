@@ -178,6 +178,10 @@ export const ChatPostSchema = z.object({
   messages: z.array(ChatMessageSchema).min(1, "At least one message is required"),
   model: z.string().min(1).optional(),
   response_mode: z.enum(["markdown", "catalog", "hybrid"]).optional(),
+  /** Forwarded to OpenAI when the model supports it (default: omit = provider default true). */
+  parallel_tool_calls: z.boolean().optional(),
+  /** When true, chat tool executor runs tools sequentially instead of Promise.allSettled. */
+  execute_tools_sequentially: z.boolean().optional(),
 });
 
 export type ChatPostBody = z.infer<typeof ChatPostSchema>;

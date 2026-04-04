@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
+import { searchTickers } from "@/lib/dal/ticker-search";
 import { fetchTradingCalendar } from "@/lib/dal/risk-engine-v3";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -46,46 +47,32 @@ export async function GET(request: NextRequest) {
   const origin = request.headers.get("origin");
   const includeMetadata = searchParams.get("include_metadata") === "true"; // Include company names and sectors
 
-  // 0) Ticker search by name or symbol (MIGRATED to V2 symbols)
+  // 0) Ticker search by name or symbol — shared DAL with chat tool search_tickers
   if (searchQuery) {
     try {
       const upperSearch = searchQuery.toUpperCase().trim();
+      const rows = await searchTickers(searchQuery, true);
 
-      // Search in symbols table (supports company name search via metadata JSONB)
-      const { data: metadataMatches, error: metadataError } =
-        await createAdminClient()
-          .from("symbols")
-          .select("ticker, metadata")
-          .or(
-            `ticker.ilike.%${upperSearch}%,metadata->>company_name.ilike.%${upperSearch}%`,
-          )
-          .limit(10);
-
-      if (!metadataError && metadataMatches && metadataMatches.length > 0) {
-        // If exact ticker match, return just the ticker
-        const exactMatch = (metadataMatches as any[]).find(
-          (m) => m.ticker === upperSearch,
-        );
-        if (exactMatch) {
-          return NextResponse.json(
-            { ticker: (exactMatch as any).ticker },
-            {
-              headers: {
-                ...getCorsHeaders(origin),
-                "Content-Type": "application/json",
-              },
+      if (rows.some((r) => r.ticker === upperSearch)) {
+        return NextResponse.json(
+          { ticker: upperSearch },
+          {
+            headers: {
+              ...getCorsHeaders(origin),
+              "Content-Type": "application/json",
             },
-          );
-        }
+          },
+        );
+      }
 
-        // Return first match (could be company name match)
+      if (rows.length > 0) {
         return NextResponse.json(
           {
-            ticker: (metadataMatches as any[])[0].ticker,
-            suggestions: (metadataMatches as any[]).map((m) => ({
+            ticker: rows[0].ticker,
+            suggestions: rows.map((m) => ({
               ticker: m.ticker,
-              company_name: m.metadata?.company_name || m.ticker,
-              sector: m.metadata?.sector || m.metadata?.gics_sector_name,
+              company_name: m.name || m.ticker,
+              sector: m.sector,
             })),
           },
           {
@@ -97,73 +84,6 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // Fallback: search security_master by company_name (internal table, no ISIN/CUSIP exposed)
-      try {
-        const admin = createAdminClient();
-        const { data: smMatches } = await admin
-          .from("security_master")
-          .select("ticker, company_name, sector_etf")
-          .ilike("company_name", `%${searchQuery.trim()}%`)
-          .is("valid_to", null)
-          .limit(10);
-
-        if (smMatches && smMatches.length > 0) {
-          const exactTicker = (smMatches as any[]).find(
-            (m) => m.ticker?.toUpperCase() === upperSearch,
-          );
-          if (exactTicker) {
-            return NextResponse.json(
-              { ticker: exactTicker.ticker },
-              {
-                headers: {
-                  ...getCorsHeaders(origin),
-                  "Content-Type": "application/json",
-                },
-              },
-            );
-          }
-          return NextResponse.json(
-            {
-              ticker: (smMatches as any[])[0].ticker,
-              suggestions: (smMatches as any[]).map((m) => ({
-                ticker: m.ticker,
-                company_name: m.company_name || m.ticker,
-                sector: m.sector_etf,
-              })),
-            },
-            {
-              headers: {
-                "Access-Control-Allow-Origin": "*",
-                "Content-Type": "application/json",
-              },
-            },
-          );
-        }
-      } catch (_) {
-        // Ignore security_master errors, continue to exact ticker fallback
-      }
-
-      // Fallback: try symbols table again for exact ticker
-      const { data: exactMatch, error: exactError } = await createAdminClient()
-        .from("symbols")
-        .select("ticker")
-        .eq("ticker", upperSearch)
-        .limit(1)
-        .single();
-
-      if (exactMatch && !exactError) {
-        return NextResponse.json(
-          { ticker: (exactMatch as any).ticker },
-          {
-            headers: {
-              "Access-Control-Allow-Origin": "*",
-              "Content-Type": "application/json",
-            },
-          },
-        );
-      }
-
-      // No match found - return the search query as-is to try direct lookup
       return NextResponse.json(
         { ticker: upperSearch },
         {
@@ -173,8 +93,7 @@ export async function GET(request: NextRequest) {
           },
         },
       );
-    } catch (error) {
-      // On error, return the search query to allow direct lookup
+    } catch {
       return NextResponse.json(
         { ticker: searchQuery.toUpperCase().trim() },
         {

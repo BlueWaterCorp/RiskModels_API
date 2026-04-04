@@ -6,6 +6,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **Docs** — `docs/CHAT_MANUAL_QA.md` §8: manual QA checklist for the **Risk_Models** portal (`/chat` proxy, anonymous vs JWT, tier caps, streaming note).
+
+- **POST /api/chat agentic tools** — OpenAI function calling with eight internal tools (DAL-backed): metrics snapshot, L3 decomposition, ticker returns, rankings, factor correlation, macro factors, free ticker search, portfolio risk index. Per-tool billing via `deductBalance`; response includes `tool_calls_summary` and `_agent.llm_cost_usd` / `tool_cost_usd` / `tool_calls`. New modules under `lib/chat/`; `lib/dal/ticker-search.ts` shared with `GET /api/tickers?search=`. Cost preflight: `POST /api/estimate` with `endpoint: "chat"` returns `available_tools` and an LLM-only token estimate.
+
 - **Transactional email (developer portal)** — **`lib/email-service.ts`** sends via **Resend** + **React Email** (templates under **`emails/`**, aligned with Risk_Models). **`RESEND_API_KEY`** required; **`RESEND_FROM_EMAIL`** / **`RESEND_BCC_EMAIL`** optional (audit BCC defaults to **`resend@riskmodels.app`** per **`lib/resend-audit.ts`**). Low-balance alerts from **`lib/agent/billing.ts`** log to **`email_logs`** when **`userId`** is provided. Vercel allowlist updated in **`scripts/doppler-vercel-allowlist.txt`**.
 
 - **Portfolio risk snapshot (Phase 7)** — **`POST /api/portfolio/risk-snapshot`** returns structured JSON or a one-page PDF (`format=pdf`); capability **`portfolio-risk-snapshot`** ($0.25, **`risk_snapshot_pdf_v1`**). **`GET /api/metrics/{ticker}/snapshot.pdf`** reuses the same capability for a single-name PDF. Responses are cached ~24h per user (Redis or in-memory); cache hits bill **`$0`** and set **`X-Cache: HIT`**. PNG export returns **501** until implemented. Shared computation lives in **`lib/portfolio/portfolio-risk-core.ts`**; PDF layout in **`lib/portfolio/risk-snapshot-pdf.ts`** (**`pdf-lib`**).

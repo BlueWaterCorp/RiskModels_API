@@ -1,16 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
+import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { getCorsHeaders } from "@/lib/cors";
 import { ChatPostSchema } from "@/lib/api/schemas";
+import { CHAT_TOOLS } from "@/lib/chat/tools";
+import { buildSystemPrompt } from "@/lib/chat/system-prompt";
+import { executeToolCalls, type ToolCallResult } from "@/lib/chat/tool-executor";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
+const MAX_TOOL_ROUNDS = 5;
 
-const SYSTEM_PROMPT = `You are the RiskModels AI Risk Analyst. You help users interpret US equity factor risk, hedge ratios (dollars of ETF per $1 of stock), and explained risk (variance fractions summing to ~1 at L3). Be concise and precise. If you lack live data, say so and suggest which RiskModels API endpoints would supply it (e.g. GET /metrics/{ticker}, POST /batch/analyze). Do not invent tickers or figures.`;
+/** gpt-4o-mini supports parallel_tool_calls; some reasoning models may 400 if forced. */
+function modelSupportsParallelToolCalls(model: string): boolean {
+  const m = model.toLowerCase();
+  if (m.startsWith("o1") || m.startsWith("o3")) return false;
+  return true;
+}
+
+function appendCostLineIfMissing(content: string, toolTotalUsd: number, toolCallCount: number): string {
+  if (toolCallCount === 0) return content;
+  if (/\bAPI tool costs\b|\bTool costs\b|\*\*Tool/i.test(content)) return content;
+  return `${content.trimEnd()}\n\n---\n**API tool costs:** $${toolTotalUsd.toFixed(4)} (${toolCallCount} tool call${toolCallCount === 1 ? "" : "s"})`;
+}
 
 async function estimateChatTokens(req: NextRequest) {
   const clone = req.clone();
@@ -28,8 +45,11 @@ async function estimateChatTokens(req: NextRequest) {
   for (const m of parsed.data.messages) {
     chars += m.content.length;
   }
-  const inputTokens = Math.min(100_000, Math.max(120, Math.ceil(chars / 3) + 250));
-  const outputTokens = 1500;
+  const inputTokens = Math.min(
+    100_000,
+    Math.max(120, Math.ceil(chars / 3) + 3000),
+  );
+  const outputTokens = 2000;
   return { inputTokens, outputTokens };
 }
 
@@ -68,33 +88,115 @@ export const POST = withBilling(
       );
     }
 
-    const { messages, model: modelOpt } = validation.data;
+    const {
+      messages: userMessages,
+      model: modelOpt,
+      parallel_tool_calls: bodyParallelToolCalls,
+      execute_tools_sequentially: bodyExecSequential,
+    } = validation.data;
     const model = modelOpt?.trim() || DEFAULT_MODEL;
+
+    const llmEst = calculateRequestCost(
+      "chat-risk-analyst",
+      Math.ceil(
+        userMessages.reduce((a, m) => a + m.content.length, 0) / 3 + 3000,
+      ),
+      2000,
+    );
+    const softToolAssumptionUsd = calculateRequestCost("metrics-snapshot") * 2;
+    console.info(
+      "[chat] soft_preflight_estimate_usd",
+      JSON.stringify({
+        llm_est_usd: llmEst,
+        assumed_two_tools_usd: softToolAssumptionUsd,
+      }),
+    );
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const fetchStart = performance.now();
 
-    let completion;
-    try {
-      completion = await openai.chat.completions.create({
-        model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-        ],
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "system", content: buildSystemPrompt() },
+      ...userMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+    ];
+
+    const toolCallResults: ToolCallResult[] = [];
+    let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    let finalContent = "";
+    let finalModel = model;
+
+    const allowParallelOpenAI =
+      modelSupportsParallelToolCalls(model) && bodyParallelToolCalls !== false;
+    const execParallel = !bodyExecSequential;
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      let completion;
+      try {
+        completion = await openai.chat.completions.create({
+          model,
+          messages,
+          tools: CHAT_TOOLS,
+          tool_choice: "auto",
+          ...(allowParallelOpenAI
+            ? { parallel_tool_calls: true }
+            : { parallel_tool_calls: false }),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "OpenAI request failed";
+        console.error("[chat]", e);
+        return NextResponse.json(
+          { error: "Upstream AI error", message: msg },
+          { status: 502, headers: getCorsHeaders(origin) },
+        );
+      }
+
+      if (completion.usage) {
+        totalUsage.prompt_tokens += completion.usage.prompt_tokens;
+        totalUsage.completion_tokens += completion.usage.completion_tokens;
+        totalUsage.total_tokens += completion.usage.total_tokens;
+      }
+      finalModel = completion.model;
+
+      const choice = completion.choices[0];
+      if (!choice) break;
+
+      const assistantMessage = choice.message;
+      messages.push(assistantMessage);
+
+      const toolCalls = assistantMessage.tool_calls;
+      if (!toolCalls?.length) {
+        finalContent = assistantMessage.content ?? "";
+        break;
+      }
+
+      const results = await executeToolCalls(toolCalls, {
+        parallel: execParallel,
+        userId: context.userId,
+        requestId: context.requestId,
       });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "OpenAI request failed";
-      console.error("[chat]", e);
-      return NextResponse.json(
-        { error: "Upstream AI error", message: msg },
-        { status: 502, headers: getCorsHeaders(origin) },
-      );
+
+      for (const r of results) {
+        toolCallResults.push(r);
+      }
+
+      for (let i = 0; i < toolCalls.length; i++) {
+        const tc = toolCalls[i];
+        const r = results[i];
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: JSON.stringify(r?.result ?? { error: "No result" }),
+        });
+      }
     }
 
-    const choice = completion.choices[0];
-    const content = choice?.message?.content ?? "";
-    const usage = completion.usage;
+    const toolCostTotal = toolCallResults.reduce((s, r) => s + r.cost_usd, 0);
+    const totalCost = context.costUsd + toolCostTotal;
+    finalContent = appendCostLineIfMissing(finalContent, toolCostTotal, toolCallResults.length);
+
     const latency = Math.round(performance.now() - fetchStart);
     const metadata = await getRiskMetadata();
 
@@ -102,19 +204,30 @@ export const POST = withBilling(
       {
         message: {
           role: "assistant" as const,
-          content,
+          content: finalContent,
         },
-        model: completion.model,
-        usage: usage
-          ? {
-              prompt_tokens: usage.prompt_tokens,
-              completion_tokens: usage.completion_tokens,
-              total_tokens: usage.total_tokens,
-            }
-          : null,
+        model: finalModel,
+        usage: {
+          prompt_tokens: totalUsage.prompt_tokens,
+          completion_tokens: totalUsage.completion_tokens,
+          total_tokens: totalUsage.total_tokens,
+        },
+        tool_calls_summary:
+          toolCallResults.length > 0
+            ? toolCallResults.map((r) => ({
+                tool: r.name,
+                capability: r.capability_id,
+                cost_usd: r.cost_usd,
+                latency_ms: r.latency_ms,
+                error: r.error ?? null,
+              }))
+            : null,
         _metadata: buildMetadataBody(metadata),
         _agent: {
-          cost_usd: context.costUsd,
+          cost_usd: totalCost,
+          llm_cost_usd: context.costUsd,
+          tool_cost_usd: toolCostTotal,
+          tool_calls: toolCallResults.length,
           request_id: context.requestId,
           latency_ms: latency,
         },

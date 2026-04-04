@@ -123,6 +123,46 @@
               "BYPASS"
             ],
             "description": "Whether this response was served from cache."
+          },
+          "llm_cost_usd": {
+            "type": "number",
+            "format": "float",
+            "description": "POST /chat only: portion of cost from LLM token billing (estimated preflight charge).\n"
+          },
+          "tool_cost_usd": {
+            "type": "number",
+            "format": "float",
+            "description": "POST /chat only; sum of internal data tool charges for this turn."
+          },
+          "tool_calls": {
+            "type": "integer",
+            "description": "POST /chat only; number of tool invocations in this request."
+          }
+        }
+      },
+      "ChatToolCallSummary": {
+        "type": "object",
+        "description": "One internal tool invocation from POST /chat (billing + latency).",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "description": "OpenAI function name (e.g. get_risk_metrics)."
+          },
+          "capability": {
+            "type": "string",
+            "nullable": true,
+            "description": "Billing capability id, or null for free tools (e.g. search_tickers)."
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "float"
+          },
+          "latency_ms": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -6035,7 +6075,7 @@
     "/chat": {
       "post": {
         "summary": "AI Risk Analyst",
-        "description": "Natural language risk analysis via conversational AI (GPT-4). Request body includes messages array and optional model (default gpt-4o-mini). Billed per token.\n",
+        "description": "Natural language risk analysis with OpenAI tool calling against RiskModels data (DAL). LLM tokens are billed per the chat capability; each internal tool call is billed separately at the same rates as the corresponding REST endpoints (e.g. metrics-snapshot, ticker-returns). search_tickers is free. Returns tool_calls_summary and expanded _agent (llm_cost_usd, tool_cost_usd, tool_calls).\n",
         "operationId": "postChat",
         "tags": [
           "Risk Metrics"
@@ -6090,6 +6130,14 @@
                       "hybrid"
                     ],
                     "description": "Reserved for future streaming / A2UI modes; non-streaming JSON today."
+                  },
+                  "parallel_tool_calls": {
+                    "type": "boolean",
+                    "description": "When false, sets OpenAI parallel_tool_calls to false. Omit or true for parallel tool execution on supported models (e.g. gpt-4o-mini).\n"
+                  },
+                  "execute_tools_sequentially": {
+                    "type": "boolean",
+                    "description": "When true, server executes tool calls sequentially instead of concurrently."
                   }
                 }
               }
@@ -6098,7 +6146,7 @@
         },
         "responses": {
           "200": {
-            "description": "Assistant reply, token usage (when provided by the model), and lineage metadata.",
+            "description": "Assistant reply, accumulated token usage across tool rounds, optional tool_calls_summary, lineage metadata, and _agent cost breakdown (LLM + tools).\n",
             "headers": {
               "X-API-Cost-USD": {
                 "schema": {
@@ -6150,6 +6198,13 @@
                         "total_tokens": {
                           "type": "integer"
                         }
+                      }
+                    },
+                    "tool_calls_summary": {
+                      "type": "array",
+                      "nullable": true,
+                      "items": {
+                        "$ref": "#/components/schemas/ChatToolCallSummary"
                       }
                     },
                     "_metadata": {

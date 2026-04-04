@@ -1,0 +1,59 @@
+# Agent Skill: Chat Upgrade
+
+**Parent Plan:** [CHAT\_INTEGRATION\_IMPLEMENTATION.md](https://www.google.com/search?q=./CHAT_INTEGRATION_IMPLEMENTATION.md)
+**Target Route:** `app/api/chat/route.ts`
+**Status:** Ready for Execution
+
+-----
+
+## Role
+
+You are acting as a **Senior Full-Stack Engineer and AI Integration Specialist**. Your goal is to transform the RiskModels chat endpoint from a static pass-through into a functional, agentic risk analyst.
+
+## Mission
+
+Completely rewrite the chat integration logic to support **OpenAI Function Calling (Tools)**. This allows the model to fetch live ERM3 metrics and factor data to answer user queries accurately instead of hallucinating figures.
+
+## Implementation Tasks
+
+### 1\. Define Tool Schemas (`lib/chat/tools.ts`)
+
+Create a new file to define the 8 OpenAI-compatible tools:
+
+  * `get_risk_metrics`: Latest hedge ratios and volatility.
+  * `get_l3_decomposition`: Hierarchical risk breakdown.
+  * `get_ticker_returns`: Historical daily returns.
+  * `get_rankings`: Cross-sectional percentile ranks.
+  * `get_factor_correlation`: Correlations vs macro factors.
+  * `get_macro_factors`: Raw macro return series.
+  * `search_tickers`: Resolve names to symbols.
+  * `compute_portfolio_risk_index`: Aggregate portfolio risk.
+  * **Mapping:** Include `TOOL_CAPABILITY_MAP` to link function names to billing capability IDs (e.g., `get_risk_metrics` → `metrics`).
+
+### 2\. Build Internal Executor (`lib/chat/tool-executor.ts`)
+
+Implement the dispatch logic to run tool calls without extra HTTP overhead:
+
+  * **Internal Billing:** Use `deductBalance` from `lib/agent/billing.ts` to charge for each individual tool call.
+  * **Direct DAL Access:** Import and call functions directly from `lib/dal/risk-engine-v3.ts` and related service files.
+  * **Safety:** Ensure failed tool calls result in `cost_usd: 0` to prevent overcharging.
+
+### 3\. Rewrite Chat Route (`app/api/chat/route.ts`)
+
+Replace the current implementation with a robust tool-use loop:
+
+  * **System Prompt:** Use the enriched prompt from Phase 3.1 detailing HR/ER semantics and the "risk is neutral" philosophy.
+  * **The Loop:** Implement `MAX_TOOL_ROUNDS = 5`. OpenAI may call multiple tools; repeat until a final answer is generated.
+  * **Accumulated Costs:** Sum the per-token LLM cost (provided by `withBilling` context) with the per-request tool costs.
+  * **Response Shape:** Update the JSON return to include `tool_calls_summary` and the expanded `_agent` metadata block (reporting `llm_cost_usd` and `tool_cost_usd` separately).
+
+## Constraints & Standards
+
+  * **Data Contract:** Use abbreviated V3 keys for wire data but maintain semantic names in the Analyst's explanations.
+  * **TypeScript:** Ensure `npx tsc --noEmit` passes with no errors.
+  * **CORS:** Maintain headers provided by `getCorsHeaders`.
+  * **Error Handling:** Provide instructional error messages (the "Fix:" pattern) for common failure states.
+
+-----
+
+**Verification:** Upon completion, the chat should be able to answer: *"What is NVDA's current L3 market hedge ratio and how has it changed over the last year?"* by calling both the metrics and returns tools.

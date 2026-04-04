@@ -191,7 +191,7 @@
   {
     "id": "chat-risk-analyst",
     "name": "AI Risk Analyst",
-    "description": "Natural language risk analysis with optional hybrid streaming of validated A2UI catalog blocks",
+    "description": "Natural language risk analysis with live data via OpenAI tools (non-streaming JSON). Tools: get_risk_metrics, get_l3_decomposition, get_ticker_returns, get_rankings, get_factor_correlation, get_macro_factors, search_tickers (free), compute_portfolio_risk_index. LLM per-token billing plus per-tool charges at matching endpoint rates.",
     "endpoint": "/api/chat",
     "method": "POST",
     "parameters": {
@@ -223,9 +223,19 @@
       "response_mode": {
         "type": "string",
         "required": false,
-        "description": "Streaming mode: markdown preserves legacy text, hybrid emits text deltas plus approved A2UI catalog blocks",
+        "description": "Reserved for future streaming / A2UI; JSON tool-use responses today",
         "default": "markdown",
         "enum": ["markdown", "catalog", "hybrid"]
+      },
+      "parallel_tool_calls": {
+        "type": "boolean",
+        "required": false,
+        "description": "When false, disables OpenAI parallel_tool_calls for supported models"
+      },
+      "execute_tools_sequentially": {
+        "type": "boolean",
+        "required": false,
+        "description": "When true, server runs chat tools sequentially"
       }
     },
     "pricing": {

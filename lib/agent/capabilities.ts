@@ -252,7 +252,11 @@ export const CAPABILITIES: Capability[] = [
     id: "chat-risk-analyst",
     name: "AI Risk Analyst",
     description:
-      "Natural language risk analysis with optional hybrid streaming of validated A2UI catalog blocks",
+      "Natural language risk analysis with live data via OpenAI tools (non-streaming JSON). " +
+      "The model can call: get_risk_metrics, get_l3_decomposition, get_ticker_returns, get_rankings, " +
+      "get_factor_correlation, get_macro_factors, search_tickers (free), compute_portfolio_risk_index. " +
+      "LLM usage is billed per token; each paid tool call is billed at the matching endpoint capability rate. " +
+      "response_mode is reserved for future streaming.",
     endpoint: "/api/chat",
     method: "POST",
     parameters: {
@@ -282,9 +286,21 @@ export const CAPABILITIES: Capability[] = [
         type: "string",
         required: false,
         description:
-          "Streaming mode: markdown preserves legacy text, hybrid emits text deltas plus approved A2UI catalog blocks",
+          "Reserved for future streaming / A2UI; JSON tool-use responses today",
         default: "markdown",
         enum: ["markdown", "catalog", "hybrid"],
+      },
+      parallel_tool_calls: {
+        type: "boolean",
+        required: false,
+        description:
+          "When false, disables OpenAI parallel_tool_calls (for models that support the flag). Default: parallel enabled for gpt-4o-mini.",
+      },
+      execute_tools_sequentially: {
+        type: "boolean",
+        required: false,
+        description:
+          "When true, server runs chat tools one-by-one instead of concurrently.",
       },
     },
     pricing: {
