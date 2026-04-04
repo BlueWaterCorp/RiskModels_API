@@ -19,6 +19,9 @@ jobs:
   smoke:
     name: riskmodels.app Health
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Health check

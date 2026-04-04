@@ -5,7 +5,7 @@
 # This workflow detects drift between canonical files in RiskModels_API and
 # their copies in Risk_Models. It fails PRs if files are out of sync.
 #
-# TRIGGERS: Pull requests modifying schema files or OpenAPI spec
+# TRIGGERS: PRs touching schema files, OpenAPI spec, or generated MCP openapi.json
 #
 # REQUIRED SECRET: REPO_ACCESS_TOKEN
 #   - Read access to Cerebellum-Archive/Risk_Models (private repo)
@@ -17,6 +17,7 @@ on:
     paths:
       - "mcp/data/schema-paths.json"
       - "mcp/data/schemas/**"
+      - "mcp/data/openapi.json"
       - "OPENAPI_SPEC.yaml"
   workflow_dispatch:
 
@@ -138,6 +139,37 @@ jobs:
             exit 1
           fi
 
+      - name: Check openapi.json drift
+        id: openapi
+        if: always()
+        run: |
+          echo "Comparing mcp/data/openapi.json (canonical) to Risk_Models copy..."
+
+          LOCAL="mcp/data/openapi.json"
+          REMOTE="risk_models/riskmodels_com/mcp-server/data/openapi.json"
+
+          if [ ! -f "$LOCAL" ]; then
+            echo "❌ Local openapi.json not found at $LOCAL (regenerate from OPENAPI_SPEC.yaml if needed)"
+            exit 1
+          fi
+
+          if [ ! -f "$REMOTE" ]; then
+            echo "❌ Remote openapi.json not found at $REMOTE"
+            exit 1
+          fi
+
+          if diff -q "$LOCAL" "$REMOTE" > /dev/null 2>&1; then
+            echo "✅ openapi.json is in sync"
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          else
+            echo "❌ DRIFT DETECTED: openapi.json differs between repos"
+            echo ""
+            echo "=== Diff (first 120 lines) ==="
+            diff "$LOCAL" "$REMOTE" | head -120 || true
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
       - name: Summary
         if: always()
         run: |
@@ -145,7 +177,7 @@ jobs:
           echo "Drift Detection Summary"
           echo "========================================"
 
-          if [ "${{ steps.schema_paths.outcome }}" == "success" ] && [ "${{ steps.schemas.outcome }}" == "success" ]; then
+          if [ "${{ steps.schema_paths.outcome }}" == "success" ] && [ "${{ steps.schemas.outcome }}" == "success" ] && [ "${{ steps.openapi.outcome }}" == "success" ]; then
             echo "✅ All checks passed - no drift detected"
           else
             echo "❌ Drift detected! Please sync files:"
@@ -158,6 +190,10 @@ jobs:
             echo "2. Copy schema-paths.json:"
             echo "   cp RiskModels_API/mcp/data/schema-paths.json \\"
             echo "      Risk_Models/riskmodels_com/mcp-server/data/schema-paths.json"
+            echo ""
+            echo "3. Copy openapi.json (generated from OPENAPI_SPEC.yaml):"
+            echo "   cp RiskModels_API/mcp/data/openapi.json \\"
+            echo "      Risk_Models/riskmodels_com/mcp-server/data/openapi.json"
             echo ""
             echo "See AGENTS.md for full sync rules."
           fi

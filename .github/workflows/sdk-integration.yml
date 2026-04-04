@@ -13,12 +13,26 @@ jobs:
   integration:
     name: SDK pytest integration
     runs-on: ubuntu-latest
-    if: ${{ secrets.TEST_API_KEY != '' }}
     steps:
+      # Job-level `if: secrets.*` is unreliable; gate on a secret passed through `env` instead.
+      - name: Check for TEST_API_KEY
+        id: gate
+        env:
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        run: |
+          if [ -n "$TEST_API_KEY" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: set repo secret TEST_API_KEY to run live integration tests."
+          fi
+
       - name: Checkout
+        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Python
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -26,6 +40,7 @@ jobs:
           cache-dependency-path: sdk/pyproject.toml
 
       - name: Install SDK & run integration tests
+        if: steps.gate.outputs.run == 'true'
         working-directory: sdk
         env:
           RISKMODELS_API_KEY: ${{ secrets.TEST_API_KEY }}

@@ -3,6 +3,9 @@ on:
   repository_dispatch:
     types: [schema_updated] # This matches the event sent by ERM3
 
+permissions:
+  contents: write
+
 jobs:
   update-types:
     runs-on: ubuntu-latest
