@@ -122,9 +122,8 @@ from pathlib import Path
 from riskmodels import RiskModelsClient
 
 client = RiskModelsClient.from_env()
-pdf_bytes = client.post_portfolio_risk_snapshot(
+pdf_bytes, _lineage = client.post_portfolio_risk_snapshot_pdf(
     [("NVDA", 0.3), ("AAPL", 0.25), ("MSFT", 0.25), ("GOOGL", 0.2)],
-    format="pdf",
     title="My sleeve",
 )
 Path("snapshot.pdf").write_bytes(pdf_bytes)
