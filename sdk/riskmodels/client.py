@@ -387,52 +387,6 @@ class RiskModelsClient:
         body, _lineage, _ = self._transport.request("POST", "/portfolio/risk-index", json=payload)
         return body
 
-    def post_portfolio_risk_snapshot(
-        self,
-        positions: list[dict[str, Any]] | list[tuple[str, float]],
-        *,
-        format: Literal["json", "pdf", "png"] = "json",
-        title: str | None = None,
-        as_of_date: str | None = None,
-    ) -> dict[str, Any] | bytes:
-        """POST /portfolio/risk-snapshot — structured JSON or one-page PDF (ERM3 L3 + hedge ratios).
-
-        When ``format='pdf'``, returns raw **PDF bytes** (``Content-Type: application/pdf``).
-        When ``format='json'``, returns the API JSON (variance decomposition, ``per_ticker``, etc.).
-        ``format='png'`` is not implemented server-side (HTTP 501) and raises ``APIError``.
-
-        Use optional ``title`` for the report heading (not ``name``). Optional ``as_of_date`` must
-        be ``YYYY-MM-DD``. Responses may be cached per user (~24h); check ``X-Cache`` on the wire
-        or use raw HTTP if you need headers.
-        """
-        rows: list[dict[str, Any]] = []
-        for p in positions:
-            if isinstance(p, dict):
-                t = str(p.get("ticker", "")).strip()
-                w = float(p["weight"])
-                rows.append({"ticker": t, "weight": w})
-            else:
-                rows.append({"ticker": str(p[0]).strip(), "weight": float(p[1])})
-        for r in rows:
-            if r["ticker"]:
-                canon, _ = resolve_ticker(r["ticker"], self)
-                r["ticker"] = canon
-        payload: dict[str, Any] = {"positions": rows, "format": format}
-        if title is not None:
-            payload["title"] = title
-        if as_of_date is not None:
-            payload["as_of_date"] = as_of_date
-        if format == "pdf":
-            content, _lineage, _ = self._transport.request(
-                "POST",
-                "/portfolio/risk-snapshot",
-                json=payload,
-                expect_json=False,
-            )
-            return content
-        body, _lineage, _ = self._transport.request("POST", "/portfolio/risk-snapshot", json=payload)
-        return body
-
     def get_rankings(
         self,
         ticker: str,

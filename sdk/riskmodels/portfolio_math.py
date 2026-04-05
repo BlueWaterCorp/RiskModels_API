@@ -65,7 +65,7 @@ def _df_scalar(df: pd.DataFrame, idx: str, col: str) -> Any:
     return raw
 
 
-PositionsInput = Mapping[str, float] | Sequence[Mapping[str, Any]]
+PositionsInput = Mapping[str, float] | Sequence[Mapping[str, Any] | tuple[str, float]]
 
 
 def normalize_positions(positions: Mapping[str, float]) -> dict[str, float]:
@@ -80,17 +80,20 @@ def normalize_positions(positions: Mapping[str, float]) -> dict[str, float]:
 
 
 def positions_to_weights(positions: PositionsInput) -> dict[str, float]:
-    """Accept ``{TICKER: weight}`` or ``[{"ticker": "AAPL", "weight": 0.5}, ...]`` and normalize."""
+    """Accept ``{TICKER: weight}``, ``[{"ticker","weight"}, ...]``, or ``[("AAPL", 0.5), ...]`` and normalize."""
     if isinstance(positions, Mapping):
         return normalize_positions(positions)
     out: dict[str, float] = {}
     for p in positions:
-        if not isinstance(p, Mapping):
-            raise TypeError("Each position must be a mapping with ticker and weight")
-        t = str(p.get("ticker", "")).strip().upper()
-        if not t:
-            raise ValueError("position entry missing ticker")
-        out[t] = float(p["weight"])
+        if isinstance(p, Mapping):
+            t = str(p.get("ticker", "")).strip().upper()
+            if not t:
+                raise ValueError("position entry missing ticker")
+            out[t] = float(p["weight"])
+        elif isinstance(p, tuple) and len(p) == 2:
+            out[str(p[0]).strip().upper()] = float(p[1])
+        else:
+            raise TypeError("Each position must be a mapping with ticker and weight, or a (ticker, weight) tuple")
     return normalize_positions(out)
 
 

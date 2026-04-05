@@ -71,7 +71,7 @@ def test_post_portfolio_risk_index_empty_returns_syncing():
     assert "positions" in captured["body"] and "[]" in captured["body"]
 
 
-def test_post_portfolio_risk_snapshot_json_and_pdf():
+def test_post_portfolio_risk_snapshot_pdf():
     captured: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -80,21 +80,11 @@ def test_post_portfolio_risk_snapshot_json_and_pdf():
         captured["body"] = raw
         if request.url.path.endswith("/portfolio/risk-snapshot"):
             payload = json.loads(raw)
-            if payload.get("format") == "pdf":
-                return httpx.Response(
-                    200,
-                    content=b"%PDF-1.4 fake pdf bytes for test",
-                    headers={"Content-Type": "application/pdf"},
-                )
+            assert payload.get("format") == "pdf"
             return httpx.Response(
                 200,
-                json={
-                    "title": payload.get("title") or "Test",
-                    "as_of": "2026-01-01",
-                    "portfolio_risk_index": {"variance_decomposition": {}},
-                    "per_ticker": {},
-                    "summary": {"total_positions": 2, "resolved": 2, "errors": 0},
-                },
+                content=b"%PDF-1.4 fake pdf bytes for test",
+                headers={"Content-Type": "application/pdf"},
             )
         return httpx.Response(404, json={"error": "not found"})
 
@@ -104,22 +94,14 @@ def test_post_portfolio_risk_snapshot_json_and_pdf():
         validate="off",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
-    out_json = client.post_portfolio_risk_snapshot(
+    out_pdf, _lineage = client.post_portfolio_risk_snapshot_pdf(
         [("NVDA", 0.5), ("AAPL", 0.5)],
-        format="json",
         title="Demo",
-    )
-    assert isinstance(out_json, dict)
-    assert out_json.get("title") == "Demo"
-    assert "/portfolio/risk-snapshot" in captured["url"]
-    assert json.loads(captured["body"]).get("title") == "Demo"
-
-    out_pdf = client.post_portfolio_risk_snapshot(
-        [("NVDA", 0.5), ("AAPL", 0.5)],
-        format="pdf",
     )
     assert isinstance(out_pdf, bytes)
     assert out_pdf.startswith(b"%PDF")
+    assert "/portfolio/risk-snapshot" in captured["url"]
+    assert json.loads(captured["body"]).get("title") == "Demo"
 
 
 def test_get_plaid_holdings_calls_endpoint():

@@ -25,6 +25,9 @@ coverage/
 # Claude Code / Cursor local tooling (machine-specific paths)
 .claude/
 
+# Local PDF snapshots from examples/scripts
+risk_snapshot_*.pdf
+
 # Misc
 *.log
 *.tsbuildinfo

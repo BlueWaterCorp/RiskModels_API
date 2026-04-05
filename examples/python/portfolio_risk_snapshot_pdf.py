@@ -11,7 +11,7 @@ Request body (see OPENAPI_SPEC.yaml): ``positions`` [{ticker, weight}], optional
 optional ``as_of_date`` (YYYY-MM-DD), ``format``: ``json`` | ``pdf`` | ``png`` (png → 501).
 
 Uses only the standard library (urllib) so it runs without pip install requests.
-For SDK usage: ``RiskModelsClient.from_env().post_portfolio_risk_snapshot(..., format="pdf")``.
+For SDK usage: ``pdf_bytes, _ = RiskModelsClient.from_env().post_portfolio_risk_snapshot_pdf(...)``.
 
 Examples::
 

@@ -274,13 +274,14 @@ _SDK_METHODS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "post_portfolio_risk_snapshot",
+        "name": "post_portfolio_risk_snapshot_pdf",
         "aliases": [],
-        "summary": "Portfolio risk snapshot JSON or PDF (POST /portfolio/risk-snapshot).",
+        "summary": "Portfolio risk snapshot PDF (POST /portfolio/risk-snapshot, format=pdf).",
         "description": (
-            "One-page PDF or JSON with L3 explained risk and hedge ratios. "
-            "``format='pdf'`` returns bytes; ``format='json'`` returns dict. "
+            "One-page PDF with L3 explained risk and hedge ratios. Returns ``(bytes, RiskLineage)``. "
             "Optional ``title`` (display name) and ``as_of_date`` (YYYY-MM-DD). "
+            "For JSON, call the same route with ``format='json'`` via your HTTP client or use "
+            "``post_portfolio_risk_index`` / ``analyze_portfolio`` for structured metrics. "
             "Premium/cached endpoint — see OpenAPI and portal pricing."
         ),
         "scopes": ["portfolio-risk-snapshot"],
@@ -289,15 +290,7 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "name": "positions",
                 "type": "array",
                 "required": True,
-                "description": "List of {ticker, weight} dicts or (ticker, weight) tuples.",
-            },
-            {
-                "name": "format",
-                "type": "string",
-                "required": False,
-                "default": "json",
-                "enum": ["json", "pdf", "png"],
-                "description": "json=dict; pdf=bytes; png not implemented (501).",
+                "description": "Mapping ticker→weight, or list of {ticker, weight} dicts.",
             },
             {
                 "name": "title",
@@ -313,8 +306,8 @@ _SDK_METHODS: list[dict[str, Any]] = [
             },
         ],
         "returns": {
-            "type": "dict | bytes",
-            "description": "JSON body or raw PDF bytes when format=pdf.",
+            "type": "tuple[bytes, RiskLineage]",
+            "description": "Raw PDF bytes and response lineage.",
         },
     },
     {
@@ -889,7 +882,7 @@ DISCOVER_SPEC: dict[str, Any] = {
         "plaid_holdings": "client.get_plaid_holdings()  # API key needs plaid:holdings scope when scopes are set",
         "portfolio_risk_index": "client.post_portfolio_risk_index([])  # empty → check body['status']=='syncing'",
         "portfolio_risk_snapshot_pdf": (
-            "pdf_bytes = client.post_portfolio_risk_snapshot([('NVDA', 0.5), ('AAPL', 0.5)], format='pdf')"
+            "pdf_bytes, _ = client.post_portfolio_risk_snapshot_pdf([('NVDA', 0.5), ('AAPL', 0.5)])"
         ),
         "rankings_ticker": "client.get_rankings('NVDA', as_dataframe=True)",
         "rankings_top": (
