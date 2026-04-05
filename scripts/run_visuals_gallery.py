@@ -6,6 +6,7 @@ Writes, by default:
 
 - ``nvda_l3_risk.png`` — single-name L3 decomposition (NVDA)
 - ``mag7_l3_explained_risk.png`` — MAG7 L3 explained risk (variance fractions; article-style)
+- ``mag7_l3_sigma_rr.png`` — MAG7 L3 σ-scaled RR + HR (annualized vol × risk ratios)
 - ``mag7_risk_cascade.png`` — MAG7 cap-weighted L3 risk cascade
 - ``mag7_attribution_cascade.png`` — MAG7 attribution proxy cascade
 
@@ -48,7 +49,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--charts",
-        choices=("all", "nvda", "mag7-l3-er", "mag7-risk", "mag7-attribution"),
+        choices=("all", "nvda", "mag7-l3-er", "mag7-l3-sigma-rr", "mag7-risk", "mag7-attribution"),
         default="all",
         help="Which chart(s) to render (default: all).",
     )
@@ -59,6 +60,7 @@ def main() -> int:
         run_gallery_all,
         run_gallery_mag7_attribution_cascade,
         run_gallery_mag7_l3_er,
+        run_gallery_mag7_l3_sigma_rr,
         run_gallery_mag7_risk_cascade,
         run_gallery_nvda_l3,
     )
@@ -75,6 +77,8 @@ def main() -> int:
             paths = [run_gallery_nvda_l3(client, output_dir=out)]
         elif args.charts == "mag7-l3-er":
             paths = [run_gallery_mag7_l3_er(client, output_dir=out)]
+        elif args.charts == "mag7-l3-sigma-rr":
+            paths = [run_gallery_mag7_l3_sigma_rr(client, output_dir=out)]
         elif args.charts == "mag7-risk":
             p, _src = run_gallery_mag7_risk_cascade(client, output_dir=out)
             paths = [p]

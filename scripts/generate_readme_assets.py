@@ -4,13 +4,17 @@ Generate static PNGs for the GitHub README and portal docs using live RiskModels
 
 Every numeric cell in the charts comes from API responses (correlation + rankings). There is no
 random or placeholder data. The only static fallback is the MAG7 ticker list if
-``search_tickers(mag7=True)`` returns no rows.
+``search_tickers(mag7=True)`` returns no rows. If ``POST /correlation`` returns only null
+correlations (e.g. empty ``macro_factors``), macro heatmap and ``readme_inspiration.png`` are
+skipped and the script still writes rankings + MAG7 Plotly assets when possible.
 
 Requires ``RISKMODELS_API_KEY`` (free tier is enough: MAG7 + rankings + correlation).
 
 Outputs:
   - ``assets/`` — paths referenced by ``README.md`` (GitHub)
   - ``public/docs/readme/`` — same files for the Next.js site (``/docs/readme/...``)
+  - ``mag7_l3_sigma_rr.png`` — Plotly **MAG7 L3 σ-scaled** horizontal bars (annualized vol × L3 RR + HR
+    residual share). Requires ``kaleido`` (``pip install riskmodels-py[viz]``).
   - ``mag7_risk_cascade.png`` — Plotly **portfolio risk cascade** (MAG7 weights ∝ ``market_cap`` from
     ``get_metrics``), for ``sdk/README.md``. Requires ``kaleido`` (``pip install riskmodels-py[viz]``).
 
@@ -46,59 +50,40 @@ from riskmodels.env import load_repo_dotenv
 load_repo_dotenv(ROOT)
 load_repo_dotenv(ROOT / "sdk")
 
+from riskmodels.visuals._mag7 import (
+    mag7_cap_weighted_positions as _mag7_cap_weighted_positions_full,
+    mag7_tickers as _mag7_tickers,
+    normalize_tickers as _normalize_tickers,
+)
+
 MACRO_KEYS = ("vix", "gold", "bitcoin")
 MACRO_LABELS = {"macro_corr_vix": "VIX", "macro_corr_gold": "Gold", "macro_corr_bitcoin": "BTC"}
-# Canonical share class for Alphabet (API resolves GOOGL→GOOG; use GOOG to avoid alias warnings).
-MAG7_FALLBACK = ["AAPL", "MSFT", "GOOG", "AMZN", "META", "NVDA", "TSLA"]
-
-
-def _normalize_tickers(tickers: list[str]) -> list[str]:
-    out: list[str] = []
-    for t in tickers:
-        u = str(t).strip()
-        if u.upper() == "GOOGL":
-            u = "GOOG"
-        out.append(u)
-    return out
-
-
-def _mag7_tickers(client) -> list[str]:
-    df = client.search_tickers(mag7=True)
-    if getattr(df, "empty", True):
-        return list(MAG7_FALLBACK)
-    col = "ticker" if "ticker" in df.columns else df.columns[0]
-    out = [str(x).strip() for x in df[col].tolist() if x and str(x).strip()]
-    return _normalize_tickers(out if out else list(MAG7_FALLBACK))
 
 
 def _mag7_cap_weighted_positions(client) -> list[dict[str, Any]]:
     """MAG7 list with weights proportional to latest ``market_cap`` from ``get_metrics`` (same as sdk README)."""
-    import pandas as pd
+    positions, _src = _mag7_cap_weighted_positions_full(client)
+    return positions
 
-    tickers = _mag7_tickers(client)
-    caps: list[tuple[str, float]] = []
-    for sym in tickers:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            snap = client.get_metrics(sym, as_dataframe=True)
-        row = snap.iloc[0]
-        cap = row.get("market_cap")
-        if cap is None or (isinstance(cap, float) and pd.isna(cap)):
-            continue
-        try:
-            caps.append((str(sym).upper(), float(cap)))
-        except (TypeError, ValueError):
-            continue
-    if not caps:
-        n = len(tickers)
-        return [{"ticker": t, "weight": 1.0 / n} for t in tickers] if n else []
-    wdf = pd.DataFrame(caps, columns=["ticker", "market_cap"])
-    wdf["weight"] = wdf["market_cap"] / wdf["market_cap"].sum()
-    return wdf[["ticker", "weight"]].to_dict("records")
+
+def _write_mag7_l3_sigma_rr_png(client, path: Path) -> None:
+    """MAG7 L3 σ-scaled RR + HR (``save_mag7_l3_sigma_rr_png``); Kaleido static export."""
+    from riskmodels.visuals.mag7_l3_sigma_rr import save_mag7_l3_sigma_rr_png
+
+    save_mag7_l3_sigma_rr_png(
+        client,
+        filename=path,
+        width=1600,
+        height=1000,
+        scale=3,
+        theme="light",
+    )
 
 
 def _write_mag7_risk_cascade_png(client, path: Path) -> None:
     """Plotly static PNG via Kaleido (``pip install kaleido``)."""
+    from riskmodels.visuals.save import write_plotly_png
+
     positions = _mag7_cap_weighted_positions(client)
     if not positions:
         raise RuntimeError("No MAG7 positions for risk cascade.")
@@ -108,13 +93,17 @@ def _write_mag7_risk_cascade_png(client, path: Path) -> None:
         sort_by="weight",
         include_systematic_labels=True,
     )
-    fig.write_image(
-        str(path),
-        width=960,
-        height=540,
-        scale=2,
-        engine="kaleido",
-    )
+    write_plotly_png(fig, path, width=960, height=540, scale=2)
+
+
+def _corr_matrix_has_finite(matrix) -> bool:
+    """True if at least one correlation cell is a finite float (not all null / NaN)."""
+    import numpy as np
+    import pandas as pd
+
+    m = matrix.apply(pd.to_numeric, errors="coerce")
+    arr = m.to_numpy(dtype=float, copy=False)
+    return bool(np.isfinite(arr).any())
 
 
 def _df_to_corr_matrix(df) -> object:
@@ -330,6 +319,11 @@ def main() -> int:
         help="Skip MAG7 cap-weighted portfolio risk cascade PNG (sdk/README.md asset).",
     )
     parser.add_argument(
+        "--no-mag7-l3-sigma",
+        action="store_true",
+        help="Skip MAG7 L3 σ-scaled RR+HR PNG (README asset mag7_l3_sigma_rr.png).",
+    )
+    parser.add_argument(
         "--only-sdk-cascade",
         action="store_true",
         help="Only write mag7_risk_cascade.png (MAG7 cap weights + portfolio risk cascade); skip correlation/rankings.",
@@ -404,18 +398,50 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    # All-null correlations (e.g. sparse L3 residual overlap vs macro) — try gross before plotting.
+    if (
+        not _corr_matrix_has_finite(matrix)
+        and args.return_type == "l3_residual"
+        and not args.no_fallback_gross
+    ):
+        print(
+            "Macro correlation matrix has no finite values (all null). "
+            "Retrying with return_type=gross …",
+            file=sys.stderr,
+        )
+        try:
+            matrix, rt_label = (
+                _correlation_matrix(client, mag7, mode=args.correlation_mode, return_type="gross"),
+                "gross",
+            )
+        except Exception as e:
+            print(f"Gross correlation retry failed: {e}", file=sys.stderr)
+            return 3
+        print(f"Note: macro heatmaps use return_type={rt_label} (fallback from all-null l3_residual).", file=sys.stderr)
+
+    matrix_ok = _corr_matrix_has_finite(matrix)
+    if not matrix_ok:
+        print(
+            "Macro correlation matrix has no finite correlations after coercion (macro_factors may be "
+            "empty for this window, or all overlap checks failed). "
+            "Skipping macro_heatmap.png and readme_inspiration.png; continuing with rankings + MAG7 assets.",
+            file=sys.stderr,
+        )
+
     args.out_dir.mkdir(parents=True, exist_ok=True)
     args.public_dir.mkdir(parents=True, exist_ok=True)
 
     readme_dpi = 300
-    macro_path = args.out_dir / "macro_heatmap.png"
-    save_macro_sensitivity_matrix(
-        matrix,
-        str(macro_path),
-        title=f"MAG7 — macro correlations ({rt_label}, 252d)",
-        dpi=readme_dpi,
-        style="readme_dark",
-    )
+    macro_path: Path | None = None
+    if matrix_ok:
+        macro_path = args.out_dir / "macro_heatmap.png"
+        save_macro_sensitivity_matrix(
+            matrix,
+            str(macro_path),
+            title=f"MAG7 — macro correlations ({rt_label}, 252d)",
+            dpi=readme_dpi,
+            style="readme_dark",
+        )
 
     # Fetch ALL cohorts for the bar chart (universe, sector, subsector)
     rank_df = client.get_rankings(
@@ -462,17 +488,32 @@ def main() -> int:
         dpi=readme_dpi,
     )
 
-    hero_path = args.out_dir / "readme_inspiration.png"
-    save_risk_intel_inspiration_figure(
-        matrix,
-        ranking_ticker,
-        row,
-        str(hero_path),
-        macro_title=f"MAG7 — macro correlations ({rt_label}, 252d)",
-        ranking_subtitle=subtitle,
-        theme="readme_dark",
-        dpi=readme_dpi,
-    )
+    hero_path: Path | None = None
+    if matrix_ok:
+        hero_path = args.out_dir / "readme_inspiration.png"
+        save_risk_intel_inspiration_figure(
+            matrix,
+            ranking_ticker,
+            row,
+            str(hero_path),
+            macro_title=f"MAG7 — macro correlations ({rt_label}, 252d)",
+            ranking_subtitle=subtitle,
+            theme="readme_dark",
+            dpi=readme_dpi,
+        )
+
+    sigma_rr_path: Path | None = None
+    if not args.no_mag7_l3_sigma:
+        sigma_rr_path = args.out_dir / "mag7_l3_sigma_rr.png"
+        try:
+            _write_mag7_l3_sigma_rr_png(client, sigma_rr_path)
+            print("Wrote", sigma_rr_path, file=sys.stderr)
+        except Exception as e:
+            print(
+                f"MAG7 L3 σ-scaled PNG not written (install kaleido + riskmodels-py[viz]): {e}",
+                file=sys.stderr,
+            )
+            sigma_rr_path = None
 
     cascade_path: Path | None = None
     if not args.no_sdk_cascade:
@@ -484,17 +525,25 @@ def main() -> int:
             print(f"MAG7 risk cascade PNG not written (install kaleido + riskmodels-py[viz]): {e}", file=sys.stderr)
             cascade_path = None
 
-    extra = (cascade_path,) if cascade_path is not None else ()
+    extra = tuple(p for p in (sigma_rr_path, cascade_path) if p is not None)
     for src in (macro_path, bar_path, needle_path, hero_path, *extra):
+        if src is None:
+            continue
         dest = args.public_dir / src.name
         dest.write_bytes(src.read_bytes())
 
     base_display = (
         os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
     )
-    n_factors = matrix.shape[1]
-    factor_cols = ", ".join(str(c) for c in matrix.columns)
-    wrote = [macro_path, bar_path, needle_path, hero_path]
+    factor_cols = ", ".join(str(c) for c in matrix.columns) if matrix_ok else "(skipped)"
+    wrote: list[Path] = []
+    if macro_path is not None:
+        wrote.append(macro_path)
+    wrote.extend([bar_path, needle_path])
+    if hero_path is not None:
+        wrote.append(hero_path)
+    if sigma_rr_path is not None:
+        wrote.append(sigma_rr_path)
     if cascade_path is not None:
         wrote.append(cascade_path)
     print(
@@ -502,17 +551,33 @@ def main() -> int:
         *wrote,
         f"(mirrored to {args.public_dir})",
     )
+    macro_blurb = (
+        f"  Macro heatmap + hero left: Pearson macro_corr_* for [{factor_cols}] — "
+        f"{rt_label}, 252d (POST /correlation).\n"
+        if matrix_ok
+        else "  Macro heatmap + hero: skipped (no finite correlations — check macro_factors / window).\n"
+    )
+    hero_right_blurb = (
+        f"  Needle + hero right: rank_percentile from the {args.cohort} cohort row "
+        f"(same API response as the bars, filtered in-script).\n"
+        if hero_path is not None
+        else "  Needle: rank_percentile from cohort row; readme hero skipped (no macro matrix).\n"
+    )
     print(
         "\n--- README assets: live API data (no synthetic series) ---\n"
         f"  Base URL: {base_display}\n"
         f"  MAG7 tickers ({len(mag7)}): {', '.join(mag7)}\n"
-        f"  Macro heatmap + hero left: Pearson macro_corr_* for [{factor_cols}] — "
-        f"{rt_label}, 252d (POST /correlation or GET /metrics/{{ticker}}/correlation).\n"
+        f"{macro_blurb}"
         f"  Rankings charts: GET /rankings/{ranking_ticker} — metric={args.metric}, "
         f"window={args.window} (all cohort rows returned by the API).\n"
-        f"  Needle + hero right: rank_percentile from the {args.cohort} cohort row "
-        f"(same API response as the bars, filtered in-script).\n"
-        "---\n",
+        f"{hero_right_blurb}"
+        + (
+            "  MAG7 L3 σ-scaled: POST /batch/analyze (full_metrics + hedge_ratios + returns) → "
+            "save_mag7_l3_sigma_rr_png.\n"
+            if sigma_rr_path is not None
+            else ""
+        )
+        + "---\n",
         file=sys.stderr,
     )
     return 0

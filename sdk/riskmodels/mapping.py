@@ -121,6 +121,8 @@ def normalize_metrics_v3(metrics: dict) -> dict:
         out[sk] = v
     if "vol_23d" in out and "volatility" not in out:
         out["volatility"] = out["vol_23d"]
+    if "volatility" in out and "vol_23d" not in out:
+        out["vol_23d"] = out["volatility"]
     if "price_close" in out and "close_price" not in out:
         out["close_price"] = out["price_close"]
     return out

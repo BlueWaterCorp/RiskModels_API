@@ -21,7 +21,28 @@ def _row_from_batch_entry(entry: dict[str, Any]) -> dict[str, Any]:
     t = entry.get("ticker")
     if t:
         norm["ticker"] = str(t).upper()
+    meta = entry.get("meta")
+    if isinstance(meta, dict):
+        for mk in ("sector_etf", "subsector_etf", "subsector_etf_symbol", "market_etf"):
+            v = meta.get(mk)
+            if v and mk not in norm:
+                norm[mk] = v
     return norm
+
+
+def _maybe_fill_vol_from_returns(row: dict[str, Any], entry: dict[str, Any]) -> None:
+    """If snapshot vol is missing, estimate 23d ann. vol from batch ``returns.values``."""
+    from ..visuals.utils import annualized_vol_decimal, annualized_vol_from_returns_values
+
+    if annualized_vol_decimal(row) is not None:
+        return
+    ret = entry.get("returns")
+    if not isinstance(ret, dict):
+        return
+    est = annualized_vol_from_returns_values(ret.get("values"))
+    if est is not None and est > 0:
+        row["vol_23d"] = est
+        row["volatility"] = est
 
 
 class StockCurrent:
@@ -52,7 +73,11 @@ class StockCurrent:
         else:
             raise ValueError("Provide ticker or tickers")
 
-        rows, lineage = self._metric_rows_for_tickers([str(t).strip().upper() for t in tickers_use], years=years)
+        rows, lineage = self._metric_rows_for_tickers(
+            [str(t).strip().upper() for t in tickers_use],
+            years=years,
+            fill_sigma_from_returns=sigma_scaled,
+        )
         from ..visuals.l3_decomposition import plot_l3_horizontal
 
         plot_kw = {
@@ -81,10 +106,19 @@ class StockCurrent:
         data, _ = self._client.get_metrics_snapshot_pdf(ticker)
         return data
 
-    def _metric_rows_for_tickers(self, tickers: list[str], *, years: int) -> tuple[list[dict[str, Any]], RiskLineage]:
+    def _metric_rows_for_tickers(
+        self,
+        tickers: list[str],
+        *,
+        years: int,
+        fill_sigma_from_returns: bool = False,
+    ) -> tuple[list[dict[str, Any]], RiskLineage]:
+        mlist = ["full_metrics", "hedge_ratios"]
+        if fill_sigma_from_returns:
+            mlist.append("returns")
         body, lineage = self._client.batch_analyze(
             tickers,
-            ["full_metrics", "hedge_ratios"],
+            mlist,
             years=years,
             format="json",
             return_lineage=True,
@@ -98,6 +132,8 @@ class StockCurrent:
                 continue
             row = _row_from_batch_entry(entry)
             if row:
+                if fill_sigma_from_returns:
+                    _maybe_fill_vol_from_returns(row, entry)
                 rows.append(row)
         # Preserve requested order
         by_t = {r["ticker"]: r for r in rows if "ticker" in r}

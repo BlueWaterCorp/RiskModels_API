@@ -346,7 +346,7 @@ async function analyzeTicker(
       result.meta = {
         market_etf: "SPY",
         sector_etf: symbolRecord.sector_etf || "XLK",
-        subsector_etf: symbolRecord.sector_etf || "XLK",
+        subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf || "XLK",
       };
     }
 
@@ -404,6 +404,14 @@ async function analyzeTicker(
           l3_res_er: m?.l3_res_er ?? null,
           market_cap: m?.market_cap ?? null,
           close_price: m?.price_close ?? null,
+        };
+      }
+
+      if (!result.meta) {
+        result.meta = {
+          market_etf: "SPY",
+          sector_etf: symbolRecord.sector_etf || "XLK",
+          subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf || "XLK",
         };
       }
     }

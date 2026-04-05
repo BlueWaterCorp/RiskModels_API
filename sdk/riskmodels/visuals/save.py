@@ -100,6 +100,7 @@ def save_l3_decomposition_png(
     rows, lineage = sc._metric_rows_for_tickers(
         [str(t).strip().upper() for t in tickers_use],
         years=years,
+        fill_sigma_from_returns=sigma_scaled,
     )
     if not rows:
         raise ValueError("No metric rows returned for the requested ticker(s)")

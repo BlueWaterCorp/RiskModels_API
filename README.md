@@ -104,7 +104,15 @@ print(to_llm_context(pa))
 
 ## Risk intelligence
 
-Charts below are **generated from live API data** (MAG7 batch correlation + `get_rankings`) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/`.
+Charts below are **generated from live API data** (MAG7 batch correlation + `get_rankings` + MAG7 L3 batch metrics) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/`.
+
+### MAG7 — L3 σ-scaled decomposition
+
+<p align="center">
+  <img src="./assets/mag7_l3_sigma_rr.png" width="680" alt="MAG7 L3 sigma-scaled risk ratios and residual HR share" />
+  <br>
+  <sub>Same “tech” label, different subsector DNA — bar length ∝ annualized σ; segments = σ × L3 market/sector/subsector risk ratios + residual (HR share). <code>POST /batch/analyze</code> via SDK <code>save_mag7_l3_sigma_rr_png</code></sub>
+</p>
 
 ### Macro sensitivity
 

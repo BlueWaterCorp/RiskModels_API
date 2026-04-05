@@ -29,5 +29,10 @@ class ClientVisuals:
 
         return save_mag7_l3_explained_risk_png(self._client, **kwargs)
 
+    def save_mag7_l3_sigma_rr_png(self, **kwargs: Any) -> Any:
+        from .mag7_l3_sigma_rr import save_mag7_l3_sigma_rr_png
+
+        return save_mag7_l3_sigma_rr_png(self._client, **kwargs)
+
 
 __all__ = ["ClientVisuals"]

@@ -22,6 +22,18 @@ if TYPE_CHECKING:
     from .client import RiskModelsClient
 
 
+# Import canonical palettes from the shared styles module.
+from .visuals.styles import (
+    GITHUB_DARK,
+    GITHUB_LIGHT,
+    L3_LAYER_COLORS,
+    L3_MARKET,
+    L3_RESIDUAL,
+    L3_SECTOR,
+    L3_SUBSECTOR,
+    README_DARK,
+)
+
 # Financial styling standards — wire key → semantic alias
 SEMANTIC_FIELD_MAP: dict[str, str] = {
     "l3_mkt_hr": "l3_market_hr",
@@ -33,47 +45,15 @@ SEMANTIC_FIELD_MAP: dict[str, str] = {
     "l3_res_er": "l3_residual_er",
 }
 
-# Color standards for financial risk visualization
+# Color standards for financial risk visualization — aligned with the publication palette
+# in visuals/styles.py (L3_MARKET, L3_SECTOR, L3_SUBSECTOR, L3_RESIDUAL).
+# Legacy MatPlotAgent prompts still reference the old indigo/green/gray scheme via these
+# semantic keys, so we keep the mapping but point it at the canonical hex values.
 FINANCIAL_COLOR_STANDARDS: dict[str, str] = {
-    "market_risk": "#4B0082",  # Indigo for Market Risk (SPY)
-    "sector_risk": "#228B22",  # Green for Sector
-    "residual_risk": "#808080",  # Gray for Idiosyncratic/Residual
-    "subsector_risk": "#4169E1",  # Royal Blue for Subsector
-}
-
-# GitHub-flavored contrast (README light/dark backgrounds)
-GITHUB_LIGHT = {
-    "canvas": "#f6f8fa",
-    "fg": "#24292f",
-    "muted": "#6e7781",
-    "green": "#1a7f37",
-    "red": "#cf222e",
-}
-GITHUB_DARK = {
-    "canvas": "#0d1117",
-    "fg": "#e6edf3",
-    "muted": "#8b949e",
-    "green": "#3fb950",
-    "red": "#f85149",
-}
-
-# README / GitHub dark-mode embeds: high-contrast, matches github.com dark UI (#0d1117)
-README_DARK = {
-    "canvas": "#0d1117",
-    "surface": "#161b22",
-    "fg": "#e6edf3",
-    "muted": "#8b949e",
-    "hill_fill": "#238636",
-    "hill_line": "#3fb950",
-    "needle": "#58a6ff",
-    "cell_edge": "#30363d",
-    "bar_muted_line": "#484f58",
-    "accent_purple": "#8957e5",
-    "accent_blue": "#58a6ff",
-    "accent_green": "#3fb950",
-    "positive": "#3fb950",
-    "negative": "#f85149",
-    "brand": "#79c0ff",
+    "market_risk": L3_MARKET,       # was #4B0082 (indigo)
+    "sector_risk": L3_SECTOR,       # was #228B22 (green)
+    "residual_risk": L3_RESIDUAL,   # was #808080 (gray)
+    "subsector_risk": L3_SUBSECTOR, # was #4169E1 (royal blue)
 }
 
 GitHubChartTheme = Literal["github_light", "github_dark", "transparent", "readme_dark"]
@@ -92,10 +72,10 @@ SDK USAGE RULES:
 - For README / GitHub embedding: save PNGs with transparent=True (and bbox_inches='tight') unless a solid theme is required
 
 FINANCIAL COLOR STANDARDS (MUST FOLLOW):
-- Market Risk (SPY): Indigo (#4B0082)
-- Sector Risk: Green (#228B22)
-- Idiosyncratic/Residual Risk: Gray (#808080)
-- Subsector Risk: Royal Blue (#4169E1)
+- Market Risk (SPY): Blue (#3b82f6)
+- Sector Risk: Cyan (#06b6d4)
+- Idiosyncratic/Residual Risk: Slate (#94a3b8)
+- Subsector Risk: Orange (#f97316)
 
 GRAPH REQUIREMENTS:
 1. No overlapping text or labels
@@ -117,7 +97,7 @@ EVALUATION_PROMPT = """Act as a Quant Visual Auditor. Review this financial grap
 1. OVERLAPPING TEXT/LABELS: Check axis labels, tick labels, titles, and legends for any overlap
 2. LEGIBILITY OF FINANCIAL AXES: Verify percentage signs, dollar formatting, date formatting, and scale clarity
 3. LEGEND ACCURACY: Confirm legend matches plotted data and uses standard RiskModels terminology
-4. PROFESSIONAL STYLING: Check color scheme (Indigo=Market, Green=Sector, Gray=Residual), font sizes, and overall polish
+4. PROFESSIONAL STYLING: Check color scheme (Blue=#3b82f6 Market, Cyan=#06b6d4 Sector, Slate=#94a3b8 Residual, Orange=#f97316 Subsector), font sizes, and overall polish
 
 If the graph is perfect in all aspects, reply with exactly: COMPLETE
 
@@ -134,7 +114,7 @@ RULES FOR CORRECTED CODE:
 1. Generate a complete, executable Python script
 2. Use the RiskModels SDK: client = RiskModelsClient.from_env()
 3. Use semantic field names (l3_market_hr, not l3_mkt_hr)
-4. Follow financial color standards: Market=Indigo, Sector=Green, Residual=Gray
+4. Follow financial color standards: Market=Blue(#3b82f6), Sector=Cyan(#06b6d4), Residual=Slate(#94a3b8), Subsector=Orange(#f97316)
 5. Save the output to: {output_path}
 6. Include plt.tight_layout() before saving
 7. For PNGs intended for GitHub README/Issues, use fig.savefig(..., transparent=True, bbox_inches='tight', dpi=150)
@@ -156,10 +136,10 @@ SDK USAGE:
 - For ranking percentile bars: df = client.get_rankings('TICKER'); slice one metric+window; then save_ranking_percentile_bar_chart(slice, path, ...)
 
 STYLING REQUIREMENTS:
-- Market Risk (SPY): Indigo (#4B0082)
-- Sector Risk: Green (#228B22)
-- Residual/Idiosyncratic Risk: Gray (#808080)
-- Subsector Risk: Royal Blue (#4169E1)
+- Market Risk (SPY): Blue (#3b82f6)
+- Sector Risk: Cyan (#06b6d4)
+- Idiosyncratic/Residual Risk: Slate (#94a3b8)
+- Subsector Risk: Orange (#f97316)
 - Use plt.tight_layout() to prevent clipping
 - Professional fonts and sizing
 - For GitHub markdown embeds, prefer transparent=True on savefig with bbox_inches='tight'
@@ -531,11 +511,57 @@ def _factor_matrix_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
     """Coerce correlation cells to float and drop all-NaN columns.
 
     API/SDK frames sometimes use ``object`` dtype (strings from JSON, mixed batch rows),
-    which ``select_dtypes(include=['number'])`` omits entirely.
+    which ``select_dtypes(include=['number'])`` omits entirely. Some gateways also return
+    string ``"null"``, nested dicts, or ``Decimal`` scalars.
     """
+    import numpy as np
+
     if df.empty or df.shape[1] == 0:
         return df
-    out = df.apply(lambda s: pd.to_numeric(s, errors="coerce"))
+
+    def _cell(x: Any) -> float:
+        if x is None:
+            return np.nan
+        if isinstance(x, (bool, np.bool_)):
+            return np.nan
+        if isinstance(x, float) and np.isnan(x):
+            return np.nan
+        if isinstance(x, (int, np.integer, np.floating, float)):
+            xf = float(x)
+            return xf if np.isfinite(xf) else np.nan
+        if hasattr(x, "__float__") and not isinstance(x, (str, bytes, dict, list, tuple)):
+            try:
+                xf = float(x)
+                return xf if np.isfinite(xf) else np.nan
+            except (TypeError, ValueError):
+                return np.nan
+        if isinstance(x, str):
+            s = x.strip().lower()
+            if s in ("", "none", "null", "nan", "n/a", "-"):
+                return np.nan
+            v = pd.to_numeric(s, errors="coerce")
+            if pd.isna(v):
+                return np.nan
+            return float(v)
+        if isinstance(x, dict):
+            for k in ("correlation", "value", "pearson", "r", "rho"):
+                if k in x and x[k] is not None:
+                    return _cell(x[k])
+            return np.nan
+        if isinstance(x, (list, tuple)) and len(x) == 1:
+            return _cell(x[0])
+        v = pd.to_numeric(x, errors="coerce")
+        if pd.isna(v):
+            return np.nan
+        return float(v)
+
+    out = pd.DataFrame(index=df.index)
+    for col in df.columns:
+        s = df[col]
+        if pd.api.types.is_numeric_dtype(s) and s.dtype != object:
+            out[col] = pd.to_numeric(s, errors="coerce")
+        else:
+            out[col] = pd.to_numeric(s.map(_cell), errors="coerce")
     out = out.loc[:, out.notna().any(axis=0)]
     return out
 
@@ -674,7 +700,12 @@ def save_macro_sensitivity_matrix(
             if cols
             else " No factor columns in frame."
         )
-        raise ValueError("sensitivity needs at least one numeric factor column." + extra)
+        raise ValueError(
+            "sensitivity needs at least one numeric factor column."
+            + extra
+            + " If the API returned only null correlations, macro factor returns may be missing "
+            "for the window (see macro_factors / try return_type=gross)."
+        )
     if figsize is None:
         if style == "readme_dark":
             figsize = (max(8.0, 1.6 * num.shape[1] + 3.5), max(4.0, 0.6 * num.shape[0] + 2.0))

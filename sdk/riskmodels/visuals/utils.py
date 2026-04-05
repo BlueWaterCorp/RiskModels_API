@@ -11,6 +11,7 @@ from ..lineage import RiskLineage
 
 __all__ = [
     "annualized_vol_decimal",
+    "annualized_vol_from_returns_values",
     "adjacent_bar_positions",
     "cascade_plotly_layout",
     "l3_er_tuple_from_row",
@@ -39,6 +40,40 @@ def annualized_vol_decimal(row: Mapping[str, Any]) -> float | None:
             return raw / 100.0
         return raw
     return None
+
+
+def annualized_vol_from_returns_values(
+    values: Sequence[Any] | None,
+    *,
+    window: int = 23,
+    trading_days_per_year: float = 252.0,
+) -> float | None:
+    """23-trading-day sample std of daily gross returns, annualized (``sqrt(252)`` scale).
+
+    Used when snapshot ``vol_23d`` / ``volatility`` is missing from batch ``full_metrics`` but
+    ``returns.values`` is present — avoids a flat σ default that makes every σ-scaled bar identical.
+    """
+    if not values:
+        return None
+    nums: list[float] = []
+    for x in values:
+        if x is None:
+            continue
+        try:
+            v = float(x)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(v):
+            nums.append(v)
+    if len(nums) < 2:
+        return None
+    arr = np.asarray(nums[-window:] if len(nums) >= window else nums, dtype=float)
+    if arr.size < 2:
+        return None
+    sd = float(np.std(arr, ddof=1))
+    if not np.isfinite(sd) or sd <= 0:
+        return None
+    return float(sd * np.sqrt(trading_days_per_year))
 
 
 def adjacent_bar_positions(
@@ -78,23 +113,18 @@ def sigma_array_from_rows(rows: list[Mapping[str, Any]], *, default: float = 0.3
 
 
 def format_l3_annotation_rr_hr(row: Mapping[str, Any]) -> str:
-    """Right-rail text: subsector (or sector) ETF + systematic % + optional SPY HR (reference article visuals)."""
+    """Right-rail text: ETF label + total annualized σ as percent."""
     sub = (
         str(row.get("subsector_etf") or row.get("subsector_etf_symbol") or "").strip()
         or str(row.get("sector_etf") or "").strip()
     )
-    m0, s0, u0, _ = l3_rr_tuple_from_row(row)
-    sys_pct = m0 + s0 + u0
-    line = f"{sub}    {sys_pct:.0%} systematic" if sub else f"{sys_pct:.0%} systematic"
-    mh = row.get("l3_market_hr")
-    if mh is None:
-        mh = row.get("l3_mkt_hr")
-    if mh is not None:
-        try:
-            line += f"  ·  SPY HR {float(mh):.2f}"
-        except (TypeError, ValueError):
-            pass
-    return line
+    vol = annualized_vol_decimal(row)
+    if vol is not None:
+        pct = f"{vol * 100:.0f}% total ann. σ"
+    else:
+        m0, s0, u0, r0 = l3_rr_tuple_from_row(row)
+        pct = f"{(m0 + s0 + u0 + r0) * 100:.0f}% total ann. σ"
+    return f"{sub}    {pct}" if sub else pct
 
 
 def format_l3_annotation_er_systematic(row: Mapping[str, Any]) -> str:

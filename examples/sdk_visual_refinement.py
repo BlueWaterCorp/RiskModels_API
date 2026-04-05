@@ -84,7 +84,7 @@ def main():
     result = agent.generate_refined_plot(
         plot_description="""
         Create a bar chart comparing l3_market_hr across MAG7 stocks (AAPL, MSFT, AMZN,
-        GOOGL, META, TSLA, NVDA). Use indigo bars. Sort by value descending.
+        GOOG, META, TSLA, NVDA). Use indigo bars. Sort by value descending.
         Professional styling with value labels on bars.
         """,
         output_path="mag7_market_beta.png",

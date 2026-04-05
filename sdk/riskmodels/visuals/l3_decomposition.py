@@ -81,9 +81,14 @@ def plot_l3_horizontal(
         data_max = float(np.nanmax(totals)) if n else 0.35
         if not np.isfinite(data_max):
             data_max = 0.35
-        # Article σ-chart: axis starts at 0, spans at least 60%, ticks every 10%; ceil max to 0.1.
-        xmax = float(np.ceil(max(0.6, data_max * 1.08) * 10.0) / 10.0)
+        # Padded upper bound only (no fixed 60% floor). A constant 0.6 minimum made σ≈0.30 bars sit
+        # on the left half of the axis with empty space to 60%.
+        padded = max(float(data_max) * 1.08, 1e-9)
+        xmax = float(np.ceil(padded * 20.0) / 20.0)  # next 0.05; vol labels stay readable
+        xmax = max(xmax, 0.05)
         xmax = min(xmax, 2.0)
+        # Finer grid when the span is small (e.g. σ·1 ≈ 0.25–0.40).
+        sigma_x_dtick = 0.05 if xmax <= 0.45 else 0.1
         if annotation_mode == "rr_hr":
             x_title = (
                 "Annualized σ of total return; segments = σ × "
@@ -105,7 +110,7 @@ def plot_l3_horizontal(
     if annotation_mode == "er_systematic":
         seg_names = ("Market", "Sector", "Subsector", "Idiosyncratic")
     else:
-        seg_names = ("L3 market RR", "L3 sector RR", "L3 subsector RR", "Residual (HR share)")
+        seg_names = ("L3 market RR", "L3 sector RR", "L3 subsector RR", "HR")
 
     colors = styles.L3_LAYER_COLORS
     fig = _Figure()
@@ -211,7 +216,7 @@ def plot_l3_horizontal(
             xaxis_kw["range"] = [0.0, xmax]
             xaxis_kw["tickformat"] = ".0%"
             xaxis_kw["tickmode"] = "linear"
-            xaxis_kw["dtick"] = 0.1
+            xaxis_kw["dtick"] = sigma_x_dtick
             if _is_sigma_rr:
                 xaxis_kw["griddash"] = "dash"
 
@@ -260,7 +265,7 @@ def plot_l3_horizontal(
             xaxis_kw["range"] = [0.0, xmax]
             xaxis_kw["tickformat"] = ".0%"
             xaxis_kw["tickmode"] = "linear"
-            xaxis_kw["dtick"] = 0.1
+            xaxis_kw["dtick"] = sigma_x_dtick
             if _is_sigma_rr:
                 xaxis_kw["griddash"] = "dash"
 
