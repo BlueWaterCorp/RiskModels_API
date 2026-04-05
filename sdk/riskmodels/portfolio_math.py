@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numbers
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -65,6 +65,9 @@ def _df_scalar(df: pd.DataFrame, idx: str, col: str) -> Any:
     return raw
 
 
+PositionsInput = Mapping[str, float] | Sequence[Mapping[str, Any]]
+
+
 def normalize_positions(positions: Mapping[str, float]) -> dict[str, float]:
     tickers = {str(k).strip().upper(): float(v) for k, v in positions.items()}
     if not tickers:
@@ -74,6 +77,21 @@ def normalize_positions(positions: Mapping[str, float]) -> dict[str, float]:
         n = len(tickers)
         return {k: 1.0 / n for k in tickers}
     return {k: v / s for k, v in tickers.items()}
+
+
+def positions_to_weights(positions: PositionsInput) -> dict[str, float]:
+    """Accept ``{TICKER: weight}`` or ``[{"ticker": "AAPL", "weight": 0.5}, ...]`` and normalize."""
+    if isinstance(positions, Mapping):
+        return normalize_positions(positions)
+    out: dict[str, float] = {}
+    for p in positions:
+        if not isinstance(p, Mapping):
+            raise TypeError("Each position must be a mapping with ticker and weight")
+        t = str(p.get("ticker", "")).strip().upper()
+        if not t:
+            raise ValueError("position entry missing ticker")
+        out[t] = float(p["weight"])
+    return normalize_positions(out)
 
 
 def renormalize_weights(weights: dict[str, float], successful: list[str]) -> dict[str, float]:

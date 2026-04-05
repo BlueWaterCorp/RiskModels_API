@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 /** Keep in sync with sdk/pyproject.toml when bumping features. */
-const DEFAULT_MIN_VERSION = process.env.RISKMODELS_PY_MIN_VERSION ?? "0.2.4";
+const DEFAULT_MIN_VERSION = process.env.RISKMODELS_PY_MIN_VERSION ?? "0.3.0";
 
 export async function GET() {
   const upgrade_message =

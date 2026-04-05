@@ -11,6 +11,8 @@ Requires ``RISKMODELS_API_KEY`` (free tier is enough: MAG7 + rankings + correlat
 Outputs:
   - ``assets/`` — paths referenced by ``README.md`` (GitHub)
   - ``public/docs/readme/`` — same files for the Next.js site (``/docs/readme/...``)
+  - ``mag7_risk_cascade.png`` — Plotly **portfolio risk cascade** (MAG7 weights ∝ ``market_cap`` from
+    ``get_metrics``), for ``sdk/README.md``. Requires ``kaleido`` (``pip install riskmodels-py[viz]``).
 
 Run from repo root. You can set ``RISKMODELS_API_KEY`` (and optional ``RISKMODELS_BASE_URL``)
 in ``.env.local`` — the script loads it via ``python-dotenv`` (install SDK with ``[dev]``).
@@ -40,7 +42,9 @@ if SDK_SRC.is_dir() and str(SDK_SRC) not in sys.path:
 
 from riskmodels.env import load_repo_dotenv
 
+# Repo root (e.g. RiskModels_API/.env.local) and sdk/ (editable install habit) — both merge; shell env wins.
 load_repo_dotenv(ROOT)
+load_repo_dotenv(ROOT / "sdk")
 
 MACRO_KEYS = ("vix", "gold", "bitcoin")
 MACRO_LABELS = {"macro_corr_vix": "VIX", "macro_corr_gold": "Gold", "macro_corr_bitcoin": "BTC"}
@@ -65,6 +69,52 @@ def _mag7_tickers(client) -> list[str]:
     col = "ticker" if "ticker" in df.columns else df.columns[0]
     out = [str(x).strip() for x in df[col].tolist() if x and str(x).strip()]
     return _normalize_tickers(out if out else list(MAG7_FALLBACK))
+
+
+def _mag7_cap_weighted_positions(client) -> list[dict[str, Any]]:
+    """MAG7 list with weights proportional to latest ``market_cap`` from ``get_metrics`` (same as sdk README)."""
+    import pandas as pd
+
+    tickers = _mag7_tickers(client)
+    caps: list[tuple[str, float]] = []
+    for sym in tickers:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            snap = client.get_metrics(sym, as_dataframe=True)
+        row = snap.iloc[0]
+        cap = row.get("market_cap")
+        if cap is None or (isinstance(cap, float) and pd.isna(cap)):
+            continue
+        try:
+            caps.append((str(sym).upper(), float(cap)))
+        except (TypeError, ValueError):
+            continue
+    if not caps:
+        n = len(tickers)
+        return [{"ticker": t, "weight": 1.0 / n} for t in tickers] if n else []
+    wdf = pd.DataFrame(caps, columns=["ticker", "market_cap"])
+    wdf["weight"] = wdf["market_cap"] / wdf["market_cap"].sum()
+    return wdf[["ticker", "weight"]].to_dict("records")
+
+
+def _write_mag7_risk_cascade_png(client, path: Path) -> None:
+    """Plotly static PNG via Kaleido (``pip install kaleido``)."""
+    positions = _mag7_cap_weighted_positions(client)
+    if not positions:
+        raise RuntimeError("No MAG7 positions for risk cascade.")
+    fig = client.portfolio.current.plot(
+        positions=positions,
+        style="risk_cascade",
+        sort_by="weight",
+        include_systematic_labels=True,
+    )
+    fig.write_image(
+        str(path),
+        width=960,
+        height=540,
+        scale=2,
+        engine="kaleido",
+    )
 
 
 def _df_to_corr_matrix(df) -> object:
@@ -274,6 +324,16 @@ def main() -> int:
         action="store_true",
         help="Do not automatically retry as gross when l3_residual returns HTTP 5xx.",
     )
+    parser.add_argument(
+        "--no-sdk-cascade",
+        action="store_true",
+        help="Skip MAG7 cap-weighted portfolio risk cascade PNG (sdk/README.md asset).",
+    )
+    parser.add_argument(
+        "--only-sdk-cascade",
+        action="store_true",
+        help="Only write mag7_risk_cascade.png (MAG7 cap weights + portfolio risk cascade); skip correlation/rankings.",
+    )
     args = parser.parse_args()
 
     if not os.environ.get("RISKMODELS_API_KEY"):
@@ -291,6 +351,21 @@ def main() -> int:
     )
 
     client = RiskModelsClient.from_env()
+
+    if args.only_sdk_cascade:
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+        args.public_dir.mkdir(parents=True, exist_ok=True)
+        cascade_only = args.out_dir / "mag7_risk_cascade.png"
+        try:
+            _write_mag7_risk_cascade_png(client, cascade_only)
+        except Exception as e:
+            print(f"MAG7 risk cascade failed: {e}", file=sys.stderr)
+            return 4
+        dest = args.public_dir / cascade_only.name
+        dest.write_bytes(cascade_only.read_bytes())
+        print("Wrote", cascade_only, "(mirrored to", args.public_dir, ")", file=sys.stderr)
+        return 0
+
     base_url_set = "RISKMODELS_BASE_URL" in os.environ
     print(
         "Using RISKMODELS_BASE_URL =",
@@ -399,7 +474,18 @@ def main() -> int:
         dpi=readme_dpi,
     )
 
-    for src in (macro_path, bar_path, needle_path, hero_path):
+    cascade_path: Path | None = None
+    if not args.no_sdk_cascade:
+        cascade_path = args.out_dir / "mag7_risk_cascade.png"
+        try:
+            _write_mag7_risk_cascade_png(client, cascade_path)
+            print("Wrote", cascade_path, file=sys.stderr)
+        except Exception as e:
+            print(f"MAG7 risk cascade PNG not written (install kaleido + riskmodels-py[viz]): {e}", file=sys.stderr)
+            cascade_path = None
+
+    extra = (cascade_path,) if cascade_path is not None else ()
+    for src in (macro_path, bar_path, needle_path, hero_path, *extra):
         dest = args.public_dir / src.name
         dest.write_bytes(src.read_bytes())
 
@@ -408,12 +494,12 @@ def main() -> int:
     )
     n_factors = matrix.shape[1]
     factor_cols = ", ".join(str(c) for c in matrix.columns)
+    wrote = [macro_path, bar_path, needle_path, hero_path]
+    if cascade_path is not None:
+        wrote.append(cascade_path)
     print(
         "Wrote",
-        macro_path,
-        bar_path,
-        needle_path,
-        hero_path,
+        *wrote,
         f"(mirrored to {args.public_dir})",
     )
     print(
