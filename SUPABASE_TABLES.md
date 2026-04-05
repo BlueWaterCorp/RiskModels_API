@@ -2,7 +2,7 @@
 
 Quick reference for Supabase tables used by the RiskModels API and platform. For authentication and direct DB access (Mode 2 / Mode 3), see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md).
 
-**Source of truth:** The [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) repo defines and migrates these tables. Full V3 contract: `docs/supabase/V3_DATA_CONTRACT.md` in that repo.
+**Source of truth:** The [Risk_Models](https://github.com/BlueWaterCorp/Risk_Models) repo defines and migrates these tables. Full V3 contract: `docs/supabase/V3_DATA_CONTRACT.md` in that repo.
 
 ---
 

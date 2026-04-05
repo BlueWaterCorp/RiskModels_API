@@ -821,7 +821,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         . Use <span className="text-zinc-300">riskmodels --help</span> and MCP{' '}
         <span className="text-zinc-300">tools/list</span> for what your install exposes.{' '}
         <a
-          href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
+          href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/sdk"
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary hover:underline"
@@ -830,7 +830,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         </a>
         {' · '}
         <a
-          href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/cli"
+          href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/cli"
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary hover:underline"

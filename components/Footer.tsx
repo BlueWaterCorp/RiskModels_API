@@ -13,7 +13,7 @@ export default function Footer() {
 
           <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-zinc-400 md:justify-end">
             <a
-              href="https://github.com/Cerebellum-Archive/RiskModels_API"
+              href="https://github.com/BlueWaterCorp/RiskModels_API"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-zinc-100 transition-colors"
@@ -33,7 +33,7 @@ export default function Footer() {
               Documentation
             </Link>
             <a
-              href="https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/CONTRIBUTING.md"
+              href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/CONTRIBUTING.md"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-zinc-100 transition-colors"

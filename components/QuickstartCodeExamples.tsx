@@ -451,7 +451,7 @@ export default function QuickstartCodeExamples() {
           <p className="text-zinc-400 mb-6">
             The repo&apos;s{' '}
             <a
-              href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/examples/python"
+              href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/examples/python"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
@@ -460,7 +460,7 @@ export default function QuickstartCodeExamples() {
             </a>{' '}
             scripts mirror raw REST; for shorter, agent-friendly code prefer{' '}
             <a
-              href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
+              href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/sdk"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
@@ -547,7 +547,7 @@ export default function QuickstartCodeExamples() {
               <ul className="space-y-2 text-sm text-zinc-400">
                 <li>
                   <a
-                    href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/examples/python"
+                    href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/examples/python"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline"
@@ -557,7 +557,7 @@ export default function QuickstartCodeExamples() {
                 </li>
                 <li>
                   <a
-                    href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/examples/typescript"
+                    href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/examples/typescript"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline"

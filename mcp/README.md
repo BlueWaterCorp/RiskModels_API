@@ -78,7 +78,7 @@ The MCP server serves static data from `mcp/data/`. When the live RiskModels API
 
 ### How to update
 
-The **canonical API and capabilities** live in the [Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models) platform repo. From that repo you can run `npm run generate-mcp-data` (in `riskmodels_com/`) to regenerate `capabilities.json`, `schema-paths.json`, and `schemas/*.json` from the app’s `lib/agent` registry; then copy the updated files into this repo’s `mcp/data/`. The `openapi.json` here is a subset of the full [OPENAPI_SPEC.yaml](../OPENAPI_SPEC.yaml) and should be updated when new public endpoints are added.
+The **canonical API and capabilities** live in the [Risk_Models](https://github.com/BlueWaterCorp/Risk_Models) platform repo. From that repo you can run `npm run generate-mcp-data` (in `riskmodels_com/`) to regenerate `capabilities.json`, `schema-paths.json`, and `schemas/*.json` from the app’s `lib/agent` registry; then copy the updated files into this repo’s `mcp/data/`. The `openapi.json` here is a subset of the full [OPENAPI_SPEC.yaml](../OPENAPI_SPEC.yaml) and should be updated when new public endpoints are added.
 
 1. **Obtain updated data** from the canonical source (Risk_Models) or by hand from the API application’s capabilities and schema registry.
 2. **Replace** the contents of `mcp/data/`:

@@ -6,7 +6,7 @@
 This repository is the **authoritative public API reference** for the [RiskModels](https://riskmodels.net) equity risk model API.
 
 - **Live interactive docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
-- **Issues & feature requests:** [Open an issue](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **Issues & feature requests:** [Open an issue](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 
 ---
 
@@ -171,7 +171,7 @@ Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → A
 
 ## Support
 
-- **Issues & feature requests:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **Issues & feature requests:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 - **API support email:** [service@riskmodels.app](mailto:service@riskmodels.app)
 - **Interactive docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
 - **Status:** [riskmodels.net/status](https://riskmodels.net/status)

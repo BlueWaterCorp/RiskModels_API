@@ -34,7 +34,7 @@ export default function HeroFeatureGrid({ embedded = false }: HeroFeatureGridPro
             PyPI (riskmodels-py) →
           </a>
           <a
-            href="https://github.com/Cerebellum-Archive/RiskModels_API/tree/main/sdk"
+            href="https://github.com/BlueWaterCorp/RiskModels_API/tree/main/sdk"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary hover:underline"

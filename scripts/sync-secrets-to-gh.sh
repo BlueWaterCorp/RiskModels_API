@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO="Cerebellum-Archive/RiskModels_API"
+REPO="BlueWaterCorp/RiskModels_API"
 
 # Prefer local .env.local, then copy from Risk_Models
 LOCAL_ENV="$REPO_ROOT/.env.local"

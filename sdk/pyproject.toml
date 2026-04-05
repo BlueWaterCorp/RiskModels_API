@@ -53,8 +53,8 @@ dev = [
 [project.urls]
 Homepage = "https://riskmodels.app"
 Documentation = "https://riskmodels.app/docs"
-Repository = "https://github.com/Cerebellum-Archive/RiskModels_API"
-Issues = "https://github.com/Cerebellum-Archive/RiskModels_API/issues"
+Repository = "https://github.com/BlueWaterCorp/RiskModels_API"
+Issues = "https://github.com/BlueWaterCorp/RiskModels_API/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["riskmodels"]

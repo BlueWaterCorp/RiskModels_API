@@ -8,7 +8,7 @@
 # TRIGGERS: PRs touching schema files, OpenAPI spec, or generated MCP openapi.json
 #
 # REQUIRED SECRET: REPO_ACCESS_TOKEN
-#   - Read access to Cerebellum-Archive/Risk_Models (private repo)
+#   - Read access to BlueWaterCorp/Risk_Models (private repo)
 #
 name: Cross-Repo Drift Detection
 
@@ -37,7 +37,7 @@ jobs:
       - name: Checkout Risk_Models (private)
         uses: actions/checkout@v4
         with:
-          repository: Cerebellum-Archive/Risk_Models
+          repository: BlueWaterCorp/Risk_Models
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           path: risk_models
           fetch-depth: 1
