@@ -1,7 +1,9 @@
 """RiskModels API — Python SDK (ERM3 hedge ratios and explained risk)."""
 
 from .client import RiskModelsClient
+from .enums import DataKind, DataKindLiteral, OutputKind, OutputLiteral, TimeAxis, TimeLiteral
 from .env import load_repo_dotenv
+from .insights import ChatInsights, InsightsNamespace
 from .exceptions import (
     APIError,
     AuthError,
@@ -24,7 +26,15 @@ from .metadata_attach import (
     ensure_dataframe_legend,
 )
 from .metrics_snapshot import format_metrics_snapshot
-from .portfolio_math import PortfolioAnalysis
+from .performance.base import PerformanceResult
+from .portfolio_math import PortfolioAnalysis, PositionsInput, positions_to_weights
+from .visuals.mag7_l3_er import plot_mag7_l3_explained_risk, save_mag7_l3_explained_risk_png
+from .visuals.save import (
+    save_l3_decomposition_png,
+    save_portfolio_attribution_cascade_png,
+    save_portfolio_risk_cascade_png,
+    write_plotly_png,
+)
 from .visual_refinement import (
     MatPlotAgent,
     RefinementResult,
@@ -39,10 +49,26 @@ from .visual_refinement import (
 __all__ = [
     "APIError",
     "AuthError",
+    "DataKind",
+    "ChatInsights",
+    "DataKindLiteral",
+    "InsightsNamespace",
     "MatPlotAgent",
+    "OutputKind",
+    "OutputLiteral",
+    "PerformanceResult",
+    "PositionsInput",
     "RefinementResult",
     "RiskLineage",
     "RiskModelsClient",
+    "plot_mag7_l3_explained_risk",
+    "save_l3_decomposition_png",
+    "save_mag7_l3_explained_risk_png",
+    "save_portfolio_attribution_cascade_png",
+    "save_portfolio_risk_cascade_png",
+    "write_plotly_png",
+    "TimeAxis",
+    "TimeLiteral",
     "load_repo_dotenv",
     "attach_sdk_metadata",
     "build_semantic_cheatsheet_md",
@@ -56,6 +82,7 @@ __all__ = [
     "RiskModelsValidationError",
     "RiskModelsValidationIssue",
     "PortfolioAnalysis",
+    "positions_to_weights",
     "format_metrics_snapshot",
     "COMBINED_ERM3_MACRO_LEGEND",
     "RANKINGS_SMALL_COHORT_THRESHOLD",
@@ -66,4 +93,4 @@ __all__ = [
     "to_llm_context",
 ]
 
-__version__ = "0.2.4"
+__version__ = "0.3.0"

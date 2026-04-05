@@ -6,6 +6,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **Python SDK (`riskmodels-py` 0.3.0)** — 3D-style namespaces on `RiskModelsClient` (`.stock`, `.portfolio`, `.pri`, `.insights`) with `.current` / `.historical` facades; `PerformanceResult` for tabular + `.plot()` dispatch; `riskmodels.visuals` (Plotly) for L3 horizontal decomposition and portfolio risk/attribution cascades; optional **`pip install riskmodels-py[viz]`** (plotly, matplotlib, seaborn, kaleido); PDF transport helpers `get_metrics_snapshot_pdf` / `post_portfolio_risk_snapshot_pdf`; `positions_to_weights` accepts `{"ticker","weight"}` lists. See `sdk/README.md` and `sdk/pyproject.toml`.
+
 - **Docs** — `docs/CHAT_MANUAL_QA.md` §8: manual QA checklist for the **Risk_Models** portal (`/chat` proxy, anonymous vs JWT, tier caps, streaming note).
 
 - **POST /api/chat agentic tools** — OpenAI function calling with eight internal tools (DAL-backed): metrics snapshot, L3 decomposition, ticker returns, rankings, factor correlation, macro factors, free ticker search, portfolio risk index. Per-tool billing via `deductBalance`; response includes `tool_calls_summary` and `_agent.llm_cost_usd` / `tool_cost_usd` / `tool_calls`. New modules under `lib/chat/`; `lib/dal/ticker-search.ts` shared with `GET /api/tickers?search=`. Cost preflight: `POST /api/estimate` with `endpoint: "chat"` returns `available_tools` and an LLM-only token estimate.
@@ -28,7 +30,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 - **Premium endpoint pricing (Phase 2)** — Raised `cost_usd` and bumped `billing_code` versions for: `risk-decomposition` / `l3-decomposition` ($0.02), `portfolio-risk-index` ($0.03), `batch-analysis` ($0.005/position, min $0.01), `portfolio-returns` ($0.004/position, min $0.01), `plaid-holdings` ($0.02). See `PREMIUM_TIER_DESIGN.md`. `OPENAPI_SPEC.yaml` billing copy and `mcp/data/capabilities.json` aligned with `lib/agent/capabilities.ts`.
 
-- **`GET /api/sdk/python`** — Default `min_version` and bundled `upgrade_message` now target **`riskmodels-py` ≥ 0.2.4** and the editable path **`RiskModels_API/sdk`** (aligned with `sdk/pyproject.toml`).
+- **`GET /api/sdk/python`** — Default `min_version` and bundled `upgrade_message` now target **`riskmodels-py` ≥ 0.3.0** and the editable path **`RiskModels_API/sdk`** (aligned with `sdk/pyproject.toml`).
 
 - **MCP data sync** — Ran `sync-mcp-from-risk-models.sh`; `mcp-server/data/capabilities.json`, `schema-paths.json`, and `schemas/*.json` mirrored from Risk_Models `riskmodels_com` generator output.
 

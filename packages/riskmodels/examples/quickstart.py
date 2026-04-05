@@ -8,6 +8,8 @@ Environment:
 
 - ``RISKMODELS_API_KEY`` or OAuth client credentials (see package README).
 - ``RISKMODELS_QUICKSTART_TICKER`` — optional, default ``NVDA``.
+- ``RISKMODELS_QUICKSTART_SAVE_PNG=1`` — after metrics, write sample Plotly PNGs (needs ``pip install riskmodels-py[viz]``).
+- ``RISKMODELS_QUICKSTART_PNG_DIR`` — optional directory for those PNGs (default current directory).
 - ``DEBUG=1`` — log returned row keys to stderr.
 
 Logs go to stderr; the metrics snapshot goes to stdout.
@@ -24,7 +26,7 @@ from datetime import datetime, timezone
 
 _DEFAULT_TICKER = "NVDA"
 
-MIN_RISKMODELS_PY_VERSION = os.environ.get("RISKMODELS_PY_MIN_VERSION", "0.2.4")
+MIN_RISKMODELS_PY_VERSION = os.environ.get("RISKMODELS_PY_MIN_VERSION", "0.3.0")
 
 _DEFAULT_SDK_UPGRADE_MESSAGE = (
     "Upgrade the Python SDK (riskmodels-py) so you have the latest helpers (e.g. format_metrics_snapshot). "
@@ -151,23 +153,54 @@ def main() -> None:
 
     log_event(f"Calling get_metrics({ticker!r})")
     try:
-        row = client.get_metrics(ticker, validate="warn")
-    except APIError as e:
-        log_event(f"API error: {e} (HTTP {e.status_code})", level="ERROR")
-        log_event(
-            "Hint: try another ticker (e.g. export RISKMODELS_QUICKSTART_TICKER=AAPL), "
-            "or verify RISKMODELS_BASE_URL and that metrics exist for this environment.",
-            level="ERROR",
-        )
-        raise SystemExit(1) from e
+        try:
+            row = client.get_metrics(ticker, validate="warn")
+        except APIError as e:
+            log_event(f"API error: {e} (HTTP {e.status_code})", level="ERROR")
+            log_event(
+                "Hint: try another ticker (e.g. export RISKMODELS_QUICKSTART_TICKER=AAPL), "
+                "or verify RISKMODELS_BASE_URL and that metrics exist for this environment.",
+                level="ERROR",
+            )
+            raise SystemExit(1) from e
+
+        if os.environ.get("DEBUG"):
+            log_event("DEBUG row keys: " + json.dumps(list(row.keys()), indent=None))
+
+        log_event(f"Success for ticker={row.get('ticker', ticker)!r}")
+        print(format_metrics_snapshot(row), file=sys.stdout, flush=True)
+
+        # Optional: set RISKMODELS_QUICKSTART_SAVE_PNG=1 (requires riskmodels-py[viz] + Kaleido).
+        if os.environ.get("RISKMODELS_QUICKSTART_SAVE_PNG"):
+            try:
+                from riskmodels.visuals import mag7_cap_weighted_positions, save_l3_decomposition_png
+                from riskmodels.visuals import save_portfolio_risk_cascade_png
+            except ImportError as e:
+                log_event(f"PNG quickstart skipped (import): {e}", level="WARNING")
+            else:
+                out_dir = os.environ.get("RISKMODELS_QUICKSTART_PNG_DIR", ".").strip() or "."
+                log_event(f"Writing sample PNGs to {out_dir!r} (set RISKMODELS_QUICKSTART_PNG_DIR to change)")
+                try:
+                    save_l3_decomposition_png(
+                        client,
+                        filename=os.path.join(out_dir, "quickstart_nvda_l3.png"),
+                        ticker=ticker,
+                        title=f"{ticker} — L3 risk decomposition (quickstart)",
+                    )
+                    pos, src = mag7_cap_weighted_positions(client)
+                    save_portfolio_risk_cascade_png(
+                        client,
+                        positions=pos,
+                        filename=os.path.join(out_dir, "quickstart_mag7_risk_cascade.png"),
+                        subtitle=f"MAG7 weights: {src}",
+                    )
+                except ImportError as e:
+                    log_event(
+                        f"PNG export needs Kaleido: pip install riskmodels-py[viz]. ({e})",
+                        level="WARNING",
+                    )
     finally:
         client.close()
-
-    if os.environ.get("DEBUG"):
-        log_event("DEBUG row keys: " + json.dumps(list(row.keys()), indent=None))
-
-    log_event(f"Success for ticker={row.get('ticker', ticker)!r}")
-    print(format_metrics_snapshot(row), file=sys.stdout, flush=True)
 
 
 if __name__ == "__main__":

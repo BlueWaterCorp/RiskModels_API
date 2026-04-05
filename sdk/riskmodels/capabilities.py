@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-SDK_VERSION = "0.2.4"
+SDK_VERSION = "0.3.0"
 
 _RANKING_METRICS = [
     "mkt_cap",

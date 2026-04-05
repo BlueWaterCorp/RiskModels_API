@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
@@ -31,7 +30,12 @@ from .parsing import (
     rankings_top_to_dataframe,
     ticker_returns_json_to_dataframe,
 )
-from .portfolio_math import analyze_batch_to_portfolio, metrics_body_to_row, normalize_positions
+from .portfolio_math import (
+    PositionsInput,
+    analyze_batch_to_portfolio,
+    metrics_body_to_row,
+    positions_to_weights,
+)
 from .ticker_resolve import resolve_ticker
 from .transport import Transport
 from .validation import ValidateMode, run_validation
@@ -60,6 +64,12 @@ DEFAULT_BASE_URL = "https://riskmodels.app/api"
 
 
 class RiskModelsClient:
+    """HTTP client for the RiskModels API.
+
+    Prefer namespaces such as ``client.stock.current.plot(...)`` for charts. A future thin
+    ``client.plot(...)`` convenience wrapper may be added without changing existing methods.
+    """
+
     def __init__(
         self,
         base_url: str = DEFAULT_BASE_URL,
@@ -121,6 +131,47 @@ class RiskModelsClient:
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
+    @property
+    def stock(self) -> Any:
+        from .performance.stock import StockNamespace
+
+        if not hasattr(self, "_stock_ns"):
+            self._stock_ns = StockNamespace(self)
+        return self._stock_ns
+
+    @property
+    def portfolio(self) -> Any:
+        from .performance.portfolio import PortfolioNamespace
+
+        if not hasattr(self, "_portfolio_ns"):
+            self._portfolio_ns = PortfolioNamespace(self)
+        return self._portfolio_ns
+
+    @property
+    def pri(self) -> Any:
+        from .performance.pri import PRINamespace
+
+        if not hasattr(self, "_pri_ns"):
+            self._pri_ns = PRINamespace(self)
+        return self._pri_ns
+
+    @property
+    def insights(self) -> Any:
+        from .insights import InsightsNamespace
+
+        if not hasattr(self, "_insights_ns"):
+            self._insights_ns = InsightsNamespace(self)
+        return self._insights_ns
+
+    @property
+    def visuals(self) -> Any:
+        """PNG export helpers (:class:`riskmodels.visuals.client_bridge.ClientVisuals`)."""
+        from .visuals.client_bridge import ClientVisuals
+
+        if not hasattr(self, "_visuals_bridge"):
+            self._visuals_bridge = ClientVisuals(self)
+        return self._visuals_bridge
 
     def discover(
         self,
@@ -714,7 +765,8 @@ class RiskModelsClient:
         *,
         years: int = 1,
         format: FormatType = "json",
-    ) -> dict[str, Any] | tuple[pd.DataFrame, RiskLineage]:
+        return_lineage: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], RiskLineage] | tuple[pd.DataFrame, RiskLineage]:
         payload = {
             "tickers": [str(x).strip().upper() for x in tickers],
             "metrics": metrics,
@@ -725,6 +777,8 @@ class RiskModelsClient:
             body, lineage, _ = self._transport.request("POST", "/batch/analyze", json=payload)
             meta = body.get("_metadata") if isinstance(body, dict) else None
             lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+            if return_lineage:
+                return body, lineage
             return body
         content, lineage, _ = self._transport.request("POST", "/batch/analyze", json=payload, expect_json=False)
         df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
@@ -734,7 +788,7 @@ class RiskModelsClient:
 
     def analyze_portfolio(
         self,
-        positions: Mapping[str, float],
+        positions: PositionsInput,
         *,
         metrics: tuple[str, ...] | list[str] | None = None,
         years: int = 1,
@@ -742,7 +796,7 @@ class RiskModelsClient:
         include_returns_panel: bool = False,
         er_tolerance: float | None = None,
     ) -> Any:
-        weights = normalize_positions(positions)
+        weights = positions_to_weights(positions)
         mlist = list(metrics) if metrics is not None else ["full_metrics", "hedge_ratios"]
         if include_returns_panel and "returns" not in mlist:
             mlist.append("returns")
@@ -765,6 +819,38 @@ class RiskModelsClient:
         return pa
 
     analyze = analyze_portfolio
+
+    def get_metrics_snapshot_pdf(self, ticker: str) -> tuple[bytes, RiskLineage]:
+        """Download single-name risk snapshot PDF (premium endpoint; see OpenAPI)."""
+        t, _ = resolve_ticker(ticker, self)
+        path = f"/metrics/{quote(t, safe='')}/snapshot.pdf"
+        data, lineage, _r = self._transport.request("GET", path, expect_json=False)
+        return data, lineage
+
+    def post_portfolio_risk_snapshot_pdf(
+        self,
+        positions: PositionsInput,
+        *,
+        title: str | None = None,
+        as_of_date: str | None = None,
+    ) -> tuple[bytes, RiskLineage]:
+        """POST ``/portfolio/risk-snapshot`` with ``format=pdf`` (premium endpoint)."""
+        weights = positions_to_weights(positions)
+        body: dict[str, Any] = {
+            "format": "pdf",
+            "positions": [{"ticker": k, "weight": float(v)} for k, v in weights.items()],
+        }
+        if title is not None:
+            body["title"] = title
+        if as_of_date is not None:
+            body["as_of_date"] = as_of_date
+        data, lineage, _r = self._transport.request(
+            "POST",
+            "/portfolio/risk-snapshot",
+            json=body,
+            expect_json=False,
+        )
+        return data, lineage
 
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int
@@ -893,7 +979,7 @@ class RiskModelsClient:
             )
 
         # Import here to avoid hard dependency on LLM libraries
-        from .visual_refinement import MatPlotAgent, RefinementResult
+        from .visual_refinement import MatPlotAgent
 
         agent = MatPlotAgent(
             client=self,
