@@ -290,12 +290,12 @@ Use these so agents and humans **never guess wire names or ERM3 semantics**:
 
 **Semantic names (always use in code and LLM explanations):** `l3_market_hr`, `l3_sector_hr`, `l3_subsector_hr`, `l3_market_er`, … — not raw V3 keys like `l3_mkt_hr`. Batch Parquet/CSV wire columns `l1`/`l2`/`l3` are renamed to those three **L3 component** HR series (not “L1/L2/L3 model levels”). Full reference (repo root):
 
-- [`SEMANTIC_ALIASES.md`](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) (same file as [`../../SEMANTIC_ALIASES.md`](../../SEMANTIC_ALIASES.md) when this README is viewed inside the monorepo)
-- [`docs/ERM3_ZARR_API_PARITY.md`](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/docs/ERM3_ZARR_API_PARITY.md)
+- [`SEMANTIC_ALIASES.md`](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) (same file as [`../../SEMANTIC_ALIASES.md`](../../SEMANTIC_ALIASES.md) when this README is viewed inside the monorepo)
+- [`docs/ERM3_ZARR_API_PARITY.md`](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/docs/ERM3_ZARR_API_PARITY.md)
 
 **Tip for agents:** Prefer `get_metrics(..., as_dataframe=True)` so you get attrs; the plain `dict` return has no `attrs`.
 
-**Cursor:** [`.cursorrules`](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/.cursorrules) (math, naming, batch semantics).
+**Cursor:** [`.cursorrules`](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/.cursorrules) (math, naming, batch semantics).
 
 ## PyPI distribution name vs import
 

@@ -340,7 +340,7 @@ response = supabase.table('security_history_latest').select('*').execute()
 
 ## Implementation — Supabase Tables (Risk_Models)
 
-The live platform ([Risk_Models](https://github.com/Cerebellum-Archive/Risk_Models)) uses Supabase for persistence. **V3 schema** (see [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for full reference):
+The live platform ([Risk_Models](https://github.com/BlueWaterCorp/Risk_Models)) uses Supabase for persistence. **V3 schema** (see [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for full reference):
 
 | Table | Purpose |
 |-------|---------|

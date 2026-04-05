@@ -3,7 +3,7 @@
 ## 1. Connect Repository
 
 1. Go to [vercel.com](https://vercel.com) → Add New → Project
-2. Import `Cerebellum-Archive/RiskModels_API` from GitHub
+2. Import `BlueWaterCorp/RiskModels_API` from GitHub
 3. Framework: **Next.js** (auto-detected)
 4. Root Directory: `.` (default)
 5. Build Command: `npm run build` (default)
@@ -93,7 +93,7 @@ gh run view RUN_ID --web
 gh api repos/OWNER/REPO/actions/runs/RUN_ID/jobs
 ```
 
-Replace `OWNER/REPO` (e.g. `Cerebellum-Archive/RiskModels_API`) and `RUN_ID`. Repo-local shorthand: run these from a clone with `gh` authenticated (`gh auth login`).
+Replace `OWNER/REPO` (e.g. `BlueWaterCorp/RiskModels_API`) and `RUN_ID`. Repo-local shorthand: run these from a clone with `gh` authenticated (`gh auth login`).
 
 Main CI workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (lint, typecheck, Next build, `cli/` build). Smoke test: [`.github/workflows/smoke-test.yml`](.github/workflows/smoke-test.yml).
 

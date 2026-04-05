@@ -33,7 +33,7 @@ The canonical spec lives at [`OPENAPI_SPEC.yaml`](OPENAPI_SPEC.yaml). Contributi
 
 - **Examples** — New Python or TypeScript examples in `examples/`
 - **Documentation** — Improvements to `content/docs/*.mdx` or markdown docs
-- **Bug reports** — [Open an issue](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **Bug reports** — [Open an issue](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 - **CI / GitHub Actions** — If a workflow fails with no logs, see [DEPLOYMENT.md](DEPLOYMENT.md) → *GitHub Actions (smoke test)* → **Debugging Actions with the GitHub CLI** (`gh run list`, `gh run view`, `gh api …/jobs`).
 
 ---
@@ -41,4 +41,4 @@ The canonical spec lives at [`OPENAPI_SPEC.yaml`](OPENAPI_SPEC.yaml). Contributi
 ## Questions?
 
 - **Email:** [service@riskmodels.app](mailto:service@riskmodels.app)
-- **Issues:** [GitHub Issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **Issues:** [GitHub Issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)

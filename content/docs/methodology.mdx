@@ -258,7 +258,7 @@ portfolio_market_hr = (ds["l3_market_hr"] * weights).sum(dim="ticker")
 print(portfolio_market_hr)
 ```
 
-This computes the holdings-weighted mean of per-ticker L3 market hedge ratios as a rolling time series. It is a descriptive aggregate aligned with the portfolio math in the SDK, not a full portfolio optimizer. For details on how the SDK aggregates batch results, see the `portfolio_math.py` module and [`.cursorrules`](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/.cursorrules).
+This computes the holdings-weighted mean of per-ticker L3 market hedge ratios as a rolling time series. It is a descriptive aggregate aligned with the portfolio math in the SDK, not a full portfolio optimizer. For details on how the SDK aggregates batch results, see the `portfolio_math.py` module and [`.cursorrules`](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/.cursorrules).
 
 ---
 

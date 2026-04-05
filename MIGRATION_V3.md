@@ -258,7 +258,7 @@ async function handleApiResponse(response: Response) {
 
 ```bash
 # Download the new v3.0.0-agent OpenAPI spec
-curl -O https://raw.githubusercontent.com/Cerebellum-Archive/RiskModels_API/main/OPENAPI_SPEC.yaml
+curl -O https://raw.githubusercontent.com/BlueWaterCorp/RiskModels_API/main/OPENAPI_SPEC.yaml
 
 # Regenerate your client SDK
 npx openapi-generator-cli generate \
@@ -300,7 +300,7 @@ If you need to temporarily revert to v2.0.0 behavior:
 - **Migration Issues:** service@riskmodels.app
 - **Documentation:** [riskmodels.net/docs](https://riskmodels.net/docs)
 - **Status Page:** [riskmodels.net/status](https://riskmodels.net/status)
-- **GitHub Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **GitHub Issues:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 
 ---
 

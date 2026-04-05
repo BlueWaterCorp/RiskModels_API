@@ -4,7 +4,7 @@ RiskModels provides factor decompositions and ETF-executable hedge ratios for US
 
 # RiskModels API Developer Portal
 
-[![CI](https://github.com/Cerebellum-Archive/RiskModels_API/actions/workflows/ci.yml/badge.svg)](https://github.com/Cerebellum-Archive/RiskModels_API/actions/workflows/ci.yml)
+[![CI](https://github.com/BlueWaterCorp/RiskModels_API/actions/workflows/ci.yml/badge.svg)](https://github.com/BlueWaterCorp/RiskModels_API/actions/workflows/ci.yml)
 [![Live Docs](https://img.shields.io/badge/Live%20Docs-riskmodels.net%2Fdocs%2Fapi-6366f1)](https://riskmodels.net/docs/api/erm3)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-85ea2d)](OPENAPI_SPEC.yaml)
 [![PyPI](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
@@ -26,7 +26,7 @@ This repository is the **authoritative public API reference** for the [RiskModel
 - **Live API Docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
 - **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key)
 - **API Terms:** [riskmodels.net/terms/api](https://riskmodels.net/terms/api)
-- **Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **Issues:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 - **PyPI (Python SDK):** [riskmodels-py](https://pypi.org/project/riskmodels-py/)
 
 ### Canonical URLs (REST, OpenAPI, and docs)
@@ -355,7 +355,7 @@ RiskModels_API/
 We welcome pull requests, especially to improve the **OpenAPI spec** — clearer descriptions, better schemas, and more examples help everyone.
 
 1. **OpenAPI spec:** [CONTRIBUTING.md](CONTRIBUTING.md) — PRs to `OPENAPI_SPEC.yaml` are encouraged
-2. **Issues:** [Open an issue](https://github.com/Cerebellum-Archive/RiskModels_API/issues) for bugs or feature requests
+2. **Issues:** [Open an issue](https://github.com/BlueWaterCorp/RiskModels_API/issues) for bugs or feature requests
 3. **Examples:** Submit new examples via PR to `examples/`
 4. **Docs:** Improve documentation by editing MDX files in `content/docs/`
 
@@ -364,7 +364,7 @@ We welcome pull requests, especially to improve the **OpenAPI spec** — clearer
 ## 📧 Support
 
 - **API Support:** [service@riskmodels.app](mailto:service@riskmodels.app)
-- **Issues:** [github.com/Cerebellum-Archive/RiskModels_API/issues](https://github.com/Cerebellum-Archive/RiskModels_API/issues)
+- **Issues:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 - **Status:** [riskmodels.net/status](https://riskmodels.net/status)
 
 ---
