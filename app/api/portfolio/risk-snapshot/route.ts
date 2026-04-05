@@ -13,7 +13,7 @@ import {
   type PortfolioRiskSnapshotRequest,
 } from "@/lib/api/schemas";
 import { runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
-import { buildRiskSnapshotPdfBytes } from "@/lib/portfolio/risk-snapshot-pdf";
+import { buildRiskSnapshotPdf } from "@/lib/portfolio/risk-snapshot-pdf";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { getCorsHeaders } from "@/lib/cors";
@@ -121,7 +121,7 @@ async function buildSnapshotResponse(
     );
   }
 
-  const pdfBytes = await buildRiskSnapshotPdfBytes({
+  const pdfBytes = await buildRiskSnapshotPdf({
     title,
     asOfLabel: String(asOf),
     data: core,

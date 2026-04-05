@@ -2,6 +2,14 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  // Internal render route used by Playwright — skip Supabase session refresh.
+  // Forward pathname as a request header so the root layout can detect this route.
+  if (request.nextUrl.pathname.startsWith('/render-snapshot')) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-pathname', request.nextUrl.pathname);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   // Supabase magic link falls back to site root when /auth/callback isn't in the allowlist.
   // Redirect /?code= to /get-key so the client component can exchange it (PKCE verifier is browser-side).
   const code = request.nextUrl.searchParams.get('code');

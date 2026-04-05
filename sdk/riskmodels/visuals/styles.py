@@ -101,7 +101,10 @@ PRESET_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Same x-axis as risk_cascade; return contribution proxy (v1, documented).",
     },
     "cumulative_returns_with_drawdown": {"description": "Stub -- not implemented yet."},
-    "variance_waterfall": {"description": "Stub -- not implemented yet."},
+    "variance_waterfall": {
+        "colors": L3_LAYER_COLORS,
+        "description": "Horizontal waterfall: Market → Sector → Subsector → Residual = Total σ.",
+    },
     "hedge_ratio_heatmap": {"description": "Stub -- not implemented yet."},
     "pri_benchmark_comparison": {"description": "Stub -- not implemented yet."},
 }
@@ -109,3 +112,65 @@ PRESET_REGISTRY: dict[str, dict[str, Any]] = {
 
 def get_preset(name: PresetName) -> dict[str, Any]:
     return dict(PRESET_REGISTRY.get(name, {}))
+
+
+# ---------------------------------------------------------------------------
+# Global Plotly template — ensures every chart rendered via the SDK has
+# consistent typography, grid styling, and brand identity.
+# ---------------------------------------------------------------------------
+def get_rm_template() -> Any:
+    """Return a Plotly layout template with RiskModels brand defaults.
+
+    Call ``install_rm_template()`` once at session start to register and
+    activate it globally.
+    """
+    try:
+        import plotly.graph_objects as go  # type: ignore[import-untyped]
+    except ImportError:
+        raise ImportError(
+            "Plotly is required for the RiskModels template. "
+            "Install it with: pip install riskmodels-py[viz]"
+        )
+
+    template = go.layout.Template()
+    template.layout = go.Layout(
+        font=dict(
+            family="Inter, system-ui, -apple-system, sans-serif",
+            size=12,
+            color="#1e293b",
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="#f8fafc",
+        title_font=dict(size=18, color=TITLE_DEEP),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11),
+        ),
+        xaxis=dict(
+            gridcolor="#e2e8f0",
+            zerolinecolor="#94a3b8",
+            title_font=dict(size=12, color=TITLE_SLATE),
+        ),
+        yaxis=dict(
+            gridcolor="#e2e8f0",
+            zerolinecolor="#94a3b8",
+            title_font=dict(size=12, color=TITLE_SLATE),
+        ),
+        colorway=[L3_MARKET, L3_SECTOR, L3_SUBSECTOR, L3_RESIDUAL],
+        margin=dict(l=60, r=40, t=60, b=50),
+    )
+    return template
+
+
+def install_rm_template() -> None:
+    """Register the ``riskmodels`` Plotly template and set it as the default."""
+    try:
+        import plotly.io as pio  # type: ignore[import-untyped]
+    except ImportError:
+        return  # silently skip if Plotly not installed
+    pio.templates["riskmodels"] = get_rm_template()
+    pio.templates.default = "riskmodels"

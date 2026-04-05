@@ -1,6 +1,7 @@
 """Publication-style Plotly/Matplotlib charts for ERM3."""
 
 from .cascade import plot_attribution_cascade, plot_risk_cascade
+from .waterfall import plot_variance_waterfall
 from .gallery import (
     MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026,
     MAG7_SNAPSHOT_DATE_DOC,
@@ -28,12 +29,13 @@ from .mag7_l3_sigma_rr import (
 )
 from .l3_decomposition import plot_l3_horizontal
 from .save import (
+    get_plotly_json,
     save_l3_decomposition_png,
     save_portfolio_attribution_cascade_png,
     save_portfolio_risk_cascade_png,
     write_plotly_png,
 )
-from .styles import PRESET_REGISTRY, get_preset
+from .styles import PRESET_REGISTRY, get_preset, get_rm_template, install_rm_template
 from .utils import adjacent_bar_positions, cascade_plotly_layout
 
 __all__ = [
@@ -47,13 +49,17 @@ __all__ = [
     "MAG7_SNAPSHOT_DATE_DOC",
     "adjacent_bar_positions",
     "cascade_plotly_layout",
+    "get_plotly_json",
     "get_preset",
+    "get_rm_template",
+    "install_rm_template",
     "mag7_cap_weighted_positions",
     "plot_attribution_cascade",
     "plot_l3_horizontal",
     "plot_mag7_l3_explained_risk",
     "plot_mag7_l3_sigma_rr",
     "plot_risk_cascade",
+    "plot_variance_waterfall",
     "PRESET_REGISTRY",
     "run_gallery_all",
     "run_gallery_mag7_attribution_cascade",
