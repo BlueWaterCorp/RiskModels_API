@@ -5,7 +5,7 @@ const nextConfig = {
   pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
   reactStrictMode: true,
   /** Avoid broken vendor-chunk references for Supabase in server/prerender workers (Navbar pulls auth into every layout). */
-  serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr'],
+  serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr', 'playwright-core'],
   async redirects() {
     return [
       { source: '/examples', destination: '/quickstart#code-examples', permanent: true },

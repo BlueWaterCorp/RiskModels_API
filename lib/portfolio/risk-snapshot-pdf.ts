@@ -1,9 +1,14 @@
 /**
  * One-page portfolio risk snapshot PDF (ERM3 L3 decomposition + hedge ratios).
+ *
+ * Dispatcher: when PLAYWRIGHT_PDF_ENABLED is set, renders via headless Chromium
+ * using the /render-snapshot React template. Otherwise falls back to the
+ * programmatic pdf-lib path (safe for Vercel serverless).
  */
 
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PortfolioRiskComputationOk } from "@/lib/portfolio/portfolio-risk-core";
+import type { SnapshotReportData, SnapshotTickerRow } from "./snapshot-report-types";
 
 function pct(x: number): string {
   return `${(x * 100).toFixed(1)}%`;
@@ -65,4 +70,77 @@ export async function buildRiskSnapshotPdfBytes(params: {
   draw("Powered by RiskModels — data from ERM3 V3 security_history", 8, false, rgb(0.4, 0.42, 0.45));
 
   return doc.save();
+}
+
+/**
+ * Build the SnapshotReportData contract from a PortfolioRiskComputationOk result.
+ */
+function toReportData(params: {
+  title: string;
+  asOfLabel: string;
+  data: PortfolioRiskComputationOk;
+}): SnapshotReportData {
+  const { title, asOfLabel, data } = params;
+
+  const perTicker: SnapshotTickerRow[] = Object.entries(data.perTicker)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([ticker, row]) => {
+      const r = row as Record<string, unknown>;
+      return {
+        ticker,
+        weight: Number(r.weight ?? 0),
+        l3_mkt_er: r.l3_mkt_er != null ? Number(r.l3_mkt_er) : null,
+        l3_sec_er: r.l3_sec_er != null ? Number(r.l3_sec_er) : null,
+        l3_sub_er: r.l3_sub_er != null ? Number(r.l3_sub_er) : null,
+        l3_res_er: r.l3_res_er != null ? Number(r.l3_res_er) : null,
+        l3_mkt_hr: r.l3_mkt_hr != null ? Number(r.l3_mkt_hr) : null,
+        l3_sec_hr: r.l3_sec_hr != null ? Number(r.l3_sec_hr) : null,
+        l3_sub_hr: r.l3_sub_hr != null ? Number(r.l3_sub_hr) : null,
+        vol_23d: r.vol_23d != null ? Number(r.vol_23d) : null,
+        price_close: r.price_close != null ? Number(r.price_close) : null,
+      };
+    });
+
+  return {
+    title,
+    as_of: asOfLabel,
+    portfolio_risk_index: {
+      variance_decomposition: {
+        market: data.portfolioER.market,
+        sector: data.portfolioER.sector,
+        subsector: data.portfolioER.subsector,
+        residual: data.portfolioER.residual,
+        systematic: data.systematic,
+      },
+      portfolio_volatility_23d: data.portfolioVol,
+      position_count: data.summary.resolved,
+    },
+    per_ticker: perTicker,
+    _metadata: {
+      generated_at: new Date().toISOString(),
+      lineage: "ERM3 V3 security_history",
+      billing_code: "risk_snapshot_pdf_v1",
+    },
+  };
+}
+
+/**
+ * Dispatcher: builds a one-page PDF using Playwright/React (when enabled)
+ * or the programmatic pdf-lib fallback.
+ */
+export async function buildRiskSnapshotPdf(params: {
+  title: string;
+  asOfLabel: string;
+  data: PortfolioRiskComputationOk;
+}): Promise<Uint8Array> {
+  if (process.env.PLAYWRIGHT_PDF_ENABLED === "true") {
+    const { renderSnapshotPdf } = await import("./playwright-pdf-worker");
+    const reportData = toReportData(params);
+    const baseUrl =
+      process.env.PLAYWRIGHT_BASE_URL ??
+      `http://localhost:${process.env.PORT ?? 3000}`;
+    return renderSnapshotPdf(reportData, baseUrl);
+  }
+
+  return buildRiskSnapshotPdfBytes(params);
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
+import { headers } from 'next/headers';
 import 'katex/dist/katex.min.css';
 import '@/styles/globals.css';
 import Navbar from '@/components/Navbar';
@@ -49,11 +50,36 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const hdrs = await headers();
+  const pathname = hdrs.get('x-pathname') ?? hdrs.get('x-invoke-path') ?? '';
+  const isPrint = pathname.startsWith('/render-snapshot');
+
+  if (isPrint) {
+    return (
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          />
+          <style>{`
+            @page { size: A4; margin: 0; }
+            html, body { margin: 0; padding: 0; background: white; color: #111827; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          `}</style>
+        </head>
+        <body style={{ fontFamily: "'Inter', sans-serif", background: 'white' }}>
+          {children}
+        </body>
+      </html>
+    );
+  }
+
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${inter.className} ${jetbrainsMono.variable}`}>

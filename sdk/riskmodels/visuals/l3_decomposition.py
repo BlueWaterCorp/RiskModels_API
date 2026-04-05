@@ -48,6 +48,7 @@ def plot_l3_horizontal(
     tuple_from_row: Callable[[Mapping[str, Any]], tuple[float, float, float, float]] | None = None,
     annotation_formatter: Callable[[int, dict[str, Any]], str] | None = None,
     theme: PlotlyTheme = "light",
+    universe_avg_vol: float | None = None,
 ) -> Any:
     """Horizontal stacked bars: L3 market / sector / subsector + residual (HR share).
 
@@ -334,6 +335,33 @@ def plot_l3_horizontal(
 
     if _is_sigma_rr and theme == "terminal_dark":
         yaxis_kw["showgrid"] = False
+
+    # Optional universe average vol reference line (σ-scaled mode only)
+    if sigma_scaled and universe_avg_vol is not None and universe_avg_vol > 0:
+        ref_color = "#64748b" if theme == "light" else styles.TERMINAL_MUTED
+        fig.add_shape(
+            type="line",
+            xref="x",
+            yref="paper",
+            x0=universe_avg_vol,
+            x1=universe_avg_vol,
+            y0=0.0,
+            y1=1.0,
+            line=dict(color=ref_color, width=1.5, dash="dash"),
+        )
+        annotations.append(
+            dict(
+                x=universe_avg_vol,
+                y=1.01,
+                xref="x",
+                yref="paper",
+                text=f"Universe avg \u03c3: {universe_avg_vol:.0%}",
+                showarrow=False,
+                font=dict(size=10, color=ref_color, family="Arial, Helvetica, sans-serif"),
+                xanchor="center",
+                yanchor="bottom",
+            )
+        )
 
     fig.update_layout(
         title=dict(

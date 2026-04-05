@@ -268,7 +268,24 @@ def save_portfolio_attribution_cascade_png(
     )
 
 
+def get_plotly_json(fig: Any) -> str:
+    """Serialize a Plotly figure to its full JSON representation.
+
+    This is the bridge for the **Recipe Pattern**: the Python SDK generates a
+    figure, serializes it to JSON, and the Next.js PDF pipeline can hydrate it
+    client-side via ``Plotly.react()`` for pixel-perfect parity between SDK
+    notebooks and server-rendered PDF snapshots.
+
+    Returns
+    -------
+    str
+        JSON string suitable for ``Plotly.react(div, JSON.parse(json))``.
+    """
+    return fig.to_json()
+
+
 __all__ = [
+    "get_plotly_json",
     "write_plotly_png",
     "save_l3_decomposition_png",
     "save_portfolio_risk_cascade_png",
