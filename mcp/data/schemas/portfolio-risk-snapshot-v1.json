@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PortfolioRiskSnapshot",
+  "description": "JSON response for POST /api/portfolio/risk-snapshot (format=json). When format=pdf, the response is binary application/pdf.",
+  "type": "object",
+  "required": ["title", "as_of", "portfolio_risk_index", "per_ticker", "_metadata"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Report title (user-supplied or auto-generated)"
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date",
+      "description": "Report label date (YYYY-MM-DD)"
+    },
+    "portfolio_risk_index": {
+      "type": "object",
+      "required": ["variance_decomposition", "portfolio_volatility_23d", "position_count"],
+      "properties": {
+        "variance_decomposition": {
+          "type": "object",
+          "required": ["market", "sector", "subsector", "residual", "systematic"],
+          "properties": {
+            "market": { "type": "number", "description": "Fraction of portfolio variance from market factor" },
+            "sector": { "type": "number", "description": "Fraction from sector factors" },
+            "subsector": { "type": "number", "description": "Fraction from subsector factors" },
+            "residual": { "type": "number", "description": "Fraction from idiosyncratic / stock-specific risk" },
+            "systematic": { "type": "number", "description": "market + sector + subsector" }
+          }
+        },
+        "portfolio_volatility_23d": {
+          "type": ["number", "null"],
+          "description": "23-day weighted annualized portfolio volatility"
+        },
+        "position_count": {
+          "type": "integer",
+          "description": "Number of resolved positions"
+        }
+      }
+    },
+    "per_ticker": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ticker", "weight"],
+        "properties": {
+          "ticker": { "type": "string" },
+          "weight": { "type": "number" },
+          "l3_mkt_er": { "type": ["number", "null"] },
+          "l3_sec_er": { "type": ["number", "null"] },
+          "l3_sub_er": { "type": ["number", "null"] },
+          "l3_res_er": { "type": ["number", "null"] },
+          "l3_mkt_hr": { "type": ["number", "null"] },
+          "l3_sec_hr": { "type": ["number", "null"] },
+          "l3_sub_hr": { "type": ["number", "null"] },
+          "vol_23d": { "type": ["number", "null"] },
+          "price_close": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "_metadata": {
+      "type": "object",
+      "required": ["generated_at", "lineage", "billing_code"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "lineage": { "type": "string" },
+        "billing_code": { "type": "string" }
+      }
+    }
+  }
+}

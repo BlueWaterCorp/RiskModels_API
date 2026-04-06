@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PortfolioRiskIndex",
+  "description": "JSON response for POST /api/portfolio/risk-index. Returns L3 variance decomposition for a weighted portfolio.",
+  "type": "object",
+  "required": ["portfolio_risk_index"],
+  "properties": {
+    "portfolio_risk_index": {
+      "type": "object",
+      "required": ["variance_decomposition", "portfolio_volatility_23d", "position_count"],
+      "properties": {
+        "variance_decomposition": {
+          "type": "object",
+          "required": ["market", "sector", "subsector", "residual"],
+          "properties": {
+            "market": { "type": "number" },
+            "sector": { "type": "number" },
+            "subsector": { "type": "number" },
+            "residual": { "type": "number" }
+          }
+        },
+        "portfolio_volatility_23d": {
+          "type": ["number", "null"]
+        },
+        "position_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "time_series": {
+      "type": "array",
+      "description": "Only present when timeSeries=true",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "market": { "type": "number" },
+          "sector": { "type": "number" },
+          "subsector": { "type": "number" },
+          "residual": { "type": "number" }
+        }
+      }
+    },
+    "cost_usd": { "type": "number" },
+    "positions_resolved": { "type": "integer" },
+    "positions_errored": { "type": "integer" }
+  }
+}

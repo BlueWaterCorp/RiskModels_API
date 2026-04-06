@@ -41,7 +41,21 @@ Regardless of MCP:
 - **`lib/api/schemas.ts`** — Zod validation for Next.js routes (must stay aligned with OpenAPI).
 - **`SEMANTIC_ALIASES.md`** — field names for user-facing tables and the Python SDK.
 
-### 3. Human / portal
+### 3. CLI / ad-hoc data exploration
+
+The `cli-query` capability (`POST /api/cli/query`) allows SELECT-only SQL queries against Supabase tables (`security_history`, `symbols`, `macro_factors`). Use it as a fallback when you need to explore raw data that isn't exposed through a dedicated endpoint — e.g., checking available date ranges, confirming column names, or sampling rows before building a client.
+
+```python
+resp = requests.post(
+    "https://riskmodels.app/api/cli/query",
+    headers={"Authorization": f"Bearer {api_key}"},
+    json={"sql": "SELECT ticker, l3_mkt_er, l3_res_er FROM security_history WHERE ticker = 'AAPL' ORDER BY date DESC LIMIT 5"}
+)
+```
+
+Cost: $0.003/request. Rate-limited to 60/min. SELECT only — no writes.
+
+### 4. Human / portal
 
 - **Auth and keys:** [AUTHENTICATION_GUIDE.md](../../AUTHENTICATION_GUIDE.md), [riskmodels.app/get-key](https://riskmodels.app/get-key). Agents cannot mint keys without user login; document env vars (`RISKMODELS_API_KEY`, `RISKMODELS_BASE_URL`).
 
