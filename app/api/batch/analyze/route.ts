@@ -357,12 +357,22 @@ async function analyzeTicker(
       const latestData = await fetchLatestMetricsWithFallback(
         symbolRecord.symbol,
         [
+          // Core
           "vol_23d",
           "price_close",
           "market_cap",
+          "stock_var",
+          // L1
           "l1_mkt_hr",
+          "l1_mkt_er",
+          "l1_res_er",
+          // L2
           "l2_mkt_hr",
           "l2_sec_hr",
+          "l2_mkt_er",
+          "l2_sec_er",
+          "l2_res_er",
+          // L3
           "l3_mkt_hr",
           "l3_sec_hr",
           "l3_sub_hr",
@@ -392,9 +402,18 @@ async function analyzeTicker(
           ticker: symbolRecord.ticker,
           date: teo,
           volatility: m?.vol_23d ?? null,
+          stock_var: m?.stock_var ?? null,
+          // L1
           l1_mkt_hr: m?.l1_mkt_hr ?? null,
+          l1_mkt_er: m?.l1_mkt_er ?? null,
+          l1_res_er: m?.l1_res_er ?? null,
+          // L2
           l2_mkt_hr: m?.l2_mkt_hr ?? null,
           l2_sec_hr: m?.l2_sec_hr ?? null,
+          l2_mkt_er: m?.l2_mkt_er ?? null,
+          l2_sec_er: m?.l2_sec_er ?? null,
+          l2_res_er: m?.l2_res_er ?? null,
+          // L3
           l3_mkt_hr: m?.l3_mkt_hr ?? null,
           l3_sec_hr: m?.l3_sec_hr ?? null,
           l3_sub_hr: m?.l3_sub_hr ?? null,

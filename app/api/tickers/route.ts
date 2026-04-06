@@ -6,9 +6,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 // Enrich metadata with company_name from security_master when symbols lacks it
 async function enrichMetadataFromSecurityMaster(
-  metadataMap: Record<string, { name: string; sector?: string; sector_etf?: string }>,
+  metadataMap: Record<string, { name: string; sector?: string; sector_etf?: string; subsector_etf?: string }>,
   tickers: string[],
-): Promise<Record<string, { name: string; sector?: string; sector_etf?: string }>> {
+): Promise<Record<string, { name: string; sector?: string; sector_etf?: string; subsector_etf?: string }>> {
   const needEnrich = tickers.filter(
     (t) => metadataMap[t] && metadataMap[t].name === t,
   );
@@ -17,7 +17,7 @@ async function enrichMetadataFromSecurityMaster(
     const admin = createAdminClient();
     const { data } = await admin
       .from("security_master")
-      .select("ticker, company_name, sector_etf")
+      .select("ticker, company_name, sector_etf, subsector_etfs")
       .in("ticker", needEnrich)
       .is("valid_to", null);
     if (data) {
@@ -28,6 +28,7 @@ async function enrichMetadataFromSecurityMaster(
             ...updated[r.ticker],
             name: r.company_name,
             sector_etf: r.sector_etf ?? updated[r.ticker].sector_etf,
+            subsector_etf: r.subsector_etfs ?? updated[r.ticker].subsector_etf,
           };
         }
       });
@@ -136,6 +137,7 @@ export async function GET(request: NextRequest) {
                   name: m.metadata?.company_name || m.ticker,
                   sector: m.metadata?.sector || m.metadata?.gics_sector_name,
                   sector_etf: m.metadata?.sector_etf,
+                  subsector_etf: m.metadata?.subsector_etf,
                 },
               ]),
             );
@@ -209,6 +211,7 @@ export async function GET(request: NextRequest) {
                 name: m.metadata?.company_name || m.ticker,
                 sector: m.metadata?.sector || m.metadata?.gics_sector_name,
                 sector_etf: m.metadata?.sector_etf,
+                subsector_etf: m.metadata?.subsector_etf,
               };
             });
           }

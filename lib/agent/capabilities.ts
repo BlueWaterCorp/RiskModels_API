@@ -128,7 +128,9 @@ export const CAPABILITIES: Capability[] = [
     id: "metrics",
     name: "Latest Risk Metrics",
     description:
-      "Fetch latest hedge ratios (HR), explained risk (ER), volatility, and stock variance for a ticker from security_history (V3)",
+      "Full V3 risk snapshot for a ticker: L1/L2/L3 hedge ratios (HR) and explained risk (ER), " +
+      "vol_23d (23d annualized realized vol), stock_var (252d rolling variance), price_close, and market_cap. " +
+      "Returns all 20 V3MetricKey fields from security_history_latest with EAV fallback.",
     endpoint: "/api/metrics/{ticker}",
     method: "GET",
     parameters: {
