@@ -26,6 +26,14 @@ from .metadata_attach import (
     ensure_dataframe_legend,
 )
 from .metrics_snapshot import format_metrics_snapshot
+from .peer_group import PeerComparison, PeerGroupProxy
+from .snapshots import (
+    StockContext, fetch_stock_context,
+    trailing_returns, cumulative_returns, rolling_sharpe,
+    max_drawdown_series, relative_returns,
+    S1Data, get_data_for_s1, render_s1_to_pdf,
+    S2Data, get_data_for_s2, render_s2_to_pdf,
+)
 from .performance.base import PerformanceResult
 from .portfolio_math import PortfolioAnalysis, PositionsInput, positions_to_weights
 from .visuals.mag7_l3_er import plot_mag7_l3_explained_risk, save_mag7_l3_explained_risk_png
@@ -56,7 +64,15 @@ __all__ = [
     "MatPlotAgent",
     "OutputKind",
     "OutputLiteral",
+    "PeerComparison",
+    "PeerGroupProxy",
     "PerformanceResult",
+    "S1Data",
+    "get_data_for_s1",
+    "render_s1_to_pdf",
+    "S2Data",
+    "get_data_for_s2",
+    "render_s2_to_pdf",
     "PositionsInput",
     "RefinementResult",
     "RiskLineage",

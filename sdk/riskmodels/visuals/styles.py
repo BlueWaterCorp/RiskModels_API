@@ -20,6 +20,45 @@ PresetName = Literal[
 ]
 
 # ---------------------------------------------------------------------------
+# Consultant Navy — institutional PDF snapshot suite (S1–S4)
+# Matches alpha_forensic.py palette in BWMACRO (the reference prototype).
+# All snapshot scripts import from here — never hardcode colors.
+# ---------------------------------------------------------------------------
+CN_NAVY     = "#002a5e"   # primary: titles, headers, borders, market bars
+CN_TEAL     = "#006f8e"   # secondary: sector bars, annotations
+CN_SLATE    = "#2a7fbf"   # tertiary: subsector bars (matches alpha_forensic.py)
+CN_GREEN    = "#00AA00"   # alpha/positive: residual ER, selection spread
+CN_ORANGE   = "#E07000"   # warning/negative: returns, risk highlights
+CN_GRAY     = "#888888"   # gridlines, minor labels
+CN_LIGHT_BG = "#f5f7fb"   # page background
+
+CONSULTANT_NAVY: dict[str, str] = {
+    "primary":    CN_NAVY,
+    "secondary":  CN_TEAL,
+    "slate":      CN_SLATE,
+    "alpha":      CN_GREEN,
+    "warning":    CN_ORANGE,
+    "gray":       CN_GRAY,
+    "light_bg":   CN_LIGHT_BG,
+}
+
+# L3 factor bar colors in Consultant Navy context (overrides publication palette for PDFs)
+CN_L3_LAYER_COLORS: dict[str, str] = {
+    "market":    CN_NAVY,
+    "sector":    CN_TEAL,
+    "subsector": CN_SLATE,
+    "residual":  CN_GREEN,
+}
+
+PDF_LAYOUT: dict[str, str | int] = {
+    "size":          "letter landscape",   # 11 × 8.5 in
+    "dpi":           300,
+    "engine":        "weasyprint",
+    "chart_engine":  "matplotlib",
+    "margin_in":     "0.45in",
+}
+
+# ---------------------------------------------------------------------------
 # Publication palette (aligned with article visuals / portal / Plotly charts)
 # ---------------------------------------------------------------------------
 L3_MARKET = "#3b82f6"
