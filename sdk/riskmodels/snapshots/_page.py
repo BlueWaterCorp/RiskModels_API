@@ -19,6 +19,7 @@ Callers request panel axes via ``page.panel()`` using GridSpec slices.
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from typing import Sequence
 
@@ -105,7 +106,7 @@ class SnapshotPage:
         return ax
 
     def save(self, path: str | Path) -> Path:
-        """Save to PDF (or any format Matplotlib supports) and close."""
+        """Save to PDF, PNG, or any format Matplotlib supports and close."""
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         self.fig.savefig(
@@ -115,6 +116,22 @@ class SnapshotPage:
         )
         plt.close(self.fig)
         return p
+
+    def to_png_bytes(self, *, dpi: int | None = None) -> bytes:
+        """Render the page to PNG bytes in memory (no file I/O).
+
+        Returns raw PNG bytes suitable for HTTP responses, base64 encoding,
+        or writing to any file-like object.
+        """
+        buf = BytesIO()
+        self.fig.savefig(
+            buf,
+            format="png",
+            dpi=dpi or THEME.layout.dpi,
+            facecolor=self.fig.get_facecolor(),
+        )
+        plt.close(self.fig)
+        return buf.getvalue()
 
     # ── Header ─────────────────────────────────────────────────────────
 
