@@ -28,6 +28,9 @@ coverage/
 # Local PDF snapshots from examples/scripts
 risk_snapshot_*.pdf
 
+# Snapshot pipeline build artifacts — rendered locally, never committed
+sdk/riskmodels/snapshots/output/
+
 # Misc
 *.log
 *.tsbuildinfo
