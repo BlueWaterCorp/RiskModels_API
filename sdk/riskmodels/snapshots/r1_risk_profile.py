@@ -75,6 +75,7 @@ class R1Data:
     metrics: dict[str, Any]
     peer_comparison: PeerComparison | None = None
     narrative: str = ""
+    macro_correlations: dict[str, float | None] = field(default_factory=dict)
     sdk_version: str = "0.3.0"
 
     @property
@@ -137,6 +138,7 @@ class R1Data:
             metrics=d["metrics"],
             peer_comparison=pc,
             narrative=d.get("narrative", ""),
+            macro_correlations=d.get("macro_correlations", {}),
             sdk_version=d.get("sdk_version", "0.3.0"),
         )
 
@@ -306,6 +308,20 @@ def get_data_for_r1(
             UserWarning, stacklevel=2,
         )
 
+    macro_correlations: dict[str, float | None] = {}
+    try:
+        corr_resp = client.get_factor_correlation_single(
+            ticker,
+            return_type="l3_residual",
+            window_days=252,
+        )
+        macro_correlations = corr_resp.get("correlations", {})
+    except Exception as exc:
+        warnings.warn(
+            f"Could not fetch macro correlations for {ticker}: {exc}",
+            UserWarning, stacklevel=2,
+        )
+
     data = R1Data(
         ticker=ctx.ticker,
         company_name=ctx.company_name,
@@ -315,6 +331,7 @@ def get_data_for_r1(
         subsector_etf=ctx.subsector_etf,
         metrics=ctx.metrics,
         peer_comparison=peer_comparison,
+        macro_correlations=macro_correlations,
         sdk_version=ctx.sdk_version,
     )
 
@@ -390,6 +407,20 @@ def _draw_chips(
     return row_y + row_h
 
 
+def _fmt_market_cap(v: float | None) -> str:
+    """Format market cap as human-readable string."""
+    if v is None:
+        return "—"
+    v = float(v)
+    if v >= 1e12:
+        return f"${v/1e12:.1f}T"
+    if v >= 1e9:
+        return f"${v/1e9:.1f}B"
+    if v >= 1e6:
+        return f"${v/1e6:.1f}M"
+    return f"${v:,.0f}"
+
+
 def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     """Compose the R1 snapshot using pixel-precise Pillow layout + Plotly charts.
 
@@ -405,7 +436,16 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     # ── Page grid (11×8.5 in @ 300 DPI = 3300×2550 px) ─────────────
     W, H = 3300, 2550
     MARGIN = 150          # left/right margin
-    CW = W - 2 * MARGIN   # content width = 3000
+
+    # ── Panel layout constants ───────────────────────────────────────
+    PANEL_W = 800
+    PANEL_GAP = 50
+    CONTENT_X = MARGIN + PANEL_W + PANEL_GAP
+    CONTENT_W = W - CONTENT_X - MARGIN
+
+    # Color constants for macro correlations
+    GREEN_RGB = (0, 170, 0)
+    ORANGE_RGB = (224, 112, 0)
 
     page = SnapshotComposer(W, H)
     y = 80  # current vertical cursor
@@ -426,13 +466,159 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
 
     # Navy header rule
     page.hline(y, x0=MARGIN, x1=W - MARGIN, color=NAVY, thickness=6)
-    y += 20
+    after_header_y = y + 20
 
     # ════════════════════════════════════════════════════════════════
-    # KEY RISK SUMMARY — hero box
+    # LEFT STATS PANEL — background
     # ════════════════════════════════════════════════════════════════
+    PANEL_BG = (248, 249, 251)
+    page.rect(MARGIN - 10, after_header_y, PANEL_W + 10, H - 90 - after_header_y,
+              fill=PANEL_BG)
+
+    # Vertical divider between panel and content
+    div_x = CONTENT_X - PANEL_GAP // 2
+    page.draw.rectangle(
+        [div_x, after_header_y, div_x + 1, H - 90],
+        fill=BORDER,
+    )
+
+    # ── Draw left panel contents ──────────────────────────────────────
+    py = after_header_y + 20  # panel vertical cursor
+    panel_right = MARGIN + PANEL_W  # right edge for right-aligning values
+    ROW_H = 50   # row height for stat rows
+    LBL_SZ = 28  # label font size
+    VAL_SZ = 28  # value font size
+    SEC_SZ = 22  # section header font size
+
+    # Company name
+    company_display = data.company_name
+    page.text(MARGIN, py, company_display,
+              font_size=42, bold=True, color=NAVY, max_width=PANEL_W)
+    py += int(42 * 1.4)
+
+    # Ticker · As of date
+    page.text(MARGIN, py, f"{data.ticker}  ·  {data.teo}",
+              font_size=LBL_SZ, color=TEXT_MID)
+    py += int(LBL_SZ * 1.4) + 16
+
+    # ── IDENTITY section ─────────────────────────────────────────────
+    page.text(MARGIN, py, "IDENTITY",
+              font_size=SEC_SZ, bold=True, color=TEXT_LIGHT)
+    py += int(SEC_SZ * 1.4)
+    page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
+    py += 10
+
+    mkt_cap_raw = m.get("market_cap") or m.get("mkt_cap")
+    mkt_cap_str = _fmt_market_cap(mkt_cap_raw)
+    for lbl, val_s in [
+        ("Market Cap", mkt_cap_str),
+        ("Sector ETF", data.sector_etf or "—"),
+        ("Subsector ETF", data.subsector_etf or "—"),
+    ]:
+        page.text(MARGIN, py, lbl, font_size=LBL_SZ, color=TEXT_MID)
+        page.text_right(panel_right, py, val_s, font_size=VAL_SZ, bold=True, color=TEXT_DARK)
+        py += ROW_H
+    py += 16
+
+    # ── FACTOR EXPOSURE section ───────────────────────────────────────
+    page.text(MARGIN, py, "FACTOR EXPOSURE — L3",
+              font_size=SEC_SZ, bold=True, color=TEXT_LIGHT)
+    py += int(SEC_SZ * 1.4)
+    page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
+    py += 10
+
+    def _gm(full: str, abbr: str):
+        return m.get(full) if m.get(full) is not None else m.get(abbr)
+
+    mkt_hr = _gm("l3_market_hr", "l3_mkt_hr")
+    sec_hr = _gm("l3_sector_hr", "l3_sec_hr")
+    sub_hr = _gm("l3_subsector_hr", "l3_sub_hr")
+    mkt_er = _gm("l3_market_er", "l3_mkt_er")
+    sec_er = _gm("l3_sector_er", "l3_sec_er")
+    sub_er = _gm("l3_subsector_er", "l3_sub_er")
+    res_er = _gm("l3_residual_er", "l3_res_er")
+
+    def _beta_color(v) -> tuple:
+        return TEXT_MID if v is None else (NAVY if float(v) >= 0 else ORANGE_RGB)
+
+    def _er_color(v) -> tuple:
+        return TEXT_MID if v is None else (GREEN_RGB if float(v) > 0 else ORANGE_RGB)
+
+    for label, val in [("Mkt β", mkt_hr), ("Sec β", sec_hr), ("Sub β", sub_hr)]:
+        page.text(MARGIN, py, label, font_size=LBL_SZ, color=TEXT_MID)
+        val_str = T.format_number(val, decimals=2) if val is not None else "—"
+        page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True,
+                        color=_beta_color(val))
+        py += ROW_H
+
+    for label, val, is_bold in [
+        ("Mkt ER", mkt_er, False),
+        ("Sec ER", sec_er, False),
+        ("Sub ER", sub_er, False),
+        ("Res ER (α)", res_er, True),
+    ]:
+        page.text(MARGIN, py, label, font_size=LBL_SZ, color=TEXT_MID)
+        val_str = T.format_pct(val) if val is not None else "—"
+        page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=is_bold,
+                        color=_er_color(val))
+        py += ROW_H
+
+    # Residual Risk (RR) = 1 - sum(|systematic ER| components)
+    mkt_er_f = float(mkt_er) if mkt_er is not None else 0.0
+    sec_er_f = float(sec_er) if sec_er is not None else 0.0
+    sub_er_f = float(sub_er) if sub_er is not None else 0.0
+    rr = 1.0 - (abs(mkt_er_f) + abs(sec_er_f) + abs(sub_er_f))
+    page.text(MARGIN, py, "Res Risk (RR)", font_size=LBL_SZ, color=TEXT_MID)
+    page.text_right(panel_right, py, T.format_pct(rr), font_size=VAL_SZ, bold=False,
+                    color=_er_color(rr))
+    py += ROW_H + 16
+
+    # ── MACRO CORRELATIONS section ────────────────────────────────────
+    page.text(MARGIN, py, "MACRO CORRELATIONS — L3 Residual · 252d",
+              font_size=SEC_SZ, bold=True, color=TEXT_LIGHT)
+    py += int(SEC_SZ * 1.4)
+    page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
+    py += 10
+
+    MACRO_KEYS = ["vix", "oil", "gold", "bitcoin", "dxy", "ust10y2y"]
+    MACRO_NAMES = {"vix": "VIX", "oil": "Oil", "gold": "Gold",
+                   "bitcoin": "Bitcoin", "dxy": "DXY", "ust10y2y": "UST 10y-2y"}
+    corrs = data.macro_correlations or {}
+    BAR_MAX_W = int(PANEL_W * 0.55)  # mini bar max width
+
+    for key in MACRO_KEYS:
+        corr = corrs.get(key)
+        label = MACRO_NAMES[key]
+
+        if corr is not None:
+            corr_f = float(corr)
+            val_str = f"{corr_f:+.2f}"
+            val_color = GREEN_RGB if corr_f > 0 else ORANGE_RGB
+        else:
+            corr_f = None
+            val_str = "—"
+            val_color = TEXT_LIGHT
+
+        page.text(MARGIN, py, label, font_size=LBL_SZ, color=TEXT_MID)
+        page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=val_color)
+
+        # Mini bar on the row itself (right side, next to value)
+        bar_h = 10
+        bar_y = py + (ROW_H - bar_h) // 2
+        if corr_f is not None:
+            bar_w = max(4, int(abs(corr_f) * BAR_MAX_W))
+            bar_x = panel_right - bar_w - 80  # leave room for value text
+            page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=val_color)
+
+        py += ROW_H
+
+    # ════════════════════════════════════════════════════════════════
+    # RIGHT CONTENT AREA
+    # ════════════════════════════════════════════════════════════════
+    y = after_header_y
+
+    # ── AI Summary box ───────────────────────────────────────────────
     if insights.summary:
-        # Split at first sentence boundary (period + space + capital, not mid-number)
         import re as _re
         m_sent = _re.search(r'\.\s+(?=[A-Z])', insights.summary)
         if m_sent:
@@ -441,89 +627,73 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
         else:
             lead, rest = insights.summary, ""
 
-        # Measure text height to size box dynamically
-        lead_lines = _estimate_lines(lead, font_size=32, max_width=CW - 40, line_height=1.4)
-        rest_lines = _estimate_lines(rest, font_size=28, max_width=CW - 40, line_height=1.4) if rest else 0
+        lead_lines = _estimate_lines(lead, font_size=32, max_width=CONTENT_W - 40, line_height=1.4)
+        rest_lines = _estimate_lines(rest, font_size=28, max_width=CONTENT_W - 40, line_height=1.4) if rest else 0
         box_h = 26 + int(lead_lines * 32 * 1.4) + (int(rest_lines * 28 * 1.4) if rest else 0) + 26
         box_h = max(box_h, 100)
 
-        page.rect(MARGIN - 10, y, CW + 20, box_h, fill=LIGHT_BG)
+        page.rect(CONTENT_X - 10, y, CONTENT_W + 20, box_h, fill=LIGHT_BG)
         ty = y + 22
-        ty = page.text(MARGIN + 20, ty, lead,
-                       font_size=32, bold=True, color=TEXT_DARK, max_width=CW - 40)
+        ty = page.text(CONTENT_X + 10, ty, lead,
+                       font_size=32, bold=True, color=TEXT_DARK, max_width=CONTENT_W - 40)
         if rest:
-            page.text(MARGIN + 20, ty + 4, rest,
-                      font_size=28, color=TEXT_MID, max_width=CW - 40)
+            page.text(CONTENT_X + 10, ty + 4, rest,
+                      font_size=28, color=TEXT_MID, max_width=CONTENT_W - 40)
         y += box_h + 16
 
-    # ════════════════════════════════════════════════════════════════
-    # METRIC CHIPS — two rows of pill badges
-    # ════════════════════════════════════════════════════════════════
-    chips = _build_chips_list(data, m, pc)
-    y = _draw_chips(page, chips, x=MARGIN, y=y, content_width=CW)
-    y += 28
+    # ── Section I + II titles side by side ───────────────────────────
+    half_w = CONTENT_W // 2 - 20
 
-    # ── Section divider ──────────────────────────────────────────────
-    page.hline(y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=1)
-    y += 20
-
-    # ════════════════════════════════════════════════════════════════
-    # ROW 1: ER Attribution (left) + HR Cascade (right)
-    # ════════════════════════════════════════════════════════════════
-    half_w = CW // 2 - 20  # gap between charts
-
-    # Section I + II titles
-    page.text(MARGIN, y, "I. Return Attribution",
+    page.text(CONTENT_X, y, "I. Return Attribution",
               font_size=38, bold=True, color=NAVY)
-    page.text(MARGIN + half_w + 40, y, "II. Hedge-Ratio Cascade",
+    page.text(CONTENT_X + half_w + 40, y, "II. Hedge-Ratio Cascade",
               font_size=38, bold=True, color=NAVY)
     y += 56
 
     # Insight subheaders
     if insights.er_insight:
-        page.text(MARGIN, y, insights.er_insight,
+        page.text(CONTENT_X, y, insights.er_insight,
                   font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
     if insights.hr_insight:
-        page.text(MARGIN + half_w + 40, y, insights.hr_insight,
+        page.text(CONTENT_X + half_w + 40, y, insights.hr_insight,
                   font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
     y += 72
 
     # ── compute remaining space and split 48/52 between charts and table ──
     FOOTER_Y = H - 90
-    # reserve: divider(1) + gap(20) + III title(38*1.4≈56) + insight(26*1.4≈40) + gap(28) + footer(90)
     III_HEADER_H = 20 + 56 + 40 + 28
     remaining = FOOTER_Y - y - III_HEADER_H
     chart_h = int(remaining * 0.48)
-    table_h = remaining - chart_h - 36  # 36px gap between chart row and table
+    table_h = remaining - chart_h - 36
 
     # ER hbar chart
     er_fig = _make_er_chart(m, pal)
-    page.paste_figure(er_fig, MARGIN, y, half_w, chart_h)
+    page.paste_figure(er_fig, CONTENT_X, y, half_w, chart_h)
 
     # HR stacked bar chart
     hr_fig = _make_hr_chart(m, pal)
-    page.paste_figure(hr_fig, MARGIN + half_w + 40, y, half_w, chart_h)
+    page.paste_figure(hr_fig, CONTENT_X + half_w + 40, y, half_w, chart_h)
     y += chart_h + 36
 
     # ── Section divider ──────────────────────────────────────────────
-    page.hline(y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=1)
+    page.hline(y, x0=CONTENT_X, x1=W - MARGIN, color=BORDER, thickness=1)
     y += 20
 
     # ════════════════════════════════════════════════════════════════
-    # ROW 2: Peer Comparison Table (full width)
+    # ROW 2: Peer Comparison Table
     # ════════════════════════════════════════════════════════════════
     peer_label = _peer_table_title(pc, data)
-    page.text(MARGIN, y, f"III. Peer Benchmarking  ·  {peer_label}",
+    page.text(CONTENT_X, y, f"III. Peer Benchmarking  ·  {peer_label}",
               font_size=38, bold=True, color=NAVY)
     y += 56
 
     if insights.peer_insight:
-        page.text(MARGIN, y, insights.peer_insight,
-                  font_size=26, italic=True, color=TEAL, max_width=CW)
+        page.text(CONTENT_X, y, insights.peer_insight,
+                  font_size=26, italic=True, color=TEAL, max_width=CONTENT_W)
     y += 40
 
     table_fig = _make_peer_table(data, pc, m, pal)
-    page.paste_figure(table_fig, MARGIN, y, CW, table_h)
+    page.paste_figure(table_fig, CONTENT_X, y, CONTENT_W, table_h)
     y += table_h + 20
 
     # ════════════════════════════════════════════════════════════════
