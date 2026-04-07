@@ -673,10 +673,9 @@ def _build_peer_table_trace(
     pal = T.palette
     fonts = T.fonts
 
-    headers = ["Ticker", "Cap Wt%", "Vol (23d)", "L3 Res ER%", "vs Peer Avg", "L3 Mkt \u03b2"]
+    headers = ["Ticker", "Company", "Cap Wt%", "Vol (23d)", "L3 Res ER%", "vs Peer Avg", "L3 Mkt \u03b2"]
 
     if pc is None or pc.peer_detail.empty:
-        # Empty table with message
         return go.Table(
             header=dict(
                 values=[f"<b>{h}</b>" for h in headers],
@@ -687,7 +686,7 @@ def _build_peer_table_trace(
                 height=30,
             ),
             cells=dict(
-                values=[["No peer data available"]] + [[""]] * 5,
+                values=[["No peer data available"]] + [[""]] * (len(headers) - 1),
                 fill_color="#ffffff",
                 font=dict(family=fonts.family, size=fonts.table_body, color=pal.text_mid),
                 align="center",
@@ -696,14 +695,16 @@ def _build_peer_table_trace(
         )
 
     # Build rows: target first, then top peers
-    tickers, weights, vols, res_ers, vs_avgs, mkt_betas = [], [], [], [], [], []
+    tickers, companies, weights, vols, res_ers, vs_avgs, mkt_betas = [], [], [], [], [], [], []
 
     # Target row
     target_res = pc.target_l3_residual_er
     spread = pc.selection_spread
     target_vol_raw = _g(m, "vol_23d", "volatility")
+    target_company = data.company_name
 
     tickers.append(f"<b>\u2605 {data.ticker}</b>")
+    companies.append(f"<b>{target_company}</b>")
     weights.append("—")
     vols.append(f"{float(target_vol_raw)*100:.1f}%" if target_vol_raw else "—")
     res_ers.append(T.format_pct(target_res))
@@ -730,7 +731,11 @@ def _build_peer_table_trace(
         if p_mkt_hr is None or (hasattr(p_mkt_hr, '__float__') and pd.isna(p_mkt_hr)):
             p_mkt_hr = row.get("l3_mkt_hr")
 
+        cn = row.get("company_name", "")
+        cn = str(cn) if cn and not (isinstance(cn, float) and pd.isna(cn)) else ""
+
         tickers.append(str(t))
+        companies.append(cn)
         weights.append(f"{float(row.get('weight', 0)) * 100:.1f}%")
         vols.append(f"{float(p_vol)*100:.1f}%" if p_vol is not None else "—")
         res_ers.append(T.format_pct(p_res))
@@ -742,20 +747,20 @@ def _build_peer_table_trace(
                  for i in range(n_rows)]
 
     return go.Table(
-        columnwidth=[1.2, 0.8, 0.8, 0.9, 0.9, 0.8],
+        columnwidth=[0.9, 2.0, 0.7, 0.7, 0.8, 0.9, 0.7],
         header=dict(
             values=[f"<b>{h}</b>" for h in headers],
             fill_color=pal.navy,
             font=dict(family=fonts.family, size=fonts.table_header, color="#ffffff"),
-            align="center",
+            align=["center", "left", "center", "center", "center", "center", "center"],
             line=dict(color=pal.navy, width=1),
             height=30,
         ),
         cells=dict(
-            values=[tickers, weights, vols, res_ers, vs_avgs, mkt_betas],
-            fill_color=[row_fills] * 6,
+            values=[tickers, companies, weights, vols, res_ers, vs_avgs, mkt_betas],
+            fill_color=[row_fills] * 7,
             font=dict(family=fonts.family, size=fonts.table_body, color=pal.text_dark),
-            align="center",
+            align=["center", "left", "center", "center", "center", "center", "center"],
             line=dict(color=pal.axis_line, width=0.5),
             height=26,
         ),

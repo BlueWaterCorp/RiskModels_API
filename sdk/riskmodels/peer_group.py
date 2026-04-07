@@ -142,6 +142,7 @@ class PeerGroupProxy:
     peer_tickers: list[str]
     weights: dict[str, float]
     weight_source: str
+    peer_names: dict[str, str] = field(default_factory=dict)  # ticker → company_name
     lineage: RiskLineage = field(default_factory=RiskLineage)
 
     @property
@@ -293,6 +294,15 @@ class PeerGroupProxy:
             weights = {t: 1.0 / n for t in all_peer_tickers} if n else {}
             weight_source = "equal"
 
+        # Build ticker → company_name map from the same peers_df (no extra API call)
+        peer_names: dict[str, str] = {}
+        if "company_name" in peers_df.columns:
+            for _, row in peers_df.iterrows():
+                t = str(row.get("ticker", "")).upper()
+                cn = row.get("company_name")
+                if t and cn and isinstance(cn, str):
+                    peer_names[t] = cn
+
         return cls(
             target_ticker=target_ticker,
             target_symbol=target_symbol,
@@ -302,6 +312,7 @@ class PeerGroupProxy:
             peer_tickers=sorted(weights.keys()),
             weights=weights,
             weight_source=weight_source,
+            peer_names=peer_names,
         )
 
     # ------------------------------------------------------------------
@@ -370,6 +381,13 @@ class PeerGroupProxy:
                     w = w / w.sum()
                     p_vol = float((valid_vols.loc[common].astype(float) * w).sum())
 
+        # Inject company_name into per_ticker so renderers have display names
+        peer_detail = peer_analysis.per_ticker.copy()
+        if self.peer_names and not peer_detail.empty:
+            peer_detail["company_name"] = peer_detail.index.map(
+                lambda t: self.peer_names.get(str(t).upper(), "")
+            )
+
         return PeerComparison(
             target_ticker=self.target_ticker,
             peer_group_label=self.label,
@@ -380,7 +398,7 @@ class PeerGroupProxy:
             selection_spread=spread,
             target_vol=t_vol,
             peer_avg_vol=p_vol,
-            peer_detail=peer_analysis.per_ticker,
+            peer_detail=peer_detail,
         )
 
     def as_positions(self) -> list[dict[str, Any]]:
