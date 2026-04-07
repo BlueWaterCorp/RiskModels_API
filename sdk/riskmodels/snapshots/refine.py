@@ -51,8 +51,15 @@ PAGE_REGISTRY: dict[str, dict[str, Any]] = {
         "render_png_fn": "render_r1_to_png",
         "render_json_fn": "render_r1_to_json",
     },
+    "p1": {
+        "label": "P1 Stock Performance",
+        "module": "riskmodels.snapshots.p1_stock_performance",
+        "data_cls": "P1Data",
+        "fetch_fn": "get_data_for_p1",
+        "render_fn": "render_p1_to_pdf",
+        "render_png_fn": "render_p1_to_png",
+    },
     # Future pages:
-    # "p1": { ... },
     # "r2": { ... },
 }
 
@@ -331,7 +338,7 @@ def main():
     parser.add_argument("ticker", help="Stock ticker (e.g. NVDA)")
     parser.add_argument(
         "--page", default="r1", choices=list(PAGE_REGISTRY.keys()),
-        help="Snapshot page to refine (default: r1)",
+        help=f"Snapshot page to refine (default: r1) — choices: {', '.join(PAGE_REGISTRY.keys())}",
     )
     parser.add_argument(
         "-p", "--prompt", default=None,
