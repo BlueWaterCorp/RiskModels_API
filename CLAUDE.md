@@ -1,30 +1,58 @@
 # RiskModels API — Agent Instructions
 
 ## Project Identity
-This is the **RiskModels API** — a Next.js + Supabase platform serving institutional equity risk analytics. The Python SDK (`sdk/riskmodels/`) provides the programmatic client and visualization layer.
+This is the **RiskModels API** — a Next.js + Supabase platform serving institutional equity risk analytics. The Python SDK (`sdk/riskmodels/`) provides the programmatic client, snapshot PDF pipeline, and visualization layer.
 
 ## Snapshot Suite (Primary Focus)
-We are building an **Institutional PDF Snapshot Suite** — four quadrant reports that cover every combination of current/history × stock/portfolio analysis.
+We are building an **Institutional PDF Snapshot Suite** — eight 1-page reports across a 2×4 matrix: Risk (R1–R4) × Performance (P1–P4).
 
-### The 4 Quadrants
-| ID | Combo | Deliverable | Data Source |
+### The R/P Matrix
+| ID | Combo | Deliverable | Status |
 |:---|:---|:---|:---|
-| **S1** | Current × Stock | Forensic Deep-Dive | `GET /api/metrics/{ticker}` + PeerGroupProxy |
-| **S2** | History × Stock | Attribution Waterfall | `POST /api/batch/analyze` (time series) |
-| **S3** | Current × Portfolio | Concentration Mekko | PeerGroupProxy.compare() per holding |
-| **S4** | History × Portfolio | Style Drift Trend | PeerGroupProxy + returns panel |
+| **R1** | Current × Stock | Factor Risk Profile | **✅ Shipped** |
+| **R2** | History × Stock | Risk Attribution Drift | Planned |
+| **R3** | Current × Portfolio | Concentration Mekko | Planned |
+| **R4** | History × Portfolio | Style Drift | Planned |
+| **P1** | Current × Stock | Return & Relative Perf | Planned (helpers ready) |
+| **P2** | History × Stock | Cumulative Performance | Planned (helpers ready) |
+| **P3** | Current × Portfolio | Return Contribution | Planned |
+| **P4** | History × Portfolio | Portfolio vs Benchmark | Planned |
+
+Legacy S1 (Forensic) and S2 (Waterfall) are shipped but use the older WeasyPrint pipeline.
+
+### Rendering Architecture (Pure Matplotlib)
+All R/P snapshots use the pure-Matplotlib pipeline — no WeasyPrint, no HTML. See `docs/SNAPSHOT_FRONTEND_ARCH.md`.
+
+```
+fetch_stock_context(ticker, client) → StockContext
+PeerGroupProxy.from_ticker(client, ticker) → PeerGroupProxy
+  ↓
+get_data_for_XX(ticker, client) → XXData dataclass
+  ↓ .to_json()
+{TICKER}_XX_cache.json           ← JSON handshake point
+  ↓ .from_json()
+render_XX_to_pdf(data, path) → PDF   (< 0.3s, no API calls)
+```
+
+**Iterative refinement:** `python -m riskmodels.snapshots.refine NVDA` — caches JSON, hot-reloads modules, re-renders in ~0.1s per iteration.
 
 ### Design Standards (Consultant Navy)
+All constants in `_theme.py` (THEME singleton). Never hardcode colors.
 ```python
 PALETTE = {
-    "primary":   "#002a5e",  # Navy
-    "secondary": "#006f8e",  # Teal
-    "alpha":     "#00AA00",  # Green (positive)
-    "warning":   "#E07000",  # Orange (negative/warning)
+    "navy":    "#002a5e",  # Headers, primary
+    "teal":    "#006f8e",  # Sector, secondary
+    "slate":   "#2a7fbf",  # Subsector, tertiary
+    "green":   "#00AA00",  # Positive / residual
+    "orange":  "#E07000",  # Negative / warning
 }
-LAYOUT = "Letter Landscape"  # 11×8.5 in, 300 DPI
-ENGINE = "WeasyPrint + Matplotlib"
+LAYOUT = "Letter Landscape (11×8.5in), 300 DPI"
+ENGINE = "Pure Matplotlib — SnapshotPage (GridSpec 20×12)"
+FONT = "Inter (fallback: Liberation Sans → DejaVu → Arial)"
 ```
+
+### Chart Primitives (`_charts.py`)
+9 reusable functions: `chart_hbar`, `chart_grouped_vbar`, `chart_table`, `chart_stacked_area`, `chart_multi_line`, `chart_waterfall`, `chart_heatmap`, `chart_histogram`, `chart_bullet`. All use FancyBboxPatch rounded bars with subtle shadows.
 
 ### Identity Rules
 - **`symbol`** (FactSet ID) = internal join key. Never expose to users.
@@ -34,31 +62,41 @@ ENGINE = "WeasyPrint + Matplotlib"
 ## PeerGroupProxy (Intermediary Object)
 **Location:** `sdk/riskmodels/peer_group.py`
 
-The PeerGroupProxy bridges a single stock to a synthetic portfolio of its **subsector** peers (default). Subsector is the right granularity — comparing NVDA against all of XLK (MSFT, AAPL, etc.) is too broad to isolate selection skill. The default `subsector_etf` gives you semiconductors (SMH), not broad tech.
+Bridges a single stock to a synthetic portfolio of its **subsector** peers. Uses Supabase `ticker_metadata` table directly (via `client.get_ticker_metadata()`) — zero extra API calls for peer discovery and cap-weighting.
 
-**Usage:**
 ```python
 from riskmodels.peer_group import PeerGroupProxy
 
-pg = PeerGroupProxy.from_ticker(client, "NVDA")          # → subsector peers (SMH)
-comparison = pg.compare(client)                            # → PeerComparison
-comparison.selection_spread                                # → target - peer avg residual ER
+pg = PeerGroupProxy.from_ticker(client, "NVDA")  # → SOXX subsector peers
+comparison = pg.compare(client)                    # → PeerComparison
+comparison.selection_spread                        # → target - peer avg residual ER
 ```
 
-**Architecture:**
-- `from_ticker()` → resolves subsector_etf (default), filters universe, cap-weights peers. Falls back to sector_etf if subsector unavailable.
-- `compare()` → calls `analyze_portfolio()` on peers, computes spreads (THIS IS THE FETCH/RENDER BOUNDARY)
-- Returns `PeerComparison` dataclass — renderers consume this, never call the API directly
+**Key details:**
+- `from_ticker()` queries `ticker_metadata` for target's subsector_etf, then queries all matching peers ordered by market_cap. Cap-weights from the same table — one Supabase call, no batch-analyze needed.
+- DB value for subsector_etf is source of truth; `sector_etf_override` is fallback only.
+- Falls back from subsector_etf → sector_etf if too few peers.
+- Vol derived from `stock_var` when `vol_23d` unavailable: `sqrt(stock_var × 252)`.
+- `compare()` calls `analyze_portfolio()` on peers → `PeerComparison` dataclass (the fetch/render boundary).
 
-**Fetch/Render Rule:** Every snapshot has two functions:
+## Metric Key Mapping
+The API returns abbreviated metric keys (`l3_mkt_hr`, `l3_res_er`, `l3_sec_hr`) but some code paths expect full names (`l3_market_hr`, `l3_residual_er`, `l3_sector_hr`). Use the `_g(full, abbr)` helper pattern:
 ```python
-get_data_for_sN(ticker, client) → dict | dataclass   # calls API + PeerGroupProxy
-render_sN_to_pdf(data, path)    → Path                # Jinja2 + Matplotlib only
+def _g(full: str, abbr: str) -> Any:
+    return m.get(full) if m.get(full) is not None else m.get(abbr)
 ```
-When the Supabase schema changes, only `get_data` is touched. Renderers stay stable.
+
+## Fetch/Render Rule
+Every snapshot has two clearly separated functions:
+```python
+get_data_for_XX(ticker, client) → dataclass   # calls API + PeerGroupProxy
+render_XX_to_pdf(data, path)    → Path         # pure Matplotlib, no network
+```
+When the Supabase schema changes, only `get_data` is touched. Renderers stay stable. The JSON file is the boundary between them.
 
 ## Data Contract (V3)
-- **`symbols`** — identity registry (symbol PK, ticker, sector_etf, subsector_etf, market_cap)
+- **`ticker_metadata`** — authoritative for sector/subsector mappings, company names, market caps. Used by PeerGroupProxy.
+- **`symbols`** — identity registry (symbol PK, ticker, sector_etf, subsector_etf)
 - **`security_history`** — long-form temporal (symbol, teo, periodicity, metric_key → value)
 - **`security_history_latest`** — materialized latest metrics per symbol
 - **`erm3_landing_chart_cache`** — pre-computed cumulative returns
@@ -73,22 +111,32 @@ Before building any API client or adding new HTTP/SDK calls:
 3. If MCP tools available: `riskmodels_list_endpoints` → `riskmodels_get_capability`
 
 ## Key Directories
-- `app/api/` — Next.js API routes
-- `sdk/riskmodels/` — Python SDK (client, visuals, performance)
-- `sdk/riskmodels/peer_group.py` — PeerGroupProxy (stock → portfolio bridge)
-- `sdk/riskmodels/portfolio_math.py` — Portfolio aggregation (weights, HR/ER)
-- `sdk/riskmodels/visuals/_mag7.py` — Cap-weighting pattern (reference for PeerGroupProxy)
-- `lib/dal/` — Data access layer (TypeScript)
-- `lib/risk/` — Risk computation services
-- `scripts/` — Utility scripts (visual gallery, preview, etc.)
-- `figures/` — Generated chart outputs
-- `supabase/migrations/` — Schema migrations
-- `docs/SNAPSHOT_ROADMAP.md` — Full planning doc with ADRs and implementation order
+```
+sdk/riskmodels/
+├── client.py              # RiskModelsClient + get_ticker_metadata()
+├── peer_group.py          # PeerGroupProxy + PeerComparison
+├── portfolio_math.py      # Portfolio aggregation (weights, HR/ER)
+├── snapshots/
+│   ├── _theme.py          # THEME singleton (Consultant Navy design system)
+│   ├── _page.py           # SnapshotPage layout engine (GridSpec)
+│   ├── _charts.py         # 9 reusable chart primitives
+│   ├── _data.py           # StockContext + return helpers
+│   ├── _json_io.py        # dump_json / load_json
+│   ├── r1_risk_profile.py # R1: Factor Risk Profile [✅ shipped]
+│   ├── refine.py          # Iterative refinement CLI
+│   ├── s1_forensic.py     # S1: Legacy Forensic (WeasyPrint)
+│   └── s2_waterfall.py    # S2: Legacy Waterfall (WeasyPrint)
+
+app/api/                   # Next.js API routes
+lib/dal/                   # Data access layer (TypeScript)
+lib/risk/                  # Risk computation services
+docs/                      # Architecture docs, roadmap, content map
+```
 
 ## Conventions
-- All chart scripts import the shared palette — never hardcode colors
-- PDF templates extend a base HTML layout with Consultant Navy branding
-- New snapshots must declare which quadrant (S1–S4) they target
-- Commit messages: imperative mood, reference quadrant if applicable (e.g., "S2: add 3yr waterfall chart")
-- Fetch/render separation: `get_data_for_sN()` and `render_sN_to_pdf()` are always separate functions
-- PeerGroupProxy is the shared dependency for S1 footer, S3, and S4 — always use `peer_group.py`, never rebuild the logic inline
+- All chart code imports THEME — never hardcode colors or font sizes
+- New snapshots must declare which R/P quadrant they target
+- Commit messages: imperative mood, reference quadrant (e.g., "R1: fix peer table vol derivation")
+- Fetch/render separation: `get_data_for_XX()` and `render_XX_to_pdf()` are always separate
+- PeerGroupProxy is the shared peer context for all stock snapshots — always use `peer_group.py`
+- Files go inside `RiskModels_API/` repo tree, never loose under workspace root

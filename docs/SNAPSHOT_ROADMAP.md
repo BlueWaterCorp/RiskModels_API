@@ -1,16 +1,69 @@
 # Snapshot Roadmap: Institutional PDF Suite
 
-> Working document for the 4-quadrant snapshot system. Updated as implementation progresses.
+> Working document for the snapshot system. Updated 2026-04-07.
+>
+> **Naming:** The original S1–S4 grid has been superseded by a 2×4 matrix:
+> Risk (R1–R4) and Performance (P1–P4). S1 and S2 remain as shipped legacy
+> implementations; R1/R2 will rebuild them on the new SnapshotPage engine.
 
 ## Status
 
 | ID | Name | Status | Script | Notes |
 |:---|:---|:---|:---|:---|
-| S1 | Forensic Deep-Dive (Current × Stock) | **Planning** | TBD | Single-stock L3 + peer context row |
-| S2 | Attribution Waterfall (History × Stock) | **Planning** | `visuals/waterfall.py` exists | Needs PDF wrapper + Consultant Navy |
-| S3 | Concentration Mekko (Current × Portfolio) | **Planning** | TBD | Uses PeerGroupProxy.compare() |
-| S4 | Style Drift Trend (History × Portfolio) | **Planning** | TBD | Uses PeerGroupProxy + returns panel |
-| -- | **PeerGroupProxy** | **✅ Stub complete** | `sdk/riskmodels/peer_group.py` | Intermediary object: stock → portfolio |
+| S1 | Forensic Deep-Dive (Current × Stock) | **✅ Shipped** | `snapshots/s1_forensic.py` | Full get_data + render + JSON serialization |
+| S2 | Attribution Waterfall (History × Stock) | **✅ Shipped** | `snapshots/s2_waterfall.py` | Full get_data + render + JSON serialization |
+| -- | **JSON-First Pipeline** | **✅ Shipped** | `snapshots/_json_io.py` | `to_json()` / `from_json()` + CLI `fetch` / `render` |
+| -- | **Design System (Phase A)** | **✅ Shipped** | `snapshots/_theme.py` | THEME, Palette, Typography, Layout, Strokes |
+| -- | **Chart Primitives (Phase A)** | **✅ Shipped** | `snapshots/_charts.py` | 9 reusable chart functions |
+| -- | **Layout Engine (Phase A)** | **✅ Shipped** | `snapshots/_page.py` | SnapshotPage — GridSpec-based, pure Matplotlib |
+| -- | **Data Layer** | **✅ Shipped** | `snapshots/_data.py` | StockContext, fetch_stock_context, return helpers |
+| -- | **PeerGroupProxy** | **✅ Shipped** | `peer_group.py` | Stock → synthetic peer portfolio bridge |
+| R1 | Factor Risk Profile (Current × Stock) | **✅ Shipped** | `snapshots/r1_risk_profile.py` | Pure Matplotlib, 20×12 grid, peer table + AI narrative |
+| -- | **Iterative Refinement CLI** | **✅ Shipped** | `snapshots/refine.py` | Hot-reload + re-render loop (~0.1s), JSON cache, version log |
+| R2 | Risk Attribution Drift (History × Stock) | Planned | — | Rebuild S2 on SnapshotPage + narrative |
+| R3 | Concentration Mekko (Current × Portfolio) | Planned | — | Needs portfolio-mode batch analyze |
+| R4 | Style Drift (History × Portfolio) | Planned | — | Heaviest data lift |
+| P1 | Return & Relative Performance (Current × Stock) | Planned | — | Uses fetch_stock_context |
+| P2 | Cumulative Performance (History × Stock) | Planned | — | All helpers exist in _data.py |
+| P3 | Return Contribution (Current × Portfolio) | Planned | — | Waterfall + hit-rate donut |
+| P4 | Portfolio vs Benchmark (History × Portfolio) | Planned | — | Active return + rolling IR |
+
+---
+
+## Architecture: JSON-First Snapshot Pipeline
+
+Every snapshot follows a 3-step pipeline with a JSON handshake point:
+
+```
+fetch(ticker, client)  →  {TICKER}_r1.json  →  render(json)  →  PDF
+     [needs API]            [handshake]          [offline]
+```
+
+**Why:** The JSON file is a self-contained artifact. An agent (Sonnet, Cursor)
+can iterate on chart layouts by consuming only the JSON + render code — zero API
+keys, zero Supabase context, sub-second feedback loops.
+
+**Content map:** See `docs/SNAPSHOT_CONTENT_MAP.md` for the full 8-page spec
+with wireframes, JSON schemas, and AI narrative templates.
+
+**CLI (per-page):**
+```bash
+python -m riskmodels.snapshots.r1_risk_profile fetch NVDA -o nvda_r1.json
+python -m riskmodels.snapshots.r1_risk_profile render nvda_r1.json -o NVDA_R1.pdf
+python -m riskmodels.snapshots.r1_risk_profile run NVDA -o NVDA_R1.pdf --json nvda_r1.json
+```
+
+**Iterative refinement CLI:**
+```bash
+# First run fetches from API and caches JSON; subsequent runs use cache (~0.1s renders)
+python -m riskmodels.snapshots.refine NVDA --page r1
+
+# One-shot with inline prompt:
+python -m riskmodels.snapshots.refine NVDA -p "thinner bars, larger table font" --once
+
+# Force re-fetch from API:
+python -m riskmodels.snapshots.refine NVDA --refetch
+```
 
 ---
 
@@ -37,26 +90,40 @@ BWMACRO is a **Dagster pipeline repo** for ETF_Hedges SaaS — wrong dependency 
 
 ---
 
-## ADR-002: Fetch/Render Separation (from Gemini, adopted)
+## ADR-002: Fetch/Render Separation
 
 **Decision:** Every snapshot has two clearly separated functions.
 
 ```
-get_data_for_sN(ticker_or_portfolio, client) → dict | dataclass
-render_sN_to_pdf(data, output_path)          → Path
+get_data_for_XX(ticker_or_portfolio, client) → dataclass
+render_XX_to_pdf(data, output_path)          → Path
 ```
 
-**Why:** When the Supabase schema evolves (it does frequently — see migration count), only `get_data` changes. The complex Jinja2 + Matplotlib layouts in `render` stay untouched.
+**Why:** When the Supabase schema evolves (it does frequently — see migration count), only `get_data` changes. The complex chart layouts in `render` stay untouched. The JSON file is the boundary between them.
 
-**Implementation:** The `PeerGroupProxy.compare()` method IS the `get_data` step. It returns a `PeerComparison` dataclass that renderers consume.
+**Implementation:** The `PeerComparison` dataclass and `StockContext` dataclass are the canonical boundary objects. Both support `to_json()` / `from_json()`.
+
+---
+
+## ADR-003: JSON-First Architecture (adopted 2026-04-07)
+
+**Decision:** Every snapshot serializes its data contract to a JSON intermediate file before rendering.
+
+**Why:**
+1. Creates a "handshake" point — agents iterate on charts without API access
+2. Enables golden-file testing (version-control the JSON, diff chart regressions)
+3. Separates slow fetch (~10s, N API calls) from fast render (<1s, pure Matplotlib)
+4. Each JSON includes an AI narrative string — the "so what" paragraph
+
+**Implementation:** `_json_io.py` provides `dump_json()` / `load_json()`. Each data
+contract (`S1Data`, `S2Data`, future `R1Data`, etc.) has `to_json()` / `from_json()` classmethods.
 
 ---
 
 ## Global Design Standards (Consultant Navy)
 
 ```python
-# To be added to sdk/riskmodels/visuals/styles.py
-CONSULTANT_NAVY = {
+PALETTE = {
     "primary":   "#002a5e",  # Navy — titles, headers, borders
     "secondary": "#006f8e",  # Teal — secondary charts, annotations
     "alpha":     "#00AA00",  # Green — positive returns, alpha signals
@@ -65,12 +132,12 @@ CONSULTANT_NAVY = {
 PDF_LAYOUT = {
     "size": "Letter Landscape",  # 11 × 8.5 in
     "dpi": 300,
-    "engine": "WeasyPrint",
+    "engine": "Matplotlib + SnapshotPage (GridSpec)",
     "chart_engine": "Matplotlib",
 }
 ```
 
-These constants join the existing palettes in `styles.py` (alongside `L3_MARKET`, `TERMINAL_*`, `GITHUB_*`). All snapshot scripts import from there.
+All constants live in `_theme.py` (THEME singleton). Charts import from `_charts.py`.
 
 ## Identity Convention
 
@@ -82,143 +149,65 @@ These constants join the existing palettes in `styles.py` (alongside `L3_MARKET`
 
 ---
 
-## PeerGroupProxy — Architecture
-
-**Location:** `sdk/riskmodels/peer_group.py`
-
-**What it is:** An intermediary object that bridges a single stock to a synthetic portfolio of its **subsector** peers (default). Given `NVDA`, it produces a cap-weighted portfolio of all Semiconductor stocks (SMH universe), enabling relative context tables on every snapshot. Subsector is the default because sector-level (XLK) is too broad to isolate selection skill.
-
-**Object graph:**
-```
-Ticker ("NVDA")
-  → PeerGroupProxy.from_ticker(client, "NVDA")
-    → resolves subsector_etf = "SMH" via GET /metrics/NVDA (subsector is default)
-    → filters universe for SMH peers via GET /tickers?include_metadata=true
-    → cap-weights via GET /metrics/{peer} for each peer
-    → PeerGroupProxy(target="NVDA", peers=["AMD","INTC",...], weights={...})
-
-PeerGroupProxy.compare(client)
-  → calls client.analyze_portfolio(weights) — reuses existing SDK pipeline
-  → returns PeerComparison(target_metrics, peer_portfolio, selection_spread)
-```
-
-**Key design choices:**
-- Reuses `analyze_portfolio()` — no new aggregation math
-- `compare()` is the fetch/render boundary — returns data, no charts
-- `as_positions()` makes it pluggable into any existing SDK portfolio method
-- Cap-weight fallback to equal-weight when < 3 peers have market_cap (same as `_mag7.py`)
-
----
-
-## S1: Forensic Deep-Dive (Current × Stock)
-
-**Data function:** `get_data_for_s1(ticker, client)`
-- `client.get_metrics(ticker)` → L3 decomposition, hedge ratios, ER
-- `PeerGroupProxy.from_ticker(client, ticker).compare(client)` → relative context
-
-**Layout:**
-- Header: ticker, company name, as-of date, sector_etf badge
-- Left panel: L3 explainability stacked bar (Market / Sector / Subsector / Residual)
-- Right panel: Hedge ratio table with conditional formatting (green/orange vs peer avg)
-- Footer: peer comparison row — target vs peer avg for vol, L3 residual ER, selection spread
-
-**Peer context enrichment:** The footer row is what makes S1 more than just a raw metric dump. Showing "NVDA residual ER = 42% vs. XLK peer avg = 31%" immediately tells the reader this stock has unusually high idiosyncratic risk.
-
-**Open questions:**
-- [ ] Include mini sparkline of last 60 days' residuals?
-- [ ] Show L1/L2 alongside L3, or L3 only?
-- [ ] Peer comparison: sector_etf only, or both sector + subsector rows?
-
-## S2: Attribution Waterfall (History × Stock)
-
-**Data function:** `get_data_for_s2(ticker, client, years=1)`
-- `client.batch_analyze([ticker], ["returns", "full_metrics"], years=years)` → time series
-- Optional: `PeerGroupProxy.compare(client, include_returns=True)` for relative waterfall
-
-**Layout:**
-- Waterfall chart: cumulative return decomposed into Market + Sector + Subsector + Residual
-- Existing `visuals/waterfall.py` has core chart logic — retheme to Consultant Navy
-- Optional overlay: peer-group cumulative return as dotted benchmark line
-
-**Open questions:**
-- [ ] Default window: 1Y or 3Y?
-- [ ] Overlay total return line on waterfall?
-- [ ] Add peer benchmark overlay or keep single-stock only?
-
-## S3: Concentration Mekko (Current × Portfolio)
-
-**Data function:** `get_data_for_s3(tickers_or_portfolio, client)`
-- Uses `PeerGroupProxy.compare(client)` for each holding, OR
-- Uses `client.analyze_portfolio(positions)` for a user-defined portfolio
-- Enriches with sector_etf per holding for color coding
-
-**Layout:**
-- Mekko/Marimekko chart: X = weight, Y = L3 residual ER
-- Each block = one holding, colored by sector_etf
-- Sidebar: top 5 concentration risks (highest weight × residual ER)
-
-**Dependencies:**
-- [x] PeerGroupProxy (stub complete)
-- [ ] Mekko chart function in `visuals/`
-- [ ] Portfolio definition object (Mag8 default, custom via API)
-
-## S4: Style Drift Trend (History × Portfolio)
-
-**Data function:** `get_data_for_s4(ticker, client, years=3)`
-- `PeerGroupProxy.from_ticker(client, ticker)` (defaults to `subsector_etf`)
-- `proxy.compare(client, include_returns=True, years=3)` → returns panel
-- Compute rolling 63d hedge ratios from returns panel
-
-**Layout:**
-- Area chart: stacked rolling L3 hedge ratios (Market / Sector / Subsector) over time
-- Overlay: residual ER band showing selection skill trend
-- Annotation layer: regime markers (if available from macro_factors)
-
-**Dependencies:**
-- [x] PeerGroupProxy (stub complete)
-- [ ] Rolling HR computation from returns panel
-- [ ] Area chart function in `visuals/`
-
----
-
-## Implementation Order
+## Implementation Phases
 
 ```
-Phase 1 — Foundation
-  1. Add CONSULTANT_NAVY + PDF_LAYOUT to styles.py
-  2. Wire PeerGroupProxy into sdk __init__.py exports
-  3. Write test: PeerGroupProxy.from_ticker("NVDA") end-to-end
+Phase 0 (done):  Fix /api/tickers subsector gap, wire SDK exports
+Phase 1 (done):  Consultant Navy palette, design system, chart primitives, layout engine
+Phase 2 (done):  S1 Forensic + S2 Waterfall (end-to-end get_data + render)
+Phase 3 (done):  JSON-first pipeline (_json_io, to_json/from_json, CLI fetch/render)
+Phase 4 (done):  Content map for all 8 pages (docs/SNAPSHOT_CONTENT_MAP.md)
 
-Phase 2 — S1 (proves pipeline)
-  4. get_data_for_s1() → returns dict
-  5. Jinja2 HTML template (Letter Landscape, Consultant Navy)
-  6. render_s1_to_pdf() via WeasyPrint
-  7. Compare output against NVDA_Forensic.pdf reference
+Phase 5 (done):  R1 — Factor Risk Profile
+                   - Built on SnapshotPage (pure Matplotlib, no WeasyPrint) ✅
+                   - StockContext + PeerGroupProxy.compare() → R1Data ✅
+                   - AI narrative block (3 sentences: peer context, dominant driver, vol frame) ✅
+                   - Proves the new rendering architecture end-to-end ✅
+                   - PeerGroupProxy rewritten to query Supabase ticker_metadata directly ✅
+                   - Iterative refinement CLI: refine.py (hot-reload, JSON cache, ~0.1s renders) ✅
+                   - Architecture doc: docs/SNAPSHOT_FRONTEND_ARCH.md ✅
 
-Phase 3 — S2 (extends existing charts)
-  8. Retheme visuals/waterfall.py to Consultant Navy
-  9. get_data_for_s2() + render_s2_to_pdf()
+Phase 6 (next):  P1 + P2 — easiest performance pages
+                   - P1 uses fetch_stock_context → trailing_returns + relative_returns
+                   - P2 uses cumulative_returns + max_drawdown_series + rolling_sharpe
+                   - All helper functions already exist in _data.py
 
-Phase 4 — S3/S4 (portfolio quadrants)
-  10. Mekko chart function + get_data_for_s3()
-  11. Rolling HR computation + get_data_for_s4()
-  12. Full 4-page combined snapshot option
+Phase 7:         R2 — Risk Attribution Drift (S2 rebuilt on SnapshotPage)
+
+Phase 8:         R3 + P3 — portfolio pages (need batch/portfolio mode)
+                   - Run subsector_etf coverage SQL first
+                   - May need batch market_cap endpoint for cap-weighting at scale
+
+Phase 9:         R4 + P4 — portfolio history (heaviest data lift)
 ```
 
 ---
 
-## Agent Workflow (Opus / Sonnet Split)
+## Known Risks / Blockers
+
+- `subsector_etf` coverage: 2,812/3,729 tickers (75%) populated in `ticker_metadata`. The 877 missing are OTC/foreign stubs (F-suffix). 40 XLY tickers missing subsector — only real gap to backfill.
+- Cap-weighting now uses `ticker_metadata.market_cap` in a single query — the N+1 API problem is **resolved**.
+- Architecture fork: S1/S2 use WeasyPrint HTML pipeline; R-series uses pure Matplotlib via SnapshotPage. **R1 proved the pure approach works.**
+- alpha_forensic.py (BWMACRO) uses raw httpx, not SDK client → deprecate after R1 matches quality
+
+---
+
+## Agent Workflow
 
 **Opus 4.6** handles:
-- Architecture decisions (ADRs above)
+- Architecture decisions (ADRs)
 - Planning updates (this file)
-- PeerGroupProxy design + review
-- Cross-repo coordination (ERM3 ↔ Risk_Models ↔ RiskModels_API)
+- Content map / JSON schema design
+- Cross-repo coordination
 
 **Sonnet 4.6** handles:
-- Module implementation (the `get_data` + `render` functions)
+- Module implementation (get_data + render functions)
 - Chart styling and Matplotlib code
-- Jinja2 template iteration
+- Template iteration (hand it JSON + render code, nothing else)
 - Test writing
 
-**Rule:** Never let a single agent write fetch + render in the same block. The `get_data` function returns a clean dict/dataclass. The `render` function takes that dict and populates the template. This separation is enforced by the `PeerComparison` dataclass boundary.
+**Rule:** The JSON file is the boundary between agents. Opus designs the schema, Sonnet implements the renderer. Neither needs the other's context.
+
+---
+
+*Last updated: 2026-04-07*

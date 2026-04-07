@@ -1,0 +1,5 @@
+# Snapshot output — generated PDFs, cached JSON, refinement logs
+# These are local artifacts, not committed to the repo
+*.pdf
+*.json
+*.jsonl

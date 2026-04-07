@@ -82,6 +82,8 @@ Prefer the Python SDK over raw REST for agent-native workflows — ticker resolu
 pip install riskmodels-py
 # Optional — xarray cube from batch Parquet/CSV:
 # pip install riskmodels-py[xarray]
+# Optional — snapshot PDF rendering:
+# pip install riskmodels-py[pdf]
 ```
 
 **Quickstart:**
@@ -92,6 +94,16 @@ from riskmodels import RiskModelsClient, to_llm_context
 client = RiskModelsClient.from_env()
 pa = client.analyze({"NVDA": 0.4, "AAPL": 0.6})
 print(to_llm_context(pa))
+```
+
+**Snapshot generation** (institutional PDF reports):
+
+```python
+from riskmodels.snapshots import get_data_for_r1, render_r1_to_pdf
+
+client = RiskModelsClient.from_env()
+data = get_data_for_r1("NVDA", client)       # fetch → R1Data (caches to JSON)
+render_r1_to_pdf(data, "NVDA_R1_Risk.pdf")   # render → PDF (~0.3s, no API)
 ```
 
 **Documentation:**
@@ -298,6 +310,7 @@ RiskModels_API/
 │   └── authentication.mdx
 ├── cli/                      # Command-line CLI (`riskmodels-cli`)
 ├── sdk/                      # Python SDK (`riskmodels-py`) source
+│   └── riskmodels/snapshots/ # Snapshot PDF pipeline (R1 shipped, R2–P4 planned)
 ├── examples/                 # Runnable examples
 │   ├── python/
 │   └── typescript/
@@ -341,6 +354,9 @@ RiskModels_API/
 | [RESPONSE_METADATA.md](RESPONSE_METADATA.md) | `_agent` block, response headers, pricing |
 | [ERROR_SCHEMA.md](ERROR_SCHEMA.md) | Error codes and recovery patterns |
 | [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) | OpenAPI 3.0.3 specification (v3.0.0-agent) |
+| [docs/SNAPSHOT_ROADMAP.md](docs/SNAPSHOT_ROADMAP.md) | Snapshot suite roadmap, ADRs, and implementation phases |
+| [docs/SNAPSHOT_CONTENT_MAP.md](docs/SNAPSHOT_CONTENT_MAP.md) | 8-page content spec with wireframes and JSON schemas |
+| [docs/SNAPSHOT_FRONTEND_ARCH.md](docs/SNAPSHOT_FRONTEND_ARCH.md) | Pure-Matplotlib rendering pipeline architecture |
 
 ---
 

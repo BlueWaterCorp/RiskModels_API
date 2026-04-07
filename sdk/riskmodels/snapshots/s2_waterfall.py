@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import json
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -74,6 +75,53 @@ class S2Data:
     meta: dict[str, Any]              # symbol-level metadata (sector_etf, subsector_etf, …)
     years: float = 1.0                # trailing window that was requested
     sdk_version: str = "0.3.0"
+
+    # ── JSON serialization ──────────────────────────────────────────
+
+    def to_json(self, path: str | Path) -> Path:
+        """Serialize this S2Data to a JSON file (the handshake artifact).
+
+        Usage::
+
+            data = get_data_for_s2("AAPL", client)
+            data.to_json("aapl_s2.json")       # fetch once
+            # later, offline:
+            data2 = S2Data.from_json("aapl_s2.json")
+            render_s2_to_pdf(data2, "AAPL_S2.pdf")
+        """
+        from ._json_io import dump_json
+        return dump_json(self, path)
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "S2Data":
+        """Reconstruct S2Data from a JSON file produced by ``to_json()``.
+
+        The ``history`` DataFrame is rebuilt from the records list in JSON.
+        """
+        from ._json_io import load_json
+
+        raw = load_json(path)
+        d = raw["data"]
+
+        # Rebuild history DataFrame
+        history_records = d.get("history", [])
+        history_df = pd.DataFrame(history_records)
+        if not history_df.empty and "date" in history_df.columns:
+            # Ensure date column is string (some renderers re-parse)
+            history_df["date"] = history_df["date"].astype(str)
+
+        return cls(
+            ticker=d["ticker"],
+            company_name=d["company_name"],
+            teo=d["teo"],
+            date_start=d["date_start"],
+            universe=d["universe"],
+            history=history_df,
+            metrics=d["metrics"],
+            meta=d["meta"],
+            years=d.get("years", 1.0),
+            sdk_version=d.get("sdk_version", "0.3.0"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -429,3 +477,79 @@ def render_s2_to_pdf(data: S2Data, output_path: str | Path) -> Path:
     out = Path(output_path)
     HTML(string=html_str).write_pdf(str(out))
     return out
+
+
+# ---------------------------------------------------------------------------
+# CLI entrypoint — python -m riskmodels.snapshots.s2_waterfall fetch|render
+# ---------------------------------------------------------------------------
+
+def _cli() -> None:
+    """Minimal CLI for the JSON-first snapshot workflow.
+
+    Usage::
+
+        # Step 1: fetch data (needs API key)
+        python -m riskmodels.snapshots.s2_waterfall fetch AAPL -o aapl_s2.json
+
+        # Step 2: render PDF (offline, no API needed)
+        python -m riskmodels.snapshots.s2_waterfall render aapl_s2.json -o AAPL_S2.pdf
+
+        # One-shot (fetch + render)
+        python -m riskmodels.snapshots.s2_waterfall run AAPL -o AAPL_S2.pdf
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m riskmodels.snapshots.s2_waterfall",
+        description="S2 Attribution Waterfall — JSON-first snapshot pipeline",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # fetch
+    p_fetch = sub.add_parser("fetch", help="Fetch data → JSON file")
+    p_fetch.add_argument("ticker", help="Stock ticker (e.g. AAPL)")
+    p_fetch.add_argument("-o", "--output", default=None, help="Output JSON path (default: {TICKER}_s2.json)")
+    p_fetch.add_argument("--years", type=float, default=1.0, help="Trailing window in years (default 1.0)")
+
+    # render
+    p_render = sub.add_parser("render", help="Render JSON → PDF file")
+    p_render.add_argument("json_file", help="Input JSON file from 'fetch'")
+    p_render.add_argument("-o", "--output", default=None, help="Output PDF path (default: {TICKER}_S2_Waterfall.pdf)")
+
+    # run (one-shot)
+    p_run = sub.add_parser("run", help="Fetch + render in one step")
+    p_run.add_argument("ticker", help="Stock ticker (e.g. AAPL)")
+    p_run.add_argument("-o", "--output", default=None, help="Output PDF path")
+    p_run.add_argument("--json", default=None, help="Also save intermediate JSON")
+    p_run.add_argument("--years", type=float, default=1.0, help="Trailing window in years")
+
+    args = parser.parse_args()
+
+    if args.command == "fetch":
+        from riskmodels import RiskModelsClient
+        client = RiskModelsClient()
+        data = get_data_for_s2(args.ticker, client, years=args.years)
+        out = args.output or f"{args.ticker.upper()}_s2.json"
+        data.to_json(out)
+        print(f"✓ Saved {out}")
+
+    elif args.command == "render":
+        data = S2Data.from_json(args.json_file)
+        out = args.output or f"{data.ticker}_S2_Waterfall.pdf"
+        render_s2_to_pdf(data, out)
+        print(f"✓ Rendered {out}")
+
+    elif args.command == "run":
+        from riskmodels import RiskModelsClient
+        client = RiskModelsClient()
+        data = get_data_for_s2(args.ticker, client, years=args.years)
+        if args.json:
+            data.to_json(args.json)
+            print(f"✓ Saved {args.json}")
+        out = args.output or f"{args.ticker.upper()}_S2_Waterfall.pdf"
+        render_s2_to_pdf(data, out)
+        print(f"✓ Rendered {out}")
+
+
+if __name__ == "__main__":
+    _cli()

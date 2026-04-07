@@ -112,6 +112,23 @@ def _safe_etf_returns(
         return None
 
 
+def _resolve_company_name(ticker: str, client: Any = None) -> str:
+    """Best-effort company name from ticker_metadata.
+
+    Falls back to the ticker itself if anything goes wrong.
+    """
+    if client is not None:
+        try:
+            df = client.get_ticker_metadata(ticker=ticker, columns="company_name")
+            if not df.empty:
+                name = df.iloc[0].get("company_name")
+                if name:
+                    return str(name)
+        except Exception:
+            pass
+    return ticker
+
+
 def fetch_stock_context(
     ticker: str,
     client: Any,
@@ -165,8 +182,14 @@ def fetch_stock_context(
     subsector_etf = meta.get("subsector_etf")
     market_cap = full_metrics.get("market_cap")
     teo = str(full_metrics.get("date") or "N/A")[:10]
-    company_name = full_metrics.get("name") or meta.get("name") or ticker
+    company_name = full_metrics.get("name") or meta.get("name") or _resolve_company_name(ticker, client)
     universe = meta.get("universe") or "uni_mc_3000"
+
+    # Derive vol_23d from stock_var if missing
+    import math
+    if full_metrics.get("vol_23d") is None and full_metrics.get("stock_var") is not None:
+        stock_var = float(full_metrics["stock_var"])
+        full_metrics["vol_23d"] = math.sqrt(stock_var * 252)
 
     # ── 2. Stock daily history ──────────────────────────────────────
     history = client.get_ticker_returns(ticker, years=years)

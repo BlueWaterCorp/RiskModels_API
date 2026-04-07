@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import json
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -73,6 +74,83 @@ class S1Data:
     meta: dict[str, Any]                 # symbol-level metadata (sector_etf, subsector_etf, …)
     peer_comparison: PeerComparison | None = None
     sdk_version: str = "0.3.0"
+
+    # ── JSON serialization ──────────────────────────────────────────
+
+    def to_json(self, path: str | Path) -> Path:
+        """Serialize this S1Data to a JSON file (the handshake artifact).
+
+        Usage::
+
+            data = get_data_for_s1("NVDA", client)
+            data.to_json("nvda_s1.json")       # fetch once
+            # later, offline:
+            data2 = S1Data.from_json("nvda_s1.json")
+            render_s1_to_pdf(data2, "NVDA_S1.pdf")
+        """
+        from ._json_io import dump_json
+        return dump_json(self, path)
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> "S1Data":
+        """Reconstruct S1Data from a JSON file produced by ``to_json()``.
+
+        PeerComparison is rebuilt as a lightweight dict-backed object
+        sufficient for rendering (no live API connection needed).
+        """
+        import pandas as pd
+        from ._json_io import load_json
+
+        raw = load_json(path)
+        d = raw["data"]
+
+        # Rebuild PeerComparison if present
+        pc = None
+        pc_raw = d.get("peer_comparison")
+        if pc_raw is not None:
+            # Rebuild peer_detail as DataFrame
+            peer_detail_records = pc_raw.get("peer_detail", [])
+            peer_detail_df = pd.DataFrame(peer_detail_records)
+            if not peer_detail_df.empty and "ticker" in peer_detail_df.columns:
+                peer_detail_df = peer_detail_df.set_index("ticker")
+
+            # Rebuild PortfolioAnalysis as a minimal namespace
+            pp_raw = pc_raw.get("peer_portfolio", {})
+
+            from ..portfolio_math import PortfolioAnalysis
+            from ..lineage import RiskLineage
+            peer_portfolio = PortfolioAnalysis(
+                lineage=RiskLineage(),
+                per_ticker=pd.DataFrame(pp_raw.get("per_ticker", [])),
+                portfolio_hedge_ratios=pp_raw.get("portfolio_hedge_ratios", {}),
+                portfolio_l3_er_weighted_mean=pp_raw.get("portfolio_l3_er_weighted_mean", {}),
+                weights=pp_raw.get("weights", {}),
+                errors=pp_raw.get("errors", {}),
+            )
+
+            pc = PeerComparison(
+                target_ticker=pc_raw["target_ticker"],
+                peer_group_label=pc_raw["peer_group_label"],
+                target_metrics=pc_raw.get("target_metrics", {}),
+                peer_portfolio=peer_portfolio,
+                target_l3_residual_er=pc_raw.get("target_l3_residual_er"),
+                peer_avg_l3_residual_er=pc_raw.get("peer_avg_l3_residual_er"),
+                selection_spread=pc_raw.get("selection_spread"),
+                target_vol=pc_raw.get("target_vol"),
+                peer_avg_vol=pc_raw.get("peer_avg_vol"),
+                peer_detail=peer_detail_df,
+            )
+
+        return cls(
+            ticker=d["ticker"],
+            company_name=d["company_name"],
+            teo=d["teo"],
+            universe=d["universe"],
+            metrics=d["metrics"],
+            meta=d["meta"],
+            peer_comparison=pc,
+            sdk_version=d.get("sdk_version", "0.3.0"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -431,3 +509,78 @@ def render_s1_to_pdf(data: S1Data, output_path: str | Path) -> Path:
     out = Path(output_path)
     HTML(string=html_str).write_pdf(str(out))
     return out
+
+
+# ---------------------------------------------------------------------------
+# CLI entrypoint — python -m riskmodels.snapshots.s1_forensic fetch|render
+# ---------------------------------------------------------------------------
+
+def _cli() -> None:
+    """Minimal CLI for the JSON-first snapshot workflow.
+
+    Usage::
+
+        # Step 1: fetch data (needs API key)
+        python -m riskmodels.snapshots.s1_forensic fetch NVDA -o nvda_s1.json
+
+        # Step 2: render PDF (offline, no API needed)
+        python -m riskmodels.snapshots.s1_forensic render nvda_s1.json -o NVDA_S1.pdf
+
+        # One-shot (fetch + render)
+        python -m riskmodels.snapshots.s1_forensic run NVDA -o NVDA_S1.pdf
+    """
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        prog="python -m riskmodels.snapshots.s1_forensic",
+        description="S1 Forensic Deep-Dive — JSON-first snapshot pipeline",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # fetch
+    p_fetch = sub.add_parser("fetch", help="Fetch data → JSON file")
+    p_fetch.add_argument("ticker", help="Stock ticker (e.g. NVDA)")
+    p_fetch.add_argument("-o", "--output", default=None, help="Output JSON path (default: {TICKER}_s1.json)")
+
+    # render
+    p_render = sub.add_parser("render", help="Render JSON → PDF file")
+    p_render.add_argument("json_file", help="Input JSON file from 'fetch'")
+    p_render.add_argument("-o", "--output", default=None, help="Output PDF path (default: {TICKER}_S1_Forensic.pdf)")
+
+    # run (one-shot)
+    p_run = sub.add_parser("run", help="Fetch + render in one step")
+    p_run.add_argument("ticker", help="Stock ticker (e.g. NVDA)")
+    p_run.add_argument("-o", "--output", default=None, help="Output PDF path")
+    p_run.add_argument("--json", default=None, help="Also save intermediate JSON")
+
+    args = parser.parse_args()
+
+    if args.command == "fetch":
+        from riskmodels import RiskModelsClient
+        client = RiskModelsClient()
+        data = get_data_for_s1(args.ticker, client)
+        out = args.output or f"{args.ticker.upper()}_s1.json"
+        data.to_json(out)
+        print(f"✓ Saved {out}")
+
+    elif args.command == "render":
+        data = S1Data.from_json(args.json_file)
+        out = args.output or f"{data.ticker}_S1_Forensic.pdf"
+        render_s1_to_pdf(data, out)
+        print(f"✓ Rendered {out}")
+
+    elif args.command == "run":
+        from riskmodels import RiskModelsClient
+        client = RiskModelsClient()
+        data = get_data_for_s1(args.ticker, client)
+        if args.json:
+            data.to_json(args.json)
+            print(f"✓ Saved {args.json}")
+        out = args.output or f"{args.ticker.upper()}_S1_Forensic.pdf"
+        render_s1_to_pdf(data, out)
+        print(f"✓ Rendered {out}")
+
+
+if __name__ == "__main__":
+    _cli()
