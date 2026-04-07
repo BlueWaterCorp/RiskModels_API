@@ -88,12 +88,12 @@ def _json_path(ticker: str, page: str) -> Path:
     return _output_dir() / f"{ticker.upper()}_{page}_cache.json"
 
 
-def _pdf_path(ticker: str, page: str, version: int) -> Path:
-    return _output_dir() / f"{ticker.upper()}_{page.upper()}_v{version}.pdf"
+def _pdf_path(ticker: str, page: str) -> Path:
+    return _output_dir() / f"{ticker.upper()}_{page.upper()}_latest.pdf"
 
 
-def _png_path(ticker: str, page: str, version: int) -> Path:
-    return _output_dir() / f"{ticker.upper()}_{page.upper()}_v{version}.png"
+def _png_path(ticker: str, page: str) -> Path:
+    return _output_dir() / f"{ticker.upper()}_{page.upper()}_latest.png"
 
 
 def _log_path(ticker: str, page: str) -> Path:
@@ -153,34 +153,20 @@ def _ensure_env():
 # Render
 # ---------------------------------------------------------------------------
 
-def _next_version(ticker: str, page: str) -> int:
-    """Find the next version number by scanning existing PDFs."""
-    existing = sorted(_output_dir().glob(f"{ticker.upper()}_{page.upper()}_v*.pdf"))
-    if not existing:
-        return 1
-    last = existing[-1].stem  # e.g. NVDA_R1_v7
-    try:
-        return int(last.rsplit("v", 1)[1]) + 1
-    except (ValueError, IndexError):
-        return len(existing) + 1
-
-
 def _render(data: Any, ticker: str, page: str, *, png: bool = True) -> Path:
-    """Render the PDF (and optionally PNG) and return the PDF path."""
+    """Render to fixed 'latest' filenames — overwrites previous build in place."""
     pg = _load_page(page)
-    ver = _next_version(ticker, page)
-    out = _pdf_path(ticker, page, ver)
+    out = _pdf_path(ticker, page)
 
     t0 = time.time()
     pg["render_fn"](data, str(out))
     elapsed = time.time() - t0
 
     size_kb = out.stat().st_size / 1024
-    print(f"  ↳ Rendered v{ver} → {out.name}  ({size_kb:.0f} KB, {elapsed:.2f}s)")
+    print(f"  ↳ Rendered → {out.name}  ({size_kb:.0f} KB, {elapsed:.2f}s)")
 
-    # Also render PNG (agents prefer inline images)
     if png and "render_png_fn" in pg:
-        png_out = _png_path(ticker, page, ver)
+        png_out = _png_path(ticker, page)
         pg["render_png_fn"](data, str(png_out))
         png_kb = png_out.stat().st_size / 1024
         print(f"  ↳ PNG → {png_out.name}  ({png_kb:.0f} KB)")
@@ -192,12 +178,11 @@ def _render(data: Any, ticker: str, page: str, *, png: bool = True) -> Path:
 # Refinement log
 # ---------------------------------------------------------------------------
 
-def _log_iteration(ticker: str, page: str, version: int, prompt: str, pdf_path: str):
+def _log_iteration(ticker: str, page: str, prompt: str, pdf_path: str):
     """Append one line to the JSONL refinement log."""
     lp = _log_path(ticker, page)
     entry = {
         "ts": datetime.datetime.now().isoformat(),
-        "version": version,
         "prompt": prompt,
         "pdf": pdf_path,
     }
@@ -238,8 +223,7 @@ def run(ticker: str, page: str, *, prompt: str | None = None,
 
     # Step 2: Initial render
     pdf = _render(data, ticker, page)
-    ver = int(pdf.stem.rsplit("v", 1)[1])
-    _log_iteration(ticker, page, ver, prompt or "(initial render)", str(pdf))
+    _log_iteration(ticker, page, prompt or "(initial render)", str(pdf))
 
     if once:
         return pdf
@@ -253,7 +237,7 @@ def run(ticker: str, page: str, *, prompt: str | None = None,
 
     while True:
         try:
-            direction = prompt or input(f"  [{ticker} {page.upper()} v{ver}] → ").strip()
+            direction = prompt or input(f"  [{ticker} {page.upper()}] → ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n  Done.")
             break
@@ -273,41 +257,25 @@ def run(ticker: str, page: str, *, prompt: str | None = None,
         if cmd == "refetch":
             data = _fetch_and_cache(ticker, page, force=True)
             pdf = _render(data, ticker, page)
-            ver = int(pdf.stem.rsplit("v", 1)[1])
-            _log_iteration(ticker, page, ver, "refetch", str(pdf))
+            _log_iteration(ticker, page, "refetch", str(pdf))
             prompt = None
             continue
 
-        # ─── Refinement iteration ─────────────────────────────────
-        # The prompt is a human-readable direction. We print it as a
-        # reminder of what to change, then re-render.
-        #
-        # In practice: you edit r1_risk_profile.py / _charts.py / _theme.py
-        # based on the prompt, then this script re-renders instantly.
-        #
-        # Alternatively, an LLM agent reads the prompt, applies code edits,
-        # then calls this script with --once to render.
-
         print(f"\n  Direction logged: \"{direction}\"")
         print(f"  → Edit the render code, then press Enter to re-render.")
-        print(f"    (Or type a new direction to log it instead.)")
         print()
 
         try:
-            wait = input(f"  [Press Enter when code edits are done] ").strip()
+            input(f"  [Press Enter when code edits are done] ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n  Done.")
             break
 
-        # Reload modules to pick up code changes
         _hot_reload(page)
 
-        # Re-render with updated code
         pdf = _render(data, ticker, page)
-        ver = int(pdf.stem.rsplit("v", 1)[1])
-        _log_iteration(ticker, page, ver, direction, str(pdf))
+        _log_iteration(ticker, page, direction, str(pdf))
 
-        # If a single prompt was passed in, exit after one iteration
         if prompt:
             break
 
