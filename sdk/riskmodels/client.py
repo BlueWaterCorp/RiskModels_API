@@ -924,6 +924,86 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lin, kind="tickers_universe")
         return df
 
+    # --- Supabase ticker_metadata (sector/peer discovery) ---
+
+    def get_ticker_metadata(
+        self,
+        *,
+        ticker: str | None = None,
+        sector_etf: str | None = None,
+        subsector_etf: str | None = None,
+        columns: str = "ticker,company_name,market_cap,sector_etf,subsector_etf",
+        order: str = "market_cap.desc.nullslast",
+        limit: int = 500,
+        as_dataframe: bool = True,
+    ) -> pd.DataFrame | list[dict[str, Any]]:
+        """Query the ``ticker_metadata`` Supabase table directly.
+
+        This is the authoritative source for sector/subsector mappings,
+        company names, and market caps.  Used by :class:`PeerGroupProxy`
+        to discover sector peers without expensive batch-analyze calls.
+
+        Parameters
+        ----------
+        ticker        : Exact ticker filter (e.g. ``"NVDA"``).
+        sector_etf    : Filter rows where ``sector_etf`` matches (e.g. ``"XLK"``).
+        subsector_etf : Filter rows where ``subsector_etf`` matches (e.g. ``"SOXX"``).
+        columns       : PostgREST ``select`` clause.
+        order         : PostgREST ``order`` clause.
+        limit         : Max rows.
+        as_dataframe  : Return a DataFrame (default) or list of dicts.
+
+        Returns
+        -------
+        DataFrame or list[dict] with the requested metadata.
+
+        Raises
+        ------
+        ValueError
+            If ``SUPABASE_URL`` or ``SUPABASE_SERVICE_ROLE_KEY`` are not set.
+        """
+        from .env import load_repo_dotenv
+        load_repo_dotenv()
+
+        sb_url = os.environ.get("SUPABASE_URL", "").strip().strip('"').strip("'").rstrip("/")
+        sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip().strip('"').strip("'")
+        if not sb_url or not sb_key:
+            raise ValueError(
+                "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to use get_ticker_metadata(). "
+                "These are typically in .env.local alongside RISKMODELS_API_KEY."
+            )
+
+        params: dict[str, str] = {
+            "select": columns,
+            "order": order,
+            "limit": str(limit),
+        }
+        if ticker:
+            params["ticker"] = f"eq.{ticker}"
+        if sector_etf:
+            params["sector_etf"] = f"eq.{sector_etf}"
+        if subsector_etf:
+            params["subsector_etf"] = f"eq.{subsector_etf}"
+
+        headers = {
+            "apikey": sb_key,
+            "Authorization": f"Bearer {sb_key}",
+        }
+
+        r = httpx.get(
+            f"{sb_url}/rest/v1/ticker_metadata",
+            params=params,
+            headers=headers,
+            timeout=15,
+        )
+        r.raise_for_status()
+        rows = r.json()
+
+        if as_dataframe:
+            df = pd.DataFrame(rows) if rows else pd.DataFrame()
+            return df
+        return rows
+
     # --- Visual Refinement (MatPlotAgent Pattern) ---
     def generate_refined_plot(
         self,
