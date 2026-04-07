@@ -461,43 +461,53 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     # ════════════════════════════════════════════════════════════════
     chips = _build_chips_list(data, m, pc)
     y = _draw_chips(page, chips, x=MARGIN, y=y, content_width=CW)
-    y += 12
+    y += 28
+
+    # ── Section divider ──────────────────────────────────────────────
+    page.hline(y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=1)
+    y += 20
 
     # ════════════════════════════════════════════════════════════════
     # ROW 1: ER Attribution (left) + HR Cascade (right)
     # ════════════════════════════════════════════════════════════════
-    chart_h = 680
     half_w = CW // 2 - 20  # gap between charts
 
-    # Section I title + insight
+    # Section I + II titles
     page.text(MARGIN, y, "I. Return Attribution",
               font_size=38, bold=True, color=NAVY)
     page.text(MARGIN + half_w + 40, y, "II. Hedge-Ratio Cascade",
               font_size=38, bold=True, color=NAVY)
-    y += 52
+    y += 56
 
+    # Insight subheaders
     if insights.er_insight:
         page.text(MARGIN, y, insights.er_insight,
                   font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
     if insights.hr_insight:
         page.text(MARGIN + half_w + 40, y, insights.hr_insight,
                   font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
-    y += 65
+    y += 72
 
-    # ── compute remaining space and split it between charts and table ──
-    FOOTER_Y = H - 80
-    remaining = FOOTER_Y - y - 52 - 48 - 30  # reserve for section III header+insight+gap
-    chart_h = int(remaining * 0.50)
-    table_h = remaining - chart_h - 30  # 30px gap
+    # ── compute remaining space and split 48/52 between charts and table ──
+    FOOTER_Y = H - 90
+    # reserve: divider(1) + gap(20) + III title(38*1.4≈56) + insight(26*1.4≈40) + gap(28) + footer(90)
+    III_HEADER_H = 20 + 56 + 40 + 28
+    remaining = FOOTER_Y - y - III_HEADER_H
+    chart_h = int(remaining * 0.48)
+    table_h = remaining - chart_h - 36  # 36px gap between chart row and table
 
     # ER hbar chart
     er_fig = _make_er_chart(m, pal)
     page.paste_figure(er_fig, MARGIN, y, half_w, chart_h)
 
-    # HR cascade chart
+    # HR stacked bar chart
     hr_fig = _make_hr_chart(m, pal)
     page.paste_figure(hr_fig, MARGIN + half_w + 40, y, half_w, chart_h)
-    y += chart_h + 30
+    y += chart_h + 36
+
+    # ── Section divider ──────────────────────────────────────────────
+    page.hline(y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=1)
+    y += 20
 
     # ════════════════════════════════════════════════════════════════
     # ROW 2: Peer Comparison Table (full width)
@@ -505,12 +515,12 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     peer_label = _peer_table_title(pc, data)
     page.text(MARGIN, y, f"III. Peer Benchmarking  ·  {peer_label}",
               font_size=38, bold=True, color=NAVY)
-    y += 52
+    y += 56
 
     if insights.peer_insight:
         page.text(MARGIN, y, insights.peer_insight,
                   font_size=26, italic=True, color=TEAL, max_width=CW)
-    y += 48
+    y += 40
 
     table_fig = _make_peer_table(data, pc, m, pal)
     page.paste_figure(table_fig, MARGIN, y, CW, table_h)
@@ -575,7 +585,11 @@ def _make_er_chart(m: dict, pal) -> go.Figure:
 
 
 def _make_hr_chart(m: dict, pal) -> go.Figure:
-    """Hedge-Ratio Cascade grouped vertical bar chart."""
+    """Hedge-Ratio Cascade — one stacked bar per model level (L1/L2/L3).
+
+    Each bar = market β (bottom) + sector β (middle) + subsector β (top).
+    barmode='relative' handles negative stacking correctly.
+    """
     l1_mkt = float(_g(m, "l1_market_hr", "l1_mkt_hr") or 0)
     l2_mkt = float(_g(m, "l2_market_hr", "l2_mkt_hr") or 0)
     l2_sec = float(_g(m, "l2_sector_hr", "l2_sec_hr") or 0)
@@ -583,32 +597,56 @@ def _make_hr_chart(m: dict, pal) -> go.Figure:
     l3_sec = float(_g(m, "l3_sector_hr", "l3_sec_hr") or 0)
     l3_sub = float(_g(m, "l3_subsector_hr", "l3_sub_hr") or 0)
 
-    traces = [
-        ("Mkt \u03b2", [l1_mkt, l2_mkt, l3_mkt], pal.navy),
-        ("Sec \u03b2", [0.0, l2_sec, l3_sec], pal.teal),
-        ("Sub \u03b2", [0.0, 0.0, l3_sub], pal.slate),
-    ]
+    levels = ["L1", "L2", "L3"]
+
+    # Market: present at all levels
+    mkt_vals = [l1_mkt, l2_mkt, l3_mkt]
+    mkt_labels = [f"{v:.2f}" if abs(v) > 0.005 else "" for v in mkt_vals]
+
+    # Sector: only L2 and L3 (L1 = 0, hidden)
+    sec_vals = [0.0, l2_sec, l3_sec]
+    sec_labels = ["", f"{l2_sec:.2f}" if abs(l2_sec) > 0.005 else "",
+                  f"{l3_sec:.2f}" if abs(l3_sec) > 0.005 else ""]
+
+    # Subsector: only L3 (L1/L2 = 0, hidden)
+    sub_vals = [0.0, 0.0, l3_sub]
+    sub_labels = ["", "", f"{l3_sub:.2f}" if abs(l3_sub) > 0.005 else ""]
+
     fig = go.Figure()
-    for name, vals, color in traces:
-        # Only label bars that have a meaningful value
-        labels = [f"{v:.2f}" if abs(v) > 0.005 else "" for v in vals]
-        fig.add_trace(go.Bar(
-            x=["L1", "L2", "L3"], y=vals, name=name,
-            marker=dict(color=color, line=dict(width=0), cornerradius=3),
-            text=labels,
-            textposition="outside",
-            textfont=dict(family=T.fonts.family, size=11, color=pal.text_dark),
-            cliponaxis=False,
-        ))
+    fig.add_trace(go.Bar(
+        x=levels, y=mkt_vals, name="Mkt \u03b2",
+        marker=dict(color=pal.navy, line=dict(width=0)),
+        text=mkt_labels, textposition="inside",
+        textfont=dict(family=T.fonts.family, size=12, color="#ffffff"),
+        insidetextanchor="middle",
+    ))
+    fig.add_trace(go.Bar(
+        x=levels, y=sec_vals, name="Sec \u03b2",
+        marker=dict(color=pal.teal, line=dict(width=0)),
+        text=sec_labels, textposition="inside",
+        textfont=dict(family=T.fonts.family, size=12, color="#ffffff"),
+        insidetextanchor="middle",
+    ))
+    fig.add_trace(go.Bar(
+        x=levels, y=sub_vals, name="Sub \u03b2",
+        marker=dict(color=pal.slate, line=dict(width=0)),
+        text=sub_labels, textposition="inside",
+        textfont=dict(family=T.fonts.family, size=12, color="#ffffff"),
+        insidetextanchor="middle",
+    ))
+
     T.style(fig)
     fig.update_layout(
-        barmode="group", bargap=0.25, bargroupgap=0.08,
+        barmode="relative",
+        bargap=0.35,
         yaxis=dict(
             title="Hedge Ratio (\u03b2)",
             zeroline=True, zerolinecolor="#aaaaaa", zerolinewidth=1,
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.15,
-                    xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)", borderwidth=0),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=-0.18,
+            xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)", borderwidth=0,
+        ),
     )
     return fig
 
