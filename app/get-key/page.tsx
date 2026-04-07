@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus } from 'lucide-react';
+import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 
 interface ApiKey {
   id: string;
@@ -51,10 +52,13 @@ function GoogleIcon({ className }: { className?: string }) {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copy = () => {
+    void copyTextToClipboard(text).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    });
   };
   return (
     <button onClick={copy} className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors" title="Copy">

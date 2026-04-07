@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Sparkles, Copy, Check } from 'lucide-react';
+import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 
 const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? '';
 
@@ -10,10 +11,13 @@ export default function QuickstartDemoKey() {
 
   if (!DEMO_KEY) return null;
 
-  const copyKey = async () => {
-    await navigator.clipboard.writeText(DEMO_KEY);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyKey = () => {
+    void copyTextToClipboard(DEMO_KEY).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    });
   };
 
   return (

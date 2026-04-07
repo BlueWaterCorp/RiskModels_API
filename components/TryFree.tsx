@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Zap, Copy, Check } from "lucide-react";
 import Link from "next/link";
+import { copyTextToClipboard } from "@/lib/copy-to-clipboard";
 
 const DEMO_KEY = process.env.NEXT_PUBLIC_DEMO_API_KEY ?? null;
 
@@ -18,9 +19,12 @@ export default function TryFree() {
   const [copied, setCopied] = useState<string | null>(null);
 
   function copy(text: string, id: string) {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 1500);
+    void copyTextToClipboard(text).then((ok) => {
+      if (ok) {
+        setCopied(id);
+        setTimeout(() => setCopied(null), 1500);
+      }
+    });
   }
 
   const curlCmd = DEMO_KEY

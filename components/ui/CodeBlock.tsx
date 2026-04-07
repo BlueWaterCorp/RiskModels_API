@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import type { BundledLanguage, Highlighter } from 'shiki';
 import { cn } from '@/lib/cn';
+import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 
 interface CodeBlockProps {
   code: string;
@@ -67,10 +68,13 @@ export function CodeBlock({ code, language, className, showCopy = true }: CodeBl
     };
   }, [code, lang]);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = () => {
+    void copyTextToClipboard(code).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    });
   };
 
   return (
