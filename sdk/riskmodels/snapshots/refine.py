@@ -48,6 +48,8 @@ PAGE_REGISTRY: dict[str, dict[str, Any]] = {
         "data_cls": "R1Data",
         "fetch_fn": "get_data_for_r1",
         "render_fn": "render_r1_to_pdf",
+        "render_png_fn": "render_r1_to_png",
+        "render_json_fn": "render_r1_to_json",
     },
     # Future pages:
     # "p1": { ... },
@@ -60,12 +62,15 @@ def _load_page(page_key: str) -> dict[str, Any]:
     import importlib
     spec = PAGE_REGISTRY[page_key]
     mod = importlib.import_module(spec["module"])
-    return {
+    result = {
         "data_cls": getattr(mod, spec["data_cls"]),
         "fetch_fn": getattr(mod, spec["fetch_fn"]),
         "render_fn": getattr(mod, spec["render_fn"]),
         "label": spec["label"],
     }
+    if "render_png_fn" in spec:
+        result["render_png_fn"] = getattr(mod, spec["render_png_fn"])
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +90,10 @@ def _json_path(ticker: str, page: str) -> Path:
 
 def _pdf_path(ticker: str, page: str, version: int) -> Path:
     return _output_dir() / f"{ticker.upper()}_{page.upper()}_v{version}.pdf"
+
+
+def _png_path(ticker: str, page: str, version: int) -> Path:
+    return _output_dir() / f"{ticker.upper()}_{page.upper()}_v{version}.png"
 
 
 def _log_path(ticker: str, page: str) -> Path:
@@ -156,8 +165,8 @@ def _next_version(ticker: str, page: str) -> int:
         return len(existing) + 1
 
 
-def _render(data: Any, ticker: str, page: str) -> Path:
-    """Render the PDF and return its path."""
+def _render(data: Any, ticker: str, page: str, *, png: bool = True) -> Path:
+    """Render the PDF (and optionally PNG) and return the PDF path."""
     pg = _load_page(page)
     ver = _next_version(ticker, page)
     out = _pdf_path(ticker, page, ver)
@@ -168,6 +177,14 @@ def _render(data: Any, ticker: str, page: str) -> Path:
 
     size_kb = out.stat().st_size / 1024
     print(f"  ↳ Rendered v{ver} → {out.name}  ({size_kb:.0f} KB, {elapsed:.2f}s)")
+
+    # Also render PNG (agents prefer inline images)
+    if png and "render_png_fn" in pg:
+        png_out = _png_path(ticker, page, ver)
+        pg["render_png_fn"](data, str(png_out))
+        png_kb = png_out.stat().st_size / 1024
+        print(f"  ↳ PNG → {png_out.name}  ({png_kb:.0f} KB)")
+
     return out
 
 
@@ -301,8 +318,11 @@ def _hot_reload(page: str):
     spec = PAGE_REGISTRY[page]
     mod_name = spec["module"]
 
-    # Reload the chart/theme/page primitives first
+    # Reload the Plotly chart/theme primitives first
     primitives = [
+        "riskmodels.snapshots._plotly_theme",
+        "riskmodels.snapshots._plotly_charts",
+        # Legacy (still used by S1/S2)
         "riskmodels.snapshots._theme",
         "riskmodels.snapshots._charts",
         "riskmodels.snapshots._page",

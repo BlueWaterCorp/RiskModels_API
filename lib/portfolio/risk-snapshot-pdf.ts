@@ -75,7 +75,7 @@ export async function buildRiskSnapshotPdfBytes(params: {
 /**
  * Build the SnapshotReportData contract from a PortfolioRiskComputationOk result.
  */
-function toReportData(params: {
+export function toReportData(params: {
   title: string;
   asOfLabel: string;
   data: PortfolioRiskComputationOk;

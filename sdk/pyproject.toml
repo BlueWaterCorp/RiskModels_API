@@ -41,7 +41,11 @@ pdf = [
   "jinja2>=3.1,<4",
   "matplotlib>=3.8,<4",
 ]
-all = ["riskmodels-py[viz,xarray,dotenv,pdf]"]
+snapshots = [
+  "plotly>=5.15",
+  "kaleido>=0.2,<1",
+]
+all = ["riskmodels-py[viz,xarray,dotenv,pdf,snapshots]"]
 dev = [
     "build>=1.2",
     "matplotlib>=3.8,<4",

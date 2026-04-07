@@ -24,7 +24,8 @@ const CACHE_NS = "risk_snapshot";
 
 type CachePayload =
   | { kind: "json"; body: string; contentType: string }
-  | { kind: "pdf"; base64: string };
+  | { kind: "pdf"; base64: string }
+  | { kind: "png"; base64: string };
 
 function snapshotCacheKey(
   userId: string,
@@ -112,13 +113,45 @@ async function buildSnapshotResponse(
   }
 
   if (validation.format === "png") {
-    return NextResponse.json(
-      {
-        error: "Not implemented",
-        message: "format=png is not yet supported; use pdf or json.",
-      },
-      { status: 501, headers: getCorsHeaders(origin) },
+    if (process.env.PLAYWRIGHT_PDF_ENABLED !== "true") {
+      return NextResponse.json(
+        {
+          error: "PNG rendering unavailable",
+          message:
+            "PNG snapshots require Playwright. Set PLAYWRIGHT_PDF_ENABLED=true or use format=pdf.",
+        },
+        { status: 501, headers: getCorsHeaders(origin) },
+      );
+    }
+
+    const { renderSnapshotPng } = await import(
+      "@/lib/portfolio/playwright-png-worker"
     );
+    const { toReportData } = await import(
+      "@/lib/portfolio/risk-snapshot-pdf"
+    );
+    const reportData = toReportData({
+      title,
+      asOfLabel: String(asOf),
+      data: core,
+    });
+    const baseUrl =
+      process.env.PLAYWRIGHT_BASE_URL ??
+      `http://localhost:${process.env.PORT ?? 3000}`;
+
+    const pngBytes = await renderSnapshotPng(reportData, baseUrl);
+
+    const pngRes = new NextResponse(Buffer.from(pngBytes), {
+      status: 200,
+      headers: {
+        ...getCorsHeaders(origin),
+        "Content-Type": "image/png",
+        "Content-Disposition": `inline; filename="risk-snapshot-${String(asOf).replace(/[^0-9-]/g, "")}.png"`,
+        "X-Data-Fetch-Latency-Ms": String(core.fetchLatencyMs),
+      },
+    });
+    addMetadataHeaders(pngRes, metadata);
+    return pngRes;
   }
 
   const pdfBytes = await buildRiskSnapshotPdf({
@@ -193,6 +226,18 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+    if (hit.kind === "png") {
+      return new NextResponse(Buffer.from(hit.base64, "base64"), {
+        status: 200,
+        headers: {
+          ...getCorsHeaders(origin),
+          "Content-Type": "image/png",
+          "Content-Disposition": 'inline; filename="risk-snapshot-cached.png"',
+          "X-API-Cost-USD": "0",
+          "X-Cache": "HIT",
+        },
+      });
+    }
     return new NextResponse(Buffer.from(hit.base64, "base64"), {
       status: 200,
       headers: {
@@ -219,7 +264,7 @@ export async function POST(request: NextRequest) {
         req.headers.get("origin"),
       );
 
-      if (res.status === 200 && pre.data.format !== "png") {
+      if (res.status === 200) {
         if (pre.data.format === "json") {
           const body = await res.clone().text();
           await setCache(
@@ -238,6 +283,16 @@ export async function POST(request: NextRequest) {
             key,
             {
               kind: "pdf",
+              base64: Buffer.from(buf).toString("base64"),
+            },
+            CACHE_TTL.HISTORICAL,
+          );
+        } else if (pre.data.format === "png") {
+          const buf = new Uint8Array(await res.clone().arrayBuffer());
+          await setCache(
+            key,
+            {
+              kind: "png",
               base64: Buffer.from(buf).toString("base64"),
             },
             CACHE_TTL.HISTORICAL,
