@@ -5,6 +5,7 @@ import { resolveSymbolByTicker, fetchLatestMetricsWithFallback } from "@/lib/dal
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
+import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
@@ -110,6 +111,24 @@ export const GET = withBilling(
       },
       _metadata: buildMetadataBody(metadata),
     };
+
+    const format = parseFormat(request.nextUrl.searchParams, request.headers.get("accept"));
+    if (format !== "json") {
+      const rows = [{
+        ticker: formattedData.ticker,
+        symbol: formattedData.symbol,
+        teo: formattedData.teo,
+        periodicity: formattedData.periodicity,
+        ...formattedData.metrics,
+        ...formattedData.meta,
+      }];
+      return formatResponse({
+        rows,
+        format,
+        filename: `${ticker}_metrics.csv`,
+        extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+      });
+    }
 
     const erFieldsEmpty = !formattedData.metrics.l3_mkt_er && !formattedData.metrics.l3_sec_er && !formattedData.metrics.l3_sub_er;
     if (erFieldsEmpty) {

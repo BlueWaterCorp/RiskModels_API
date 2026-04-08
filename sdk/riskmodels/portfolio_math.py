@@ -5,6 +5,7 @@ from __future__ import annotations
 import numbers
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -177,6 +178,30 @@ class PortfolioAnalysis:
         if self.returns_long is None or self.returns_long.empty:
             raise ValueError("No returns_long panel; request returns in analyze_portfolio.")
         return long_df_to_dataset(self.returns_long, self.lineage)
+
+    def summary_dict(self) -> dict[str, Any]:
+        """Flatten portfolio-level aggregates into one dict row."""
+        row: dict[str, Any] = {"ticker": "PORTFOLIO"}
+        if self.portfolio_hedge_ratios:
+            row.update(self.portfolio_hedge_ratios)
+        if self.portfolio_l3_er_weighted_mean:
+            row.update(self.portfolio_l3_er_weighted_mean)
+        return row
+
+    def to_dataframe(self, include_summary: bool = True) -> pd.DataFrame:
+        """Per-ticker DataFrame, optionally with portfolio summary row appended."""
+        df = self.per_ticker.copy()
+        if include_summary:
+            df = pd.concat([df, pd.DataFrame([self.summary_dict()])], ignore_index=True)
+        return df
+
+    def to_csv(self, path: str | Path | None = None, include_summary: bool = True) -> str | None:
+        """Write to CSV file or return CSV string if path is None."""
+        df = self.to_dataframe(include_summary=include_summary)
+        if path is not None:
+            df.to_csv(path, index=False)
+            return None
+        return df.to_csv(index=False)
 
 
 def analyze_batch_to_portfolio(

@@ -175,6 +175,53 @@ export async function formatResponse(
   throw new Error(`Unknown format: ${format}`);
 }
 
+// ---------------------------------------------------------------------------
+// Flatten helpers — convert nested JSON structures to flat rows for CSV
+// ---------------------------------------------------------------------------
+
+/** Strip internal keys and flatten a nested object to one flat row. */
+export function flattenObjectToRow(
+  obj: Record<string, unknown>,
+  stripKeys: string[] = ["_metadata", "_agent", "_data_health"],
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (stripKeys.includes(key)) continue;
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !(value instanceof Date)
+    ) {
+      // Spread nested object flat (e.g. metrics: { vol_23d: 0.3 } → vol_23d: 0.3)
+      for (const [innerKey, innerVal] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        row[innerKey] = innerVal;
+      }
+    } else {
+      row[key] = value;
+    }
+  }
+  return row;
+}
+
+/** Convert a dict-of-objects into an array of flat rows keyed by `keyColumn`. */
+export function dictToRows(
+  dict: Record<string, unknown>,
+  keyColumn: string,
+): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const [key, value] of Object.entries(dict)) {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      rows.push({ [keyColumn]: key, ...(value as Record<string, unknown>) });
+    } else {
+      rows.push({ [keyColumn]: key, value });
+    }
+  }
+  return rows;
+}
+
 /** Parse format from query string or Accept header. Default: json */
 export function parseFormat(
   searchParams: URLSearchParams,

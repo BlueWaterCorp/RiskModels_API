@@ -9,6 +9,7 @@ import {
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
+import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,16 @@ export const GET = withBilling(
 
     const metadata = await getRiskMetadata();
     const latency = Math.round(performance.now() - fetchStart);
+
+    const format = parseFormat(sp, request.headers.get("accept"));
+    if (format !== "json") {
+      return formatResponse({
+        rows: rows as unknown as Record<string, unknown>[],
+        format,
+        filename: `rankings_${metricQ}_${cohortQ}_${windowQ}.csv`,
+        extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+      });
+    }
 
     const response = NextResponse.json(
       {

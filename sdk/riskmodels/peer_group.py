@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
@@ -104,6 +105,21 @@ class PeerComparison:
             "peer_avg_vol": self.peer_avg_vol,
             "peer_count": len(self.peer_portfolio.weights),
         }
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Peer detail with target summary row prepended."""
+        target_row = pd.DataFrame([self.summary_row()])
+        if self.peer_detail.empty:
+            return target_row
+        return pd.concat([target_row, self.peer_detail], ignore_index=True)
+
+    def to_csv(self, path: str | Path | None = None) -> str | None:
+        """Write to CSV file or return CSV string if path is None."""
+        df = self.to_dataframe()
+        if path is not None:
+            df.to_csv(path, index=False)
+            return None
+        return df.to_csv(index=False)
 
 
 @dataclass

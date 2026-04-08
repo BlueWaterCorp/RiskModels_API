@@ -10,6 +10,7 @@ import {
   DEFAULT_MACRO_FACTORS,
 } from "@/lib/risk/factor-correlation-service";
 import { normalizeMacroFactorKeys } from "@/lib/risk/macro-factor-keys";
+import { parseFormat, formatResponse, dictToRows } from "@/lib/api/format-response";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,19 @@ export const GET = withBilling(
       }
 
       const latency = Math.round(performance.now() - fetchStart);
+
+      const format = parseFormat(searchParams, request.headers.get("accept"));
+      if (format !== "json") {
+        const corr = (result as unknown as Record<string, unknown>).correlations as Record<string, unknown>;
+        const csvRows = dictToRows(corr, "factor");
+        return formatResponse({
+          rows: csvRows,
+          format,
+          filename: `${tickerParse.data}_correlation.csv`,
+          extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+        });
+      }
+
       const response = NextResponse.json({
         ...result,
         _metadata: buildMetadataBody(metadata),

@@ -153,22 +153,46 @@ export const POST = withBilling(
     if (format !== "json") {
       const fetchLatency = Math.round(performance.now() - fetchStart);
       const rows: Record<string, unknown>[] = [];
-      for (const r of results) {
-        if (r.status === "success" && r.returns) {
-          const { dates, values, l1, l2, l3 } = r.returns;
-          for (let i = 0; i < (dates?.length ?? 0); i++) {
-            rows.push({
-              ticker: r.ticker,
-              date: dates![i],
-              gross_return: values?.[i] ?? null,
-              l1: l1?.[i] ?? null,
-              l2: l2?.[i] ?? null,
-              l3: l3?.[i] ?? null,
-            });
+
+      // Determine which metric to export in tabular form.
+      // Priority: full_metrics > hedge_ratios > returns (one row per ticker for
+      // metrics/HR, one row per ticker-date for returns).
+      const hasFullMetrics = metrics.includes("full_metrics");
+      const hasHedgeRatios = metrics.includes("hedge_ratios");
+
+      if (hasFullMetrics) {
+        for (const r of results) {
+          if (r.status === "success" && r.full_metrics) {
+            rows.push({ ticker: r.ticker, ...r.full_metrics });
+          }
+        }
+      } else if (hasHedgeRatios) {
+        for (const r of results) {
+          if (r.status === "success" && r.hedge_ratios) {
+            rows.push({ ticker: r.ticker, ...r.hedge_ratios });
+          }
+        }
+      } else {
+        // Original returns-only export
+        for (const r of results) {
+          if (r.status === "success" && r.returns) {
+            const { dates, values, l1, l2, l3 } = r.returns;
+            for (let i = 0; i < (dates?.length ?? 0); i++) {
+              rows.push({
+                ticker: r.ticker,
+                date: dates![i],
+                gross_return: values?.[i] ?? null,
+                l1: l1?.[i] ?? null,
+                l2: l2?.[i] ?? null,
+                l3: l3?.[i] ?? null,
+              });
+            }
           }
         }
       }
-      const filename = `batch_returns_${tickers.length}tickers.${format}`;
+
+      const metricLabel = hasFullMetrics ? "metrics" : hasHedgeRatios ? "hedge_ratios" : "returns";
+      const filename = `batch_${metricLabel}_${tickers.length}tickers.${format}`;
       const response = await formatResponse({
         rows,
         format,

@@ -11,6 +11,7 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
+import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,21 @@ export const GET = withBilling(
 
     const metadata = await getRiskMetadata();
     const latency = Math.round(performance.now() - fetchStart);
+
+    const format = parseFormat(sp, request.headers.get("accept"));
+    if (format !== "json") {
+      const csvRows = (rankings as unknown as Record<string, unknown>[]).map((r) => ({
+        ticker: symbolRecord.ticker,
+        teo,
+        ...r,
+      }));
+      return formatResponse({
+        rows: csvRows,
+        format,
+        filename: `${ticker}_rankings.csv`,
+        extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+      });
+    }
 
     const response = NextResponse.json(
       {

@@ -5,6 +5,7 @@ import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { L3DecompositionRequestSchema } from "@/lib/api/schemas";
 import { getCorsHeaders } from "@/lib/cors";
+import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
@@ -40,6 +41,28 @@ export const GET = withBilling(
 
       const metadata = await getRiskMetadata();
       const fetchLatency = Math.round(performance.now() - fetchStart);
+
+      const format = parseFormat(searchParams, request.headers.get("accept"));
+      if (format !== "json") {
+        // Pivot parallel arrays into rows: { date, l3_mkt_hr, l3_sec_hr, ... }
+        const resultAny = result as unknown as Record<string, unknown>;
+        const dates = resultAny.dates as string[];
+        const csvRows = dates.map((date: string, i: number) => {
+          const row: Record<string, unknown> = { ticker, date };
+          for (const [key, val] of Object.entries(resultAny)) {
+            if (key === "ticker" || key === "dates") continue;
+            if (Array.isArray(val)) row[key] = (val as unknown[])[i];
+          }
+          return row;
+        });
+        return formatResponse({
+          rows: csvRows,
+          format,
+          filename: `${ticker}_l3_decomposition.csv`,
+          extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+        });
+      }
+
       const response = NextResponse.json({
         ...result,
         _metadata: buildMetadataBody(metadata),

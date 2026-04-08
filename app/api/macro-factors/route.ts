@@ -5,6 +5,7 @@ import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { fetchMacroFactorSeriesRows } from "@/lib/dal/macro-factors";
 import { parseMacroFactorsSeriesQuery } from "@/lib/api/macro-factors-series-query";
+import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,17 @@ export const GET = withBilling(
       }
 
       const latency = Math.round(performance.now() - fetchStart);
+
+      const format = parseFormat(request.nextUrl.searchParams, request.headers.get("accept"));
+      if (format !== "json") {
+        return formatResponse({
+          rows: rows as unknown as Record<string, unknown>[],
+          format,
+          filename: "macro_factors.csv",
+          extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+        });
+      }
+
       const response = NextResponse.json({
         factors_requested,
         start: parsed.start,

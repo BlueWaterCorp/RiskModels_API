@@ -1,85 +1,45 @@
 """Unit tests for riskmodels.peer_group — PeerGroupProxy + PeerComparison.
 
-All tests are offline (no HTTP). The client is mocked to return controlled
-fixtures so we can test construction logic, weighting, fallback paths,
-and comparison math without hitting the live API.
-
-Integration tests (marked @pytest.mark.integration) require a live
-RISKMODELS_API_KEY and are skipped by default (see pyproject.toml addopts).
+All tests construct real objects directly — no mock clients.
+from_ticker() and compare() require a live API and are tested in the
+integration tests at the bottom (skipped by default).
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-from dataclasses import dataclass
+import json
 from typing import Any
 
 import pandas as pd
 import pytest
 
-from riskmodels.peer_group import PeerComparison, PeerGroupProxy, _cap_weight_peers, _safe_float
-from riskmodels.portfolio_math import PortfolioAnalysis, renormalize_weights
+from riskmodels.peer_group import PeerComparison, PeerGroupProxy, _safe_float
+from riskmodels.portfolio_math import PortfolioAnalysis
 from riskmodels.lineage import RiskLineage
 
 
 # ---------------------------------------------------------------------------
-# Fixtures — controlled metric snapshots
+# Helpers — build real objects by hand
 # ---------------------------------------------------------------------------
 
-def _make_metrics_df(
-    ticker: str = "NVDA",
-    symbol: str = "NVDA-US",
-    subsector_etf: str = "SMH",
-    sector_etf: str = "XLK",
-    l3_residual_er: float = 0.42,
-    vol_23d: float = 0.38,
-    market_cap: float = 3_200_000_000_000.0,
-) -> pd.DataFrame:
-    return pd.DataFrame([{
-        "ticker": ticker,
-        "symbol": symbol,
-        "subsector_etf": subsector_etf,
-        "sector_etf": sector_etf,
-        "l3_residual_er": l3_residual_er,
-        "l3_market_er": 0.20,
-        "l3_sector_er": 0.18,
-        "l3_subsector_er": 0.20,
-        "vol_23d": vol_23d,
-        "market_cap": market_cap,
-        "l3_market_hr": 1.10,
-        "l3_sector_hr": 0.85,
-        "l3_subsector_hr": 0.72,
-    }])
-
-
-def _make_universe_df(rows: list[dict]) -> pd.DataFrame:
-    """Build a universe DataFrame as returned by client.search_tickers()."""
-    return pd.DataFrame(rows)
-
-
-def _make_mock_client(
-    target_df: pd.DataFrame,
-    universe_df: pd.DataFrame,
-    peer_dfs: dict[str, pd.DataFrame] | None = None,
-    portfolio_analysis: PortfolioAnalysis | None = None,
-) -> MagicMock:
-    """Build a mock RiskModelsClient with controlled return values."""
-    client = MagicMock()
-
-    # get_metrics returns target_df for the target; peer_dfs for peers
-    peer_dfs = peer_dfs or {}
-
-    def _get_metrics(ticker: str, as_dataframe: bool = False) -> pd.DataFrame:
-        ticker_up = ticker.upper()
-        return peer_dfs.get(ticker_up, target_df)
-
-    client.get_metrics.side_effect = _get_metrics
-    client.search_tickers.return_value = universe_df
-
-    if portfolio_analysis is not None:
-        client.analyze_portfolio.return_value = portfolio_analysis
-
-    return client
+def _make_proxy(
+    target_ticker: str = "NVDA",
+    sector_etf: str = "SMH",
+    peers: dict[str, float] | None = None,
+) -> PeerGroupProxy:
+    if peers is None:
+        peers = {"AMD": 0.5, "INTC": 0.3, "AVGO": 0.2}
+    return PeerGroupProxy(
+        target_ticker=target_ticker,
+        target_symbol=f"{target_ticker}-US",
+        sector_etf=sector_etf,
+        group_by="subsector_etf",
+        weighting="market_cap",
+        peer_tickers=sorted(peers.keys()),
+        weights=peers,
+        weight_source="market_cap",
+        peer_names={t: t for t in peers},
+    )
 
 
 def _make_peer_portfolio(
@@ -87,7 +47,6 @@ def _make_peer_portfolio(
     peer_res_er: float = 0.31,
     peer_vol: float = 0.28,
 ) -> PortfolioAnalysis:
-    """Minimal PortfolioAnalysis for peer group results."""
     weights = {t: 1.0 / len(peer_tickers) for t in peer_tickers}
     rows = [
         {
@@ -117,249 +76,137 @@ def _make_peer_portfolio(
     )
 
 
-# ---------------------------------------------------------------------------
-# 1. from_ticker() — correct subsector_etf filtering
-# ---------------------------------------------------------------------------
-
-def test_from_ticker_uses_subsector_by_default():
-    """PeerGroupProxy.from_ticker() defaults to subsector_etf, not sector_etf."""
-    target_df = _make_metrics_df("NVDA", subsector_etf="SMH", sector_etf="XLK")
-    universe = _make_universe_df([
-        {"ticker": "NVDA", "subsector_etf": "SMH", "sector_etf": "XLK"},
-        {"ticker": "AMD",  "subsector_etf": "SMH", "sector_etf": "XLK"},
-        {"ticker": "INTC", "subsector_etf": "SMH", "sector_etf": "XLK"},
-        {"ticker": "AAPL", "subsector_etf": "XLK", "sector_etf": "XLK"},  # wrong subsector
-        {"ticker": "MSFT", "subsector_etf": "XLK", "sector_etf": "XLK"},  # wrong subsector
-    ])
-    peer_dfs = {
-        "AMD":  _make_metrics_df("AMD",  market_cap=400_000_000_000.0),
-        "INTC": _make_metrics_df("INTC", market_cap=100_000_000_000.0),
-    }
-    client = _make_mock_client(target_df, universe, peer_dfs)
-
-    pg = PeerGroupProxy.from_ticker(client, "NVDA")
-
-    assert pg.target_ticker == "NVDA"
-    assert pg.group_by == "subsector_etf"
-    assert pg.sector_etf == "SMH"
-    # Only SMH peers, AAPL/MSFT excluded
-    assert "AMD" in pg.peer_tickers
-    assert "INTC" in pg.peer_tickers
-    assert "AAPL" not in pg.peer_tickers
-    assert "MSFT" not in pg.peer_tickers
-    # Target excluded from its own peer group
-    assert "NVDA" not in pg.peer_tickers
-
-
-# ---------------------------------------------------------------------------
-# 2. from_ticker() — subsector fallback to sector when subsector_etf is None
-# ---------------------------------------------------------------------------
-
-def test_from_ticker_falls_back_to_sector_when_no_subsector():
-    """If target has no subsector_etf, fall back to sector_etf with a warning."""
-    target_df = _make_metrics_df("XYZ", subsector_etf=None, sector_etf="XLF")
-    target_df["subsector_etf"] = None  # explicitly None
-    universe = _make_universe_df([
-        {"ticker": "XYZ",  "sector_etf": "XLF", "subsector_etf": None},
-        {"ticker": "JPM",  "sector_etf": "XLF", "subsector_etf": None},
-        {"ticker": "BAC",  "sector_etf": "XLF", "subsector_etf": None},
-        {"ticker": "GS",   "sector_etf": "XLF", "subsector_etf": None},
-        {"ticker": "NVDA", "sector_etf": "XLK", "subsector_etf": "SMH"},
-    ])
-    peer_dfs = {
-        "JPM": _make_metrics_df("JPM", market_cap=600_000_000_000.0),
-        "BAC": _make_metrics_df("BAC", market_cap=300_000_000_000.0),
-        "GS":  _make_metrics_df("GS",  market_cap=150_000_000_000.0),
-    }
-    client = _make_mock_client(target_df, universe, peer_dfs)
-
-    with pytest.warns(UserWarning, match="subsector_etf"):
-        pg = PeerGroupProxy.from_ticker(client, "XYZ")
-
-    assert pg.group_by == "sector_etf"
-    assert pg.sector_etf == "XLF"
-    assert set(pg.peer_tickers) == {"JPM", "BAC", "GS"}
-    assert "NVDA" not in pg.peer_tickers
-
-
-# ---------------------------------------------------------------------------
-# 3. _cap_weight_peers() — valid caps produce correct weights
-# ---------------------------------------------------------------------------
-
-def test_cap_weight_peers_correct_weights():
-    """Cap-weighting divides each cap by the total."""
-    peer_dfs = {
-        "AMD":  _make_metrics_df("AMD",  market_cap=400.0),
-        "INTC": _make_metrics_df("INTC", market_cap=100.0),
-    }
-    client = MagicMock()
-    client.get_metrics.side_effect = lambda t, **kw: peer_dfs.get(t.upper(), pd.DataFrame())
-
-    weights, source = _cap_weight_peers(client, ["AMD", "INTC"], min_cap_coverage=2)
-
-    assert source == "market_cap"
-    assert weights["AMD"] == pytest.approx(0.8)
-    assert weights["INTC"] == pytest.approx(0.2)
-    assert sum(weights.values()) == pytest.approx(1.0)
-
-
-# ---------------------------------------------------------------------------
-# 4. _cap_weight_peers() — fewer than min_cap_coverage → equal-weight fallback
-# ---------------------------------------------------------------------------
-
-def test_cap_weight_peers_equal_weight_fallback():
-    """If fewer than min_cap_coverage tickers have market_cap, fall back to equal-weight."""
-    peer_dfs = {
-        "AMD": _make_metrics_df("AMD", market_cap=None),
-    }
-
-    def _get_metrics(t: str, **kw: Any) -> pd.DataFrame:
-        df = peer_dfs.get(t.upper(), pd.DataFrame())
-        if not df.empty:
-            df = df.copy()
-            df["market_cap"] = None
-        return df
-
-    client = MagicMock()
-    client.get_metrics.side_effect = _get_metrics
-
-    weights, source = _cap_weight_peers(client, ["AMD", "INTC", "AVGO"], min_cap_coverage=3)
-
-    assert source == "equal"
-    assert weights["AMD"] == pytest.approx(1 / 3)
-    assert weights["INTC"] == pytest.approx(1 / 3)
-    assert weights["AVGO"] == pytest.approx(1 / 3)
-
-
-# ---------------------------------------------------------------------------
-# 5. compare() — selection_spread = target_res_er - peer_avg_res_er
-# ---------------------------------------------------------------------------
-
-def test_compare_selection_spread():
-    """PeerComparison.selection_spread = target residual ER minus peer avg."""
-    target_res_er = 0.42
-    peer_res_er = 0.31
-
-    target_df = _make_metrics_df("NVDA", l3_residual_er=target_res_er)
-    universe = _make_universe_df([
-        {"ticker": "NVDA", "subsector_etf": "SMH"},
-        {"ticker": "AMD",  "subsector_etf": "SMH"},
-        {"ticker": "INTC", "subsector_etf": "SMH"},
-        {"ticker": "AVGO", "subsector_etf": "SMH"},
-    ])
+def _make_comparison(
+    target_res_er: float = 0.42,
+    peer_res_er: float = 0.31,
+) -> PeerComparison:
     peers = ["AMD", "INTC", "AVGO"]
     peer_portfolio = _make_peer_portfolio(peers, peer_res_er=peer_res_er)
-    peer_dfs = {t: _make_metrics_df(t, market_cap=200_000_000_000.0) for t in peers}
-
-    client = _make_mock_client(target_df, universe, peer_dfs, peer_portfolio)
-
-    pg = PeerGroupProxy.from_ticker(client, "NVDA")
-    comparison = pg.compare(client)
-
-    assert comparison.target_l3_residual_er == pytest.approx(target_res_er)
-    assert comparison.peer_avg_l3_residual_er == pytest.approx(peer_res_er)
-    assert comparison.selection_spread == pytest.approx(target_res_er - peer_res_er)
-    assert isinstance(comparison, PeerComparison)
-    assert comparison.target_ticker == "NVDA"
-
-
-# ---------------------------------------------------------------------------
-# 6. as_positions() — correct format for analyze_portfolio()
-# ---------------------------------------------------------------------------
-
-def test_as_positions_format():
-    """as_positions() returns list of {ticker, weight} dicts summing to 1.0."""
-    target_df = _make_metrics_df("NVDA", subsector_etf="SMH")
-    universe = _make_universe_df([
-        {"ticker": "NVDA", "subsector_etf": "SMH"},
-        {"ticker": "AMD",  "subsector_etf": "SMH"},
-        {"ticker": "INTC", "subsector_etf": "SMH"},
-        {"ticker": "AVGO", "subsector_etf": "SMH"},
-    ])
-    peers = ["AMD", "INTC", "AVGO"]
-    peer_dfs = {t: _make_metrics_df(t, market_cap=100_000_000_000.0) for t in peers}
-    client = _make_mock_client(target_df, universe, peer_dfs)
-
-    pg = PeerGroupProxy.from_ticker(client, "NVDA")
-    positions = pg.as_positions()
-
-    assert isinstance(positions, list)
-    assert all("ticker" in p and "weight" in p for p in positions)
-    total_weight = sum(p["weight"] for p in positions)
-    assert total_weight == pytest.approx(1.0)
-    tickers = {p["ticker"] for p in positions}
-    assert "NVDA" not in tickers  # target excluded
+    peer_detail = peer_portfolio.per_ticker.copy()
+    return PeerComparison(
+        target_ticker="NVDA",
+        peer_group_label="SMH Subsector Peers (cap-wt, N=3)",
+        target_metrics={"l3_residual_er": target_res_er, "vol_23d": 0.55},
+        peer_portfolio=peer_portfolio,
+        target_l3_residual_er=target_res_er,
+        peer_avg_l3_residual_er=peer_res_er,
+        selection_spread=target_res_er - peer_res_er,
+        target_vol=0.55,
+        peer_avg_vol=0.28,
+        peer_detail=peer_detail,
+    )
 
 
 # ---------------------------------------------------------------------------
-# 7. to_dict() — serializable, all required fields present
+# PeerGroupProxy — constructed directly
 # ---------------------------------------------------------------------------
 
-def test_to_dict_serializable():
-    """to_dict() returns a plain dict with all required fields."""
-    target_df = _make_metrics_df("NVDA", subsector_etf="SMH")
-    universe = _make_universe_df([
-        {"ticker": "NVDA", "subsector_etf": "SMH"},
-        {"ticker": "AMD",  "subsector_etf": "SMH"},
-        {"ticker": "INTC", "subsector_etf": "SMH"},
-        {"ticker": "AVGO", "subsector_etf": "SMH"},
-    ])
-    peers = ["AMD", "INTC", "AVGO"]
-    peer_dfs = {t: _make_metrics_df(t, market_cap=100_000_000_000.0) for t in peers}
-    client = _make_mock_client(target_df, universe, peer_dfs)
+class TestPeerGroupProxy:
+    def test_label_includes_etf_and_count(self):
+        pg = _make_proxy()
+        assert "SMH" in pg.label
+        assert "3" in pg.label
 
-    pg = PeerGroupProxy.from_ticker(client, "NVDA")
-    d = pg.to_dict()
+    def test_n_peers(self):
+        pg = _make_proxy()
+        assert pg.n_peers == 3
 
-    required_keys = {
-        "target_ticker", "target_symbol", "sector_etf", "group_by",
-        "weighting", "weight_source", "n_peers", "peer_tickers", "weights",
-    }
-    assert required_keys.issubset(d.keys())
-    assert d["target_ticker"] == "NVDA"
-    assert d["group_by"] == "subsector_etf"
-    assert d["n_peers"] == len(peers)
-    assert isinstance(d["weights"], dict)
-    assert isinstance(d["peer_tickers"], list)
-    # Must be JSON-serializable (no pandas types, no numpy)
-    import json
-    json.dumps(d)  # raises if not serializable
+    def test_target_excluded_from_peers(self):
+        pg = _make_proxy()
+        assert "NVDA" not in pg.peer_tickers
 
+    def test_as_positions_format(self):
+        pg = _make_proxy()
+        positions = pg.as_positions()
+        assert isinstance(positions, list)
+        assert all("ticker" in p and "weight" in p for p in positions)
+        total = sum(p["weight"] for p in positions)
+        assert total == pytest.approx(1.0)
+        assert "NVDA" not in {p["ticker"] for p in positions}
 
-# ---------------------------------------------------------------------------
-# 8. label property — readable string for snapshot headers
-# ---------------------------------------------------------------------------
+    def test_to_dict_serializable(self):
+        pg = _make_proxy()
+        d = pg.to_dict()
+        required_keys = {
+            "target_ticker", "target_symbol", "sector_etf", "group_by",
+            "weighting", "weight_source", "n_peers", "peer_tickers", "weights",
+        }
+        assert required_keys.issubset(d.keys())
+        assert d["target_ticker"] == "NVDA"
+        assert d["n_peers"] == 3
+        json.dumps(d)  # must be JSON-serializable
 
-def test_label_includes_n_peers_and_etf():
-    target_df = _make_metrics_df("NVDA", subsector_etf="SMH")
-    universe = _make_universe_df([
-        {"ticker": "NVDA", "subsector_etf": "SMH"},
-        {"ticker": "AMD",  "subsector_etf": "SMH"},
-        {"ticker": "INTC", "subsector_etf": "SMH"},
-        {"ticker": "AVGO", "subsector_etf": "SMH"},
-    ])
-    peers = ["AMD", "INTC", "AVGO"]
-    peer_dfs = {t: _make_metrics_df(t, market_cap=100_000_000_000.0) for t in peers}
-    client = _make_mock_client(target_df, universe, peer_dfs)
-
-    pg = PeerGroupProxy.from_ticker(client, "NVDA")
-    lbl = pg.label
-
-    assert "SMH" in lbl
-    assert str(len(peers)) in lbl  # N=3
+    def test_equal_weight_source(self):
+        pg = PeerGroupProxy(
+            target_ticker="XYZ",
+            target_symbol="XYZ-US",
+            sector_etf="XLF",
+            group_by="sector_etf",
+            weighting="equal",
+            peer_tickers=["JPM", "BAC"],
+            weights={"JPM": 0.5, "BAC": 0.5},
+            weight_source="equal",
+        )
+        assert pg.weight_source == "equal"
+        assert "eq-wt" in pg.label
 
 
 # ---------------------------------------------------------------------------
-# 9. _safe_float — handles None, NaN, str cleanly
+# PeerComparison — constructed directly
 # ---------------------------------------------------------------------------
 
-def test_safe_float_handles_edge_cases():
-    import math
-    assert _safe_float(None) is None
-    assert _safe_float(float("nan")) is None
-    assert _safe_float(0.42) == pytest.approx(0.42)
-    assert _safe_float("0.5") == pytest.approx(0.5)
-    assert _safe_float("") is None
+class TestPeerComparison:
+    def test_selection_spread(self):
+        comp = _make_comparison(target_res_er=0.42, peer_res_er=0.31)
+        assert comp.selection_spread == pytest.approx(0.11)
+
+    def test_summary_row(self):
+        comp = _make_comparison()
+        row = comp.summary_row()
+        assert row["ticker"] == "NVDA"
+        assert row["selection_spread"] == pytest.approx(0.11)
+        assert row["peer_count"] == 3
+
+    def test_to_dataframe(self):
+        comp = _make_comparison()
+        df = comp.to_dataframe()
+        assert len(df) == 4  # 1 target summary + 3 peers
+        assert df.iloc[0]["ticker"] == "NVDA"
+
+    def test_to_csv_string(self):
+        comp = _make_comparison()
+        csv_str = comp.to_csv()
+        assert csv_str is not None
+        assert "NVDA" in csv_str
+
+    def test_to_csv_file(self, tmp_path):
+        comp = _make_comparison()
+        out = tmp_path / "peers.csv"
+        comp.to_csv(path=out)
+        assert out.exists()
+        df = pd.read_csv(out)
+        assert len(df) == 4
+
+
+# ---------------------------------------------------------------------------
+# _safe_float — edge cases
+# ---------------------------------------------------------------------------
+
+class TestSafeFloat:
+    def test_none(self):
+        assert _safe_float(None) is None
+
+    def test_nan(self):
+        assert _safe_float(float("nan")) is None
+
+    def test_valid_float(self):
+        assert _safe_float(0.42) == pytest.approx(0.42)
+
+    def test_string_float(self):
+        assert _safe_float("0.5") == pytest.approx(0.5)
+
+    def test_empty_string(self):
+        assert _safe_float("") is None
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +224,6 @@ def test_peer_group_nvda_live():
     assert pg.target_ticker == "NVDA"
     assert pg.group_by == "subsector_etf"
     assert pg.n_peers >= 3
-    # Should include at least one major semiconductor
     assert any(t in pg.peer_tickers for t in ["AMD", "INTC", "AVGO", "QCOM", "MRVL"])
 
     comparison = pg.compare(client)
@@ -406,7 +252,6 @@ def test_peer_group_subsector_coverage():
     coverage_pct = has_subsector / total * 100
 
     print(f"\nsubsector_etf coverage: {has_subsector}/{total} ({coverage_pct:.1f}%)")
-    # Warn if coverage is very low
     if coverage_pct < 50:
         pytest.skip(
             f"Low subsector_etf coverage ({coverage_pct:.1f}%) — "

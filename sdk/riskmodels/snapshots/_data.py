@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -82,6 +83,24 @@ class StockContext:
     @property
     def n_days(self) -> int:
         return len(self.history) if self.history is not None else 0
+
+    def metrics_to_csv(self, path: str | Path | None = None) -> str | None:
+        """Flatten metrics dict to one-row CSV."""
+        row: dict[str, Any] = {"ticker": self.ticker, "teo": self.teo, **self.metrics}
+        df = pd.DataFrame([row])
+        if path is not None:
+            df.to_csv(path, index=False)
+            return None
+        return df.to_csv(index=False)
+
+    def history_to_csv(self, path: str | Path | None = None) -> str | None:
+        """Write stock history DataFrame to CSV."""
+        if self.history is None or self.history.empty:
+            return None
+        if path is not None:
+            self.history.to_csv(path, index=False)
+            return None
+        return self.history.to_csv(index=False)
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +289,21 @@ def cumulative_returns(df: pd.DataFrame) -> pd.Series:
         return pd.Series(dtype=float)
     r = pd.to_numeric(df["returns_gross"], errors="coerce").fillna(0.0)
     return (1 + r).cumprod() - 1
+
+
+def series_with_zero_start(series: list[tuple[str, float]]) -> list[tuple[str, float]]:
+    """Prepend one business day before the first date at 0 cumulative return.
+
+    Used for cumulative-return charts so each line starts at 0% on the left;
+    raw series begin at the first day's move instead of 0.
+    """
+    if not series:
+        return []
+    first = str(series[0][0])[:10]
+    ts = pd.Timestamp(first)
+    anchor = ts - pd.offsets.BDay(1)
+    anchor_str = anchor.strftime("%Y-%m-%d")
+    return [(anchor_str, 0.0)] + list(series)
 
 
 def rolling_sharpe(df: pd.DataFrame, window: int = 63, annualize: int = 252) -> pd.Series:

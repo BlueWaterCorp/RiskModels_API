@@ -6,6 +6,7 @@ import { PortfolioRiskIndexRequestSchema } from "@/lib/api/schemas";
 import { dispatchWebhookEvent } from "@/lib/api/webhooks";
 import { getCorsHeaders } from "@/lib/cors";
 import { runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
+import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,31 @@ export const POST = withBilling(
     const metadata = await getRiskMetadata();
     const portfolioER = core.portfolioER;
     const systematic = core.systematic;
+
+    const format = parseFormat(request.nextUrl.searchParams, request.headers.get("accept"));
+    if (format !== "json") {
+      // Flatten perTicker dict into rows + append portfolio summary row
+      const rows: Record<string, unknown>[] = [];
+      for (const [ticker, data] of Object.entries(core.perTicker)) {
+        rows.push({ ticker, ...(data as Record<string, unknown>) });
+      }
+      rows.push({
+        ticker: "PORTFOLIO",
+        weight: 1.0,
+        l3_mkt_er: portfolioER.market,
+        l3_sec_er: portfolioER.sector,
+        l3_sub_er: portfolioER.subsector,
+        l3_res_er: portfolioER.residual,
+        systematic,
+        vol_23d: core.portfolioVol,
+      });
+      return formatResponse({
+        rows,
+        format,
+        filename: `portfolio_risk_${positions.length}pos.csv`,
+        extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+      });
+    }
 
     const responseBody: Record<string, unknown> = {
       portfolio_risk_index: {
