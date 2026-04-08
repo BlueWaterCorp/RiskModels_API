@@ -10,7 +10,7 @@
  *   const url = await getLatestSnapshotUrl("NVDA");
  */
 
-import { createClient } from "./admin";
+import { createAdminClient } from "./admin";
 
 const BUCKET = "reports";
 const PREFIX = "tickers";
@@ -30,7 +30,7 @@ export async function uploadSnapshotPdf(
   pdfBytes: Uint8Array | Buffer,
   reportType = "deepdive"
 ): Promise<string> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const path = `${PREFIX}/${ticker.toUpperCase()}/${date}_${reportType}.pdf`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, pdfBytes, {
@@ -58,7 +58,7 @@ export async function getLatestSnapshotUrl(
   reportType?: string,
   expiresIn = 3600
 ): Promise<string | null> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const folder = `${PREFIX}/${ticker.toUpperCase()}`;
 
   const { data: files } = await supabase.storage
@@ -90,7 +90,7 @@ export async function getLatestSnapshotUrl(
 export async function listSnapshots(
   ticker: string
 ): Promise<{ name: string; created_at: string }[]> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const folder = `${PREFIX}/${ticker.toUpperCase()}`;
 
   const { data } = await supabase.storage
