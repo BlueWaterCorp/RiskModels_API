@@ -294,18 +294,39 @@ function reviveMacroFactorMaps(
   return out;
 }
 
+/** Convert Map<string, Map<string, number>> to a JSON-safe plain object.
+ *  JSON.stringify(new Map()) produces "{}", losing all data.
+ */
+function macroMapsToPlainObject(
+  maps: Map<string, Map<string, number>>,
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const [factorKey, teoMap] of maps) {
+    const inner: Record<string, number> = {};
+    for (const [teo, val] of teoMap) {
+      inner[teo] = val;
+    }
+    out[factorKey] = inner;
+  }
+  return out;
+}
+
 export async function getMacroFactorMapsCached(
   factorKeys: string[],
   startDate: string,
 ): Promise<Map<string, Map<string, number>>> {
   const sorted = normalizeMacroFactorKeys(factorKeys).keys.sort();
-  const key = generateCacheKey("macro_factors", "v2", {
+  const key = generateCacheKey("macro_factors", "v3", {
     start: startDate,
     f: sorted.join(","),
   });
   const raw = await getOrCompute(
     key,
-    () => loadMacroFactorMaps(sorted, startDate),
+    async () => {
+      // Convert Map to plain object before caching — JSON.stringify(Map) → "{}"
+      const maps = await loadMacroFactorMaps(sorted, startDate);
+      return macroMapsToPlainObject(maps);
+    },
     CACHE_TTL.DAILY,
   );
   return reviveMacroFactorMaps(raw as Map<string, Map<string, number>> | Record<string, unknown>);
@@ -422,6 +443,11 @@ export async function computeFactorCorrelation(
     const m = macroMaps.get(factor);
     if (!m || m.size === 0) {
       correlations[factor] = null;
+      if (macroMaps.size > 0) {
+        warnings.push(
+          `Factor "${factor}" has no data in macro_factors for this date range.`,
+        );
+      }
       continue;
     }
 
@@ -435,6 +461,10 @@ export async function computeFactorCorrelation(
 
     if (pairs.length < MIN_POINTS) {
       correlations[factor] = null;
+      warnings.push(
+        `Factor "${factor}": only ${pairs.length} overlapping observations (need ${MIN_POINTS}). ` +
+        `Stock series has ${stockSeries.length} points, factor series has ${m.size} points.`,
+      );
       continue;
     }
 
@@ -445,6 +475,18 @@ export async function computeFactorCorrelation(
     correlations[factor] = correlationFromArrays(sx, fx, params.method);
   }
 
+  // If every factor produced null, surface diagnostic info so callers can
+  // distinguish "no macro data at all" from "insufficient overlap".
+  const allNull = Object.values(correlations).every((v) => v === null);
+  if (allNull && factorsCanon.length > 0) {
+    warnings.push(
+      `All ${factorsCanon.length} correlations are null. ` +
+      `Stock series: ${stockSeries.length} points (return_type=${params.return_type}). ` +
+      `Macro factors loaded: ${macroMaps.size}/${factorsCanon.length}. ` +
+      `Date range: ${startDateStr} to today.`,
+    );
+  }
+
   return {
     ticker: symbolRecord.ticker,
     return_type: params.return_type,
@@ -453,6 +495,9 @@ export async function computeFactorCorrelation(
     correlations,
     overlap_days: maxOverlap,
     warnings,
+    // Diagnostic fields for SDK resilient fallback
+    stock_series_length: stockSeries.length,
+    macro_factors_loaded: macroMaps.size,
   };
 }
 

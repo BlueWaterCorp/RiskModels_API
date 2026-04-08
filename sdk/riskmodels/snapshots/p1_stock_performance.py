@@ -49,6 +49,7 @@ from ._data import (
     rolling_sharpe,
     max_drawdown_series,
     relative_returns,
+    series_with_zero_start,
 )
 from ..exceptions import APIError
 from ..visuals.smart_subheader import generate_subheader
@@ -73,25 +74,44 @@ def fetch_macro_correlations_resilient(
     (e.g. 400 when subsector metadata is missing) does not skip the gross
     return fallback — otherwise the macro block renders empty for some tickers.
     """
+    last_warnings: list[str] = []
+
     for _wdays in (252, 126, 63):
         try:
             corr_resp = client.get_factor_correlation_single(
                 ticker, return_type="l3_residual", window_days=_wdays,
             )
             _corrs = corr_resp.get("correlations", {})
+            last_warnings = corr_resp.get("warnings", [])
             if any(v is not None for v in _corrs.values()):
                 return _corrs, f"{_wdays}d"
         except APIError:
             continue
-    try:
-        corr_resp = client.get_factor_correlation_single(
-            ticker, return_type="gross", window_days=252,
+
+    # Gross fallback — wider window chain (252 → 126 → 63)
+    for _wdays in (252, 126, 63):
+        try:
+            corr_resp = client.get_factor_correlation_single(
+                ticker, return_type="gross", window_days=_wdays,
+            )
+            _corrs = corr_resp.get("correlations", {})
+            last_warnings = corr_resp.get("warnings", [])
+            if any(v is not None for v in _corrs.values()):
+                return _corrs, f"{_wdays}d gross"
+        except APIError:
+            continue
+
+    # All attempts failed — log diagnostics from last response
+    if last_warnings:
+        import logging
+        logger = logging.getLogger("riskmodels.snapshots")
+        logger.warning(
+            "Macro correlations failed for %s after all fallbacks. "
+            "Last API warnings: %s",
+            ticker,
+            "; ".join(last_warnings),
         )
-        _corrs = corr_resp.get("correlations", {})
-        if any(v is not None for v in _corrs.values()):
-            return _corrs, "252d gross"
-    except APIError:
-        pass
+
     return {}, "252d"
 
 
@@ -490,7 +510,7 @@ def _generate_p1_insights(data: P1Data) -> P1Insights:
 # ---------------------------------------------------------------------------
 
 def _make_cum_chart(data: P1Data) -> go.Figure:
-    """I. Cumulative Returns — multi-line: stock vs SPY vs sector vs subsector vs residual α."""
+    """I. Cumulative Returns — multi-line: stock vs SPY vs sector vs subsector vs L3 residual."""
     pal  = T.palette
     fnt  = T.fonts
 
@@ -506,7 +526,7 @@ def _make_cum_chart(data: P1Data) -> go.Figure:
             hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
-    # Build cumulative residual alpha line from l3_er_series
+    # Build cumulative L3 residual return from l3_er_series
     res_cum_series: list[tuple[str, float]] = []
     if data.l3_er_series:
         running = 0.0
@@ -514,24 +534,30 @@ def _make_cum_chart(data: P1Data) -> go.Figure:
             running += r[4]  # residual ER (daily fraction)
             res_cum_series.append((r[0], running))
 
+    s_stock = series_with_zero_start(data.cum_stock)
+    s_spy = series_with_zero_start(data.cum_spy)
+    s_sec = series_with_zero_start(data.cum_sector)
+    s_sub = series_with_zero_start(data.cum_subsector)
+    s_res = series_with_zero_start(res_cum_series)
+
     fig = go.Figure()
     for t in [
-        _trace(data.cum_stock,     data.ticker,                  pal.navy,    width=3.0),
-        _trace(data.cum_spy,       "SPY",                         "#888888",   width=1.5, dash="dot"),
-        _trace(data.cum_sector,    data.sector_etf or "Sector",   pal.teal,    width=1.5, dash="dash"),
-        _trace(data.cum_subsector, data.subsector_etf or "Sub",  pal.slate,   width=1.5, dash="dashdot"),
-        _trace(res_cum_series,     "Residual α",                  pal.green,   width=2.0, dash="dash"),
+        _trace(s_stock,       data.ticker,                  pal.navy,    width=3.0),
+        _trace(s_spy,         "SPY",                         "#888888",   width=1.5, dash="dot"),
+        _trace(s_sec,         data.sector_etf or "Sector",   pal.teal,    width=1.5, dash="dash"),
+        _trace(s_sub,         data.subsector_etf or "Sub",  pal.slate,   width=1.5, dash="dashdot"),
+        _trace(s_res,         "L3 Residual Return",          pal.green,   width=2.0, dash="solid"),
     ]:
         if t is not None:
             fig.add_trace(t)
 
     # Annotate period-end values on the right axis
     for series, color, prefix in [
-        (data.cum_stock,     pal.navy,    " "),
-        (data.cum_spy,       "#888888",   " "),
-        (data.cum_sector,    pal.teal,    " "),
-        (data.cum_subsector, pal.slate,   " "),
-        (res_cum_series,     pal.green,   " α "),
+        (s_stock,            pal.navy,    " "),
+        (s_spy,              "#888888",   " "),
+        (s_sec,              pal.teal,    " "),
+        (s_sub,              pal.slate,   " "),
+        (s_res,              pal.green,   " "),
     ]:
         if series:
             last_date, last_val = series[-1][0], series[-1][1] * 100
