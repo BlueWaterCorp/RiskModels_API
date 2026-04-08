@@ -42,4 +42,5 @@ paths = [
   '''public/openapi.json''',
   '''OPENAPI_SPEC.yaml''',
   '''docs/''',
+  '''components/''',
 ]
