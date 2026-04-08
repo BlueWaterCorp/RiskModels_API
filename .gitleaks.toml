@@ -43,4 +43,8 @@ paths = [
   '''OPENAPI_SPEC.yaml''',
   '''docs/''',
   '''components/''',
+  '''app/quickstart/''',
+  '''app/api-reference/''',
+  '''app/docs/''',
+  '''app/get-key/''',
 ]
