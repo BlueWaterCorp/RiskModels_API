@@ -11,7 +11,7 @@ useDefault = true
 [[rules]]
 id = "supabase-project-id"
 description = "Supabase project reference ID"
-regex = '''plurbatnjhpullghyhol'''
+regex = '''plurbat[a-z]{10,}'''
 tags = ["supabase", "infrastructure"]
 
 [[rules]]

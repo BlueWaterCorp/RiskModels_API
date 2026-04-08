@@ -66,7 +66,7 @@ console.log(`   Key prefix : ${keyPrefix}`);
 console.log(`   Key hash   : ${hashedKey}\n`);
 
 console.log('══════════════════════════════════════════════════════════');
-console.log(' Supabase SQL  (run in the SQL editor for project plurbatnjhpullghyhol)');
+console.log(` Supabase SQL  (run in the SQL editor for your project)`);
 console.log('══════════════════════════════════════════════════════════\n');
 
 // Emit SQL — user substitutes their real user_id.

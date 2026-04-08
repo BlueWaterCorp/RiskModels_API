@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const BUCKET = "reports";
 const PREFIX = "tickers";
@@ -21,7 +21,7 @@ export async function GET(
 
   // Try Supabase Storage for pre-generated PDFs
   try {
-    const supabase = createClient();
+    const supabase = createAdminClient();
     const folder = `${PREFIX}/${upper}`;
 
     const { data: files } = await supabase.storage
