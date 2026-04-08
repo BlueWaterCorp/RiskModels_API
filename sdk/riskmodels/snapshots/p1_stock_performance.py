@@ -50,6 +50,7 @@ from ._data import (
     max_drawdown_series,
     relative_returns,
 )
+from ..exceptions import APIError
 from ..visuals.smart_subheader import generate_subheader
 
 T = PLOTLY_THEME
@@ -60,6 +61,38 @@ RED_RGB    = (200, 40, 40)
 
 WINDOWS = {"1d": 1, "5d": 5, "1m": 21, "3m": 63, "6m": 126, "1y": 252}
 WINDOW_LABELS = ["1d", "5d", "1m", "3m", "6m", "1y"]
+
+
+def fetch_macro_correlations_resilient(
+    client: Any,
+    ticker: str,
+) -> tuple[dict[str, float | None], str]:
+    """Macro factor correlations for snapshots: L3 residual (252→63d), then gross.
+
+    Each ``l3_residual`` attempt catches :class:`APIError` so one HTTP failure
+    (e.g. 400 when subsector metadata is missing) does not skip the gross
+    return fallback — otherwise the macro block renders empty for some tickers.
+    """
+    for _wdays in (252, 126, 63):
+        try:
+            corr_resp = client.get_factor_correlation_single(
+                ticker, return_type="l3_residual", window_days=_wdays,
+            )
+            _corrs = corr_resp.get("correlations", {})
+            if any(v is not None for v in _corrs.values()):
+                return _corrs, f"{_wdays}d"
+        except APIError:
+            continue
+    try:
+        corr_resp = client.get_factor_correlation_single(
+            ticker, return_type="gross", window_days=252,
+        )
+        _corrs = corr_resp.get("correlations", {})
+        if any(v is not None for v in _corrs.values()):
+            return _corrs, "252d gross"
+    except APIError:
+        pass
+    return {}, "252d"
 
 
 # ---------------------------------------------------------------------------
@@ -267,25 +300,14 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
     except Exception as exc:
         warnings.warn(f"Could not fetch rankings for {ticker}: {exc}", UserWarning, stacklevel=2)
 
-    # ── Macro correlations — try progressively shorter windows ────────
-    macro_correlations: dict[str, float | None] = {}
-    try:
-        for _wdays in [252, 126, 63]:
-            corr_resp = client.get_factor_correlation_single(
-                ticker, return_type="l3_residual", window_days=_wdays,
-            )
-            _corrs = corr_resp.get("correlations", {})
-            if any(v is not None for v in _corrs.values()):
-                macro_correlations = _corrs
-                break
-        # Final fallback: gross return correlations
-        if not any(v is not None for v in macro_correlations.values()):
-            corr_resp = client.get_factor_correlation_single(ticker, return_type="gross", window_days=252)
-            _corrs = corr_resp.get("correlations", {})
-            if any(v is not None for v in _corrs.values()):
-                macro_correlations = _corrs
-    except Exception as exc:
-        warnings.warn(f"Could not fetch macro correlations for {ticker}: {exc}", UserWarning, stacklevel=2)
+    # ── Macro correlations — L3 residual windows, then gross (per-attempt errors OK)
+    macro_correlations, _ = fetch_macro_correlations_resilient(client, ticker)
+    if not any(v is not None for v in macro_correlations.values()):
+        warnings.warn(
+            f"Macro correlations empty for {ticker} after l3_residual and gross fallbacks.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     # ── L3 explained-return attribution series ─────────────────────
     # l3_*_er columns are HR proportions (sum ≈ 1.0 per day).
