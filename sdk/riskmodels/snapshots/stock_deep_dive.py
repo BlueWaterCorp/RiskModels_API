@@ -166,25 +166,6 @@ def get_data_for_dd(ticker: str, client: Any, *, years: int = 2) -> DDData:
     """
     p1 = get_data_for_p1(ticker, client, years=years)
 
-    # Retry macro correlations if P1 fetch got empty (API flakiness)
-    if not any(v is not None for v in (p1.macro_correlations or {}).values()):
-        try:
-            for _wdays in [252, 126, 63]:
-                _resp = client.get_factor_correlation_single(
-                    ticker, return_type="l3_residual", window_days=_wdays,
-                )
-                _corrs = _resp.get("correlations", {})
-                if any(v is not None for v in _corrs.values()):
-                    p1.macro_correlations = _corrs
-                    break
-            if not any(v is not None for v in (p1.macro_correlations or {}).values()):
-                _resp = client.get_factor_correlation_single(ticker, return_type="gross", window_days=252)
-                _corrs = _resp.get("correlations", {})
-                if any(v is not None for v in _corrs.values()):
-                    p1.macro_correlations = _corrs
-        except Exception:
-            pass
-
     peer_comparison: PeerComparison | None = None
     try:
         proxy = PeerGroupProxy.from_ticker(

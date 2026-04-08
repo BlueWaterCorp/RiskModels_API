@@ -288,6 +288,7 @@ def get_data_for_r1(
     """Fetch everything needed for the R1 Factor Risk Profile snapshot."""
     import warnings
     from ._data import fetch_stock_context
+    from .p1_stock_performance import fetch_macro_correlations_resilient
 
     ctx = fetch_stock_context(ticker, client, years=1, include_spy=False)
 
@@ -310,28 +311,12 @@ def get_data_for_r1(
             UserWarning, stacklevel=2,
         )
 
-    macro_correlations: dict[str, float | None] = {}
-    macro_window = "252d"
-    try:
-        for _wdays in [252, 126, 63]:
-            _resp = client.get_factor_correlation_single(
-                ticker, return_type="l3_residual", window_days=_wdays,
-            )
-            _corrs = _resp.get("correlations", {})
-            if any(v is not None for v in _corrs.values()):
-                macro_correlations = _corrs
-                macro_window = f"{_wdays}d"
-                break
-        if not any(v is not None for v in macro_correlations.values()):
-            _resp = client.get_factor_correlation_single(ticker, return_type="gross", window_days=252)
-            _corrs = _resp.get("correlations", {})
-            if any(v is not None for v in _corrs.values()):
-                macro_correlations = _corrs
-                macro_window = "252d gross"
-    except Exception as exc:
+    macro_correlations, macro_window = fetch_macro_correlations_resilient(client, ticker)
+    if not any(v is not None for v in macro_correlations.values()):
         warnings.warn(
-            f"Could not fetch macro correlations for {ticker}: {exc}",
-            UserWarning, stacklevel=2,
+            f"Macro correlations empty for {ticker} after l3_residual and gross fallbacks.",
+            UserWarning,
+            stacklevel=2,
         )
 
     data = R1Data(
