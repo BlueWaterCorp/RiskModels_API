@@ -16,7 +16,11 @@ import {
   fetchLatestMetricsWithFallback,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
-import TickerSearch from "./TickerSearch";
+import { createAdminClient } from "@/lib/supabase/admin";
+import Link from "next/link";
+
+const GCS_BASE = "https://storage.googleapis.com/rm_api_public/snapshot";
+const MAG7 = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "TSLA"] as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,10 +65,24 @@ async function getTickerMetrics(ticker: string): Promise<TickerMetrics | null> {
     );
     if (!latest) return null;
 
+    // Resolve company name — symbols.name, then ticker_metadata.company_name
+    let companyName = symbolRecord.name;
+    if (!companyName) {
+      try {
+        const supabase = createAdminClient();
+        const { data: meta } = await supabase
+          .from("ticker_metadata")
+          .select("company_name")
+          .eq("ticker", symbolRecord.ticker)
+          .maybeSingle();
+        companyName = meta?.company_name ?? null;
+      } catch { /* ticker_metadata may not exist */ }
+    }
+
     const m = latest.metrics;
     return {
       ticker: symbolRecord.ticker,
-      company_name: symbolRecord.name || symbolRecord.ticker,
+      company_name: companyName || symbolRecord.ticker,
       teo: latest.teo,
       sector_etf: symbolRecord.sector_etf,
       subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf,
@@ -93,20 +111,20 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { symbol } = await params;
   const upper = symbol.toUpperCase();
-  const ogUrl = `${BASE_URL}/api/og/${upper}`;
+  const snapshotPng = `${GCS_BASE}/${upper}/${upper}_DD_latest.png`;
   return {
     title: `${upper} — Stock Deep Dive | RiskModels`,
     description: `L3 factor risk decomposition, residual alpha quality, and subsector peer comparison for ${upper}.`,
     openGraph: {
       title: `${upper} Deep Dive`,
       description: `Institutional risk analytics for ${upper} — powered by ERM3 V3.`,
-      images: [{ url: ogUrl, width: 1200, height: 630, alt: `${upper} L3 Risk Decomposition` }],
+      images: [{ url: snapshotPng, width: 2200, height: 1700, alt: `${upper} Deep Dive Snapshot` }],
     },
     twitter: {
       card: "summary_large_image",
       title: `${upper} Deep Dive`,
       description: `Institutional risk analytics for ${upper}`,
-      images: [ogUrl],
+      images: [snapshotPng],
     },
   };
 }
@@ -179,22 +197,39 @@ export default async function TickerDashboard({
     <main className="min-h-screen bg-slate-50">
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="bg-[#002a5e] text-white px-8 py-6">
-        <div className="max-w-6xl mx-auto flex items-start justify-between">
-          <div>
-            <p className="text-sm text-slate-300 mb-1">Stock Deep Dive</p>
-            <h1 className="text-3xl font-bold tracking-tight">
-              {upper} — {companyName}
-            </h1>
-            <p className="text-sm text-slate-300 mt-1">
-              Benchmark: {subEtf} · As of: {teo}
-              {ref && (
-                <span className="ml-3 text-xs bg-slate-700 px-2 py-0.5 rounded">
-                  via {ref}
-                </span>
-              )}
-            </p>
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-slate-300 mb-1">Stock Deep Dive</p>
+              <h1 className="text-3xl font-bold tracking-tight">
+                {upper} — {companyName}
+              </h1>
+              <p className="text-sm text-slate-300 mt-1">
+                Benchmark: {subEtf} · As of: {teo}
+                {ref && (
+                  <span className="ml-3 text-xs bg-slate-700 px-2 py-0.5 rounded">
+                    via {ref}
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
-          <TickerSearch />
+          {/* MAG7 nav */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {MAG7.map((t) => (
+              <Link
+                key={t}
+                href={`/ticker/${t}`}
+                className={`px-3 py-1 text-sm font-medium rounded-lg transition ${
+                  t === upper
+                    ? "bg-white text-[#002a5e]"
+                    : "bg-white/10 border border-white/20 text-white hover:bg-white/20"
+                }`}
+              >
+                {t}
+              </Link>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -210,43 +245,44 @@ export default async function TickerDashboard({
         </div>
       </section>
 
-      {/* ── Snapshot Preview ───────────────────────────────────── */}
+      {/* ── Deep Dive Snapshot ──────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-8 pb-8">
         <h2 className="text-lg font-semibold text-slate-700 mb-4">
-          Snapshot
+          Deep Dive Snapshot
         </h2>
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/og/${upper}`}
-            alt={`${upper} L3 Risk Decomposition`}
-            width={1200}
-            height={630}
+            src={`${GCS_BASE}/${upper}/${upper}_DD_latest.png`}
+            alt={`${upper} Deep Dive Snapshot`}
+            width={2200}
+            height={1700}
             className="w-full rounded-lg"
           />
         </div>
-      </section>
-
-      {/* ── PDF Download ────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-8 pb-12">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">
-            Snapshot Reports
-          </h3>
-          <div className="flex gap-4">
-            <a
-              href={`/api/metrics/${upper}/snapshot.pdf`}
-              className="inline-flex items-center px-4 py-2 bg-[#002a5e] text-white text-sm font-medium rounded-lg hover:bg-[#003d7a] transition"
-            >
-              Download R1 PDF
-            </a>
-            <a
-              href={`/api/pdf/${symbol.toLowerCase()}/latest`}
-              className="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition"
-            >
-              Latest Deep Dive PDF
-            </a>
-          </div>
+        <div className="mt-4 flex gap-4">
+          <a
+            href={`${GCS_BASE}/${upper}/${upper}_DD_latest.pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center px-4 py-2 bg-[#002a5e] text-white text-sm font-medium rounded-lg hover:bg-[#003d7a] transition"
+          >
+            Open PDF
+          </a>
+          <a
+            href={`${GCS_BASE}/${upper}/${upper}_DD_latest.pdf`}
+            download
+            className="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition"
+          >
+            Download PDF
+          </a>
+          <a
+            href={`${GCS_BASE}/${upper}/${upper}_DD_latest.png`}
+            download
+            className="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition"
+          >
+            Download PNG
+          </a>
         </div>
       </section>
 

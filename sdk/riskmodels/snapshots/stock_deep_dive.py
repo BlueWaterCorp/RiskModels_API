@@ -450,11 +450,21 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
                 pass
         return 0.30
 
+    def _finite_mkt_cap(raw: Any, default: float = 1e9) -> float:
+        """Avoid NaN caps — ``float(nan) or default`` is still NaN in Python."""
+        try:
+            v = float(raw)
+            if _math.isfinite(v) and v > 0:
+                return v
+        except (TypeError, ValueError):
+            pass
+        return default
+
     # Target stock
     target_res_er = _gf(m, "l3_residual_er", "l3_res_er")
     target_vol = _vol(m)
     target_res_vol = target_vol * _math.sqrt(max(target_res_er, 0.001))
-    target_mkt_cap = float(m.get("market_cap") or 1e9)
+    target_mkt_cap = _finite_mkt_cap(m.get("market_cap"))
 
     # Peer data
     peer_tickers, peer_x, peer_y, peer_sizes, peer_labels = [], [], [], [], []
@@ -464,7 +474,7 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
             res_er = _gf(rd, "l3_residual_er", "l3_res_er")
             vol = _vol(rd)
             res_vol = vol * _math.sqrt(max(res_er, 0.001))
-            mkt_cap = float(rd.get("market_cap") or 1e9)
+            mkt_cap = _finite_mkt_cap(rd.get("market_cap"))
             cn = str(rd.get("company_name", "")) if rd.get("company_name") else ""
 
             peer_tickers.append(str(t))
@@ -474,10 +484,13 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
             peer_labels.append(str(t))
 
     # Normalize dot sizes (8–28px range)
-    all_caps = peer_sizes + [target_mkt_cap]
+    all_caps = [c for c in peer_sizes + [target_mkt_cap] if _math.isfinite(c) and c > 0]
     max_cap = max(all_caps) if all_caps else 1e9
-    peer_dot_sizes = [8 + (c / max_cap) * 20 for c in peer_sizes]
-    target_dot_size = 8 + (target_mkt_cap / max_cap) * 20
+    peer_dot_sizes = [
+        8 + (c / max_cap) * 20 if _math.isfinite(c) and c > 0 else 8.0
+        for c in peer_sizes
+    ]
+    target_dot_size = 8 + (target_mkt_cap / max_cap) * 20 if max_cap > 0 else 14.0
 
     # Quadrant shading: upper-left = best (high return, low vol)
     all_x = peer_x + [target_res_vol * 100]

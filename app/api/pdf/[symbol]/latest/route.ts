@@ -41,10 +41,9 @@ export async function GET(
     // Storage not configured yet — fall through to generation route
   }
 
-  // Fallback: redirect to the existing snapshot generation endpoint
-  const fallbackUrl = new URL(
-    `/api/metrics/${upper}/snapshot.pdf`,
-    _req.nextUrl.origin
+  // No pre-generated PDF found
+  return NextResponse.json(
+    { error: "No snapshot available", ticker: upper },
+    { status: 404 },
   );
-  return NextResponse.redirect(fallbackUrl, 302);
 }
