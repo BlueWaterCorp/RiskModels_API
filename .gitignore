@@ -3,6 +3,14 @@
 .env.local
 .env.*.local
 
+# Supabase local temp (contains project ID + pooler URL)
+supabase/.temp/
+
+# Proprietary strategy documents
+PREMIUM_TIER_DESIGN.md
+PREMIUM_TIER_IMPLEMENTATION.md
+PRICING_STRATEGY_ANALYSIS.md
+
 # Next.js
 .next/
 out/
