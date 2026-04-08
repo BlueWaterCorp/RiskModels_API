@@ -44,6 +44,7 @@ pdf = [
 snapshots = [
   "plotly>=5.15",
   "kaleido>=0.2,<1",
+  "qrcode[pil]>=7.0",
 ]
 all = ["riskmodels-py[viz,xarray,dotenv,pdf,snapshots]"]
 dev = [

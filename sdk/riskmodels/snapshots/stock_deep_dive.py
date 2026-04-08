@@ -1333,13 +1333,27 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     page.paste_image(dna_img, CONTENT_X + half_w + 40, y, half_w, chart_h_bot)
 
     # ════════════════════════════════════════════════════════════════
-    # FOOTER
+    # FOOTER + QR Code
     # ════════════════════════════════════════════════════════════════
+    _ticker_url = f"riskmodels.app/ticker/{data.ticker.lower()}"
+    _full_url = f"https://{_ticker_url}?ref=snapshot_{data.teo}"
+
+    # QR code — bottom-right, above footer line
+    try:
+        import qrcode as _qr
+        _qr_url = f"https://{_ticker_url}?ref=qr_{data.teo}"
+        _qr_img = _qr.make(_qr_url, box_size=3, border=1)
+        _qr_pil = _qr_img.get_image().convert("RGB")
+        QR_SIZE = 120
+        page.paste_image(_qr_pil, W - MARGIN - QR_SIZE, H - 80 - QR_SIZE - 16, QR_SIZE, QR_SIZE)
+    except ImportError:
+        pass  # qrcode not installed — skip gracefully
+
     footer_y = H - 80
     page.hline(footer_y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=2)
     footer_y += 12
     page.text(MARGIN, footer_y,
-              f"ERM3 V3 · riskmodels-py · {data.teo}  |  riskmodels.app",
+              f"ERM3 V3 · {data.teo}  ·  {_ticker_url}",
               font_size=24, color=TEXT_LIGHT)
     page.text_right(W - MARGIN, footer_y,
                     "BW Macro · Confidential · Not Investment Advice",

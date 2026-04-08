@@ -721,7 +721,7 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     page.hline(footer_y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=2)
     footer_y += 12
     page.text(MARGIN, footer_y,
-              f"ERM3 V3 · riskmodels-py · {data.teo}",
+              f"ERM3 V3 · {data.teo}  ·  riskmodels.app/ticker/{data.ticker.lower()}",
               font_size=24, color=TEXT_LIGHT)
     page.text_right(W - MARGIN, footer_y,
                     "BW Macro · Confidential · Not Investment Advice",
