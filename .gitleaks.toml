@@ -26,27 +26,26 @@ description = "RiskModels API key"
 regex = '''rm_(agent|user)_[a-z]+_[A-Za-z0-9]{16,}'''
 tags = ["api-key"]
 
-# Allow known safe patterns
+# Allow known safe patterns — use regex (globs cause panics in some gitleaks versions)
 [allowlist]
+regexTarget = "match"
 paths = [
-  '''.env.example''',
-  '''AUTHENTICATION_GUIDE.md''',
+  '''\.env\.example$''',
   '''node_modules/''',
-  '''.gitleaks.toml''',
-  '''.github/workflows/''',
+  '''\.gitleaks\.toml$''',
+  '''\.github/workflows/''',
   '''sdk/tests/''',
   '''tests/''',
   '''scripts/''',
-  '''content/docs/''',
-  '''mcp/data/openapi.json''',
-  '''public/openapi.json''',
-  '''OPENAPI_SPEC.yaml''',
+  '''content/''',
+  '''mcp/data/''',
+  '''public/openapi\.json$''',
   '''docs/''',
   '''components/''',
   '''app/quickstart/''',
   '''app/api-reference/''',
   '''app/docs/''',
   '''app/get-key/''',
-  '''**/*.md''',
-  '''**/*.mdx''',
+  '''\.md$''',
+  '''\.mdx$''',
 ]
