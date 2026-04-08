@@ -102,13 +102,17 @@ def _rule_based(
     period_clause = f"{period}{asof}".strip()
 
     generators = {
-        "er_attribution": _rule_er_attribution,
-        "hr_cascade": _rule_hr_cascade,
-        "peer_table": _rule_peer_table,
-        "waterfall": _rule_waterfall,
-        "histogram": _rule_histogram,
-        "multi_line": _rule_multi_line,
-        "stacked_area": _rule_stacked_area,
+        "er_attribution":     _rule_er_attribution,
+        "hr_cascade":         _rule_hr_cascade,
+        "peer_table":         _rule_peer_table,
+        "waterfall":          _rule_waterfall,
+        "histogram":          _rule_histogram,
+        "multi_line":         _rule_multi_line,
+        "stacked_area":       _rule_stacked_area,
+        # P1 Performance snapshot
+        "cumulative_returns":  _rule_cumulative_returns,
+        "return_attribution":  _rule_return_attribution,
+        "drawdown":            _rule_drawdown,
     }
 
     gen = generators.get(chart_type)
@@ -219,6 +223,100 @@ def _rule_multi_line(data: dict, ticker: str, benchmark: str, period: str) -> st
 
 def _rule_stacked_area(data: dict, ticker: str, benchmark: str, period: str) -> str:
     return f"Stacked factor contribution to explained risk {period}."
+
+
+# ---------------------------------------------------------------------------
+# P1 Stock Performance chart-type generators
+# ---------------------------------------------------------------------------
+
+def _rule_cumulative_returns(data: dict, ticker: str, benchmark: str, period: str) -> str:
+    stock_ret  = data.get("stock_return_1y")   # decimal
+    spy_ret    = data.get("spy_return_1y")
+    bench_ret  = data.get("bench_return_1y")
+    rank_pct   = data.get("rank_percentile_1y")
+    cohort_n   = data.get("cohort_size")
+
+    if stock_ret is None:
+        return f"{ticker} cumulative return vs benchmarks {period}."
+
+    stock_pct = float(stock_ret) * 100
+    line = f"{ticker} returned {stock_pct:+.1f}%"
+
+    if spy_ret is not None:
+        vs_spy = (float(stock_ret) - float(spy_ret)) * 100
+        line += f" vs SPY {float(spy_ret)*100:+.1f}% ({vs_spy:+.1f}pp)"
+
+    if bench_ret is not None:
+        vs_bench = (float(stock_ret) - float(bench_ret)) * 100
+        bm_name = benchmark or "benchmark"
+        line += f" and {bm_name} {float(bench_ret)*100:+.1f}% ({vs_bench:+.1f}pp)"
+
+    line += f" {period}."
+
+    if rank_pct is not None:
+        n_str = f" of {int(cohort_n)}" if cohort_n else ""
+        rank_n = float(rank_pct)
+        verdict = "top" if rank_n >= 67 else ("bottom" if rank_n <= 33 else "middle")
+        line += f" Ranks {rank_n:.0f}th pct ({verdict} third{n_str} vs subsector peers)."
+
+    return line
+
+
+def _rule_return_attribution(data: dict, ticker: str, benchmark: str, period: str) -> str:
+    mkt_cum = data.get("cum_mkt_pct", 0.0)    # cumulative % from market factor
+    res_cum = data.get("cum_res_pct", 0.0)    # cumulative % from residual
+    total   = data.get("total_return_pct", 0.0)
+    rank_pct_res = data.get("rank_percentile_res")
+
+    parts = []
+    if total:
+        parts.append(f"{ticker}'s {total:+.1f}% total return {period}")
+    else:
+        parts.append(f"{ticker}'s return {period}")
+
+    if mkt_cum or res_cum:
+        dom = "market" if abs(float(mkt_cum)) >= abs(float(res_cum)) else "residual"
+        parts[0] += (
+            f" decomposes as: market {float(mkt_cum):+.1f}%, "
+            f"residual {float(res_cum):+.1f}%"
+            f" — {dom} factor is the primary driver."
+        )
+
+    text = " ".join(parts)
+
+    if rank_pct_res is not None:
+        pct = float(rank_pct_res)
+        direction = "outperforming" if pct >= 50 else "underperforming"
+        text += f" Residual ranks {pct:.0f}th pct vs subsector peers ({direction})."
+
+    return text
+
+
+def _rule_drawdown(data: dict, ticker: str, benchmark: str, period: str) -> str:
+    max_dd   = data.get("max_drawdown")    # negative decimal
+    spy_dd   = data.get("spy_max_dd")
+    sharpe   = data.get("sharpe_1y")
+
+    if max_dd is None:
+        return f"{ticker} drawdown profile vs SPY {period}."
+
+    dd_pct = float(max_dd) * 100
+    text = f"Max drawdown of {dd_pct:.1f}% for {ticker} {period}"
+
+    if spy_dd is not None:
+        spy_dd_pct = float(spy_dd) * 100
+        diff = dd_pct - spy_dd_pct
+        rel = "deeper" if diff < -2 else ("shallower" if diff > 2 else "comparable")
+        text += f" — {rel} than SPY's {spy_dd_pct:.1f}%"
+
+    text += "."
+
+    if sharpe is not None:
+        sh = float(sharpe)
+        quality = "strong" if sh > 1.0 else ("adequate" if sh > 0.3 else ("poor" if sh < 0 else "weak"))
+        text += f" Sharpe (63d): {sh:.2f} ({quality} risk-adjusted return)."
+
+    return text
 
 
 # ---------------------------------------------------------------------------

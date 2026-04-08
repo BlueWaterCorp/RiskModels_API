@@ -59,6 +59,14 @@ PAGE_REGISTRY: dict[str, dict[str, Any]] = {
         "render_fn": "render_p1_to_pdf",
         "render_png_fn": "render_p1_to_png",
     },
+    "dd": {
+        "label": "Stock Deep Dive",
+        "module": "riskmodels.snapshots.stock_deep_dive",
+        "data_cls": "DDData",
+        "fetch_fn": "get_data_for_dd",
+        "render_fn": "render_dd_to_pdf",
+        "render_png_fn": "render_dd_to_png",
+    },
     # Future pages:
     # "r2": { ... },
 }
@@ -69,9 +77,11 @@ def _load_page(page_key: str) -> dict[str, Any]:
     import importlib
     spec = PAGE_REGISTRY[page_key]
     mod = importlib.import_module(spec["module"])
+    # fetch_module override: data class + fetch can live in a different module
+    fetch_mod = importlib.import_module(spec["fetch_module"]) if "fetch_module" in spec else mod
     result = {
-        "data_cls": getattr(mod, spec["data_cls"]),
-        "fetch_fn": getattr(mod, spec["fetch_fn"]),
+        "data_cls": getattr(fetch_mod, spec["data_cls"]),
+        "fetch_fn": getattr(fetch_mod, spec["fetch_fn"]),
         "render_fn": getattr(mod, spec["render_fn"]),
         "label": spec["label"],
     }

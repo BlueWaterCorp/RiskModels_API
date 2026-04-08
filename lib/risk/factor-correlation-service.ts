@@ -15,6 +15,8 @@ import {
 } from "@/lib/dal/risk-engine-v3";
 import {
   DEFAULT_MACRO_FACTORS,
+  MACRO_FACTOR_DB_KEYS,
+  expandMacroFactorDbKeysForQuery,
   normalizeMacroFactorKeys,
   type MacroFactorKey,
 } from "@/lib/risk/macro-factor-keys";
@@ -56,7 +58,10 @@ function groupHistoryBySymbol(rows: SecurityHistoryRow[]): Map<string, SecurityH
 
 function toTeoMap(pivoted: PivotedHistoryRow[]): Map<string, PivotedHistoryRow> {
   const map = new Map<string, PivotedHistoryRow>();
-  for (const r of pivoted) map.set(r.teo, r);
+  for (const r of pivoted) {
+    const k = normalizeTeo(String(r.teo));
+    map.set(k, { ...r, teo: k });
+  }
   return map;
 }
 
@@ -132,7 +137,17 @@ function correlationFromArrays(
 }
 
 function normalizeTeo(teo: string): string {
-  return teo.includes("T") ? teo.split("T")[0]! : teo;
+  const s = String(teo).trim();
+  if (s.includes("T")) return s.split("T")[0]!;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return s;
+}
+
+/** Prefer `preferred` values where both maps share a `teo` (canonical series over legacy alias). */
+function overlayTeoMaps(preferred: Map<string, number>, base: Map<string, number>): Map<string, number> {
+  const out = new Map(base);
+  for (const [teo, v] of preferred) out.set(teo, v);
+  return out;
 }
 
 function computeDailyStockReturns(
@@ -199,11 +214,13 @@ async function loadMacroFactorMaps(
     return new Map();
   }
 
+  const queryKeys = expandMacroFactorDbKeysForQuery(keysForDb);
+
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("macro_factors")
     .select("factor_key, teo, return_gross")
-    .in("factor_key", keysForDb)
+    .in("factor_key", queryKeys)
     .gte("teo", startDate)
     .order("teo", { ascending: true });
 
@@ -212,15 +229,29 @@ async function loadMacroFactorMaps(
     return new Map();
   }
 
-  const out = new Map<string, Map<string, number>>();
+  const rawByFactorKey = new Map<string, Map<string, number>>();
   for (const row of data ?? []) {
     const fk = row.factor_key as string;
-    const rawTeo = row.teo as string;
-    const teo = normalizeTeo(rawTeo);
+    const teo = normalizeTeo(String(row.teo));
     const v = row.return_gross;
     if (v == null || typeof v !== "number") continue;
-    if (!out.has(fk)) out.set(fk, new Map());
-    out.get(fk)!.set(teo, v);
+    if (!rawByFactorKey.has(fk)) rawByFactorKey.set(fk, new Map());
+    rawByFactorKey.get(fk)!.set(teo, v);
+  }
+
+  const out = new Map<string, Map<string, number>>();
+  for (const canon of keysForDb) {
+    const chain = MACRO_FACTOR_DB_KEYS[canon];
+    let merged = new Map<string, number>();
+    for (const alias of [...chain].reverse()) {
+      const part = rawByFactorKey.get(alias);
+      if (part && part.size > 0) {
+        merged = overlayTeoMaps(part, merged);
+      }
+    }
+    if (merged.size > 0) {
+      out.set(canon, merged);
+    }
   }
   return out;
 }
@@ -268,7 +299,7 @@ export async function getMacroFactorMapsCached(
   startDate: string,
 ): Promise<Map<string, Map<string, number>>> {
   const sorted = normalizeMacroFactorKeys(factorKeys).keys.sort();
-  const key = generateCacheKey("macro_factors", "v1", {
+  const key = generateCacheKey("macro_factors", "v2", {
     start: startDate,
     f: sorted.join(","),
   });

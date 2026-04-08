@@ -29,6 +29,7 @@ Usage
 from __future__ import annotations
 
 import datetime
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,7 @@ from ._data import (
     max_drawdown_series,
     relative_returns,
 )
+from ..visuals.smart_subheader import generate_subheader
 
 T = PLOTLY_THEME
 
@@ -102,6 +104,15 @@ class P1Data:
     max_drawdown: float | None   # worst peak-to-trough (negative decimal)
     vol_23d: float | None
 
+    # Rankings — key: ranking_key ({window}_{cohort}_{metric}), value: {rank_percentile, cohort_size, ...}
+    rankings: dict[str, Any] = field(default_factory=dict)
+
+    # Macro factor correlations to L3 residual (252d) — key: factor name, value: correlation float
+    macro_correlations: dict[str, float | None] = field(default_factory=dict)
+
+    # L3 ER time series — list of (date_str, mkt_er, sec_er, sub_er, res_er) daily values
+    l3_er_series: list[tuple[str, float, float, float, float]] = field(default_factory=list)
+
     sdk_version: str = "0.3.0"
 
     @property
@@ -125,6 +136,15 @@ class P1Data:
                 return []
             return [(str(r[0]), float(r[1])) for r in lst if r[1] is not None]
 
+        def _load_er_series(lst: list | None) -> list[tuple[str, float, float, float, float]]:
+            if not lst:
+                return []
+            out = []
+            for r in lst:
+                if len(r) >= 5 and all(v is not None for v in r[1:5]):
+                    out.append((str(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4])))
+            return out
+
         return cls(
             ticker=d["ticker"],
             company_name=d["company_name"],
@@ -146,6 +166,9 @@ class P1Data:
             sharpe_1y=d.get("sharpe_1y"),
             max_drawdown=d.get("max_drawdown"),
             vol_23d=d.get("vol_23d"),
+            rankings=d.get("rankings", {}),
+            macro_correlations=d.get("macro_correlations", {}),
+            l3_er_series=_load_er_series(d.get("l3_er_series")),
             sdk_version=d.get("sdk_version", "0.3.0"),
         )
 
@@ -226,6 +249,68 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
     if dd_stock:
         max_dd = min(v for _, v in dd_stock)
 
+    # ── Rankings (cross-sectional rank vs subsector peers) ──────────
+    rankings: dict[str, Any] = {}
+    try:
+        rdf = client.get_rankings(ticker)
+        if not rdf.empty and "ranking_key" in rdf.columns:
+            for _, rrow in rdf.iterrows():
+                key = str(rrow["ranking_key"])
+                rankings[key] = {
+                    "rank_ordinal":   rrow.get("rank_ordinal"),
+                    "cohort_size":    rrow.get("cohort_size"),
+                    "rank_percentile": rrow.get("rank_percentile"),
+                    "metric":          rrow.get("metric"),
+                    "cohort":          rrow.get("cohort"),
+                    "window":          rrow.get("window"),
+                }
+    except Exception as exc:
+        warnings.warn(f"Could not fetch rankings for {ticker}: {exc}", UserWarning, stacklevel=2)
+
+    # ── Macro correlations — try progressively shorter windows ────────
+    macro_correlations: dict[str, float | None] = {}
+    try:
+        for _wdays in [252, 126, 63]:
+            corr_resp = client.get_factor_correlation_single(
+                ticker, return_type="l3_residual", window_days=_wdays,
+            )
+            _corrs = corr_resp.get("correlations", {})
+            if any(v is not None for v in _corrs.values()):
+                macro_correlations = _corrs
+                break
+        # Final fallback: gross return correlations
+        if not any(v is not None for v in macro_correlations.values()):
+            corr_resp = client.get_factor_correlation_single(ticker, return_type="gross", window_days=252)
+            _corrs = corr_resp.get("correlations", {})
+            if any(v is not None for v in _corrs.values()):
+                macro_correlations = _corrs
+    except Exception as exc:
+        warnings.warn(f"Could not fetch macro correlations for {ticker}: {exc}", UserWarning, stacklevel=2)
+
+    # ── L3 explained-return attribution series ─────────────────────
+    # l3_*_er columns are HR proportions (sum ≈ 1.0 per day).
+    # Multiply by gross return to get actual daily explained returns per factor.
+    l3_er_series: list[tuple[str, float, float, float, float]] = []
+    if hist is not None and not hist.empty:
+        er_cols = ["l3_market_er", "l3_sector_er", "l3_subsector_er", "l3_residual_er"]
+        ret_col = "returns_gross"
+        if all(c in hist.columns for c in er_cols) and ret_col in hist.columns:
+            dates_col = hist["date"] if "date" in hist.columns else hist.index
+            for d_val, ret_v, mkt_hr, sec_hr, sub_hr, res_hr in zip(
+                dates_col,
+                hist[ret_col],
+                hist["l3_market_er"], hist["l3_sector_er"],
+                hist["l3_subsector_er"], hist["l3_residual_er"],
+            ):
+                if any(pd.isna(v) for v in [ret_v, mkt_hr, sec_hr, sub_hr, res_hr]):
+                    continue
+                # Explained return = HR proportion × gross return
+                mkt_er = float(mkt_hr) * float(ret_v)
+                sec_er = float(sec_hr) * float(ret_v)
+                sub_er = float(sub_hr) * float(ret_v)
+                res_er = float(ret_v) - mkt_er - sec_er - sub_er
+                l3_er_series.append((str(d_val)[:10], mkt_er, sec_er, sub_er, res_er))
+
     return P1Data(
         ticker=ctx.ticker,
         company_name=ctx.company_name,
@@ -247,7 +332,134 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
         sharpe_1y=sharpe_1y,
         max_drawdown=max_dd,
         vol_23d=float(vol_23d) if vol_23d is not None else None,
+        rankings=rankings,
+        macro_correlations=macro_correlations,
+        l3_er_series=l3_er_series,
         sdk_version=ctx.sdk_version,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P1 insight generation — data-driven subheaders for each panel
+# ---------------------------------------------------------------------------
+
+@dataclass
+class P1Insights:
+    """Per-panel subheaders + cross-panel summary for P1.
+
+    Built from P1Data alone — no network calls. Used to replace the
+    static italic subheader text in the render with data-driven commentary.
+    """
+    cum_insight:    str = ""   # I. Cumulative Returns
+    attr_insight:   str = ""   # II. L3 Return Attribution
+    dd_insight:     str = ""   # III. Drawdown
+    summary:        str = ""   # Left panel headline / cross-panel "so what"
+
+
+def _generate_p1_insights(data: P1Data) -> P1Insights:
+    """Build connected data-driven insights across all P1 panels."""
+    ticker = data.ticker
+    sub    = data.subsector_label
+    teo    = data.teo
+
+    tr_1y_stock = data.tr_stock.get("1y")
+    tr_1y_spy   = data.tr_spy.get("1y")
+    tr_1y_bench = data.tr_subsector.get("1y") or data.tr_sector.get("1y")
+
+    rank_1y_total = data.rankings.get("252d_subsector_gross_return")
+    rank_1y_res   = data.rankings.get("252d_subsector_subsector_residual") \
+                    or data.rankings.get("252d_subsector_sector_residual")
+
+    rank_pct_total = float(rank_1y_total["rank_percentile"]) if rank_1y_total else None
+    rank_pct_res   = float(rank_1y_res["rank_percentile"])   if rank_1y_res   else None
+    cohort_n       = int(rank_1y_total["cohort_size"])       if rank_1y_total else None
+
+    # Cumulative attribution totals from l3_er_series
+    cum_mkt = cum_sec = cum_sub = cum_res = 0.0
+    for r in data.l3_er_series:
+        cum_mkt += r[1] * 100
+        cum_sec += r[2] * 100
+        cum_sub += r[3] * 100
+        cum_res += r[4] * 100
+    total_attributed = cum_mkt + cum_sec + cum_sub + cum_res
+
+    # ── I. Cumulative Returns ─────────────────────────────────────────
+    cum_data = {
+        "stock_return_1y":     tr_1y_stock,
+        "spy_return_1y":       tr_1y_spy,
+        "bench_return_1y":     tr_1y_bench,
+        "rank_percentile_1y":  rank_pct_total,
+        "cohort_size":         cohort_n,
+    }
+    cum_text = generate_subheader(
+        "cumulative_returns", "Cumulative Returns", cum_data,
+        data_as_of=teo, time_range="past 252 trading days",
+        ticker=ticker, benchmark=sub,
+    )
+
+    # ── II. L3 Return Attribution ─────────────────────────────────────
+    attr_data = {
+        "cum_mkt_pct":        round(cum_mkt, 2),
+        "cum_res_pct":        round(cum_res, 2),
+        "total_return_pct":   round(tr_1y_stock * 100, 2) if tr_1y_stock else None,
+        "rank_percentile_res": rank_pct_res,
+    }
+    attr_text = generate_subheader(
+        "return_attribution", "L3 Return Attribution", attr_data,
+        data_as_of=teo, time_range="past 252 trading days",
+        ticker=ticker, benchmark=sub,
+    )
+
+    # ── III. Drawdown ─────────────────────────────────────────────────
+    spy_max_dd = min((v for _, v in data.dd_spy), default=None) if data.dd_spy else None
+    dd_data = {
+        "max_drawdown": data.max_drawdown,
+        "spy_max_dd":   spy_max_dd,
+        "sharpe_1y":    data.sharpe_1y,
+    }
+    dd_text = generate_subheader(
+        "drawdown", "Drawdown", dd_data,
+        data_as_of=teo, time_range="past 252 trading days",
+        ticker=ticker, benchmark=sub,
+    )
+
+    # ── Cross-panel summary ───────────────────────────────────────────
+    summary_parts = []
+
+    if tr_1y_stock is not None:
+        pct_1y = tr_1y_stock * 100
+        vs_spy  = (tr_1y_stock - tr_1y_spy) * 100 if tr_1y_spy else None
+        perf_clause = f"{ticker} returned {pct_1y:+.1f}% over the past year"
+        if vs_spy is not None:
+            rel = "outperforming" if vs_spy > 0 else "underperforming"
+            perf_clause += f", {rel} SPY by {abs(vs_spy):.1f}pp"
+        summary_parts.append(perf_clause + ".")
+
+    if rank_pct_total is not None:
+        n_str = f" of {cohort_n}" if cohort_n else ""
+        tier = "top" if rank_pct_total >= 67 else ("bottom" if rank_pct_total <= 33 else "mid")
+        summary_parts.append(
+            f"Ranks {rank_pct_total:.0f}th pct ({tier}-third{n_str}) on 1Y return vs {sub} peers."
+        )
+    elif tr_1y_bench is not None:
+        vs_b = (tr_1y_stock - tr_1y_bench) * 100 if tr_1y_stock else None
+        if vs_b is not None:
+            rel = "ahead of" if vs_b > 0 else "behind"
+            summary_parts.append(f"{abs(vs_b):.1f}pp {rel} {sub} benchmark.")
+
+    if abs(cum_res) > 1.0:
+        res_dir = "positive" if cum_res > 0 else "negative"
+        summary_parts.append(
+            f"Idiosyncratic alpha: {cum_res:+.1f}% ({res_dir} residual contribution)."
+        )
+
+    summary = " ".join(summary_parts)
+
+    return P1Insights(
+        cum_insight=cum_text,
+        attr_insight=attr_text,
+        dd_insight=dd_text,
+        summary=summary,
     )
 
 
@@ -256,126 +468,213 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
 # ---------------------------------------------------------------------------
 
 def _make_cum_chart(data: P1Data) -> go.Figure:
-    """I. Cumulative Returns — multi-line: stock vs SPY vs sector vs subsector."""
-    pal = T.palette
+    """I. Cumulative Returns — multi-line: stock vs SPY vs sector vs subsector vs residual α."""
+    pal  = T.palette
+    fnt  = T.fonts
 
     def _trace(series: list[tuple[str, float]], name: str, color: str,
                 width: float = 2, dash: str = "solid") -> go.Scatter | None:
         if not series:
             return None
         dates = [r[0] for r in series]
-        vals  = [r[1] * 100 for r in series]  # as %
+        vals  = [r[1] * 100 for r in series]
         return go.Scatter(
             x=dates, y=vals, name=name, mode="lines",
             line=dict(color=color, width=width, dash=dash),
+            hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
+    # Build cumulative residual alpha line from l3_er_series
+    res_cum_series: list[tuple[str, float]] = []
+    if data.l3_er_series:
+        running = 0.0
+        for r in data.l3_er_series:
+            running += r[4]  # residual ER (daily fraction)
+            res_cum_series.append((r[0], running))
+
     fig = go.Figure()
-    traces = [
-        _trace(data.cum_stock,     data.ticker,                   pal.navy,  width=3),
-        _trace(data.cum_spy,       "SPY",                          "#888888", width=1.5, dash="dot"),
-        _trace(data.cum_sector,    data.sector_etf or "Sector",    pal.teal,  width=1.5, dash="dash"),
-        _trace(data.cum_subsector, data.subsector_etf or "Sub",   pal.slate, width=1.5, dash="dashdot"),
-    ]
-    for t in traces:
+    for t in [
+        _trace(data.cum_stock,     data.ticker,                  pal.navy,    width=3.0),
+        _trace(data.cum_spy,       "SPY",                         "#888888",   width=1.5, dash="dot"),
+        _trace(data.cum_sector,    data.sector_etf or "Sector",   pal.teal,    width=1.5, dash="dash"),
+        _trace(data.cum_subsector, data.subsector_etf or "Sub",  pal.slate,   width=1.5, dash="dashdot"),
+        _trace(res_cum_series,     "Residual α",                  pal.green,   width=2.0, dash="dash"),
+    ]:
         if t is not None:
             fig.add_trace(t)
+
+    # Annotate period-end values on the right axis
+    for series, color, prefix in [
+        (data.cum_stock,     pal.navy,    " "),
+        (data.cum_spy,       "#888888",   " "),
+        (data.cum_sector,    pal.teal,    " "),
+        (data.cum_subsector, pal.slate,   " "),
+        (res_cum_series,     pal.green,   " α "),
+    ]:
+        if series:
+            last_date, last_val = series[-1][0], series[-1][1] * 100
+            fig.add_annotation(
+                x=last_date, y=last_val, xanchor="left", yanchor="middle",
+                text=f"{prefix}{last_val:+.1f}%", showarrow=False,
+                font=dict(family=fnt.family, size=fnt.annotation, color=color),
+            )
 
     T.style(fig)
     fig.update_layout(
         yaxis=dict(
             title="Cumulative Return (%)",
-            zeroline=True, zerolinecolor="#cccccc", zerolinewidth=1,
-            ticksuffix="%",
+            zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
+            ticksuffix="%", tickfont=dict(size=fnt.axis_tick),
         ),
         xaxis=dict(title=None, showgrid=False),
         legend=dict(
-            orientation="h", yanchor="bottom", y=-0.2,
+            orientation="h", yanchor="bottom", y=-0.22,
             xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)", borderwidth=0,
+            font=dict(size=fnt.body),
         ),
         hovermode="x unified",
     )
     return fig
 
 
-def _make_trailing_bar(data: P1Data) -> go.Figure:
-    """II. Trailing Returns grouped bar — stock vs SPY vs sector vs subsector."""
+def _make_l3_evolution_chart(data: P1Data) -> go.Figure:
+    """II. L3 Return Attribution — cumulative explained-return by factor over 252 days.
+
+    Each line = running total of that factor's contribution (HR proportion × daily gross return).
+    Total of all 4 lines = cumulative gross return of the stock.
+    """
     pal = T.palette
-
-    def _vals(tr: dict[str, float | None]) -> list[float]:
-        return [((tr.get(w) or 0) * 100) for w in WINDOW_LABELS]
-
-    labels = WINDOW_LABELS
-
-    stock_vals    = _vals(data.tr_stock)
-    spy_vals      = _vals(data.tr_spy)
-    sector_vals   = _vals(data.tr_sector)
-    sub_vals      = _vals(data.tr_subsector)
-
     fig = go.Figure()
-    for name, vals, color in [
-        (data.ticker,                         stock_vals,  pal.navy),
-        ("SPY",                                spy_vals,    "#888888"),
-        (data.sector_etf or "Sector",          sector_vals, pal.teal),
-        (data.subsector_etf or "Subsector",    sub_vals,    pal.slate),
-    ]:
-        if any(v != 0 for v in vals):
-            fig.add_trace(go.Bar(
-                x=labels, y=vals, name=name,
-                marker=dict(color=color, line=dict(width=0), cornerradius=3),
-                text=[f"{v:+.1f}%" for v in vals],
-                textposition="outside",
-                textfont=dict(family=T.fonts.family, size=10, color=pal.text_dark),
-                cliponaxis=False,
-            ))
+
+    if not data.l3_er_series:
+        fig.add_annotation(
+            text="L3 attribution data unavailable", xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=18, color=pal.text_light),
+        )
+        T.style(fig)
+        return fig
+
+    dates = [r[0] for r in data.l3_er_series]
+
+    def _cumsum_pct(idx: int) -> list[float]:
+        total = 0.0
+        out = []
+        for r in data.l3_er_series:
+            total += r[idx] * 100
+            out.append(round(total, 4))
+        return out
+
+    mkt_cum = _cumsum_pct(1)
+    sec_cum = _cumsum_pct(2)
+    sub_cum = _cumsum_pct(3)
+    res_cum = _cumsum_pct(4)
+
+    fnt  = T.fonts
+
+    # Stacked cumulative areas — each layer sits on top of the previous
+    stk_mkt = mkt_cum
+    stk_sec = [m + s             for m, s        in zip(mkt_cum, sec_cum)]
+    stk_sub = [m + s + u         for m, s, u     in zip(mkt_cum, sec_cum, sub_cum)]
+    stk_res = [m + s + u + r     for m, s, u, r  in zip(mkt_cum, sec_cum, sub_cum, res_cum)]
+
+    # Official R1 factor palette — vivid, high-contrast
+    layers = [
+        ("Market",    stk_mkt, pal.navy,  "rgba(0,42,94,0.70)",    "tozeroy"),
+        ("Sector",    stk_sec, pal.teal,  "rgba(0,111,142,0.65)",  "tonexty"),
+        ("Subsector", stk_sub, pal.slate, "rgba(42,127,191,0.60)", "tonexty"),
+        ("Residual",  stk_res, pal.green, "rgba(0,170,0,0.65)",    "tonexty"),
+    ]
+    for name, vals, line_color, fill_rgba, fill_mode in layers:
+        fig.add_trace(go.Scatter(
+            x=dates, y=vals, name=name, mode="lines",
+            line=dict(color=line_color, width=1.2),
+            fill=fill_mode, fillcolor=fill_rgba,
+            hovertemplate=f"<b>{name}</b>: %{{y:.2f}}%<extra></extra>",
+        ))
+
+    # Period-end residual annotation (the alpha signal)
+    if stk_res and res_cum:
+        last_res = res_cum[-1]
+        res_color = pal.green if last_res >= 0 else pal.orange
+        fig.add_annotation(
+            xref="paper", x=1.01, y=stk_res[-1], xanchor="left", yanchor="middle",
+            text=f"α {last_res:+.1f}%", showarrow=False,
+            font=dict(family=fnt.family, size=fnt.annotation, color=res_color),
+        )
 
     T.style(fig)
     fig.update_layout(
-        barmode="group",
-        bargap=0.25, bargroupgap=0.06,
         yaxis=dict(
-            title="Return (%)",
-            zeroline=True, zerolinecolor="#cccccc", zerolinewidth=1,
-            ticksuffix="%",
+            title="Cumulative Return Attribution (%)",
+            zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
+            ticksuffix="%", tickfont=dict(size=fnt.axis_tick),
         ),
-        xaxis=dict(title=None),
+        xaxis=dict(title=None, showgrid=False),
         legend=dict(
             orientation="h", yanchor="bottom", y=-0.25,
             xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)", borderwidth=0,
+            font=dict(size=fnt.body),
         ),
+        hovermode="x unified",
     )
     return fig
 
 
 def _make_drawdown_chart(data: P1Data) -> go.Figure:
-    """III. Drawdown — underwater equity curve, stock vs SPY."""
+    """III. Drawdown — underwater equity curve with max DD annotation."""
     pal = T.palette
+    fnt = T.fonts
 
     fig = go.Figure()
 
+    # SPY first so it renders behind
+    if data.dd_spy:
+        spy_dates = [r[0] for r in data.dd_spy]
+        spy_vals  = [r[1] * 100 for r in data.dd_spy]
+        fig.add_trace(go.Scatter(
+            x=spy_dates, y=spy_vals, name="SPY", mode="lines",
+            line=dict(color="#999999", width=1.2, dash="dot"),
+            hovertemplate="<b>SPY</b>: %{y:.1f}%<extra></extra>",
+        ))
+
+    # Stock — red fill to signal drawdown as risk event
     if data.dd_stock:
         dates = [r[0] for r in data.dd_stock]
         vals  = [r[1] * 100 for r in data.dd_stock]
         fig.add_trace(go.Scatter(
             x=dates, y=vals, name=data.ticker, mode="lines",
-            line=dict(color=pal.navy, width=2),
+            line=dict(color=pal.red, width=2),
             fill="tozeroy",
-            fillcolor=f"rgba(0,42,94,0.12)",
+            fillcolor="rgba(204,41,54,0.12)",
+            hovertemplate=f"<b>{data.ticker}</b>: %{{y:.1f}}%<extra></extra>",
         ))
 
-    if data.dd_spy:
-        dates = [r[0] for r in data.dd_spy]
-        vals  = [r[1] * 100 for r in data.dd_spy]
-        fig.add_trace(go.Scatter(
-            x=dates, y=vals, name="SPY", mode="lines",
-            line=dict(color="#888888", width=1.5, dash="dot"),
-        ))
+        # Max DD horizontal reference line + callout
+        if data.max_drawdown is not None:
+            max_dd_pct = data.max_drawdown * 100
+            spy_max_dd = min((r[1] for r in data.dd_spy), default=None) if data.dd_spy else None
+            spy_str = f" vs SPY {spy_max_dd*100:.1f}%" if spy_max_dd is not None else ""
+            callout = f"Max DD: {max_dd_pct:.1f}%{spy_str}"
+
+            fig.add_shape(
+                type="line", xref="paper", x0=0, x1=1,
+                y0=max_dd_pct, y1=max_dd_pct,
+                line=dict(color=pal.orange, width=1.2, dash="dot"),
+            )
+            fig.add_annotation(
+                xref="paper", x=0.02, y=max_dd_pct,
+                text=callout, showarrow=False, xanchor="left", yanchor="top",
+                font=dict(family=fnt.family, size=fnt.annotation, color=pal.orange),
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=pal.orange, borderwidth=1, borderpad=3,
+            )
 
     T.style(fig)
     fig.update_layout(
         yaxis=dict(
             title="Drawdown (%)",
-            zeroline=True, zerolinecolor="#cccccc", zerolinewidth=1,
+            zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
             ticksuffix="%",
         ),
         xaxis=dict(title=None, showgrid=False),
@@ -423,9 +722,34 @@ def _fmt_num(v: float | None, decimals: int = 2) -> str:
 # Page compositor
 # ---------------------------------------------------------------------------
 
+def _pct_ordinal(pct: float) -> str:
+    """Format 73.4 → '73rd pct'."""
+    n = int(round(pct))
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix} pct"
+
+
+def _sharpe_qualifier(sh: float | None) -> str:
+    """Return a qualitative label for a Sharpe ratio."""
+    if sh is None:
+        return ""
+    if sh > 1.0:
+        return "strong"
+    if sh > 0.3:
+        return "adequate"
+    if sh > 0.0:
+        return "weak"
+    return "poor"
+
+
 def _compose_p1_page(data: P1Data) -> SnapshotComposer:
     """Compose the P1 snapshot using Pillow layout + Plotly charts."""
     apply_theme()
+
+    insights = _generate_p1_insights(data)
 
     m    = data.metrics
     pal  = T.palette
@@ -509,7 +833,8 @@ def _compose_p1_page(data: P1Data) -> SnapshotComposer:
     tr = data.tr_stock
     vol_str    = _fmt_pct(data.vol_23d / (252**0.5) if data.vol_23d else None)  # daily vol — actually show annualised
     vol_str    = f"{data.vol_23d*100:.1f}%" if data.vol_23d else "—"
-    sharpe_str = _fmt_num(data.sharpe_1y)
+    _sh = data.sharpe_1y
+    sharpe_str = _fmt_num(_sh) + (f" · {_sharpe_qualifier(_sh)}" if _sh is not None else "")
     max_dd_str = _fmt_pct(data.max_drawdown)
 
     price = m.get("close_price")
@@ -552,6 +877,141 @@ def _compose_p1_page(data: P1Data) -> SnapshotComposer:
                         font_size=LBL_SZ, bold=True, color=sp_col)
         py += tr_row_h
 
+    py += 16
+
+    # RANKINGS — multi-window dot matrix (6 windows × 2 metrics)
+    _section("RANKINGS — Multi-Window vs Subsector")
+    RANK_WINDOWS = [
+        ("1d",   "1d"),
+        ("5d",   "5d"),
+        ("21d",  "1m"),
+        ("63d",  "3m"),
+        ("126d", "6m"),
+        ("252d", "1y"),
+    ]
+    RANK_METRICS = [
+        ("Total Return", "gross_return",         "subsector_gross_return"),
+        ("Residual ER",  "subsector_residual",   "subsector_subsector_residual"),
+    ]
+    DOT_D = 26
+    LABEL_W = 170  # px for row label on left
+    dots_area_w = PANEL_W - LABEL_W - 10
+    dot_spacing = dots_area_w // len(RANK_WINDOWS)
+    dot_x_start = MARGIN + LABEL_W
+
+    # Period header row
+    for i, (wkey, dlabel) in enumerate(RANK_WINDOWS):
+        dot_cx = dot_x_start + i * dot_spacing + dot_spacing // 2
+        page.text(dot_cx - 10, py, dlabel, font_size=20, color=TEXT_LIGHT)
+    py += 28
+
+    for mlabel, _mkey, rank_suffix in RANK_METRICS:
+        page.text(MARGIN, py + (ROW_H - LBL_SZ) // 2, mlabel,
+                  font_size=LBL_SZ, color=TEXT_MID)
+        for i, (wkey, _dlabel) in enumerate(RANK_WINDOWS):
+            rank_key = f"{wkey}_subsector_{rank_suffix}"
+            rrow = data.rankings.get(rank_key)
+            pct = float(rrow["rank_percentile"]) if (
+                rrow and rrow.get("rank_percentile") is not None
+            ) else None
+
+            dot_color = (
+                GREEN_RGB if pct is not None and pct >= 67 else
+                RED_RGB   if pct is not None and pct <= 33 else
+                ORANGE_RGB if pct is not None else
+                TEXT_LIGHT
+            )
+            dot_cx = dot_x_start + i * dot_spacing + dot_spacing // 2
+            dot_cy = py + (ROW_H - DOT_D) // 2
+            page.draw.ellipse(
+                [dot_cx - DOT_D // 2, dot_cy,
+                 dot_cx + DOT_D // 2, dot_cy + DOT_D],
+                fill=dot_color,
+            )
+        py += ROW_H
+
+    py += 16
+
+    # RISK DECOMPOSITION
+    _section("RISK DECOMPOSITION — L3 ER")
+
+    BAR_MAX_W = int(PANEL_W * 0.50)
+
+    def _g(full: str, abbr: str) -> float | None:
+        v = m.get(full)
+        return v if v is not None else m.get(abbr)
+
+    mkt_er  = _g("l3_market_er",    "l3_mkt_er")
+    sec_er  = _g("l3_sector_er",    "l3_sec_er")
+    sub_er  = _g("l3_subsector_er", "l3_sub_er")
+    res_er  = _g("l3_residual_er",  "l3_res_er")
+    er_vals = [abs(float(v)) for v in [mkt_er, sec_er, sub_er, res_er] if v is not None]
+    max_er  = max(er_vals) if er_vals else 1.0
+
+    NAVY_T  = (0, 42, 94)
+    TEAL_T  = (0, 111, 142)
+    SLATE_T = (42, 127, 191)
+    GREEN_T = (0, 170, 0)
+
+    def _er_color(v: float | None) -> tuple:
+        if v is None:
+            return TEXT_LIGHT
+        return GREEN_RGB if float(v) >= 0 else ORANGE_RGB
+
+    for er_label, er_val, bar_color in [
+        ("Market ER",    mkt_er, NAVY_T),
+        ("Sector ER",    sec_er, TEAL_T),
+        ("Subsector ER", sub_er, SLATE_T),
+        ("Residual ER",  res_er, GREEN_T),
+    ]:
+        val_str = _fmt_pct(er_val) if er_val is not None else "—"
+        vc = _er_color(er_val)
+
+        page.text(MARGIN, py, er_label, font_size=LBL_SZ, color=TEXT_MID)
+        page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=vc)
+
+        if er_val is not None:
+            bar_h = 10
+            bar_y = py + (ROW_H - bar_h) // 2
+            bar_w = max(4, int(abs(float(er_val)) / max_er * BAR_MAX_W))
+            bar_x = panel_right - bar_w - 90
+            page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=bar_color)
+
+        py += ROW_H
+    py += 16
+
+    # MACRO CORRELATIONS
+    _section("MACRO CORRELATIONS — L3 Res · 252d")
+    MACRO_KEYS  = ["vix", "oil", "gold", "bitcoin", "dxy", "ust10y2y"]
+    MACRO_NAMES = {"vix": "VIX", "oil": "Oil", "gold": "Gold",
+                   "bitcoin": "Bitcoin", "dxy": "DXY", "ust10y2y": "UST 10y-2y"}
+    corrs = data.macro_correlations or {}
+
+    for mkey in MACRO_KEYS:
+        corr = corrs.get(mkey)
+        mlabel = MACRO_NAMES[mkey]
+
+        if corr is not None:
+            corr_f = float(corr)
+            val_str = f"{corr_f:+.2f}"
+            val_color = GREEN_RGB if corr_f > 0 else ORANGE_RGB
+        else:
+            corr_f = None
+            val_str = "—"
+            val_color = TEXT_LIGHT
+
+        page.text(MARGIN, py, mlabel, font_size=LBL_SZ, color=TEXT_MID)
+        page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=val_color)
+
+        if corr_f is not None:
+            bar_h = 10
+            bar_y = py + (ROW_H - bar_h) // 2
+            bar_w = max(4, int(abs(corr_f) * BAR_MAX_W))
+            bar_x = panel_right - bar_w - 90
+            page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=val_color)
+
+        py += ROW_H
+
     # ════════════════════════════════════════════════════════════════
     # RIGHT CONTENT AREA
     # ════════════════════════════════════════════════════════════════
@@ -561,22 +1021,58 @@ def _compose_p1_page(data: P1Data) -> SnapshotComposer:
     half_w    = CONTENT_W // 2 - 20
     GAP       = 36   # gap between chart rows
 
-    # Fixed heights for headers/insights, then split remaining between charts
+    # ── AI Performance Summary box ──────────────────────────────────
+    def _est_lines(text: str, font_size: int, max_width: int) -> int:
+        if not text:
+            return 0
+        chars_per_line = max(1, int(max_width / (font_size * 0.55)))
+        words = text.split()
+        lines, ll = 1, 0
+        for w in words:
+            if ll + len(w) + 1 > chars_per_line:
+                lines += 1
+                ll = len(w)
+            else:
+                ll += len(w) + 1
+        return lines
+
+    import re as _re
+    if insights.summary:
+        m_sent = _re.search(r'\.\s+(?=[A-Z])', insights.summary)
+        if m_sent:
+            lead = insights.summary[:m_sent.start() + 1]
+            rest = insights.summary[m_sent.end():].strip()
+        else:
+            lead, rest = insights.summary, ""
+
+        lead_lines = _est_lines(lead, 32, CONTENT_W - 40)
+        rest_lines = _est_lines(rest, 28, CONTENT_W - 40) if rest else 0
+        box_h = 26 + int(lead_lines * 32 * 1.4) + (int(rest_lines * 28 * 1.4) if rest else 0) + 26
+        box_h = max(box_h, 90)
+
+        page.rect(CONTENT_X - 10, y, CONTENT_W + 20, box_h, fill=LIGHT_BG)
+        ty = y + 22
+        ty = page.text(CONTENT_X + 10, ty, lead,
+                       font_size=32, bold=True, color=TEXT_DARK, max_width=CONTENT_W - 40)
+        if rest:
+            page.text(CONTENT_X + 10, ty + 4, rest,
+                      font_size=28, color=TEXT_MID, max_width=CONTENT_W - 40)
+        y += box_h + 16
+
+    # Fixed heights for section headers + subheaders + divider
     # Section I:    title(56) + insight(40) = 96
     # Divider:      1 + 20 = 21
     # Section II+III: title(56) + insight(40) = 96
     OVERHEAD = 96 + 21 + 96
     chart_area = FOOTER_Y - y - OVERHEAD - GAP
-    chart_h_top = int(chart_area * 0.50)           # I. cumulative returns
-    chart_h_bot = chart_area - chart_h_top          # II + III (same height, side by side)
+    chart_h_top = int(chart_area * 0.50)
+    chart_h_bot = chart_area - chart_h_top
 
     # ── Section I: Cumulative Returns ───────────────────────────────
     page.text(CONTENT_X, y, "I. Cumulative Returns",
               font_size=38, bold=True, color=NAVY)
     y += 56
-    page.text(CONTENT_X, y,
-              f"{data.ticker} vs SPY, {data.sector_etf or 'Sector'}, "
-              f"{data.subsector_etf or 'Subsector'} · past 252 trading days ending {data.teo}.",
+    page.text(CONTENT_X, y, insights.cum_insight,
               font_size=26, italic=True, color=TEAL, max_width=CONTENT_W)
     y += 40
 
@@ -589,27 +1085,21 @@ def _compose_p1_page(data: P1Data) -> SnapshotComposer:
     y += 20
 
     # ── Sections II + III side by side ──────────────────────────────
-    y_row2 = y
-
-    # Section II title + chart (left half)
-    page.text(CONTENT_X, y, "II. Trailing Returns",
+    page.text(CONTENT_X, y, "II. L3 Return Attribution",
               font_size=38, bold=True, color=NAVY)
     page.text(CONTENT_X + half_w + 40, y, "III. Drawdown",
               font_size=38, bold=True, color=NAVY)
     y += 56
 
-    tr_periods = ", ".join(WINDOW_LABELS)
-    page.text(CONTENT_X, y,
-              f"Stock vs benchmarks over {tr_periods} · as of {data.teo}.",
+    page.text(CONTENT_X, y, insights.attr_insight,
               font_size=26, italic=True, color=TEAL, max_width=half_w - 10)
-    page.text(CONTENT_X + half_w + 40, y,
-              f"Underwater equity curve vs SPY · past year ending {data.teo}.",
+    page.text(CONTENT_X + half_w + 40, y, insights.dd_insight,
               font_size=26, italic=True, color=TEAL, max_width=half_w - 10)
     y += 40
 
-    tr_fig  = _make_trailing_bar(data)
+    l3_fig  = _make_l3_evolution_chart(data)
     dd_fig  = _make_drawdown_chart(data)
-    page.paste_figure(tr_fig, CONTENT_X,             y, half_w, chart_h_bot)
+    page.paste_figure(l3_fig, CONTENT_X,              y, half_w, chart_h_bot)
     page.paste_figure(dd_fig, CONTENT_X + half_w + 40, y, half_w, chart_h_bot)
 
     # ════════════════════════════════════════════════════════════════
