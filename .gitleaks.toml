@@ -37,4 +37,9 @@ paths = [
   '''sdk/tests/''',
   '''tests/''',
   '''scripts/''',
+  '''content/docs/''',
+  '''mcp/data/openapi.json''',
+  '''public/openapi.json''',
+  '''OPENAPI_SPEC.yaml''',
+  '''docs/''',
 ]
