@@ -8,11 +8,11 @@ the MAG7 chart from BWMACRO/article_visuals.py but for any stock's peer group).
 
 Layout (Letter Landscape, Pillow compositor)
 --------------------------------------------
-  Left panel (25%) : Identity, Performance Stats, Rankings (multi-window dots),
-                      Risk Decomposition ER, Macro Correlations
+  Left panel (25%) : Identity, Performance Stats, Rankings (labeled subsector ranks),
+                      Risk Decomposition ER, Macro Correlations, ERM3 methodology (L1–L3)
   Right area  (75%):
       AI Summary Box
-      I.  Cumulative Returns — stock vs SPY vs sector vs subsector + Residual α
+      I.  Cumulative Returns — stock vs SPY vs sector vs subsector + L3 Residual Return
       II. Residual Alpha Drawdown (bottom-left)
       III. Subsector Risk DNA (bottom-right, σ-scaled Matplotlib bar, 7 rows)
   Footer: ERM3 attribution
@@ -48,6 +48,7 @@ from ._compose import (
     SnapshotComposer, NAVY, TEAL, TEXT_DARK, TEXT_MID, TEXT_LIGHT,
     WHITE, LIGHT_BG, BORDER,
 )
+from ._data import series_with_zero_start
 from ..visuals.smart_subheader import generate_subheader
 from .p1_stock_performance import (
     P1Data,
@@ -265,7 +266,7 @@ def _risk_dna_segments(m: dict) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def _make_dd_cum_chart(data: P1Data) -> go.Figure:
-    """I. Cumulative Returns — upgraded styling for Deep Dive (richer stock line, emerald α)."""
+    """I. Cumulative Returns — upgraded styling for Deep Dive (richer stock line, emerald L3 residual)."""
     pal = T.palette
     fnt = T.fonts
 
@@ -286,7 +287,7 @@ def _make_dd_cum_chart(data: P1Data) -> go.Figure:
             hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
-    # Build cumulative residual alpha line
+    # Build cumulative L3 residual return line (daily residual explained return)
     res_cum_series: list[tuple[str, float]] = []
     if data.l3_er_series:
         running = 0.0
@@ -294,24 +295,30 @@ def _make_dd_cum_chart(data: P1Data) -> go.Figure:
             running += r[4]
             res_cum_series.append((r[0], running))
 
+    s_stock = series_with_zero_start(data.cum_stock)
+    s_spy = series_with_zero_start(data.cum_spy)
+    s_sec = series_with_zero_start(data.cum_sector)
+    s_sub = series_with_zero_start(data.cum_subsector)
+    s_res = series_with_zero_start(res_cum_series)
+
     fig = go.Figure()
     for t in [
-        _trace(data.cum_stock,     data.ticker,                  STOCK_COLOR,  width=3.5),
-        _trace(data.cum_spy,       "SPY",                         SPY_COLOR,    width=1.3, dash="dot"),
-        _trace(data.cum_sector,    data.sector_etf or "Sector",   SECTOR_COLOR, width=1.3, dash="dash"),
-        _trace(data.cum_subsector, data.subsector_etf or "Sub",  SUB_COLOR,    width=1.3, dash="dashdot"),
-        _trace(res_cum_series,     "Residual α",                  ALPHA_COLOR,  width=2.2, dash="dash"),
+        _trace(s_stock,       data.ticker,                  STOCK_COLOR,  width=3.5),
+        _trace(s_spy,         "SPY",                         SPY_COLOR,    width=1.3, dash="dot"),
+        _trace(s_sec,         data.sector_etf or "Sector",   SECTOR_COLOR, width=1.3, dash="dash"),
+        _trace(s_sub,         data.subsector_etf or "Sub",  SUB_COLOR,    width=1.3, dash="dashdot"),
+        _trace(s_res,         "L3 Residual Return",          ALPHA_COLOR,  width=2.2, dash="solid"),
     ]:
         if t is not None:
             fig.add_trace(t)
 
-    # Annotate period-end values
+    # Annotate period-end values (use anchored series for last point)
     for series, color, prefix in [
-        (data.cum_stock,     STOCK_COLOR,  " "),
-        (data.cum_spy,       SPY_COLOR,    " "),
-        (data.cum_sector,    SECTOR_COLOR, " "),
-        (data.cum_subsector, SUB_COLOR,    " "),
-        (res_cum_series,     ALPHA_COLOR,  " α "),
+        (s_stock,            STOCK_COLOR,  " "),
+        (s_spy,              SPY_COLOR,    " "),
+        (s_sec,              SECTOR_COLOR, " "),
+        (s_sub,              SUB_COLOR,    " "),
+        (s_res,              ALPHA_COLOR,  " "),
     ]:
         if series:
             last_date, last_val = series[-1][0], series[-1][1] * 100
@@ -969,10 +976,12 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     LBL_SZ = 27
     VAL_SZ = 27
     SEC_SZ = 21
+    SECTION_GAP = 24   # vertical space between Identity / Performance / Rankings blocks
+    METH_BODY = 19     # methodology body (fits L1–L3 copy in sidebar)
 
     def _panel_row(label: str, val_str: str, val_color=TEXT_DARK):
         nonlocal py
-        page.text(MARGIN, py, label, font_size=LBL_SZ, color=TEXT_MID)
+        page.text(MARGIN, py, label, font_size=LBL_SZ, color=TEXT_LIGHT)
         page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=val_color)
         py += ROW_H
 
@@ -997,7 +1006,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     _panel_row("Market Cap",     mkt_cap_str)
     _panel_row("Sector ETF",     data.sector_etf or "—")
     _panel_row("Subsector ETF",  data.subsector_etf or "—")
-    py += 10
+    py += SECTION_GAP
 
     # PERFORMANCE STATS (with sparklines for price & Sharpe)
     _section("PERFORMANCE STATS")
@@ -1065,10 +1074,10 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     max_res_dd = min((v for _, v in res_dd), default=None) if res_dd else None
     _panel_row("Res α Max DD",   _fmt_pct(max_res_dd),
                val_color=ORANGE_RGB if (max_res_dd or 0) < -0.05 else TEXT_DARK)
-    py += 10
+    py += SECTION_GAP
 
     # RANKINGS — transposed table (windows as rows, metrics as columns)
-    _section("RANKINGS — Subsector Percentile")
+    _section("RANKINGS — Subsector cohort")
 
     # Determine peer group size from any available ranking entry
     _rank_1y = p1.rankings.get("252d_subsector_gross_return")
@@ -1081,20 +1090,25 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     RANK_WINDOWS = [("1d", "1d"), ("5d", "5d"), ("21d", "1m"),
                     ("63d", "3m"), ("126d", "6m"), ("252d", "1y")]
     # Keys: {window}_subsector_gross_return, {window}_subsector_subsector_residual
-    RANK_METRICS = [
-        ("Return", "gross_return"),
-        ("Res ER", "subsector_residual"),
-    ]
+    RANK_SUFFIXES = ("gross_return", "subsector_residual")
 
-    # Column header row: Window | Return | Res ER
+    # Column header: window (left) | explicit rank labels (values right-aligned)
     col1_x = MARGIN
-    col2_x = MARGIN + int(PANEL_W * 0.30)
-    col3_x = MARGIN + int(PANEL_W * 0.62)
-    HDR_SZ = 21
+    col2_right = MARGIN + int(PANEL_W * 0.58)
+    col3_right = panel_right
+    HDR_SZ = 17
     page.text(col1_x, py, "Window", font_size=HDR_SZ, color=TEXT_LIGHT)
-    page.text(col2_x, py, "Return", font_size=HDR_SZ, bold=True, color=TEXT_MID)
-    page.text(col3_x, py, "Res ER", font_size=HDR_SZ, bold=True, color=TEXT_MID)
-    py += int(HDR_SZ * 1.3) + 2
+    page.text_right(
+        col2_right, py,
+        "Gross return rank",
+        font_size=HDR_SZ, bold=True, color=NAVY,
+    )
+    page.text_right(
+        col3_right, py,
+        "Residual ER rank",
+        font_size=HDR_SZ, bold=True, color=NAVY,
+    )
+    py += int(HDR_SZ * 1.35) + 2
     page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
     py += 4
 
@@ -1102,7 +1116,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     for wkey, dlabel in RANK_WINDOWS:
         # Skip rows where both metrics are missing
         _has_any = False
-        for _, rank_suffix in RANK_METRICS:
+        for rank_suffix in RANK_SUFFIXES:
             rrow = p1.rankings.get(f"{wkey}_subsector_{rank_suffix}")
             if rrow and rrow.get("rank_percentile") is not None:
                 _has_any = True
@@ -1111,7 +1125,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
             continue
 
         page.text(col1_x, py, dlabel.upper(), font_size=LBL_SZ, bold=True, color=TEXT_DARK)
-        for col_x, (_, rank_suffix) in [(col2_x, RANK_METRICS[0]), (col3_x, RANK_METRICS[1])]:
+        for col_right, rank_suffix in [(col2_right, RANK_SUFFIXES[0]), (col3_right, RANK_SUFFIXES[1])]:
             rank_key = f"{wkey}_subsector_{rank_suffix}"
             rrow = p1.rankings.get(rank_key)
             pct = float(rrow["rank_percentile"]) if (
@@ -1127,9 +1141,9 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
             else:
                 pct_str = "—"
                 pct_color = TEXT_LIGHT
-            page.text(col_x, py, pct_str, font_size=LBL_SZ, color=pct_color)
+            page.text_right(col_right, py, pct_str, font_size=LBL_SZ, bold=True, color=pct_color)
         py += RANK_ROW_H
-    py += 10
+    py += SECTION_GAP
 
     # RISK DECOMPOSITION
     _section("RISK DECOMPOSITION — L3 ER")
@@ -1164,7 +1178,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     ]:
         val_str = _fmt_pct(er_val) if er_val is not None else "—"
         vc = _er_color(er_val)
-        page.text(MARGIN, py, er_label, font_size=LBL_SZ, color=TEXT_MID)
+        page.text(MARGIN, py, er_label, font_size=LBL_SZ, color=TEXT_LIGHT)
         page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=vc)
         if er_val is not None:
             bar_h, bar_y = 9, py + (ROW_H - 9) // 2
@@ -1191,7 +1205,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
             corr_f = None
             val_str = "—"
             val_color = TEXT_LIGHT
-        page.text(MARGIN, py, mlabel, font_size=LBL_SZ, color=TEXT_MID)
+        page.text(MARGIN, py, mlabel, font_size=LBL_SZ, color=TEXT_LIGHT)
         page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=val_color)
         if corr_f is not None:
             bar_h, bar_y = 9, py + (ROW_H - 9) // 2
@@ -1200,25 +1214,52 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
             page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=val_color)
         py += ROW_H
 
-    # ── METHODOLOGY box (bottom of sidebar, if space allows) ────────
-    METH_Y = H - 90 - 160   # target position
-    if py < METH_Y - 10:
-        py = METH_Y
-        page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
-        py += 8
-        page.text(MARGIN, py, "METHODOLOGY", font_size=SEC_SZ, bold=True, color=TEXT_LIGHT)
-        py += int(SEC_SZ * 1.4)
-        page.text(MARGIN, py, "Orthogonal Factor Decomposition",
-                  font_size=LBL_SZ, bold=True, color=NAVY)
-        py += int(LBL_SZ * 1.4) + 2
-        page.text(MARGIN, py,
-                  "L3 risk model decomposes total return into orthogonal market, "
-                  "sector, subsector, and idiosyncratic (residual) components "
-                  "using constrained regression.",
-                  font_size=21, color=TEXT_MID, max_width=PANEL_W - 20)
-        py += int(21 * 1.4 * 2) + 4
-        page.text(MARGIN, py, "Learn more → riskmodels.app/docs/l3-decomposition",
-                  font_size=20, color=TEAL)
+    # ── METHODOLOGY — ERM3 L1–L3 hierarchy (sidebar) ─────────────────
+    py += SECTION_GAP
+    page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
+    py += 8
+    page.text(
+        MARGIN, py,
+        "METHODOLOGY — Hierarchical regression (ERM3)",
+        font_size=SEC_SZ, bold=True, color=TEXT_LIGHT,
+    )
+    py += int(SEC_SZ * 1.4)
+    page.text(MARGIN, py, "L1 · L2 · L3 orthogonal layers",
+              font_size=LBL_SZ, bold=True, color=NAVY)
+    py += int(LBL_SZ * 1.4) + 4
+
+    _uni = (p1.universe or "uni_mc_3000").strip()
+    _factor_set_id = _uni if _uni.upper().startswith("SPY_") else f"SPY_{_uni}"
+    _meth_p1 = (
+        "ERM3 uses three sequential regressions. Each stage explains the prior residual, "
+        "so hedge ratios are incremental—not stacked betas on the same returns."
+    )
+    _meth_p2 = (
+        "L1 (Market): stock vs broad market ETF (SPY) for baseline beta. "
+        "L2 (Sector): L1 residual vs GICS sector ETF — sector-specific move vs the market. "
+        "L3 (Subsector): L2 residual vs subsector ETF — finest systematic sleeve before idiosyncratic risk."
+    )
+    _meth_p3 = (
+        "Sequential orthogonalization keeps hedge ratios stable and incremental, enabling "
+        "precise multi-leg hedges without double-counting factor exposures."
+    )
+    _meth_footer = (
+        f"Factor set: {_factor_set_id} · Universe ~3,000 US equities (market-cap cohort)"
+    )
+
+    py = page.text(MARGIN, py, _meth_p1, font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20)
+    py += 8
+    py = page.text(MARGIN, py, _meth_p2, font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20)
+    py += 8
+    py = page.text(MARGIN, py, _meth_p3, font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20)
+    py += 10
+    py = page.text(MARGIN, py, _meth_footer, font_size=17, color=TEXT_LIGHT, max_width=PANEL_W - 20)
+    py += 8
+    page.text(
+        MARGIN, py,
+        "Learn more → riskmodels.app/docs/l3-decomposition",
+        font_size=18, color=TEAL,
+    )
 
     # ════════════════════════════════════════════════════════════════
     # RIGHT CONTENT AREA
