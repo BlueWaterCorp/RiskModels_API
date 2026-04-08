@@ -62,12 +62,20 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { symbol } = await params;
   const upper = symbol.toUpperCase();
+  const ogUrl = `${BASE_URL}/api/og/${upper}`;
   return {
     title: `${upper} — Stock Deep Dive | RiskModels`,
     description: `L3 factor risk decomposition, residual alpha quality, and subsector peer comparison for ${upper}.`,
     openGraph: {
       title: `${upper} Deep Dive`,
       description: `Institutional risk analytics for ${upper} — powered by ERM3 V3.`,
+      images: [{ url: ogUrl, width: 1200, height: 630, alt: `${upper} L3 Risk Decomposition` }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${upper} Deep Dive`,
+      description: `Institutional risk analytics for ${upper}`,
+      images: [ogUrl],
     },
   };
 }
@@ -185,7 +193,7 @@ export default async function TickerDashboard({
             active={focus === "alpha-quality"}
           />
           <PanelLink
-            title="III. Subsector Risk DNA"
+            title="III. Equity Factor Decomposition"
             description="σ-scaled factor decomposition vs top 6 peers"
             active={focus === "risk-dna"}
           />
