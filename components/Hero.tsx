@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Zap } from 'lucide-react';
 import { HeroGetStartedPulse } from '@/components/HeroGetStartedPulse';
+import HeroTickerSearch from '@/components/HeroTickerSearch';
 import TrustTechBar from '@/components/TrustTechBar';
 
 export default function Hero() {
@@ -54,6 +55,14 @@ export default function Hero() {
           >
             Read the Docs
           </Link>
+        </div>
+
+        {/* Ticker search */}
+        <div className="pt-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-zinc-500">
+            Try a stock deep dive
+          </p>
+          <HeroTickerSearch />
         </div>
 
         {/* Pricing summary — directly under CTAs */}
