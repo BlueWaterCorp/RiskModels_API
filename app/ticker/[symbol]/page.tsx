@@ -2,16 +2,16 @@
  * /ticker/[symbol] — Dynamic Ticker Dashboard
  *
  * Entry point from PDF snapshot QR codes and footer links.
- * Fetches live metrics from the internal API and renders a minimal
- * interactive dashboard. Supports ?ref= for tracking and ?focus= for
- * auto-opening specific panels.
+ * Fetches live metrics from the internal API and renders a
+ * deep-dive page with OG snapshot card. Supports ?ref= for tracking.
  *
  * @example https://riskmodels.app/ticker/nvda
- * @example https://riskmodels.app/ticker/nvda?ref=snapshot_2026-04-06&focus=risk-dna
+ * @example https://riskmodels.app/ticker/nvda?ref=snapshot_2026-04-06
  */
 
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
+import TickerSearch from "./TickerSearch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,10 +115,10 @@ export default async function TickerDashboard({
   searchParams,
 }: {
   params: Promise<{ symbol: string }>;
-  searchParams: Promise<{ ref?: string; focus?: string }>;
+  searchParams: Promise<{ ref?: string }>;
 }) {
   const { symbol } = await params;
-  const { ref, focus } = await searchParams;
+  const { ref } = await searchParams;
   const upper = symbol.toUpperCase();
 
   const metrics = await getTickerMetrics(upper);
@@ -148,19 +148,22 @@ export default async function TickerDashboard({
     <main className="min-h-screen bg-slate-50">
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="bg-[#002a5e] text-white px-8 py-6">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-sm text-slate-300 mb-1">Stock Deep Dive</p>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {upper} — {companyName}
-          </h1>
-          <p className="text-sm text-slate-300 mt-1">
-            Benchmark: {subEtf} · As of: {teo}
-            {ref && (
-              <span className="ml-3 text-xs bg-slate-700 px-2 py-0.5 rounded">
-                via {ref}
-              </span>
-            )}
-          </p>
+        <div className="max-w-6xl mx-auto flex items-start justify-between">
+          <div>
+            <p className="text-sm text-slate-300 mb-1">Stock Deep Dive</p>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {upper} — {companyName}
+            </h1>
+            <p className="text-sm text-slate-300 mt-1">
+              Benchmark: {subEtf} · As of: {teo}
+              {ref && (
+                <span className="ml-3 text-xs bg-slate-700 px-2 py-0.5 rounded">
+                  via {ref}
+                </span>
+              )}
+            </p>
+          </div>
+          <TickerSearch />
         </div>
       </header>
 
@@ -176,26 +179,19 @@ export default async function TickerDashboard({
         </div>
       </section>
 
-      {/* ── Panel Links ─────────────────────────────────────────── */}
+      {/* ── Snapshot Preview ───────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-8 pb-8">
         <h2 className="text-lg font-semibold text-slate-700 mb-4">
-          Interactive Panels
+          Snapshot
         </h2>
-        <div className="grid md:grid-cols-3 gap-4">
-          <PanelLink
-            title="I. Cumulative Returns"
-            description="1Y total return vs SPY, sector, subsector + residual α"
-            active={focus === "returns"}
-          />
-          <PanelLink
-            title="II. Residual Alpha Quality"
-            description="Peer scatter: L3 residual return vs residual vol"
-            active={focus === "alpha-quality"}
-          />
-          <PanelLink
-            title="III. Equity Factor Decomposition"
-            description="σ-scaled factor decomposition vs top 6 peers"
-            active={focus === "risk-dna"}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`/api/og/${upper}`}
+            alt={`${upper} L3 Risk Decomposition`}
+            width={1200}
+            height={630}
+            className="w-full rounded-lg"
           />
         </div>
       </section>
@@ -257,30 +253,3 @@ function MetricCard({
   );
 }
 
-function PanelLink({
-  title,
-  description,
-  active,
-}: {
-  title: string;
-  description: string;
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-5 transition ${
-        active
-          ? "border-indigo-500 bg-indigo-50 shadow-md"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-      }`}
-    >
-      <h3 className="font-semibold text-slate-800">{title}</h3>
-      <p className="text-sm text-slate-500 mt-1">{description}</p>
-      {active && (
-        <span className="inline-block mt-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">
-          Active
-        </span>
-      )}
-    </div>
-  );
-}
