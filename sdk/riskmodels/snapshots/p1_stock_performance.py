@@ -160,8 +160,10 @@ class P1Data:
     # Rankings — key: ranking_key ({window}_{cohort}_{metric}), value: {rank_percentile, cohort_size, ...}
     rankings: dict[str, Any] = field(default_factory=dict)
 
-    # Macro factor correlations to L3 residual (252d) — key: factor name, value: correlation float
+    # Macro factor correlations — key: factor name, value: correlation float
     macro_correlations: dict[str, float | None] = field(default_factory=dict)
+    # Window string from fetch_macro_correlations_resilient (e.g. "252d", "63d gross")
+    macro_window: str = "252d"
 
     # L3 ER time series — list of (date_str, mkt_er, sec_er, sub_er, res_er) daily values
     l3_er_series: list[tuple[str, float, float, float, float]] = field(default_factory=list)
@@ -221,6 +223,7 @@ class P1Data:
             vol_23d=d.get("vol_23d"),
             rankings=d.get("rankings", {}),
             macro_correlations=d.get("macro_correlations", {}),
+            macro_window=d.get("macro_window", "252d"),
             l3_er_series=_load_er_series(d.get("l3_er_series")),
             sdk_version=d.get("sdk_version", "0.3.0"),
         )
@@ -321,7 +324,7 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
         warnings.warn(f"Could not fetch rankings for {ticker}: {exc}", UserWarning, stacklevel=2)
 
     # ── Macro correlations — L3 residual windows, then gross (per-attempt errors OK)
-    macro_correlations, _ = fetch_macro_correlations_resilient(client, ticker)
+    macro_correlations, macro_window = fetch_macro_correlations_resilient(client, ticker)
     if not any(v is not None for v in macro_correlations.values()):
         warnings.warn(
             f"Macro correlations empty for {ticker} after l3_residual and gross fallbacks.",
@@ -376,6 +379,7 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
         vol_23d=float(vol_23d) if vol_23d is not None else None,
         rankings=rankings,
         macro_correlations=macro_correlations,
+        macro_window=macro_window,
         l3_er_series=l3_er_series,
         sdk_version=ctx.sdk_version,
     )

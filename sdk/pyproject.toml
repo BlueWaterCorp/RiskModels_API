@@ -49,6 +49,7 @@ snapshots = [
 all = ["riskmodels-py[viz,xarray,dotenv,pdf,snapshots]"]
 dev = [
     "build>=1.2",
+    "qrcode[pil]>=7.0",
     "matplotlib>=3.8,<4",
     "plotly>=5.15",
     "kaleido>=0.2,<1",

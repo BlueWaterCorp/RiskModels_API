@@ -14,7 +14,7 @@ Layout (Letter Landscape, Pillow compositor)
       AI Summary Box
       I.  Cumulative Returns — stock vs SPY vs sector vs subsector + L3 Residual Return
       II. Residual Alpha Drawdown (bottom-left)
-      III. Subsector Risk DNA (bottom-right, σ-scaled Matplotlib bar, 7 rows)
+      III. Equity Factor Decomposition (bottom-right, σ-scaled Matplotlib bar, 7 rows)
   Footer: ERM3 attribution
 
 Data pipeline
@@ -592,7 +592,7 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
 
 
 def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
-    """III. Subsector Risk DNA — target + top 6 peers by market cap (7 bars).
+    """III. Equity Factor Decomposition — target + top 6 peers by market cap (7 bars).
 
     σ-scaled horizontal stacked bars (BWMACRO/article_visuals.py style).
     Annotations use ax.get_yaxis_transform() so they always clear the plot edge.
@@ -655,7 +655,7 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
 
     # Build rows: target + top 6 peers by market_cap
     target_row: dict = {
-        "ticker": f"\u2605 {dd.ticker}",
+        "ticker": dd.ticker,
         "l3_market_er": _g("l3_market_er", "l3_mkt_er") or 0.0,
         "l3_sector_er": _g("l3_sector_er", "l3_sec_er") or 0.0,
         "l3_subsector_er": _g("l3_subsector_er", "l3_sub_er") or 0.0,
@@ -716,23 +716,20 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     # Highlight target row (row 0) with navy outline
     total_0 = float(mkt_v[0] + sec_v[0] + sub_v[0] + res_v[0])
     from matplotlib.patches import FancyBboxPatch
-    ax.add_patch(FancyBboxPatch(
+    _outline = FancyBboxPatch(
         (0, -h_bar / 2), total_0, h_bar,
-        boxstyle="round,pad=0", linewidth=1.8,
+        boxstyle="round,pad=0", linewidth=2.0,
         edgecolor=DEEP_BLUE, facecolor="none", zorder=10,
-    ))
-
-    for i, r in enumerate(rows):
-        m0, s0, u0, _ = _rr(r)
-        sys_pct = m0 + s0 + u0
-        etf = str(r.get("subsector_etf") or "").strip()
-        ann = f"{etf}  {sys_pct:.0%} systematic" if etf else f"{sys_pct:.0%} systematic"
-        ax.text(1.01, i, ann, transform=ax.get_yaxis_transform(),
-                ha="left", va="center", fontsize=9, color=SLATE, alpha=0.92)
+        clip_on=False,
+    )
+    ax.add_patch(_outline)
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(tickers, fontsize=9.5, fontweight="bold", color=DEEP_BLUE)
-    ax.set_xlim(0, xmax)
+    # Small negative x0 so the target-row outline stroke is not clipped on the left
+    _xpad = max(xmax * 0.004, 0.001)
+    ax.set_xlim(-_xpad, xmax)
+    ax.set_xticks(np.linspace(0, xmax, min(6, max(3, int(xmax / 0.05) + 1))))
     ax.set_ylim(-0.5, n - 0.5)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0%}"))
     ax.set_xlabel(
@@ -751,7 +748,7 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
         handlelength=1.1, handletextpad=0.5,
         edgecolor="#e2e8f0", facecolor="#fafafa",
     )
-    plt.tight_layout(rect=[0, 0.10, 0.86, 1.0])
+    plt.tight_layout(rect=[0, 0.10, 0.995, 1.0])
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=250, bbox_inches="tight",
@@ -899,6 +896,53 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
 # Page compositor
 # ---------------------------------------------------------------------------
 
+def _build_qr_pil(url: str, size_px: int):
+    """Return a square RGB QR image, or None if ``qrcode`` is not installed.
+
+    Resizes with nearest-neighbor only — :func:`SnapshotComposer.paste_image` uses
+    LANCZOS by default, which blurs QR modules into an unreadable smear.
+    """
+    try:
+        import qrcode
+        from PIL import Image
+        from qrcode import constants as qr_constants
+    except ImportError:
+        return None
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qr_constants.ERROR_CORRECT_M,
+        box_size=4,
+        border=2,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    pil = img.get_image() if hasattr(img, "get_image") else img
+    pil = pil.convert("RGB")
+    if pil.size != (size_px, size_px):
+        try:
+            resample = Image.Resampling.NEAREST
+        except AttributeError:
+            resample = Image.NEAREST  # Pillow < 9
+        pil = pil.resize((size_px, size_px), resample)
+    return pil
+
+
+def _macro_corr_subtitle(macro_window: str) -> str:
+    """Human-readable caption for macro correlation block (matches API fallback chain)."""
+    if "gross" in macro_window:
+        w = macro_window.replace(" gross", "").strip()
+        return f"Gross return correlations · {w} trading days"
+    if macro_window == "252d":
+        return "Correlations vs L3 Residual Return · TTM (~252 trading days)"
+    if macro_window == "126d":
+        return "Correlations vs L3 Residual Return · ~126 trading days"
+    if macro_window == "63d":
+        return "Correlations vs L3 Residual Return · ~63 trading days"
+    return f"Correlations vs L3 Residual Return · {macro_window}"
+
+
 def _draw_card(
     page: SnapshotComposer,
     x: int, y: int, w: int, h: int,
@@ -948,12 +992,10 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     # ════════════════════════════════════════════════════════════════
     page.text(MARGIN, y, insights.get("headline", f"{data.ticker} — {data.company_name}"),
               font_size=52, bold=True, color=NAVY, max_width=W - MARGIN * 2 - 500)
-    page.text_right(W - MARGIN, y + 6, "Stock Deep Dive",
-                    font_size=42, color=TEXT_MID)
     y += 68
 
     page.text(MARGIN, y,
-              f"{data.ticker} — {data.company_name}  ·  Benchmark: {data.subsector_label}  ·  As of: {data.teo}",
+              f"{data.ticker} — {data.company_name}  ·  Subsector Benchmark: {data.subsector_label}  ·  As of: {data.teo}",
               font_size=30, color=TEXT_MID)
     y += 50
 
@@ -976,8 +1018,26 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     LBL_SZ = 27
     VAL_SZ = 27
     SEC_SZ = 21
-    SECTION_GAP = 24   # vertical space between Identity / Performance / Rankings blocks
     METH_BODY = 19     # methodology body (fits L1–L3 copy in sidebar)
+
+    # Dynamic SECTION_GAP — distribute vertical space so sections fill the panel
+    # and methodology is pinned to the panel bottom (METH_RESERVE px from footer).
+    METH_RESERVE = 440   # methodology block: title + 6 definition rows
+    PANEL_BOTTOM = H - 90
+    _company_h   = int(38 * 1.4) + int(LBL_SZ * 1.4) + 10
+    _sec_h       = int(SEC_SZ * 1.4) + 7   # section header + divider
+    _identity_h  = _sec_h + 3 * ROW_H
+    _perf_h      = _sec_h + 5 * ROW_H
+    # Rankings: combined title + col headers + up to 6 window rows (no header rules)
+    _rankings_h  = int((SEC_SZ + 1) * 1.4) * 2 + 10 + int(17 * 1.35) + 10 + 6 * 36
+    # ER rows may wrap to 2 lines — reserve extra vertical space vs single ROW_H
+    _risk_h      = _sec_h + 4 * max(ROW_H, int(LBL_SZ * 1.4 * 2) + 4)
+    _macro_h     = _sec_h + 6 * ROW_H
+    _sections_h  = _company_h + _identity_h + _perf_h + _rankings_h + _risk_h + _macro_h
+    _n_gaps      = 5   # gaps: after identity, perf, rankings, risk, macro→meth
+    _avail       = (PANEL_BOTTOM - METH_RESERVE) - (py + _sections_h)
+    # Narrow band so vertical rhythm between Identity / Perf / Rankings / Risk / Macro is even
+    SECTION_GAP  = max(30, min(52, _avail // _n_gaps))
 
     def _panel_row(label: str, val_str: str, val_color=TEXT_DARK):
         nonlocal py
@@ -987,8 +1047,8 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
 
     def _section(title: str):
         nonlocal py
-        page.text(MARGIN, py, title, font_size=SEC_SZ, bold=True, color=TEXT_LIGHT)
-        py += int(SEC_SZ * 1.4)
+        page.text(MARGIN, py, title, font_size=SEC_SZ + 1, bold=True, color=TEXT_DARK)
+        py += int((SEC_SZ + 1) * 1.4)
         page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
         py += 6        # compressed from 8
 
@@ -1012,7 +1072,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     _section("PERFORMANCE STATS")
     vol_str    = f"{p1.vol_23d*100:.1f}%" if p1.vol_23d else "—"
     _sh = p1.sharpe_1y
-    sharpe_str = _fmt_num(_sh) + (f" · {_sharpe_qualifier(_sh)}" if _sh is not None else "")
+    sharpe_str = _fmt_num(_sh)   # qualifier rendered as sub-label below
     max_dd_str = _fmt_pct(p1.max_drawdown)
     price = m.get("close_price")
     price_str = f"${float(price):.2f}" if price else "—"
@@ -1050,9 +1110,9 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
                 _s = (sum((x - _m) ** 2 for x in _win) / len(_win)) ** 0.5
                 _sharpe_spark.append(_m / _s if _s > 1e-9 else 0)
 
-    SPARK_X = panel_right - 120   # right-align sparkline
+    SPARK_X = MARGIN + int(PANEL_W * 0.50)  # mid-panel — clear of both label and value text
     SPARK_W = 90
-    SPARK_H = 20
+    SPARK_H = 22
 
     _panel_row("Last Price",     price_str)
     if _price_spark:
@@ -1060,8 +1120,11 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
         _draw_sparkline(_price_spark, SPARK_X, py - ROW_H + 6, SPARK_W, SPARK_H, _trend_color)
 
     _panel_row("Vol (23d ann.)", vol_str)
-    _panel_row("Sharpe (63d)",   sharpe_str,
-               val_color=GREEN_RGB if (_sh or 0) > 0.5 else ORANGE_RGB if (_sh or 0) < 0 else TEXT_DARK)
+    _sh_color = GREEN_RGB if (_sh or 0) > 0.5 else ORANGE_RGB if (_sh or 0) < 0 else TEXT_DARK
+    _panel_row("Sharpe (63d)",   sharpe_str, val_color=_sh_color)
+    if _sh is not None:
+        _sq = _sharpe_qualifier(_sh)
+        page.text_right(panel_right, py - ROW_H + 26, _sq, font_size=19, color=_sh_color)
     if _sharpe_spark:
         _trend_color = GREEN_RGB if _sharpe_spark[-1] >= _sharpe_spark[0] else ORANGE_RGB
         _draw_sparkline(_sharpe_spark, SPARK_X, py - ROW_H + 6, SPARK_W, SPARK_H, _trend_color)
@@ -1076,19 +1139,29 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
                val_color=ORANGE_RGB if (max_res_dd or 0) < -0.05 else TEXT_DARK)
     py += SECTION_GAP
 
-    # RANKINGS — transposed table (windows as rows, metrics as columns)
-    _section("RANKINGS — Subsector cohort")
-
-    # Determine peer group size from any available ranking entry
+    # RANKINGS — title + peer cohort on one line, then table
     _rank_1y = p1.rankings.get("252d_subsector_gross_return")
     _cohort_n = int(_rank_1y["cohort_size"]) if (_rank_1y and _rank_1y.get("cohort_size")) else None
+    _rank_title = "RANKINGS — Subsector cohort"
     if _cohort_n:
-        page.text(MARGIN, py, f"Peer group: {_cohort_n} stocks in {data.subsector_label}",
-                  font_size=20, color=TEXT_LIGHT)
-        py += 26
+        _rank_title = (
+            f"{_rank_title}  ·  Peer group: {_cohort_n} stocks in {data.subsector_label}"
+        )
+    _rt0 = py
+    py = page.text(
+        MARGIN, _rt0, _rank_title,
+        font_size=SEC_SZ + 1, bold=True, color=TEXT_DARK, max_width=PANEL_W - 10,
+    )
+    py += 10
 
-    RANK_WINDOWS = [("1d", "1d"), ("5d", "5d"), ("21d", "1m"),
-                    ("63d", "3m"), ("126d", "6m"), ("252d", "1y")]
+    RANK_WINDOWS = [
+        ("1d", "1 day"),
+        ("5d", "5 days"),
+        ("21d", "1 month"),
+        ("63d", "3 months"),
+        ("126d", "6 months"),
+        ("252d", "1 year"),
+    ]
     # Keys: {window}_subsector_gross_return, {window}_subsector_subsector_residual
     RANK_SUFFIXES = ("gross_return", "subsector_residual")
 
@@ -1097,20 +1170,19 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     col2_right = MARGIN + int(PANEL_W * 0.58)
     col3_right = panel_right
     HDR_SZ = 17
-    page.text(col1_x, py, "Window", font_size=HDR_SZ, color=TEXT_LIGHT)
+    page.text(col1_x, py, "Window", font_size=HDR_SZ, bold=True, color=NAVY)
     page.text_right(
         col2_right, py,
-        "Gross return rank",
+        "Gross Return Rank",
         font_size=HDR_SZ, bold=True, color=NAVY,
     )
     page.text_right(
         col3_right, py,
-        "Residual ER rank",
+        "Explained Risk (ER)",
         font_size=HDR_SZ, bold=True, color=NAVY,
     )
     py += int(HDR_SZ * 1.35) + 2
-    page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
-    py += 4
+    py += 8
 
     RANK_ROW_H = 36
     for wkey, dlabel in RANK_WINDOWS:
@@ -1124,7 +1196,10 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
         if not _has_any:
             continue
 
-        page.text(col1_x, py, dlabel.upper(), font_size=LBL_SZ, bold=True, color=TEXT_DARK)
+        page.text(
+            col1_x, py, dlabel, font_size=LBL_SZ, bold=True, color=TEXT_DARK,
+            max_width=col2_right - col1_x - 8,
+        )
         for col_right, rank_suffix in [(col2_right, RANK_SUFFIXES[0]), (col3_right, RANK_SUFFIXES[1])]:
             rank_key = f"{wkey}_subsector_{rank_suffix}"
             rrow = p1.rankings.get(rank_key)
@@ -1146,8 +1221,14 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     py += SECTION_GAP
 
     # RISK DECOMPOSITION
-    _section("RISK DECOMPOSITION — L3 ER")
-    BAR_MAX_W = int(PANEL_W * 0.50)
+    _section("RISK DECOMPOSITION — L3 Explained Risk")
+    BAR_MAX_W = int(PANEL_W * 0.45)
+    VAL_RAIL_W = 132
+    BAR_TO_VALUE_GAP = 30
+    # Wider label column so "Market explained risk (SPY)" fits on one line when possible
+    BAR_LABEL_EDGE = MARGIN + 420
+    _sec_etf = data.sector_etf or "—"
+    _sub_etf = data.subsector_etf or "—"
 
     def _ge(full: str, abbr: str) -> float | None:
         v = m.get(full)
@@ -1170,26 +1251,42 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
             return TEXT_LIGHT
         return GREEN_RGB if float(v) >= 0 else ORANGE_RGB
 
+    _label_max_w = BAR_LABEL_EDGE - MARGIN - 8
     for er_label, er_val, bar_color in [
-        ("Market ER",    mkt_er, NAVY_T),
-        ("Sector ER",    sec_er, TEAL_T),
-        ("Subsector ER", sub_er, SLATE_T),
-        ("Residual ER",  res_er, GREEN_T),
+        (f"Market explained risk (SPY)",       mkt_er, NAVY_T),
+        (f"Sector explained risk ({_sec_etf})", sec_er, TEAL_T),
+        (f"Subsector explained risk ({_sub_etf})", sub_er, SLATE_T),
+        ("Residual explained risk (idiosyncratic)", res_er, GREEN_T),
     ]:
         val_str = _fmt_pct(er_val) if er_val is not None else "—"
         vc = _er_color(er_val)
-        page.text(MARGIN, py, er_label, font_size=LBL_SZ, color=TEXT_LIGHT)
-        page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=vc)
+        row_y0 = py
+        # page.text with wrap returns y below last line — must drive row height (see _compose.SnapshotComposer.text)
+        py = page.text(
+            MARGIN, row_y0, er_label, font_size=LBL_SZ, color=TEXT_LIGHT,
+            max_width=_label_max_w,
+        )
+        row_h = max(ROW_H, py - row_y0 + 6)
+        val_y = row_y0 + (row_h - VAL_SZ) // 2
+        bar_y = row_y0 + (row_h - 9) // 2
+        page.text_right(panel_right, val_y, val_str, font_size=VAL_SZ, bold=True, color=vc)
         if er_val is not None:
-            bar_h, bar_y = 9, py + (ROW_H - 9) // 2
+            bar_h = 9
+            bar_anchor_right = panel_right - VAL_RAIL_W - BAR_TO_VALUE_GAP
             bar_w = max(4, int(abs(float(er_val)) / max_er * BAR_MAX_W))
-            bar_x = panel_right - bar_w - 80
+            bar_w = min(bar_w, max(4, bar_anchor_right - BAR_LABEL_EDGE))
+            bar_x = bar_anchor_right - bar_w
             page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=bar_color)
-        py += ROW_H
+        py = row_y0 + row_h
     py += 10
 
     # MACRO CORRELATIONS
-    _section("MACRO CORRELATIONS — L3 Res")
+    _section("MACRO CORRELATIONS — L3 Residual Return")
+    py = page.text(
+        MARGIN, py, _macro_corr_subtitle(p1.macro_window),
+        font_size=19, color=TEXT_LIGHT, max_width=PANEL_W - 20,
+    )
+    py += 10
     MACRO_KEYS  = ["vix", "oil", "gold", "bitcoin", "dxy", "ust10y2y"]
     MACRO_NAMES = {"vix": "VIX", "oil": "Oil", "gold": "Gold",
                    "bitcoin": "Bitcoin", "dxy": "DXY", "ust10y2y": "UST 10y-2y"}
@@ -1209,57 +1306,39 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
         page.text_right(panel_right, py, val_str, font_size=VAL_SZ, bold=True, color=val_color)
         if corr_f is not None:
             bar_h, bar_y = 9, py + (ROW_H - 9) // 2
+            bar_anchor_right = panel_right - VAL_RAIL_W - BAR_TO_VALUE_GAP
             bar_w = max(4, int(abs(corr_f) * BAR_MAX_W))
-            bar_x = panel_right - bar_w - 80
+            bar_w = min(bar_w, max(4, bar_anchor_right - BAR_LABEL_EDGE))
+            bar_x = bar_anchor_right - bar_w
             page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=val_color)
         py += ROW_H
 
-    # ── METHODOLOGY — ERM3 L1–L3 hierarchy (sidebar) ─────────────────
-    py += SECTION_GAP
+    # ── METHODOLOGY — pinned to panel bottom ──────────────────────────
+    py = PANEL_BOTTOM - METH_RESERVE
     page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
     py += 8
     page.text(
         MARGIN, py,
         "METHODOLOGY — Hierarchical regression (ERM3)",
-        font_size=SEC_SZ, bold=True, color=TEXT_LIGHT,
+        font_size=SEC_SZ + 1, bold=True, color=TEXT_DARK,
     )
-    py += int(SEC_SZ * 1.4)
-    page.text(MARGIN, py, "L1 · L2 · L3 orthogonal layers",
-              font_size=LBL_SZ, bold=True, color=NAVY)
-    py += int(LBL_SZ * 1.4) + 4
+    py += int((SEC_SZ + 1) * 1.4)
 
-    _uni = (p1.universe or "uni_mc_3000").strip()
-    _factor_set_id = _uni if _uni.upper().startswith("SPY_") else f"SPY_{_uni}"
-    _meth_p1 = (
-        "ERM3 uses three sequential regressions. Each stage explains the prior residual, "
-        "so hedge ratios are incremental—not stacked betas on the same returns."
-    )
-    _meth_p2 = (
-        "L1 (Market): stock vs broad market ETF (SPY) for baseline beta. "
-        "L2 (Sector): L1 residual vs GICS sector ETF — sector-specific move vs the market. "
-        "L3 (Subsector): L2 residual vs subsector ETF — finest systematic sleeve before idiosyncratic risk."
-    )
-    _meth_p3 = (
-        "Sequential orthogonalization keeps hedge ratios stable and incremental, enabling "
-        "precise multi-leg hedges without double-counting factor exposures."
-    )
-    _meth_footer = (
-        f"Factor set: {_factor_set_id} · Universe ~3,000 US equities (market-cap cohort)"
-    )
-
-    py = page.text(MARGIN, py, _meth_p1, font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20)
-    py += 8
-    py = page.text(MARGIN, py, _meth_p2, font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20)
-    py += 8
-    py = page.text(MARGIN, py, _meth_p3, font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20)
-    py += 10
-    py = page.text(MARGIN, py, _meth_footer, font_size=17, color=TEXT_LIGHT, max_width=PANEL_W - 20)
-    py += 8
-    page.text(
-        MARGIN, py,
-        "Learn more → riskmodels.app/docs/l3-decomposition",
-        font_size=18, color=TEAL,
-    )
+    _meth_rows = [
+        ("L1", "Market — stock vs SPY; baseline market beta (incremental hedge ratios)."),
+        ("L2", "Sector — L1 residual vs GICS sector ETF; sector-specific vs the market."),
+        ("L3", "Subsector — L2 residual vs subsector ETF; finest systematic sleeve before idiosyncratic risk."),
+        ("ER", "Explained Risk (ER) — variance share of each orthogonal factor layer."),
+        ("HR", "Hedge Ratio (HR) — dollars of ETF hedge per $1 of stock."),
+        ("RR", "Residual Return (RR) — return orthogonal to market, sector, and subsector factors."),
+    ]
+    for _tag, _desc in _meth_rows:
+        py = page.text(
+            MARGIN, py, f"{_tag} — {_desc}",
+            font_size=METH_BODY, color=TEXT_MID, max_width=PANEL_W - 20,
+        )
+        py += 4
+    py += 6
 
     # ════════════════════════════════════════════════════════════════
     # RIGHT CONTENT AREA
@@ -1271,15 +1350,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     CARD_PAD = 14   # inner padding for chart cards
 
     # ── AI Summary Box (card with accent bar) ─────────────────────
-    import re as _re
     if insights["summary"]:
-        m_sent = _re.search(r'\.\s+(?=[A-Z])', insights["summary"])
-        if m_sent:
-            lead = insights["summary"][:m_sent.start() + 1]
-            rest = insights["summary"][m_sent.end():].strip()
-        else:
-            lead, rest = insights["summary"], ""
-
         def _est_lines(text: str, fs: int, mw: int) -> int:
             if not text:
                 return 0
@@ -1292,18 +1363,14 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
                     ll += len(w) + 1
             return lines
 
-        lead_lines = _est_lines(lead, 32, CONTENT_W - 50)
-        rest_lines = _est_lines(rest, 28, CONTENT_W - 50) if rest else 0
-        box_h = 26 + int(lead_lines * 32 * 1.4) + (int(rest_lines * 28 * 1.4) if rest else 0) + 26
+        summary_text = insights["summary"]
+        lines = _est_lines(summary_text, 30, CONTENT_W - 50)
+        box_h = 26 + int(lines * 30 * 1.4) + 26
         box_h = max(box_h, 90)
 
         _draw_card(page, CONTENT_X - 10, y, CONTENT_W + 20, box_h, accent_left=True)
-        ty = y + 22
-        ty = page.text(CONTENT_X + 14, ty, lead,
-                       font_size=32, bold=True, color=TEXT_DARK, max_width=CONTENT_W - 50)
-        if rest:
-            page.text(CONTENT_X + 14, ty + 4, rest,
-                      font_size=28, color=TEXT_MID, max_width=CONTENT_W - 50)
+        page.text(CONTENT_X + 14, y + 22, summary_text,
+                  font_size=30, bold=True, color=TEXT_DARK, max_width=CONTENT_W - 50)
         y += box_h + 16
 
     # Compute chart layout
@@ -1341,7 +1408,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
 
     page.text(CONTENT_X, y, "II. L3 Residual Alpha Quality",
               font_size=38, bold=True, color=NAVY)
-    page.text(CONTENT_X + half_w + 40, y, "III. Subsector Risk DNA",
+    page.text(CONTENT_X + half_w + 40, y, "III. Equity Factor Decomposition",
               font_size=38, bold=True, color=NAVY)
     y += 56
 
@@ -1355,7 +1422,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     scatter_fig = _make_alpha_quality_scatter(data)
     page.paste_figure(scatter_fig, CONTENT_X, y, half_w, chart_h_bot)
 
-    # III. Subsector Risk DNA (Matplotlib → PIL, target + top 6 peers)
+    # III. Equity Factor Decomposition (Matplotlib → PIL, target + top 6 peers)
     dna_img = _make_peer_dna_chart(data)
     page.paste_image(dna_img, CONTENT_X + half_w + 40, y, half_w, chart_h_bot)
 
@@ -1363,27 +1430,31 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     # FOOTER + QR Code
     # ════════════════════════════════════════════════════════════════
     _ticker_url = f"riskmodels.app/ticker/{data.ticker.lower()}"
+    _display_ticker_url = f"RiskModels.app/ticker/{data.ticker.lower()}"
     _full_url = f"https://{_ticker_url}?ref=snapshot_{data.teo}"
 
-    # QR code — bottom-right, above footer line
-    try:
-        import qrcode as _qr
-        _qr_url = f"https://{_ticker_url}?ref=qr_{data.teo}"
-        _qr_img = _qr.make(_qr_url, box_size=3, border=1)
-        _qr_pil = _qr_img.get_image().convert("RGB")
-        QR_SIZE = 120
-        page.paste_image(_qr_pil, W - MARGIN - QR_SIZE, H - 80 - QR_SIZE - 16, QR_SIZE, QR_SIZE)
-    except ImportError:
-        pass  # qrcode not installed — skip gracefully
+    # QR code — bottom-right, above footer line (pre-sized; do not LANCZOS-resize in paste_image)
+    QR_SIZE = 120
+    _qr_url = f"https://{_ticker_url}?ref=qr_{data.teo}"
+    _qr_pil = _build_qr_pil(_qr_url, QR_SIZE)
+    if _qr_pil is not None:
+        page.paste_image(_qr_pil, W - MARGIN - QR_SIZE, H - 80 - QR_SIZE - 16)
+    else:
+        warnings.warn(
+            "QR code skipped: install snapshot extras "
+            "(pip install 'riskmodels-py[snapshots]' or pip install 'qrcode[pil]>=7').",
+            UserWarning,
+            stacklevel=2,
+        )
 
     footer_y = H - 80
     page.hline(footer_y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=2)
     footer_y += 12
     page.text(MARGIN, footer_y,
-              f"ERM3 V3 · {data.teo}  ·  {_ticker_url}",
+              f"ERM3 V3 · {data.teo}  ·  {_display_ticker_url}",
               font_size=24, color=TEXT_LIGHT)
     page.text_right(W - MARGIN, footer_y,
-                    "BW Macro · Confidential · Not Investment Advice",
+                    "Blue Water Macro Corp · Confidential · Not Investment Advice",
                     font_size=24, color=TEXT_LIGHT)
 
     return page
