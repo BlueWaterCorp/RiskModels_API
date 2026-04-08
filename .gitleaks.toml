@@ -47,4 +47,6 @@ paths = [
   '''app/api-reference/''',
   '''app/docs/''',
   '''app/get-key/''',
+  '''**/*.md''',
+  '''**/*.mdx''',
 ]
