@@ -10,8 +10,19 @@
  * Caching: stale-while-revalidate 1 hour on Vercel CDN.
  */
 import { ImageResponse } from "@vercel/og";
+import {
+  resolveSymbolByTicker,
+  fetchLatestMetricsWithFallback,
+  type V3MetricKey,
+} from "@/lib/dal/risk-engine-v3";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+
+const OG_METRIC_KEYS: V3MetricKey[] = [
+  "vol_23d", "price_close", "market_cap",
+  "l3_mkt_hr", "l3_sec_hr", "l3_sub_hr",
+  "l3_mkt_er", "l3_sec_er", "l3_sub_er", "l3_res_er",
+];
 
 // ── Theme constants (aligned with _theme.py Consultant Navy) ────────────
 const NAVY = "#002a5e";
@@ -59,27 +70,19 @@ export async function GET(
   const { ticker: rawTicker } = await params;
   const ticker = rawTicker.toUpperCase();
 
-  // Fetch metrics from the internal API
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://riskmodels.app";
-  let data: Record<string, unknown> | null = null;
-  try {
-    const res = await fetch(`${baseUrl}/api/metrics/${ticker}`, {
-      headers: { Accept: "application/json" },
-    });
-    if (res.ok) data = await res.json();
-  } catch {
-    // Fall through — render with missing data
-  }
+  // Fetch metrics directly from DAL (no auth needed)
+  const symbolRecord = await resolveSymbolByTicker(ticker);
+  const latest = symbolRecord
+    ? await fetchLatestMetricsWithFallback(symbolRecord.symbol, OG_METRIC_KEYS, "daily")
+    : null;
 
-  const m = (data?.metrics ?? {}) as Record<string, number | null>;
-  const meta = (data?.meta ?? {}) as Record<string, string | null>;
+  const m = (latest?.metrics ?? {}) as Record<string, number | null>;
 
   const vol = m.vol_23d;
   const price = m.price_close;
   const marketCap = m.market_cap;
-  const teo = (data?.teo as string) ?? "—";
-  const subsectorEtf = meta.subsector_etf ?? meta.sector_etf ?? "—";
+  const teo = latest?.teo ?? "—";
+  const subsectorEtf = symbolRecord?.subsector_etf ?? symbolRecord?.sector_etf ?? "—";
 
   // L3 decomposition
   const mktER = m.l3_mkt_er;
