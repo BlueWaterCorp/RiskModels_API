@@ -877,9 +877,14 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
     )
     unified_summary = f"{sent1} {sent2}"
 
-    # Dynamic "So What?" headline — concise thesis
+    # Dynamic "So What?" headline — template from env var or default
+    import os as _os
+    _HEADLINE_TPL = _os.environ.get(
+        "RISKMODELS_HEADLINE_TEMPLATE",
+        "{ticker}: {sys_drag} Systematic Exposure with {alpha_adj} Residual Alpha; {vs_bench} {sub}.",
+    )
+
     tr_1y_bench = p1d.tr_subsector.get("1y") or p1d.tr_sector.get("1y")
-    vs_bench_word = ""
     if tr_1y is not None and tr_1y_bench is not None:
         vs_bench_word = "Outperforming" if tr_1y > tr_1y_bench else "Underperforming"
     else:
@@ -888,9 +893,9 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
     sys_drag = "High" if sys_pct > 65 else ("Moderate" if sys_pct > 40 else "Low")
     alpha_adj = "Strong" if rank_pct >= 60 else ("Solid" if rank_pct >= 40 else "Muted")
 
-    headline = (
-        f"{ticker}: {sys_drag} Systematic Exposure with {alpha_adj} Residual Alpha; "
-        f"{vs_bench_word} {sub}."
+    headline = _HEADLINE_TPL.format(
+        ticker=ticker, sys_drag=sys_drag, alpha_adj=alpha_adj,
+        vs_bench=vs_bench_word, sub=sub,
     )
 
     return {

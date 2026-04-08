@@ -323,7 +323,9 @@ def _rule_drawdown(data: dict, ticker: str, benchmark: str, period: str) -> str:
 # LLM-enhanced generator (optional, requires openai)
 # ---------------------------------------------------------------------------
 
-_LLM_PROMPT = """You are a senior quantitative risk analyst at BW Macro.
+import os as _os
+
+_LLM_PROMPT_DEFAULT = """You are a senior quantitative risk analyst at BW Macro.
 
 Generate a single professional subheader (1-2 short sentences) for this chart.
 
@@ -342,6 +344,8 @@ Rules:
 - Max 2 short sentences
 - Do NOT use quotation marks in your output
 Output ONLY the subheader text."""
+
+_LLM_PROMPT = _os.environ.get("RISKMODELS_SUBHEADER_PROMPT", _LLM_PROMPT_DEFAULT)
 
 
 def _llm_enhanced(

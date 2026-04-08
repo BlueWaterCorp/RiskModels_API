@@ -91,63 +91,66 @@ Your response must be either:
 - Specific code-fix instructions otherwise
 """
 
-# Evaluation prompt template
-EVALUATION_PROMPT = """Act as a Quant Visual Auditor. Review this financial graph for:
+import os as _os
 
-1. OVERLAPPING TEXT/LABELS: Check axis labels, tick labels, titles, and legends for any overlap
-2. LEGIBILITY OF FINANCIAL AXES: Verify percentage signs, dollar formatting, date formatting, and scale clarity
-3. LEGEND ACCURACY: Confirm legend matches plotted data and uses standard RiskModels terminology
-4. PROFESSIONAL STYLING: Check color scheme (Blue=#3b82f6 Market, Cyan=#06b6d4 Sector, Slate=#94a3b8 Residual, Orange=#f97316 Subsector), font sizes, and overall polish
+# ---------------------------------------------------------------------------
+# LLM prompts — loaded from env vars with inline defaults.
+# Set RISKMODELS_EVAL_PROMPT / RISKMODELS_REFINE_PROMPT / RISKMODELS_PLOT_PROMPT
+# in Doppler (or .env.local) to override without exposing in the public repo.
+# ---------------------------------------------------------------------------
 
-If the graph is perfect in all aspects, reply with exactly: COMPLETE
+_EVAL_DEFAULT = (
+    "Act as a Quant Visual Auditor. Review this financial graph for:\n\n"
+    "1. OVERLAPPING TEXT/LABELS: Check axis labels, tick labels, titles, and legends for any overlap\n"
+    "2. LEGIBILITY OF FINANCIAL AXES: Verify percentage signs, dollar formatting, date formatting, and scale clarity\n"
+    "3. LEGEND ACCURACY: Confirm legend matches plotted data and uses standard RiskModels terminology\n"
+    "4. PROFESSIONAL STYLING: Check color scheme (Blue=#3b82f6 Market, Cyan=#06b6d4 Sector, "
+    "Slate=#94a3b8 Residual, Orange=#f97316 Subsector), font sizes, and overall polish\n\n"
+    "If the graph is perfect in all aspects, reply with exactly: COMPLETE\n\n"
+    "Otherwise, provide specific, actionable code-fix instructions. Be concise and technical."
+)
 
-Otherwise, provide specific, actionable code-fix instructions. Be concise and technical.
-"""
+_REFINE_DEFAULT = (
+    "The previous visualization code had issues. Review the feedback below and provide corrected Python code.\n\n"
+    "FEEDBACK FROM AUDITOR:\n{feedback}\n\n"
+    "RULES FOR CORRECTED CODE:\n"
+    "1. Generate a complete, executable Python script\n"
+    "2. Use the RiskModels SDK: client = RiskModelsClient.from_env()\n"
+    "3. Use semantic field names (l3_market_hr, not l3_mkt_hr)\n"
+    "4. Follow financial color standards: Market=Blue(#3b82f6), Sector=Cyan(#06b6d4), "
+    "Residual=Slate(#94a3b8), Subsector=Orange(#f97316)\n"
+    "5. Save the output to: {output_path}\n"
+    "6. Include plt.tight_layout() before saving\n"
+    "7. For PNGs intended for GitHub README/Issues, use fig.savefig(..., transparent=True, bbox_inches='tight', dpi=150)\n"
+    "8. Add appropriate title, labels, and legend\n\n"
+    "Provide ONLY the Python code, no markdown formatting or explanations."
+)
 
-# Refinement prompt template
-REFINEMENT_PROMPT = """The previous visualization code had issues. Review the feedback below and provide corrected Python code.
+_PLOT_DEFAULT = (
+    "Generate Python code to create a professional financial visualization using the RiskModels SDK.\n\n"
+    "PLOT REQUIREMENTS:\n{plot_description}\n\n"
+    "SDK USAGE:\n"
+    "- Use: from riskmodels import RiskModelsClient; client = RiskModelsClient.from_env()\n"
+    "- Use semantic names: l3_market_hr, l3_sector_hr, l3_subsector_hr, l3_residual_er\n"
+    "- Fetch data using client.get_l3_decomposition() or client.get_ticker_returns()\n"
+    "- For ranking percentile bars: df = client.get_rankings('TICKER'); slice one metric+window; "
+    "then save_ranking_percentile_bar_chart(slice, path, ...)\n\n"
+    "STYLING REQUIREMENTS:\n"
+    "- Market Risk (SPY): Blue (#3b82f6)\n"
+    "- Sector Risk: Cyan (#06b6d4)\n"
+    "- Idiosyncratic/Residual Risk: Slate (#94a3b8)\n"
+    "- Subsector Risk: Orange (#f97316)\n"
+    "- Use plt.tight_layout() to prevent clipping\n"
+    "- Professional fonts and sizing\n"
+    "- For GitHub markdown embeds, prefer transparent=True on savefig with bbox_inches='tight'\n\n"
+    "OUTPUT:\n"
+    "Save the figure to: {output_path} (use transparent=True for README-friendly PNGs when appropriate)\n"
+    "Provide ONLY the Python code, no markdown formatting or explanations."
+)
 
-FEEDBACK FROM AUDITOR:
-{feedback}
-
-RULES FOR CORRECTED CODE:
-1. Generate a complete, executable Python script
-2. Use the RiskModels SDK: client = RiskModelsClient.from_env()
-3. Use semantic field names (l3_market_hr, not l3_mkt_hr)
-4. Follow financial color standards: Market=Blue(#3b82f6), Sector=Cyan(#06b6d4), Residual=Slate(#94a3b8), Subsector=Orange(#f97316)
-5. Save the output to: {output_path}
-6. Include plt.tight_layout() before saving
-7. For PNGs intended for GitHub README/Issues, use fig.savefig(..., transparent=True, bbox_inches='tight', dpi=150)
-8. Add appropriate title, labels, and legend
-
-Provide ONLY the Python code, no markdown formatting or explanations.
-"""
-
-# Initial plot generation prompt
-INITIAL_PLOT_PROMPT = """Generate Python code to create a professional financial visualization using the RiskModels SDK.
-
-PLOT REQUIREMENTS:
-{plot_description}
-
-SDK USAGE:
-- Use: from riskmodels import RiskModelsClient; client = RiskModelsClient.from_env()
-- Use semantic names: l3_market_hr, l3_sector_hr, l3_subsector_hr, l3_residual_er
-- Fetch data using client.get_l3_decomposition() or client.get_ticker_returns()
-- For ranking percentile bars: df = client.get_rankings('TICKER'); slice one metric+window; then save_ranking_percentile_bar_chart(slice, path, ...)
-
-STYLING REQUIREMENTS:
-- Market Risk (SPY): Blue (#3b82f6)
-- Sector Risk: Cyan (#06b6d4)
-- Idiosyncratic/Residual Risk: Slate (#94a3b8)
-- Subsector Risk: Orange (#f97316)
-- Use plt.tight_layout() to prevent clipping
-- Professional fonts and sizing
-- For GitHub markdown embeds, prefer transparent=True on savefig with bbox_inches='tight'
-
-OUTPUT:
-Save the figure to: {output_path} (use transparent=True for README-friendly PNGs when appropriate)
-Provide ONLY the Python code, no markdown formatting or explanations.
-"""
+EVALUATION_PROMPT = _os.environ.get("RISKMODELS_EVAL_PROMPT", _EVAL_DEFAULT)
+REFINEMENT_PROMPT = _os.environ.get("RISKMODELS_REFINE_PROMPT", _REFINE_DEFAULT)
+INITIAL_PLOT_PROMPT = _os.environ.get("RISKMODELS_PLOT_PROMPT", _PLOT_DEFAULT)
 
 
 _COHORT_BAR_ORDER = ["universe", "sector", "subsector"]
