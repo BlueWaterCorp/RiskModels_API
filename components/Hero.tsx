@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { Zap } from 'lucide-react';
 import { HeroGetStartedPulse } from '@/components/HeroGetStartedPulse';
-import HeroTickerSearch from '@/components/HeroTickerSearch';
 import TrustTechBar from '@/components/TrustTechBar';
+
+const MAG7 = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "TSLA"] as const;
 
 export default function Hero() {
   return (
@@ -57,12 +58,22 @@ export default function Hero() {
           </Link>
         </div>
 
-        {/* Ticker search */}
+        {/* MAG7 Deep Dives */}
         <div className="pt-3">
           <p className="mb-2 text-xs font-medium uppercase tracking-widest text-zinc-500">
             Try a stock deep dive
           </p>
-          <HeroTickerSearch />
+          <div className="mx-auto flex flex-wrap items-center justify-center gap-2 max-w-lg">
+            {MAG7.map((t) => (
+              <Link
+                key={t}
+                href={`/ticker/${t}`}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-white/10 border border-white/20 text-white hover:bg-blue-600 hover:border-blue-500 transition"
+              >
+                {t}
+              </Link>
+            ))}
+          </div>
         </div>
 
         {/* Pricing summary — directly under CTAs */}
