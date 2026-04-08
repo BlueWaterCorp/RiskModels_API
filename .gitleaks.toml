@@ -33,4 +33,8 @@ paths = [
   '''AUTHENTICATION_GUIDE.md''',
   '''node_modules/''',
   '''.gitleaks.toml''',
+  '''.github/workflows/''',
+  '''sdk/tests/''',
+  '''tests/''',
+  '''scripts/''',
 ]
