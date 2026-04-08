@@ -42,6 +42,8 @@ export interface FactorCorrelationResult {
   correlations: Record<string, number | null>;
   overlap_days: number;
   warnings: string[];
+  stock_series_length?: number;
+  macro_factors_loaded?: number;
 }
 
 const MARKET_ETF = "SPY";
