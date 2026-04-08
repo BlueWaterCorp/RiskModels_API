@@ -1,6 +1,25 @@
 """Publication-style Plotly/Matplotlib charts for ERM3."""
 
 from .cascade import plot_attribution_cascade, plot_risk_cascade
+from .components import (
+    AttributionCascadeData,
+    AttributionPosition,
+    CascadePosition,
+    L3DecompositionData,
+    L3LayerValues,
+    L3TickerRow,
+    RiskCascadeData,
+    VarianceWaterfallData,
+    WaterfallLayer,
+    build_attribution_cascade_data,
+    build_l3_decomposition_data,
+    build_risk_cascade_data,
+    build_variance_waterfall_data,
+    plot_attribution_cascade_from_data,
+    plot_l3_decomposition_from_data,
+    plot_risk_cascade_from_data,
+    plot_variance_waterfall_from_data,
+)
 from .waterfall import plot_variance_waterfall
 from .gallery import (
     MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026,
@@ -39,6 +58,27 @@ from .styles import PRESET_REGISTRY, get_preset, get_rm_template, install_rm_tem
 from .utils import adjacent_bar_positions, cascade_plotly_layout
 
 __all__ = [
+    # Component dataclasses & types
+    "AttributionCascadeData",
+    "AttributionPosition",
+    "CascadePosition",
+    "L3DecompositionData",
+    "L3LayerValues",
+    "L3TickerRow",
+    "RiskCascadeData",
+    "VarianceWaterfallData",
+    "WaterfallLayer",
+    # Component builders
+    "build_attribution_cascade_data",
+    "build_l3_decomposition_data",
+    "build_risk_cascade_data",
+    "build_variance_waterfall_data",
+    # Component renderers
+    "plot_attribution_cascade_from_data",
+    "plot_l3_decomposition_from_data",
+    "plot_risk_cascade_from_data",
+    "plot_variance_waterfall_from_data",
+    # Existing exports
     "MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026",
     "MAG7_L3_ER_DEFAULT_TICKERS",
     "MAG7_L3_ER_SUBTITLE",
