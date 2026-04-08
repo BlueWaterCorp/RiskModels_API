@@ -11,6 +11,11 @@
 
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
+import {
+  resolveSymbolByTicker,
+  fetchLatestMetricsWithFallback,
+  type V3MetricKey,
+} from "@/lib/dal/risk-engine-v3";
 import TickerSearch from "./TickerSearch";
 
 // ---------------------------------------------------------------------------
@@ -19,34 +24,60 @@ import TickerSearch from "./TickerSearch";
 
 interface TickerMetrics {
   ticker: string;
-  company_name?: string;
-  teo?: string;
-  sector_etf?: string;
-  subsector_etf?: string;
-  market_cap?: number;
-  close_price?: number;
-  vol_23d?: number;
-  l3_market_hr?: number;
-  l3_sector_hr?: number;
-  l3_subsector_hr?: number;
-  l3_residual_er?: number;
-  [key: string]: unknown;
+  company_name: string;
+  teo: string;
+  sector_etf: string | null;
+  subsector_etf: string | null;
+  market_cap: number | null;
+  price_close: number | null;
+  vol_23d: number | null;
+  l3_mkt_hr: number | null;
+  l3_sec_hr: number | null;
+  l3_sub_hr: number | null;
+  l3_res_er: number | null;
 }
 
 // ---------------------------------------------------------------------------
-// Data fetching (server-side)
+// Data fetching (server-side, direct DAL — no auth needed)
 // ---------------------------------------------------------------------------
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-async function getTickerMetrics(symbol: string): Promise<TickerMetrics | null> {
+const METRIC_KEYS: V3MetricKey[] = [
+  "vol_23d", "price_close", "market_cap",
+  "l3_mkt_hr", "l3_sec_hr", "l3_sub_hr",
+  "l3_mkt_er", "l3_sec_er", "l3_sub_er", "l3_res_er",
+];
+
+async function getTickerMetrics(ticker: string): Promise<TickerMetrics | null> {
   try {
-    const res = await fetch(`${BASE_URL}/api/metrics/${symbol.toUpperCase()}`, {
-      next: { revalidate: 300 }, // cache 5 min
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
+    const symbolRecord = await resolveSymbolByTicker(ticker);
+    if (!symbolRecord) return null;
+
+    const latest = await fetchLatestMetricsWithFallback(
+      symbolRecord.symbol,
+      METRIC_KEYS,
+      "daily",
+    );
+    if (!latest) return null;
+
+    const m = latest.metrics;
+    return {
+      ticker: symbolRecord.ticker,
+      company_name: symbolRecord.name || symbolRecord.ticker,
+      teo: latest.teo,
+      sector_etf: symbolRecord.sector_etf,
+      subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf,
+      market_cap: m.market_cap ?? null,
+      price_close: m.price_close ?? null,
+      vol_23d: m.vol_23d ?? null,
+      l3_mkt_hr: m.l3_mkt_hr ?? null,
+      l3_sec_hr: m.l3_sec_hr ?? null,
+      l3_sub_hr: m.l3_sub_hr ?? null,
+      l3_res_er: m.l3_res_er ?? null,
+    };
+  } catch (err) {
+    console.error(`[ticker page] Failed to fetch ${ticker}:`, err);
     return null;
   }
 }
@@ -128,17 +159,17 @@ export default async function TickerDashboard({
   const teo = metrics.teo || "—";
   const subEtf = metrics.subsector_etf || metrics.sector_etf || "—";
 
-  const resER = metrics.l3_residual_er;
+  const resER = metrics.l3_res_er;
   const vol = metrics.vol_23d;
   const sysPct =
     resER != null
       ? (
-          ((Math.abs(Number(metrics.l3_market_hr || 0)) +
-            Math.abs(Number(metrics.l3_sector_hr || 0)) +
-            Math.abs(Number(metrics.l3_subsector_hr || 0))) /
-            (Math.abs(Number(metrics.l3_market_hr || 0)) +
-              Math.abs(Number(metrics.l3_sector_hr || 0)) +
-              Math.abs(Number(metrics.l3_subsector_hr || 0)) +
+          ((Math.abs(Number(metrics.l3_mkt_hr || 0)) +
+            Math.abs(Number(metrics.l3_sec_hr || 0)) +
+            Math.abs(Number(metrics.l3_sub_hr || 0))) /
+            (Math.abs(Number(metrics.l3_mkt_hr || 0)) +
+              Math.abs(Number(metrics.l3_sec_hr || 0)) +
+              Math.abs(Number(metrics.l3_sub_hr || 0)) +
               Math.abs(Number(resER)))) *
           100
         ).toFixed(0)
@@ -170,7 +201,7 @@ export default async function TickerDashboard({
       {/* ── Metric Cards ────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-8 py-8">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <MetricCard label="Last Price" value={`$${fmtNum(metrics.close_price)}`} />
+          <MetricCard label="Last Price" value={`$${fmtNum(metrics.price_close)}`} />
           <MetricCard label="Market Cap" value={fmtCap(metrics.market_cap)} />
           <MetricCard label="Vol (23d)" value={fmtPct(vol)} />
           <MetricCard label="L3 Res ER (α)" value={fmtPct(resER)} accent />
