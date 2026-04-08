@@ -46,6 +46,7 @@ paths = [
   '''app/api-reference/''',
   '''app/docs/''',
   '''app/get-key/''',
+  '''OPENAPI_SPEC\.yaml$''',
   '''\.md$''',
   '''\.mdx$''',
 ]
