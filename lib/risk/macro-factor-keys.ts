@@ -16,6 +16,31 @@ export type MacroFactorKey = (typeof DEFAULT_MACRO_FACTORS)[number];
 
 const CANONICAL = new Set<string>(DEFAULT_MACRO_FACTORS);
 
+/**
+ * Supabase `macro_factors.factor_key` values to load for each API-facing key.
+ * Order is merge preference (first = wins over later when the same `teo` exists in multiple series).
+ * Includes legacy ERM3 names still present in older backfills (`vix_spot`, `usd`, `term_spread`).
+ */
+export const MACRO_FACTOR_DB_KEYS: Record<MacroFactorKey, readonly string[]> = {
+  bitcoin: ["bitcoin"],
+  gold: ["gold"],
+  oil: ["oil"],
+  dxy: ["dxy", "usd"],
+  vix: ["vix", "vix_spot"],
+  ust10y2y: ["ust10y2y", "term_spread"],
+} as const;
+
+/** Flat list for `.in("factor_key", …)` queries (deduped). */
+export function expandMacroFactorDbKeysForQuery(keys: MacroFactorKey[]): string[] {
+  const s = new Set<string>();
+  for (const k of keys) {
+    for (const db of MACRO_FACTOR_DB_KEYS[k] ?? [k]) {
+      s.add(db);
+    }
+  }
+  return [...s];
+}
+
 /** Common aliases → canonical DB / API keys (all matching is case-insensitive). */
 const MACRO_FACTOR_ALIASES: Record<string, MacroFactorKey> = {
   btc: "bitcoin",
