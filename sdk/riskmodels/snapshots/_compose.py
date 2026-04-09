@@ -96,6 +96,102 @@ LIGHT_BG = _hex_to_rgb("#f0f4f8")
 BORDER = _hex_to_rgb(T.palette.axis_line)
 
 
+# ── Logo ────────────────────────────────────────────────────────────────
+
+def render_riskmodels_logo(
+    width: int = 800,
+    height: int = 200,
+    *,
+    text_color: tuple[int, int, int] | None = None,
+    bg_color: tuple[int, int, int, int] = (255, 255, 255, 0),
+) -> Image.Image:
+    """Render the RiskModels wordmark + audio-wave icon as a PIL image.
+
+    Designed for placement on a white snapshot background. The wave icon
+    uses the brand purple→blue→deep-purple gradient; the text defaults to
+    NAVY for legibility on white.
+
+    Args:
+        width: Output width in pixels.
+        height: Output height in pixels.
+        text_color: RGB tuple for the wordmark text. Default NAVY.
+        bg_color: RGBA fill behind the logo. Default transparent.
+
+    Returns:
+        RGBA PIL Image, ready to composite onto a snapshot canvas.
+    """
+    if text_color is None:
+        text_color = NAVY
+
+    img = Image.new("RGBA", (width, height), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    # ── Audio wave icon (left side, ~30% of width) ──
+    # Stylized waveform: 11 vertical bars of varying heights, with a
+    # horizontal gradient from purple → blue → deep purple. Mirrors the
+    # brand mark visible at riskmodels.app/_next/static/.../logo.svg.
+    icon_w = int(width * 0.30)
+    icon_h = int(height * 0.65)
+    icon_x = int(width * 0.02)
+    icon_y = (height - icon_h) // 2
+
+    n_bars = 11
+    # Bar heights as fractions of icon_h (peaks in the middle, like a wave).
+    heights_frac = [0.25, 0.42, 0.62, 0.85, 1.00, 0.92, 0.78, 0.62, 0.48, 0.32, 0.20]
+    # Gradient stops from the brand SVG: #B521BA → #00ABFF → #290075
+    grad_stops = [
+        (0.0, (0xB5, 0x21, 0xBA)),
+        (0.5, (0x00, 0xAB, 0xFF)),
+        (1.0, (0x29, 0x00, 0x75)),
+    ]
+
+    def _grad_color(t: float) -> tuple[int, int, int]:
+        for i in range(len(grad_stops) - 1):
+            t0, c0 = grad_stops[i]
+            t1, c1 = grad_stops[i + 1]
+            if t0 <= t <= t1:
+                u = (t - t0) / max(t1 - t0, 1e-9)
+                return tuple(int(c0[k] + u * (c1[k] - c0[k])) for k in range(3))  # type: ignore
+        return grad_stops[-1][1]
+
+    bar_w = max(2, icon_w // (n_bars * 2))
+    gap = max(1, (icon_w - n_bars * bar_w) // (n_bars - 1))
+    for i, frac in enumerate(heights_frac):
+        bx = icon_x + i * (bar_w + gap)
+        bh = int(icon_h * frac)
+        by = icon_y + (icon_h - bh) // 2
+        t = i / (n_bars - 1) if n_bars > 1 else 0.0
+        color = _grad_color(t)
+        draw.rounded_rectangle(
+            [bx, by, bx + bar_w, by + bh],
+            radius=max(1, bar_w // 3),
+            fill=(*color, 255),
+        )
+
+    # ── Wordmark text (right side) ──
+    text_x = icon_x + icon_w + int(width * 0.04)
+    # Pick the largest font that fits the remaining width AND the height budget.
+    text_w_budget = width - text_x - int(width * 0.02)
+    text_h_budget = int(height * 0.72)
+    label = "RiskModels"
+    chosen_font = None
+    for size in range(int(text_h_budget), 8, -2):
+        f = _font(size, bold=True)
+        bbox = draw.textbbox((0, 0), label, font=f)
+        if (bbox[2] - bbox[0]) <= text_w_budget and (bbox[3] - bbox[1]) <= text_h_budget:
+            chosen_font = f
+            break
+    if chosen_font is None:
+        chosen_font = _font(max(8, int(text_h_budget * 0.5)), bold=True)
+
+    bbox = draw.textbbox((0, 0), label, font=chosen_font)
+    text_h = bbox[3] - bbox[1]
+    text_y = (height - text_h) // 2 - bbox[1]
+    draw.text((text_x, text_y), label, font=chosen_font, fill=(*text_color, 255))
+
+    return img
+
+
 # ── Composer ─────────────────────────────────────────────────────────────
 
 class SnapshotComposer:
@@ -278,10 +374,17 @@ class SnapshotComposer:
         w: int | None = None,
         h: int | None = None,
     ) -> None:
-        """Paste a PIL Image at (x, y), optionally resizing."""
+        """Paste a PIL Image at (x, y), optionally resizing.
+
+        RGBA images are alpha-composited (transparent pixels show the
+        underlying canvas), so logos and overlays render cleanly.
+        """
         if w and h and img.size != (w, h):
             img = img.resize((w, h), Image.LANCZOS)
-        self.img.paste(img, (x, y))
+        if img.mode in ("RGBA", "LA"):
+            self.img.paste(img, (x, y), img)
+        else:
+            self.img.paste(img, (x, y))
 
     # ── Export ──────────────────────────────────────────────────────
 

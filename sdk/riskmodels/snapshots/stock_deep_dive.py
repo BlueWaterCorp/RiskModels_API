@@ -46,7 +46,7 @@ from ..peer_group import PeerComparison, PeerGroupProxy
 from ._plotly_theme import PLOTLY_THEME, apply_theme
 from ._compose import (
     SnapshotComposer, NAVY, TEAL, TEXT_DARK, TEXT_MID, TEXT_LIGHT,
-    WHITE, LIGHT_BG, BORDER,
+    WHITE, LIGHT_BG, BORDER, render_riskmodels_logo,
 )
 from ._data import series_with_zero_start
 from ..visuals.smart_subheader import generate_subheader
@@ -1015,8 +1015,16 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     y = 80
 
     # ════════════════════════════════════════════════════════════════
-    # HEADER — dynamic "So What?" headline
+    # HEADER — dynamic "So What?" headline + RiskModels logo (top right)
     # ════════════════════════════════════════════════════════════════
+    # Logo: pinned to top-right, sized to fit the 500px reservation in the
+    # headline's max_width. Rendered programmatically (no asset file) so the
+    # snapshot has zero external dependencies.
+    LOGO_W = 470
+    LOGO_H = 110
+    logo_img = render_riskmodels_logo(LOGO_W, LOGO_H)
+    page.paste_image(logo_img, W - MARGIN - LOGO_W, y - 10)
+
     page.text(MARGIN, y, insights.get("headline", f"{data.ticker} — {data.company_name}"),
               font_size=52, bold=True, color=NAVY, max_width=W - MARGIN * 2 - 500)
     y += 68
