@@ -74,7 +74,7 @@ The zarr path now produces snapshots that are visually nearly identical to the A
 
 ## Current Data State
 
-### Local zarr (`/Users/conradgann/BW_Code/ERM3/data/stock_data/zarr/eodhd/`)
+### Local zarr (`<ERM3>/data/stock_data/zarr/eodhd/` — set `ERM3` to your ERM3 repo root)
 | Dataset | Symbols | Symbology | NVDA data | Notes |
 |---------|---------|-----------|-----------|-------|
 | ds_daily | 15,302 | FIGI primary | ✅ valid | Patched: sector codes from fundamentals.csv, NaN returns from pct_change(close) |
@@ -112,7 +112,7 @@ After the latest run with `as_of_date` + sector/subsector overrides:
 The NaN return patch we just applied to ds_daily (2026-04-01 specifically) means the betas/hedge_weights are computed against slightly stale data. Re-running 1c and 1d would propagate the fix. This should bring vol/Sharpe/1y return into closer alignment.
 
 ```bash
-cd /Users/conradgann/BW_Code/ERM3
+cd <ERM3>   # your ERM3 repository root
 PYTHONPATH=. python erm3/core/betas_calculation.py --universe uni_mc_3000 --re-estimate-1c
 PYTHONPATH=. python erm3/core/risk_decomposition.py --universe uni_mc_3000 --force-full --force-local
 ```
@@ -120,14 +120,14 @@ PYTHONPATH=. python erm3/core/risk_decomposition.py --universe uni_mc_3000 --for
 ### Option B: Accept current state
 The remaining differences are small (1-2.5 RGB diff). For production 3K snapshot generation, this is acceptable. The differences are real data-source differences (Supabase ticker_metadata vs fundamentals.csv classifications, timing of model runs) that don't affect snapshot quality.
 
-### Option C: Migrate Supabase to FIGI symbology (separate effort, see `docs/FIGI_SUPABASE_MIGRATION_PLAN.md`)
-Long-term fix: bulk COPY ds_etf.zarr/ds_daily.zarr to Supabase under FIGI symbols, atomic table swap. Spec'd but not yet executed.
+### Option C: Migrate Supabase to FIGI symbology (separate effort)
+Long-term fix: bulk COPY ds_etf.zarr/ds_daily.zarr to Supabase under FIGI symbols, atomic table swap. No migration plan doc is committed in this repo yet; track as its own project when prioritized.
 
 ## Test Command
 
 ```bash
-export RISKMODELS_API_KEY="rm_agent_live_..."
-cd /Users/conradgann/BW_Code/RiskModels_API
+export RISKMODELS_API_KEY="rm_agent_live_..."  # use your key; never commit real keys
+cd <RiskModels_API>   # this repository root
 PYTHONPATH=sdk python3 -c "
 from pathlib import Path
 from riskmodels.client import RiskModelsClient
@@ -165,10 +165,10 @@ for t in ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOG', 'META', 'TSLA']:
 
 ## Files Modified (uncommitted)
 
-- `/Users/conradgann/BW_Code/RiskModels_API/sdk/riskmodels/snapshots/zarr_context.py`
-- `/Users/conradgann/BW_Code/RiskModels_API/sdk/riskmodels/snapshots/p1_stock_performance.py`
-- `/Users/conradgann/BW_Code/RiskModels_API/sdk/riskmodels/snapshots/stock_deep_dive.py`
-- `/Users/conradgann/BW_Code/ERM3/data/stock_data/zarr/eodhd/ds_daily.zarr` (data patched in-place)
+- `<RiskModels_API>/sdk/riskmodels/snapshots/zarr_context.py`
+- `<RiskModels_API>/sdk/riskmodels/snapshots/p1_stock_performance.py`
+- `<RiskModels_API>/sdk/riskmodels/snapshots/stock_deep_dive.py`
+- `<ERM3>/data/stock_data/zarr/eodhd/ds_daily.zarr` (data patched in-place)
 
 ## Verification Snapshot
 

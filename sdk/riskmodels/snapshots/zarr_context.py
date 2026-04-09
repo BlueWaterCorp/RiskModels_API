@@ -24,9 +24,28 @@ import xarray as xr
 
 from ._data import StockContext
 
-# Default paths (override with env)
-_DEFAULT_ZARR = Path(os.environ.get("ERM3_ZARR_ROOT", "/Users/conradgann/BW_Code/ERM3/data/stock_data/zarr/eodhd"))
-_DEFAULT_ERM3 = Path(os.environ.get("ERM3_ROOT", "/Users/conradgann/BW_Code/ERM3"))
+
+def _riskmodels_repo_root() -> Path:
+    """``sdk/riskmodels/snapshots/zarr_context.py`` → RiskModels_API repo root."""
+    return Path(__file__).resolve().parents[3]
+
+
+def _default_erm3_root() -> Path:
+    """Prefer ``ERM3_ROOT``; else sibling ``../ERM3`` from this repo (no home-dir defaults)."""
+    if os.environ.get("ERM3_ROOT"):
+        return Path(os.environ["ERM3_ROOT"])
+    return _riskmodels_repo_root().parent / "ERM3"
+
+
+def _default_zarr_root() -> Path:
+    """Prefer ``ERM3_ZARR_ROOT``; else ``<ERM3>/data/stock_data/zarr/eodhd``."""
+    if os.environ.get("ERM3_ZARR_ROOT"):
+        return Path(os.environ["ERM3_ZARR_ROOT"])
+    return _default_erm3_root() / "data" / "stock_data" / "zarr" / "eodhd"
+
+
+_DEFAULT_ZARR = _default_zarr_root()
+_DEFAULT_ERM3 = _default_erm3_root()
 
 # Company name lookup (cached on first call)
 _TICKER_TO_NAME: dict[str, str] | None = None

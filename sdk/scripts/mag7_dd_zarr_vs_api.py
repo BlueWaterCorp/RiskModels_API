@@ -23,7 +23,7 @@ Requires:
   - RiskModels API credentials in env for default peer loading (optional if ``--no-api-peers``)
   - ERM3 checkout for ``erm3.shared.etf_register.FS_INDUSTRY_TO_SUBSECTOR_ETFS``
 
-Default zarr root: ``/Users/conradgann/BW_Code/ERM3/data/stock_data/zarr/eodhd``
+Default zarr root: sibling ``../ERM3/data/stock_data/zarr/eodhd`` from this repo, or set ``ERM3_ZARR_ROOT``.
 """
 
 from __future__ import annotations
@@ -40,8 +40,18 @@ from pathlib import Path
 # -----------------------------------------------------------------------------
 # Paths
 # -----------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _SDK_ROOT = Path(__file__).resolve().parents[1]
-_DEFAULT_ZARR = Path(os.environ.get("ERM3_ZARR_ROOT", "/Users/conradgann/BW_Code/ERM3/data/stock_data/zarr/eodhd"))
+
+
+def _default_zarr_root() -> Path:
+    if os.environ.get("ERM3_ZARR_ROOT"):
+        return Path(os.environ["ERM3_ZARR_ROOT"])
+    erm3 = Path(os.environ["ERM3_ROOT"]) if os.environ.get("ERM3_ROOT") else _REPO_ROOT.parent / "ERM3"
+    return erm3 / "data" / "stock_data" / "zarr" / "eodhd"
+
+
+_DEFAULT_ZARR = _default_zarr_root()
 
 MAG7 = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOG", "META", "TSLA"]
 
