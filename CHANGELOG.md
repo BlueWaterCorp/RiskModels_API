@@ -4,6 +4,16 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation precision** — [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) adds a short **hedge ratios vs classical betas** note (L2/L3 hierarchy, `dollar_ratio`). [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) `info.description` now describes Supabase **V3** tables (`security_history`, `security_history_latest`, `symbols`, supporting surfaces) and rankings from `security_history` metric keys (not legacy `erm3_betas` / `erm3_rankings`). [SUPABASE_TABLES.md](SUPABASE_TABLES.md) metric_key row no longer equates HR with betas without qualification. [README_API.md](README_API.md) endpoint table matches behavior (`/api/ticker-returns` is L3 HR/ER in the time series; `/api/metrics/{ticker}` omits Sharpe), and documents the `/api/data/*` data plane vs OpenAPI. [docs/SNAPSHOT_CONTENT_MAP.md](docs/SNAPSHOT_CONTENT_MAP.md) uses HR wording consistently. Regenerated `public/openapi.json` and `mcp/data/openapi.json` from the spec.
+
+- **Portal & email copy** — Landing/pricing alignment: [components/UseCases.tsx](components/UseCases.tsx), [components/AgenticSection.tsx](components/AgenticSection.tsx), [components/TerminalShowcase.tsx](components/TerminalShowcase.tsx), [app/pricing/page.tsx](app/pricing/page.tsx), [emails/low-balance.tsx](emails/low-balance.tsx), [lib/chat/system-prompt.ts](lib/chat/system-prompt.ts). [README_API.md](README_API.md) quickstart examples use the nested `metrics` object and wire HR/ER keys. Removes incorrect **Sharpe** claim from the low-balance email; clarifies **L3** vs full snapshot on ticker returns.
+
+- **OpenAPI MCP tool copy** — `analyze_portfolio` description no longer claims **Sharpe** (not returned by batch/metrics routes). Regenerated JSON; mirrored to **Risk_Models** `riskmodels_com/mcp-server/data/openapi.json`.
+
+## [0.3.0] — 2026-04-07
+
 ### Added
 
 - **Python SDK (`riskmodels-py` 0.3.0)** — 3D-style namespaces on `RiskModelsClient` (`.stock`, `.portfolio`, `.pri`, `.insights`) with `.current` / `.historical` facades; `PerformanceResult` for tabular + `.plot()` dispatch; `riskmodels.visuals` (Plotly) for L3 horizontal decomposition and portfolio risk/attribution cascades; optional **`pip install riskmodels-py[viz]`** (plotly, matplotlib, seaborn, kaleido); PDF transport helpers `get_metrics_snapshot_pdf` / `post_portfolio_risk_snapshot_pdf`; `positions_to_weights` accepts `{"ticker","weight"}` lists. See `sdk/README.md` and `sdk/pyproject.toml`.

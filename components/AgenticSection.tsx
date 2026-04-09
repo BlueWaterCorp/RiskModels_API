@@ -15,7 +15,7 @@ const AGENTIC_CAPABILITY_STEPS: { label: string; mapsTo: string }[] = [
   },
   {
     label: 'Drift vs targets lives in your policy layer',
-    mapsTo: 'Daily fields via GET /ticker-returns & /metrics — you apply thresholds & alerts',
+    mapsTo: 'L1/L2/L3 snapshot via GET /metrics; L3 return history via GET /ticker-returns — you apply thresholds & alerts',
   },
   {
     label: 'Factor exposure & explained risk surfaced in structured JSON',
@@ -72,7 +72,7 @@ export default function AgenticSection() {
                 'You construct the query payload',
                 'You call the endpoint',
                 'You parse the response',
-                'You interpret factor weights',
+                'You interpret hedge ratios and explained risk',
                 'You compute drift vs benchmark',
                 'You decide what hedge to use',
                 'You implement the trade',

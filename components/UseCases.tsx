@@ -43,7 +43,7 @@ const patterns = [
     title: 'Pre-Trade Risk',
     subtitle: 'Implementation pattern',
     description:
-      'Provide the data layer for automated factor-impact guardrails — marginal beta, sector, and subsector deltas your rules engine evaluates before execution.',
+      'Provide the data layer for automated factor-impact guardrails — marginal hedge-ratio and explained-risk deltas (market, sector, subsector) your rules engine evaluates before execution.',
     docsHref: '/docs/api',
     color: 'emerald' as const,
   },
@@ -53,7 +53,7 @@ const patterns = [
     title: 'Drift Monitoring',
     subtitle: 'Implementation pattern',
     description:
-      'Calculate real-time sigma-band drift against targets from daily L1/L2/L3 fields — feed results into your monitoring stack or custom alert logic.',
+      'Calculate sigma-band drift against targets from L1/L2/L3 snapshot fields (`GET /metrics`) and L3 return history (`GET /ticker-returns`) — feed results into your monitoring stack or custom alert logic.',
     docsHref: '/docs/api',
     color: 'amber' as const,
   },

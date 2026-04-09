@@ -47,4 +47,4 @@ done
 
 echo "Done. Updated: capabilities.json, schema-paths.json, schemas/*.json"
 echo "Note: openapi.json is not overwritten; update it from OPENAPI_SPEC.yaml if needed."
-echo "Note: Supabase table list (including erm3_betas, erm3_rankings) is in AUTHENTICATION_GUIDE.md and SUPABASE_TABLES.md; update those when Risk_Models adds or renames tables."
+echo "Note: Supabase V3 table list is in AUTHENTICATION_GUIDE.md and SUPABASE_TABLES.md; update those when Risk_Models adds or renames tables."

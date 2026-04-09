@@ -72,14 +72,17 @@ export const LowBalanceEmail = ({
         </Heading>
 
         <Text style={paragraph}>
-          • <strong>Ticker Returns:</strong> $0.005 per request — daily returns
-          &amp; hedge ratios for any stock
+          • <strong>Ticker Returns:</strong> $0.005 per request — daily returns,
+          price, and <strong>L3</strong> hedge ratios &amp; explained risk (time
+          series); use <strong>L3 Decomposition</strong> or <strong>Metrics</strong>{" "}
+          for broader history / snapshot fields
           <br />• <strong>Batch Analysis:</strong> $0.002 per position —
           portfolio hedge ratios in one call (25% cheaper)
           <br />• <strong>L3 Decomposition:</strong> factor risk attribution —
           market, sector, subsector &amp; idiosyncratic
-          <br />• <strong>Ticker Metrics:</strong> latest volatility, Sharpe,
-          and sector data per ticker
+          <br />• <strong>Ticker Metrics:</strong> latest volatility (23d),
+          L1/L2/L3 hedge ratios &amp; explained risk, price, market cap, and
+          sector / subsector ETF metadata per ticker
         </Text>
 
         <Hr style={hr} />

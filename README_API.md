@@ -46,11 +46,12 @@ const resp = await fetch("https://riskmodels.app/api/metrics/NVDA", {
   headers: { Authorization: "Bearer rm_agent_live_..." },
 });
 const m = await resp.json();
+const met = m.metrics;
 
-// L3 hedge: short this much SPY + sector ETF per $1 of NVDA
-console.log("SPY hedge:    ", m.l3_market_hr);    // e.g. 1.28
-console.log("Sector hedge: ", m.l3_sector_hr);    // e.g. 0.24
-console.log("Residual risk:", m.l3_residual_er);  // e.g. 0.54 (54% idiosyncratic)
+// L3 hedge: ETF notionals per $1 of stock (wire keys: l3_*_hr / l3_*_er)
+console.log("SPY hedge:    ", met.l3_mkt_hr);   // e.g. 1.28
+console.log("Sector hedge: ", met.l3_sec_hr); // e.g. 0.24
+console.log("Residual ER:  ", met.l3_res_er); // e.g. 0.54 (54% idiosyncratic)
 ```
 
 ### Python (Jupyter / Backend)
@@ -61,11 +62,12 @@ import requests
 API_KEY  = "rm_agent_live_..."
 HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
 
-# Get latest metrics for NVDA
+# Get latest metrics for NVDA (HR/ER live under `metrics`; wire keys use l3_*_hr / l3_*_er)
 m = requests.get("https://riskmodels.app/api/metrics/NVDA", headers=HEADERS).json()
-print(f"Residual Risk:  {m['l3_residual_er']:.1%}")   # 54.0%
-print(f"Market Hedge:   {m['l3_market_hr']:.2f}")     # 1.28 (short $1.28 SPY per $1 NVDA)
-print(f"Volatility:     {m['volatility']:.1%}")       # 48.0% annualised
+met = m["metrics"]
+print(f"Residual Risk:  {met['l3_res_er']:.1%}")   # idiosyncratic share (example)
+print(f"Market Hedge:   {met['l3_mkt_hr']:.2f}")   # SPY notional per $1 stock (dollar_ratio)
+print(f"Vol (23d):      {met['vol_23d']}")         # see SEMANTIC_ALIASES.md for units
 ```
 
 ### cURL
@@ -81,8 +83,8 @@ curl -X GET "https://riskmodels.app/api/metrics/NVDA" \
 
 | Endpoint | Method | Description | Cost |
 |---|---|---|---|
-| `/api/ticker-returns` | GET | Daily returns + rolling L1/L2/L3 hedge ratios, up to 15y | $0.005/call |
-| `/api/metrics/{ticker}` | GET | Latest snapshot: all 22 HR/ER fields, vol, Sharpe, sector, market cap | $0.005/call |
+| `/api/ticker-returns` | GET | Daily returns, price, and **L3** hedge ratios + explained risk (rolling), up to 15y; for L1/L2 **history** use `/api/l3-decomposition` or `/api/data/security-history/...` (see OpenAPI) | $0.005/call |
+| `/api/metrics/{ticker}` | GET | Latest snapshot: L1/L2/L3 HR/ER, `vol_23d`, price, market cap, `stock_var`; sector/subsector ETFs in `meta` | $0.005/call |
 | `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | $0.005/call |
 | `/api/correlation` / `/api/metrics/{ticker}/correlation` | POST / GET | Macro factor correlation (VIX, Bitcoin, Gold, Oil, DXY, UST 10y–2y); see [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | $0.002–$0.005/call |
 | `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | $0.002/position |
@@ -93,6 +95,10 @@ curl -X GET "https://riskmodels.app/api/metrics/NVDA" \
 | `/.well-known/agent-manifest` | GET | AI agent discovery manifest | Free |
 
 Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
+
+### Data plane (`/api/data/*`)
+
+Extra **read** routes under `/api/data/` expose the V3 Supabase shape directly (e.g. `symbols`, long-form `security_history` by metric key, `security_history_latest`, `trading_calendar`, landing cache). They are **not** fully mirrored in [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml). When `RISKMODELS_API_SERVICE_KEY` is set, requests that send `Authorization: Bearer …` must use the valid service key; otherwise the header can be omitted for public read (see [lib/gateway-auth.ts](lib/gateway-auth.ts)).
 
 ---
 

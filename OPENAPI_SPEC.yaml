@@ -24,9 +24,15 @@ info:
 
 
     **Data**: Universe `uni_mc_3000` (top ~3,000 US stocks by market cap), date range
-    2006-01-04 to present, updated daily end-of-day. Backend: Zarr v2 on Google Cloud Storage,
-    computed by the ERM3 regression system (Huber/Ridge). Supabase tables `erm3_betas` and
-    `erm3_rankings` provide factor betas and ticker rankings for direct DB and API use.
+    2006-01-04 to present, updated daily end-of-day. Model outputs are computed by the ERM3
+    regression system (Huber/Ridge), with Zarr v2 archives on Google Cloud Storage for research
+    pipelines. The live API reads primarily from Supabase **V3** tables: long-form
+    `security_history` (returns, volatility, L1/L2/L3 hedge ratios and explained-risk metrics),
+    wide latest rows in `security_history_latest`, identity in `symbols`, plus supporting surfaces
+    such as `trading_calendar`, `erm3_landing_chart_cache`, and `macro_factors`. Cross-sectional
+    **rankings** (`GET /rankings/*`) are served from precomputed rank metric keys in
+    `security_history`, not a separate `erm3_rankings` table. Hedge ratios are **dollar_ratio**
+    ETF notionals per $1 stock; see `SEMANTIC_ALIASES.md` for semantics vs classical betas.
 
 
     **Authentication Methods:**
@@ -1253,7 +1259,7 @@ components:
             - `riskmodels_list_endpoints`: List all available API endpoints with summaries, tags, and costs. No required inputs.
             - `riskmodels_get_capability`: Get detailed schema and documentation for a specific capability by ID (e.g. "ticker-returns", "metrics", "l3-decomposition"). Input: `{ id: string }`.
             - `riskmodels_get_schema`: Fetch the JSON response schema for a given endpoint path. Input: `{ path: string }`.
-            - `analyze_portfolio`: Analyze a portfolio of ticker positions — returns per-ticker risk metrics (volatility, Sharpe, hedge ratios, explained risk) and portfolio-level aggregates. Input: `{ positions: Array<{ ticker: string, weight?: number }> }`.
+            - `analyze_portfolio`: Analyze a portfolio of ticker positions — returns per-ticker risk metrics (volatility, hedge ratios, explained risk) and portfolio-level aggregates. Input: `{ positions: Array<{ ticker: string, weight?: number }> }`.
             - `hedge_portfolio`: Compute optimal hedge notionals for a portfolio using ERM3 factor model. Returns L1/L2/L3 hedge amounts in USD. Input: `{ positions: Array<{ ticker: string, notional_usd: number }>, level?: "l1"|"l2"|"l3" }`.
             - `get_risk_decomposition`: Get monthly L3 factor risk decomposition time series for a ticker. Input: `{ ticker: string, from?: string, to?: string }`.
         description:

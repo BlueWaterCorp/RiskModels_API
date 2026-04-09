@@ -35,7 +35,7 @@ const baselineRows = [
     tier: "baseline" as const,
   },
   {
-    endpoint: "Ticker returns (any history length)",
+    endpoint: "Ticker returns (daily; L3 HR/ER in series, up to 15y)",
     cost: "$0.005",
     callsPer20: "4,000",
     tier: "baseline" as const,
@@ -89,7 +89,8 @@ const tierComparisonRows = [
   },
   {
     aspect: "What you get",
-    baseline: "Metrics, rankings, search, macro factors, correlations, returns, CLI",
+    baseline:
+      "Metrics (L1/L2/L3 snapshot), rankings, search, macro factors, correlations, returns (L3 HR/ER history), CLI",
     premium: "L3 decomposition, Portfolio Risk Index, Plaid sync, batch analytics, chat agent, PDF reports",
   },
   {
@@ -139,7 +140,7 @@ const refillTiers = [
 const faqs: PricingFaqItem[] = [
   {
     q: "What is the difference between Baseline and Premium?",
-    a: "Baseline features ($0.001–$0.005/call) power everyday risk checks and time series — metrics, rankings, macro/correlation endpoints, ticker returns, and CLI access. Premium capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots, batch portfolio analysis, Plaid holdings sync, and the AI risk analyst chat. Same API key for both; each call is billed at the rate for that endpoint. See the comparison table and per-endpoint tables on this page.",
+    a: "Baseline features ($0.001–$0.005/call) power everyday risk checks and time series — metrics (full L1/L2/L3 snapshot), rankings, macro/correlation endpoints, ticker returns (L3 hedge ratios & explained risk in the daily series), and CLI access. Premium capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots, batch portfolio analysis, Plaid holdings sync, and the AI risk analyst chat. Same API key for both; each call is billed at the rate for that endpoint. See the comparison table and per-endpoint tables on this page.",
   },
   {
     q: "Do my free credits expire?",

@@ -32,6 +32,12 @@ To compute hedge notional: `hedge_notional_usd = position_size_usd × hr_field`
 | **L2** | 2 | SPY + sector ETF | Remove market + sector exposure |
 | **L3** | 3 | SPY + sector + subsector ETF | Institutional-grade, full factor neutrality |
 
+### Hedge ratios vs classical regression betas
+
+- API **`*_hr` fields are hedge ratios** in **`dollar_ratio`** units (ETF notional per $1 of stock), as in the table above—not dimensionless CAPM-style slopes unless you convert explicitly for a chosen price context.
+- At **L2 and L3**, each leg is part of a **hierarchical, ETF-executable hedge**. Those values are **not** guaranteed to match a **univariate OLS beta** of the stock on that ETF alone, because estimation orthogonalizes across levels and uses internal link adjustments.
+- For **variance explained** and hierarchical decomposition language, use **`*_er`** (explained risk). For how estimation relates to published hedges, see [ENGINE_METHOD_NOTES.md](ENGINE_METHOD_NOTES.md) §3 (Industry-Level Structure).
+
 ---
 
 ## Explained Risk (ER) Fields

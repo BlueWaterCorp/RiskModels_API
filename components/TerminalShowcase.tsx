@@ -71,7 +71,7 @@ const scenarioA: Scenario = {
     { id: 4, delayMs: 1380, content: <span style={{ color: C.dim }}>{'{'}</span> },
     {
       id: 5, delayMs: 1540,
-      content: <span>&nbsp;&nbsp;<span style={{ color: C.key }}>&quot;portfolio_beta&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.num }}>1.14</span><span style={{ color: C.dim }}>,</span></span>,
+      content: <span>&nbsp;&nbsp;<span style={{ color: C.key }}>&quot;avg_l3_mkt_hr&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.num }}>1.14</span><span style={{ color: C.dim }}>,</span></span>,
     },
     {
       id: 6, delayMs: 1700,

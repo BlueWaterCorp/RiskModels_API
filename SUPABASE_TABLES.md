@@ -34,7 +34,7 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | `returns_gross` | Simple gross return |
 | `vol_23d` | 23-day rolling volatility |
 | `price_close`, `market_cap` | Price and market cap |
-| `l1_mkt_hr`, `l2_mkt_hr`, `l2_sec_hr`, `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | Hedge ratios / betas |
+| `l1_mkt_hr`, `l2_mkt_hr`, `l2_sec_hr`, `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | Hedge ratios (`dollar_ratio`; hierarchical L1/L2/L3 ETF notionals per $1 stock—not classical univariate betas at L2/L3). See [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md). |
 | `l1_mkt_er`, `l1_res_er`, `l2_mkt_er`, `l2_sec_er`, `l2_res_er`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | Explainability ratios |
 | `stock_var` | Stock-specific variance |
 
