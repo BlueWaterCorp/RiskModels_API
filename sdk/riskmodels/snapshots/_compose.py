@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import plotly.graph_objects as go
 from PIL import Image, ImageDraw, ImageFont
@@ -234,17 +234,25 @@ class SnapshotComposer:
         h: int,
         *,
         scale: int = 2,
+        margin: dict[str, Any] | None = None,
     ) -> None:
         """Render a Plotly figure to PNG and paste it at (x, y) with size (w, h).
 
         The figure is rendered at `scale`x resolution then downsampled
         for crisp output at the target DPI.
+
+        ``margin`` merges into the default Plotly margins (use a larger
+        ``r`` when marker text sits to the right of points — Kaleido otherwise
+        clips labels in tight layouts).
         """
+        mrg: dict[str, Any] = dict(t=5, b=5, l=5, r=5, pad=0)
+        if margin:
+            mrg.update(margin)
         # Set figure size to match target pixel dimensions / scale
         fig.update_layout(
             width=w // scale,
             height=h // scale,
-            margin=dict(t=5, b=5, l=5, r=5, pad=0),
+            margin=mrg,
             paper_bgcolor="#ffffff",
             plot_bgcolor="#ffffff",
         )

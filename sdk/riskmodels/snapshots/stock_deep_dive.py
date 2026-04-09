@@ -588,6 +588,11 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
     T.style(fig)
     x_max = max(all_x, default=30) * 1.15
     y_max = max(all_y, default=50) * 1.15
+    # Single-target plots (zarr / no API peers): point sits on the right edge and
+    # ``textposition="middle right"`` labels are clipped by Kaleido — pad domain + margins.
+    if not peer_x:
+        x_max = max(float(x_max), float(_tx) + 18.0)
+        y_max = max(float(y_max), float(_ty) + 12.0)
     fig.update_layout(
         xaxis=dict(
             title="Annualized L3 Residual Vol (%)",
@@ -607,8 +612,8 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
 def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     """III. Equity Factor Decomposition — target + top 6 peers by market cap (7 bars).
 
-    σ-scaled horizontal stacked bars (BWMACRO/article_visuals.py style).
-    Annotations use ax.get_yaxis_transform() so they always clear the plot edge.
+    Each segment is σ × (L3 explained-risk share) for that layer (ERM3), matching the
+    left-rail ER bars — not hedge ratios (HR) or time-series residual return (RR).
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -714,16 +719,16 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     ax.set_facecolor("#fafbfc")
 
     h_bar = 0.60
-    ax.barh(y_pos, mkt_v, color=LAYER_COLORS["mkt"], label="L3 market RR",
+    ax.barh(y_pos, mkt_v, color=LAYER_COLORS["mkt"], label="Market ER (L3)",
             height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
     left = mkt_v.copy()
-    ax.barh(y_pos, sec_v, left=left, color=LAYER_COLORS["sec"], label="L3 sector RR",
+    ax.barh(y_pos, sec_v, left=left, color=LAYER_COLORS["sec"], label="Sector ER (L3)",
             height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
     left += sec_v
-    ax.barh(y_pos, sub_v, left=left, color=LAYER_COLORS["sub"], label="L3 subsector RR",
+    ax.barh(y_pos, sub_v, left=left, color=LAYER_COLORS["sub"], label="Subsector ER (L3)",
             height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
     left += sub_v
-    ax.barh(y_pos, res_v, left=left, color=LAYER_COLORS["res"], label="HR",
+    ax.barh(y_pos, res_v, left=left, color=LAYER_COLORS["res"], label="Residual ER",
             height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
 
     # Highlight target row (row 0) with navy outline
@@ -746,7 +751,7 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     ax.set_ylim(-0.5, n - 0.5)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0%}"))
     ax.set_xlabel(
-        "Annualized σ; segments = σ × (L3 market/sector/subsector RR + HR residual)",
+        "Annualized σ; segments = σ × L3 explained-risk share (mkt / sector / subsector / residual)",
         fontsize=8.5, color=SLATE,
     )
     ax.invert_yaxis()
@@ -815,9 +820,6 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
             if p_ra > target_ra:
                 n_peers_above += 1
     rank_pct = int((1 - n_peers_above / n_total) * 100) if n_total > 1 else 50
-    rank_ordinal = _pct_ordinal(rank_pct)
-    rank_label = "top-decile" if rank_pct >= 90 else ("top-quartile" if rank_pct >= 75 else (
-        "bottom-quartile" if rank_pct <= 25 else "mid-pack"))
 
     # Panel II subtitle — neutral, institutional tone
     rank_qualifier = (
@@ -826,11 +828,18 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
         "mid-to-lower quartile" if rank_pct >= 25 else
         "below-average"
     )
-    alpha_quality_insight = (
-        f"{ticker} generated +{target_res_er*100:.1f}% annualized L3 residual return "
-        f"at {target_res_vol*100:.1f}% residual volatility — "
-        f"{rank_qualifier} risk-adjusted alpha quality among {sub} peers."
-    )
+    has_peer_scatter = pc is not None and not pc.peer_detail.empty
+    if has_peer_scatter:
+        alpha_quality_insight = (
+            f"{ticker} generated +{target_res_er*100:.1f}% annualized L3 residual return "
+            f"at {target_res_vol*100:.1f}% residual volatility — "
+            f"{rank_qualifier} risk-adjusted alpha quality among {sub} peers."
+        )
+    else:
+        alpha_quality_insight = (
+            f"{ticker} generated +{target_res_er*100:.1f}% annualized L3 residual return "
+            f"at {target_res_vol*100:.1f}% residual volatility."
+        )
 
     # Risk DNA insight (Panel III)
     dna = _risk_dna_segments(data.metrics)
@@ -869,10 +878,15 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
         sent1 = f"{ticker}'s risk profile is {sys_pct:.0f}% systematic."
 
     res_sign = "+" if target_res_er >= 0 else ""
-    sent2 = (
-        f"Idiosyncratic alpha contributed {res_sign}{target_res_er*100:.1f}% ann. residual ER "
-        f"but ranks {rank_qualifier} on a risk-adjusted basis among {sub} peers."
-    )
+    if has_peer_scatter:
+        sent2 = (
+            f"Idiosyncratic alpha contributed {res_sign}{target_res_er*100:.1f}% ann. residual ER "
+            f"but ranks {rank_qualifier} on a risk-adjusted basis among {sub} peers."
+        )
+    else:
+        sent2 = (
+            f"Idiosyncratic alpha contributed {res_sign}{target_res_er*100:.1f}% ann. residual ER."
+        )
     unified_summary = f"{sent1} {sent2}"
 
     # Dynamic "So What?" headline — template from env var or default
@@ -1154,7 +1168,8 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
 
     # RANKINGS — title + peer cohort on one line, then table
     _rank_1y = p1.rankings.get("252d_subsector_gross_return")
-    _cohort_n = int(_rank_1y["cohort_size"]) if (_rank_1y and _rank_1y.get("cohort_size")) else None
+    _cs = _rank_1y.get("cohort_size") if _rank_1y else None
+    _cohort_n = int(_cs) if (_cs is not None and _cs == _cs) else None  # NaN != NaN
     _rank_title = "RANKINGS — Subsector cohort"
     if _cohort_n:
         _rank_title = (
@@ -1433,7 +1448,10 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
 
     # II. L3 Residual Alpha Quality scatter (Plotly)
     scatter_fig = _make_alpha_quality_scatter(data)
-    page.paste_figure(scatter_fig, CONTENT_X, y, half_w, chart_h_bot)
+    page.paste_figure(
+        scatter_fig, CONTENT_X, y, half_w, chart_h_bot,
+        margin=dict(t=8, b=48, l=52, r=72, pad=2),
+    )
 
     # III. Equity Factor Decomposition (Matplotlib → PIL, target + top 6 peers)
     dna_img = _make_peer_dna_chart(data)

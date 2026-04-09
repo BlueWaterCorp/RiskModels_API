@@ -43,6 +43,7 @@ from ._compose import (
     WHITE, LIGHT_BG, BORDER,
 )
 from ._data import (
+    StockContext,
     fetch_stock_context,
     trailing_returns,
     cumulative_returns,
@@ -243,11 +244,24 @@ def _series_to_list(dates: pd.Index | pd.Series, values: pd.Series) -> list[tupl
     return out
 
 
-def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
-    """Fetch everything needed for the P1 Stock Performance snapshot."""
-    import warnings
+def build_p1_data_from_stock_context(
+    ctx: StockContext,
+    client: Any | None = None,
+    *,
+    rankings: dict[str, Any] | None = None,
+    macro_correlations: dict[str, Any] | None = None,
+    macro_window: str | None = None,
+) -> "P1Data":
+    """Assemble :class:`P1Data` from a :class:`StockContext` using the same rules as production.
 
-    ctx = fetch_stock_context(ticker, client, years=years, include_spy=True)
+    Production path: :func:`fetch_stock_context` → this function with ``client`` set
+    (rankings + macro fetched via API).
+
+    Zarr path: :func:`riskmodels.snapshots.zarr_context.fetch_stock_context_zarr` → this
+    function with ``client=None``, pre-filled ``rankings`` and macro from
+    ``ds_macro_factor.zarr`` (gold may be absent in zarr).
+    """
+    import warnings
 
     m = ctx.metrics
     vol_23d = m.get("vol_23d")
@@ -305,32 +319,46 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
     if dd_stock:
         max_dd = min(v for _, v in dd_stock)
 
-    # ── Rankings (cross-sectional rank vs subsector peers) ──────────
-    rankings: dict[str, Any] = {}
-    try:
-        rdf = client.get_rankings(ticker)
-        if not rdf.empty and "ranking_key" in rdf.columns:
-            for _, rrow in rdf.iterrows():
-                key = str(rrow["ranking_key"])
-                rankings[key] = {
-                    "rank_ordinal":   rrow.get("rank_ordinal"),
-                    "cohort_size":    rrow.get("cohort_size"),
-                    "rank_percentile": rrow.get("rank_percentile"),
-                    "metric":          rrow.get("metric"),
-                    "cohort":          rrow.get("cohort"),
-                    "window":          rrow.get("window"),
-                }
-    except Exception as exc:
-        warnings.warn(f"Could not fetch rankings for {ticker}: {exc}", UserWarning, stacklevel=2)
+    ticker = ctx.ticker
 
-    # ── Macro correlations — L3 residual windows, then gross (per-attempt errors OK)
-    macro_correlations, macro_window = fetch_macro_correlations_resilient(client, ticker)
-    if not any(v is not None for v in macro_correlations.values()):
-        warnings.warn(
-            f"Macro correlations empty for {ticker} after l3_residual and gross fallbacks.",
-            UserWarning,
-            stacklevel=2,
-        )
+    # ── Rankings (API) or preloaded (e.g. ERM3 zarr) ──────────────────
+    rankings_out: dict[str, Any]
+    if rankings is None:
+        rankings_out = {}
+        if client is not None:
+            try:
+                rdf = client.get_rankings(ticker)
+                if not rdf.empty and "ranking_key" in rdf.columns:
+                    for _, rrow in rdf.iterrows():
+                        key = str(rrow["ranking_key"])
+                        rankings_out[key] = {
+                            "rank_ordinal":   rrow.get("rank_ordinal"),
+                            "cohort_size":    rrow.get("cohort_size"),
+                            "rank_percentile": rrow.get("rank_percentile"),
+                            "metric":          rrow.get("metric"),
+                            "cohort":          rrow.get("cohort"),
+                            "window":          rrow.get("window"),
+                        }
+            except Exception as exc:
+                warnings.warn(f"Could not fetch rankings for {ticker}: {exc}", UserWarning, stacklevel=2)
+    else:
+        rankings_out = rankings
+
+    # ── Macro correlations — API unless explicitly supplied (zarr: pass ``{}``) ──
+    if macro_correlations is None:
+        if client is not None:
+            macro_out, macro_window_out = fetch_macro_correlations_resilient(client, ticker)
+            if not any(v is not None for v in macro_out.values()):
+                warnings.warn(
+                    f"Macro correlations empty for {ticker} after l3_residual and gross fallbacks.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        else:
+            macro_out, macro_window_out = {}, macro_window or "252d"
+    else:
+        macro_out = macro_correlations
+        macro_window_out = macro_window if macro_window is not None else "252d"
 
     # ── L3 explained-return attribution series ─────────────────────
     # l3_*_er columns are HR proportions (sum ≈ 1.0 per day).
@@ -377,12 +405,18 @@ def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
         sharpe_1y=sharpe_1y,
         max_drawdown=max_dd,
         vol_23d=float(vol_23d) if vol_23d is not None else None,
-        rankings=rankings,
-        macro_correlations=macro_correlations,
-        macro_window=macro_window,
+        rankings=rankings_out,
+        macro_correlations=macro_out,
+        macro_window=macro_window_out,
         l3_er_series=l3_er_series,
         sdk_version=ctx.sdk_version,
     )
+
+
+def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
+    """Fetch everything needed for the P1 Stock Performance snapshot (API)."""
+    ctx = fetch_stock_context(ticker, client, years=years, include_spy=True)
+    return build_p1_data_from_stock_context(ctx, client)
 
 
 # ---------------------------------------------------------------------------
@@ -416,9 +450,20 @@ def _generate_p1_insights(data: P1Data) -> P1Insights:
     rank_1y_res   = data.rankings.get("252d_subsector_subsector_residual") \
                     or data.rankings.get("252d_subsector_sector_residual")
 
-    rank_pct_total = float(rank_1y_total["rank_percentile"]) if rank_1y_total else None
-    rank_pct_res   = float(rank_1y_res["rank_percentile"])   if rank_1y_res   else None
-    cohort_n       = int(rank_1y_total["cohort_size"])       if rank_1y_total else None
+    def _safe_float(d, key):
+        v = d.get(key) if d else None
+        if v is None:
+            return None
+        try:
+            f = float(v)
+            return None if (f != f) else f  # NaN check
+        except (TypeError, ValueError):
+            return None
+
+    rank_pct_total = _safe_float(rank_1y_total, "rank_percentile")
+    rank_pct_res   = _safe_float(rank_1y_res, "rank_percentile")
+    _cohort_f      = _safe_float(rank_1y_total, "cohort_size")
+    cohort_n       = int(_cohort_f) if _cohort_f is not None else None
 
     # Cumulative attribution totals from l3_er_series
     cum_mkt = cum_sec = cum_sub = cum_res = 0.0
