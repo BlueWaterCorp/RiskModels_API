@@ -13,7 +13,7 @@ A **live-format** `RISKMODELS_API_KEY` value was committed in **`docs/ZARR_API_R
 
 ## Purge from git history (maintainers)
 
-**Done on this clone (2026-04-09):** `git filter-repo` with `--replace-text` for the leaked literal → `rm_agent_live_...`; `origin` was re-added.
+**Done on this clone (2026-04-09):** `git filter-repo` with `--replace-text` swapped the leaked literal for a short dummy value, then history was rewritten again so only neutral placeholders (e.g. `rm_agent_live_...`) remain in tracked docs; `origin` was re-added after each run.
 
 **You must still:**
 
@@ -35,7 +35,7 @@ After the remote updates, run `git fetch origin` so `refs/remotes/origin/*` matc
 ### Replay procedure (another machine / future leaks)
 
 1. Install [git-filter-repo](https://github.com/newren/git-filter-repo) (`pip install git-filter-repo`).
-2. `printf '%s\n' 'LEAKED_LITERAL==>rm_agent_live_REDACTED' > /tmp/git-replace.txt` (never commit that file).
+2. `printf '%s\n' 'LEAKED_LITERAL==>dummy_placeholder_value' > /tmp/git-replace.txt` (never commit that file; pick any value that is not a real key).
 3. `git filter-repo --replace-text /tmp/git-replace.txt --force` then `rm /tmp/git-replace.txt`
 4. `git remote add origin <url>` if filter-repo removed it.
 5. Force-push as above.
