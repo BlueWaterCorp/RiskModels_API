@@ -333,25 +333,25 @@ def fetch_stock_context_zarr(
     sector_etf = sector_etf_override or _sector_etf(bw)
     subsector_etf = subsector_etf_override or _subsector_etf(fs_ind, erm3)
 
-    # ETF history must end on the same date as the stock history (last_teo)
-    last_teo = pd.to_datetime(hist["teo"].iloc[-1]) if "teo" in hist.columns else pd.to_datetime(hist["date"].iloc[-1])
+    # API behavior: each ETF series uses its own latest date independently of the stock.
+    # When matching the API, ETFs may have 1 day MORE than the stock if Supabase synced them
+    # later. We fetch the ETF's full window matching the API's `years=2` calendar logic.
+    n_etf_days = len(hist) + 5  # buffer for ETF having extra recent days
 
-    def _etf_slice_aligned(etf_ticker: str | None) -> pd.DataFrame | None:
+    def _etf_slice_independent(etf_ticker: str | None) -> pd.DataFrame | None:
         if not etf_ticker:
             return None
-        etf_sym = _etf_symbol(ds_etf, etf_ticker)
-        full = ds_etf.sel(symbol=etf_sym)
-        teos = full.teo.values
-        valid = np.where(teos <= np.datetime64(last_teo))[0]
-        if not len(valid):
+        try:
+            etf_sym = _etf_symbol(ds_etf, etf_ticker)
+        except ValueError:
             return None
-        end = int(valid[-1]) + 1
-        start = max(0, end - len(hist))
-        return _df_from_etf_slice_indexed(full.isel(teo=slice(start, end)))
+        full = ds_etf.sel(symbol=etf_sym)
+        # Take the last n_etf_days rows (ETF's own latest, not stock-aligned)
+        return _df_from_etf_slice_indexed(full.isel(teo=slice(-n_etf_days, None)))
 
-    spy_df = _etf_slice_aligned("SPY")
-    sec_df = _etf_slice_aligned(sector_etf)
-    sub_df = _etf_slice_aligned(subsector_etf)
+    spy_df = _etf_slice_independent("SPY")
+    sec_df = _etf_slice_independent(sector_etf)
+    sub_df = _etf_slice_independent(subsector_etf)
 
     erm_last = ds_erm.sel(symbol=sym, teo=merged.teo.values[-1])
     # Derive vol_23d from _stock_var (matches API formula: sqrt(stock_var * 252))
