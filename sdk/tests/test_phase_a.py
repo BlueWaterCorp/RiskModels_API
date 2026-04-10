@@ -1,7 +1,7 @@
 """Phase A verification — render a demo page with all chart primitives.
 
 Run:  python -m tests.test_phase_a
-Output: sdk/snapshots/output/phase_a_demo.pdf
+Output: sdk/riskmodels/snapshots/output/phase_a_demo.pdf
 """
 
 import sys
@@ -102,7 +102,7 @@ def main():
     )
 
     # ── Save ───────────────────────────────────────────────────────
-    out = Path(__file__).resolve().parent.parent / "snapshots" / "output" / "phase_a_demo.pdf"
+    out = Path(__file__).resolve().parent.parent / "riskmodels" / "snapshots" / "output" / "phase_a_demo.pdf"
     page.save(out)
     print(f"✓ Phase A demo saved → {out}")
     print(f"  Page size: {THEME.layout.page_w}×{THEME.layout.page_h} in (landscape)")
