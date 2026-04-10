@@ -100,13 +100,23 @@ def main() -> int:
         action="store_true",
         help="Do not call the API for PeerGroupProxy (offline; scatter/DNA are target-only).",
     )
+    ap.add_argument(
+        "--upload-gcs",
+        action="store_true",
+        help=(
+            "After rendering, upload {TICKER}_DD_latest.{png,pdf} to "
+            "gs://rm_api_public/snapshot/{TICKER}/. The website route "
+            "app/api/snapshot/[ticker] proxies these objects, so this is the "
+            "step that makes the new snapshots live for end users."
+        ),
+    )
     args = ap.parse_args()
 
     sys.path.insert(0, str(_SDK_ROOT))
 
     from riskmodels import RiskModelsClient
     from riskmodels.peer_group import PeerGroupProxy
-    from riskmodels.snapshots.stock_deep_dive import DDData, render_dd_to_png
+    from riskmodels.snapshots.stock_deep_dive import DDData, render_dd_to_pdf, render_dd_to_png
     from riskmodels.snapshots.zarr_context import build_p1_from_zarr
 
     out_dir = args.out_dir
@@ -146,8 +156,29 @@ def main() -> int:
                 print(f"  (peers skipped for {t}: {exc})")
 
         dd = DDData(p1=p1, peer_comparison=peer_comparison)
+        # Render BOTH formats so we can upload the same {png,pdf} pair the
+        # website route expects under gs://rm_api_public/snapshot/{TICKER}/.
         z_png = out_dir / f"{t}_DD_zarr.png"
+        z_pdf = out_dir / f"{t}_DD_zarr.pdf"
         render_dd_to_png(dd, z_png)
+        render_dd_to_pdf(dd, z_pdf)
+
+        if args.upload_gcs:
+            for local, remote_name in (
+                (z_png, f"{t}_DD_latest.png"),
+                (z_pdf, f"{t}_DD_latest.pdf"),
+            ):
+                dest = f"{args.gcs_bucket}/{t}/{remote_name}"
+                try:
+                    subprocess.run(
+                        ["gcloud", "storage", "cp", str(local), dest],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    print(f"  ↑ uploaded {dest}")
+                except subprocess.CalledProcessError as e:
+                    print(f"  WARN: failed to upload {dest}: {e.stderr}")
 
         if args.reference == "gcs":
             gcs_png = f"{args.gcs_bucket}/{t}/{t}_DD_latest.png"
