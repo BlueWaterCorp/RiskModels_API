@@ -56,6 +56,7 @@ from .p1_stock_performance import (
     cumulative_benchmark_line_labels,
     _generate_p1_insights,
     _make_cum_chart,
+    _make_cum_waterfall,
     _fmt_market_cap,
     _fmt_pct,
     _fmt_num,
@@ -288,16 +289,18 @@ def _make_dd_cum_chart(data: P1Data) -> go.Figure:
             hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
-    # Build cumulative L3 residual return line. Despite the l3_er_series name,
-    # element [4] is the daily residual RETURN (not ER) — computed in
-    # build_p1_data_from_stock_context as gross - (mkt+sec+sub explained).
-    # Cumsum approximates cumulative compound residual return.
+    # Geometric L3 residual: prod_gross(t) - prod_L3(t) at each step.
+    # This matches the waterfall's telescoping definition so the residual
+    # line endpoint equals the residual bar exactly.
     res_cum_series: list[tuple[str, float]] = []
     if data.l3_er_series:
-        running = 0.0
+        prod_l3 = 1.0
+        prod_gross = 1.0
         for r in data.l3_er_series:
-            running += r[4]
-            res_cum_series.append((r[0], running))
+            mkt, sec, sub, res = r[1], r[2], r[3], r[4]
+            prod_l3 *= (1 + mkt + sec + sub)
+            prod_gross *= (1 + mkt + sec + sub + res)
+            res_cum_series.append((r[0], prod_gross - prod_l3))
 
     s_stock = series_with_zero_start(data.cum_stock)
     s_spy = series_with_zero_start(data.cum_spy)      # L1 CFR in CFR mode
@@ -939,8 +942,27 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
         vs_bench=vs_bench_word, sub=sub,
     )
 
+    # Geometric attribution subtitle — systematic vs idiosyncratic split
+    p1 = data.p1
+    if p1.l3_er_series and p1.cum_stock:
+        prod_l3 = 1.0
+        prod_gross = 1.0
+        for _, mkt, sec, sub_v, res in p1.l3_er_series:
+            prod_l3 *= (1 + mkt + sec + sub_v)
+            prod_gross *= (1 + mkt + sec + sub_v + res)
+        sys_pct = (prod_l3 - 1) * 100
+        res_geo_pct = (prod_gross - prod_l3) * 100
+        gross_pct = (prod_gross - 1) * 100
+        cum_insight = (
+            f"{ticker} ({gross_pct:+.1f}% net): factor bridge reconciles "
+            f"systematic exposure ({sys_pct:+.1f}%) and idiosyncratic alpha "
+            f"({res_geo_pct:+.1f}%) via geometric attribution."
+        )
+    else:
+        cum_insight = p1i.cum_insight
+
     return {
-        "cum_insight": p1i.cum_insight,
+        "cum_insight": cum_insight,
         "alpha_quality_insight": alpha_quality_insight,
         "dna_insight": dna_insight,
         "summary": unified_summary,
@@ -1457,8 +1479,169 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
               font_size=26, italic=True, color=TEAL, max_width=CONTENT_W - 20)
     y += 40
 
+    # Build Section I as a single Plotly figure with two subplots so the
+    # S-curve connector can use paper coordinates for exact alignment.
+    from plotly.subplots import make_subplots
+
+    line_col_frac = 0.62   # line chart gets 62% of width
+    h_spacing = 0.05       # 5% gutter
+    combined = make_subplots(
+        rows=1, cols=2,
+        column_widths=[line_col_frac, 1 - line_col_frac],
+        horizontal_spacing=h_spacing,
+    )
+
+    # ── Transfer line chart traces ──
     cum_fig = _make_dd_cum_chart(p1)
-    page.paste_figure(cum_fig, CONTENT_X, y, CONTENT_W, chart_h_top)
+    for trace in cum_fig.data:
+        combined.add_trace(trace, row=1, col=1)
+
+    # Transfer line chart annotations (endpoint values)
+    for ann in cum_fig.layout.annotations:
+        ann_dict = ann.to_plotly_json()
+        ann_dict["xref"] = "x"
+        ann_dict["yref"] = "y"
+        combined.add_annotation(**ann_dict)
+
+    # Apply line chart axis styling
+    combined.update_xaxes(
+        title=None, showgrid=False, row=1, col=1,
+    )
+    combined.update_yaxes(
+        title="Cumulative Return (%)",
+        zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
+        ticksuffix="%", tickfont=dict(size=T.fonts.axis_tick),
+        row=1, col=1,
+    )
+
+    # ── Transfer waterfall traces ──
+    has_waterfall = bool(p1.l3_er_series)
+    if has_waterfall:
+        wf_fig = _make_cum_waterfall(p1)
+        for trace in wf_fig.data:
+            combined.add_trace(trace, row=1, col=2)
+
+        # Transfer waterfall annotations → remap to x2/y2
+        for ann in wf_fig.layout.annotations:
+            ann_dict = ann.to_plotly_json()
+            ann_dict["xref"] = "x2"
+            ann_dict["yref"] = "y2"
+            combined.add_annotation(**ann_dict)
+
+        # Transfer waterfall shapes — remap refs to subplot 2
+        for shape in wf_fig.layout.shapes:
+            s = shape.to_plotly_json()
+            if s.get("xref") == "x":
+                s["xref"] = "x2"
+            if s.get("yref") == "y":
+                s["yref"] = "y2"
+            if s.get("xref") == "paper":
+                # The gross dotted line uses paper x [0,1] — remap to
+                # the waterfall's x-domain within the combined figure.
+                s["xref"] = "x2 domain"
+                # x0/x1 stay as [0,1] fractions of the subplot domain
+                s["yref"] = "y2"
+            combined.add_shape(**s)
+
+        # Waterfall y-axis: explicit range so connector paper-y is exact.
+        _gross_pct = (p1.cum_stock[-1][1] if p1.cum_stock else 0) * 100
+        _wf_full = wf_fig.full_figure_for_development(warn=False)
+        _wf_auto_range = list(_wf_full.layout.yaxis.range or [0, 10])
+        _wf_y0 = min(0, _wf_auto_range[0])
+        _wf_y1 = max(_wf_auto_range[1], _gross_pct * 1.05)
+        combined.update_xaxes(
+            title=None, tickfont=dict(size=T.fonts.axis_tick),
+            row=1, col=2,
+        )
+        combined.update_yaxes(
+            zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
+            ticksuffix="%", tickfont=dict(size=T.fonts.axis_tick),
+            range=[_wf_y0, _wf_y1],
+            row=1, col=2,
+        )
+
+        # ── S-curve connector using paper coordinates ──
+        gross_pct = (p1.cum_stock[-1][1] if p1.cum_stock else 0) * 100
+
+        # Get actual computed y-axis ranges from the full figure
+        full = combined.full_figure_for_development(warn=False)
+        lc_ymin, lc_ymax = full.layout.yaxis.range
+        wf_ymin, wf_ymax = full.layout.yaxis2.range
+
+        # Y-domains (both subplots share [0,1] vertically since 1 row)
+        lc_y_domain = list(full.layout.yaxis.domain or [0, 1])
+        wf_y_domain = list(full.layout.yaxis2.domain or [0, 1])
+
+        # X-domains
+        lc_x_domain = list(full.layout.xaxis.domain or [0, line_col_frac])
+        wf_x_domain = list(full.layout.xaxis2.domain or [line_col_frac + h_spacing, 1])
+
+        # Map gross_pct to paper-y on each subplot
+        lc_data_frac = (gross_pct - lc_ymin) / (lc_ymax - lc_ymin) if lc_ymax != lc_ymin else 0.5
+        lc_paper_y = lc_y_domain[0] + lc_data_frac * (lc_y_domain[1] - lc_y_domain[0])
+
+        wf_data_frac = (gross_pct - wf_ymin) / (wf_ymax - wf_ymin) if wf_ymax != wf_ymin else 0.5
+        wf_paper_y = wf_y_domain[0] + wf_data_frac * (wf_y_domain[1] - wf_y_domain[0])
+
+        # Paper-x: right edge of line chart plot, left edge of waterfall plot
+        lc_paper_x = lc_x_domain[1]
+        wf_paper_x = wf_x_domain[0]
+
+        # Push control points deep into each chart's territory (absolute
+        # paper offsets, not fractions of the tiny gutter) so the Bezier
+        # develops a pronounced S-shape visible at any zoom level.
+        bulge = 0.11  # 11% of total paper width
+        ctrl1_x = lc_paper_x + bulge
+        ctrl2_x = wf_paper_x - bulge
+
+        # S-curve as SVG path (cubic Bezier) — horizontal departure & arrival
+        combined.add_shape(
+            type="path",
+            path=(
+                f"M {lc_paper_x},{lc_paper_y} "
+                f"C {ctrl1_x},{lc_paper_y} "
+                f"  {ctrl2_x},{wf_paper_y} "
+                f"  {wf_paper_x},{wf_paper_y}"
+            ),
+            xref="paper", yref="paper",
+            line=dict(color="#006f8e", width=1.5, dash="dot"),
+        )
+
+        # Arrowheads pointing outward (away from the curve)
+        # Left arrow: tip at line chart, shaft points right → arrow points left
+        combined.add_annotation(
+            x=lc_paper_x, y=lc_paper_y,
+            xref="paper", yref="paper",
+            ax=15, ay=0, axref="pixel", ayref="pixel",
+            showarrow=True, arrowhead=2, arrowsize=1.2, arrowwidth=2,
+            arrowcolor="#006f8e",
+        )
+        # Right arrow: tip at waterfall, shaft points left → arrow points right
+        combined.add_annotation(
+            x=wf_paper_x, y=wf_paper_y,
+            xref="paper", yref="paper",
+            ax=-15, ay=0, axref="pixel", ayref="pixel",
+            showarrow=True, arrowhead=2, arrowsize=1.2, arrowwidth=2,
+            arrowcolor="#006f8e",
+        )
+
+    # Apply theme + legend under the line chart only
+    T.style(combined)
+    combined.update_layout(
+        barmode="stack",
+        bargap=0.28,
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.05,
+            xanchor="center", x=line_col_frac / 2,
+            bgcolor="rgba(0,0,0,0)", borderwidth=0,
+            font=dict(size=T.fonts.body - 1),
+            traceorder="normal",
+        ),
+        showlegend=True,
+    )
+
+    page.paste_figure(combined, CONTENT_X, y, CONTENT_W, chart_h_top,
+                       margin=dict(t=5, b=55, l=5, r=5))
     y += chart_h_top + GAP + CARD_PAD
 
     # ── Sections II + III side by side (each in a card) ─────────────

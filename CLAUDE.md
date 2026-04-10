@@ -54,6 +54,8 @@ FONT = "Inter (fallback: Liberation Sans → DejaVu → Arial)"
 ### Chart Primitives (`_charts.py`)
 9 reusable functions: `chart_hbar`, `chart_grouped_vbar`, `chart_table`, `chart_stacked_area`, `chart_multi_line`, `chart_waterfall`, `chart_heatmap`, `chart_histogram`, `chart_bullet`. All use FancyBboxPatch rounded bars with subtle shadows.
 
+The P1/DD waterfall uses **geometric (sequential compounding) attribution** — bars are telescoping differences between cumulative products at each ERM3 hierarchy level, summing exactly to compound gross. See `ENGINE_METHOD_NOTES.md` §6.
+
 ### Identity Rules
 - **`symbol`** (FactSet ID) = internal join key. Never expose to users.
 - **`ticker`** = human-facing label on charts, axes, legends, PDF titles.

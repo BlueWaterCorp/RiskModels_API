@@ -152,6 +152,12 @@ These keys are **daily simple returns** (decimals, same convention as `returns_g
 
 **Naming:** `*_cfr` = combined factor return; `*_rr` = residual **return** at that level. Do not confuse with the informal “RR” acronym for **residual risk** as a variance share in the [Key Concepts](README_API.md#rr--residual-risk) section of `README_API.md` (that usage refers to `l3_residual_er` and related ER fields).
 
+### Geometric vs. arithmetic attribution over multi-period horizons
+
+The `l*_cfr` and `l*_rr` fields are **daily simple returns**. Within a single day, summing the four L3 components recovers gross return exactly (the replication identity). Over multi-day horizons, arithmetic sums of these fields diverge from compound gross return due to volatility drag (Jensen's inequality).
+
+The P1/DD waterfall chart and cumulative residual line use **geometric (sequential compounding) attribution**: returns are compounded through the ERM3 hierarchy level by level, producing bars that telescope to the exact geometric gross. No approximation or cross-term correction is involved. See [ENGINE_METHOD_NOTES.md §6](ENGINE_METHOD_NOTES.md) for the formula.
+
 They appear in **`GET /metrics/{ticker}`** under `metrics` when synced, in long-form **`security_history`** as `metric_key` values, and as optional columns on **`security_history_latest`** after migration. Sync progress is tracked in **`erm3_sync_state_v3`** with `table_name = security_history_returns_decomp`. Backfill scope (e.g. Mag 7 vs full universe) is controlled in the ERM3 sync CLI (see [content/docs/returns-decomposition-metrics.mdx](content/docs/returns-decomposition-metrics.mdx) on the developer portal).
 
 ---

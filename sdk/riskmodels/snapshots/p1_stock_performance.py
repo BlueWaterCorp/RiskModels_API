@@ -690,19 +690,18 @@ def _make_cum_chart(data: P1Data) -> go.Figure:
             hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
-    # Build cumulative L3 residual return from l3_er_series. Despite the field
-    # name, element [4] of each tuple is the daily residual RETURN (not ER):
-    # see build_p1_data_from_stock_context where it's computed as
-    # `gross_return - (mkt_er_component + sec_er_component + sub_er_component)`.
-    # Cumulative sum ≈ compound return for small daily values; for longer
-    # horizons this slightly underestimates the true compound residual but
-    # visually lines up with the additive bridge from L3_CFR to Gross.
+    # Geometric L3 residual: prod_gross(t) - prod_L3(t) at each step.
+    # Matches the waterfall's sequential-compounding definition so the
+    # residual line endpoint equals the residual bar exactly.
     res_cum_series: list[tuple[str, float]] = []
     if data.l3_er_series:
-        running = 0.0
+        prod_l3 = 1.0
+        prod_gross = 1.0
         for r in data.l3_er_series:
-            running += r[4]
-            res_cum_series.append((r[0], running))
+            mkt, sec, sub, res = r[1], r[2], r[3], r[4]
+            prod_l3 *= (1 + mkt + sec + sub)
+            prod_gross *= (1 + mkt + sec + sub + res)
+            res_cum_series.append((r[0], prod_gross - prod_l3))
 
     s_stock = series_with_zero_start(data.cum_stock)
     s_spy = series_with_zero_start(data.cum_spy)      # L1 CFR in CFR mode, else SPY gross
@@ -777,6 +776,162 @@ def _make_cum_chart(data: P1Data) -> go.Figure:
             font=dict(size=fnt.body),
         ),
         hovermode="x unified",
+    )
+    return fig
+
+
+def _make_cum_waterfall(data: P1Data) -> go.Figure:
+    """I (right). Hierarchical Geometric Attribution bridge.
+
+    Decomposes gross compound return into Market → Sector → Subsector →
+    Residual using sequential compounding that respects the ERM3 orthogonal
+    hierarchy.  Each bar = telescoping difference between cumulative products
+    at adjacent hierarchy levels, so bars sum exactly to the geometric gross.
+
+    Math:
+        prod_L1 = ∏(1 + mkt_t)
+        prod_L2 = ∏(1 + mkt_t + sec_t)
+        prod_L3 = ∏(1 + mkt_t + sec_t + sub_t)
+        prod_G  = ∏(1 + gross_t)
+
+        mkt_bar = prod_L1 - 1
+        sec_bar = prod_L2 - prod_L1       (telescopes)
+        sub_bar = prod_L3 - prod_L2
+        res_bar = prod_G  - prod_L3
+        Σ bars  = prod_G  - 1  ≡ gross compound return  ✓
+    """
+    pal = T.palette
+    fnt = T.fonts
+
+    # Sequential compounding through the ERM3 hierarchy.
+    # Each product compounds returns as if only factors up to that level exist.
+    prod_l1 = 1.0    # Market only
+    prod_l2 = 1.0    # Market + Sector
+    prod_l3 = 1.0    # Market + Sector + Subsector
+    prod_gross = 1.0  # All factors (= actual gross)
+    for _date, mkt, sec, sub, res in data.l3_er_series:
+        prod_l1 *= (1 + mkt)
+        prod_l2 *= (1 + mkt + sec)
+        prod_l3 *= (1 + mkt + sec + sub)
+        prod_gross *= (1 + mkt + sec + sub + res)
+
+    # Telescoping differences — sum exactly to geometric gross
+    mkt_pct = (prod_l1 - 1) * 100
+    sec_pct = (prod_l2 - prod_l1) * 100
+    sub_pct = (prod_l3 - prod_l2) * 100
+    res_pct = (prod_gross - prod_l3) * 100
+    gross_pct = (prod_gross - 1) * 100
+
+    # Short ETF-ticker labels — hierarchy implied by waterfall order
+    sector_label = data.sector_etf or "Sector"
+    sub_label = data.subsector_etf or "Sub"
+    show_sub = bool(data.subsector_etf) and data.subsector_etf != data.sector_etf
+
+    labels = ["SPY", sector_label]
+    values = [mkt_pct, sec_pct]
+    colors = [pal.navy, pal.teal]
+
+    if show_sub:
+        labels.append(sub_label)
+        values.append(sub_pct)
+        colors.append(pal.slate)
+
+    labels.append("α Residual")
+    values.append(res_pct)
+    colors.append(pal.green if res_pct >= 0 else pal.orange)
+
+    # 5th position: "Gross" column — no bar, just a label and dashed line.
+    # This gives the gross annotation its own space, clear of the residual bar.
+    labels.append(f"Gross")
+    values.append(0.0)        # zero-height (invisible)
+    colors.append("rgba(0,0,0,0)")
+
+    # Build waterfall geometry — stacked bars for per-bar colors.
+    bases: list[float] = []
+    running = 0.0
+    n_real = len(values) - 1  # exclude the phantom gross position
+    for i, val in enumerate(values):
+        if i < n_real:
+            bases.append(running if val >= 0 else running + val)
+            running += val
+        else:
+            bases.append(0.0)  # phantom gross bar base at 0
+
+    # Dynamic inside/outside threshold: bar must be ≥15% of the y-range
+    all_tops = [b + abs(v) for b, v in zip(bases[:n_real], values[:n_real])]
+    all_bottoms = list(bases[:n_real])
+    y_range = max(max(all_tops), 0) - min(min(all_bottoms), 0)
+    inside_threshold = y_range * 0.15 if y_range > 0 else 1.0
+
+    text_positions = []
+    text_labels = []
+    for i, v in enumerate(values):
+        if i < n_real:
+            text_positions.append("inside" if abs(v) >= inside_threshold else "outside")
+            text_labels.append(f"<b>{v:+.1f}%</b>")
+        else:
+            text_positions.append("none")  # hide text on phantom bar
+            text_labels.append("")
+
+    fig = go.Figure()
+    # Invisible base bars
+    fig.add_trace(go.Bar(
+        x=labels, y=bases,
+        marker=dict(color="rgba(0,0,0,0)"),
+        showlegend=False, hoverinfo="skip",
+    ))
+    # Visible bars (phantom gross bar is transparent)
+    fig.add_trace(go.Bar(
+        x=labels, y=[abs(v) for v in values],
+        marker=dict(color=colors, line=dict(width=0)),
+        text=text_labels,
+        textposition=text_positions,
+        textfont=dict(family=fnt.family, size=fnt.body),
+        insidetextfont=dict(family=fnt.family, size=fnt.body, color="#ffffff"),
+        outsidetextfont=dict(family=fnt.family, size=fnt.body, color=pal.text_dark),
+        showlegend=False,
+        hovertemplate="%{x}: %{text}<extra></extra>",
+        cliponaxis=False,
+    ))
+
+    # Connector lines between real bars only
+    for i in range(n_real - 1):
+        y_conn = bases[i] + abs(values[i])
+        fig.add_shape(
+            type="line",
+            x0=i, x1=i + 1, y0=y_conn, y1=y_conn,
+            xref="x", yref="y",
+            line=dict(color=pal.border, width=1, dash="dot"),
+        )
+
+    # Gross dashed reference line — full width
+    fig.add_shape(
+        type="line",
+        x0=0.0, x1=1.0, y0=gross_pct, y1=gross_pct,
+        xref="paper", yref="y",
+        line=dict(color=pal.navy, width=0.8, dash="dot"),
+    )
+    # Gross value label centered over the 5th "Gross" column
+    gross_idx = len(values) - 1
+    fig.add_annotation(
+        x=gross_idx, y=gross_pct,
+        text=f"<b>{gross_pct:+.1f}%</b>",
+        showarrow=False, xanchor="center", yanchor="bottom",
+        yshift=3,
+        font=dict(family=fnt.family, size=fnt.body + 1, color=pal.navy),
+    )
+
+    T.style(fig)
+    fig.update_layout(
+        barmode="stack",
+        margin=dict(t=8, r=6),
+        bargap=0.28,
+        yaxis=dict(
+            zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
+            ticksuffix="%", tickfont=dict(size=fnt.axis_tick),
+        ),
+        xaxis=dict(title=None, tickfont=dict(size=fnt.axis_tick)),
+        showlegend=False,
     )
     return fig
 
@@ -1320,8 +1475,13 @@ def _compose_p1_page(data: P1Data) -> SnapshotComposer:
               font_size=26, italic=True, color=TEAL, max_width=CONTENT_W)
     y += 40
 
+    cum_line_w = int(CONTENT_W * 2 / 3) - 20   # 2/3 for line chart
+    cum_wf_w   = CONTENT_W - cum_line_w - 40   # 1/3 for waterfall
     cum_fig = _make_cum_chart(data)
-    page.paste_figure(cum_fig, CONTENT_X, y, CONTENT_W, chart_h_top)
+    page.paste_figure(cum_fig, CONTENT_X, y, cum_line_w, chart_h_top)
+    if data.l3_er_series:
+        wf_fig = _make_cum_waterfall(data)
+        page.paste_figure(wf_fig, CONTENT_X + cum_line_w + 40, y, cum_wf_w, chart_h_top)
     y += chart_h_top + GAP
 
     # ── Section divider ──────────────────────────────────────────────

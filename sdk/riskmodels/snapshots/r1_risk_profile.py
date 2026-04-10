@@ -76,7 +76,6 @@ class R1Data:
     peer_comparison: PeerComparison | None = None
     narrative: str = ""
     macro_correlations: dict[str, float | None] = field(default_factory=dict)
-    macro_window: str = "252d"   # actual window used (may differ from 252d if fallback triggered)
     sdk_version: str = "0.3.0"
 
     @property
@@ -140,7 +139,6 @@ class R1Data:
             peer_comparison=pc,
             narrative=d.get("narrative", ""),
             macro_correlations=d.get("macro_correlations", {}),
-            macro_window=d.get("macro_window", "252d"),
             sdk_version=d.get("sdk_version", "0.3.0"),
         )
 
@@ -288,7 +286,6 @@ def get_data_for_r1(
     """Fetch everything needed for the R1 Factor Risk Profile snapshot."""
     import warnings
     from ._data import fetch_stock_context
-    from .p1_stock_performance import fetch_macro_correlations_resilient
 
     ctx = fetch_stock_context(ticker, client, years=1, include_spy=False)
 
@@ -311,12 +308,18 @@ def get_data_for_r1(
             UserWarning, stacklevel=2,
         )
 
-    macro_correlations, macro_window = fetch_macro_correlations_resilient(client, ticker)
-    if not any(v is not None for v in macro_correlations.values()):
+    macro_correlations: dict[str, float | None] = {}
+    try:
+        corr_resp = client.get_factor_correlation_single(
+            ticker,
+            return_type="l3_residual",
+            window_days=252,
+        )
+        macro_correlations = corr_resp.get("correlations", {})
+    except Exception as exc:
         warnings.warn(
-            f"Macro correlations empty for {ticker} after l3_residual and gross fallbacks.",
-            UserWarning,
-            stacklevel=2,
+            f"Could not fetch macro correlations for {ticker}: {exc}",
+            UserWarning, stacklevel=2,
         )
 
     data = R1Data(
@@ -329,7 +332,6 @@ def get_data_for_r1(
         metrics=ctx.metrics,
         peer_comparison=peer_comparison,
         macro_correlations=macro_correlations,
-        macro_window=macro_window,
         sdk_version=ctx.sdk_version,
     )
 
@@ -460,12 +462,7 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     page.text(MARGIN, y,
               f"Ticker: {data.ticker}  ·  Benchmark: {data.subsector_label}  ·  As of: {data.teo}",
               font_size=32, color=TEXT_MID)
-    y += 50
-
-    # Metric chips row
-    chips = _build_chips_list(data, m, pc)
-    y = _draw_chips(page, chips, MARGIN, y, W - MARGIN * 2)
-    y += 16
+    y += 55
 
     # Navy header rule
     page.hline(y, x0=MARGIN, x1=W - MARGIN, color=NAVY, thickness=6)
@@ -577,7 +574,7 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     py += ROW_H + 16
 
     # ── MACRO CORRELATIONS section ────────────────────────────────────
-    page.text(MARGIN, py, f"MACRO CORRELATIONS — L3 Residual · {data.macro_window}",
+    page.text(MARGIN, py, "MACRO CORRELATIONS — L3 Residual · 252d",
               font_size=SEC_SZ, bold=True, color=TEXT_LIGHT)
     py += int(SEC_SZ * 1.4)
     page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
@@ -695,8 +692,8 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
                   font_size=26, italic=True, color=TEAL, max_width=CONTENT_W)
     y += 40
 
-    peer_img = _make_peer_mpl_chart(data, pc, m)
-    page.paste_image(peer_img, CONTENT_X, y, CONTENT_W, table_h)
+    table_fig = _make_peer_table(data, pc, m, pal)
+    page.paste_figure(table_fig, CONTENT_X, y, CONTENT_W, table_h)
     y += table_h + 20
 
     # ════════════════════════════════════════════════════════════════
@@ -706,7 +703,7 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
     page.hline(footer_y, x0=MARGIN, x1=W - MARGIN, color=BORDER, thickness=2)
     footer_y += 12
     page.text(MARGIN, footer_y,
-              f"ERM3 V3 · {data.teo}  ·  riskmodels.app/ticker/{data.ticker.lower()}",
+              f"ERM3 V3 · riskmodels-py · {data.teo}",
               font_size=24, color=TEXT_LIGHT)
     page.text_right(W - MARGIN, footer_y,
                     "BW Macro · Confidential · Not Investment Advice",
@@ -720,56 +717,39 @@ def _compose_r1_page(data: R1Data) -> SnapshotComposer:
 # ---------------------------------------------------------------------------
 
 def _make_er_chart(m: dict, pal) -> go.Figure:
-    """L3 ER Decomposition horizontal bar chart — factor colors + sign-aware residual + variance %."""
-    fnt = T.fonts
-    base_labels = ["Market ER", "Sector ER", "Subsector ER", "Residual ER (α)"]
+    """L3 ER Decomposition horizontal bar chart."""
+    labels = ["Market ER", "Sector ER", "Subsector ER", "Residual ER"]
     values = [
         float(_g(m, "l3_market_er", "l3_mkt_er") or 0) * 100,
         float(_g(m, "l3_sector_er", "l3_sec_er") or 0) * 100,
         float(_g(m, "l3_subsector_er", "l3_sub_er") or 0) * 100,
         float(_g(m, "l3_residual_er", "l3_res_er") or 0) * 100,
     ]
-    # Add variance share % to each y-axis label
-    _abs_vals = [abs(v) for v in values]
-    _total_abs = sum(_abs_vals) or 1.0
-    labels = [
-        f"{name}  ({_abs_vals[i] / _total_abs * 100:.0f}%)"
-        for i, name in enumerate(base_labels)
-    ]
-
-    # Residual flips to orange for negative alpha — all others follow factor palette
-    colors = [pal.navy, pal.teal, pal.slate,
-              pal.green if values[3] >= 0 else pal.orange]
-    # Text inside positive bars: white. Outside / negative: factor color
-    text_colors = [
-        "#ffffff" if abs(v) > 1.0 else c
-        for v, c in zip(values, colors)
-    ]
 
     fig = go.Figure(go.Bar(
         y=labels, x=values, orientation="h",
-        marker=dict(color=colors, line=dict(width=0), cornerradius=4),
-        text=[f"<b>{v:+.1f}%</b>" for v in values],
+        marker=dict(color=pal.factor_colors, line=dict(width=0), cornerradius=4),
+        text=[f"{v:+.1f}%" for v in values],
         textposition="outside",
-        textfont=dict(family=fnt.family, size=fnt.body + 1, color=pal.text_dark),
+        textfont=dict(family=T.fonts.family, size=12, color=pal.text_dark),
         cliponaxis=False,
-        hovertemplate="<b>%{y}</b>: %{x:.2f}%<extra></extra>",
     ))
     T.style(fig)
-
+    # Pad xaxis so outside bar labels aren't clipped
     abs_max = max(abs(v) for v in values) if values else 1
-    label_pad = abs_max * 0.32
-    small_pad = abs_max * 0.06
-    x_min, x_max = min(0, min(values)), max(0, max(values))
+    label_pad = abs_max * 0.30  # room for bar text labels
+    small_pad = abs_max * 0.05  # minimal breathing room on the other side
+    x_min = min(0, min(values))
+    x_max = max(0, max(values))
+    left_pad = label_pad if x_min < 0 else small_pad
+    right_pad = label_pad if x_max > 0 else small_pad
     fig.update_layout(
-        yaxis=dict(autorange="reversed", showline=False,
-                   tickfont=dict(size=fnt.body)),
+        yaxis=dict(autorange="reversed", showline=False),
         xaxis=dict(
             visible=False, zeroline=False,
-            range=[x_min - (label_pad if x_min < 0 else small_pad),
-                   x_max + (label_pad if x_max > 0 else small_pad)],
+            range=[x_min - left_pad, x_max + right_pad],
         ),
-        bargap=0.32,
+        bargap=0.35,
     )
     return fig
 
@@ -802,253 +782,43 @@ def _make_hr_chart(m: dict, pal) -> go.Figure:
     sub_vals = [0.0, 0.0, l3_sub]
     sub_labels = ["", "", f"{l3_sub:.2f}" if abs(l3_sub) > 0.005 else ""]
 
-    fnt = T.fonts
-    totals = [l1_mkt, l2_mkt + l2_sec, l3_mkt + l3_sec + l3_sub]
-
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=levels, y=mkt_vals, name="Mkt β",
-        marker=dict(color=pal.navy, line=dict(width=0), cornerradius=4),
+        x=levels, y=mkt_vals, name="Mkt \u03b2",
+        marker=dict(color=pal.navy, line=dict(width=0)),
         text=mkt_labels, textposition="inside",
-        textfont=dict(family=fnt.family, size=fnt.body, color="#ffffff"),
+        textfont=dict(family=T.fonts.family, size=12, color="#ffffff"),
         insidetextanchor="middle",
-        hovertemplate="<b>Mkt β</b>: %{y:.2f}<extra></extra>",
     ))
     fig.add_trace(go.Bar(
-        x=levels, y=sec_vals, name="Sec β",
-        marker=dict(color=pal.teal, line=dict(width=0), cornerradius=4),
+        x=levels, y=sec_vals, name="Sec \u03b2",
+        marker=dict(color=pal.teal, line=dict(width=0)),
         text=sec_labels, textposition="inside",
-        textfont=dict(family=fnt.family, size=fnt.body, color="#ffffff"),
+        textfont=dict(family=T.fonts.family, size=12, color="#ffffff"),
         insidetextanchor="middle",
-        hovertemplate="<b>Sec β</b>: %{y:.2f}<extra></extra>",
     ))
     fig.add_trace(go.Bar(
-        x=levels, y=sub_vals, name="Sub β",
-        marker=dict(color=pal.slate, line=dict(width=0), cornerradius=4),
+        x=levels, y=sub_vals, name="Sub \u03b2",
+        marker=dict(color=pal.slate, line=dict(width=0)),
         text=sub_labels, textposition="inside",
-        textfont=dict(family=fnt.family, size=fnt.body, color="#ffffff"),
+        textfont=dict(family=T.fonts.family, size=12, color="#ffffff"),
         insidetextanchor="middle",
-        hovertemplate="<b>Sub β</b>: %{y:.2f}<extra></extra>",
     ))
-
-    # Total β annotation above each bar group
-    for i, (lv, tot) in enumerate(zip(levels, totals)):
-        if abs(tot) > 0.01:
-            fig.add_annotation(
-                x=lv, y=tot, text=f"<b>{tot:.2f}</b>",
-                showarrow=False, yanchor="bottom",
-                font=dict(family=fnt.family, size=fnt.annotation, color=pal.navy),
-                yshift=4,
-            )
 
     T.style(fig)
     fig.update_layout(
         barmode="relative",
-        bargap=0.32,
+        bargap=0.35,
         yaxis=dict(
-            title="Hedge Ratio (β)",
-            zeroline=True, zerolinecolor="#cccccc", zerolinewidth=1,
-            tickfont=dict(size=fnt.axis_tick),
+            title="Hedge Ratio (\u03b2)",
+            zeroline=True, zerolinecolor="#aaaaaa", zerolinewidth=1,
         ),
         legend=dict(
             orientation="h", yanchor="bottom", y=-0.18,
             xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)", borderwidth=0,
-            font=dict(size=fnt.body),
         ),
     )
     return fig
-
-
-def _make_peer_mpl_chart(data: R1Data, pc: PeerComparison | None, m: dict) -> "Image.Image":
-    """III. σ-scaled L3 risk decomposition — Matplotlib horizontal bar chart.
-
-    Adapted from BWMACRO/article_visuals.py _fig_mag7_risk_dna_save() (scale_by_vol=True,
-    tuple_from_row=_l3_rr_tuple_from_dict). Annotations use ax.get_yaxis_transform() so
-    they always clear the plot edge regardless of x-axis range.
-
-    Returns a PIL Image for paste_image() into the compositor.
-    """
-    import io
-    import math as _math
-
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import numpy as np
-    from PIL import Image as _PILImage
-
-    # ── Palette (matching BWMACRO article_visuals.py) ─────────────────
-    WHITE    = "#ffffff"
-    DEEP_BLUE = "#002a5e"
-    SLATE    = "#64748b"
-    LAYER_COLORS = {
-        "mkt": "#3b82f6",   # market
-        "sec": "#06b6d4",   # sector
-        "sub": "#f97316",   # subsector
-        "res": "#94a3b8",   # HR residual
-    }
-
-    # ── Fallback: empty chart ─────────────────────────────────────────
-    if pc is None or pc.peer_detail.empty:
-        fig, ax = plt.subplots(figsize=(11, 3))
-        fig.patch.set_facecolor(WHITE)
-        ax.text(0.5, 0.5, "No peer data available", ha="center", va="center",
-                transform=ax.transAxes, fontsize=11, color=SLATE)
-        ax.axis("off")
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
-        plt.close(fig)
-        buf.seek(0)
-        return _PILImage.open(buf).convert("RGB")
-
-    sub_etf = data.subsector_etf or data.sector_etf or ""
-
-    # ── Vol helper (vol_23d → stock_var fallback) ─────────────────────
-    def _vol(rd: dict) -> float:
-        for key in ("vol_23d", "volatility", "annualized_volatility"):
-            v = rd.get(key)
-            if v is not None:
-                try:
-                    vf = float(v)
-                    if _math.isfinite(vf) and vf > 0:
-                        return vf if vf <= 1.5 else vf / 100.0
-                except (TypeError, ValueError):
-                    pass
-        sv = rd.get("stock_var")
-        if sv is not None:
-            try:
-                svf = float(sv)
-                if _math.isfinite(svf) and svf > 0:
-                    return _math.sqrt(svf * 252)
-            except (TypeError, ValueError):
-                pass
-        return 0.35  # default
-
-    # ── RR tuple helper (l3_*_rr → l3_*_er fallback, as in BWMACRO) ──
-    def _rr_tuple(rd: dict) -> tuple[float, float, float, float]:
-        def pick(*keys: str) -> float:
-            for k in keys:
-                if k in rd and rd[k] is not None:
-                    try:
-                        v = float(rd[k])
-                        if _math.isfinite(v):
-                            return v
-                    except (TypeError, ValueError):
-                        pass
-            return 0.0
-        m0 = pick("l3_market_rr",    "l3_market_er",    "l3_mkt_er")
-        s0 = pick("l3_sector_rr",    "l3_sector_er",    "l3_sec_er")
-        u0 = pick("l3_subsector_rr", "l3_subsector_er", "l3_sub_er")
-        r0 = pick("l3_residual_er",  "l3_res_er")
-        return m0, s0, u0, r0
-
-    # ── Build rows: target first, then peers sorted by Res ER ─────────
-    target_dict: dict = {
-        "ticker": f"\u2605 {data.ticker}",
-        "l3_market_er":    _g(m, "l3_market_er",    "l3_mkt_er")    or 0.0,
-        "l3_sector_er":    _g(m, "l3_sector_er",    "l3_sec_er")    or 0.0,
-        "l3_subsector_er": _g(m, "l3_subsector_er", "l3_sub_er")    or 0.0,
-        "l3_residual_er":  _g(m, "l3_residual_er",  "l3_res_er")    or 0.0,
-        "vol_23d":         _g(m, "vol_23d", "volatility"),
-        "subsector_etf":   sub_etf,
-    }
-    target_dict["vol_23d"] = _vol(target_dict)
-
-    _res_col = next(
-        (c for c in ("l3_residual_er", "l3_res_er") if c in pc.peer_detail.columns),
-        "weight",
-    )
-    sorted_peers = pc.peer_detail.sort_values(_res_col, ascending=False, na_position="last").head(9)
-
-    rows = [target_dict]
-    for t, row in sorted_peers.iterrows():
-        rd = {k: (None if (isinstance(v, float) and _math.isnan(v)) else v)
-              for k, v in dict(row).items()}
-        rd["ticker"] = str(t)
-        rd.setdefault("subsector_etf", sub_etf)
-        rd["vol_23d"] = _vol(rd)
-        rows.append(rd)
-
-    n = len(rows)
-    tickers = [r["ticker"] for r in rows]
-    y_pos = np.arange(n)
-
-    # ── σ-scale the RR segments (BWMACRO core logic) ──────────────────
-    sigma = np.array([_vol(r) for r in rows])
-    mkt   = np.array([_rr_tuple(r)[0] for r in rows])
-    sec   = np.array([_rr_tuple(r)[1] for r in rows])
-    sub   = np.array([_rr_tuple(r)[2] for r in rows])
-    res   = np.array([_rr_tuple(r)[3] for r in rows])
-
-    mkt_v = mkt * sigma
-    sec_v = sec * sigma
-    sub_v = sub * sigma
-    res_v = res * sigma
-
-    totals = mkt_v + sec_v + sub_v + res_v
-    xmax = float(np.nanmax(totals)) * 1.07 if n else 0.6
-    xmax = max(xmax, 0.05)
-
-    # ── Draw ─────────────────────────────────────────────────────────
-    fig_h = max(3.5, n * 0.55 + 1.8)
-    fig, ax = plt.subplots(figsize=(11.0, fig_h))
-    fig.patch.set_facecolor(WHITE)
-    ax.set_facecolor("#fafbfc")
-
-    h_bar = 0.58
-    ax.barh(y_pos, mkt_v, color=LAYER_COLORS["mkt"], label="L3 market RR",
-            height=h_bar, edgecolor=WHITE, linewidth=0.5)
-    left = mkt_v.copy()
-    ax.barh(y_pos, sec_v, left=left, color=LAYER_COLORS["sec"], label="L3 sector RR",
-            height=h_bar, edgecolor=WHITE, linewidth=0.5)
-    left += sec_v
-    ax.barh(y_pos, sub_v, left=left, color=LAYER_COLORS["sub"], label="L3 subsector RR",
-            height=h_bar, edgecolor=WHITE, linewidth=0.5)
-    left += sub_v
-    ax.barh(y_pos, res_v, left=left, color=LAYER_COLORS["res"], label="HR",
-            height=h_bar, edgecolor=WHITE, linewidth=0.5)
-
-    # Right-rail annotations — yaxis transform keeps them clear of x-axis range
-    for i, r in enumerate(rows):
-        m0, s0, u0, _ = _rr_tuple(r)
-        sys_pct = m0 + s0 + u0
-        etf = str(r.get("subsector_etf") or "").strip()
-        ann = f"{etf}  {sys_pct:.0%} systematic" if etf else f"{sys_pct:.0%} systematic"
-        ax.text(1.01, i, ann,
-                transform=ax.get_yaxis_transform(),
-                ha="left", va="center",
-                fontsize=9.5, color=SLATE, alpha=0.92)
-
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(tickers, fontsize=10, fontweight="bold", color=DEEP_BLUE)
-    ax.set_xlim(0, xmax)
-    ax.set_ylim(-0.6, n - 0.4)
-    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0%}"))
-    ax.set_xlabel(
-        "Annualized σ of total return; segments = σ × (L3 market/sector/subsector RR + HR residual)",
-        fontsize=9.5, color=SLATE,
-    )
-    ax.invert_yaxis()
-    ax.grid(axis="x", color="#e2e8f0", linewidth=0.8, linestyle="--", alpha=0.8)
-    ax.set_axisbelow(True)
-    for spine in ax.spines.values():
-        spine.set_visible(False)
-
-    ax.legend(
-        loc="upper center", bbox_to_anchor=(0.40, -0.14), ncol=4,
-        frameon=True, fancybox=True, fontsize=8.5, columnspacing=1.8,
-        handlelength=1.2, handletextpad=0.6,
-        edgecolor="#e2e8f0", facecolor="#fafafa",
-    )
-
-    plt.tight_layout(rect=[0, 0.10, 0.86, 1.0])
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=220, bbox_inches="tight",
-                facecolor=WHITE, edgecolor="none")
-    plt.close(fig)
-    buf.seek(0)
-    return _PILImage.open(buf).convert("RGB")
 
 
 def _make_peer_table(data: R1Data, pc: PeerComparison | None, m: dict, pal) -> go.Figure:
@@ -1111,11 +881,8 @@ def _build_peer_table_trace(
     vs_avgs.append(f"{spread * 10000:+.0f} bps" if spread is not None else "—")
     mkt_betas.append(T.format_number(_g(m, "l3_market_hr", "l3_mkt_hr"), decimals=2))
 
-    # Peer rows — sorted by Residual ER descending (best alpha generators first)
-    _res_sort_col = "l3_residual_er" if "l3_residual_er" in pc.peer_detail.columns else (
-        "l3_res_er" if "l3_res_er" in pc.peer_detail.columns else "weight"
-    )
-    top_peers = pc.peer_detail.sort_values(_res_sort_col, ascending=False).head(10)
+    # Peer rows
+    top_peers = pc.peer_detail.sort_values("weight", ascending=False).head(10)
     for t, row in top_peers.iterrows():
         p_res = row.get("l3_residual_er") if pd.notna(row.get("l3_residual_er")) else row.get("l3_res_er")
         peer_avg = pc.peer_avg_l3_residual_er
@@ -1146,30 +913,8 @@ def _build_peer_table_trace(
         mkt_betas.append(T.format_number(p_mkt_hr, decimals=2))
 
     n_rows = len(tickers)
-    row_fills = ["#eef2f8" if i == 0 else ("#ffffff" if i % 2 == 1 else "#f8f9fb")
+    row_fills = ["#f0f4f8" if i == 0 else ("#ffffff" if i % 2 == 1 else "#f8f9fb")
                  for i in range(n_rows)]
-
-    # Per-cell font colors for Res ER% (col 4) and vs Peer Avg (col 5)
-    def _sign_color(val_str: str) -> str:
-        if val_str == "—" or not val_str:
-            return pal.text_light
-        return pal.green if val_str.startswith("+") else pal.red
-
-    res_er_colors  = [_sign_color(v) for v in res_ers]
-    vs_avg_colors  = [_sign_color(v) for v in vs_avgs]
-
-    # Build per-column font color lists (7 columns)
-    default_colors = [[pal.text_dark] * n_rows] * 5   # cols 0-4 default
-    all_font_colors = (
-        [[pal.navy if i == 0 else pal.text_dark for i in range(n_rows)],  # tickers
-         [pal.text_dark] * n_rows,           # companies
-         [pal.text_mid]  * n_rows,           # weights
-         [pal.text_mid]  * n_rows,           # vols
-         res_er_colors,                       # Res ER% — green/red
-         vs_avg_colors,                       # vs Peer Avg — green/red
-         [pal.text_dark] * n_rows,           # mkt betas
-         ]
-    )
 
     return go.Table(
         columnwidth=[0.9, 2.0, 0.7, 0.7, 0.8, 0.9, 0.7],
@@ -1184,7 +929,7 @@ def _build_peer_table_trace(
         cells=dict(
             values=[tickers, companies, weights, vols, res_ers, vs_avgs, mkt_betas],
             fill_color=[row_fills] * 7,
-            font=dict(family=fonts.family, size=fonts.table_body, color=all_font_colors),
+            font=dict(family=fonts.family, size=fonts.table_body, color=pal.text_dark),
             align=["center", "left", "center", "center", "center", "center", "center"],
             line=dict(color=pal.axis_line, width=0.5),
             height=26,
@@ -1210,11 +955,6 @@ def _build_chips_list(
         ("Vol 23d", f"{float(_g(m, 'vol_23d', 'volatility') or 0)*100:.1f}%"),
         ("Subsector", data.subsector_label),
     ]
-    _res_er_raw = _g(m, "l3_residual_er", "l3_res_er")
-    _vol_raw = _g(m, "vol_23d", "volatility")
-    if _res_er_raw is not None and _vol_raw is not None and float(_vol_raw) > 0:
-        _alpha_vol = float(_res_er_raw) / float(_vol_raw)
-        chips.append(("\u03b1/Vol", f"{_alpha_vol:.2f}"))
     if pc and pc.selection_spread is not None:
         chips.append((
             f"Spread vs {data.subsector_label}",

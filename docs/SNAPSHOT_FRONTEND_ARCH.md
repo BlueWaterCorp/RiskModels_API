@@ -109,7 +109,7 @@ Nine reusable functions, each taking an `Axes` and drawing with THEME styling:
 | `chart_table` | R1, R2 | Styled Matplotlib table. Navy header, alternating row colors, bold highlight column. |
 | `chart_stacked_area` | R2 | Stacked area (ER history, vol contribution). |
 | `chart_multi_line` | R3, P2 | Multi-line time series (HR drift, cumulative returns). |
-| `chart_waterfall` | P1 | Step-waterfall bar (return attribution). |
+| `chart_waterfall` | P1 | Step-waterfall bar (geometric return attribution — sequential compounding through ERM3 hierarchy). |
 | `chart_heatmap` | R4, P4 | Color-coded grid (monthly returns, factor exposure). |
 | `chart_histogram` | R3 | Return distribution with current-value marker. |
 | `chart_bullet` | — | Horizontal bullet/gauge (vol context). Available but not currently used in R1. |

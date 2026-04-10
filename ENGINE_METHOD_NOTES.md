@@ -96,6 +96,32 @@ A few caveats are worth stating directly:
 - Subsector mapping quality depends on the maintained registry and vendor classification inputs available to the engine.
 - Hedge ratios and explained-risk fields are best interpreted as **portfolio construction tools**, not as forecasts.
 
+## 6. Multi-Period Geometric Attribution
+
+Summing daily factor return contributions arithmetically does not reconcile with compound gross returns over multi-day windows. The gap grows with volatility and horizon (Jensen's inequality); for a 39% vol name over one year the error is approximately `vol²/2 ≈ 7pp`.
+
+The snapshot waterfall and cumulative residual line use **sequential compounding** through the ERM3 hierarchy to decompose compound returns exactly:
+
+```
+prod_L1 = ∏(1 + mkt_t)                  # compound market-only
+prod_L2 = ∏(1 + mkt_t + sec_t)          # compound through sector
+prod_L3 = ∏(1 + mkt_t + sec_t + sub_t)  # compound through subsector
+prod_G  = ∏(1 + gross_t)                 # actual gross compound
+
+market_bar    = prod_L1 - 1
+sector_bar    = prod_L2 - prod_L1
+subsector_bar = prod_L3 - prod_L2
+residual_bar  = prod_G  - prod_L3
+```
+
+Properties:
+
+- **Exact.** Bars sum to `prod_G - 1` by construction (telescoping cancellation). No cross-term remainder.
+- **Hierarchy-respecting.** Each product compounds returns as if only factors through that level contribute, mirroring the L1→L2→L3 regression cascade.
+- **Consistent.** The cumulative residual line uses the same definition: `prod_G(t) - prod_L3(t)` at each date `t`, so the line endpoint equals the residual bar.
+
+This attribution is descriptive (ex-post decomposition of realised returns), not a forecast. The same caveats about noisy beta estimates from §5 apply.
+
 ## Summary
 
 If you strip away the implementation detail, the relevant message for a quant audience is simple:

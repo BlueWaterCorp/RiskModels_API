@@ -216,6 +216,53 @@ This is a mathematical **identity**. At runtime, we verify it holds to within **
 
 ---
 
+## Multi-Period Return Attribution: The Geometric Bridge
+
+The replication equation above decomposes a **single day's** return perfectly. But what happens when you want to attribute a stock's cumulative return over months or a full year?
+
+### Why Simple Sums Fail
+
+Daily returns compound multiplicatively — not additively. The cumulative return over $T$ days is:
+
+$$R_{\text{cum}} = \prod_{t=1}^{T}(1 + r_t) - 1 \neq \sum_{t=1}^{T} r_t$$
+
+If you naively sum the daily factor contributions (market + sector + subsector + residual) over a year, the total will **overstate** the actual compound return. The gap is the well-known **volatility drag** (Jensen's inequality): for a stock with 39% annualized volatility, the arithmetic sum can diverge from compound gross by roughly 7 percentage points over one year.
+
+### Sequential Compounding Through the Hierarchy
+
+The solution exploits the ERM3 hierarchy directly. At each level, we compound returns **as if only factors through that level exist**:
+
+$$\text{prod}_{L1}(T) = \prod_{t=1}^{T}(1 + \text{mkt}_t)$$
+
+$$\text{prod}_{L2}(T) = \prod_{t=1}^{T}(1 + \text{mkt}_t + \text{sec}_t)$$
+
+$$\text{prod}_{L3}(T) = \prod_{t=1}^{T}(1 + \text{mkt}_t + \text{sec}_t + \text{sub}_t)$$
+
+$$\text{prod}_{G}(T) = \prod_{t=1}^{T}(1 + \text{gross}_t)$$
+
+Each bar in the waterfall is a **telescoping difference** between adjacent levels:
+
+| Bar | Formula | What it captures |
+|-----|---------|-----------------|
+| **Market** | $\text{prod}_{L1} - 1$ | Compound return from market factor alone |
+| **Sector** | $\text{prod}_{L2} - \text{prod}_{L1}$ | Incremental compound return from adding sector |
+| **Subsector** | $\text{prod}_{L3} - \text{prod}_{L2}$ | Incremental compound return from adding subsector |
+| **Residual** | $\text{prod}_{G} - \text{prod}_{L3}$ | Compound idiosyncratic return after all factors |
+| **Gross** | $\text{prod}_{G} - 1$ | Exact compound gross return |
+
+The four bars sum exactly to the gross compound return — an algebraic identity (intermediate terms cancel), not an approximation.
+
+<div className="not-prose my-4 rounded-lg border border-blue-500/30 bg-blue-900/10 px-5 py-3 text-sm">
+  <strong>Cumulative residual line</strong> — The cumulative residual return
+  line on the performance chart uses the same geometric definition at each
+  date <em>t</em>: <code>prod_G(t) - prod_L3(t)</code>. This ensures the
+  line's endpoint matches the residual bar in the waterfall exactly.
+</div>
+
+> **Key property:** The ordering matters. Market → Sector → Subsector → Residual must follow the strict L1 → L2 → L3 hierarchy, mirroring the sequential regression cascade. Each cumulative product asks "what would the compound return be if only factors through this level existed?"
+
+---
+
 ## Institutional Modellers: Multi-Dimensional Factor Cube
 
 For advanced quantitative workflows, the Python SDK supports `xarray` to work with returns and hedge ratios as a multi-dimensional data structure (Tickers × Dates × Metrics). This enables broadcasted portfolio math without manual DataFrame pivots.
