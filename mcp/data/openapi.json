@@ -276,7 +276,7 @@
       },
       "MetricsV3": {
         "type": "object",
-        "description": "V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property. Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual. Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1).\n",
+        "description": "V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property. Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual. Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1). Keys `l1_cfr`–`l3_rr` are daily simple returns from returns decomposition (`*_cfr` combined factor return, `*_rr` residual return); they are not ER fields and are not sourced from hedge-weight explainability.\n",
         "properties": {
           "vol_23d": {
             "type": "number",
@@ -314,6 +314,18 @@
             "format": "float",
             "nullable": true
           },
+          "l1_cfr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily simple combined factor return through L1 (market), decimal (same convention as returns_gross). From returns-decomposition zarr (ds_erm3_returns), not hedge weights. Not a variance fraction — unlike l1_mkt_er.\n"
+          },
+          "l1_rr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily simple residual return at L1 (decimal). Not l1_res_er (explained risk)."
+          },
           "l2_mkt_hr": {
             "type": "number",
             "format": "float",
@@ -338,6 +350,18 @@
             "type": "number",
             "format": "float",
             "nullable": true
+          },
+          "l2_cfr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily simple combined factor return through L2 (sector), decimal."
+          },
+          "l2_rr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily simple residual return at L2 (decimal)."
           },
           "l3_mkt_hr": {
             "type": "number",
@@ -374,6 +398,36 @@
             "format": "float",
             "nullable": true,
             "description": "Idiosyncratic variance fraction at L3."
+          },
+          "l3_cfr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily simple combined factor return through L3 (subsector), decimal."
+          },
+          "l3_rr": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Daily simple residual return at L3 (decimal). Distinct from l3_residual_er (ER)."
+          },
+          "l1_mkt_beta": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Hierarchical regression beta to the symbol's L1 market factor (always SPY). Dimensionless. From ds_erm3_betas factor_beta at fact_level=1. NOT a hedge ratio (which is dollar-notional)."
+          },
+          "l2_sec_beta": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Hierarchical regression beta to the symbol's L2 sector factor (its specific sector ETF, e.g. XLK for AAPL). Dimensionless. From ds_erm3_betas factor_beta at fact_level=2. Null when the symbol has no sector classification."
+          },
+          "l3_sub_beta": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Hierarchical regression beta to the symbol's L3 subsector factor (its specific subsector ETF, e.g. RSPT for AAPL). Dimensionless. From ds_erm3_betas factor_beta at fact_level=3. Null when the symbol has no subsector classification."
           }
         }
       },

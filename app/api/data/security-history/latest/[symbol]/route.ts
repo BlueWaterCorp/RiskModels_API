@@ -12,12 +12,16 @@ const L123_METRIC_KEYS = [
   "l1_mkt_hr",
   "l1_mkt_er",
   "l1_res_er",
+  "l1_cfr",
+  "l1_rr",
   // L2
   "l2_mkt_hr",
   "l2_sec_hr",
   "l2_mkt_er",
   "l2_sec_er",
   "l2_res_er",
+  "l2_cfr",
+  "l2_rr",
   // L3
   "l3_mkt_hr",
   "l3_sec_hr",
@@ -26,6 +30,8 @@ const L123_METRIC_KEYS = [
   "l3_sec_er",
   "l3_sub_er",
   "l3_res_er",
+  "l3_cfr",
+  "l3_rr",
 ];
 
 /**

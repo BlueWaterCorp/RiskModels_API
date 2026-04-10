@@ -4,6 +4,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Added
+
+- **V3 returns decomposition** — New optional metrics `l1_cfr`, `l1_rr`, `l2_cfr`, `l2_rr`, `l3_cfr`, `l3_rr` in `security_history` (from `ds_erm3_returns`) and optional `security_history_latest` wide columns via idempotent migration; sync state key `security_history_returns_decomp` on `erm3_sync_state_v3`. Wired through DAL, `GET /metrics/{ticker}`, data-plane `L123_METRIC_KEYS` backfill, OpenAPI `MetricsV3`, Python SDK `METRICS_V3_TO_SEMANTIC` + hints, [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md), [SUPABASE_TABLES.md](SUPABASE_TABLES.md), portal [returns-decomposition-metrics](content/docs/returns-decomposition-metrics.mdx), and [README_API.md](README_API.md) (ERM3 `--returns-decomp-tickers` / `run_sync` pointer). Regenerated `public/openapi.json` and `mcp/data/openapi.json`.
+
 ### Changed
 
 - **Documentation precision** — [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) adds a short **hedge ratios vs classical betas** note (L2/L3 hierarchy, `dollar_ratio`). [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) `info.description` now describes Supabase **V3** tables (`security_history`, `security_history_latest`, `symbols`, supporting surfaces) and rankings from `security_history` metric keys (not legacy `erm3_betas` / `erm3_rankings`). [SUPABASE_TABLES.md](SUPABASE_TABLES.md) metric_key row no longer equates HR with betas without qualification. [README_API.md](README_API.md) endpoint table matches behavior (`/api/ticker-returns` is L3 HR/ER in the time series; `/api/metrics/{ticker}` omits Sharpe), and documents the `/api/data/*` data plane vs OpenAPI. [docs/SNAPSHOT_CONTENT_MAP.md](docs/SNAPSHOT_CONTENT_MAP.md) uses HR wording consistently. Regenerated `public/openapi.json` and `mcp/data/openapi.json` from the spec.

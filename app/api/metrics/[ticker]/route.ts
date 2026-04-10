@@ -49,12 +49,16 @@ export const GET = withBilling(
       "l1_mkt_hr",
       "l1_mkt_er",
       "l1_res_er",
+      "l1_cfr",
+      "l1_rr",
       // L2
       "l2_mkt_hr",
       "l2_sec_hr",
       "l2_mkt_er",
       "l2_sec_er",
       "l2_res_er",
+      "l2_cfr",
+      "l2_rr",
       // L3
       "l3_mkt_hr",
       "l3_sec_hr",
@@ -63,6 +67,12 @@ export const GET = withBilling(
       "l3_sec_er",
       "l3_sub_er",
       "l3_res_er",
+      "l3_cfr",
+      "l3_rr",
+      // Hierarchical regression betas (one per level)
+      "l1_mkt_beta",
+      "l2_sec_beta",
+      "l3_sub_beta",
     ], "daily");
 
     if (!latestData) {
@@ -89,12 +99,16 @@ export const GET = withBilling(
         l1_mkt_hr: m.l1_mkt_hr ?? null,
         l1_mkt_er: m.l1_mkt_er ?? null,
         l1_res_er: m.l1_res_er ?? null,
+        l1_cfr: m.l1_cfr ?? null,
+        l1_rr: m.l1_rr ?? null,
         // L2
         l2_mkt_hr: m.l2_mkt_hr ?? null,
         l2_sec_hr: m.l2_sec_hr ?? null,
         l2_mkt_er: m.l2_mkt_er ?? null,
         l2_sec_er: m.l2_sec_er ?? null,
         l2_res_er: m.l2_res_er ?? null,
+        l2_cfr: m.l2_cfr ?? null,
+        l2_rr: m.l2_rr ?? null,
         // L3
         l3_mkt_hr: m.l3_mkt_hr ?? null,
         l3_sec_hr: m.l3_sec_hr ?? null,
@@ -103,6 +117,12 @@ export const GET = withBilling(
         l3_sec_er: m.l3_sec_er ?? null,
         l3_sub_er: m.l3_sub_er ?? null,
         l3_res_er: m.l3_res_er ?? null,
+        l3_cfr: m.l3_cfr ?? null,
+        l3_rr: m.l3_rr ?? null,
+        // Hierarchical regression betas (one per level)
+        l1_mkt_beta: m.l1_mkt_beta ?? null,
+        l2_sec_beta: m.l2_sec_beta ?? null,
+        l3_sub_beta: m.l3_sub_beta ?? null,
       },
       meta: {
         sector_etf: symbolRecord.sector_etf || null,

@@ -27,6 +27,16 @@ METRICS_V3_TO_SEMANTIC: dict[str, str] = {
     "l3_sec_er": "l3_sector_er",
     "l3_sub_er": "l3_subsector_er",
     "l3_res_er": "l3_residual_er",
+    "l1_cfr": "l1_combined_factor_return",
+    "l1_rr": "l1_residual_return",
+    "l2_cfr": "l2_combined_factor_return",
+    "l2_rr": "l2_residual_return",
+    "l3_cfr": "l3_combined_factor_return",
+    "l3_rr": "l3_residual_return",
+    # Hierarchical regression betas (one per level — see OPENAPI_SPEC.yaml MetricsV3)
+    "l1_mkt_beta": "l1_market_beta",
+    "l2_sec_beta": "l2_sector_beta",
+    "l3_sub_beta": "l3_subsector_beta",
 }
 
 # Batch Parquet/CSV long table: OpenAPI field names → semantic (L3 component HR series)
@@ -39,6 +49,9 @@ BATCH_RETURNS_LONG_RENAME: dict[str, str] = {
 
 # Ticker-returns daily row: already mostly V3; rename to semantic where needed
 TICKER_RETURNS_COLUMN_RENAME: dict[str, str] = {
+    "l1_cfr": "l1_combined_factor_return",
+    "l2_cfr": "l2_combined_factor_return",
+    "l3_cfr": "l3_combined_factor_return",
     "l3_mkt_hr": "l3_market_hr",
     "l3_sec_hr": "l3_sector_hr",
     "l3_sub_hr": "l3_subsector_hr",
@@ -66,6 +79,15 @@ COLUMN_AGENT_HINTS: dict[str, str] = {
     "l3_sector_hr": "Sector ETF component of L3 hedge; may be negative.",
     "l3_subsector_hr": "Subsector ETF component; may be negative.",
     "l3_residual_er": "Idiosyncratic variance share at L3 (not hedgeable with these ETFs).",
+    "l1_combined_factor_return": "Daily simple combined factor return through L1 (market); decimal like returns_gross — not an ER field.",
+    "l1_residual_return": "Daily simple residual return at L1; decimal — not l1_residual_er (variance fraction).",
+    "l2_combined_factor_return": "Daily simple combined factor return through L2 (sector); decimal — not ER.",
+    "l2_residual_return": "Daily simple residual return at L2; decimal — not l2_residual_er.",
+    "l3_combined_factor_return": "Daily simple combined factor return through L3 (subsector); decimal — not ER.",
+    "l3_residual_return": "Daily simple residual return at L3; decimal — not l3_residual_er (idiosyncratic variance share).",
+    "l1_market_beta": "Hierarchical regression beta to SPY at L1 (always SPY). Dimensionless coefficient — NOT a hedge ratio.",
+    "l2_sector_beta": "Hierarchical regression beta to the symbol's sector ETF at L2 (e.g. XLK for AAPL). Dimensionless — NOT a hedge ratio.",
+    "l3_subsector_beta": "Hierarchical regression beta to the symbol's subsector ETF at L3 (e.g. RSPT for AAPL). Dimensionless — NOT a hedge ratio.",
     "returns_gross": "Daily gross stock return.",
     "macro_corr_bitcoin": "Pearson/Spearman vs bitcoin daily return; not a hedge ratio.",
     "macro_corr_gold": "Pearson/Spearman vs gold daily return; not a hedge ratio.",

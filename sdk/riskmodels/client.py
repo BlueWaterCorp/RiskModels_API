@@ -302,7 +302,15 @@ class RiskModelsClient:
                 df = parquet_bytes_to_dataframe(content)
             else:
                 df = csv_bytes_to_dataframe(content)
-            df = df.rename(columns={k: v for k, v in TICKER_RETURNS_COLUMN_RENAME.items() if k in df.columns})
+        # Apply V3 short-name → semantic rename for ALL formats. Previously this
+        # was only applied to CSV/parquet, which meant the JSON path (the default)
+        # left columns as short names (l1_cfr, l3_cfr, ...) while downstream
+        # consumers — notably build_p1_data_from_stock_context's CFR detection —
+        # expected the full semantic names (l1_combined_factor_return, etc.).
+        # That mismatch made the snapshot chart silently fall back to gross ETF
+        # lines instead of using the CFR data. The rename must run for every
+        # format for the column-name contract to hold.
+        df = df.rename(columns={k: v for k, v in TICKER_RETURNS_COLUMN_RENAME.items() if k in df.columns})
         if not df.empty and mode != "off":
             last = df.iloc[-1].to_dict()
             run_validation(last, mode=mode, er_tolerance=self._er_tolerance)

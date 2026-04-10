@@ -19,6 +19,9 @@ from riskmodels.mapping import TICKER_RETURNS_COLUMN_RENAME
 def _wire_row(**overrides):
     base = {
         "date": "2026-01-02",
+        "l1_cfr": 0.0005,
+        "l2_cfr": 0.0006,
+        "l3_cfr": 0.0007,
         "l3_mkt_hr": 0.11,
         "l3_sec_hr": 0.22,
         "l3_sub_hr": -0.03,
@@ -66,6 +69,9 @@ def test_ticker_returns_json_trailing_nulls_warn_and_off():
         _wire_row(),
         {
             "date": "2026-01-03",
+            "l1_cfr": None,
+            "l2_cfr": None,
+            "l3_cfr": None,
             "l3_mkt_hr": None,
             "l3_sec_hr": None,
             "l3_sub_hr": None,

@@ -15,15 +15,15 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | Table | Purpose |
 |-------|---------|
 | **`symbols`** | Identity registry: symbol, ticker, name, asset_type, sector_etf, is_adr, isin |
-| **`security_history`** | Long-form temporal engine: one row per (symbol, teo, periodicity, metric_key). Stores returns, vol, L1/L2/L3 hedge ratios, explainability ratios. |
-| **`erm3_sync_state_v3`** | Sync health: table_name, market_factor_etf, universe, max_date, last_synced_at |
+| **`security_history`** | Long-form temporal engine: one row per (symbol, teo, periodicity, metric_key). Stores returns, vol, L1/L2/L3 hedge ratios, explainability ratios, and optional returns-decomposition keys (`l*_cfr` / `l*_rr`). |
+| **`erm3_sync_state_v3`** | Sync health: `table_name`, `market_factor_etf`, `universe`, `max_date`, `last_synced_at`. Includes `table_name = security_history_returns_decomp` for the returns-decomposition slice (`ds_erm3_returns_*`). |
 
 ### Performance surfaces (pipeline-maintained)
 
 | Table | Purpose |
 |-------|---------|
 | **`erm3_landing_chart_cache`** | Landing page chart: pre-computed cumulative returns (ticker, date, cum_stock, cum_market, cum_sector, cum_subsector). Last 3 years. |
-| **`security_history_latest`** | Latest metrics per symbol/periodicity: returns_gross, vol_23d, L3 HR/ER. Used by cards, tape, treemap. |
+| **`security_history_latest`** | Latest metrics per symbol/periodicity: returns_gross, vol_23d, L1/L2/L3 HR/ER, optional `l1_cfr`…`l3_rr` when present. Used by cards, tape, treemap. |
 | **`trading_calendar`** | Canonical trading dates (teo, periodicity). Replaces mining distinct dates from security_history. |
 | **`macro_factors`** | Daily macro factor total returns: one row per (`factor_key`, `teo`) with `return_gross` and optional `metadata` jsonb. Canonical `factor_key` values: `bitcoin`, `gold`, `oil`, `dxy`, `vix`, `ust10y2y` (see [`lib/risk/macro-factor-keys.ts`](lib/risk/macro-factor-keys.ts)). Used by `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation`, and `GET /api/macro-factors`. |
 
@@ -35,7 +35,8 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | `vol_23d` | 23-day rolling volatility |
 | `price_close`, `market_cap` | Price and market cap |
 | `l1_mkt_hr`, `l2_mkt_hr`, `l2_sec_hr`, `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | Hedge ratios (`dollar_ratio`; hierarchical L1/L2/L3 ETF notionals per $1 stock—not classical univariate betas at L2/L3). See [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md). |
-| `l1_mkt_er`, `l1_res_er`, `l2_mkt_er`, `l2_sec_er`, `l2_res_er`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | Explainability ratios |
+| `l1_mkt_er`, `l1_res_er`, `l2_mkt_er`, `l2_sec_er`, `l2_res_er`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | Explainability ratios (variance fractions; not returns) |
+| `l1_cfr`, `l1_rr`, `l2_cfr`, `l2_rr`, `l3_cfr`, `l3_rr` | Returns decomposition: daily simple combined factor return (`*_cfr`) and residual return (`*_rr`) at L1/L2/L3 (`periodicity`: `daily`). See [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md#returns-decomposition-l_cfr--l_rr). |
 | `stock_var` | Stock-specific variance |
 
 ### security_history_latest schema
@@ -48,6 +49,8 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | `returns_gross`, `vol_23d` | FLOAT8 | Latest core metrics |
 | `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | FLOAT8 | Latest L3 hedge ratios |
 | `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | FLOAT8 | Latest L3 explainability |
+| `l1_cfr`, `l1_rr`, `l2_cfr`, `l2_rr`, `l3_cfr`, `l3_rr` | FLOAT8 | Optional latest returns-decomposition daily simple returns (when synced) |
+| `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` | FLOAT8 | Latest hierarchical regression betas. `l1_mkt_beta` is beta to SPY (always). `l2_sec_beta` is beta to the symbol's sector ETF (e.g. XLK for AAPL). `l3_sub_beta` is beta to the symbol's subsector ETF (e.g. RSPT for AAPL). One value per level — see `OPENAPI_SPEC.yaml` `MetricsV3` schema for the property definitions. NOT the same as hedge ratios (`*_hr`), which are dollar-notional ratios; betas here are dimensionless regression coefficients. |
 | `updated_at` | TIMESTAMPTZ | When row was last refreshed |
 
 **Primary key:** `(symbol, periodicity)`.

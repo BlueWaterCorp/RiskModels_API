@@ -130,7 +130,7 @@ export const CAPABILITIES: Capability[] = [
     description:
       "Full V3 risk snapshot for a ticker: L1/L2/L3 hedge ratios (HR) and explained risk (ER), " +
       "vol_23d (23d annualized realized vol), stock_var (252d rolling variance), price_close, and market_cap. " +
-      "Returns all 20 V3MetricKey fields from security_history_latest with EAV fallback.",
+      "Returns V3 metric fields from security_history_latest (including returns-decomposition keys l*_cfr / l*_rr when present) with EAV fallback.",
     endpoint: "/api/metrics/{ticker}",
     method: "GET",
     parameters: {

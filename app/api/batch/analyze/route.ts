@@ -404,6 +404,10 @@ async function analyzeTicker(
           "l3_sec_er",
           "l3_sub_er",
           "l3_res_er",
+          // Hierarchical regression betas
+          "l1_mkt_beta",
+          "l2_sec_beta",
+          "l3_sub_beta",
         ],
         "daily",
       );
@@ -445,6 +449,10 @@ async function analyzeTicker(
           l3_sec_er: m?.l3_sec_er ?? null,
           l3_sub_er: m?.l3_sub_er ?? null,
           l3_res_er: m?.l3_res_er ?? null,
+          // Hierarchical regression betas
+          l1_mkt_beta: m?.l1_mkt_beta ?? null,
+          l2_sec_beta: m?.l2_sec_beta ?? null,
+          l3_sub_beta: m?.l3_sub_beta ?? null,
           market_cap: m?.market_cap ?? null,
           close_price: m?.price_close ?? null,
         };
