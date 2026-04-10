@@ -31,8 +31,11 @@ info:
     wide latest rows in `security_history_latest`, identity in `symbols`, plus supporting surfaces
     such as `trading_calendar`, `erm3_landing_chart_cache`, and `macro_factors`. Cross-sectional
     **rankings** (`GET /rankings/*`) are served from precomputed rank metric keys in
-    `security_history`, not a separate `erm3_rankings` table. Hedge ratios are **dollar_ratio**
-    ETF notionals per $1 stock; see `SEMANTIC_ALIASES.md` for semantics vs classical betas.
+    `security_history`, not a separate `erm3_rankings` table. Hedge ratios (`*_hr`) are
+    **dollar_ratio** ETF notionals per $1 stock and are distinct from regression **betas**
+    (`l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta`), which are dimensionless coefficients from
+    the hierarchical L1/L2/L3 regression. Both are exposed under `MetricsV3` and on
+    `security_history_latest`. See `SEMANTIC_ALIASES.md` for the full HR-vs-beta convention.
 
 
     **Authentication Methods:**
@@ -303,6 +306,11 @@ components:
         V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property.
         Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual.
         Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1).
+        Keys `l1_cfr`–`l3_rr` are daily simple returns from returns decomposition (`*_cfr` combined factor return, `*_rr` residual return);
+        they are not ER fields and are not sourced from hedge-weight explainability.
+        Keys `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` are dimensionless hierarchical regression betas
+        (one per level: 1 for L1, 2 for L2, 3 for L3 — though only the L*-introduced new factor is stored at each level).
+        These are NOT the same as hedge ratios — betas are regression coefficients, hedge ratios are dollar-notional ratios.
       properties:
         vol_23d:
           type: number
@@ -333,6 +341,18 @@ components:
           type: number
           format: float
           nullable: true
+        l1_cfr:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Daily simple combined factor return through L1 (market), decimal (same convention as returns_gross).
+            From returns-decomposition zarr (ds_erm3_returns), not hedge weights. Not a variance fraction — unlike l1_mkt_er.
+        l1_rr:
+          type: number
+          format: float
+          nullable: true
+          description: Daily simple residual return at L1 (decimal). Not l1_res_er (explained risk).
         l2_mkt_hr:
           type: number
           format: float
@@ -353,6 +373,16 @@ components:
           type: number
           format: float
           nullable: true
+        l2_cfr:
+          type: number
+          format: float
+          nullable: true
+          description: Daily simple combined factor return through L2 (sector), decimal.
+        l2_rr:
+          type: number
+          format: float
+          nullable: true
+          description: Daily simple residual return at L2 (decimal).
         l3_mkt_hr:
           type: number
           format: float
@@ -382,6 +412,42 @@ components:
           format: float
           nullable: true
           description: Idiosyncratic variance fraction at L3.
+        l3_cfr:
+          type: number
+          format: float
+          nullable: true
+          description: Daily simple combined factor return through L3 (subsector), decimal.
+        l3_rr:
+          type: number
+          format: float
+          nullable: true
+          description: Daily simple residual return at L3 (decimal). Distinct from l3_residual_er (ER).
+        l1_mkt_beta:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Hierarchical regression beta to the symbol's L1 market factor (always SPY). Dimensionless
+            (units of stock-return per unit of factor-return). One value per symbol from the L1 model.
+            Sourced from `ds_erm3_betas` `factor_beta` at `fact_level=1`. NOT a hedge ratio (which is
+            dollar-notional). NOT classical univariate beta — see `SEMANTIC_ALIASES.md` for the
+            multivariate-vs-univariate convention.
+        l2_sec_beta:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Hierarchical regression beta to the symbol's L2 sector factor — the symbol's specific sector ETF
+            (e.g. XLK for AAPL, XLF for JPM). Dimensionless. From `ds_erm3_betas` `factor_beta` at
+            `fact_level=2`. Null when the symbol has no sector classification.
+        l3_sub_beta:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Hierarchical regression beta to the symbol's L3 subsector factor — the symbol's specific
+            subsector ETF (e.g. RSPT for AAPL, KBE for JPM). Dimensionless. From `ds_erm3_betas`
+            `factor_beta` at `fact_level=3`. Null when the symbol has no subsector classification.
 
     MetricsSnapshotResponse:
       type: object

@@ -15,8 +15,11 @@ def test_metrics_v3_to_semantic_is_injective_on_targets():
 
 
 def test_ticker_returns_column_rename_maps_all_wire_keys():
-    assert len(TICKER_RETURNS_COLUMN_RENAME) == 7
+    assert len(TICKER_RETURNS_COLUMN_RENAME) == 10
     expected = {
+        "l1_cfr": "l1_combined_factor_return",
+        "l2_cfr": "l2_combined_factor_return",
+        "l3_cfr": "l3_combined_factor_return",
         "l3_mkt_hr": "l3_market_hr",
         "l3_sec_hr": "l3_sector_hr",
         "l3_sub_hr": "l3_subsector_hr",

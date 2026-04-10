@@ -90,7 +90,7 @@ def _make_mock_client(
     """Return a mock RiskModelsClient with controlled return values."""
     client = MagicMock()
     client.get_metrics.return_value = _make_metrics_df(ticker=ticker)
-    client.get_l3_decomposition.return_value = _make_history_df(n_history)
+    client.get_ticker_returns.return_value = _make_history_df(n_history)
     return client
 
 
@@ -146,8 +146,8 @@ class TestGetDataForS2:
     def test_raises_on_empty_history(self):
         client = MagicMock()
         client.get_metrics.return_value = _make_metrics_df()
-        client.get_l3_decomposition.return_value = pd.DataFrame()
-        with pytest.raises(ValueError, match="No l3_decomposition history"):
+        client.get_ticker_returns.return_value = pd.DataFrame()
+        with pytest.raises(ValueError, match="No history returned"):
             get_data_for_s2("AAPL", client)
 
     def test_meta_populated(self):
@@ -155,10 +155,10 @@ class TestGetDataForS2:
         result = get_data_for_s2("AAPL", client)
         assert result.meta.get("subsector_etf") == "XLK"
 
-    def test_calls_l3_decomposition_once(self):
+    def test_calls_get_ticker_returns_once(self):
         client = _make_mock_client()
         get_data_for_s2("AAPL", client)
-        client.get_l3_decomposition.assert_called_once()
+        client.get_ticker_returns.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

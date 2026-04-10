@@ -19,18 +19,27 @@ export type V3MetricKey =
   | "l1_mkt_hr"
   | "l1_mkt_er"
   | "l1_res_er"
+  | "l1_cfr"
+  | "l1_rr"
   | "l2_mkt_hr"
   | "l2_sec_hr"
   | "l2_mkt_er"
   | "l2_sec_er"
   | "l2_res_er"
+  | "l2_cfr"
+  | "l2_rr"
   | "l3_mkt_hr"
   | "l3_sec_hr"
   | "l3_sub_hr"
   | "l3_mkt_er"
   | "l3_sec_er"
   | "l3_sub_er"
-  | "l3_res_er";
+  | "l3_res_er"
+  | "l3_cfr"
+  | "l3_rr"
+  | "l1_mkt_beta"
+  | "l2_sec_beta"
+  | "l3_sub_beta";
 
 export type V3Periodicity = "daily" | "monthly";
 
@@ -81,11 +90,15 @@ export interface LatestSummaryRow {
   l1_mkt_hr: number | null;
   l1_mkt_er: number | null;
   l1_res_er: number | null;
+  l1_cfr?: number | null;
+  l1_rr?: number | null;
   l2_mkt_hr: number | null;
   l2_sec_hr: number | null;
   l2_mkt_er: number | null;
   l2_sec_er: number | null;
   l2_res_er: number | null;
+  l2_cfr?: number | null;
+  l2_rr?: number | null;
   l3_mkt_hr: number | null;
   l3_sec_hr: number | null;
   l3_sub_hr: number | null;
@@ -93,7 +106,13 @@ export interface LatestSummaryRow {
   l3_sec_er: number | null;
   l3_sub_er: number | null;
   l3_res_er: number | null;
+  l3_cfr?: number | null;
+  l3_rr?: number | null;
   stock_var: number | null;
+  // Hierarchical regression betas (one per level — see OPENAPI_SPEC.yaml MetricsV3)
+  l1_mkt_beta?: number | null;
+  l2_sec_beta?: number | null;
+  l3_sub_beta?: number | null;
   updated_at: string | null;
 }
 
@@ -365,11 +384,15 @@ export async function fetchLatestSummary(
         l1_mkt_hr: row.l1_mkt_hr,
         l1_mkt_er: row.l1_mkt_er,
         l1_res_er: row.l1_res_er,
+        l1_cfr: row.l1_cfr ?? null,
+        l1_rr: row.l1_rr ?? null,
         l2_mkt_hr: row.l2_mkt_hr,
         l2_sec_hr: row.l2_sec_hr,
         l2_mkt_er: row.l2_mkt_er,
         l2_sec_er: row.l2_sec_er,
         l2_res_er: row.l2_res_er,
+        l2_cfr: row.l2_cfr ?? null,
+        l2_rr: row.l2_rr ?? null,
         l3_mkt_hr: row.l3_mkt_hr,
         l3_sec_hr: row.l3_sec_hr,
         l3_sub_hr: row.l3_sub_hr,
@@ -377,7 +400,12 @@ export async function fetchLatestSummary(
         l3_sec_er: row.l3_sec_er,
         l3_sub_er: row.l3_sub_er,
         l3_res_er: row.l3_res_er,
+        l3_cfr: row.l3_cfr ?? null,
+        l3_rr: row.l3_rr ?? null,
         stock_var: row.stock_var,
+        l1_mkt_beta: row.l1_mkt_beta ?? null,
+        l2_sec_beta: row.l2_sec_beta ?? null,
+        l3_sub_beta: row.l3_sub_beta ?? null,
       },
     };
   } catch (error) {
@@ -417,11 +445,15 @@ export async function fetchBatchLatestSummary(
           l1_mkt_hr: row.l1_mkt_hr,
           l1_mkt_er: row.l1_mkt_er,
           l1_res_er: row.l1_res_er,
+          l1_cfr: row.l1_cfr ?? null,
+          l1_rr: row.l1_rr ?? null,
           l2_mkt_hr: row.l2_mkt_hr,
           l2_sec_hr: row.l2_sec_hr,
           l2_mkt_er: row.l2_mkt_er,
           l2_sec_er: row.l2_sec_er,
           l2_res_er: row.l2_res_er,
+          l2_cfr: row.l2_cfr ?? null,
+          l2_rr: row.l2_rr ?? null,
           l3_mkt_hr: row.l3_mkt_hr,
           l3_sec_hr: row.l3_sec_hr,
           l3_sub_hr: row.l3_sub_hr,
@@ -429,7 +461,12 @@ export async function fetchBatchLatestSummary(
           l3_sec_er: row.l3_sec_er,
           l3_sub_er: row.l3_sub_er,
           l3_res_er: row.l3_res_er,
+          l3_cfr: row.l3_cfr ?? null,
+          l3_rr: row.l3_rr ?? null,
           stock_var: row.stock_var,
+          l1_mkt_beta: row.l1_mkt_beta ?? null,
+          l2_sec_beta: row.l2_sec_beta ?? null,
+          l3_sub_beta: row.l3_sub_beta ?? null,
         },
       });
     }

@@ -60,6 +60,14 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
       'macro_factors bitcoin vix gold oil dxy ust10y2y correlation return_type l3_residual GET macro-factors series',
   },
   {
+    title: 'Returns decomposition (CFR / RR)',
+    description:
+      'Daily l*_cfr / l*_rr metrics from ds_erm3_returns vs ER and hedge ratios; API surfaces and ERM3 sync flags.',
+    href: '/docs/returns-decomposition-metrics',
+    keywords:
+      'l1_cfr l1_rr l2_cfr l2_rr l3_cfr l3_rr combined factor return residual return security_history_returns_decomp',
+  },
+  {
     title: 'API Reference',
     description: 'Interactive OpenAPI / Redoc — live schemas and request examples.',
     href: '/api-reference',

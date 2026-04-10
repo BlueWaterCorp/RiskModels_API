@@ -137,6 +137,25 @@ Omit `factors` to use **all six** keys. **`null` in `correlations`** means insuf
 
 ---
 
+## Returns decomposition (`l*_cfr` / `l*_rr`)
+
+These keys are **daily simple returns** (decimals, same convention as `returns_gross`) from the ERM3 **returns decomposition** dataset (`ds_erm3_returns_*` zarr: `combined_factor_return` and `residual_return` by level). They are **not** hedge ratios, **not** explained-risk variance fractions (`l*_res_er`), and **not** sourced from `ds_erm3_hedge_weights`.
+
+| Wire key (JSON) | SDK name (after `METRICS_V3_TO_SEMANTIC`) | Unit | Meaning |
+|---|---|---|---|
+| `l1_cfr` | `l1_combined_factor_return` | decimal | Combined factor return through L1 (market) |
+| `l1_rr` | `l1_residual_return` | decimal | Residual return at L1 |
+| `l2_cfr` | `l2_combined_factor_return` | decimal | Combined factor return through L2 (sector) |
+| `l2_rr` | `l2_residual_return` | decimal | Residual return at L2 |
+| `l3_cfr` | `l3_combined_factor_return` | decimal | Combined factor return through L3 (subsector) |
+| `l3_rr` | `l3_residual_return` | decimal | Residual return at L3 |
+
+**Naming:** `*_cfr` = combined factor return; `*_rr` = residual **return** at that level. Do not confuse with the informal “RR” acronym for **residual risk** as a variance share in the [Key Concepts](README_API.md#rr--residual-risk) section of `README_API.md` (that usage refers to `l3_residual_er` and related ER fields).
+
+They appear in **`GET /metrics/{ticker}`** under `metrics` when synced, in long-form **`security_history`** as `metric_key` values, and as optional columns on **`security_history_latest`** after migration. Sync progress is tracked in **`erm3_sync_state_v3`** with `table_name = security_history_returns_decomp`. Backfill scope (e.g. Mag 7 vs full universe) is controlled in the ERM3 sync CLI (see [content/docs/returns-decomposition-metrics.mdx](content/docs/returns-decomposition-metrics.mdx) on the developer portal).
+
+---
+
 ## `/ticker-returns` Column Aliases
 
 The `/api/ticker-returns` endpoint returns a daily time series. Each row contains:

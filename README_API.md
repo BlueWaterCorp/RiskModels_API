@@ -84,7 +84,7 @@ curl -X GET "https://riskmodels.app/api/metrics/NVDA" \
 | Endpoint | Method | Description | Cost |
 |---|---|---|---|
 | `/api/ticker-returns` | GET | Daily returns, price, and **L3** hedge ratios + explained risk (rolling), up to 15y; for L1/L2 **history** use `/api/l3-decomposition` or `/api/data/security-history/...` (see OpenAPI) | $0.005/call |
-| `/api/metrics/{ticker}` | GET | Latest snapshot: L1/L2/L3 HR/ER, `vol_23d`, price, market cap, `stock_var`; sector/subsector ETFs in `meta` | $0.005/call |
+| `/api/metrics/{ticker}` | GET | Latest snapshot: L1/L2/L3 HR/ER, optional returns-decomposition fields `l1_cfr`…`l3_rr` when synced, `vol_23d`, price, market cap, `stock_var`; sector/subsector ETFs in `meta` | $0.005/call |
 | `/api/l3-decomposition` | GET | Monthly historical HR/ER time series | $0.005/call |
 | `/api/correlation` / `/api/metrics/{ticker}/correlation` | POST / GET | Macro factor correlation (VIX, Bitcoin, Gold, Oil, DXY, UST 10y–2y); see [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | $0.002–$0.005/call |
 | `/api/batch/analyze` | POST | Multi-ticker batch up to 100, 25% cheaper per position | $0.002/position |
@@ -134,6 +134,12 @@ Extra **read** routes under `/api/data/` expose the V3 Supabase shape directly (
 - **L2**: Market + GICS sector ETF — 2 hedge trades
 - **L3**: Market + sector + GICS subsector ETF — 3 hedge trades, maximum granularity
 
+### Returns decomposition (`l*_cfr` / `l*_rr`)
+
+Optional **daily simple return** metrics (`l1_cfr`, `l1_rr`, …, `l3_rr`) may appear under `metrics` when the ERM3 pipeline has synced **returns decomposition** from `ds_erm3_returns_*` into Supabase. They are **not** hedge ratios and **not** explained-risk fractions (`l*_res_er`). The Python SDK maps them to names like `l1_combined_factor_return` and `l3_residual_return` (see [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md)). Portal: [Returns decomposition metrics](https://riskmodels.net/docs/returns-decomposition-metrics).
+
+**ERM3 sync (source repo, not this package):** use dataset coverage that includes **`returns_decomp`**, CLI **`--returns-decomp-tickers`** (`mag7`, `all`, or explicit tickers), or Python **`run_sync(..., returns_decomp_tickers=...)`**. See [docs/planning/ERM3_V3_RETURNS_DECOMP_SUPABASE_PROPAGATION.md](docs/planning/ERM3_V3_RETURNS_DECOMP_SUPABASE_PROPAGATION.md).
+
 ---
 
 ## Documentation
@@ -141,7 +147,7 @@ Extra **read** routes under `/api/data/` expose the V3 Supabase shape directly (
 | Document | Description |
 |---|---|
 | [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) | Complete OpenAPI 3.0.3 contract with request/response schemas |
-| [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | Field definitions, units, formulas, and dataset coverage |
+| [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) | Field definitions, units, formulas, dataset coverage, returns decomposition (`l*_cfr` / `l*_rr`) |
 | [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) | Bearer token, Supabase JWT, AI agent provisioning flow |
 | [RESPONSE_METADATA.md](RESPONSE_METADATA.md) | `_agent` block schema, response headers, pricing table, cache behaviour |
 | [ERROR_SCHEMA.md](ERROR_SCHEMA.md) | All error codes, HTTP statuses, and recovery patterns |

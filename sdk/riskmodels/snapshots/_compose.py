@@ -20,6 +20,7 @@ Usage
 
 from __future__ import annotations
 
+import subprocess
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Sequence
@@ -190,6 +191,82 @@ def render_riskmodels_logo(
     draw.text((text_x, text_y), label, font=chosen_font, fill=(*text_color, 255))
 
     return img
+
+
+# Portal ``/transparent_logo.svg`` (RiskModels Logo v2), wordmark recolored for light backgrounds.
+_BRAND_LOGO_SVG = Path(__file__).resolve().parent / "assets" / "riskmodels_logo_on_white.svg"
+# Root SVG viewBox width / height — used to preserve aspect (avoid rsvg -w/-h stretch).
+_BRAND_LOGO_ASPECT = 679.2906978729442 / 240.18310546875
+
+
+def _brand_logo_fit_dimensions(max_width: int, max_height: int) -> tuple[int, int]:
+    """Largest (w, h) with w/h ≈ :data:`_BRAND_LOGO_ASPECT` inside the cap box."""
+    w, h = max_width, int(round(max_width / _BRAND_LOGO_ASPECT))
+    if h > max_height:
+        h = max_height
+        w = int(round(h * _BRAND_LOGO_ASPECT))
+    return max(1, w), max(1, h)
+
+
+def render_portal_riskmodels_brand_logo(
+    max_width: int = 800,
+    max_height: int = 200,
+    *,
+    bg_color: tuple[int, int, int] = WHITE,
+) -> Image.Image:
+    """Full wordmark from the portal brand SVG, tuned for white snapshot pages.
+
+    Matches the site header asset (gradient mark + ``RiskModels`` wordmark). The
+    bundled SVG is derived from ``public/transparent_logo.svg`` with wordmark
+    fills changed from white to navy so it reads on white paper.
+
+    The source SVG's root ``viewBox`` is much larger than the visible artwork
+    (~60% empty vertical margin in the raster). After ``rsvg-convert`` (``-w``
+    only, no aspect distortion), we **crop** to :meth:`PIL.Image.Image.getbbox`
+    so the bitmap matches the ink, then **scale** uniformly to fit inside
+    ``max_width`` × ``max_height`` (often upscaling slightly vs the uncropped
+    raster). Result is pasted on an opaque ``bg_color`` tile of that size.
+
+    Falls back to :func:`render_riskmodels_logo` with viewBox-matched dimensions
+    when ``rsvg-convert`` is unavailable.
+    """
+    fw, fh = _brand_logo_fit_dimensions(max_width, max_height)
+    if _BRAND_LOGO_SVG.is_file():
+        try:
+            proc = subprocess.run(
+                [
+                    "rsvg-convert",
+                    "-w",
+                    str(max_width),
+                    str(_BRAND_LOGO_SVG),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            logo = Image.open(BytesIO(proc.stdout)).convert("RGBA")
+            bbox = logo.getbbox()
+            if not bbox:
+                raise ValueError("empty brand logo raster")
+            logo = logo.crop(bbox)
+            lw, lh = logo.size
+            scale = min(max_width / lw, max_height / lh)
+            if abs(scale - 1.0) > 1e-3:
+                nw = max(1, int(round(lw * scale)))
+                nh = max(1, int(round(lh * scale)))
+                logo = logo.resize((nw, nh), Image.LANCZOS)
+            sheet = Image.new("RGBA", logo.size, (*bg_color, 255))
+            sheet.paste(logo, (0, 0), logo)
+            return sheet
+        except (
+            FileNotFoundError,
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+            ValueError,
+        ):
+            pass
+    return render_riskmodels_logo(fw, fh, bg_color=(*bg_color, 255))
 
 
 # ── Composer ─────────────────────────────────────────────────────────────

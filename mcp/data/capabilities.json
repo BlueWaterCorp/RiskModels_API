@@ -506,7 +506,7 @@
   {
     "id": "metrics-snapshot",
     "name": "Metrics Snapshot",
-    "description": "Latest risk metrics snapshot for a single ticker (volatility, hedge ratios, explained risk)",
+    "description": "Latest risk metrics snapshot for a single ticker (volatility, hedge ratios, explained risk, hierarchical regression betas l1_mkt_beta/l2_sec_beta/l3_sub_beta, and combined factor returns / residual returns at L1/L2/L3)",
     "endpoint": "/api/metrics",
     "method": "GET",
     "parameters": {
