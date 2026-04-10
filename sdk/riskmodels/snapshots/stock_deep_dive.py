@@ -76,6 +76,12 @@ class DDData:
 
     p1: P1Data
     peer_comparison: PeerComparison | None = None
+    # Pairwise correlations: peer_ticker → (gross_ρ, l3_residual_ρ)
+    peer_correlations: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
+    # 3-year Sharpe ratios: ticker → (gross_sharpe_3y, l3_resid_sharpe_3y)
+    peer_sharpes: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
+    # Multi-year alpha quality trajectory (kept for cache compat)
+    alpha_trajectory: list[tuple[str, float, float]] = field(default_factory=list)
 
     # Delegate common fields
     @property
@@ -121,7 +127,29 @@ class DDData:
         if pc_raw is not None:
             pc = _rebuild_peer_comparison(pc_raw)
 
-        return cls(p1=p1, peer_comparison=pc)
+        # Peer correlations: dict of ticker → [gross_rho, l3_resid_rho]
+        pc_corrs_raw = d.get("peer_correlations", {})
+        peer_correlations = {
+            k: (v[0] if len(v) > 0 else None, v[1] if len(v) > 1 else None)
+            for k, v in pc_corrs_raw.items()
+        } if pc_corrs_raw else {}
+
+        # Alpha trajectory: list of [label, res_vol_pct, res_er_pct]
+        alpha_traj_raw = d.get("alpha_trajectory", [])
+        alpha_trajectory = [
+            (str(row[0]), float(row[1]), float(row[2]))
+            for row in alpha_traj_raw if len(row) >= 3
+        ]
+
+        # Peer Sharpe ratios
+        ps_raw = d.get("peer_sharpes", {})
+        peer_sharpes = {
+            k: (v[0] if len(v) > 0 else None, v[1] if len(v) > 1 else None)
+            for k, v in ps_raw.items()
+        } if ps_raw else {}
+
+        return cls(p1=p1, peer_comparison=pc, peer_correlations=peer_correlations,
+                   peer_sharpes=peer_sharpes, alpha_trajectory=alpha_trajectory)
 
 
 def _rebuild_peer_comparison(pc_raw: dict) -> PeerComparison:
@@ -161,11 +189,12 @@ def _rebuild_peer_comparison(pc_raw: dict) -> PeerComparison:
 # Fetch step
 # ---------------------------------------------------------------------------
 
-def get_data_for_dd(ticker: str, client: Any, *, years: int = 2) -> DDData:
+def get_data_for_dd(ticker: str, client: Any, *, years: int = 3) -> DDData:
     """Fetch everything needed for the Stock Deep Dive.
 
     Calls get_data_for_p1() for returns/rankings/macro, then adds
     PeerGroupProxy for the subsector Risk DNA chart.
+    Uses 3 years of data to support multi-year alpha quality trend in Section II.
     """
     p1 = get_data_for_p1(ticker, client, years=years)
 
@@ -200,7 +229,158 @@ def get_data_for_dd(ticker: str, client: Any, *, years: int = 2) -> DDData:
         except Exception:
             pass
 
-    return DDData(p1=p1, peer_comparison=peer_comparison)
+    # ── Peer analytics: correlations (1Y) + Sharpe ratios (3Y) ──
+    peer_correlations: dict[str, tuple[float | None, float | None]] = {}
+    peer_sharpes: dict[str, tuple[float | None, float | None]] = {}
+    er_cols = ["l3_market_er", "l3_sector_er", "l3_subsector_er"]
+
+    def _l3_resid_series(df):
+        """Compute daily L3 residual return = gross - l3_combined_factor_return.
+        Falls back to ER-proportion approximation if l3_cfr not available."""
+        gr = pd.to_numeric(df["returns_gross"], errors="coerce")
+        if "l3_combined_factor_return" in df.columns:
+            cfr = pd.to_numeric(df["l3_combined_factor_return"], errors="coerce")
+            if cfr.notna().sum() > 30:
+                return gr - cfr
+        # Fallback: approximate from ER variance fractions (less accurate)
+        mkt = pd.to_numeric(df["l3_market_er"], errors="coerce").fillna(0)
+        sec = pd.to_numeric(df["l3_sector_er"], errors="coerce").fillna(0)
+        sub = pd.to_numeric(df["l3_subsector_er"], errors="coerce").fillna(0)
+        return gr - (mkt * gr + sec * gr + sub * gr)
+
+    def _sharpe_3y(df):
+        """Compute 3Y annualized Gross and L3 Residual Sharpe from a DataFrame."""
+        import math as _m
+        gross = pd.to_numeric(df["returns_gross"], errors="coerce").dropna()
+        g_sharpe = None
+        r_sharpe = None
+        if len(gross) >= 252:
+            g_std = gross.std()
+            if g_std > 0:
+                g_sharpe = float(gross.mean() / g_std * _m.sqrt(252))
+        if all(c in df.columns for c in er_cols) and len(gross) >= 252:
+            resid = _l3_resid_series(df).dropna()
+            if len(resid) >= 252:
+                r_std = resid.std()
+                if r_std > 0:
+                    r_sharpe = float(resid.mean() / r_std * _m.sqrt(252))
+        return g_sharpe, r_sharpe
+
+    if peer_comparison is not None and not peer_comparison.peer_detail.empty:
+        try:
+            sort_col = ("market_cap" if "market_cap" in peer_comparison.peer_detail.columns
+                        else "weight")
+            top_peer_tickers = list(
+                peer_comparison.peer_detail
+                .sort_values(sort_col, ascending=False, na_position="last")
+                .head(6).index
+            )
+
+            # Target: 3Y returns for Sharpe + 1Y window for correlation
+            target_df = client.get_ticker_returns(ticker, years=3)
+            if not target_df.empty and "date" in target_df.columns:
+                target_df = target_df.set_index("date").sort_index()
+
+                # Target's own Sharpe
+                g_s, r_s = _sharpe_3y(target_df)
+                peer_sharpes[ticker] = (g_s, r_s)
+
+                for pt in top_peer_tickers:
+                    try:
+                        peer_df = client.get_ticker_returns(str(pt), years=3)
+                        if peer_df.empty or "date" not in peer_df.columns:
+                            continue
+                        peer_df = peer_df.set_index("date").sort_index()
+
+                        # 3Y Sharpe for peer
+                        pg_s, pr_s = _sharpe_3y(peer_df)
+                        peer_sharpes[str(pt)] = (pg_s, pr_s)
+
+                        # 1Y correlation (use last 252 days)
+                        common = target_df.index.intersection(peer_df.index)
+                        common_1y = common[-252:] if len(common) > 252 else common
+                        if len(common_1y) < 30:
+                            continue
+
+                        # Gross ρ
+                        gross_rho = None
+                        if "returns_gross" in target_df.columns and "returns_gross" in peer_df.columns:
+                            t_g = pd.to_numeric(target_df.loc[common_1y, "returns_gross"], errors="coerce")
+                            p_g = pd.to_numeric(peer_df.loc[common_1y, "returns_gross"], errors="coerce")
+                            mask = t_g.notna() & p_g.notna()
+                            if mask.sum() >= 30:
+                                gross_rho = float(t_g[mask].corr(p_g[mask]))
+
+                        # L3 residual ρ
+                        resid_rho = None
+                        t_has_er = all(c in target_df.columns for c in er_cols)
+                        p_has_er = all(c in peer_df.columns for c in er_cols)
+                        if t_has_er and p_has_er:
+                            t_res = _l3_resid_series(target_df.loc[common_1y])
+                            p_res = _l3_resid_series(peer_df.loc[common_1y])
+                            mask = t_res.notna() & p_res.notna()
+                            if mask.sum() >= 30:
+                                resid_rho = float(t_res[mask].corr(p_res[mask]))
+
+                        peer_correlations[str(pt)] = (gross_rho, resid_rho)
+                    except Exception:
+                        continue
+        except Exception as exc:
+            warnings.warn(
+                f"Could not compute peer analytics for {ticker}: {exc}",
+                UserWarning, stacklevel=2,
+            )
+
+    # ── Multi-year alpha trajectory (Section II trend) ──
+    # Compute annualized L3 residual vol and residual ER for each trailing
+    # 252-day window from the target's daily returns. Requires 3 years of data.
+    alpha_trajectory: list[tuple[str, float, float]] = []
+    try:
+        # Explicit 5-year fetch for trajectory (API supports up to 5 years)
+        traj_df = client.get_ticker_returns(ticker, years=5)
+        if not traj_df.empty and "date" in traj_df.columns:
+            traj_df = traj_df.sort_values("date").reset_index(drop=True)
+
+        if not traj_df.empty:
+            er_cols = ["l3_market_er", "l3_sector_er", "l3_subsector_er"]
+            has_er = all(c in traj_df.columns for c in er_cols) and "returns_gross" in traj_df.columns
+            if has_er:
+                gross = pd.to_numeric(traj_df["returns_gross"], errors="coerce")
+                mkt_er = pd.to_numeric(traj_df["l3_market_er"], errors="coerce").fillna(0)
+                sec_er = pd.to_numeric(traj_df["l3_sector_er"], errors="coerce").fillna(0)
+                sub_er = pd.to_numeric(traj_df["l3_subsector_er"], errors="coerce").fillna(0)
+                res_er_frac = 1.0 - mkt_er - sec_er - sub_er  # residual ER fraction per day
+                res_return = gross * res_er_frac  # daily residual return
+
+                # Split into 252-day windows from most recent backward
+                total_days = len(gross.dropna())
+                window = 252
+                for yr_idx in range(min(4, total_days // window)):
+                    end = total_days - yr_idx * window
+                    start = end - window
+                    if start < 0:
+                        break
+                    chunk_gross = gross.iloc[start:end].dropna()
+                    chunk_res = res_return.iloc[start:end].dropna()
+                    chunk_er_frac = res_er_frac.iloc[start:end].dropna()
+                    if len(chunk_res) < 100:
+                        continue
+
+                    # Annualized residual vol
+                    res_vol_ann = float(chunk_res.std() * (252 ** 0.5)) * 100
+
+                    # Average residual ER fraction (what % of variance is idiosyncratic)
+                    avg_res_er = float(chunk_er_frac.mean()) * 100
+
+                    year_label = f"Y-{yr_idx + 1}" if yr_idx > 0 else "Current"
+                    alpha_trajectory.append((year_label, res_vol_ann, avg_res_er))
+    except Exception:
+        pass  # graceful degradation — scatter works without trajectory
+
+    return DDData(p1=p1, peer_comparison=peer_comparison,
+                  peer_correlations=peer_correlations,
+                  peer_sharpes=peer_sharpes,
+                  alpha_trajectory=alpha_trajectory)
 
 T = PLOTLY_THEME
 
@@ -445,10 +625,10 @@ def _make_residual_dd_chart(data: P1Data) -> go.Figure:
 def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
     """II. L3 Residual Alpha Quality — peer scatter (return vs vol).
 
-    Y-axis: L3 Residual ER (%) — fraction of explained return from idiosyncratic alpha.
+    Y-axis: L3 Residual ER (%) — fraction of variance from idiosyncratic alpha.
     X-axis: Residual Vol (%) — vol_23d × sqrt(l3_residual_er).
-    Dot size: market cap.  Target stock: star marker, electric blue.
-    Diagonal Sharpe=1 reference line.  Upper-left quadrant = best.
+    Dot size: market cap. Target stock: bold indigo circle.
+    Diagonal Sharpe=1 reference line. Upper-left quadrant = best.
     """
     import numpy as np
 
@@ -483,7 +663,6 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
         return 0.30
 
     def _finite_mkt_cap(raw: Any, default: float = 1e9) -> float:
-        """Avoid NaN caps — ``float(nan) or default`` is still NaN in Python."""
         try:
             v = float(raw)
             if _math.isfinite(v) and v > 0:
@@ -507,8 +686,6 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
             vol = _vol(rd)
             res_vol = vol * _math.sqrt(max(res_er, 0.001))
             mkt_cap = _finite_mkt_cap(rd.get("market_cap"))
-            cn = str(rd.get("company_name", "")) if rd.get("company_name") else ""
-
             peer_tickers.append(str(t))
             peer_x.append(res_vol * 100)
             peer_y.append(res_er * 100)
@@ -524,31 +701,29 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
     ]
     target_dot_size = 8 + (target_mkt_cap / max_cap) * 20 if max_cap > 0 else 14.0
 
-    # Quadrant shading: upper-left = best (high return, low vol)
     all_x = peer_x + [target_res_vol * 100]
     all_y = peer_y + [target_res_er * 100]
     x_mid = float(np.median(all_x)) if all_x else 15
     y_mid = float(np.median(all_y)) if all_y else 25
 
+    # Quadrant shading
     fig.add_shape(type="rect", x0=0, x1=x_mid, y0=y_mid, y1=100,
-                  fillcolor="rgba(16,185,129,0.05)", line_width=0)  # top-left: green tint
+                  fillcolor="rgba(16,185,129,0.05)", line_width=0)
     fig.add_shape(type="rect", x0=x_mid, x1=100, y0=0, y1=y_mid,
-                  fillcolor="rgba(239,68,68,0.04)", line_width=0)   # bottom-right: red tint
+                  fillcolor="rgba(239,68,68,0.04)", line_width=0)
 
-    # Quadrant labels
     _qlbl = dict(showarrow=False, font=dict(size=9, color="#cbd5e1"))
     fig.add_annotation(x=x_mid * 0.25, y=y_mid + (100 - y_mid) * 0.85,
                        text="High α / Low Vol", **_qlbl)
     fig.add_annotation(x=x_mid + (100 - x_mid) * 0.65, y=y_mid * 0.15,
                        text="Low Quality / High Risk", **_qlbl)
 
-    # Sharpe=1 diagonal reference (return = vol)
+    # Sharpe=1 diagonal reference
     diag_max = max(max(all_x, default=30), max(all_y, default=30)) * 1.1
     fig.add_trace(go.Scatter(
         x=[0, diag_max], y=[0, diag_max],
-        mode="lines", name="Sharpe = 1.0",
+        mode="lines", showlegend=False,
         line=dict(color="#94a3b8", width=1.5, dash="dash"),
-        showlegend=False,
     ))
     fig.add_annotation(
         x=diag_max * 0.72, y=diag_max * 0.72,
@@ -556,15 +731,13 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
         font=dict(size=11, color="#64748b"), textangle=-38,
     )
 
-    # Peer dots — color-coded by market cap (teal gradient: lighter=smaller, darker=larger)
+    # Peer dots
     if peer_x:
-        # Label top 3 by market cap
         top3_idx = sorted(range(len(peer_sizes)), key=lambda i: peer_sizes[i], reverse=True)[:3]
         text_labels = ["" for _ in peer_labels]
         for idx in top3_idx:
             text_labels[idx] = f"  {peer_labels[idx]}"
 
-        # Normalize market caps to 0–1 for colorscale
         _min_cap = min(peer_sizes) if peer_sizes else 1
         _max_cap = max(peer_sizes) if peer_sizes else 1
         _cap_range = _max_cap - _min_cap or 1
@@ -572,8 +745,7 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
 
         fig.add_trace(go.Scatter(
             x=peer_x, y=peer_y,
-            mode="markers+text",
-            name="Peers",
+            mode="markers+text", name="Peers",
             marker=dict(
                 size=peer_dot_sizes,
                 color=peer_cap_norm,
@@ -594,7 +766,7 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
             hovertext=peer_labels,
         ))
 
-    # Target stock — white halo behind, then bold blue circle
+    # Target stock — bold indigo circle with halo
     _tx, _ty = target_res_vol * 100, target_res_er * 100
     fig.add_trace(go.Scatter(
         x=[_tx], y=[_ty], mode="markers", name="_halo", showlegend=False,
@@ -603,12 +775,9 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
     ))
     fig.add_trace(go.Scatter(
         x=[_tx], y=[_ty],
-        mode="markers+text",
-        name=dd.ticker,
+        mode="markers+text", name=dd.ticker,
         marker=dict(
-            size=target_dot_size + 8,
-            color="#4f46e5",
-            symbol="circle",
+            size=target_dot_size + 8, color="#4f46e5", symbol="circle",
             line=dict(width=2.5, color="#312e81"),
         ),
         text=[f"  <b>{dd.ticker}</b>"],
@@ -620,21 +789,17 @@ def _make_alpha_quality_scatter(dd: DDData) -> go.Figure:
     T.style(fig)
     x_max = max(all_x, default=30) * 1.15
     y_max = max(all_y, default=50) * 1.15
-    # Single-target plots (zarr / no API peers): point sits on the right edge and
-    # ``textposition="middle right"`` labels are clipped by Kaleido — pad domain + margins.
     if not peer_x:
         x_max = max(float(x_max), float(_tx) + 18.0)
         y_max = max(float(y_max), float(_ty) + 12.0)
     fig.update_layout(
         xaxis=dict(
             title="Annualized L3 Residual Vol (%)",
-            ticksuffix="%", zeroline=False,
-            range=[0, x_max],
+            ticksuffix="%", zeroline=False, range=[0, x_max],
         ),
         yaxis=dict(
-            title="L3 Residual ER (%)",
-            ticksuffix="%", zeroline=False,
-            range=[0, y_max],
+            title="L3 Idiosyncratic Variance Share (%)",
+            ticksuffix="%", zeroline=False, range=[0, y_max],
         ),
         showlegend=False,
     )
@@ -745,60 +910,214 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     xmax = float(np.nanmax(totals)) * 1.07 if n else 0.6
     xmax = max(xmax, 0.05)
 
+    # ── Layout: 6 columns — bars | mkt cap | gross ρ | resid ρ | gross Sharpe | resid Sharpe ──
     fig_h = max(3.0, n * 0.52 + 1.6)
-    fig, ax = plt.subplots(figsize=(8.5, fig_h))
+    peer_corrs = dd.peer_correlations or {}
+    peer_sharpes = dd.peer_sharpes or {}
+    has_extras = bool(peer_corrs) or bool(peer_sharpes)
+
+    if has_extras:
+        # 70/30 split: bars=0.70, gross_rho=0.075, resid_rho=0.075, g_sharpe=0.075, r_sharpe=0.075
+        fig, axes = plt.subplots(
+            1, 5, figsize=(10, fig_h),
+            gridspec_kw={
+                "width_ratios": [0.70, 0.075, 0.075, 0.075, 0.075],
+                "wspace": 0.02,
+            },
+        )
+        ax, ax_g, ax_r, ax_gs, ax_rs = axes
+    else:
+        fig, ax = plt.subplots(figsize=(8.5, fig_h))
     fig.patch.set_facecolor(WHITE_C)
     ax.set_facecolor("#fafbfc")
 
-    h_bar = 0.60
-    ax.barh(y_pos, mkt_v, color=LAYER_COLORS["mkt"], label="Market ER (L3)",
-            height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
-    left = mkt_v.copy()
-    ax.barh(y_pos, sec_v, left=left, color=LAYER_COLORS["sec"], label="Sector ER (L3)",
-            height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
-    left += sec_v
-    ax.barh(y_pos, sub_v, left=left, color=LAYER_COLORS["sub"], label="Subsector ER (L3)",
-            height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
-    left += sub_v
-    ax.barh(y_pos, res_v, left=left, color=LAYER_COLORS["res"], label="Residual ER",
-            height=h_bar, edgecolor=WHITE_C, linewidth=0.5)
+    # ── Stacked bars ──
+    h_bar = 0.55
+    h_bar_target = 0.72  # META bar 30% thicker
 
-    # Highlight target row (row 0) with navy outline
-    total_0 = float(mkt_v[0] + sec_v[0] + sub_v[0] + res_v[0])
     from matplotlib.patches import FancyBboxPatch
+
+    for i in range(n):
+        hb = h_bar_target if i == 0 else h_bar
+        segs = [(mkt_v[i], LAYER_COLORS["mkt"]),
+                (sec_v[i], LAYER_COLORS["sec"]),
+                (sub_v[i], LAYER_COLORS["sub"]),
+                (res_v[i], LAYER_COLORS["res"])]
+        lft = 0.0
+        for val, col in segs:
+            ax.barh(i, val, left=lft, color=col, height=hb,
+                    edgecolor=WHITE_C, linewidth=0.5)
+            # Inside % labels for segments ≥ 8% of total
+            seg_frac = val / max(totals[i], 1e-9)
+            if seg_frac >= 0.08 and val > 0.005:
+                ax.text(lft + val / 2, i, f"{seg_frac:.0%}",
+                        ha="center", va="center", fontsize=6.5,
+                        color="white", fontweight="bold", zorder=12)
+            lft += val
+
+    # Target row (0): dark border to pop as reference
+    total_0 = float(totals[0])
     _outline = FancyBboxPatch(
-        (0, -h_bar / 2), total_0, h_bar,
-        boxstyle="round,pad=0", linewidth=2.0,
-        edgecolor=DEEP_BLUE, facecolor="none", zorder=10,
-        clip_on=False,
+        (0, -h_bar_target / 2), total_0, h_bar_target,
+        boxstyle="round,pad=0", linewidth=2.5,
+        edgecolor=DEEP_BLUE, facecolor="none", zorder=10, clip_on=False,
     )
     ax.add_patch(_outline)
 
+    # Add legend entries manually (bars drawn per-row, so no auto-legend)
+    for lab, col in [("Market", LAYER_COLORS["mkt"]), ("Sector", LAYER_COLORS["sec"]),
+                     ("Subsector", LAYER_COLORS["sub"]), ("Residual", LAYER_COLORS["res"])]:
+        ax.barh([], [], color=col, label=lab)
+
     ax.set_yticks(y_pos)
     ax.set_yticklabels(tickers, fontsize=9.5, fontweight="bold", color=DEEP_BLUE)
-    # Small negative x0 so the target-row outline stroke is not clipped on the left
     _xpad = max(xmax * 0.004, 0.001)
     ax.set_xlim(-_xpad, xmax)
     ax.set_xticks(np.linspace(0, xmax, min(6, max(3, int(xmax / 0.05) + 1))))
     ax.set_ylim(-0.5, n - 0.5)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0%}"))
     ax.set_xlabel(
-        "Annualized σ; segments = σ × L3 explained-risk share (mkt / sector / subsector / residual)",
-        fontsize=8.5, color=SLATE,
+        "Annualized σ; segments = σ × L3 explained-risk share",
+        fontsize=8, color=SLATE,
     )
     ax.invert_yaxis()
     ax.grid(axis="x", color="#e2e8f0", linewidth=0.8, linestyle="--", alpha=0.8)
+    ax.grid(axis="y", color="#e2e8f0", linewidth=0.5, linestyle="-", alpha=0.4)
     ax.set_axisbelow(True)
     for spine in ax.spines.values():
         spine.set_visible(False)
 
     ax.legend(
-        loc="upper center", bbox_to_anchor=(0.38, -0.16), ncol=4,
+        loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=4,
         frameon=True, fancybox=True, fontsize=7.5, columnspacing=1.5,
         handlelength=1.1, handletextpad=0.5,
         edgecolor="#e2e8f0", facecolor="#fafafa",
     )
-    plt.tight_layout(rect=[0, 0.10, 0.995, 1.0])
+
+    # ── Extra columns: Mkt Cap, Correlations, Sharpe ──
+    if has_extras:
+        GROSS_THEME = "#1e40af"    # deep blue
+        RESID_THEME = "#0f766e"    # emerald/teal
+        SHARPE_GROSS = "#475569"   # neutral grey-blue
+        SHARPE_RESID = "#065f46"   # deep green
+
+        # Build data arrays for all rows
+        gross_rhos, resid_rhos = [], []
+        gross_sharpes, resid_sharpes = [], []
+        mkt_caps = []
+        for r in rows:
+            tk = r["ticker"]
+            # Market cap
+            mc = r.get("market_cap")
+            try:
+                mc = float(mc) if mc is not None and _math.isfinite(float(mc)) else 0
+            except (TypeError, ValueError):
+                mc = 0
+            mkt_caps.append(mc)
+
+            if tk == dd.ticker:
+                gross_rhos.append(1.0)
+                resid_rhos.append(1.0)
+            else:
+                g, l3r = peer_corrs.get(tk, (None, None))
+                gross_rhos.append(g if g is not None else 0.0)
+                resid_rhos.append(l3r if l3r is not None else 0.0)
+
+            gs, rs = peer_sharpes.get(tk, (None, None))
+            gross_sharpes.append(gs)
+            resid_sharpes.append(rs)
+
+        # ── Shared helpers ──
+        def _pill_bg(v, base_hex, scale=1.0):
+            a = min(abs(v) * scale, 1.0)
+            br, bg, bb = int(base_hex[1:3], 16), int(base_hex[3:5], 16), int(base_hex[5:7], 16)
+            r = int(0xec + a * (br - 0xec))
+            g = int(0xef + a * (bg - 0xef))
+            b = int(0xf5 + a * (bb - 0xf5))
+            return f"#{r:02x}{g:02x}{b:02x}"
+
+        def _pill_tc(v, threshold=0.5):
+            return "white" if abs(v) > threshold else DEEP_BLUE
+
+        from matplotlib.patches import FancyBboxPatch as _FBP
+
+        def _setup_pill_column(a, values, base_color, header, fmt="+.2f",
+                               scale=1.0, threshold=0.5, bold_all=False):
+            a.set_facecolor("#fafbfc")
+            a.set_ylim(-0.5, n - 0.5)
+            a.invert_yaxis()
+            a.set_yticks(y_pos)
+            a.set_yticklabels([])
+            a.set_xlim(0, 1)
+            a.set_xticks([])
+            for spine in a.spines.values():
+                spine.set_visible(False)
+            a.grid(axis="y", color="#e2e8f0", linewidth=0.5, linestyle="-", alpha=0.4)
+            a.set_axisbelow(True)
+
+            a.text(0.5, -0.78, header, ha="center", va="center",
+                   fontsize=7, color=SLATE, fontweight="bold")
+
+            pill_h = h_bar * 0.72
+            pill_w = 0.82
+            pill_x = (1 - pill_w) / 2
+
+            for i, v in enumerate(values):
+                is_target = (i == 0)
+                if v is None:
+                    a.text(0.5, i, "—", ha="center", va="center",
+                           fontsize=7.5, color="#94a3b8")
+                    continue
+                bg = _pill_bg(v, base_color, scale)
+                tc = _pill_tc(v, threshold)
+                pill = _FBP(
+                    (pill_x, i - pill_h / 2), pill_w, pill_h,
+                    boxstyle="round,pad=0.02,rounding_size=0.08",
+                    facecolor=bg,
+                    edgecolor=base_color if is_target else "#d1d5db",
+                    linewidth=1.5 if is_target else 0.5,
+                    zorder=8,
+                )
+                a.add_patch(pill)
+                fs = 8.5 if is_target else (8 if bold_all else 7.5)
+                fw = "bold" if (is_target or bold_all) else "semibold"
+                a.text(0.5, i, f"{v:{fmt}}",
+                       ha="center", va="center",
+                       fontsize=fs, color=tc, fontweight=fw, zorder=12)
+
+        # ── Correlation pills ──
+        _setup_pill_column(ax_g, gross_rhos, GROSS_THEME, "GROSS ρ")
+        _setup_pill_column(ax_r, resid_rhos, RESID_THEME, "RESID ρ")
+
+        # ── 3Y Sharpe pills (bold L3 Resid values) ──
+        _setup_pill_column(ax_gs, gross_sharpes, SHARPE_GROSS,
+                           "GROSS\nSHARPE 3Y", fmt=".2f", scale=0.5, threshold=1.0)
+        _setup_pill_column(ax_rs, resid_sharpes, SHARPE_RESID,
+                           "L3 RESID\nSHARPE 3Y", fmt=".2f", scale=0.5,
+                           threshold=1.0, bold_all=True)
+
+        # Vertical separators
+        for sep_ax in [ax_g, ax_gs]:
+            pos = sep_ax.get_position()
+            fig.patches.append(plt.Rectangle(
+                (pos.x0 - 0.002, 0.06), 0.001, 0.90,
+                transform=fig.transFigure, facecolor="#cbd5e1",
+                edgecolor="none", zorder=5,
+            ))
+
+        # Spanning headers
+        corr_cx = (ax_g.get_position().x0 + ax_r.get_position().x1) / 2
+        fig.text(corr_cx, 0.995, f"Correlation vs {dd.ticker}",
+                 ha="center", va="top", fontsize=8, color=DEEP_BLUE, fontweight="bold")
+
+        sharpe_cx = (ax_gs.get_position().x0 + ax_rs.get_position().x1) / 2
+        fig.text(sharpe_cx, 0.995, "3-Year Quality",
+                 ha="center", va="top", fontsize=8, color=DEEP_BLUE, fontweight="bold")
+
+        # Highlight target row
+        ax.axhspan(-0.40, 0.40, color="#f1f5f9", zorder=0)
+
+    plt.tight_layout(rect=[0, 0.08, 0.995, 1.0])
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=250, bbox_inches="tight",
@@ -1484,7 +1803,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     from plotly.subplots import make_subplots
 
     line_col_frac = 0.62   # line chart gets 62% of width
-    h_spacing = 0.05       # 5% gutter
+    h_spacing = 0.08       # 8% gutter — more breathing room between charts
     combined = make_subplots(
         rows=1, cols=2,
         column_widths=[line_col_frac, 1 - line_col_frac],
@@ -1644,24 +1963,25 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
                        margin=dict(t=5, b=55, l=5, r=5))
     y += chart_h_top + GAP + CARD_PAD
 
-    # ── Sections II + III side by side (each in a card) ─────────────
+    # ── Sections II + III side by side ─────────────────────────────────
     sec23_title_h = 56 + 40
     sec23_card_h = sec23_title_h + chart_h_bot + CARD_PAD * 2
 
-    # Card II
+    # Card II (left)
     _draw_card(page, CONTENT_X - CARD_PAD, y - CARD_PAD,
                half_w + CARD_PAD * 2, sec23_card_h)
-    # Card III
+    # Card III (right)
     _draw_card(page, CONTENT_X + half_w + 40 - CARD_PAD, y - CARD_PAD,
                half_w + CARD_PAD * 2, sec23_card_h)
 
     page.text(CONTENT_X, y, "II. L3 Residual Alpha Quality",
               font_size=38, bold=True, color=NAVY)
-    page.text(CONTENT_X + half_w + 40, y, "III. Equity Factor Decomposition",
+    page.text(CONTENT_X + half_w + 40, y,
+              "III. Factor Decomposition & Peer Analytics",
               font_size=38, bold=True, color=NAVY)
     y += 56
 
-    page.text(CONTENT_X, y, insights["alpha_quality_insight"],
+    page.text(CONTENT_X, y, insights.get("alpha_quality_insight", ""),
               font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
     page.text(CONTENT_X + half_w + 40, y, insights["dna_insight"],
               font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
@@ -1671,10 +1991,10 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     scatter_fig = _make_alpha_quality_scatter(data)
     page.paste_figure(
         scatter_fig, CONTENT_X, y, half_w, chart_h_bot,
-        margin=dict(t=8, b=48, l=52, r=72, pad=2),
+        margin=dict(t=8, b=48, l=52, r=52, pad=2),
     )
 
-    # III. Equity Factor Decomposition (Matplotlib → PIL, target + top 6 peers)
+    # III. Factor Decomposition + Correlations + Sharpe (Matplotlib → PIL)
     dna_img = _make_peer_dna_chart(data)
     page.paste_image(dna_img, CONTENT_X + half_w + 40, y, half_w, chart_h_bot)
 
