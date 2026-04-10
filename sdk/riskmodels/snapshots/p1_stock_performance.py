@@ -6,7 +6,7 @@ and how does it compare to its sector, subsector, and the market?
 Layout (Letter Landscape, Pillow compositor)
 --------------------------------------------
   Left panel : Company identity, performance stats, trailing returns table
-  Top-right  : I. Cumulative Returns (stock vs SPY vs sector vs subsector)
+  Top-right  : I. Cumulative Returns (stock vs L1–L3 CFR lines or ETF gross benchmarks)
   Mid-right  : II. Trailing Returns (grouped bar: stock vs benchmarks)
   Bot-right  : III. Drawdown (underwater equity curve, stock vs SPY)
   Footer     : Confidential + data TEO + SDK version
@@ -47,6 +47,7 @@ from ._data import (
     fetch_stock_context,
     trailing_returns,
     cumulative_returns,
+    cumulative_returns_from_column,
     rolling_sharpe,
     max_drawdown_series,
     relative_returns,
@@ -63,6 +64,51 @@ RED_RGB    = (200, 40, 40)
 
 WINDOWS = {"1d": 1, "5d": 5, "1m": 21, "3m": 63, "6m": 126, "1y": 252}
 WINDOW_LABELS = ["1d", "5d", "1m", "3m", "6m", "1y"]
+
+# Returns-decomposition daily simple returns on /ticker-returns (semantic names after rename)
+CFR_L1_COL = "l1_combined_factor_return"
+CFR_L2_COL = "l2_combined_factor_return"
+CFR_L3_COL = "l3_combined_factor_return"
+CFR_COLUMNS = (CFR_L1_COL, CFR_L2_COL, CFR_L3_COL)
+
+
+def cumulative_benchmark_line_labels(data: "P1Data") -> tuple[str, str, str]:
+    """Legend labels for the three benchmark lines in Section I (cumulative returns).
+
+    CFR mode (bridge-from-gross-to-residual visualization): each line is the
+    cumulative L1/L2/L3 combined factor return — they nest by construction and
+    together with the stock's gross return and the L3 residual return form a
+    complete additive decomposition:
+        gross = L1_cfr + (L2_cfr - L1_cfr) + (L3_cfr - L2_cfr) + l3_residual
+              = L3_cfr + l3_residual
+
+    Labels name the factor set at each level:
+        L1: Factor(SPY)
+        L2: Cum Factor(SPY, {sector_etf})     — e.g. XLK for AAPL
+        L3: Cum Factor(SPY, {sector_etf}, {subsector_etf})  — e.g. RSPT for AAPL
+
+    Gross fallback: independent ETF tracks ("SPY", sec, sub). The lines do not
+    stack and have no algebraic relationship to the L3 Residual Return line, so
+    labelling them as "SPY+sec+sub" would mislead viewers. We keep the fallback
+    labels minimal because they should rarely be seen post-rebuild (CFR is now
+    the default path for in-mask symbols).
+
+    When ``subsector_etf == sector_etf`` (no distinct subsector ETF) the L3
+    label omits the duplicate: "L3 Cum Factor(SPY, XLK)" instead of
+    "L3 Cum Factor(SPY, XLK, XLK)". The caller may still choose to skip the
+    line entirely since L3 == L2 in that case.
+    """
+    sec = data.sector_etf or "Sector"
+    sub = data.subsector_etf or "Subsector"
+    if data.cumulative_bench_lines_use_cfr:
+        l1_lab = "L1 Factor(SPY)"
+        l2_lab = f"L2 Cum Factor(SPY, {sec})"
+        if sub and sub != sec:
+            l3_lab = f"L3 Cum Factor(SPY, {sec}, {sub})"
+        else:
+            l3_lab = f"L3 Cum Factor(SPY, {sec})"
+        return (l1_lab, l2_lab, l3_lab)
+    return ("SPY", sec, sub)
 
 
 def fetch_macro_correlations_resilient(
@@ -169,6 +215,9 @@ class P1Data:
     # L3 ER time series — list of (date_str, mkt_er, sec_er, sub_er, res_er) daily values
     l3_er_series: list[tuple[str, float, float, float, float]] = field(default_factory=list)
 
+    # True when cum_spy / cum_sector / cum_subsector use L1–L3 combined factor returns (CFR), not ETF gross
+    cumulative_bench_lines_use_cfr: bool = False
+
     sdk_version: str = "0.3.0"
 
     @property
@@ -226,6 +275,7 @@ class P1Data:
             macro_correlations=d.get("macro_correlations", {}),
             macro_window=d.get("macro_window", "252d"),
             l3_er_series=_load_er_series(d.get("l3_er_series")),
+            cumulative_bench_lines_use_cfr=bool(d.get("cumulative_bench_lines_use_cfr", False)),
             sdk_version=d.get("sdk_version", "0.3.0"),
         )
 
@@ -285,10 +335,54 @@ def build_p1_data_from_stock_context(
         dates = df["date"] if "date" in df.columns else df.index
         return _series_to_list(dates, cr)
 
-    cum_stock     = _cum(hist)
-    cum_spy       = _cum(spy_df)
-    cum_sector    = _cum(sec_df)
-    cum_subsector = _cum(sub_df)
+    cum_stock = _cum(hist)
+
+    use_cfr = (
+        hist is not None
+        and not hist.empty
+        and all(c in hist.columns for c in CFR_COLUMNS)
+    )
+    if use_cfr:
+        nz = min(int(hist[c].notna().sum()) for c in CFR_COLUMNS)
+        if nz < 5:
+            use_cfr = False
+
+    if use_cfr:
+        def _cum_cfr(df: pd.DataFrame, col: str) -> list[tuple[str, float]]:
+            cr = cumulative_returns_from_column(df, col)
+            dates = df["date"] if "date" in df.columns else df.index
+            return _series_to_list(dates, cr)
+
+        cum_spy = _cum_cfr(hist, CFR_L1_COL)
+        cum_sector = _cum_cfr(hist, CFR_L2_COL)
+        cum_subsector = _cum_cfr(hist, CFR_L3_COL)
+        cumulative_bench_lines_use_cfr = True
+    else:
+        # Gross ETF fallback. The Section I chart will (a) relabel the lines as
+        # independent ETF tracks rather than stacked L1/L2/L3 contributions and
+        # (b) hide the L3 Residual Return line, since it only reconciles
+        # arithmetically against CFR-mode benchmarks.
+        cfr_present = (
+            hist is not None
+            and not hist.empty
+            and all(c in hist.columns for c in CFR_COLUMNS)
+        )
+        reason = (
+            "CFR columns sparse (<5 non-null daily rows)"
+            if cfr_present
+            else "CFR columns missing from /ticker-returns response"
+        )
+        warnings.warn(
+            f"P1 cumulative-returns chart for {ctx.ticker} fell back to gross "
+            f"ETF benchmarks: {reason}. Confirm security_history has daily rows "
+            f"for metric_keys l1_cfr/l2_cfr/l3_cfr.",
+            UserWarning,
+            stacklevel=2,
+        )
+        cum_spy = _cum(spy_df)
+        cum_sector = _cum(sec_df)
+        cum_subsector = _cum(sub_df)
+        cumulative_bench_lines_use_cfr = False
 
     # ── Trailing returns (use full 2Y history for window coverage) ──
     tr_stock     = trailing_returns(ctx.history, WINDOWS)
@@ -409,6 +503,7 @@ def build_p1_data_from_stock_context(
         macro_correlations=macro_out,
         macro_window=macro_window_out,
         l3_er_series=l3_er_series,
+        cumulative_bench_lines_use_cfr=cumulative_bench_lines_use_cfr,
         sdk_version=ctx.sdk_version,
     )
 
@@ -575,39 +670,71 @@ def _make_cum_chart(data: P1Data) -> go.Figure:
             hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
-    # Build cumulative L3 residual return from l3_er_series
+    # Build cumulative L3 residual return from l3_er_series. Despite the field
+    # name, element [4] of each tuple is the daily residual RETURN (not ER):
+    # see build_p1_data_from_stock_context where it's computed as
+    # `gross_return - (mkt_er_component + sec_er_component + sub_er_component)`.
+    # Cumulative sum ≈ compound return for small daily values; for longer
+    # horizons this slightly underestimates the true compound residual but
+    # visually lines up with the additive bridge from L3_CFR to Gross.
     res_cum_series: list[tuple[str, float]] = []
     if data.l3_er_series:
         running = 0.0
         for r in data.l3_er_series:
-            running += r[4]  # residual ER (daily fraction)
+            running += r[4]
             res_cum_series.append((r[0], running))
 
     s_stock = series_with_zero_start(data.cum_stock)
-    s_spy = series_with_zero_start(data.cum_spy)
-    s_sec = series_with_zero_start(data.cum_sector)
-    s_sub = series_with_zero_start(data.cum_subsector)
+    s_spy = series_with_zero_start(data.cum_spy)      # L1 CFR in CFR mode, else SPY gross
+    s_sec = series_with_zero_start(data.cum_sector)   # L2 CFR in CFR mode, else sector ETF gross
+    s_sub = series_with_zero_start(data.cum_subsector) # L3 CFR in CFR mode, else subsector ETF gross
     s_res = series_with_zero_start(res_cum_series)
 
+    lab_spy, lab_sec, lab_sub = cumulative_benchmark_line_labels(data)
+
+    # Section I = "bridge from gross to L3 residual return": Gross line on top,
+    # L1/L2/L3 cumulative factor return lines below it (or between), and the
+    # L3 residual return line showing the unexplained portion. All five lines
+    # together form the methodical decomposition the user sees when reading
+    # left-to-right in the legend.
+    #
+    # L3 trace is hidden only if the stock has no distinct subsector ETF
+    # (sector_etf == subsector_etf), in which case L3 CFR == L2 CFR
+    # mathematically and the duplicate line adds no information.
+    show_sub = bool(data.subsector_etf) and data.subsector_etf != data.sector_etf
+    # L3 residual line is always shown when we have the data. In gross-fallback
+    # mode it still represents the factor-unexplained portion of the stock
+    # return (computed via HR proportions × gross return), so it's meaningful
+    # even without CFR time series.
+    show_res = bool(res_cum_series)
+
+    traces = [
+        _trace(s_stock, f"Gross ({data.ticker})", pal.navy,  width=3.0),
+        _trace(s_spy,   lab_spy,                  "#888888", width=1.5, dash="dot"),
+        _trace(s_sec,   lab_sec,                  pal.teal,  width=1.5, dash="dash"),
+    ]
+    if show_sub:
+        traces.append(_trace(s_sub, lab_sub, pal.slate, width=1.5, dash="dashdot"))
+    if show_res:
+        traces.append(_trace(s_res, "L3 Residual Return", pal.green, width=2.0, dash="solid"))
+
     fig = go.Figure()
-    for t in [
-        _trace(s_stock,       data.ticker,                  pal.navy,    width=3.0),
-        _trace(s_spy,         "SPY",                         "#888888",   width=1.5, dash="dot"),
-        _trace(s_sec,         data.sector_etf or "Sector",   pal.teal,    width=1.5, dash="dash"),
-        _trace(s_sub,         data.subsector_etf or "Sub",  pal.slate,   width=1.5, dash="dashdot"),
-        _trace(s_res,         "L3 Residual Return",          pal.green,   width=2.0, dash="solid"),
-    ]:
+    for t in traces:
         if t is not None:
             fig.add_trace(t)
 
+    annotation_specs: list[tuple[list[tuple[str, float]], str, str]] = [
+        (s_stock, pal.navy,  " "),
+        (s_spy,   "#888888", " "),
+        (s_sec,   pal.teal,  " "),
+    ]
+    if show_sub:
+        annotation_specs.append((s_sub, pal.slate, " "))
+    if show_res:
+        annotation_specs.append((s_res, pal.green, " "))
+
     # Annotate period-end values on the right axis
-    for series, color, prefix in [
-        (s_stock,            pal.navy,    " "),
-        (s_spy,              "#888888",   " "),
-        (s_sec,              pal.teal,    " "),
-        (s_sub,              pal.slate,   " "),
-        (s_res,              pal.green,   " "),
-    ]:
+    for series, color, prefix in annotation_specs:
         if series:
             last_date, last_val = series[-1][0], series[-1][1] * 100
             fig.add_annotation(

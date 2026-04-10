@@ -52,22 +52,57 @@ _TICKER_TO_NAME: dict[str, str] | None = None
 
 
 def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> str:
-    """Look up company name from the EODHD ticker_list CSV. Falls back to ticker."""
+    """Look up company name. Tries security_master.db first (the canonical SSOT,
+    aligned with Supabase symbols.name), falls back to the EODHD ticker_list CSV
+    if security_master is unavailable or the ticker isn't there. Final fallback
+    is the ticker itself.
+
+    The two-tier lookup ensures the zarr-rendered snapshot displays the same
+    company name as the API-rendered snapshot, even though the zarr path is
+    fully offline (no Supabase access required).
+    """
     global _TICKER_TO_NAME
     if _TICKER_TO_NAME is None:
         root = erm3_root or _DEFAULT_ERM3
-        csv_path = root / "data" / "stock_data" / "eodhd" / "csv" / "ticker_list.csv"
         _TICKER_TO_NAME = {}
+
+        # Tier 1: security_master.db (the canonical source — same one Supabase
+        # symbols.name is backfilled from). After the company_name backfill
+        # this contains ~3,400 stocks with the canonical convention (e.g.
+        # "Apple Inc." with the period).
+        sm_path = root / "data" / "stock_data" / "eodhd" / "eodhd_extractions.db"
+        if sm_path.exists():
+            try:
+                import sqlite3
+                conn = sqlite3.connect(f"file:{sm_path}?mode=ro", uri=True, timeout=5.0)
+                for r in conn.execute(
+                    "SELECT ticker, company_name FROM security_master "
+                    "WHERE valid_to IS NULL AND is_active = 1 "
+                    "AND company_name IS NOT NULL AND company_name != ''"
+                ):
+                    t = str(r[0]).upper().strip()
+                    n = str(r[1]).strip()
+                    if t and n:
+                        _TICKER_TO_NAME[t] = n
+                conn.close()
+            except Exception:
+                pass
+
+        # Tier 2: ticker_list.csv (broader EODHD set; fills gaps for tickers
+        # not yet in security_master.company_name).
+        csv_path = root / "data" / "stock_data" / "eodhd" / "csv" / "ticker_list.csv"
         if csv_path.exists():
             try:
                 df = pd.read_csv(csv_path, usecols=["ticker", "name"])
                 for _, row in df.iterrows():
                     t = str(row.get("ticker", "")).upper()
                     n = str(row.get("name", ""))
-                    if t and n:
+                    # Only fill gaps — don't override security_master values
+                    if t and n and t not in _TICKER_TO_NAME:
                         _TICKER_TO_NAME[t] = n
             except Exception:
                 pass
+
     return _TICKER_TO_NAME.get(ticker.upper(), ticker)
 
 BW_SECTOR_TO_ETF = {
@@ -170,7 +205,11 @@ def _rankings_dict_from_zarr(
                 cv = ds_rank[cs].sel(symbol=sym, teo=teo_coord).values
                 r_f = float(rv)
                 c_f = float(cv)
-                pct = (1.0 - r_f / c_f) if c_f > 0 else None
+                # Percentile convention (matches OPENAPI_SPEC.yaml RankingMetricKeys
+                # and the API's fetchRankingsFromSecurityHistory): "100 = best".
+                # Formula: (1 - (rank_ordinal - 1) / cohort_size) * 100
+                # This makes rank_ordinal=1 → percentile=100, rank_ordinal=N → percentile=(1/N)*100.
+                pct = (1.0 - (r_f - 1.0) / c_f) if c_f > 0 else None
             except Exception:
                 pass
             key = f"{w}d_subsector_{suffix}"

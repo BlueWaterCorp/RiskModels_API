@@ -11,7 +11,8 @@ API calls (4 total):
   4. GET  /ticker-returns?ticker=SPY               → market benchmark daily returns
 
 All time series are DataFrames with columns [date, returns_gross, price_close, ...].
-Stock history additionally carries L3 columns (l3_market_hr, l3_*_er, etc.).
+Stock history additionally carries L3 columns (l3_market_hr, l3_*_er, etc.) and,
+when synced, returns-decomposition columns (l1_combined_factor_return, …).
 ETF history has L3 columns as None (ETFs have no ERM3 decomposition).
 """
 
@@ -288,6 +289,14 @@ def cumulative_returns(df: pd.DataFrame) -> pd.Series:
     if df is None or df.empty or "returns_gross" not in df.columns:
         return pd.Series(dtype=float)
     r = pd.to_numeric(df["returns_gross"], errors="coerce").fillna(0.0)
+    return (1 + r).cumprod() - 1
+
+
+def cumulative_returns_from_column(df: pd.DataFrame, col: str) -> pd.Series:
+    """Cumulative simple return from a daily return column (decimals), same length as ``df``."""
+    if df is None or df.empty or col not in df.columns:
+        return pd.Series(dtype=float)
+    r = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
     return (1 + r).cumprod() - 1
 
 

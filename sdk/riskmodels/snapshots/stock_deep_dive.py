@@ -12,7 +12,7 @@ Layout (Letter Landscape, Pillow compositor)
                       Risk Decomposition ER, Macro Correlations, ERM3 methodology (L1–L3)
   Right area  (75%):
       AI Summary Box
-      I.  Cumulative Returns — stock vs SPY vs sector vs subsector + L3 Residual Return
+      I.  Cumulative Returns — stock vs L1–L3 combined factor returns (CFR) or ETF gross + L3 Residual Return
       II. Residual Alpha Drawdown (bottom-left)
       III. Equity Factor Decomposition (bottom-right, σ-scaled Matplotlib bar, 7 rows)
   Footer: ERM3 attribution
@@ -53,6 +53,7 @@ from ..visuals.smart_subheader import generate_subheader
 from .p1_stock_performance import (
     P1Data,
     get_data_for_p1,
+    cumulative_benchmark_line_labels,
     _generate_p1_insights,
     _make_cum_chart,
     _fmt_market_cap,
@@ -287,7 +288,10 @@ def _make_dd_cum_chart(data: P1Data) -> go.Figure:
             hovertemplate=f"<b>{name}</b>: %{{y:.1f}}%<extra></extra>",
         )
 
-    # Build cumulative L3 residual return line (daily residual explained return)
+    # Build cumulative L3 residual return line. Despite the l3_er_series name,
+    # element [4] is the daily residual RETURN (not ER) — computed in
+    # build_p1_data_from_stock_context as gross - (mkt+sec+sub explained).
+    # Cumsum approximates cumulative compound residual return.
     res_cum_series: list[tuple[str, float]] = []
     if data.l3_er_series:
         running = 0.0
@@ -296,30 +300,55 @@ def _make_dd_cum_chart(data: P1Data) -> go.Figure:
             res_cum_series.append((r[0], running))
 
     s_stock = series_with_zero_start(data.cum_stock)
-    s_spy = series_with_zero_start(data.cum_spy)
-    s_sec = series_with_zero_start(data.cum_sector)
-    s_sub = series_with_zero_start(data.cum_subsector)
+    s_spy = series_with_zero_start(data.cum_spy)      # L1 CFR in CFR mode
+    s_sec = series_with_zero_start(data.cum_sector)   # L2 CFR in CFR mode
+    s_sub = series_with_zero_start(data.cum_subsector) # L3 CFR in CFR mode
     s_res = series_with_zero_start(res_cum_series)
 
+    lab_spy, lab_sec, lab_sub = cumulative_benchmark_line_labels(data)
+
+    # Section I = "bridge from gross to L3 residual return".
+    # Legend order (left-to-right): Gross → L1 CFR → L2 CFR → L3 CFR → L3 Residual Return.
+    # The progression shows how the gross stock return is progressively
+    # decomposed by adding factor hierarchy levels, leaving the unexplained
+    # residual at the bottom.
+    #
+    # L3 trace is hidden only when sector_etf == subsector_etf (stocks without
+    # a distinct subsector — L3 CFR == L2 CFR mathematically).
+    show_sub = bool(data.subsector_etf) and data.subsector_etf != data.sector_etf
+    # L3 Residual Return is always shown when we have the data. It represents
+    # the factor-unexplained portion of the stock return, computed via the
+    # L3 HR proportions × gross return, so it's meaningful in both CFR and
+    # gross-fallback modes.
+    show_res = bool(res_cum_series)
+
+    traces = [
+        _trace(s_stock, f"Gross ({data.ticker})", STOCK_COLOR,  width=3.5),
+        _trace(s_spy,   lab_spy,                  SPY_COLOR,    width=1.3, dash="dot"),
+        _trace(s_sec,   lab_sec,                  SECTOR_COLOR, width=1.3, dash="dash"),
+    ]
+    if show_sub:
+        traces.append(_trace(s_sub, lab_sub, SUB_COLOR, width=1.3, dash="dashdot"))
+    if show_res:
+        traces.append(_trace(s_res, "L3 Residual Return", ALPHA_COLOR, width=2.2, dash="solid"))
+
     fig = go.Figure()
-    for t in [
-        _trace(s_stock,       data.ticker,                  STOCK_COLOR,  width=3.5),
-        _trace(s_spy,         "SPY",                         SPY_COLOR,    width=1.3, dash="dot"),
-        _trace(s_sec,         data.sector_etf or "Sector",   SECTOR_COLOR, width=1.3, dash="dash"),
-        _trace(s_sub,         data.subsector_etf or "Sub",  SUB_COLOR,    width=1.3, dash="dashdot"),
-        _trace(s_res,         "L3 Residual Return",          ALPHA_COLOR,  width=2.2, dash="solid"),
-    ]:
+    for t in traces:
         if t is not None:
             fig.add_trace(t)
 
+    annotation_specs: list[tuple[list[tuple[str, float]], str, str]] = [
+        (s_stock, STOCK_COLOR,  " "),
+        (s_spy,   SPY_COLOR,    " "),
+        (s_sec,   SECTOR_COLOR, " "),
+    ]
+    if show_sub:
+        annotation_specs.append((s_sub, SUB_COLOR, " "))
+    if show_res:
+        annotation_specs.append((s_res, ALPHA_COLOR, " "))
+
     # Annotate period-end values (use anchored series for last point)
-    for series, color, prefix in [
-        (s_stock,            STOCK_COLOR,  " "),
-        (s_spy,              SPY_COLOR,    " "),
-        (s_sec,              SECTOR_COLOR, " "),
-        (s_sub,              SUB_COLOR,    " "),
-        (s_res,              ALPHA_COLOR,  " "),
-    ]:
+    for series, color, prefix in annotation_specs:
         if series:
             last_date, last_val = series[-1][0], series[-1][1] * 100
             fig.add_annotation(
