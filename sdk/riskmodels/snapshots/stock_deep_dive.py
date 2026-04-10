@@ -1428,7 +1428,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
 
     # Dynamic SECTION_GAP — distribute vertical space so sections fill the panel
     # and methodology is pinned to the panel bottom (METH_RESERVE px from footer).
-    METH_RESERVE = 440   # methodology block: title + 6 definition rows
+    METH_RESERVE = 780   # expanded methodology block with reading guide
     PANEL_BOTTOM = H - 90
     _company_h   = int(38 * 1.4) + int(LBL_SZ * 1.4) + 10
     _sec_h       = int(SEC_SZ * 1.4) + 7   # section header + divider
@@ -1724,6 +1724,43 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     py = PANEL_BOTTOM - METH_RESERVE
     page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
     py += 8
+
+    # ── How to read this report ──
+    page.text(
+        MARGIN, py,
+        "HOW TO READ THIS REPORT",
+        font_size=SEC_SZ + 1, bold=True, color=TEXT_DARK,
+    )
+    py += int((SEC_SZ + 1) * 1.4)
+
+    _guide_rows = [
+        ("I.", "Cumulative returns + factor bridge. "
+         "Waterfall bars decompose gross into "
+         "Market+Sector+Subsector+Residual "
+         "via geometric attribution."),
+        ("II.", "Peer alpha quality scatter. "
+         "Y = idiosyncratic variance share; "
+         "X = residual vol. Upper-left = best "
+         "risk-adjusted alpha."),
+        ("III.", "Factor bars + peer correlations "
+         "(Gross ρ, L3 Residual ρ) + 3Y Sharpe "
+         "ratios. L3 Resid Sharpe isolates "
+         "stock-specific performance."),
+    ]
+    for _sec_tag, _sec_desc in _guide_rows:
+        page.text(MARGIN, py, _sec_tag,
+                  font_size=METH_BODY, bold=True, color=NAVY)
+        py = page.text(
+            MARGIN + 36, py, _sec_desc,
+            font_size=METH_BODY - 1, color=TEXT_MID, max_width=PANEL_W - 52,
+        )
+        py += 6
+
+    py += 8
+    page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
+    py += 8
+
+    # ── Methodology glossary ──
     page.text(
         MARGIN, py,
         "METHODOLOGY — Hierarchical regression (ERM3)",
@@ -1732,12 +1769,14 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     py += int((SEC_SZ + 1) * 1.4)
 
     _meth_rows = [
-        ("L1", "Market — stock vs SPY; baseline market beta (incremental hedge ratios)."),
-        ("L2", "Sector — L1 residual vs GICS sector ETF; sector-specific vs the market."),
-        ("L3", "Subsector — L2 residual vs subsector ETF; finest systematic sleeve before idiosyncratic risk."),
-        ("ER", "Explained Risk (ER) — variance share of each orthogonal factor layer."),
-        ("HR", "Hedge Ratio (HR) — dollars of ETF hedge per $1 of stock."),
-        ("RR", "Residual Return (RR) — return orthogonal to market, sector, and subsector factors."),
+        ("L1", "Market — stock vs SPY; market beta."),
+        ("L2", "Sector — L1 residual vs GICS sector ETF."),
+        ("L3", "Subsector — L2 residual vs subsector ETF; "
+               "finest systematic sleeve."),
+        ("ER", "Explained Risk — variance share per factor."),
+        ("HR", "Hedge Ratio — $ of ETF hedge per $1 stock."),
+        ("RR", "Residual Return — return orthogonal to all "
+               "systematic factors."),
     ]
     for _tag, _desc in _meth_rows:
         py = page.text(
