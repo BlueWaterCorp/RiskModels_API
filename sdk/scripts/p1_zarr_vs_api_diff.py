@@ -81,6 +81,27 @@ EXPECT_DIFFER = {
     "sdk_version",
     "name",
     "company_name",
+    # Macro correlations: API hits a separate /correlation endpoint with its own
+    # window-fallback chain (try 252d, then 126d, then 63d), while the zarr path
+    # reads ds_macro_factor.zarr directly and computes corr against the same
+    # window. The two are intentionally not byte-equivalent — different windows,
+    # different cleanup of NaN bars. They're acceptably close for chart purposes
+    # but never tolerance-equal, so report as soft "expected to differ" rather
+    # than failing the diff.
+    "macro_correlations",
+    "macro_window",
+}
+
+# Per-key skip set for nested metrics dict. The zarr path emits BOTH long-form
+# (l3_market_er) and short-form (l3_mkt_er) names for the same scalar so legacy
+# WeasyPrint snapshots (s1_forensic.py) keep working. The API only emits
+# short-form. These extra long-form aliases on the zarr side are not divergence
+# — they carry the same value as the short-form key. Skip them in the diff.
+ZARR_METRIC_ALIASES = {
+    "l3_market_er", "l3_market_hr",
+    "l3_sector_er", "l3_sector_hr",
+    "l3_subsector_er", "l3_subsector_hr",
+    "l3_residual_er",
 }
 
 # Fields that are large arrays/dicts where we want array-wise comparison
@@ -198,6 +219,10 @@ def _compare_dict(
         b = {}
     keys = sorted(set(a.keys()) | set(b.keys()))
     for k in keys:
+        # Skip zarr-only long-form metric aliases — see ZARR_METRIC_ALIASES
+        # comment for full reasoning. Only applies inside the metrics dict.
+        if name == "metrics" and k in ZARR_METRIC_ALIASES:
+            continue
         va = a.get(k)
         vb = b.get(k)
         if va is None and vb is None:

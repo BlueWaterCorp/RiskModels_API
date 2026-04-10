@@ -570,12 +570,31 @@ def _generate_p1_insights(data: P1Data) -> P1Insights:
     total_attributed = cum_mkt + cum_sec + cum_sub + cum_res
 
     # ── I. Cumulative Returns ─────────────────────────────────────────
+    # Endpoint values from each chart line — when CFR mode is on these are
+    # the orthogonalized L1/L2/L3 cumulative factor returns (NOT gross ETF
+    # returns), so the subheader's bridge story matches what's plotted.
+    def _last_val(series):
+        if not series:
+            return None
+        try:
+            return float(series[-1][1])
+        except (TypeError, ValueError, IndexError):
+            return None
+
     cum_data = {
         "stock_return_1y":     tr_1y_stock,
         "spy_return_1y":       tr_1y_spy,
         "bench_return_1y":     tr_1y_bench,
         "rank_percentile_1y":  rank_pct_total,
         "cohort_size":         cohort_n,
+        # Bridge-mode inputs (consumed by _rule_cumulative_returns)
+        "cfr_mode":            data.cumulative_bench_lines_use_cfr,
+        "l1_cfr_end":          _last_val(data.cum_spy),
+        "l2_cfr_end":          _last_val(data.cum_sector),
+        "l3_cfr_end":          _last_val(data.cum_subsector),
+        "residual_end":        cum_res / 100.0,  # cum_res is in pct → back to decimal
+        "sector_label":        data.sector_etf or "sector",
+        "subsector_label":     data.subsector_label,
     }
     cum_text = generate_subheader(
         "cumulative_returns", "Cumulative Returns", cum_data,
@@ -622,10 +641,11 @@ def _generate_p1_insights(data: P1Data) -> P1Insights:
         summary_parts.append(perf_clause + ".")
 
     if rank_pct_total is not None:
+        from ..visuals.smart_subheader import _ordinal
         n_str = f" of {cohort_n}" if cohort_n else ""
         tier = "top" if rank_pct_total >= 67 else ("bottom" if rank_pct_total <= 33 else "mid")
         summary_parts.append(
-            f"Ranks {rank_pct_total:.0f}th pct ({tier}-third{n_str}) on 1Y return vs {sub} peers."
+            f"Ranks {_ordinal(rank_pct_total)} pct ({tier}-third{n_str}) on 1Y return vs {sub} peers."
         )
     elif tr_1y_bench is not None:
         vs_b = (tr_1y_stock - tr_1y_bench) * 100 if tr_1y_stock else None

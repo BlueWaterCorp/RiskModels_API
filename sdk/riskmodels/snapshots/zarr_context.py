@@ -183,44 +183,72 @@ def _df_from_etf_slice_indexed(sub: xr.Dataset) -> pd.DataFrame:
     return df[["date", "returns_gross", "price_close"]]
 
 
+# Canonical key set — must match lib/dal/risk-engine-v3.ts
+# RANKING_WINDOWS × RANKING_COHORTS × RANKING_METRICS, so the API path and the
+# zarr path produce the same dict shape (with None for combinations that don't
+# exist as data_vars in ds_rankings_*).
+_RANKING_WINDOWS: tuple[str, ...] = ("1d", "21d", "63d", "252d")
+_RANKING_COHORTS: tuple[str, ...] = ("universe", "sector", "subsector")
+_RANKING_METRICS: tuple[str, ...] = (
+    "mkt_cap",
+    "gross_return",
+    "sector_residual",
+    "subsector_residual",
+    "er_l1",
+    "er_l2",
+    "er_l3",
+)
+
+
 def _rankings_dict_from_zarr(
     ds_rank: xr.Dataset,
     sym: str,
     teo_coord: np.datetime64,
 ) -> dict[str, Any]:
+    """Populate the full WINDOWS × COHORTS × METRICS rankings dict.
+
+    Mirrors what ``fetchRankingsFromSecurityHistory`` produces in the API path:
+    one entry per (window, cohort, metric) triple, with None values when the
+    underlying ds_rankings data_var is missing or NaN. This makes the zarr path
+    a structural superset of every key the API exposes — downstream consumers
+    can index by the same keys regardless of source.
+    """
     rankings: dict[str, Any] = {}
-    for w in (1, 21, 63, 252):
-        for suffix, z_suf in (
-            ("gross_return", "gross_return"),
-            ("subsector_residual", "subsector_residual"),
-        ):
-            ro = f"rank_ord_{w}d_subsector_{z_suf}"
-            cs = f"cohort_size_{w}d_subsector_{z_suf}"
-            if ro not in ds_rank.data_vars:
-                continue
-            c_f: float | None = None
-            pct: float | None = None
-            try:
-                rv = ds_rank[ro].sel(symbol=sym, teo=teo_coord).values
-                cv = ds_rank[cs].sel(symbol=sym, teo=teo_coord).values
-                r_f = float(rv)
-                c_f = float(cv)
-                # Percentile convention (matches OPENAPI_SPEC.yaml RankingMetricKeys
-                # and the API's fetchRankingsFromSecurityHistory): "100 = best".
-                # Formula: (1 - (rank_ordinal - 1) / cohort_size) * 100
-                # This makes rank_ordinal=1 → percentile=100, rank_ordinal=N → percentile=(1/N)*100.
-                pct = (1.0 - (r_f - 1.0) / c_f) if c_f > 0 else None
-            except Exception:
-                pass
-            key = f"{w}d_subsector_{suffix}"
-            rankings[key] = {
-                "rank_ordinal": r_f,
-                "cohort_size": c_f,
-                "rank_percentile": pct * 100.0 if pct is not None else None,
-                "metric": suffix,
-                "cohort": "subsector",
-                "window": f"{w}d",
-            }
+    for w in _RANKING_WINDOWS:
+        for cohort in _RANKING_COHORTS:
+            for metric in _RANKING_METRICS:
+                key = f"{w}_{cohort}_{metric}"
+                ro_var = f"rank_ord_{w}_{cohort}_{metric}"
+                cs_var = f"cohort_size_{w}_{cohort}_{metric}"
+
+                rank_ordinal: float | None = None
+                cohort_size: float | None = None
+                rank_percentile: float | None = None
+
+                if ro_var in ds_rank.data_vars and cs_var in ds_rank.data_vars:
+                    try:
+                        rv = ds_rank[ro_var].sel(symbol=sym, teo=teo_coord).values
+                        cv = ds_rank[cs_var].sel(symbol=sym, teo=teo_coord).values
+                        r_f = float(rv)
+                        c_f = float(cv)
+                        if not (math.isnan(r_f) or math.isnan(c_f)) and c_f > 0:
+                            rank_ordinal = r_f
+                            cohort_size = c_f
+                            # Percentile convention (matches OPENAPI_SPEC.yaml
+                            # RankingMetricKeys + fetchRankingsFromSecurityHistory):
+                            # "100 = best".  pct = (1 - (rank-1)/cohort) * 100
+                            rank_percentile = (1.0 - (r_f - 1.0) / c_f) * 100.0
+                    except Exception:
+                        pass
+
+                rankings[key] = {
+                    "rank_ordinal": rank_ordinal,
+                    "cohort_size": cohort_size,
+                    "rank_percentile": rank_percentile,
+                    "metric": metric,
+                    "cohort": cohort,
+                    "window": w,
+                }
     return rankings
 
 
@@ -335,6 +363,12 @@ def fetch_stock_context_zarr(
     ds_erm = xr.open_zarr(root / "ds_erm3_hedge_weights_SPY_uni_mc_3000.zarr", consolidated=True)
     ds_etf = xr.open_zarr(root / "ds_etf.zarr", consolidated=True)
     ds_rank = xr.open_zarr(root / "ds_rankings_SPY_uni_mc_3000.zarr", consolidated=True)
+    # ds_erm3_returns has the daily L*_cfr / L*_rr series indexed by (teo, symbol, level)
+    # where level ∈ {market, sector, subsector}. Required for the Section I 5-line
+    # bridge — without these, build_p1_data_from_stock_context falls back to gross
+    # ETF lines (the very bug we just fixed in the API path).
+    _returns_zarr = root / "ds_erm3_returns_SPY_uni_mc_3000.zarr"
+    ds_returns = xr.open_zarr(_returns_zarr, consolidated=True) if _returns_zarr.is_dir() else None
 
     # ds_daily is the ticker→symbol authority (uses canonical bw_sym_id from SecurityMaster).
     # All other zarr datasets share the same symbol coordinate after dedup/reindex.
@@ -377,11 +411,54 @@ def fetch_stock_context_zarr(
     df = merged.to_dataframe().reset_index()
     df["date"] = pd.to_datetime(df["teo"]).dt.strftime("%Y-%m-%d")
     df = df.rename(columns={"return": "returns_gross", "close": "price_close"})
-    df["returns_gross"] = pd.to_numeric(df["returns_gross"], errors="coerce").fillna(0.0)
-    df["l3_market_er"] = pd.to_numeric(df["L3_market_ER"], errors="coerce").fillna(0.0)
-    df["l3_sector_er"] = pd.to_numeric(df["L3_sector_ER"], errors="coerce").fillna(0.0)
-    df["l3_subsector_er"] = pd.to_numeric(df["L3_subsector_ER"], errors="coerce").fillna(0.0)
-    df["l3_residual_er"] = pd.to_numeric(df["L3_residual_ER"], errors="coerce").fillna(0.0)
+    # Cast every numeric column to float32. Zarr storage is already float32,
+    # but pandas to_numeric promotes to float64 by default, which is what
+    # injected the float32→float64 drift in the previous diff. Keeping the
+    # whole hist DataFrame in float32 makes downstream cumulative_returns +
+    # trailing_returns produce the same byte-exact values as a pure-zarr
+    # numpy chain, removing one source of API-vs-zarr noise.
+    def _f32(col: str, src: str | None = None) -> pd.Series:
+        s = pd.to_numeric(df[src or col], errors="coerce").fillna(0.0)
+        return s.astype(np.float32)
+
+    df["returns_gross"]   = _f32("returns_gross")
+    df["l3_market_er"]    = _f32("l3_market_er", "L3_market_ER")
+    df["l3_sector_er"]    = _f32("l3_sector_er", "L3_sector_ER")
+    df["l3_subsector_er"] = _f32("l3_subsector_er", "L3_subsector_ER")
+    df["l3_residual_er"]  = _f32("l3_residual_er", "L3_residual_ER")
+
+    # ── L*_cfr / L*_rr from ds_erm3_returns ──
+    # Layout in zarr: combined_factor_return / residual_return are 3-D
+    # (teo, symbol, level), where level ∈ {market, sector, subsector}. We slice
+    # by symbol + the same teo window as ds_daily, then unstack the level dim
+    # into 6 columns matching the API contract from /ticker-returns:
+    #   l1_combined_factor_return / l1_residual_return  (level=market)
+    #   l2_combined_factor_return / l2_residual_return  (level=sector)
+    #   l3_combined_factor_return / l3_residual_return  (level=subsector)
+    # build_p1_data_from_stock_context activates CFR mode iff all 3 cfr cols
+    # exist on hist with ≥5 non-null daily rows.
+    if ds_returns is not None and sym in set(ds_returns.symbol.values):
+        try:
+            sub_r = ds_returns.sel(symbol=sym).sel(teo=df["teo"].values, method=None)
+            level_to_prefix = {"market": "l1", "sector": "l2", "subsector": "l3"}
+            for lvl, prefix in level_to_prefix.items():
+                if lvl not in sub_r.level.values:
+                    continue
+                cfr = sub_r["combined_factor_return"].sel(level=lvl).values
+                rr  = sub_r["residual_return"].sel(level=lvl).values
+                df[f"{prefix}_combined_factor_return"] = pd.Series(cfr).astype(np.float32).values
+                df[f"{prefix}_residual_return"]        = pd.Series(rr).astype(np.float32).values
+        except Exception as e:
+            # Soft-fail: leaves CFR columns absent → build_p1 falls back to gross
+            # mode and emits its standard warning. We log here so the cause is
+            # discoverable without grepping.
+            import warnings as _w
+            _w.warn(
+                f"zarr_context: ds_erm3_returns slice failed for {ticker} ({sym}): {e}. "
+                f"P1 chart will use gross fallback.",
+                UserWarning, stacklevel=2,
+            )
+
     hist = df
 
     last = hist.iloc[-1]
@@ -416,22 +493,67 @@ def fetch_stock_context_zarr(
     sv = float(erm_last["_stock_var"].values)
     vol_23d = math.sqrt(sv * 252) if np.isfinite(sv) else float("nan")
 
+    def _f(name: str) -> float | None:
+        """Read scalar from erm_last as float32-narrowed Python float; None if NaN."""
+        if name not in erm_last.data_vars:
+            return None
+        v = erm_last[name].values
+        # Cast through np.float32 first so Python float is the float32-rounded value
+        f32 = np.float32(v)
+        if not np.isfinite(f32):
+            return None
+        return float(f32)
+
+    # API contract uses short names (l3_mkt_er, l3_sec_hr, l3_res_er, ...). The
+    # zarr data_vars are long form (L3_market_ER, L3_sector_HR, L3_residual_ER).
+    # We emit BOTH so downstream consumers can index by either name without
+    # caring about source.
+    l1_mkt_hr = _f("L1_market_HR")
+    l2_mkt_hr = _f("L2_market_HR")
+    l2_sec_hr = _f("L2_sector_HR")
+    l3_mkt_hr = _f("L3_market_HR")
+    l3_sec_hr = _f("L3_sector_HR")
+    l3_sub_hr = _f("L3_subsector_HR")
+
     m: dict[str, Any] = {
         "ticker": ticker,
         "date": teo,
-        "l3_market_er": float(erm_last["L3_market_ER"].values),
-        "l3_sector_er": float(erm_last["L3_sector_ER"].values),
-        "l3_subsector_er": float(erm_last["L3_subsector_ER"].values),
-        "l3_residual_er": float(erm_last["L3_residual_ER"].values),
-        "l3_market_hr": float(erm_last["L3_market_HR"].values),
-        "l3_sector_hr": float(erm_last["L3_sector_HR"].values),
-        "l3_subsector_hr": float(erm_last["L3_subsector_HR"].values),
-        "close_price": float(last["price_close"]),
-        "market_cap": float(last["market_cap"]) if pd.notna(last["market_cap"]) else None,
-        "vol_23d": vol_23d,
-        "stock_var": float(erm_last["_stock_var"].values)
-        if np.isfinite(erm_last["_stock_var"].values)
-        else None,
+        # ── L3 (long + short aliases) ──
+        "l3_market_er":    _f("L3_market_ER"),
+        "l3_sector_er":    _f("L3_sector_ER"),
+        "l3_subsector_er": _f("L3_subsector_ER"),
+        "l3_residual_er":  _f("L3_residual_ER"),
+        "l3_market_hr":    l3_mkt_hr,
+        "l3_sector_hr":    l3_sec_hr,
+        "l3_subsector_hr": l3_sub_hr,
+        "l3_mkt_er":       _f("L3_market_ER"),
+        "l3_sec_er":       _f("L3_sector_ER"),
+        "l3_sub_er":       _f("L3_subsector_ER"),
+        "l3_res_er":       _f("L3_residual_ER"),
+        "l3_mkt_hr":       l3_mkt_hr,
+        "l3_sec_hr":       l3_sec_hr,
+        "l3_sub_hr":       l3_sub_hr,
+        # ── L1 (market only) ──
+        "l1_mkt_hr":       l1_mkt_hr,
+        "l1_mkt_er":       _f("L1_market_ER"),
+        "l1_res_er":       _f("L1_residual_ER"),
+        # ── L2 (market + sector) ──
+        "l2_mkt_hr":       l2_mkt_hr,
+        "l2_sec_hr":       l2_sec_hr,
+        "l2_mkt_er":       _f("L2_market_ER"),
+        "l2_sec_er":       _f("L2_sector_ER"),
+        "l2_res_er":       _f("L2_residual_ER"),
+        # ── Betas ── beta = -HR by ERM3 convention (verified against API output:
+        # l1_mkt_beta = 0.9734, l1_mkt_hr = -0.9734 for AAPL).
+        "l1_mkt_beta":     (-l1_mkt_hr) if l1_mkt_hr is not None else None,
+        "l2_sec_beta":     (-l2_sec_hr) if l2_sec_hr is not None else None,
+        "l3_sub_beta":     (-l3_sub_hr) if l3_sub_hr is not None else None,
+        # ── Misc scalars ──
+        "close_price": float(np.float32(last["price_close"])),
+        "market_cap":  float(np.float32(last["market_cap"])) if pd.notna(last["market_cap"]) else None,
+        "vol_23d":     float(np.float32(vol_23d)) if np.isfinite(vol_23d) else None,
+        "stock_var":   float(np.float32(erm_last["_stock_var"].values))
+                       if np.isfinite(erm_last["_stock_var"].values) else None,
     }
 
     teo_coord = np.datetime64(merged.teo.values[-1])
