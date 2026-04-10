@@ -131,6 +131,19 @@ def _gf(data: dict, full: str, abbr: str) -> float:
     return float(v) if v is not None else 0.0
 
 
+def _ordinal(n: float) -> str:
+    """Format a number with English ordinal suffix (1st, 2nd, 3rd, 4th, ...).
+
+    Avoids the "32th pct" bug from naive `f"{n:.0f}th"` formatting.
+    """
+    i = int(round(float(n)))
+    if 10 <= (i % 100) <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(i % 10, "th")
+    return f"{i}{suffix}"
+
+
 def _rule_er_attribution(data: dict, ticker: str, benchmark: str, period: str) -> str:
     mkt = _gf(data, "l3_market_er", "l3_mkt_er") * 100
     sec = _gf(data, "l3_sector_er", "l3_sec_er") * 100
@@ -231,33 +244,57 @@ def _rule_stacked_area(data: dict, ticker: str, benchmark: str, period: str) -> 
 
 def _rule_cumulative_returns(data: dict, ticker: str, benchmark: str, period: str) -> str:
     stock_ret  = data.get("stock_return_1y")   # decimal
-    spy_ret    = data.get("spy_return_1y")
-    bench_ret  = data.get("bench_return_1y")
+    spy_ret    = data.get("spy_return_1y")     # decimal — gross SPY (fallback path)
+    bench_ret  = data.get("bench_return_1y")   # decimal — gross subsector (fallback path)
     rank_pct   = data.get("rank_percentile_1y")
     cohort_n   = data.get("cohort_size")
+
+    # Bridge-mode inputs (set when /ticker-returns returns L*_cfr columns).
+    # Each is the cumulative endpoint of the corresponding chart line.
+    cfr_mode   = bool(data.get("cfr_mode"))
+    l1_end     = data.get("l1_cfr_end")        # decimal
+    l2_end     = data.get("l2_cfr_end")        # decimal
+    l3_end     = data.get("l3_cfr_end")        # decimal
+    res_end    = data.get("residual_end")      # decimal — cumulative L3 residual return
+    sec_label  = data.get("sector_label") or "sector"
+    sub_label  = data.get("subsector_label") or benchmark or "subsector"
 
     if stock_ret is None:
         return f"{ticker} cumulative return vs benchmarks {period}."
 
     stock_pct = float(stock_ret) * 100
-    line = f"{ticker} returned {stock_pct:+.1f}%"
 
-    if spy_ret is not None:
-        vs_spy = (float(stock_ret) - float(spy_ret)) * 100
-        line += f" vs SPY {float(spy_ret)*100:+.1f}% ({vs_spy:+.1f}pp)"
-
-    if bench_ret is not None:
-        vs_bench = (float(stock_ret) - float(bench_ret)) * 100
-        bm_name = benchmark or "benchmark"
-        line += f" and {bm_name} {float(bench_ret)*100:+.1f}% ({vs_bench:+.1f}pp)"
-
-    line += f" {period}."
+    if cfr_mode and l1_end is not None and l3_end is not None and res_end is not None:
+        # Bridge story matches the 5-line chart: gross → L1 → L2 → L3 → residual.
+        # Each L* number is the orthogonalized cumulative factor return at that
+        # level (NOT the gross ETF return), so it's apples-to-apples with the lines.
+        line = (
+            f"{ticker} gross {stock_pct:+.1f}% — factor bridge: "
+            f"L1(SPY) {float(l1_end)*100:+.1f}%"
+        )
+        if l2_end is not None:
+            line += f", L2(+{sec_label}) {float(l2_end)*100:+.1f}%"
+        line += (
+            f", L3(+{sub_label}) {float(l3_end)*100:+.1f}%"
+            f" → residual alpha {float(res_end)*100:+.1f}% {period}."
+        )
+    else:
+        # Pre-CFR fallback: compare stock to gross SPY + gross subsector ETF.
+        line = f"{ticker} returned {stock_pct:+.1f}%"
+        if spy_ret is not None:
+            vs_spy = (float(stock_ret) - float(spy_ret)) * 100
+            line += f" vs SPY {float(spy_ret)*100:+.1f}% ({vs_spy:+.1f}pp)"
+        if bench_ret is not None:
+            vs_bench = (float(stock_ret) - float(bench_ret)) * 100
+            bm_name = benchmark or "benchmark"
+            line += f" and {bm_name} {float(bench_ret)*100:+.1f}% ({vs_bench:+.1f}pp)"
+        line += f" {period}."
 
     if rank_pct is not None:
         n_str = f" of {int(cohort_n)}" if cohort_n else ""
         rank_n = float(rank_pct)
         verdict = "top" if rank_n >= 67 else ("bottom" if rank_n <= 33 else "middle")
-        line += f" Ranks {rank_n:.0f}th pct ({verdict} third{n_str} vs subsector peers)."
+        line += f" Ranks {_ordinal(rank_n)} pct ({verdict} third{n_str} vs {sub_label} peers)."
 
     return line
 
@@ -287,7 +324,7 @@ def _rule_return_attribution(data: dict, ticker: str, benchmark: str, period: st
     if rank_pct_res is not None:
         pct = float(rank_pct_res)
         direction = "outperforming" if pct >= 50 else "underperforming"
-        text += f" Residual ranks {pct:.0f}th pct vs subsector peers ({direction})."
+        text += f" Residual ranks {_ordinal(pct)} pct vs subsector peers ({direction})."
 
     return text
 

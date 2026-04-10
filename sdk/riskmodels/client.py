@@ -311,6 +311,19 @@ class RiskModelsClient:
         # lines instead of using the CFR data. The rename must run for every
         # format for the column-name contract to hold.
         df = df.rename(columns={k: v for k, v in TICKER_RETURNS_COLUMN_RENAME.items() if k in df.columns})
+        # Downcast every numeric column to float32 at the API boundary so the
+        # downstream snapshot pipeline (cumulative_returns, trailing_returns,
+        # P1Data construction) runs in float32 — matching what the zarr path
+        # already does. JS / PostgREST serializes Postgres REAL columns at
+        # float64 precision (JS has no float32 type), and json.loads parses to
+        # Python float (also float64). Without this cast, identical underlying
+        # data produces ~1e-6 relative drift between API-path and zarr-path
+        # cumulative series after 252 multiplications. The cast is the cheapest
+        # place to enforce parity.
+        if not df.empty:
+            import numpy as _np
+            for c in df.select_dtypes(include=["float64", "float32"]).columns:
+                df[c] = df[c].astype(_np.float32)
         if not df.empty and mode != "off":
             last = df.iloc[-1].to_dict()
             run_validation(last, mode=mode, er_tolerance=self._er_tolerance)
