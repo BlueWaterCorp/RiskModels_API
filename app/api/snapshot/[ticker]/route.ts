@@ -200,7 +200,12 @@ export async function GET(
           __cachePayload?: SnapshotCache;
         }).__cachePayload;
         if (payload) {
-          await setCache(key, payload, CACHE_TTL.HISTORICAL);
+          // 1h TTL matches the offline pipeline's daily refresh cadence — long
+          // enough to absorb traffic bursts, short enough that a fresh GCS
+          // upload propagates to end users in under an hour. Previously this
+          // was HISTORICAL (24h), which meant a same-day refresh of GCS could
+          // be invisible to website users for almost a full day.
+          await setCache(key, payload, CACHE_TTL.DAILY);
         }
       }
       return res;
