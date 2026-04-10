@@ -1,5 +1,20 @@
 # RiskModels API — Agent Instructions
 
+## Claude Code quick path
+
+Before adding SDK methods, HTTP clients, or MCP tools: run the **RiskModels API discovery** workflow — [`.cursor/skills/riskmodels-api-discovery/SKILL.md`](.cursor/skills/riskmodels-api-discovery/SKILL.md) (MCP `riskmodels_list_endpoints` / `riskmodels_get_schema` when available; else [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml) and [mcp/data/openapi.json](./mcp/data/openapi.json)).
+
+| Doc | Use |
+|-----|-----|
+| [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml) | REST contract |
+| [SEMANTIC_ALIASES.md](./SEMANTIC_ALIASES.md) | Metric names, batch column semantics |
+| [docs/ERM3_ZARR_API_PARITY.md](./docs/ERM3_ZARR_API_PARITY.md) | Zarr vs API field parity |
+| [SUPABASE_TABLES.md](./SUPABASE_TABLES.md) | DB tables used by DAL / SDK |
+
+**Cross-repo edits** (schemas, `schema-paths.json`, MCP copies, `current_state.md`): do not duplicate the checklist here — use **[docs/AGENTS_CROSS_REPO.md](./docs/AGENTS_CROSS_REPO.md)** (synced from BWMACRO). End-user / analyst-facing pointers stay in [AGENTS.md](./AGENTS.md).
+
+---
+
 ## Project Identity
 This is the **RiskModels API** — a Next.js + Supabase platform serving institutional equity risk analytics. The Python SDK (`sdk/riskmodels/`) provides the programmatic client, snapshot PDF pipeline, and visualization layer.
 

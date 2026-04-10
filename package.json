@@ -11,7 +11,7 @@
     "vercel:sync-env:doppler:email": "ALLOWLIST=scripts/doppler-vercel-allowlist-email.txt ./scripts/doppler-sync-to-vercel.sh",
     "env:recon": "bash ./scripts/recon-env.sh",
     "env:recon:fingerprints": "bash ./scripts/recon-env.sh --fingerprints",
-    "doppler:env": "doppler secrets download --no-file --format env > .env.local",
+    "doppler:env": "doppler secrets download --no-file --format env -p erm3 -c dev > .env.local",
     "build:openapi": "node scripts/yaml-to-json.js",
     "start": "next start",
     "lint": "next lint",

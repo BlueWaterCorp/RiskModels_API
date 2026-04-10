@@ -36,3 +36,11 @@ When a user requests risk analysis, you should:
 2. Use the MCP server tools to fetch factor data.
 3. Interpret the results (e.g., high residual risk, sector exposures).
 4. Provide actionable hedge ratios if requested.
+
+---
+
+## Cross-repo maintenance (schemas, OpenAPI, MCP)
+
+This repo owns the **canonical** API contract and MCP schemas. When you change schemas, `OPENAPI_SPEC.yaml`, `schema-paths.json`, or cross-cutting docs, follow the shared checklist: **[docs/AGENTS_CROSS_REPO.md](./docs/AGENTS_CROSS_REPO.md)** (synced from BWMACRO).
+
+Do not duplicate that checklist in this file; keep it in one place so updates stay consistent.
