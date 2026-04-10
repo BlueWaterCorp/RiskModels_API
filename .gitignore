@@ -39,6 +39,12 @@ risk_snapshot_*.pdf
 # Snapshot pipeline build artifacts — rendered locally, never committed
 sdk/riskmodels/snapshots/output/
 
+# Tombstone for the rogue sdk/snapshots/ tree (deleted 2026-04-10).
+# A stray Path resolution in tests/test_phase_a.py once created this duplicate
+# of sdk/riskmodels/snapshots/. The path is fixed and the dir removed; ignore
+# it so any future drift can't quietly recreate the parallel tree.
+sdk/snapshots/
+
 # Misc
 *.log
 *.tsbuildinfo
