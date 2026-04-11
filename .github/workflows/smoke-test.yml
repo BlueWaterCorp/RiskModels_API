@@ -22,6 +22,10 @@ jobs:
     permissions:
       contents: read
       issues: write
+    # Job-level env so `if: env.TEST_API_KEY != ''` works (step-level env is not visible in that step's `if`).
+    # See: https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsif
+    env:
+      TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
 
     steps:
       - name: Health check
@@ -66,9 +70,7 @@ jobs:
           sleep 90
 
       - name: Authenticated endpoints (with TEST_API_KEY)
-        env:
-          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
-        if: env.TEST_API_KEY != ''
+        if: ${{ env.TEST_API_KEY != '' }}
         run: |
           # Tickers search
           RESPONSE=$(curl -s -H "Authorization: Bearer $TEST_API_KEY" \
@@ -123,5 +125,4 @@ jobs:
                 '',
                 'Check the workflow logs above for the failing endpoint.',
               ].join('\n'),
-              labels: ['bug', 'api', 'automated'],
             });
