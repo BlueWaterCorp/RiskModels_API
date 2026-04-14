@@ -55,24 +55,49 @@ export const GET = withBilling(
     const startDateStr = startDate.toISOString().split("T")[0];
 
     const fetchStart = performance.now();
-    const { rows, dataSource } = await fetchHistoryWithSource(symbolRecord.symbol, [
-      "returns_gross",
-      "price_close",
-      "l1_cfr",
-      "l2_cfr",
-      "l3_cfr",
-      "l3_mkt_hr",
-      "l3_sec_hr",
-      "l3_sub_hr",
-      "l3_mkt_er",
-      "l3_sec_er",
-      "l3_sub_er",
-      "l3_res_er",
-    ], {
-      periodicity: "daily",
-      startDate: startDateStr,
-      orderBy: "asc",
-    });
+    let rows: Awaited<ReturnType<typeof fetchHistoryWithSource>>["rows"];
+    let dataSource: Awaited<ReturnType<typeof fetchHistoryWithSource>>["dataSource"];
+    try {
+      ({ rows, dataSource } = await fetchHistoryWithSource(symbolRecord.symbol, [
+        "returns_gross",
+        "price_close",
+        "l1_cfr",
+        "l2_cfr",
+        "l3_cfr",
+        "l3_mkt_hr",
+        "l3_sec_hr",
+        "l3_sub_hr",
+        "l3_mkt_er",
+        "l3_sec_er",
+        "l3_sub_er",
+        "l3_res_er",
+      ], {
+        periodicity: "daily",
+        startDate: startDateStr,
+        orderBy: "asc",
+      }));
+    } catch (error) {
+      console.error("[ticker-returns] history fetch failed", {
+        ticker,
+        symbol: symbolRecord.symbol,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        {
+          error: "History temporarily unavailable",
+          message: "Upstream history store is unreachable. Please retry.",
+          retry_after_seconds: 10,
+        },
+        {
+          status: 503,
+          headers: {
+            ...getCorsHeaders(origin),
+            "Retry-After": "10",
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
 
     const pivoted = pivotHistory(rows);
     const histRange: [string, string] =

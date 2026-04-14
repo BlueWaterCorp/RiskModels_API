@@ -397,27 +397,23 @@ export async function fetchHistoryWithSource(
   } = options;
 
   if (isZarrHistoryPath(keys, periodicity)) {
-    try {
-      const { rows } = await readHistorySlice({
-        symbols: [symbol],
-        keys,
-        periodicity,
-        startDate,
-        endDate,
-        orderBy,
-      });
-      if (rows.length > 0) {
-        return { rows, dataSource: "zarr" };
-      }
-      console.warn(
-        "[V3 DAL] Zarr history empty; falling back to Supabase EAV",
-        { symbol },
-      );
-    } catch (e) {
-      console.error("[V3 DAL] Zarr history read failed; falling back to Supabase", e);
+    // Zarr is the only store for range-based daily V3 metric history
+    // (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). No Supabase fallback:
+    // security_history does not carry these metric_keys, so a fallback query
+    // would always return []-after-12-25s and silently serve empty success.
+    // On zarr error, let the exception propagate to the route handler.
+    const { rows } = await readHistorySlice({
+      symbols: [symbol],
+      keys,
+      periodicity,
+      startDate,
+      endDate,
+      orderBy,
+    });
+    if (rows.length === 0) {
+      console.warn("[V3 DAL] Zarr history returned empty rows", { symbol, keyCount: keys.length });
     }
-    const rows = await fetchHistoryFromSupabase(symbol, keys, options);
-    return { rows, dataSource: "supabase" };
+    return { rows, dataSource: "zarr" };
   }
 
   const rows = await fetchHistoryFromSupabase(symbol, keys, options);
@@ -449,29 +445,22 @@ export async function fetchBatchHistory(
   if (symbols.length === 0) return [];
 
   if (isZarrHistoryPath(keys, periodicity)) {
-    try {
-      const { rows } = await readHistorySlice({
-        symbols,
-        keys,
-        periodicity,
-        startDate,
-        endDate,
-        orderBy,
+    // See fetchHistoryWithSource — zarr is authoritative for V3 metric history.
+    const { rows } = await readHistorySlice({
+      symbols,
+      keys,
+      periodicity,
+      startDate,
+      endDate,
+      orderBy,
+    });
+    if (rows.length === 0) {
+      console.warn("[V3 DAL] Zarr batch history returned empty rows", {
+        symbolCount: symbols.length,
+        keyCount: keys.length,
       });
-      if (rows.length > 0) {
-        return rows;
-      }
-      console.warn(
-        "[V3 DAL] Zarr batch history empty; falling back to Supabase EAV",
-        { count: symbols.length },
-      );
-    } catch (e) {
-      console.error(
-        "[V3 DAL] Zarr batch history read failed; falling back to Supabase",
-        e,
-      );
     }
-    return fetchBatchHistoryFromSupabase(symbols, keys, options);
+    return rows;
   }
 
   return fetchBatchHistoryFromSupabase(symbols, keys, options);
