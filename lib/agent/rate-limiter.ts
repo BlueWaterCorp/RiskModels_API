@@ -6,6 +6,7 @@
  */
 
 import { env } from "@/lib/env";
+import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 
 interface RateLimitResult {
   allowed: boolean;
@@ -22,8 +23,8 @@ export async function checkRateLimit(
   identifier: string,
   limitPerMinute: number = 60
 ): Promise<RateLimitResult> {
-  // If Redis is not configured, allow all requests (dev mode)
-  if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) {
+  // If Redis is not configured (or only placeholders), allow all requests (dev mode)
+  if (!isUpstashRedisConfigured()) {
     console.warn("[RateLimit] Redis not configured, rate limiting disabled");
     return {
       allowed: true,
