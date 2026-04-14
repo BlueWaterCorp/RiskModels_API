@@ -1,0 +1,33 @@
+# Run notebooks/riskmodels_quickstart.ipynb end-to-end (same as Jupyter "Run All").
+# Uses the same live key secret as Production Smoke Test.
+name: Quickstart Notebook
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: quickstart-notebook-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: notebooks/requirements-notebook-test.txt
+
+      - name: Install notebook runner deps
+        run: pip install -r notebooks/requirements-notebook-test.txt
+
+      - name: Execute quickstart notebook
+        env:
+          RISKMODELS_QUICKSTART_API_KEY: ${{ secrets.TEST_API_KEY }}
+          MPLBACKEND: Agg
+        run: python scripts/execute_quickstart_notebook.py

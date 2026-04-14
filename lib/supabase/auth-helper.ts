@@ -21,6 +21,15 @@ export async function authenticateRequest(request: Request): Promise<{ user: Use
     const token = authHeader.replace('Bearer ', '').trim();
 
     // 1. Try RiskModels API key (rm_agent_* or rm_user_*)
+    // Legacy marketing string — never registered as rm_user_* / rm_agent_*
+    if (token.startsWith('rm_demo_')) {
+      return {
+        user: null,
+        error:
+          'Public demo keys (rm_demo_*) are not valid for authenticated API routes. Get an API key at https://riskmodels.app/get-key (rm_user_* / rm_agent_*).',
+      };
+    }
+
     if (token.startsWith('rm_agent_') || token.startsWith('rm_user_')) {
       try {
         const { validateApiKey } = await import('@/lib/agent/api-keys');
