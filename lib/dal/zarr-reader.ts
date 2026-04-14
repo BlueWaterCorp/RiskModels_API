@@ -95,10 +95,28 @@ async function readTeoStrings(grp: Group<Readable>): Promise<string[] | null> {
     const arr = await open.v2(loc, { kind: "array" });
     const ch = await get(arr, null);
     const d = ch?.data;
-    if (d instanceof BigInt64Array) {
-      return Array.from(d, (v) => nsToIsoDate(v));
+    if (!(d instanceof BigInt64Array)) return null;
+
+    // GCS ERM3 stores use CF-style time encoding: int64 day offsets with a
+    // `units: "days since YYYY-MM-DD[ HH:MM:SS]"` attribute. Previous code
+    // assumed datetime64[ns] nanosecond epochs and mapped every value to
+    // 1970-01-01 - that was bug 2 in the flap diagnosis.
+    const attrs = (arr.attrs ?? {}) as Record<string, unknown>;
+    const units = typeof attrs.units === "string" ? attrs.units : "";
+    const cfMatch = units.match(/^days since (\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}:\d{2})?/);
+    if (cfMatch) {
+      const baseMs = Date.parse(`${cfMatch[1]}T00:00:00Z`);
+      if (!Number.isFinite(baseMs)) return null;
+      const MS_PER_DAY = 86_400_000;
+      return Array.from(d, (v) => {
+        const t = baseMs + Number(v) * MS_PER_DAY;
+        const dt = new Date(t);
+        return Number.isFinite(dt.getTime()) ? dt.toISOString().slice(0, 10) : "";
+      });
     }
-    return null;
+
+    // Legacy / backward-compat: some stores may still write datetime64[ns].
+    return Array.from(d, (v) => nsToIsoDate(v));
   } catch {
     return null;
   }
@@ -111,9 +129,19 @@ async function readSymbolIndexMap(grp: Group<Readable>): Promise<Map<string, num
     const ch = await get(arr, null);
     const d = ch?.data;
     const m = new Map<string, number>();
+    // Fixed-width numpy unicode arrays (<U20 etc.) → UnicodeStringArray (.get i).
     if (d instanceof UnicodeStringArray) {
       for (let i = 0; i < d.length; i++) {
         m.set(String(d.get(i)).trim(), i);
+      }
+      return m;
+    }
+    // Variable-length / object dtype strings → plain Array<string> (indexed).
+    // This is what the production GCS stores use; diagnosed in the flap
+    // investigation and verified via scripts/diagnose-zarr-decode.mjs.
+    if (Array.isArray(d)) {
+      for (let i = 0; i < d.length; i++) {
+        m.set(String(d[i]).trim(), i);
       }
       return m;
     }
@@ -136,6 +164,12 @@ async function readLevelIndexMap(grp: Group<Readable>): Promise<Map<string, numb
       }
       return m;
     }
+    if (Array.isArray(d)) {
+      for (let i = 0; i < d.length; i++) {
+        m.set(String(d[i]).trim().toLowerCase(), i);
+      }
+      return m;
+    }
     return null;
   } catch {
     return null;
@@ -148,6 +182,19 @@ function lowerBound(sorted: string[], x: string): number {
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
     if (sorted[mid]! < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** First index strictly greater than x. Use with `[t0, t1)` slice where the
+ *  caller wants to include all elements `<= x`. */
+function upperBoundInclusive(sorted: string[], x: string): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid]! <= x) lo = mid + 1;
     else hi = mid;
   }
   return lo;
@@ -273,63 +320,90 @@ export async function readHistorySlice(
     return hit;
   }
 
+  // Daily store is always opened. Hedge/returns are opened lazily only if
+  // the requested key set actually touches them — avoids a pointless GCS
+  // round-trip on vanilla returns/price queries.
   const dailyGrp = await openZarrGroup(zarrDailyBasename());
   if (!dailyGrp) {
     return { rows: [], range: ["", ""] };
   }
-
-  const teo = await readTeoStrings(dailyGrp);
-  const symMap = await readSymbolIndexMap(dailyGrp);
-  if (!teo?.length || !symMap?.size) {
+  const dailyTeo = await readTeoStrings(dailyGrp);
+  const dailySymMap = await readSymbolIndexMap(dailyGrp);
+  if (!dailyTeo?.length || !dailySymMap?.size) {
     return { rows: [], range: ["", ""] };
   }
 
-  let t0 = 0;
-  let t1 = teo.length;
-  if (startDate) t0 = lowerBound(teo, startDate);
-  if (endDate) t1 = upperBoundExclusive(teo, endDate);
-  if (t1 < t0) t1 = t0;
+  const needHedge = keys.some((k) => getZarrSpec(k)?.role === "hedge");
+  const needReturns = keys.some((k) => getZarrSpec(k)?.role === "returns");
 
-  const rangeStart = teo[t0] ?? "";
-  const rangeEnd = teo[Math.max(0, t1 - 1)] ?? "";
+  const hedgeGrp = needHedge ? await openZarrGroup(zarrHedgeBasename()) : null;
+  const hedgeTeo = hedgeGrp ? await readTeoStrings(hedgeGrp) : null;
+  const hedgeSymMap = hedgeGrp ? await readSymbolIndexMap(hedgeGrp) : null;
 
-  const hedgeGrp = await openZarrGroup(zarrHedgeBasename());
-  const returnsGrp = await openZarrGroup(zarrReturnsBasename());
+  const returnsGrp = needReturns ? await openZarrGroup(zarrReturnsBasename()) : null;
+  const returnsTeo = returnsGrp ? await readTeoStrings(returnsGrp) : null;
+  const returnsSymMap = returnsGrp ? await readSymbolIndexMap(returnsGrp) : null;
   const levelMaps = returnsGrp ? await readLevelIndexMap(returnsGrp) : null;
+
+  // Shortest common range across every store involved in this request,
+  // further clipped to the caller's [startDate, endDate] window. This
+  // guarantees every metric_row the caller sees lives inside a date window
+  // that *all* requested stores cover — no misleading half-populated rows.
+  // Each store's teo is sorted ascending, so we can just max the firsts and
+  // min the lasts.
+  let effStart = startDate ?? "";
+  let effEnd = endDate ?? "9999-12-31";
+  const involvedTeos: string[][] = [dailyTeo];
+  if (hedgeGrp && hedgeTeo?.length) involvedTeos.push(hedgeTeo);
+  if (returnsGrp && returnsTeo?.length) involvedTeos.push(returnsTeo);
+  for (const t of involvedTeos) {
+    const first = t[0]!;
+    const last = t[t.length - 1]!;
+    if (first > effStart) effStart = first;
+    if (last < effEnd) effEnd = last;
+  }
+  const validWindow = effStart <= effEnd;
+
+  // Per-store [t0, t1) bounds from the common window. Each store has its own
+  // teo axis length and (potentially) its own holiday set, so positional
+  // indices MUST NOT be shared across stores — that was bug 3.
+  const boundsFor = (teo: string[] | null): [number, number] => {
+    if (!teo?.length || !validWindow) return [0, 0];
+    const t0 = lowerBound(teo, effStart);
+    const t1 = upperBoundInclusive(teo, effEnd);
+    return t1 < t0 ? [t0, t0] : [t0, t1];
+  };
+  const [dt0, dt1] = boundsFor(dailyTeo);
+  const [ht0, ht1] = boundsFor(hedgeTeo);
+  const [rt0, rt1] = boundsFor(returnsTeo);
+
+  const rangeStart = validWindow ? (dailyTeo[dt0] ?? effStart) : "";
+  const rangeEnd = validWindow ? (dailyTeo[Math.max(0, dt1 - 1)] ?? effEnd) : "";
 
   const rows: SecurityHistoryRow[] = [];
 
   for (const symbol of symbols) {
-    const symIdx = symMap.get(symbol);
-    if (symIdx === undefined) continue;
-    const symbolIndex = symIdx;
-
-    const seriesCache = new Map<string, (number | null)[] | null>();
-
-    async function get2Cached(
-      grp: Group<Readable> | null,
-      varName: string,
-    ): Promise<(number | null)[] | null> {
-      if (!grp) return null;
-      const ck2 = `${varName}`;
-      if (!seriesCache.has(ck2)) {
-        seriesCache.set(
-          ck2,
-          await readFloatSeriesTeoSymbol(grp, varName, t0, t1, symbolIndex),
-        );
-      }
-      return seriesCache.get(ck2) ?? null;
-    }
+    // Each store has its OWN symbol roster and ordering. Resolve per store.
+    const dailyIdx = dailySymMap.get(symbol);
+    const hedgeIdx = hedgeSymMap?.get(symbol);
+    const returnsIdx = returnsSymMap?.get(symbol);
 
     for (const key of keys) {
       const spec = getZarrSpec(key);
       if (!spec) continue;
 
       if (spec.role === "daily") {
-        const vals = await get2Cached(dailyGrp, spec.zarrVar);
+        if (dailyIdx === undefined || dt1 <= dt0) continue;
+        const vals = await readFloatSeriesTeoSymbol(
+          dailyGrp,
+          spec.zarrVar,
+          dt0,
+          dt1,
+          dailyIdx,
+        );
         if (!vals) continue;
         for (let i = 0; i < vals.length; i++) {
-          const teoStr = teo[t0 + i];
+          const teoStr = dailyTeo[dt0 + i];
           if (!teoStr) continue;
           rows.push({
             symbol,
@@ -343,75 +417,60 @@ export async function readHistorySlice(
       }
 
       if (spec.role === "hedge") {
-        if (!hedgeGrp) continue;
-        if ("derivedVol23d" in spec && spec.derivedVol23d) {
-          const raw = await get2Cached(hedgeGrp, "_stock_var");
-          if (!raw) continue;
-          for (let i = 0; i < raw.length; i++) {
-            const teoStr = teo[t0 + i];
-            if (!teoStr) continue;
-            const sv = raw[i];
-            let mv: number | null = null;
-            if (sv != null && Number.isFinite(sv) && sv >= 0) {
-              mv = Math.sqrt(sv * 252);
-            }
-            rows.push({
-              symbol,
-              teo: teoStr,
-              periodicity: "daily",
-              metric_key: key,
-              metric_value: mv,
-            });
-          }
-          continue;
-        }
-        if ("asStockVar" in spec && spec.asStockVar) {
-          const vals = await get2Cached(hedgeGrp, "_stock_var");
-          if (!vals) continue;
-          for (let i = 0; i < vals.length; i++) {
-            const teoStr = teo[t0 + i];
-            if (!teoStr) continue;
-            rows.push({
-              symbol,
-              teo: teoStr,
-              periodicity: "daily",
-              metric_key: key,
-              metric_value: vals[i] ?? null,
-            });
-          }
-          continue;
-        }
-        const vals = await get2Cached(hedgeGrp, spec.zarrVar);
-        if (!vals) continue;
-        for (let i = 0; i < vals.length; i++) {
-          const teoStr = teo[t0 + i];
+        if (!hedgeGrp || hedgeIdx === undefined || !hedgeTeo || ht1 <= ht0) continue;
+        const isVolDerived = "derivedVol23d" in spec && spec.derivedVol23d;
+        const isStockVarRaw = "asStockVar" in spec && spec.asStockVar;
+        const zarrVar = isVolDerived || isStockVarRaw ? "_stock_var" : spec.zarrVar;
+        const raw = await readFloatSeriesTeoSymbol(
+          hedgeGrp,
+          zarrVar,
+          ht0,
+          ht1,
+          hedgeIdx,
+        );
+        if (!raw) continue;
+        for (let i = 0; i < raw.length; i++) {
+          const teoStr = hedgeTeo[ht0 + i];
           if (!teoStr) continue;
+          const sv = raw[i];
+          let mv: number | null;
+          if (isVolDerived) {
+            mv = sv != null && Number.isFinite(sv) && sv >= 0 ? Math.sqrt(sv * 252) : null;
+          } else {
+            mv = sv ?? null;
+          }
           rows.push({
             symbol,
             teo: teoStr,
             periodicity: "daily",
             metric_key: key,
-            metric_value: vals[i] ?? null,
+            metric_value: mv,
           });
         }
         continue;
       }
 
       if (spec.role === "returns") {
-        if (!returnsGrp || !levelMaps) continue;
+        if (
+          !returnsGrp ||
+          returnsIdx === undefined ||
+          !returnsTeo ||
+          !levelMaps ||
+          rt1 <= rt0
+        ) continue;
         const li = levelMaps.get(spec.level);
         if (li === undefined) continue;
         const vals = await readFloatSeriesTeoSymbolLevel(
           returnsGrp,
           spec.zarrVar,
-          t0,
-          t1,
-          symbolIndex,
+          rt0,
+          rt1,
+          returnsIdx,
           li,
         );
         if (!vals) continue;
         for (let i = 0; i < vals.length; i++) {
-          const teoStr = teo[t0 + i];
+          const teoStr = returnsTeo[rt0 + i];
           if (!teoStr) continue;
           rows.push({
             symbol,
