@@ -1,13 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
+import {
+  fetchHistory,
+  isZarrHistoryPath,
+  type V3MetricKey,
+  type V3Periodicity,
+} from "@/lib/dal/risk-engine-v3";
+import { getRiskMetadata } from "@/lib/dal/risk-metadata";
+import { buildMetadataBody } from "@/lib/dal/response-headers";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /**
  * GET /api/data/security-history/:symbol
  *
- * Fetch time-series history from security_history (long-form EAV).
+ * Time-series history (long-form EAV). Daily standard metrics are served from
+ * consolidated Zarr on GCS; monthly / unsupported keys use Supabase.
  *
  * Query params:
  *   - keys: comma-separated V3 metric keys (required)
@@ -40,43 +49,47 @@ export async function GET(
   }
 
   const keys = keysParam.split(",").map((k) => k.trim()).filter(Boolean);
-  const periodicity = sp.get("periodicity") ?? "daily";
-  const startDate = sp.get("start");
-  const endDate = sp.get("end");
+  const periodicity = (sp.get("periodicity") ?? "daily") as V3Periodicity;
+  const startDate = sp.get("start") ?? undefined;
+  const endDate = sp.get("end") ?? undefined;
   const order = sp.get("order") ?? "asc";
   const pageSize = Math.min(Number(sp.get("page_size") ?? 5000), 10000);
   const offset = Number(sp.get("offset") ?? 0);
 
-  const supabase = createAdminClient();
+  const metricKeys = keys as V3MetricKey[];
 
-  let query = supabase
-    .from("security_history")
-    .select("symbol, teo, periodicity, metric_key, metric_value")
-    .eq("symbol", symbol)
-    .eq("periodicity", periodicity)
-    .in("metric_key", keys);
+  try {
+    const rows = await fetchHistory(symbol, metricKeys, {
+      periodicity,
+      startDate,
+      endDate,
+      orderBy: order === "asc" ? "asc" : "desc",
+    });
 
-  if (startDate) query = query.gte("teo", startDate);
-  if (endDate) query = query.lte("teo", endDate);
+    const paged = rows.slice(offset, offset + pageSize);
 
-  query = query
-    .order("teo", { ascending: order === "asc" })
-    .range(offset, offset + pageSize - 1);
+    const teos = [...new Set(rows.map((r) => r.teo))].sort();
+    const histRange: [string, string] =
+      teos.length > 0 ? [teos[0]!, teos[teos.length - 1]!] : ["", ""];
 
-  const { data, error } = await query;
+    const metadata = await getRiskMetadata();
+    const fromZarr = isZarrHistoryPath(metricKeys, periodicity);
 
-  if (error) {
-    console.error(`[data/security-history] Error for ${symbol}:`, error);
+    return NextResponse.json({
+      data: paged,
+      pagination: {
+        offset,
+        page_size: pageSize,
+        returned: paged.length,
+        has_more: offset + paged.length < rows.length,
+      },
+      _metadata: buildMetadataBody(metadata, {
+        data_source: fromZarr ? "zarr" : "supabase",
+        range:
+          histRange[0] && histRange[1] ? histRange : undefined,
+      }),
+    });
+  } catch {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
-
-  return NextResponse.json({
-    data: data ?? [],
-    pagination: {
-      offset,
-      page_size: pageSize,
-      returned: (data ?? []).length,
-      has_more: (data ?? []).length === pageSize,
-    },
-  });
 }

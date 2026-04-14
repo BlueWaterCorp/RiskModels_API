@@ -53,11 +53,20 @@ export function addMetadataHeaders(
   response.headers.set("X-Universe-Size", String(metadata.universe_size));
 }
 
+export type HistoryMetadataExtras = {
+  data_source?: "zarr" | "supabase";
+  /** Inclusive ISO date bounds for the returned history window (when applicable). */
+  range?: [string, string];
+};
+
 /**
  * Build _metadata object for JSON response body.
  */
-export function buildMetadataBody(metadata: RiskMetadata): Record<string, unknown> {
-  return {
+export function buildMetadataBody(
+  metadata: RiskMetadata,
+  extras?: HistoryMetadataExtras,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
     model_version: metadata.model_version,
     data_as_of: metadata.data_as_of,
     factor_set_id: metadata.factor_set_id,
@@ -65,4 +74,11 @@ export function buildMetadataBody(metadata: RiskMetadata): Record<string, unknow
     wiki_uri: metadata.wiki_uri,
     factors: [...metadata.factors],
   };
+  if (extras?.data_source) {
+    body.data_source = extras.data_source;
+  }
+  if (extras?.range?.[0] && extras?.range?.[1]) {
+    body.range = extras.range;
+  }
+  return body;
 }

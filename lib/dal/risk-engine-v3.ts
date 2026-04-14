@@ -1,13 +1,24 @@
 /**
- * ERM3 V3 Risk Engine DAL — Supabase-native for RiskModels_API
+ * ERM3 V3 Risk Engine DAL — Supabase + GCS Zarr for RiskModels_API
  *
- * Same exported interface as Risk_Models/lib/dal/risk-engine-v3.ts.
- * Gateway client calls replaced with direct createAdminClient() queries.
+ * Range history for standard daily metrics is read from consolidated Zarr; Supabase
+ * backs latest tables, rankings, monthly keys, and EAV fallbacks. See
+ * docs/API_HISTORY_SUPABASE_AND_ZARR.md.
  *
  * See: docs/supabase/V3_DATA_CONTRACT.md
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readHistorySlice } from "@/lib/dal/zarr-reader";
+import { getRiskMetadata } from "@/lib/dal/risk-metadata";
+import {
+  getZarrSpec,
+  isRankingMetricKey,
+  ZARR_UNSUPPORTED_DAILY_KEYS,
+} from "@/lib/dal/zarr-metric-registry";
+
+/** Calendar lookback for Zarr-backed `fetchLatestMetrics` (avoids scanning full teo axis). */
+const ZARR_LATEST_METRICS_LOOKBACK_DAYS = 400;
 
 // V3 Metric Dictionary (ground truth from V3_DATA_CONTRACT.md)
 export type V3MetricKey =
@@ -278,7 +289,19 @@ export async function resolveSymbolsByTickers(
 // Security history
 // ---------------------------------------------------------------------------
 
-export async function fetchHistory(
+/** True when `fetchHistory` / `fetchBatchHistory` read daily metrics from GCS Zarr. */
+export function isZarrHistoryPath(keys: V3MetricKey[], periodicity: V3Periodicity): boolean {
+  if (periodicity !== "daily") return false;
+  for (const k of keys) {
+    if (ZARR_UNSUPPORTED_DAILY_KEYS.has(k)) return false;
+    if (isRankingMetricKey(k as string)) return false;
+    if (!getZarrSpec(k)) return false;
+  }
+  return keys.length > 0;
+}
+
+/** Supabase EAV history (rankings, monthly betas, unknown keys). */
+async function fetchHistoryFromSupabase(
   symbol: string,
   keys: V3MetricKey[],
   options: FetchHistoryOptions = {},
@@ -315,7 +338,7 @@ export async function fetchHistory(
   }
 }
 
-export async function fetchBatchHistory(
+async function fetchBatchHistoryFromSupabase(
   symbols: string[],
   keys: V3MetricKey[],
   options: FetchHistoryOptions = {},
@@ -352,6 +375,73 @@ export async function fetchBatchHistory(
     console.error("[V3 DAL] Error fetching batch history:", error);
     return [];
   }
+}
+
+/** Daily factor history: consolidated Zarr on GCS (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). */
+export async function fetchHistory(
+  symbol: string,
+  keys: V3MetricKey[],
+  options: FetchHistoryOptions = {},
+): Promise<SecurityHistoryRow[]> {
+  const {
+    periodicity = "daily",
+    startDate,
+    endDate,
+    orderBy = "asc",
+  } = options;
+
+  if (isZarrHistoryPath(keys, periodicity)) {
+    try {
+      const { rows } = await readHistorySlice({
+        symbols: [symbol],
+        keys,
+        periodicity,
+        startDate,
+        endDate,
+        orderBy,
+      });
+      return rows;
+    } catch (e) {
+      console.error("[V3 DAL] Zarr history read failed");
+      return [];
+    }
+  }
+
+  return fetchHistoryFromSupabase(symbol, keys, options);
+}
+
+export async function fetchBatchHistory(
+  symbols: string[],
+  keys: V3MetricKey[],
+  options: FetchHistoryOptions = {},
+): Promise<SecurityHistoryRow[]> {
+  const {
+    periodicity = "daily",
+    startDate,
+    endDate,
+    orderBy = "asc",
+  } = options;
+
+  if (symbols.length === 0) return [];
+
+  if (isZarrHistoryPath(keys, periodicity)) {
+    try {
+      const { rows } = await readHistorySlice({
+        symbols,
+        keys,
+        periodicity,
+        startDate,
+        endDate,
+        orderBy,
+      });
+      return rows;
+    } catch (e) {
+      console.error("[V3 DAL] Zarr batch history read failed");
+      return [];
+    }
+  }
+
+  return fetchBatchHistoryFromSupabase(symbols, keys, options);
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +568,7 @@ export async function fetchBatchLatestSummary(
 }
 
 // ---------------------------------------------------------------------------
-// Latest metrics via security_history (slower, no latest table requirement)
+// Latest metrics when `security_history_latest` is unavailable (EAV tail read)
 // ---------------------------------------------------------------------------
 
 export async function fetchLatestMetrics(
@@ -487,7 +577,20 @@ export async function fetchLatestMetrics(
   periodicity: V3Periodicity = "daily",
 ): Promise<{ teo: string; metrics: Record<string, number | null> } | null> {
   try {
-    const data = await fetchHistory(symbol, keys, { periodicity, orderBy: "desc" });
+    const options: FetchHistoryOptions = {
+      periodicity,
+      orderBy: "desc",
+    };
+    if (isZarrHistoryPath(keys, periodicity)) {
+      const meta = await getRiskMetadata();
+      const end = meta.data_as_of;
+      const start = new Date(`${end}T12:00:00Z`);
+      start.setUTCDate(start.getUTCDate() - ZARR_LATEST_METRICS_LOOKBACK_DAYS);
+      options.startDate = start.toISOString().slice(0, 10);
+      options.endDate = end;
+    }
+
+    const data = await fetchHistory(symbol, keys, options);
 
     if (!data || data.length === 0) return null;
 
@@ -581,7 +684,7 @@ export async function fetchRankingsFromSecurityHistory(
   }
 
   try {
-    const data = await fetchHistory(symbol, keys as V3MetricKey[], {
+    const data = await fetchHistoryFromSupabase(symbol, keys as V3MetricKey[], {
       periodicity: "daily",
       orderBy: "desc",
     });

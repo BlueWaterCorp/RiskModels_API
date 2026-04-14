@@ -181,6 +181,12 @@ Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → A
 
 ---
 
+## Deployment (operators)
+
+- **GCS Zarr + API (GCP step 1–2, Doppler/Vercel, smoke tests):** [docs/DEPLOY_ZARR_GCS_API.md](docs/DEPLOY_ZARR_GCS_API.md) — links bucket layout, read-only SA, env vars, and shipping the Next.js app. Architecture: [docs/API_HISTORY_SUPABASE_AND_ZARR.md](docs/API_HISTORY_SUPABASE_AND_ZARR.md).
+
+---
+
 ## Support
 
 - **Issues & feature requests:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)

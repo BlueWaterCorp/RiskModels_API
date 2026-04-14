@@ -71,18 +71,19 @@ sync_var() {
   local value=$2
   local env=$3
 
-  vercel env rm "$var" "$env" --yes 2>/dev/null || true
+  # vercel env rm still supports -y; vercel env add (CLI 50+) has no --yes — stdin + --force is non-interactive
+  vercel env rm "$var" "$env" -y 2>/dev/null || true
 
   if is_sensitive "$var"; then
     echo "🔐 $var → $env (sensitive)"
     if [[ "$env" == "development" ]]; then
-      printf '%s' "$value" | vercel env add "$var" "$env" --force --yes
+      printf '%s' "$value" | vercel env add "$var" "$env" --force
     else
-      printf '%s' "$value" | vercel env add "$var" "$env" --force --yes --sensitive
+      printf '%s' "$value" | vercel env add "$var" "$env" --force --sensitive
     fi
   else
     echo "📝 $var → $env"
-    printf '%s' "$value" | vercel env add "$var" "$env" --force --yes
+    printf '%s' "$value" | vercel env add "$var" "$env" --force
   fi
 }
 

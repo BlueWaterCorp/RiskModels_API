@@ -7,6 +7,8 @@ import { addMetadataHeaders, buildMetadataBody, buildEtag, maybe304 } from "@/li
 import { formatResponse, parseFormat } from "@/lib/api/format-response";
 import { TickerReturnsRequestSchema } from "@/lib/api/schemas";
 
+export const runtime = "nodejs";
+
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const { searchParams } = new URL(request.url);
@@ -69,6 +71,10 @@ export const GET = withBilling(
     });
 
     const pivoted = pivotHistory(rows);
+    const histRange: [string, string] =
+      pivoted.length > 0
+        ? [pivoted[0]!.teo, pivoted[pivoted.length - 1]!.teo]
+        : ["", ""];
     const data = pivoted.map((row) => ({
       date: row.teo,
       returns_gross: row.returns_gross ?? null,
@@ -108,7 +114,10 @@ export const GET = withBilling(
           sector_etf: symbolRecord.sector_etf || "XLK",
           universe: "US_EQUITY",
         },
-        _metadata: buildMetadataBody(metadata),
+        _metadata: buildMetadataBody(metadata, {
+          data_source: "zarr",
+          range: histRange[0] && histRange[1] ? histRange : undefined,
+        }),
       },
     });
     addMetadataHeaders(response, metadata);

@@ -28,7 +28,7 @@ export interface L3DecompositionResult {
 
 export class L3DecompositionService {
   /**
-   * Get L3 risk decomposition for a ticker from V3 `security_history`.
+   * Get L3 risk decomposition for a ticker from daily Zarr-backed history (`fetchHistory`).
    * @param ticker Stock ticker symbol (e.g. AAPL)
    * @param marketFactorEtf Market factor ETF (default: SPY)
    */
@@ -41,7 +41,7 @@ export class L3DecompositionService {
     return this.getDecompositionFromSecurityHistory(upperTicker, marketFactorEtf);
   }
 
-  /** V3 contract path: query security_history with V3 metric keys. */
+  /** V3 contract path: daily L3 series from GCS Zarr via `fetchHistory`. */
   private async getDecompositionFromSecurityHistory(
     ticker: string,
     marketFactorEtf: string
@@ -82,7 +82,7 @@ export class L3DecompositionService {
       l3_res_er: pivoted.map(p => p.l3_res_er as number ?? null),
       market_factor_etf: marketFactorEtf,
       universe: 'US_EQUITY',
-      data_source: 'security_history',
+      data_source: 'zarr',
     };
     } catch (err) {
       console.error('[L3DecompositionService] Error for', ticker, ':', err instanceof Error ? err.message : err);
