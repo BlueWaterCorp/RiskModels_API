@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import CodeBlock from '@/components/CodeBlock';
 import QuickstartCodeExamples from '@/components/QuickstartCodeExamples';
-import QuickstartDemoKey from '@/components/QuickstartDemoKey';
+import QuickstartApiKeyCallout from '@/components/QuickstartApiKeyCallout';
 import { ArrowRight } from 'lucide-react';
 
 const pythonSdkSingleTicker = `from riskmodels import RiskModelsClient
@@ -136,7 +136,7 @@ export default function QuickstartPage() {
               <p className="text-zinc-400 mb-4">
                 Sign up and generate your API key — takes under a minute. No password needed.
               </p>
-              <QuickstartDemoKey />
+              <QuickstartApiKeyCallout />
               <Link
                 href="/get-key"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors"

@@ -116,6 +116,21 @@ function getRatelimiter(requestsPerMinute: number): Ratelimit | null {
   return _limiters.get(requestsPerMinute)!;
 }
 
+type RatelimitResult = Awaited<ReturnType<Ratelimit["limit"]>>;
+
+/** Upstash may reject requests (wrong token, outage). Never take the whole API down — skip RL. */
+async function tryRatelimit(
+  limiter: Ratelimit,
+  key: string,
+): Promise<RatelimitResult | null> {
+  try {
+    return await limiter.limit(key);
+  } catch (err) {
+    console.error("[Billing] Rate limiter error (fail open):", err);
+    return null;
+  }
+}
+
 export interface BillingOptions {
   capabilityId: string;
   itemCount?: number;
@@ -181,10 +196,12 @@ export function withBilling(
             req.headers.get("cf-connecting-ip") ||
             "unknown";
           const ip = ipRaw.slice(0, 128);
-          const { success, limit, remaining, reset } = await limiter.limit(
+          const rl = await tryRatelimit(
+            limiter,
             `public:${options.capabilityId}:${ip}`,
           );
-          if (!success) {
+          if (rl && !rl.success) {
+            const { limit, remaining, reset } = rl;
             const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
             // 200 so Shields.io Endpoint badges show a grey error badge instead of a transport failure
             return new NextResponse(
@@ -274,8 +291,9 @@ export function withBilling(
       if (apiKey && apiKeyRateLimit && apiKeyRateLimit > 0) {
         const limiter = getRatelimiter(apiKeyRateLimit);
         if (limiter) {
-          const { success, limit, remaining, reset } = await limiter.limit(apiKey);
-          if (!success) {
+          const rl = await tryRatelimit(limiter, apiKey);
+          if (rl && !rl.success) {
+            const { limit, remaining, reset } = rl;
             const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
             return new NextResponse(
               JSON.stringify({

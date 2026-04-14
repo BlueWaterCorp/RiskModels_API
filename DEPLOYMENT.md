@@ -53,7 +53,7 @@ The table above is the **baseline** production set—assume you need all of them
 | **Outbound webhooks** (`POST /api/webhooks/subscribe`, `batch.completed` notifications) | **None.** Signing uses **per-subscription secrets in Supabase**, not a global env var. | Apply [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql). Keep **`SUPABASE_SERVICE_ROLE_KEY`** set so the API can read/write `webhook_subscriptions`. |
 | **Trusted gateway** (`/api/data/*` with service key) | **`RISKMODELS_API_SERVICE_KEY`** is the key for that pattern (already in the table). | Not webhook-specific—same variable as gateway auth. |
 | **PyPI Python SDK (`riskmodels-py`)** | **None** on Vercel | Users install from PyPI; no extra server env for “0.2.0 SDK” itself. |
-| **Landing “Live Demo”** / hashed API keys | Often **`NEXT_PUBLIC_DEMO_API_KEY`**, **`API_KEY_SECRET`**, **`API_KEY_SALT`** | Listed in [`.env.example`](./.env.example); **not** in `npm run vercel:sync-env`—set manually in Vercel or Doppler if you use those features. |
+| **Hashed API keys** (`rm_agent_*` / `rm_user_*`) | **`API_KEY_SECRET`**, **`API_KEY_SALT`** | Set in Vercel or Doppler; **not** in the default `vercel:sync-env` allowlist. The landing “try” block uses a **public** `GET /api/tickers?mag7=true` curl (no demo env var). |
 
 So: **webhooks did not add a new row to the Vercel env table**—they rely on **Supabase + the migration** plus the service role key you already use for server-side DB access.
 

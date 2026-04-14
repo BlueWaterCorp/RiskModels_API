@@ -29,6 +29,7 @@ node_modules/
 # Testing
 coverage/
 .nyc_output
+notebooks/.quickstart-executed.ipynb
 
 # Claude Code / Cursor local tooling (machine-specific paths)
 .claude/
