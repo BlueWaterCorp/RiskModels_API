@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Table,
   TableBody,
@@ -10,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/Table';
-import { Activity, AlertCircle, CreditCard, DollarSign } from 'lucide-react';
+import { Activity, AlertCircle, CreditCard, DollarSign, LogOut } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 type UsageData = {
   balance: number;
@@ -34,10 +36,21 @@ function formatUsd(n: number) {
 }
 
 export default function UsagePage() {
+  const router = useRouter();
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unauthorized, setUnauthorized] = useState(false);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+
+  const handleSignOut = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setAccountEmail(null);
+    router.refresh();
+    setUnauthorized(true);
+    setData(null);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +65,7 @@ export default function UsagePage() {
           if (!cancelled) {
             setUnauthorized(true);
             setData(null);
+            setAccountEmail(null);
           }
           return;
         }
@@ -62,7 +76,12 @@ export default function UsagePage() {
           );
         }
         const json = (await res.json()) as UsageData;
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData(json);
+          const supabase = createClient();
+          const { data: u } = await supabase.auth.getUser();
+          setAccountEmail(u.user?.email ?? null);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load usage data');
@@ -150,11 +169,28 @@ export default function UsagePage() {
   return (
     <div className="min-h-screen bg-zinc-950 py-16 px-4">
       <div className="max-w-5xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-100">Usage &amp; spend</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Balance and billable API activity this month (debit events).
-          </p>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-100">Usage &amp; spend</h1>
+            <p className="text-zinc-400 text-sm mt-1">
+              Balance and billable API activity this month (debit events).
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 sm:justify-end sm:pt-0.5 flex-shrink-0">
+            {accountEmail && (
+              <span className="text-xs text-zinc-500 truncate max-w-[min(100%,20rem)]" title={accountEmail}>
+                {accountEmail}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              <LogOut size={14} aria-hidden />
+              Sign out
+            </button>
+          </div>
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 mb-8">

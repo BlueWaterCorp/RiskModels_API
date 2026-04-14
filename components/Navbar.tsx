@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import Logo from './Logo';
 import PortalSearch from './PortalSearch';
-import { Menu, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { LogOut, Menu, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 
@@ -17,6 +17,7 @@ function navActive(pathname: string, href: string): boolean {
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
@@ -32,6 +33,14 @@ export default function Navbar() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleSignOut = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setUser(null);
+    setMobileMenuOpen(false);
+    router.refresh();
+  }, [router]);
 
   const navLinks = [
     { href: '/docs/api', label: 'Docs' },
@@ -74,7 +83,24 @@ export default function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center gap-2 lg:gap-3 flex-shrink-0 ml-auto">
-            {!user && (
+            {user ? (
+              <>
+                <span
+                  className="hidden xl:inline text-xs text-zinc-500 max-w-[200px] truncate"
+                  title={user.email ?? undefined}
+                >
+                  {user.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-200 transition-colors px-1"
+                >
+                  <LogOut size={14} className="opacity-80" aria-hidden />
+                  Sign out
+                </button>
+              </>
+            ) : (
               <Link
                 href="/get-key"
                 className="text-sm font-medium text-zinc-500 hover:text-zinc-200 transition-colors px-1"
@@ -86,7 +112,7 @@ export default function Navbar() {
               href="/get-key"
               className="px-3.5 py-2 text-sm font-semibold rounded-lg bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-md shadow-blue-950/30 ring-1 ring-white/10 hover:from-blue-400 hover:to-blue-500 transition-all"
             >
-              {user ? 'Dashboard' : 'Get API Key'}
+              {user ? 'API keys' : 'Get API Key'}
             </Link>
           </div>
 
@@ -123,7 +149,23 @@ export default function Navbar() {
               })}
             </div>
             <div className="pt-3 border-t border-zinc-800 space-y-2">
-              {!user && (
+              {user ? (
+                <>
+                  {user.email && (
+                    <p className="text-center text-xs text-zinc-500 px-2 truncate" title={user.email}>
+                      {user.email}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleSignOut()}
+                    className="w-full flex items-center justify-center gap-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 py-2"
+                  >
+                    <LogOut size={16} aria-hidden />
+                    Sign out
+                  </button>
+                </>
+              ) : (
                 <Link
                   href="/get-key"
                   className="block text-center text-sm font-medium text-zinc-400 hover:text-zinc-200 py-2"
@@ -137,7 +179,7 @@ export default function Navbar() {
                 className="block px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-b from-blue-500 to-blue-600 rounded-lg text-center transition-all shadow-md shadow-blue-950/25"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                {user ? 'Dashboard' : 'Get API Key'}
+                {user ? 'API keys' : 'Get API Key'}
               </Link>
             </div>
           </div>
