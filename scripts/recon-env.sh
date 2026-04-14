@@ -58,10 +58,17 @@ if [[ ! -f "$ALLOWLIST" ]]; then
   exit 1
 fi
 
-VERCEL_JSON="$(vercel env ls "$VERCEL_TARGET" --format json 2>/dev/null)" || {
-  echo "❌ vercel env ls failed — run vercel login and link this directory"
+_vercel_err="$(mktemp)"
+VERCEL_JSON="$(vercel env ls "$VERCEL_TARGET" --format json 2>"$_vercel_err")" || {
+  echo "❌ vercel env ls failed (target: $VERCEL_TARGET)."
+  if [[ -s "$_vercel_err" ]]; then
+    sed 's/^/   /' "$_vercel_err"
+  fi
+  rm -f "$_vercel_err"
+  echo "   Fix: npx vercel login  then  npx vercel link  (in $REPO_ROOT; .vercel/ is gitignored)"
   exit 1
 }
+rm -f "$_vercel_err"
 
 if ! echo "$VERCEL_JSON" | jq -e '.envs' >/dev/null 2>&1; then
   echo "❌ Unexpected Vercel JSON output"
