@@ -62,6 +62,26 @@ export function toL3DecompositionPublicBody(
 }
 
 export class L3DecompositionService {
+  private emptyDecomposition(
+    ticker: string,
+    marketFactorEtf: string,
+  ): L3DecompositionResult {
+    return {
+      ticker,
+      dates: [],
+      l3_mkt_hr: [],
+      l3_sec_hr: [],
+      l3_sub_hr: [],
+      l3_mkt_er: [],
+      l3_sec_er: [],
+      l3_sub_er: [],
+      l3_res_er: [],
+      market_factor_etf: marketFactorEtf,
+      universe: "US_EQUITY",
+      data_source: "zarr",
+    };
+  }
+
   /**
    * Get L3 risk decomposition for a ticker from daily Zarr-backed history (`fetchHistory`).
    * @param ticker Stock ticker symbol (e.g. AAPL)
@@ -107,10 +127,15 @@ export class L3DecompositionService {
         orderBy: 'asc',
       });
 
-      if (rows.length === 0) return null;
+      // Match GET /ticker-returns: known ticker + empty history → 200 with empty arrays, not 404.
+      if (rows.length === 0) {
+        return this.emptyDecomposition(ticker, marketFactorEtf);
+      }
 
       const pivoted = pivotHistory(rows);
-      if (pivoted.length === 0) return null;
+      if (pivoted.length === 0) {
+        return this.emptyDecomposition(ticker, marketFactorEtf);
+      }
 
       const dates = pivoted.map(p => p.teo);
 
