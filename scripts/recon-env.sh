@@ -58,8 +58,9 @@ if [[ ! -f "$ALLOWLIST" ]]; then
   exit 1
 fi
 
+# Vercel CLI 50+ removed `vercel env ls --format json`; parse the text table.
 _vercel_err="$(mktemp)"
-VERCEL_JSON="$(vercel env ls "$VERCEL_TARGET" --format json 2>"$_vercel_err")" || {
+_vercel_out="$(vercel env ls "$VERCEL_TARGET" --no-color 2>"$_vercel_err")" || {
   echo "❌ vercel env ls failed (target: $VERCEL_TARGET)."
   if [[ -s "$_vercel_err" ]]; then
     sed 's/^/   /' "$_vercel_err"
@@ -70,12 +71,12 @@ VERCEL_JSON="$(vercel env ls "$VERCEL_TARGET" --format json 2>"$_vercel_err")" |
 }
 rm -f "$_vercel_err"
 
-if ! echo "$VERCEL_JSON" | jq -e '.envs' >/dev/null 2>&1; then
-  echo "❌ Unexpected Vercel JSON output"
-  exit 1
-fi
-
-VERCEL_KEYS_JSON="$(echo "$VERCEL_JSON" | jq -c '[.envs[].key] | unique')"
+VERCEL_KEYS_JSON="$(
+  echo "$_vercel_out" | awk '
+    $1 == "name" && $2 == "value" { hdr = 1; next }
+    hdr && NF >= 2 && $1 ~ /^[A-Za-z_][A-Za-z0-9_]*$/ { print $1 }
+  ' | jq -R -s -c "split(\"\\n\") | map(select(length > 0))"
+)"
 
 doppler_has() {
   local key=$1
