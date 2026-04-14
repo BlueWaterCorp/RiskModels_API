@@ -182,6 +182,19 @@ def _symbol_for_ticker(ds: xr.Dataset, ticker: str) -> str:
     raise ValueError(f"No symbol for ticker {ticker} in {list(ds.dims)}")
 
 
+def symbol_for_ticker_zarr(ticker: str, zarr_root: Path | None = None) -> str:
+    """Public helper: resolve human ticker to bw_sym_id using ``ds_daily.zarr``."""
+    root = Path(zarr_root) if zarr_root is not None else _default_zarr_root()
+    daily = root / "ds_daily.zarr"
+    if not daily.is_dir():
+        raise FileNotFoundError(f"ds_daily.zarr not found under {root}")
+    ds = xr.open_zarr(daily, consolidated=True)
+    try:
+        return _symbol_for_ticker(ds, ticker.upper())
+    finally:
+        ds.close()
+
+
 def _etf_symbol(ds_etf: xr.Dataset, etf_ticker: str) -> str:
     tick = ds_etf["ticker"].values.astype(str)
     idx = np.where(tick == etf_ticker.upper())[0]

@@ -82,6 +82,8 @@ class DDData:
     peer_sharpes: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
     # Multi-year alpha quality trajectory (kept for cache compat)
     alpha_trajectory: list[tuple[str, float, float]] = field(default_factory=list)
+    # SEC / LLM plain-text blurb (ERM3 company_profiles); left panel when set
+    company_profile_text: str | None = None
 
     # Delegate common fields
     @property
@@ -148,8 +150,14 @@ class DDData:
             for k, v in ps_raw.items()
         } if ps_raw else {}
 
-        return cls(p1=p1, peer_comparison=pc, peer_correlations=peer_correlations,
-                   peer_sharpes=peer_sharpes, alpha_trajectory=alpha_trajectory)
+        return cls(
+            p1=p1,
+            peer_comparison=pc,
+            peer_correlations=peer_correlations,
+            peer_sharpes=peer_sharpes,
+            alpha_trajectory=alpha_trajectory,
+            company_profile_text=d.get("company_profile_text"),
+        )
 
 
 def _rebuild_peer_comparison(pc_raw: dict) -> PeerComparison:
@@ -377,10 +385,14 @@ def get_data_for_dd(ticker: str, client: Any, *, years: int = 3) -> DDData:
     except Exception:
         pass  # graceful degradation — scatter works without trajectory
 
-    return DDData(p1=p1, peer_comparison=peer_comparison,
-                  peer_correlations=peer_correlations,
-                  peer_sharpes=peer_sharpes,
-                  alpha_trajectory=alpha_trajectory)
+    return DDData(
+        p1=p1,
+        peer_comparison=peer_comparison,
+        peer_correlations=peer_correlations,
+        peer_sharpes=peer_sharpes,
+        alpha_trajectory=alpha_trajectory,
+        company_profile_text=None,
+    )
 
 T = PLOTLY_THEME
 
@@ -1465,6 +1477,20 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     page.text(MARGIN, py, f"{data.ticker}  ·  {data.teo}",
               font_size=LBL_SZ, color=TEXT_MID)
     py += int(LBL_SZ * 1.4) + 10
+
+    # SEC / LLM company profile (ERM3 pipeline) — matches Supabase company_snapshot text
+    cp = getattr(data, "company_profile_text", None)
+    if cp and str(cp).strip():
+        _section("BUSINESS PROFILE")
+        py = page.text(
+            MARGIN,
+            py,
+            str(cp).strip(),
+            font_size=METH_BODY,
+            color=TEXT_DARK,
+            max_width=PANEL_W,
+        )
+        py += SECTION_GAP
 
     # IDENTITY
     _section("IDENTITY")
