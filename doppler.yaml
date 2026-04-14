@@ -11,6 +11,12 @@
 #   doppler secrets get STRIPE_SECRET_KEY   # Get a specific secret
 #   npm run doppler:env                # Export to .env.local (for curl testing)
 #   npm run vercel:sync-env:doppler    # Push prd secrets to Vercel production
+#
+# Maintainer-only (not synced to Vercel): store SUPABASE_MANAGEMENT_ACCESS_TOKEN in Doppler
+# (Supabase Dashboard, Account, Access tokens), then:
+#   DOPPLER_CONFIG=prd npm run supabase:auth-smtp:resend:doppler
+# (Uses -p erm3 -c $DOPPLER_CONFIG via scripts/supabase-auth-smtp-doppler.sh; override DOPPLER_PROJECT if needed.)
+# Uses RESEND_API_KEY and NEXT_PUBLIC_SUPABASE_URL from that config unless you set SUPABASE_PROJECT_REF.
 
 setup:
   - project: erm3
