@@ -42,7 +42,10 @@ export async function POST() {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'setup',
-      payment_method_types: ['card'],
+      // Link + card — phone / in-app verification flows need Link; metadata alone can be dropped in edge cases,
+      // so client_reference_id duplicates user id for setup-success.
+      payment_method_types: ['card', 'link'],
+      client_reference_id: user.id,
       success_url: `${getAppUrl()}/api/stripe/setup-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${getAppUrl()}/get-key?stripe=cancelled`,
       custom_text: {

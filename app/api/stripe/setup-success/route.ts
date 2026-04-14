@@ -15,6 +15,19 @@ const DEFAULT_REFILL_THRESHOLD = 5.0;
 /** Preferred refill size (USD) — stored for when they opt in; auto-refill is off at signup. */
 const DEFAULT_REFILL_AMOUNT = 50.0;
 
+function setupIntentFromSession(session: Stripe.Checkout.Session): Stripe.SetupIntent | null {
+  const si = session.setup_intent;
+  if (!si || typeof si === 'string') return null;
+  return si as Stripe.SetupIntent;
+}
+
+/** After Link / phone verification, Checkout can still be `open` briefly while SetupIntent is already `succeeded`. */
+function isCheckoutSetupFinished(session: Stripe.Checkout.Session, setupIntent: Stripe.SetupIntent | null): boolean {
+  if (session.status === 'complete') return true;
+  if (setupIntent?.status === 'succeeded') return true;
+  return false;
+}
+
 export async function GET(req: NextRequest) {
   const sessionId = req.nextUrl.searchParams.get('session_id');
   const appUrl = getAppUrl();
@@ -26,29 +39,60 @@ export async function GET(req: NextRequest) {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
     const admin = createAdminClient();
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.status !== 'complete') {
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['setup_intent'],
+    });
+
+    let setupIntent = setupIntentFromSession(session);
+    if (!setupIntent && session.setup_intent && typeof session.setup_intent === 'string') {
+      setupIntent = await stripe.setupIntents.retrieve(session.setup_intent);
+    }
+
+    if (
+      setupIntent?.status === 'processing' ||
+      setupIntent?.status === 'requires_action' ||
+      setupIntent?.status === 'requires_confirmation'
+    ) {
+      console.warn('[setup-success] setup_intent still pending', {
+        sessionId,
+        sessionStatus: session.status,
+        setupIntentStatus: setupIntent.status,
+      });
+      return NextResponse.redirect(`${appUrl}/get-key?stripe=processing`);
+    }
+
+    if (!isCheckoutSetupFinished(session, setupIntent)) {
+      console.warn('[setup-success] session not ready', {
+        sessionId,
+        sessionStatus: session.status,
+        setupIntentStatus: setupIntent?.status ?? null,
+      });
       return NextResponse.redirect(`${appUrl}/get-key?stripe=incomplete`);
     }
 
-    const userId = session.metadata?.user_id;
+    const userId = session.metadata?.user_id || session.client_reference_id || undefined;
     if (!userId) {
+      console.error('[setup-success] missing user id on session', { sessionId, hasMetadata: !!session.metadata });
       return NextResponse.redirect(`${appUrl}/get-key?stripe=error`);
     }
 
-    const setupIntent = session.setup_intent
-      ? await stripe.setupIntents.retrieve(session.setup_intent as string)
-      : null;
-    const paymentMethodId = setupIntent?.payment_method as string | undefined;
+    const paymentMethodId =
+      (setupIntent?.payment_method as string | undefined) ?? undefined;
 
     const { data: { user } } = await admin.auth.admin.getUserById(userId);
     const email = user?.email || '';
 
-    const { data: existingAccount } = await admin
+    const { data: existingAccount, error: accountSelectErr } = await admin
       .from('agent_accounts')
       .select('id, balance_usd')
       .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
+
+    if (accountSelectErr) {
+      console.error('[setup-success] agent_accounts select error:', accountSelectErr);
+    }
 
     if (existingAccount) {
       const current = parseFloat(String(existingAccount.balance_usd ?? 0));
@@ -77,7 +121,7 @@ export async function GET(req: NextRequest) {
         user_id: userId,
         agent_id: `api_${Date.now()}`,
         agent_name: email || 'API User',
-        contact_email: email,
+        contact_email: email || session.customer_details?.email || 'pending@riskmodels.app',
         balance_usd: FREE_CREDIT_USD,
         stripe_customer_id: session.customer as string,
         stripe_payment_method_id: paymentMethodId ?? null,
@@ -92,12 +136,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const { data: existingUserKey } = await admin
+    const { data: existingUserKey, error: keySelectErr } = await admin
       .from('user_generated_api_keys')
       .select('id')
       .eq('user_id', userId)
       .is('revoked_at', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
+
+    if (keySelectErr) {
+      console.error('[setup-success] user_generated_api_keys select error:', keySelectErr);
+    }
 
     if (!existingUserKey) {
       const keyMaterial = generateUserApiKey('live');

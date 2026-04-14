@@ -92,9 +92,19 @@ function GetKeyPage() {
   const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string } | null>(null);
   const [genError, setGenError] = useState('');
 
-  // Stripe flow
+  // Stripe flow — matches redirect query params from /api/stripe/setup-success
   const [stripeLoading, setStripeLoading] = useState(false);
-  const [stripeStatus, setStripeStatus] = useState<'success' | 'cancelled' | 'error' | null>(null);
+  const [stripeSetupError, setStripeSetupError] = useState('');
+  const [stripeStatus, setStripeStatus] = useState<
+    | 'success'
+    | 'cancelled'
+    | 'error'
+    | 'incomplete'
+    | 'account_error'
+    | 'key_error'
+    | 'processing'
+    | null
+  >(null);
 
   // Handle code exchange and stripe query params on mount
   useEffect(() => {
@@ -106,7 +116,17 @@ function GetKeyPage() {
     const stripe = searchParams.get('stripe');
 
     if (stripe) {
-      setStripeStatus(stripe as 'success' | 'cancelled' | 'error');
+      const allowed = new Set([
+        'success',
+        'cancelled',
+        'error',
+        'incomplete',
+        'account_error',
+        'key_error',
+        'processing',
+      ]);
+      setStripeStatus(allowed.has(stripe) ? (stripe as typeof stripeStatus) : 'error');
+      router.replace('/get-key');
     }
 
     if (code) {
@@ -153,6 +173,12 @@ function GetKeyPage() {
     if (user) fetchAccountData();
   }, [user, fetchAccountData]);
 
+  useEffect(() => {
+    if (user && stripeStatus === 'success') {
+      void fetchAccountData();
+    }
+  }, [user, stripeStatus, fetchAccountData]);
+
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -196,11 +222,20 @@ function GetKeyPage() {
 
   const startStripeSetup = async () => {
     setStripeLoading(true);
+    setStripeSetupError('');
     const res = await fetch('/api/stripe/setup-session', { method: 'POST' });
     if (res.ok) {
       const { url } = await res.json();
       window.location.href = url;
     } else {
+      let msg = 'Could not start Stripe checkout. Try again or sign out and back in.';
+      try {
+        const j = (await res.json()) as { error?: string };
+        if (j.error) msg = j.error;
+      } catch {
+        /* ignore */
+      }
+      setStripeSetupError(msg);
       setStripeLoading(false);
     }
   };
@@ -404,7 +439,45 @@ function GetKeyPage() {
         {stripeStatus === 'error' && (
           <div className="mb-6 rounded-xl border border-red-800/40 bg-red-950/20 p-4 flex items-start gap-3">
             <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-red-400 text-sm">Something went wrong. Please try again or contact support.</p>
+            <p className="text-red-400 text-sm">
+              Something went wrong finishing card setup. Try &quot;Add card&quot; again. If it keeps failing, contact support with your sign-in email.
+            </p>
+          </div>
+        )}
+
+        {stripeStatus === 'incomplete' && (
+          <div className="mb-6 rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 flex items-start gap-3">
+            <AlertCircle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-amber-200/90 text-sm">
+              Stripe checkout did not complete. Finish entering your card or try &quot;Add card&quot; again.
+            </p>
+          </div>
+        )}
+
+        {stripeStatus === 'processing' && (
+          <div className="mb-6 rounded-xl border border-blue-800/40 bg-blue-950/20 p-4 flex items-start gap-3">
+            <AlertCircle size={16} className="text-blue-400 flex-shrink-0 mt-0.5" />
+            <p className="text-blue-200/90 text-sm">
+              Verification is still finishing (common after Link / SMS). Wait a few seconds and refresh this page — your credits and key should appear once Stripe marks the session complete.
+            </p>
+          </div>
+        )}
+
+        {stripeStatus === 'account_error' && (
+          <div className="mb-6 rounded-xl border border-red-800/40 bg-red-950/20 p-4 flex items-start gap-3">
+            <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-red-400 text-sm">
+              Your card may be saved, but we could not update your billing account. Contact support with your sign-in email so we can link it manually.
+            </p>
+          </div>
+        )}
+
+        {stripeStatus === 'key_error' && (
+          <div className="mb-6 rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 flex items-start gap-3">
+            <AlertCircle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-amber-200/90 text-sm">
+              Card verified and credits should be on your account, but automatic key creation failed. If you see &quot;Generate&quot; below, create a key there; otherwise refresh the page or contact support.
+            </p>
           </div>
         )}
 
@@ -422,6 +495,11 @@ function GetKeyPage() {
                 <p className="text-zinc-400 text-sm mb-4 leading-relaxed">
                   Add a card for identity verification. <strong className="text-zinc-200">You won&apos;t be charged</strong> — the $20 credit is yours to use immediately. Auto-refill kicks in only when you choose to top up.
                 </p>
+                {stripeSetupError && (
+                  <p className="text-red-400 text-xs mb-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
+                    {stripeSetupError}
+                  </p>
+                )}
                 <button onClick={startStripeSetup} disabled={stripeLoading}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors">
                   <CreditCard size={15} />
