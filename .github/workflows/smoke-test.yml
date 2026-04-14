@@ -28,14 +28,21 @@ jobs:
       TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
 
     steps:
-      - name: Health check
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://riskmodels.app/api/health)
-          if [ "$STATUS" != "200" ]; then
-            echo "❌ /api/health returned $STATUS"
-            exit 1
-          fi
-          echo "✅ /api/health → $STATUS"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Build CLI
+        working-directory: cli
+        run: npm ci && npm run build
+
+      - name: Health check (CLI — retries slow / 5xx deploys)
+        working-directory: cli
+        run: node dist/index.js health
 
       - name: OpenAPI spec accessible
         run: |

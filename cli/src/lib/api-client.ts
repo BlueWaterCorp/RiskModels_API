@@ -1,6 +1,17 @@
 import type { ResolvedApiAuth } from "./credentials.js";
 import { getAuthorizationHeader, invalidateAuthForRetry } from "./credentials.js";
 
+/** Thrown on non-2xx API responses so callers can inspect `status` (e.g. retries on 503). */
+export class ApiHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiHttpError";
+    this.status = status;
+  }
+}
+
 export type ApiJsonResult = {
   body: unknown;
   costUsd?: string;
@@ -55,7 +66,7 @@ export async function apiFetchJson(
     }
     if (!res.ok) {
       const msg = errorMessageFromBody(body) || `HTTP ${res.status}`;
-      throw new Error(msg);
+      throw new ApiHttpError(res.status, msg);
     }
     return { body, costUsd, status: res.status, headers: res.headers };
   }
@@ -70,6 +81,7 @@ export async function apiFetchOptionalAuth(
     query?: Record<string, string | number | boolean | undefined | null>;
     jsonBody?: unknown;
     auth?: ResolvedApiAuth | null;
+    signal?: AbortSignal;
   },
 ): Promise<ApiJsonResult> {
   const url = buildUrl(apiRoot, path, options?.query);
@@ -84,6 +96,7 @@ export async function apiFetchOptionalAuth(
     method,
     headers,
     body: options?.jsonBody !== undefined ? JSON.stringify(options.jsonBody) : undefined,
+    signal: options?.signal,
   });
   const costUsd = res.headers.get("x-api-cost-usd") ?? undefined;
   const text = await res.text();
@@ -95,7 +108,7 @@ export async function apiFetchOptionalAuth(
   }
   if (!res.ok) {
     const msg = errorMessageFromBody(body) || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new ApiHttpError(res.status, msg);
   }
   return { body, costUsd, status: res.status, headers: res.headers };
 }
