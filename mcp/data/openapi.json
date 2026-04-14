@@ -5146,7 +5146,7 @@
     "/health": {
       "get": {
         "summary": "Service health check",
-        "description": "Returns current service status, version, capability availability (from recent billing_events), latest-session gross-return coverage (EODHD completeness signal), and optional macro_factors freshness for macro factor APIs (see macro_factors in the response). Free, no auth required.\n",
+        "description": "Returns current service status, version, capability availability (from recent billing_events), latest-session gross-return coverage (completeness signal), and optional macro_factors freshness for macro factor APIs (see macro_factors in the response). Free, no auth required.\n",
         "operationId": "getHealth",
         "tags": [
           "Utility"
@@ -5194,7 +5194,7 @@
                     },
                     "teo_coverage": {
                       "type": "object",
-                      "description": "Coverage of returns_gross at the newest teo in security_history vs stock universe; sparse values suggest EODHD not yet published for that session (10% threshold, same as ERM3 T check).",
+                      "description": "Coverage of returns_gross at the newest teo in security_history vs stock universe; sparse values suggest the latest session is still backfilling (10% threshold).",
                       "properties": {
                         "latest_teo": {
                           "type": "string",
@@ -5212,7 +5212,7 @@
                           "nullable": true,
                           "description": "Percent 0–100 of universe with non-null gross return at latest_teo."
                         },
-                        "eodhd_latest_session_pending": {
+                        "latest_session_returns_pending": {
                           "type": "boolean"
                         },
                         "query_error": {

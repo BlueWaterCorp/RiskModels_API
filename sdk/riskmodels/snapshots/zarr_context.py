@@ -24,6 +24,19 @@ import xarray as xr
 
 from ._data import StockContext
 
+# Default on-disk layout under ERM3 ``data/stock_data/`` (zarr leaf + SQLite/CSV aux).
+# Override with ``ERM3_STOCK_PIPELINE_DIR`` / ``ERM3_SECURITY_MASTER_DB`` if your tree differs.
+_DEFAULT_STOCK_PIPELINE_SUBDIR = "eodhd"
+_DEFAULT_STOCK_PIPELINE_SQLITE = "eodhd_extractions.db"
+
+
+def _stock_pipeline_subdir() -> str:
+    return os.environ.get("ERM3_STOCK_PIPELINE_DIR", _DEFAULT_STOCK_PIPELINE_SUBDIR)
+
+
+def _stock_pipeline_sqlite_name() -> str:
+    return os.environ.get("ERM3_SECURITY_MASTER_DB", _DEFAULT_STOCK_PIPELINE_SQLITE)
+
 
 def _riskmodels_repo_root() -> Path:
     """``sdk/riskmodels/snapshots/zarr_context.py`` → RiskModels_API repo root."""
@@ -38,24 +51,35 @@ def _default_erm3_root() -> Path:
 
 
 def _default_zarr_root() -> Path:
-    """Prefer ``ERM3_ZARR_ROOT``; else ``<ERM3>/data/stock_data/zarr/eodhd``."""
+    """Prefer ``ERM3_ZARR_ROOT``; else ``<ERM3>/data/stock_data/zarr/<pipeline>``."""
     if os.environ.get("ERM3_ZARR_ROOT"):
         return Path(os.environ["ERM3_ZARR_ROOT"])
-    return _default_erm3_root() / "data" / "stock_data" / "zarr" / "eodhd"
+    return (
+        _default_erm3_root()
+        / "data"
+        / "stock_data"
+        / "zarr"
+        / _stock_pipeline_subdir()
+    )
 
 
 _DEFAULT_ZARR = _default_zarr_root()
 _DEFAULT_ERM3 = _default_erm3_root()
+
+
+def default_erm3_zarr_path() -> Path:
+    """Directory containing ``ds_daily.zarr`` et al.; honors ``ERM3_ZARR_ROOT`` / ``ERM3_ROOT``."""
+    return _default_zarr_root()
 
 # Company name lookup (cached on first call)
 _TICKER_TO_NAME: dict[str, str] | None = None
 
 
 def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> str:
-    """Look up company name. Tries security_master.db first (the canonical SSOT,
-    aligned with Supabase symbols.name), falls back to the EODHD ticker_list CSV
-    if security_master is unavailable or the ticker isn't there. Final fallback
-    is the ticker itself.
+    """Look up company name. Tries security_master SQLite first (the canonical SSOT,
+    aligned with Supabase symbols.name), falls back to ``ticker_list.csv`` under the
+    stock pipeline dir if security_master is unavailable or the ticker isn't there.
+    Final fallback is the ticker itself.
 
     The two-tier lookup ensures the zarr-rendered snapshot displays the same
     company name as the API-rendered snapshot, even though the zarr path is
@@ -65,12 +89,13 @@ def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> s
     if _TICKER_TO_NAME is None:
         root = erm3_root or _DEFAULT_ERM3
         _TICKER_TO_NAME = {}
+        pipe = _stock_pipeline_subdir()
 
-        # Tier 1: security_master.db (the canonical source — same one Supabase
+        # Tier 1: security_master SQLite (canonical source — same one Supabase
         # symbols.name is backfilled from). After the company_name backfill
         # this contains ~3,400 stocks with the canonical convention (e.g.
         # "Apple Inc." with the period).
-        sm_path = root / "data" / "stock_data" / "eodhd" / "eodhd_extractions.db"
+        sm_path = root / "data" / "stock_data" / pipe / _stock_pipeline_sqlite_name()
         if sm_path.exists():
             try:
                 import sqlite3
@@ -88,9 +113,9 @@ def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> s
             except Exception:
                 pass
 
-        # Tier 2: ticker_list.csv (broader EODHD set; fills gaps for tickers
+        # Tier 2: ticker_list.csv (broader symbol set; fills gaps for tickers
         # not yet in security_master.company_name).
-        csv_path = root / "data" / "stock_data" / "eodhd" / "csv" / "ticker_list.csv"
+        csv_path = root / "data" / "stock_data" / pipe / "csv" / "ticker_list.csv"
         if csv_path.exists():
             try:
                 df = pd.read_csv(csv_path, usecols=["ticker", "name"])

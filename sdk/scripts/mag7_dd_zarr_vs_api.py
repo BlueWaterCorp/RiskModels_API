@@ -23,7 +23,7 @@ Requires:
   - RiskModels API credentials in env for default peer loading (optional if ``--no-api-peers``)
   - ERM3 checkout for ``erm3.shared.etf_register.FS_INDUSTRY_TO_SUBSECTOR_ETFS``
 
-Default zarr root: sibling ``../ERM3/data/stock_data/zarr/eodhd`` from this repo, or set ``ERM3_ZARR_ROOT``.
+Default zarr root: same resolution as ``riskmodels.snapshots.zarr_context`` (``ERM3_ZARR_ROOT`` or ERM3 stock zarr tree), or set ``ERM3_ZARR_ROOT``.
 """
 
 from __future__ import annotations
@@ -45,10 +45,9 @@ _SDK_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _default_zarr_root() -> Path:
-    if os.environ.get("ERM3_ZARR_ROOT"):
-        return Path(os.environ["ERM3_ZARR_ROOT"])
-    erm3 = Path(os.environ["ERM3_ROOT"]) if os.environ.get("ERM3_ROOT") else _REPO_ROOT.parent / "ERM3"
-    return erm3 / "data" / "stock_data" / "zarr" / "eodhd"
+    from riskmodels.snapshots.zarr_context import default_erm3_zarr_path
+
+    return default_erm3_zarr_path()
 
 
 _DEFAULT_ZARR = _default_zarr_root()

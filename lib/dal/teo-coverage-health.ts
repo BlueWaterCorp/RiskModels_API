@@ -1,14 +1,14 @@
 /**
  * Latest-session (T) gross-return coverage for health / agent signals.
  *
- * Mirrors the ERM3 `eodhd_daily` T coverage idea: at the newest `teo` with
- * `returns_gross` rows, measure how many universe stocks have non-null values.
- * Sparse coverage usually means EODHD has not fully published for that session.
+ * At the newest `teo` with `returns_gross` rows, measure how many universe
+ * stocks have non-null values. Sparse coverage usually means the latest session
+ * is still backfilling.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
 
-/** Same threshold as ERM3 `erm3/core/eodhd_daily.py` (trim to T-1 below this). */
+/** Below this non-null / universe ratio, treat the latest session as still filling (10%). */
 const SPARSE_COVERAGE_RATIO = 0.1;
 
 export interface TeoCoverageHealth {
@@ -18,7 +18,7 @@ export interface TeoCoverageHealth {
   /** Percent of universe stocks with non-null `returns_gross` at `latest_teo`, 0–100; null if unknown. */
   latest_teo_coverage_pct: number | null;
   /** True when coverage ratio is below 10% — typical when same-day EOD is still filling in. */
-  eodhd_latest_session_pending: boolean;
+  latest_session_returns_pending: boolean;
   query_error?: string;
 }
 
@@ -47,7 +47,7 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
       universe_stock_count: universeStock,
       non_null_returns_symbol_count: 0,
       latest_teo_coverage_pct: null,
-      eodhd_latest_session_pending: false,
+      latest_session_returns_pending: false,
       query_error: latestErr.message,
     };
   }
@@ -59,7 +59,7 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
       universe_stock_count: universeStock,
       non_null_returns_symbol_count: 0,
       latest_teo_coverage_pct: null,
-      eodhd_latest_session_pending: false,
+      latest_session_returns_pending: false,
     };
   }
 
@@ -77,7 +77,7 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
       universe_stock_count: universeStock,
       non_null_returns_symbol_count: 0,
       latest_teo_coverage_pct: null,
-      eodhd_latest_session_pending: false,
+      latest_session_returns_pending: false,
       query_error: countErr.message,
     };
   }
@@ -93,6 +93,6 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
     universe_stock_count: u,
     non_null_returns_symbol_count: n,
     latest_teo_coverage_pct,
-    eodhd_latest_session_pending: u > 0 && ratio < SPARSE_COVERAGE_RATIO,
+    latest_session_returns_pending: u > 0 && ratio < SPARSE_COVERAGE_RATIO,
   };
 }

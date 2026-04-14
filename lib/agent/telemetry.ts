@@ -70,7 +70,7 @@ export interface HealthStatus {
       current_load?: number;
     }
   >;
-  /** Gross-return coverage at latest `teo` (EODHD / session completeness signal). */
+  /** Gross-return coverage at latest `teo` (session completeness signal). */
   teo_coverage: TeoCoverageHealth;
   /** Macro factors data freshness for correlation surface. */
   macro_factors?: MacroFactorsHealth;

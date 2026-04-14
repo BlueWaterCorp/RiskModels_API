@@ -10,6 +10,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **Vendor-neutral health + SDK paths** — `GET /api/health` `teo_coverage` renames the sparse latest-session boolean to `latest_session_returns_pending` and drops vendor naming from OpenAPI/schema copy. Python zarr helpers centralize default ERM3 stock pipeline paths in `zarr_context` (`default_erm3_zarr_path()`, optional `ERM3_STOCK_PIPELINE_DIR` / `ERM3_SECURITY_MASTER_DB`); bulk/mag7 scripts reuse that resolver. Legacy default directory/SQLite filenames remain configurable for existing ERM3 trees.
+
 - **Documentation precision** — [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md) adds a short **hedge ratios vs classical betas** note (L2/L3 hierarchy, `dollar_ratio`). [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml) `info.description` now describes Supabase **V3** tables (`security_history`, `security_history_latest`, `symbols`, supporting surfaces) and rankings from `security_history` metric keys (not legacy `erm3_betas` / `erm3_rankings`). [SUPABASE_TABLES.md](SUPABASE_TABLES.md) metric_key row no longer equates HR with betas without qualification. [README_API.md](README_API.md) endpoint table matches behavior (`/api/ticker-returns` is L3 HR/ER in the time series; `/api/metrics/{ticker}` omits Sharpe), and documents the `/api/data/*` data plane vs OpenAPI. [docs/SNAPSHOT_CONTENT_MAP.md](docs/SNAPSHOT_CONTENT_MAP.md) uses HR wording consistently. Regenerated `public/openapi.json` and `mcp/data/openapi.json` from the spec.
 
 - **Portal & email copy** — Landing/pricing alignment: [components/UseCases.tsx](components/UseCases.tsx), [components/AgenticSection.tsx](components/AgenticSection.tsx), [components/TerminalShowcase.tsx](components/TerminalShowcase.tsx), [app/pricing/page.tsx](app/pricing/page.tsx), [emails/low-balance.tsx](emails/low-balance.tsx), [lib/chat/system-prompt.ts](lib/chat/system-prompt.ts). [README_API.md](README_API.md) quickstart examples use the nested `metrics` object and wire HR/ER keys. Removes incorrect **Sharpe** claim from the low-balance email; clarifies **L3** vs full snapshot on ticker returns.
@@ -60,7 +62,7 @@ All notable changes to the RiskModels API surface and public assets.
   - Quickstart page now includes Agentic API examples (Python/TypeScript)
   - Cross-linking between traditional REST API and agentic delegation workflows
 
-- **`GET /api/health` T coverage** — Response includes `teo_coverage` (`latest_teo`, `latest_teo_coverage_pct`, `non_null_returns_symbol_count`, `universe_stock_count`, `eodhd_latest_session_pending`) derived from `security_history` `returns_gross` vs `symbols` (stocks), using the same 10% sparse threshold as ERM3 EODHD T coverage. `health-v1.json` schema updated; copy synced to Risk_Models.
+- **`GET /api/health` T coverage** — Response includes `teo_coverage` (`latest_teo`, `latest_teo_coverage_pct`, `non_null_returns_symbol_count`, `universe_stock_count`, plus a boolean for sparse latest-session gross returns) derived from `security_history` `returns_gross` vs `symbols` (stocks), using a 10% sparse threshold. `health-v1.json` schema updated; copy synced to Risk_Models.
 
 ### Changed
 
