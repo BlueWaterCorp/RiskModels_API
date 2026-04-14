@@ -17,7 +17,9 @@ Requires a real RiskModels API key (rm_user_* / rm_agent_*).
   python scripts/execute_quickstart_notebook.py
 
 Cells tagged skip-ci (OpenAI + Colab npm shell) are replaced with a no-op stub so CI
-does not need OpenAI or Node. Set --no-skip-ci to run the full notebook (needs OPENAI_API_KEY etc.).
+does not need OpenAI or Node. Set --no-skip-ci to run the full notebook; set OPENAI_API_KEY
+in the environment for the GPT bonus cell (or leave unset — the notebook skips the LLM if
+the key is missing or still a PASTE_YOUR_* placeholder).
 
 Optional: MPLBACKEND=Agg (set automatically if unset).
 

@@ -83,6 +83,9 @@ export interface FetchHistoryOptions {
   orderBy?: "asc" | "desc";
 }
 
+/** Which store served `fetchHistoryWithSource` (for `_metadata.data_source`). */
+export type HistoryDataSource = "zarr" | "supabase";
+
 // Pivoted result for convenience (wide format)
 export interface PivotedHistoryRow {
   teo: string;
@@ -377,12 +380,15 @@ async function fetchBatchHistoryFromSupabase(
   }
 }
 
-/** Daily factor history: consolidated Zarr on GCS (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). */
-export async function fetchHistory(
+/**
+ * Same as `fetchHistory` but reports whether rows came from Zarr or Supabase `security_history`.
+ * Use when API responses must set accurate `_metadata.data_source`.
+ */
+export async function fetchHistoryWithSource(
   symbol: string,
   keys: V3MetricKey[],
   options: FetchHistoryOptions = {},
-): Promise<SecurityHistoryRow[]> {
+): Promise<{ rows: SecurityHistoryRow[]; dataSource: HistoryDataSource }> {
   const {
     periodicity = "daily",
     startDate,
@@ -400,14 +406,32 @@ export async function fetchHistory(
         endDate,
         orderBy,
       });
-      return rows;
+      if (rows.length > 0) {
+        return { rows, dataSource: "zarr" };
+      }
+      console.warn(
+        "[V3 DAL] Zarr history empty; falling back to Supabase EAV",
+        { symbol },
+      );
     } catch (e) {
-      console.error("[V3 DAL] Zarr history read failed");
-      return [];
+      console.error("[V3 DAL] Zarr history read failed; falling back to Supabase", e);
     }
+    const rows = await fetchHistoryFromSupabase(symbol, keys, options);
+    return { rows, dataSource: "supabase" };
   }
 
-  return fetchHistoryFromSupabase(symbol, keys, options);
+  const rows = await fetchHistoryFromSupabase(symbol, keys, options);
+  return { rows, dataSource: "supabase" };
+}
+
+/** Daily factor history: consolidated Zarr on GCS (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). */
+export async function fetchHistory(
+  symbol: string,
+  keys: V3MetricKey[],
+  options: FetchHistoryOptions = {},
+): Promise<SecurityHistoryRow[]> {
+  const { rows } = await fetchHistoryWithSource(symbol, keys, options);
+  return rows;
 }
 
 export async function fetchBatchHistory(
@@ -434,11 +458,20 @@ export async function fetchBatchHistory(
         endDate,
         orderBy,
       });
-      return rows;
+      if (rows.length > 0) {
+        return rows;
+      }
+      console.warn(
+        "[V3 DAL] Zarr batch history empty; falling back to Supabase EAV",
+        { count: symbols.length },
+      );
     } catch (e) {
-      console.error("[V3 DAL] Zarr batch history read failed");
-      return [];
+      console.error(
+        "[V3 DAL] Zarr batch history read failed; falling back to Supabase",
+        e,
+      );
     }
+    return fetchBatchHistoryFromSupabase(symbols, keys, options);
   }
 
   return fetchBatchHistoryFromSupabase(symbols, keys, options);

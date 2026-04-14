@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { resolveSymbolByTicker, fetchHistory, pivotHistory } from "@/lib/dal/risk-engine-v3";
+import {
+  resolveSymbolByTicker,
+  fetchHistoryWithSource,
+  pivotHistory,
+} from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody, buildEtag, maybe304 } from "@/lib/dal/response-headers";
 import { formatResponse, parseFormat } from "@/lib/api/format-response";
@@ -51,7 +55,7 @@ export const GET = withBilling(
     const startDateStr = startDate.toISOString().split("T")[0];
 
     const fetchStart = performance.now();
-    const rows = await fetchHistory(symbolRecord.symbol, [
+    const { rows, dataSource } = await fetchHistoryWithSource(symbolRecord.symbol, [
       "returns_gross",
       "price_close",
       "l1_cfr",
@@ -115,7 +119,7 @@ export const GET = withBilling(
           universe: "US_EQUITY",
         },
         _metadata: buildMetadataBody(metadata, {
-          data_source: "zarr",
+          data_source: dataSource,
           range: histRange[0] && histRange[1] ? histRange : undefined,
         }),
       },
