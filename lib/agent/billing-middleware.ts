@@ -23,6 +23,7 @@ import { extractApiKey, validateApiKey } from "./api-keys";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 import { checkFreeTierLimit, incrementFreeTierUsage } from "./free-tier";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -87,10 +88,10 @@ async function checkMonthlySpendCap(
 let _redis: Redis | null = null;
 function getRedis(): Redis | null {
   if (_redis) return _redis;
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  if (isUpstashRedisConfigured()) {
     _redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
     });
   }
   return _redis;
