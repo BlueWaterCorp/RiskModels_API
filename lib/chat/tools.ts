@@ -59,6 +59,7 @@ const getRiskMetricsArgs = z.object({
 const getL3Args = z.object({
   ticker: TickerSchema,
   market_factor_etf: z.string().min(1).default("SPY"),
+  years: YearsSchema,
 });
 
 const getTickerReturnsArgs = z.object({
@@ -154,7 +155,9 @@ async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
 
 async function execGetL3(args: z.infer<typeof getL3Args>) {
   const svc = getL3DecompositionService();
-  const out = await svc.getDecomposition(args.ticker, args.market_factor_etf);
+  const out = await svc.getDecomposition(args.ticker, args.market_factor_etf, {
+    years: args.years,
+  });
   if (!out) {
     throw new Error(`No L3 decomposition for ${args.ticker}`);
   }
@@ -403,8 +406,12 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
           type: "string",
           description: "Market factor ETF ticker, default SPY",
         },
+        years: {
+          type: "integer",
+          description: "Years of daily history, 1–15; default 1",
+        },
       },
-      ["ticker", "market_factor_etf"],
+      ["ticker", "market_factor_etf", "years"],
     ),
     capabilityId: "l3-decomposition",
     argSchema: getL3Args,

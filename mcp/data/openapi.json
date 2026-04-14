@@ -3080,6 +3080,18 @@
               "default": "SPY"
             },
             "description": "Market factor ETF (passed through to the decomposition service)."
+          },
+          {
+            "name": "years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 15,
+              "default": 1
+            },
+            "description": "Calendar years of daily history to return (bounds the Zarr/DB slice; default 1)."
           }
         ],
         "responses": {
