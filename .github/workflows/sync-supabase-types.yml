@@ -12,8 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # npm install -g supabase is no longer supported (CLI postinstall throws).
       - name: Install Supabase CLI
-        run: npm install -g supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       - name: Generate Types
         run: |

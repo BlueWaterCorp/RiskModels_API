@@ -201,6 +201,49 @@ export default function QuickstartPage() {
           </div>
         </div>
 
+        {/* Colab notebook — full walkthrough */}
+        <div className="mb-12 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+          <h2 className="text-xl font-bold text-zinc-100 mb-2">Colab: full quickstart notebook</h2>
+          <p className="text-zinc-400 mb-4">
+            Step-by-step Python examples: hedge ratios, L3 decomposition, precision hedge charts,{' '}
+            <strong className="text-zinc-300">Deep Dive (DD) snapshots</strong> (
+            <code className="text-zinc-400 bg-zinc-800 px-1 rounded">GET /api/snapshot/&lt;ticker&gt;</code>
+            ), long history and EAV pulls with optional{' '}
+            <strong className="text-zinc-300">response lineage</strong> (
+            <code className="text-zinc-400 bg-zinc-800 px-1 rounded">_metadata</code>
+            ),{' '}
+            <code className="text-zinc-400 bg-zinc-800 px-1 rounded">/api/data/security-history</code>, and
+            notes on offline <strong className="text-zinc-300">company context</strong> in DD renders.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/notebooks/riskmodels_quickstart.ipynb"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 font-semibold rounded-lg border border-amber-500/40 transition-colors"
+            >
+              Open in Google Colab
+              <ArrowRight size={18} />
+            </a>
+            <a
+              href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/notebooks/riskmodels_quickstart.ipynb"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors"
+            >
+              View on GitHub
+            </a>
+            <a
+              href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/RESPONSE_METADATA.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors"
+            >
+              Response metadata
+            </a>
+          </div>
+        </div>
+
         {/* Step 3 */}
         <div className="mb-12">
           <div className="flex items-start gap-4 mb-6">
