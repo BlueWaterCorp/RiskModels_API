@@ -82,9 +82,11 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
   },
   {
     title: 'Quickstart',
-    description: 'Install riskmodels-py from PyPI, first calls, SDK vs raw HTTP, environment variables.',
+    description:
+      'Install riskmodels-py from PyPI, first calls, SDK vs raw HTTP, Google Colab notebook, DD snapshots, response metadata.',
     href: '/quickstart',
-    keywords: 'python pip pypi xarray from_env',
+    keywords:
+      'python pip pypi xarray from_env colab notebook snapshot security-history _metadata lineage',
   },
   {
     title: 'Pricing',
