@@ -9,6 +9,10 @@ import {
   CACHE_TTL,
 } from "@/lib/cache/redis";
 import {
+  isPortfolioRiskSnapshotCacheHit,
+  type PortfolioRiskSnapshotCache,
+} from "@/lib/cache/snapshot-payload-guards";
+import {
   PortfolioRiskSnapshotRequestSchema,
   type PortfolioRiskSnapshotRequest,
 } from "@/lib/api/schemas";
@@ -22,10 +26,7 @@ export const dynamic = "force-dynamic";
 
 const CACHE_NS = "risk_snapshot";
 
-type CachePayload =
-  | { kind: "json"; body: string; contentType: string }
-  | { kind: "pdf"; base64: string }
-  | { kind: "png"; base64: string };
+type CachePayload = PortfolioRiskSnapshotCache;
 
 function snapshotCacheKey(
   userId: string,
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
   });
 
   const hit = await getCache<CachePayload>(key);
-  if (hit) {
+  if (isPortfolioRiskSnapshotCacheHit(hit)) {
     if (hit.kind === "json") {
       return new NextResponse(hit.body, {
         status: 200,

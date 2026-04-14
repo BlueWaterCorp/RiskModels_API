@@ -26,6 +26,7 @@ import {
   generateCacheKey,
   CACHE_TTL,
 } from "@/lib/cache/redis";
+import { isDdSnapshotCacheHit } from "@/lib/cache/snapshot-payload-guards";
 import { TickerSchema } from "@/lib/api/schemas";
 import { getCorsHeaders } from "@/lib/cors";
 
@@ -170,7 +171,7 @@ export async function GET(
   // updates GCS daily.
   const key = snapshotCacheKey(ticker, format);
   const hit = await getCache<SnapshotCache>(key);
-  if (hit) {
+  if (isDdSnapshotCacheHit(hit)) {
     const headers: Record<string, string> = {
       ...getCorsHeaders(origin),
       "Content-Type": hit.contentType,

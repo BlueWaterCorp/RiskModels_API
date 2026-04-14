@@ -8,6 +8,7 @@ import {
   generateCacheKey,
   CACHE_TTL,
 } from "@/lib/cache/redis";
+import { isRasterSnapshotCacheHit } from "@/lib/cache/snapshot-payload-guards";
 import { TickerSchema } from "@/lib/api/schemas";
 import { runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
 import { toReportData } from "@/lib/portfolio/risk-snapshot-pdf";
@@ -129,7 +130,7 @@ export async function GET(
 
   const key = singleTickerPngKey(auth.userId, ticker);
   const hit = await getCache<PngCache>(key);
-  if (hit) {
+  if (isRasterSnapshotCacheHit(hit)) {
     return new NextResponse(Buffer.from(hit.base64, "base64"), {
       status: 200,
       headers: {

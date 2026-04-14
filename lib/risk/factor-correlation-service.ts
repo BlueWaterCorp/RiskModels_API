@@ -4,7 +4,12 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CACHE_TTL, generateCacheKey, getOrCompute } from "@/lib/cache/redis";
+import {
+  CACHE_TTL,
+  generateCacheKey,
+  getCache,
+  setCache,
+} from "@/lib/cache/redis";
 import {
   fetchBatchHistory,
   pivotHistory,
@@ -313,6 +318,18 @@ function macroMapsToPlainObject(
   return out;
 }
 
+/** True if Redis payload is worth treating as a cache HIT (non-empty series). */
+export function macroFactorCachePayloadHasData(
+  plain: Record<string, Record<string, number>> | null | undefined,
+): plain is Record<string, Record<string, number>> {
+  return (
+    plain != null &&
+    typeof plain === "object" &&
+    !Array.isArray(plain) &&
+    Object.keys(plain).length > 0
+  );
+}
+
 export async function getMacroFactorMapsCached(
   factorKeys: string[],
   startDate: string,
@@ -322,16 +339,20 @@ export async function getMacroFactorMapsCached(
     start: startDate,
     f: sorted.join(","),
   });
-  const raw = await getOrCompute(
-    key,
-    async () => {
-      // Convert Map to plain object before caching — JSON.stringify(Map) → "{}"
-      const maps = await loadMacroFactorMaps(sorted, startDate);
-      return macroMapsToPlainObject(maps);
-    },
-    CACHE_TTL.DAILY,
-  );
-  return reviveMacroFactorMaps(raw as Map<string, Map<string, number>> | Record<string, unknown>);
+
+  const cached = await getCache<Record<string, Record<string, number>>>(key);
+  if (macroFactorCachePayloadHasData(cached)) {
+    return reviveMacroFactorMaps(cached);
+  }
+
+  const maps = await loadMacroFactorMaps(sorted, startDate);
+  const plain = macroMapsToPlainObject(maps);
+  // Do not cache `{}`: DB errors and "no rows" both collapse to an empty Map; caching
+  // that would freeze transient failures for CACHE_TTL.DAILY (see zarr empty-row cache).
+  if (macroFactorCachePayloadHasData(plain)) {
+    await setCache(key, plain, CACHE_TTL.DAILY).catch(() => {});
+  }
+  return reviveMacroFactorMaps(plain);
 }
 
 export async function computeFactorCorrelation(

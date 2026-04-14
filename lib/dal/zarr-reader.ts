@@ -268,7 +268,8 @@ export async function readHistorySlice(
 
   const ck = cacheKeyForZarr(params);
   const hit = await getCache<ReadHistorySliceResult>(ck);
-  if (hit && hit.rows) {
+  // `[]` is truthy in JS — only treat cache as a hit when we stored real rows.
+  if (hit?.rows?.length) {
     return hit;
   }
 
@@ -435,7 +436,9 @@ export async function readHistorySlice(
     range: [rangeStart, rangeEnd],
   };
 
-  await setCache(ck, result, CACHE_TTL.FREQUENT).catch(() => {});
+  if (rows.length > 0) {
+    await setCache(ck, result, CACHE_TTL.FREQUENT).catch(() => {});
+  }
 
   return result;
 }

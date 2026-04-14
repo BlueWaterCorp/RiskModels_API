@@ -180,16 +180,23 @@ export async function deleteCachePattern(pattern: string): Promise<void> {
 }
 
 /**
- * Get or compute value from cache
+ * Get or compute value from cache.
+ *
+ * Uses `cached !== null` as the only hit test. Values that are valid falsy
+ * (`0`, `false`, `""`) are still returned from cache when stored; callers
+ * that use `null` as “uncached” only are fine. For **arrays**, an empty `[]`
+ * is truthy in JS and will be returned if it was stored — prefer not caching
+ * empty slices (see zarr `readHistorySlice`) or validate `.length` at the
+ * call site after this returns.
  */
 export async function getOrCompute<T>(
   key: string,
   compute: () => Promise<T>,
   ttlSeconds: number = CACHE_TTL.DAILY,
 ): Promise<T> {
-  // Try cache first
+  // Try cache first (Redis `get` uses null for missing key only)
   const cached = await getCache<T>(key);
-  if (cached !== null) {
+  if (cached !== null && cached !== undefined) {
     return cached;
   }
 
@@ -223,6 +230,31 @@ export async function getCacheStats(): Promise<{
 }
 
 /**
+ * True when a warm-cache fetch result should not be written (empty / null payloads
+ * behave like false HITs once stored — same class of bug as zarr `rows: []` caching).
+ *
+ * Does not skip: `0`, `false`, or non-empty strings/objects. Skips plain `{}`, `[]`,
+ * empty Buffer/Uint8Array, empty Map/Set, null/undefined.
+ */
+export function isSkippableCacheWarmPayload(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (value instanceof Map || value instanceof Set) return value.size === 0;
+  if (value instanceof Uint8Array) return value.length === 0;
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(value)) return value.length === 0;
+  if (value instanceof Date) return false;
+  if (typeof value === "object") {
+    const keys = Object.keys(value as object);
+    if (keys.length === 0) {
+      const proto = Object.getPrototypeOf(value);
+      if (proto === Object.prototype || proto === null) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Cache warming utility
  * Pre-populates cache with frequently accessed data
  */
@@ -237,6 +269,12 @@ export async function warmCache(
     items.map(async ({ key, fetcher, ttl }) => {
       try {
         const value = await fetcher();
+        if (isSkippableCacheWarmPayload(value)) {
+          console.warn(
+            `[Cache] warmCache skipped (empty payload): ${key}`,
+          );
+          return;
+        }
         await setCache(key, value, ttl);
       } catch (error) {
         console.error(`[Cache] Failed to warm cache for ${key}:`, error);
