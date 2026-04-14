@@ -113,6 +113,25 @@ Use response **`_metadata`** (when present) and HTTP headers documented in [RESP
 }
 ```
 
+## Local zarr paths (Python SDK)
+
+Offline code in `sdk/riskmodels/snapshots/zarr_context.py` does **not** ship a default relative path under an ERM3 checkout. Configure explicitly:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `ERM3_ZARR_ROOT` | **Yes** | Absolute path to the directory that contains `ds_daily.zarr` (and sibling zarr stores). |
+| `ERM3_ROOT` | No | ERM3 checkout root for Python imports (e.g. `erm3.shared.etf_register`). Defaults to sibling `../ERM3` from RiskModels_API when unset. |
+| `ERM3_SECURITY_MASTER_DB` | No | Full path to security-master SQLite for company names in offline renders. |
+| `ERM3_TICKER_LIST_CSV` | No | Full path to a `ticker_list.csv`-style file for name fallback. |
+
+Minimal example:
+
+```bash
+export ERM3_ZARR_ROOT=/absolute/path/to/directory/containing/ds_daily.zarr
+```
+
+Bulk / validation scripts (`sdk/scripts/bulk_dd_render.py`, `mag7_dd_zarr_vs_api.py`, etc.) use the same resolver; set `ERM3_ZARR_ROOT` before running.
+
 ## Backend implementation note (maintainers)
 
 `security_history_latest` may currently store **only L3** HR/ER columns for fast paths. Serving **full L1/L2/L3** ER/HR in `full_metrics` requires reading the latest `teo` from `security_history` (or widening the latest table) for all `metric_key` values listed in [SUPABASE_TABLES.md](../SUPABASE_TABLES.md). The **OpenAPI** `BatchFullMetrics` schema is the public contract for which fields should appear when the backend has data.

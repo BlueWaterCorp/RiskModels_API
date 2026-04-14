@@ -13,17 +13,17 @@ By default the script loads **peer scatter + DNA** via ``RiskModelsClient.from_e
 offline zarr-only renders.
 
 Usage (from repo root)::
+    export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/mag7_dd_zarr_vs_api.py
     PYTHONPATH=sdk python sdk/scripts/mag7_dd_zarr_vs_api.py --reference local
     PYTHONPATH=sdk python sdk/scripts/mag7_dd_zarr_vs_api.py --no-api-peers
 
 Requires:
+  - ``ERM3_ZARR_ROOT`` — directory containing ``ds_daily.zarr`` (same as ``riskmodels.snapshots.zarr_context``)
   - ``xarray``, ``zarr``, ``numpy``, ``pandas``, ``pillow``
   - Snapshot extras: ``plotly``, ``kaleido``, ``matplotlib``, ``qrcode[pil]``
   - RiskModels API credentials in env for default peer loading (optional if ``--no-api-peers``)
   - ERM3 checkout for ``erm3.shared.etf_register.FS_INDUSTRY_TO_SUBSECTOR_ETFS``
-
-Default zarr root: same resolution as ``riskmodels.snapshots.zarr_context`` (``ERM3_ZARR_ROOT`` or ERM3 stock zarr tree), or set ``ERM3_ZARR_ROOT``.
 """
 
 from __future__ import annotations

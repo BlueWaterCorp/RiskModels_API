@@ -5,6 +5,18 @@ Use :func:`build_p1_from_zarr` so :class:`P1Data` is assembled only via
 — the same tail/cum/l3_er rules as production, plus rankings and macro correlations
 from zarr (``ds_rankings_*``, ``ds_macro_factor.zarr``). Gold is not in
 ``ds_macro_factor``; that slot stays empty unless you supply API macro later.
+
+**Environment (required / optional)**
+
+- ``ERM3_ZARR_ROOT`` — **required** for default zarr resolution: absolute path to the directory
+  that contains ``ds_daily.zarr`` (and sibling stores). No bundled default tree path.
+- ``ERM3_ROOT`` — optional; directory of the ERM3 checkout (for Python imports such as
+  ``erm3.shared.etf_register`` and as default ``erm3_root`` in ``fetch_stock_context_zarr``).
+  Defaults to sibling ``../ERM3`` from this repo when unset.
+- ``ERM3_SECURITY_MASTER_DB`` — optional full path to security-master SQLite for company names.
+- ``ERM3_TICKER_LIST_CSV`` — optional full path to ``ticker_list.csv`` for name fallback.
+
+See ``docs/ERM3_ZARR_API_PARITY.md`` (section **Local zarr paths**) for setup notes.
 """
 
 from __future__ import annotations
@@ -24,19 +36,6 @@ import xarray as xr
 
 from ._data import StockContext
 
-# Default on-disk layout under ERM3 ``data/stock_data/`` (zarr leaf + SQLite/CSV aux).
-# Override with ``ERM3_STOCK_PIPELINE_DIR`` / ``ERM3_SECURITY_MASTER_DB`` if your tree differs.
-_DEFAULT_STOCK_PIPELINE_SUBDIR = "eodhd"
-_DEFAULT_STOCK_PIPELINE_SQLITE = "eodhd_extractions.db"
-
-
-def _stock_pipeline_subdir() -> str:
-    return os.environ.get("ERM3_STOCK_PIPELINE_DIR", _DEFAULT_STOCK_PIPELINE_SUBDIR)
-
-
-def _stock_pipeline_sqlite_name() -> str:
-    return os.environ.get("ERM3_SECURITY_MASTER_DB", _DEFAULT_STOCK_PIPELINE_SQLITE)
-
 
 def _riskmodels_repo_root() -> Path:
     """``sdk/riskmodels/snapshots/zarr_context.py`` → RiskModels_API repo root."""
@@ -51,34 +50,30 @@ def _default_erm3_root() -> Path:
 
 
 def _default_zarr_root() -> Path:
-    """Prefer ``ERM3_ZARR_ROOT``; else ``<ERM3>/data/stock_data/zarr/<pipeline>``."""
-    if os.environ.get("ERM3_ZARR_ROOT"):
-        return Path(os.environ["ERM3_ZARR_ROOT"])
-    return (
-        _default_erm3_root()
-        / "data"
-        / "stock_data"
-        / "zarr"
-        / _stock_pipeline_subdir()
-    )
+    """Resolve zarr store root from ``ERM3_ZARR_ROOT`` (required)."""
+    raw = (os.environ.get("ERM3_ZARR_ROOT") or "").strip()
+    if not raw:
+        raise ValueError(
+            "ERM3_ZARR_ROOT is required: set it to the directory that contains ds_daily.zarr "
+            "(and sibling zarr stores). See docs/ERM3_ZARR_API_PARITY.md — Local zarr paths."
+        )
+    return Path(raw).expanduser().resolve()
 
 
-_DEFAULT_ZARR = _default_zarr_root()
 _DEFAULT_ERM3 = _default_erm3_root()
 
 
 def default_erm3_zarr_path() -> Path:
-    """Directory containing ``ds_daily.zarr`` et al.; honors ``ERM3_ZARR_ROOT`` / ``ERM3_ROOT``."""
+    """Directory containing ``ds_daily.zarr`` et al.; same as :func:`_default_zarr_root`."""
     return _default_zarr_root()
 
 # Company name lookup (cached on first call)
 _TICKER_TO_NAME: dict[str, str] | None = None
 
 
-def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> str:
-    """Look up company name. Tries security_master SQLite first (the canonical SSOT,
-    aligned with Supabase symbols.name), falls back to ``ticker_list.csv`` under the
-    stock pipeline dir if security_master is unavailable or the ticker isn't there.
+def _resolve_company_name_local(ticker: str) -> str:
+    """Look up company name. Tries ``ERM3_SECURITY_MASTER_DB`` first (canonical SSOT,
+    aligned with Supabase symbols.name), then ``ERM3_TICKER_LIST_CSV`` if set.
     Final fallback is the ticker itself.
 
     The two-tier lookup ensures the zarr-rendered snapshot displays the same
@@ -87,16 +82,16 @@ def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> s
     """
     global _TICKER_TO_NAME
     if _TICKER_TO_NAME is None:
-        root = erm3_root or _DEFAULT_ERM3
         _TICKER_TO_NAME = {}
-        pipe = _stock_pipeline_subdir()
+
+        sm_raw = (os.environ.get("ERM3_SECURITY_MASTER_DB") or "").strip()
+        sm_path = Path(sm_raw).expanduser() if sm_raw else None
 
         # Tier 1: security_master SQLite (canonical source — same one Supabase
         # symbols.name is backfilled from). After the company_name backfill
         # this contains ~3,400 stocks with the canonical convention (e.g.
         # "Apple Inc." with the period).
-        sm_path = root / "data" / "stock_data" / pipe / _stock_pipeline_sqlite_name()
-        if sm_path.exists():
+        if sm_path is not None and sm_path.exists():
             try:
                 import sqlite3
                 conn = sqlite3.connect(f"file:{sm_path}?mode=ro", uri=True, timeout=5.0)
@@ -115,8 +110,9 @@ def _resolve_company_name_local(ticker: str, erm3_root: Path | None = None) -> s
 
         # Tier 2: ticker_list.csv (broader symbol set; fills gaps for tickers
         # not yet in security_master.company_name).
-        csv_path = root / "data" / "stock_data" / pipe / "csv" / "ticker_list.csv"
-        if csv_path.exists():
+        csv_raw = (os.environ.get("ERM3_TICKER_LIST_CSV") or "").strip()
+        csv_path = Path(csv_raw).expanduser() if csv_raw else None
+        if csv_path is not None and csv_path.exists():
             try:
                 df = pd.read_csv(csv_path, usecols=["ticker", "name"])
                 for _, row in df.iterrows():
@@ -378,7 +374,7 @@ def fetch_stock_context_zarr(
     sector_etf_override / subsector_etf_override : Override the auto-derived sector/subsector
         ETF (from fundamentals.csv). Use this to match the API's classification.
     """
-    root = Path(zarr_root) if zarr_root is not None else _DEFAULT_ZARR
+    root = Path(zarr_root) if zarr_root is not None else _default_zarr_root()
     erm3 = Path(erm3_root) if erm3_root is not None else _DEFAULT_ERM3
 
     ticker = ticker.upper()
@@ -591,7 +587,7 @@ def fetch_stock_context_zarr(
 
     ctx = StockContext(
         ticker=ticker,
-        company_name=_resolve_company_name_local(ticker, erm3),
+        company_name=_resolve_company_name_local(ticker),
         teo=teo,
         universe="uni_mc_3000",
         sector_etf=sector_etf,

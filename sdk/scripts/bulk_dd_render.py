@@ -28,16 +28,20 @@ Ticker selection (mutually exclusive, falls through in this order):
 Examples
 --------
     # Bulk MAG7 to external drive (will skip the GCS upload step):
+    export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py \
         --tickers AAPL MSFT NVDA AMZN GOOG META TSLA
 
     # Full uni_mc_3000 universe (~2.9K tickers, ~1-2h on a laptop):
+    export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py
 
     # Resume after a crash — skips tickers whose PNG+PDF already exist:
+    export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py --resume
 
     # Same run + upload to GCS as we go:
+    export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py --upload-gcs
 
 Why this script vs mag7_dd_zarr_vs_api.py

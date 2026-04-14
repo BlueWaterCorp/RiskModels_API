@@ -48,4 +48,4 @@ After the remote updates, run `git fetch origin` so `refs/remotes/origin/*` matc
 
 ## SDK defaults
 
-`sdk/riskmodels/snapshots/zarr_context.py` and `sdk/scripts/mag7_dd_zarr_vs_api.py` now default to **`ERM3_ROOT` / `ERM3_ZARR_ROOT` or sibling `../ERM3`** from the RiskModels_API repo root (no hardcoded home directory).
+`sdk/riskmodels/snapshots/zarr_context.py` and `sdk/scripts/mag7_dd_zarr_vs_api.py` resolve the zarr tree via **`ERM3_ZARR_ROOT`** (required) and **`ERM3_ROOT`** or sibling `../ERM3` for the ERM3 checkout when importing `erm3` (no hardcoded home directory).
