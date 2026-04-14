@@ -7,6 +7,8 @@ import { L3DecompositionRequestSchema } from "@/lib/api/schemas";
 import { getCorsHeaders } from "@/lib/cors";
 import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
+export const runtime = "nodejs";
+
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const { searchParams } = new URL(request.url);
@@ -63,9 +65,16 @@ export const GET = withBilling(
         });
       }
 
+      const d = result.dates;
+      const histRange: [string, string] | undefined =
+        d.length > 0 ? [d[0]!, d[d.length - 1]!] : undefined;
+
       const response = NextResponse.json({
         ...result,
-        _metadata: buildMetadataBody(metadata),
+        _metadata: buildMetadataBody(metadata, {
+          data_source: "zarr",
+          range: histRange,
+        }),
       }, {
         headers: {
           ...getCorsHeaders(origin),

@@ -4,6 +4,17 @@ All metered API endpoints append an `_agent` block to the response body and set 
 
 ---
 
+## `_metadata` extensions (history)
+
+Some JSON bodies include optional fields on the existing **`_metadata`** object (same object as model lineage: `model_version`, `data_as_of`, etc.):
+
+| Field | Type | Description |
+|---|---|---|
+| `data_source` | `"zarr"` \| `"supabase"` | Whether daily history rows came from consolidated GCS Zarr or from Supabase. |
+| `range` | `[string, string]` | Optional inclusive ISO date bounds of the returned history window. |
+
+These fields are documented in `OPENAPI_SPEC.yaml` under `RiskMetadata`. They never include bucket names, `gs://` URLs, or zarr paths.
+
 ## `_agent` Response Block
 
 Present on all metered endpoints (`/ticker-returns`, `/metrics/{ticker}`, `/l3-decomposition`, `/batch/analyze`).

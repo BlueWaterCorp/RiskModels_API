@@ -1,8 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
+import {
+  fetchBatchHistory,
+  isZarrHistoryPath,
+  type V3MetricKey,
+  type V3Periodicity,
+} from "@/lib/dal/risk-engine-v3";
+import { getRiskMetadata } from "@/lib/dal/risk-metadata";
+import { buildMetadataBody } from "@/lib/dal/response-headers";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /**
  * L1/L2/L3 metric keys to check and backfill from EAV if missing in wide table.
@@ -203,24 +212,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let query = supabase
-    .from("security_history")
-    .select("symbol, teo, periodicity, metric_key, metric_value")
-    .in("symbol", symbols)
-    .eq("periodicity", periodicity)
-    .in("metric_key", keys);
+  const metricKeys = keys as V3MetricKey[];
+  const per = periodicity as V3Periodicity;
 
-  if (body.start) query = query.gte("teo", body.start);
-  if (body.end) query = query.lte("teo", body.end);
+  try {
+    const data = await fetchBatchHistory(symbols, metricKeys, {
+      periodicity: per,
+      startDate: body.start,
+      endDate: body.end,
+      orderBy: "asc",
+    });
 
-  query = query.order("teo", { ascending: true });
+    const teos = [...new Set(data.map((r) => r.teo))].sort();
+    const histRange: [string, string] =
+      teos.length > 0 ? [teos[0]!, teos[teos.length - 1]!] : ["", ""];
 
-  const { data, error } = await query;
+    const metadata = await getRiskMetadata();
+    const fromZarr = isZarrHistoryPath(metricKeys, per);
 
-  if (error) {
-    console.error("[data/security-history/batch] history error:", error);
+    return NextResponse.json({
+      data,
+      _metadata: buildMetadataBody(metadata, {
+        data_source: fromZarr ? "zarr" : "supabase",
+        range:
+          histRange[0] && histRange[1] ? histRange : undefined,
+      }),
+    });
+  } catch {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
-
-  return NextResponse.json({ data: data ?? [] });
 }

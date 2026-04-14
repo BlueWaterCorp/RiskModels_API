@@ -217,6 +217,28 @@
               "XLRE",
               "XLC"
             ]
+          },
+          "data_source": {
+            "type": "string",
+            "enum": [
+              "zarr",
+              "supabase"
+            ],
+            "description": "Present on history-style JSON responses: whether rows were materialized from consolidated GCS Zarr (daily standard metrics) or from Supabase `security_history` (e.g. monthly keys, rankings).\n"
+          },
+          "range": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Optional inclusive ISO date bounds of the returned history window when `data_source` is set.\n",
+            "example": [
+              "2018-01-02",
+              "2026-04-14"
+            ]
           }
         }
       },
