@@ -7,6 +7,7 @@ import {
   RANKING_WINDOWS,
   RANKING_COHORTS,
   RANKING_METRICS,
+  type RankingResult,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
@@ -18,6 +19,13 @@ export const dynamic = "force-dynamic";
 const WINDOWS = new Set<string>(RANKING_WINDOWS);
 const COHORTS = new Set<string>(RANKING_COHORTS);
 const METRICS = new Set<string>(RANKING_METRICS);
+
+function withDisplayLabel(rows: RankingResult[]) {
+  return rows.map((r) => ({
+    ...r,
+    display_label: `${r.window} · ${r.cohort} · ${r.metric}`,
+  }));
+}
 
 export const GET = withBilling(
   async (request: NextRequest, context: BillingContext) => {
@@ -94,9 +102,11 @@ export const GET = withBilling(
     const metadata = await getRiskMetadata();
     const latency = Math.round(performance.now() - fetchStart);
 
+    const rankingsPublic = withDisplayLabel(rankings);
+
     const format = parseFormat(sp, request.headers.get("accept"));
     if (format !== "json") {
-      const csvRows = (rankings as unknown as Record<string, unknown>[]).map((r) => ({
+      const csvRows = (rankingsPublic as unknown as Record<string, unknown>[]).map((r) => ({
         ticker: symbolRecord.ticker,
         teo,
         ...r,
@@ -114,7 +124,8 @@ export const GET = withBilling(
         ticker: symbolRecord.ticker,
         symbol: symbolRecord.symbol,
         teo,
-        rankings,
+        date: teo,
+        rankings: rankingsPublic,
         filters: {
           metric: metricQ ?? null,
           cohort: cohortQ ?? null,
