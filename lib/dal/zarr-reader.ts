@@ -20,7 +20,14 @@ import {
   UnicodeStringArray,
 } from "zarrita";
 import type { Group } from "zarrita";
-import { parseZarrGcsPrefix, getZarrFactorSetId, zarrDailyBasename, zarrHedgeBasename, zarrReturnsBasename } from "@/lib/zarr-config";
+import {
+  parseZarrGcsPrefix,
+  getZarrFactorSetId,
+  zarrDailyBasename,
+  zarrEtfBasename,
+  zarrHedgeBasename,
+  zarrReturnsBasename,
+} from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
@@ -345,12 +352,28 @@ export async function readHistorySlice(
   const returnsSymMap = returnsGrp ? await readSymbolIndexMap(returnsGrp) : null;
   const levelMaps = returnsGrp ? await readLevelIndexMap(returnsGrp) : null;
 
-  // Shortest common range across every store involved in this request,
-  // further clipped to the caller's [startDate, endDate] window. This
-  // guarantees every metric_row the caller sees lives inside a date window
-  // that *all* requested stores cover — no misleading half-populated rows.
-  // Each store's teo is sorted ascending, so we can just max the firsts and
-  // min the lasts.
+  // ETF store. Disjoint from ds_daily — ~100 ETFs with their own CUSIP-based
+  // bw_sym_ids (e.g. SPY = BW-US78462F1030). Always opened because the
+  // caller's symbol list can contain a mix of stocks and ETFs and we can't
+  // tell which is which upfront without a Supabase round-trip. The store is
+  // small (100 symbols) so the cost of an unneeded open is negligible.
+  // ETFs don't decompose into factor exposures, so hedge/returns roles are
+  // skipped for ETF symbols — the existing per-store symMap guards enforce
+  // that automatically.
+  const etfGrp = await openZarrGroup(zarrEtfBasename());
+  const etfTeo = etfGrp ? await readTeoStrings(etfGrp) : null;
+  const etfSymMap = etfGrp ? await readSymbolIndexMap(etfGrp) : null;
+
+  // Shortest common range across every stock-side store involved in this
+  // request, clipped to the caller's [startDate, endDate] window. Guarantees
+  // stock-symbol rows only appear inside a date window that all requested
+  // stock stores cover — no misleading half-populated rows. Each store's teo
+  // is sorted ascending, so we max the firsts and min the lasts.
+  //
+  // ETF store is intentionally excluded from this intersection: ETF queries
+  // are disjoint from stock queries (no hedge/returns involvement), so
+  // narrowing the stock window by the ETF store's coverage would needlessly
+  // clip stock queries that don't touch any ETF.
   let effStart = startDate ?? "";
   let effEnd = endDate ?? "9999-12-31";
   const involvedTeos: string[][] = [dailyTeo];
@@ -377,6 +400,26 @@ export async function readHistorySlice(
   const [ht0, ht1] = boundsFor(hedgeTeo);
   const [rt0, rt1] = boundsFor(returnsTeo);
 
+  // ETF bounds are computed independently against the ETF store's own teo
+  // axis, clipped only by the caller's [startDate, endDate] — NOT by the
+  // stock-side common window. This lets a pure-ETF query return its full
+  // coverage even if (for example) the returns store's teo starts later
+  // than the ETF store's.
+  let etfT0 = 0;
+  let etfT1 = 0;
+  if (etfGrp && etfTeo?.length) {
+    const etfStart = startDate && startDate > etfTeo[0]! ? startDate : etfTeo[0]!;
+    const etfEnd =
+      endDate && endDate < etfTeo[etfTeo.length - 1]!
+        ? endDate
+        : etfTeo[etfTeo.length - 1]!;
+    if (etfStart <= etfEnd) {
+      etfT0 = lowerBound(etfTeo, etfStart);
+      etfT1 = upperBoundInclusive(etfTeo, etfEnd);
+      if (etfT1 < etfT0) etfT1 = etfT0;
+    }
+  }
+
   const rangeStart = validWindow ? (dailyTeo[dt0] ?? effStart) : "";
   const rangeEnd = validWindow ? (dailyTeo[Math.max(0, dt1 - 1)] ?? effEnd) : "";
 
@@ -384,7 +427,12 @@ export async function readHistorySlice(
 
   for (const symbol of symbols) {
     // Each store has its OWN symbol roster and ordering. Resolve per store.
+    // ETFs live in ds_etf.zarr and are NOT present in ds_daily — the daily-
+    // role branch below falls through to the ETF store when `dailyIdx` is
+    // undefined but `etfIdx` resolves. Hedge/returns branches intentionally
+    // skip ETFs (they don't decompose into factor exposures).
     const dailyIdx = dailySymMap.get(symbol);
+    const etfIdx = etfSymMap?.get(symbol);
     const hedgeIdx = hedgeSymMap?.get(symbol);
     const returnsIdx = returnsSymMap?.get(symbol);
 
@@ -393,25 +441,60 @@ export async function readHistorySlice(
       if (!spec) continue;
 
       if (spec.role === "daily") {
-        if (dailyIdx === undefined || dt1 <= dt0) continue;
-        const vals = await readFloatSeriesTeoSymbol(
-          dailyGrp,
-          spec.zarrVar,
-          dt0,
-          dt1,
-          dailyIdx,
-        );
-        if (!vals) continue;
-        for (let i = 0; i < vals.length; i++) {
-          const teoStr = dailyTeo[dt0 + i];
-          if (!teoStr) continue;
-          rows.push({
-            symbol,
-            teo: teoStr,
-            periodicity: "daily",
-            metric_key: key,
-            metric_value: vals[i] ?? null,
-          });
+        // Stock path first.
+        if (dailyIdx !== undefined && dt1 > dt0) {
+          const vals = await readFloatSeriesTeoSymbol(
+            dailyGrp,
+            spec.zarrVar,
+            dt0,
+            dt1,
+            dailyIdx,
+          );
+          if (vals) {
+            for (let i = 0; i < vals.length; i++) {
+              const teoStr = dailyTeo[dt0 + i];
+              if (!teoStr) continue;
+              rows.push({
+                symbol,
+                teo: teoStr,
+                periodicity: "daily",
+                metric_key: key,
+                metric_value: vals[i] ?? null,
+              });
+            }
+            continue;
+          }
+        }
+        // ETF path fallback: only if the symbol wasn't in ds_daily at all
+        // (so we don't double-read for a symbol that just happens to have
+        // an empty daily series for some reason).
+        if (
+          dailyIdx === undefined &&
+          etfGrp &&
+          etfIdx !== undefined &&
+          etfTeo?.length &&
+          etfT1 > etfT0
+        ) {
+          const vals = await readFloatSeriesTeoSymbol(
+            etfGrp,
+            spec.zarrVar,
+            etfT0,
+            etfT1,
+            etfIdx,
+          );
+          if (vals) {
+            for (let i = 0; i < vals.length; i++) {
+              const teoStr = etfTeo[etfT0 + i];
+              if (!teoStr) continue;
+              rows.push({
+                symbol,
+                teo: teoStr,
+                periodicity: "daily",
+                metric_key: key,
+                metric_value: vals[i] ?? null,
+              });
+            }
+          }
         }
         continue;
       }

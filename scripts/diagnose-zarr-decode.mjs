@@ -267,7 +267,33 @@ async function integrationCheck() {
 
   const ok = nonNull(drVals) > 200 && nonNull(hhVals) > 200 && nonNull(rcVals) > 200;
   console.log(`\n${ok ? "PASS" : "FAIL"} — NVDA ${ok ? "returns real data from all three stores" : "still empty in at least one store"}`);
-  return ok;
+
+  // ---------- ETF round-trip: SPY via ds_etf.zarr ----------
+  console.log("\n── ETF path: SPY via ds_etf.zarr ──");
+  const SPY_SYMBOL = "BW-US78462F1030";
+  const etf = await openStore(bucket, BASE_PATH, "ds_etf.zarr");
+  const etfSymArr = await open.v2(etf.resolve("symbol"), { kind: "array" });
+  const etfSymMap = readSymbolMap((await get(etfSymArr, null))?.data);
+  const etfIdx = etfSymMap.get(SPY_SYMBOL);
+  const etfTeoArr = await open.v2(etf.resolve("teo"), { kind: "array" });
+  const etfTeo = decodeTeo((await get(etfTeoArr, null)).data, etfTeoArr.attrs?.units);
+  console.log(`SPY idx in ds_etf=${etfIdx}`);
+  console.log(`etf teo[${etfTeo?.length}] ${etfTeo?.[0]}..${etfTeo?.[etfTeo.length - 1]}`);
+  const [et0, et1] = [lowerBound(etfTeo, START_DATE), upperBoundInclusive(etfTeo, "9999-12-31")];
+  console.log(`etf bounds=[${et0},${et1})`);
+  const etfRetArr = await open.v2(etf.resolve("return"), { kind: "array" });
+  const etfRet = await get(etfRetArr, [slice(et0, et1), etfIdx]);
+  const erVals = Array.from(etfRet.data);
+  console.log(`SPY return: shape=${etfRet.shape} first5=${erVals.slice(0, 5).map((x) => x?.toFixed?.(6) ?? x)}`);
+  const etfCloseArr = await open.v2(etf.resolve("close"), { kind: "array" });
+  const etfClose = await get(etfCloseArr, [slice(et0, et1), etfIdx]);
+  const ecVals = Array.from(etfClose.data);
+  console.log(`SPY close: shape=${etfClose.shape} first5=${ecVals.slice(0, 5).map((x) => x?.toFixed?.(2) ?? x)}`);
+
+  const etfOk = nonNull(erVals) > 200 && nonNull(ecVals) > 200;
+  console.log(`${etfOk ? "PASS" : "FAIL"} — SPY ${etfOk ? "returns real daily data from ds_etf.zarr" : "still empty on ETF path"}`);
+
+  return ok && etfOk;
 }
 
 main()

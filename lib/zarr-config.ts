@@ -28,6 +28,11 @@ export function zarrDailyBasename(): string {
   return "ds_daily.zarr";
 }
 
+/** ETF store — disjoint roster from ds_daily (~100 ETFs with their own symbol IDs). */
+export function zarrEtfBasename(): string {
+  return "ds_etf.zarr";
+}
+
 export function zarrReturnsBasename(factorSetId = getZarrFactorSetId()): string {
   return `ds_erm3_returns_${factorSetId}.zarr`;
 }
