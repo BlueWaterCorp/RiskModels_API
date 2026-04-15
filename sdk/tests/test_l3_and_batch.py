@@ -47,6 +47,42 @@ def test_get_l3_decomposition_parses_and_metadata():
     assert df.attrs.get("riskmodels_kind") == "l3_decomposition"
 
 
+def test_get_l3_decomposition_forwards_years_kwarg():
+    """years=N should reach the request URL as a query param."""
+    body = {
+        "dates": ["2020-01-02"],
+        "l3_market_hr": [0.1],
+        "l3_sector_hr": [0.1],
+        "l3_subsector_hr": [0.0],
+        "l3_market_er": [0.25],
+        "l3_sector_er": [0.25],
+        "l3_subsector_er": [0.25],
+        "l3_residual_er": [0.25],
+    }
+
+    seen_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(request.url))
+        return httpx.Response(200, json=body)
+
+    client = _client(handler)
+
+    # Default call — no years param in URL.
+    client.get_l3_decomposition("AAPL", validate="off")
+    assert "years=" not in seen_urls[-1]
+
+    # Explicit years=5 — must appear in the URL.
+    client.get_l3_decomposition("AAPL", years=5, validate="off")
+    assert "years=5" in seen_urls[-1]
+
+    # Combined with market_factor_etf — both params present.
+    client.get_l3_decomposition("AAPL", years=10, market_factor_etf="SPY", validate="off")
+    url = seen_urls[-1]
+    assert "years=10" in url
+    assert "market_factor_etf=SPY" in url
+
+
 def test_batch_analyze_parquet_long_normalizes_columns():
     long_df = pd.DataFrame(
         [

@@ -470,6 +470,12 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "description": "Optional market ETF override (e.g. SPY).",
             },
             {
+                "name": "years",
+                "type": "integer",
+                "required": False,
+                "description": "History window in years. Omit to use the server default (1).",
+            },
+            {
                 "name": "validate",
                 "type": "string",
                 "required": False,

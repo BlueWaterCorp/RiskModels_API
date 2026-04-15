@@ -587,12 +587,15 @@ class RiskModelsClient:
         ticker: str,
         *,
         market_factor_etf: str | None = None,
+        years: int | None = None,
         validate: ValidateMode | None = None,
     ) -> pd.DataFrame:
         t, _ = resolve_ticker(ticker, self)
         params: dict[str, Any] = {"ticker": t}
         if market_factor_etf:
             params["market_factor_etf"] = market_factor_etf
+        if years is not None:
+            params["years"] = years
         body, lineage, _ = self._transport.request("GET", "/l3-decomposition", params=params)
         df = l3_decomposition_json_to_dataframe(body)
         mode = validate if validate is not None else self._validate_default
