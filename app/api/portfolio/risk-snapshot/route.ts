@@ -85,8 +85,7 @@ async function buildSnapshotResponse(
     validation.as_of_date ?? (teoLabel || new Date().toISOString().split("T")[0]);
   const title = validation.title ?? "Portfolio";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const portfolioRiskIndex: Record<string, any> = {
+  const portfolioRiskIndex: Record<string, unknown> = {
     variance_decomposition: {
       market: core.portfolioER.market,
       sector: core.portfolioER.sector,
