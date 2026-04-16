@@ -54,16 +54,20 @@ describe("computeDiversificationMetrics", () => {
     expect(r.diversification_credit.subsector).toBeGreaterThan(0);
   });
 
-  it("sector u'Ru matches hand computation for 2-ETF case", () => {
+  it("sector multiplier matches hand computation for 2-ETF case", () => {
     const input = makeInput();
     const r = computeDiversificationMetrics(input);
     // u_XLK = 0.5 * 0.2 = 0.1, u_XLF = 0.5 * 0.3 = 0.15
-    // u'Ru = 0.1*1*0.1 + 0.1*0.6*0.15 + 0.15*0.6*0.1 + 0.15*1*0.15
-    //      = 0.01 + 0.009 + 0.009 + 0.0225 = 0.0505
-    expect(r.correlation_adjusted.sector_er).toBeCloseTo(0.0505, 4);
+    // u'Ru = 0.1^2*1 + 2*0.1*0.15*0.6 + 0.15^2*1 = 0.01 + 0.018 + 0.0225 = 0.0505
+    // (sum|u|)^2 = (0.1+0.15)^2 = 0.0625
+    // multiplier = 0.0505 / 0.0625 = 0.808
+    // adjusted_sector = naive_sector * 0.808 = 0.25 * 0.808 = 0.202
+    expect(r.correlation_adjusted.sector_er).toBeCloseTo(0.25 * (0.0505 / 0.0625), 3);
+    const sectorLayer = r.layers.find((l) => l.layer === "sector")!;
+    expect(sectorLayer.multiplier).toBeCloseTo(0.808, 2);
   });
 
-  it("single-ETF degenerate case: adjusted = u^2", () => {
+  it("single-ETF degenerate case: adjusted = naive (no diversification)", () => {
     const input = makeInput({
       tickerMetrics: new Map([
         ["A", { l3_mkt_er: 0.5, l3_sec_er: 0.3, l3_sub_er: 0.1, l3_res_er: 0.1, sector_etf: "XLK", subsector_etf: "SMH" }],
@@ -75,19 +79,20 @@ describe("computeDiversificationMetrics", () => {
       },
     });
     const r = computeDiversificationMetrics(input);
-    // u_XLK = 0.5*0.3 + 0.5*0.2 = 0.25
-    // adjusted = 0.25^2 * 1 = 0.0625
-    expect(r.correlation_adjusted.sector_er).toBeCloseTo(0.0625, 6);
-    // naive = 0.25, so credit = 0.25 - 0.0625 = 0.1875
-    expect(r.diversification_credit.sector).toBeCloseTo(0.1875, 4);
+    // Single ETF: u'Ru = u^2, (sum|u|)^2 = u^2, multiplier = 1.0
+    expect(r.correlation_adjusted.sector_er).toBeCloseTo(r.naive_pws.sector_er, 6);
+    expect(r.diversification_credit.sector).toBeCloseTo(0, 6);
   });
 
-  it("residual uses concentration form (sum w_i^2 * res_er_i)", () => {
+  it("residual uses concentration multiplier", () => {
     const r = computeDiversificationMetrics(makeInput());
-    // adj_residual = 0.5^2 * 0.2 + 0.5^2 * 0.15 = 0.05 + 0.0375 = 0.0875
-    expect(r.correlation_adjusted.residual_er).toBeCloseTo(0.0875, 4);
     // naive_residual = 0.5*0.2 + 0.5*0.15 = 0.175
-    expect(r.diversification_credit.residual).toBeCloseTo(0.175 - 0.0875, 4);
+    // concentration = 0.5^2*0.2 + 0.5^2*0.15 = 0.0875
+    // multiplier = 0.0875 / 0.175 = 0.5
+    // adjusted = 0.175 * 0.5 = 0.0875
+    expect(r.correlation_adjusted.residual_er).toBeCloseTo(0.0875, 4);
+    const resLayer = r.layers.find((l) => l.layer === "residual")!;
+    expect(resLayer.multiplier).toBeCloseTo(0.5, 3);
   });
 
   it("layers invariant: naive == adjusted + adjustment per layer", () => {
@@ -123,7 +128,7 @@ describe("computeDiversificationMetrics", () => {
   it("method and explanation are populated", () => {
     const r = computeDiversificationMetrics(makeInput());
     expect(r.method).toBe("variance_space_quadratic");
-    expect(r._explanation).toContain("quadratic");
+    expect(r._explanation).toContain("multiplier");
     expect(r._explanation).toContain("concentration");
   });
 
