@@ -99,17 +99,26 @@ async function hedgePortfolio(): Promise<void> {
   });
 
   // ── Weighted portfolio-level hedge ratios ────────────────────────────────────
-  let wtdL1Market = 0, wtdL2Market = 0, wtdL3Market = 0;
-  for (const row of rows) {
-    if (row.l1_market_hr !== null) wtdL1Market += row.weight * row.l1_market_hr;
-    if (row.l2_market_hr !== null) wtdL2Market += row.weight * row.l2_market_hr;
-    if (row.l3_market_hr !== null) wtdL3Market += row.weight * row.l3_market_hr;
-  }
+  const wtd = (get: (r: PositionHedge) => number | null) =>
+    rows.reduce((s, r) => s + r.weight * (get(r) ?? 0), 0);
 
-  console.log("Portfolio-level hedge ratios (weighted average):");
-  console.log(`  L1 market hedge (wtd): ${wtdL1Market.toFixed(4)}`);
-  console.log(`  L2 market hedge (wtd): ${wtdL2Market.toFixed(4)}`);
-  console.log(`  L3 market hedge (wtd): ${wtdL3Market.toFixed(4)}`);
+  const fmt = (v: number) => (Number.isFinite(v) ? v.toFixed(4) : "—");
+  const nan = Number.NaN;
+  const table = [
+    { level: "L1", mkt: wtd((r) => r.l1_market_hr), sec: nan, sub: nan },
+    { level: "L2", mkt: wtd((r) => r.l2_market_hr), sec: wtd((r) => r.l2_sector_hr), sub: nan },
+    { level: "L3", mkt: wtd((r) => r.l3_market_hr), sec: wtd((r) => r.l3_sector_hr), sub: wtd((r) => r.l3_sub_hr) },
+  ];
+
+  console.log("Portfolio-level hedge ratios (weighted average by level — HR legs at each L*):");
+  console.log(
+    "  Level | Market HR (wtd) | Sector HR (wtd) | Subsector HR (wtd)",
+  );
+  for (const row of table) {
+    console.log(
+      `  ${row.level}     | ${fmt(row.mkt).padStart(15)} | ${fmt(row.sec).padStart(15)} | ${fmt(row.sub).padStart(18)}`,
+    );
+  }
 
   // ── Per-position table ───────────────────────────────────────────────────────
   console.log("\nPer-position breakdown:");
