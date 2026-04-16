@@ -171,6 +171,8 @@ export async function runPortfolioRiskComputation(
       weight: weightMap.get(ticker),
       symbol: sym.symbol,
       teo: tickerTeos.get(ticker) ?? null,
+      sector_etf: sym.sector_etf ?? null,
+      subsector_etf: sym.subsector_etf ?? null,
       l3_mkt_er: m?.l3_mkt_er ?? null,
       l3_sec_er: m?.l3_sec_er ?? null,
       l3_sub_er: m?.l3_sub_er ?? null,

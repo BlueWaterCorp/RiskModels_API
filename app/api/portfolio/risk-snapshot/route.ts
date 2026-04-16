@@ -17,6 +17,8 @@ import {
   type PortfolioRiskSnapshotRequest,
 } from "@/lib/api/schemas";
 import { runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
+import { computeDiversificationMetrics, type DiversificationTickerMetrics } from "@/lib/portfolio/portfolio-diversification";
+import { fetchEtfCorrelationMatrices } from "@/lib/portfolio/portfolio-diversification-etf-returns";
 import { buildRiskSnapshotPdf } from "@/lib/portfolio/risk-snapshot-pdf";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
@@ -35,6 +37,8 @@ function snapshotCacheKey(
     title?: string;
     as_of_date?: string;
     format: string;
+    include_diversification?: boolean;
+    window_days?: number;
   },
 ) {
   const h = createHash("sha256")
@@ -81,20 +85,70 @@ async function buildSnapshotResponse(
     validation.as_of_date ?? (teoLabel || new Date().toISOString().split("T")[0]);
   const title = validation.title ?? "Portfolio";
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const portfolioRiskIndex: Record<string, any> = {
+    variance_decomposition: {
+      market: core.portfolioER.market,
+      sector: core.portfolioER.sector,
+      subsector: core.portfolioER.subsector,
+      residual: core.portfolioER.residual,
+      systematic: core.systematic,
+    },
+    portfolio_volatility_23d: core.portfolioVol,
+    position_count: core.summary.resolved,
+  };
+
+  if (validation.include_diversification) {
+    const tickerMetrics = new Map<string, DiversificationTickerMetrics>();
+    const sectorEtfSet = new Set<string>();
+    const subsectorEtfSet = new Set<string>();
+
+    for (const [ticker, data] of Object.entries(core.perTicker)) {
+      const d = data as Record<string, unknown>;
+      const sectorEtf = (d.sector_etf as string) ?? null;
+      const subsectorEtf = (d.subsector_etf as string) ?? null;
+      tickerMetrics.set(ticker, {
+        l3_mkt_er: (d.l3_mkt_er as number) ?? null,
+        l3_sec_er: (d.l3_sec_er as number) ?? null,
+        l3_sub_er: (d.l3_sub_er as number) ?? null,
+        l3_res_er: (d.l3_res_er as number) ?? null,
+        sector_etf: sectorEtf,
+        subsector_etf: subsectorEtf,
+      });
+      if (sectorEtf) sectorEtfSet.add(sectorEtf);
+      if (subsectorEtf) subsectorEtfSet.add(subsectorEtf);
+    }
+
+    const etfCorrelations = await fetchEtfCorrelationMatrices(
+      [...sectorEtfSet],
+      [...subsectorEtfSet],
+      validation.window_days,
+    );
+
+    const normalizedPositions = validation.positions.map((p) => ({
+      ticker: p.ticker.trim().toUpperCase(),
+      weight: p.weight,
+    }));
+    const totalWeight = normalizedPositions.reduce((s, p) => s + p.weight, 0);
+    const normPositions = normalizedPositions.map((p) => ({
+      ...p,
+      weight: totalWeight > 0 ? p.weight / totalWeight : 0,
+    }));
+
+    const diversification = computeDiversificationMetrics({
+      positions: normPositions,
+      tickerMetrics,
+      etfCorrelations,
+      windowDays: validation.window_days,
+    });
+
+    portfolioRiskIndex.diversification = diversification;
+  }
+
   const jsonBody = {
     title,
     as_of: asOf,
-    portfolio_risk_index: {
-      variance_decomposition: {
-        market: core.portfolioER.market,
-        sector: core.portfolioER.sector,
-        subsector: core.portfolioER.subsector,
-        residual: core.portfolioER.residual,
-        systematic: core.systematic,
-      },
-      portfolio_volatility_23d: core.portfolioVol,
-      position_count: core.summary.resolved,
-    },
+    portfolio_risk_index: portfolioRiskIndex,
     per_ticker: core.perTicker,
     summary: core.summary,
     ...(core.errorsList.length ? { errors: core.errorsList } : {}),
@@ -212,6 +266,8 @@ export async function POST(request: NextRequest) {
     title: pre.data.title,
     as_of_date: pre.data.as_of_date,
     format: pre.data.format,
+    include_diversification: pre.data.include_diversification,
+    window_days: pre.data.window_days,
   });
 
   const hit = await getCache<CachePayload>(key);

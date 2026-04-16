@@ -162,6 +162,8 @@ export const PortfolioRiskSnapshotRequestSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of_date must be YYYY-MM-DD")
     .optional(),
   format: z.enum(["pdf", "png", "json"]).default("json"),
+  include_diversification: z.boolean().optional().default(false),
+  window_days: z.coerce.number().int().min(20).max(2000).optional().default(252),
 });
 
 export type PortfolioRiskSnapshotRequest = z.infer<typeof PortfolioRiskSnapshotRequestSchema>;
