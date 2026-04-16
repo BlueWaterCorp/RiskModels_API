@@ -44,6 +44,16 @@ Examples
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py --upload-gcs
 
+    # At least 1k names to gs://rm_api_public/snapshot (with SEC profile blurbs):
+    export ERM3_ZARR_ROOT=/path/to/zarr/root
+    export ERM3_ROOT=/path/to/ERM3
+    PYTHONPATH=sdk:$ERM3_ROOT python sdk/scripts/bulk_dd_render.py \\
+        --sec-profile-json-root /path/to/company_profiles/v1 \\
+        --limit 1000 --upload-gcs --resume
+
+    # Regenerate every ticker after a layout change (same flags as above plus):
+    #   --resume --force
+
 Why this script vs mag7_dd_zarr_vs_api.py
 -----------------------------------------
 mag7_dd_zarr_vs_api.py is a **validation** script — its job is to compare the
@@ -147,6 +157,7 @@ def _render_one(
     upload_gcs: bool,
     gcs_bucket: str,
     resume: bool,
+    force: bool = False,
     sec_profile_json_root: Path | None = None,
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log."""
@@ -163,7 +174,7 @@ def _render_one(
     png = tdir / f"{ticker}_DD_latest.png"
     pdf = tdir / f"{ticker}_DD_latest.pdf"
 
-    if resume and png.is_file() and pdf.is_file():
+    if resume and not force and png.is_file() and pdf.is_file():
         return {
             "ticker": ticker,
             "status": "skipped_resume",
@@ -260,7 +271,13 @@ def main() -> int:
         description=__doc__.split("\n\n", 1)[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--zarr-root", type=Path, default=_default_zarr_root())
+    ap.add_argument(
+        "--zarr-root",
+        type=Path,
+        default=None,
+        help="Directory containing ds_daily.zarr (default: ERM3_ZARR_ROOT). "
+             "Not required for --dry-run when using --tickers or --tickers-file.",
+    )
     ap.add_argument("--out-dir", type=Path, default=_default_out_dir(),
                     help="Output root. Default: /Volumes/ext_2t/Stock_Snapshots "
                          "(override with BULK_SNAPSHOT_DIR env var)")
@@ -278,6 +295,13 @@ def main() -> int:
     ap.add_argument("--gcs-bucket", default="gs://rm_api_public/snapshot")
     ap.add_argument("--resume", action="store_true",
                     help="Skip tickers whose PNG+PDF already exist in --out-dir.")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-render even when PNG+PDF already exist (overwrites). "
+             "With --resume, disables skip-on-existing so all tickers are regenerated "
+             "(typical after a snapshot layout change).",
+    )
     ap.add_argument("--limit", type=int, default=None,
                     help="Cap the run to the first N tickers (for smoke tests).")
     ap.add_argument("--dry-run", action="store_true",
@@ -295,6 +319,22 @@ def main() -> int:
     args = ap.parse_args()
 
     sys.path.insert(0, str(_SDK_ROOT))
+
+    if args.zarr_root is None:
+        try:
+            args.zarr_root = _default_zarr_root()
+        except ValueError:
+            if args.dry_run and (args.tickers is not None or args.tickers_file):
+                args.zarr_root = Path(".")
+            else:
+                print(
+                    "FAIL: set ERM3_ZARR_ROOT or pass --zarr-root (required for universe mode "
+                    "and for rendering).",
+                    file=sys.stderr,
+                )
+                return 2
+    else:
+        args.zarr_root = args.zarr_root.expanduser().resolve()
 
     # ── Resolve ticker list ──
     if args.tickers:
@@ -364,6 +404,7 @@ def main() -> int:
     print(f"  api_peers    : {api_client is not None}")
     print(f"  upload_gcs   : {args.upload_gcs}")
     print(f"  resume       : {args.resume}")
+    print(f"  force        : {args.force}")
     print(f"  sec_profile  : {sec_profile_root}")
     print()
 
@@ -377,6 +418,7 @@ def main() -> int:
                 upload_gcs=args.upload_gcs,
                 gcs_bucket=args.gcs_bucket,
                 resume=args.resume,
+                force=args.force,
                 sec_profile_json_root=sec_profile_root,
             )
             row["i"] = i
@@ -401,6 +443,8 @@ def main() -> int:
         "zarr_root": str(args.zarr_root),
         "api_peers": api_client is not None,
         "upload_gcs": args.upload_gcs,
+        "resume": args.resume,
+        "force": args.force,
         "sec_profile_json_root": str(sec_profile_root) if sec_profile_root else None,
         "log_file": str(log_path),
     }

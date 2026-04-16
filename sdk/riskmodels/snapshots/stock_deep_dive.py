@@ -9,7 +9,9 @@ the MAG7 chart from BWMACRO/article_visuals.py but for any stock's peer group).
 Layout (Letter Landscape, Pillow compositor)
 --------------------------------------------
   Left panel (25%) : Identity, Performance Stats, Rankings (labeled subsector ranks),
-                      Risk Decomposition ER, Macro Correlations, ERM3 methodology (L1–L3)
+                      Risk Decomposition ER, Macro Correlations,
+                      BUSINESS PROFILE (SEC/LLM text when present) above methodology,
+                      ERM3 methodology (L1–L3) pinned to panel bottom
   Right area  (75%):
       AI Summary Box
       I.  Cumulative Returns — stock vs L1–L3 combined factor returns (CFR) or ETF gross + L3 Residual Return
@@ -47,6 +49,7 @@ from ._plotly_theme import PLOTLY_THEME, apply_theme
 from ._compose import (
     SnapshotComposer, NAVY, TEAL, TEXT_DARK, TEXT_MID, TEXT_LIGHT,
     WHITE, LIGHT_BG, BORDER, render_portal_riskmodels_brand_logo,
+    _font, _wrap_text,
 )
 from ._data import series_with_zero_start
 from ..visuals.smart_subheader import generate_subheader
@@ -1438,9 +1441,15 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     SEC_SZ = 21
     METH_BODY = 19     # methodology body (fits L1–L3 copy in sidebar)
 
+    # Reserve below middle sections: methodology block + optional BUSINESS PROFILE band.
+    METH_BLOCK_H = 780   # methodology + reading guide (from meth_band_top downward)
+    _cp_for_layout = getattr(data, "company_profile_text", None)
+    _has_profile = bool(_cp_for_layout and str(_cp_for_layout).strip())
+    PROFILE_BAND = 300 if _has_profile else 0  # pixels above methodology for SEC blurb
+    METH_TOTAL = METH_BLOCK_H + PROFILE_BAND
+
     # Dynamic SECTION_GAP — distribute vertical space so sections fill the panel
-    # and methodology is pinned to the panel bottom (METH_RESERVE px from footer).
-    METH_RESERVE = 780   # expanded methodology block with reading guide
+    # and bottom block (methodology + optional profile) is pinned from footer.
     PANEL_BOTTOM = H - 90
     _company_h   = int(38 * 1.4) + int(LBL_SZ * 1.4) + 10
     _sec_h       = int(SEC_SZ * 1.4) + 7   # section header + divider
@@ -1453,7 +1462,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     _macro_h     = _sec_h + 6 * ROW_H
     _sections_h  = _company_h + _identity_h + _perf_h + _rankings_h + _risk_h + _macro_h
     _n_gaps      = 5   # gaps: after identity, perf, rankings, risk, macro→meth
-    _avail       = (PANEL_BOTTOM - METH_RESERVE) - (py + _sections_h)
+    _avail       = (PANEL_BOTTOM - METH_TOTAL) - (py + _sections_h)
     # Narrow band so vertical rhythm between Identity / Perf / Rankings / Risk / Macro is even
     SECTION_GAP  = max(30, min(52, _avail // _n_gaps))
 
@@ -1477,20 +1486,6 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     page.text(MARGIN, py, f"{data.ticker}  ·  {data.teo}",
               font_size=LBL_SZ, color=TEXT_MID)
     py += int(LBL_SZ * 1.4) + 10
-
-    # SEC / LLM company profile (ERM3 pipeline) — matches Supabase company_snapshot text
-    cp = getattr(data, "company_profile_text", None)
-    if cp and str(cp).strip():
-        _section("BUSINESS PROFILE")
-        py = page.text(
-            MARGIN,
-            py,
-            str(cp).strip(),
-            font_size=METH_BODY,
-            color=TEXT_DARK,
-            max_width=PANEL_W,
-        )
-        py += SECTION_GAP
 
     # IDENTITY
     _section("IDENTITY")
@@ -1746,8 +1741,35 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
             page.draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=val_color)
         py += ROW_H
 
+    # ── BUSINESS PROFILE (above methodology) ─────────────────────────
+    py_after_macro = py
+    meth_band_top = PANEL_BOTTOM - METH_BLOCK_H
+    cp = getattr(data, "company_profile_text", None)
+    if cp and str(cp).strip():
+        room = max(0, meth_band_top - py_after_macro - 24)
+        band = min(PROFILE_BAND, max(100, room)) if room >= 100 else 0
+        if band > 0:
+            prof_y = meth_band_top - band
+            if prof_y < py_after_macro + 10:
+                prof_y = py_after_macro + 10
+            py = prof_y
+            _section("BUSINESS PROFILE")
+            fnt_prof = _font(METH_BODY, bold=False)
+            raw_lines = _wrap_text(str(cp).strip(), fnt_prof, PANEL_W)
+            line_h = int(METH_BODY * 1.4)
+            max_lines = max(1, (meth_band_top - 14 - py) // line_h)
+            for ln in raw_lines[:max_lines]:
+                page.draw.text((MARGIN, py), ln, fill=TEXT_DARK, font=fnt_prof)
+                py += line_h
+            if len(raw_lines) > max_lines:
+                page.text_right(
+                    panel_right, py - line_h, "…",
+                    font_size=METH_BODY - 2, color=TEXT_LIGHT,
+                )
+            py = min(py + 10, meth_band_top - 6)
+
     # ── METHODOLOGY — pinned to panel bottom ──────────────────────────
-    py = PANEL_BOTTOM - METH_RESERVE
+    py = meth_band_top
     page.hline(py, x0=MARGIN, x1=panel_right, color=BORDER, thickness=1)
     py += 8
 
