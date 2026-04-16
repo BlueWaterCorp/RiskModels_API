@@ -71,15 +71,26 @@ export interface DiversificationResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function quadraticForm(u: number[], R: number[][]): number {
+/**
+ * Compute diversification multiplier: (u'Ru) / (sum |u_i|)^2.
+ * Denominator is the perfectly-correlated case (R = all 1s), so
+ * multiplier = 1.0 when all correlations are 1, < 1.0 when
+ * imperfect correlations reduce portfolio variance.
+ * Clamped to [0, 1].
+ */
+function diversificationMultiplier(u: number[], R: number[][]): number {
   const n = u.length;
-  let result = 0;
+  let uRu = 0;
+  let sumAbsU = 0;
   for (let i = 0; i < n; i++) {
+    sumAbsU += Math.abs(u[i]);
     for (let j = 0; j < n; j++) {
-      result += u[i] * R[i][j] * u[j];
+      uRu += u[i] * R[i][j] * u[j];
     }
   }
-  return Math.max(0, result);
+  const perfectlyCorrelated = sumAbsU * sumAbsU;
+  if (perfectlyCorrelated < 1e-15) return 1;
+  return Math.max(0, Math.min(1, uRu / perfectlyCorrelated));
 }
 
 function buildExposureVector(
@@ -176,27 +187,31 @@ export function computeDiversificationMetrics(
   // adjusted = naive (all positions share the same market factor).
   const adjMarket = naiveMarket;
 
-  // Sector: u'Ru across unique sector ETFs
+  // Sector: diversification multiplier from cross-sector ETF correlations
   const { u: uSec, warnings: wSec } = buildExposureVector(
     positions, tickerMetrics, "l3_sec_er", "sector_etf", etfCorrelations.sector.etfs,
   );
   warnings.push(...wSec);
-  const adjSector = quadraticForm(uSec, etfCorrelations.sector.R);
+  const adjSector = naiveSector * diversificationMultiplier(uSec, etfCorrelations.sector.R);
 
-  // Subsector: u'Ru across unique subsector ETFs
+  // Subsector: diversification multiplier from cross-subsector ETF correlations
   const { u: uSub, warnings: wSub } = buildExposureVector(
     positions, tickerMetrics, "l3_sub_er", "subsector_etf", etfCorrelations.subsector.etfs,
   );
   warnings.push(...wSub);
-  const adjSubsector = quadraticForm(uSub, etfCorrelations.subsector.R);
+  const adjSubsector = naiveSubsector * diversificationMultiplier(uSub, etfCorrelations.subsector.R);
 
-  // Residual: concentration-adjusted (sum w_i^2 * res_er_i)
-  let adjResidual = 0;
+  // Residual: concentration multiplier — HHI of ER-weighted positions.
+  // multiplier = (sum w_i^2 * res_er_i) / (sum w_i * res_er_i) when naive > 0.
+  // Equals 1/N for equal-weight equal-ER portfolio, 1.0 for single position.
+  let residualConcentration = 0;
   for (const { ticker, weight } of positions) {
     const m = tickerMetrics.get(ticker);
     if (!m) continue;
-    adjResidual += weight * weight * (m.l3_res_er ?? 0);
+    residualConcentration += weight * weight * (m.l3_res_er ?? 0);
   }
+  const residualMultiplier = naiveResidual > 1e-15 ? Math.min(1, residualConcentration / naiveResidual) : 1;
+  const adjResidual = naiveResidual * residualMultiplier;
 
   const layers: DiversificationLayer[] = [
     makeLayer("market", naiveMarket, adjMarket),
@@ -235,10 +250,9 @@ export function computeDiversificationMetrics(
     layers,
     warnings,
     _explanation:
-      "Sector and subsector layers apply quadratic diversification adjustment (u'Ru) " +
-      "using realized correlations between the underlying sector/subsector ETFs. " +
-      "Market layer has no diversification credit (all positions share the same broad market factor). " +
-      "Residual applies concentration-adjusted form (sum w_i^2 * res_er_i) " +
-      "because residuals are constructed to be approximately uncorrelated across stocks.",
+      "Sector and subsector layers apply a diversification multiplier (u'Ru)/(u'u) " +
+      "derived from realized correlations between the underlying ETFs, scaled to naive ER. " +
+      "Market layer has no diversification credit (single shared factor). " +
+      "Residual uses a concentration multiplier reflecting position-count diversification.",
   };
 }
