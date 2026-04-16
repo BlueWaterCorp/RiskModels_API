@@ -164,6 +164,7 @@ export const PortfolioRiskSnapshotRequestSchema = z.object({
   format: z.enum(["pdf", "png", "json"]).default("json"),
   include_diversification: z.boolean().optional().default(false),
   window_days: z.coerce.number().int().min(20).max(2000).optional().default(252),
+  no_cache: z.boolean().optional().default(false),
 });
 
 export type PortfolioRiskSnapshotRequest = z.infer<typeof PortfolioRiskSnapshotRequestSchema>;

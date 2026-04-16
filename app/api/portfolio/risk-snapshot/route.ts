@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
     window_days: pre.data.window_days,
   });
 
-  const hit = await getCache<CachePayload>(key);
+  const hit = pre.data.no_cache ? null : await getCache<CachePayload>(key);
   if (isPortfolioRiskSnapshotCacheHit(hit)) {
     if (hit.kind === "json") {
       return new NextResponse(hit.body, {
