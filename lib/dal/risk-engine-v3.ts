@@ -67,6 +67,17 @@ export type V3MetricKey =
   | "l2_sec_beta"
   | "l3_sub_beta";
 
+/**
+ * Sector/subsector HR in `security_history_latest` may be 0 or null while Zarr (ERM3 SSOT)
+ * has the real L2/L3 hedge legs. `fetchLatestMetricsWithFallback` overlays Zarr for these
+ * keys when the latest row is missing or zero.
+ */
+const HEDGE_RATIO_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
+  "l2_sec_hr",
+  "l3_sec_hr",
+  "l3_sub_hr",
+]);
+
 export type V3Periodicity = "daily" | "monthly";
 
 // V3 Row shape from security_history
@@ -607,14 +618,43 @@ export async function fetchLatestMetricsWithFallback(
   periodicity: V3Periodicity = "daily",
 ): Promise<{ teo: string; metrics: Record<string, number | null> } | null> {
   const fromLatest = await fetchLatestSummary(symbol, periodicity);
-  if (fromLatest) {
-    const filtered: Record<string, number | null> = {};
-    for (const k of keys) {
-      filtered[k] = fromLatest.metrics[k] ?? null;
-    }
-    return { teo: fromLatest.teo, metrics: filtered };
+
+  const requestedOverlay = keys.some(
+    (k) => HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k),
+  );
+  const needZarrOverlay =
+    fromLatest != null &&
+    requestedOverlay &&
+    keys.some((k) => {
+      if (!HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k)) return false;
+      const v = fromLatest.metrics[k];
+      return v == null || v === 0;
+    });
+
+  let fromZarr: Awaited<ReturnType<typeof fetchLatestMetrics>> = null;
+  if (fromLatest == null || needZarrOverlay) {
+    fromZarr = await fetchLatestMetrics(symbol, keys, periodicity);
   }
-  return fetchLatestMetrics(symbol, keys, periodicity);
+
+  if (!fromLatest && !fromZarr) return null;
+
+  const filtered: Record<string, number | null> = {};
+  for (const k of keys) {
+    const l = fromLatest?.metrics[k];
+    const z = fromZarr?.metrics[k];
+    if (HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k)) {
+      if (l != null && l !== 0) {
+        filtered[k] = l;
+      } else {
+        filtered[k] = z != null ? z : l ?? null;
+      }
+    } else {
+      filtered[k] = l ?? z ?? null;
+    }
+  }
+
+  const teo = fromLatest?.teo ?? fromZarr?.teo ?? "";
+  return { teo, metrics: filtered };
 }
 
 // ---------------------------------------------------------------------------
