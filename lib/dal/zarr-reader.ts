@@ -103,16 +103,13 @@ async function readTeoStrings(grp: Group<Readable>): Promise<string[] | null> {
     const arr = await open.v2(loc, { kind: "array" });
     const ch = await get(arr, null);
     const d = ch?.data;
-    if (!(d instanceof BigInt64Array)) return null;
 
-    // GCS ERM3 stores use CF-style time encoding: int64 day offsets with a
-    // `units: "days since YYYY-MM-DD[ HH:MM:SS]"` attribute. Previous code
-    // assumed datetime64[ns] nanosecond epochs and mapped every value to
-    // 1970-01-01 - that was bug 2 in the flap diagnosis.
     const attrs = (arr.attrs ?? {}) as Record<string, unknown>;
     const units = typeof attrs.units === "string" ? attrs.units : "";
     const cfMatch = units.match(/^days since (\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}:\d{2})?/);
-    if (cfMatch) {
+
+    // CF-encoded int64 day offsets (preferred encoding for all ERM3 stores)
+    if (d instanceof BigInt64Array && cfMatch) {
       const baseMs = Date.parse(`${cfMatch[1]}T00:00:00Z`);
       if (!Number.isFinite(baseMs)) return null;
       const MS_PER_DAY = 86_400_000;
@@ -123,8 +120,22 @@ async function readTeoStrings(grp: Group<Readable>): Promise<string[] | null> {
       });
     }
 
-    // Legacy / backward-compat: some stores may still write datetime64[ns].
-    return Array.from(d, (v) => nsToIsoDate(v));
+    // datetime64[ns] nanosecond epochs (rankings zarr and legacy stores)
+    if (d instanceof BigInt64Array) {
+      return Array.from(d, (v) => nsToIsoDate(v));
+    }
+
+    // Fallback: numeric array (Int32Array, Float64Array, etc.) treated as ns epochs
+    if (ArrayBuffer.isView(d) && !(d instanceof Uint8Array)) {
+      const nums = d as unknown as ArrayLike<number>;
+      return Array.from(nums, (v) => {
+        const ms = Number(v) / 1_000_000;
+        const dt = new Date(ms);
+        return Number.isFinite(dt.getTime()) ? dt.toISOString().slice(0, 10) : "";
+      });
+    }
+
+    return null;
   } catch {
     return null;
   }
