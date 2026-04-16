@@ -64,17 +64,30 @@ for ticker, weight in portfolio.items():
 df_port = pd.DataFrame(rows).set_index("ticker")
 
 # ── Weighted portfolio-level hedge ratios ──────────────────────────────────────
-for col in ["l1_market_hr", "l2_market_hr", "l3_market_hr"]:
-    df_port[f"w_{col}"] = df_port["weight"] * df_port[col]
+def _wtd_hr(col: str) -> float:
+    return round((df_port["weight"] * df_port[col].fillna(0)).sum(), 4)
 
-port_summary = pd.DataFrame({
-    "Value": {
-        "L1 market hedge (wtd)": round(df_port["w_l1_market_hr"].sum(), 4),
-        "L2 market hedge (wtd)": round(df_port["w_l2_market_hr"].sum(), 4),
-        "L3 market hedge (wtd)": round(df_port["w_l3_market_hr"].sum(), 4),
-    }
-})
-print("Portfolio-level hedge ratios (weighted average):")
+# One row per model: L1 = market only; L2 = market + sector; L3 = all three legs.
+port_summary = (
+    pd.DataFrame(
+        {
+            "Market HR (wtd)": [
+                _wtd_hr("l1_market_hr"),
+                _wtd_hr("l2_market_hr"),
+                _wtd_hr("l3_market_hr"),
+            ],
+            "Sector HR (wtd)": [
+                float("nan"),
+                _wtd_hr("l2_sector_hr"),
+                _wtd_hr("l3_sector_hr"),
+            ],
+            "Subsector HR (wtd)": [float("nan"), float("nan"), _wtd_hr("l3_sub_hr")],
+        },
+        index=["L1", "L2", "L3"],
+    )
+    .rename_axis("Level")
+)
+print("Portfolio-level hedge ratios (weighted average by level — HR legs at each L*):")
 print(port_summary.to_string())
 
 # ── Per-position table ─────────────────────────────────────────────────────────
