@@ -107,7 +107,9 @@ describe("parseMacroFactorsSeriesQuery", () => {
     const r = parseMacroFactorsSeriesQuery(sp);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.factorStrings.length).toBe(6);
+      // 10 canonical factors: inflation, term_spread, short_rates, credit,
+      // oil, gold, usd, volatility, bitcoin, vix_spot
+      expect(r.factorStrings.length).toBe(10);
       expect(r.end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(r.start <= r.end).toBe(true);
     }
@@ -122,14 +124,16 @@ describe("parseMacroFactorsSeriesQuery", () => {
     if (!r.ok) expect(r.message).toContain("start");
   });
 
-  it("accepts factor synonym query param", () => {
+  it("accepts factor synonym query param and normalizes legacy aliases", () => {
     const sp = new URLSearchParams();
     sp.set("factor", "btc,vix");
     const r = parseMacroFactorsSeriesQuery(sp);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.factorStrings).toContain("bitcoin");
-      expect(r.factorStrings).toContain("vix");
+      // "vix" is a legacy v1 alias for the FRED-sourced spot VIX factor
+      // (vs "volatility" which is the VXX futures-based factor).
+      expect(r.factorStrings).toContain("vix_spot");
     }
   });
 });

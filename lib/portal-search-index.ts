@@ -19,7 +19,7 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     description: 'Strategic hub for ERM3 — integration, methodology, field semantics, Python SDK.',
     href: '/docs/api',
     keywords:
-      'openapi endpoints core batch metrics ticker returns correlation macro factors vix bitcoin gold oil dxy ust10y2y spearman pearson',
+      'openapi endpoints core batch metrics ticker returns correlation macro factors inflation term_spread short_rates credit oil gold usd volatility bitcoin vix_spot vix dxy ust10y2y spearman pearson',
   },
   {
     title: 'Methodology',
@@ -57,15 +57,23 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
       'Canonical macro keys, stock–macro correlation (gross and L1/L2/L3 residuals), and raw GET /macro-factors time series.',
     href: '/docs/macro-factors',
     keywords:
-      'macro_factors bitcoin vix gold oil dxy ust10y2y correlation return_type l3_residual GET macro-factors series',
+      'macro_factors inflation term_spread short_rates credit oil gold usd volatility bitcoin vix_spot vix dxy ust10y2y correlation return_type l3_residual GET macro-factors series',
   },
   {
-    title: 'Returns decomposition (CFR / RR)',
+    title: 'Returns decomposition (CFR / FR / RR)',
     description:
-      'Daily l*_cfr / l*_rr metrics from ds_erm3_returns vs ER and hedge ratios; API surfaces and ERM3 sync flags.',
+      'Daily l*_cfr / l*_fr / l*_rr metrics from ds_erm3_returns. *_cfr is cumulative-through-level, *_fr is incremental per-level, *_rr is residual at level. For stacked decomposition charts and agent attribution.',
     href: '/docs/returns-decomposition-metrics',
     keywords:
-      'l1_cfr l1_rr l2_cfr l2_rr l3_cfr l3_rr combined factor return residual return security_history_returns_decomp',
+      'l1_cfr l1_fr l1_rr l2_cfr l2_fr l2_rr l3_cfr l3_fr l3_rr combined factor return incremental residual return decomposition attribution stacked security_history_returns_decomp zarr ticker-returns',
+  },
+  {
+    title: 'Response metadata and headers',
+    description:
+      'JSON _metadata lineage, Zarr history data_source and range, X-Risk-* and billing headers, JSON vs Parquet or CSV exports, health teo_coverage.',
+    href: '/docs/response-metadata',
+    keywords:
+      '_metadata data_source range X-Risk-Model-Version X-Data-As-Of X-API-Cost-USD parquet csv tabular teo_coverage latest_session_returns_pending health',
   },
   {
     title: 'API Reference',
@@ -78,7 +86,7 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     description:
       'Pearson or Spearman correlation of stock returns (gross or L1/L2/L3 residual) vs Bitcoin, Gold, Oil, DXY, VIX, UST 10y–2y.',
     href: '/docs/api#risk-metrics',
-    keywords: 'correlation macro vix bitcoin gold oil dxy ust10y2y spearman pearson POST correlation',
+    keywords: 'correlation macro inflation term_spread short_rates credit oil gold usd volatility bitcoin vix_spot vix dxy ust10y2y spearman pearson POST correlation',
   },
   {
     title: 'Quickstart',

@@ -253,27 +253,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2) Time index (teo) - prefer trading_calendar, fallback to security_history
+  // 2) Time index (teo) - prefer trading_calendar, fall back to symbols.latest_teo.
+  // security_history is no longer a source as of the pure-Zarr SSOT cutover.
   try {
     let uniqueDates: string[] = [];
 
     const calendarDates = await fetchTradingCalendar("daily");
     if (calendarDates.length > 0) {
       uniqueDates = calendarDates;
-    }
-
-    if (uniqueDates.length === 0) {
-      const { data: timeRows, error: timeError } = (await (createAdminClient()
-        .from("security_history")
-        .select("teo")
-        .eq("metric_key", "returns_gross")
-        .eq("periodicity", "daily")
-        .order("teo", { ascending: true })
-        .limit(10000) as any));
-
-      if (!timeError && timeRows && (timeRows as any[]).length > 0) {
-        uniqueDates = Array.from(new Set((timeRows as any[]).map((r: { teo: string }) => r.teo))).sort();
-      }
     }
 
     if (uniqueDates.length === 0) {

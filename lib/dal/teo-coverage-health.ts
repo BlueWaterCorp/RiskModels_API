@@ -26,10 +26,10 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
   const admin = createAdminClient();
 
   const { data: latestRow, error: latestErr } = await admin
-    .from("security_history")
+    .from("security_history_latest")
     .select("teo")
     .eq("periodicity", "daily")
-    .eq("metric_key", "returns_gross")
+    .not("returns_gross", "is", null)
     .order("teo", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -64,12 +64,11 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
   }
 
   const { count: nonNullCount, error: countErr } = await admin
-    .from("security_history")
+    .from("security_history_latest")
     .select("*", { count: "exact", head: true })
     .eq("periodicity", "daily")
-    .eq("metric_key", "returns_gross")
     .eq("teo", latestTeo)
-    .not("metric_value", "is", null);
+    .not("returns_gross", "is", null);
 
   if (countErr) {
     return {

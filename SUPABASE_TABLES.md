@@ -15,8 +15,8 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | Table | Purpose |
 |-------|---------|
 | **`symbols`** | Identity registry: symbol, ticker, name, asset_type, sector_etf, is_adr, isin |
-| **`security_history`** | Long-form temporal engine: one row per (symbol, teo, periodicity, metric_key). Stores returns, vol, L1/L2/L3 hedge ratios, explainability ratios, and optional returns-decomposition keys (`l*_cfr` / `l*_rr`). |
-| **`erm3_sync_state_v3`** | Sync health: `table_name`, `market_factor_etf`, `universe`, `max_date`, `last_synced_at`. Includes `table_name = security_history_returns_decomp` for the returns-decomposition slice (`ds_erm3_returns_*`). |
+| ~~**`security_history`**~~ | **REMOVED — Pure Zarr for all history.** As of the pure-Zarr SSOT cutover, all historical time series are served exclusively from Zarr via `lib/dal/zarr-reader.ts`: daily metrics from `ds_daily.zarr`, hedge weights from `ds_erm3_hedge_weights_*.zarr`, returns decomposition from `ds_erm3_returns_*.zarr`, rankings from `ds_rankings_*.zarr`. The wide latest row still lives in `security_history_latest` below. |
+| **`erm3_sync_state_v3`** | Sync health: `table_name`, `market_factor_etf`, `universe`, `max_date`, `last_synced_at`. |
 
 ### Performance surfaces (pipeline-maintained)
 
@@ -24,20 +24,25 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 |-------|---------|
 | **`erm3_landing_chart_cache`** | Landing page chart: pre-computed cumulative returns (ticker, date, cum_stock, cum_market, cum_sector, cum_subsector). Last 3 years. |
 | **`security_history_latest`** | Latest metrics per symbol/periodicity: returns_gross, vol_23d, L1/L2/L3 HR/ER, optional `l1_cfr`…`l3_rr` when present. Used by cards, tape, treemap. |
-| **`trading_calendar`** | Canonical trading dates (teo, periodicity). Replaces mining distinct dates from security_history. |
-| **`macro_factors`** | Daily macro factor total returns: one row per (`factor_key`, `teo`) with `return_gross` and optional `metadata` jsonb. Canonical `factor_key` values: `bitcoin`, `gold`, `oil`, `dxy`, `vix`, `ust10y2y` (see [`lib/risk/macro-factor-keys.ts`](lib/risk/macro-factor-keys.ts)). Used by `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation`, and `GET /api/macro-factors`. |
+| **`trading_calendar`** | Canonical trading dates (teo, periodicity). The authoritative time index for the API. |
+| **`macro_factors`** | Daily macro factor total returns: one row per (`factor_key`, `teo`) with `return_gross` and optional `metadata` jsonb. Ten canonical `factor_key` values: `inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility` (VXX futures-based), `bitcoin`, `vix_spot` (FRED VIXCLS spot). Legacy v1 names (`dxy`, `vix`, `ust10y2y`) are accepted as aliases for historical rows. See [`lib/risk/macro-factor-keys.ts`](lib/risk/macro-factor-keys.ts) and [`erm3/shared/macro_factor_constants.py`](erm3/shared/macro_factor_constants.py) (Python canonical source). Used by `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation`, and `GET /api/macro-factors`. |
 
-### security_history metric_key values
+### Historical metric_key values (now served from Zarr)
 
-| metric_key | Meaning |
-|------------|---------|
-| `returns_gross` | Simple gross return |
-| `vol_23d` | 23-day rolling volatility |
-| `price_close`, `market_cap` | Price and market cap |
-| `l1_mkt_hr`, `l2_mkt_hr`, `l2_sec_hr`, `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | Hedge ratios (`dollar_ratio`; hierarchical L1/L2/L3 ETF notionals per $1 stock—not classical univariate betas at L2/L3). See [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md). |
-| `l1_mkt_er`, `l1_res_er`, `l2_mkt_er`, `l2_sec_er`, `l2_res_er`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | Explainability ratios (variance fractions; not returns) |
-| `l1_cfr`, `l1_rr`, `l2_cfr`, `l2_rr`, `l3_cfr`, `l3_rr` | Returns decomposition: daily simple combined factor return (`*_cfr`) and residual return (`*_rr`) at L1/L2/L3 (`periodicity`: `daily`). See [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md#returns-decomposition-l_cfr--l_rr). |
-| `stock_var` | Stock-specific variance |
+The metric keys below are the same ones the API exposes in range-history responses; their values now come from the consolidated Zarr stores on GCS rather than from the removed `security_history` table. See `lib/dal/zarr-metric-registry.ts` for the exact variable mapping.
+
+| metric_key | Meaning | Zarr store |
+|------------|---------|------------|
+| `returns_gross` | Simple gross return | `ds_daily.zarr` |
+| `vol_23d` | 23-day rolling volatility (`sqrt(stock_var * 252)`) | `ds_erm3_hedge_weights_*.zarr` |
+| `price_close`, `market_cap` | Price and market cap | `ds_daily.zarr` |
+| `l1_mkt_hr`, `l2_mkt_hr`, `l2_sec_hr`, `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | Hedge ratios (dollar notionals per $1 stock; NOT classical betas — see [SEMANTIC_ALIASES.md](SEMANTIC_ALIASES.md)). | `ds_erm3_hedge_weights_*.zarr` |
+| `l1_mkt_er`, `l1_res_er`, `l2_mkt_er`, `l2_sec_er`, `l2_res_er`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | Explainability ratios (variance fractions) | `ds_erm3_hedge_weights_*.zarr` |
+| `l1_cfr`, `l2_cfr`, `l3_cfr` | **Combined** (cumulative-through-level) factor return. `l1_cfr=l1_fr`, `l2_cfr=l1_fr+l2_fr`, `l3_cfr=l1_fr+l2_fr+l3_fr`. | `ds_erm3_returns_*.zarr` `combined_factor_return` |
+| `l1_fr`, `l2_fr`, `l3_fr` | **Incremental** per-level factor return. `l2_fr` is the sector factor's contribution on top of L1; `l3_fr` is the subsector factor on top of L1+L2. Use for stacked-bar decomposition and per-level attribution. | `ds_erm3_returns_*.zarr` `factor_return` |
+| `l1_rr`, `l2_rr`, `l3_rr` | Residual return at each level. `gross_return ≈ l3_cfr + l3_rr`. | `ds_erm3_returns_*.zarr` `residual_return` |
+| `stock_var` | Stock-specific variance | `ds_erm3_hedge_weights_*.zarr` |
+| `rank_ord_{window}_{cohort}_{metric}`, `cohort_size_{window}_{cohort}_{metric}` | Cross-sectional rankings | `ds_rankings_*.zarr` |
 
 ### security_history_latest schema
 
@@ -49,7 +54,7 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | `returns_gross`, `vol_23d` | FLOAT8 | Latest core metrics |
 | `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | FLOAT8 | Latest L3 hedge ratios |
 | `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er` | FLOAT8 | Latest L3 explainability |
-| `l1_cfr`, `l1_rr`, `l2_cfr`, `l2_rr`, `l3_cfr`, `l3_rr` | FLOAT8 | Optional latest returns-decomposition daily simple returns (when synced) |
+| `l1_cfr`, `l1_fr`, `l1_rr`, `l2_cfr`, `l2_fr`, `l2_rr`, `l3_cfr`, `l3_fr`, `l3_rr` | FLOAT8 | Latest returns-decomposition daily simple returns. `*_cfr` is cumulative-through-level (market → market+sector → full); `*_fr` is incremental (per-level contribution on top of the prior levels); `*_rr` is the residual at each level. |
 | `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` | FLOAT8 | Latest hierarchical regression betas. `l1_mkt_beta` is beta to SPY (always). `l2_sec_beta` is beta to the symbol's sector ETF (e.g. XLK for AAPL). `l3_sub_beta` is beta to the symbol's subsector ETF (e.g. RSPT for AAPL). One value per level — see `OPENAPI_SPEC.yaml` `MetricsV3` schema for the property definitions. NOT the same as hedge ratios (`*_hr`), which are dollar-notional ratios; betas here are dimensionless regression coefficients. |
 | `updated_at` | TIMESTAMPTZ | When row was last refreshed |
 

@@ -86,6 +86,19 @@ console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
+const curlTickerReturnsParquet = `# Bulk history as Parquet (no JSON _metadata in file — use X-Risk-* headers)
+curl -sG "https://riskmodels.app/api/ticker-returns" \\
+  --data-urlencode "ticker=NVDA" \\
+  --data-urlencode "format=parquet" \\
+  -H "Authorization: Bearer rm_agent_live_..." \\
+  -o nvda_returns.parquet
+
+# Equivalent: Accept header instead of format=
+curl -sG "https://riskmodels.app/api/ticker-returns?ticker=NVDA" \\
+  -H "Authorization: Bearer rm_agent_live_..." \\
+  -H "Accept: application/vnd.apache.parquet" \\
+  -o nvda_returns.parquet`;
+
 const agenticCliExample = `# riskmodels-cli — install: npm install -g riskmodels-cli
 
 # API key (billed mode; default base URL https://riskmodels.app)
@@ -233,13 +246,19 @@ export default function QuickstartPage() {
             >
               View on GitHub
             </a>
+            <Link
+              href="/docs/response-metadata"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors"
+            >
+              Response metadata (portal)
+            </Link>
             <a
               href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/RESPONSE_METADATA.md"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg border border-zinc-700 transition-colors"
             >
-              Response metadata
+              RESPONSE_METADATA.md
             </a>
           </div>
         </div>
@@ -396,6 +415,25 @@ export default function QuickstartPage() {
                   <CodeBlock
                     code={curlExample}
                     language="bash"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-3">Parquet export (ticker returns)</h3>
+                  <p className="text-sm text-zinc-500 mb-3 leading-relaxed">
+                    Tabular responses omit <code className="text-zinc-400 bg-zinc-800 px-1 rounded">_metadata</code> in the
+                    file body — use <code className="text-zinc-400 bg-zinc-800 px-1 rounded">X-Risk-Model-Version</code>,{' '}
+                    <code className="text-zinc-400 bg-zinc-800 px-1 rounded">X-Data-As-Of</code>, and related headers on the
+                    HTTP response. See{' '}
+                    <Link href="/docs/response-metadata" className="text-primary hover:underline">
+                      Response metadata
+                    </Link>
+                    .
+                  </p>
+                  <CodeBlock
+                    code={curlTickerReturnsParquet}
+                    language="bash"
+                    filename="ticker_returns_parquet.sh"
                   />
                 </div>
               </div>

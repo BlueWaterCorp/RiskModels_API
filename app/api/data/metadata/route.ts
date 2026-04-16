@@ -16,9 +16,10 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Latest date in security_history
+  // Latest date across security_history_latest (pipeline-maintained wide table).
+  // Previously read from security_history (EAV) — migrated as part of the pure-Zarr cutover.
   const { data: latestRow } = await supabase
-    .from("security_history")
+    .from("security_history_latest")
     .select("teo")
     .eq("periodicity", "daily")
     .order("teo", { ascending: false })

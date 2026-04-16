@@ -35,7 +35,7 @@ export async function getRiskMetadata(): Promise<RiskMetadata> {
   const admin = createAdminClient();
 
   const { data: latestRow } = await admin
-    .from("security_history")
+    .from("security_history_latest")
     .select("teo")
     .eq("periodicity", "daily")
     .order("teo", { ascending: false })

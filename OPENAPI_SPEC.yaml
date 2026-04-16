@@ -226,7 +226,7 @@ components:
         data_as_of:
           type: string
           format: date
-          description: Latest trading date in security_history.
+          description: Latest trading date reflected in the response (model outputs / latest snapshot).
           example: "2026-03-17"
         factor_set_id:
           type: string
@@ -263,10 +263,13 @@ components:
             ]
         data_source:
           type: string
-          enum: [zarr, supabase]
+          enum: [zarr]
           description: >
-            Present on history-style JSON responses: whether rows were materialized from consolidated
-            GCS Zarr (daily standard metrics) or from Supabase `security_history` (e.g. monthly keys, rankings).
+            Present on history-style JSON responses. Always `"zarr"` as of the pure-Zarr SSOT
+            cutover: all historical time series (daily metrics, hedge weights, returns
+            decomposition, rankings) are served from consolidated Zarr stores on GCS. The
+            Supabase `security_history` table has been removed; the legacy `"supabase"` value
+            is retained in clients only for backwards compatibility.
         range:
           type: array
           minItems: 2
@@ -322,8 +325,16 @@ components:
         V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property.
         Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual.
         Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1).
-        Keys `l1_cfr`–`l3_rr` are daily simple returns from returns decomposition (`*_cfr` combined factor return, `*_rr` residual return);
-        they are not ER fields and are not sourced from hedge-weight explainability.
+        Keys `l1_cfr`–`l3_rr` are daily simple returns from returns decomposition:
+          - `*_cfr` (combined factor return) is CUMULATIVE through the level: `l1_cfr = l1_fr`,
+            `l2_cfr = l1_fr + l2_fr`, `l3_cfr = l1_fr + l2_fr + l3_fr`.
+          - `*_fr`  (factor return, INCREMENTAL) is each level's own contribution —
+            `l2_fr` is what the sector factor adds on top of L1 alone, `l3_fr` is what
+            the subsector factor adds on top of L1+L2. Use these for stacked-bar decomposition
+            charts or for agent-side attribution ("what drove today's return at each level?").
+          - `*_rr`  (residual return) is what's left after factors through that level —
+            `gross_return ≈ l3_cfr + l3_rr`.
+        None of these are ER fields and none come from hedge-weight explainability.
         Keys `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` are dimensionless hierarchical regression betas
         (one per level: 1 for L1, 2 for L2, 3 for L3 — though only the L*-introduced new factor is stored at each level).
         These are NOT the same as hedge ratios — betas are regression coefficients, hedge ratios are dollar-notional ratios.
@@ -364,6 +375,15 @@ components:
           description: >
             Daily simple combined factor return through L1 (market), decimal (same convention as returns_gross).
             From returns-decomposition zarr (ds_erm3_returns), not hedge weights. Not a variance fraction — unlike l1_mkt_er.
+            At L1 this is equal to l1_fr (there's no level below market to add on top of).
+        l1_fr:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Daily simple factor return for L1 (market) — the INCREMENTAL contribution of the
+            market factor alone. At L1 this equals l1_cfr. Use `l1_fr`/`l2_fr`/`l3_fr` for
+            stacked-bar factor decomposition charts and for per-level P&L attribution.
         l1_rr:
           type: number
           format: float
@@ -393,7 +413,15 @@ components:
           type: number
           format: float
           nullable: true
-          description: Daily simple combined factor return through L2 (sector), decimal.
+          description: Daily simple combined factor return through L2 (market + sector), decimal. Equals l1_fr + l2_fr.
+        l2_fr:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Daily simple factor return for L2 (sector) — the INCREMENTAL contribution the
+            sector factor adds on top of L1 (market). For a sector-led rally this is the
+            number to highlight in charts.
         l2_rr:
           type: number
           format: float
@@ -432,7 +460,15 @@ components:
           type: number
           format: float
           nullable: true
-          description: Daily simple combined factor return through L3 (subsector), decimal.
+          description: Daily simple combined factor return through L3 (market + sector + subsector), decimal. Equals l1_fr + l2_fr + l3_fr.
+        l3_fr:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Daily simple factor return for L3 (subsector) — the INCREMENTAL contribution the
+            subsector factor adds on top of L1 + L2. Completes the three-level stacked
+            decomposition: l1_fr + l2_fr + l3_fr + l3_rr ≈ gross_return.
         l3_rr:
           type: number
           format: float
@@ -1000,8 +1036,14 @@ components:
           items:
             type: string
           description: >
-            Macro factor keys matching `macro_factors.factor_key` (lowercase: bitcoin, gold, oil, dxy, vix, ust10y2y).
-            Server normalizes common aliases (e.g. btc → bitcoin). Defaults to all six when omitted.
+            Macro factor keys matching `macro_factors.factor_key`. Ten canonical keys:
+            `inflation` (TIP), `term_spread` (VGIT), `short_rates` (BIL), `credit` (HYG),
+            `oil` (USO), `gold` (GLD), `usd` (UUP), `volatility` (VXX short-term vol futures),
+            `bitcoin` (BITO), `vix_spot` (FRED VIXCLS spot index).
+            Note: `volatility` and `vix_spot` are DIFFERENT — VXX captures futures roll
+            dynamics, VIXCLS is pure spot. Legacy v1 aliases (`dxy`→`usd`, `vix`→`vix_spot`,
+            `ust10y2y`→`term_spread`) and common synonyms (btc, wti, xau, gld, cpi, tips) are
+            normalized server-side. Defaults to all ten when omitted.
         return_type:
           type: string
           enum: [gross, l1, l2, l3_residual]
@@ -2613,8 +2655,10 @@ paths:
       summary: Macro factor daily return series
       description: >
         Returns long-format rows from Supabase `macro_factors` (`factor_key`, `teo`, `return_gross`) for the
-        requested date range. No stock ticker is required. Omit `factors` to use all six canonical keys
-        (bitcoin, gold, oil, dxy, vix, ust10y2y); aliases such as `btc` normalize to `bitcoin`.
+        requested date range. No stock ticker is required. Omit `factors` to use all ten canonical keys
+        (`inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility`,
+        `bitcoin`, `vix_spot`); aliases such as `btc` → `bitcoin`, `xau`/`gld` → `gold`, and legacy v1
+        names (`dxy` → `usd`, `vix` → `vix_spot`, `ust10y2y` → `term_spread`) normalize automatically.
         Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today.
         Maximum span: 20 years. Cost: $0.001 per request.
         JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json

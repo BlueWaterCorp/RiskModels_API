@@ -476,7 +476,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_factor_correlation",
     openaiTool: fnTool(
       "get_factor_correlation",
-      "Correlation of stock returns vs macro factors (bitcoin, gold, oil, dxy, vix, ust10y2y).",
+      "Correlation of stock returns vs macro factors (inflation, term_spread, short_rates, credit, oil, gold, usd, volatility, bitcoin, vix_spot). volatility=VXX futures; vix_spot=FRED VIXCLS spot — different series.",
       {
         ticker: {
           type: "string",
@@ -485,7 +485,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
         factors: {
           type: "array",
           items: { type: "string" },
-          description: "Macro factor keys; empty array = all six defaults",
+          description: "Macro factor keys; empty array = all ten defaults. Legacy v1 names (dxy→usd, vix→vix_spot, ust10y2y→term_spread) are accepted as aliases.",
         },
         return_type: {
           type: "string",
@@ -512,12 +512,12 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_macro_factors",
     openaiTool: fnTool(
       "get_macro_factors",
-      "Daily macro factor total returns (no stock ticker). Factors: bitcoin, gold, oil, dxy, vix, ust10y2y.",
+      "Daily macro factor total returns (no stock ticker). Ten factors: inflation, term_spread, short_rates, credit, oil, gold, usd, volatility (VXX futures), bitcoin, vix_spot (FRED VIXCLS).",
       {
         factors: {
           type: "string",
           description:
-            "Comma-separated factor keys, or empty string for all six canonical factors",
+            "Comma-separated factor keys, or empty string for all ten canonical factors. Aliases (btc, wti, xau, gld, cpi, dxy, vix, ust10y2y) normalize automatically.",
         },
         start: {
           type: "string",

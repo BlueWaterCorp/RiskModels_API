@@ -166,6 +166,10 @@ const faqs: PricingFaqItem[] = [
     q: "Can I use both the API and a Pro investor subscription?",
     a: "Absolutely. Pro (investor dashboard) and Pay-as-You-Go (API access) are billed independently and can be used together or separately. They share the same underlying risk models and zero-knowledge encryption standards.",
   },
+  {
+    q: "What is the difference between hedge ratios (*_hr) and betas (l*_mkt_beta, l*_sec_beta, l*_sub_beta)?",
+    a: "Hedge ratios are dollar notional of each factor ETF per $1 of stock — what you would trade for an ETF hedge. Hierarchical betas are dimensionless regression coefficients from the L1/L2/L3 model; they are not the same units or estimation problem as *_hr fields. See the API docs table on /docs/api, SEMANTIC_ALIASES.md on GitHub, and /docs/response-metadata for lineage headers on JSON vs Parquet exports.",
+  },
 ];
 
 // ─── Components ──────────────────────────────────────────────────────────────

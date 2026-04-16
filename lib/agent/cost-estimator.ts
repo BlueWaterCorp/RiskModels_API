@@ -6,7 +6,6 @@
  */
 
 import { getCapabilityById, calculateRequestCost } from "./capabilities";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { CHAT_TOOLS_REGISTRY } from "@/lib/chat/tools";
 
 const TRADING_DAYS_PER_YEAR = 252;
@@ -100,35 +99,11 @@ async function estimateRowCount(
   if (!ticker || typeof ticker !== "string") return undefined;
 
   const years = getYears(params);
-  const estimatedDays = Math.min(TRADING_DAYS_PER_YEAR * 15, TRADING_DAYS_PER_YEAR * years);
-
-  // Optional: quick count from Supabase (adds latency)
-  try {
-    const supabase = createAdminClient();
-    const { data: symbol } = await supabase
-      .from("symbols")
-      .select("symbol")
-      .eq("ticker", ticker.toUpperCase())
-      .maybeSingle();
-
-    if (!symbol?.symbol) return estimatedDays;
-
-    const startDate = new Date();
-    startDate.setFullYear(startDate.getFullYear() - years);
-    const startStr = startDate.toISOString().split("T")[0];
-
-    const { count } = await supabase
-      .from("security_history")
-      .select("*", { count: "exact", head: true })
-      .eq("symbol", symbol.symbol)
-      .eq("periodicity", "daily")
-      .eq("metric_key", "returns_gross")
-      .gte("teo", startStr);
-
-    return count ?? estimatedDays;
-  } catch {
-    return estimatedDays;
-  }
+  // Formula-based estimate: ~252 trading days × years, capped at ~15 years.
+  // Previously this helper did an exact-count query against security_history
+  // to get a precise number, but that table is gone post-Zarr-SSOT cutover
+  // and the formula is accurate to within a few percent for any real range.
+  return Math.min(TRADING_DAYS_PER_YEAR * 15, TRADING_DAYS_PER_YEAR * years);
 }
 
 /**

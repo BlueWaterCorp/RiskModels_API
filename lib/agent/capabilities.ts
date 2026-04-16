@@ -810,7 +810,7 @@ export const CAPABILITIES: Capability[] = [
       factors: {
         type: "array",
         required: false,
-        description: "Macro factor keys (bitcoin, gold, oil, dxy, vix, ust10y2y); default all six",
+        description: "Macro factor keys (inflation, term_spread, short_rates, credit, oil, gold, usd, volatility, bitcoin, vix_spot); default all ten. volatility=VXX futures, vix_spot=FRED VIXCLS — different series. Legacy aliases accepted (dxy→usd, vix→vix_spot, ust10y2y→term_spread).",
       },
       return_type: {
         type: "string",
@@ -867,7 +867,7 @@ export const CAPABILITIES: Capability[] = [
         type: "string",
         required: false,
         description:
-          "Comma-separated factor keys (bitcoin, gold, oil, dxy, vix, ust10y2y); aliases e.g. btc → bitcoin. Default all six.",
+          "Comma-separated factor keys: inflation, term_spread, short_rates, credit, oil, gold, usd, volatility, bitcoin, vix_spot. Aliases btc/xau/wti/gld and legacy v1 names (dxy, vix, ust10y2y) normalized. Default all ten.",
       },
       start: {
         type: "string",

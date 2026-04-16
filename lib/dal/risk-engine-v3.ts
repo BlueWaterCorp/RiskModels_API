@@ -1,15 +1,27 @@
 /**
- * ERM3 V3 Risk Engine DAL — Supabase + GCS Zarr for RiskModels_API
+ * ERM3 V3 Risk Engine DAL — pure-Zarr history, Supabase relational + `_latest`
  *
- * Range history for standard daily metrics is read from consolidated Zarr; Supabase
- * backs latest tables, rankings, monthly keys, and EAV fallbacks. See
- * docs/API_HISTORY_SUPABASE_AND_ZARR.md.
+ * As of the security_history → Zarr SSOT cutover, all historical time series
+ * (daily metrics, hedge weights, returns decomposition, rankings) come from
+ * consolidated Zarr stores on GCS via `lib/dal/zarr-reader.ts`. Supabase is
+ * retained only for:
+ *   - `symbols` (identity registry)
+ *   - `security_history_latest` (pipeline-maintained wide latest row)
+ *   - `trading_calendar`, `macro_factors`, billing tables
  *
- * See: docs/supabase/V3_DATA_CONTRACT.md
+ * The `security_history` table has been removed; any new code that tries to
+ * query it will fail the guard test at `tests/security-history-guard.test.ts`.
+ *
+ * See: docs/supabase/V3_DATA_CONTRACT.md (relational tables) and
+ *      `lib/dal/zarr-metric-registry.ts` (metric_key → Zarr variable mapping).
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { readHistorySlice } from "@/lib/dal/zarr-reader";
+import {
+  readHistorySlice,
+  readLatestRankSnapshot,
+  readSymbolRankSnapshot,
+} from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
   getZarrSpec,
@@ -31,6 +43,7 @@ export type V3MetricKey =
   | "l1_mkt_er"
   | "l1_res_er"
   | "l1_cfr"
+  | "l1_fr"
   | "l1_rr"
   | "l2_mkt_hr"
   | "l2_sec_hr"
@@ -38,6 +51,7 @@ export type V3MetricKey =
   | "l2_sec_er"
   | "l2_res_er"
   | "l2_cfr"
+  | "l2_fr"
   | "l2_rr"
   | "l3_mkt_hr"
   | "l3_sec_hr"
@@ -47,6 +61,7 @@ export type V3MetricKey =
   | "l3_sub_er"
   | "l3_res_er"
   | "l3_cfr"
+  | "l3_fr"
   | "l3_rr"
   | "l1_mkt_beta"
   | "l2_sec_beta"
@@ -105,6 +120,7 @@ export interface LatestSummaryRow {
   l1_mkt_er: number | null;
   l1_res_er: number | null;
   l1_cfr?: number | null;
+  l1_fr?: number | null;
   l1_rr?: number | null;
   l2_mkt_hr: number | null;
   l2_sec_hr: number | null;
@@ -112,6 +128,7 @@ export interface LatestSummaryRow {
   l2_sec_er: number | null;
   l2_res_er: number | null;
   l2_cfr?: number | null;
+  l2_fr?: number | null;
   l2_rr?: number | null;
   l3_mkt_hr: number | null;
   l3_sec_hr: number | null;
@@ -121,6 +138,7 @@ export interface LatestSummaryRow {
   l3_sub_er: number | null;
   l3_res_er: number | null;
   l3_cfr?: number | null;
+  l3_fr?: number | null;
   l3_rr?: number | null;
   stock_var: number | null;
   // Hierarchical regression betas (one per level — see OPENAPI_SPEC.yaml MetricsV3)
@@ -303,86 +321,20 @@ export function isZarrHistoryPath(keys: V3MetricKey[], periodicity: V3Periodicit
   return keys.length > 0;
 }
 
-/** Supabase EAV history (rankings, monthly betas, unknown keys). */
-async function fetchHistoryFromSupabase(
-  symbol: string,
-  keys: V3MetricKey[],
-  options: FetchHistoryOptions = {},
-): Promise<SecurityHistoryRow[]> {
-  const {
-    periodicity = "daily",
-    startDate,
-    endDate,
-    orderBy = "asc",
-  } = options;
-
-  try {
-    const admin = createAdminClient();
-    let query = admin
-      .from("security_history")
-      .select("symbol, teo, periodicity, metric_key, metric_value")
-      .eq("symbol", symbol)
-      .eq("periodicity", periodicity)
-      .in("metric_key", keys)
-      .order("teo", { ascending: orderBy === "asc" });
-
-    if (startDate) query = query.gte("teo", startDate);
-    if (endDate) query = query.lte("teo", endDate);
-
-    const { data, error } = await query;
-    if (error) {
-      console.error(`[V3 DAL] Error fetching history for ${symbol}:`, error);
-      return [];
-    }
-    return (data ?? []) as SecurityHistoryRow[];
-  } catch (error) {
-    console.error(`[V3 DAL] Error fetching history for ${symbol}:`, error);
-    return [];
-  }
-}
-
-async function fetchBatchHistoryFromSupabase(
-  symbols: string[],
-  keys: V3MetricKey[],
-  options: FetchHistoryOptions = {},
-): Promise<SecurityHistoryRow[]> {
-  const {
-    periodicity = "daily",
-    startDate,
-    endDate,
-    orderBy = "asc",
-  } = options;
-
-  if (symbols.length === 0) return [];
-
-  try {
-    const admin = createAdminClient();
-    let query = admin
-      .from("security_history")
-      .select("symbol, teo, periodicity, metric_key, metric_value")
-      .in("symbol", symbols)
-      .eq("periodicity", periodicity)
-      .in("metric_key", keys)
-      .order("teo", { ascending: orderBy === "asc" });
-
-    if (startDate) query = query.gte("teo", startDate);
-    if (endDate) query = query.lte("teo", endDate);
-
-    const { data, error } = await query;
-    if (error) {
-      console.error("[V3 DAL] Error fetching batch history:", error);
-      return [];
-    }
-    return (data ?? []) as SecurityHistoryRow[];
-  } catch (error) {
-    console.error("[V3 DAL] Error fetching batch history:", error);
-    return [];
-  }
-}
-
 /**
- * Same as `fetchHistory` but reports whether rows came from Zarr or Supabase `security_history`.
- * Use when API responses must set accurate `_metadata.data_source`.
+ * Same as `fetchHistory` but reports the data source for `_metadata.data_source`.
+ *
+ * Pure-Zarr history: as of the `security_history` → Zarr SSOT cutover, this
+ * function always goes to Zarr. Cases that used to fall through to Supabase
+ * EAV (non-daily periodicity, `*_beta` historical range, rankings via this
+ * code path, unknown metric keys) now return empty rows + a warning — the
+ * Supabase `security_history` table is no longer a history source.
+ *   - Rankings: use `fetchTopRankingsSnapshot` / `fetchRankingsFromSecurityHistory`
+ *     which read from `ds_rankings_*.zarr` directly.
+ *   - Non-daily: pending `TeoAggregator` (Phase 2.5) which will fold daily
+ *     Zarr slices into monthly/YTD/rolling aggregates on the fly.
+ *   - `*_beta` range: not currently requested by any caller; when needed,
+ *     add `ds_erm3_betas_*` adapter to zarr-metric-registry + zarr-reader.
  */
 export async function fetchHistoryWithSource(
   symbol: string,
@@ -396,28 +348,27 @@ export async function fetchHistoryWithSource(
     orderBy = "asc",
   } = options;
 
-  if (isZarrHistoryPath(keys, periodicity)) {
-    // Zarr is the only store for range-based daily V3 metric history
-    // (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). No Supabase fallback:
-    // security_history does not carry these metric_keys, so a fallback query
-    // would always return []-after-12-25s and silently serve empty success.
-    // On zarr error, let the exception propagate to the route handler.
-    const { rows } = await readHistorySlice({
-      symbols: [symbol],
-      keys,
+  if (!isZarrHistoryPath(keys, periodicity)) {
+    console.warn("[V3 DAL] History request outside Zarr coverage — returning empty", {
+      symbol,
       periodicity,
-      startDate,
-      endDate,
-      orderBy,
+      keyCount: keys.length,
     });
-    if (rows.length === 0) {
-      console.warn("[V3 DAL] Zarr history returned empty rows", { symbol, keyCount: keys.length });
-    }
-    return { rows, dataSource: "zarr" };
+    return { rows: [], dataSource: "zarr" };
   }
 
-  const rows = await fetchHistoryFromSupabase(symbol, keys, options);
-  return { rows, dataSource: "supabase" };
+  const { rows } = await readHistorySlice({
+    symbols: [symbol],
+    keys,
+    periodicity,
+    startDate,
+    endDate,
+    orderBy,
+  });
+  if (rows.length === 0) {
+    console.warn("[V3 DAL] Zarr history returned empty rows", { symbol, keyCount: keys.length });
+  }
+  return { rows, dataSource: "zarr" };
 }
 
 /** Daily factor history: consolidated Zarr on GCS (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). */
@@ -444,26 +395,30 @@ export async function fetchBatchHistory(
 
   if (symbols.length === 0) return [];
 
-  if (isZarrHistoryPath(keys, periodicity)) {
-    // See fetchHistoryWithSource — zarr is authoritative for V3 metric history.
-    const { rows } = await readHistorySlice({
-      symbols,
-      keys,
+  if (!isZarrHistoryPath(keys, periodicity)) {
+    console.warn("[V3 DAL] Batch history request outside Zarr coverage — returning empty", {
+      symbolCount: symbols.length,
       periodicity,
-      startDate,
-      endDate,
-      orderBy,
+      keyCount: keys.length,
     });
-    if (rows.length === 0) {
-      console.warn("[V3 DAL] Zarr batch history returned empty rows", {
-        symbolCount: symbols.length,
-        keyCount: keys.length,
-      });
-    }
-    return rows;
+    return [];
   }
 
-  return fetchBatchHistoryFromSupabase(symbols, keys, options);
+  const { rows } = await readHistorySlice({
+    symbols,
+    keys,
+    periodicity,
+    startDate,
+    endDate,
+    orderBy,
+  });
+  if (rows.length === 0) {
+    console.warn("[V3 DAL] Zarr batch history returned empty rows", {
+      symbolCount: symbols.length,
+      keyCount: keys.length,
+    });
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -497,6 +452,7 @@ export async function fetchLatestSummary(
         l1_mkt_er: row.l1_mkt_er,
         l1_res_er: row.l1_res_er,
         l1_cfr: row.l1_cfr ?? null,
+        l1_fr: row.l1_fr ?? null,
         l1_rr: row.l1_rr ?? null,
         l2_mkt_hr: row.l2_mkt_hr,
         l2_sec_hr: row.l2_sec_hr,
@@ -504,6 +460,7 @@ export async function fetchLatestSummary(
         l2_sec_er: row.l2_sec_er,
         l2_res_er: row.l2_res_er,
         l2_cfr: row.l2_cfr ?? null,
+        l2_fr: row.l2_fr ?? null,
         l2_rr: row.l2_rr ?? null,
         l3_mkt_hr: row.l3_mkt_hr,
         l3_sec_hr: row.l3_sec_hr,
@@ -513,6 +470,7 @@ export async function fetchLatestSummary(
         l3_sub_er: row.l3_sub_er,
         l3_res_er: row.l3_res_er,
         l3_cfr: row.l3_cfr ?? null,
+        l3_fr: row.l3_fr ?? null,
         l3_rr: row.l3_rr ?? null,
         stock_var: row.stock_var,
         l1_mkt_beta: row.l1_mkt_beta ?? null,
@@ -558,6 +516,7 @@ export async function fetchBatchLatestSummary(
           l1_mkt_er: row.l1_mkt_er,
           l1_res_er: row.l1_res_er,
           l1_cfr: row.l1_cfr ?? null,
+          l1_fr: row.l1_fr ?? null,
           l1_rr: row.l1_rr ?? null,
           l2_mkt_hr: row.l2_mkt_hr,
           l2_sec_hr: row.l2_sec_hr,
@@ -565,6 +524,7 @@ export async function fetchBatchLatestSummary(
           l2_sec_er: row.l2_sec_er,
           l2_res_er: row.l2_res_er,
           l2_cfr: row.l2_cfr ?? null,
+          l2_fr: row.l2_fr ?? null,
           l2_rr: row.l2_rr ?? null,
           l3_mkt_hr: row.l3_mkt_hr,
           l3_sec_hr: row.l3_sec_hr,
@@ -574,6 +534,7 @@ export async function fetchBatchLatestSummary(
           l3_sub_er: row.l3_sub_er,
           l3_res_er: row.l3_res_er,
           l3_cfr: row.l3_cfr ?? null,
+          l3_fr: row.l3_fr ?? null,
           l3_rr: row.l3_rr ?? null,
           stock_var: row.stock_var,
           l1_mkt_beta: row.l1_mkt_beta ?? null,
@@ -694,62 +655,53 @@ export async function fetchRankingsFromSecurityHistory(
   const cohorts = filters?.cohort ? [filters.cohort] : [...RANKING_COHORTS];
   const metrics = filters?.metric ? [filters.metric] : [...RANKING_METRICS];
 
-  const keys: string[] = [];
+  // Build the (window, cohort, metric) prefix list. The pipeline only writes
+  // PIT-only metrics under the `1d` window (mkt_cap, er_l1/2/3); requesting
+  // them at other windows returns nulls from the Zarr reader, matching the
+  // prior Supabase behavior of "row not present."
+  const prefixes: { window: string; cohort: string; metric: string; prefix: string }[] = [];
   for (const w of windows) {
     for (const c of cohorts) {
       for (const m of metrics) {
-        const prefix = `${w}_${c}_${m}`;
-        keys.push(`rank_ord_${prefix}`);
-        keys.push(`cohort_size_${prefix}`);
+        prefixes.push({ window: w, cohort: c, metric: m, prefix: `${w}_${c}_${m}` });
       }
     }
   }
 
   try {
-    const data = await fetchHistoryFromSupabase(symbol, keys as V3MetricKey[], {
-      periodicity: "daily",
-      orderBy: "desc",
+    // Pure-Zarr path: ds_rankings_*.zarr is chunked {teo: 1, symbol: -1}, so
+    // each variable's read is exactly one chunk fetch. Per-symbol-all-rankings
+    // costs (2 × prefixes.length) parallel ~12KB fetches — dominated by GCS
+    // round-trip latency, not bytes.
+    const snapshot = await readSymbolRankSnapshot(
+      symbol,
+      prefixes.map((p) => p.prefix),
+    );
+
+    if (!snapshot.teo) return { teo: null, rankings: [] };
+
+    const byPrefix = new Map<string, { rank_ordinal: number | null; cohort_size: number | null }>();
+    for (const r of snapshot.results) {
+      byPrefix.set(r.prefix, { rank_ordinal: r.rank_ordinal, cohort_size: r.cohort_size });
+    }
+
+    const rankings: RankingResult[] = prefixes.map(({ window: w, cohort: c, metric: m, prefix }) => {
+      const v = byPrefix.get(prefix) ?? { rank_ordinal: null, cohort_size: null };
+      const rankPercentile =
+        v.rank_ordinal != null && v.cohort_size != null && v.cohort_size > 0
+          ? (1 - (v.rank_ordinal - 1) / v.cohort_size) * 100
+          : null;
+      return {
+        metric: m,
+        cohort: c,
+        window: w,
+        rank_ordinal: v.rank_ordinal,
+        cohort_size: v.cohort_size,
+        rank_percentile: rankPercentile,
+      };
     });
 
-    if (!data || data.length === 0) return { teo: null, rankings: [] };
-
-    const byTeo = new Map<string, Map<string, number | null>>();
-    for (const row of data) {
-      if (!byTeo.has(row.teo)) byTeo.set(row.teo, new Map());
-      byTeo.get(row.teo)!.set(row.metric_key, row.metric_value);
-    }
-
-    const sortedTeos = Array.from(byTeo.keys()).sort().reverse();
-    const latestTeo = sortedTeos[0];
-    const latestMap = byTeo.get(latestTeo)!;
-
-    const rankings: RankingResult[] = [];
-    for (const w of windows) {
-      for (const c of cohorts) {
-        for (const m of metrics) {
-          const prefix = `${w}_${c}_${m}`;
-          const rankOrd = latestMap.get(`rank_ord_${prefix}`);
-          const cohortSize = latestMap.get(`cohort_size_${prefix}`);
-
-          const rankOrdinal =
-            rankOrd != null && typeof rankOrd === "number" && rankOrd >= 1
-              ? Math.round(rankOrd)
-              : null;
-          const cohortSizeVal =
-            cohortSize != null && typeof cohortSize === "number" && cohortSize > 0
-              ? Math.round(cohortSize)
-              : null;
-          const rankPercentile =
-            rankOrdinal != null && cohortSizeVal != null && cohortSizeVal > 0
-              ? (1 - (rankOrdinal - 1) / cohortSizeVal) * 100
-              : null;
-
-          rankings.push({ metric: m, cohort: c, window: w, rank_ordinal: rankOrdinal, cohort_size: cohortSizeVal, rank_percentile: rankPercentile });
-        }
-      }
-    }
-
-    return { teo: latestTeo, rankings };
+    return { teo: snapshot.teo, rankings };
   } catch (error) {
     console.error(`[V3 DAL] Error fetching rankings for ${symbol}:`, error);
     return { teo: null, rankings: [] };
@@ -776,61 +728,22 @@ export async function fetchTopRankingsSnapshot(params: {
   limit: number;
 }): Promise<{ teo: string | null; rows: TopRankingRow[] }> {
   const { metric, cohort, window, limit } = params;
-  const cap = Math.min(100, Math.max(1, Math.floor(limit)));
   const prefix = `${window}_${cohort}_${metric}`;
-  const rankKey = `rank_ord_${prefix}` as V3MetricKey;
-  const cohortKey = `cohort_size_${prefix}` as V3MetricKey;
 
   try {
+    // Pure-Zarr path: ds_rankings_*.zarr is chunked {teo: 1, symbol: -1}, so
+    // a single latest-teo cross-section read touches one chunk per variable
+    // (~12KB at ~3000 symbols × float32). Replaces three Supabase EAV queries
+    // against security_history.
+    const snapshot = await readLatestRankSnapshot(prefix, limit);
+    if (!snapshot.teo || snapshot.rows.length === 0) {
+      return { teo: snapshot.teo, rows: [] };
+    }
+
+    // Symbol → ticker resolution stays relational. The set is bounded by
+    // `limit` (capped at 100), so this is a tiny IN-list query.
+    const symbols = snapshot.rows.map((r) => r.symbol);
     const admin = createAdminClient();
-    const { data: teoRow, error: teoErr } = await admin
-      .from("security_history")
-      .select("teo")
-      .eq("metric_key", rankKey)
-      .eq("periodicity", "daily")
-      .order("teo", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (teoErr || !teoRow?.teo) {
-      return { teo: null, rows: [] };
-    }
-    const teo = teoRow.teo as string;
-
-    const { data: rankRows, error: rankErr } = await admin
-      .from("security_history")
-      .select("symbol, metric_value")
-      .eq("metric_key", rankKey)
-      .eq("periodicity", "daily")
-      .eq("teo", teo)
-      .not("metric_value", "is", null)
-      .order("metric_value", { ascending: true })
-      .limit(cap);
-
-    if (rankErr || !rankRows?.length) {
-      return { teo, rows: [] };
-    }
-
-    const symbols = [...new Set(rankRows.map((r: { symbol: string }) => r.symbol))];
-
-    const { data: cohortRows } = await admin
-      .from("security_history")
-      .select("symbol, metric_value")
-      .eq("metric_key", cohortKey)
-      .eq("periodicity", "daily")
-      .eq("teo", teo)
-      .in("symbol", symbols);
-
-    const cohortBySymbol = new Map<string, number | null>();
-    for (const r of cohortRows ?? []) {
-      const sym = (r as { symbol: string }).symbol;
-      const mv = (r as { metric_value: number | null }).metric_value;
-      cohortBySymbol.set(
-        sym,
-        mv != null && typeof mv === "number" ? Math.round(mv) : null,
-      );
-    }
-
     const { data: symRows } = await admin
       .from("symbols")
       .select("symbol, ticker")
@@ -844,30 +757,21 @@ export async function fetchTopRankingsSnapshot(params: {
       );
     }
 
-    const rows: TopRankingRow[] = [];
-    for (const r of rankRows as { symbol: string; metric_value: number }[]) {
-      const rankOrdinal =
-        r.metric_value != null && typeof r.metric_value === "number"
-          ? Math.round(r.metric_value)
-          : null;
-      if (rankOrdinal == null || rankOrdinal < 1) continue;
-
-      const cohortSizeVal = cohortBySymbol.get(r.symbol) ?? null;
+    const rows: TopRankingRow[] = snapshot.rows.map((r) => {
       const rankPercentile =
-        cohortSizeVal != null && cohortSizeVal > 0
-          ? (1 - (rankOrdinal - 1) / cohortSizeVal) * 100
+        r.cohort_size != null && r.cohort_size > 0
+          ? (1 - (r.rank_ordinal - 1) / r.cohort_size) * 100
           : null;
-
-      rows.push({
+      return {
         symbol: r.symbol,
         ticker: tickerBySymbol.get(r.symbol) ?? r.symbol,
-        rank_ordinal: rankOrdinal,
-        cohort_size: cohortSizeVal,
+        rank_ordinal: r.rank_ordinal,
+        cohort_size: r.cohort_size,
         rank_percentile: rankPercentile,
-      });
-    }
+      };
+    });
 
-    return { teo, rows };
+    return { teo: snapshot.teo, rows };
   } catch (error) {
     console.error("[V3 DAL] Error fetching top rankings:", error);
     return { teo: null, rows: [] };

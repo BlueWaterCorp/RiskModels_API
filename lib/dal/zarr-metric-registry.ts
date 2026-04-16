@@ -14,7 +14,7 @@ export type ZarrMetricSpec =
     }
   | {
       role: "returns";
-      zarrVar: "combined_factor_return" | "residual_return";
+      zarrVar: "combined_factor_return" | "factor_return" | "residual_return";
       level: "market" | "sector" | "subsector";
     }
   | {
@@ -56,6 +56,7 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   l1_mkt_er: { role: "hedge", zarrVar: "L1_market_ER" },
   l1_res_er: { role: "hedge", zarrVar: "L1_residual_ER" },
   l1_cfr: { role: "returns", zarrVar: "combined_factor_return", level: "market" },
+  l1_fr: { role: "returns", zarrVar: "factor_return", level: "market" },
   l1_rr: { role: "returns", zarrVar: "residual_return", level: "market" },
 
   l2_mkt_hr: { role: "hedge", zarrVar: "L2_market_HR" },
@@ -64,6 +65,7 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   l2_sec_er: { role: "hedge", zarrVar: "L2_sector_ER" },
   l2_res_er: { role: "hedge", zarrVar: "L2_residual_ER" },
   l2_cfr: { role: "returns", zarrVar: "combined_factor_return", level: "sector" },
+  l2_fr: { role: "returns", zarrVar: "factor_return", level: "sector" },
   l2_rr: { role: "returns", zarrVar: "residual_return", level: "sector" },
 
   l3_mkt_hr: { role: "hedge", zarrVar: "L3_market_HR" },
@@ -74,6 +76,7 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   l3_sub_er: { role: "hedge", zarrVar: "L3_subsector_ER" },
   l3_res_er: { role: "hedge", zarrVar: "L3_residual_ER" },
   l3_cfr: { role: "returns", zarrVar: "combined_factor_return", level: "subsector" },
+  l3_fr: { role: "returns", zarrVar: "factor_return", level: "subsector" },
   l3_rr: { role: "returns", zarrVar: "residual_return", level: "subsector" },
 };
 

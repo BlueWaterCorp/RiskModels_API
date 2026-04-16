@@ -39,6 +39,13 @@ interface TickerMetrics {
   l3_sec_hr: number | null;
   l3_sub_hr: number | null;
   l3_res_er: number | null;
+  /** Daily gross return (decimal), when present on latest row */
+  returns_gross: number | null;
+  /** Incremental factor returns + L3 residual return for stacked attribution */
+  l1_fr: number | null;
+  l2_fr: number | null;
+  l3_fr: number | null;
+  l3_rr: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,9 +55,11 @@ interface TickerMetrics {
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 const METRIC_KEYS: V3MetricKey[] = [
+  "returns_gross",
   "vol_23d", "price_close", "market_cap",
   "l3_mkt_hr", "l3_sec_hr", "l3_sub_hr",
   "l3_mkt_er", "l3_sec_er", "l3_sub_er", "l3_res_er",
+  "l1_fr", "l2_fr", "l3_fr", "l3_rr",
 ];
 
 async function getTickerMetrics(ticker: string): Promise<TickerMetrics | null> {
@@ -93,6 +102,11 @@ async function getTickerMetrics(ticker: string): Promise<TickerMetrics | null> {
       l3_sec_hr: m.l3_sec_hr ?? null,
       l3_sub_hr: m.l3_sub_hr ?? null,
       l3_res_er: m.l3_res_er ?? null,
+      returns_gross: m.returns_gross ?? null,
+      l1_fr: m.l1_fr ?? null,
+      l2_fr: m.l2_fr ?? null,
+      l3_fr: m.l3_fr ?? null,
+      l3_rr: m.l3_rr ?? null,
     };
   } catch (err) {
     console.error(`[ticker page] Failed to fetch ${ticker}:`, err);
@@ -155,6 +169,20 @@ function fmtCap(v: unknown): string {
   return `$${n.toLocaleString()}`;
 }
 
+/** Daily simple return as ±bps for small moves */
+function fmtSignedBps(v: number | null): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  const bps = v * 10000;
+  const sign = bps > 0 ? "+" : "";
+  return `${sign}${bps.toFixed(1)} bps`;
+}
+
+function hasReturnDecomposition(m: TickerMetrics): boolean {
+  return [m.l1_fr, m.l2_fr, m.l3_fr, m.l3_rr].some(
+    (x) => x != null && !Number.isNaN(Number(x)),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page Component
 // ---------------------------------------------------------------------------
@@ -179,6 +207,15 @@ export default async function TickerDashboard({
 
   const resER = metrics.l3_res_er;
   const vol = metrics.vol_23d;
+  const showReturnDecomp = hasReturnDecomposition(metrics);
+  const frParts = [
+    { key: "L1 FR", v: metrics.l1_fr, bg: "bg-sky-500" },
+    { key: "L2 FR", v: metrics.l2_fr, bg: "bg-indigo-500" },
+    { key: "L3 FR", v: metrics.l3_fr, bg: "bg-violet-500" },
+    { key: "L3 RR", v: metrics.l3_rr, bg: "bg-slate-500" },
+  ] as const;
+  const sumAbsFr = frParts.reduce((acc, p) => acc + Math.abs(Number(p.v) || 0), 0) || 1e-12;
+
   const sysPct =
     resER != null
       ? (
@@ -244,6 +281,56 @@ export default async function TickerDashboard({
           {sysPct && <MetricCard label="Systematic %" value={`${sysPct}%`} />}
         </div>
       </section>
+
+      {/* ── Daily return attribution (returns decomposition) ─────── */}
+      {showReturnDecomp && (
+        <section className="max-w-6xl mx-auto px-8 pb-8">
+          <h2 className="text-lg font-semibold text-slate-700 mb-1">
+            Daily return attribution ({teo})
+          </h2>
+          <p className="text-sm text-slate-500 mb-4 max-w-3xl">
+            Incremental factor returns (<code className="text-xs bg-slate-200 px-1 rounded">l1_fr</code>,{" "}
+            <code className="text-xs bg-slate-200 px-1 rounded">l2_fr</code>,{" "}
+            <code className="text-xs bg-slate-200 px-1 rounded">l3_fr</code>) and L3 residual return (
+            <code className="text-xs bg-slate-200 px-1 rounded">l3_rr</code>) from ERM3 returns decomposition — not hedge
+            ratios or explained risk. See{" "}
+            <Link href="/docs/returns-decomposition-metrics" className="text-[#002a5e] font-medium underline">
+              Returns decomposition metrics
+            </Link>
+            .
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            {frParts.map((p) => (
+              <MetricCard key={p.key} label={p.key} value={fmtSignedBps(p.v)} />
+            ))}
+          </div>
+          {metrics.returns_gross != null && !Number.isNaN(Number(metrics.returns_gross)) && (
+            <p className="text-xs text-slate-500 mb-2">
+              Gross return (same day):{" "}
+              <span className="font-mono font-medium text-slate-700">{fmtSignedBps(metrics.returns_gross)}</span> — sum of
+              components ≈ gross for simple daily returns.
+            </p>
+          )}
+          <div className="flex h-10 w-full max-w-2xl rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+            {frParts.map((p) => {
+              const n = Number(p.v);
+              const abs = Math.abs(Number.isFinite(n) ? n : 0);
+              const flex = Math.max(abs / sumAbsFr, 0.02);
+              const positive = n >= 0;
+              return (
+                <div
+                  key={p.key}
+                  title={`${p.key}: ${fmtSignedBps(p.v)}`}
+                  className={`${p.bg} ${positive ? "" : "opacity-70"} flex min-w-0 items-center justify-center text-[10px] font-semibold text-white`}
+                  style={{ flex: `${flex} 1 0%` }}
+                >
+                  {flex > 0.12 ? p.key.replace(" FR", "").replace("L3 ", "") : ""}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── Deep Dive Snapshot ──────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-8 pb-8">

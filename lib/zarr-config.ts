@@ -40,3 +40,14 @@ export function zarrReturnsBasename(factorSetId = getZarrFactorSetId()): string 
 export function zarrHedgeBasename(factorSetId = getZarrFactorSetId()): string {
   return `ds_erm3_hedge_weights_${factorSetId}.zarr`;
 }
+
+/**
+ * Rankings store: flat (teo, symbol) layout with one variable per
+ * (window, cohort, metric) combo, named exactly like the legacy Supabase
+ * EAV `metric_key` (`rank_ord_*` and `cohort_size_*`). Chunked
+ * {teo: 1, symbol: -1} so a "top-K at latest teo" read touches exactly
+ * one chunk per variable.
+ */
+export function zarrRankingsBasename(factorSetId = getZarrFactorSetId()): string {
+  return `ds_rankings_${factorSetId}.zarr`;
+}

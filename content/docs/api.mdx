@@ -115,13 +115,19 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
       <span className="block text-xs text-zinc-500 leading-relaxed">Canonical names, units (<code className="text-zinc-400 bg-zinc-800 px-1 rounded text-[10px]">dollar_ratio</code>), wire↔zarr alias map—single source of truth.</span>
     </a>
     <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
-      <a href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/RESPONSE_METADATA.md" target="_blank" rel="noopener noreferrer" className="group flex flex-col gap-2">
+      <a href="/docs/response-metadata" className="group flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <span className="text-xl">📦</span>
-          <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Response Specs</span>
+          <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Response metadata</span>
         </div>
-        <span className="block text-xs text-zinc-500 leading-relaxed"><code className="text-zinc-400 bg-zinc-800 px-1 rounded text-[10px]">_agent</code> lineage, HTTP headers (latency, tokens), and pricing telemetry.</span>
+        <span className="block text-xs text-zinc-500 leading-relaxed">
+          Portal guide: <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-[10px]">_metadata</code>,{' '}
+          <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-[10px]">data_source</code> /{' '}
+          <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-[10px]">range</code>, JSON vs Parquet or CSV, and{' '}
+          <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-[10px]">X-Risk-*</code> headers.
+        </span>
       </a>
+      <a href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/RESPONSE_METADATA.md" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:text-primary/80 underline underline-offset-2">Full RESPONSE_METADATA.md (GitHub)</a>
       <a href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/ERROR_SCHEMA.md" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:text-primary/80 underline underline-offset-2">Instructional error schema (Fix: lines)</a>
     </div>
     <a href="/docs/plaid-holdings" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
@@ -165,6 +171,18 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
             </div>
           </td>
           <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[[&quot;l3_market_hr&quot;,&quot;l3_sector_hr&quot;,&quot;l3_subsector_hr&quot;]]</code></td>
+        </tr>
+        <tr className="border-b border-zinc-800 align-top">
+          <td className="py-3 px-4 font-semibold text-zinc-100">Hierarchical beta</td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Regression slopes, not hedges.</strong> Dimensionless coefficients from the L1/L2/L3 cascade — different units and estimation from <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">*_hr</code> hedge ratios. See <a href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/SEMANTIC_ALIASES.md" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">SEMANTIC_ALIASES</a> and <a href="/docs/methodology" className="text-primary hover:underline">Methodology</a>.</td>
+          <td className="py-3 px-4">
+            <div className="flex flex-col gap-1.5">
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l1_market_beta</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l2_sector_beta</code>
+              <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">l3_subsector_beta</code>
+            </div>
+          </td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[[&quot;l1_market_beta&quot;,&quot;l2_sector_beta&quot;,&quot;l3_subsector_beta&quot;]]</code></td>
         </tr>
         <tr className="border-b border-zinc-800 align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Explained Risk (ER)</td>
