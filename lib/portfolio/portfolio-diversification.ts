@@ -172,14 +172,9 @@ export function computeDiversificationMetrics(
     naiveResidual += weight * (m.l3_res_er ?? 0);
   }
 
-  // Market: u'Ru with single-factor (near-additive)
-  const mktEtfs = ["SPY"];
-  const mktR = [[1]];
-  const { u: uMkt, warnings: wMkt } = buildExposureVector(
-    positions, tickerMetrics, "l3_mkt_er", null, mktEtfs,
-  );
-  warnings.push(...wMkt);
-  const adjMarket = quadraticForm(uMkt, mktR);
+  // Market: single factor (SPY) — no cross-ETF diversification possible.
+  // adjusted = naive (all positions share the same market factor).
+  const adjMarket = naiveMarket;
 
   // Sector: u'Ru across unique sector ETFs
   const { u: uSec, warnings: wSec } = buildExposureVector(
@@ -242,8 +237,7 @@ export function computeDiversificationMetrics(
     _explanation:
       "Sector and subsector layers apply quadratic diversification adjustment (u'Ru) " +
       "using realized correlations between the underlying sector/subsector ETFs. " +
-      "Market layer is near-additive because all positions share the same broad market factor " +
-      "(quadratic form applied for uniformity). " +
+      "Market layer has no diversification credit (all positions share the same broad market factor). " +
       "Residual applies concentration-adjusted form (sum w_i^2 * res_er_i) " +
       "because residuals are constructed to be approximately uncorrelated across stocks.",
   };

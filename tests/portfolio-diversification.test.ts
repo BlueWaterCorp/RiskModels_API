@@ -113,13 +113,11 @@ describe("computeDiversificationMetrics", () => {
     expect(r.warnings.some((w) => w.includes("B") && w.includes("sector_etf"))).toBe(true);
   });
 
-  it("market adjusted is near-additive (close to naive)", () => {
+  it("market adjusted equals naive (single factor, no diversification)", () => {
     const r = computeDiversificationMetrics(makeInput());
-    // Market has single factor, u'Ru with 1x1 R=[[1]] should give u^2
-    // which is NOT naive (naive = sum w_i * er_i = 0.5, adjusted = 0.25)
-    // but the quadratic form is still applied for uniformity
-    expect(r.correlation_adjusted.market_er).toBeDefined();
-    expect(r.layers[0].layer).toBe("market");
+    expect(r.correlation_adjusted.market_er).toBeCloseTo(r.naive_pws.market_er, 6);
+    expect(r.diversification_credit.market).toBeCloseTo(0, 6);
+    expect(r.layers[0].multiplier).toBeCloseTo(1.0, 4);
   });
 
   it("method and explanation are populated", () => {
