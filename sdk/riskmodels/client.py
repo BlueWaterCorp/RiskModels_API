@@ -876,6 +876,40 @@ class RiskModelsClient:
         )
         return data, lineage
 
+    def post_portfolio_risk_snapshot(
+        self,
+        positions: PositionsInput,
+        *,
+        title: str | None = None,
+        as_of_date: str | None = None,
+        include_diversification: bool = False,
+        window_days: int = 252,
+    ) -> tuple[dict, RiskLineage]:
+        """POST ``/portfolio/risk-snapshot`` with ``format=json``.
+
+        When *include_diversification* is True, the response includes a
+        ``portfolio_risk_index.diversification`` block with correlation-adjusted
+        ER, diversification credits, and chart-friendly ``layers[]``.
+        """
+        weights = positions_to_weights(positions)
+        body: dict[str, Any] = {
+            "format": "json",
+            "positions": [{"ticker": k, "weight": float(v)} for k, v in weights.items()],
+        }
+        if title is not None:
+            body["title"] = title
+        if as_of_date is not None:
+            body["as_of_date"] = as_of_date
+        if include_diversification:
+            body["include_diversification"] = True
+            body["window_days"] = window_days
+        data, lineage, _r = self._transport.request(
+            "POST",
+            "/portfolio/risk-snapshot",
+            json=body,
+        )
+        return data, lineage
+
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int
     ) -> tuple[dict[str, Any], RiskLineage]:

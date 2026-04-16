@@ -3394,6 +3394,16 @@ paths:
                   type: string
                   enum: [pdf, json, png]
                   default: json
+                include_diversification:
+                  type: boolean
+                  default: false
+                  description: When true, adds a `diversification` block to portfolio_risk_index with correlation-adjusted ER, credits, and chart-friendly layers[].
+                window_days:
+                  type: integer
+                  minimum: 20
+                  maximum: 2000
+                  default: 252
+                  description: Rolling window (trading days) for ETF return correlations. Only used when include_diversification=true.
       responses:
         "200":
           description: JSON snapshot or PDF bytes.
