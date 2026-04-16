@@ -80,3 +80,7 @@ public/openapi.json
 
 .vercel
 .env*.local
+
+# Data directories (zarr stores, local caches)
+data/
+*.zarr/
