@@ -1,74 +1,80 @@
 #!/usr/bin/env python3
 """
-RiskModels API — AI Risk Analyst (GPT-4o + Live Factor Data)
+RiskModels API — AI Risk Analyst (OpenAI + Live ERM3 Risk Data)
 
 Combines live RiskModels risk metrics with an LLM to build an AI that answers
 natural-language questions about your portfolio. Pattern:
-  1. Fetch live hedge ratios and risk metrics from the RiskModels API
+
+  1. Fetch live hedge ratios and risk metrics via the RiskModels Python SDK
   2. Inject the data as structured context into a system prompt
   3. Ask any hedging or risk question — the model reasons over real numbers
 
-For a maintained client (nested V3 `metrics`, validation, `to_llm_context`), use the
-Python SDK in `sdk` (pip install from that path or future `riskmodels-py`).
+Authentication is env-based; no hardcoded keys:
 
-pip install requests pandas openai
+    export RISKMODELS_API_KEY=rm_agent_...   # riskmodels config init stores this
+    export OPENAI_API_KEY=sk-...
+
+Install:
+
+    pip install riskmodels pandas openai
 """
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-API_KEY        = "PASTE_YOUR_KEY_HERE"      # <-- your RiskModels API key
-OPENAI_API_KEY = "PASTE_YOUR_OPENAI_KEY"    # <-- your OpenAI API key
-BASE_URL = "https://riskmodels.app/api"
-HEADERS  = {"Authorization": f"Bearer {API_KEY}"}
+from __future__ import annotations
 
-import requests
+import os
+import sys
+
 import pandas as pd
 from openai import OpenAI
+from riskmodels import RiskModelsClient
 
-if API_KEY == "PASTE_YOUR_KEY_HERE":
-    raise ValueError("Please paste your RiskModels API key above before running.")
-if OPENAI_API_KEY == "PASTE_YOUR_OPENAI_KEY":
-    raise ValueError("Please paste your OpenAI API key above before running.")
 
-# ── Step 1: Fetch live risk metrics for the portfolio ──────────────────────────
-portfolio = {
+PORTFOLIO: dict[str, float] = {
     "AAPL": 0.25,
     "MSFT": 0.20,
     "NVDA": 0.20,
     "GOOGL": 0.15,
     "AMZN": 0.10,
-    "JPM":  0.10,
+    "JPM": 0.10,
 }
 
-metrics_rows = []
-for t in portfolio:
-    r = requests.get(f"{BASE_URL}/metrics/{t}", headers=HEADERS)
-    if r.status_code == 200:
-        m = r.json()
-        metrics_rows.append({
-            "ticker":          t,
-            "weight_%":        round(portfolio[t] * 100, 1),
-            "close":           m.get("close_price"),
-            "vol_ann_%":       round((m.get("volatility") or 0) * 100, 1),
-            "sharpe":          round(m.get("sharpe_ratio") or 0, 3),
-            "l1_market_hr":    round(m.get("l1_market_hr") or 0, 4),
-            "l2_market_hr":    round(m.get("l2_market_hr") or 0, 4),
-            "l2_sector_hr":    round(m.get("l2_sector_hr") or 0, 4),
-            "l3_market_hr":    round(m.get("l3_market_hr") or 0, 4),
-            "l3_sector_hr":    round(m.get("l3_sector_hr") or 0, 4),
-            "l3_subsector_hr": round(m.get("l3_subsector_hr") or 0, 4),
-            "l1_market_er":    round(m.get("l1_market_er") or 0, 4),
-            "l3_residual_er":  round(m.get("l3_residual_er") or 0, 4),
-        })
-    else:
-        print(f"Warning: {t} returned {r.status_code}")
 
-df_ai = pd.DataFrame(metrics_rows).set_index("ticker")
+def require_env(var: str) -> str:
+    value = os.environ.get(var)
+    if not value:
+        sys.exit(
+            f"error: {var} not set. `riskmodels config init` stores RISKMODELS_API_KEY; "
+            f"OPENAI_API_KEY must be exported separately."
+        )
+    return value
 
-# ── Step 2: Render the data as a compact text table for the prompt ─────────────
-risk_table = df_ai.to_string()
 
-system_prompt = f"""You are an institutional equity risk analyst with expertise in factor models.
-You have access to live ERM3 factor data for a portfolio. Use ONLY the numbers provided.
+def fetch_risk_table(client: RiskModelsClient, portfolio: dict[str, float]) -> pd.DataFrame:
+    rows = []
+    for ticker, weight in portfolio.items():
+        m = client.get_metrics(ticker)
+        rows.append(
+            {
+                "ticker": ticker,
+                "weight_%": round(weight * 100, 1),
+                "close": m.get("close_price"),
+                "vol_ann_%": round((m.get("volatility") or 0) * 100, 1),
+                "sharpe": round(m.get("sharpe_ratio") or 0, 3),
+                "l1_market_hr": round(m.get("l1_market_hr") or 0, 4),
+                "l2_market_hr": round(m.get("l2_market_hr") or 0, 4),
+                "l2_sector_hr": round(m.get("l2_sector_hr") or 0, 4),
+                "l3_market_hr": round(m.get("l3_market_hr") or 0, 4),
+                "l3_sector_hr": round(m.get("l3_sector_hr") or 0, 4),
+                "l3_subsector_hr": round(m.get("l3_subsector_hr") or 0, 4),
+                "l1_market_er": round(m.get("l1_market_er") or 0, 4),
+                "l3_residual_er": round(m.get("l3_residual_er") or 0, 4),
+            }
+        )
+    return pd.DataFrame(rows).set_index("ticker")
+
+
+SYSTEM_PROMPT_TEMPLATE = """You are an institutional equity risk analyst with expertise in ERM3 factor models.
+You have access to live daily EOD factor data for a portfolio. Use ONLY the numbers provided.
 
 ERM3 Hedge Ratio Guide:
 - l1_market_hr: SPY ratio for L1 hedge (market-only, 1 trade)
@@ -82,20 +88,33 @@ LIVE PORTFOLIO DATA:
 
 Answer concisely and always cite specific numbers from the table above."""
 
-# ── Step 3: Ask a question ──────────────────────────────────────────────────────
-question = "Which position has the most market risk? What hedge trades should I place to reduce it at L2?"
 
-# ── Step 4: Call GPT-4o ────────────────────────────────────────────────────────
-client = OpenAI(api_key=OPENAI_API_KEY)
+def main() -> None:
+    require_env("RISKMODELS_API_KEY")
+    openai_key = require_env("OPENAI_API_KEY")
 
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": question},
-    ],
-    temperature=0.2,
-)
+    with RiskModelsClient.from_env() as rm:
+        df = fetch_risk_table(rm, PORTFOLIO)
 
-print(f"Q: {question}\n")
-print(response.choices[0].message.content)
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(risk_table=df.to_string())
+    question = (
+        "Which position has the most market risk? "
+        "What hedge trades should I place to reduce it at L2?"
+    )
+
+    openai = OpenAI(api_key=openai_key)
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ],
+        temperature=0.2,
+    )
+
+    print(f"Q: {question}\n")
+    print(response.choices[0].message.content)
+
+
+if __name__ == "__main__":
+    main()

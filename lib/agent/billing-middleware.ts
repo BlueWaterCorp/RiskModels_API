@@ -84,6 +84,48 @@ async function checkMonthlySpendCap(
   }
 }
 
+/**
+ * Check if user has exceeded their daily spend cap (UTC day).
+ * Primary defense against runaway agent loops hammering the API.
+ */
+async function checkDailySpendCap(
+  userId: string,
+  requestedCost: number,
+): Promise<{
+  exceeded: boolean;
+  currentSpend: number;
+  cap: number | null;
+}> {
+  try {
+    const supabase = createAdminClient();
+    await supabase.rpc("check_reset_daily_spend", { p_user_id: userId });
+    const { data: account } = await supabase
+      .from("agent_accounts")
+      .select("daily_spend_cap, daily_spend_usd")
+      .eq("user_id", userId)
+      .single();
+
+    if (!account || account.daily_spend_cap === null) {
+      return {
+        exceeded: false,
+        currentSpend: account?.daily_spend_usd ? parseFloat(account.daily_spend_usd) : 0,
+        cap: null,
+      };
+    }
+
+    const cap = parseFloat(account.daily_spend_cap);
+    const currentSpend = parseFloat(account.daily_spend_usd);
+    return {
+      exceeded: currentSpend + requestedCost > cap,
+      currentSpend,
+      cap,
+    };
+  } catch (error) {
+    console.error("[Billing] Error checking daily spend cap:", error);
+    return { exceeded: false, currentSpend: 0, cap: null };
+  }
+}
+
 // Lazy singleton — only initialised when Upstash env vars are present
 let _redis: Redis | null = null;
 function getRedis(): Redis | null {
@@ -259,12 +301,16 @@ export function withBilling(
       // Try API key authentication first
       const extractedKey = extractApiKey(req);
       let apiKeyRateLimit: number | undefined;
+      let apiKeyDailyCapOverride: number | null = null;
+      let apiKeyScope: string | null = null;
       if (extractedKey) {
         const validation = await validateApiKey(extractedKey);
         if (validation.valid && validation.userId) {
           userId = validation.userId;
           apiKey = extractedKey;
           apiKeyRateLimit = validation.rateLimit ?? undefined;
+          apiKeyDailyCapOverride = validation.dailySpendCapUsd ?? null;
+          apiKeyScope = validation.keyScope ?? null;
         }
       }
 
@@ -287,11 +333,14 @@ export function withBilling(
         userId = user.id;
       }
 
-      // 1b. Enforce per-key rate limit (API key requests only)
+      // 1b. Enforce per-key rate limit (API key requests only).
+      // Capture rl result for later success-path headers so agents can self-throttle.
+      let rateLimitResult: RatelimitResult | null = null;
       if (apiKey && apiKeyRateLimit && apiKeyRateLimit > 0) {
         const limiter = getRatelimiter(apiKeyRateLimit);
         if (limiter) {
           const rl = await tryRatelimit(limiter, apiKey);
+          rateLimitResult = rl;
           if (rl && !rl.success) {
             const { limit, remaining, reset } = rl;
             const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
@@ -405,6 +454,50 @@ export function withBilling(
           return payRes;
         }
 
+        // Check daily spend cap first (tighter loop protection), then monthly.
+        // Per-key daily cap override (e.g. rm_agent_mcp_*) takes precedence over account-level.
+        const accountDaily = await checkDailySpendCap(userId, costUsd);
+        const effectiveDailyCap =
+          apiKeyDailyCapOverride != null && apiKeyDailyCapOverride > 0
+            ? apiKeyDailyCapOverride
+            : accountDaily.cap;
+        const effectiveDailyExceeded =
+          effectiveDailyCap != null &&
+          accountDaily.currentSpend + costUsd > effectiveDailyCap;
+        if (effectiveDailyExceeded && effectiveDailyCap != null) {
+          const remaining = Math.max(
+            0,
+            effectiveDailyCap - accountDaily.currentSpend,
+          );
+          const capSource =
+            apiKeyDailyCapOverride != null && apiKeyDailyCapOverride > 0
+              ? "per_key"
+              : "account";
+          return NextResponse.json(
+            {
+              error: "Daily spend cap exceeded",
+              message: `Daily spend cap of $${effectiveDailyCap.toFixed(2)} (${capSource}) reached. $${remaining.toFixed(4)} remaining today; resets at 00:00 UTC.`,
+              _agent: {
+                action: "wait_or_raise_cap",
+                current_daily_spend_usd: accountDaily.currentSpend,
+                daily_cap_usd: effectiveDailyCap,
+                cap_source: capSource,
+                key_scope: apiKeyScope,
+                resets_at: "next 00:00 UTC",
+                raise_cap_url: "/settings/billing",
+              },
+            },
+            {
+              status: 402,
+              headers: {
+                "X-Daily-Spend-Cap-USD": effectiveDailyCap.toFixed(2),
+                "X-Current-Daily-Spend-USD": accountDaily.currentSpend.toFixed(2),
+                "X-Daily-Cap-Source": capSource,
+              },
+            },
+          );
+        }
+
         // Check monthly spend cap
         const monthlyCapCheck = await checkMonthlySpendCap(userId, costUsd);
         if (monthlyCapCheck.exceeded && monthlyCapCheck.cap != null) {
@@ -500,6 +593,13 @@ export function withBilling(
       );
       response.headers.set("X-Pricing-Tier", capability.pricing.tier);
 
+      // 8.1. Rate-limit headers on success so agents can self-throttle before 429.
+      if (rateLimitResult) {
+        response.headers.set("X-RateLimit-Limit", String(rateLimitResult.limit));
+        response.headers.set("X-RateLimit-Remaining", String(rateLimitResult.remaining));
+        response.headers.set("X-RateLimit-Reset", String(rateLimitResult.reset));
+      }
+
       // 8.5. Add token bucket headers ($20 = 1M tokens, so 1 token = $0.00002)
       const TOKEN_PRICE_USD = 0.00002;
       const tokensConsumed = Math.ceil(costUsd / TOKEN_PRICE_USD);
@@ -513,12 +613,14 @@ export function withBilling(
         console.error("[Billing] Failed to read balance for response headers:", balanceHeaderErr);
       }
 
-      // 8.6. Add monthly spend cap headers (if user has a cap set)
+      // 8.6. Add monthly + daily spend cap headers (if user has caps set)
       try {
         const supabase = createAdminClient();
         const { data: account } = await supabase
           .from("agent_accounts")
-          .select("monthly_spend_cap, monthly_spend_usd, monthly_spend_reset_at")
+          .select(
+            "monthly_spend_cap, monthly_spend_usd, monthly_spend_reset_at, daily_spend_cap, daily_spend_usd",
+          )
           .eq("user_id", userId)
           .single();
 
@@ -526,12 +628,12 @@ export function withBilling(
           const cap = parseFloat(String(account.monthly_spend_cap));
           const currentSpend = parseFloat(String(account.monthly_spend_usd ?? 0));
           const resetAt = new Date(account.monthly_spend_reset_at ?? Date.now());
-          
+
           // Calculate next reset
           const nextReset = new Date(resetAt);
           nextReset.setMonth(nextReset.getMonth() + 1);
           nextReset.setDate(1);
-          
+
           const now = new Date();
           const daysUntilReset = Math.max(0, Math.ceil((nextReset.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -540,8 +642,15 @@ export function withBilling(
           response.headers.set("X-Monthly-Cap-Reset-At", nextReset.toISOString());
           response.headers.set("X-Days-Until-Reset", String(daysUntilReset));
         }
+
+        if (account != null && account.daily_spend_cap != null) {
+          const dailyCap = parseFloat(String(account.daily_spend_cap));
+          const dailyCurrent = parseFloat(String(account.daily_spend_usd ?? 0));
+          response.headers.set("X-Daily-Spend-Cap-USD", dailyCap.toFixed(2));
+          response.headers.set("X-Current-Daily-Spend-USD", dailyCurrent.toFixed(2));
+        }
       } catch {
-        // Silently skip if we can't fetch monthly spend data
+        // Silently skip if we can't fetch spend cap data
       }
 
       return response;

@@ -1,41 +1,123 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "L3 Risk Decomposition Response",
+  "description": "Daily EOD hierarchical orthogonal decomposition of a ticker's returns into market, sector, subsector, and residual components. Returns time-aligned parallel arrays (dates[i] pairs with every other array's [i]). Historical data streams from GCP zarr.",
   "type": "object",
   "required": [
     "ticker",
     "market_factor_etf",
     "universe",
-    "dates"
+    "dates",
+    "l3_market_hr",
+    "l3_sector_hr",
+    "l3_subsector_hr",
+    "l3_market_er",
+    "l3_sector_er",
+    "l3_subsector_er",
+    "l3_residual_er"
   ],
   "properties": {
     "ticker": {
-      "type": "string"
+      "type": "string",
+      "description": "Uppercased ticker symbol the decomposition was computed for (e.g. NVDA)."
     },
     "market_factor_etf": {
-      "type": "string"
+      "type": "string",
+      "description": "ETF used as the market factor at Level 1. Defaults to SPY."
     },
     "universe": {
-      "type": "string"
+      "type": "string",
+      "description": "Risk universe label (e.g. erm3_us_equity). Documents which peer set drove sector/subsector ETF selection."
+    },
+    "data_source": {
+      "type": "string",
+      "description": "Provenance tag for the underlying data bars. Typical values: 'zarr' (historical), 'supabase_latest' (latest snapshot)."
     },
     "dates": {
       "type": "array",
+      "description": "Trading-day dates, one per observation, in ascending order. Aligned index-by-index with the other arrays in this response.",
       "items": {
         "type": "string",
-        "format": "date"
+        "format": "date",
+        "description": "Trading day in YYYY-MM-DD format (US markets)."
+      }
+    },
+    "l3_market_hr": {
+      "type": "array",
+      "description": "Per-day hedge ratio vs. the Level 1 market factor ETF (units of market ETF per unit of ticker) after all three levels of orthogonalization.",
+      "items": { "type": ["number", "null"] }
+    },
+    "l3_sector_hr": {
+      "type": "array",
+      "description": "Per-day hedge ratio vs. the sector ETF after removing market beta (Level 2 residual regressed on sector). Negative values are valid after orthogonalization.",
+      "items": { "type": ["number", "null"] }
+    },
+    "l3_subsector_hr": {
+      "type": "array",
+      "description": "Per-day hedge ratio vs. the subsector ETF after removing both market and sector beta (Level 3 residual regressed on subsector). Negative values are valid after orthogonalization.",
+      "items": { "type": ["number", "null"] }
+    },
+    "l3_market_er": {
+      "type": "array",
+      "description": "Per-day fraction of total variance explained by the market factor (0–1). Summing (l3_market_er + l3_sector_er + l3_subsector_er + l3_residual_er) at any index yields ~1.0.",
+      "items": { "type": ["number", "null"] }
+    },
+    "l3_sector_er": {
+      "type": "array",
+      "description": "Per-day fraction of variance explained by the sector factor after removing market. Sums with the other *_er arrays to ~1.0.",
+      "items": { "type": ["number", "null"] }
+    },
+    "l3_subsector_er": {
+      "type": "array",
+      "description": "Per-day fraction of variance explained by the subsector factor after removing market and sector. Sums with the other *_er arrays to ~1.0.",
+      "items": { "type": ["number", "null"] }
+    },
+    "l3_residual_er": {
+      "type": "array",
+      "description": "Per-day fraction of variance that is idiosyncratic (stock-specific). Cannot be hedged by the L1/L2/L3 ETFs — this is the 'true alpha' contribution. Sums with the other *_er arrays to ~1.0.",
+      "items": { "type": ["number", "null"] }
+    },
+    "_metadata": {
+      "type": "object",
+      "description": "Provenance and freshness metadata attached by the API.",
+      "properties": {
+        "data_as_of": {
+          "type": "string",
+          "format": "date",
+          "description": "Latest trading day in the response (YYYY-MM-DD). Also emitted as the X-Data-As-Of response header."
+        },
+        "data_source": {
+          "type": "string",
+          "description": "Source of the time series (e.g. 'zarr')."
+        },
+        "range": {
+          "type": "array",
+          "description": "Inclusive [start_date, end_date] covered by the returned series.",
+          "items": { "type": "string", "format": "date" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "billing_code": {
+          "type": "string",
+          "description": "Internal billing SKU recorded for this request."
+        }
       }
     },
     "_agent": {
       "type": "object",
+      "description": "Per-call agent envelope: cost, latency, and request correlation for telemetry.",
       "properties": {
         "cost_usd": {
-          "type": "number"
+          "type": "number",
+          "description": "USD cost billed for this request against the key's daily spend budget."
         },
         "latency_ms": {
-          "type": "integer"
+          "type": "integer",
+          "description": "Server-side data fetch latency in milliseconds."
         },
         "request_id": {
-          "type": "string"
+          "type": "string",
+          "description": "Unique request identifier for log correlation and support tickets."
         }
       }
     }

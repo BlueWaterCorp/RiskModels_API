@@ -167,6 +167,17 @@ export async function deductBalance(
     // Don't block the request for monthly tracking failure
   }
 
+  // Update daily spend tracking (UTC-day bucket, primary abuse guardrail).
+  try {
+    await client.rpc("add_to_daily_spend", {
+      p_user_id: userId,
+      p_amount: amountUsd,
+    });
+  } catch (dailyError) {
+    console.error("[Billing] Failed to update daily spend:", dailyError);
+    // Don't block the request for daily tracking failure
+  }
+
   // Record billing event
   const { error: billingError } = await client.from("billing_events").insert({
     user_id: userId,

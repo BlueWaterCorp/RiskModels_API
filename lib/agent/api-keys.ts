@@ -31,6 +31,10 @@ export interface ValidatedKey {
   userId?: string;
   scopes?: string[];
   rateLimit?: number;
+  /** Tag describing the caller profile (e.g. 'mcp', 'cli'). Populated from agent_api_keys.key_scope. */
+  keyScope?: string | null;
+  /** Per-key daily spend cap in USD; falls back to account-level if unset. */
+  dailySpendCapUsd?: number | null;
   error?: string;
 }
 
@@ -205,7 +209,9 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
 
   const { data: keyRecord, error } = await getSupabase()
     .from("agent_api_keys")
-    .select("user_id, scopes, rate_limit_per_minute, revoked_at, expires_at")
+    .select(
+      "user_id, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd",
+    )
     .eq("key_hash", hashedKey)
     .single();
 
@@ -229,11 +235,18 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
       .eq("key_hash", hashedKey),
   ).catch(console.error);
 
+  const perKeyDailyCap =
+    keyRecord.daily_spend_cap_usd != null
+      ? parseFloat(String(keyRecord.daily_spend_cap_usd))
+      : null;
+
   return {
     valid: true,
     userId: keyRecord.user_id,
     scopes: keyRecord.scopes,
     rateLimit: keyRecord.rate_limit_per_minute,
+    keyScope: keyRecord.key_scope ?? null,
+    dailySpendCapUsd: perKeyDailyCap,
   };
 }
 

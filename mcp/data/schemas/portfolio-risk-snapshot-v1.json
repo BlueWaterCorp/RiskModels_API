@@ -39,88 +39,95 @@
         },
         "diversification": {
           "type": "object",
-          "description": "Optional correlation-adjusted diversification metrics. Present when include_diversification=true.",
+          "description": "Optional correlation-adjusted diversification metrics. Present only when include_diversification=true on the request.",
           "properties": {
-            "window_days": { "type": "integer" },
-            "method": { "type": "string" },
+            "window_days": { "type": "integer", "description": "Rolling window used to estimate ETF correlations (trading days)." },
+            "method": { "type": "string", "description": "Correlation method used (e.g. 'pearson')." },
             "naive_pws": {
               "type": "object",
+              "description": "Position-weighted sum of per-ticker ERs, ignoring cross-position correlations (upper bound on systematic risk).",
               "properties": {
-                "market_er": { "type": "number" },
-                "sector_er": { "type": "number" },
-                "subsector_er": { "type": "number" },
-                "residual_er": { "type": "number" },
-                "total": { "type": "number" }
+                "market_er": { "type": "number", "description": "Position-weighted sum of market ER." },
+                "sector_er": { "type": "number", "description": "Position-weighted sum of sector ER." },
+                "subsector_er": { "type": "number", "description": "Position-weighted sum of subsector ER." },
+                "residual_er": { "type": "number", "description": "Position-weighted sum of residual ER." },
+                "total": { "type": "number", "description": "Sum of the four layers; naive upper bound for portfolio risk share." }
               }
             },
             "correlation_adjusted": {
               "type": "object",
+              "description": "Same layers as naive_pws, adjusted for the correlation matrix of the sector/subsector ETFs (actual variance contribution).",
               "properties": {
-                "market_er": { "type": "number" },
-                "sector_er": { "type": "number" },
-                "subsector_er": { "type": "number" },
-                "residual_er": { "type": "number" },
-                "total": { "type": "number" }
+                "market_er": { "type": "number", "description": "Correlation-adjusted market ER." },
+                "sector_er": { "type": "number", "description": "Correlation-adjusted sector ER (reflects cross-sector correlations)." },
+                "subsector_er": { "type": "number", "description": "Correlation-adjusted subsector ER (reflects cross-subsector correlations)." },
+                "residual_er": { "type": "number", "description": "Residual ER after correlation adjustment." },
+                "total": { "type": "number", "description": "Sum of the adjusted layers." }
               }
             },
             "diversification_credit": {
               "type": "object",
+              "description": "Per-layer 'credit' from correlation adjustment: naive_pws[layer] − correlation_adjusted[layer]. Higher = more diversification benefit.",
               "properties": {
-                "market": { "type": "number" },
-                "sector": { "type": "number" },
-                "subsector": { "type": "number" },
-                "residual": { "type": "number" },
-                "total": { "type": "number" }
+                "market": { "type": "number", "description": "Diversification credit at the market layer." },
+                "sector": { "type": "number", "description": "Diversification credit at the sector layer." },
+                "subsector": { "type": "number", "description": "Diversification credit at the subsector layer." },
+                "residual": { "type": "number", "description": "Diversification credit at the residual (idiosyncratic) layer." },
+                "total": { "type": "number", "description": "Sum of per-layer diversification credits." }
               }
             },
             "layers": {
               "type": "array",
+              "description": "Per-layer detail aligned with the decomposition hierarchy. Useful for ranking which layer is carrying the most (and least-diversified) risk.",
               "items": {
                 "type": "object",
                 "required": ["layer", "naive_er", "adjusted_er", "adjustment_er"],
                 "properties": {
-                  "layer": { "type": "string", "enum": ["market", "sector", "subsector", "residual"] },
-                  "naive_er": { "type": "number" },
-                  "adjusted_er": { "type": "number" },
-                  "adjustment_er": { "type": "number" },
-                  "multiplier": { "type": ["number", "null"] },
-                  "unique_etfs": { "type": "integer" }
+                  "layer": { "type": "string", "enum": ["market", "sector", "subsector", "residual"], "description": "Which layer of the decomposition this row describes." },
+                  "naive_er": { "type": "number", "description": "Position-weighted sum of ER at this layer (no correlation adjustment)." },
+                  "adjusted_er": { "type": "number", "description": "Correlation-adjusted ER at this layer." },
+                  "adjustment_er": { "type": "number", "description": "naive_er − adjusted_er. Positive means diversification reduced risk at this layer." },
+                  "multiplier": { "type": ["number", "null"], "description": "Ratio adjusted_er / naive_er (null if naive_er is 0)." },
+                  "unique_etfs": { "type": "integer", "description": "Count of distinct sector/subsector ETFs contributing to this layer for the portfolio." }
                 }
               }
             },
-            "warnings": { "type": "array", "items": { "type": "string" } },
-            "_explanation": { "type": "string" }
+            "warnings": { "type": "array", "items": { "type": "string" }, "description": "Non-fatal warnings about data coverage or assumption violations." },
+            "_explanation": { "type": "string", "description": "Plain-English summary suitable for showing to an end user." }
           }
         }
       }
     },
     "per_ticker": {
       "type": "array",
+      "description": "One row per position, in the order supplied in the request. Null values indicate the metric was unavailable for that ticker on the snapshot date.",
       "items": {
         "type": "object",
         "required": ["ticker", "weight"],
         "properties": {
-          "ticker": { "type": "string" },
-          "weight": { "type": "number" },
-          "l3_mkt_er": { "type": ["number", "null"] },
-          "l3_sec_er": { "type": ["number", "null"] },
-          "l3_sub_er": { "type": ["number", "null"] },
-          "l3_res_er": { "type": ["number", "null"] },
-          "l3_mkt_hr": { "type": ["number", "null"] },
-          "l3_sec_hr": { "type": ["number", "null"] },
-          "l3_sub_hr": { "type": ["number", "null"] },
-          "vol_23d": { "type": ["number", "null"] },
-          "price_close": { "type": ["number", "null"] }
+          "ticker": { "type": "string", "description": "Uppercased ticker symbol." },
+          "weight": { "type": "number", "description": "Supplied portfolio weight (not necessarily normalized to 1)." },
+          "l3_mkt_er": { "type": ["number", "null"], "description": "Fraction of this position's variance explained by the market factor (0–1)." },
+          "l3_sec_er": { "type": ["number", "null"], "description": "Fraction explained by the sector factor after removing market (0–1)." },
+          "l3_sub_er": { "type": ["number", "null"], "description": "Fraction explained by the subsector factor after removing market and sector (0–1)." },
+          "l3_res_er": { "type": ["number", "null"], "description": "Fraction of idiosyncratic / stock-specific variance. Cannot be ETF-hedged." },
+          "l3_mkt_hr": { "type": ["number", "null"], "description": "Hedge ratio vs. market factor ETF (SPY by default)." },
+          "l3_sec_hr": { "type": ["number", "null"], "description": "Hedge ratio vs. sector ETF after orthogonalizing against market. Negative values are valid." },
+          "l3_sub_hr": { "type": ["number", "null"], "description": "Hedge ratio vs. subsector ETF after orthogonalizing against market and sector. Negative values are valid." },
+          "vol_23d": { "type": ["number", "null"], "description": "23-day annualized volatility." },
+          "price_close": { "type": ["number", "null"], "description": "Latest close price in USD." }
         }
       }
     },
     "_metadata": {
       "type": "object",
+      "description": "Response provenance and billing metadata. Also surfaced as response headers (X-Data-As-Of, X-Cost-Usd).",
       "required": ["generated_at", "lineage", "billing_code"],
       "properties": {
-        "generated_at": { "type": "string", "format": "date-time" },
-        "lineage": { "type": "string" },
-        "billing_code": { "type": "string" }
+        "generated_at": { "type": "string", "format": "date-time", "description": "Server-side timestamp when this snapshot was computed (ISO 8601)." },
+        "lineage": { "type": "string", "description": "Lineage identifier linking this response to the risk engine version and data cut." },
+        "billing_code": { "type": "string", "description": "Internal billing SKU recorded for this request." },
+        "data_as_of": { "type": "string", "format": "date", "description": "Trading day the underlying metrics correspond to (YYYY-MM-DD)." }
       }
     }
   }

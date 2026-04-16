@@ -6,6 +6,7 @@ import { queryCommand } from "./commands/query.js";
 import { schemaCommand } from "./commands/schema.js";
 import { balanceCommand } from "./commands/balance.js";
 import { manifestCommand } from "./commands/manifest.js";
+import { mcpConfigCommand } from "./commands/mcp-config.js";
 import { agentCommand } from "./commands/agent.js";
 import { metricsCommand } from "./commands/metrics.js";
 import { batchCommand } from "./commands/batch.js";
@@ -61,6 +62,7 @@ program.addCommand(estimateCommand());
 program.addCommand(schemaCommand());
 program.addCommand(balanceCommand());
 program.addCommand(manifestCommand());
+program.addCommand(mcpConfigCommand());
 program.addCommand(agentCommand());
 
 await program.parseAsync(process.argv);

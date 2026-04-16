@@ -1,10 +1,15 @@
 # RiskModels API MCP Server
 
-MCP server that exposes **RiskModels API** visibility inside [Cursor](https://cursor.com) (and other [MCP](https://modelcontextprotocol.io) clients): discover endpoints, read the agent manifest, list capabilities, and fetch response schemas. No need to clone any other repo—everything runs from this (RiskModels_API) repo.
+MCP server that exposes **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), and any other [MCP](https://modelcontextprotocol.io) client. Two classes of tools:
+
+- **Discovery tools** — list endpoints, read capabilities, fetch response schemas (no API key required).
+- **Data tools** — fetch daily EOD risk decomposition, metrics snapshots, and portfolio risk reports (API key required).
+
+Data tools return the same numbers the REST API and CLI return — GCP zarr for historical time series, Supabase `security_history_latest` for the latest snapshot. Data freshness: daily after US market close.
 
 ---
 
-## Resources (read-only)
+## Resources (read-only, no auth)
 
 | URI | Description |
 |-----|-------------|
@@ -14,13 +19,45 @@ MCP server that exposes **RiskModels API** visibility inside [Cursor](https://cu
 | `riskmodels:///schemas/{path}` | JSON schema for a response (e.g. `ticker-returns-v2.json`). |
 | `riskmodels:///openapi` | OpenAPI 3.x spec (`data/openapi.json`). |
 
-## Tools
+## Discovery tools (no auth)
 
 | Tool | Description |
 |------|-------------|
 | `riskmodels_list_endpoints` | List all public API capabilities (id, name, method, endpoint, short description). |
 | `riskmodels_get_capability` | Get full capability by id (parameters, pricing, examples). |
 | `riskmodels_get_schema` | Get JSON schema by path (e.g. `ticker-returns-v2.json`). |
+
+## Data tools (API key required)
+
+| Tool | Wraps | What it returns |
+|------|-------|-----------------|
+| `get_l3_decomposition` | `GET /api/l3-decomposition` | Daily EOD hierarchical decomposition (market → sector → subsector → residual) with parallel time-series arrays + L3 hedge ratios. |
+| `get_metrics` | `GET /api/metrics/{ticker}` | Latest snapshot from the `_latest` table: L1/L2/L3 hedge ratios, ER fractions, volatility, close price, market cap. |
+| `get_portfolio_risk_snapshot` | `POST /api/portfolio/risk-snapshot` | Portfolio variance decomposition (up to 100 positions), optional diversification analytics, Redis-cached per user/portfolio for 1h. |
+
+Every data-tool response includes a meter envelope so agents can self-throttle:
+
+```json
+{
+  ...actual data...,
+  "_cost_usd": 0.003,
+  "_remaining_daily_usd": 4.997,
+  "_rate_limit_remaining": 59,
+  "_data_as_of": "2026-04-15",
+  "_data_source": "zarr"
+}
+```
+
+### Credentials
+
+The server resolves the API key in this order:
+
+1. `RISKMODELS_API_KEY` from the MCP client's env config (explicit override).
+2. `apiKey` field in `~/.config/riskmodels/config.json` (shared with the `riskmodels` CLI).
+
+Run `riskmodels config init` once — the CLI's stored key is automatically picked up by the MCP server. No need to duplicate the key in your `claude_desktop_config.json`.
+
+Base URL resolution: `RISKMODELS_API_BASE` env → `apiBaseUrl` in CLI config → `https://riskmodels.app` default.
 
 ---
 
