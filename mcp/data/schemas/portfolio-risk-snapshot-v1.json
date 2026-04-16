@@ -36,6 +36,61 @@
         "position_count": {
           "type": "integer",
           "description": "Number of resolved positions"
+        },
+        "diversification": {
+          "type": "object",
+          "description": "Optional correlation-adjusted diversification metrics. Present when include_diversification=true.",
+          "properties": {
+            "window_days": { "type": "integer" },
+            "method": { "type": "string" },
+            "naive_pws": {
+              "type": "object",
+              "properties": {
+                "market_er": { "type": "number" },
+                "sector_er": { "type": "number" },
+                "subsector_er": { "type": "number" },
+                "residual_er": { "type": "number" },
+                "total": { "type": "number" }
+              }
+            },
+            "correlation_adjusted": {
+              "type": "object",
+              "properties": {
+                "market_er": { "type": "number" },
+                "sector_er": { "type": "number" },
+                "subsector_er": { "type": "number" },
+                "residual_er": { "type": "number" },
+                "total": { "type": "number" }
+              }
+            },
+            "diversification_credit": {
+              "type": "object",
+              "properties": {
+                "market": { "type": "number" },
+                "sector": { "type": "number" },
+                "subsector": { "type": "number" },
+                "residual": { "type": "number" },
+                "total": { "type": "number" }
+              }
+            },
+            "layers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["layer", "naive_er", "adjusted_er", "adjustment_er"],
+                "properties": {
+                  "layer": { "type": "string", "enum": ["market", "sector", "subsector", "residual"] },
+                  "naive_er": { "type": "number" },
+                  "adjusted_er": { "type": "number" },
+                  "adjustment_er": { "type": "number" },
+                  "multiplier": { "type": ["number", "null"] },
+                  "unique_etfs": { "type": "integer" }
+                }
+              }
+            },
+            "warnings": { "type": "array", "items": { "type": "string" } },
+            "_explanation": { "type": "string" }
+          }
         }
       }
     },
