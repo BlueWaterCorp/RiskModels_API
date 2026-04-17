@@ -75,9 +75,9 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
     <a href="/docs/macro-factors" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
       <div className="flex items-center gap-3">
         <span className="text-xl">📈</span>
-        <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Macro factors</span>
+        <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Factor correlation</span>
       </div>
-      <span className="block text-xs text-zinc-500 leading-relaxed">Correlation vs equities (L1/L2/L3 residuals) and raw GET /macro-factors series.</span>
+      <span className="block text-xs text-zinc-500 leading-relaxed">Correlation vs equities (L1/L2/L3 residuals) against 10 macro + 8 style factors, plus the raw GET /macro-factors series.</span>
     </a>
     <a href="/api-reference" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
       <div className="flex items-center gap-3">
@@ -198,15 +198,15 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
           <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_metrics(&quot;NVDA&quot;, as_dataframe=True)[[&quot;l3_market_er&quot;,&quot;l3_sector_er&quot;,&quot;l3_subsector_er&quot;,&quot;l3_residual_er&quot;]]</code></td>
         </tr>
         <tr className="border-b border-zinc-800 align-top">
-          <td className="py-3 px-4 font-semibold text-zinc-100">Macro factor correlation</td>
-          <td className="py-3 px-4"><strong className="text-zinc-300">Cross-asset context.</strong> Rolling correlation vs macro factors (VIX, Bitcoin, Gold, Oil, DXY, UST 10y-2y) helps identify hedging regimes and factor crowding. Helps quantify macro exposure not captured by L3 equity factors.</td>
+          <td className="py-3 px-4 font-semibold text-zinc-100">Factor correlation (macro + style)</td>
+          <td className="py-3 px-4"><strong className="text-zinc-300">Cross-asset + style context.</strong> Rolling correlation vs 10 macro factors (inflation, term_spread, credit, oil, gold, usd, volatility, bitcoin, vix_spot, short_rates) and 8 style factors (momentum, quality, low_vol, value, growth, size, dividend, moat). Style factors paired with <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">return_type=l3_residual</code> isolate pure style tilt inside your idiosyncratic residual — the orthogonal cascade strips market/sector/subsector for free.</td>
           <td className="py-3 px-4">
             <div className="flex flex-col gap-1.5">
               <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-blue-300 w-fit">correlations</code>
               <code className="rounded bg-zinc-950 px-2 py-0.5 text-xs text-zinc-300 w-fit">(via factor_correlation)</code>
             </div>
           </td>
-          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_factor_correlation_single(&quot;NVDA&quot;, factors=[&quot;vix&quot;,&quot;bitcoin&quot;])</code></td>
+          <td className="py-3 px-4"><code className="block rounded bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 font-mono leading-snug whitespace-pre-wrap">client.get_factor_correlation_single(&quot;NVDA&quot;, factors=[&quot;momentum&quot;,&quot;quality&quot;,&quot;value&quot;], return_type=&quot;l3_residual&quot;)</code></td>
         </tr>
         <tr className="align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Sign convention</td>

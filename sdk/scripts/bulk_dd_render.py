@@ -77,8 +77,10 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -114,12 +116,19 @@ def _default_out_dir() -> Path:
 def _load_universe_tickers(zarr_root: Path, universe: str) -> list[str]:
     """Pull the in-mask tickers from ds_masks.zarr at the latest teo.
 
-    Mirrors how post_sync_trim_and_evict.py reads uni_mc_3000 — same source
+    Mirrors how post_sync_trim_and_evict.py reads ``uni_mc_3000`` — same source
     of truth, so the bulk run targets exactly the symbols Supabase considers
-    in-universe today.
+    in-universe today. Each ``uni_mc_<N>`` mask is already the hysteretic top-N by
+    market cap (see ``config.yaml::universe_mask.n_values``), so ``uni_mc_1000``
+    **is** the canonical top-1000 list — no further cap-sort needed to pick
+    membership.
+
+    Ordering returned is alphabetical (stable and reproducible); if you're
+    passing ``--limit`` against a larger universe (e.g. ``uni_mc_3000 --limit
+    1000``), call :func:`_cap_rank_tickers` afterwards to pick the biggest N by
+    market cap instead of the alphabetical first N.
     """
     import xarray as xr
-    import numpy as np
 
     masks_path = zarr_root / "ds_masks.zarr"
     if not masks_path.is_dir():
@@ -133,8 +142,7 @@ def _load_universe_tickers(zarr_root: Path, universe: str) -> list[str]:
     last_teo = ds.teo.values[-1]
     mask = ds[universe].sel(teo=last_teo).values.astype(bool)
     tickers_arr = ds.ticker.values[mask]
-    # Decode bytes if needed (xarray sometimes returns object dtype with bytes)
-    out = []
+    out: list[str] = []
     for t in tickers_arr:
         if isinstance(t, bytes):
             t = t.decode("utf-8")
@@ -142,6 +150,50 @@ def _load_universe_tickers(zarr_root: Path, universe: str) -> list[str]:
         if s and s != "nan":
             out.append(s.upper())
     return sorted(set(out))
+
+
+def _cap_rank_tickers(zarr_root: Path, tickers: list[str]) -> list[str]:
+    """Sort ``tickers`` descending by latest ``market_cap`` from ds_daily.zarr.
+
+    Missing / NaN caps fall to the end. Falls back to the input order on any
+    failure so a missing ``ds_daily.zarr`` never blocks a run that already has
+    an explicit ticker list.
+    """
+    if not tickers:
+        return []
+    try:
+        import numpy as np
+        import xarray as xr
+
+        daily_path = zarr_root / "ds_daily.zarr"
+        if not daily_path.is_dir():
+            return list(tickers)
+        ds = xr.open_zarr(daily_path, consolidated=True)
+        last_teo = ds.teo.values[-1]
+        d = ds.sel(teo=last_teo)
+        tkr = np.asarray(d["ticker"].values)
+        cap = np.asarray(d["market_cap"].values).astype(float)
+        decoded = np.array(
+            [
+                (t.decode("utf-8") if isinstance(t, bytes) else str(t)).upper().strip()
+                for t in tkr
+            ]
+        )
+        lookup: dict[str, float] = {}
+        for name, c in zip(decoded, cap):
+            if not name or name == "NAN":
+                continue
+            prev = lookup.get(name)
+            if prev is None or (np.isfinite(c) and (not np.isfinite(prev) or c > prev)):
+                lookup[name] = float(c)
+        def _key(t: str) -> tuple[int, float, str]:
+            c = lookup.get(t.upper())
+            if c is None or not np.isfinite(c):
+                return (1, 0.0, t)
+            return (0, -c, t)
+        return sorted(tickers, key=_key)
+    except Exception:
+        return list(tickers)
 
 
 # -----------------------------------------------------------------------------
@@ -160,7 +212,13 @@ def _render_one(
     force: bool = False,
     sec_profile_json_root: Path | None = None,
 ) -> dict:
-    """Render one ticker's DD to PNG + PDF. Returns a status dict for the log."""
+    """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
+
+    ``upload_gcs`` controls *per-ticker* upload only. Set it to False and use
+    ``--upload-mode batch`` in :func:`main` when running at scale — ``gcloud
+    storage rsync`` of the whole output tree is several × faster than N×2
+    invocations of ``gcloud storage cp``.
+    """
     from riskmodels.peer_group import PeerGroupProxy
     from riskmodels.snapshots.stock_deep_dive import (
         DDData,
@@ -209,7 +267,7 @@ def _render_one(
                     max_peers=15,
                 )
                 peer_comparison = proxy.compare(api_client)
-            except Exception as exc:
+            except Exception:
                 # Per-ticker peer failure is non-fatal — render with target-only.
                 pass
 
@@ -260,6 +318,32 @@ def _render_one(
             "error": str(exc),
             "traceback": traceback.format_exc().splitlines()[-3:],
         }
+
+
+def _rsync_out_dir_to_gcs(out_dir: Path, gcs_bucket: str) -> tuple[bool, str]:
+    """One-shot batch upload: push the full ``out_dir`` tree to ``gcs_bucket``.
+
+    Uses ``gcloud storage rsync --recursive`` (parallelised by gcloud itself).
+    Excludes the run log / summary so they stay local. Returns ``(ok, stderr)``
+    so callers can fold it into the summary.
+    """
+    cmd = [
+        "gcloud",
+        "storage",
+        "rsync",
+        "--recursive",
+        "--exclude",
+        r"^_bulk_.*\.(jsonl|json)$",
+        str(out_dir),
+        gcs_bucket,
+    ]
+    try:
+        proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return True, proc.stdout + proc.stderr
+    except subprocess.CalledProcessError as e:
+        return False, (e.stdout or "") + "\n" + (e.stderr or "")
+    except FileNotFoundError as e:
+        return False, f"gcloud not found: {e}"
 
 
 # -----------------------------------------------------------------------------

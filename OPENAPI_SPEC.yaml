@@ -1046,14 +1046,27 @@ components:
           items:
             type: string
           description: >
-            Macro factor keys matching `macro_factors.factor_key`. Ten canonical keys:
+            Factor keys matching `macro_factors.factor_key`. Two sleeves share the table
+            and endpoint; the `metadata.category` field on each row distinguishes them.
+
+            **Macro sleeve (10 keys, from `ds_macro_factor.zarr`):**
             `inflation` (TIP), `term_spread` (VGIT), `short_rates` (BIL), `credit` (HYG),
             `oil` (USO), `gold` (GLD), `usd` (UUP), `volatility` (VXX short-term vol futures),
-            `bitcoin` (BITO), `vix_spot` (FRED VIXCLS spot index).
-            Note: `volatility` and `vix_spot` are DIFFERENT — VXX captures futures roll
-            dynamics, VIXCLS is pure spot. Legacy v1 aliases (`dxy`→`usd`, `vix`→`vix_spot`,
-            `ust10y2y`→`term_spread`) and common synonyms (btc, wti, xau, gld, cpi, tips) are
-            normalized server-side. Defaults to all ten when omitted.
+            `bitcoin` (BITO), `vix_spot` (FRED VIXCLS spot index). Note: `volatility` and
+            `vix_spot` are DIFFERENT — VXX captures futures roll dynamics, VIXCLS is pure spot.
+
+            **Style sleeve (8 keys, mirrored from `ds_etf.zarr`):**
+            `momentum` (MTUM), `quality` (QUAL), `low_vol` (USMV), `value` (VLUE),
+            `growth` (IWF), `size` (IWM), `dividend` (SCHD), `moat` (MOAT). History starts
+            at each ETF's launch date (2011–2013 for MSCI factors; 2000 for IWF/IWM);
+            pre-launch windows return `null` correlations. Style factors are most
+            informative against `return_type=l3_residual`: because the residual is already
+            orthogonal to SPY/sector/subsector, correlation isolates the pure style tilt.
+
+            Legacy v1 aliases (`dxy`→`usd`, `vix`→`vix_spot`, `ust10y2y`→`term_spread`),
+            common synonyms (btc, wti, xau, gld, cpi, tips), and style aliases (mtum, qual,
+            usmv, vlue, iwf, iwm, schd, moat, minvol, small_cap) are normalized server-side.
+            Defaults to all 18 canonical keys when omitted.
         return_type:
           type: string
           enum: [gross, l1, l2, l3_residual]

@@ -90,22 +90,43 @@ High RR (> 0.5) indicates a stock with significant idiosyncratic return — usef
 
 **POST body (JSON Schema):** `https://riskmodels.app/schemas/factor-correlation-request-v1.json` (also listed in MCP `schema-paths` as `factor-correlation-request-v1.json`). **Single-ticker success body:** `https://riskmodels.app/schemas/factor-correlation-v1.json` (batch responses use a `results` array; see OpenAPI).
 
-**Raw series (no ticker):** `GET /api/macro-factors` returns long-format rows from `macro_factors` for a requested date range. **JSON Schema:** `https://riskmodels.app/schemas/macro-factors-series-v1.json`. Query params: optional comma-separated `factors` (or `factor`), optional `start` / `end` (`YYYY-MM-DD`). Defaults: all six canonical keys, `end` = today (UTC), `start` = five calendar years before `end`; maximum span 20 years.
+**Raw series (no ticker):** `GET /api/macro-factors` returns long-format rows from `macro_factors` for a requested date range. **JSON Schema:** `https://riskmodels.app/schemas/macro-factors-series-v1.json`. Query params: optional comma-separated `factors` (or `factor`), optional `start` / `end` (`YYYY-MM-DD`). Defaults: all 18 canonical keys (10 macro + 8 style), `end` = today (UTC), `start` = five calendar years before `end`; maximum span 20 years.
 
-Daily **macro factor returns** are stored in Supabase `macro_factors` as `return_gross` per `factor_key` and trading date (`teo`). The correlation endpoints align **stock** daily returns (gross or ERM3 residual) with those series and compute **Pearson** or **Spearman** correlation over the last `window_days` **paired** observations per factor (after date alignment). The implementation requires **at least about 30** overlapping paired days per factor; otherwise that factor’s entry is `null`.
+Daily **factor returns** are stored in Supabase `macro_factors` as `return_gross` per `factor_key` and trading date (`teo`). Two sleeves share the table: the **macro sleeve** (mirrored from `ds_macro_factor.zarr`) and the **style sleeve** (mirrored from `ds_etf.zarr`). Rows in the style sleeve carry `metadata.category = "style"` so callers can distinguish the two without parsing factor names. The correlation endpoints align **stock** daily returns (gross or ERM3 residual) with those series and compute **Pearson** or **Spearman** correlation over the last `window_days` **paired** observations per factor (after date alignment). The implementation requires **at least about 30** overlapping paired days per factor; otherwise that factor’s entry is `null`.
 
 ### Factor keys (`factors` in JSON body; comma-separated `factors` or `factor` on GET)
 
-| Key | Typical meaning |
-|---|---|
-| `bitcoin` | Bitcoin (digital asset) daily return |
-| `gold` | Gold daily return |
-| `oil` | Oil / energy-linked daily return |
-| `dxy` | US Dollar Index (DXY) daily return |
-| `vix` | VIX (volatility index) daily return |
-| `ust10y2y` | US Treasury 10y minus 2y spread daily return |
+**Macro sleeve (10 keys — backed by `ds_macro_factor.zarr`):**
 
-Omit `factors` to use **all six** keys. **`null` in `correlations`** means insufficient overlap, missing `macro_factors` rows for that window, or too few points — it is **not** a sign error. **Negative** correlation (e.g. with `vix`) is **expected** for many names and is not a data bug.
+| Key | Underlying | Typical meaning |
+|---|---|---|
+| `inflation` | TIP | US TIPS — inflation expectations proxy |
+| `term_spread` | VGIT | Intermediate Treasury — long-end / slope proxy (`ust10y2y` legacy alias) |
+| `short_rates` | BIL | 1–3mo Treasury bills — short-rate proxy |
+| `credit` | HYG | High-yield corporate — credit spread proxy |
+| `oil` | USO | WTI crude daily return |
+| `gold` | GLD | Gold daily return |
+| `usd` | UUP | US Dollar (DXY) daily return (`dxy` legacy alias) |
+| `volatility` | VXX | VIX short-term futures — captures roll cost (`vxx` alias) |
+| `bitcoin` | BITO | Bitcoin futures ETF (`btc` alias) |
+| `vix_spot` | FRED VIXCLS | Pure spot VIX (`vix` legacy alias) |
+
+**Style sleeve (8 keys — mirrored from `ds_etf.zarr` into `macro_factors`):**
+
+| Key | Underlying | History | Interpretation |
+|---|---|---|---|
+| `momentum` | MTUM | 2013-04– | MSCI USA Momentum |
+| `quality` | QUAL | 2013-07– | MSCI USA Quality |
+| `low_vol` | USMV | 2011-10– | MSCI USA Min Vol (`minvol` alias) |
+| `value` | VLUE | 2013-04– | MSCI USA Value |
+| `growth` | IWF | 2000-05– | Russell 1000 Growth |
+| `size` | IWM | 2000-05– | Russell 2000 small-cap (`small_cap` alias) |
+| `dividend` | SCHD | 2011-10– | Schwab US Dividend Equity (`div`, `yield` aliases) |
+| `moat` | MOAT | 2012-04– | VanEck Wide Moat |
+
+Style factors are most informative when combined with `return_type=l3_residual`: because the ERM3 residual is already orthogonal to SPY, the sector ETF, and the subsector ETF, correlation with the raw style-ETF return isolates the pure style tilt (the market and sector components embedded in style ETFs contribute zero to the correlation by construction).
+
+Omit `factors` to use **all 18** canonical keys. **`null` in `correlations`** means insufficient overlap (including pre-launch windows for short-history MSCI factors), missing `macro_factors` rows for that window, or too few points — it is **not** a sign error. **Negative** correlation (e.g. with `vix` or `low_vol`) is **expected** for many names and is not a data bug.
 
 ### `return_type` (stock return series correlated to each macro factor)
 

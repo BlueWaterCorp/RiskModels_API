@@ -1,19 +1,31 @@
 /**
- * Canonical macro factor keys for `macro_factors.factor_key` (lowercase).
+ * Canonical macro + style factor keys for `macro_factors.factor_key` (lowercase).
  *
- * The ten canonical keys mirror `ds_macro_factor.zarr`'s `factor` coord
- * (see `erm3/shared/macro_factor_constants.py::FACTOR_KEYS_ORDER`) and the
- * Supabase `macro_factors` rows. Two volatility factors are intentional:
+ * The macro sleeve (10 keys) mirrors `ds_macro_factor.zarr`'s `factor` coord
+ * (see `erm3/shared/macro_factor_constants.py::FACTOR_KEYS_ORDER`). The style
+ * sleeve (8 keys) is mirrored from `ds_etf.zarr` into the same Supabase
+ * `macro_factors` table by `sync_style_factors_to_public` — rows carry
+ * `metadata.category = "style"` so callers can distinguish the two sleeves.
+ *
+ * Two volatility factors are intentional on the macro side:
  *
  *   - `volatility` — VXX short-term futures ETF. Captures roll cost and
  *     term-structure dynamics; what a trader who SHORTS vol cares about.
  *   - `vix_spot`   — FRED VIXCLS, the spot index. Pure "fear gauge," no
  *     futures plumbing; what risk-off regime detection cares about.
  *
- * Keep in sync with OPENAPI_SPEC.yaml and the Python SDK.
+ * Style factors are raw ETF daily total returns. Because the ERM3 residual
+ * (`return_type=l3_residual`) is orthogonal to SPY, the sector ETF, and the
+ * subsector ETF by construction, correlating the residual with raw style-ETF
+ * returns yields a clean read on pure-style exposure: the market/sector
+ * components embedded in the style ETFs contribute zero.
+ *
+ * Keep in sync with OPENAPI_SPEC.yaml, SEMANTIC_ALIASES.md, mcp/data/openapi.json,
+ * and the Python SDK / `erm3/shared/macro_factor_constants.py`.
  */
 
-export const DEFAULT_MACRO_FACTORS = [
+// Macro sleeve (backed by ds_macro_factor.zarr).
+export const MACRO_SLEEVE_FACTORS = [
   "inflation",
   "term_spread",
   "short_rates",
@@ -26,9 +38,38 @@ export const DEFAULT_MACRO_FACTORS = [
   "vix_spot",
 ] as const;
 
+// Style sleeve (mirrored from ds_etf.zarr into macro_factors).
+// History: USMV/SCHD back to 2011-10, MOAT 2012-04, MTUM/QUAL/VLUE 2013,
+// IWF/IWM back to 2000-05. Short-history MSCI factors simply yield null
+// correlations on pre-launch windows.
+export const STYLE_SLEEVE_FACTORS = [
+  "momentum",   // MTUM
+  "quality",    // QUAL
+  "low_vol",    // USMV
+  "value",      // VLUE
+  "growth",     // IWF
+  "size",       // IWM
+  "dividend",   // SCHD
+  "moat",       // MOAT
+] as const;
+
+// All canonical factor_keys the correlation endpoints accept.
+export const DEFAULT_MACRO_FACTORS = [
+  ...MACRO_SLEEVE_FACTORS,
+  ...STYLE_SLEEVE_FACTORS,
+] as const;
+
 export type MacroFactorKey = (typeof DEFAULT_MACRO_FACTORS)[number];
+export type MacroSleeveKey = (typeof MACRO_SLEEVE_FACTORS)[number];
+export type StyleSleeveKey = (typeof STYLE_SLEEVE_FACTORS)[number];
 
 const CANONICAL = new Set<string>(DEFAULT_MACRO_FACTORS);
+
+const STYLE_SET = new Set<string>(STYLE_SLEEVE_FACTORS);
+
+export function isStyleFactorKey(key: string): key is StyleSleeveKey {
+  return STYLE_SET.has(key);
+}
 
 /**
  * Supabase `macro_factors.factor_key` values to load for each API-facing key.
@@ -47,6 +88,16 @@ export const MACRO_FACTOR_DB_KEYS: Record<MacroFactorKey, readonly string[]> = {
   volatility: ["volatility"],
   bitcoin: ["bitcoin"],
   vix_spot: ["vix_spot", "vix"],              // vix = legacy v1 name
+  // Style sleeve (mirrored from ds_etf.zarr; each canonical key maps 1:1 to
+  // its underlying style ETF ticker so either label resolves in aliases).
+  momentum: ["momentum"],
+  quality: ["quality"],
+  low_vol: ["low_vol"],
+  value: ["value"],
+  growth: ["growth"],
+  size: ["size"],
+  dividend: ["dividend"],
+  moat: ["moat"],
 } as const;
 
 /** Flat list for `.in("factor_key", …)` queries (deduped). */
@@ -117,6 +168,43 @@ const MACRO_FACTOR_ALIASES: Record<string, MacroFactorKey> = {
   vix_spot: "vix_spot",
   vix: "vix_spot",
   vixcls: "vix_spot",
+  // momentum → MTUM
+  momentum: "momentum",
+  mom: "momentum",
+  mtum: "momentum",
+  // quality → QUAL
+  quality: "quality",
+  qual: "quality",
+  // low_vol → USMV
+  low_vol: "low_vol",
+  lowvol: "low_vol",
+  min_vol: "low_vol",
+  minvol: "low_vol",
+  usmv: "low_vol",
+  splv: "low_vol",
+  // value → VLUE
+  value: "value",
+  val: "value",
+  vlue: "value",
+  // growth → IWF
+  growth: "growth",
+  grw: "growth",
+  iwf: "growth",
+  // size → IWM (small-cap)
+  size: "size",
+  small_cap: "size",
+  smallcap: "size",
+  iwm: "size",
+  // dividend → SCHD
+  dividend: "dividend",
+  div: "dividend",
+  yield: "dividend",
+  schd: "dividend",
+  hdv: "dividend",
+  // moat → MOAT
+  moat: "moat",
+  wide_moat: "moat",
+  widemoat: "moat",
 };
 
 export function resolveMacroFactorKey(raw: string): MacroFactorKey | null {
