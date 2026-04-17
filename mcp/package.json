@@ -4,6 +4,16 @@
   "description": "MCP server for RiskModels API visibility (resources + tools)",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js"

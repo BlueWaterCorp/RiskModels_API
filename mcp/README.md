@@ -77,6 +77,36 @@ npm run build
 
 This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.js` (relative to the **RiskModels_API** workspace root). After `cd mcp && npm ci && npm run build`, open **RiskModels_API** as a folder in Cursor (or add it in a multi-root workspace), then **restart Cursor** or reload MCP so **`riskmodels_list_endpoints`** appears.
 
+### Claude Desktop / `npx` (common mistakes)
+
+- **There is no `mcp` subcommand on the npm package.** The CLI binary is **`riskmodels`** (package name `riskmodels-cli`). Do **not** run `npx -y riskmodels-cli mcp` — that fails with `unknown command 'mcp'`.
+- **Use one of these:**
+  - **`riskmodels mcp-config`** — prints a ready-to-paste `mcpServers` block for Claude Desktop (`--client claude-desktop`) or Cursor. Use **`riskmodels mcp-config --embed-key`** only if you want the key in the JSON env block.
+  - **`riskmodels mcp`** — runs the stdio MCP server (same as `node mcp/dist/index.js`). Requires `mcp/dist/index.js` to exist (build `mcp/` first), or set **`RISKMODELS_MCP_SERVER_PATH`** to that file.
+  - **`node /absolute/path/to/RiskModels_API/mcp/dist/index.js`** — always works if the build exists.
+
+### Hosted endpoint (`https://riskmodels.app/api/mcp/sse`)
+
+The hosted endpoint implements the **MCP Streamable HTTP** transport (current SDK spec, successor to legacy SSE+companion-POST). Stateless mode: each `POST` carries a JSON-RPC 2.0 message and returns the response synchronously. Auth via `Authorization: Bearer <key>` (primary) or `?api_key=<key>` query param (fallback for clients that can't set headers, e.g. `EventSource`).
+
+Paste into Claude Desktop / Cursor via the `mcp-remote` proxy:
+
+```json
+{
+  "mcpServers": {
+    "riskmodels": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://riskmodels.app/api/mcp/sse"],
+      "env": { "AUTHORIZATION": "Bearer rm_agent_live_..." }
+    }
+  }
+}
+```
+
+Tool calls bill per-invocation at the downstream REST endpoint (e.g. `get_metrics` costs the same as `GET /metrics/{ticker}`). Discovery tools (`riskmodels_list_endpoints`, etc.) are free.
+
+Stdio remains available for local dev or air-gapped use (see below).
+
 If you configure manually instead, add the server under Cursor Settings → MCP, or use a project file:
 
 ```json
@@ -89,6 +119,8 @@ If you configure manually instead, add the server under Cursor Settings → MCP,
   }
 }
 ```
+
+You can also point **`command`** at your `riskmodels` CLI and **`args`** at `["mcp"]` if the CLI is on `PATH` and `mcp/dist/index.js` is discoverable (repo root or `RISKMODELS_MCP_SERVER_PATH`).
 
 If **RiskModels_API** is the workspace root, a relative path is enough:
 

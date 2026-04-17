@@ -9,7 +9,7 @@ The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US 
 
 - **API Base URL:** `https://riskmodels.app`
 - **OpenAPI Spec:** [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml)
-- **MCP Server:** [mcp/](./mcp/)
+- **MCP Server:** [mcp/](./mcp/) — hosted at **`https://riskmodels.app/api/mcp/sse`** (Streamable HTTP). For local dev / air-gapped use: **`riskmodels mcp`** (stdio) or **`riskmodels mcp-config`** for a ready-to-paste `mcpServers` block. Do not use `npx … mcp`. See [mcp/README.md](./mcp/README.md) for client config.
 - **Python SDK (source):** [sdk/](./sdk/) — [`riskmodels-py` on PyPI](https://pypi.org/project/riskmodels-py/)
 - **Skill Guide:** [SKILL.md](./SKILL.md)
 - **Authentication:** OAuth2 client credentials flow

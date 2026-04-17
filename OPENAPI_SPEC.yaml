@@ -1518,33 +1518,43 @@ paths:
 
   /mcp/sse:
     get:
-      summary: MCP Server SSE Connection
+      summary: MCP Streamable HTTP Connection
       description: >
-        Server-Sent Events endpoint for Model Context Protocol communication.
-        Establishes a persistent connection for real-time MCP protocol messages.
+        Model Context Protocol endpoint using the Streamable HTTP transport
+        (successor to the legacy SSE+companion-POST pattern). A single URL
+        handles both `GET` (optional server→client event stream) and `POST`
+        (client→server JSON-RPC 2.0 messages).
 
 
         **Discovery:** The MCP server manifest is published at
         `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.
-        Clients should read that manifest to obtain the SSE URL, supported tools, and auth requirements.
 
 
         **Connection:**
 
-        - Protocol: Server-Sent Events (SSE)
+        - Transport: Streamable HTTP (stateless mode)
 
-        - Authentication: Required (Bearer token)
+        - Authentication: `Authorization: Bearer <key>` (preferred) or
+          `?api_key=<key>` query param (for `EventSource`, which can't set
+          custom headers).
 
-        - Keep-alive: 30-second heartbeat
+        - Tool-call billing: charged per-invocation on the underlying REST
+          endpoint (e.g. `get_metrics` bills the same as `GET /metrics/{ticker}`).
 
 
-        **Usage:**
+        **Usage — mcp-remote proxy:**
 
-        ```javascript
+        ```json
 
-        const eventSource = new EventSource('https://riskmodels.app/api/mcp/sse', {
-          headers: { 'Authorization': 'Bearer rm_agent_...' }
-        });
+        {
+          "mcpServers": {
+            "riskmodels": {
+              "command": "npx",
+              "args": ["mcp-remote", "https://riskmodels.app/api/mcp/sse"],
+              "env": { "AUTHORIZATION": "Bearer rm_agent_live_..." }
+            }
+          }
+        }
 
         ```
       operationId: mcpServerSSE
@@ -2249,7 +2259,7 @@ paths:
         will be removed from the spec once the SDK drops its `get_returns` wrapper.
       deprecated: true
       operationId: getReturns
-      tags: [Risk Metrics]
+      tags: [Risk Metrics, Deprecated]
       x-pricing:
         capability_id: ticker-returns
         tier: baseline

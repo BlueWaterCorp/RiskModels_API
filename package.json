@@ -28,6 +28,7 @@
     "@google-cloud/storage": "^7.19.0",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@next/mdx": "^15.1.0",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^1.0.4",
