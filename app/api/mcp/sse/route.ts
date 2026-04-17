@@ -69,19 +69,20 @@ async function handle(req: NextRequest): Promise<Response> {
 
   try {
     await server.connect(transport);
-    const response = await transport.handleRequest(req);
-    return response;
+    // Do not call server.close() here (including in `finally`). It runs before
+    // Next.js consumes the Response body and closes all SSE streams via
+    // transport.close(), yielding empty text/event-stream bodies (clients see
+    // Content-Length: 0 / immediate EOF). SDK stateless pattern: return
+    // handleRequest() and let the runtime drop the pair after the stream ends.
+    return await transport.handleRequest(req);
   } catch (err) {
     console.error(`[mcp-sse] transport error for ${auth.keyPrefix}:`, err);
-    return errorResponse(500, "MCP transport error");
-  } finally {
-    // Release server resources; transport is per-request so it's disposed
-    // when the response stream closes.
     try {
       await server.close();
     } catch {
       // best effort
     }
+    return errorResponse(500, "MCP transport error");
   }
 }
 

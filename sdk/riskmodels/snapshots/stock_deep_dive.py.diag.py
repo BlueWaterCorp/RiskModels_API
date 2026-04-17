@@ -1489,12 +1489,9 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     METH_BODY = 19     # methodology body (fits L1–L3 copy in sidebar)
 
     # Reserve below middle sections: methodology block + optional BUSINESS PROFILE band.
-    # When a profile is present we compact the methodology/reading-guide block so
-    # the profile band has real room (the prior 780 was chosen with no profile
-    # in mind and left zero room for the SEC blurb in production).
+    METH_BLOCK_H = 780   # methodology + reading guide (from meth_band_top downward)
     _cp_for_layout = getattr(data, "company_profile_text", None)
     _has_profile = bool(_cp_for_layout and str(_cp_for_layout).strip())
-    METH_BLOCK_H = 540 if _has_profile else 780
     PROFILE_BAND = 300 if _has_profile else 0  # pixels above methodology for SEC blurb
     METH_TOTAL = METH_BLOCK_H + PROFILE_BAND
 
@@ -1795,11 +1792,11 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     py_after_macro = py
     meth_band_top = PANEL_BOTTOM - METH_BLOCK_H
     cp = getattr(data, "company_profile_text", None)
+    print(f'[diag] PANEL_BOTTOM={PANEL_BOTTOM} METH_BLOCK_H={METH_BLOCK_H} PROFILE_BAND={PROFILE_BAND} SECTION_GAP={SECTION_GAP} py_after_macro={py_after_macro} meth_band_top={meth_band_top} has_cp={bool(cp)} cp_len={len(cp) if cp else 0}', flush=True)
     if cp and str(cp).strip():
         room = max(0, meth_band_top - py_after_macro - 24)
-        # Render the profile whenever we have enough room for at least ~2 lines
-        # of body text (body = 19px × 1.4 line-height = ~27px → 60px = 2 lines).
-        band = min(PROFILE_BAND, room) if room >= 60 else 0
+        band = min(PROFILE_BAND, max(100, room)) if room >= 100 else 0
+        print(f'[diag] room={room} band={band}', flush=True)
         if band > 0:
             prof_y = meth_band_top - band
             if prof_y < py_after_macro + 10:
