@@ -86,6 +86,38 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true, key: { ...newKey, plainKey } }, { status: 201 });
 }
 
+export async function PATCH(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const body = await request.json().catch(() => ({}));
+  const id = typeof body.id === 'string' ? body.id : null;
+  const rawName = typeof body.name === 'string' ? body.name : null;
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+  if (rawName === null) return NextResponse.json({ error: 'Missing name' }, { status: 400 });
+
+  const name = rawName.trim();
+  if (!name) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 });
+  if (name.length > 80) return NextResponse.json({ error: 'Name too long (max 80 chars)' }, { status: 400 });
+
+  const admin = createAdminClient();
+  const { data: updated, error } = await admin
+    .from('agent_api_keys')
+    .update({ name })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .select('id, name')
+    .single();
+
+  if (error || !updated) {
+    console.error('[agent-keys] rename error:', error);
+    return NextResponse.json({ error: 'Failed to rename key' }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true, key: updated });
+}
+
 export async function DELETE(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
