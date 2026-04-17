@@ -205,7 +205,6 @@ def _render_one(
     out_root: Path,
     zarr_root: Path,
     *,
-    api_client,
     upload_gcs: bool,
     gcs_bucket: str,
     resume: bool,
@@ -219,13 +218,16 @@ def _render_one(
     storage rsync`` of the whole output tree is several × faster than N×2
     invocations of ``gcloud storage cp``.
     """
-    from riskmodels.peer_group import PeerGroupProxy
     from riskmodels.snapshots.stock_deep_dive import (
         DDData,
         render_dd_to_pdf,
         render_dd_to_png,
     )
     from riskmodels.snapshots.zarr_context import build_p1_from_zarr
+    from riskmodels.snapshots.zarr_peer_analytics import (
+        build_peer_comparison_from_zarr,
+        compute_peer_analytics_from_zarr,
+    )
 
     t0 = time.perf_counter()
     tdir = out_root / ticker
@@ -257,23 +259,31 @@ def _render_one(
                 profile_blurb = None
 
         peer_comparison = None
-        if api_client is not None:
+        peer_error: str | None = None
+        peer_correlations: dict = {}
+        peer_sharpes: dict = {}
+        alpha_trajectory: list = []
+        # Zarr-only peer path — no HTTP calls, no rate limits, no billing.
+        try:
+            peer_comparison = build_peer_comparison_from_zarr(ticker, zarr_root)
+        except Exception as exc:
+            peer_error = f"peer_discovery: {type(exc).__name__}: {exc}"[:400]
+        if peer_comparison is not None and not peer_comparison.peer_detail.empty:
             try:
-                proxy = PeerGroupProxy.from_ticker(
-                    api_client, ticker,
-                    group_by="subsector_etf",
-                    weighting="market_cap",
-                    sector_etf_override=p1.subsector_etf,
-                    max_peers=15,
+                peer_correlations, peer_sharpes, alpha_trajectory = (
+                    compute_peer_analytics_from_zarr(ticker, zarr_root, peer_comparison)
                 )
-                peer_comparison = proxy.compare(api_client)
-            except Exception:
-                # Per-ticker peer failure is non-fatal — render with target-only.
-                pass
+            except Exception as exc:
+                peer_error = (peer_error + " | " if peer_error else "") + (
+                    f"analytics: {type(exc).__name__}: {exc}"[:400]
+                )
 
         dd = DDData(
             p1=p1,
             peer_comparison=peer_comparison,
+            peer_correlations=peer_correlations,
+            peer_sharpes=peer_sharpes,
+            alpha_trajectory=alpha_trajectory,
             company_profile_text=profile_blurb,
         )
 
@@ -301,7 +311,7 @@ def _render_one(
                     }
             uploaded = True
 
-        return {
+        out: dict = {
             "ticker": ticker,
             "status": "ok",
             "duration_s": round(time.perf_counter() - t0, 2),
@@ -309,7 +319,13 @@ def _render_one(
             "pdf": str(pdf),
             "uploaded": uploaded,
             "has_peers": peer_comparison is not None,
+            "n_peer_corrs": len(peer_correlations),
+            "n_peer_sharpes": len(peer_sharpes),
+            "n_alpha_traj": len(alpha_trajectory),
         }
+        if peer_error:
+            out["peer_error"] = peer_error
+        return out
     except Exception as exc:
         return {
             "ticker": ticker,
@@ -371,11 +387,34 @@ def main() -> int:
                     help="Explicit ticker list. Mutually exclusive with --tickers-file.")
     ap.add_argument("--tickers-file", type=Path, default=None,
                     help="Newline-delimited tickers file.")
-    ap.add_argument("--api-peers", action="store_true",
-                    help="Call the API for PeerGroupProxy (slower, but populates "
-                         "DD scatter + DNA panels with real peer data).")
-    ap.add_argument("--upload-gcs", action="store_true",
-                    help="Upload each ticker's {png,pdf} to GCS as it finishes.")
+    ap.add_argument(
+        "--api-peers", action="store_true",
+        help=(
+            "[Deprecated, no-op] Peer discovery + analytics are now always "
+            "sourced from local zarr (no HTTP, no rate limits). Kept for "
+            "backwards compatibility with existing Dagster env-var wiring."
+        ),
+    )
+    ap.add_argument(
+        "--upload-gcs",
+        action="store_true",
+        help=(
+            "Alias for --upload-mode per-ticker. Upload each ticker PNG+PDF to "
+            "GCS as it finishes. For 1k+ runs prefer --upload-mode batch."
+        ),
+    )
+    ap.add_argument(
+        "--upload-mode",
+        choices=["none", "per-ticker", "batch"],
+        default=None,
+        help=(
+            "GCS upload strategy. 'none' keeps artifacts local. 'per-ticker' "
+            "uploads after each render (live propagation, slow at scale). "
+            "'batch' skips per-ticker uploads and runs one gcloud storage "
+            "rsync over the whole out_dir at the end (much faster for 1k+). "
+            "If unset, defaults to 'per-ticker' when --upload-gcs is on, else 'none'."
+        ),
+    )
     ap.add_argument("--gcs-bucket", default="gs://rm_api_public/snapshot")
     ap.add_argument("--resume", action="store_true",
                     help="Skip tickers whose PNG+PDF already exist in --out-dir.")
@@ -386,8 +425,26 @@ def main() -> int:
              "With --resume, disables skip-on-existing so all tickers are regenerated "
              "(typical after a snapshot layout change).",
     )
-    ap.add_argument("--limit", type=int, default=None,
-                    help="Cap the run to the first N tickers (for smoke tests).")
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Cap the run to N tickers. When a --universe is used, the N kept "
+            "are the top-N by market_cap (from ds_daily.zarr) rather than the "
+            "alphabetical first N."
+        ),
+    )
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Threads rendering in parallel (default 1). Each worker does its "
+            "own zarr reads + matplotlib render + optional per-ticker upload. "
+            "Good starting point: 4 on a laptop, 8 on a VM."
+        ),
+    )
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve the ticker list, print the count + first 10, exit.")
     ap.add_argument(
@@ -444,7 +501,16 @@ def main() -> int:
         source = f"zarr:{args.universe}"
 
     if args.limit:
-        tickers = tickers[: args.limit]
+        if source.startswith("zarr:"):
+            tickers = _cap_rank_tickers(args.zarr_root, tickers)[: args.limit]
+        else:
+            tickers = tickers[: args.limit]
+
+    upload_mode = args.upload_mode
+    if upload_mode is None:
+        upload_mode = "per-ticker" if args.upload_gcs else "none"
+
+    workers = max(1, int(args.workers or 1))
 
     sec_profile_root = args.sec_profile_json_root
     if sec_profile_root is None and os.environ.get("BULK_DD_SEC_PROFILE_ROOT", "").strip():
@@ -464,49 +530,43 @@ def main() -> int:
         return 2
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── API client (only if peers enabled) ──
-    api_client = None
-    if args.api_peers:
-        try:
-            from riskmodels import RiskModelsClient
-            api_client = RiskModelsClient.from_env()
-        except Exception as exc:
-            print(f"WARN: --api-peers requested but RiskModelsClient.from_env() "
-                  f"failed ({exc}); continuing target-only.")
-
-    # ── Run ──
+    # ── Run ── (peer discovery + analytics are zarr-only, no API calls)
     t_start = time.perf_counter()
     log_path = args.out_dir / "_bulk_run_log.jsonl"
     summary_path = args.out_dir / "_bulk_summary.json"
 
     counts = {"ok": 0, "skipped_resume": 0, "error": 0, "uploaded_partial": 0}
-    print(f"=== bulk_dd_render ===")
+    print("=== bulk_dd_render ===")
     print(f"  source       : {source}")
     print(f"  count        : {len(tickers)}")
     print(f"  out_dir      : {args.out_dir}")
     print(f"  zarr_root    : {args.zarr_root}")
-    print(f"  api_peers    : {api_client is not None}")
-    print(f"  upload_gcs   : {args.upload_gcs}")
+    print(f"  peers        : zarr (no API)")
+    print(f"  upload_mode  : {upload_mode}")
+    print(f"  workers      : {workers}")
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
     print(f"  sec_profile  : {sec_profile_root}")
     print()
 
-    with log_path.open("w") as logf:
-        for i, ticker in enumerate(tickers, start=1):
-            row = _render_one(
-                ticker,
-                args.out_dir,
-                args.zarr_root,
-                api_client=api_client,
-                upload_gcs=args.upload_gcs,
-                gcs_bucket=args.gcs_bucket,
-                resume=args.resume,
-                force=args.force,
-                sec_profile_json_root=sec_profile_root,
-            )
-            row["i"] = i
-            row["ts"] = datetime.now(timezone.utc).isoformat()
+    log_lock = threading.Lock()
+    total = len(tickers)
+    per_ticker_upload = (upload_mode == "per-ticker")
+
+    def _dispatch(i: int, ticker: str, logf) -> dict:
+        row = _render_one(
+            ticker,
+            args.out_dir,
+            args.zarr_root,
+            upload_gcs=per_ticker_upload,
+            gcs_bucket=args.gcs_bucket,
+            resume=args.resume,
+            force=args.force,
+            sec_profile_json_root=sec_profile_root,
+        )
+        row["i"] = i
+        row["ts"] = datetime.now(timezone.utc).isoformat()
+        with log_lock:
             counts[row["status"]] = counts.get(row["status"], 0) + 1
             logf.write(json.dumps(row) + "\n")
             logf.flush()
@@ -514,7 +574,33 @@ def main() -> int:
                    "uploaded_partial": "⚠"}.get(row["status"], "?")
             extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
             err = f" — {row.get('error','')}" if row["status"] == "error" else ""
-            print(f"  [{i:>4}/{len(tickers)}] {tag} {ticker}{extra}{err}")
+            print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
+        return row
+
+    with log_path.open("w") as logf:
+        if workers <= 1:
+            for i, ticker in enumerate(tickers, start=1):
+                _dispatch(i, ticker, logf)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futs = [
+                    ex.submit(_dispatch, i, t, logf)
+                    for i, t in enumerate(tickers, start=1)
+                ]
+                for _ in as_completed(futs):
+                    pass
+
+    batch_upload: dict | None = None
+    if upload_mode == "batch":
+        print()
+        print("=== batch upload (gcloud storage rsync) ===")
+        ok, msg = _rsync_out_dir_to_gcs(args.out_dir, args.gcs_bucket)
+        tail = msg[-2000:] if msg else ""
+        batch_upload = {"ok": ok, "output_tail": tail}
+        if tail:
+            print(tail)
+        if not ok:
+            print("BATCH UPLOAD FAILED — see output_tail above / _bulk_summary.json.")
 
     duration = round(time.perf_counter() - t_start, 1)
     summary = {
@@ -525,23 +611,29 @@ def main() -> int:
         "source": source,
         "out_dir": str(args.out_dir),
         "zarr_root": str(args.zarr_root),
-        "api_peers": api_client is not None,
+        "api_peers": False,
+        "peer_source": "zarr",
+        "upload_mode": upload_mode,
         "upload_gcs": args.upload_gcs,
+        "workers": workers,
         "resume": args.resume,
         "force": args.force,
         "sec_profile_json_root": str(sec_profile_root) if sec_profile_root else None,
         "log_file": str(log_path),
     }
+    if batch_upload is not None:
+        summary["batch_upload"] = batch_upload
     summary_path.write_text(json.dumps(summary, indent=2))
 
     print()
-    print(f"=== Summary ===")
+    print("=== Summary ===")
     print(f"  duration : {duration}s")
     for k, v in counts.items():
         print(f"  {k:<18}: {v}")
     print(f"  log      : {log_path}")
     print(f"  summary  : {summary_path}")
-    return 0 if counts.get("error", 0) == 0 else 1
+    exit_ok = counts.get("error", 0) == 0 and (batch_upload is None or batch_upload.get("ok"))
+    return 0 if exit_ok else 1
 
 
 if __name__ == "__main__":
