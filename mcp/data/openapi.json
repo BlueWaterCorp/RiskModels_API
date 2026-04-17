@@ -305,6 +305,12 @@
             "nullable": true,
             "description": "Annualised realised volatility (23 trading days), decimal fraction."
           },
+          "vol_252d_ann": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Annualised realised volatility over the trailing ~252 trading days, decimal fraction. Computed on demand from daily `returns_gross` and cached per (symbol, data_as_of); matches the horizon of 1y return cascades so callers can size positions on a common basis. Null when fewer than 20 usable daily observations are available.\n"
+          },
           "price_close": {
             "type": "number",
             "format": "float",
@@ -1738,8 +1744,8 @@
     },
     "/mcp/sse": {
       "get": {
-        "summary": "MCP Server SSE Connection",
-        "description": "Server-Sent Events endpoint for Model Context Protocol communication. Establishes a persistent connection for real-time MCP protocol messages.\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery. Clients should read that manifest to obtain the SSE URL, supported tools, and auth requirements.\n\n**Connection:**\n- Protocol: Server-Sent Events (SSE)\n- Authentication: Required (Bearer token)\n- Keep-alive: 30-second heartbeat\n\n**Usage:**\n```javascript\nconst eventSource = new EventSource('https://riskmodels.app/api/mcp/sse', {\n  headers: { 'Authorization': 'Bearer rm_agent_...' }\n});\n```\n",
+        "summary": "MCP Streamable HTTP Connection",
+        "description": "Model Context Protocol endpoint using the Streamable HTTP transport (successor to the legacy SSE+companion-POST pattern). A single URL handles both `GET` (optional server→client event stream) and `POST` (client→server JSON-RPC 2.0 messages).\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.\n\n**Connection:**\n- Transport: Streamable HTTP (stateless mode)\n- Authentication: `Authorization: Bearer <key>` (preferred) or\n  `?api_key=<key>` query param (for `EventSource`, which can't set\n  custom headers).\n\n- Tool-call billing: charged per-invocation on the underlying REST\n  endpoint (e.g. `get_metrics` bills the same as `GET /metrics/{ticker}`).\n\n\n**Usage — mcp-remote proxy:**\n```json\n{\n  \"mcpServers\": {\n    \"riskmodels\": {\n      \"command\": \"npx\",\n      \"args\": [\"mcp-remote\", \"https://riskmodels.app/api/mcp/sse\"],\n      \"env\": { \"AUTHORIZATION\": \"Bearer rm_agent_live_...\" }\n    }\n  }\n}\n```\n",
         "operationId": "mcpServerSSE",
         "tags": [
           "MCP"
@@ -2754,10 +2760,12 @@
     "/returns": {
       "get": {
         "summary": "Daily gross returns time series (single ticker)",
-        "description": "Returns daily gross returns for a single stock. Simpler than `/ticker-returns` (no hedge ratios). Cost: $0.005/call.\n",
+        "description": "DEPRECATED — route not currently implemented. Use `/ticker-returns` for the equivalent data (daily gross returns plus hedge ratios). Returns 404 today; will be removed from the spec once the SDK drops its `get_returns` wrapper.\n",
+        "deprecated": true,
         "operationId": "getReturns",
         "tags": [
-          "Risk Metrics"
+          "Risk Metrics",
+          "Deprecated"
         ],
         "x-pricing": {
           "capability_id": "ticker-returns",
@@ -2906,7 +2914,8 @@
     "/etf-returns": {
       "get": {
         "summary": "Daily gross returns time series (ETF)",
-        "description": "Returns daily gross returns for an ETF (e.g. SPY, XLK). Cost: $0.005/call.\n",
+        "description": "DEPRECATED — route not currently implemented (returns 404). ETF returns will be served from the GCP zarr store in a follow-up; until then there is no equivalent endpoint (ETFs are excluded from `/ticker-returns` because they are not L3-decomposed).\n",
+        "deprecated": true,
         "operationId": "getEtfReturns",
         "tags": [
           "Risk Metrics"
@@ -4593,6 +4602,18 @@
                       "png"
                     ],
                     "default": "json"
+                  },
+                  "include_diversification": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When true, adds a `diversification` block to portfolio_risk_index with correlation-adjusted ER, credits, and chart-friendly layers[]."
+                  },
+                  "window_days": {
+                    "type": "integer",
+                    "minimum": 20,
+                    "maximum": 2000,
+                    "default": 252,
+                    "description": "Rolling window (trading days) for ETF return correlations. Only used when include_diversification=true."
                   }
                 }
               }

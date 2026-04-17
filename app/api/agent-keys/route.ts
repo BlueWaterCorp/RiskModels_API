@@ -3,6 +3,12 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ensureStarterCredits } from '@/lib/agent/billing';
 import { generateApiKey } from '@/lib/agent/api-keys';
+import { sendEmail } from '@/lib/email-service';
+import {
+  formatExpiresAt,
+  resolveRecipient,
+} from '@/lib/agent/notify-expiring-api-keys';
+import { API_TERMS_URL } from '@/emails/key-issued';
 
 export async function GET() {
   const supabase = await createClient();
@@ -75,12 +81,47 @@ export async function POST(request: NextRequest) {
       rate_limit_per_minute: 60,
       expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
     })
-    .select('id, name, key_prefix, created_at')
+    .select('id, name, key_prefix, created_at, expires_at')
     .single();
 
   if (insertErr) {
     console.error('[agent-keys] insert error:', insertErr);
     return NextResponse.json({ error: 'Failed to create key' }, { status: 500 });
+  }
+
+  const expiresAt = newKey.expires_at as string | null;
+  if (expiresAt) {
+    try {
+      const recipient = await resolveRecipient(user.id);
+      if (recipient?.email) {
+        const createdAt = newKey.created_at as string | undefined;
+        const sendResult = await sendEmail({
+          to: recipient.email,
+          subject:
+            'RiskModels.app — 5-minute setup (whether you use Cursor/Claude or just Python)',
+          template: 'key-issued',
+          data: {
+            firstName: recipient.name,
+            keyName: newKey.name ?? 'API key',
+            keyPrefix: newKey.key_prefix ?? 'rm_agent_',
+            createdDateFormatted: createdAt
+              ? formatExpiresAt(createdAt)
+              : formatExpiresAt(new Date().toISOString()),
+            expiresAtFormatted: formatExpiresAt(expiresAt),
+            termsUrl: API_TERMS_URL,
+          },
+          userId: user.id,
+        });
+        if (!sendResult.success) {
+          console.warn(
+            '[agent-keys] key-issued email not sent:',
+            sendResult.error ?? 'unknown',
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[agent-keys] key-issued email failed:', e);
+    }
   }
 
   return NextResponse.json({ success: true, key: { ...newKey, plainKey } }, { status: 201 });

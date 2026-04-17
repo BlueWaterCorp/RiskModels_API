@@ -19,6 +19,17 @@ Authorization: Bearer rm_agent_live_<random>_<checksum>
 - `environment`: `live` (production) or `test` (sandbox)
 - Tokens are long-lived but can be rotated from the dashboard
 
+### Understanding `rm_agent` vs `live` (same key, two labels)
+
+Keys from [Get your API key](/get-key) look like **`rm_agent_live_…`**. That is **one** prefix, not two different products:
+
+| Part | Meaning |
+|------|--------|
+| **`rm_agent_`** | The key lives in the **metered / prepaid** API program (`agent_api_keys`). Use it for REST, Python SDK, Node CLI, MCP, notebooks, and automation. The word **agent** refers to this billing program, not “only for LLM agents.” |
+| **`live`** | **Environment:** production API and live datasets at `riskmodels.app`. (A **`test`** segment would indicate a sandbox key when issued.) |
+
+**`rm_user_…`** keys use a different issuance path (`user_generated_api_keys`). If you only created keys on the Get Key page, you have **`rm_agent_…`** keys.
+
 ### Obtaining a Token
 
 **Option A — Dashboard:**

@@ -6,6 +6,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **API key expiry reminder emails** — Daily Vercel Cron (`vercel.json` → `GET /api/cron/notify-expiring-keys` with `CRON_SECRET`) sends at most three emails per key (14 / 7 / 1 day before `expires_at`), deduped via `agent_api_keys.expiry_notified_*_at`. New React Email template `key-expiring`; uses `lib/email-service` / Resend (same pipeline as low-balance). Migration `20260417180000_agent_api_keys_expiry_notification_flags.sql`.
+
 - **CLI `riskmodels mcp`** — Runs the stdio MCP server (`mcp/dist/index.js`) with path resolution from `RISKMODELS_MCP_SERVER_PATH`, `--mcp-server-path`, cwd `mcp/dist/index.js`, or monorepo layout. [mcp/README.md](mcp/README.md) documents Claude Desktop pitfalls (`npx … mcp` / missing subcommand).
 
 - **Hosted MCP — `GET/POST /api/mcp/sse`** — Streamable HTTP (stateless) over Next.js App Router (Node runtime, `maxDuration=60`). Shared factory at [`mcp/src/server.ts`](mcp/src/server.ts) reused by the stdio binary and the route at [`app/api/mcp/sse/route.ts`](app/api/mcp/sse/route.ts) via a Next-side copy at [`lib/mcp/server.ts`](lib/mcp/server.ts) (zod-v4 compatible; registers the same 6 tools + 5 resources). Auth in [`lib/mcp/auth.ts`](lib/mcp/auth.ts) accepts `Authorization: Bearer <key>` or `?api_key=<key>` query-param fallback (for `EventSource`). Tool calls bill per-invocation at the underlying REST endpoint (no double-charge at the MCP layer). OpenAPI `/mcp/sse` un-deprecated and updated to describe Streamable HTTP semantics.

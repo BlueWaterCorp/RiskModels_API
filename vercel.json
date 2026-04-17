@@ -1,5 +1,8 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "installCommand": "npm ci"
+  "crons": [
+    {
+      "path": "/api/cron/notify-expiring-keys",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }

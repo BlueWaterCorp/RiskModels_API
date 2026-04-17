@@ -39,6 +39,10 @@ npm run vercel:sync-env
 | `SUPABASE_SERVICE_ROLE_KEY` | ✓ | All | Supabase service role (server-only) |
 | `RISKMODELS_API_SERVICE_KEY` | ✓ | All | Canonical gateway/service key for trusted `/api/data/*` access |
 | `STRIPE_SECRET_KEY` | ✓ | All | Stripe secret key (server-only) |
+| `CRON_SECRET` | ✓ | Production | Random secret; Vercel Cron calls `GET /api/cron/notify-expiring-keys` with `Authorization: Bearer …` for API key expiry reminder emails (see `vercel.json`). |
+| `RESEND_API_KEY` | ✓ | Production | Required for transactional email (including expiry reminders). |
+
+**Transactional email** uses the same Resend + React Email path as other portal mail (`lib/email-service.ts` → `sendResendEmail` with audit BCC). BWMACRO’s `/admin/emails` panel is for **preview + test send** of shared-style templates; production sends for this repo are triggered by cron + billing routes, not the admin UI.
 
 For **Preview** deployments, `NEXT_PUBLIC_APP_URL` is optional — the app falls back to `VERCEL_URL` (auto-set by Vercel) for Stripe redirects.
 

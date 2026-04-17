@@ -706,13 +706,20 @@ function GetKeyPage() {
           <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
             <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wide">Usage</p>
             <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-              <code className="text-xs font-mono text-zinc-300 flex-1">Authorization: Bearer rm_user_live_…</code>
-              <CopyButton text="Authorization: Bearer rm_user_live_…" />
+              <code className="text-xs font-mono text-zinc-300 flex-1">Authorization: Bearer rm_agent_live_…</code>
+              <CopyButton text="Authorization: Bearer rm_agent_live_…" />
             </div>
+            <p className="text-xs text-zinc-400 mt-3 leading-relaxed">
+              <strong className="text-zinc-300">Reading the prefix:</strong> keys from this page are{' '}
+              <code className="text-zinc-300 font-mono">rm_agent_live_…</code>.{' '}
+              <strong className="text-zinc-300">agent</strong> means this key is in the prepaid / metered API program (scripts, SDK, CLI, and MCP all use the same shape — not “AI agents only”).{' '}
+              <strong className="text-zinc-300">live</strong> means production data at{' '}
+              <code className="text-zinc-400 font-mono">riskmodels.app</code>. It is not a second, separate “type” of key.
+            </p>
             <p className="text-xs text-zinc-500 mt-2">
               See the{' '}
               <Link href="/docs/authentication" className="text-blue-400 hover:text-blue-300">Authentication guide</Link>
-              {' '}for full details including OAuth2 and rate limits.
+              {' '}for OAuth2, scopes, and rate limits.
             </p>
           </div>
         )}

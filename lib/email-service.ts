@@ -12,6 +12,8 @@ import { LowBalanceEmail } from "@/emails/low-balance";
 import { AutoRefillSuccessEmail } from "@/emails/auto-refill-success";
 import { AutoRefillFailedEmail } from "@/emails/auto-refill-failed";
 import { MonthlySpendResetEmail } from "@/emails/monthly-spend-reset";
+import { KeyExpiringEmail } from "@/emails/key-expiring";
+import { KeyIssuedEmail } from "@/emails/key-issued";
 import { DEFAULT_RESEND_FROM } from "@/emails/constants";
 
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -36,7 +38,9 @@ export type EmailTemplate =
   | "low-balance"
   | "auto-refill-success"
   | "auto-refill-failed"
-  | "monthly-spend-reset";
+  | "monthly-spend-reset"
+  | "key-expiring"
+  | "key-issued";
 
 interface EmailData {
   welcome: {
@@ -100,6 +104,23 @@ interface EmailData {
     monthName: string;
     year: number;
     settingsUrl: string;
+  };
+  "key-expiring": {
+    userName: string;
+    keyName: string;
+    keyPrefix: string;
+    expiresAtFormatted: string;
+    daysRemaining: number;
+    manageKeysUrl: string;
+    docsUrl: string;
+  };
+  "key-issued": {
+    firstName: string;
+    keyName: string;
+    keyPrefix: string;
+    createdDateFormatted: string;
+    expiresAtFormatted: string;
+    termsUrl: string;
   };
 }
 
@@ -168,6 +189,14 @@ export async function sendEmail<T extends EmailTemplate>({
         emailHtml = await render(
           MonthlySpendResetEmail(data as EmailData["monthly-spend-reset"]),
         );
+        break;
+      case "key-expiring":
+        emailHtml = await render(
+          KeyExpiringEmail(data as EmailData["key-expiring"]),
+        );
+        break;
+      case "key-issued":
+        emailHtml = await render(KeyIssuedEmail(data as EmailData["key-issued"]));
         break;
       default: {
         const _exhaustive: never = template;
