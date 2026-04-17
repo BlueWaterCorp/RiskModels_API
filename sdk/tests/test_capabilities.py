@@ -4,6 +4,7 @@ from riskmodels.capabilities import DISCOVER_SPEC, discover_markdown
 def test_discover_spec_keys():
     assert set(DISCOVER_SPEC.keys()) >= {
         "sdk_version",
+        "contributors",
         "methods",
         "limits",
         "snippets",
@@ -27,3 +28,5 @@ def test_discover_markdown_contains_aliases():
     md = discover_markdown()
     assert "get_risk" in md
     assert "get_metrics" in md
+    assert "## Contributors" in md
+    assert "contributors" in md

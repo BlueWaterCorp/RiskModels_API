@@ -1,6 +1,11 @@
-"""RiskModels API — Python SDK (ERM3 hedge ratios and explained risk)."""
+"""RiskModels API — Python SDK (ERM3 hedge ratios and explained risk).
+
+Contributor recognition is shipped in-package: see ``SDK_CONTRIBUTORS`` and
+``RiskModelsClient.discover()`` (Markdown / JSON includes a ``contributors`` list).
+"""
 
 from .client import RiskModelsClient
+from .contributors import SDK_CONTRIBUTORS, SDKContributorDict
 from .enums import DataKind, DataKindLiteral, OutputKind, OutputLiteral, TimeAxis, TimeLiteral
 from .env import load_repo_dotenv
 from .insights import ChatInsights, InsightsNamespace
@@ -105,6 +110,8 @@ __all__ = [
     "SHORT_ERM3_LEGEND",
     "SHORT_MACRO_CORR_LEGEND",
     "SHORT_RANKINGS_LEGEND",
+    "SDK_CONTRIBUTORS",
+    "SDKContributorDict",
     "ValidationWarning",
     "to_llm_context",
 ]
