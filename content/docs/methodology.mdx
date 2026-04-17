@@ -261,6 +261,10 @@ The four bars sum exactly to the gross compound return — an algebraic identity
 
 > **Key property:** The ordering matters. Market → Sector → Subsector → Residual must follow the strict L1 → L2 → L3 hierarchy, mirroring the sequential regression cascade. Each cumulative product asks "what would the compound return be if only factors through this level existed?"
 
+<div className="not-prose my-4 rounded-lg border border-amber-500/30 bg-amber-900/10 px-5 py-3 text-sm">
+  <strong>High-volatility names: bar magnitudes can diverge.</strong> The telescoping identity still holds — the four bars always sum to gross — but on high-beta stocks in choppy years, the individual <code>prod_L*</code> levels can grow far apart before cancelling. For example, NVDA over a recent 1-year window reconciled to <code>gross ≈ +77pp</code> with bars <code>market +61pp / sector +202pp / subsector +44pp / residual −230pp</code>. The math is exact; the visual is punishing. For narrative reporting on high-vol names, prefer the variance attribution fields (<code>l3_*_er</code>) over the return cascade, or report only gross and residual (the two endpoints of the bridge) and omit the intermediate bars.
+</div>
+
 ---
 
 ## Institutional Modellers: Multi-Dimensional Factor Cube

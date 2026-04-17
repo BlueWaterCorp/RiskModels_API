@@ -7,7 +7,7 @@
  * Auth: API key, Bearer JWT, or session (see authenticateRequest).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/supabase/auth-helper';
+import { authenticateOrRespond } from '@/lib/supabase/auth-helper';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCorsHeaders } from '@/lib/cors';
 
@@ -23,13 +23,10 @@ function isAllowedRefillAmount(n: number): boolean {
 
 export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
-  const { user, error: authError } = await authenticateRequest(request);
-  if (authError || !user) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401, headers: getCorsHeaders(origin) },
-    );
-  }
+  const corsHeaders = getCorsHeaders(origin);
+  const auth = await authenticateOrRespond(request, { corsHeaders });
+  if ('response' in auth) return auth.response;
+  const { user } = auth;
 
   const admin = createAdminClient();
   const { data: account, error } = await admin
@@ -76,13 +73,10 @@ type PatchBody = {
 
 export async function PATCH(request: NextRequest) {
   const origin = request.headers.get('origin');
-  const { user, error: authError } = await authenticateRequest(request);
-  if (authError || !user) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401, headers: getCorsHeaders(origin) },
-    );
-  }
+  const corsHeaders = getCorsHeaders(origin);
+  const auth = await authenticateOrRespond(request, { corsHeaders });
+  if ('response' in auth) return auth.response;
+  const { user } = auth;
 
   let body: PatchBody;
   try {

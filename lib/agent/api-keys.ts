@@ -36,6 +36,13 @@ export interface ValidatedKey {
   /** Per-key daily spend cap in USD; falls back to account-level if unset. */
   dailySpendCapUsd?: number | null;
   error?: string;
+  /**
+   * True when validation failed due to a server-side issue (not a bad key).
+   * Example: Postgres 42703 (undefined_column) from a missed migration leaves
+   * the middleware selecting columns the DB doesn't have. Callers should
+   * surface 5xx rather than 401 so the real cause isn't masked as an auth bug.
+   */
+  serverError?: boolean;
 }
 
 /**
@@ -51,12 +58,16 @@ export function generateApiKey(
 ): ApiKeyResult {
   const env = environment === "live" ? "live" : "test";
 
-  // Generate random component (32 chars)
+  // Generate random component (32 chars, alphanumeric only).
+  // Draw more base64url bytes than we need and filter out `-` and `_` so the
+  // issued key contains no characters that break word-boundary copy-paste
+  // selection in terminals/editors. 48 random bytes → ~64 base64url chars,
+  // with only ~6% expected loss from filtering.
   const random = crypto
-    .randomBytes(24)
+    .randomBytes(48)
     .toString("base64url")
-    .replace(/^_+/, "")
-    .replace(/_+$/, "");
+    .replace(/[-_]/g, "")
+    .slice(0, 32);
 
   // Create the full key prefix
   const prefix = `rm_agent_${env}`;
@@ -64,7 +75,9 @@ export function generateApiKey(
   // Combine for full key (without checksum yet)
   const keyWithoutChecksum = `${prefix}_${random}`;
 
-  // Generate checksum (base64url, strip _, pad to 8)
+  // Generate checksum (base64url, strip _ and -, pad to 8).
+  // Both `_` and `-` break word-boundary copy-paste selection in terminals
+  // and editors, so the issued key should contain only [A-Za-z0-9x].
   let checksum = crypto
     .createHash("sha256")
     .update(
@@ -72,7 +85,7 @@ export function generateApiKey(
     )
     .digest("base64url")
     .substring(0, 8)
-    .replace(/_/g, "");
+    .replace(/[_-]/g, "");
   if (checksum.length < 8) {
     checksum += "x".repeat(8 - checksum.length);
   }
@@ -134,25 +147,37 @@ export function isValidApiKeyFormat(key: string): boolean {
   const hashInput =
     keyWithoutChecksum + (process.env.API_KEY_SECRET || "default-secret");
 
-  // Current format: base64url (stripped _, padded to 8)
-  let expectedBase64url = crypto
+  const rawBase64url = crypto
     .createHash("sha256")
     .update(hashInput)
     .digest("base64url")
-    .substring(0, 8)
-    .replace(/_/g, "");
+    .substring(0, 8);
+
+  // Current format: base64url with both `_` and `-` stripped, padded to 8.
+  let expectedBase64url = rawBase64url.replace(/[_-]/g, "");
   if (expectedBase64url.length < 8) {
     expectedBase64url += "x".repeat(8 - expectedBase64url.length);
   }
 
-  // Legacy: hex keys from brief deploy — accept both
+  // Legacy format (pre-dash-strip): only `_` was stripped. Keep accepting
+  // these so keys issued before the alphabet fix continue to validate.
+  let legacyUnderscoreOnly = rawBase64url.replace(/_/g, "");
+  if (legacyUnderscoreOnly.length < 8) {
+    legacyUnderscoreOnly += "x".repeat(8 - legacyUnderscoreOnly.length);
+  }
+
+  // Legacy: hex keys from brief deploy — accept too.
   const expectedHex = crypto
     .createHash("sha256")
     .update(hashInput)
     .digest("hex")
     .substring(0, 8);
 
-  return checksum === expectedBase64url || checksum === expectedHex;
+  return (
+    checksum === expectedBase64url ||
+    checksum === legacyUnderscoreOnly ||
+    checksum === expectedHex
+  );
 }
 
 /**
@@ -174,6 +199,13 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
       .eq("key_hash", hashedKey)
       .single();
 
+    if (error && (error as { code?: string }).code === "42703") {
+      return {
+        valid: false,
+        serverError: true,
+        error: `SERVER_SCHEMA_ERROR: user_generated_api_keys schema mismatch (${error.message}). Likely a missed migration.`,
+      };
+    }
     if (error || !keyRecord) {
       return { valid: false, error: "API key not found" };
     }
@@ -215,6 +247,13 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
     .eq("key_hash", hashedKey)
     .single();
 
+  if (error && (error as { code?: string }).code === "42703") {
+    return {
+      valid: false,
+      serverError: true,
+      error: `SERVER_SCHEMA_ERROR: agent_api_keys schema mismatch (${error.message}). Likely a missed migration.`,
+    };
+  }
   if (error || !keyRecord) {
     return { valid: false, error: "API key not found" };
   }

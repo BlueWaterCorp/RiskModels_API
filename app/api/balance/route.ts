@@ -32,16 +32,29 @@ export async function GET(request: Request) {
 
   try {
     // Authenticate request
-    const { user, error: authError } = await authenticateRequest(request);
+    const { user, error: authError, serverError } = await authenticateRequest(request);
 
+    if (serverError) {
+      return createAgentErrorResponse(
+        "Server configuration error",
+        "SERVER_SCHEMA_ERROR",
+        500,
+        "balance-check",
+        requestId,
+        { detail: authError, action: "contact_support" },
+      );
+    }
     if (authError || !user) {
+      const hadBearer = !!request.headers.get("authorization")?.startsWith("Bearer ");
       return createAgentErrorResponse(
         "Unauthorized",
         "AUTHENTICATION_FAILED",
         401,
         "balance-check",
         requestId,
-        { auth_error: authError },
+        hadBearer
+          ? { auth_error: authError, action: "check_key", help_url: "https://riskmodels.app/get-key" }
+          : { auth_error: authError, action: "authenticate", authenticate_url: "/api/auth/provision" },
       );
     }
 
@@ -195,16 +208,29 @@ export async function PATCH(request: Request) {
 
   try {
     // Authenticate request
-    const { user, error: authError } = await authenticateRequest(request);
+    const { user, error: authError, serverError } = await authenticateRequest(request);
 
+    if (serverError) {
+      return createAgentErrorResponse(
+        "Server configuration error",
+        "SERVER_SCHEMA_ERROR",
+        500,
+        "balance-update",
+        requestId,
+        { detail: authError, action: "contact_support" },
+      );
+    }
     if (authError || !user) {
+      const hadBearer = !!request.headers.get("authorization")?.startsWith("Bearer ");
       return createAgentErrorResponse(
         "Unauthorized",
         "AUTHENTICATION_FAILED",
         401,
         "balance-update",
         requestId,
-        { auth_error: authError },
+        hadBearer
+          ? { auth_error: authError, action: "check_key", help_url: "https://riskmodels.app/get-key" }
+          : { auth_error: authError, action: "authenticate", authenticate_url: "/api/auth/provision" },
       );
     }
 

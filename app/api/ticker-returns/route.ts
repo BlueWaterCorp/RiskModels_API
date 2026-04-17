@@ -141,6 +141,7 @@ export const GET = withBilling(
         meta: {
           market_etf: "SPY",
           sector_etf: symbolRecord.sector_etf || "XLK",
+          subsector_etf: symbolRecord.subsector_etf ?? null,
           universe: "US_EQUITY",
         },
         _metadata: buildMetadataBody(metadata, {

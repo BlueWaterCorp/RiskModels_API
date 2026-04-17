@@ -316,16 +316,29 @@ export function withBilling(
 
       // Fall back to session authentication
       if (!userId) {
-        const { user, error: authError } = await authenticateRequest(req);
+        const { user, error: authError, serverError } = await authenticateRequest(req);
+        if (serverError) {
+          return NextResponse.json(
+            {
+              error: "Server configuration error",
+              error_code: "SERVER_SCHEMA_ERROR",
+              message:
+                "Authentication could not be completed due to a server-side schema mismatch. This usually indicates a missed database migration; your key is not at fault.",
+              detail: authError ?? undefined,
+              _agent: { action: "contact_support", support: "service@riskmodels.app" },
+            },
+            { status: 500 },
+          );
+        }
         if (!user || authError) {
+          const hadBearer = !!req.headers.get("authorization")?.startsWith("Bearer ");
           return NextResponse.json(
             {
               error: "Unauthorized",
               message: "Valid API key or authentication required",
-              _agent: {
-                action: "authenticate",
-                authenticate_url: "/api/auth/provision",
-              },
+              _agent: hadBearer
+                ? { action: "check_key", help_url: "https://riskmodels.app/get-key" }
+                : { action: "authenticate", authenticate_url: "/api/auth/provision" },
             },
             { status: 401 },
           );
@@ -740,12 +753,32 @@ export async function createBillingContext(
   }
 
   if (!userId) {
-    const { user } = await authenticateRequest(req);
-    if (!user) {
+    const { user, error: authError, serverError } = await authenticateRequest(req);
+    if (serverError) {
       return {
         context: {} as BillingContext,
         error: NextResponse.json(
-          { error: "Unauthorized", _agent: { action: "authenticate" } },
+          {
+            error: "Server configuration error",
+            error_code: "SERVER_SCHEMA_ERROR",
+            detail: authError ?? undefined,
+            _agent: { action: "contact_support", support: "service@riskmodels.app" },
+          },
+          { status: 500 },
+        ),
+      };
+    }
+    if (!user) {
+      const hadBearer = !!req.headers.get("authorization")?.startsWith("Bearer ");
+      return {
+        context: {} as BillingContext,
+        error: NextResponse.json(
+          {
+            error: "Unauthorized",
+            _agent: hadBearer
+              ? { action: "check_key", help_url: "https://riskmodels.app/get-key" }
+              : { action: "authenticate", authenticate_url: "/api/auth/provision" },
+          },
           { status: 401 },
         ),
       };

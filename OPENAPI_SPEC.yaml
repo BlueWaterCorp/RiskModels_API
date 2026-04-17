@@ -344,6 +344,16 @@ components:
           format: float
           nullable: true
           description: Annualised realised volatility (23 trading days), decimal fraction.
+        vol_252d_ann:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Annualised realised volatility over the trailing ~252 trading days,
+            decimal fraction. Computed on demand from daily `returns_gross` and cached
+            per (symbol, data_as_of); matches the horizon of 1y return cascades so
+            callers can size positions on a common basis. Null when fewer than 20
+            usable daily observations are available.
         price_close:
           type: number
           format: float
