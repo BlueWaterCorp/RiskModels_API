@@ -1,11 +1,65 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { resolveSymbolByTicker, fetchLatestMetricsWithFallback } from "@/lib/dal/risk-engine-v3";
+import {
+  resolveSymbolByTicker,
+  fetchLatestMetricsWithFallback,
+  fetchHistoryWithSource,
+} from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
 import { parseFormat, formatResponse } from "@/lib/api/format-response";
+import {
+  CACHE_TTL,
+  generateCacheKey,
+  getCache,
+  setCache,
+} from "@/lib/cache/redis";
+
+/**
+ * Trailing-252-day annualised daily-return volatility, keyed by (symbol, data_as_of).
+ * Cached for 24h because vol_252d only rolls once per EOD; on a warm cache this is
+ * O(10ms), on cold ~3-5s for the history pull. `data_as_of` in the key auto-invalidates
+ * on a new trading day.
+ */
+async function computeVol252dAnnualised(
+  symbol: string,
+  dataAsOf: string | null | undefined,
+): Promise<number | null> {
+  const key = generateCacheKey("vol252d", symbol, { asof: dataAsOf ?? "unknown" });
+  const cached = await getCache<number | null>(key);
+  if (cached !== null && cached !== undefined) return cached;
+
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 1);
+  const startDate = start.toISOString().split("T")[0];
+
+  try {
+    const { rows } = await fetchHistoryWithSource(symbol, ["returns_gross"], {
+      periodicity: "daily",
+      startDate,
+      orderBy: "asc",
+    });
+    const returns: number[] = rows
+      .filter((r) => r.metric_key === "returns_gross")
+      .map((r) => (r.metric_value == null ? NaN : Number(r.metric_value)))
+      .filter((v) => Number.isFinite(v));
+    if (returns.length < 20) {
+      await setCache(key, null, CACHE_TTL.HISTORICAL);
+      return null;
+    }
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance =
+      returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1);
+    const volAnn = Math.sqrt(variance) * Math.sqrt(252);
+    await setCache(key, volAnn, CACHE_TTL.HISTORICAL);
+    return volAnn;
+  } catch (err) {
+    console.warn("[metrics.vol_252d_ann] compute failed", { symbol, err });
+    return null;
+  }
+}
 
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
@@ -84,6 +138,15 @@ export const GET = withBilling(
 
     const metadata = await getRiskMetadata();
     const m = latestData.metrics;
+
+    // vol_252d is computed on demand (not stored upstream) and cached for 24h.
+    // Run in parallel with the rest of response assembly; no await here lets the
+    // two await points compose if we ever split computation further.
+    const vol252dAnn = await computeVol252dAnnualised(
+      symbolRecord.symbol,
+      metadata.data_as_of,
+    );
+
     const formattedData = {
       symbol: symbolRecord.symbol,
       ticker: symbolRecord.ticker,
@@ -92,6 +155,7 @@ export const GET = withBilling(
       metrics: {
         // Core
         vol_23d: m.vol_23d ?? null,
+        vol_252d_ann: vol252dAnn,
         price_close: m.price_close ?? null,
         market_cap: m.market_cap ?? null,
         stock_var: m.stock_var ?? null,

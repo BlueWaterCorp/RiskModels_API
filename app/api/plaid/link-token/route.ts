@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CountryCode, Products } from "plaid";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { authenticateRequest } from "@/lib/supabase/auth-helper";
+import { authenticateOrRespond } from "@/lib/supabase/auth-helper";
 import { getCorsHeaders } from "@/lib/cors";
 import { getPlaidClient } from "@/lib/plaid/client";
 
@@ -11,13 +11,10 @@ export const POST = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const origin = request.headers.get("origin");
     try {
-      const { user, error } = await authenticateRequest(request);
-      if (!user || error) {
-        return NextResponse.json(
-          { error: "Unauthorized" },
-          { status: 401, headers: getCorsHeaders(origin) },
-        );
-      }
+      const corsHeaders = getCorsHeaders(origin);
+      const auth = await authenticateOrRespond(request, { corsHeaders });
+      if ("response" in auth) return auth.response;
+      const { user } = auth;
 
       const plaid = getPlaidClient();
       const res = await plaid.linkTokenCreate({

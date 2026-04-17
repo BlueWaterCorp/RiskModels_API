@@ -1,4 +1,5 @@
 import { User } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from './server';
 import { createAdminClient } from './admin';
 import { cookies } from 'next/headers';
@@ -11,7 +12,7 @@ import { cookies } from 'next/headers';
  * 
  * Also enforces rate limiting for API key authentication.
  */
-export async function authenticateRequest(request: Request): Promise<{ user: User | null; error: string | null }> {
+export async function authenticateRequest(request: Request): Promise<{ user: User | null; error: string | null; serverError?: boolean }> {
   console.debug('[Auth] authenticateRequest called');
 
   const authHeader = request.headers.get('authorization');
@@ -34,6 +35,10 @@ export async function authenticateRequest(request: Request): Promise<{ user: Use
       try {
         const { validateApiKey } = await import('@/lib/agent/api-keys');
         const validation = await validateApiKey(token);
+        if (validation.serverError) {
+          console.error('[Auth] Server-side key validation failure:', validation.error);
+          return { user: null, error: validation.error ?? 'Server-side validation failure', serverError: true };
+        }
         if (validation.valid && validation.userId) {
           // Check rate limit for this API key
           const { checkRateLimit, getRateLimitForKey } = await import('@/lib/agent/rate-limiter');
@@ -117,6 +122,62 @@ export async function authenticateRequest(request: Request): Promise<{ user: Use
   
   // No valid authentication method found
   return { user: null, error: 'No valid authentication method found' };
+}
+
+/**
+ * One-stop auth: authenticate the request, or return a ready-to-send error response.
+ *
+ * Callers write:
+ *   const auth = await authenticateOrRespond(request, { corsHeaders });
+ *   if ("response" in auth) return auth.response;
+ *   const { user } = auth;
+ *
+ * Responses distinguish three failure modes:
+ *  - 500 SERVER_SCHEMA_ERROR  — DB schema drift (e.g. missed migration).
+ *                               Surfaces the real cause instead of masking as auth.
+ *  - 401 Unauthorized (provision) — no Bearer token at all; caller needs to provision.
+ *  - 401 Unauthorized (check_key) — Bearer token was sent but invalid/revoked/expired.
+ */
+export async function authenticateOrRespond(
+  request: Request,
+  opts: { corsHeaders?: Record<string, string> } = {},
+): Promise<{ user: User } | { response: NextResponse }> {
+  const { user, error: authError, serverError } = await authenticateRequest(request);
+  const headers = opts.corsHeaders;
+
+  if (serverError) {
+    return {
+      response: NextResponse.json(
+        {
+          error: 'Server configuration error',
+          error_code: 'SERVER_SCHEMA_ERROR',
+          message:
+            'Authentication could not be completed due to a server-side schema mismatch. This usually indicates a missed database migration; your key is not at fault.',
+          detail: authError ?? undefined,
+          _agent: { action: 'contact_support', support: 'service@riskmodels.app' },
+        },
+        { status: 500, headers },
+      ),
+    };
+  }
+
+  if (!user || authError) {
+    const hadBearer = !!request.headers.get('authorization')?.startsWith('Bearer ');
+    return {
+      response: NextResponse.json(
+        {
+          error: 'Unauthorized',
+          message: 'Valid API key or authentication required',
+          _agent: hadBearer
+            ? { action: 'check_key', help_url: 'https://riskmodels.app/get-key' }
+            : { action: 'authenticate', authenticate_url: '/api/auth/provision' },
+        },
+        { status: 401, headers },
+      ),
+    };
+  }
+
+  return { user };
 }
 
 /**

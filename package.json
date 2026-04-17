@@ -20,7 +20,9 @@
     "test:notebook": "python3 scripts/execute_quickstart_notebook.py",
     "cli:openapi-check": "node scripts/cli-openapi-check.mjs",
     "supabase:auth-smtp:resend": "bash ./scripts/supabase-patch-auth-smtp-resend.sh",
-    "supabase:auth-smtp:resend:doppler": "bash ./scripts/supabase-auth-smtp-doppler.sh"
+    "supabase:auth-smtp:resend:doppler": "bash ./scripts/supabase-auth-smtp-doppler.sh",
+    "db:push": "bash ./scripts/check-supabase-cli.sh db push --linked",
+    "db:migration:list": "bash ./scripts/check-supabase-cli.sh migration list --linked"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateRequest } from "@/lib/supabase/auth-helper";
+import { authenticateOrRespond } from "@/lib/supabase/auth-helper";
 import { extractApiKey, validateApiKey } from "@/lib/agent/api-keys";
 import { estimateCost } from "@/lib/agent/cost-estimator";
 
@@ -21,16 +21,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (!authenticated) {
-    const { user, error: authError } = await authenticateRequest(request);
-    if (!user || authError) {
-      return NextResponse.json(
-        {
-          error: "Unauthorized",
-          message: "Valid API key or authentication required for cost estimation",
-        },
-        { status: 401 },
-      );
-    }
+    const auth = await authenticateOrRespond(request);
+    if ("response" in auth) return auth.response;
   }
 
   let body: { endpoint?: string; params?: Record<string, unknown> };

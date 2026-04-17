@@ -29,15 +29,28 @@ export async function GET(request: NextRequest) {
   const origin = request.headers.get("origin");
 
   try {
-    const { user, error: authError } = await authenticateRequest(request);
+    const { user, error: authError, serverError } = await authenticateRequest(request);
+    if (serverError) {
+      return createAgentErrorResponse(
+        "Server configuration error",
+        "SERVER_SCHEMA_ERROR",
+        500,
+        "invoices",
+        requestId,
+        { detail: authError, action: "contact_support" },
+      );
+    }
     if (authError || !user) {
+      const hadBearer = !!request.headers.get("authorization")?.startsWith("Bearer ");
       return createAgentErrorResponse(
         "Unauthorized",
         "AUTHENTICATION_FAILED",
         401,
         "invoices",
         requestId,
-        { auth_error: authError },
+        hadBearer
+          ? { auth_error: authError, action: "check_key", help_url: "https://riskmodels.app/get-key" }
+          : { auth_error: authError, action: "authenticate", authenticate_url: "/api/auth/provision" },
       );
     }
 
