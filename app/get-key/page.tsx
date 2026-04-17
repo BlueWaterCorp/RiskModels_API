@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus } from 'lucide-react';
+import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 
 interface ApiKey {
@@ -91,6 +91,11 @@ function GetKeyPage() {
   const [generating, setGenerating] = useState(false);
   const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string } | null>(null);
   const [genError, setGenError] = useState('');
+
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   // Stripe flow — matches redirect query params from /api/stripe/setup-success
   const [stripeLoading, setStripeLoading] = useState(false);
@@ -245,10 +250,14 @@ function GetKeyPage() {
     setGenerating(true);
     setGenError('');
     setRevealedKey(null);
+    // Pass the user's name if they typed one; otherwise omit so the server
+    // auto-numbers ("API Key 1", "API Key 2", …). Sending a literal fallback
+    // like "API Key" would override the server's numbering logic.
+    const trimmed = newKeyName.trim();
     const res = await fetch('/api/agent-keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newKeyName || 'API Key' }),
+      body: JSON.stringify(trimmed ? { name: trimmed } : {}),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -269,6 +278,44 @@ function GetKeyPage() {
       body: JSON.stringify({ id }),
     });
     await fetchAccountData();
+  };
+
+  const startRename = (k: ApiKey) => {
+    setRenamingId(k.id);
+    setRenameDraft(k.name);
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameDraft('');
+  };
+
+  const saveRename = async (id: string) => {
+    const name = renameDraft.trim();
+    if (!name) {
+      cancelRename();
+      return;
+    }
+    // No-op if unchanged
+    const current = keys.find((k) => k.id === id);
+    if (current && current.name === name) {
+      cancelRename();
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      const res = await fetch('/api/agent-keys', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name }),
+      });
+      if (res.ok) {
+        await fetchAccountData();
+        cancelRename();
+      }
+    } finally {
+      setRenameSaving(false);
+    }
   };
 
   const formatDate = (iso: string) =>
@@ -595,14 +642,44 @@ function GetKeyPage() {
                 <li key={k.id} className={`px-5 py-4 flex items-center gap-4 ${k.status === 'revoked' ? 'opacity-50' : ''}`}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-zinc-100">{k.name}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium border ${
-                        k.status === 'active'
-                          ? 'bg-green-900/40 text-green-400 border-green-800/40'
-                          : k.status === 'revoked'
-                          ? 'bg-red-900/30 text-red-400 border-red-800/40'
-                          : 'bg-zinc-800 text-zinc-500 border-zinc-700'
-                      }`}>{k.status}</span>
+                      {renamingId === k.id ? (
+                        <>
+                          <input
+                            autoFocus
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveRename(k.id);
+                              else if (e.key === 'Escape') cancelRename();
+                            }}
+                            onBlur={() => saveRename(k.id)}
+                            disabled={renameSaving}
+                            maxLength={80}
+                            className="text-sm font-medium text-zinc-100 bg-zinc-950 border border-zinc-700 rounded px-2 py-0.5 focus:outline-none focus:border-blue-500 min-w-0 flex-1"
+                          />
+                          <span className="text-xs text-zinc-500">Enter to save · Esc to cancel</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium text-zinc-100">{k.name}</span>
+                          {k.status !== 'revoked' && (
+                            <button
+                              onClick={() => startRename(k)}
+                              className="p-1 rounded hover:bg-zinc-800 text-zinc-600 hover:text-zinc-300 transition-colors"
+                              title="Rename key"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium border ${
+                            k.status === 'active'
+                              ? 'bg-green-900/40 text-green-400 border-green-800/40'
+                              : k.status === 'revoked'
+                              ? 'bg-red-900/30 text-red-400 border-red-800/40'
+                              : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                          }`}>{k.status}</span>
+                        </>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap text-xs text-zinc-500">
                       <code className="font-mono text-zinc-400">{k.key_prefix}…</code>
@@ -611,7 +688,7 @@ function GetKeyPage() {
                       {k.expires_at && <span>Expires {formatDate(k.expires_at)}</span>}
                     </div>
                   </div>
-                  {k.status !== 'revoked' && (
+                  {renamingId !== k.id && k.status !== 'revoked' && (
                     <button onClick={() => revokeKey(k.id)}
                       className="p-1.5 rounded hover:bg-red-900/30 text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0"
                       title="Revoke key">
