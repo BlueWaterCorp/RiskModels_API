@@ -26,6 +26,8 @@ def test_discover_json_to_stdout_false_returns_spec_dict():
     assert isinstance(out, dict)
     assert "sdk_version" in out
     assert "methods" in out
+    assert "contributors" in out
+    assert isinstance(out["contributors"], list)
 
 
 def test_discover_markdown_to_stdout_false_contains_methods():

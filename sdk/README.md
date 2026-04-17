@@ -308,6 +308,10 @@ Core runtime dependencies are **pandas**, **pyarrow**, and **httpx** (HTTP). **x
 
 Upload steps (version bump, `build`, `twine`, PyPI token format) are **not** in this public README. They are maintained in the private **BWMACRO** monorepo at **`docs/RISKMODELS_PY_PYPI_PUBLISHING.md`** — open that file from your internal BWMACRO clone.
 
+## Contributors
+
+Named SDK contributors are listed in **`riskmodels/contributors.py`** and appear automatically in **`client.discover()`** (Markdown body and JSON spec key **`contributors`**), so anyone loading the capability digest — including coding agents — sees public credit.
+
 ## License
 
 Proprietary — same terms as RiskModels API access.

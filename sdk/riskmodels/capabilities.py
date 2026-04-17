@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .contributors import SDK_CONTRIBUTORS
+
 SDK_VERSION = "0.3.0"
 
 _RANKING_METRICS = [
@@ -815,7 +817,8 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "aliases": [],
         "summary": "Capability digest for humans and tool-def generators.",
         "description": (
-            "Emit Markdown or JSON describing methods, parameters, costs, limits, and snippets. "
+            "Emit Markdown or JSON describing methods, parameters, costs, limits, snippets, and "
+            "named SDK contributors (``contributors`` key in JSON). "
             "Use format=json with Claude Desktop / MCP-style hosts to synthesize tool definitions."
         ),
         "scopes": [],
@@ -843,12 +846,16 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "description": "Append live /tickers ping (may require auth).",
             },
         ],
-        "returns": {"type": "string | dict", "description": "Markdown str or DISCOVER_SPEC dict."},
+        "returns": {
+            "type": "string | dict",
+            "description": "Markdown str or DISCOVER_SPEC dict (includes ``contributors`` list).",
+        },
     },
 ]
 
 DISCOVER_SPEC: dict[str, Any] = {
     "sdk_version": SDK_VERSION,
+    "contributors": list(SDK_CONTRIBUTORS),
     "tool_definition_hints": (
         "For each entry in methods[], build a tool: use name (or an alias) as tool name, "
         "description as the tool description, and map parameters[] to JSON Schema "
@@ -956,6 +963,35 @@ def discover_markdown(spec: dict[str, Any] | None = None) -> str:
             "",
             "## Column note",
             s["batch_returns_columns_note"],
+            "",
+            "## Contributors",
+            (
+                "Thank you to everyone who improves this SDK. Named contributors below are credited "
+                "for substantive work; the same list ships in ``client.discover(format='json')`` under "
+                "``contributors``."
+            ),
+        ]
+    )
+    contribs = s.get("contributors") or []
+    if not contribs:
+        lines.append(
+            "- *(No named entries in this build — maintainers add credits in "
+            "``riskmodels/contributors.py`` when merging PRs.)*"
+        )
+    else:
+        for c in contribs:
+            name = (c.get("name") or "").strip() or "—"
+            note = (c.get("contribution") or "").strip()
+            url = (c.get("url") or "").strip()
+            if url:
+                bullet = f"- **[{name}]({url})**"
+            else:
+                bullet = f"- **{name}**"
+            if note:
+                bullet = f"{bullet} — {note}"
+            lines.append(bullet)
+    lines.extend(
+        [
             "",
             "## Links",
             json.dumps(s["doc_links"], indent=2),
