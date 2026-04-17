@@ -55,12 +55,11 @@ _LAYER_COLORS = {
 
 
 def _layer_colors() -> dict[str, str]:
-    pal = T.palette
     return {
-        "market":    pal.navy,
-        "sector":    pal.teal,
-        "subsector": pal.slate,
-        "residual":  "#94a3b8",
+        "market":    "#3B82F6",
+        "sector":    "#14B8A6",
+        "subsector": "#F97316",
+        "residual":  "#94A3B8",
     }
 
 
@@ -119,8 +118,8 @@ def render_mag7_dna(
     if diversification is not None:
         fig = make_subplots(
             rows=1, cols=2,
-            column_widths=[0.74, 0.26],
-            horizontal_spacing=0.10,
+            column_widths=[0.76, 0.24],
+            horizontal_spacing=0.07,
             subplot_titles=[
                 "<b>Per-ticker DNA</b> — σ-scaled variance decomposition",
                 f"<b>{diversification_title}</b> — naive vs diversified",
