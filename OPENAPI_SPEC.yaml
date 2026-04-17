@@ -2244,8 +2244,10 @@ paths:
     get:
       summary: Daily gross returns time series (single ticker)
       description: >
-        Returns daily gross returns for a single stock. Simpler than `/ticker-returns`
-        (no hedge ratios). Cost: $0.005/call.
+        DEPRECATED — route not currently implemented. Use `/ticker-returns` for the
+        equivalent data (daily gross returns plus hedge ratios). Returns 404 today;
+        will be removed from the spec once the SDK drops its `get_returns` wrapper.
+      deprecated: true
       operationId: getReturns
       tags: [Risk Metrics]
       x-pricing:
@@ -2336,7 +2338,11 @@ paths:
     get:
       summary: Daily gross returns time series (ETF)
       description: >
-        Returns daily gross returns for an ETF (e.g. SPY, XLK). Cost: $0.005/call.
+        DEPRECATED — route not currently implemented (returns 404). ETF returns
+        will be served from the GCP zarr store in a follow-up; until then there
+        is no equivalent endpoint (ETFs are excluded from `/ticker-returns`
+        because they are not L3-decomposed).
+      deprecated: true
       operationId: getEtfReturns
       tags: [Risk Metrics]
       x-pricing:
