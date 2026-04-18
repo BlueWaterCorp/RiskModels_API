@@ -24,7 +24,9 @@ import { authenticateMcpRequest } from "@/lib/mcp/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // Vercel Pro caps at 60s. Streamable HTTP in stateless mode closes after each
-// request/response cycle — tool calls are sub-second in the common case.
+// POST request/response cycle — tool calls are sub-second in the common case.
+// GET (the server-push SSE stream) is rejected with 405 below, so it cannot
+// hold a connection open past the function timeout.
 // Raise this only after confirming the deployment tier supports longer.
 export const maxDuration = 60;
 
@@ -90,8 +92,32 @@ export async function POST(req: NextRequest): Promise<Response> {
   return handle(req);
 }
 
-export async function GET(req: NextRequest): Promise<Response> {
-  return handle(req);
+// GET on a Streamable HTTP endpoint opens the "standalone SSE stream" used
+// for server-initiated notifications. We don't push notifications — every
+// tool call is a one-shot request/response handled by POST — and on Vercel
+// serverless that stream would just idle until the 60s function timeout
+// kills it (user-reported "SSE connection opens but drops after ~70s").
+// The MCP Streamable HTTP spec explicitly permits returning 405 here; MCP
+// clients (including Claude) fall back to POST-only when they see it.
+export async function GET(): Promise<Response> {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message:
+          "Method Not Allowed: this endpoint does not provide a server-initiated SSE stream. Use POST for JSON-RPC requests.",
+      },
+      id: null,
+    }),
+    {
+      status: 405,
+      headers: {
+        "Content-Type": "application/json",
+        Allow: "POST, OPTIONS",
+      },
+    },
+  );
 }
 
 export async function DELETE(req: NextRequest): Promise<Response> {
