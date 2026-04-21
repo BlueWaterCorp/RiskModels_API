@@ -5,6 +5,7 @@ import 'katex/dist/katex.min.css';
 import '@/styles/globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { ChatBubble } from '@/components/chat/ChatBubble';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -90,6 +91,7 @@ export default async function RootLayout({
           </main>
           <Footer />
         </div>
+        <ChatBubble />
       </body>
     </html>
   );

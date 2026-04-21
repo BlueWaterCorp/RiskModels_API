@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { getCorsHeaders } from "@/lib/cors";
 import { ChatPostSchema } from "@/lib/api/schemas";
-import { CHAT_TOOLS } from "@/lib/chat/tools";
-import { buildSystemPrompt } from "@/lib/chat/system-prompt";
-import { executeToolCalls, type ToolCallResult } from "@/lib/chat/tool-executor";
+import { runChatAgent, AgentUpstreamError } from "@/lib/chat/agent-runner";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 
@@ -15,13 +11,6 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 const MAX_TOOL_ROUNDS = 5;
-
-/** gpt-4o-mini supports parallel_tool_calls; some reasoning models may 400 if forced. */
-function modelSupportsParallelToolCalls(model: string): boolean {
-  const m = model.toLowerCase();
-  if (m.startsWith("o1") || m.startsWith("o3")) return false;
-  return true;
-}
 
 function appendCostLineIfMissing(content: string, toolTotalUsd: number, toolCallCount: number): string {
   if (toolCallCount === 0) return content;
@@ -112,90 +101,34 @@ export const POST = withBilling(
       }),
     );
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const fetchStart = performance.now();
 
-    const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: buildSystemPrompt() },
-      ...userMessages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-    ];
-
-    const toolCallResults: ToolCallResult[] = [];
-    let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-    let finalContent = "";
-    let finalModel = model;
-
-    const allowParallelOpenAI =
-      modelSupportsParallelToolCalls(model) && bodyParallelToolCalls !== false;
-    const execParallel = !bodyExecSequential;
-
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      let completion;
-      try {
-        completion = await openai.chat.completions.create({
-          model,
-          messages,
-          tools: CHAT_TOOLS,
-          tool_choice: "auto",
-          ...(allowParallelOpenAI
-            ? { parallel_tool_calls: true }
-            : { parallel_tool_calls: false }),
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "OpenAI request failed";
+    let runResult;
+    try {
+      runResult = await runChatAgent({
+        userMessages,
+        model,
+        userId: context.userId,
+        requestId: context.requestId,
+        maxToolRounds: MAX_TOOL_ROUNDS,
+        allowParallelOpenAI: bodyParallelToolCalls !== false,
+        execParallel: !bodyExecSequential,
+      });
+    } catch (e) {
+      if (e instanceof AgentUpstreamError) {
         console.error("[chat]", e);
         return NextResponse.json(
-          { error: "Upstream AI error", message: msg },
+          { error: "Upstream AI error", message: e.message },
           { status: 502, headers: getCorsHeaders(origin) },
         );
       }
-
-      if (completion.usage) {
-        totalUsage.prompt_tokens += completion.usage.prompt_tokens;
-        totalUsage.completion_tokens += completion.usage.completion_tokens;
-        totalUsage.total_tokens += completion.usage.total_tokens;
-      }
-      finalModel = completion.model;
-
-      const choice = completion.choices[0];
-      if (!choice) break;
-
-      const assistantMessage = choice.message;
-      messages.push(assistantMessage);
-
-      const toolCalls = assistantMessage.tool_calls;
-      if (!toolCalls?.length) {
-        finalContent = assistantMessage.content ?? "";
-        break;
-      }
-
-      const results = await executeToolCalls(toolCalls, {
-        parallel: execParallel,
-        userId: context.userId,
-        requestId: context.requestId,
-      });
-
-      for (const r of results) {
-        toolCallResults.push(r);
-      }
-
-      for (let i = 0; i < toolCalls.length; i++) {
-        const tc = toolCalls[i];
-        const r = results[i];
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(r?.result ?? { error: "No result" }),
-        });
-      }
+      throw e;
     }
 
+    const { finalContent: rawContent, model: finalModel, usage: totalUsage, toolCallResults } = runResult;
     const toolCostTotal = toolCallResults.reduce((s, r) => s + r.cost_usd, 0);
     const totalCost = context.costUsd + toolCostTotal;
-    finalContent = appendCostLineIfMissing(finalContent, toolCostTotal, toolCallResults.length);
+    const finalContent = appendCostLineIfMissing(rawContent, toolCostTotal, toolCallResults.length);
 
     const latency = Math.round(performance.now() - fetchStart);
     const metadata = await getRiskMetadata();
