@@ -70,6 +70,12 @@ archive/
 
 # Documentation build output
 docs/
+# Whitelist: portal doc assets served under /docs/readme/ are public
+# screenshots produced by scripts/generate_readme_assets.py and must ship
+# in the Next.js build.
+!public/docs/
+!public/docs/readme/
+!public/docs/readme/*.png
 
 # OS
 .DS_Store
