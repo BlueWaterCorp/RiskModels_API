@@ -454,29 +454,94 @@ def build_p1_data_from_stock_context(
         macro_out = macro_correlations
         macro_window_out = macro_window if macro_window is not None else "252d"
 
-    # ── L3 explained-return attribution series ─────────────────────
-    # l3_*_er columns are HR proportions (sum ≈ 1.0 per day).
-    # Multiply by gross return to get actual daily explained returns per factor.
+    # ── Daily layer-return attribution series ──────────────────────
+    #
+    # Each tuple is (date, mkt, sec, sub, res) where the four numbers are
+    # the stock's **daily return decomposed into incremental, orthogonal
+    # layer contributions** that sum to gross return on that day.  All
+    # downstream consumers (Section I line chart, Section I waterfall, II
+    # cumulative attribution area chart, refresh_part1) treat these as
+    # "L1-only / L2-only-increment / L3-only-increment / residual" and
+    # compound them geometrically, so the definition here must match.
+    #
+    # Correct (CFR-based) convention when daily combined-factor-return
+    # columns are present in /ticker-returns:
+    #
+    #     mkt_t = l1_cfr_t                         (L1 factor-stack daily)
+    #     sec_t = l2_cfr_t - l1_cfr_t              (L2 incremental)
+    #     sub_t = l3_cfr_t - l2_cfr_t              (L3 incremental)
+    #     res_t = returns_gross_t - l3_cfr_t       (idiosyncratic residual)
+    #
+    # Cumulative products then telescope exactly to the CFR paths the
+    # left-panel line chart plots:
+    #     Π(1 + mkt)              = cum_spy       (L1 path)
+    #     Π(1 + mkt + sec)        = cum_sector    (L2 path)
+    #     Π(1 + mkt + sec + sub)  = cum_subsector (L3 path)
+    #     Π(1 + mkt + sec + sub + res) = stock gross
+    #
+    # so the waterfall bars reconcile to the line terminals by
+    # construction.
+    #
+    # Fallback: if CFR columns are absent or sparse, fall back to the
+    # legacy variance-share × gross slicing (`l3_*_er × returns_gross`).
+    # That version is NOT a true return attribution — ER fractions are
+    # variance shares — but it preserves additivity to gross and keeps
+    # charts renderable on old data.  Emit a warning so the caller can
+    # re-sync `security_history_returns_decomp`.
     l3_er_series: list[tuple[str, float, float, float, float]] = []
     if hist is not None and not hist.empty:
-        er_cols = ["l3_market_er", "l3_sector_er", "l3_subsector_er", "l3_residual_er"]
         ret_col = "returns_gross"
-        if all(c in hist.columns for c in er_cols) and ret_col in hist.columns:
+        cfr_cols_ok = (
+            all(c in hist.columns for c in CFR_COLUMNS)
+            and all(int(hist[c].notna().sum()) >= 5 for c in CFR_COLUMNS)
+        )
+
+        if cfr_cols_ok and ret_col in hist.columns:
             dates_col = hist["date"] if "date" in hist.columns else hist.index
-            for d_val, ret_v, mkt_hr, sec_hr, sub_hr, res_hr in zip(
+            for d_val, ret_v, l1_v, l2_v, l3_v in zip(
                 dates_col,
                 hist[ret_col],
-                hist["l3_market_er"], hist["l3_sector_er"],
-                hist["l3_subsector_er"], hist["l3_residual_er"],
+                hist[CFR_L1_COL], hist[CFR_L2_COL], hist[CFR_L3_COL],
             ):
-                if any(pd.isna(v) for v in [ret_v, mkt_hr, sec_hr, sub_hr, res_hr]):
+                if any(pd.isna(v) for v in [ret_v, l1_v, l2_v, l3_v]):
                     continue
-                # Explained return = HR proportion × gross return
-                mkt_er = float(mkt_hr) * float(ret_v)
-                sec_er = float(sec_hr) * float(ret_v)
-                sub_er = float(sub_hr) * float(ret_v)
-                res_er = float(ret_v) - mkt_er - sec_er - sub_er
-                l3_er_series.append((str(d_val)[:10], mkt_er, sec_er, sub_er, res_er))
+                l1_f = float(l1_v)
+                l2_f = float(l2_v)
+                l3_f = float(l3_v)
+                g_f  = float(ret_v)
+                mkt_inc = l1_f
+                sec_inc = l2_f - l1_f
+                sub_inc = l3_f - l2_f
+                res_inc = g_f - l3_f
+                l3_er_series.append((str(d_val)[:10], mkt_inc, sec_inc, sub_inc, res_inc))
+        else:
+            er_cols = ["l3_market_er", "l3_sector_er", "l3_subsector_er", "l3_residual_er"]
+            if all(c in hist.columns for c in er_cols) and ret_col in hist.columns:
+                warnings.warn(
+                    f"P1 daily layer attribution for {ctx.ticker} is using legacy "
+                    f"variance-share × gross slicing (l3_*_er × returns_gross) because "
+                    f"CFR columns (l1_cfr/l2_cfr/l3_cfr) are missing or sparse in "
+                    f"/ticker-returns.  Per-layer magnitudes in the waterfall and "
+                    f"cumulative-attribution chart will not reconcile to the CFR "
+                    f"line terminals.  Re-sync security_history_returns_decomp to "
+                    f"restore correct attribution.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                dates_col = hist["date"] if "date" in hist.columns else hist.index
+                for d_val, ret_v, mkt_hr, sec_hr, sub_hr, res_hr in zip(
+                    dates_col,
+                    hist[ret_col],
+                    hist["l3_market_er"], hist["l3_sector_er"],
+                    hist["l3_subsector_er"], hist["l3_residual_er"],
+                ):
+                    if any(pd.isna(v) for v in [ret_v, mkt_hr, sec_hr, sub_hr, res_hr]):
+                        continue
+                    mkt_er = float(mkt_hr) * float(ret_v)
+                    sec_er = float(sec_hr) * float(ret_v)
+                    sub_er = float(sub_hr) * float(ret_v)
+                    res_er = float(ret_v) - mkt_er - sec_er - sub_er
+                    l3_er_series.append((str(d_val)[:10], mkt_er, sec_er, sub_er, res_er))
 
     return P1Data(
         ticker=ctx.ticker,
@@ -827,24 +892,58 @@ def _make_cum_waterfall(data: P1Data) -> go.Figure:
     sub_label = data.subsector_etf or "Sub"
     show_sub = bool(data.subsector_etf) and data.subsector_etf != data.sector_etf
 
+    # ── Sign-coded styling for the waterfall ────────────────────────
+    #
+    # The bars in this waterfall are layered contributions.  When a bar
+    # is positive it *adds* to the running cumulative; when negative it
+    # *subtracts*.  The chart encodes direction three ways so the reader
+    # grasps the step direction at a glance:
+    #
+    #   1. Base color for POSITIVES keeps the factor-hierarchy palette
+    #      (navy / teal / slate) for systematic layers and pal.green for
+    #      the residual when α outperforms the stack.
+    #   2. Base color for NEGATIVES switches to pal.red — for the
+    #      residual this means "the stock lagged its factor stack"
+    #      (risk-off signal); for a systematic layer (sector or
+    #      subsector) it means "this exposure was a drag over the window".
+    #   3. NEGATIVE bars also carry a diagonal hatch ("/") so the step
+    #      direction remains visible in grayscale prints and in
+    #      colorblind views.
+    #
+    # See CHANGELOG entry under "P1 waterfall negative-bar styling".
+    NEG_RED = pal.red   # "#CC2936" — institutional negative-signal red
+    NEG_HATCH = "/"      # Plotly diagonal hatch
+
     labels = ["SPY", sector_label]
     values = [mkt_pct, sec_pct]
-    colors = [pal.navy, pal.teal]
+    colors = [
+        pal.navy if mkt_pct >= 0 else NEG_RED,
+        pal.teal if sec_pct >= 0 else NEG_RED,
+    ]
+    patterns = [
+        "" if mkt_pct >= 0 else NEG_HATCH,
+        "" if sec_pct >= 0 else NEG_HATCH,
+    ]
 
     if show_sub:
         labels.append(sub_label)
         values.append(sub_pct)
-        colors.append(pal.slate)
+        colors.append(pal.slate if sub_pct >= 0 else NEG_RED)
+        patterns.append("" if sub_pct >= 0 else NEG_HATCH)
 
     labels.append("α Residual")
     values.append(res_pct)
-    colors.append(pal.green if res_pct >= 0 else pal.orange)
+    # Residual uses green/red semantics: positive α = stock beat its factor
+    # stack (green), negative α = stock lagged its factor stack (red hatched).
+    colors.append(pal.green if res_pct >= 0 else NEG_RED)
+    patterns.append("" if res_pct >= 0 else NEG_HATCH)
 
     # 5th position: "Gross" column — no bar, just a label and dashed line.
     # This gives the gross annotation its own space, clear of the residual bar.
     labels.append(f"Gross")
     values.append(0.0)        # zero-height (invisible)
     colors.append("rgba(0,0,0,0)")
+    patterns.append("")
 
     # Build waterfall geometry — stacked bars for per-bar colors.
     bases: list[float] = []
@@ -858,50 +957,110 @@ def _make_cum_waterfall(data: P1Data) -> go.Figure:
             bases.append(0.0)  # phantom gross bar base at 0
 
     # Dynamic inside/outside threshold: bar must be ≥15% of the y-range
+    # measured in absolute bar magnitude.  Bars taller than threshold carry
+    # their label inside in white (a strong visual anchor for the main
+    # positive contributions); shorter bars carry it outside so the text
+    # doesn't get cropped.
     all_tops = [b + abs(v) for b, v in zip(bases[:n_real], values[:n_real])]
     all_bottoms = list(bases[:n_real])
     y_range = max(max(all_tops), 0) - min(min(all_bottoms), 0)
     inside_threshold = y_range * 0.15 if y_range > 0 else 1.0
 
-    text_positions = []
-    text_labels = []
-    for i, v in enumerate(values):
-        if i < n_real:
-            text_positions.append("inside" if abs(v) >= inside_threshold else "outside")
-            text_labels.append(f"<b>{v:+.1f}%</b>")
-        else:
-            text_positions.append("none")  # hide text on phantom bar
-            text_labels.append("")
-
     fig = go.Figure()
-    # Invisible base bars
+    # Invisible base bars — must share the visible bars' width so the
+    # rendered stack edges line up with the step-connector endpoints.
     fig.add_trace(go.Bar(
         x=labels, y=bases,
+        width=0.72,
         marker=dict(color="rgba(0,0,0,0)"),
         showlegend=False, hoverinfo="skip",
     ))
-    # Visible bars (phantom gross bar is transparent)
+    # Visible bars (phantom gross bar is transparent).  Labels are NOT
+    # drawn by the Bar trace itself — we emit them as explicit
+    # annotations below so that negative bars can place the label below
+    # the bar's ending edge rather than above its starting edge.
+    # Pin bar width explicitly so the step connector (drawn below) can
+    # align its endpoints to the bar's outer edges regardless of the
+    # enclosing figure's bargap.  _BAR_WIDTH (0.72) ↔ half-width 0.36.
+    _BAR_WIDTH = 0.72
     fig.add_trace(go.Bar(
         x=labels, y=[abs(v) for v in values],
-        marker=dict(color=colors, line=dict(width=0)),
-        text=text_labels,
-        textposition=text_positions,
-        textfont=dict(family=fnt.family, size=fnt.body),
-        insidetextfont=dict(family=fnt.family, size=fnt.body, color="#ffffff"),
-        outsidetextfont=dict(family=fnt.family, size=fnt.body, color=pal.text_dark),
+        width=_BAR_WIDTH,
+        marker=dict(
+            color=colors,
+            line=dict(width=0),
+            pattern=dict(
+                shape=patterns,
+                fgcolor="#ffffff",        # white stripes on red fill
+                fgopacity=0.55,
+                size=8,
+                solidity=0.30,
+            ),
+        ),
         showlegend=False,
-        hovertemplate="%{x}: %{text}<extra></extra>",
+        hovertemplate="%{x}: %{customdata:+.2f}%<extra></extra>",
+        customdata=[v for v in values],
         cliponaxis=False,
     ))
 
-    # Connector lines between real bars only
+    # Per-bar value annotations, placed explicitly so negative bars sit
+    # below their ending edge rather than using Plotly's default
+    # "outside" (which puts text above the bar's top = the START of a
+    # negative bar, which reads backwards).  Positive bars still get the
+    # familiar inside/above treatment based on bar magnitude.
+    LABEL_GAP = max(y_range * 0.018, 0.8)    # small padding in % units
+    for i, v in enumerate(values):
+        if i >= n_real or v == 0:
+            continue
+        bar_top = bases[i] + abs(v)     # upper y-edge of the rendered rectangle
+        bar_bot = bases[i]              # lower y-edge of the rendered rectangle
+        use_inside = abs(v) >= inside_threshold
+        if v >= 0:
+            # Positive bar: inside-top in white, or outside-above in dark.
+            y_anchor = bar_top - LABEL_GAP if use_inside else bar_top + LABEL_GAP
+            yanchor  = "top" if use_inside else "bottom"
+            color    = "#ffffff" if use_inside else pal.text_dark
+        else:
+            # Negative bar: inside-bottom in white, or outside-BELOW in the
+            # bar's own red.  "Below" is the visual ending point of the
+            # downward step; putting the label there matches the reader's
+            # intuition ("the line came down to here").
+            if use_inside:
+                y_anchor = bar_bot + LABEL_GAP
+                yanchor  = "bottom"
+                color    = "#ffffff"
+            else:
+                y_anchor = bar_bot - LABEL_GAP
+                yanchor  = "top"
+                color    = pal.text_dark   # neutral — bar fill carries sign
+        fig.add_annotation(
+            x=i, y=y_anchor, xref="x", yref="y",
+            text=f"<b>{v:+.1f}%</b>",
+            showarrow=False,
+            xanchor="center", yanchor=yanchor,
+            font=dict(family=fnt.family, size=fnt.body, color=color),
+        )
+
+    # Connector lines between real bars.  Geometry invariant: bar i's
+    # TOP == the near edge of bar i+1 regardless of sign, because for
+    # positive bars base=running_before (top=running_after) and for
+    # negative bars base=running_after (top=running_before=running_before_i+1
+    # with the previous bar's contribution incorporated into running).
+    # Both cases collapse to a horizontal dotted line across the gap.
+    # Step connector — spans the OUTSIDE edges of adjacent bars so it
+    # reads as a continuous "ledge" that each next bar steps off of.
+    # Endpoints are anchored at the LEFT outer edge of bar i (x = i -
+    # half-width) through the RIGHT outer edge of bar i+1 (x = (i+1) +
+    # half-width), crossing both bar tops and the gap between them.
+    # Solid slate-500, width 2.5 — architectural rather than charty.
+    _HW = _BAR_WIDTH / 2.0   # 0.36 half-width
     for i in range(n_real - 1):
-        y_conn = bases[i] + abs(values[i])
+        y_conn = bases[i] + abs(values[i])           # top of bar i == base-carry of bar i+1
         fig.add_shape(
             type="line",
-            x0=i, x1=i + 1, y0=y_conn, y1=y_conn,
+            x0=i - _HW, x1=(i + 1) + _HW, y0=y_conn, y1=y_conn,
             xref="x", yref="y",
-            line=dict(color=pal.border, width=1, dash="dot"),
+            line=dict(color="#64748b", width=2.5),
         )
 
     # Gross dashed reference line — full width

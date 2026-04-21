@@ -105,8 +105,8 @@ def render_mag7_dna(
     subtitle: str = "L3 explained risk — bar width ∝ annualized total risk (σ)",
     diversification_title: str = "Equal-weight portfolio",
     annotation_mode: str = "idiosyncratic",
-    width: int = 1500,
-    height: int = 580,
+    width: int = 1400,
+    height: int = 780,
     scale: int = 2,
 ) -> Path:
     """Render the MAG7 DNA chart (optionally with a diversification panel) to PNG."""
@@ -137,6 +137,21 @@ def render_mag7_dna(
 
     T.style(fig)
 
+    # Half-frame dark axis convention (applied AFTER T.style so BOTH
+    # subplots pick up the override — T.style uses update_layout(xaxis=…)
+    # which only targets subplot 1 and would otherwise leave subplot 2
+    # with the global Tufte-faint axis).
+    n_cols = 2 if diversification is not None else 1
+    for col_idx in range(1, n_cols + 1):
+        fig.update_xaxes(
+            showline=True, linecolor="#475569", linewidth=1.2, mirror=False,
+            row=1, col=col_idx,
+        )
+        fig.update_yaxes(
+            showline=True, linecolor="#475569", linewidth=1.2, mirror=False,
+            row=1, col=col_idx,
+        )
+
     fig.update_layout(
         barmode="stack",
         bargap=0.32,
@@ -151,7 +166,7 @@ def render_mag7_dna(
         ),
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=-0.22,
+            yanchor="bottom", y=-0.16,
             xanchor="center", x=0.5,
             bgcolor="rgba(0,0,0,0)", borderwidth=0,
             font=dict(size=fnt.body),
