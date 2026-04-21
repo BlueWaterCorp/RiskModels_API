@@ -578,6 +578,40 @@ export const CAPABILITIES: Capability[] = [
     tags: ["telemetry", "metrics", "performance"],
   },
   {
+    id: "decompose-position",
+    name: "Decompose Position",
+    description:
+      "Decompose a stock into market, sector, subsector, and residual exposure with hedge ratios mapped to tradable ETFs.",
+    endpoint: "/api/decompose",
+    method: "POST",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: true,
+        description: "Stock ticker symbol",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.001,
+      currency: "USD",
+      billing_code: "metrics_v3",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["security_history", "symbols", "ticker_metadata"],
+    },
+    tags: ["decompose", "hedge", "exposure", "agent"],
+  },
+  {
     id: "metrics-snapshot",
     name: "Metrics Snapshot",
     description: "Latest risk metrics snapshot for a single ticker (volatility, hedge ratios, explained risk)",

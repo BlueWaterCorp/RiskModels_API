@@ -218,6 +218,54 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lineage, kind="metrics_snapshot")
         return df
 
+    def decompose(
+        self,
+        ticker: str,
+        *,
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Decompose a single position into four additive ERM3 layers.
+
+        Calls ``POST /decompose`` and returns either the raw JSON body
+        (``as_dataframe=False``, default) or a DataFrame with one row per
+        layer (market / sector / subsector / residual). The DataFrame carries
+        the standard SDK metadata in ``df.attrs`` (``legend``,
+        ``riskmodels_lineage``, ``riskmodels_kind``,
+        ``riskmodels_semantic_cheatsheet``).
+
+        Sign convention: ``hedge[etf] == -exposure[layer].hr``. A positive
+        stock ``hr`` yields a negative ETF dollar ratio (short the ETF to
+        hedge a long position).
+        """
+
+        t, _ = resolve_ticker(ticker, self)
+        body, lineage, _r = self._transport.request(
+            "POST", "/decompose", json={"ticker": t}
+        )
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+
+        if not as_dataframe:
+            return body
+
+        exposure = body.get("exposure", {}) if isinstance(body, dict) else {}
+        rows: list[dict[str, Any]] = []
+        for layer_name in ("market", "sector", "subsector", "residual"):
+            layer = exposure.get(layer_name, {}) or {}
+            rows.append(
+                {
+                    "ticker": body.get("ticker"),
+                    "layer": layer_name,
+                    "er": layer.get("er"),
+                    "hr": layer.get("hr"),
+                    "hedge_etf": layer.get("hedge_etf"),
+                    "data_as_of": body.get("data_as_of"),
+                }
+            )
+        df = pd.DataFrame(rows)
+        attach_sdk_metadata(df, lineage, kind="decompose_position")
+        return df
+
     def get_metrics_with_macro_correlation(
         self,
         ticker: str,

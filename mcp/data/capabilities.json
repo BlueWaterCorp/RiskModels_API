@@ -871,5 +871,54 @@
         }
       }
     ]
+  },
+  {
+    "id": "decompose-position",
+    "name": "Decompose Position",
+    "description": "Decompose a single ticker into four additive ERM3 layers (market, sector, subsector, residual) with tradable hedge ETFs and a consolidated hedge map. Thin semantic wrapper over the metrics DAL; same billing profile as GET /metrics/{ticker}.",
+    "endpoint": "/api/decompose",
+    "method": "POST",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol (e.g., NVDA, AAPL)"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.001,
+      "currency": "USD",
+      "billing_code": "metrics_v3"
+    },
+    "performance": {
+      "avg_latency_ms": 80,
+      "p95_latency_ms": 150,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["security_history", "symbols", "ticker_metadata"],
+      "methodology_url": "https://riskmodels.app/docs/methodology"
+    },
+    "tags": ["decompose", "hedge", "exposure", "agent"],
+    "examples": [
+      {
+        "request": { "ticker": "NVDA" },
+        "response": {
+          "ticker": "NVDA",
+          "data_as_of": "2026-04-21",
+          "exposure": {
+            "market":    { "er": 0.45, "hr": 1.10, "hedge_etf": "SPY" },
+            "sector":    { "er": 0.22, "hr": 0.35, "hedge_etf": "XLK" },
+            "subsector": { "er": 0.20, "hr": 0.60, "hedge_etf": "SMH" },
+            "residual":  { "er": 0.13, "hr": null, "hedge_etf": null }
+          },
+          "hedge": { "SPY": -1.10, "XLK": -0.35, "SMH": -0.60 }
+        }
+      }
+    ]
   }
 ]
