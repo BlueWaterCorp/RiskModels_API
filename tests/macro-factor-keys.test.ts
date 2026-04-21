@@ -3,7 +3,9 @@ import {
   DEFAULT_MACRO_FACTORS,
   expandMacroFactorDbKeysForQuery,
   MACRO_FACTOR_DB_KEYS,
+  MACRO_SLEEVE_FACTORS,
   normalizeMacroFactorKeys,
+  STYLE_SLEEVE_FACTORS,
 } from "@/lib/risk/macro-factor-keys";
 
 describe("MACRO_FACTOR_DB_KEYS", () => {
@@ -14,8 +16,8 @@ describe("MACRO_FACTOR_DB_KEYS", () => {
     }
   });
 
-  it("includes the ten expected canonical factors", () => {
-    expect(new Set(DEFAULT_MACRO_FACTORS)).toEqual(
+  it("includes the ten canonical macro-sleeve factors", () => {
+    expect(new Set(MACRO_SLEEVE_FACTORS)).toEqual(
       new Set([
         "inflation",
         "term_spread",
@@ -29,6 +31,25 @@ describe("MACRO_FACTOR_DB_KEYS", () => {
         "vix_spot",
       ]),
     );
+  });
+
+  it("includes the eight canonical style-sleeve factors", () => {
+    expect(new Set(STYLE_SLEEVE_FACTORS)).toEqual(
+      new Set([
+        "momentum",
+        "quality",
+        "low_vol",
+        "value",
+        "growth",
+        "size",
+        "dividend",
+        "moat",
+      ]),
+    );
+  });
+
+  it("exposes 18 factors total (10 macro + 8 style)", () => {
+    expect(DEFAULT_MACRO_FACTORS).toHaveLength(18);
   });
 
   it("keeps legacy v1 names as fall-through aliases on renamed factors", () => {
