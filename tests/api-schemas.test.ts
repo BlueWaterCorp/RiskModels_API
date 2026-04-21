@@ -107,9 +107,11 @@ describe("parseMacroFactorsSeriesQuery", () => {
     const r = parseMacroFactorsSeriesQuery(sp);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      // 10 canonical factors: inflation, term_spread, short_rates, credit,
-      // oil, gold, usd, volatility, bitcoin, vix_spot
-      expect(r.factorStrings.length).toBe(10);
+      // 18 canonical factors: 10 macro-sleeve (inflation, term_spread,
+      // short_rates, credit, oil, gold, usd, volatility, bitcoin, vix_spot)
+      // + 8 style-sleeve (momentum, quality, low_vol, value, growth, size,
+      // dividend, moat).
+      expect(r.factorStrings.length).toBe(18);
       expect(r.end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(r.start <= r.end).toBe(true);
     }
