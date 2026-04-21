@@ -343,8 +343,15 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/metrics/{'{ticker}'}</td>
         <td className="py-3 px-3">GET</td>
         <td className="py-3 px-3">Latest snapshot: HR/ER fields (semantic columns in SDK), vol, Sharpe, sector, market cap</td>
-        <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.005/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_metrics("NVDA", as_dataframe=True)' /></td>
+      </tr>
+      <tr id="decompose" className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/decompose</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Four-bet semantic wrapper: market / sector / subsector / residual with hedge ETFs + consolidated hedge map</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.001/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().decompose("NVDA")' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/l3-decomposition</td>
@@ -417,7 +424,42 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
 
 <span className="block text-sm text-zinc-500 not-prose my-4">Account routes (<code className="text-zinc-400">/balance</code>, <code className="text-zinc-400">/invoices</code>, <code className="text-zinc-400">/health</code>) use the SDK transport with the same OAuth or API key as data methods. The well-known manifest is fetched from the site root (no auth).</span>
 
-Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: $10.
+Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-up: {'$'}10.
+
+## POST /decompose — one call, four bets
+
+`POST /decompose` is a semantic wrapper over the same L3 fields exposed by `GET /metrics/{'{ticker}'}`. It returns four additive layers — **market**, **sector**, **subsector**, and **residual** — each tradable layer carrying an `er` (explained-risk variance fraction), an `hr` (dollar-ratio hedge ratio), and a `hedge_etf`. A top-level `hedge` map flips the sign (negative of each layer `hr`) and sums across any duplicate ETFs, so you get ready-to-short notionals per instrument.
+
+Billing is identical to `GET /metrics/{'{ticker}'}` ({'$'}0.001/call, `billing_code: metrics_v3`). For the full L1/L2/L3 snapshot (all six HR names), keep using `GET /metrics/{'{ticker}'}`.
+
+**Request**
+
+```bash
+curl -X POST https://riskmodels.app/api/decompose \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"ticker":"NVDA"}'
+```
+
+**Response**
+
+```json
+{
+  "ticker": "NVDA",
+  "data_as_of": "2026-04-21",
+  "exposure": {
+    "market":    { "er": 0.45, "hr": 1.10, "hedge_etf": "SPY" },
+    "sector":    { "er": 0.22, "hr": 0.35, "hedge_etf": "XLK" },
+    "subsector": { "er": 0.20, "hr": 0.60, "hedge_etf": "SMH" },
+    "residual":  { "er": 0.13, "hr": null, "hedge_etf": null }
+  },
+  "hedge": { "SPY": -1.10, "XLK": -0.35, "SMH": -0.60 }
+}
+```
+
+**Sign convention.** `hedge[etf]` is the **negative** of the layer `hr`. Positive stock `hr` → negative ETF dollar ratio (short the ETF per {'$'}1 long stock). Negative stock `hr` → positive ETF dollar ratio (long the ETF as the hedge leg). Residual has no tradable ETF, so its `hr` and `hedge_etf` are always `null`.
+
+**ER invariant.** Across the four layers, `market_er + sector_er + subsector_er + residual_er ≈ 1` (variance fractions). The handler emits a warning when the sum deviates by more than 0.05.
 
 ## 🤖 Agent-Native Helpers (Python SDK)
 

@@ -55,6 +55,17 @@ export const L3DecompositionRequestSchema = z.object({
 });
 
 /**
+ * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
+ * Returns market / sector / subsector / residual with each tradable layer's
+ * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).
+ */
+export const DecomposeRequestSchema = z.object({
+  ticker: TickerSchema,
+});
+
+export type DecomposeRequest = z.infer<typeof DecomposeRequestSchema>;
+
+/**
  * Schema for POST /api/batch/analyze
  */
 export const BatchAnalyzeRequestSchema = z.object({

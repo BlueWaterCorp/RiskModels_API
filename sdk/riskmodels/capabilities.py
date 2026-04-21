@@ -24,6 +24,36 @@ _RANKING_WINDOWS = ["1d", "21d", "63d", "252d"]
 # Parameters use JSON-friendly keys (required: bool) for discover(format="json") / tool builders.
 _SDK_METHODS: list[dict[str, Any]] = [
     {
+        "name": "decompose",
+        "aliases": ["decompose_position"],
+        "summary": "Four additive bets: market, sector, subsector, residual + hedge map.",
+        "description": (
+            "Calls POST /decompose and returns the simplified four-layer ERM3 exposure with "
+            "tradable hedge ETFs. Sign convention: hedge[etf] == -exposure[layer].hr. "
+            "Same billing as get_metrics ($0.001)."
+        ),
+        "scopes": ["ticker-returns (OAuth)"],
+        "parameters": [
+            {
+                "name": "ticker",
+                "type": "string",
+                "required": True,
+                "description": "US equity symbol; alias-resolved.",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+                "description": "If True, return one row per layer with SDK attrs.",
+            },
+        ],
+        "returns": {
+            "type": "dict | pandas.DataFrame",
+            "description": "JSON body (default) or 4-row frame: layer, er, hr, hedge_etf.",
+        },
+    },
+    {
         "name": "get_metrics",
         "aliases": ["get_risk"],
         "summary": "Latest V3 snapshot: hedge ratios, explained risk, vol.",

@@ -476,6 +476,133 @@
           }
         }
       },
+      "DecomposeRequest": {
+        "type": "object",
+        "description": "Request body for `POST /decompose`.",
+        "required": [
+          "ticker"
+        ],
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Stock ticker symbol (case-insensitive; trimmed and upper-cased).",
+            "example": "NVDA"
+          }
+        }
+      },
+      "DecomposeLayer": {
+        "type": "object",
+        "description": "One layer of the four-bet decomposition. `er` is a variance fraction in [0, 1]. `hr` is a dollar-ratio hedge ratio (dollars of ETF per $1 of stock). `residual` has no tradable ETF, so `hr` and `hedge_etf` are null for that layer.\n",
+        "required": [
+          "er",
+          "hr",
+          "hedge_etf"
+        ],
+        "properties": {
+          "er": {
+            "type": "number",
+            "nullable": true,
+            "description": "Explained-risk variance fraction for this layer.",
+            "example": 0.22
+          },
+          "hr": {
+            "type": "number",
+            "nullable": true,
+            "description": "Hedge ratio (dollar ratio) for this layer. Null for residual.",
+            "example": 0.35
+          },
+          "hedge_etf": {
+            "type": "string",
+            "nullable": true,
+            "description": "Tradable ETF for this layer. Null for residual.",
+            "example": "XLK"
+          }
+        }
+      },
+      "DecomposeResponse": {
+        "type": "object",
+        "description": "Wire response for `POST /decompose`. Semantic four-layer shape; each tradable layer maps to one ETF. The top-level `hedge` map is the negative of each layer's `hr` keyed by ETF (ready to convert into short notionals).\n",
+        "required": [
+          "ticker",
+          "symbol",
+          "data_as_of",
+          "teo",
+          "exposure",
+          "hedge"
+        ],
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "example": "NVDA"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Canonical symbol key in V3 registry."
+          },
+          "data_as_of": {
+            "type": "string",
+            "format": "date",
+            "description": "Latest trading day the metrics apply to."
+          },
+          "teo": {
+            "type": "string",
+            "format": "date",
+            "description": "V3 observation date (time-end) for this row."
+          },
+          "exposure": {
+            "type": "object",
+            "required": [
+              "market",
+              "sector",
+              "subsector",
+              "residual"
+            ],
+            "properties": {
+              "market": {
+                "$ref": "#/components/schemas/DecomposeLayer"
+              },
+              "sector": {
+                "$ref": "#/components/schemas/DecomposeLayer"
+              },
+              "subsector": {
+                "$ref": "#/components/schemas/DecomposeLayer"
+              },
+              "residual": {
+                "$ref": "#/components/schemas/DecomposeLayer"
+              }
+            }
+          },
+          "hedge": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Map of hedge-ETF → dollar ratio (= negative of the layer `hr`). If two layers share the same ETF (e.g. subsector falls back to the sector ETF), the values are summed so each ETF appears once.\n",
+            "example": {
+              "SPY": -1.1,
+              "XLK": -0.35,
+              "SMH": -0.6
+            }
+          },
+          "_metadata": {
+            "type": "object",
+            "description": "Lineage, billing code, and freshness (same shape as `/metrics`)."
+          },
+          "_data_health": {
+            "type": "object",
+            "properties": {
+              "er_populated": {
+                "type": "boolean"
+              },
+              "er_sum": {
+                "type": "number",
+                "nullable": true,
+                "description": "Sum of L3 ER layers (should be ≈ 1 within tolerance)."
+              }
+            }
+          }
+        }
+      },
       "MetricsSnapshotResponse": {
         "type": "object",
         "description": "Wire response for `GET /metrics/{ticker}`. Numeric fields live under `metrics`; `teo` is the observation date (V3 time-end).\n",
@@ -1113,7 +1240,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Factor keys matching `macro_factors.factor_key`. Two sleeves share the table and endpoint; `metadata.category` on each row distinguishes them. Macro sleeve (10 keys, from `ds_macro_factor.zarr`): `inflation` (TIP), `term_spread` (VGIT), `short_rates` (BIL), `credit` (HYG), `oil` (USO), `gold` (GLD), `usd` (UUP), `volatility` (VXX short-term vol futures), `bitcoin` (BITO), `vix_spot` (FRED VIXCLS spot index). Note: `volatility` and `vix_spot` are DIFFERENT — VXX captures futures roll dynamics, VIXCLS is pure spot. Style sleeve (8 keys, mirrored from `ds_etf.zarr`): `momentum` (MTUM), `quality` (QUAL), `low_vol` (USMV), `value` (VLUE), `growth` (IWF), `size` (IWM), `dividend` (SCHD), `moat` (MOAT). History starts at each ETF's launch date (2011-2013 for MSCI factors; 2000 for IWF/IWM); pre-launch windows return null correlations. Style factors are most informative against `return_type=l3_residual`: the residual is orthogonal to SPY/sector/subsector so correlation isolates pure style tilt. Legacy v1 aliases (`dxy`→`usd`, `vix`→`vix_spot`, `ust10y2y`→`term_spread`), common synonyms (btc, wti, xau, gld, cpi, tips), and style aliases (mtum, qual, usmv, vlue, iwf, iwm, schd, moat, minvol, small_cap) are normalized server-side. Defaults to all 18 canonical keys when omitted.\n"
+            "description": "Factor keys matching `macro_factors.factor_key`. Two sleeves share the table and endpoint; the `metadata.category` field on each row distinguishes them.\n**Macro sleeve (10 keys, from `ds_macro_factor.zarr`):** `inflation` (TIP), `term_spread` (VGIT), `short_rates` (BIL), `credit` (HYG), `oil` (USO), `gold` (GLD), `usd` (UUP), `volatility` (VXX short-term vol futures), `bitcoin` (BITO), `vix_spot` (FRED VIXCLS spot index). Note: `volatility` and `vix_spot` are DIFFERENT — VXX captures futures roll dynamics, VIXCLS is pure spot.\n**Style sleeve (8 keys, mirrored from `ds_etf.zarr`):** `momentum` (MTUM), `quality` (QUAL), `low_vol` (USMV), `value` (VLUE), `growth` (IWF), `size` (IWM), `dividend` (SCHD), `moat` (MOAT). History starts at each ETF's launch date (2011–2013 for MSCI factors; 2000 for IWF/IWM); pre-launch windows return `null` correlations. Style factors are most informative against `return_type=l3_residual`: because the residual is already orthogonal to SPY/sector/subsector, correlation isolates the pure style tilt.\nLegacy v1 aliases (`dxy`→`usd`, `vix`→`vix_spot`, `ust10y2y`→`term_spread`), common synonyms (btc, wti, xau, gld, cpi, tips), and style aliases (mtum, qual, usmv, vlue, iwf, iwm, schd, moat, minvol, small_cap) are normalized server-side. Defaults to all 18 canonical keys when omitted.\n"
           },
           "return_type": {
             "type": "string",
@@ -2592,6 +2719,156 @@
         }
       }
     },
+    "/decompose": {
+      "post": {
+        "summary": "Decompose a position into four additive bets with hedge ratios",
+        "description": "Returns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "operationId": "decomposePosition",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "decompose-position",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0.001,
+          "currency": "USD",
+          "billing_code": "metrics_v3"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2ClientCredentials": [
+              "ticker-returns"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecomposeRequest"
+              },
+              "examples": {
+                "nvda": {
+                  "summary": "Decompose NVDA",
+                  "value": {
+                    "ticker": "NVDA"
+                  }
+                },
+                "aapl": {
+                  "summary": "Decompose AAPL",
+                  "value": {
+                    "ticker": "AAPL"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Four-layer decomposition with hedge map.",
+            "headers": {
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Cost deducted for this request (e.g. \"0.001\")."
+              },
+              "X-Data-Freshness": {
+                "schema": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "X-RateLimit-Limit": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-RateLimit-Remaining": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-RateLimit-Reset": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecomposeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed ticker or invalid JSON body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Symbol not found or no metrics row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ticker-returns": {
       "get": {
         "summary": "Daily returns time series with rolling hedge ratios",
@@ -3421,7 +3698,7 @@
     "/macro-factors": {
       "get": {
         "summary": "Macro factor daily return series",
-        "description": "Returns long-format rows from Supabase `macro_factors` (`factor_key`, `teo`, `return_gross`) for the requested date range. No stock ticker is required. Omit `factors` to use all 18 canonical keys — macro sleeve: `inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility`, `bitcoin`, `vix_spot`; style sleeve (mirrored from `ds_etf.zarr` with `metadata.category=\"style\"`): `momentum`, `quality`, `low_vol`, `value`, `growth`, `size`, `dividend`, `moat`. Aliases such as `btc` → `bitcoin`, `xau`/`gld` → `gold`, `mtum` → `momentum`, `qual` → `quality`, `usmv`/`minvol` → `low_vol`, `vlue` → `value`, `iwf` → `growth`, `iwm`/`small_cap` → `size`, `schd`/`div` → `dividend`, `moat` → `moat`, and legacy v1 names (`dxy` → `usd`, `vix` → `vix_spot`, `ust10y2y` → `term_spread`) normalize automatically. Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today. Maximum span: 20 years. Cost: $0.001 per request. JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json\n",
+        "description": "Returns long-format rows from Supabase `macro_factors` (`factor_key`, `teo`, `return_gross`) for the requested date range. No stock ticker is required. Omit `factors` to use all ten canonical keys (`inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility`, `bitcoin`, `vix_spot`); aliases such as `btc` → `bitcoin`, `xau`/`gld` → `gold`, and legacy v1 names (`dxy` → `usd`, `vix` → `vix_spot`, `ust10y2y` → `term_spread`) normalize automatically. Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today. Maximum span: 20 years. Cost: $0.001 per request. JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json\n",
         "operationId": "getMacroFactorSeries",
         "externalDocs": {
           "description": "JSON Schema for GET /macro-factors 200 response body.",

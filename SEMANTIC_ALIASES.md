@@ -19,6 +19,10 @@ To compute hedge notional: `hedge_notional_usd = position_size_usd × hr_field`
 | `l3_sector_hr` | Sector ETF component of the L3 hedge | 0.1 – 0.5 |
 | `l3_subsector_hr` | Subsector ETF component of the L3 hedge | -0.3 – 0.4 |
 
+### `POST /decompose` — agent-friendly semantic wrapper
+
+`POST /decompose` returns the **four-bet** shape (`market`, `sector`, `subsector`, `residual`) under `exposure.<layer>.{er, hr, hedge_etf}`, plus a top-level `hedge` map of ETF → dollar ratio (= **negative** of each tradable layer's `hr`, summed across duplicate ETFs). This is a thin semantic re-projection of the same `l3_*_hr` / `l3_*_er` fields documented above — no new math, same billing as `GET /metrics/{ticker}`. Use it when an agent only needs the additive bet breakdown + ready-to-short hedge notionals.
+
 ### Sign convention (hedge ratios)
 
 - **Any HR field may be negative** (orthogonalization / factor neutralization, or a long ETF leg when the economic hedge is expressed that way). A negative value is not automatically a data or sign error.
