@@ -39,8 +39,9 @@ export default function HeroDecompose() {
             <span className="text-primary">hedgeable trade.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-zinc-300 sm:text-lg">
-            Decompose any position into market, sector, and idiosyncratic
-            exposure &mdash; and get exact hedge ratios in one API call.
+            Decompose any stock into four tradable bets &mdash; market, sector,
+            subsector, and residual &mdash; with exact hedge ratios in one API
+            call.
           </p>
           <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
