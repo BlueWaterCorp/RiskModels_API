@@ -18,6 +18,13 @@ export interface ExecuteToolCallsOptions {
   parallel?: boolean;
   userId: string;
   requestId: string;
+  /** When true, skip deductBalance (keyless demo / landing proxy). */
+  skipBilling?: boolean;
+  /**
+   * Optional per-call arg gate. Return a string to reject with that error
+   * message; return null to allow. Runs after Zod parse, before executor.
+   */
+  preFlightGuard?: (toolName: string, parsedArgs: unknown) => string | null;
 }
 
 function structuredArgError(issues: { path: PropertyKey[]; message: string }[]) {
@@ -37,7 +44,12 @@ function isInsufficientBalance(err: unknown): boolean {
 
 async function runOneTool(
   toolCall: ChatCompletionMessageToolCall,
-  ctx: { userId: string; requestId: string },
+  ctx: {
+    userId: string;
+    requestId: string;
+    skipBilling?: boolean;
+    preFlightGuard?: (toolName: string, parsedArgs: unknown) => string | null;
+  },
 ): Promise<ToolCallResult> {
   const start = performance.now();
   const toolCallId = toolCall.id;
@@ -91,6 +103,21 @@ async function runOneTool(
     };
   }
 
+  if (ctx.preFlightGuard) {
+    const rejection = ctx.preFlightGuard(name, parsed.data);
+    if (rejection) {
+      return {
+        tool_call_id: toolCallId,
+        name,
+        result: { error: rejection, suggestion: "Use one of the allowed demo tickers, or sign up for an API key at https://riskmodels.app/get-key for full access." },
+        cost_usd: 0,
+        capability_id: def.capabilityId,
+        latency_ms: Math.round(performance.now() - start),
+        error: rejection,
+      };
+    }
+  }
+
   let result: unknown;
   try {
     result = await def.executor(parsed.data);
@@ -123,7 +150,7 @@ async function runOneTool(
   }
 
   let costUsd = 0;
-  if (def.capabilityId) {
+  if (def.capabilityId && !ctx.skipBilling) {
     costUsd = calculateRequestCost(def.capabilityId);
     try {
       await deductBalance(ctx.userId, costUsd, ctx.requestId, def.capabilityId);
@@ -171,8 +198,8 @@ export async function executeToolCalls(
   toolCalls: ChatCompletionMessageToolCall[],
   options: ExecuteToolCallsOptions,
 ): Promise<ToolCallResult[]> {
-  const { parallel = true, userId, requestId } = options;
-  const ctx = { userId, requestId };
+  const { parallel = true, userId, requestId, skipBilling, preFlightGuard } = options;
+  const ctx = { userId, requestId, skipBilling, preFlightGuard };
 
   if (!parallel) {
     const out: ToolCallResult[] = [];
