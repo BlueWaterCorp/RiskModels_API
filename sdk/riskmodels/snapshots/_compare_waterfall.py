@@ -41,6 +41,7 @@ def render_waterfall_compare(
     height: int = 560,
     horizontal_spacing: float = 0.09,
     scale: int = 2,
+    color_remap: dict[str, str] | None = None,
 ) -> Path:
     """Render two side-by-side cumulative-return waterfalls to PNG.
 
@@ -84,27 +85,60 @@ def render_waterfall_compare(
     _copy_panel(left_wf, combined, col=1)
     _copy_panel(right_wf, combined, col=2)
 
+    # Optional per-series color remap applied to every bar trace.  Used by
+    # Part 1 to swap the SDK's default slate (#2a7fbf) L3-subsector fill
+    # for amber (#d97706) so it matches the opening NVDA chart's table
+    # swatch and left-panel SMH line.  Remap is applied to both scalar
+    # fills and per-bar color arrays.
+    if color_remap:
+        for trace in combined.data:
+            if not isinstance(trace, go.Bar) or trace.marker is None:
+                continue
+            c = trace.marker.color
+            if isinstance(c, str) and c in color_remap:
+                trace.marker.color = color_remap[c]
+            elif isinstance(c, (list, tuple)):
+                trace.marker.color = [color_remap.get(x, x) for x in c]
+
     y_min, y_max = _union_yrange(left_wf, right_wf, (left_gross, right_gross))
     combined.update_yaxes(range=[y_min, y_max], row=1, col=1)
     combined.update_yaxes(range=[y_min, y_max], row=1, col=2)
 
+    # T.style() first (it applies the global Tufte theme via update_layout
+    # which targets xaxis/yaxis by default and would overwrite per-subplot
+    # overrides if applied AFTER them).
+    T.style(combined)
+
+    # Half-frame dark axis convention (shared with the NVDA opening chart),
+    # applied per-subplot AFTER T.style() so BOTH columns pick up the
+    # darker spine uniformly:
+    #   • left y-spine + bottom x-spine only (no top/right box)
+    #   • slate-600 tone (#475569) at 1.2 px
+    #   • darkened zero-line — shared "sea level" across every figure
+    AXIS_SPINE_COLOR = "#475569"
+    AXIS_SPINE_WIDTH = 1.2
     for col in (1, 2):
         combined.update_yaxes(
-            zeroline=True, zerolinecolor="#dddddd", zerolinewidth=1,
+            showline=True, linecolor=AXIS_SPINE_COLOR, linewidth=AXIS_SPINE_WIDTH,
+            mirror=False,
+            zeroline=True, zerolinecolor=AXIS_SPINE_COLOR, zerolinewidth=1.5,
             ticksuffix="%", tickfont=dict(size=T.fonts.axis_tick),
             row=1, col=col,
         )
         combined.update_xaxes(
+            showline=True, linecolor=AXIS_SPINE_COLOR, linewidth=AXIS_SPINE_WIDTH,
+            mirror=False,
             title=None, tickfont=dict(size=T.fonts.axis_tick),
             row=1, col=col,
         )
     combined.update_yaxes(title="Cumulative Return (%)", row=1, col=1)
 
-    T.style(combined)
-
+    # Subplot-title annotations (per-panel "TICKER +X.X% gross") sit at the
+    # top of each subplot domain.  Nudge them ABOVE the plot area so they
+    # can't collide with the gross-reference line/label drawn near y_max.
     for ann in combined.layout.annotations:
         if ann.text in subplot_titles:
-            ann.y = (ann.y or 1.0) - 0.04
+            ann.y = (ann.y or 1.0) + 0.02   # lift clear of the plot
             ann.yanchor = "bottom"
 
     combined.update_layout(
@@ -117,7 +151,7 @@ def render_waterfall_compare(
             font=dict(size=20, color=T.palette.navy),
         ),
         height=height, width=width,
-        margin=dict(t=120, b=55, l=75, r=40),
+        margin=dict(t=140, b=55, l=75, r=40),
         showlegend=False,
         plot_bgcolor="white",
         paper_bgcolor="white",
