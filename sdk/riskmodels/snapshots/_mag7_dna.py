@@ -178,12 +178,27 @@ def render_mag7_dna(
         (f"<b>{title}</b><br>" if title else "")
         + f"<span style='font-size:{_subtitle_pt}px;color:{pal.teal};font-weight:normal'>{subtitle}</span>"
     )
+    # Main header via layout.title (centered, paper-coord, y controls vertical
+    # placement within the expanded top margin). Keeping it out of annotations
+    # avoids collisions with the per-panel subplot titles at domain y=1.03.
+    _layout_title = dict(text="")
+    if _title_html.strip():
+        _layout_title = dict(
+            text=_title_html,
+            x=0.5,
+            xref="paper",
+            xanchor="center",
+            y=0.965,
+            yref="container",
+            yanchor="top",
+            pad=dict(t=18, b=0),
+            font=dict(family=fnt.family, size=_main_title_pt, color=pal.navy),
+        )
+
     fig.update_layout(
         barmode="stack",
         bargap=0.32,
-        # Header drawn as annotation (below): layout.title.x + xaxis.domain is unreliable
-        # pre-export; xref="x", x=0 locks to the σ = 0% line on the DNA panel.
-        title=dict(text=""),
+        title=_layout_title,
         legend=dict(
             orientation="h",
             yanchor="top",
@@ -195,25 +210,13 @@ def render_mag7_dna(
         ),
         showlegend=True,
         height=height, width=width,
-        # t was inflated for layout.title; annotation + lower y tightens header↔panel gap.
-        margin=dict(t=198, b=152, l=72, r=52),
+        # Widened top margin: main title + per-panel subplot titles each need
+        # their own vertical band. 260px = main title ~(18 + 2*30) + subplot
+        # title band ~40px + breathing room.
+        margin=dict(t=260, b=152, l=72, r=52),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
-
-    if _title_html.strip():
-        fig.add_annotation(
-            x=0,
-            xref="x",
-            y=0.965,
-            yref="paper",
-            text=_title_html,
-            showarrow=False,
-            xanchor="center",
-            yanchor="top",
-            align="center",
-            font=dict(family=fnt.family, size=_main_title_pt, color=pal.navy),
-        )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.write_image(str(out_path), scale=scale)
