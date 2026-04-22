@@ -114,26 +114,45 @@ def render_mag7_dna(
     out_path = Path(out_path)
     pal = T.palette
     fnt = T.fonts
+    # Larger type for print / PDF embedding (headers + all axis copy).
+    _axis_title_sz = max(16, fnt.axis_label + 5)
+    _axis_tick_sz = max(14, fnt.axis_tick + 4)
+    _dna_ytick_sz = max(16, _axis_tick_sz + 2)
+
+    _sub_left = "<b>Per-ticker DNA</b> — σ-scaled risk attribution"
+    # Two lines + wider col-2 so the right header is not clipped at the panel edge.
+    _sub_right = (
+        f"<b>{diversification_title}</b><br>"
+        "<span style='font-size:92%'>naive vs diversified</span>"
+    )
 
     if diversification is not None:
         fig = make_subplots(
             rows=1, cols=2,
-            column_widths=[0.76, 0.24],
-            horizontal_spacing=0.07,
-            subplot_titles=[
-                "<b>Per-ticker DNA</b> — σ-scaled variance decomposition",
-                f"<b>{diversification_title}</b> — naive vs diversified",
-            ],
+            column_widths=[0.72, 0.28],
+            horizontal_spacing=0.055,
+            subplot_titles=[_sub_left, _sub_right],
         )
-        _add_dna_panel(fig, rows, annotation_mode, col=1)
-        _add_diversification_panel(fig, diversification, col=2)
-        for ann in fig.layout.annotations:
-            if ann.text and ann.text.startswith("<b>"):
-                ann.yanchor = "bottom"
-                ann.font = dict(family=fnt.family, size=12, color=pal.text_mid)
+        _add_dna_panel(
+            fig, rows, annotation_mode, col=1,
+            axis_title_size=_axis_title_sz,
+            axis_tick_size=_axis_tick_sz,
+            y_category_size=_dna_ytick_sz,
+        )
+        _add_diversification_panel(
+            fig, diversification, col=2,
+            axis_title_size=_axis_title_sz,
+            axis_tick_size=_axis_tick_sz,
+        )
+        _style_mag7_subplot_titles(fig, _sub_left, _sub_right, fnt, pal)
     else:
         fig = make_subplots(rows=1, cols=1)
-        _add_dna_panel(fig, rows, annotation_mode, col=1)
+        _add_dna_panel(
+            fig, rows, annotation_mode, col=1,
+            axis_title_size=_axis_title_sz,
+            axis_tick_size=_axis_tick_sz,
+            y_category_size=_dna_ytick_sz,
+        )
 
     T.style(fig)
 
@@ -142,42 +161,59 @@ def render_mag7_dna(
     # which only targets subplot 1 and would otherwise leave subplot 2
     # with the global Tufte-faint axis).
     n_cols = 2 if diversification is not None else 1
+    _spine_w = 0.45  # ~60% thinner than 1.2px Tufte default read
     for col_idx in range(1, n_cols + 1):
         fig.update_xaxes(
-            showline=True, linecolor="#475569", linewidth=1.2, mirror=False,
+            showline=True, linecolor="#475569", linewidth=_spine_w, mirror=False,
             row=1, col=col_idx,
         )
         fig.update_yaxes(
-            showline=True, linecolor="#475569", linewidth=1.2, mirror=False,
+            showline=True, linecolor="#475569", linewidth=_spine_w, mirror=False,
             row=1, col=col_idx,
         )
 
+    _main_title_pt = max(26, fnt.page_title + 8)
+    _subtitle_pt = max(16, fnt.body + 4)
+    _title_html = (
+        (f"<b>{title}</b><br>" if title else "")
+        + f"<span style='font-size:{_subtitle_pt}px;color:{pal.teal};font-weight:normal'>{subtitle}</span>"
+    )
     fig.update_layout(
         barmode="stack",
         bargap=0.32,
-        title=dict(
-            text=(
-                (f"<b>{title}</b><br>" if title else "")
-                + f"<span style='font-size:13px;color:{pal.teal};font-weight:normal'>{subtitle}</span>"
-            ),
-            x=0.01, xanchor="left",
-            y=0.965, yanchor="top",
-            font=dict(size=18, color=pal.navy),
-        ),
+        # Header drawn as annotation (below): layout.title.x + xaxis.domain is unreliable
+        # pre-export; xref="x", x=0 locks to the σ = 0% line on the DNA panel.
+        title=dict(text=""),
         legend=dict(
             orientation="h",
-            yanchor="bottom", y=-0.16,
+            yanchor="top",
+            y=-0.18,
             xanchor="center", x=0.5,
             bgcolor="rgba(0,0,0,0)", borderwidth=0,
-            font=dict(size=fnt.body),
+            font=dict(size=max(14, fnt.body + 3), family=fnt.family),
             traceorder="normal",
         ),
         showlegend=True,
         height=height, width=width,
-        margin=dict(t=95, b=100, l=70, r=40),
+        # t was inflated for layout.title; annotation + lower y tightens header↔panel gap.
+        margin=dict(t=198, b=152, l=72, r=52),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
+
+    if _title_html.strip():
+        fig.add_annotation(
+            x=0,
+            xref="x",
+            y=0.965,
+            yref="paper",
+            text=_title_html,
+            showarrow=False,
+            xanchor="center",
+            yanchor="top",
+            align="center",
+            font=dict(family=fnt.family, size=_main_title_pt, color=pal.navy),
+        )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.write_image(str(out_path), scale=scale)
@@ -186,7 +222,52 @@ def render_mag7_dna(
 
 # ── Per-ticker DNA panel ───────────────────────────────────────────────────
 
-def _add_dna_panel(fig: go.Figure, rows: list[dict[str, Any]], annotation_mode: str, *, col: int) -> None:
+def _style_mag7_subplot_titles(
+    fig: go.Figure,
+    left_html: str,
+    right_html: str,
+    fnt: Any,
+    pal: Any,
+) -> None:
+    """Left panel title: left-aligned over its x-domain. Right: centered, two-line safe."""
+    _st_font = dict(family=fnt.family, size=max(17, fnt.panel_title + 4), color=pal.text_dark, weight=600)
+    _st_font_r = {**_st_font, "size": max(15, fnt.panel_title + 2)}
+    # make_subplots(subplot_titles=…) prepends title annotations; do not rely on
+    # string equality (Plotly may normalize HTML) — avoids duplicate/garbled titles.
+    _ann = fig.layout.annotations
+    if len(_ann) >= 2:
+        _ann[0].update(
+            text=left_html,
+            xref="x domain",
+            yref="y domain",
+            x=0.0,
+            xanchor="left",
+            y=1.03,
+            yanchor="bottom",
+            font=_st_font,
+        )
+        _ann[1].update(
+            text=right_html,
+            xref="x2 domain",
+            yref="y2 domain",
+            x=0.5,
+            xanchor="center",
+            y=1.04,
+            yanchor="bottom",
+            font=_st_font_r,
+        )
+
+
+def _add_dna_panel(
+    fig: go.Figure,
+    rows: list[dict[str, Any]],
+    annotation_mode: str,
+    *,
+    col: int,
+    axis_title_size: int,
+    axis_tick_size: int,
+    y_category_size: int,
+) -> None:
     pal = T.palette
     fnt = T.fonts
     colors = _layer_colors()
@@ -226,15 +307,25 @@ def _add_dna_panel(fig: go.Figure, rows: list[dict[str, Any]], annotation_mode: 
         range=[0, x_max],
         ticksuffix="%",
         title=dict(
-            text="Annualized σ of total return; segments = σ × variance share",
-            font=dict(size=fnt.axis_label, color=pal.text_mid),
+            text=(
+                "Annualized σ of total return<br>"
+                "<span style='font-size:92%'>segments = σ × explained-risk share</span>"
+            ),
+            standoff=10,
+            font=dict(
+                size=axis_title_size, color=pal.text_dark, family=fnt.family, weight=600,
+            ),
         ),
-        tickfont=dict(size=fnt.axis_tick),
+        tickfont=dict(
+            family=fnt.family, size=axis_tick_size, color=pal.text_dark, weight=600,
+        ),
         row=1, col=col,
     )
     fig.update_yaxes(
         autorange="reversed",
-        tickfont=dict(family=fnt.family, size=12, color=pal.navy),
+        tickfont=dict(
+            family=fnt.family, size=y_category_size, color=pal.navy, weight=600,
+        ),
         row=1, col=col,
     )
     _ = annotation_mode  # kept for backwards compat; right-rail labels removed
@@ -242,7 +333,14 @@ def _add_dna_panel(fig: go.Figure, rows: list[dict[str, Any]], annotation_mode: 
 
 # ── Diversification panel ──────────────────────────────────────────────────
 
-def _add_diversification_panel(fig: go.Figure, div: dict[str, Any], *, col: int) -> None:
+def _add_diversification_panel(
+    fig: go.Figure,
+    div: dict[str, Any],
+    *,
+    col: int,
+    axis_title_size: int,
+    axis_tick_size: int,
+) -> None:
     """Two stacked bars: naive (weighted sum) vs adjusted (correlation-diversified)."""
     pal = T.palette
     fnt = T.fonts
@@ -272,10 +370,12 @@ def _add_diversification_panel(fig: go.Figure, div: dict[str, Any], *, col: int)
                 legendgroup=layer_label[key],
                 showlegend=False,   # already in left-panel legend
                 hovertemplate=f"<b>%{{x}}</b><br>{layer_label[key]}: %{{y:.1f}}%<extra></extra>",
-                text=[f"{vals[0]:.0f}%" if vals[0] >= 4 else "",
-                      f"{vals[1]:.0f}%" if vals[1] >= 4 else ""],
+                text=[
+                    f"{vals[0]:.0f}%" if vals[0] >= 4 else None,
+                    f"{vals[1]:.0f}%" if vals[1] >= 4 else None,
+                ],
                 textposition="inside",
-                insidetextfont=dict(color="white", size=fnt.body),
+                insidetextfont=dict(color="white", size=max(13, fnt.body + 2)),
                 cliponaxis=False,
             ),
             row=1, col=col,
@@ -289,7 +389,7 @@ def _add_diversification_panel(fig: go.Figure, div: dict[str, Any], *, col: int)
             text=f"<b>{tot:.0f}%</b>",
             showarrow=False, yanchor="bottom", yshift=3,
             xref=_axis_ref("x", col), yref=_axis_ref("y", col),
-            font=dict(family=fnt.family, size=fnt.body + 1, color=pal.navy),
+            font=dict(family=fnt.family, size=fnt.body + 4, color=pal.navy, weight=600),
         )
 
     # Credit callout sits below the right panel's x-tick labels, above the
@@ -300,29 +400,42 @@ def _add_diversification_panel(fig: go.Figure, div: dict[str, Any], *, col: int)
     if total_credit is not None:
         try:
             credit_pct = float(total_credit) * 100
+            # Paper coords: keeps callout under the right panel without domain
+            # math that can mis-place text (e.g. stray glyphs in a far corner).
             fig.add_annotation(
-                x=0.5, y=-0.16,
+                xref="paper",
+                yref="paper",
+                x=0.86,
+                y=0.055,
                 text=(f"<span style='color:{pal.green}'>▼</span> "
                       f"<b>{credit_pct:.0f}% diversification credit</b>"),
-                showarrow=False, xanchor="center", yanchor="top",
-                xref=f"{_axis_ref('x', col)} domain",
-                yref=f"{_axis_ref('y', col)} domain",
-                font=dict(family=fnt.family, size=13, color=pal.navy),
+                showarrow=False,
+                xanchor="center",
+                yanchor="bottom",
+                font=dict(family=fnt.family, size=15, color=pal.navy, weight=600),
             )
         except (TypeError, ValueError):
             pass
 
     y_top = max(naive_totals) * 1.18 if any(naive_totals) else 100
     fig.update_xaxes(
-        tickfont=dict(family=fnt.family, size=11, color=pal.navy),
+        tickfont=dict(
+            family=fnt.family, size=axis_tick_size, color=pal.text_dark, weight=600,
+        ),
         row=1, col=col,
     )
     fig.update_yaxes(
         range=[0, y_top],
         ticksuffix="%",
-        title=dict(text="Explained Risk",
-                   font=dict(size=fnt.axis_label, color=pal.text_mid)),
-        tickfont=dict(size=fnt.axis_tick),
+        title=dict(
+            text="Explained Risk",
+            font=dict(
+                size=axis_title_size, color=pal.text_dark, family=fnt.family, weight=600,
+            ),
+        ),
+        tickfont=dict(
+            family=fnt.family, size=axis_tick_size, color=pal.text_dark, weight=600,
+        ),
         row=1, col=col,
     )
 
