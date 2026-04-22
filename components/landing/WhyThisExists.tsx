@@ -13,7 +13,7 @@ export default function WhyThisExists() {
 
         <ul className="mx-auto mt-8 grid max-w-3xl gap-3 text-left sm:grid-cols-1">
           {[
-            'Every position is split into 4 additive layers.',
+            'Every stock splits into 4 additive layers.',
             'Each layer maps to a tradable instrument.',
             'The output is directly actionable &mdash; no post-processing, no factor mystery.',
           ].map((line) => (

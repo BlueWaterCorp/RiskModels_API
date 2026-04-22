@@ -37,8 +37,8 @@ def render_waterfall_compare(
     *,
     title: str | None = None,
     subtitle: str | None = None,
-    width: int = 1200,
-    height: int = 560,
+    width: int = 1240,
+    height: int = 580,
     horizontal_spacing: float = 0.09,
     scale: int = 2,
     color_remap: dict[str, str] | None = None,
@@ -116,42 +116,77 @@ def render_waterfall_compare(
     #   • slate-600 tone (#475569) at 1.2 px
     #   • darkened zero-line — shared "sea level" across every figure
     AXIS_SPINE_COLOR = "#475569"
-    AXIS_SPINE_WIDTH = 1.2
+    AXIS_SPINE_WIDTH = 0.5
+    _tick = dict(
+        size=max(14, T.fonts.axis_tick + 3),
+        color=T.palette.text_dark,
+        family=T.fonts.family,
+        weight=600,
+    )
     for col in (1, 2):
         combined.update_yaxes(
             showline=True, linecolor=AXIS_SPINE_COLOR, linewidth=AXIS_SPINE_WIDTH,
             mirror=False,
             zeroline=True, zerolinecolor=AXIS_SPINE_COLOR, zerolinewidth=1.5,
-            ticksuffix="%", tickfont=dict(size=T.fonts.axis_tick),
+            ticksuffix="%", tickfont=_tick,
             row=1, col=col,
         )
         combined.update_xaxes(
             showline=True, linecolor=AXIS_SPINE_COLOR, linewidth=AXIS_SPINE_WIDTH,
             mirror=False,
-            title=None, tickfont=dict(size=T.fonts.axis_tick),
+            title=None, tickfont=_tick,
             row=1, col=col,
         )
     combined.update_yaxes(title="Cumulative Return (%)", row=1, col=1)
 
-    # Subplot-title annotations (per-panel "TICKER +X.X% gross") sit at the
-    # top of each subplot domain.  Nudge them ABOVE the plot area so they
-    # can't collide with the gross-reference line/label drawn near y_max.
-    for ann in combined.layout.annotations:
-        if ann.text in subplot_titles:
-            ann.y = (ann.y or 1.0) + 0.02   # lift clear of the plot
-            ann.yanchor = "bottom"
+    # Per-panel titles: anchor to each subplot's x-domain so they center over
+    # the bars (paper coords track the full row including y-axis labels).
+    _panel_title_font = dict(
+        size=max(22, T.fonts.page_title + 4),
+        color=T.palette.navy,
+        family=T.fonts.family,
+        weight=600,
+    )
+    # make_subplots prepends exactly these two annotations; string matching fails
+    # when Plotly normalizes HTML (misplaced titles → clipping / stray text).
+    _ann = combined.layout.annotations
+    if len(_ann) >= 2:
+        _ann[0].update(
+            text=subplot_titles[0],
+            xref="x domain",
+            yref="y domain",
+            x=0.5,
+            xanchor="center",
+            y=1.08,
+            yanchor="bottom",
+            font=_panel_title_font,
+        )
+        _ann[1].update(
+            text=subplot_titles[1],
+            xref="x2 domain",
+            yref="y2 domain",
+            x=0.5,
+            xanchor="center",
+            y=1.08,
+            yanchor="bottom",
+            font=_panel_title_font,
+        )
 
     combined.update_layout(
         barmode="stack",
         bargap=0.28,
         title=dict(
             text=_build_header(title, subtitle),
-            x=0.01, xanchor="left",
-            y=0.97, yanchor="top",
-            font=dict(size=20, color=T.palette.navy),
+            xref="paper",
+            x=0.5,
+            xanchor="center",
+            y=0.97,
+            yanchor="top",
+            pad=dict(t=10, b=6),
+            font=dict(size=21, color=T.palette.navy),
         ),
         height=height, width=width,
-        margin=dict(t=140, b=55, l=75, r=40),
+        margin=dict(t=158, b=64, l=82, r=52),
         showlegend=False,
         plot_bgcolor="white",
         paper_bgcolor="white",
@@ -167,11 +202,11 @@ def _gross_pct(p: P1Data) -> float:
 
 
 def _panel_title(ticker: str, gross_pct: float) -> str:
-    color = T.palette.green if gross_pct >= 0 else T.palette.orange
+    # Uniform navy weight (matches subplot annotation font); no lighter “gross”.
     return (
-        f"<b>{ticker}</b>  "
-        f"<span style='color:{color};font-weight:600'>{gross_pct:+.1f}%</span> "
-        f"<span style='color:{T.palette.text_mid};font-weight:normal;font-size:12px'>gross</span>"
+        f"<b>{ticker}</b>&nbsp;&nbsp;"
+        f"<b>{gross_pct:+.1f}%</b>&nbsp;&nbsp;"
+        f"<b>gross</b>"
     )
 
 
@@ -231,7 +266,7 @@ def _build_header(title: str | None, subtitle: str | None) -> str:
     lines.append(f"<b>{title}</b>" if title else "<b>Cumulative Return Decomposition</b>")
     if subtitle:
         lines.append(
-            f"<span style='font-size:13px;color:{T.palette.teal};font-weight:normal'>"
+            f"<span style='font-size:14px;color:{T.palette.teal};font-weight:normal'>"
             f"{subtitle}</span>"
         )
     return "<br>".join(lines)
