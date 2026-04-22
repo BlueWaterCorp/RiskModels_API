@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
@@ -327,6 +328,15 @@ class RiskModelsClient:
         nocache: bool | None = None,
         validate: ValidateMode | None = None,
     ) -> pd.DataFrame:
+        """Daily returns time series for a stock or ETF.
+
+        Calls ``GET /ticker-returns``. The endpoint accepts **both stocks and ETFs**:
+        stocks return gross returns plus rolling hedge ratios / explained-risk
+        columns; ETFs (e.g. ``SPY``, ``XLK``) return date / returns_gross /
+        price_close with the L1/L2/L3 columns set to ``None`` because ETFs are
+        not factor-decomposed. The response's ``asset_type`` field distinguishes
+        the two.
+        """
         t, _ = resolve_ticker(ticker, self)
         params: dict[str, Any] = {"ticker": t, "years": years, "format": format}
         if limit is not None:
@@ -334,10 +344,12 @@ class RiskModelsClient:
         if nocache is not None:
             params["nocache"] = nocache
         mode = validate if validate is not None else self._validate_default
+        asset_type: str | None = None
         if format == "json":
             body, hdr_lineage, _r = self._transport.request("GET", "/ticker-returns", params=params)
             meta = body.get("_metadata") if isinstance(body, dict) else None
             lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+            asset_type = body.get("asset_type") if isinstance(body, dict) else None
             df = ticker_returns_json_to_dataframe(body)
         else:
             content, lineage, _r = self._transport.request(
@@ -376,6 +388,8 @@ class RiskModelsClient:
             last = df.iloc[-1].to_dict()
             run_validation(last, mode=mode, er_tolerance=self._er_tolerance)
         attach_sdk_metadata(df, lineage, kind="ticker_returns")
+        if asset_type is not None:
+            df.attrs["asset_type"] = asset_type
         return df
 
     def get_returns(
@@ -385,15 +399,19 @@ class RiskModelsClient:
         years: int = 1,
         format: FormatType = "json",
     ) -> pd.DataFrame | dict[str, Any]:
-        t, _ = resolve_ticker(ticker, self)
-        params: dict[str, Any] = {"ticker": t, "years": years, "format": format}
-        if format == "json":
-            body, _lineage, _ = self._transport.request("GET", "/returns", params=params)
-            return body
-        content, lineage, _ = self._transport.request("GET", "/returns", params=params, expect_json=False)
-        df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
-        attach_sdk_metadata(df, lineage, kind="returns")
-        return df
+        """DEPRECATED: alias for :meth:`get_ticker_returns`.
+
+        The underlying ``/returns`` route was removed; this wrapper now calls
+        ``/ticker-returns``, which returns a superset of the old payload
+        (gross returns + rolling hedge ratios) and also accepts ETFs.
+        """
+        warnings.warn(
+            "client.get_returns() is deprecated; call client.get_ticker_returns() "
+            "instead. /ticker-returns now accepts both stocks and ETFs.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_ticker_returns(ticker, years=years, format=format)
 
     def get_etf_returns(
         self,
@@ -402,14 +420,19 @@ class RiskModelsClient:
         years: int = 1,
         format: FormatType = "json",
     ) -> pd.DataFrame | dict[str, Any]:
-        params: dict[str, Any] = {"ticker": symbol, "years": years, "format": format}
-        if format == "json":
-            body, lineage, _ = self._transport.request("GET", "/etf-returns", params=params)
-            return body
-        content, lineage, _ = self._transport.request("GET", "/etf-returns", params=params, expect_json=False)
-        df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
-        attach_sdk_metadata(df, lineage, kind="etf_returns")
-        return df
+        """DEPRECATED: alias for :meth:`get_ticker_returns`.
+
+        The underlying ``/etf-returns`` route was removed. ETF returns now flow
+        through ``/ticker-returns`` (served from ``ds_etf.zarr``); L1/L2/L3
+        columns will be ``None`` since ETFs are not factor-decomposed.
+        """
+        warnings.warn(
+            "client.get_etf_returns() is deprecated; call client.get_ticker_returns() "
+            "instead. /ticker-returns now serves ETFs from ds_etf.zarr.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_ticker_returns(symbol, years=years, format=format)
 
     def get_plaid_holdings(self) -> dict[str, Any]:
         """GET /plaid/holdings — investment holdings synced via Plaid for the authenticated user.

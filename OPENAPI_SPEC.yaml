@@ -790,6 +790,13 @@ components:
           type: string
         ticker:
           type: string
+        asset_type:
+          type: string
+          enum: [stock, etf]
+          description: >
+            Returned for every response. ETF responses populate `date`,
+            `returns_gross`, and `price_close` only; all L1/L2/L3 columns are
+            `null` because ETFs are not factor-decomposed.
         periodicity:
           type: string
           example: daily
@@ -808,12 +815,16 @@ components:
           example: SPY
         sector_etf:
           type: string
+          nullable: true
+          description: Null for ETF tickers (e.g. `SPY` itself).
           example: SOXX
         subsector_etf:
           type: string
+          nullable: true
           example: XSD
         universe:
           type: string
+          description: "`US_EQUITY` for stocks, `US_ETF` for ETFs."
           example: US_EQUITY
 
     BatchHedgeRatios:
@@ -2354,11 +2365,15 @@ paths:
 
   /ticker-returns:
     get:
-      summary: Daily returns time series with rolling hedge ratios
+      summary: Daily returns time series with rolling hedge ratios (stocks and ETFs)
       description: >
-        Returns a daily time series of gross stock returns (`returns_gross`) and V3 rolling
+        Returns a daily time series of gross returns (`returns_gross`) and, for stocks, V3 rolling
         hedge ratios and explained-risk fields per day: `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`,
         `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er`. Up to 15 years per request.
+        **ETFs are supported**: requests for ETF tickers (e.g. `SPY`, `XLK`) return
+        `date`, `returns_gross`, and `price_close` sourced from `ds_etf.zarr`; L1/L2/L3 columns
+        are `null` because ETFs are not factor-decomposed. The response includes
+        `asset_type` ("stock" or "etf") so clients can branch cleanly.
         For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use
         `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent`
         block; billing is applied server-side. Cost: $0.005/call regardless of years pulled.
@@ -2474,9 +2489,10 @@ paths:
     get:
       summary: Daily gross returns time series (single ticker)
       description: >
-        DEPRECATED — route not currently implemented. Use `/ticker-returns` for the
-        equivalent data (daily gross returns plus hedge ratios). Returns 404 today;
-        will be removed from the spec once the SDK drops its `get_returns` wrapper.
+        DEPRECATED — use `/ticker-returns` instead. `/ticker-returns` now accepts
+        both stocks and ETFs and returns daily gross returns plus (for stocks)
+        rolling hedge ratios. This route returns 404 today and will be removed from
+        the spec once the SDK drops its `get_returns` wrapper.
       deprecated: true
       operationId: getReturns
       tags: [Risk Metrics, Deprecated]
@@ -2568,10 +2584,11 @@ paths:
     get:
       summary: Daily gross returns time series (ETF)
       description: >
-        DEPRECATED — route not currently implemented (returns 404). ETF returns
-        will be served from the GCP zarr store in a follow-up; until then there
-        is no equivalent endpoint (ETFs are excluded from `/ticker-returns`
-        because they are not L3-decomposed).
+        DEPRECATED — use `/ticker-returns` with the ETF ticker (e.g. `SPY`, `XLK`).
+        ETF returns now flow through `/ticker-returns`, served from `ds_etf.zarr`;
+        L1/L2/L3 columns are `null` for ETFs because they are not factor-decomposed.
+        This route returns 404 today and will be removed from the spec once the SDK
+        drops its `get_etf_returns` wrapper.
       deprecated: true
       operationId: getEtfReturns
       tags: [Risk Metrics]

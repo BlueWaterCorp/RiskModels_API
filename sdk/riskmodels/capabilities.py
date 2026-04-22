@@ -194,8 +194,13 @@ _SDK_METHODS: list[dict[str, Any]] = [
     {
         "name": "get_returns",
         "aliases": [],
-        "summary": "Daily gross returns only (single name).",
-        "description": "Simpler return series without rolling hedge columns.",
+        "summary": "DEPRECATED: alias for get_ticker_returns.",
+        "description": (
+            "Forwards to get_ticker_returns (which now supports both stocks and ETFs). "
+            "Emits DeprecationWarning."
+        ),
+        "deprecated": True,
+        "replacement": "get_ticker_returns",
         "scopes": ["ticker-returns"],
         "parameters": [
             {"name": "ticker", "type": "string", "required": True, "description": "Symbol."},
@@ -212,22 +217,27 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "required": False,
                 "default": "json",
                 "enum": ["json", "parquet", "csv"],
-                "description": "json returns dict; parquet/csv returns DataFrame.",
+                "description": "json/parquet/csv.",
             },
         ],
         "returns": {
-            "type": "dict | pandas.DataFrame",
-            "description": "JSON body or tabular export.",
+            "type": "pandas.DataFrame",
+            "description": "Same shape as get_ticker_returns.",
         },
     },
     {
         "name": "get_etf_returns",
         "aliases": [],
-        "summary": "Daily gross returns for an ETF symbol.",
-        "description": "Same shape as get_returns for ETF tickers.",
+        "summary": "DEPRECATED: alias for get_ticker_returns (pass the ETF ticker).",
+        "description": (
+            "Forwards to get_ticker_returns. ETF returns are now served from "
+            "ds_etf.zarr via /ticker-returns; L1/L2/L3 columns are null for ETFs."
+        ),
+        "deprecated": True,
+        "replacement": "get_ticker_returns",
         "scopes": ["ticker-returns"],
         "parameters": [
-            {"name": "symbol", "type": "string", "required": True, "description": "ETF ticker."},
+            {"name": "symbol", "type": "string", "required": True, "description": "ETF ticker (e.g. SPY)."},
             {
                 "name": "years",
                 "type": "integer",
@@ -241,10 +251,10 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "required": False,
                 "default": "json",
                 "enum": ["json", "parquet", "csv"],
-                "description": "json returns dict; parquet/csv returns DataFrame.",
+                "description": "json/parquet/csv.",
             },
         ],
-        "returns": {"type": "dict | pandas.DataFrame", "description": "JSON or tabular."},
+        "returns": {"type": "pandas.DataFrame", "description": "Same shape as get_ticker_returns."},
     },
     {
         "name": "get_plaid_holdings",

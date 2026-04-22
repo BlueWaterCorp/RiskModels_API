@@ -5,6 +5,7 @@ import {
   resolveSymbolByTicker,
   fetchHistoryWithSource,
   pivotHistory,
+  type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody, buildEtag, maybe304 } from "@/lib/dal/response-headers";
@@ -54,24 +55,32 @@ export const GET = withBilling(
     startDate.setFullYear(startDate.getFullYear() - years);
     const startDateStr = startDate.toISOString().split("T")[0];
 
+    // ETFs live in ds_etf.zarr and have no L1/L2/L3 decomposition. Only request
+    // daily-role keys for them — the hedge/returns zarr stores don't carry ETF
+    // rows and asking skips a pointless open. Stocks still get the full pull.
+    const isEtf = symbolRecord.asset_type === "etf";
+    const keys: V3MetricKey[] = isEtf
+      ? ["returns_gross", "price_close"]
+      : [
+          "returns_gross",
+          "price_close",
+          "l1_cfr",
+          "l2_cfr",
+          "l3_cfr",
+          "l3_mkt_hr",
+          "l3_sec_hr",
+          "l3_sub_hr",
+          "l3_mkt_er",
+          "l3_sec_er",
+          "l3_sub_er",
+          "l3_res_er",
+        ];
+
     const fetchStart = performance.now();
     let rows: Awaited<ReturnType<typeof fetchHistoryWithSource>>["rows"];
     let dataSource: Awaited<ReturnType<typeof fetchHistoryWithSource>>["dataSource"];
     try {
-      ({ rows, dataSource } = await fetchHistoryWithSource(symbolRecord.symbol, [
-        "returns_gross",
-        "price_close",
-        "l1_cfr",
-        "l2_cfr",
-        "l3_cfr",
-        "l3_mkt_hr",
-        "l3_sec_hr",
-        "l3_sub_hr",
-        "l3_mkt_er",
-        "l3_sec_er",
-        "l3_sub_er",
-        "l3_res_er",
-      ], {
+      ({ rows, dataSource } = await fetchHistoryWithSource(symbolRecord.symbol, keys, {
         periodicity: "daily",
         startDate: startDateStr,
         orderBy: "asc",
@@ -108,16 +117,16 @@ export const GET = withBilling(
       date: row.teo,
       returns_gross: row.returns_gross ?? null,
       price_close: row.price_close ?? null,
-      l1_cfr: row.l1_cfr ?? null,
-      l2_cfr: row.l2_cfr ?? null,
-      l3_cfr: row.l3_cfr ?? null,
-      l3_mkt_hr: row.l3_mkt_hr ?? null,
-      l3_sec_hr: row.l3_sec_hr ?? null,
-      l3_sub_hr: row.l3_sub_hr ?? null,
-      l3_mkt_er: row.l3_mkt_er ?? null,
-      l3_sec_er: row.l3_sec_er ?? null,
-      l3_sub_er: row.l3_sub_er ?? null,
-      l3_res_er: row.l3_res_er ?? null,
+      l1_cfr: isEtf ? null : row.l1_cfr ?? null,
+      l2_cfr: isEtf ? null : row.l2_cfr ?? null,
+      l3_cfr: isEtf ? null : row.l3_cfr ?? null,
+      l3_mkt_hr: isEtf ? null : row.l3_mkt_hr ?? null,
+      l3_sec_hr: isEtf ? null : row.l3_sec_hr ?? null,
+      l3_sub_hr: isEtf ? null : row.l3_sub_hr ?? null,
+      l3_mkt_er: isEtf ? null : row.l3_mkt_er ?? null,
+      l3_sec_er: isEtf ? null : row.l3_sec_er ?? null,
+      l3_sub_er: isEtf ? null : row.l3_sub_er ?? null,
+      l3_res_er: isEtf ? null : row.l3_res_er ?? null,
     }));
 
     const ext = format === "parquet" ? "parquet" : format === "csv" ? "csv" : "json";
@@ -136,14 +145,22 @@ export const GET = withBilling(
       jsonPayload: {
         symbol: symbolRecord.symbol,
         ticker: symbolRecord.ticker,
+        asset_type: symbolRecord.asset_type,
         periodicity: "daily",
         data,
-        meta: {
-          market_etf: "SPY",
-          sector_etf: symbolRecord.sector_etf || "XLK",
-          subsector_etf: symbolRecord.subsector_etf ?? null,
-          universe: "US_EQUITY",
-        },
+        meta: isEtf
+          ? {
+              market_etf: "SPY",
+              sector_etf: null,
+              subsector_etf: null,
+              universe: "US_ETF",
+            }
+          : {
+              market_etf: "SPY",
+              sector_etf: symbolRecord.sector_etf || "XLK",
+              subsector_etf: symbolRecord.subsector_etf ?? null,
+              universe: "US_EQUITY",
+            },
         _metadata: buildMetadataBody(metadata, {
           data_source: dataSource,
           range: histRange[0] && histRange[1] ? histRange : undefined,

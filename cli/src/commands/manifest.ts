@@ -71,35 +71,16 @@ const TOOLS: Array<{
   },
   {
     name: "riskmodels_ticker_returns",
-    description: "Daily returns with L3 hedge ratio columns. GET /api/ticker-returns",
+    description:
+      "Daily returns for a stock or ETF. Stocks include L1/L2/L3 hedge ratio + explained-risk columns; ETFs return date/returns_gross/price_close (L* columns are null). GET /api/ticker-returns",
     method: "GET",
     path: "/api/ticker-returns",
     properties: {
-      ticker: { type: "string", description: "Stock symbol" },
+      ticker: { type: "string", description: "Stock or ETF symbol (e.g. NVDA, SPY)" },
       years: { type: "integer", description: "Years of history (1–15)" },
       format: { type: "string", description: "json | parquet | csv", enum: ["json", "parquet", "csv"] },
     },
     required: ["ticker"],
-  },
-  {
-    name: "riskmodels_returns_simple",
-    description: "Daily gross returns (single ticker). GET /api/returns",
-    method: "GET",
-    path: "/api/returns",
-    properties: {
-      ticker: { type: "string", description: "Stock symbol" },
-    },
-    required: ["ticker"],
-  },
-  {
-    name: "riskmodels_etf_returns",
-    description: "Daily ETF gross returns. GET /api/etf-returns",
-    method: "GET",
-    path: "/api/etf-returns",
-    properties: {
-      etf: { type: "string", description: "ETF symbol, e.g. SPY" },
-    },
-    required: ["etf"],
   },
   {
     name: "riskmodels_l3_decomposition",
