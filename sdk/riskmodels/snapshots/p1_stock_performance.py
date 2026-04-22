@@ -573,9 +573,22 @@ def build_p1_data_from_stock_context(
     )
 
 
-def get_data_for_p1(ticker: str, client: Any, *, years: int = 2) -> "P1Data":
-    """Fetch everything needed for the P1 Stock Performance snapshot (API)."""
-    ctx = fetch_stock_context(ticker, client, years=years, include_spy=True)
+def get_data_for_p1(
+    ticker: str,
+    client: Any,
+    *,
+    years: int = 2,
+    as_of: str | None = None,
+) -> "P1Data":
+    """Fetch everything needed for the P1 Stock Performance snapshot (API).
+
+    When ``as_of`` is set, all daily time series in the returned P1Data
+    (including ``l3_er_series``) are sliced to dates <= as_of. Point-in-time
+    fields (rankings, full_metrics) remain as-of the API's current data date.
+    """
+    ctx = fetch_stock_context(
+        ticker, client, years=years, include_spy=True, as_of=as_of,
+    )
     return build_p1_data_from_stock_context(ctx, client)
 
 

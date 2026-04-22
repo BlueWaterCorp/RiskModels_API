@@ -659,16 +659,31 @@ class RiskModelsClient:
         *,
         market_factor_etf: str | None = None,
         years: int | None = None,
+        as_of: str | None = None,
         validate: ValidateMode | None = None,
     ) -> pd.DataFrame:
+        """GET /l3-decomposition — daily L1/L2/L3 ER + HR decomposition.
+
+        When ``as_of`` (YYYY-MM-DD) is set, the returned DataFrame is sliced to
+        rows with date <= as_of. The request is auto-bumped to ``years=2`` if
+        needed so there is enough history to slice. Validation (if enabled)
+        runs against the post-slice last row so tolerance checks reflect the
+        pinned as-of state.
+        """
         t, _ = resolve_ticker(ticker, self)
+        effective_years = years
+        if as_of is not None and (effective_years is None or effective_years < 2):
+            effective_years = 2
         params: dict[str, Any] = {"ticker": t}
         if market_factor_etf:
             params["market_factor_etf"] = market_factor_etf
-        if years is not None:
-            params["years"] = years
+        if effective_years is not None:
+            params["years"] = effective_years
         body, lineage, _ = self._transport.request("GET", "/l3-decomposition", params=params)
         df = l3_decomposition_json_to_dataframe(body)
+        if as_of is not None and not df.empty and "date" in df.columns:
+            dates = df["date"].astype(str).str[:10]
+            df = df[dates <= as_of].reset_index(drop=True)
         mode = validate if validate is not None else self._validate_default
         if not df.empty and mode != "off":
             last = df.iloc[-1].to_dict()
