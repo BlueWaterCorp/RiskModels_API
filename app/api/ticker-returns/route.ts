@@ -113,21 +113,29 @@ export const GET = withBilling(
       pivoted.length > 0
         ? [pivoted[0]!.teo, pivoted[pivoted.length - 1]!.teo]
         : ["", ""];
-    const data = pivoted.map((row) => ({
-      date: row.teo,
-      returns_gross: row.returns_gross ?? null,
-      price_close: row.price_close ?? null,
-      l1_cfr: isEtf ? null : row.l1_cfr ?? null,
-      l2_cfr: isEtf ? null : row.l2_cfr ?? null,
-      l3_cfr: isEtf ? null : row.l3_cfr ?? null,
-      l3_mkt_hr: isEtf ? null : row.l3_mkt_hr ?? null,
-      l3_sec_hr: isEtf ? null : row.l3_sec_hr ?? null,
-      l3_sub_hr: isEtf ? null : row.l3_sub_hr ?? null,
-      l3_mkt_er: isEtf ? null : row.l3_mkt_er ?? null,
-      l3_sec_er: isEtf ? null : row.l3_sec_er ?? null,
-      l3_sub_er: isEtf ? null : row.l3_sub_er ?? null,
-      l3_res_er: isEtf ? null : row.l3_res_er ?? null,
-    }));
+    // ETF rows carry only what applies to ETFs. Stock rows keep the full
+    // L1/L2/L3 surface. Keys missing from the row map get omitted from JSON,
+    // dropped from the parquet/csv schema, and turn into absent columns
+    // in the SDK DataFrame — no more all-None L* noise for SPY et al.
+    const data = pivoted.map((row) => {
+      const base: Record<string, string | number | null> = {
+        date: row.teo,
+        returns_gross: row.returns_gross ?? null,
+        price_close: row.price_close ?? null,
+      };
+      if (isEtf) return base;
+      base.l1_cfr = row.l1_cfr ?? null;
+      base.l2_cfr = row.l2_cfr ?? null;
+      base.l3_cfr = row.l3_cfr ?? null;
+      base.l3_mkt_hr = row.l3_mkt_hr ?? null;
+      base.l3_sec_hr = row.l3_sec_hr ?? null;
+      base.l3_sub_hr = row.l3_sub_hr ?? null;
+      base.l3_mkt_er = row.l3_mkt_er ?? null;
+      base.l3_sec_er = row.l3_sec_er ?? null;
+      base.l3_sub_er = row.l3_sub_er ?? null;
+      base.l3_res_er = row.l3_res_er ?? null;
+      return base;
+    });
 
     const ext = format === "parquet" ? "parquet" : format === "csv" ? "csv" : "json";
     const filename = `${ticker}_returns_${years}y.${ext}`;

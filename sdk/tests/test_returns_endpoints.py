@@ -76,19 +76,14 @@ def test_get_returns_forwards_to_ticker_returns_parquet():
 
 
 def test_get_etf_returns_forwards_to_ticker_returns_json():
-    # ETF payload: L1/L2/L3 fields are null (ETFs aren't factor-decomposed),
-    # but returns_gross + price_close are populated from ds_etf.zarr.
+    # ETF payload: only date / returns_gross / price_close are emitted — the
+    # L1/L2/L3 fields are omitted entirely, not returned as null, since ETFs
+    # are not factor-decomposed.
     payload = {
         "ticker": "SPY",
         "asset_type": "etf",
         "data": [
-            {
-                "date": "2026-01-01",
-                "returns_gross": 0.001,
-                "price_close": 500.0,
-                "l1_cfr": None,
-                "l3_mkt_hr": None,
-            }
+            {"date": "2026-01-01", "returns_gross": 0.001, "price_close": 500.0},
         ],
     }
 
@@ -103,6 +98,20 @@ def test_get_etf_returns_forwards_to_ticker_returns_json():
     assert out.iloc[0]["returns_gross"] == pytest.approx(0.001)
     # asset_type flows through as a DataFrame attr so downstream code can branch
     assert out.attrs.get("asset_type") == "etf"
+    # L* columns should be absent from the ETF frame — not present-but-null
+    for col in (
+        "l1_cfr",
+        "l2_cfr",
+        "l3_cfr",
+        "l3_mkt_hr",
+        "l3_sec_hr",
+        "l3_sub_hr",
+        "l3_mkt_er",
+        "l3_sec_er",
+        "l3_sub_er",
+        "l3_res_er",
+    ):
+        assert col not in out.columns, f"ETF frame should not carry {col}"
 
 
 def test_get_etf_returns_forwards_to_ticker_returns_csv():
