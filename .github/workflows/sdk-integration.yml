@@ -1,4 +1,4 @@
-# Live SDK calls against riskmodels.app. Requires repo secret TEST_API_KEY (same as smoke-test.yml).
+# Live SDK calls against riskmodels.app. Requires repo secret TEST_API_SECRET (same as smoke-test.yml).
 # Runs on a daily schedule (after production smoke) and manual dispatch. Skips entirely if secret is unset.
 
 name: SDK Integration (live API)
@@ -15,16 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Job-level `if: secrets.*` is unreliable; gate on a secret passed through `env` instead.
-      - name: Check for TEST_API_KEY
+      - name: Check for TEST_API_SECRET
         id: gate
         env:
-          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+          TEST_API_SECRET: ${{ secrets.TEST_API_SECRET }}
         run: |
-          if [ -n "$TEST_API_KEY" ]; then
+          if [ -n "$TEST_API_SECRET" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: set repo secret TEST_API_KEY to run live integration tests."
+            echo "Skipping: set repo secret TEST_API_SECRET to run live integration tests."
           fi
 
       - name: Checkout
@@ -43,7 +43,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         working-directory: sdk
         env:
-          RISKMODELS_API_KEY: ${{ secrets.TEST_API_KEY }}
+          RISKMODELS_API_KEY: ${{ secrets.TEST_API_SECRET }}
         run: |
           python -m pip install -U pip
           pip install -e ".[dev]"
