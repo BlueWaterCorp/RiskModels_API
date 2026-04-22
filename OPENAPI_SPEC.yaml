@@ -662,7 +662,13 @@ components:
 
     TickerReturnsDailyRow:
       type: object
-      description: One trading day in `GET /ticker-returns` `data` array (V3 security_history fields).
+      description: >
+        One trading day in `GET /ticker-returns` `data` array. Stock rows populate the full
+        V3 security_history field set below. **ETF rows are a strict subset — only `date`,
+        `returns_gross`, and `price_close` are emitted** (the L1/L2/L3 hedge/ER properties
+        are omitted entirely from ETF rows rather than returned as `null`, since ETFs are
+        not factor-decomposed). Branch on the response's top-level `asset_type` before
+        reading L* fields.
       properties:
         date:
           type: string
