@@ -149,12 +149,21 @@ def _resolve_company_name(ticker: str, client: Any = None) -> str:
     return ticker
 
 
+def _slice_to_as_of(df: pd.DataFrame | None, as_of: str) -> pd.DataFrame | None:
+    """Return rows with date <= as_of. No-op if df is None/empty or lacks a date column."""
+    if df is None or df.empty or "date" not in df.columns:
+        return df
+    dates = df["date"].astype(str).str[:10]
+    return df[dates <= as_of].reset_index(drop=True)
+
+
 def fetch_stock_context(
     ticker: str,
     client: Any,
     *,
     years: int = 1,
     include_spy: bool = True,
+    as_of: str | None = None,
 ) -> StockContext:
     """Fetch all data needed for stock-level snapshots.
 
@@ -171,12 +180,22 @@ def fetch_stock_context(
     client      : RiskModelsClient instance.
     years       : Trailing window in years (default 1).
     include_spy : Also fetch SPY returns for relative performance (default True).
+    as_of       : ISO date (YYYY-MM-DD). When set, every daily time series
+                  (history, sector/subsector/SPY returns) is sliced to rows
+                  with date <= as_of, and ``teo`` is set to as_of. Point-in-time
+                  fields returned by the API (full_metrics, rankings) remain
+                  as-of the API's current data date — callers requiring strict
+                  point-in-time semantics across all fields must use the zarr
+                  path. The years request is auto-bumped to >= 2 so sufficient
+                  history is available for slicing.
 
     Returns
     -------
     StockContext with all fields populated.
     """
     ticker = ticker.upper()
+    if as_of is not None:
+        years = max(years, 2)
 
     # ── 1. Batch analyze → full_metrics + meta ──────────────────────
     batch_resp = client.batch_analyze(
@@ -224,6 +243,16 @@ def fetch_stock_context(
     sector_returns = _safe_etf_returns(client, sector_etf, years, "sector")
     subsector_returns = _safe_etf_returns(client, subsector_etf, years, "subsector")
     spy_returns = _safe_etf_returns(client, "SPY", years, "market") if include_spy else None
+
+    if as_of is not None:
+        history = _slice_to_as_of(history, as_of)
+        sector_returns = _slice_to_as_of(sector_returns, as_of)
+        subsector_returns = _slice_to_as_of(subsector_returns, as_of)
+        spy_returns = _slice_to_as_of(spy_returns, as_of)
+        if history is not None and not history.empty:
+            teo = str(history["date"].iloc[-1])[:10]
+        else:
+            teo = as_of
 
     return StockContext(
         ticker=ticker,
