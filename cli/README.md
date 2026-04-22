@@ -40,7 +40,7 @@ Config file: `~/.config/riskmodels/config.json`
 | `riskmodels metrics <ticker>` | Latest snapshot (`GET /api/metrics/{ticker}`) |
 | `riskmodels batch analyze` | `POST /api/batch/analyze` (`--tickers`, `--metrics`, `--years`) |
 | `riskmodels portfolio risk-index` | `POST /api/portfolio/risk-index` (`--file` or `--stdin`) |
-| `riskmodels returns ticker\|stock\|etf` | `GET /api/ticker-returns`, `/returns`, `/etf-returns` |
+| `riskmodels returns ticker <SYMBOL>` | `GET /api/ticker-returns` — daily returns for both stocks and ETFs. Stocks include L1/L2/L3 hedge ratios + explained-risk columns; ETFs (e.g. `SPY`) return date/returns_gross/price_close (L* null). `stock` / `etf` subcommands are deprecated aliases. |
 | `riskmodels l3 <ticker>` | `GET /api/l3-decomposition` |
 | `riskmodels correlation post\|metrics` | `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation` |
 | `riskmodels macro-factors` | `GET /api/macro-factors` (daily macro returns, no ticker) |

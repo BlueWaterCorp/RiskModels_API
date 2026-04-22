@@ -211,10 +211,12 @@ Each function takes an `ax` (Axes) and data, applies Consultant Navy styling:
 | R2 | `get_ticker_returns(years=1)` | — |
 | R3 | `batch_analyze(positions, ["full_metrics"])` | HHI, cap-weights |
 | R4 | `batch_analyze(positions, ["returns"])` | Rolling β, vol contribution |
-| P1 | `get_ticker_returns(years=1)`, `get_etf_returns(sector)`, `get_etf_returns("SPY")` | Trailing return windows, relative returns |
-| P2 | `get_ticker_returns(years=3)`, `get_etf_returns(sector, 3)`, `get_etf_returns("SPY", 3)` | Cumulative, drawdown, rolling Sharpe, monthly grid |
+| P1 | `get_ticker_returns(ticker, years=1)`, `get_ticker_returns(sector_etf)`, `get_ticker_returns("SPY")` | Trailing return windows, relative returns |
+| P2 | `get_ticker_returns(ticker, years=3)`, `get_ticker_returns(sector_etf, years=3)`, `get_ticker_returns("SPY", years=3)` | Cumulative, drawdown, rolling Sharpe, monthly grid |
 | P3 | `batch_analyze(positions, ["full_metrics", "returns"])` | Weighted contribution |
-| P4 | `batch_analyze(positions, ["returns"])`, `get_etf_returns("SPY")` | Cum portfolio return, rolling excess |
+| P4 | `batch_analyze(positions, ["returns"])`, `get_ticker_returns("SPY")` | Cum portfolio return, rolling excess |
+
+> **Note.** `/ticker-returns` accepts both stocks and ETFs. ETF responses return `date`, `returns_gross`, and `price_close` (L1/L2/L3 columns are null since ETFs aren't factor-decomposed) — served from `ds_etf.zarr`. The deprecated `get_etf_returns()` / `get_returns()` SDK wrappers now forward to `get_ticker_returns()` with a `DeprecationWarning`.
 
 ---
 
