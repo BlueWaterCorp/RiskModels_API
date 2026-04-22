@@ -8,7 +8,7 @@ The quickstart notebook reads the API key from the environment when set (so CI a
 |----------|--------|
 | `RISKMODELS_API_KEY` | Same name as the Python SDK; put in `.env.local` for `npm run test:notebook` |
 | `RISKMODELS_QUICKSTART_API_KEY` | Explicit name for the harness only |
-| `TEST_API_KEY` | GitHub Actions smoke / notebook workflows |
+| `TEST_API_SECRET` | GitHub Actions smoke / notebook workflows |
 
 The harness loads **`.env.local`** automatically (does not override vars already exported).
 

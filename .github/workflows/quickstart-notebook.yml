@@ -28,6 +28,6 @@ jobs:
 
       - name: Execute quickstart notebook
         env:
-          RISKMODELS_QUICKSTART_API_KEY: ${{ secrets.TEST_API_KEY }}
+          RISKMODELS_QUICKSTART_API_KEY: ${{ secrets.TEST_API_SECRET }}
           MPLBACKEND: Agg
         run: python scripts/execute_quickstart_notebook.py
