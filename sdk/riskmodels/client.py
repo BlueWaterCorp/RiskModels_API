@@ -115,6 +115,27 @@ class RiskModelsClient:
 
     @classmethod
     def from_env(cls) -> RiskModelsClient:
+        """Create a client from environment variables.
+
+        Reads credentials from the environment (or ``.env`` / ``.env.local`` files):
+
+        - ``RISKMODELS_API_KEY`` — static Bearer token (simplest option).
+        - ``RISKMODELS_CLIENT_ID`` + ``RISKMODELS_CLIENT_SECRET`` — OAuth2 client
+          credentials (~15 min JWT refresh).
+        - ``RISKMODELS_BASE_URL`` — optional, defaults to ``https://riskmodels.app/api``.
+        - ``RISKMODELS_OAUTH_SCOPE`` — optional OAuth scope override.
+
+        Returns:
+            Configured :class:`RiskModelsClient` instance.
+
+        Raises:
+            ValueError: If neither API key nor OAuth credentials are set.
+
+        Example:
+            >>> import os
+            >>> os.environ["RISKMODELS_API_KEY"] = "rm_agent_live_..."
+            >>> client = RiskModelsClient.from_env()
+        """
         from .env import load_repo_dotenv
 
         load_repo_dotenv()
@@ -143,6 +164,7 @@ class RiskModelsClient:
         raise ValueError("Set RISKMODELS_API_KEY or RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET")
 
     def close(self) -> None:
+        """Close the underlying HTTP transport and release connections."""
         self._transport.close()
 
     def __enter__(self) -> RiskModelsClient:
@@ -153,6 +175,7 @@ class RiskModelsClient:
 
     @property
     def stock(self) -> Any:
+        """Namespace for single-stock charts and analytics (e.g., ``client.stock.current.plot(...)``)."""
         from .performance.stock import StockNamespace
 
         if not hasattr(self, "_stock_ns"):
@@ -161,6 +184,7 @@ class RiskModelsClient:
 
     @property
     def portfolio(self) -> Any:
+        """Namespace for portfolio-level charts and risk cascades (e.g., ``client.portfolio.current.plot(...)``)."""
         from .performance.portfolio import PortfolioNamespace
 
         if not hasattr(self, "_portfolio_ns"):
@@ -169,6 +193,7 @@ class RiskModelsClient:
 
     @property
     def pri(self) -> Any:
+        """Namespace for Portfolio Risk Index analytics and time series."""
         from .performance.pri import PRINamespace
 
         if not hasattr(self, "_pri_ns"):
@@ -177,6 +202,7 @@ class RiskModelsClient:
 
     @property
     def insights(self) -> Any:
+        """Namespace for AI-generated risk insights and commentary."""
         from .insights import InsightsNamespace
 
         if not hasattr(self, "_insights_ns"):
@@ -199,6 +225,27 @@ class RiskModelsClient:
         to_stdout: bool = True,
         live: bool = False,
     ) -> str | dict[str, Any]:
+        """List all available SDK methods, parameters, and capabilities.
+
+        Outputs a structured digest of every method on the client — names,
+        parameter types, defaults, enums, and return types. Designed for both
+        human exploration and AI agent tool synthesis (Claude Desktop, MCP).
+
+        Args:
+            format: Output format — ``"markdown"`` (default, human-readable) or
+                ``"json"`` (machine-readable, includes ``tool_definition_hints``).
+            to_stdout: If True (default), print the output. If False, only return it.
+            live: If True, ping the API to verify connectivity and append
+                lineage from a live ``/tickers`` call.
+
+        Returns:
+            Markdown string or JSON dict describing all available methods.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> client.discover()  # prints markdown to stdout
+            >>> spec = client.discover(format="json", to_stdout=False)
+        """
         spec = dict(DISCOVER_SPEC)
         if live:
             try:
@@ -223,8 +270,38 @@ class RiskModelsClient:
         as_dataframe: bool = False,
         validate: ValidateMode | None = None,
     ) -> dict[str, Any] | pd.DataFrame:
+        """Fetch the latest risk snapshot for a single ticker.
+
+        Returns hedge ratios (HR), explained risk (ER) fractions, volatility,
+        market cap, and close price from the most recent trading day. This is
+        the primary method for single-stock risk analysis.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., ``"NVDA"``, ``"AAPL"``). Aliases
+                like ``"GOOGL"`` are resolved automatically (→ ``"GOOG"``).
+            as_dataframe: If True, return a one-row DataFrame with SDK metadata
+                in ``df.attrs`` (``legend``, ``riskmodels_semantic_cheatsheet``,
+                ``riskmodels_lineage``). If False (default), return a plain dict.
+            validate: Override the client's default validation mode (``"warn"``,
+                ``"error"``, or ``"off"``). Checks ER sum ≈ 1.0 and HR signs.
+
+        Returns:
+            Dict or one-row DataFrame with ~33 fields including:
+
+            - **Hedge ratios**: ``l1_market_hr``, ``l3_market_hr``, ``l3_sector_hr``,
+              ``l3_subsector_hr`` — dollars of ETF to trade per $1 of stock.
+            - **Explained risk**: ``l3_market_er``, ``l3_sector_er``,
+              ``l3_subsector_er``, ``l3_residual_er`` — variance fractions summing to ~1.0.
+            - **Betas**: ``l1_mkt_beta``, ``l2_sec_beta``, ``l3_sub_beta``.
+            - **Price/vol**: ``price_close``, ``market_cap``, ``vol_23d``, ``vol_252d_ann``.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> df = client.get_metrics("NVDA", as_dataframe=True)
+            >>> print(f"Market hedge: {df['l3_market_hr'].iloc[0]:.2f}")
+            >>> print(f"Residual risk: {df['l3_residual_er'].iloc[0]:.1%}")
+        """
         t, _ = resolve_ticker(ticker, self)
-        path = f"/metrics/{quote(t, safe='')}"
         body, lineage, _r = self._transport.request("GET", path)
         meta = body.get("_metadata") if isinstance(body, dict) else None
         lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
@@ -245,16 +322,24 @@ class RiskModelsClient:
     ) -> dict[str, Any] | pd.DataFrame:
         """Decompose a single position into four additive ERM3 layers.
 
-        Calls ``POST /decompose`` and returns either the raw JSON body
-        (``as_dataframe=False``, default) or a DataFrame with one row per
-        layer (market / sector / subsector / residual). The DataFrame carries
-        the standard SDK metadata in ``df.attrs`` (``legend``,
-        ``riskmodels_lineage``, ``riskmodels_kind``,
-        ``riskmodels_semantic_cheatsheet``).
+        Args:
+            ticker: Stock ticker symbol (e.g., ``"NVDA"``).
+            as_dataframe: If True, return a 4-row DataFrame (one per layer) with
+                SDK metadata in ``df.attrs``. If False (default), return raw JSON.
 
-        Sign convention: ``hedge[etf] == -exposure[layer].hr``. A positive
-        stock ``hr`` yields a negative ETF dollar ratio (short the ETF to
-        hedge a long position).
+        Returns:
+            Dict or DataFrame with columns: ``ticker``, ``layer``, ``er``
+            (explained risk fraction), ``hr`` (hedge ratio), ``hedge_etf``
+            (which ETF to trade), ``data_as_of``.
+
+            Sign convention: ``hedge[etf] == -exposure[layer].hr``. A positive
+            stock ``hr`` yields a negative ETF dollar ratio (short the ETF to
+            hedge a long position).
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> df = client.decompose("NVDA", as_dataframe=True)
+            >>> print(df[["layer", "er", "hr", "hedge_etf"]])
         """
 
         t, _ = resolve_ticker(ticker, self)
@@ -295,13 +380,27 @@ class RiskModelsClient:
         method: str = "pearson",
         validate: ValidateMode | None = None,
     ) -> pd.DataFrame:
-        """One-row snapshot: `get_metrics` + macro factor correlations (two HTTP calls).
+        """Fetch risk metrics and macro factor correlations in one call.
 
-        Merges lineage from both responses. Columns are ERM3 metrics plus ``macro_corr_*`` and
-        macro parameters (see ``SHORT_MACRO_CORR_LEGEND`` / ``COMBINED_ERM3_MACRO_LEGEND``).
+        Combines :meth:`get_metrics` and :meth:`get_factor_correlation_single`
+        into a single one-row DataFrame.
 
-        Use ``return_type="gross"`` for total-equity co-movement vs macro, or ``"l3_residual"``
-        for the idiosyncratic sleeve vs macro factors.
+        Args:
+            ticker: Stock ticker symbol (e.g., ``"NVDA"``).
+            factors: List of macro factor keys (e.g., ``["vix", "bitcoin"]``).
+                Defaults to all factors if not specified.
+            return_type: Which return series to correlate — ``"gross"`` or
+                ``"l3_residual"`` (default) for idiosyncratic vs macro.
+            window_days: Trailing window in trading days (default 252).
+            method: ``"pearson"`` (default) or ``"spearman"``.
+            validate: Override the client's default ER/HR validation mode.
+
+        Returns:
+            One-row DataFrame with ERM3 metrics + ``macro_corr_*`` columns.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> df = client.get_metrics_with_macro_correlation("NVDA", factors=["vix", "bitcoin"])
         """
         df_m = self.get_metrics(ticker, as_dataframe=True, validate=validate)
         df_c = self.get_factor_correlation_single(
@@ -453,13 +552,17 @@ class RiskModelsClient:
         return self.get_ticker_returns(symbol, years=years, format=format)
 
     def get_plaid_holdings(self) -> dict[str, Any]:
-        """GET /plaid/holdings — investment holdings synced via Plaid for the authenticated user.
+        """Fetch investment holdings synced via Plaid for the authenticated user.
 
-        Returns the API JSON (``holdings``, ``accounts``, ``securities``, ``summary``, ``_metadata``, ``_agent``).
+        Returns brokerage holdings linked through the Plaid flow in the web app.
 
-        **API keys:** if the key has explicit OAuth-style scopes, it must include ``plaid:holdings``
-        (or ``*``). Keys with no scopes keep legacy full access. Link flow uses session auth
-        (``POST /plaid/link-token`` and ``POST /plaid/exchange-public-token`` in the browser).
+        Returns:
+            Dict with keys: ``holdings``, ``accounts``, ``securities``,
+            ``summary``, ``_metadata``, ``_agent``.
+
+        Example:
+            >>> data = client.get_plaid_holdings()
+            >>> print(f"Holdings count: {len(data.get('holdings', []))}")
         """
         body, _lineage, _ = self._transport.request("GET", "/plaid/holdings")
         return body
@@ -471,11 +574,20 @@ class RiskModelsClient:
         time_series: bool = False,
         years: int = 1,
     ) -> dict[str, Any]:
-        """POST /portfolio/risk-index — holdings-weighted L3 ER decomposition (+ optional time series).
+        """Compute holdings-weighted L3 explained risk decomposition for a portfolio.
 
-        If ``positions`` is empty (e.g. user linked Plaid but the first holdings sync has not
-        finished), the API returns HTTP 200 with ``status: "syncing"`` and a ``message`` instead
-        of ``portfolio_risk_index``. Treat that as a non-error polling state, not a failed chart.
+        Args:
+            positions: List of dicts or tuples with ticker and weight.
+            time_series: If True, include historical time series (default False).
+            years: Years of history for the time series (default 1).
+
+        Returns:
+            Dict with ``portfolio_risk_index`` containing weighted ER
+            decomposition.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> result = client.post_portfolio_risk_index([("NVDA", 0.5), ("AAPL", 0.5)])
         """
         rows: list[dict[str, Any]] = []
         for p in positions:
@@ -506,12 +618,25 @@ class RiskModelsClient:
         window: RankingWindow | None = None,
         as_dataframe: bool = True,
     ) -> dict[str, Any] | pd.DataFrame:
-        """GET /rankings/{ticker} — cross-sectional rank grid for one name.
+        """Retrieve cross-sectional rank grid for a single ticker.
 
-        Each row is one (metric, cohort, window) with ``rank_ordinal``, ``cohort_size``,
-        ``rank_percentile`` (100 = best). When ``as_dataframe=True`` (default), the frame
-        includes ``ranking_key`` (``{window}_{cohort}_{metric}``), ``attrs['legend']``,
-        ``riskmodels_warnings`` for small cohorts (N < 10), and ``riskmodels_rankings_headline``.
+        Shows where a stock sits relative to peers across multiple dimensions
+        and time windows. Percentile 100 = best.
+
+        Args:
+            ticker: Stock ticker symbol.
+            metric: Filter to a specific metric (e.g., ``"gross_return"``).
+            cohort: Filter to ``"universe"``, ``"sector"``, or ``"subsector"``.
+            window: Filter to ``"1d"``, ``"21d"``, ``"63d"``, or ``"252d"``.
+            as_dataframe: If True (default), return DataFrame with SDK attrs.
+
+        Returns:
+            DataFrame with columns: ``metric``, ``cohort``, ``window``,
+            ``rank_ordinal``, ``cohort_size``, ``rank_percentile``.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> df = client.get_rankings("NVDA")
         """
         t, _ = resolve_ticker(ticker, self)
         params: dict[str, str] = {}
@@ -555,9 +680,21 @@ class RiskModelsClient:
         limit: int = 10,
         as_dataframe: bool = True,
     ) -> dict[str, Any] | pd.DataFrame:
-        """GET /rankings/top — leaderboard (best ``rank_ordinal`` first at latest ``teo``).
+        """Retrieve the leaderboard — top-ranked tickers for a given metric/cohort/window.
 
-        Requires ``metric``, ``cohort``, and ``window``. ``limit`` is clamped server-side to 1–100.
+        Args:
+            metric: Ranking metric (e.g., ``"sector_residual"``, ``"gross_return"``).
+            cohort: Peer group (``"universe"``, ``"sector"``, ``"subsector"``).
+            window: Time window (``"1d"``, ``"21d"``, ``"63d"``, ``"252d"``).
+            limit: Max results (1–100, default 10).
+            as_dataframe: If True (default), return DataFrame.
+
+        Returns:
+            DataFrame with ``ticker``, ``rank_ordinal``, ``rank_percentile``.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> top = client.get_top_rankings(metric="sector_residual", cohort="universe", window="252d")
         """
         cap = max(1, min(100, int(limit)))
         params = {
@@ -616,10 +753,23 @@ class RiskModelsClient:
         min_percentile: float = 90.0,
         limit: int = 500,
     ) -> pd.DataFrame:
-        """Subset leaderboard rows with ``rank_percentile`` >= ``min_percentile`` (default top decile).
+        """Filter the leaderboard to stocks above a percentile threshold.
 
-        Fetches up to ``min(limit, 100)`` names from ``get_top_rankings`` (API cap) then filters
-        client-side. Rows with null ``rank_percentile`` are dropped.
+        Args:
+            metric: Ranking metric (e.g., ``"sector_residual"``).
+            cohort: Peer group (``"universe"``, ``"sector"``, ``"subsector"``).
+            window: Time window (``"1d"``, ``"21d"``, ``"63d"``, ``"252d"``).
+            min_percentile: Minimum percentile to include (default 90.0 = top decile).
+            limit: Max names to fetch before filtering (capped to 100 by API).
+
+        Returns:
+            DataFrame of tickers meeting the percentile threshold.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> top_decile = client.filter_universe_by_ranking(
+            ...     metric="gross_return", cohort="universe", window="252d"
+            ... )
         """
         cap = max(1, min(100, int(limit)))
         df = self.get_top_rankings(
@@ -680,13 +830,35 @@ class RiskModelsClient:
         as_of: str | None = None,
         validate: ValidateMode | None = None,
     ) -> pd.DataFrame:
-        """GET /l3-decomposition — daily L1/L2/L3 ER + HR decomposition.
+        """Retrieve daily historical L3 hedge ratios and explained risk decomposition.
+
+        Returns a time series showing how a stock's risk decomposition evolves
+        over time — useful for tracking regime changes, sector rotation, or
+        shifts in idiosyncratic risk.
 
         When ``as_of`` (YYYY-MM-DD) is set, the returned DataFrame is sliced to
         rows with date <= as_of. The request is auto-bumped to ``years=2`` if
         needed so there is enough history to slice. Validation (if enabled)
         runs against the post-slice last row so tolerance checks reflect the
         pinned as-of state.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., ``"NVDA"``).
+            market_factor_etf: Override the market factor ETF (default SPY).
+            years: Years of history (default determined by server, typically 1).
+            as_of: Optional YYYY-MM-DD date to pin the decomposition to a
+                specific historical point. Slices results to date <= as_of.
+            validate: Override the client's default ER/HR validation mode.
+
+        Returns:
+            DataFrame with columns: ``date``, ``l3_market_hr``, ``l3_sector_hr``,
+            ``l3_subsector_hr``, ``l3_market_er``, ``l3_sector_er``,
+            ``l3_subsector_er``, ``l3_residual_er``.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> df = client.get_l3_decomposition("NVDA")
+            >>> print(df[["date", "l3_residual_er"]].tail())
         """
         t, _ = resolve_ticker(ticker, self)
         effective_years = years
@@ -895,6 +1067,24 @@ class RiskModelsClient:
         format: FormatType = "json",
         return_lineage: bool = False,
     ) -> dict[str, Any] | tuple[dict[str, Any], RiskLineage] | tuple[pd.DataFrame, RiskLineage]:
+        """Batch-analyze multiple tickers via POST /batch/analyze.
+
+        Sends up to 100 tickers in a single request. 25% cheaper per position
+        than individual calls.
+
+        Args:
+            tickers: List of ticker symbols (up to 100).
+            metrics: Which metric sets to include.
+            years: Years of history (default 1).
+            format: ``"json"`` (default), ``"parquet"``, or ``"csv"``.
+            return_lineage: If True and ``format="json"``, return ``(body, lineage)``.
+
+        Returns:
+            JSON dict or ``(DataFrame, lineage)`` for parquet/CSV.
+
+        Example:
+            >>> body = client.batch_analyze(["NVDA", "AAPL"], ["full_metrics"])
+        """
         payload = {
             "tickers": [str(x).strip().upper() for x in tickers],
             "metrics": metrics,
@@ -924,6 +1114,24 @@ class RiskModelsClient:
         include_returns_panel: bool = False,
         er_tolerance: float | None = None,
     ) -> Any:
+        """Analyze a weighted portfolio: per-ticker metrics and portfolio-level aggregates.
+
+        Args:
+            positions: Portfolio weights — dict, list of tuples, or list of dicts.
+            metrics: Metric sets to request (default ``["full_metrics", "hedge_ratios"]``).
+            years: Years of history for return-based metrics (default 1).
+            validate: Override ER/HR validation mode.
+            include_returns_panel: If True, attach xarray panel.
+            er_tolerance: Override ER sum tolerance.
+
+        Returns:
+            :class:`PortfolioAnalysis` with ``per_ticker``, ``portfolio_hedge_ratios``,
+            and ``portfolio_l3_er_weighted_mean``.
+
+        Example:
+            >>> pa = client.analyze({"NVDA": 0.5, "AAPL": 0.5})
+            >>> print(pa.portfolio_hedge_ratios)
+        """
         weights = positions_to_weights(positions)
         mlist = list(metrics) if metrics is not None else ["full_metrics", "hedge_ratios"]
         if include_returns_panel and "returns" not in mlist:
@@ -949,7 +1157,18 @@ class RiskModelsClient:
     analyze = analyze_portfolio
 
     def get_metrics_snapshot_pdf(self, ticker: str) -> tuple[bytes, RiskLineage]:
-        """Download single-name risk snapshot PDF (premium endpoint; see OpenAPI)."""
+        """Download a single-name risk snapshot as a PDF report.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., ``"NVDA"``).
+
+        Returns:
+            Tuple of ``(pdf_bytes, lineage)``.
+
+        Example:
+            >>> pdf_bytes, lineage = client.get_metrics_snapshot_pdf("NVDA")
+            >>> Path("nvda_snapshot.pdf").write_bytes(pdf_bytes)
+        """
         t, _ = resolve_ticker(ticker, self)
         path = f"/metrics/{quote(t, safe='')}/snapshot.pdf"
         data, lineage, _r = self._transport.request("GET", path, expect_json=False)
@@ -962,7 +1181,21 @@ class RiskModelsClient:
         title: str | None = None,
         as_of_date: str | None = None,
     ) -> tuple[bytes, RiskLineage]:
-        """POST ``/portfolio/risk-snapshot`` with ``format=pdf`` (premium endpoint)."""
+        """Generate a portfolio risk snapshot as a PDF report.
+
+        Args:
+            positions: Portfolio weights — dict, list of tuples, or list of dicts.
+            title: Optional title for the PDF header.
+            as_of_date: Optional date override (``YYYY-MM-DD``).
+
+        Returns:
+            Tuple of ``(pdf_bytes, lineage)``.
+
+        Example:
+            >>> pdf, _ = client.post_portfolio_risk_snapshot_pdf(
+            ...     [("NVDA", 0.3), ("AAPL", 0.7)], title="My Portfolio"
+            ... )
+        """
         weights = positions_to_weights(positions)
         body: dict[str, Any] = {
             "format": "pdf",
@@ -989,11 +1222,22 @@ class RiskModelsClient:
         include_diversification: bool = False,
         window_days: int = 252,
     ) -> tuple[dict, RiskLineage]:
-        """POST ``/portfolio/risk-snapshot`` with ``format=json``.
+        """Generate a portfolio risk snapshot as structured JSON.
 
-        When *include_diversification* is True, the response includes a
-        ``portfolio_risk_index.diversification`` block with correlation-adjusted
-        ER, diversification credits, and chart-friendly ``layers[]``.
+        Args:
+            positions: Portfolio weights — dict, list of tuples, or list of dicts.
+            title: Optional title for the snapshot.
+            as_of_date: Optional date override (``YYYY-MM-DD``).
+            include_diversification: If True, include diversification metrics.
+            window_days: Trailing window for diversification (default 252).
+
+        Returns:
+            Tuple of ``(data_dict, lineage)``.
+
+        Example:
+            >>> data, lineage = client.post_portfolio_risk_snapshot(
+            ...     {"NVDA": 0.5, "AAPL": 0.5}, include_diversification=True
+            ... )
         """
         weights = positions_to_weights(positions)
         body: dict[str, Any] = {
@@ -1030,6 +1274,19 @@ class RiskModelsClient:
         years: int = 1,
         format: FormatType = "parquet",
     ) -> Any:
+        """Build a multi-dimensional xarray Dataset from batch returns.
+
+        Args:
+            tickers: List of ticker symbols.
+            years: Years of history (default 1).
+            format: Must be ``"parquet"`` (default) or ``"csv"``.
+
+        Returns:
+            ``xarray.Dataset`` with dimensions ``(ticker, date, metric)``.
+
+        Example:
+            >>> ds = client.get_dataset(["NVDA", "AAPL", "MSFT"], years=2)
+        """
         if format == "json":
             raise ValueError("get_dataset requires format='parquet' or 'csv' (use batch_analyze for JSON).")
         out = self.batch_analyze(tickers, ["returns"], years=years, format=format)
@@ -1046,6 +1303,21 @@ class RiskModelsClient:
         include_metadata: bool | None = None,
         as_dataframe: bool = True,
     ) -> pd.DataFrame | list[Any]:
+        """Search the RiskModels ticker universe.
+
+        Args:
+            search: Ticker or company name to search for.
+            mag7: If True, return only the Magnificent 7 stocks.
+            include_metadata: If True, include sector/subsector ETF mappings.
+            as_dataframe: If True (default), return a DataFrame.
+
+        Returns:
+            DataFrame with a ``ticker`` column, or a list if ``as_dataframe=False``.
+
+        Example:
+            >>> client.search_tickers(search="nvidia")
+            >>> client.search_tickers(mag7=True)
+        """
         params: dict[str, Any] = {}
         if search is not None:
             params["search"] = search
