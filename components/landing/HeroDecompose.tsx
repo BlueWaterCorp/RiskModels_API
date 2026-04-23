@@ -20,7 +20,7 @@ const HERO_RESPONSE = `{
 
 /**
  * Agent-first hero: one callable endpoint, live request + response side by
- * side, primary CTA anchors to the MAG7 decompose widget below the fold.
+ * side, primary CTA anchors to the live playground (charts) below the fold.
  */
 export default function HeroDecompose() {
   return (
@@ -39,13 +39,13 @@ export default function HeroDecompose() {
             <span className="text-primary">hedgeable trade.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-zinc-300 sm:text-lg">
-            Decompose any stock into four tradable bets &mdash; market, sector,
-            subsector, and residual &mdash; with exact hedge ratios in one API
-            call.
+            Decouple any US equity into four tradable bets &mdash; market, sector,
+            subsector, and residual &mdash; with ETF hedge ratios returned in one
+            API call.
           </p>
           <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="#decompose-widget"
+              href="#live-playground"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-base font-semibold text-white transition hover:bg-primary/90"
             >
               Try it now <ArrowRight size={18} />
@@ -57,6 +57,16 @@ export default function HeroDecompose() {
               View API docs
             </Link>
           </div>
+          <p className="mt-3 text-center text-xs text-zinc-500">
+            Want the raw JSON widget instead?{' '}
+            <Link
+              href="#decompose-widget"
+              className="font-medium text-zinc-400 underline underline-offset-2 hover:text-zinc-300"
+            >
+              Jump to MAG7 decompose
+            </Link>
+            .
+          </p>
         </div>
 
         <div className="mx-auto mt-10 grid max-w-5xl gap-4 lg:grid-cols-2">

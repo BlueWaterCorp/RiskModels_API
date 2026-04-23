@@ -8,7 +8,7 @@ const ROWS = [
     sector: 0.02,
     subsector: 0.0,
     residual: 0.47,
-    story: 'Mostly market + idiosyncratic',
+    story: 'Mostly market + residual',
     tint: 'border-blue-500/40 bg-blue-500/5',
   },
   {

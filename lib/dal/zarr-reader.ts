@@ -47,7 +47,15 @@ function getGcs(): Storage {
         _storage = new Storage();
       }
     } else {
-      _storage = new Storage();
+      // Prefer an app-only key path: shells often export GOOGLE_APPLICATION_CREDENTIALS
+      // (e.g. from ~/.zshrc) before Next loads .env.local, and dotenv does not override
+      // existing process.env keys — Zarr then authenticates with the wrong file.
+      const keyFile = process.env.RISKMODELS_GCS_KEYFILE?.trim();
+      if (keyFile) {
+        _storage = new Storage({ keyFilename: keyFile });
+      } else {
+        _storage = new Storage();
+      }
     }
   }
   return _storage;
@@ -86,6 +94,15 @@ async function openZarrGroup(objectPrefix: string): Promise<Group<Readable> | nu
     return (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
   } catch {
     console.error("[zarr-internal] open group failed");
+    if (
+      process.env.NODE_ENV === "development" &&
+      !process.env.RISKMODELS_GCS_KEYFILE?.trim() &&
+      !process.env.GCP_SERVICE_ACCOUNT_JSON?.trim()
+    ) {
+      console.warn(
+        "[zarr-internal] dev hint: set RISKMODELS_GCS_KEYFILE in .env.local to the service-account JSON path so GCS auth wins over a stale shell GOOGLE_APPLICATION_CREDENTIALS.",
+      );
+    }
     return null;
   }
 }

@@ -3,11 +3,11 @@ info:
   title: RiskModels API
   version: 3.0.0-agent
   description: >
-    Precision equity risk intelligence platform with AI agent integration.
+    POST /decompose returns variance shares and ETF hedge ratios for any US equity,
+    separating factor exposure from the residual bet so you can hedge what you don't want.
+    Daily history to 2006 across ~3,000 US equities.
 
-    Institutional-grade equity risk analysis for AI agents and quantitative applications.
-    Provides daily factor hedge ratios, explained-risk decompositions, and portfolio-level
-    risk attribution for ~3,000 US equities.
+    Precision equity risk intelligence platform with AI agent integration.
 
 
     **New in v3.0.0-agent:**

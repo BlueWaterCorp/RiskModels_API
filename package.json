@@ -2,10 +2,12 @@
   "name": "riskmodels-api-portal",
   "version": "1.1.0",
   "private": true,
+  "workspaces": ["packages/*"],
   "description": "RiskModels API Developer Portal",
   "scripts": {
     "dev": "next dev",
-    "build": "npm run build:openapi && next build",
+    "build": "npm run build:openapi && npm run build:web-sdk && next build",
+    "build:web-sdk": "npm run build --workspace=@riskmodels/web",
     "vercel:sync-env": "./scripts/sync-env-to-vercel.sh",
     "vercel:sync-env:doppler": "./scripts/doppler-sync-to-vercel.sh",
     "vercel:sync-env:doppler:email": "ALLOWLIST=scripts/doppler-vercel-allowlist-email.txt ./scripts/doppler-sync-to-vercel.sh",
@@ -22,13 +24,15 @@
     "supabase:auth-smtp:resend": "bash ./scripts/supabase-patch-auth-smtp-resend.sh",
     "supabase:auth-smtp:resend:doppler": "bash ./scripts/supabase-auth-smtp-doppler.sh",
     "db:push": "bash ./scripts/check-supabase-cli.sh db push --linked",
-    "db:migration:list": "bash ./scripts/check-supabase-cli.sh migration list --linked"
+    "db:migration:list": "bash ./scripts/check-supabase-cli.sh migration list --linked",
+    "postinstall": "npm run build:web-sdk"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@riskmodels/web": "workspace:*",
     "@next/mdx": "^15.1.0",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^1.0.4",
@@ -60,6 +64,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
+    "recharts": "^2.15.4",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",

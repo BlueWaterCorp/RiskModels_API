@@ -1,6 +1,6 @@
 # riskmodels-cli
 
-Command-line interface for [RiskModels](https://riskmodels.app): call the REST API (metrics, batch, portfolio, returns, rankings, etc.), run billed SQL queries, explore schema in direct (Supabase) mode, check balance, and export agent tool manifests.
+Command-line interface for [RiskModels](https://riskmodels.app): call the REST API (metrics, batch, portfolio, returns, rankings, etc.), run billed SQL queries, explore schema in direct (Supabase) mode, check balance, and export agent tool manifests. Same contract as the Python SDK: **POST /decompose** returns variance shares and ETF hedge ratios per ticker.
 
 ## Install
 

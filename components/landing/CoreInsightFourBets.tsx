@@ -39,9 +39,8 @@ export default function CoreInsightFourBets() {
             <span className="text-primary">four bets.</span>
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
-            Every position is a combination of market, sector, subsector, and
-            idiosyncratic risk. RiskModels makes each layer explicit &mdash; and
-            tradable.
+            Every position decouples into market, sector, subsector, and residual
+            risk. RiskModels makes each layer explicit &mdash; and tradable.
           </p>
         </div>
 

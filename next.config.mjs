@@ -4,6 +4,7 @@ import createMDX from '@next/mdx';
 const nextConfig = {
   pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
   reactStrictMode: true,
+  transpilePackages: ['@riskmodels/web'],
   /** Avoid broken vendor-chunk references for Supabase in server/prerender workers (Navbar pulls auth into every layout). */
   serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr', 'playwright-core'],
   async redirects() {
