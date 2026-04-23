@@ -1,4 +1,4 @@
-"""RiskModels API — Python SDK (ERM3 hedge ratios and explained risk).
+"""RiskModels API — Python SDK (decompose US equities: variance shares, ETF hedge ratios, ERM3).
 
 Contributor recognition is shipped in-package: see ``SDK_CONTRIBUTORS`` and
 ``RiskModelsClient.discover()`` (Markdown / JSON includes a ``contributors`` list).

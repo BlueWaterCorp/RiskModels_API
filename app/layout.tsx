@@ -20,7 +20,8 @@ export const metadata: Metadata = {
     default: 'RiskModels API — Precision Equity Risk Intelligence',
     template: '%s | RiskModels API',
   },
-  description: 'Institutional-grade equity risk analysis API. Daily factor decompositions, hedge ratios, and risk attribution for ~3,000 US equities. AI-agent ready with historical data back to 2006.',
+  description:
+    'Decouple any US equity into four tradable bets — market, sector, subsector, and residual — with ETF hedge ratios in one API call. ~3,000 US equities, daily history to 2006.',
   keywords: ['API', 'risk models', 'equity risk', 'hedge ratios', 'factor analysis', 'quantitative finance', 'AI agents', 'MCP', 'model context protocol', 'OpenAPI', 'ETF hedge', 'factor decomposition', 'Barra alternative', 'quant finance API'],
   authors: [{ name: 'Blue Water Macro Corp' }],
   creator: 'Blue Water Macro Corp',
@@ -30,7 +31,8 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: 'https://riskmodels.app',
     title: 'RiskModels API — Precision Equity Risk Intelligence',
-    description: 'Institutional-grade equity risk analysis API for developers and AI agents',
+    description:
+      'Decouple any US equity into four tradable bets — market, sector, subsector, and residual — with ETF hedge ratios in one API call. ~3,000 US equities, daily history to 2006.',
     siteName: 'RiskModels API',
     images: [{
       url: 'https://riskmodels.app/og-image.png',
@@ -42,7 +44,8 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'RiskModels API',
-    description: 'Institutional-grade equity risk analysis API',
+    description:
+      'Decouple any US equity into four tradable bets. ETF hedge ratios in one API call.',
     images: ['https://riskmodels.app/og-image.png'],
   },
   robots: {
@@ -64,17 +67,13 @@ export default async function RootLayout({
     return (
       <html lang="en" suppressHydrationWarning>
         <head>
-          <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-          />
           <style>{`
             @page { size: A4; margin: 0; }
             html, body { margin: 0; padding: 0; background: white; color: #111827; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           `}</style>
         </head>
-        <body style={{ fontFamily: "'Inter', sans-serif", background: 'white' }}>
+        <body className={inter.className} style={{ background: 'white' }}>
           {children}
         </body>
       </html>

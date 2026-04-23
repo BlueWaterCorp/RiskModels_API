@@ -4,7 +4,7 @@
 
 Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`).
 
-Python SDK for the [RiskModels API](https://riskmodels.app) (ERM3 factor model: hedge ratios, explained risk, batch portfolio analysis).
+Python SDK for the [RiskModels API](https://riskmodels.app): **POST /decompose** returns variance shares and ETF hedge ratios for any US equity, separating factor exposure from the residual bet so you can hedge what you don't want. ERM3 model; batch portfolio analysis included.
 
 ## Install
 

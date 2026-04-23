@@ -1,4 +1,6 @@
 import HeroDecompose from '@/components/landing/HeroDecompose';
+import LivePlaygroundDemo from '@/components/landing/LivePlaygroundDemo';
+import DeveloperPlaygroundSection from '@/components/landing/DeveloperPlaygroundSection';
 import DecomposeWidget from '@/components/landing/DecomposeWidget';
 import WhyThisExists from '@/components/landing/WhyThisExists';
 import OneFunction from '@/components/landing/OneFunction';
@@ -15,6 +17,8 @@ export default function HomePage() {
   return (
     <div className="min-h-screen w-full max-w-[90rem] mx-auto overflow-x-hidden">
       <HeroDecompose />
+      <LivePlaygroundDemo />
+      <DeveloperPlaygroundSection />
       <DecomposeWidget />
       <WhyThisExists />
       <OneFunction />

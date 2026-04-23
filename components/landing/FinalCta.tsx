@@ -14,7 +14,8 @@ export default function FinalCta() {
           <span className="text-primary">you own.</span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-zinc-300 sm:text-lg">
-          Decompose any stock and hedge it instantly.
+          Decouple any stock into four bets and hedge the ones you don&rsquo;t want
+          &mdash; in one API call.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link

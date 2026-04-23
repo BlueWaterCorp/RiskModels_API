@@ -1,5 +1,7 @@
 # RiskModels API MCP Server
 
+**Decompose** a US stock into market, sector, subsector, and residual risk &mdash; with SPY / sector / subsector **ETF hedge ratios**. One call, daily history since 2006.
+
 MCP server that exposes **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), and any other [MCP](https://modelcontextprotocol.io) client. Two classes of tools:
 
 - **Discovery tools** — list endpoints, read capabilities, fetch response schemas (no API key required).

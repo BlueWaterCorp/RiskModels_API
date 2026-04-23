@@ -26,6 +26,10 @@ export default function OneFunction() {
           <p className="mt-3 font-mono text-sm text-zinc-400 sm:text-base">
             POST <span className="text-primary">/decompose</span>
           </p>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
+            Decouple any position into four tradable bets &mdash; one call returns
+            ETF hedge ratios for each layer.
+          </p>
         </div>
 
         <div className="mt-8 grid gap-4 lg:grid-cols-2">

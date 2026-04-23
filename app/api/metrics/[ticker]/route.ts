@@ -9,6 +9,12 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
+import { authenticateRequest } from "@/lib/supabase/auth-helper";
+import { checkPlaygroundMetricsRateLimit } from "@/lib/ratelimit/playground-metrics-rate-limit";
+import {
+  RISKMODELS_PLAYGROUND_HEADER,
+  RISKMODELS_PLAYGROUND_VALUE,
+} from "@/lib/playground-metrics-headers";
 import { parseFormat, formatResponse } from "@/lib/api/format-response";
 import {
   CACHE_TTL,
@@ -78,6 +84,38 @@ export const GET = withBilling(
     }
 
     const { ticker } = validation.data;
+
+    const playground =
+      request.headers.get(RISKMODELS_PLAYGROUND_HEADER) === RISKMODELS_PLAYGROUND_VALUE;
+    if (playground) {
+      const { user } = await authenticateRequest(request);
+      if (!user) {
+        return NextResponse.json(
+          {
+            error: "Unauthorized",
+            message: "Sign in to use the metrics playground rate limit bucket.",
+          },
+          { status: 401, headers: getCorsHeaders(origin) },
+        );
+      }
+      const rl = await checkPlaygroundMetricsRateLimit(user.id);
+      if (!rl.ok) {
+        return NextResponse.json(
+          {
+            error: "Too Many Requests",
+            message: "Playground metrics rate limit exceeded. Try again shortly.",
+            retry_after_sec: rl.retryAfterSec,
+          },
+          {
+            status: 429,
+            headers: {
+              ...getCorsHeaders(origin),
+              "Retry-After": String(rl.retryAfterSec),
+            },
+          },
+        );
+      }
+    }
 
     try {
     console.log(`[Metrics API] Fetching ${ticker} from V3 contract...`);
