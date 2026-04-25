@@ -10,25 +10,25 @@ export default function FinalCta() {
       />
       <div className="relative mx-auto max-w-3xl text-center">
         <h2 className="text-3xl font-bold tracking-tighter text-white sm:text-4xl md:text-5xl">
-          Stop guessing what{' '}
+          Install once. Ask what{' '}
           <span className="text-primary">you own.</span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-zinc-300 sm:text-lg">
-          Decouple any stock into four bets and hedge the ones you don&rsquo;t want
-          &mdash; in one API call.
+          Put RiskModels inside Claude, Cursor, Codex, or VS Code and turn
+          portfolios into chart-ready risk explanations.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
-            href="/get-key"
+            href="/quickstart"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-base font-semibold text-white transition hover:bg-primary/90"
           >
-            Get API key <ArrowRight size={18} />
+            npx riskmodels install <ArrowRight size={18} />
           </Link>
           <Link
-            href="#decompose-widget"
+            href="/get-key"
             className="inline-flex items-center justify-center rounded-lg border border-slate-600/80 bg-[#1e293b] px-7 py-3.5 text-base font-semibold text-white transition hover:bg-[#334155]"
           >
-            Try NVDA example
+            Get API key
           </Link>
         </div>
       </div>

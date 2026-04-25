@@ -1,4 +1,5 @@
 import HeroDecompose from '@/components/landing/HeroDecompose';
+import InstallPathCards from '@/components/landing/InstallPathCards';
 import LivePlaygroundDemo from '@/components/landing/LivePlaygroundDemo';
 import DeveloperPlaygroundSection from '@/components/landing/DeveloperPlaygroundSection';
 import DecomposeWidget from '@/components/landing/DecomposeWidget';
@@ -17,14 +18,17 @@ export default function HomePage() {
   return (
     <div className="min-h-screen w-full max-w-[90rem] mx-auto overflow-x-hidden">
       <HeroDecompose />
-      <LivePlaygroundDemo />
-      <DeveloperPlaygroundSection />
-      <DecomposeWidget />
-      <WhyThisExists />
-      <OneFunction />
+      <div id="install-paths">
+        <InstallPathCards />
+      </div>
       <BuiltForAgents />
       <CoreInsightFourBets />
       <NvdaVsAaplHook />
+      <LivePlaygroundDemo />
+      <WhyThisExists />
+      <OneFunction />
+      <DeveloperPlaygroundSection />
+      <DecomposeWidget />
       <UseCases />
       <PricingApiFirst />
       <TrustCredibility />
