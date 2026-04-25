@@ -1,5 +1,9 @@
 # RiskModels API MCP Server
 
+NPM package: `@riskmodels/mcp`
+
+Release note: publish `@riskmodels/sdk` first, then add the published SDK version as a runtime dependency before publishing this package.
+
 **Decompose** a US stock into market, sector, subsector, and residual risk &mdash; with SPY / sector / subsector **ETF hedge ratios**. One call, daily history since 2006.
 
 MCP server that exposes **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), and any other [MCP](https://modelcontextprotocol.io) client. Two classes of tools:
@@ -102,8 +106,9 @@ This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.j
 
 ### Claude Desktop / `npx` (common mistakes)
 
-- **There is no `mcp` subcommand on the npm package.** The CLI binary is **`riskmodels`** (package name `riskmodels-cli`). Do **not** run `npx -y riskmodels-cli mcp` — that fails with `unknown command 'mcp'`.
+- **There is no `mcp` subcommand on the npm package.** The CLI binary is **`riskmodels`**. Do **not** run `npx -y riskmodels-cli mcp` — that legacy package does not provide the new installer flow.
 - **Use one of these:**
+  - **`npx -y @riskmodels/mcp`** — future published stdio package target used by `npx riskmodels install`.
   - **`riskmodels mcp-config`** — prints a ready-to-paste `mcpServers` block for Claude Desktop (`--client claude-desktop`) or Cursor. Use **`riskmodels mcp-config --embed-key`** only if you want the key in the JSON env block.
   - **`riskmodels mcp`** — runs the stdio MCP server (same as `node mcp/dist/index.js`). Requires `mcp/dist/index.js` to exist (build `mcp/` first), or set **`RISKMODELS_MCP_SERVER_PATH`** to that file.
   - **`node /absolute/path/to/RiskModels_API/mcp/dist/index.js`** — always works if the build exists.

@@ -171,14 +171,14 @@ See [mcp/README.md](./mcp/README.md) for install and config.
 
 ---
 
-## ⌨️ Command-line CLI (`riskmodels-cli`)
+## ⌨️ Command-line CLI (`riskmodels`)
 
 The npm package in [`cli/`](./cli/) installs the `riskmodels` binary: config, SQL query (billed API or direct Supabase), schema introspection, balance, and static agent manifests.
 
 **Install from npm:**
 
 ```bash
-npm install -g riskmodels-cli
+npm install -g riskmodels
 riskmodels --help
 ```
 
@@ -308,7 +308,7 @@ RiskModels_API/
 ├── content/docs/             # MDX content (new)
 │   ├── api.mdx
 │   └── authentication.mdx
-├── cli/                      # Command-line CLI (`riskmodels-cli`)
+├── cli/                      # Command-line CLI (`riskmodels`)
 ├── sdk/                      # Python SDK (`riskmodels-py`) source
 │   └── riskmodels/snapshots/ # Snapshot PDF pipeline (R1 shipped, R2–P4 planned)
 ├── examples/                 # Runnable examples

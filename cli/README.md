@@ -1,20 +1,20 @@
-# riskmodels-cli
+# riskmodels
 
 Command-line interface for [RiskModels](https://riskmodels.app): call the REST API (metrics, batch, portfolio, returns, rankings, etc.), run billed SQL queries, explore schema in direct (Supabase) mode, check balance, and export agent tool manifests. Same contract as the Python SDK: **POST /decompose** returns variance shares and ETF hedge ratios per ticker.
 
 ## Install
 
 ```bash
-npm install -g riskmodels-cli
+npm install -g riskmodels
 ```
 
-Phase 3 installer preview:
+Agent-first installer preview:
 
 ```bash
 npx riskmodels install --dry-run
 ```
 
-Until the unscoped `riskmodels` package is published, local development can run the same flow with:
+Local development can run the same flow with:
 
 ```bash
 cd cli
@@ -100,3 +100,5 @@ The repo root `npm run typecheck` includes `cli/src` (see `AGENTS.md`). Maintain
 Publishing (`npm publish`, version bumps, npm login / tokens) is **not** documented in this public README. It is maintained in the private **BWMACRO** monorepo at **`docs/RISKMODELS_CLI_NPM_PUBLISHING.md`** — open that file from your internal BWMACRO clone.
 
 **Rule of thumb:** run publish commands only from **`cli/`**; the repo root package is the Next.js portal, not this CLI.
+
+The legacy `riskmodels-cli` npm package remains a backward-compatible published artifact. New releases from this directory target the unscoped `riskmodels` package for `npx riskmodels install`.

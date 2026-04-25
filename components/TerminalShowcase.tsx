@@ -475,16 +475,16 @@ const scenarioE: Scenario = {
 const scenarioF: Scenario = {
   id: 'riskmodels-cli',
   label: 'RiskModels CLI',
-  titleBarLabel: 'npm install -g riskmodels-cli → agent decompose',
+  titleBarLabel: 'npm install -g riskmodels → agent decompose',
   contextBadge: 'npm · NVDA 40% · GOOGL 60%',
-  command: 'npm install -g riskmodels-cli && riskmodels agent decompose --portfolio ./positions.json',
+  command: 'npm install -g riskmodels && riskmodels agent decompose --portfolio ./positions.json',
   lines: [
     {
       id: 0,
       delayMs: 0,
       content: (
         <>
-          <span style={{ color: C.muted }}>npm install -g riskmodels-cli</span>
+          <span style={{ color: C.muted }}>npm install -g riskmodels</span>
         </>
       ),
     },
@@ -512,7 +512,7 @@ const scenarioF: Scenario = {
       delayMs: 900,
       content: (
         <>
-          <span style={{ color: C.green }}>found 0 vulnerabilities · riskmodels-cli@1.0.1</span>
+          <span style={{ color: C.green }}>found 0 vulnerabilities · riskmodels@2.0.0</span>
         </>
       ),
     },
@@ -808,10 +808,10 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
         {' '}
         (<code className="text-zinc-400 text-[0.8rem]">[xarray]</code> optional for cubes).{' '}
         <span className="font-medium text-zinc-300">CLI:</span>{' '}
-        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">npm install -g riskmodels-cli</code>
+        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">npm install -g riskmodels</code>
         {' on '}
         <a
-          href="https://www.npmjs.com/package/riskmodels-cli"
+          href="https://www.npmjs.com/package/riskmodels"
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary hover:underline"

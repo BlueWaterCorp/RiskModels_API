@@ -37,7 +37,7 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     title: 'Agent Integration',
     description: 'MCP server, Cursor rules, CLI, and prompt patterns for AI agents.',
     href: '/docs/agent-integration',
-    keywords: 'claude desktop mcp cursor riskmodels-cli',
+    keywords: 'claude desktop mcp cursor riskmodels cli',
   },
   {
     title: 'Authentication Guide',
