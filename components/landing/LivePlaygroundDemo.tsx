@@ -234,7 +234,7 @@ export default function LivePlaygroundDemo() {
     setTourPaused(false);
   }, [selectedTicker]);
 
-  const snapshots = batch?.snapshots ?? {};
+  const snapshots = useMemo(() => batch?.snapshots ?? {}, [batch?.snapshots]);
 
   const effectiveSnapshot = useMemo((): WalkthroughSnapshot | null => {
     const want = selectedTicker.trim().toUpperCase();
