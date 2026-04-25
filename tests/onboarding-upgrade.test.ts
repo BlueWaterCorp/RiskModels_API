@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildInstallPlans, defaultMcpServerConfig, firstPrompt } from "../cli/src/lib/mcp-install-plan";
 import { selectedClients, type ClientDetection } from "../cli/src/lib/mcp-config-paths";
 import { redactJson, redactSecret } from "../cli/src/lib/redact";
+import {
+  mergeCodexTomlConfig,
+  mergeJsonMcpConfig,
+  removeCodexTomlConfig,
+  removeJsonMcpConfig,
+} from "../cli/src/lib/mcp-config-writer";
 import { normalizeCompareResult, normalizeDecomposeResult, normalizeHedgePositionResult } from "../packages/riskmodels-sdk/src/normalize";
 import { registerRiskModelsTools } from "../lib/mcp/tools/riskmodels-tools";
 
@@ -140,6 +146,49 @@ describe("RiskModels CLI installer planning", () => {
     expect(redactJson({ env: { RISKMODELS_API_KEY: "rm_agent_live_abcdefghijklmnopqrstuvwxyz" } })).toEqual({
       env: { RISKMODELS_API_KEY: "rm_age...wxyz" },
     });
+  });
+
+  it("merges and removes JSON MCP config without overwriting other servers", () => {
+    const merged = mergeJsonMcpConfig(
+      JSON.stringify({
+        mcpServers: {
+          existing: { command: "node", args: ["server.js"] },
+        },
+      }),
+      defaultMcpServerConfig(),
+    );
+
+    expect(JSON.parse(merged)).toEqual({
+      mcpServers: {
+        existing: { command: "node", args: ["server.js"] },
+        riskmodels: { command: "npx", args: ["-y", "@riskmodels/mcp"] },
+      },
+    });
+
+    const removed = removeJsonMcpConfig(merged);
+    expect(removed.removed).toBe(true);
+    expect(JSON.parse(removed.text)).toEqual({
+      mcpServers: {
+        existing: { command: "node", args: ["server.js"] },
+      },
+    });
+  });
+
+  it("merges and removes managed Codex TOML blocks", () => {
+    const merged = mergeCodexTomlConfig(
+      `[profile]\nname = "default"\n`,
+      defaultMcpServerConfig("rm_agent_live_abcdefghijklmnopqrstuvwxyz", true),
+    );
+
+    expect(merged).toContain("[profile]");
+    expect(merged).toContain("[mcp_servers.riskmodels]");
+    expect(merged).toContain('args = ["-y", "@riskmodels/mcp"]');
+    expect(merged).toContain("[mcp_servers.riskmodels.env]");
+    expect(merged).toContain('RISKMODELS_API_KEY = "rm_agent_live_abcdefghijklmnopqrstuvwxyz"');
+
+    const removed = removeCodexTomlConfig(merged);
+    expect(removed.removed).toBe(true);
+    expect(removed.text).toBe(`[profile]\nname = "default"\n`);
   });
 });
 
