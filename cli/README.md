@@ -11,7 +11,7 @@ npm install -g riskmodels
 Agent-first installer preview:
 
 ```bash
-npx riskmodels install --dry-run
+RISKMODELS_API_KEY=rm_agent_live_... npx riskmodels install
 ```
 
 Local development can run the same flow with:
@@ -50,10 +50,10 @@ Config file: `~/.config/riskmodels/config.json`
 | Command | Description |
 |--------|-------------|
 | `riskmodels config init \| set \| list` | API key, OAuth fields (`clientId`, `clientSecret`, `oauthScope`), `apiBaseUrl`, or Supabase (direct) |
-| `riskmodels install --dry-run` | Detect Claude, Cursor, Codex, and VS Code MCP targets and print the planned RiskModels MCP config. No writes in Phase 3a. |
+| `riskmodels install` | Detect Claude, Cursor, Codex, and VS Code MCP targets, store the API key in shared config, merge MCP configs with backups, and run a connection test. |
 | `riskmodels status` | Show shared config and MCP client detection status. |
 | `riskmodels doctor` | Local install-readiness diagnostics: Node, npx, API credentials, and client detection. |
-| `riskmodels uninstall --dry-run` | Preview removal of the `riskmodels` MCP server block. Safe removal writes arrive in the follow-up installer slice. |
+| `riskmodels uninstall` | Remove only the `riskmodels` MCP server block from supported client configs, with backups. |
 | `riskmodels query "<sql>"` | SELECT only (billed → `POST /api/cli/query`, direct → Supabase `exec_sql`) |
 | `riskmodels metrics <ticker>` | Latest snapshot (`GET /api/metrics/{ticker}`) |
 | `riskmodels batch analyze` | `POST /api/batch/analyze` (`--tickers`, `--metrics`, `--years`) |
@@ -75,14 +75,14 @@ Global flag: `--json` for machine-readable output on supported commands.
 
 ### MCP installer safety
 
-`riskmodels install` is intentionally dry-run first. It detects supported clients, prints target config paths, redacts secrets, and shows the exact `npx -y @riskmodels/mcp` server entry it will eventually merge.
+`riskmodels install --dry-run` detects supported clients, prints target config paths, redacts secrets, and shows the exact `npx -y @riskmodels/mcp` server entry it will merge. `riskmodels install` performs the write with timestamped backups.
 
 Default credential policy:
 
 - Use `~/.config/riskmodels/config.json`.
 - Do not embed API keys in MCP config files.
 - `--embed-key` is explicit opt-in and redacted in dry-run output.
-- Safe writes, timestamped backups, config validation, connection tests, and real uninstall writes land in the follow-up safe-write slice.
+- Safe writes create timestamped backups, validate JSON/TOML before writing, run a connection test, and keep uninstall scoped to the `riskmodels` MCP server block.
 
 ## Develop
 

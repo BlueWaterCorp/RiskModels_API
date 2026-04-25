@@ -1,11 +1,14 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import chalk from "chalk";
-import { configPath, loadConfig } from "../lib/config.js";
+import { configPath, DEFAULT_API_BASE, loadConfig } from "../lib/config.js";
 import { detectClients, selectedClients } from "../lib/mcp-config-paths.js";
 import { buildInstallPlans, firstPrompt } from "../lib/mcp-install-plan.js";
 import { printResults } from "../lib/display.js";
 import { redactSecret } from "../lib/redact.js";
+import { installMcpConfig, writeSharedApiKey } from "../lib/mcp-config-writer.js";
+import { apiRootFromUserBase } from "../lib/api-url.js";
+import { apiFetchOptionalAuth } from "../lib/api-client.js";
 
 type InstallOptions = {
   client?: string;
@@ -19,6 +22,23 @@ type InstallOptions = {
 
 function envApiKey(): string | undefined {
   return process.env.RISKMODELS_API_KEY?.trim() || undefined;
+}
+
+async function connectionTest(apiBaseUrl?: string): Promise<{ ok: boolean; endpoint: string; message: string }> {
+  const apiRoot = apiRootFromUserBase(apiBaseUrl);
+  const endpoint = `${apiRoot.replace(/\/$/, "")}/health`;
+  try {
+    await apiFetchOptionalAuth(apiRoot, "GET", "/health", {
+      signal: AbortSignal.timeout(15_000),
+    });
+    return { ok: true, endpoint, message: "RiskModels API health check passed." };
+  } catch (error) {
+    return {
+      ok: false,
+      endpoint,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function resolveApiKey(opts: InstallOptions): Promise<{ apiKey?: string; source: string }> {
@@ -64,10 +84,11 @@ export function installCommand(): Command {
         return;
       }
 
-      const dryRun = opts.dryRun ?? true;
+      const dryRun = opts.dryRun ?? false;
       const { apiKey, source } = await resolveApiKey(opts);
       const detections = await detectClients(clients);
       const plans = buildInstallPlans(detections, { apiKey, embedKey: opts.embedKey });
+      const existingConfig = await loadConfig();
 
       const output = {
         dryRun,
@@ -82,19 +103,55 @@ export function installCommand(): Command {
         clients: plans,
         firstPrompt: firstPrompt(),
         nextStep: dryRun
-          ? "Review this plan, then rerun without --dry-run once safe-write support is enabled."
-          : "Safe-write support is not enabled in this release slice; rerun with --dry-run.",
+          ? "Review this plan, then rerun without --dry-run to write configs with backups."
+          : "Install complete. Restart your MCP client, then try the first prompt.",
       };
 
-      if (!dryRun) {
+      if (dryRun) {
         printResults(output, json);
-        console.error(chalk.yellow("Config writes are intentionally deferred. Use `riskmodels install --dry-run` for now."));
+        if (!json) {
+          console.error(chalk.green(`First prompt to try: "${firstPrompt()}"`));
+        }
+        return;
+      }
+
+      if (!apiKey) {
+        printResults(
+          {
+            ...output,
+            error: "No RiskModels API key found. Get one at https://riskmodels.app/get-api-key or pass --api-key.",
+          },
+          json,
+        );
         process.exitCode = 1;
         return;
       }
 
-      printResults(output, json);
+      const sharedConfigWrite = await writeSharedApiKey(apiKey, existingConfig?.apiBaseUrl ?? DEFAULT_API_BASE);
+      const writes = await Promise.all(
+        detections.map((detection) =>
+          installMcpConfig(detection, {
+            apiKey,
+            embedKey: opts.embedKey,
+            apiBaseUrl: existingConfig?.apiBaseUrl,
+          }),
+        ),
+      );
+      const test = await connectionTest(existingConfig?.apiBaseUrl);
+      const result = {
+        ...output,
+        sharedConfigWrite,
+        writes,
+        connectionTest: test,
+      };
+
+      printResults(result, json);
+      if (writes.some((write) => write.action === "error") || !test.ok) {
+        process.exitCode = 1;
+        return;
+      }
       if (!json) {
+        console.error(chalk.green("RiskModels MCP install completed with backups."));
         console.error(chalk.green(`First prompt to try: "${firstPrompt()}"`));
       }
     });

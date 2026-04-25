@@ -159,13 +159,14 @@ RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelco
 - **Authentication:** Bearer token (API key or OAuth2 JWT)
 - **Discovery:** `https://riskmodels.app/.well-known/mcp.json` (see [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml))
 
-**Local MCP server (`mcp/` in this repo)** — stdio transport for Cursor / Claude Desktop / Zed: discovers capabilities, schemas, and OpenAPI; it does **not** execute portfolio or decomposition RPCs. **Tools shipped here:**
+**Local MCP server (`mcp/` in this repo)** — stdio transport for Cursor / Claude Desktop / Zed: discovers capabilities, schemas, OpenAPI, and SDK-backed live-paper risk tools. **Tools shipped here include:**
 
 - `riskmodels_list_endpoints` — List API capabilities (id, method, endpoint, short description)
 - `riskmodels_get_capability` — Full capability record by id (parameters, pricing, examples)
 - `riskmodels_get_schema` — JSON Schema for a response type (e.g. `ticker-returns-v2.json`)
+- `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_hedge_position`, `riskmodels_portfolio_decompose`, `riskmodels_whitepaper_example` — Agent-ready SDK outputs with `chart_data`, `suggested_chart`, and plain-English summaries
 
-For live risk data and portfolio math, call the **REST API** (e.g. `GET /api/metrics/{ticker}`, `POST /api/batch/analyze`, `GET /api/l3-decomposition`), the **Python SDK** (`riskmodels-py`), or use whatever tools your hosted MCP session returns from **`tools/list`** (do not assume tool names that are not listed there).
+For live risk data and portfolio math, call the **REST API** (e.g. `GET /api/metrics/{ticker}`, `POST /api/batch/analyze`, `GET /api/l3-decomposition`), the **Python SDK** (`riskmodels-py`), or the listed MCP tools.
 
 See [mcp/README.md](./mcp/README.md) for install and config.
 

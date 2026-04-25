@@ -49,7 +49,7 @@ export function doctorCommand(): Command {
           ok: checks.every((check) => check.ok),
           checks,
           clients,
-          note: "This doctor command is local-only in Phase 3a; network connection tests arrive with safe-write support.",
+          note: "Run `riskmodels install --dry-run` to inspect config writes, or `riskmodels install` to write configs with backups and run a connection test.",
         },
         json,
       );

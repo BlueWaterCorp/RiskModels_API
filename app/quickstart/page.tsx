@@ -86,8 +86,8 @@ console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
-const agentInstallExample = `# One-shot MCP installer preview
-RISKMODELS_API_KEY=rm_agent_live_... npx riskmodels install --dry-run
+const agentInstallExample = `# One-shot MCP installer
+RISKMODELS_API_KEY=rm_agent_live_... npx riskmodels install
 
 # Then ask your agent:
 # "Compare AAPL and NVDA using RiskModels. What am I really betting on?"`;
@@ -109,8 +109,8 @@ curl -sG "https://riskmodels.app/api/ticker-returns?ticker=NVDA" \\
 
 const agenticCliExample = `# riskmodels — install: npm install -g riskmodels
 
-# Agent-first MCP installer preview
-riskmodels install --dry-run
+# Agent-first MCP installer
+riskmodels install
 
 # API key (billed mode; default base URL https://riskmodels.app)
 riskmodels config set apiKey rm_agent_live_...
@@ -185,8 +185,8 @@ export default function QuickstartPage() {
               <h2 className="text-2xl font-bold text-zinc-100 mb-3">Install Into Your AI Agent</h2>
               <p className="text-zinc-400 mb-4">
                 Start with the agent path. It detects Claude, Cursor, Codex, and
-                VS Code targets, prints the MCP config plan, and keeps API keys
-                out of MCP files by default.
+                VS Code targets, writes supported MCP configs with backups, and
+                keeps API keys out of MCP files by default.
               </p>
 
               <div className="space-y-4">
@@ -197,8 +197,8 @@ export default function QuickstartPage() {
                     language="bash"
                   />
                   <p className="text-sm text-zinc-500 mt-2">
-                    The safe-write installer is intentionally dry-run first while
-                    config merge, backups, and uninstall writes are validated.
+                    Use <code className="text-zinc-400 bg-zinc-800 px-1 rounded">--dry-run</code>{' '}
+                    first if you want to inspect the exact config plan before writing.
                   </p>
                 </div>
 
@@ -476,7 +476,7 @@ export default function QuickstartPage() {
               </div>
               <p className="text-zinc-400 mb-6">
                 The CLI gives you <code className="text-zinc-300">riskmodels</code>:
-                installer dry-runs, config, billed SQL <code className="text-zinc-300">query</code>,{' '}
+                MCP install, config, billed SQL <code className="text-zinc-300">query</code>,{' '}
                 <code className="text-zinc-300">balance</code>, and manifests for agents.
               </p>
 
