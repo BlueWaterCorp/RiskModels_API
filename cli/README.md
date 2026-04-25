@@ -8,6 +8,20 @@ Command-line interface for [RiskModels](https://riskmodels.app): call the REST A
 npm install -g riskmodels-cli
 ```
 
+Phase 3 installer preview:
+
+```bash
+npx riskmodels install --dry-run
+```
+
+Until the unscoped `riskmodels` package is published, local development can run the same flow with:
+
+```bash
+cd cli
+npm run build
+node dist/index.js install --dry-run
+```
+
 ## Authentication
 
 - **API key (recommended):** `riskmodels config init` (billed mode) or `riskmodels config set apiKey <rm_agent_...>`.
@@ -36,6 +50,10 @@ Config file: `~/.config/riskmodels/config.json`
 | Command | Description |
 |--------|-------------|
 | `riskmodels config init \| set \| list` | API key, OAuth fields (`clientId`, `clientSecret`, `oauthScope`), `apiBaseUrl`, or Supabase (direct) |
+| `riskmodels install --dry-run` | Detect Claude, Cursor, Codex, and VS Code MCP targets and print the planned RiskModels MCP config. No writes in Phase 3a. |
+| `riskmodels status` | Show shared config and MCP client detection status. |
+| `riskmodels doctor` | Local install-readiness diagnostics: Node, npx, API credentials, and client detection. |
+| `riskmodels uninstall --dry-run` | Preview removal of the `riskmodels` MCP server block. Safe removal writes arrive in the follow-up installer slice. |
 | `riskmodels query "<sql>"` | SELECT only (billed → `POST /api/cli/query`, direct → Supabase `exec_sql`) |
 | `riskmodels metrics <ticker>` | Latest snapshot (`GET /api/metrics/{ticker}`) |
 | `riskmodels batch analyze` | `POST /api/batch/analyze` (`--tickers`, `--metrics`, `--years`) |
@@ -54,6 +72,17 @@ Config file: `~/.config/riskmodels/config.json`
 | `riskmodels agent decompose\|monitor` | Shortcuts → batch analyze / metrics |
 
 Global flag: `--json` for machine-readable output on supported commands.
+
+### MCP installer safety
+
+`riskmodels install` is intentionally dry-run first. It detects supported clients, prints target config paths, redacts secrets, and shows the exact `npx -y @riskmodels/mcp` server entry it will eventually merge.
+
+Default credential policy:
+
+- Use `~/.config/riskmodels/config.json`.
+- Do not embed API keys in MCP config files.
+- `--embed-key` is explicit opt-in and redacted in dry-run output.
+- Safe writes, timestamped backups, config validation, connection tests, and real uninstall writes land in the follow-up safe-write slice.
 
 ## Develop
 

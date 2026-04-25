@@ -20,6 +20,10 @@ import { l3Command } from "./commands/l3.js";
 import { correlationCommand } from "./commands/correlation.js";
 import { macroFactorsCommand } from "./commands/macro-factors.js";
 import { rankingsCommand } from "./commands/rankings.js";
+import { installCommand } from "./commands/install.js";
+import { statusCommand } from "./commands/status.js";
+import { doctorCommand } from "./commands/doctor.js";
+import { uninstallCommand } from "./commands/uninstall.js";
 
 const program = new Command();
 
@@ -39,6 +43,7 @@ program
     `
 ${chalk.bold("Quick start")}
   ${chalk.dim("$")} riskmodels config init
+  ${chalk.dim("$")} riskmodels install --dry-run
   ${chalk.dim("$")} riskmodels health
   ${chalk.dim("$")} riskmodels metrics NVDA
   ${chalk.dim("$")} riskmodels query ${chalk.green('"SELECT ticker FROM ticker_metadata LIMIT 3"')}
@@ -48,6 +53,10 @@ ${chalk.bold("Docs")} https://riskmodels.app/docs/api`,
   );
 
 program.addCommand(configCommand());
+program.addCommand(installCommand());
+program.addCommand(statusCommand());
+program.addCommand(doctorCommand());
+program.addCommand(uninstallCommand());
 program.addCommand(queryCommand());
 program.addCommand(metricsCommand());
 program.addCommand(batchCommand());
