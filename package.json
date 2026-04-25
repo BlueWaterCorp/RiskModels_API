@@ -6,7 +6,8 @@
   "description": "RiskModels API Developer Portal",
   "scripts": {
     "dev": "next dev",
-    "build": "npm run build:openapi && npm run build:web-sdk && next build",
+    "build": "npm run build:openapi && npm run build:sdk && npm run build:web-sdk && next build",
+    "build:sdk": "npm run build --workspace=@riskmodels/sdk",
     "build:web-sdk": "npm run build --workspace=@riskmodels/web",
     "vercel:sync-env": "./scripts/sync-env-to-vercel.sh",
     "vercel:sync-env:doppler": "./scripts/doppler-sync-to-vercel.sh",

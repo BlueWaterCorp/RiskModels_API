@@ -20,6 +20,7 @@
     ],
     "paths": {
       "@/*": ["./*"],
+      "@riskmodels/sdk": ["./packages/riskmodels-sdk/src/index.ts"],
       "@riskmodels/web": ["./packages/riskmodels-web/src/index.ts"]
     }
   },
