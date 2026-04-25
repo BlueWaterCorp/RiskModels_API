@@ -18,6 +18,7 @@ export default function Logo({ width = 180, height = 80, className = '' }: LogoP
         height={height}
         priority
         className="h-16 sm:h-20 w-auto min-w-[100px]"
+        style={{ width: 'auto' }}
       />
     </Link>
   );
