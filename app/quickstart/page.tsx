@@ -86,6 +86,14 @@ console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
+const agentInstallExample = `# One-shot MCP installer preview
+RISKMODELS_API_KEY=rm_agent_live_... npx riskmodels install --dry-run
+
+# Then ask your agent:
+# "Compare AAPL and NVDA using RiskModels. What am I really betting on?"`;
+
+const typescriptSdkInstall = `npm install @riskmodels/sdk`;
+
 const curlTickerReturnsParquet = `# Bulk history as Parquet (no JSON _metadata in file — use X-Risk-* headers)
 curl -sG "https://riskmodels.app/api/ticker-returns" \\
   --data-urlencode "ticker=NVDA" \\
@@ -100,6 +108,9 @@ curl -sG "https://riskmodels.app/api/ticker-returns?ticker=NVDA" \\
   -o nvda_returns.parquet`;
 
 const agenticCliExample = `# riskmodels-cli — install: npm install -g riskmodels-cli
+
+# Agent-first MCP installer preview
+riskmodels install --dry-run
 
 # API key (billed mode; default base URL https://riskmodels.app)
 riskmodels config set apiKey rm_agent_live_...
@@ -134,7 +145,8 @@ export default function QuickstartPage() {
         <div className="mb-12">
           <h1 className="text-4xl font-bold text-zinc-100 mb-4">Quickstart</h1>
           <p className="text-lg text-zinc-400">
-            Get an API key, install the Python SDK, run your first portfolio analysis — all under 60 seconds.
+            Install RiskModels once, then ask Claude, Cursor, Codex, or VS Code
+            what you are really betting on.
           </p>
         </div>
 
@@ -147,7 +159,9 @@ export default function QuickstartPage() {
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-zinc-100 mb-3">Get Your API Key</h2>
               <p className="text-zinc-400 mb-4">
-                Sign up and generate your API key — takes under a minute. No password needed.
+                Sign up and generate your API key. The installer can read it
+                from <code className="text-zinc-300">RISKMODELS_API_KEY</code>{' '}
+                or store it in <code className="text-zinc-300">~/.config/riskmodels/config.json</code>.
               </p>
               <QuickstartApiKeyCallout />
               <Link
@@ -168,46 +182,52 @@ export default function QuickstartPage() {
               2
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-zinc-100 mb-3">Install the SDK</h2>
+              <h2 className="text-2xl font-bold text-zinc-100 mb-3">Install Into Your AI Agent</h2>
               <p className="text-zinc-400 mb-4">
-                The Python SDK handles ticker resolution, semantic field names, validation, and LLM context formatting. Install with the xarray extra for multi-dimensional portfolio math.
+                Start with the agent path. It detects Claude, Cursor, Codex, and
+                VS Code targets, prints the MCP config plan, and keeps API keys
+                out of MCP files by default.
               </p>
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Python SDK (Recommended)</h3>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">AI Agent (Primary)</h3>
+                  <CodeBlock
+                    code={agentInstallExample}
+                    language="bash"
+                  />
+                  <p className="text-sm text-zinc-500 mt-2">
+                    The safe-write installer is intentionally dry-run first while
+                    config merge, backups, and uninstall writes are validated.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Terminal</h3>
+                  <CodeBlock
+                    code="riskmodels compare AAPL NVDA"
+                    language="bash"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">TypeScript SDK</h3>
+                  <CodeBlock
+                    code={typescriptSdkInstall}
+                    language="bash"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/35 p-4">
+                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Python SDK</h3>
                   <CodeBlock
                     code="pip install riskmodels-py[xarray]"
                     language="bash"
                   />
                   <p className="text-sm text-zinc-500 mt-2">
-                    <a
-                      href="https://pypi.org/project/riskmodels-py/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 underline"
-                    >
-                      PyPI
-                    </a>{' '}
-                    — package <code className="text-zinc-400 bg-zinc-800 px-1 rounded">riskmodels-py</code>
+                    Use Python when you need notebooks, xarray datasets, or
+                    portfolio research workflows.
                   </p>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">Raw REST (Python)</h3>
-                  <CodeBlock
-                    code="pip install requests pandas pyarrow"
-                    language="bash"
-                  />
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-300 mb-2">TypeScript / Node.js</h3>
-                  <CodeBlock
-                    code="npm install node-fetch
-# or use native fetch in Node 18+"
-                    language="bash"
-                  />
                 </div>
               </div>
             </div>
@@ -449,23 +469,23 @@ export default function QuickstartPage() {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-3">
-                <h2 className="text-2xl font-bold text-zinc-100">Try the CLI (`riskmodels-cli`)</h2>
+                <h2 className="text-2xl font-bold text-zinc-100">Use the Terminal and CLI</h2>
                 <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
                   Beta
                 </span>
               </div>
               <p className="text-zinc-400 mb-6">
-                Global install gives you <code className="text-zinc-300">riskmodels</code>: config, billed SQL{' '}
-                <code className="text-zinc-300">query</code>, <code className="text-zinc-300">balance</code>, and{' '}
-                <code className="text-zinc-300">manifest</code> for agents. Portfolio decomposition and drift monitoring
-                are available via the REST API and Python SDK; CLI <code className="text-zinc-300">agent</code> commands are placeholders.
+                The CLI gives you <code className="text-zinc-300">riskmodels</code>:
+                installer dry-runs, config, billed SQL <code className="text-zinc-300">query</code>,{' '}
+                <code className="text-zinc-300">balance</code>, and manifests for agents.
               </p>
 
               <div className="space-y-6">
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-300 mb-3">Install CLI</h3>
                   <CodeBlock
-                    code="npm install -g riskmodels-cli"
+                    code="npm install -g riskmodels-cli
+# upcoming public CTA: npx riskmodels install"
                     language="bash"
                   />
                 </div>

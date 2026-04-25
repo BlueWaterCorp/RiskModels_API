@@ -1,26 +1,14 @@
 import Link from 'next/link';
-import { ArrowRight, Zap } from 'lucide-react';
+import { ArrowRight, Bot } from 'lucide-react';
 import CodeBlock from '@/components/CodeBlock';
 
-const HERO_CURL = `curl -X POST https://riskmodels.app/api/decompose \\
-  -H "Authorization: Bearer $RISKMODELS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"ticker":"NVDA"}'`;
+const HERO_INSTALL = `npx riskmodels install`;
 
-const HERO_RESPONSE = `{
-  "ticker": "NVDA",
-  "exposure": {
-    "market":    { "er": 0.45, "hr": 1.10, "hedge_etf": "SPY" },
-    "sector":    { "er": 0.22, "hr": 0.35, "hedge_etf": "XLK" },
-    "subsector": { "er": 0.20, "hr": 0.60, "hedge_etf": "SMH" },
-    "residual":  { "er": 0.13, "hr": null, "hedge_etf": null }
-  },
-  "hedge": { "SPY": -1.10, "XLK": -0.35, "SMH": -0.60 }
-}`;
+const HERO_PROMPT = `Compare AAPL and NVDA using RiskModels.
+What am I really betting on?`;
 
 /**
- * Agent-first hero: one callable endpoint, live request + response side by
- * side, primary CTA anchors to the live playground (charts) below the fold.
+ * Agent-first hero: install command + first prompt before REST details.
  */
 export default function HeroDecompose() {
   return (
@@ -31,39 +19,39 @@ export default function HeroDecompose() {
       <div className="relative z-[2] mx-auto max-w-6xl">
         <div className="mx-auto max-w-3xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary">
-            <Zap size={16} />
-            One call. Four bets. Ready-to-short hedge ratios.
+            <Bot size={16} />
+            Claude, Cursor, Codex, and VS Code
           </div>
           <h1 className="mt-5 text-4xl font-bold tracking-tighter text-white sm:text-5xl md:text-6xl">
-            Turn any stock into a{' '}
-            <span className="text-primary">hedgeable trade.</span>
+            Install once. Ask what{' '}
+            <span className="text-primary">you&rsquo;re really betting on.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-zinc-300 sm:text-lg">
-            Decouple any US equity into four tradable bets &mdash; market, sector,
-            subsector, and residual &mdash; with ETF hedge ratios returned in one
-            API call.
+            Use RiskModels inside Claude, Cursor, Codex, or VS Code. It turns
+            stocks and portfolios into market, sector, subsector, and residual
+            bets with chart-ready explanations.
           </p>
           <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="#live-playground"
+              href="/quickstart"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-base font-semibold text-white transition hover:bg-primary/90"
             >
-              Try it now <ArrowRight size={18} />
+              Install RiskModels <ArrowRight size={18} />
             </Link>
             <Link
-              href="/docs/api#decompose"
+              href="#install-paths"
               className="inline-flex items-center justify-center rounded-lg border border-slate-600/80 bg-[#1e293b] px-7 py-3.5 text-base font-semibold text-white transition hover:bg-[#334155]"
             >
-              View API docs
+              See all paths
             </Link>
           </div>
           <p className="mt-3 text-center text-xs text-zinc-500">
-            Want the raw JSON widget instead?{' '}
+            Need an API key first?{' '}
             <Link
-              href="#decompose-widget"
+              href="/get-key"
               className="font-medium text-zinc-400 underline underline-offset-2 hover:text-zinc-300"
             >
-              Jump to MAG7 decompose
+              Get one here
             </Link>
             .
           </p>
@@ -72,22 +60,22 @@ export default function HeroDecompose() {
         <div className="mx-auto mt-10 grid max-w-5xl gap-4 lg:grid-cols-2">
           <div>
             <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-              Request
+              Install
             </div>
-            <CodeBlock code={HERO_CURL} language="bash" />
+            <CodeBlock code={HERO_INSTALL} language="bash" />
           </div>
           <div>
             <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-              Response
+              First prompt
             </div>
-            <CodeBlock code={HERO_RESPONSE} language="json" />
+            <CodeBlock code={HERO_PROMPT} language="text" />
           </div>
         </div>
 
         <p className="mx-auto mt-6 max-w-3xl text-center text-sm leading-relaxed text-zinc-400 sm:text-base">
-          NVDA isn&rsquo;t just &ldquo;tech&rdquo; &mdash; it&rsquo;s a{' '}
-          <span className="text-white">semiconductor + market beta</span> trade
-          with a negative residual. Hedge each layer directly.
+          RiskModels returns plain-English summaries, reproducible API metadata,
+          and <span className="text-white">chart_data</span> agents can render.
+          Manual API docs are still here, but they are the fallback path.
         </p>
       </div>
     </section>
