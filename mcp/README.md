@@ -20,6 +20,11 @@ Data tools return the same numbers the REST API and CLI return — GCP zarr for 
 | `riskmodels:///schemas/list` | List of available response schema paths. |
 | `riskmodels:///schemas/{path}` | JSON schema for a response (e.g. `ticker-returns-v2.json`). |
 | `riskmodels:///openapi` | OpenAPI 3.x spec (`data/openapi.json`). |
+| `riskmodels://whitepaper/one-position-four-bets` | Live-paper overview for the Medium article. |
+| `riskmodels://whitepaper/chapter/01-core-claim` | Short markdown chapter: one position is four bets. |
+| `riskmodels://whitepaper/chapter/02-aapl-vs-nvda` | Short markdown chapter for the AAPL vs NVDA comparison. |
+| `riskmodels://whitepaper/chapter/03-hedging` | Short markdown chapter for hedge-ratio scaling. |
+| `riskmodels://examples/aapl-nvda-crwd` | Short markdown example for a three-name comparison. |
 
 ## Discovery tools (no auth)
 
@@ -36,6 +41,22 @@ Data tools return the same numbers the REST API and CLI return — GCP zarr for 
 | `get_l3_decomposition` | `GET /api/l3-decomposition` | Daily EOD hierarchical decomposition (market → sector → subsector → residual) with parallel time-series arrays + L3 hedge ratios. |
 | `get_metrics` | `GET /api/metrics/{ticker}` | Latest snapshot from the `_latest` table: L1/L2/L3 hedge ratios, ER fractions, volatility, close price, market cap. |
 | `get_portfolio_risk_snapshot` | `POST /api/portfolio/risk-snapshot` | Portfolio variance decomposition (up to 100 positions), optional diversification analytics, Redis-cached per user/portfolio for 1h. |
+| `riskmodels_decompose` | `POST /api/decompose` via `@riskmodels/sdk` | Single-stock four-bet decomposition with `chart_data`, `suggested_chart`, `plain_english`, and `api_call`. |
+| `riskmodels_compare` | `POST /api/batch/analyze` via `@riskmodels/sdk` | Multi-ticker four-layer comparison. Clients should prefer grouped bar charts. |
+| `riskmodels_hedge_position` | `POST /api/decompose` via `@riskmodels/sdk` | Scales hedge ratios to ETF notionals for a dollar stock position. |
+| `riskmodels_portfolio_decompose` | `POST /api/portfolio/risk-snapshot` via `@riskmodels/sdk` | Portfolio-level market / sector / subsector / residual decomposition. |
+| `riskmodels_whitepaper_example` | `@riskmodels/sdk.whitepaperExample()` | Chapter text plus the live SDK/API example result. |
+
+## Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `follow_whitepaper` | Reads the short white-paper resources, then runs the live examples in sequence. |
+| `reproduce_aapl_nvda` | Compares AAPL and NVDA and asks the client to render grouped `chart_data`. |
+| `hedge_single_position` | Scales hedge ratios to a chosen ticker and dollar position. |
+| `explain_my_portfolio` | Collects user holdings and calls `riskmodels_portfolio_decompose`. |
+
+Whenever a tool response includes `chart_data`, clients should render the `suggested_chart` and explain the result in plain English.
 
 Every data-tool response includes a meter envelope so agents can self-throttle:
 

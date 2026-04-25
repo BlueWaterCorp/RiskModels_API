@@ -19,6 +19,12 @@ import {
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import {
+  createRiskModelsSdk,
+  registerRiskModelsPrompts,
+  registerRiskModelsTools,
+  registerRiskModelsWhitepaperResources,
+} from "../../lib/mcp/tools/riskmodels-tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "..", "data");
@@ -208,6 +214,11 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     name: "riskmodels-api",
     version: "1.0.0",
   });
+  const credentials = resolveCredentials(opts);
+  const sdk = createRiskModelsSdk({
+    apiKey: credentials.apiKey,
+    apiBase: credentials.apiBase,
+  });
 
   // --- Resources ---
 
@@ -343,7 +354,12 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     }
   );
 
+  registerRiskModelsWhitepaperResources(server, DATA_DIR);
+  registerRiskModelsPrompts(server);
+
   // --- Tools ---
+
+  registerRiskModelsTools(sdk, server);
 
   server.registerTool(
     "riskmodels_list_endpoints",

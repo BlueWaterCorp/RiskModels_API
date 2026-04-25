@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * RiskModels API MCP server — stdio entry point.
  *

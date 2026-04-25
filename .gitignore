@@ -90,3 +90,6 @@ public/openapi.json
 # Data directories (zarr stores, local caches)
 data/
 *.zarr/
+!mcp/data/
+!mcp/data/whitepaper/
+!mcp/data/whitepaper/*.md
