@@ -107,7 +107,7 @@ curl -sG "https://riskmodels.app/api/ticker-returns?ticker=NVDA" \\
   -H "Accept: application/vnd.apache.parquet" \\
   -o nvda_returns.parquet`;
 
-const agenticCliExample = `# riskmodels-cli — install: npm install -g riskmodels-cli
+const agenticCliExample = `# riskmodels — install: npm install -g riskmodels
 
 # Agent-first MCP installer preview
 riskmodels install --dry-run
@@ -484,8 +484,8 @@ export default function QuickstartPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-300 mb-3">Install CLI</h3>
                   <CodeBlock
-                    code="npm install -g riskmodels-cli
-# upcoming public CTA: npx riskmodels install"
+                    code="npm install -g riskmodels
+# public CTA: npx riskmodels install"
                     language="bash"
                   />
                 </div>

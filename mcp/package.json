@@ -1,5 +1,5 @@
 {
-  "name": "riskmodels-mcp",
+  "name": "@riskmodels/mcp",
   "version": "1.0.1",
   "description": "MCP server for RiskModels: decompose US equities into four-bet variance shares with ETF hedge ratios",
   "type": "module",

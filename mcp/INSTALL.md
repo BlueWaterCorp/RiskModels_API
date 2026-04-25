@@ -6,7 +6,7 @@ Copy-paste configs for Claude Desktop, Cursor, and Zed. Works with any [MCP](htt
 
 ```bash
 # 1. Get an API key (Stripe card on file, $20 free credit before first charge)
-npm install -g riskmodels-cli
+npm install -g riskmodels
 riskmodels config init      # stores key at ~/.config/riskmodels/config.json
 
 # 2. Build the MCP server (from this repo)

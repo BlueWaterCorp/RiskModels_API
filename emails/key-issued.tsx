@@ -74,7 +74,7 @@ load_dotenv()
 from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()`;
 
-const CLI_SNIPPET = `npm install -g riskmodels-cli
+const CLI_SNIPPET = `npm install -g riskmodels
 export RISKMODELS_API_KEY="rm_agent_live_..."
 riskmodels metrics NVDA`;
 
