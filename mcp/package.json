@@ -4,6 +4,9 @@
   "description": "MCP server for RiskModels: decompose US equities into four-bet variance shares with ETF hedge ratios",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "riskmodels-mcp": "./dist/index.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -15,8 +18,11 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/write-dist-wrappers.mjs",
     "start": "node dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18.0.0"
