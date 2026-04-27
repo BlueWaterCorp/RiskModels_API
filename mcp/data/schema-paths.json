@@ -12,5 +12,6 @@
   "/schemas/decompose-v1.json",
   "/schemas/risk-metadata-v1.json",
   "/schemas/portfolio-risk-snapshot-v1.json",
+  "/schemas/canonical-snapshot-v1.json",
   "/schemas/portfolio-risk-index-v1.json"
 ]

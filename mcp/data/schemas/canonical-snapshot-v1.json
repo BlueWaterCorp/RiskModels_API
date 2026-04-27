@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CanonicalSnapshot",
+  "description": "POST /api/snapshot (type=portfolio) — request and top-level response shape (see OPENAPI_SPEC CanonicalSnapshotPortfolioRequest / CanonicalSnapshotResponse).",
+  "oneOf": [
+    {
+      "title": "CanonicalSnapshotPortfolioRequest",
+      "type": "object",
+      "required": ["type", "portfolio"],
+      "properties": {
+        "type": { "const": "portfolio" },
+        "portfolio": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": ["ticker"],
+            "properties": {
+              "ticker": { "type": "string" },
+              "weight": { "type": "number", "exclusiveMinimum": 0 },
+              "shares": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        },
+        "lookback_days": { "type": "integer", "minimum": 20, "maximum": 2000, "default": 252 },
+        "mode": { "type": "string", "enum": ["frozen"], "default": "frozen" },
+        "benchmark": { "type": "string" }
+      }
+    },
+    {
+      "title": "CanonicalSnapshotResponseCore",
+      "type": "object",
+      "required": ["snapshot", "time_behavior", "attribution", "risk_summary", "metadata"],
+      "properties": {
+        "snapshot": { "type": "object" },
+        "time_behavior": { "type": "object" },
+        "attribution": { "type": "object" },
+        "risk_summary": { "type": "object" },
+        "metadata": { "type": "object" },
+        "_metadata": { "type": "object" },
+        "_agent": { "type": "object" }
+      }
+    }
+  ]
+}

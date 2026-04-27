@@ -774,7 +774,7 @@ export const CAPABILITIES: Capability[] = [
     id: "portfolio-risk-snapshot",
     name: "Portfolio risk snapshot",
     description:
-      "One-page portfolio risk report as PDF or structured JSON: L3 explained-risk decomposition, hedge ratios, and per-position breakdown. Single bundled charge; uses internal data access only (no double-billing).",
+      "One-page portfolio risk report as PDF or structured JSON (`POST /api/portfolio/risk-snapshot`), or the canonical JSON-only portfolio snapshot (`POST /api/snapshot` with `type: \"portfolio\"`): L3 explained-risk decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and per-position breakdown. Single bundled charge per request; uses internal data access only (no double-billing).",
     endpoint: "/api/portfolio/risk-snapshot",
     method: "POST",
     parameters: {

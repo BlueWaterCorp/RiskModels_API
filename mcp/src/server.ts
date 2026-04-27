@@ -551,5 +551,69 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     },
   );
 
+  server.registerTool(
+    "post_snapshot",
+    {
+      title: "Canonical Portfolio Snapshot",
+      description:
+        "Run a canonical risk snapshot on a portfolio (1–100 positions): L3 variance decomposition (market / sector / subsector / residual / systematic), L3 hedge ratios per position, frozen-weight daily return attribution (gross + market / sector / subsector strips + residual), cumulative return and drawdown over the lookback window, and a risk_summary with dominant drivers, concentration flags, and top exposures. This is the canonical RiskModels public surface — same response shape across UI, CLI, SDK, and agents. Provide either weight or shares for every position (do not mix). Bills as portfolio-risk-snapshot ($0.25 per request).",
+      inputSchema: z.object({
+        portfolio: z
+          .array(
+            z
+              .object({
+                ticker: z.string().describe("US equity ticker, e.g. NVDA, AAPL, SPY"),
+                weight: z
+                  .number()
+                  .positive()
+                  .optional()
+                  .describe("Positive weight or dollar amount; server normalizes to sum to 1"),
+                shares: z
+                  .number()
+                  .positive()
+                  .optional()
+                  .describe("Share count; converted to weights via latest price_close"),
+              })
+              .refine((p) => (p.weight != null) !== (p.shares != null), {
+                message: "Each position must have exactly one of weight or shares",
+              }),
+          )
+          .min(1)
+          .max(100)
+          .describe(
+            "Portfolio positions. Use weights for every position OR shares for every position — do not mix.",
+          ),
+        lookback_days: z
+          .number()
+          .int()
+          .min(20)
+          .max(2000)
+          .optional()
+          .default(252)
+          .describe("Trading days of history for return curves and attribution series (default 252)"),
+        benchmark: z
+          .string()
+          .optional()
+          .describe("Optional benchmark ticker (reserved for comparison views)"),
+      }),
+    },
+    async ({ portfolio, lookback_days, benchmark }) => {
+      const body: Record<string, unknown> = {
+        type: "portfolio",
+        portfolio,
+        lookback_days,
+      };
+      if (benchmark) body.benchmark = benchmark;
+      const { status, data, meter, error } = await apiCall(opts, "POST", "/snapshot", { body });
+      if (error) {
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+      }
+      if (status >= 400) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+      }
+      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
+    },
+  );
+
   return server;
 }

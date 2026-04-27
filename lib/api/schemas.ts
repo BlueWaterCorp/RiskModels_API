@@ -180,6 +180,63 @@ export const PortfolioRiskSnapshotRequestSchema = z.object({
 
 export type PortfolioRiskSnapshotRequest = z.infer<typeof PortfolioRiskSnapshotRequestSchema>;
 
+/** One position: exactly one of `weight` (fractional or dollar) or `shares` (for price conversion). */
+const SnapshotPortfolioPositionRowSchema = z
+  .object({
+    ticker: TickerSchema,
+    weight: z.coerce.number().positive("weight must be positive").optional(),
+    shares: z.coerce.number().positive("shares must be positive").optional(),
+  })
+  .superRefine((row, ctx) => {
+    const hasW = row.weight != null;
+    const hasS = row.shares != null;
+    if (hasW === hasS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Each position must have exactly one of weight or shares",
+        path: hasW || hasS ? [] : ["weight"],
+      });
+    }
+  });
+
+/**
+ * POST /api/snapshot — canonical JSON portfolio snapshot.
+ * Discriminated by `type`; only `portfolio` is implemented today.
+ */
+export const SnapshotRequestSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("portfolio"),
+      portfolio: z
+        .array(SnapshotPortfolioPositionRowSchema)
+        .min(1, "At least one position is required")
+        .max(100, "Maximum 100 positions"),
+      lookback_days: z.coerce.number().int().min(20).max(2000).default(252),
+      mode: z.enum(["frozen"]).default("frozen"),
+      benchmark: TickerSchema.optional(),
+    })
+    .superRefine((data, ctx) => {
+      const allWeight = data.portfolio.every((p) => p.weight != null);
+      const allShares = data.portfolio.every((p) => p.shares != null);
+      if (!allWeight && !allShares) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Use weights for every position, or shares for every position (do not mix)",
+          path: ["portfolio"],
+        });
+      }
+    }),
+  z
+    .object({
+      type: z.literal("ticker"),
+    })
+    .refine(() => false, {
+      message: 'Snapshot type "ticker" is not yet supported',
+    }),
+]);
+
+export type SnapshotRequest = z.infer<typeof SnapshotRequestSchema>;
+
 const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string().min(1, "Message content is required"),
