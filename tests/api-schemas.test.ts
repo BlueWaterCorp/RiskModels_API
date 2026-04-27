@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   FactorCorrelationRequestSchema,
   PortfolioRiskSnapshotRequestSchema,
+  SnapshotRequestSchema,
 } from "@/lib/api/schemas";
 import { parseMacroFactorsSeriesQuery } from "@/lib/api/macro-factors-series-query";
 
@@ -97,6 +98,63 @@ describe("PortfolioRiskSnapshotRequestSchema", () => {
       weight: 1 / 101,
     }));
     const r = PortfolioRiskSnapshotRequestSchema.safeParse({ positions });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("SnapshotRequestSchema", () => {
+  it("accepts valid weights portfolio with defaults", () => {
+    const r = SnapshotRequestSchema.safeParse({
+      type: "portfolio",
+      portfolio: [
+        { ticker: "aapl", weight: 0.6 },
+        { ticker: "msft", weight: 0.4 },
+      ],
+    });
+    expect(r.success).toBe(true);
+    if (r.success && r.data.type === "portfolio") {
+      expect(r.data.lookback_days).toBe(252);
+      expect(r.data.mode).toBe("frozen");
+      expect(r.data.portfolio[0].ticker).toBe("AAPL");
+    }
+  });
+
+  it("accepts shares-only portfolio", () => {
+    const r = SnapshotRequestSchema.safeParse({
+      type: "portfolio",
+      portfolio: [
+        { ticker: "nvda", shares: 10 },
+        { ticker: "amd", shares: 5 },
+      ],
+      lookback_days: 126,
+    });
+    expect(r.success).toBe(true);
+    if (r.success && r.data.type === "portfolio") {
+      expect(r.data.lookback_days).toBe(126);
+    }
+  });
+
+  it("rejects mixed weight and shares across positions", () => {
+    const r = SnapshotRequestSchema.safeParse({
+      type: "portfolio",
+      portfolio: [
+        { ticker: "AAPL", weight: 0.5 },
+        { ticker: "MSFT", shares: 3 },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects position with both weight and shares", () => {
+    const r = SnapshotRequestSchema.safeParse({
+      type: "portfolio",
+      portfolio: [{ ticker: "XOM", weight: 1, shares: 2 }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects type ticker", () => {
+    const r = SnapshotRequestSchema.safeParse({ type: "ticker" });
     expect(r.success).toBe(false);
   });
 });

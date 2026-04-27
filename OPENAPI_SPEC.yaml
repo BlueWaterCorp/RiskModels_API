@@ -616,6 +616,78 @@ components:
               nullable: true
               description: Sum of L3 ER layers (should be ≈ 1 within tolerance).
 
+    CanonicalSnapshotPortfolioRequest:
+      type: object
+      description: >
+        Request body for `POST /api/snapshot` when `type` is `portfolio`. Each position must
+        include exactly one of `weight` (fractional or dollar — normalized to weights) or `shares`
+        (converted using latest `price_close`). Do not mix weight-based and share-based rows in one request.
+      required: [type, portfolio]
+      properties:
+        type:
+          type: string
+          enum: [portfolio]
+        portfolio:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [ticker]
+            properties:
+              ticker:
+                type: string
+                description: US equity ticker (case-insensitive; normalized to uppercase).
+              weight:
+                type: number
+                format: float
+                exclusiveMinimum: 0
+                description: Positive weight or dollar amount (server normalizes to sum to 1).
+              shares:
+                type: number
+                format: float
+                exclusiveMinimum: 0
+                description: Share count; converted to weights using latest `price_close`.
+        lookback_days:
+          type: integer
+          minimum: 20
+          maximum: 2000
+          default: 252
+          description: Trading days of history for return curves and attribution series.
+        mode:
+          type: string
+          enum: [frozen]
+          default: frozen
+          description: Currently only `frozen` (initial weights held through the window).
+        benchmark:
+          type: string
+          nullable: true
+          description: Optional benchmark ticker (reserved).
+
+    CanonicalSnapshotResponse:
+      type: object
+      description: >
+        Canonical JSON portfolio snapshot: L3 variance decomposition, frozen-weight daily
+        attribution (gross and factor strips), cumulative return and drawdown, and risk summary.
+        Response also includes `_metadata` and `_agent` (see other metered POST routes).
+      required: [snapshot, time_behavior, attribution, risk_summary, metadata]
+      properties:
+        snapshot:
+          type: object
+          additionalProperties: true
+        time_behavior:
+          type: object
+          additionalProperties: true
+        attribution:
+          type: object
+          additionalProperties: true
+        risk_summary:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+
     MetricsSnapshotResponse:
       type: object
       description: >
@@ -3715,6 +3787,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /snapshot:
+    post:
+      summary: Canonical JSON portfolio snapshot
+      description: >
+        One structured response for a weighted portfolio: L3 explained-risk decomposition, L3 hedge ratios,
+        frozen-weight daily return attribution (gross, market, sector/subsector strips, residual),
+        cumulative return and drawdown over `lookback_days` trading days, and concentration-style
+        risk summary. JSON-only (no PDF). `type: "ticker"` is reserved and rejected by validation.
+
+        **Billing:** Same as `POST /portfolio/risk-snapshot` — `portfolio-risk-snapshot` ($0.25 per request).
+      operationId: postCanonicalSnapshot
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-risk-snapshot
+        tier: premium
+        model: per_request
+        cost_usd: 0.25
+        currency: USD
+        billing_code: risk_snapshot_pdf_v1
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: ["*"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CanonicalSnapshotPortfolioRequest"
+      responses:
+        "200":
+          description: Canonical snapshot JSON (includes `_metadata` and `_agent` on the wire).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CanonicalSnapshotResponse"
+                  - type: object
+                    properties:
+                      _metadata:
+                        type: object
+                        additionalProperties: true
+                      _agent:
+                        type: object
+                        additionalProperties: true
+        "400":
+          description: Invalid body, mixed weight/shares styles, or unsupported `type`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
 
   /metrics/{ticker}/snapshot.pdf:
     get:

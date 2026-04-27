@@ -59,6 +59,7 @@ export default function DeveloperPlaygroundSection() {
   const [error, setError] = useState<string | null>(null);
   const [metricsJson, setMetricsJson] = useState<RiskmodelsMetricsResponse | null>(null);
   const [jsonOpen, setJsonOpen] = useState(true);
+  const [baseUrl, setBaseUrl] = useState('https://riskmodels.app');
 
   useEffect(() => {
     const supabase = createClient();
@@ -69,6 +70,10 @@ export default function DeveloperPlaygroundSection() {
     });
     supabase.auth.getUser().then(({ data: { user: u } }) => setUser(u));
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    setBaseUrl(window.location.origin);
   }, []);
 
   const searchTickers = useCallback(async (q: string) => {
@@ -167,8 +172,6 @@ export default function DeveloperPlaygroundSection() {
     displayBody?.ticker && dataAsOf
       ? `r1_quicklook_${displayBody.ticker.toUpperCase()}_${dataAsOf}`
       : null;
-
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://riskmodels.app';
 
   return (
     <section

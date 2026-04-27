@@ -667,7 +667,7 @@
   {
     "id": "portfolio-risk-snapshot",
     "name": "Portfolio risk snapshot",
-    "description": "One-page portfolio risk report as PDF or structured JSON (L3 decomposition, hedge ratios). Bundled charge; internal DAL only.",
+    "description": "PDF or JSON via POST /api/portfolio/risk-snapshot, or canonical JSON-only via POST /api/snapshot (type=portfolio): L3 decomposition, hedge ratios, return attribution, cumulative return / drawdown. Bundled charge; internal DAL only.",
     "endpoint": "/api/portfolio/risk-snapshot",
     "method": "POST",
     "parameters": {
