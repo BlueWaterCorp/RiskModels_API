@@ -15,6 +15,9 @@ You are an expert at using the `riskmodels` npm package and the associated MCP s
 
 **Cursor:** For reliable dynamic MCP tool registration, enable the **Nightly** update channel locally (Settings → Beta → Update channel). The agent cannot enable this for you.
 
+## CLI / MCP first-time install
+Use **`RISKMODELS_API_KEY=… npx -y riskmodels@latest install`** (optional `--dry-run` first). This pins the published `riskmodels` CLI so `npx` does not pick an outdated cache. Prerequisites: Node.js LTS (`brew install node` on macOS with Homebrew, or [nodejs.org](https://nodejs.org)). Full steps: [Quickstart](https://riskmodels.app/quickstart).
+
 ## Instructions for Research Requests
 When a user asks to "graph," "analyze," or "compare" tickers:
 1. **Discovery:** Use MCP tools **`riskmodels_list_endpoints`** (first), then **`riskmodels_get_capability`** / **`riskmodels_get_schema`**, to confirm endpoint ids and parameters.

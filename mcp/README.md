@@ -107,8 +107,9 @@ This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.j
 ### Claude Desktop / `npx` (common mistakes)
 
 - **There is no `mcp` subcommand on the npm package.** The CLI binary is **`riskmodels`**. Do **not** run `npx -y riskmodels-cli mcp` — that legacy package does not provide the new installer flow.
+- **Preferred (deterministic):** pin the CLI package so `npx` does not resolve a stale cache — e.g. `RISKMODELS_API_KEY=... npx -y riskmodels@latest install` (writes MCP configs via `riskmodels install`). Same flow as [Quickstart](https://riskmodels.app/quickstart).
 - **Use one of these:**
-  - **`npx -y @riskmodels/mcp`** — future published stdio package target used by `npx riskmodels install`.
+  - **`npx -y @riskmodels/mcp`** — stdio MCP package merged into configs by `npx -y riskmodels@latest install` / global `riskmodels install`.
   - **`riskmodels mcp-config`** — prints a ready-to-paste `mcpServers` block for Claude Desktop (`--client claude-desktop`) or Cursor. Use **`riskmodels mcp-config --embed-key`** only if you want the key in the JSON env block.
   - **`riskmodels mcp`** — runs the stdio MCP server (same as `node mcp/dist/index.js`). Requires `mcp/dist/index.js` to exist (build `mcp/` first), or set **`RISKMODELS_MCP_SERVER_PATH`** to that file.
   - **`node /absolute/path/to/RiskModels_API/mcp/dist/index.js`** — always works if the build exists.
@@ -124,7 +125,7 @@ Paste into Claude Desktop / Cursor via the `mcp-remote` proxy:
   "mcpServers": {
     "riskmodels": {
       "command": "npx",
-      "args": ["mcp-remote", "https://riskmodels.app/api/mcp/sse"],
+      "args": ["-y", "mcp-remote", "https://riskmodels.app/api/mcp/sse"],
       "env": { "AUTHORIZATION": "Bearer rm_agent_live_..." }
     }
   }

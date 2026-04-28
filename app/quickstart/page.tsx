@@ -86,8 +86,11 @@ console.log(\`Vol (23d):      \${((m.vol_23d ?? 0) * 100).toFixed(1)}%\`);`;
 const curlExample = `curl -X GET "https://riskmodels.app/api/metrics/NVDA" \\
   -H "Authorization: Bearer rm_agent_live_..."`;
 
-const agentInstallExample = `# One-shot MCP installer
-RISKMODELS_API_KEY=rm_agent_live_... npx riskmodels install
+const agentInstallExample = `# Prerequisites: Node.js LTS (includes npx). macOS/Homebrew: brew install node; Windows/Linux: https://nodejs.org
+
+# One-shot MCP installer (always pin @latest so npx does not pick an old package)
+RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run   # optional: inspect writes first
+RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install
 
 # Then ask your agent:
 # "Compare AAPL and NVDA using RiskModels. What am I really betting on?"`;
@@ -107,9 +110,9 @@ curl -sG "https://riskmodels.app/api/ticker-returns?ticker=NVDA" \\
   -H "Accept: application/vnd.apache.parquet" \\
   -o nvda_returns.parquet`;
 
-const agenticCliExample = `# riskmodels — install: npm install -g riskmodels
+const agenticCliExample = `# Global CLI (optional): npm install -g riskmodels@latest
 
-# Agent-first MCP installer
+# Agent-first MCP installer (from project directory; same as npx -y riskmodels@latest install)
 riskmodels install
 
 # API key (billed mode; default base URL https://riskmodels.app)
@@ -205,7 +208,10 @@ export default function QuickstartPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-300 mb-2">Terminal</h3>
                   <CodeBlock
-                    code="riskmodels compare AAPL NVDA"
+                    code="riskmodels metrics NVDA
+
+# Multi-ticker (POST /batch/analyze)
+riskmodels batch analyze --tickers AAPL,NVDA --metrics hedge_ratios"
                     language="bash"
                   />
                 </div>
@@ -484,8 +490,10 @@ export default function QuickstartPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-300 mb-3">Install CLI</h3>
                   <CodeBlock
-                    code="npm install -g riskmodels
-# public CTA: npx riskmodels install"
+                    code={`npm install -g riskmodels@latest
+
+# Public one-liner (pin @latest; needs Node LTS + npx):
+# RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install`}
                     language="bash"
                   />
                 </div>

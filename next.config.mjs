@@ -9,6 +9,11 @@ const nextConfig = {
   serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr', 'playwright-core'],
   async redirects() {
     return [
+      {
+        source: '/get-api-key',
+        destination: '/get-key',
+        permanent: true,
+      },
       { source: '/examples', destination: '/quickstart#code-examples', permanent: true },
       { source: '/api-docs', destination: '/api-docs.html', permanent: true },
       { source: '/documentation', destination: '/docs/api', permanent: true },

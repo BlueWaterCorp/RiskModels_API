@@ -26,7 +26,7 @@ export function doctorCommand(): Command {
         {
           id: "npx",
           ok: commandOk("npx"),
-          detail: "Required to launch @riskmodels/mcp from MCP client configs.",
+          detail: "Required so MCP configs can run `npx -y @riskmodels/mcp` (stdio server from `riskmodels install`).",
         },
         {
           id: "api_credentials",
@@ -35,12 +35,12 @@ export function doctorCommand(): Command {
             ? `Config API key ${maskSecret(cfg.apiKey)} in ${configPath()}`
             : process.env.RISKMODELS_API_KEY
               ? "RISKMODELS_API_KEY is set in the environment."
-              : "No API key found. Get one at https://riskmodels.app/get-api-key",
+              : "No API key found. Get one at https://riskmodels.app/get-key",
         },
         {
           id: "mcp_package_target",
           ok: true,
-          detail: "Installer targets npx -y @riskmodels/mcp once the package is published.",
+          detail: "`riskmodels install` merges `npx -y @riskmodels/mcp` into detected client configs (stdio MCP).",
         },
       ];
 

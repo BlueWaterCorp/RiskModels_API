@@ -8,10 +8,12 @@ Command-line interface for [RiskModels](https://riskmodels.app): call the REST A
 npm install -g riskmodels
 ```
 
-Agent-first installer preview:
+Agent-first installer (pin `@latest` so `npx` does not resolve a stale cached package):
 
 ```bash
-RISKMODELS_API_KEY=rm_agent_live_... npx riskmodels install
+# Prerequisites: Node.js LTS (includes npx). macOS/Homebrew: brew install node; others: https://nodejs.org
+RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run   # optional: inspect plan first
+RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install
 ```
 
 Local development can run the same flow with:
@@ -101,4 +103,4 @@ Publishing (`npm publish`, version bumps, npm login / tokens) is **not** documen
 
 **Rule of thumb:** run publish commands only from **`cli/`**; the repo root package is the Next.js portal, not this CLI.
 
-The legacy `riskmodels-cli` npm package remains a backward-compatible published artifact. New releases from this directory target the unscoped `riskmodels` package for `npx riskmodels install`.
+The legacy `riskmodels-cli` npm package remains a backward-compatible published artifact. New releases from this directory target the unscoped `riskmodels` package; use `npx -y riskmodels@latest install` for a deterministic one-shot MCP setup.

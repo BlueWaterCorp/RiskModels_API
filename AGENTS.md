@@ -9,7 +9,7 @@ The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US 
 
 - **API Base URL:** `https://riskmodels.app`
 - **OpenAPI Spec:** [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml)
-- **MCP Server:** [mcp/](./mcp/) — hosted at **`https://riskmodels.app/api/mcp/sse`** (Streamable HTTP). For local dev / air-gapped use: **`riskmodels mcp`** (stdio) or **`riskmodels mcp-config`** for a ready-to-paste `mcpServers` block. Do not use `npx … mcp`. See [mcp/README.md](./mcp/README.md) for client config.
+- **MCP Server:** [mcp/](./mcp/) — hosted at **`https://riskmodels.app/api/mcp/sse`** (Streamable HTTP). **Deterministic install:** `RISKMODELS_API_KEY=… npx -y riskmodels@latest install` (needs Node.js LTS; pin `@latest` so `npx` does not resolve a stale package). See [Quickstart](https://riskmodels.app/quickstart). For local dev / air-gapped use: **`riskmodels mcp`** (stdio) or **`riskmodels mcp-config`** for a ready-to-paste `mcpServers` block. Do not use `npx … mcp`. See [mcp/README.md](./mcp/README.md) for client config.
 - **Python SDK (source):** [sdk/](./sdk/) — [`riskmodels-py` on PyPI](https://pypi.org/project/riskmodels-py/)
 - **Web / Next.js primitives:** [`packages/riskmodels-web`](./packages/riskmodels-web/) — npm workspace `@riskmodels/web` (React + Recharts + types for landing charts and the metrics playground). See [packages/riskmodels-web/README.md](./packages/riskmodels-web/README.md).
 - **Skill Guide:** [SKILL.md](./SKILL.md)
