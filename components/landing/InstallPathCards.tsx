@@ -6,14 +6,14 @@ const PATHS = [
   {
     title: 'AI Agent',
     description: 'Install the MCP server once, then ask Claude, Cursor, Codex, or VS Code what you really own.',
-    command: 'npx riskmodels install',
+    command: `RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install`,
     icon: Bot,
     href: '/quickstart',
   },
   {
     title: 'Terminal',
-    description: 'Run comparisons and diagnostics directly from the command line.',
-    command: 'riskmodels compare AAPL NVDA',
+    description: 'Run metrics and batch analysis directly from the command line.',
+    command: 'riskmodels metrics NVDA',
     icon: Terminal,
     href: '/quickstart',
   },

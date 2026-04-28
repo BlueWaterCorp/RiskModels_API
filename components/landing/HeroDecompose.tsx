@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { ArrowRight, Bot } from 'lucide-react';
 import CodeBlock from '@/components/CodeBlock';
 
-const HERO_INSTALL = `npx riskmodels install`;
+const HERO_INSTALL = `# Node.js LTS required (macOS: brew install node)
+RISKMODELS_API_KEY=rm_agent_live_...
+npx -y riskmodels@latest install`;
 
 const HERO_PROMPT = `Compare AAPL and NVDA using RiskModels.
 What am I really betting on?`;

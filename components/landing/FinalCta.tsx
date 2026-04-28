@@ -22,7 +22,7 @@ export default function FinalCta() {
             href="/quickstart"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-base font-semibold text-white transition hover:bg-primary/90"
           >
-            npx riskmodels install <ArrowRight size={18} />
+            npx -y riskmodels@latest install <ArrowRight size={18} />
           </Link>
           <Link
             href="/get-key"

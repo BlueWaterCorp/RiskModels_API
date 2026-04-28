@@ -4,6 +4,8 @@ Quick reference for Supabase tables used by the RiskModels API and platform. For
 
 **Source of truth:** The [Risk_Models](https://github.com/BlueWaterCorp/Risk_Models) repo defines and migrates these tables. Full V3 contract: `docs/supabase/V3_DATA_CONTRACT.md` in that repo.
 
+**Shared SQL migrations:** DDL that applies to both the API and the portal lives under **`RiskModels_API/supabase/migrations/`** (canonical) with the same filenames mirrored under `Risk_Models/riskmodels_com/supabase/migrations/`. Either path can be pushed to the linked Supabase project; keep mirrored files byte-identical when editing.
+
 ---
 
 ## V3 Schema (Current)

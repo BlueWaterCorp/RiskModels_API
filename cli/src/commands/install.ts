@@ -50,7 +50,7 @@ async function resolveApiKey(opts: InstallOptions): Promise<{ apiKey?: string; s
   if (opts.yes) return { source: "missing" };
 
   console.error(chalk.yellow("No RiskModels API key found."));
-  console.error(chalk.dim("Get a key: https://riskmodels.app/get-api-key"));
+  console.error(chalk.dim("Get a key: https://riskmodels.app/get-key"));
   const answer = await inquirer.prompt<{ apiKey: string }>([
     {
       type: "password",
@@ -119,7 +119,7 @@ export function installCommand(): Command {
         printResults(
           {
             ...output,
-            error: "No RiskModels API key found. Get one at https://riskmodels.app/get-api-key or pass --api-key.",
+            error: "No RiskModels API key found. Get one at https://riskmodels.app/get-key or pass --api-key.",
           },
           json,
         );

@@ -40,6 +40,12 @@ const MCP_CURSOR_JSON = `{
   }
 }`;
 
+/** One-shot installer merges stdio MCP (`npx -y @riskmodels/mcp`) into detected clients — same as public quickstart. */
+const PATH_A_INSTALLER = `# Node.js LTS required (macOS/Homebrew: brew install node; otherwise https://nodejs.org)
+
+RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run   # optional: inspect plan
+RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install`;
+
 const CLAUDE_CODE_BASH = `claude mcp add riskmodels npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
 
 const CLAUDE_CODE_EXPORT = `export AUTHORIZATION="Bearer rm_agent_live_..."`;
@@ -74,7 +80,7 @@ load_dotenv()
 from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()`;
 
-const CLI_SNIPPET = `npm install -g riskmodels
+const CLI_SNIPPET = `npm install -g riskmodels@latest
 export RISKMODELS_API_KEY="rm_agent_live_..."
 riskmodels metrics NVDA`;
 
@@ -201,6 +207,19 @@ export const KeyIssuedEmail = ({
             decomposition, portfolio risk snapshot, and three discovery tools. Ask in English; it picks the
             tool.
           </Text>
+          <Text style={paragraph}>
+            <strong>Fastest path (recommended):</strong> run the shipped MCP installer so configs are merged
+            with backups (same as{" "}
+            <Link href={`${BASE_URL}/quickstart`} style={link}>
+              Quickstart
+            </Link>
+            ):
+          </Text>
+          <CodeBlock theme={dracula} language="bash" code={PATH_A_INSTALLER} />
+          <Text style={paragraph}>
+            <strong>Manual / advanced:</strong> paste JSON for the hosted endpoint (below) or use{" "}
+            <code style={inlineCode}>mcp-remote</code> if you prefer not to use the installer.
+          </Text>
 
           <Text style={h3}>Cursor</Text>
           <Text style={paragraph}>
@@ -290,11 +309,12 @@ export const KeyIssuedEmail = ({
           </Text>
           <CodeBlock theme={dracula} language="python" code={PYTHON_SNIPPET} />
           <Text style={paragraph}>
-            You should get back a dict with NVDA&apos;s latest <code style={inlineCode}>teo</code>, hedge
-            ratios (<code style={inlineCode}>l1_market_beta</code>, <code style={inlineCode}>l2_sector_beta</code>
-            , <code style={inlineCode}>l3_subsector_beta</code>), and combined-factor returns (
-            <code style={inlineCode}>l1/l2/l3_combined_factor_return</code>). Cost: ~$0.001 for that call,
-            deducted from your $20 credit.
+            You should get back a dict with NVDA&apos;s latest <code style={inlineCode}>teo</code>, L3 hedge
+            ratios (<code style={inlineCode}>l3_market_hr</code>, <code style={inlineCode}>l3_sector_hr</code>
+            , <code style={inlineCode}>l3_subsector_hr</code>), explained-risk / variance shares (
+            <code style={inlineCode}>l3_market_er</code>, <code style={inlineCode}>l3_sector_er</code>,{" "}
+            <code style={inlineCode}>l3_subsector_er</code>, <code style={inlineCode}>l3_residual_er</code>), and
+            combined-factor return fields. Cost: ~$0.001 for that call, deducted from your $20 credit.
           </Text>
           <Text style={paragraph}>A handful more one-liners once that works:</Text>
           <CodeBlock theme={dracula} language="python" code={PYTHON_ONELINERS} />
@@ -333,9 +353,9 @@ echo '.env' >> .gitignore         # never commit it`}
           <CodeBlock theme={dracula} language="bash" code={CLI_SNIPPET} />
           <Text style={paragraph}>
             Other commands: <code style={inlineCode}>riskmodels l3 NVDA</code>,{" "}
-            <code style={inlineCode}>riskmodels returns NVDA</code>,{" "}
-            <code style={inlineCode}>riskmodels macro NVDA</code>,{" "}
-            <code style={inlineCode}>riskmodels batch NVDA AAPL XOM</code>,{" "}
+            <code style={inlineCode}>riskmodels returns ticker NVDA</code>,{" "}
+            <code style={inlineCode}>riskmodels macro-factors</code>,{" "}
+            <code style={inlineCode}>riskmodels batch analyze --tickers AAPL,NVDA,XOM</code>,{" "}
             <code style={inlineCode}>riskmodels balance</code>, <code style={inlineCode}>riskmodels --help</code>
             .
           </Text>
