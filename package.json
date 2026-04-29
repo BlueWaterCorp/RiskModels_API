@@ -28,7 +28,7 @@
     "publish:riskmodels-py:doppler": "doppler run -p erm3 -c prd -- bash sdk/scripts/publish_pypi.sh",
     "db:push": "bash ./scripts/check-supabase-cli.sh db push --linked",
     "db:migration:list": "bash ./scripts/check-supabase-cli.sh migration list --linked",
-    "postinstall": "npm run build:web-sdk"
+    "postinstall": "npm run build:sdk && npm run build:web-sdk"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
