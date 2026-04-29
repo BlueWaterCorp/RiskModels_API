@@ -4,6 +4,8 @@ Contributor recognition is shipped in-package: see ``SDK_CONTRIBUTORS`` and
 ``RiskModelsClient.discover()`` (Markdown / JSON includes a ``contributors`` list).
 """
 
+from . import aom
+from .aom import rm, run
 from .client import RiskModelsClient
 from .contributors import SDK_CONTRIBUTORS, SDKContributorDict
 from .enums import DataKind, DataKindLiteral, OutputKind, OutputLiteral, TimeAxis, TimeLiteral
@@ -34,7 +36,7 @@ from .metrics_snapshot import format_metrics_snapshot
 from .peer_group import PeerComparison, PeerGroupProxy
 from .performance.base import PerformanceResult
 from .portfolio_math import PortfolioAnalysis, PositionsInput, positions_to_weights
-from .snapshots import (
+from .snapshots import (  # noqa: F401
     S1Data,
     S2Data,
     StockContext,
@@ -124,6 +126,9 @@ __all__ = [
     "SDKContributorDict",
     "ValidationWarning",
     "to_llm_context",
+    "aom",
+    "rm",
+    "run",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
