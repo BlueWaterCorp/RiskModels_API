@@ -47,7 +47,7 @@ export default function RiskWalkthroughWithToggle() {
           })}
         </div>
       </div>
-      <RiskWalkthroughChart view={view} />
+      <RiskWalkthroughChart view={view} compact />
     </div>
   );
 }

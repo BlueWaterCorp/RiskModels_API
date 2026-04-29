@@ -71,6 +71,12 @@ type RiskWalkthroughChartProps = {
    * hidden chart still mounts and stays in sync.
    */
   view?: "performance" | "risk" | "both";
+  /**
+   * Trim the chrome for landing-page use: hides the auto-cycling status pill,
+   * the AttributionTape band, and the developer CTA. The chart and tour
+   * controls remain.
+   */
+  compact?: boolean;
 };
 
 const STEPS: Step[] = [
@@ -740,6 +746,7 @@ export function RiskWalkthroughChart({
   defaultTicker = "NVDA",
   tickers,
   view = "both",
+  compact = false,
 }: RiskWalkthroughChartProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [waterfallVisibleThrough, setWaterfallVisibleThrough] = useState(0);
@@ -942,7 +949,7 @@ export function RiskWalkthroughChart({
                 {selected.ticker ?? selectedTicker} {title}
               </h2>
             </div>
-            {hasLineData ? (
+            {hasLineData && !compact ? (
               <div className="flex items-center justify-start gap-2 sm:justify-end">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                   {cycleComplete
@@ -1194,10 +1201,12 @@ export function RiskWalkthroughChart({
             </div>
           </div>
 
-          <div className="mt-4 border-t border-zinc-800 pt-3">
-            <AttributionTape cta={attributionCta} />
-            <DeveloperCta />
-          </div>
+          {!compact ? (
+            <div className="mt-4 border-t border-zinc-800 pt-3">
+              <AttributionTape cta={attributionCta} />
+              <DeveloperCta />
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

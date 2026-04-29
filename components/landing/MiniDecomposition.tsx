@@ -84,6 +84,8 @@ export default function MiniDecomposition({ className }: { className?: string })
           const barWidth = Math.max(8, (Math.abs(layer.value) / MAX_VALUE) * BAR_MAX);
           const isResidual = layer.key === 'residual';
           const opacity = isResidual ? (residualVisible ? 1 : 0) : 1;
+          const valueLabel = `${layer.value >= 0 ? '+' : ''}${layer.value.toFixed(1)}`;
+          const insideBar = barWidth > BAR_MAX * 0.75;
 
           return (
             <g key={layer.key} style={{ opacity, transition: 'opacity 600ms ease-out' }}>
@@ -115,15 +117,21 @@ export default function MiniDecomposition({ className }: { className?: string })
                 opacity={layer.emphasis ? 1 : 0.85}
               />
               <text
-                x={BAR_X + barWidth + 8}
+                x={insideBar ? BAR_X + barWidth - 8 : BAR_X + barWidth + 8}
                 y={y + BAR_HEIGHT / 2 + 4}
                 fontSize="11"
-                fill={layer.emphasis ? '#34D399' : '#71717A'}
+                fill={
+                  insideBar
+                    ? '#F4F4F5'
+                    : layer.emphasis
+                    ? '#34D399'
+                    : '#71717A'
+                }
                 fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
                 fontWeight={layer.emphasis ? 600 : 500}
+                textAnchor={insideBar ? 'end' : 'start'}
               >
-                {layer.value >= 0 ? '+' : ''}
-                {layer.value.toFixed(1)}
+                {valueLabel}
               </text>
             </g>
           );
