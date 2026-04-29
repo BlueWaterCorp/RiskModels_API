@@ -3,29 +3,31 @@ import { ArrowRight } from 'lucide-react';
 
 const SURFACES = [
   {
-    title: 'Chart',
-    detail: 'Peel + attribution from the same metrics object.',
+    title: 'PNG / Plotly export',
+    detail:
+      'Python client.visuals.save_*_png helpers — publication DPI and themed Plotly layout (Kaleido).',
   },
   {
-    title: 'Hedge ratios',
-    detail: 'ETF notionals per $1 long — ready for execution systems.',
+    title: 'React primitives',
+    detail:
+      'npm @riskmodels/web — peel lines, yearly attribution, four-bet card; same ERM3 semantics as the SDK.',
   },
   {
-    title: 'Attribution table',
-    detail: 'Layer ER/HR in one row set (market → residual).',
+    title: 'Hedge notionals',
+    detail: 'Per-$1 ETF ratios from the same decomposition object.',
   },
   {
-    title: 'Agent JSON',
-    detail: 'Structured body + lineage metadata for LLM tools.',
+    title: 'Structured JSON',
+    detail: 'API bodies carry _metadata — stable for agents and CI pipelines.',
   },
   {
-    title: 'Snapshot PDF',
-    detail: 'ERM3 one-pagers from the same underlying metrics.',
+    title: 'ERM3 snapshots',
+    detail: 'PDF one-pagers from the same underlying metrics.',
   },
 ] as const;
 
 /**
- * One POST /decompose (or GET /metrics) fans out to every downstream surface.
+ * Surfaces one response fans out to: viz export, UI kit, execution, automation.
  */
 export default function OneCallManySurfaces() {
   return (
@@ -33,18 +35,17 @@ export default function OneCallManySurfaces() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-10 text-center">
           <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl md:text-4xl">
-            One call. Multiple surfaces.
+            One response. Multiple surfaces.
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
-            Same response drives UI, automation, and agent tools — not separate “demo” payloads.
+            Same SDK call (or REST shape) drives exports, embeddable charts, and downstream systems —
+            not toy demos with divergent schemas.
           </p>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,220px)_1fr] lg:gap-10">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,240px)_1fr] lg:gap-10">
           <div className="rounded-xl border border-zinc-800 bg-black/40 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Input
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Contract</p>
             <pre className="mt-3 overflow-x-auto font-mono text-[11px] leading-relaxed text-zinc-300">
               {`POST /decompose
 {
@@ -53,10 +54,9 @@ export default function OneCallManySurfaces() {
             </pre>
             <p className="mt-4 text-[11px] leading-relaxed text-zinc-500">
               Or{' '}
-              <code className="rounded bg-zinc-900 px-1 py-0.5 text-zinc-400">
-                GET /metrics/NVDA
-              </code>{' '}
-              for the full scalar block + lineage.
+              <code className="rounded bg-zinc-900 px-1 py-0.5 text-zinc-400">GET /metrics/NVDA</code> for
+              scalar block + lineage. Python wraps both on{' '}
+              <code className="rounded bg-zinc-900 px-1 py-0.5 text-zinc-400">RiskModelsClient</code>.
             </p>
             <Link
               href="/api-reference"
