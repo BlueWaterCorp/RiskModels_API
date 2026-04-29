@@ -1,8 +1,11 @@
 # riskmodels-py
 
 [![PyPI version](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)
 
 Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`).
+
+**Try the Analysis Object Model without cloning:** open the **[AOM quickstart (Colab)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)** — install cell, API key (Secrets or paste), then `rm` / `run` examples. Same flows live in-repo as [`quickstart.ipynb`](./quickstart.ipynb).
 
 Python SDK for the [RiskModels API](https://riskmodels.app): **POST /decompose** returns variance shares and ETF hedge ratios for any US equity, separating factor exposure from the residual bet so you can hedge what you don't want. ERM3 model; batch portfolio analysis included.
 
@@ -47,6 +50,29 @@ pa = client.analyze({"NVDA": 0.5, "AAPL": 0.5})  # alias for analyze_portfolio
 print(pa.portfolio_hedge_ratios["l3_market_hr"])
 print(pa.to_llm_context())
 ```
+
+### Analysis Object Model (AOM) — v1
+
+Canonical docs live in [`../aom/`](../aom/). Preferred path: build a request with the fluent helper, then **`run`** (compile + execute in one call):
+
+```python
+from riskmodels import RiskModelsClient, rm, run
+from riskmodels.aom import stock
+
+client = RiskModelsClient.from_env()
+
+req = (
+    rm()
+    .subject(stock("TSLA"))
+    .scope(date_range_preset="ytd", as_of="latest")
+    .return_attribution(resolution="full_stack", view="timeseries")
+    .explain()
+)
+
+out = run(client, req)
+```
+
+Advanced: use ``compile_plan`` / ``execute_plan`` from ``riskmodels.aom`` when you need the plan object without HTTP (tests, logging, custom runners).
 
 ### Namespaces + charts (v0.3+)
 

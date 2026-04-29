@@ -22,6 +22,7 @@ This repository is the **authoritative public API reference** for the [RiskModel
 
 ## 🚀 Quick Links
 
+- **Python SDK — AOM quickstart (Google Colab):** [Open notebook](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb) · source: [`sdk/notebooks/riskmodels_aom_colab.ipynb`](sdk/notebooks/riskmodels_aom_colab.ipynb)
 - **Developer Portal:** [riskmodels.app](https://riskmodels.app)
 - **Live API Docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
 - **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key)
