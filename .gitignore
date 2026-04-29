@@ -21,6 +21,11 @@ dist/
 .venv/
 venv/
 
+# Python bytecode / import cache
+__pycache__/
+*.pyc
+*.pyo
+
 # Dependencies
 node_modules/
 .pnp
