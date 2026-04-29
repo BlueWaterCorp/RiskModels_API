@@ -202,7 +202,7 @@ def _fetch_step_for_stock(
         return RestFetchStep(
             step_id=step_id,
             client_method="get_metrics",
-            kwargs={"ticker": ticker, "as_dataframe": True},
+            kwargs={"ticker": ticker, "as_dataframe": True, "validate": "off"},
             binding=base_meta,
         )
 

@@ -12,6 +12,10 @@
 #   npm run doppler:env                # Export to .env.local (for curl testing)
 #   npm run vercel:sync-env:doppler    # Push prd secrets to Vercel production
 #
+# Maintainer-only PyPI uploads (riskmodels-py): store TWINE_PASSWORD (pypi-… token) in Doppler; then:
+#   doppler run -p erm3 -c prd -- bash sdk/scripts/publish_pypi.sh
+# Optional --build rebuilds sdk/dist first. See sdk/scripts/publish_pypi.sh.
+#
 # Maintainer-only (not synced to Vercel): store SUPABASE_MANAGEMENT_ACCESS_TOKEN in Doppler
 # (Supabase Dashboard, Account, Access tokens), then:
 #   DOPPLER_CONFIG=prd npm run supabase:auth-smtp:resend:doppler
