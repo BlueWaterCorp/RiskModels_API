@@ -11,6 +11,7 @@ import type { User } from '@supabase/supabase-js';
 
 function navActive(pathname: string, href: string): boolean {
   if (href === '/docs/api') return pathname.startsWith('/docs');
+  if (href === '/api-reference') return pathname.startsWith('/api-reference');
   if (href === '/account/usage') return pathname.startsWith('/account');
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -43,11 +44,11 @@ export default function Navbar() {
   }, [router]);
 
   const navLinks = [
-    { href: '/docs/api', label: 'Docs' },
-    { href: '/api-reference', label: 'Reference' },
-    { href: '/quickstart', label: 'Quickstart' },
+    { href: '/installation', label: 'Installation' },
+    { href: '/api-reference', label: 'API' },
+    { href: '/cli', label: 'CLI' },
     { href: '/pricing', label: 'Pricing' },
-    { href: '/account/usage', label: 'Usage' },
+    { href: '/docs/api', label: 'Docs' },
   ];
 
   return (

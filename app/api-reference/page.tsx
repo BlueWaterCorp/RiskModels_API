@@ -293,6 +293,12 @@ export default function ApiReferencePage() {
         <main className="col-span-12 lg:col-span-9 grid grid-cols-1 xl:grid-cols-12">
           {/* Main content */}
           <div className="col-span-1 xl:col-span-8 p-6 lg:p-8 space-y-8">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+              <p className="text-sm font-medium text-emerald-300">
+                Returns variance + hedge ratios.
+              </p>
+            </div>
+
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant={methodVariant(selected.method)} className="text-base px-4 py-1">
                 {selected.method.toUpperCase()}
