@@ -20,7 +20,6 @@ from .components import (
     plot_risk_cascade_from_data,
     plot_variance_waterfall_from_data,
 )
-from .waterfall import plot_variance_waterfall
 from .gallery import (
     MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026,
     MAG7_SNAPSHOT_DATE_DOC,
@@ -31,6 +30,13 @@ from .gallery import (
     run_gallery_mag7_l3_sigma_rr,
     run_gallery_mag7_risk_cascade,
     run_gallery_nvda_l3,
+)
+from .l3_decomposition import (
+    L3_API_FIELD_MAPPINGS,
+    L3_API_LAYER_COLORS,
+    L3DecompositionMappingError,
+    plot_l3_decomposition,
+    plot_l3_horizontal,
 )
 from .mag7_l3_er import (
     MAG7_L3_ER_DEFAULT_TICKERS,
@@ -46,7 +52,6 @@ from .mag7_l3_sigma_rr import (
     plot_mag7_l3_sigma_rr,
     save_mag7_l3_sigma_rr_png,
 )
-from .l3_decomposition import plot_l3_horizontal
 from .save import (
     get_plotly_json,
     save_l3_decomposition_png,
@@ -56,6 +61,7 @@ from .save import (
 )
 from .styles import PRESET_REGISTRY, get_preset, get_rm_template, install_rm_template
 from .utils import adjacent_bar_positions, cascade_plotly_layout
+from .waterfall import plot_variance_waterfall
 
 __all__ = [
     # Component dataclasses & types
@@ -95,6 +101,7 @@ __all__ = [
     "install_rm_template",
     "mag7_cap_weighted_positions",
     "plot_attribution_cascade",
+    "plot_l3_decomposition",
     "plot_l3_horizontal",
     "plot_mag7_l3_explained_risk",
     "plot_mag7_l3_sigma_rr",
@@ -113,4 +120,7 @@ __all__ = [
     "save_portfolio_attribution_cascade_png",
     "save_portfolio_risk_cascade_png",
     "write_plotly_png",
+    "L3_API_FIELD_MAPPINGS",
+    "L3_API_LAYER_COLORS",
+    "L3DecompositionMappingError",
 ]

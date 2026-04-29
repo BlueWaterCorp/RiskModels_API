@@ -10,6 +10,7 @@ import { mcpConfigCommand } from "./commands/mcp-config.js";
 import { mcpServeCommand } from "./commands/mcp.js";
 import { agentCommand } from "./commands/agent.js";
 import { metricsCommand } from "./commands/metrics.js";
+import { decomposeCommand } from "./commands/decompose.js";
 import { batchCommand } from "./commands/batch.js";
 import { portfolioCommand } from "./commands/portfolio.js";
 import { tickersCommand } from "./commands/tickers.js";
@@ -46,6 +47,7 @@ ${chalk.bold("Quick start")}
   ${chalk.dim("$")} riskmodels install --dry-run
   ${chalk.dim("$")} riskmodels health
   ${chalk.dim("$")} riskmodels metrics NVDA
+  ${chalk.dim("$")} riskmodels decompose NVDA
   ${chalk.dim("$")} riskmodels query ${chalk.green('"SELECT ticker FROM ticker_metadata LIMIT 3"')}
   ${chalk.dim("$")} riskmodels manifest --format anthropic
 
@@ -59,6 +61,7 @@ program.addCommand(doctorCommand());
 program.addCommand(uninstallCommand());
 program.addCommand(queryCommand());
 program.addCommand(metricsCommand());
+program.addCommand(decomposeCommand());
 program.addCommand(batchCommand());
 program.addCommand(portfolioCommand());
 program.addCommand(returnsCommand());

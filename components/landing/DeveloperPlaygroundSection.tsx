@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Phase 2 developer playground: GET /api/metrics + JSON + @riskmodels/web visuals.
+ * Developer console: GET /api/metrics + JSON + @riskmodels/web visuals.
  * Anonymous: static preview. Signed-in: live metrics with playground rate limit header.
  */
 
@@ -181,21 +181,20 @@ export default function DeveloperPlaygroundSection() {
     >
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400/90">
-            Phase 2 · Developer playground
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            Developer console
           </p>
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            One call. Full JSON. Four-bet card.
+            Live metrics · raw JSON · same four-bet card
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
-            Signed-in users hit{' '}
-            <span className="font-mono text-zinc-300">GET /api/metrics/&lt;ticker&gt;</span> with session auth
-            (playground rate limit). Charts for 2y+YTD live in{' '}
-            <span className="font-mono text-zinc-300">@riskmodels/web</span> + the walkthrough above.
+            Authenticated sessions call{' '}
+            <span className="font-mono text-zinc-300">GET /api/metrics/&lt;ticker&gt;</span> (10 req/min
+            playground cap). Anonymous visitors see a static NVDA-shaped payload.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800/90 bg-zinc-900/35 p-5 shadow-2xl ring-1 ring-white/[0.06] sm:p-7">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/35 p-5 sm:p-7">
           {!user ? (
             <div className="mb-6 rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
               <a href="/get-key" className="font-semibold text-sky-400 underline-offset-2 hover:underline">

@@ -284,3 +284,116 @@ class TestL3Decomposition:
         assert len(data.rows) == 1
         assert data.rows[0].ticker == "TSLA"
         assert data.rows[0].l3.market == pytest.approx(0.5)
+
+    def test_plot_raw_l3_decomposition_exact_fields(self):
+        from riskmodels.visuals import plot_l3_decomposition
+
+        raw = {
+            "ticker": "NVDA",
+            "dates": ["2026-01-01", "2026-01-02"],
+            "l3_market_er": [0.3, 0.31],
+            "l3_sector_er": [0.2, 0.19],
+            "l3_subsector_er": [0.1, 0.11],
+            "l3_residual_er": [0.4, 0.39],
+        }
+
+        fig = plot_l3_decomposition(raw, metric="variance", mode="timeseries")
+
+        assert len(fig.data) == 4
+        assert fig.data[0].name == "market: l3_market_er"
+        assert list(fig.data[0].y) == [0.3, 0.31]
+        assert fig.layout.meta["source"] == "/l3-decomposition"
+        assert fig.layout.meta["l3_mapping"]["residual"] == "l3_residual_er"
+
+    def test_plot_raw_portfolio_risk_snapshot_exact_nested_fields(self):
+        from riskmodels.visuals import plot_l3_decomposition
+
+        raw = {
+            "as_of": "2026-01-02",
+            "portfolio_risk_index": {
+                "variance_decomposition": {
+                    "market": 0.25,
+                    "sector": 0.20,
+                    "subsector": 0.15,
+                    "residual": 0.40,
+                    "systematic": 0.60,
+                },
+                "portfolio_volatility_23d": 0.18,
+                "position_count": 3,
+            },
+        }
+
+        fig = plot_l3_decomposition(raw)
+
+        assert fig.data[0].name == "market: portfolio_risk_index.variance_decomposition.market"
+        assert list(fig.data[0].x) == ["2026-01-02"]
+        assert list(fig.data[3].y) == [0.40]
+        assert fig.layout.meta["systematic_field"] == (
+            "portfolio_risk_index.variance_decomposition.systematic"
+        )
+
+    def test_plot_raw_snapshot_mode_uses_layer_labels(self):
+        from riskmodels.visuals import plot_l3_decomposition
+
+        raw = {
+            "as_of": "2026-01-02",
+            "portfolio_risk_index": {
+                "variance_decomposition": {
+                    "market": 0.25,
+                    "sector": 0.20,
+                    "subsector": 0.15,
+                    "residual": 0.40,
+                    "systematic": 0.60,
+                },
+                "portfolio_volatility_23d": 0.18,
+                "position_count": 3,
+            },
+        }
+
+        fig = plot_l3_decomposition(raw, mode="snapshot")
+
+        assert list(fig.data[0].y) == ["market", "sector", "subsector", "residual"]
+        assert list(fig.data[0].customdata) == [
+            "portfolio_risk_index.variance_decomposition.market",
+            "portfolio_risk_index.variance_decomposition.sector",
+            "portfolio_risk_index.variance_decomposition.subsector",
+            "portfolio_risk_index.variance_decomposition.residual",
+        ]
+
+    def test_plot_raw_decompose_total_validation(self):
+        from riskmodels.visuals import L3DecompositionMappingError, plot_l3_decomposition
+
+        raw = {
+            "data_as_of": "2026-01-02",
+            "exposure": {
+                "market": {"er": 0.25, "hr": 1.0, "hedge_etf": "SPY"},
+                "sector": {"er": 0.25, "hr": 0.2, "hedge_etf": "XLK"},
+                "subsector": {"er": 0.25, "hr": 0.1, "hedge_etf": "SMH"},
+                "residual": {"er": 0.25, "hr": None, "hedge_etf": None},
+            },
+            "_data_health": {"er_sum": 0.90},
+        }
+
+        with pytest.raises(L3DecompositionMappingError, match="_data_health.er_sum"):
+            plot_l3_decomposition(raw, metric="variance")
+
+    def test_plot_raw_return_attribution_exact_fields(self):
+        from riskmodels.visuals import plot_l3_decomposition
+
+        raw = {
+            "attribution": {
+                "teo": ["2026-01-01", "2026-01-02"],
+                "gross": [0.01, 0.02],
+                "market": [0.002, 0.004],
+                "sector": [0.003, 0.005],
+                "subsector": [0.001, 0.002],
+                "residual": [0.004, 0.009],
+                "systematic": [0.006, 0.011],
+            }
+        }
+
+        fig = plot_l3_decomposition(raw, metric="return")
+
+        assert fig.data[0].name == "market: attribution.market"
+        assert fig.layout.meta["total_field"] == "attribution.gross"
+        assert fig.layout.meta["metric"] == "return"

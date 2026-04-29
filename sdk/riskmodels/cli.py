@@ -2,6 +2,7 @@
 
 Usage:
     python -m riskmodels.cli metrics NVDA
+    python -m riskmodels.cli decompose NVDA
     python -m riskmodels.cli returns NVDA --window 21
     python -m riskmodels.cli l3 NVDA
     python -m riskmodels.cli rankings NVDA
@@ -43,6 +44,11 @@ def _client(args: argparse.Namespace):
 
 def cmd_metrics(args: argparse.Namespace) -> int:
     _print(_client(args).get_metrics(args.ticker))
+    return 0
+
+
+def cmd_decompose(args: argparse.Namespace) -> int:
+    _print(_client(args).decompose(args.ticker))
     return 0
 
 
@@ -97,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     for name, fn, help_ in [
         ("metrics", cmd_metrics, "Latest risk metrics for a ticker"),
+        ("decompose", cmd_decompose, "Four-layer decomposition + hedge map (POST /decompose)"),
         ("l3", cmd_l3, "L3 risk decomposition time series"),
         ("rankings", cmd_rankings, "Cross-sectional rankings for a ticker"),
         ("macro", cmd_macro, "Macro factor correlations for a ticker"),
