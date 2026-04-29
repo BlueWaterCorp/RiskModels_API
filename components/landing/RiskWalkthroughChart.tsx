@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { JetBrains_Mono } from "next/font/google";
 import { Pause, Play, Plus, X, ArrowRight, Code } from "lucide-react";
 import { cn } from "@/lib/cn";
+import {
+  buildSignedAttributionColors,
+  legendItemsWithSignedColors,
+  seriesWithSignedColors,
+  type AttributionLegendItem,
+  type AttributionSeries,
+  type SignedAttributionColors as SharedSignedAttributionColors,
+} from "@/lib/landing/attributionColors";
 
 /** CRT / ticker terminal — only applied to the Attribution Tape panel below the charts */
 const attributionTapeCrtFont = JetBrains_Mono({
@@ -19,29 +27,9 @@ type Step = {
   description: string;
 };
 
-type Series = {
-  key:
-    | "gross"
-    | "marketHedged"
-    | "sectorHedged"
-    | "subsectorHedged"
-    | "residual";
-  label: string;
-  color: string;
-  dash?: string;
-};
-
-type LegendItem = Omit<Series, "key"> & {
-  key: Series["key"] | "subsector";
-};
-
-type SignedAttributionColors = {
-  gross: string;
-  market: string;
-  sector: string;
-  subsector: string;
-  residual: string;
-};
+type Series = AttributionSeries;
+type LegendItem = AttributionLegendItem;
+type SignedAttributionColors = SharedSignedAttributionColors;
 
 export type RiskWalkthroughLinePoint = {
   date: string;
@@ -78,6 +66,11 @@ type RiskWalkthroughChartProps = {
   snapshots?: Record<string, RiskWalkthroughSnapshot> | null;
   defaultTicker?: string;
   tickers?: string[];
+  /**
+   * Which sub-chart(s) to render. Tour state is shared regardless — the
+   * hidden chart still mounts and stays in sync.
+   */
+  view?: "performance" | "risk" | "both";
 };
 
 const STEPS: Step[] = [
@@ -111,14 +104,6 @@ const STEPS: Step[] = [
   },
 ];
 
-const SIGNED_ATTRIBUTION_PALETTE = {
-  gross: "#94A3B8",
-  market: { up: "#F59E0B", down: "#B45309" },
-  sector: { up: "#22C55E", down: "#166534" },
-  subsector: { up: "#8B5CF6", down: "#5B21B6" },
-  residual: { up: "#10B981", down: "#EF4444" },
-};
-
 /** How long each peel step stays on screen during auto-play (ms). */
 const AUTO_STEP_INTERVAL_MS = 3200;
 const AUTO_STEP_COUNT = 5;
@@ -134,59 +119,6 @@ const MAG7_DEFAULT: string[] = [
   "TSLA",
 ];
 
-function signedColor(up: string, down: string, value: number): string {
-  return value >= 0 ? up : down;
-}
-
-function buildSignedAttributionColors(
-  bar: RiskWalkthroughBar,
-): SignedAttributionColors {
-  return {
-    gross: SIGNED_ATTRIBUTION_PALETTE.gross,
-    market: signedColor(
-      SIGNED_ATTRIBUTION_PALETTE.market.up,
-      SIGNED_ATTRIBUTION_PALETTE.market.down,
-      bar.spy_pp,
-    ),
-    sector: signedColor(
-      SIGNED_ATTRIBUTION_PALETTE.sector.up,
-      SIGNED_ATTRIBUTION_PALETTE.sector.down,
-      bar.sec_pp,
-    ),
-    subsector: signedColor(
-      SIGNED_ATTRIBUTION_PALETTE.subsector.up,
-      SIGNED_ATTRIBUTION_PALETTE.subsector.down,
-      bar.sub_pp,
-    ),
-    residual: signedColor(
-      SIGNED_ATTRIBUTION_PALETTE.residual.up,
-      SIGNED_ATTRIBUTION_PALETTE.residual.down,
-      bar.res_pp,
-    ),
-  };
-}
-
-function seriesWithSignedColors(colors: SignedAttributionColors): Series[] {
-  return [
-    { key: "marketHedged", label: "Market", color: colors.market },
-    { key: "sectorHedged", label: "Sector", color: colors.sector },
-    { key: "subsectorHedged", label: "Subsector", color: colors.subsector },
-    { key: "residual", label: "L3 residual", color: colors.residual },
-    { key: "gross", label: "Gross", color: colors.gross, dash: "6 4" },
-  ];
-}
-
-function legendItemsWithSignedColors(
-  colors: SignedAttributionColors,
-): LegendItem[] {
-  return [
-    { key: "marketHedged", label: "Market", color: colors.market },
-    { key: "sectorHedged", label: "Sector", color: colors.sector },
-    { key: "subsector", label: "Subsector", color: colors.subsector },
-    { key: "residual", label: "L3 residual", color: colors.residual },
-    { key: "gross", label: "Gross", color: colors.gross, dash: "6 4" },
-  ];
-}
 
 // Fallback demo data (NVDA)
 const DEMO_SNAPSHOT: RiskWalkthroughSnapshot = {
@@ -347,7 +279,7 @@ function AttributionTape({ cta }: { cta: string }) {
 function DeveloperCta() {
   return (
     <a
-      href="/quickstart"
+      href="/installation"
       className="group mt-3 flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm font-semibold text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800 hover:text-white"
     >
       <Code className="h-4 w-4" />
@@ -807,6 +739,7 @@ export function RiskWalkthroughChart({
   snapshots = null,
   defaultTicker = "NVDA",
   tickers,
+  view = "both",
 }: RiskWalkthroughChartProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [waterfallVisibleThrough, setWaterfallVisibleThrough] = useState(0);
@@ -1190,8 +1123,20 @@ export function RiskWalkthroughChart({
             </div>
 
             <div>
-              <div className="grid items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(248px,0.82fr)] lg:gap-2">
-                <div className="h-[280px] sm:h-[320px] md:h-[350px]">
+              <div
+                className={cn(
+                  "grid items-stretch gap-2 lg:gap-2",
+                  view === "both"
+                    ? "lg:grid-cols-[minmax(0,2fr)_minmax(248px,0.82fr)]"
+                    : "lg:grid-cols-1",
+                )}
+              >
+                <div
+                  className={cn(
+                    "h-[280px] sm:h-[320px] md:h-[350px]",
+                    view === "risk" && "hidden",
+                  )}
+                >
                   <LineAttributionChart
                     points={activeLine}
                     visibleSeries={visibleLineSeries}
@@ -1202,7 +1147,12 @@ export function RiskWalkthroughChart({
                   />
                 </div>
 
-                <div className="h-[280px] sm:h-[320px] md:h-[350px]">
+                <div
+                  className={cn(
+                    "h-[280px] sm:h-[320px] md:h-[350px]",
+                    view === "performance" && "hidden",
+                  )}
+                >
                   <WaterfallChart
                     steps={waterfallSteps}
                     visibleThrough={waterfallVisibleThrough}

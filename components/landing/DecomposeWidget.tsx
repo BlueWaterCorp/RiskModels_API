@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { ATTRIBUTION_CLASSES } from '@/lib/landing/attributionColors';
 
 const MAG7 = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'] as const;
 type Mag7 = (typeof MAG7)[number];
@@ -25,10 +26,10 @@ interface DecomposeBody {
 }
 
 const LAYER_META: Array<{ key: keyof DecomposeBody['exposure']; label: string; color: string }> = [
-  { key: 'market',    label: 'Market',    color: 'bg-blue-500' },
-  { key: 'sector',    label: 'Sector',    color: 'bg-teal-500' },
-  { key: 'subsector', label: 'Subsector', color: 'bg-cyan-500' },
-  { key: 'residual',  label: 'Residual',  color: 'bg-emerald-500' },
+  { key: 'market',    label: 'Market',    color: ATTRIBUTION_CLASSES.market },
+  { key: 'sector',    label: 'Sector',    color: ATTRIBUTION_CLASSES.sector },
+  { key: 'subsector', label: 'Subsector', color: ATTRIBUTION_CLASSES.subsector },
+  { key: 'residual',  label: 'Residual',  color: ATTRIBUTION_CLASSES.residual },
 ];
 
 function fmt(n: number | null | undefined, digits = 2): string {

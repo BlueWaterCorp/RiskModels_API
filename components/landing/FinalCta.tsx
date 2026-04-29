@@ -19,10 +19,10 @@ export default function FinalCta() {
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
-            href="/quickstart"
+            href="/installation"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-base font-semibold text-white transition hover:bg-primary/90"
           >
-            npx -y riskmodels@latest install <ArrowRight size={18} />
+            Get started <ArrowRight size={18} />
           </Link>
           <Link
             href="/get-key"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { JetBrains_Mono } from 'next/font/google';
 
 const jetbrains = JetBrains_Mono({
@@ -660,11 +660,19 @@ const SCENARIOS: Scenario[] = [
 export interface TerminalShowcaseProps {
   /** When true, renders only inner content (e.g. inside ProductWorkbench). */
   embedded?: boolean;
+  /** Optional whitelist of scenario IDs to render (preserves order given). Unknown IDs are skipped. Default = all scenarios. */
+  scenarioIds?: string[];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function TerminalShowcase({ embedded = false }: TerminalShowcaseProps) {
-  const [activeId, setActiveId] = useState(SCENARIOS[0].id);
+export default function TerminalShowcase({ embedded = false, scenarioIds }: TerminalShowcaseProps) {
+  const scenarios = useMemo(() => {
+    if (!scenarioIds || scenarioIds.length === 0) return SCENARIOS;
+    const byId = new Map(SCENARIOS.map((s) => [s.id, s]));
+    return scenarioIds.map((id) => byId.get(id)).filter((s): s is Scenario => Boolean(s));
+  }, [scenarioIds]);
+
+  const [activeId, setActiveId] = useState(scenarios[0]?.id ?? SCENARIOS[0].id);
   const [phase, setPhase] = useState<Phase>('typing');
   const [typedCount, setTypedCount] = useState(0);
   const [visibleLines, setVisibleLines] = useState<Set<number>>(new Set());
@@ -672,7 +680,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
   /** Bumps on every effect cleanup so stale timeouts (Strict Mode, tab switch) never advance state. */
   const animSessionRef = useRef(0);
 
-  const active = SCENARIOS.find((s) => s.id === activeId)!;
+  const active = scenarios.find((s) => s.id === activeId) ?? scenarios[0]!;
 
   function switchTab(id: string) {
     if (id === activeId) return;
@@ -712,7 +720,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
       pending.clear();
     };
 
-    const scenario = SCENARIOS.find((s) => s.id === activeId)!;
+    const scenario = scenarios.find((s) => s.id === activeId) ?? scenarios[0]!;
     const cmd = scenario.command;
 
     const runFullCycle = () => {
@@ -767,7 +775,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
       clearPending();
       animSessionRef.current += 1;
     };
-  }, [activeId]);
+  }, [activeId, scenarios]);
 
   const cursor = (
     <span
@@ -884,7 +892,7 @@ export default function TerminalShowcase({ embedded = false }: TerminalShowcaseP
           <div
             className="flex overflow-x-auto border-b border-white/10 bg-zinc-900/90 max-w-full min-w-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {SCENARIOS.map((scenario) => (
+            {scenarios.map((scenario) => (
               <button
                 type="button"
                 key={scenario.id}

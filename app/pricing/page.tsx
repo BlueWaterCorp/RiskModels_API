@@ -367,10 +367,10 @@ export default function PricingPage() {
                 </svg>
               </Link>
               <Link
-                href="/quickstart"
+                href="/installation"
                 className="inline-flex items-center justify-center rounded-md border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
               >
-                View quickstart guide
+                View installation guide
               </Link>
             </div>
           </div>
