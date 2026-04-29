@@ -64,6 +64,17 @@ DEFAULT_SCOPE = (
 DEFAULT_BASE_URL = "https://riskmodels.app/api"
 
 
+def _timeout_seconds_from_env(default: float = 120.0) -> float:
+    """HTTP client timeout for Transport (seconds). Override with RISKMODELS_HTTP_TIMEOUT."""
+    raw = os.environ.get("RISKMODELS_HTTP_TIMEOUT")
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        return default
+
+
 class RiskModelsClient:
     """HTTP client for the RiskModels API.
 
@@ -118,10 +129,17 @@ class RiskModelsClient:
         if csec is not None:
             csec = csec.strip()
         scope = os.environ.get("RISKMODELS_OAUTH_SCOPE", DEFAULT_SCOPE)
+        timeout = _timeout_seconds_from_env()
         if key:
-            return cls(base_url=base, api_key=key)
+            return cls(base_url=base, api_key=key, timeout=timeout)
         if cid and csec:
-            return cls(base_url=base, client_id=cid, client_secret=csec, default_scope=scope)
+            return cls(
+                base_url=base,
+                client_id=cid,
+                client_secret=csec,
+                default_scope=scope,
+                timeout=timeout,
+            )
         raise ValueError("Set RISKMODELS_API_KEY or RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET")
 
     def close(self) -> None:

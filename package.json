@@ -24,6 +24,8 @@
     "cli:openapi-check": "node scripts/cli-openapi-check.mjs",
     "supabase:auth-smtp:resend": "bash ./scripts/supabase-patch-auth-smtp-resend.sh",
     "supabase:auth-smtp:resend:doppler": "bash ./scripts/supabase-auth-smtp-doppler.sh",
+    "publish:riskmodels-py": "bash sdk/scripts/publish_pypi.sh",
+    "publish:riskmodels-py:doppler": "doppler run -p erm3 -c prd -- bash sdk/scripts/publish_pypi.sh",
     "db:push": "bash ./scripts/check-supabase-cli.sh db push --linked",
     "db:migration:list": "bash ./scripts/check-supabase-cli.sh migration list --linked",
     "postinstall": "npm run build:web-sdk"
