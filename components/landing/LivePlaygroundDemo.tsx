@@ -305,7 +305,7 @@ export default function LivePlaygroundDemo() {
             Live demo / Playground
           </p>
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            One position, four bets — peel the layers in real data
+            Peel the layers in real data
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
             See exactly what each position exposes you to &mdash; market, sector, theme,
