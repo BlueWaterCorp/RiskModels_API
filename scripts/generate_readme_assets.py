@@ -19,10 +19,11 @@ Outputs:
     ``get_metrics``), for ``sdk/README.md``. Requires ``kaleido`` (``pip install riskmodels-py[viz]``).
 
 Run from repo root. You can set ``RISKMODELS_API_KEY`` (and optional ``RISKMODELS_BASE_URL``)
-in ``.env.local`` — the script loads it via ``python-dotenv`` (install SDK with ``[dev]``).
+in ``RiskModels_API/.env`` (internal; gitignored) — the script loads it via ``python-dotenv``
+(install SDK with ``pip install -e 'sdk[dotenv]'`` or ``[dev]``). ``.env.local`` is also read.
 
 ``echo RISKMODELS_BASE_URL=...`` **does not** set the variable (it only prints). Use ``export`` or
-``.env.local``. Local API example::
+``.env``. Local API example in ``.env``::
 
     export RISKMODELS_BASE_URL=http://localhost:3000/api   # npm run dev
     export RISKMODELS_API_KEY='rm_agent_...'
@@ -331,7 +332,11 @@ def main() -> int:
     args = parser.parse_args()
 
     if not os.environ.get("RISKMODELS_API_KEY"):
-        print("RISKMODELS_API_KEY is required (free-tier key works).", file=sys.stderr)
+        print(
+            "RISKMODELS_API_KEY is required (free-tier key works). "
+            "Internal use: add it to RiskModels_API/.env — see script docstring.",
+            file=sys.stderr,
+        )
         return 1
 
     _warn_if_malformed_api_key()
@@ -368,8 +373,8 @@ def main() -> int:
     )
     if not base_url_set:
         print(
-            "Tip: for localhost, `export RISKMODELS_BASE_URL=http://localhost:3000/api` "
-            "(or add it to .env.local). `echo VAR=...` does not set the environment.",
+            "Tip: for localhost, set RISKMODELS_BASE_URL in .env or .env.local "
+            "(e.g. http://localhost:3000/api). `echo VAR=...` does not set the environment.",
             file=sys.stderr,
         )
     mag7 = _mag7_tickers(client)
