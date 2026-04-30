@@ -1,14 +1,22 @@
 # RiskModels notebooks
 
+| Notebook | Path |
+|----------|------|
+| `riskmodels_quickstart.ipynb` | **Main quickstart** — [`sdk/notebooks/riskmodels_quickstart.ipynb`](../sdk/notebooks/riskmodels_quickstart.ipynb) · raw REST first, then SDK + AOM + charts; same file for **local Jupyter** and **Google Colab** (Colab runs the pip cell once). |
+| `riskmodels_aom_colab.ipynb` | **AOM (Colab)** — [`sdk/notebooks/riskmodels_aom_colab.ipynb`](../sdk/notebooks/riskmodels_aom_colab.ipynb) |
+| `quickstart.ipynb` | **AOM scratch** — [`sdk/notebooks/quickstart.ipynb`](../sdk/notebooks/quickstart.ipynb) |
+
+CI / `execute_quickstart_notebook.py` runs **`sdk/notebooks/riskmodels_quickstart.ipynb`** only.
+
 ## Quickstart — automated “Run All”
 
-The quickstart notebook reads the API key from the environment when set (so CI and scripts never need to edit the file):
+The local quickstart notebook reads the API key from the environment when set (so CI and scripts never need to edit the file):
 
 | Variable | Notes |
 |----------|--------|
 | `RISKMODELS_API_KEY` | Same name as the Python SDK; put in `.env.local` for `npm run test:notebook` |
 | `RISKMODELS_QUICKSTART_API_KEY` | Explicit name for the harness only |
-| `TEST_API_SECRET` | GitHub Actions smoke / notebook workflows |
+| `TEST_API_KEY` | GitHub Actions smoke / notebook workflows |
 
 The harness loads **`.env.local`** automatically (does not override vars already exported).
 
@@ -28,7 +36,7 @@ python scripts/execute_quickstart_notebook.py
 Optional: save the executed notebook with output:
 
 ```bash
-python scripts/execute_quickstart_notebook.py --output notebooks/.quickstart-executed.ipynb
+python scripts/execute_quickstart_notebook.py --output sdk/notebooks/.quickstart-executed.ipynb
 ```
 
 Cells tagged **`skip-ci`** (OpenAI bonus, Colab `!npm` install) are replaced with a stub unless you pass **`--no-skip-ci`**.

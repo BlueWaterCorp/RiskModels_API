@@ -21,6 +21,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:notebook": "python3 scripts/execute_quickstart_notebook.py",
+    "ipynb": "bash ./scripts/start-jupyter-lab.sh",
+    "notebook:lab": "bash ./scripts/start-jupyter-lab.sh",
     "cli:openapi-check": "node scripts/cli-openapi-check.mjs",
     "supabase:auth-smtp:resend": "bash ./scripts/supabase-patch-auth-smtp-resend.sh",
     "supabase:auth-smtp:resend:doppler": "bash ./scripts/supabase-auth-smtp-doppler.sh",

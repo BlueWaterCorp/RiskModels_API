@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Execute notebooks/riskmodels_quickstart.ipynb end-to-end (same as Jupyter "Run All").
+Execute sdk/notebooks/riskmodels_quickstart.ipynb end-to-end (same as Jupyter "Run All").
 
 Requires a real RiskModels API key (rm_user_* / rm_agent_*).
 
@@ -36,7 +36,7 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-NOTEBOOK = REPO_ROOT / "notebooks" / "riskmodels_quickstart.ipynb"
+NOTEBOOK = REPO_ROOT / "sdk" / "notebooks" / "riskmodels_quickstart.ipynb"
 
 SKIP_STUB = '''# Auto-skipped in harness (metadata tag: skip-ci)
 print("[quickstart harness] skipped cell (skip-ci tag). Run in Jupyter for OpenAI / !npm sections.")

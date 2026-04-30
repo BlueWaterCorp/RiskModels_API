@@ -1,0 +1,8 @@
+# Local JupyterLab (browser): ./scripts/start-jupyter-lab.sh
+# Install once in your venv:
+#   pip install -r notebooks/requirements-jupyter.txt
+#   pip install -e "./sdk[viz,dotenv]"   # so `import riskmodels` works in cells
+jupyterlab>=4,<5
+ipykernel>=6.29
+ipython>=8.0
+python-dotenv>=1.0,<2

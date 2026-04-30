@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "riskmodels-py"
-version = "0.3.2"
+version = "0.3.3"
 description = "Python SDK for the RiskModels API — decompose US equities into market/sector/subsector/residual variance shares and ETF hedge ratios"
 readme = "README.md"
 license = { text = "Proprietary" }

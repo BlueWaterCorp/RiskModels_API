@@ -304,6 +304,65 @@ class TestL3Decomposition:
         assert list(fig.data[0].y) == [0.3, 0.31]
         assert fig.layout.meta["source"] == "/l3-decomposition"
         assert fig.layout.meta["l3_mapping"]["residual"] == "l3_residual_er"
+        assert fig.layout.meta.get("layer_display_names") is None
+
+    def test_plot_l3_layer_display_names_legend(self):
+        from riskmodels.visuals import plot_l3_decomposition
+
+        raw = {
+            "ticker": "NVDA",
+            "dates": ["2026-01-01", "2026-01-02"],
+            "l3_market_er": [0.3, 0.31],
+            "l3_sector_er": [0.2, 0.19],
+            "l3_subsector_er": [0.1, 0.11],
+            "l3_residual_er": [0.4, 0.39],
+        }
+        fig = plot_l3_decomposition(
+            raw,
+            metric="variance",
+            mode="timeseries",
+            layer_display_names={"market": "Market (SPY)", "sector": "Sector (XLK)"},
+        )
+        assert fig.data[0].name == "Market (SPY) · l3_market_er"
+        assert fig.data[1].name == "Sector (XLK) · l3_sector_er"
+        assert fig.layout.meta["layer_display_names"]["market"] == "Market (SPY)"
+
+    def test_plot_l3_year_end_stack_sigma_scaled(self):
+        from riskmodels.visuals import plot_l3_year_end_stack
+
+        raw = {
+            "ticker": "TEST",
+            "dates": ["2024-12-15", "2024-12-30", "2025-06-01", "2025-12-29"],
+            "l3_market_er": [0.25, 0.25, 0.26, 0.26],
+            "l3_sector_er": [0.25, 0.25, 0.24, 0.24],
+            "l3_subsector_er": [0.1, 0.1, 0.1, 0.1],
+            "l3_residual_er": [0.4, 0.4, 0.4, 0.4],
+        }
+        vol = [0.4, 0.4, 0.5, 0.5]
+        fig = plot_l3_year_end_stack(raw, vol_23d=vol, max_calendar_years=5)
+        assert fig.layout.meta["sigma_scaled"] is True
+        assert len(fig.data[0].y) == 2
+        assert abs(sum(fig.data[i].y[0] for i in range(4)) - 0.4 * 1.0) < 1e-6
+
+    def test_plot_l3_year_end_monthly_vol_sqrt12(self):
+        from riskmodels.visuals import plot_l3_year_end_stack
+
+        raw = {
+            "ticker": "TEST",
+            "dates": ["2025-12-30"],
+            "l3_market_er": [0.5],
+            "l3_sector_er": [0.2],
+            "l3_subsector_er": [0.1],
+            "l3_residual_er": [0.2],
+        }
+        fig = plot_l3_year_end_stack(
+            raw,
+            vol_23d=[0.05],
+            monthly_vol_to_annual=True,
+            max_calendar_years=None,
+        )
+        sigma = 0.05 * (12 ** 0.5)
+        assert fig.data[0].y[0] == pytest.approx(0.5 * sigma)
 
     def test_plot_raw_portfolio_risk_snapshot_exact_nested_fields(self):
         from riskmodels.visuals import plot_l3_decomposition
