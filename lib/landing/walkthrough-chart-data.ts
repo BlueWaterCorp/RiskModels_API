@@ -200,3 +200,112 @@ export function buildWalkthroughSnapshot(
 }
 
 export const WALKTHROUGH_MAG7_SET = new Set<string>(WALKTHROUGH_MAG7_TICKERS);
+
+// ──────────────────────────────────────────────────────────────────────────
+// Landing-chart shape (RiskWalkthroughChart.tsx contract). Different from
+// `WalkthroughSnapshot` — the chart wants a single bar with `spy_pp/sec_pp/
+// sub_pp/res_pp/gross_pp` and a 5-field line with explicit `subsectorHedged`.
+//
+// Math follows the Risk_Models reference (arithmetic cumulative sum of factor
+// contribution returns), matching the Part 1 prose-numbers convention:
+//   spy_pp = Σ l1_cfr,  sec_pp = Σ(l2_cfr − l1_cfr), sub_pp = Σ(l3_cfr − l2_cfr),
+//   res_pp = Σ(returns_gross − l3_cfr),  gross_pp = Σ returns_gross.
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface LandingTickerBar {
+  spy_pp: number;
+  sec_pp: number;
+  sub_pp: number;
+  res_pp: number;
+  gross_pp: number;
+}
+
+export interface LandingTickerLinePoint {
+  date: string;
+  gross: number;
+  marketHedged: number;
+  sectorHedged: number;
+  subsectorHedged: number;
+  residual: number;
+}
+
+export interface LandingTickerSnapshot {
+  ticker: string;
+  symbol: string;
+  name: string | null;
+  asOf: string;
+  sectorEtf: string | null;
+  subsectorEtf: string | null;
+  bar: LandingTickerBar;
+  line: LandingTickerLinePoint[];
+}
+
+export function buildLandingTickerSnapshot(
+  ticker: string,
+  sym: SymbolRegistryRow,
+  rows: SecurityHistoryRow[],
+): LandingTickerSnapshot | null {
+  const byDate = new Map<
+    string,
+    { returns_gross?: number; l1_cfr?: number; l2_cfr?: number; l3_cfr?: number }
+  >();
+  for (const row of rows) {
+    if (row.metric_value == null) continue;
+    const bucket = byDate.get(row.teo) ?? {};
+    (bucket as Record<string, number>)[row.metric_key] = row.metric_value;
+    byDate.set(row.teo, bucket);
+  }
+
+  const dates = [...byDate.keys()].sort();
+  if (dates.length === 0) return null;
+
+  let cumGross = 0;
+  let cumL1 = 0;
+  let cumL2 = 0;
+  let cumL3 = 0;
+  const line: LandingTickerLinePoint[] = [];
+  for (const date of dates) {
+    const b = byDate.get(date) ?? {};
+    cumGross += b.returns_gross ?? 0;
+    cumL1 += b.l1_cfr ?? 0;
+    cumL2 += b.l2_cfr ?? 0;
+    cumL3 += b.l3_cfr ?? 0;
+    line.push({
+      date,
+      gross: cumGross * 100,
+      marketHedged: cumL1 * 100,
+      sectorHedged: (cumL2 - cumL1) * 100,
+      subsectorHedged: (cumL3 - cumL2) * 100,
+      residual: (cumGross - cumL3) * 100,
+    });
+  }
+
+  return {
+    ticker,
+    symbol: sym.symbol,
+    name: sym.name ?? WALKTHROUGH_MAG7_NAMES[ticker] ?? null,
+    asOf: dates[dates.length - 1],
+    sectorEtf: sym.sector_etf ?? null,
+    subsectorEtf: sym.subsector_etf ?? sym.sector_etf ?? null,
+    bar: {
+      spy_pp: cumL1 * 100,
+      sec_pp: (cumL2 - cumL1) * 100,
+      sub_pp: (cumL3 - cumL2) * 100,
+      res_pp: (cumGross - cumL3) * 100,
+      gross_pp: cumGross * 100,
+    },
+    line,
+  };
+}
+
+/** Metric keys needed by `buildLandingTickerSnapshot` — strict subset of the legacy set. */
+export const LANDING_SNAPSHOT_METRIC_KEYS: V3MetricKey[] = [
+  "returns_gross",
+  "l1_cfr",
+  "l2_cfr",
+  "l3_cfr",
+];
+
+export function landingStartOfYearUTC(): string {
+  return `${new Date().getUTCFullYear()}-01-01`;
+}

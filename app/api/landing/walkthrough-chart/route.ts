@@ -10,9 +10,9 @@ import { buildMetadataBody } from "@/lib/dal/response-headers";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import {
   WALKTHROUGH_MAG7_SET,
-  WALKTHROUGH_METRIC_KEYS,
-  buildWalkthroughSnapshot,
-  walkthroughStartOfYearMinus2UTC,
+  LANDING_SNAPSHOT_METRIC_KEYS,
+  buildLandingTickerSnapshot,
+  landingStartOfYearUTC,
 } from "@/lib/landing/walkthrough-chart-data";
 
 /**
@@ -62,15 +62,15 @@ export async function GET(request: NextRequest) {
 
     const rows: SecurityHistoryRow[] = await fetchBatchHistory(
       [sym.symbol],
-      WALKTHROUGH_METRIC_KEYS,
+      LANDING_SNAPSHOT_METRIC_KEYS,
       {
         periodicity: "daily",
-        startDate: walkthroughStartOfYearMinus2UTC(),
+        startDate: landingStartOfYearUTC(),
         orderBy: "asc",
       },
     );
 
-    const snapshot = buildWalkthroughSnapshot(ticker, sym, rows);
+    const snapshot = buildLandingTickerSnapshot(ticker, sym, rows);
     if (!snapshot) {
       return NextResponse.json(
         { error: "No history for ticker", ticker },

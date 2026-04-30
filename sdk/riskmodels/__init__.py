@@ -32,6 +32,7 @@ from .metadata_attach import (
     build_semantic_cheatsheet_md,
     ensure_dataframe_legend,
 )
+from .notebook import GET_KEY_URL, ensure_riskmodels_api_key, load_notebook_dotenv, quickstart_connect
 from .metrics_snapshot import format_metrics_snapshot
 from .peer_group import PeerComparison, PeerGroupProxy
 from .performance.base import PerformanceResult
@@ -62,6 +63,18 @@ from .visual_refinement import (
     save_risk_intel_inspiration_figure,
 )
 from .visuals.l3_decomposition import plot_l3_decomposition
+try:
+    from .visuals.l3_decomposition import plot_l3_year_end_stack
+except ImportError:  # pragma: no cover — older installs / partial checkouts
+
+    def plot_l3_year_end_stack(*args: object, **kwargs: object) -> object:
+        raise ImportError(
+            "`plot_l3_year_end_stack` needs riskmodels-py 0.3.3+ (viz extra). "
+            'pip install -U "riskmodels-py[viz]>=0.3.3" '
+            'or pip install -U "riskmodels-py[viz] @ git+https://github.com/BlueWaterCorp/RiskModels_API.git@main#subdirectory=sdk" '
+            "(monorepo: pip install -e ./sdk[viz])."
+        )
+
 from .visuals.mag7_l3_er import plot_mag7_l3_explained_risk, save_mag7_l3_explained_risk_png
 from .visuals.save import (
     save_l3_decomposition_png,
@@ -95,6 +108,7 @@ __all__ = [
     "RiskModelsClient",
     "plot_mag7_l3_explained_risk",
     "plot_l3_decomposition",
+    "plot_l3_year_end_stack",
     "save_l3_decomposition_png",
     "save_mag7_l3_explained_risk_png",
     "save_portfolio_attribution_cascade_png",
@@ -107,6 +121,10 @@ __all__ = [
     "build_semantic_cheatsheet_md",
     "ensure_dataframe_legend",
     "generate_refined_plot",
+    "GET_KEY_URL",
+    "ensure_riskmodels_api_key",
+    "load_notebook_dotenv",
+    "quickstart_connect",
     "save_macro_heatmap",
     "save_macro_sensitivity_matrix",
     "save_ranking_chart",
@@ -131,4 +149,4 @@ __all__ = [
     "run",
 ]
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"

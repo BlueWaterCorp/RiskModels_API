@@ -26,15 +26,18 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Isolated JupyterLab config (scripts/start-jupyter-lab.sh — avoids stale ~/.jupyter traits)
+.jupyter-local/
+
 # Dependencies
 node_modules/
 .pnp
 .pnp.js
 
-# Testing
-coverage/
+# Jupyter
+.ipynb_checkpoints/
 .nyc_output
-notebooks/.quickstart-executed.ipynb
+sdk/notebooks/.quickstart-executed.ipynb
 
 # Claude Code / Cursor local tooling (machine-specific paths)
 .claude/
@@ -69,6 +72,7 @@ audit_findings/
 
 # QA / marketing screenshots — may show real keys, emails, or balances if captured from a logged-in session.
 site_images/
+screenshots/
 
 # Archived runbooks and drafts — low secret risk; optional noise for a public clone.
 archive/

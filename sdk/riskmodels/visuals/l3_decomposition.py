@@ -19,6 +19,7 @@ from .components.l3_decomposition import (
     build_l3_decomposition_data,
     plot_l3_decomposition_from_data,
 )
+from .utils import annualized_vol_decimal
 
 AnnotationMode = Literal["er_systematic", "rr_hr"]
 PlotlyTheme = Literal["light", "terminal_dark"]
@@ -218,13 +219,14 @@ def plot_l3_decomposition(
     *,
     title: str | None = None,
     tolerance: float = 1e-6,
+    layer_display_names: Mapping[str, str] | None = None,
 ) -> Any:
     """Plot exact L3 fields from raw RiskModels API JSON.
 
-    The mapping layer is intentionally explicit: labels and traces cite the
-    exact API field paths used for market, sector, subsector, and residual.
-    Values are plotted as returned by the API; no smoothing, normalization, or
-    unit reinterpretation is applied.
+    The mapping layer is intentional: hovers cite the exact API field paths.
+    Optional ``layer_display_names`` (keys: market, sector, subsector, residual)
+    prefixes legend entries as ``"{label} · {api_field}"`` for teaching charts.
+    Values are plotted as returned by the API; no smoothing or renormalization.
     """
     if metric not in ("variance", "return"):
         raise ValueError("metric must be 'variance' or 'return'")
@@ -272,27 +274,39 @@ def plot_l3_decomposition(
 
     fig = go.Figure()
     fields_for_meta = dict(mapping.fields)
+    disp = dict(layer_display_names) if layer_display_names else {}
+
+    def _trace_name(layer: str, field: str) -> str:
+        if layer in disp and disp[layer]:
+            return f"{disp[layer]} · {field}"
+        return f"{layer}: {field}"
+
     if mode == "timeseries":
         for layer, field in mapping.fields.items():
+            lw = 1.0 if layer == "subsector" else 0.5
+            leg = _trace_name(layer, field)
             fig.add_trace(
                 go.Scatter(
                     x=x_values,
                     y=layer_values[layer],
                     mode="lines",
                     stackgroup="l3",
-                    name=f"{layer}: {field}",
-                    line=dict(width=0.5, color=L3_API_LAYER_COLORS[layer]),
+                    name=leg,
+                    line=dict(width=lw, color=L3_API_LAYER_COLORS[layer]),
                     fillcolor=L3_API_LAYER_COLORS[layer],
-                    hovertemplate=f"{mapping.x_field}: %{{x}}<br>{field}: %{{y}}<extra></extra>",
+                    hovertemplate=(
+                        f"{mapping.x_field}: %{{x}}<br>{leg}<br>{field}: %{{y:.1%}}<extra></extra>"
+                    ),
                 )
             )
         x_title = mapping.x_field or "index"
     else:
         latest_idx = len(x_values) - 1
+        bar_y = [disp.get(layer, layer) for layer in mapping.fields]
         fig.add_trace(
             go.Bar(
                 x=[layer_values[layer][latest_idx] for layer in mapping.fields],
-                y=list(mapping.fields),
+                y=bar_y,
                 customdata=[mapping.fields[layer] for layer in mapping.fields],
                 orientation="h",
                 marker=dict(color=[L3_API_LAYER_COLORS[layer] for layer in mapping.fields]),
@@ -302,10 +316,28 @@ def plot_l3_decomposition(
         )
         x_title = f"{metric} values from API fields"
 
+    y_title_timeseries = (
+        "Share of return variance (L3 ER)"
+        if metric == "variance"
+        else "Value (API field units)"
+    )
+    if metric == "variance" and mode == "timeseries":
+        title_main = title or f"L3 variance decomposition ({mapping.source})"
+        title_cfg: str | dict[str, Any] = {
+            "text": title_main,
+            "subtitle": (
+                "Orthogonal shares that sum to 100%: market = L1 R²; sector & subsector are "
+                "incremental sleeves; residual is the remainder. A thin subsector band is normal "
+                "when L3 adds little beyond sector."
+            ),
+        }
+    else:
+        title_cfg = title or f"L3 {metric} decomposition ({mapping.source})"
+
     fig.update_layout(
-        title=title or f"L3 {metric} decomposition ({mapping.source})",
+        title=title_cfg,
         xaxis_title=x_title,
-        yaxis_title="exact API field value" if mode == "timeseries" else "L3 layer",
+        yaxis_title=(y_title_timeseries if mode == "timeseries" else "L3 layer"),
         template="plotly_white",
         hovermode="x unified" if mode == "timeseries" else "closest",
         legend_title_text="L3 mapping",
@@ -314,11 +346,211 @@ def plot_l3_decomposition(
             "metric": mapping.metric,
             "mode": mode,
             "l3_mapping": fields_for_meta,
+            "layer_display_names": dict(disp) if disp else None,
             "x_field": mapping.x_field,
             "total_field": mapping.total_field,
             "systematic_field": mapping.systematic_field,
+            "interpretation": (
+                "ERM3 L3 ER layers are orthogonal variance fractions in [0,1]; for each date, "
+                "market+sector+subsector+residual ≈ 1. Subsector incremental share (L3 over L2) "
+                "is often small for names that already track sector."
+            ),
         },
     )
+    if metric == "variance" and mode == "timeseries":
+        fig.update_yaxes(tickformat=".0%", rangemode="nonnegative")
+    return fig
+
+
+def plot_l3_year_end_stack(
+    data: Mapping[str, Any],
+    *,
+    title: str | None = None,
+    layer_display_names: Mapping[str, str] | None = None,
+    max_calendar_years: int | None = 5,
+    vol_23d: Sequence[Any] | None = None,
+    monthly_vol_to_annual: bool = False,
+) -> Any:
+    """Stacked bars at each calendar year-end: L3 ER × annualized σ (not forced to 100% height).
+
+    Expects raw JSON like ``GET /l3-decomposition`` (parallel ``dates`` + L3 ER arrays).
+    When ``vol_23d`` is provided (same length as ``dates``), each segment is
+    ``annualized σ × ER`` so the **bar height ≈ total annualized vol** and stacks
+    partition σ like :func:`plot_l3_horizontal` with ``sigma_scaled=True``.
+
+    **API note:** ``vol_23d`` from ``GET /ticker-returns`` / metrics is already
+    **annualized from daily** data (≈ √252 scaling of trailing stdev). Leave
+    ``monthly_vol_to_annual=False``. Set ``monthly_vol_to_annual=True`` only if
+    each ``vol_23d`` element is a **monthly** return stdev (decimal); then σ is
+    further multiplied by √12 to annualize.
+
+    Without ``vol_23d``, falls back to stacking raw ER (each bar sums to ~100%).
+    """
+    if not isinstance(data, Mapping):
+        raise TypeError("data must be raw API JSON decoded to a mapping")
+
+    try:
+        import plotly.graph_objects as go
+    except ImportError as e:  # pragma: no cover
+        raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+
+    mapping = _resolve_l3_mapping(data, "variance")
+    if mapping.x_field is None:
+        raise L3DecompositionMappingError("year-end stack requires a date field on the payload.")
+
+    x_raw = _get_path(data, mapping.x_field)
+    x_values = _as_sequence(x_raw, field=mapping.x_field)
+    layer_values = {
+        layer: _as_sequence(_get_path(data, field), field=field)
+        for layer, field in mapping.fields.items()
+    }
+
+    lengths: set[int] = {len(x_values)}
+    lengths.update(len(v) for v in layer_values.values())
+    if len(lengths) != 1:
+        raise L3DecompositionMappingError(f"L3 field lengths do not match: {lengths}.")
+
+    vol_seq: list[float | None]
+    if vol_23d is not None:
+        vlist = list(vol_23d)
+        if len(vlist) != len(x_values):
+            raise L3DecompositionMappingError(
+                f"vol_23d length {len(vlist)} does not match dates length {len(x_values)}."
+            )
+        vol_seq = []
+        for v in vlist:
+            if v is None:
+                vol_seq.append(None)
+            else:
+                try:
+                    vol_seq.append(float(v))
+                except (TypeError, ValueError):
+                    vol_seq.append(None)
+    else:
+        vol_seq = [None] * len(x_values)
+
+    df = pd.DataFrame({"date": pd.to_datetime(x_values, errors="coerce")})
+    df["vol_23d"] = vol_seq
+    for layer, field in mapping.fields.items():
+        df[field] = pd.to_numeric(layer_values[layer], errors="coerce")
+
+    df = df.dropna(subset=["date"]).sort_values("date")
+    if df.empty:
+        return go.Figure()
+
+    df["year"] = df["date"].dt.year.astype(int)
+    year_end = df.sort_values("date").groupby("year", sort=True).tail(1).sort_values("year")
+
+    if max_calendar_years is not None and len(year_end) > int(max_calendar_years):
+        year_end = year_end.tail(int(max_calendar_years)).reset_index(drop=True)
+
+    er_fields = list(mapping.fields.values())
+
+    use_sigma = False
+    if vol_23d is not None and year_end["vol_23d"].notna().any():
+
+        def _sigma_for_row(v: Any) -> float | None:
+            s = annualized_vol_decimal({"vol_23d": v})
+            if s is None or not math.isfinite(s) or s <= 0:
+                return None
+            if monthly_vol_to_annual:
+                s *= math.sqrt(12.0)
+            return s
+
+        sigma_series = year_end["vol_23d"].map(_sigma_for_row)
+        if sigma_series.notna().any():
+            use_sigma = True
+            year_end = year_end.copy()
+            year_end["_sigma"] = sigma_series
+
+    valid = year_end[er_fields].notna().all(axis=1)
+    if use_sigma:
+        valid = valid & year_end["_sigma"].notna()
+
+    year_end = year_end.loc[valid].reset_index(drop=True)
+    if year_end.empty:
+        return go.Figure()
+
+    x_cat = year_end["year"].astype(str).tolist()
+    as_of = year_end["date"].dt.strftime("%Y-%m-%d").tolist()
+
+    fig = go.Figure()
+    disp = dict(layer_display_names) if layer_display_names else {}
+    fields_for_meta = dict(mapping.fields)
+
+    for layer, field in mapping.fields.items():
+        if disp.get(layer):
+            leg = f"{disp[layer]} · {field}"
+        else:
+            leg = f"{layer}: {field}"
+        er = year_end[field].astype(float)
+        if use_sigma:
+            sig = year_end["_sigma"].astype(float)
+            yv = er * sig
+            hover_extra = "<br>σ (annual): %{customdata[1]:.1%}<br>ER: %{customdata[2]:.1%}<br>σ×ER: %{y:.1%}"
+            cd = [[a, float(s), float(e)] for a, s, e in zip(as_of, sig, er)]
+        else:
+            yv = er
+            hover_extra = "<br>" + field + ": %{y:.1%}"
+            cd = as_of
+
+        fig.add_trace(
+            go.Bar(
+                name=leg,
+                x=x_cat,
+                y=yv,
+                marker=dict(color=L3_API_LAYER_COLORS[layer], line=dict(width=0)),
+                customdata=cd,
+                hovertemplate=(
+                    "Year %{x}<br>As-of %{customdata[0]}<br>" + leg + hover_extra + "<extra></extra>"
+                )
+                if use_sigma
+                else (
+                    "Year %{x}<br>As-of %{customdata}<br>" + leg + "<br>" + field + ": %{y:.1%}<extra></extra>"
+                ),
+            )
+        )
+
+    title_main = title or f"L3 risk by year-end ({mapping.source})"
+    if use_sigma:
+        sub = (
+            "Bar height ≈ annualized σ (from vol); each segment is σ × L3 ER share. "
+            + (
+                "Vol series treated as monthly stdev → ×√12 to annualize."
+                if monthly_vol_to_annual
+                else "vol_23d is already annual (√252 from daily); segments sum to ~σ."
+            )
+        )
+        y_title = "Annualized volatility (σ × ER share)"
+    else:
+        sub = "Stacked ER only (no vol passed); each bar sums to ~100%."
+        y_title = "Share of return variance (L3 ER)"
+
+    title_cfg: dict[str, Any] = {"text": title_main, "subtitle": sub}
+
+    fig.update_layout(
+        title=title_cfg,
+        xaxis_title="Calendar year",
+        yaxis_title=y_title,
+        barmode="stack",
+        template="plotly_white",
+        legend_title_text="L3 mapping",
+        hovermode="x unified",
+        meta={
+            "source": mapping.source,
+            "kind": "l3_year_end_stack",
+            "sigma_scaled": use_sigma,
+            "monthly_vol_to_annual": bool(monthly_vol_to_annual),
+            "l3_mapping": fields_for_meta,
+            "layer_display_names": dict(disp) if disp else None,
+            "year_end_as_of": [{"year": y, "as_of": d} for y, d in zip(x_cat, as_of)],
+            "interpretation": (
+                "With vol: orthogonal ER shares partition annualized σ (σ×ER per layer, sum ≈ σ). "
+                "Without vol: raw ER stacks to 100%. √12 applies only when vol inputs are monthly stdev."
+            ),
+        },
+    )
+    fig.update_yaxes(tickformat=".0%", rangemode="nonnegative")
     return fig
 
 

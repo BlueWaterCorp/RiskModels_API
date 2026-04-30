@@ -37,6 +37,7 @@ from .l3_decomposition import (
     L3DecompositionMappingError,
     plot_l3_decomposition,
     plot_l3_horizontal,
+    plot_l3_year_end_stack,
 )
 from .mag7_l3_er import (
     MAG7_L3_ER_DEFAULT_TICKERS,
@@ -103,6 +104,7 @@ __all__ = [
     "plot_attribution_cascade",
     "plot_l3_decomposition",
     "plot_l3_horizontal",
+    "plot_l3_year_end_stack",
     "plot_mag7_l3_explained_risk",
     "plot_mag7_l3_sigma_rr",
     "plot_risk_cascade",

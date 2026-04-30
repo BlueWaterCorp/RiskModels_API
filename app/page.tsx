@@ -2,12 +2,11 @@ import HeroLanding from '@/components/landing/HeroLanding';
 import QuickstartTyping from '@/components/QuickstartTyping';
 import FailureContrast from '@/components/landing/FailureContrast';
 import RiskWalkthroughWithToggle from '@/components/landing/RiskWalkthroughWithToggle';
+import PortfolioConcentration from '@/components/landing/PortfolioConcentration';
 import OnePositionFourBets from '@/components/landing/OnePositionFourBets';
 import WhyThisMatters from '@/components/landing/WhyThisMatters';
 import OneCallManySurfaces from '@/components/landing/OneCallManySurfaces';
 import AgentLoopSection from '@/components/landing/AgentLoopSection';
-import LivePlaygroundDemo from '@/components/landing/LivePlaygroundDemo';
-import DecomposeWidget from '@/components/landing/DecomposeWidget';
 import PricingApiFirst from '@/components/landing/PricingApiFirst';
 import TrustCredibility from '@/components/landing/TrustCredibility';
 import FinalCta from '@/components/landing/FinalCta';
@@ -24,11 +23,10 @@ export default function HomePage() {
       <FailureContrast />
       <RiskWalkthroughWithToggle />
       <OnePositionFourBets />
+      <PortfolioConcentration />
       <WhyThisMatters />
       <OneCallManySurfaces />
       <AgentLoopSection />
-      <LivePlaygroundDemo />
-      <DecomposeWidget />
       <PricingApiFirst />
       <TrustCredibility />
       <FinalCta />

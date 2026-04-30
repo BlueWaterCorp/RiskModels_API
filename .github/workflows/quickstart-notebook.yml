@@ -1,4 +1,4 @@
-# Run notebooks/riskmodels_quickstart.ipynb end-to-end (same as Jupyter "Run All").
+# Run sdk/notebooks/riskmodels_quickstart.ipynb end-to-end (same as Jupyter "Run All").
 # Uses the same live key secret as Production Smoke Test.
 name: Quickstart Notebook
 

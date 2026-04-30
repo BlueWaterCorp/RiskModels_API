@@ -3,9 +3,9 @@
 [![PyPI version](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)
 
-Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`).
+Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`). **Methodology / wiki:** [ERM3 L3](https://riskmodels.net/docs/methodology/erm3-l3) (aligned with API `wiki_uri`).
 
-**Try the Analysis Object Model without cloning:** open the **[AOM quickstart (Colab)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)** — install cell, API key (Secrets or paste), then `rm` / `run` examples. Same flows live in-repo as [`quickstart.ipynb`](./quickstart.ipynb).
+**Try the Analysis Object Model without cloning:** open the **[AOM quickstart (Colab)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)** — install cell, API key (Secrets or paste), then `rm` / `run` examples. Same flows live in-repo as [`notebooks/quickstart.ipynb`](./notebooks/quickstart.ipynb).
 
 Python SDK for the [RiskModels API](https://riskmodels.app): **POST /decompose** returns variance shares and ETF hedge ratios for any US equity, separating factor exposure from the residual bet so you can hedge what you don't want. ERM3 model; batch portfolio analysis included.
 
@@ -18,6 +18,14 @@ pip install riskmodels-py[xarray]
 # Optional Plotly/Matplotlib charts (L3 decomposition, portfolio cascades):
 pip install riskmodels-py[viz]
 ```
+
+**Colab / notebooks:** use **`riskmodels-py[viz]`** so Plotly helpers (including **`plot_l3_year_end_stack`**, **≥0.3.3**) resolve. Quickstart notebooks try PyPI first, then **fall back to installing `main` from GitHub** if the wheel is not uploaded yet. For a manual one-liner (same fallback clients can paste anywhere):
+
+```bash
+pip install -U "riskmodels-py[viz] @ git+https://github.com/BlueWaterCorp/RiskModels_API.git@main#subdirectory=sdk"
+```
+
+**Maintainers:** after adding new top-level SDK exports used in notebooks, **publish** the matching version to PyPI (`sdk/pyproject.toml` + twine) so the default `pip install "riskmodels-py[viz]>=…"` path works without the git fallback. Internal runbook: **BWMACRO** `docs/RISKMODELS_PY_PYPI_PUBLISHING.md`.
 
 From this monorepo:
 

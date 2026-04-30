@@ -10,18 +10,17 @@ import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
 import {
   WALKTHROUGH_MAG7_TICKERS,
-  WALKTHROUGH_METRIC_KEYS,
-  buildWalkthroughSnapshot,
-  walkthroughStartOfYearMinus2UTC,
-  type WalkthroughSnapshot,
+  LANDING_SNAPSHOT_METRIC_KEYS,
+  buildLandingTickerSnapshot,
+  landingStartOfYearUTC,
+  type LandingTickerSnapshot,
 } from "@/lib/landing/walkthrough-chart-data";
 
 /**
- * GET /api/landing/mag7-hero — unauthenticated landing-page data for the
- * 2y + YTD Mag7 walkthrough chart.
+ * GET /api/landing/mag7-hero — unauthenticated landing-page snapshots for the
+ * MAG7 walkthrough chart. Returns the LandingTickerSnapshot shape (single bar
+ * + 5-field line) that RiskWalkthroughChart consumes directly.
  */
-
-type Mag7Snapshot = WalkthroughSnapshot;
 
 export async function GET(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -47,9 +46,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const startDate = walkthroughStartOfYearMinus2UTC();
+    const startDate = landingStartOfYearUTC();
 
-    const rows = await fetchBatchHistory(symbols, WALKTHROUGH_METRIC_KEYS, {
+    const rows = await fetchBatchHistory(symbols, LANDING_SNAPSHOT_METRIC_KEYS, {
       periodicity: "daily",
       startDate,
       orderBy: "asc",
@@ -62,12 +61,12 @@ export async function GET(request: NextRequest) {
       bySymbol.set(row.symbol, list);
     }
 
-    const snapshots: Record<string, Mag7Snapshot> = {};
+    const snapshots: Record<string, LandingTickerSnapshot> = {};
     for (const ticker of mag7) {
       const sym = symByTicker[ticker];
       if (!sym?.symbol) continue;
       const tickerRows = bySymbol.get(sym.symbol) ?? [];
-      const snap = buildWalkthroughSnapshot(ticker, sym, tickerRows);
+      const snap = buildLandingTickerSnapshot(ticker, sym, tickerRows);
       if (snap) snapshots[ticker] = snap;
     }
 

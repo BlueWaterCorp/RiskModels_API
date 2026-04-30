@@ -133,7 +133,9 @@ When adding a new doc (e.g. "Plaid Holdings UX"):
 
 Edit these files in this repo:
 - `API_TERMS.md`
-- `notebooks/riskmodels_quickstart.ipynb`
+- `sdk/notebooks/riskmodels_quickstart.ipynb` (canonical: REST → SDK + AOM; local Jupyter + Colab)
+- `sdk/notebooks/riskmodels_aom_colab.ipynb` (AOM Colab)
+- `sdk/notebooks/quickstart.ipynb` (AOM in-repo scratch)
 - `OPENAPI_SPEC.yaml` (canonical spec; generates `openapi.json`)
 
 ---

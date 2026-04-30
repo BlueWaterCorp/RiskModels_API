@@ -1,4 +1,4 @@
-# Execute notebooks/quickstart with scripts/execute_quickstart_notebook.py
+# Execute sdk/notebooks/riskmodels_quickstart with scripts/execute_quickstart_notebook.py
 nbformat>=5.10
 nbclient>=0.9
 ipykernel>=6.29
@@ -8,3 +8,4 @@ matplotlib>=3.8
 numpy>=1.26
 pandas>=2.0
 requests>=2.31
+plotly>=5.18
