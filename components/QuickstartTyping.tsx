@@ -78,12 +78,12 @@ export default function QuickstartTyping({ className }: { className?: string }) 
 
   if (reduced) {
     return (
-      <div className={cn('font-mono text-sm sm:text-base', className)}>
+      <div className={cn('font-mono text-base leading-relaxed sm:text-lg', className)}>
         <div className="overflow-hidden whitespace-nowrap text-zinc-100">
           <span className="text-emerald-400">{'> '}</span>
           {LONGEST_STEP.command}
         </div>
-        <div className="mt-1 overflow-hidden whitespace-nowrap pl-4 text-zinc-500">
+        <div className="mt-2 overflow-hidden whitespace-nowrap pl-4 text-zinc-300">
           {LONGEST_STEP.outcome}
         </div>
       </div>
@@ -92,7 +92,7 @@ export default function QuickstartTyping({ className }: { className?: string }) 
 
   return (
     <div
-      className={cn('font-mono text-sm sm:text-base', className)}
+      className={cn('font-mono text-base leading-relaxed sm:text-lg', className)}
       role="presentation"
       aria-hidden="true"
     >
@@ -106,7 +106,7 @@ export default function QuickstartTyping({ className }: { className?: string }) 
           )}
         />
       </div>
-      <div className="mt-1 overflow-hidden whitespace-nowrap pl-4 text-zinc-500">
+      <div className="mt-2 overflow-hidden whitespace-nowrap pl-4 text-zinc-300">
         {step.outcome}
       </div>
     </div>
