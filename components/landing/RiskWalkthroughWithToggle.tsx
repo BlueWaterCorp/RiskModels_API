@@ -32,7 +32,16 @@ export default function RiskWalkthroughWithToggle() {
   }, []);
 
   return (
-    <div className="border-b border-zinc-800/80 bg-zinc-950 pt-10">
+    <section className="border-b border-zinc-800/80 bg-zinc-950 pt-10 sm:pt-12">
+      <div className="mx-auto max-w-3xl px-4 pb-3 text-center sm:px-6 lg:px-8">
+        <p className="text-3xl font-semibold leading-tight text-zinc-200 sm:text-4xl">
+          Market beta got you here.
+        </p>
+        <p className="mt-1 text-3xl font-semibold leading-tight text-white sm:text-4xl">
+          This shows what actually did.
+        </p>
+      </div>
+
       <RiskWalkthroughChart
         view="both"
         compact
@@ -40,10 +49,17 @@ export default function RiskWalkthroughWithToggle() {
         tickers={NVDA_FIRST_ORDER}
         defaultTicker="NVDA"
       />
-      <p className="mx-auto mt-2 max-w-3xl px-4 pb-8 text-center text-sm leading-relaxed text-zinc-400 sm:px-6 sm:text-base lg:px-8">
-        <span className="font-semibold text-emerald-400">Residual</span> is the
-        performance of your stock pick — after market, sector, and subsector.
-      </p>
-    </div>
+
+      <div className="mx-auto max-w-3xl px-4 pb-16 sm:px-6 lg:px-8">
+        <p className="mt-6 text-center text-lg leading-relaxed text-zinc-200 sm:text-xl">
+          <span className="font-semibold text-emerald-400">Residual</span> is what your stock pick actually did.
+        </p>
+        <p className="mt-3 text-center text-xs leading-relaxed text-zinc-500 sm:text-sm">
+          <span className="text-zinc-300">Market</span> · <span className="text-zinc-300">Sector</span> · <span className="text-zinc-300">Subsector</span> → exposures (<span className="font-mono">_HR</span> available)
+          <span className="mx-2 text-zinc-700">|</span>
+          <span className="text-emerald-400">Residual</span> → what remains (<span className="font-mono">_HR</span> = none)
+        </p>
+      </div>
+    </section>
   );
 }

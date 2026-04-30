@@ -4,18 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { ATTRIBUTION_HEX } from "@/lib/landing/attributionColors";
 
 /**
- * Portfolio concentration / diversification — Chart 2 of the landing page.
+ * Portfolio concentration — Chart 2 of the landing page.
  *
- * LEFT panel: Marimekko of MAG7. Each ticker is a horizontal bar. Bar
- * thickness ∝ market-cap weight. Bar length is fixed at 100% and stacked
- * by L3 variance share (market / sector / subsector / residual).
+ * LEFT  = Marimekko (per-ticker σ × cap-weight). Same data as the cap-weighted
+ *         portfolio shown on the right.
+ * RIGHT = Replicate / hedge workflow. Risk decomposition stack →
+ *         replicable-vs-residual annotation → ETF mapping (HR × $1M) →
+ *         hedge selection chips (static) → remaining-exposure bar.
  *
- * RIGHT panel: two vertical bars. Equal-weight portfolio vs cap-weight
- * portfolio. Each bar shows the naive position-weighted variance stack
- * with an "adjusted" line marking post-correlation portfolio risk; the
- * shaded delta is "X% of your risk is redundant."
- *
- * All values come from /api/landing/concentration.
+ * RIGHT is derived from the SAME cap-weighted variance decomposition as LEFT;
+ * ETF dollar amounts come from the cap-weighted Σ_i w_i · l3_*_hr aggregated
+ * by `sector_etf` / `subsector_etf` (Market always = SPY).
  */
 
 const LAYER_COLORS = {
@@ -23,6 +22,13 @@ const LAYER_COLORS = {
   sector: ATTRIBUTION_HEX.sector.up,
   subsector: ATTRIBUTION_HEX.subsector.up,
   residual: ATTRIBUTION_HEX.residual.up,
+} as const;
+
+// Right panel uses a slightly more saturated Residual to make it visually
+// pop as "this is what remains" — the key idea of the workflow.
+const RIGHT_LAYER_COLORS = {
+  ...LAYER_COLORS,
+  residual: "#34D399",
 } as const;
 
 const LAYER_ORDER = ["market", "sector", "subsector", "residual"] as const;
@@ -35,6 +41,9 @@ const LAYER_LABEL: Record<LayerKey, string> = {
   residual: "Residual",
 };
 
+const HEDGEABLE: LayerKey[] = ["market", "sector", "subsector"];
+const DEFAULT_HEDGED: LayerKey[] = ["market", "sector"];
+
 interface ConcentrationTicker {
   ticker: string;
   name: string | null;
@@ -43,7 +52,11 @@ interface ConcentrationTicker {
   l3_sec_er: number;
   l3_sub_er: number;
   l3_res_er: number;
+  l3_mkt_hr: number;
+  l3_sec_hr: number;
+  l3_sub_hr: number;
   total_er: number;
+  sigma: number;
   sector_etf: string | null;
   subsector_etf: string | null;
 }
@@ -60,7 +73,18 @@ interface PortfolioBlock {
   weights: Record<string, number>;
   naive: LayerER;
   adjusted: LayerER;
+  variance_naive: number;
+  variance_adjusted: number;
+  sigma_naive: number;
+  sigma_adjusted: number;
   redundancy_pct: number;
+}
+
+interface EtfHedge {
+  etf: string;
+  layer: "market" | "sector" | "subsector";
+  hedge_ratio: number;
+  dollars: number;
 }
 
 interface ConcentrationPayload {
@@ -70,7 +94,17 @@ interface ConcentrationPayload {
     equal_weight: PortfolioBlock;
     cap_weighted: PortfolioBlock | null;
   };
+  cap_etf_hedges: EtfHedge[];
+  notional_usd: number;
   data_as_of: string;
+}
+
+interface CapRow {
+  ticker: string;
+  name: string | null;
+  capWeight: number;
+  sigma: number;
+  shares: Record<LayerKey, number>;
 }
 
 const ENDPOINT = "/api/landing/concentration";
@@ -98,18 +132,17 @@ export default function PortfolioConcentration() {
   }, []);
 
   return (
-    <section className="border-b border-zinc-800/80 bg-zinc-950 px-4 pb-20 pt-16 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-3 text-center">
+    <section className="border-b border-zinc-800/80 bg-zinc-950 px-4 pb-20 pt-24 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-2 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
             Portfolio risk
           </p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl">
-            You&rsquo;re not diversified. You&rsquo;re concentrated.
+          <h2 className="mt-3 text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl md:text-6xl">
+            You&rsquo;re not diversified.
+            <br />
+            You&rsquo;re concentrated.
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-zinc-400 sm:text-lg">
-            Same stocks. Different weights. Completely different risk.
-          </p>
         </div>
 
         {error && (
@@ -126,8 +159,14 @@ export default function PortfolioConcentration() {
 
         {data && <ChartBody data={data} />}
 
+        {data && (
+          <p className="mt-8 text-center text-base leading-relaxed text-zinc-400 sm:text-lg">
+            Market-cap weighting concentrates exposure. It doesn&rsquo;t diversify it.
+          </p>
+        )}
+
         {data?.data_as_of && (
-          <p className="mt-6 text-center text-[11px] uppercase tracking-wider text-zinc-600">
+          <p className="mt-4 text-center text-[11px] uppercase tracking-wider text-zinc-600">
             Data as of {data.data_as_of}
           </p>
         )}
@@ -139,10 +178,10 @@ export default function PortfolioConcentration() {
 // ── Chart body (post-fetch) ───────────────────────────────────────────────
 
 function ChartBody({ data }: { data: ConcentrationPayload }) {
-  const { tickers, per_ticker, portfolios } = data;
+  const { tickers, per_ticker, portfolios, cap_etf_hedges, notional_usd } = data;
+  const cap = portfolios.cap_weighted;
 
-  // Sort tickers by cap weight desc for the Marimekko (largest cap on top).
-  const capRows = useMemo(() => {
+  const capRows = useMemo<CapRow[]>(() => {
     const totalCap = tickers.reduce(
       (sum, t) => sum + (per_ticker[t]?.market_cap ?? 0),
       0,
@@ -151,11 +190,12 @@ function ChartBody({ data }: { data: ConcentrationPayload }) {
     return tickers
       .map((t) => {
         const row = per_ticker[t];
-        const cap = row?.market_cap ?? 0;
+        const c = row?.market_cap ?? 0;
         return {
           ticker: t,
           name: row?.name ?? null,
-          capWeight: cap / totalCap,
+          capWeight: c / totalCap,
+          sigma: row?.sigma ?? 0,
           shares: normalizeShares(row),
         };
       })
@@ -163,10 +203,23 @@ function ChartBody({ data }: { data: ConcentrationPayload }) {
       .sort((a, b) => b.capWeight - a.capWeight);
   }, [tickers, per_ticker]);
 
+  const sigmaMaxTicker = capRows.reduce((m, r) => Math.max(m, r.sigma), 0);
+  const sharedSigmaMax = niceCeil5(Math.max(sigmaMaxTicker, cap?.sigma_naive ?? 0) * 1.06);
+
+  if (!cap) {
+    return (
+      <Marimekko rows={capRows} xMax={sharedSigmaMax} />
+    );
+  }
+
   return (
-    <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:gap-8">
-      <Marimekko rows={capRows} />
-      <DualPortfolioPanel portfolios={portfolios} />
+    <div className="mt-10 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
+      <Marimekko rows={capRows} xMax={sharedSigmaMax} />
+      <ReplicateHedgePanel
+        block={cap}
+        etfHedges={cap_etf_hedges}
+        notional={notional_usd}
+      />
     </div>
   );
 }
@@ -193,16 +246,9 @@ function clampNonNeg(v: number): number {
   return v > 0 ? v : 0;
 }
 
-// ── Marimekko (left panel) ────────────────────────────────────────────────
+// ── LEFT: Marimekko ───────────────────────────────────────────────────────
 
-interface CapRow {
-  ticker: string;
-  name: string | null;
-  capWeight: number;
-  shares: Record<LayerKey, number>;
-}
-
-function Marimekko({ rows }: { rows: CapRow[] }) {
+function Marimekko({ rows, xMax }: { rows: CapRow[]; xMax: number }) {
   if (rows.length === 0) {
     return (
       <div className="flex h-[420px] items-center justify-center text-sm text-zinc-500">
@@ -210,128 +256,151 @@ function Marimekko({ rows }: { rows: CapRow[] }) {
       </div>
     );
   }
-
-  // Internal coordinate system. The container scales the SVG, so these are
-  // logical units only.
   const W = 720;
   const H = 480;
-  const M = { top: 36, right: 24, bottom: 56, left: 76 };
-  const innerW = W - M.left - M.right;
-  const innerH = H - M.top - M.bottom;
+  const ML = 76;
+  const MR = 24;
+  const MT = 32;
+  const MB = 56;
+  const innerW = W - ML - MR;
+  const innerH = H - MT - MB;
 
+  return (
+    <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4 sm:p-6">
+      <div className="mb-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+          Market-cap weighted portfolio
+        </p>
+        <h3 className="mt-1 text-sm font-semibold tracking-tight text-white">
+          Per-stock risk
+        </h3>
+        <p className="text-xs text-zinc-500">
+          Bar thickness = market-cap weight. Length = annualized σ.
+        </p>
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="w-full"
+        role="img"
+      >
+        <MarimekkoBars
+          rows={rows}
+          xMax={xMax}
+          ml={ML}
+          mt={MT}
+          mb={MB}
+          innerW={innerW}
+          innerH={innerH}
+        />
+      </svg>
+      <Legend />
+    </div>
+  );
+}
+
+function MarimekkoBars({
+  rows,
+  xMax,
+  ml,
+  mt,
+  innerW,
+  innerH,
+}: {
+  rows: CapRow[];
+  xMax: number;
+  ml: number;
+  mt: number;
+  mb: number;
+  innerW: number;
+  innerH: number;
+}) {
   const totalCapWeight = rows.reduce((s, r) => s + r.capWeight, 0) || 1;
   const gapPx = 6;
   const totalGap = gapPx * (rows.length - 1);
   const usableH = Math.max(0, innerH - totalGap);
 
-  // Min bar height so smallest cap is still legible. Trade off: keep widths
-  // representative of cap, but no row collapses to invisibility.
   const MIN_ROW_PX = 14;
-  let drawn = 0;
   const heights: number[] = rows.map((r) => {
     const raw = (r.capWeight / totalCapWeight) * usableH;
     return Math.max(MIN_ROW_PX, raw);
   });
   const sumHeights = heights.reduce((a, b) => a + b, 0);
   if (sumHeights > usableH) {
-    // Re-normalize after MIN_ROW_PX clamp pushed total over.
     const scale = usableH / sumHeights;
     for (let i = 0; i < heights.length; i++) heights[i] *= scale;
   }
 
+  const baseX = ml;
+  const baseY = mt;
+
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4 sm:p-6">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold tracking-tight text-white">
-          Per-stock risk
-        </h3>
-        <p className="text-xs text-zinc-500">
-          Bar thickness = market-cap weight. Stack = variance share.
-        </p>
-      </div>
+    <>
+      <line
+        x1={baseX}
+        x2={baseX + innerW}
+        y1={baseY + innerH + 0.5}
+        y2={baseY + innerH + 0.5}
+        stroke="#475569"
+        strokeWidth={0.5}
+      />
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+        const x = baseX + innerW * t;
+        return (
+          <g key={t}>
+            <line
+              x1={x}
+              x2={x}
+              y1={baseY}
+              y2={baseY + innerH}
+              stroke="#1f2937"
+              strokeDasharray="2 4"
+              strokeWidth={0.5}
+            />
+            <text
+              x={x}
+              y={baseY + innerH + 16}
+              textAnchor="middle"
+              fontSize={11}
+              fill="#71717a"
+              fontFamily="ui-sans-serif, system-ui, sans-serif"
+            >
+              {(xMax * t * 100).toFixed(0)}%
+            </text>
+          </g>
+        );
+      })}
+      <text
+        x={baseX + innerW / 2}
+        y={baseY + innerH + 36}
+        textAnchor="middle"
+        fontSize={11}
+        fill="#a1a1aa"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+      >
+        Annualized σ — segments = σ × variance share
+      </text>
 
-      <div className="w-full">
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="xMidYMid meet"
-          className="w-full"
-          role="img"
-          aria-label="Per-stock risk Marimekko: bar thickness proportional to market cap, stack by L3 variance share"
-        >
-          {/* X-axis baseline */}
-          <line
-            x1={M.left}
-            x2={M.left + innerW}
-            y1={M.top + innerH + 0.5}
-            y2={M.top + innerH + 0.5}
-            stroke="#475569"
-            strokeWidth={0.5}
+      {rows.map((row, i) => {
+        const yStart =
+          baseY +
+          heights.slice(0, i).reduce((a, b) => a + b, 0) +
+          gapPx * i;
+        const h = heights[i];
+        const fullW = (row.sigma / xMax) * innerW;
+        return (
+          <MarimekkoRow
+            key={row.ticker}
+            row={row}
+            x={baseX}
+            y={yStart}
+            fullW={fullW}
+            h={h}
+            labelX={baseX - 12}
           />
-
-          {/* X-axis ticks: 0, 25, 50, 75, 100% */}
-          {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-            const x = M.left + innerW * t;
-            return (
-              <g key={t}>
-                <line
-                  x1={x}
-                  x2={x}
-                  y1={M.top}
-                  y2={M.top + innerH}
-                  stroke="#1f2937"
-                  strokeDasharray="2 4"
-                  strokeWidth={0.5}
-                />
-                <text
-                  x={x}
-                  y={M.top + innerH + 18}
-                  textAnchor="middle"
-                  fontSize={11}
-                  fill="#71717a"
-                  fontFamily="ui-sans-serif, system-ui, sans-serif"
-                >
-                  {Math.round(t * 100)}%
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Axis title */}
-          <text
-            x={M.left + innerW / 2}
-            y={M.top + innerH + 38}
-            textAnchor="middle"
-            fontSize={11}
-            fill="#a1a1aa"
-            fontFamily="ui-sans-serif, system-ui, sans-serif"
-          >
-            Variance share (market → residual)
-          </text>
-
-          {/* Bars */}
-          {rows.map((row, i) => {
-            const yStart =
-              M.top +
-              heights.slice(0, i).reduce((a, b) => a + b, 0) +
-              gapPx * i;
-            const h = heights[i];
-            return (
-              <MarimekkoRow
-                key={row.ticker}
-                row={row}
-                x={M.left}
-                y={yStart}
-                w={innerW}
-                h={h}
-                axisX={M.left}
-              />
-            );
-          })}
-        </svg>
-      </div>
-
-      <Legend />
-    </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -339,34 +408,36 @@ function MarimekkoRow({
   row,
   x,
   y,
-  w,
+  fullW,
   h,
-  axisX,
+  labelX,
 }: {
   row: CapRow;
   x: number;
   y: number;
-  w: number;
+  fullW: number;
   h: number;
-  axisX: number;
+  labelX: number;
 }) {
   const segments: { key: LayerKey; w: number; x: number }[] = [];
   let cursor = x;
   for (const key of LAYER_ORDER) {
-    const segW = w * row.shares[key];
+    const segW = fullW * row.shares[key];
     segments.push({ key, w: segW, x: cursor });
     cursor += segW;
   }
 
+  const tickerFont = Math.min(13, Math.max(10, h * 0.55));
+  const capFont = 9;
+
   return (
     <g>
-      {/* Ticker label */}
       <text
-        x={axisX - 12}
-        y={y + h / 2}
+        x={labelX}
+        y={y + h / 2 - capFont / 2}
         textAnchor="end"
         dominantBaseline="middle"
-        fontSize={Math.min(13, Math.max(10, h * 0.55))}
+        fontSize={tickerFont}
         fill="#e4e4e7"
         fontWeight={600}
         fontFamily="ui-sans-serif, system-ui, sans-serif"
@@ -374,18 +445,16 @@ function MarimekkoRow({
         {row.ticker}
       </text>
       <text
-        x={axisX - 12}
-        y={y + h / 2 + Math.min(13, Math.max(10, h * 0.55)) * 0.95}
+        x={labelX}
+        y={y + h / 2 + tickerFont * 0.7}
         textAnchor="end"
         dominantBaseline="middle"
-        fontSize={9}
+        fontSize={capFont}
         fill="#71717a"
         fontFamily="ui-sans-serif, system-ui, sans-serif"
       >
         {(row.capWeight * 100).toFixed(1)}%
       </text>
-
-      {/* Stacked segments */}
       {segments.map((s) =>
         s.w > 0.5 ? (
           <rect
@@ -397,7 +466,7 @@ function MarimekkoRow({
             fill={LAYER_COLORS[s.key]}
           >
             <title>
-              {row.ticker} · {LAYER_LABEL[s.key]}: {(row.shares[s.key] * 100).toFixed(1)}%
+              {row.ticker} · {LAYER_LABEL[s.key]}: {(row.shares[s.key] * row.sigma * 100).toFixed(1)}%
             </title>
           </rect>
         ) : null,
@@ -408,7 +477,7 @@ function MarimekkoRow({
 
 function Legend() {
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[11px] text-zinc-400">
+    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-zinc-400">
       {LAYER_ORDER.map((k) => (
         <span key={k} className="inline-flex items-center gap-1.5">
           <span
@@ -422,300 +491,306 @@ function Legend() {
   );
 }
 
-// ── Dual portfolio panel (right) ──────────────────────────────────────────
+// ── RIGHT: Replicate / hedge workflow ─────────────────────────────────────
 
-function DualPortfolioPanel({
-  portfolios,
+function ReplicateHedgePanel({
+  block,
+  etfHedges,
+  notional,
 }: {
-  portfolios: ConcentrationPayload["portfolios"];
+  block: PortfolioBlock;
+  etfHedges: EtfHedge[];
+  notional: number;
 }) {
-  const equal = portfolios.equal_weight;
-  const cap = portfolios.cap_weighted;
+  // Variance shares of the cap-weighted portfolio (sum to 1.0). Convert each
+  // to its σ-equivalent contribution by multiplying by σ_naive — that is, the
+  // bar represents naive σ, with each segment proportional to its variance
+  // share of the total. This is the SAME math the LEFT panel uses per-stock.
+  const naive = block.naive;
+  const sigmaNaive = block.sigma_naive;
+  const total = naive.total > 1e-12 ? naive.total : 1;
+  const shares: Record<LayerKey, number> = {
+    market: clampNonNeg(naive.market_er) / total,
+    sector: clampNonNeg(naive.sector_er) / total,
+    subsector: clampNonNeg(naive.subsector_er) / total,
+    residual: clampNonNeg(naive.residual_er) / total,
+  };
 
-  if (!equal) {
-    return (
-      <div className="flex h-[420px] items-center justify-center text-sm text-zinc-500">
-        Portfolio data unavailable.
-      </div>
-    );
-  }
+  // Top ETF per layer for the SECTION 3 mapping table.
+  const topPerLayer = useMemo(() => {
+    const out: EtfHedge[] = [];
+    for (const layer of HEDGEABLE) {
+      const candidates = etfHedges
+        .filter((h) => h.layer === layer)
+        .sort((a, b) => Math.abs(b.hedge_ratio) - Math.abs(a.hedge_ratio));
+      if (candidates[0]) out.push(candidates[0]);
+    }
+    return out;
+  }, [etfHedges]);
 
-  const yMaxCandidate = Math.max(
-    equal.naive.total,
-    cap?.naive.total ?? 0,
+  // Default hedge selection: Market + Sector. Subsector is hedgeable but not
+  // hedged by default; Residual is never hedgeable.
+  const hedged = new Set<LayerKey>(DEFAULT_HEDGED);
+  const remainingShares = LAYER_ORDER.reduce<Record<LayerKey, number>>(
+    (acc, k) => {
+      acc[k] = hedged.has(k) ? 0 : shares[k];
+      return acc;
+    },
+    { market: 0, sector: 0, subsector: 0, residual: 0 },
   );
-  const yMax = niceCeil(yMaxCandidate);
-
-  // Coordinate system shared by both bars.
-  const W = 380;
-  const H = 480;
-  const M = { top: 36, right: 16, bottom: 96, left: 56 };
-  const innerW = W - M.left - M.right;
-  const innerH = H - M.top - M.bottom;
-
-  const portfolioCount = cap ? 2 : 1;
-  const slotW = innerW / portfolioCount;
-  const barW = Math.min(80, slotW * 0.55);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4 sm:p-6">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold tracking-tight text-white">
-          Portfolio risk
+    <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-5 sm:p-7">
+      {/* Header */}
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400/80">
+          Custom risk benchmark · tradable
+        </p>
+        <h3 className="mt-2 text-base font-semibold leading-snug tracking-tight text-white sm:text-lg">
+          See your ETF risk replication. Hedge what you want. Keep the rest.
         </h3>
-        <p className="text-xs text-zinc-500">
-          Naive variance stack. Line = portfolio risk after correlation.
+        <p className="mt-2 text-sm leading-snug text-zinc-400">
+          Build a custom risk benchmark.
+          <br />
+          Choose what to beat.
         </p>
       </div>
 
-      <div className="w-full">
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="xMidYMid meet"
-          className="w-full"
-          role="img"
-          aria-label="Equal-weight vs cap-weighted portfolio variance with diversification adjustment"
-        >
-          {/* Y-axis ticks (5 evenly spaced) */}
-          {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-            const y = M.top + innerH * (1 - t);
-            return (
-              <g key={t}>
-                <line
-                  x1={M.left}
-                  x2={M.left + innerW}
-                  y1={y}
-                  y2={y}
-                  stroke="#1f2937"
-                  strokeDasharray="2 4"
-                  strokeWidth={0.5}
-                />
-                <text
-                  x={M.left - 8}
-                  y={y}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  fontSize={10}
-                  fill="#71717a"
-                  fontFamily="ui-sans-serif, system-ui, sans-serif"
-                >
-                  {(yMax * t * 100).toFixed(0)}%
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Y-axis title */}
-          <text
-            x={M.left - 44}
-            y={M.top + innerH / 2}
-            textAnchor="middle"
-            fontSize={11}
-            fill="#a1a1aa"
-            transform={`rotate(-90 ${M.left - 44} ${M.top + innerH / 2})`}
-            fontFamily="ui-sans-serif, system-ui, sans-serif"
-          >
-            Explained variance
-          </text>
-
-          {/* Bars */}
-          <PortfolioBar
-            label="Equal weight"
-            block={equal}
-            yMax={yMax}
-            x={M.left + slotW * 0.5 - barW / 2}
-            barW={barW}
-            top={M.top}
-            innerH={innerH}
-          />
-          {cap && (
-            <PortfolioBar
-              label="Cap weighted"
-              block={cap}
-              yMax={yMax}
-              x={M.left + slotW * 1.5 - barW / 2}
-              barW={barW}
-              top={M.top}
-              innerH={innerH}
-            />
-          )}
-        </svg>
+      {/* Section 1: Risk decomposition */}
+      <div className="mt-7">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          Risk decomposition
+        </p>
+        <DecompositionBar shares={shares} sigma={sigmaNaive} colors={RIGHT_LAYER_COLORS} />
+        <DecompositionLegend shares={shares} sigma={sigmaNaive} colors={RIGHT_LAYER_COLORS} />
       </div>
 
-      <p className="mt-3 text-center text-[11px] uppercase tracking-wider text-zinc-500">
-        Weighting changes your risk. It doesn&rsquo;t automatically diversify it.
-      </p>
+      {/* Section 2: Replicable vs Non-replicable annotation */}
+      <div className="mt-7 grid grid-cols-2 gap-3 rounded-md border border-white/5 bg-white/[0.02] p-3 text-xs leading-snug">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            ETF-replicable
+          </p>
+          <p className="mt-1 text-zinc-300">Market · Sector · Subsector</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Residual
+          </p>
+          <p className="mt-1 text-zinc-300">Not hedgeable</p>
+        </div>
+      </div>
+
+      {/* Section 3: ETF mapping */}
+      <div className="mt-7">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          Replicate with{" "}
+          <span className="font-mono text-[10px] normal-case tracking-normal text-zinc-500">
+            ({usdNotional(notional)} notional)
+          </span>
+        </p>
+        <ul className="divide-y divide-white/5 rounded-md border border-white/5 bg-white/[0.02] font-mono text-sm">
+          {topPerLayer.map((h) => (
+            <li
+              key={h.etf}
+              className="flex items-center justify-between gap-3 px-3 py-2.5"
+            >
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-sm"
+                  style={{ backgroundColor: RIGHT_LAYER_COLORS[h.layer] }}
+                />
+                <span className="font-semibold text-white">{h.etf}</span>
+                <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  {h.layer}
+                </span>
+              </span>
+              <span className={h.dollars < 0 ? "text-red-300" : "text-emerald-300"}>
+                {h.dollars >= 0 ? "+" : "−"}${absUsd(h.dollars)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+          HR = ETF hedge ratios returned by the API. Negative dollars = short the ETF.
+        </p>
+        <p className="mt-1 font-mono text-[11px] text-zinc-500">
+          Returned directly from <span className="text-zinc-300">/decompose</span>
+        </p>
+      </div>
+
+      {/* Section 4: Hedge selection */}
+      <div className="mt-7">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          Hedge
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {HEDGEABLE.map((k) => {
+            const on = hedged.has(k);
+            return (
+              <span
+                key={k}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs ${
+                  on
+                    ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+                    : "border-white/10 bg-white/[0.02] text-zinc-500"
+                }`}
+              >
+                <span
+                  className="inline-block h-2 w-2 rounded-sm"
+                  style={{ backgroundColor: RIGHT_LAYER_COLORS[k] }}
+                />
+                {LAYER_LABEL[k]}
+                <span className="ml-1 text-[10px] uppercase tracking-wider">
+                  {on ? "on" : "off"}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Section 5: Remaining exposure */}
+      <div className="mt-7">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400/80">
+          Remaining exposure
+        </p>
+        <DecompositionBar shares={remainingShares} sigma={sigmaNaive} colors={RIGHT_LAYER_COLORS} muted />
+        <DecompositionLegend shares={remainingShares} sigma={sigmaNaive} colors={RIGHT_LAYER_COLORS} />
+        <p className="mt-3 text-sm leading-relaxed text-zinc-200">
+          What&rsquo;s left is your actual position.
+        </p>
+      </div>
     </div>
   );
 }
 
-function PortfolioBar({
-  label,
-  block,
-  yMax,
-  x,
-  barW,
-  top,
-  innerH,
+function DecompositionBar({
+  shares,
+  sigma,
+  muted,
+  colors = LAYER_COLORS,
 }: {
-  label: string;
-  block: PortfolioBlock;
-  yMax: number;
-  x: number;
-  barW: number;
-  top: number;
-  innerH: number;
+  shares: Record<LayerKey, number>;
+  sigma: number;
+  muted?: boolean;
+  colors?: Record<LayerKey, string>;
 }) {
-  const naive = block.naive;
-  const adjusted = block.adjusted;
+  const W = 360;
+  const H = 36;
+  const ML = 0;
+  const MR = 0;
+  const MT = 4;
+  const MB = 4;
+  const innerW = W - ML - MR;
+  const innerH = H - MT - MB;
 
-  const yScale = (v: number) => top + innerH * (1 - v / yMax);
+  // Total visible width is proportional to the share sum. For the full-stack
+  // case (all layers present) the bar fills the panel; for the remaining bar
+  // (some layers hedged out) the bar shortens proportionally.
+  const totalShare = LAYER_ORDER.reduce((s, k) => s + shares[k], 0);
+  const barW = innerW * totalShare;
+  const sigmaPct = sigma * 100;
+  const remainingSigmaPct = sigmaPct * totalShare;
 
-  // Stack from bottom (market) to top (residual)
-  const segments: { key: LayerKey; value: number }[] = [
-    { key: "market", value: naive.market_er },
-    { key: "sector", value: naive.sector_er },
-    { key: "subsector", value: naive.subsector_er },
-    { key: "residual", value: naive.residual_er },
-  ];
-
-  let cumBottom = 0;
-  const rects = segments.map((s) => {
-    const yTop = yScale(cumBottom + s.value);
-    const yBot = yScale(cumBottom);
-    cumBottom += s.value;
-    return { key: s.key, x, y: yTop, w: barW, h: Math.max(0, yBot - yTop) };
-  });
-
-  const naiveTopY = yScale(naive.total);
-  const adjTopY = yScale(adjusted.total);
-  const redundancyPct = block.redundancy_pct;
+  let cursor = ML;
+  const segments: { key: LayerKey; x: number; w: number }[] = [];
+  for (const k of LAYER_ORDER) {
+    const w = innerW * shares[k];
+    if (w > 0) segments.push({ key: k, x: cursor, w });
+    cursor += w;
+  }
 
   return (
-    <g>
-      {/* Naive stacked segments */}
-      {rects.map((r) =>
-        r.h > 0.4 ? (
-          <rect
-            key={r.key}
-            x={r.x}
-            y={r.y}
-            width={r.w}
-            height={r.h}
-            fill={LAYER_COLORS[r.key]}
-          />
-        ) : null,
-      )}
-
-      {/* Hatched overlay between naive top and adjusted top — the "redundant" band */}
-      {adjTopY > naiveTopY && (
-        <rect
-          x={x}
-          y={naiveTopY}
-          width={barW}
-          height={Math.max(0, adjTopY - naiveTopY)}
-          fill="url(#redundantHatch)"
-          opacity={0.55}
-        />
-      )}
-      <RedundantHatchDef />
-
-      {/* Adjusted line — after correlation, this is what risk you actually bear */}
-      <line
-        x1={x - 6}
-        x2={x + barW + 6}
-        y1={adjTopY}
-        y2={adjTopY}
-        stroke="#fbbf24"
-        strokeWidth={1.5}
-        strokeDasharray="4 3"
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="xMidYMid meet"
+      className="w-full"
+      role="img"
+    >
+      <rect
+        x={ML}
+        y={MT}
+        width={innerW}
+        height={innerH}
+        rx={3}
+        ry={3}
+        fill="#0c0c0e"
+        stroke="#1f2937"
+        strokeWidth={0.5}
       />
+      {segments.map((s) => (
+        <rect
+          key={s.key}
+          x={s.x}
+          y={MT}
+          width={s.w}
+          height={innerH}
+          fill={colors[s.key]}
+          opacity={muted ? 0.85 : 1}
+        >
+          <title>
+            {LAYER_LABEL[s.key]}: {(shares[s.key] * sigmaPct).toFixed(1)}% σ
+          </title>
+        </rect>
+      ))}
+      {/* End-of-bar σ label */}
       <text
-        x={x + barW + 10}
-        y={adjTopY}
+        x={ML + barW + 6}
+        y={MT + innerH / 2}
         dominantBaseline="middle"
-        fontSize={10}
-        fill="#fbbf24"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-      >
-        Adjusted
-      </text>
-
-      {/* Naive total label above the bar */}
-      <text
-        x={x + barW / 2}
-        y={naiveTopY - 8}
-        textAnchor="middle"
         fontSize={11}
         fill="#e4e4e7"
         fontWeight={600}
         fontFamily="ui-sans-serif, system-ui, sans-serif"
       >
-        {(naive.total * 100).toFixed(0)}%
+        {remainingSigmaPct.toFixed(1)}% σ
       </text>
-
-      {/* Bar label and redundancy callout */}
-      <text
-        x={x + barW / 2}
-        y={top + innerH + 18}
-        textAnchor="middle"
-        fontSize={11}
-        fill="#e4e4e7"
-        fontWeight={600}
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-      >
-        {label}
-      </text>
-      <text
-        x={x + barW / 2}
-        y={top + innerH + 36}
-        textAnchor="middle"
-        fontSize={11}
-        fill="#fbbf24"
-        fontWeight={600}
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-      >
-        {redundancyPct.toFixed(0)}% redundant
-      </text>
-      <text
-        x={x + barW / 2}
-        y={top + innerH + 50}
-        textAnchor="middle"
-        fontSize={9}
-        fill="#71717a"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-      >
-        of stated risk
-      </text>
-    </g>
+    </svg>
   );
 }
 
-function RedundantHatchDef() {
+function DecompositionLegend({
+  shares,
+  sigma,
+  colors = LAYER_COLORS,
+}: {
+  shares: Record<LayerKey, number>;
+  sigma: number;
+  colors?: Record<LayerKey, string>;
+}) {
+  const sigmaPct = sigma * 100;
   return (
-    <defs>
-      <pattern
-        id="redundantHatch"
-        width="6"
-        height="6"
-        patternUnits="userSpaceOnUse"
-        patternTransform="rotate(45)"
-      >
-        <line x1="0" y1="0" x2="0" y2="6" stroke="#fbbf24" strokeWidth="1" />
-      </pattern>
-    </defs>
+    <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-zinc-400 sm:grid-cols-4">
+      {LAYER_ORDER.map((k) => {
+        const v = shares[k] * sigmaPct;
+        return (
+          <li key={k} className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-2 shrink-0 rounded-sm"
+              style={{ backgroundColor: colors[k] }}
+            />
+            <span className="text-zinc-300">{LAYER_LABEL[k]}</span>
+            <span className="ml-auto font-mono text-zinc-400">{v.toFixed(1)}%</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
-function niceCeil(v: number): number {
-  if (v <= 0) return 0.1;
-  const exp = Math.floor(Math.log10(v));
-  const base = Math.pow(10, exp);
-  const m = v / base;
-  let nice: number;
-  if (m <= 1) nice = 1;
-  else if (m <= 2) nice = 2;
-  else if (m <= 5) nice = 5;
-  else nice = 10;
-  return nice * base;
+function absUsd(n: number): string {
+  return Math.abs(n).toLocaleString("en-US");
+}
+
+function usdNotional(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(0)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n}`;
+}
+
+/** Round up to the nearest 5 percentage points (e.g. 0.529 → 0.55). */
+function niceCeil5(v: number): number {
+  if (v <= 0) return 0.05;
+  return Math.ceil(v / 0.05) * 0.05;
 }
