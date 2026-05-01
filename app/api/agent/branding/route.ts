@@ -94,11 +94,13 @@ export async function GET(request: NextRequest) {
     display_handle: affRow.display_handle,
     referral_code: code,
     url: `${APP_BASE_URL}/?ref=${encodeURIComponent(code)}`,
-    /** Critical wording — distinguishes "key was provisioned via this account"
-     *  from "this person produced this analysis." Required by the affiliate
-     *  ToS to mitigate implicit-endorsement risk. Do not change without
-     *  legal review. */
-    hover_text: `API key provisioned via @${affRow.display_handle}. Click to learn more about RiskModels.app.`,
+    /** Critical wording — distinguishes the act of generating a chart with
+     *  the RiskModels API from the act of being referred by an affiliate.
+     *  Required by the affiliate ToS (Section 2 "No endorsement") to
+     *  mitigate implicit-endorsement risk. Revised v1.1 per legal review
+     *  for clearer attribution-vs-endorsement separation. Do not change
+     *  without legal review. */
+    hover_text: `Chart generated with RiskModels API · Key referred via @${affRow.display_handle}. Click to learn more.`,
     opt_out_method: OPT_OUT_TEXT,
   });
 }
