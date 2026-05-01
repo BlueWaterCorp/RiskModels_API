@@ -510,14 +510,14 @@ function ConsentBanner({
 
           <div className="space-y-3 text-sm text-zinc-300 leading-relaxed">
             <p>
-              <strong className="text-zinc-100">What's new in {TERMS_VERSION}:</strong>
+              <strong className="text-zinc-100">What&apos;s new in {TERMS_VERSION}:</strong>
             </p>
             <ul className="list-disc pl-6 space-y-2 text-zinc-400">
               <li>
                 <strong className="text-zinc-300">Perpetual license for already-published charts.</strong>{' '}
                 If you opt out later, new charts stop attributing immediately, but charts already
                 in the wild (Reddit posts, LinkedIn screenshots, public gists) continue to display
-                your handle. We can't pull them back.
+                your handle. We can&apos;t pull them back.
               </li>
               <li>
                 <strong className="text-zinc-300">Your handle and referral code are explicitly public.</strong>{' '}
@@ -530,7 +530,7 @@ function ConsentBanner({
               </li>
               <li>
                 <strong className="text-zinc-300">CCPA / privacy rights are clearly enumerated</strong>{' '}
-                in the privacy notice. California users get a "Do Not Share" pathway.
+                in the privacy notice. California users get a &ldquo;Do Not Share&rdquo; pathway.
               </li>
             </ul>
             <p>
