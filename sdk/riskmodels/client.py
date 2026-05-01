@@ -302,6 +302,11 @@ class RiskModelsClient:
             >>> print(f"Residual risk: {df['l3_residual_er'].iloc[0]:.1%}")
         """
         t, _ = resolve_ticker(ticker, self)
+        # Endpoint is /metrics/{ticker} per app/api/metrics/[ticker]/route.ts;
+        # an earlier refactor dropped the path construction and left an
+        # undefined `path` reference. Restored here so client_mock test
+        # (test_get_metrics_resolves_googl) passes.
+        path = f"/metrics/{t}"
         body, lineage, _r = self._transport.request("GET", path)
         meta = body.get("_metadata") if isinstance(body, dict) else None
         lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
@@ -1254,6 +1259,50 @@ class RiskModelsClient:
         data, lineage, _r = self._transport.request(
             "POST",
             "/portfolio/risk-snapshot",
+            json=body,
+        )
+        return data, lineage
+
+    def snapshot(
+        self,
+        positions: PositionsInput,
+        *,
+        lookback_days: int = 252,
+        mode: Literal["frozen"] = "frozen",
+        benchmark: str | None = None,
+    ) -> tuple[dict, RiskLineage]:
+        """Canonical v3 portfolio snapshot via ``POST /api/snapshot``.
+
+        Returns the full snapshot bundle: variance decomposition, per-position hedge ratios,
+        attribution time series, dominant drivers, and concentration flags.
+
+        Args:
+            positions: Portfolio weights — dict, list of tuples, or list of dicts.
+            lookback_days: Trading-day window for attribution + cumulative return (default 252).
+            mode: Weight handling mode (``"frozen"``).
+            benchmark: Optional benchmark ticker for relative attribution.
+
+        Returns:
+            Tuple of ``(data_dict, lineage)`` matching the ``CanonicalSnapshotResponse`` shape.
+
+        Example:
+            >>> data, lineage = client.snapshot(
+            ...     {"NVDA": 0.5, "AAPL": 0.5}, lookback_days=120
+            ... )
+            >>> data["snapshot"]["variance_decomposition"]
+        """
+        weights = positions_to_weights(positions)
+        body: dict[str, Any] = {
+            "type": "portfolio",
+            "portfolio": [{"ticker": k, "weight": float(v)} for k, v in weights.items()],
+            "lookback_days": lookback_days,
+            "mode": mode,
+        }
+        if benchmark is not None:
+            body["benchmark"] = benchmark
+        data, lineage, _r = self._transport.request(
+            "POST",
+            "/snapshot",
             json=body,
         )
         return data, lineage
