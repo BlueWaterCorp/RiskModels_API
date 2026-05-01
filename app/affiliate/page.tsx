@@ -22,8 +22,13 @@ type AffiliatePayload = {
   status: string;
   commission_rate: number;
   payout_email: string | null;
+  /** True until affiliate consents to current terms via banner or email-reply. */
+  consent_required: boolean;
   stats: AffiliateStats;
 };
+
+const TERMS_VERSION = 'v1.1';
+const TERMS_URL = 'https://riskmodels.net/terms/affiliate';
 
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -261,6 +266,13 @@ function AffiliateDashboard() {
     );
   }
 
+  /** v1.1 active re-consent gate: dashboard is blocked until the affiliate
+   *  resolves the banner (Accept or Pass). Re-fetches the payload after
+   *  resolution so consent_required flips and the dashboard renders. */
+  if (data.consent_required) {
+    return <ConsentBanner onResolved={() => void fetchData()} />;
+  }
+
   const ratePct = (data.commission_rate * 100).toFixed(data.commission_rate < 0.1 ? 1 : 0);
   const baseUrl =
     typeof window !== 'undefined' ? window.location.origin : 'https://riskmodels.app';
@@ -446,6 +458,125 @@ function AffiliateDashboard() {
             .
           </p>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+function ConsentBanner({
+  onResolved,
+}: {
+  onResolved: () => void;
+}) {
+  const [busy, setBusy] = useState<'accept' | 'pass' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(accept: boolean) {
+    setBusy(accept ? 'accept' : 'pass');
+    setError(null);
+    try {
+      const res = await fetch('/api/affiliate/consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accept, version: TERMS_VERSION }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(j.error ?? `Failed (${res.status})`);
+        return;
+      }
+      onResolved();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 py-12 px-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="rounded-xl border border-amber-700/40 bg-amber-950/15 p-6 sm:p-8 space-y-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={22} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <h1 className="text-xl font-bold text-zinc-100">
+                One thing before your dashboard loads
+              </h1>
+              <p className="text-sm text-zinc-400 mt-1">
+                We updated the affiliate program terms (now {TERMS_VERSION}). Quick re-consent
+                needed before watermarks render on charts your referrals generate.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 text-sm text-zinc-300 leading-relaxed">
+            <p>
+              <strong className="text-zinc-100">What's new in {TERMS_VERSION}:</strong>
+            </p>
+            <ul className="list-disc pl-6 space-y-2 text-zinc-400">
+              <li>
+                <strong className="text-zinc-300">Perpetual license for already-published charts.</strong>{' '}
+                If you opt out later, new charts stop attributing immediately, but charts already
+                in the wild (Reddit posts, LinkedIn screenshots, public gists) continue to display
+                your handle. We can't pull them back.
+              </li>
+              <li>
+                <strong className="text-zinc-300">Your handle and referral code are explicitly public.</strong>{' '}
+                Visible to anyone who sees a chart, not just to RiskModels.
+              </li>
+              <li>
+                <strong className="text-zinc-300">Opt-out is always available</strong> — via this
+                dashboard or via the SDK <code className="text-zinc-300">client.set_branding(False)</code>{' '}
+                call. No paid tier required, no charge.
+              </li>
+              <li>
+                <strong className="text-zinc-300">CCPA / privacy rights are clearly enumerated</strong>{' '}
+                in the privacy notice. California users get a "Do Not Share" pathway.
+              </li>
+            </ul>
+            <p>
+              Full text:{' '}
+              <a
+                href={TERMS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:underline"
+              >
+                {TERMS_URL.replace(/^https?:\/\//, '')}
+              </a>
+            </p>
+          </div>
+
+          {error ? (
+            <p className="text-sm text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void submit(true)}
+              className="flex-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors"
+            >
+              {busy === 'accept' ? 'Saving…' : `I accept ${TERMS_VERSION}`}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void submit(false)}
+              className="flex-1 px-5 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 text-zinc-200 font-semibold text-sm transition-colors"
+            >
+              {busy === 'pass' ? 'Saving…' : 'Pass — opt out for now'}
+            </button>
+          </div>
+
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Either choice is reversible — you can flip your decision any time from this dashboard.
+            Choosing &quot;pass&quot; suppresses chart watermarks but keeps your referral code and
+            commission tracking active.
+          </p>
+        </div>
       </div>
     </div>
   );

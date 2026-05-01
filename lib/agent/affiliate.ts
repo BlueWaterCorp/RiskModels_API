@@ -54,6 +54,14 @@ export type SelfServeAffiliate = {
   status: string;
   commission_rate: number;
   payout_email: string | null;
+  /**
+   * True when the affiliate has not consented to the current terms version
+   * (or has explicitly opted out). Drives the consent-required banner on
+   * /affiliate. Watermarks are suppressed by /api/agent/branding when this
+   * is true (defense in depth — the banner is the UX layer, the branding
+   * endpoint is the actual enforcement).
+   */
+  consent_required: boolean;
   stats: {
     referred_key_count: number;
     referred_user_count: number;
@@ -75,7 +83,7 @@ export async function getStatsForUser(
 ): Promise<SelfServeAffiliate | null> {
   const { data: affRow } = await admin
     .from('affiliates')
-    .select('id, referral_code, commission_rate, status, payout_email')
+    .select('id, referral_code, commission_rate, status, payout_email, consent_v1_at')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -127,6 +135,10 @@ export async function getStatsForUser(
     status: (affRow.status as string) ?? 'active',
     commission_rate: rate,
     payout_email: (affRow.payout_email as string) ?? null,
+    /** v1.1: existing affiliates need active re-consent before watermarks
+     *  render. consent_v1_at is null until the affiliate clicks the banner
+     *  (or the admin records an email-reply consent). */
+    consent_required: !affRow.consent_v1_at,
     stats: {
       referred_key_count: keyUserIds.length,
       referred_user_count: distinctUserIds.length,

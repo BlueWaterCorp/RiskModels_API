@@ -75,13 +75,24 @@ export async function GET(request: NextRequest) {
 
   const { data: affRow } = await supabase
     .from("affiliates")
-    .select("display_handle, referral_code, status")
+    .select("display_handle, referral_code, status, consent_v1_at")
     .eq("id", keyRow.referred_by_affiliate_id)
     .maybeSingle();
 
   /** Affiliate paused / revoked → no watermark. New referrals from this
    *  affiliate stop attributing immediately when their status changes. */
   if (!affRow || affRow.status !== "active" || !affRow.display_handle) {
+    return NextResponse.json<BrandingResponse>({
+      show: false,
+      opt_out_method: OPT_OUT_TEXT,
+    });
+  }
+
+  /** v1.1 enforcement: even if the affiliate has an active row + display
+   *  handle, no watermark renders until they actively consent (banner on
+   *  /affiliate or email-reply consent recorded by admin). The banner is
+   *  the UX layer; this is the actual gate. */
+  if (!affRow.consent_v1_at) {
     return NextResponse.json<BrandingResponse>({
       show: false,
       opt_out_method: OPT_OUT_TEXT,
