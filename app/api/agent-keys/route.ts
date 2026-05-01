@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { ensureStarterCredits } from '@/lib/agent/billing';
+import { ensureStarterCredits, applyReferralBonus } from '@/lib/agent/billing';
 import { generateApiKey } from '@/lib/agent/api-keys';
 import { findActiveAffiliateByCode, MAX_REFERRAL_CODE_LEN } from '@/lib/agent/affiliate';
 import { sendEmail } from '@/lib/email-service';
@@ -88,6 +88,16 @@ export async function POST(request: NextRequest) {
   const affiliate = await findActiveAffiliateByCode(admin, referralCodeRaw);
   const referralCodeForRow = affiliate ? affiliate.referral_code : referralCodeRaw;
   const referredByAffiliateId = affiliate?.id ?? null;
+
+  /** Two-sided incentive: add the referral bonus on top of the starter credit
+   *  if this is a real affiliate referral. Idempotent — won't double-grant
+   *  if the user already received a bonus from a previous key creation. */
+  if (affiliate) {
+    const bonus = await applyReferralBonus(user.id, affiliate.referral_code);
+    if (!bonus.ok) {
+      console.warn('[agent-keys] referral bonus failed (continuing):', bonus.message);
+    }
+  }
 
   const { data: newKey, error: insertErr } = await admin
     .from('agent_api_keys')
