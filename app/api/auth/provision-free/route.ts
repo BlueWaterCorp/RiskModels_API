@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateApiKey } from "@/lib/agent/api-keys";
+import { findActiveAffiliateByCode, MAX_REFERRAL_CODE_LEN } from "@/lib/agent/affiliate";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,13 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const { agent_name, purpose = "development" } = body;
+    let referralCodeRaw: string | null =
+      typeof body.referral_code === "string" && body.referral_code.trim()
+        ? body.referral_code.trim()
+        : null;
+    if (referralCodeRaw && referralCodeRaw.length > MAX_REFERRAL_CODE_LEN) {
+      referralCodeRaw = null;
+    }
 
     if (!agent_name || typeof agent_name !== "string" || agent_name.trim().length < 3) {
       return NextResponse.json(
@@ -73,6 +81,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    /** Referral attribution: synthetic free_* user_ids never produce real spend, but we still
+     *  record the code so the admin dashboard can see top-of-funnel volume per affiliate. */
+    const affiliate = await findActiveAffiliateByCode(supabase, referralCodeRaw);
+    const referralCodeForRow = affiliate ? affiliate.referral_code : referralCodeRaw;
+    const referredByAffiliateId = affiliate?.id ?? null;
+
     // Store hashed API key
     const { error: keyError } = await supabase.from("agent_api_keys").insert({
       user_id: freeUserId,
@@ -81,6 +95,8 @@ export async function POST(request: NextRequest) {
       name: `Free Key - ${purpose}`,
       scopes: ["*"],
       rate_limit_per_minute: FREE_TIER_LIMITS.QUERIES_PER_MINUTE,
+      referral_code: referralCodeForRow,
+      referred_by_affiliate_id: referredByAffiliateId,
     });
 
     if (keyError) {

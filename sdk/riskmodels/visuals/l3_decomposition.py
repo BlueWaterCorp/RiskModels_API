@@ -323,13 +323,18 @@ def plot_l3_decomposition(
     )
     if metric == "variance" and mode == "timeseries":
         title_main = title or f"L3 variance decomposition ({mapping.source})"
+        # Plotly >= 5.16 requires layout.title.subtitle to be a Subtitle
+        # instance or a dict with a `text` key; a bare string raises
+        # ValueError. The dict form is forward-compatible.
         title_cfg: str | dict[str, Any] = {
             "text": title_main,
-            "subtitle": (
-                "Orthogonal shares that sum to 100%: market = L1 R²; sector & subsector are "
-                "incremental sleeves; residual is the remainder. A thin subsector band is normal "
-                "when L3 adds little beyond sector."
-            ),
+            "subtitle": {
+                "text": (
+                    "Orthogonal shares that sum to 100%: market = L1 R²; sector & subsector are "
+                    "incremental sleeves; residual is the remainder. A thin subsector band is normal "
+                    "when L3 adds little beyond sector."
+                ),
+            },
         }
     else:
         title_cfg = title or f"L3 {metric} decomposition ({mapping.source})"
@@ -526,7 +531,8 @@ def plot_l3_year_end_stack(
         sub = "Stacked ER only (no vol passed); each bar sums to ~100%."
         y_title = "Share of return variance (L3 ER)"
 
-    title_cfg: dict[str, Any] = {"text": title_main, "subtitle": sub}
+    # See note above re: Plotly's Subtitle dict requirement.
+    title_cfg: dict[str, Any] = {"text": title_main, "subtitle": {"text": sub}}
 
     fig.update_layout(
         title=title_cfg,

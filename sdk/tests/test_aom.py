@@ -15,7 +15,7 @@ from riskmodels.aom import (
     stock,
     validate_aom,
 )
-from riskmodels.aom.builder import comparison
+from riskmodels.aom.builder import comparison, portfolio_inline
 from riskmodels.aom.plan_schema import (
     AlignComparisonStep,
     HedgeActionStep,
@@ -208,6 +208,101 @@ def test_run_smoke_chain_exposure_hedge() -> None:
     assert not out["errors"]
     client.get_metrics.assert_called_once()
     client.decompose.assert_called_once()
+
+
+def test_compile_portfolio_single_risk_decomposition() -> None:
+    req = (
+        rm()
+        .subject(portfolio_inline([
+            {"ticker": "AAPL", "weight": 0.5},
+            {"ticker": "MSFT", "weight": 0.5},
+        ]))
+        .scope(date_range_preset="ytd", as_of="latest")
+        .risk_decomposition(resolution="full_stack", view="snapshot")
+        .structured()
+    )
+    plan = compile_plan(req)
+    ops = [s.op for s in plan.steps]
+    assert ops == ["resolve_subject", "rest_fetch"]
+    fetch = plan.steps[1]
+    assert isinstance(fetch, RestFetchStep)
+    assert fetch.client_method == "snapshot"
+    assert len(fetch.kwargs["positions"]) == 2
+    assert fetch.kwargs["lookback_days"] == 252
+
+
+def test_compile_portfolio_chain_risk_hedge() -> None:
+    req = (
+        rm()
+        .subject(portfolio_inline([
+            {"ticker": "TSLA", "weight": 0.20},
+            {"ticker": "NVDA", "weight": 0.15},
+            {"ticker": "AAPL", "weight": 0.65},
+        ]))
+        .scope(date_range_preset="ytd", as_of="latest")
+        .chain(
+            analyze(lens="risk_decomposition", resolution="full_stack", view="snapshot"),
+            hedge_action(depends_on="previous"),
+        )
+        .structured()
+    )
+    plan = compile_plan(req)
+    # Portfolio chain collapses to one snapshot call (no fan-out, no second hedge call)
+    ops = [s.op for s in plan.steps]
+    assert ops == ["resolve_subject", "rest_fetch"]
+    fetch = plan.steps[1]
+    assert isinstance(fetch, RestFetchStep)
+    assert fetch.client_method == "snapshot"
+    assert len(fetch.kwargs["positions"]) == 3
+    chain_meta = fetch.binding.get("chain")
+    assert chain_meta is not None
+    assert chain_meta[0]["kind"] == "analyze"
+    assert chain_meta[1]["kind"] == "hedge_action"
+
+
+def test_run_portfolio_chain_mock() -> None:
+    req = (
+        rm()
+        .subject(portfolio_inline([
+            {"ticker": "AAPL", "weight": 0.4},
+            {"ticker": "MSFT", "weight": 0.6},
+        ]))
+        .scope(date_range_preset="ytd", as_of="latest")
+        .chain(
+            analyze(lens="risk_decomposition", resolution="full_stack", view="snapshot"),
+            hedge_action(depends_on="previous"),
+        )
+        .structured()
+    )
+    client = MagicMock()
+    client.snapshot.return_value = (
+        {"snapshot": {"variance_decomposition": {"market": 0.6, "sector": 0.2,
+                                                  "subsector": 0.1, "residual": 0.1,
+                                                  "systematic": 0.9}}},
+        MagicMock(),
+    )
+    out = run(client, req)
+    assert not out["errors"]
+    client.snapshot.assert_called_once()
+    call_kwargs = client.snapshot.call_args.kwargs
+    assert len(call_kwargs["positions"]) == 2
+    assert call_kwargs["lookback_days"] == 252
+
+
+def test_compile_portfolio_lookback_from_preset() -> None:
+    cases = {"mtd": 21, "ytd": 252, "1y": 252, "3y": 756, "5y": 1260}
+    for preset, expected in cases.items():
+        req = (
+            rm()
+            .subject(portfolio_inline([{"ticker": "AAPL", "weight": 1.0}]))
+            .scope(date_range_preset=preset)
+            .risk_decomposition(resolution="full_stack", view="snapshot")
+            .structured()
+        )
+        plan = compile_plan(req)
+        fetch = plan.steps[1]
+        assert isinstance(fetch, RestFetchStep)
+        assert fetch.kwargs["lookback_days"] == expected, f"preset {preset}"
 
 
 def test_run_debug_stderr_aom_and_plan(capsys: pytest.CaptureFixture[str]) -> None:
