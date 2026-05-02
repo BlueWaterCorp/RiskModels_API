@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Decompose Position",
+  "description": "Simplified four-layer ERM3 exposure + hedge map for a single ticker. Thin semantic wrapper over the metrics DAL; same billing profile as GET /metrics/{ticker}.",
+  "oneOf": [
+    { "$ref": "#/definitions/DecomposeRequest" },
+    { "$ref": "#/definitions/DecomposeResponse" }
+  ],
+  "definitions": {
+    "DecomposeRequest": {
+      "type": "object",
+      "required": ["ticker"],
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "Stock ticker symbol (case-insensitive).",
+          "examples": ["NVDA", "AAPL"]
+        }
+      }
+    },
+    "DecomposeLayer": {
+      "type": "object",
+      "required": ["er", "hr", "hedge_etf"],
+      "properties": {
+        "er": {
+          "type": ["number", "null"],
+          "description": "Explained-risk variance fraction for this layer (0 to 1)."
+        },
+        "hr": {
+          "type": ["number", "null"],
+          "description": "Hedge ratio (dollar ratio). Null for residual."
+        },
+        "hedge_etf": {
+          "type": ["string", "null"],
+          "description": "Tradable ETF for this layer. Null for residual."
+        }
+      }
+    },
+    "DecomposeResponse": {
+      "type": "object",
+      "required": [
+        "ticker",
+        "symbol",
+        "data_as_of",
+        "teo",
+        "exposure",
+        "hedge"
+      ],
+      "properties": {
+        "ticker": { "type": "string" },
+        "symbol": { "type": "string" },
+        "data_as_of": {
+          "type": "string",
+          "format": "date"
+        },
+        "teo": {
+          "type": "string",
+          "format": "date"
+        },
+        "exposure": {
+          "type": "object",
+          "required": ["market", "sector", "subsector", "residual"],
+          "properties": {
+            "market": { "$ref": "#/definitions/DecomposeLayer" },
+            "sector": { "$ref": "#/definitions/DecomposeLayer" },
+            "subsector": { "$ref": "#/definitions/DecomposeLayer" },
+            "residual": { "$ref": "#/definitions/DecomposeLayer" }
+          }
+        },
+        "hedge": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Map of hedge-ETF -> dollar ratio (= negative of layer hr). Duplicate ETFs across layers are summed."
+        },
+        "_metadata": { "type": "object" },
+        "_data_health": {
+          "type": "object",
+          "properties": {
+            "er_populated": { "type": "boolean" },
+            "er_sum": { "type": ["number", "null"] }
+          }
+        }
+      }
+    }
+  }
+}
