@@ -28,7 +28,7 @@ const BLOCKS: Block[] = [
     icon: Code2,
     setup: {
       kind: 'code',
-      code: 'pip install riskmodels',
+      code: 'pip install riskmodels-py',
       language: 'bash',
       filename: 'install',
     },
@@ -43,7 +43,7 @@ const BLOCKS: Block[] = [
     icon: Terminal,
     setup: {
       kind: 'code',
-      code: 'npm install -g riskmodels-cli',
+      code: 'npm install -g riskmodels',
       language: 'bash',
       filename: 'install',
     },
