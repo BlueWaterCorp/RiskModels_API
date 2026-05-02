@@ -29,6 +29,14 @@ from .types import (
 )
 
 _PRESET_YEARS: dict[str, int] = {"ytd": 1, "mtd": 1, "1y": 1, "5y": 5, "3y": 3}
+_PRESET_LOOKBACK_DAYS: dict[str, int] = {
+    "mtd": 21,
+    "ytd": 252,
+    "1y": 252,
+    "3y": 756,
+    "5y": 1260,
+}
+_DEFAULT_LOOKBACK_DAYS = 252
 
 
 def validate_aom(req: AOMRequest) -> None:
@@ -214,6 +222,54 @@ def _fetch_step_for_stock(
     )
 
 
+def _lookback_days_from_scope(scope: Scope) -> int:
+    dr = scope.get("date_range")
+    if isinstance(dr, dict):
+        if "preset" in dr:
+            return _PRESET_LOOKBACK_DAYS.get(str(dr["preset"]), _DEFAULT_LOOKBACK_DAYS)
+        if "start" in dr and "end" in dr:
+            try:
+                from datetime import date
+
+                start = date.fromisoformat(str(dr["start"]))
+                end = date.fromisoformat(str(dr["end"]))
+                days = max(1, (end - start).days)
+                return min(2000, max(20, int(days * 252 / 365)))
+            except Exception:
+                return _DEFAULT_LOOKBACK_DAYS
+    return _DEFAULT_LOOKBACK_DAYS
+
+
+def _fetch_step_for_portfolio(
+    step_id: str,
+    holdings: list[dict[str, Any]],
+    *,
+    scope: Scope,
+    benchmark: str | None,
+    binding_extra: dict[str, Any] | None = None,
+) -> RestFetchStep:
+    weights = [
+        {"ticker": str(h["ticker"]), "weight": float(h["weight"])}
+        for h in holdings
+        if h.get("ticker") and h.get("weight") is not None
+    ]
+    kwargs: dict[str, Any] = {
+        "positions": weights,
+        "lookback_days": _lookback_days_from_scope(scope),
+    }
+    if benchmark:
+        kwargs["benchmark"] = benchmark
+    binding: dict[str, Any] = {"subject_type": "portfolio", "scope": dict(scope)}
+    if binding_extra:
+        binding.update(binding_extra)
+    return RestFetchStep(
+        step_id=step_id,
+        client_method="snapshot",
+        kwargs=kwargs,
+        binding=binding,
+    )
+
+
 def _compile_single(req: AOMSingleRequest) -> ExecutionPlanV1:
     nid = _step_ids()
     subject = req["subject"]
@@ -264,11 +320,24 @@ def _compile_single(req: AOMSingleRequest) -> ExecutionPlanV1:
         )
         return ExecutionPlanV1(steps=tuple(steps_list))
 
+    if stype == "portfolio":
+        steps_list.append(
+            _fetch_step_for_portfolio(
+                nid(),
+                list(subject.get("holdings") or []),
+                scope=dict(scope),
+                benchmark=cast(str | None, scope.get("benchmark")) if isinstance(scope, dict) else None,
+                binding_extra={"lens": lens, "resolution": resolution, "view": view,
+                               "attribution_mode": attribution_mode},
+            )
+        )
+        return ExecutionPlanV1(steps=tuple(steps_list))
+
     if stype != "stock":
         steps_list.append(
             UnsupportedExecutorStep(
                 step_id=nid(),
-                reason="Executor v1 implements stock tickers (and stock-only comparisons).",
+                reason="Executor v1 implements stock and portfolio (inline) subjects.",
                 subject_type=str(stype),
             )
         )
@@ -295,12 +364,33 @@ def _compile_chain(req: AOMChainRequest) -> ExecutionPlanV1:
     scope = req.get("scope") or {}
     steps_list: list[ExecutionStep] = [ResolveSubjectStep(step_id=nid(), subject=dict(subject))]
 
-    if subject.get("type") != "stock":
+    stype = subject.get("type")
+
+    if stype == "portfolio":
+        # Portfolio chains collapse to one /api/snapshot call: the response already includes
+        # variance decomposition (risk_decomposition lens) AND per-position hedge ratios
+        # (hedge_action). No fan-out, no client-side aggregation, no second call.
+        chain_summary = [
+            {"kind": s.get("kind"), "lens": s.get("lens")}
+            for s in (req.get("chain") or [])
+        ]
+        steps_list.append(
+            _fetch_step_for_portfolio(
+                nid(),
+                list(subject.get("holdings") or []),
+                scope=dict(scope),
+                benchmark=cast(str | None, scope.get("benchmark")) if isinstance(scope, dict) else None,
+                binding_extra={"chain": chain_summary},
+            )
+        )
+        return ExecutionPlanV1(steps=tuple(steps_list))
+
+    if stype != "stock":
         steps_list.append(
             UnsupportedExecutorStep(
                 step_id=nid(),
-                reason="chain executor v1 requires a stock subject.",
-                subject_type=str(subject.get("type")),
+                reason="chain executor v1 requires a stock or portfolio subject.",
+                subject_type=str(stype),
             )
         )
         return ExecutionPlanV1(steps=tuple(steps_list))
