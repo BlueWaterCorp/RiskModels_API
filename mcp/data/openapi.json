@@ -1905,6 +1905,313 @@
             "example": 60
           }
         }
+      },
+      "Fund": {
+        "type": "object",
+        "description": "Mutual fund registry row from `public.funds`. One row per `bw_fund_id`. Latest temporal triple (`latest_report_date` / `latest_filing_date` / `latest_extracted_at`) reflects the most recent N-PORT snapshot known for this fund. Q5 lock: `primary_bw_fund_id` is reserved as a nullable column; NULL means this row IS the primary share class (or no primary chosen yet). See ARCHITECTURE_FUNDS_API.md §4.1.\n",
+        "properties": {
+          "bw_fund_id": {
+            "type": "string",
+            "description": "Funds_DAG canonical fund id. Format `BW-FUND-{series_id}`.",
+            "example": "BW-FUND-S000004310"
+          },
+          "series_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "SEC series id.",
+            "example": "S000004310"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true,
+            "example": "VFINX"
+          },
+          "cik": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true,
+            "example": "Vanguard 500 Index Fund Investor Shares"
+          },
+          "morningstar_category": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "Large Value",
+              "Large Blend",
+              "Large Growth",
+              "Mid Value",
+              "Mid Blend",
+              "Mid Growth",
+              "Small Value",
+              "Small Blend",
+              "Small Growth"
+            ]
+          },
+          "style_link_method": {
+            "type": "string",
+            "nullable": true
+          },
+          "primary_bw_fund_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "latest_report_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Period end of the most recent reported holdings (= \"fund_date\")."
+          },
+          "latest_filing_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "SEC acceptance date for the latest filing (= \"release_date\")."
+          },
+          "latest_extracted_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "latest_total_adj_mv": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "latest_n_holdings": {
+            "type": "integer",
+            "nullable": true
+          },
+          "latest_effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "last_in_eligible_universe_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        }
+      },
+      "FundLatest": {
+        "type": "object",
+        "description": "Wide-row latest knowledge-mode snapshot from `public.funds_latest`. One row per `bw_fund_id`. Returns and diagnostics flatten the per-fund `ds_portfolio.zarr` (Funds_DAG Slice 8). Multi-quarter history lives in GCS Zarr (Stage B+). See ARCHITECTURE_FUNDS_API.md §4.2.\n",
+        "required": [
+          "bw_fund_id",
+          "report_date",
+          "filing_date",
+          "extracted_at",
+          "last_synced_at"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string",
+            "example": "BW-FUND-S000004310"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "filing_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-07-14"
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "portfolio_gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_market_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_sector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_subsector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_idiosyncratic_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "identity_residual": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "ERM3 universe coverage (fraction of fund AUM mapping to in-universe symbols)."
+          },
+          "n_holdings_active": {
+            "type": "integer",
+            "nullable": true
+          },
+          "effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "HHI-derived diversification (1 / sum(w_i^2))."
+          },
+          "top10_weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "total_adj_mv": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "n_funds_in_cell_at_report_date": {
+            "type": "integer",
+            "nullable": true
+          },
+          "model_version": {
+            "type": "string",
+            "nullable": true,
+            "example": "funds_dag.v20260502"
+          },
+          "factor_set_id": {
+            "type": "string",
+            "nullable": true,
+            "example": "uni_mc_3000_SPY"
+          },
+          "last_synced_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        }
+      },
+      "FundWithLatest": {
+        "type": "object",
+        "description": "Fund registry row joined with the latest knowledge-mode snapshot.",
+        "required": [
+          "fund"
+        ],
+        "properties": {
+          "fund": {
+            "$ref": "#/components/schemas/Fund"
+          },
+          "latest": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FundLatest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "FundsBatchRequest": {
+        "type": "object",
+        "required": [
+          "fund_ids"
+        ],
+        "properties": {
+          "fund_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1000,
+            "example": [
+              "BW-FUND-S000004310",
+              "BW-FUND-S000123456"
+            ]
+          }
+        }
+      },
+      "FundsBatchResponse": {
+        "type": "object",
+        "description": "Multi-fund lookup. Keys are `bw_fund_id`s present in the registry.",
+        "properties": {
+          "results": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FundWithLatest"
+            }
+          }
+        }
+      },
+      "FundsSearchResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fund"
+            }
+          }
+        }
+      },
+      "FundsStyleMembersResponse": {
+        "type": "object",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "fund_ids",
+          "count"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string",
+            "example": "Large Blend"
+          },
+          "slug": {
+            "type": "string",
+            "example": "large-blend"
+          },
+          "fund_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
       }
     }
   },
@@ -6908,6 +7215,333 @@
           }
         }
       }
+    },
+    "/data/funds/{bw_fund_id}": {
+      "get": {
+        "summary": "Get fund (registry + latest snapshot)",
+        "description": "Returns the registry row from `public.funds` joined with the latest knowledge-mode snapshot from `public.funds_latest`. Bitemporal lineage surfaces as response headers `X-Data-As-Of` (= `report_date`) and `X-Data-Filing-Date` (= `filing_date`).\n\nv1 returns the latest knowledge-mode answer only (no `?as_of=` / `?mode=` query params — deferred to v2 per ARCHITECTURE_FUNDS_API.md §3.5).\n",
+        "operationId": "getFundDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fund + latest snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds_latest.report_date (period end of the snapshot)."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds_latest.filing_date (SEC acceptance date)."
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundWithLatest"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds-latest/{bw_fund_id}": {
+      "get": {
+        "summary": "Get just the funds_latest row",
+        "description": "Returns only the wide-row snapshot from `public.funds_latest`. Skips the registry join — useful when the SDK already has the registry row or only needs the metric columns.\n",
+        "operationId": "getFundLatestDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest snapshot row.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundLatest"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No funds_latest row for this fund.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds/batch": {
+      "post": {
+        "summary": "Resolve multiple funds in one call",
+        "description": "Multi-fund lookup. Returns a registry+latest payload keyed by `bw_fund_id`. Up to 1000 ids per request.\n",
+        "operationId": "postFundsBatchDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundsBatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lookup map.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body (missing/oversized fund_ids array).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds/search": {
+      "get": {
+        "summary": "Search funds by ticker or name",
+        "description": "Full-text ilike search over `ticker` and `fund_name`, optionally filtered by 9-box style cell (slug or canonical name) and share-class primary flag (`?primary=true` filters `primary_bw_fund_id IS NULL`).\n",
+        "operationId": "getFundsSearchDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "ilike pattern on ticker / fund_name."
+          },
+          {
+            "name": "equity_style_9box",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "9-box slug (\"large-blend\") or canonical name (\"Large Blend\")."
+          },
+          {
+            "name": "primary",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, returns only primary share-class funds (Q5 lock)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to `limit` matching funds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds/style/{slug}/members": {
+      "get": {
+        "summary": "List fund_ids in a 9-box style cell",
+        "description": "Returns the `bw_fund_id` list for a 9-box style cell. SDK consumers typically chain this into `/api/data/funds/batch` to materialize a peer cohort's full registry+latest payload.\n",
+        "operationId": "getStyleCellMembersDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          },
+          {
+            "name": "primary",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20000,
+              "default": 5000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fund id list for the cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsStyleMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "tags": [
@@ -6950,6 +7584,10 @@
     {
       "name": "Discovery",
       "description": "Service discovery and capability manifests."
+    },
+    {
+      "name": "Funds Data Plane",
+      "description": "Raw-shape reads against the funds Supabase tables (`funds`, `funds_latest`). Latest knowledge-mode snapshot only — history reads via the per-fund Zarr endpoints in later stages. Public; soft Bearer auth; not metered. The compute-bearing `/funds/*`, `/funds/style/*`, and `/funds/snapshot/*` surfaces ship in subsequent stages.\n"
     }
   ]
 }
