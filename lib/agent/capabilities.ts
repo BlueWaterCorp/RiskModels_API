@@ -991,6 +991,46 @@ export const CAPABILITIES: Capability[] = [
       },
     ],
   },
+  {
+    id: "fund-metrics",
+    name: "Latest Fund Metrics",
+    description:
+      "Latest knowledge-mode portfolio return decomposition + diagnostics for a single mutual fund. " +
+      "Returns the gross / market / sector / subsector / idiosyncratic return components, the " +
+      "identity_residual, ERM3 universe coverage (weight_sum), n_holdings_active, effective_n (HHI-derived " +
+      "diversification), and top10_weight_sum. Resolves bw_fund_id against public.funds + public.funds_latest. " +
+      "Bitemporal lineage surfaces as X-Data-As-Of (report_date) and X-Data-Filing-Date headers; " +
+      "v1 returns the latest knowledge-mode answer only (no ?as_of= / ?mode= — deferred to v2).",
+    endpoint: "/api/funds/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id}, e.g. BW-FUND-S000004310)",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["funds", "funds_latest"],
+    },
+    tags: ["funds", "metrics", "knowledge-mode"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {

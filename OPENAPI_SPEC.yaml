@@ -1855,6 +1855,86 @@ components:
         count:
           type: integer
 
+    FundMetricsResponse:
+      type: object
+      description: >
+        Latest knowledge-mode metrics for a single mutual fund. Joins
+        `public.funds` (registry) with `public.funds_latest` (the wide-row
+        snapshot) and groups return components / diagnostics / meta into
+        nested objects. Bitemporal triple is at the top level; lineage in
+        `_metadata`.
+      required: [bw_fund_id, report_date, filing_date, extracted_at, returns, diagnostics, meta, _metadata]
+      properties:
+        bw_fund_id: { type: string, example: BW-FUND-S000004310 }
+        ticker: { type: string, nullable: true, example: VFINX }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box:
+          type: string
+          nullable: true
+          enum:
+            - Large Value
+            - Large Blend
+            - Large Growth
+            - Mid Value
+            - Mid Blend
+            - Mid Growth
+            - Small Value
+            - Small Blend
+            - Small Growth
+        report_date: { type: string, format: date, example: "2026-04-30" }
+        filing_date: { type: string, format: date, example: "2026-07-14" }
+        extracted_at: { type: string, format: date-time }
+        returns:
+          type: object
+          description: Portfolio-level return components from the per-fund Slice 8 zarr.
+          properties:
+            gross: { type: number, format: float, nullable: true }
+            market: { type: number, format: float, nullable: true }
+            sector: { type: number, format: float, nullable: true }
+            subsector: { type: number, format: float, nullable: true }
+            idiosyncratic: { type: number, format: float, nullable: true }
+            identity_residual:
+              type: number
+              format: float
+              nullable: true
+              description: L3 noise diagnostic (gross − sum of layer returns).
+        diagnostics:
+          type: object
+          properties:
+            weight_sum:
+              type: number
+              format: float
+              nullable: true
+              description: ERM3 universe coverage (fraction of fund AUM in mapped symbols).
+            n_holdings_active: { type: integer, nullable: true }
+            effective_n:
+              type: number
+              format: float
+              nullable: true
+              description: HHI-derived diversification (1 / sum(w_i^2)).
+            top10_weight_sum: { type: number, format: float, nullable: true }
+        meta:
+          type: object
+          properties:
+            total_adj_mv: { type: number, format: float, nullable: true }
+            n_funds_in_cell_at_report_date: { type: integer, nullable: true }
+            morningstar_category: { type: string, nullable: true }
+            primary_bw_fund_id: { type: string, nullable: true }
+        _metadata:
+          type: object
+          properties:
+            model_version:
+              type: string
+              nullable: true
+              example: funds_dag.v20260502
+            factor_set_id:
+              type: string
+              nullable: true
+              example: uni_mc_3000_SPY
+            data_as_of: { type: string, format: date }
+            data_freshness: { type: string, format: date-time }
+            last_synced_at: { type: string, format: date-time }
+
 security:
   - BearerAuth: []
 
@@ -5318,6 +5398,77 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /funds/{bw_fund_id}:
+    get:
+      summary: Latest fund metrics
+      description: >
+        Knowledge-mode portfolio return decomposition + diagnostics for a
+        single mutual fund. Returns the gross / market / sector / subsector
+        / idiosyncratic return components from the per-fund Slice 8 zarr
+        (materialized in `public.funds_latest`), plus diagnostics
+        (`weight_sum`, `n_holdings_active`, `effective_n`,
+        `top10_weight_sum`) and registry-side meta. Bitemporal lineage on
+        response headers (`X-Data-As-Of`, `X-Data-Filing-Date`).
+
+
+        Per-fund time series, holdings panel, and hedge ratios live in
+        GCS Zarr and ship under `/funds/{bw_fund_id}/portfolio`,
+        `/holdings`, `/hedge` in Stage B.2.
+
+
+        v1 returns the latest knowledge-mode answer only — `?as_of=` /
+        `?mode=` is deferred to v2 (schema is forward-compatible).
+      operationId: getFundMetrics
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-metrics
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_metrics_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+      responses:
+        "200":
+          description: Latest fund metrics.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: funds_latest.report_date (period end of the snapshot).
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+              description: funds_latest.filing_date (SEC acceptance date).
+            X-Risk-Model-Version:
+              schema: { type: string }
+            X-API-Cost-USD:
+              schema: { type: string }
+              description: USD cost deducted from prepaid balance for this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundMetricsResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or registry exists but no funds_latest row yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
 tags:
   - name: Risk Metrics
     description: ERM3 factor hedge ratios, explained risk, and return decompositions.
@@ -5347,3 +5498,11 @@ tags:
       auth; not metered. The compute-bearing `/funds/*`,
       `/funds/style/*`, and `/funds/snapshot/*` surfaces ship in subsequent
       stages.
+  - name: Funds
+    description: >
+      Compute-bearing fund endpoints. Latest metrics (Stage B.1) join
+      `public.funds` with `public.funds_latest` and return a shaped
+      response with bitemporal lineage. Per-fund time series, holdings,
+      and hedge ratios (Stage B.2) read from GCS Zarr. Style-cohort
+      surfaces (Stage C) and snapshot tearsheets (Stage D) follow.
+      Billable per request.
