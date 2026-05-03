@@ -1855,6 +1855,43 @@ components:
         count:
           type: integer
 
+    FundHedgeLeg:
+      type: object
+      description: One ETF hedge leg at a given factor level.
+      required: [etf, hr]
+      properties:
+        etf:
+          type: string
+          description: ETF symbol (e.g. SPY, XLK, SMH).
+        hr:
+          type: number
+          format: float
+          description: Hedge ratio (dollar_ratio) — ETF notional per $1 of fund exposure at this level.
+
+    FundHedgeResponse:
+      type: object
+      description: >
+        Latest L1/L2/L3 hedge ratios for a fund. Empty arrays are emitted
+        for levels with no non-NaN entries (e.g. small / niche funds may
+        only have an L1 market hedge). Composing a full hedge basket
+        means concatenating L1 + L2 + L3 entries.
+      required: [bw_fund_id, teo, L1, L2, L3]
+      properties:
+        bw_fund_id: { type: string }
+        ticker: { type: string, nullable: true }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box: { type: string, nullable: true }
+        teo: { type: string, format: date }
+        L1:
+          type: array
+          items: { $ref: "#/components/schemas/FundHedgeLeg" }
+        L2:
+          type: array
+          items: { $ref: "#/components/schemas/FundHedgeLeg" }
+        L3:
+          type: array
+          items: { $ref: "#/components/schemas/FundHedgeLeg" }
+
     FundHolding:
       type: object
       description: One holding (security) within a fund's top-N snapshot.
@@ -5476,6 +5513,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /funds/{bw_fund_id}/hedge:
+    get:
+      summary: Latest fund hedge ratios (L1 / L2 / L3)
+      description: >
+        Latest L1/L2/L3 ETF hedge ratios for a fund. Reads `L{1,2,3}_HR
+        (teo, symbol)` from Slice 7's per-fund `ds_hr.zarr` at the
+        latest teo. Empty arrays are emitted for levels with no non-NaN
+        entries (small / niche funds may only have an L1 market hedge).
+      operationId: getFundHedge
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-hedge
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_hedge_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+      responses:
+        "200":
+          description: Per-level hedge legs.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundHedgeResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or no hedge ratio panel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /funds/{bw_fund_id}/holdings:
     get:

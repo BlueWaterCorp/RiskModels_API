@@ -1126,6 +1126,44 @@ export const CAPABILITIES: Capability[] = [
     },
     tags: ["funds", "holdings", "knowledge-mode"],
   },
+  {
+    id: "fund-hedge",
+    name: "Fund Hedge Ratios",
+    description:
+      "Latest L1/L2/L3 ETF hedge ratios for a mutual fund. Reads L{1,2,3}_HR (teo, symbol) " +
+      "from Slice 7's per-fund ds_hr.zarr at the latest teo and returns per-level lists of " +
+      "{etf, hr} dropping NaN entries. Use these to compose hedging baskets at each ERM3 " +
+      "factor level.",
+    endpoint: "/api/funds/{bw_fund_id}/hedge",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_hedge_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_hr.zarr", "funds"],
+    },
+    tags: ["funds", "hedge-ratios", "knowledge-mode"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {
