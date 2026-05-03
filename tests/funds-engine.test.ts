@@ -8,6 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   fetchFund,
   fetchFundLatest,
+  fetchStyleCohortLatest,
+  fetchStyleRankings,
   getStyleCellMembers,
   resolveFundById,
   resolveFundsByIds,
@@ -235,6 +237,97 @@ describe("getStyleCellMembers", () => {
       funds: { data: null, error: { message: "fail" } },
     });
     const r = await getStyleCellMembers("Large Blend");
+    expect(r).toEqual([]);
+  });
+});
+
+const STYLE_LB_EW = {
+  equity_style_9box: "Large Blend",
+  weighting: "ew" as const,
+  report_date: "2026-04-30",
+  filing_date_max: "2026-07-14",
+  extracted_at: "2026-05-02T16:41:31.441605+00:00",
+  portfolio_gross_return: 0.071,
+  portfolio_market_return: 0.099,
+  portfolio_sector_return: -0.01,
+  portfolio_subsector_return: -0.01,
+  portfolio_idiosyncratic_return: -0.005,
+  identity_residual: -0.003,
+  weight_sum: 0.99,
+  n_holdings_active: 2325,
+  effective_n: 65.2,
+  top10_weight_sum: 0.34,
+  n_funds_in_cell: 1234,
+  model_version: "funds_dag.v20260502",
+  last_synced_at: "2026-05-02T16:41:31.441605+00:00",
+  metadata: {},
+};
+const STYLE_LB_MV = { ...STYLE_LB_EW, weighting: "mv" as const };
+
+describe("fetchStyleCohortLatest", () => {
+  it("returns both EW and MV rows when present", async () => {
+    setMockClient({
+      style_portfolios_latest: { data: [STYLE_LB_EW, STYLE_LB_MV], error: null },
+    });
+    const r = await fetchStyleCohortLatest("Large Blend");
+    expect(r).toHaveLength(2);
+    expect(r.map((x) => x.weighting).sort()).toEqual(["ew", "mv"]);
+  });
+
+  it("returns [] on error", async () => {
+    setMockClient({
+      style_portfolios_latest: { data: null, error: { message: "boom" } },
+    });
+    const r = await fetchStyleCohortLatest("Large Blend");
+    expect(r).toEqual([]);
+  });
+});
+
+describe("fetchStyleRankings", () => {
+  const RANK_ROW = {
+    rank: 1,
+    entity_id: "BW-BBG000BPH459",
+    metric: "weight",
+    value: 0.04,
+    cohort_size: 3469,
+    period_window: "1m" as const,
+    weighting: "mv" as const,
+    report_date: "2026-04-30",
+    filing_date_max: "2026-07-14",
+  };
+
+  it("returns ranked rows for valid params", async () => {
+    setMockClient({
+      style_rankings_top: { data: [RANK_ROW], error: null },
+    });
+    const r = await fetchStyleRankings("Large Blend", {
+      metric: "weight",
+      cohortType: "symbol",
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0].entity_id).toBe("BW-BBG000BPH459");
+  });
+
+  it("clamps limit at 50 and returns []", async () => {
+    setMockClient({
+      style_rankings_top: { data: [], error: null },
+    });
+    const r = await fetchStyleRankings("Large Blend", {
+      metric: "weight",
+      cohortType: "symbol",
+      limit: 999,
+    });
+    expect(r).toEqual([]);
+  });
+
+  it("returns [] on error", async () => {
+    setMockClient({
+      style_rankings_top: { data: null, error: { message: "boom" } },
+    });
+    const r = await fetchStyleRankings("Large Blend", {
+      metric: "weight",
+      cohortType: "symbol",
+    });
     expect(r).toEqual([]);
   });
 });
