@@ -1,0 +1,21 @@
+{
+  "bw_fund_id": "BW-FUND-S000001243",
+  "cik": "0000916620",
+  "equity_style_9box": "Large Blend",
+  "fund_name": "Northern Large Cap Core Fund",
+  "last_in_eligible_universe_at": null,
+  "latest_effective_n": 22.487919742808565,
+  "latest_extracted_at": null,
+  "latest_filing_date": "2026-07-14",
+  "latest_n_holdings": 130,
+  "latest_report_date": "2026-04-30",
+  "latest_total_adj_mv": 0.0,
+  "metadata": {
+    "filing_date_source": "placeholder_lag_75d"
+  },
+  "morningstar_category": "Large Blend",
+  "primary_bw_fund_id": null,
+  "series_id": "S000001243",
+  "style_link_method": "ticker_match",
+  "ticker": "NOLCX"
+}

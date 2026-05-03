@@ -1855,6 +1855,156 @@ components:
         count:
           type: integer
 
+    FundCohortRankEntry:
+      type: object
+      description: >
+        One ranking row for a fund within its 9-box cell. The "n of n_group"
+        view: this fund placed `rank` out of `cohort_size` peers on this
+        `metric` over `period_window`.
+      required: [metric, period_window, rank]
+      properties:
+        metric: { type: string, example: portfolio_gross_return }
+        period_window: { type: string, enum: ["1m", "3m", "12m", "36m"] }
+        rank: { type: integer, example: 5 }
+        cohort_size: { type: integer, nullable: true, example: 540 }
+        value: { type: number, format: float, nullable: true }
+
+    FundSnapshotResponse:
+      type: object
+      description: >
+        Composed JSON snapshot for a single mutual fund. Bundles registry +
+        latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month
+        portfolio time series + cohort context (rank-within-cell on every
+        metric the rankings table covers).
+      required: [bw_fund_id, report_date, filing_date, metrics, portfolio_history, _metadata]
+      properties:
+        bw_fund_id: { type: string }
+        ticker: { type: string, nullable: true }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box: { type: string, nullable: true }
+        report_date: { type: string, format: date }
+        filing_date: { type: string, format: date }
+        metrics: { $ref: "#/components/schemas/FundMetricsResponse" }
+        holdings:
+          type: object
+          nullable: true
+          properties:
+            n_total_holdings: { type: integer }
+            n_returned: { type: integer }
+            top:
+              type: array
+              items: { $ref: "#/components/schemas/FundHolding" }
+        hedge:
+          oneOf:
+            - $ref: "#/components/schemas/FundHedgeResponse"
+            - type: "null"
+          nullable: true
+        portfolio_history:
+          type: object
+          required: [lookback_months, n_periods, rows]
+          properties:
+            lookback_months: { type: integer, example: 12 }
+            n_periods: { type: integer }
+            rows:
+              type: array
+              items: { $ref: "#/components/schemas/FundPortfolioRow" }
+        cohort_context:
+          type: object
+          nullable: true
+          properties:
+            equity_style_9box: { type: string, nullable: true }
+            n_funds_in_cell: { type: integer, nullable: true }
+            ranks:
+              type: array
+              items: { $ref: "#/components/schemas/FundCohortRankEntry" }
+        _metadata:
+          type: object
+          properties:
+            model_version: { type: string, nullable: true }
+            factor_set_id: { type: string, nullable: true }
+            data_as_of: { type: string, format: date }
+            data_freshness: { type: string, format: date-time }
+
+    CohortRankEntry:
+      type: object
+      description: One ranked entity inside a top_funds / top_symbols block.
+      required: [rank, entity_id]
+      properties:
+        rank: { type: integer }
+        entity_id: { type: string }
+        value: { type: number, format: float, nullable: true }
+        cohort_size: { type: integer, nullable: true }
+
+    CohortRankBlock:
+      type: object
+      description: A ranked list scoped to one (metric, period_window, weighting) tuple.
+      required: [metric, period_window, weighting, rows]
+      properties:
+        metric: { type: string }
+        period_window: { type: string, enum: ["1m", "3m", "12m", "36m"] }
+        weighting: { type: string, enum: [ew, mv] }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/CohortRankEntry" }
+
+    CohortSnapshotResponse:
+      type: object
+      description: >
+        Composed JSON snapshot for a 9-box style cell — the differentiated
+        wedge surface. Bundles cohort metrics (EW + MV), top-25 cohort
+        holdings, 12-month cohort portfolio history, top-10 funds in cell,
+        and top-15 symbols in cell.
+      required: [equity_style_9box, slug, report_date, metrics, portfolio_history, _metadata]
+      properties:
+        equity_style_9box: { type: string }
+        slug: { type: string }
+        report_date: { type: string, format: date }
+        filing_date_max: { type: string, format: date, nullable: true }
+        n_funds_in_cell: { type: integer, nullable: true }
+        metrics:
+          type: object
+          properties:
+            weightings:
+              type: object
+              properties:
+                ew: { $ref: "#/components/schemas/StyleCohortReturnsBlock" }
+                mv: { $ref: "#/components/schemas/StyleCohortReturnsBlock" }
+        holdings:
+          type: object
+          nullable: true
+          properties:
+            weighting: { type: string, enum: [ew, mv] }
+            n_total_holdings: { type: integer }
+            n_returned: { type: integer }
+            top:
+              type: array
+              items: { $ref: "#/components/schemas/CohortHolding" }
+        portfolio_history:
+          type: object
+          required: [lookback_months, n_periods, rows]
+          properties:
+            lookback_months: { type: integer, example: 12 }
+            n_periods: { type: integer }
+            rows:
+              type: array
+              items: { $ref: "#/components/schemas/CohortPortfolioRow" }
+        top_funds:
+          oneOf:
+            - $ref: "#/components/schemas/CohortRankBlock"
+            - type: "null"
+          nullable: true
+        top_symbols:
+          oneOf:
+            - $ref: "#/components/schemas/CohortRankBlock"
+            - type: "null"
+          nullable: true
+        _metadata:
+          type: object
+          properties:
+            model_version: { type: string, nullable: true }
+            data_as_of: { type: string, format: date }
+            data_freshness: { type: string, format: date-time }
+
     CohortPortfolioRow:
       type: object
       description: One teo of a cohort portfolio time series. Both EW + MV blocks side-by-side.
@@ -5659,6 +5809,128 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /funds/snapshot/{bw_fund_id}:
+    get:
+      summary: Composed fund snapshot (JSON)
+      description: >
+        Composed JSON snapshot for a single mutual fund. Bundles registry +
+        latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month
+        portfolio time series + cohort context (rank N of `cohort_size` on
+        every metric the rankings table covers).
+
+
+        The matching server-rendered PDF is
+        `/api/funds/snapshot.pdf/{bw_fund_id}` (Stage D.2 — not yet shipped).
+        The SDK can render this JSON locally via
+        `riskmodels.snapshots.f1_fund_tearsheet` (Stage D.3).
+      operationId: getFundSnapshotJson
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-snapshot-json
+        tier: baseline
+        cost_usd: 0.01
+        billing_code: fund_snapshot_json_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+      responses:
+        "200":
+          description: Composed fund snapshot.
+          headers:
+            X-Data-As-Of: { schema: { type: string, format: date } }
+            X-Data-Filing-Date: { schema: { type: string, format: date } }
+            X-Risk-Model-Version: { schema: { type: string } }
+            X-API-Cost-USD: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FundSnapshotResponse" }
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsufficientBalance" }
+        "404":
+          description: Fund not found, or no funds_latest row.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RateLimitExceeded" }
+
+  /funds/style/{slug}/snapshot:
+    get:
+      summary: Composed cohort snapshot (JSON)
+      description: >
+        Composed JSON snapshot for a 9-box style cell — the differentiated
+        wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25
+        cohort holdings (MV) + 12-month cohort portfolio history (both
+        weightings) + top-10 funds in cell (by 12-month gross return) +
+        top-15 symbols in cell (by current weight, MV).
+
+
+        Matching server-rendered PDF is
+        `/api/funds/style/{slug}/snapshot.pdf` (Stage D.2 — not yet shipped).
+      operationId: getStyleCohortSnapshotJson
+      tags: [Funds]
+      x-pricing:
+        capability_id: style-cohort-snapshot-json
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: style_cohort_snapshot_json_v1
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - large-value
+              - large-blend
+              - large-growth
+              - mid-value
+              - mid-blend
+              - mid-growth
+              - small-value
+              - small-blend
+              - small-growth
+      responses:
+        "200":
+          description: Composed cohort snapshot.
+          headers:
+            X-Data-As-Of: { schema: { type: string, format: date } }
+            X-Data-Filing-Date: { schema: { type: string, format: date } }
+            X-Risk-Model-Version: { schema: { type: string } }
+            X-API-Cost-USD: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CohortSnapshotResponse" }
+        "400":
+          description: Invalid style slug.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsufficientBalance" }
+        "404":
+          description: No cohort metrics available for this cell.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RateLimitExceeded" }
 
   /funds/style/{slug}/portfolio:
     get:

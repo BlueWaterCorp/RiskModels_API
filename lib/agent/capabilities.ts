@@ -1356,6 +1356,94 @@ export const CAPABILITIES: Capability[] = [
     },
     tags: ["funds", "cohort", "holdings", "differentiated-wedge"],
   },
+  {
+    id: "fund-snapshot-json",
+    name: "Fund Snapshot (JSON)",
+    description:
+      "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + " +
+      "top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context " +
+      "(fund's rank within its 9-box cell on every metric we rank, expressed as rank N of " +
+      "cohort_size). The matching server-rendered PDF is /funds/snapshot.pdf/{bw_fund_id} " +
+      "(Stage D.2).",
+    endpoint: "/api/funds/snapshot/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description: "Funds_DAG canonical fund id (BW-FUND-{series_id}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.01,
+      currency: "USD",
+      billing_code: "fund_snapshot_json_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "funds",
+        "funds_latest",
+        "style_rankings_top",
+        "style_portfolios_latest",
+        "ds_portfolio.zarr",
+        "ds_ph.zarr",
+        "ds_hr.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "tearsheet", "knowledge-mode"],
+  },
+  {
+    id: "style-cohort-snapshot-json",
+    name: "Style Cohort Snapshot (JSON)",
+    description:
+      "Composed JSON snapshot for a 9-box style cell — the differentiated wedge vs Morningstar. " +
+      "Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort " +
+      "portfolio history (both weightings) + top-10 funds in cell + top-15 symbols in cell. " +
+      "Matching server-rendered PDF is /funds/style/{slug}/snapshot.pdf (Stage D.2).",
+    endpoint: "/api/funds/style/{slug}/snapshot",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "9-box style slug (large-blend, etc.).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_snapshot_json_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "style_portfolios_latest",
+        "style_rankings_top",
+        "portfolio_style/{Cell_Name}/ds_portfolio.zarr",
+        "equity_style_9box/{Cell_Name}/ds_symbols.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "cohort", "differentiated-wedge"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {
