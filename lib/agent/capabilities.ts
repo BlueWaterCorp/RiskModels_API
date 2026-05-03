@@ -991,6 +991,179 @@ export const CAPABILITIES: Capability[] = [
       },
     ],
   },
+  {
+    id: "fund-metrics",
+    name: "Latest Fund Metrics",
+    description:
+      "Latest knowledge-mode portfolio return decomposition + diagnostics for a single mutual fund. " +
+      "Returns the gross / market / sector / subsector / idiosyncratic return components, the " +
+      "identity_residual, ERM3 universe coverage (weight_sum), n_holdings_active, effective_n (HHI-derived " +
+      "diversification), and top10_weight_sum. Resolves bw_fund_id against public.funds + public.funds_latest. " +
+      "Bitemporal lineage surfaces as X-Data-As-Of (report_date) and X-Data-Filing-Date headers; " +
+      "v1 returns the latest knowledge-mode answer only (no ?as_of= / ?mode= — deferred to v2).",
+    endpoint: "/api/funds/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id}, e.g. BW-FUND-S000004310)",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["funds", "funds_latest"],
+    },
+    tags: ["funds", "metrics", "knowledge-mode"],
+  },
+  {
+    id: "fund-portfolio-history",
+    name: "Fund Portfolio History",
+    description:
+      "Per-fund time series of portfolio_*_return components, identity_residual, and diagnostics " +
+      "(weight_sum, n_holdings_active, effective_n, top10_weight_sum) from Slice 8's per-fund " +
+      "ds_portfolio.zarr on GCS. One row per teo (month-end). Optional ?start_date and ?end_date " +
+      "query params (inclusive, YYYY-MM-DD) trim the panel; default returns the full history.",
+    endpoint: "/api/funds/{bw_fund_id}/portfolio",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_portfolio.zarr", "funds"],
+    },
+    tags: ["funds", "history", "time-series"],
+  },
+  {
+    id: "fund-holdings",
+    name: "Fund Top-N Holdings",
+    description:
+      "Top-N current holdings for a mutual fund at the latest teo. Reads adj_mv (symbol, teo) " +
+      "and aum_erm3 (teo,) from Slice 5's per-fund ds_ph.zarr on GCS, sorts symbols by adj_mv " +
+      "descending, and returns the top N with weight = adj_mv / aum_erm3. Default 25; caller " +
+      "may request up to 1000 via ?limit=. Symbols are bw_sym_id; resolve to ticker via " +
+      "/api/data/symbols/batch if needed.",
+    endpoint: "/api/funds/{bw_fund_id}/holdings",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max holdings to return (default 25, capped 1000)",
+        default: 25,
+        min: 1,
+        max: 1000,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_ph.zarr", "funds"],
+    },
+    tags: ["funds", "holdings", "knowledge-mode"],
+  },
+  {
+    id: "fund-hedge",
+    name: "Fund Hedge Ratios",
+    description:
+      "Latest L1/L2/L3 ETF hedge ratios for a mutual fund. Reads L{1,2,3}_HR (teo, symbol) " +
+      "from Slice 7's per-fund ds_hr.zarr at the latest teo and returns per-level lists of " +
+      "{etf, hr} dropping NaN entries. Use these to compose hedging baskets at each ERM3 " +
+      "factor level.",
+    endpoint: "/api/funds/{bw_fund_id}/hedge",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_hedge_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_hr.zarr", "funds"],
+    },
+    tags: ["funds", "hedge-ratios", "knowledge-mode"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {

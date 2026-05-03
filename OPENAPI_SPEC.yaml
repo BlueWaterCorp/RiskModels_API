@@ -1855,6 +1855,202 @@ components:
         count:
           type: integer
 
+    FundHedgeLeg:
+      type: object
+      description: One ETF hedge leg at a given factor level.
+      required: [etf, hr]
+      properties:
+        etf:
+          type: string
+          description: ETF symbol (e.g. SPY, XLK, SMH).
+        hr:
+          type: number
+          format: float
+          description: Hedge ratio (dollar_ratio) — ETF notional per $1 of fund exposure at this level.
+
+    FundHedgeResponse:
+      type: object
+      description: >
+        Latest L1/L2/L3 hedge ratios for a fund. Empty arrays are emitted
+        for levels with no non-NaN entries (e.g. small / niche funds may
+        only have an L1 market hedge). Composing a full hedge basket
+        means concatenating L1 + L2 + L3 entries.
+      required: [bw_fund_id, teo, L1, L2, L3]
+      properties:
+        bw_fund_id: { type: string }
+        ticker: { type: string, nullable: true }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box: { type: string, nullable: true }
+        teo: { type: string, format: date }
+        L1:
+          type: array
+          items: { $ref: "#/components/schemas/FundHedgeLeg" }
+        L2:
+          type: array
+          items: { $ref: "#/components/schemas/FundHedgeLeg" }
+        L3:
+          type: array
+          items: { $ref: "#/components/schemas/FundHedgeLeg" }
+
+    FundHolding:
+      type: object
+      description: One holding (security) within a fund's top-N snapshot.
+      required: [bw_sym_id, adj_mv]
+      properties:
+        bw_sym_id:
+          type: string
+          description: Internal symbol id. Resolve to ticker via /api/data/symbols/batch.
+          example: BW-BBG000B9XRY4
+        adj_mv:
+          type: number
+          format: float
+          description: Adjusted market value of this position at the snapshot teo.
+        weight:
+          type: number
+          format: float
+          nullable: true
+          description: Fraction of `aum_erm3`. Null when aum_erm3 is null/0.
+
+    FundHoldingsResponse:
+      type: object
+      description: >
+        Top-N current holdings for a fund at the latest teo. Sourced from
+        per-fund `ds_ph.zarr` (Slice 5). `aum_reported` is sum(adj_mv)
+        BEFORE universe filter; `aum_erm3` is sum AFTER (ERM3-mapped
+        symbols only — the denominator for `weight`).
+      required: [bw_fund_id, teo, n_holdings_returned, n_total_holdings, holdings]
+      properties:
+        bw_fund_id: { type: string }
+        ticker: { type: string, nullable: true }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box: { type: string, nullable: true }
+        teo: { type: string, format: date }
+        aum_reported: { type: number, format: float, nullable: true }
+        aum_erm3: { type: number, format: float, nullable: true }
+        n_holdings_returned: { type: integer, example: 25 }
+        n_total_holdings: { type: integer, example: 503 }
+        holdings:
+          type: array
+          items:
+            $ref: "#/components/schemas/FundHolding"
+
+    FundPortfolioRow:
+      type: object
+      description: One teo (month-end) of a fund's portfolio time series.
+      required: [teo]
+      properties:
+        teo: { type: string, format: date, example: "2026-04-30" }
+        portfolio_gross_return: { type: number, format: float, nullable: true }
+        portfolio_market_return: { type: number, format: float, nullable: true }
+        portfolio_sector_return: { type: number, format: float, nullable: true }
+        portfolio_subsector_return: { type: number, format: float, nullable: true }
+        portfolio_idiosyncratic_return: { type: number, format: float, nullable: true }
+        identity_residual: { type: number, format: float, nullable: true }
+        weight_sum: { type: number, format: float, nullable: true }
+        n_holdings_active: { type: integer, nullable: true }
+        effective_n: { type: number, format: float, nullable: true }
+        top10_weight_sum: { type: number, format: float, nullable: true }
+
+    FundPortfolioHistoryResponse:
+      type: object
+      description: >
+        Per-fund portfolio time series. Long-form rows indexed by teo
+        (month-end). The `start_teo` / `end_teo` summary fields reflect
+        the post-filter window, not the full panel.
+      required: [bw_fund_id, n_periods, start_teo, end_teo, rows]
+      properties:
+        bw_fund_id: { type: string }
+        ticker: { type: string, nullable: true }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box: { type: string, nullable: true }
+        n_periods: { type: integer, example: 85 }
+        start_teo: { type: string, format: date }
+        end_teo: { type: string, format: date }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/FundPortfolioRow"
+
+    FundMetricsResponse:
+      type: object
+      description: >
+        Latest knowledge-mode metrics for a single mutual fund. Joins
+        `public.funds` (registry) with `public.funds_latest` (the wide-row
+        snapshot) and groups return components / diagnostics / meta into
+        nested objects. Bitemporal triple is at the top level; lineage in
+        `_metadata`.
+      required: [bw_fund_id, report_date, filing_date, extracted_at, returns, diagnostics, meta, _metadata]
+      properties:
+        bw_fund_id: { type: string, example: BW-FUND-S000004310 }
+        ticker: { type: string, nullable: true, example: VFINX }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box:
+          type: string
+          nullable: true
+          enum:
+            - Large Value
+            - Large Blend
+            - Large Growth
+            - Mid Value
+            - Mid Blend
+            - Mid Growth
+            - Small Value
+            - Small Blend
+            - Small Growth
+        report_date: { type: string, format: date, example: "2026-04-30" }
+        filing_date: { type: string, format: date, example: "2026-07-14" }
+        extracted_at: { type: string, format: date-time }
+        returns:
+          type: object
+          description: Portfolio-level return components from the per-fund Slice 8 zarr.
+          properties:
+            gross: { type: number, format: float, nullable: true }
+            market: { type: number, format: float, nullable: true }
+            sector: { type: number, format: float, nullable: true }
+            subsector: { type: number, format: float, nullable: true }
+            idiosyncratic: { type: number, format: float, nullable: true }
+            identity_residual:
+              type: number
+              format: float
+              nullable: true
+              description: L3 noise diagnostic (gross − sum of layer returns).
+        diagnostics:
+          type: object
+          properties:
+            weight_sum:
+              type: number
+              format: float
+              nullable: true
+              description: ERM3 universe coverage (fraction of fund AUM in mapped symbols).
+            n_holdings_active: { type: integer, nullable: true }
+            effective_n:
+              type: number
+              format: float
+              nullable: true
+              description: HHI-derived diversification (1 / sum(w_i^2)).
+            top10_weight_sum: { type: number, format: float, nullable: true }
+        meta:
+          type: object
+          properties:
+            total_adj_mv: { type: number, format: float, nullable: true }
+            n_funds_in_cell_at_report_date: { type: integer, nullable: true }
+            morningstar_category: { type: string, nullable: true }
+            primary_bw_fund_id: { type: string, nullable: true }
+        _metadata:
+          type: object
+          properties:
+            model_version:
+              type: string
+              nullable: true
+              example: funds_dag.v20260502
+            factor_set_id:
+              type: string
+              nullable: true
+              example: uni_mc_3000_SPY
+            data_as_of: { type: string, format: date }
+            data_freshness: { type: string, format: date-time }
+            last_synced_at: { type: string, format: date-time }
+
 security:
   - BearerAuth: []
 
@@ -5318,6 +5514,275 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /funds/{bw_fund_id}/hedge:
+    get:
+      summary: Latest fund hedge ratios (L1 / L2 / L3)
+      description: >
+        Latest L1/L2/L3 ETF hedge ratios for a fund. Reads `L{1,2,3}_HR
+        (teo, symbol)` from Slice 7's per-fund `ds_hr.zarr` at the
+        latest teo. Empty arrays are emitted for levels with no non-NaN
+        entries (small / niche funds may only have an L1 market hedge).
+      operationId: getFundHedge
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-hedge
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_hedge_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+      responses:
+        "200":
+          description: Per-level hedge legs.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundHedgeResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or no hedge ratio panel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /funds/{bw_fund_id}/holdings:
+    get:
+      summary: Top-N current fund holdings
+      description: >
+        Top-N holdings for a fund at the latest teo. Reads `adj_mv (symbol, teo)`
+        and `aum_erm3 (teo,)` from Slice 5's per-fund `ds_ph.zarr` on GCS,
+        sorts by `adj_mv` descending, and returns `bw_sym_id` + `adj_mv` +
+        `weight = adj_mv / aum_erm3`. Resolve `bw_sym_id` to ticker via
+        `/api/data/symbols/batch` if needed.
+      operationId: getFundHoldings
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-holdings
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_holdings_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 25 }
+          description: Max holdings to return (default 25).
+      responses:
+        "200":
+          description: Top-N holdings snapshot.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: Latest teo in the per-fund holdings panel.
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundHoldingsResponse"
+        "400":
+          description: Malformed limit param.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or no holdings panel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /funds/{bw_fund_id}/portfolio:
+    get:
+      summary: Per-fund portfolio time series
+      description: >
+        Time series of portfolio-level return components and diagnostics
+        from Slice 8's per-fund `ds_portfolio.zarr` on GCS. One row per
+        teo (month-end). Optional inclusive `start_date` / `end_date`
+        params trim the panel.
+
+
+        Bitemporal: `X-Data-As-Of` reflects the latest teo in the
+        returned slice; `X-Data-Filing-Date` carries the registry's
+        `latest_filing_date`.
+      operationId: getFundPortfolioHistory
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-portfolio-history
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_portfolio_history_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+        - name: start_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive lower bound (YYYY-MM-DD). Default = first teo in the fund's panel.
+        - name: end_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive upper bound (YYYY-MM-DD). Default = latest teo in the fund's panel.
+      responses:
+        "200":
+          description: Time series rows.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: Latest teo in the returned slice.
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+              description: funds.latest_filing_date for the fund.
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundPortfolioHistoryResponse"
+        "400":
+          description: Malformed date params or start_date > end_date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or zarr returned no rows for the date window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /funds/{bw_fund_id}:
+    get:
+      summary: Latest fund metrics
+      description: >
+        Knowledge-mode portfolio return decomposition + diagnostics for a
+        single mutual fund. Returns the gross / market / sector / subsector
+        / idiosyncratic return components from the per-fund Slice 8 zarr
+        (materialized in `public.funds_latest`), plus diagnostics
+        (`weight_sum`, `n_holdings_active`, `effective_n`,
+        `top10_weight_sum`) and registry-side meta. Bitemporal lineage on
+        response headers (`X-Data-As-Of`, `X-Data-Filing-Date`).
+
+
+        Per-fund time series, holdings panel, and hedge ratios live in
+        GCS Zarr and ship under `/funds/{bw_fund_id}/portfolio`,
+        `/holdings`, `/hedge` in Stage B.2.
+
+
+        v1 returns the latest knowledge-mode answer only — `?as_of=` /
+        `?mode=` is deferred to v2 (schema is forward-compatible).
+      operationId: getFundMetrics
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-metrics
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_metrics_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+      responses:
+        "200":
+          description: Latest fund metrics.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: funds_latest.report_date (period end of the snapshot).
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+              description: funds_latest.filing_date (SEC acceptance date).
+            X-Risk-Model-Version:
+              schema: { type: string }
+            X-API-Cost-USD:
+              schema: { type: string }
+              description: USD cost deducted from prepaid balance for this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundMetricsResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or registry exists but no funds_latest row yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
 tags:
   - name: Risk Metrics
     description: ERM3 factor hedge ratios, explained risk, and return decompositions.
@@ -5347,3 +5812,11 @@ tags:
       auth; not metered. The compute-bearing `/funds/*`,
       `/funds/style/*`, and `/funds/snapshot/*` surfaces ship in subsequent
       stages.
+  - name: Funds
+    description: >
+      Compute-bearing fund endpoints. Latest metrics (Stage B.1) join
+      `public.funds` with `public.funds_latest` and return a shaped
+      response with bitemporal lineage. Per-fund time series, holdings,
+      and hedge ratios (Stage B.2) read from GCS Zarr. Style-cohort
+      surfaces (Stage C) and snapshot tearsheets (Stage D) follow.
+      Billable per request.
