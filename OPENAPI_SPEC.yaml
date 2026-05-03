@@ -1908,6 +1908,23 @@ components:
             rows:
               type: array
               items: { $ref: "#/components/schemas/FundPortfolioRow" }
+        nav_history:
+          type: object
+          nullable: true
+          description: >
+            Trailing 12-month yfinance NAV history. `null` when the fund has
+            no yfinance-resolvable ticker (~35% of the universe — institutional
+            SMAs, separately-managed accounts, mutual funds without retail
+            tickers). Pair with `portfolio_history` on the same teos to surface
+            the gap between 13F-derived attribution and realised NAV (intra-quarter
+            trading, fees, cash drag).
+          required: [lookback_months, n_periods, rows]
+          properties:
+            lookback_months: { type: integer, example: 12 }
+            n_periods: { type: integer }
+            rows:
+              type: array
+              items: { $ref: "#/components/schemas/FundNavRow" }
         cohort_context:
           type: object
           nullable: true
@@ -2266,6 +2283,46 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FundPortfolioRow"
+
+    FundNavRow:
+      type: object
+      description: >
+        One month-end NAV observation from yfinance. Pairs with
+        `FundPortfolioRow` on the same teo: the portfolio row is 13F-derived
+        attribution, the NAV row is what investors actually realised.
+      required: [teo]
+      properties:
+        teo: { type: string, format: date, example: "2026-04-30" }
+        nav_close:
+          type: number
+          format: float
+          nullable: true
+          description: Month-end close price from yfinance.
+        nav_return_monthly:
+          type: number
+          format: float
+          nullable: true
+          description: pct_change of consecutive month-end closes (the realised return).
+
+    FundNavHistoryResponse:
+      type: object
+      description: >
+        Per-fund NAV time series. Same shape as the portfolio history
+        response — rows indexed by teo (month-end), filtered to the
+        post-`start_date` / pre-`end_date` window.
+      required: [bw_fund_id, n_periods, start_teo, end_teo, rows]
+      properties:
+        bw_fund_id: { type: string }
+        ticker: { type: string, nullable: true }
+        fund_name: { type: string, nullable: true }
+        equity_style_9box: { type: string, nullable: true }
+        n_periods: { type: integer, example: 196 }
+        start_teo: { type: string, format: date }
+        end_teo: { type: string, format: date }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/FundNavRow"
 
     FundMetricsResponse:
       type: object
@@ -6394,6 +6451,94 @@ paths:
                 $ref: "#/components/schemas/InsufficientBalance"
         "404":
           description: Fund not found, or zarr returned no rows for the date window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /funds/{bw_fund_id}/nav:
+    get:
+      summary: Per-fund NAV time series (yfinance)
+      description: >
+        Time series of actual fund NAV from yfinance, resampled to month-end
+        and stored in the per-fund `ds_nav.zarr` on GCS (Funds_DAG
+        `fund_nav_zarr` asset). One row per teo with `nav_close`
+        (month-end close) and `nav_return_monthly` (pct_change of consecutive
+        closes).
+
+
+        Pairs with `/funds/{bw_fund_id}/portfolio`: portfolio returns are
+        13F-derived holdings attribution; NAV returns are what investors
+        actually realised. The gap surfaces intra-quarter trading, fees,
+        and cash drag not visible in 13F.
+
+
+        Returns 404 when the fund has no yfinance-resolvable ticker
+        (institutional SMAs, separately-managed accounts).
+
+
+        Bitemporal: `X-Data-As-Of` reflects the latest teo in the returned
+        slice; `X-Data-Filing-Date` carries the registry's
+        `latest_filing_date`.
+      operationId: getFundNavHistory
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-nav-history
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: fund_nav_history_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000001243
+        - name: start_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive lower bound (YYYY-MM-DD). Default = first teo in the fund's NAV panel.
+        - name: end_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive upper bound (YYYY-MM-DD). Default = latest teo in the fund's NAV panel.
+      responses:
+        "200":
+          description: NAV time series rows.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: Latest teo in the returned slice.
+            X-Data-Filing-Date:
+              schema: { type: string, format: date }
+              description: funds.latest_filing_date for the fund.
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundNavHistoryResponse"
+        "400":
+          description: Malformed date params or start_date > end_date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Fund not found, or no NAV zarr for the date window (e.g. institutional SMA without a yfinance ticker).
           content:
             application/json:
               schema:
