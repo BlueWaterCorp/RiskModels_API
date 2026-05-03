@@ -15,9 +15,10 @@ import type {
   StyleRankingRow,
 } from "@/lib/dal/funds-engine";
 
-// All fixture rows are slices of real data from
-// /Users/conradgann/BW_Code/Funds_DAG/data/sync/funds/*.json
-// (post-Slice-11 sync, byte-identical to what's on remote Supabase).
+// All fixture rows are slices of real post-Slice-11-sync data from the
+// Funds_DAG repo's `data/sync/funds/*.json` dumps (byte-identical to what
+// landed in remote Supabase). Keeping fixtures in-repo means tests run
+// without a sibling-repo dependency.
 function fixture<T>(name: string): T {
   const p = join(__dirname, "fixtures", "funds", name);
   return JSON.parse(readFileSync(p, "utf8")) as T;
