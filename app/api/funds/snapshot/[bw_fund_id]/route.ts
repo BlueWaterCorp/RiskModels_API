@@ -8,6 +8,7 @@ import {
 import {
   readFundHedgeLatest,
   readFundHoldingsTopN,
+  readFundNavSeries,
   readFundPortfolioSeries,
 } from "@/lib/dal/funds-zarr-reader";
 import { composeFundSnapshot } from "@/lib/funds/snapshot-composer";
@@ -66,11 +67,15 @@ export const GET = withBilling(
       ? fetchStyleCohortLatest(fund.equity_style_9box)
       : Promise.resolve([]);
 
-    const [holdings, hedge, portfolioHistory, cohortRanks, cohortMetrics] =
+    const [holdings, hedge, portfolioHistory, navHistory, cohortRanks, cohortMetrics] =
       await Promise.all([
         readFundHoldingsTopN(bwFundId, HOLDINGS_TOP_N),
         readFundHedgeLatest(bwFundId),
         readFundPortfolioSeries(bwFundId, {
+          startDate,
+          endDate: latest.report_date,
+        }),
+        readFundNavSeries(bwFundId, {
           startDate,
           endDate: latest.report_date,
         }),
@@ -84,6 +89,7 @@ export const GET = withBilling(
       holdings,
       hedge,
       portfolioHistory,
+      navHistory,
       cohortRanks,
       cohortMetrics,
     });
