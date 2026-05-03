@@ -4,6 +4,7 @@ import {
   isValidStyleSlug,
   styleNameToSlug,
   styleSlugToName,
+  styleSlugToPathComponent,
 } from "@/lib/funds/style-slug";
 
 describe("style-slug", () => {
@@ -39,5 +40,15 @@ describe("style-slug", () => {
   it("emits hyphenated lowercase slugs", () => {
     expect(styleNameToSlug("Large Blend")).toBe("large-blend");
     expect(styleNameToSlug("Small Growth")).toBe("small-growth");
+  });
+
+  it("emits underscore path components for GCS Zarr layout", () => {
+    expect(styleSlugToPathComponent("large-blend")).toBe("Large_Blend");
+    expect(styleSlugToPathComponent("small-growth")).toBe("Small_Growth");
+    expect(styleSlugToPathComponent("MID-VALUE")).toBe("Mid_Value");
+  });
+
+  it("returns null for unknown slug in path encoder", () => {
+    expect(styleSlugToPathComponent("mega-blend")).toBeNull();
   });
 });
