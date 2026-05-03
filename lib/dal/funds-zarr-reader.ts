@@ -85,12 +85,11 @@ function parseFundsZarrPrefix(): { bucket: string; basePath: string } {
   return { bucket: raw.slice(0, i), basePath: raw.slice(i + 1).replace(/\/$/, "") };
 }
 
-async function openFundZarrGroup(
-  bwFundId: string,
-  basename: string,
+async function openZarrGroupAt(
+  relativePath: string,
 ): Promise<Group<Readable> | null> {
   const { bucket: bucketName, basePath } = parseFundsZarrPrefix();
-  const fullPrefix = `${basePath}/bw_fund_id/${bwFundId}/${basename}`
+  const fullPrefix = `${basePath}/${relativePath}`
     .replace(/\/+/g, "/")
     .replace(/^\//, "");
   try {
@@ -103,6 +102,22 @@ async function openFundZarrGroup(
     console.error("[funds-zarr] open group failed");
     return null;
   }
+}
+
+async function openFundZarrGroup(
+  bwFundId: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAt(`bw_fund_id/${bwFundId}/${basename}`);
+}
+
+/** Per-cell stores: portfolio_style/{Cell_Name}/... and equity_style_9box/{Cell_Name}/... */
+async function openCohortZarrGroup(
+  kind: "portfolio_style" | "equity_style_9box",
+  pathComponent: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAt(`${kind}/${pathComponent}/${basename}`);
 }
 
 function nsToIsoDate(ns: bigint): string {
@@ -498,4 +513,315 @@ export async function readFundHedgeLatest(
     return null;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Per-cell cohort portfolio — Slice 6 (portfolio_style/{Cell_Name}/ds_portfolio.zarr)
+// dims (teo, weighting); weighting = ['ew', 'mv'].
+// ---------------------------------------------------------------------------
+
+/** Read coord values for `weighting` (e.g. ["ew","mv"]). */
+async function readWeightingCoord(
+  grp: Group<Readable>,
+): Promise<string[] | null> {
+  try {
+    const loc = grp.resolve("weighting");
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof UnicodeStringArray) {
+      const out: string[] = [];
+      for (let i = 0; i < d.length; i++) out.push(String(d.get(i)).trim());
+      return out;
+    }
+    if (Array.isArray(d)) return d.map((v) => String(v).trim());
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read all (teo, weighting) values in [t0, t1) for a (teo, weighting) float var. */
+async function readFloatSliceTeoByWeighting(
+  grp: Group<Readable>,
+  varName: string,
+  t0: number,
+  t1: number,
+  nWeighting: number,
+): Promise<(number | null)[][] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(t0, t1), slice(0, nWeighting)]);
+    const d = ch?.data;
+    if (!(d instanceof Float32Array || d instanceof Float64Array)) return null;
+    const T = t1 - t0;
+    const out: (number | null)[][] = [];
+    for (let i = 0; i < T; i++) {
+      const row: (number | null)[] = [];
+      for (let w = 0; w < nWeighting; w++) {
+        const v = d[i * nWeighting + w];
+        row.push(v != null && Number.isFinite(v) ? v : null);
+      }
+      out.push(row);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+const COHORT_PORTFOLIO_VARS = [
+  "portfolio_gross_return",
+  "portfolio_market_return",
+  "portfolio_sector_return",
+  "portfolio_subsector_return",
+  "portfolio_idiosyncratic_return",
+  "identity_residual",
+  "weight_sum",
+  "n_holdings_active",
+  "effective_n",
+  "top10_weight_sum",
+] as const;
+
+export type CohortPortfolioVarName = (typeof COHORT_PORTFOLIO_VARS)[number];
+
+export interface CohortPortfolioRowPerWeighting {
+  portfolio_gross_return: number | null;
+  portfolio_market_return: number | null;
+  portfolio_sector_return: number | null;
+  portfolio_subsector_return: number | null;
+  portfolio_idiosyncratic_return: number | null;
+  identity_residual: number | null;
+  weight_sum: number | null;
+  n_holdings_active: number | null;
+  effective_n: number | null;
+  top10_weight_sum: number | null;
+}
+
+export interface CohortPortfolioRow {
+  teo: string;
+  ew: CohortPortfolioRowPerWeighting | null;
+  mv: CohortPortfolioRowPerWeighting | null;
+}
+
+export interface CohortPortfolioOptions {
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * Per-cell cohort portfolio time series. Returns rows per teo with both
+ * EW + MV blocks side-by-side.
+ */
+export async function readStyleCohortPortfolioSeries(
+  pathComponent: string,
+  options: CohortPortfolioOptions = {},
+): Promise<CohortPortfolioRow[]> {
+  const grp = await openCohortZarrGroup(
+    "portfolio_style",
+    pathComponent,
+    "ds_portfolio.zarr",
+  );
+  if (!grp) return [];
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return [];
+
+  const weightings = await readWeightingCoord(grp);
+  if (!weightings || weightings.length === 0) return [];
+
+  let t0 = 0;
+  let t1 = teos.length;
+  if (options.startDate) {
+    while (t0 < t1 && teos[t0]! < options.startDate) t0++;
+  }
+  if (options.endDate) {
+    while (t1 > t0 && teos[t1 - 1]! > options.endDate) t1--;
+  }
+  if (t0 >= t1) return [];
+
+  const series = await Promise.all(
+    COHORT_PORTFOLIO_VARS.map(async (varName) => ({
+      name: varName,
+      data: await readFloatSliceTeoByWeighting(
+        grp,
+        varName,
+        t0,
+        t1,
+        weightings.length,
+      ),
+    })),
+  );
+
+  const rows: CohortPortfolioRow[] = [];
+  for (let i = 0; i < t1 - t0; i++) {
+    const row: CohortPortfolioRow = {
+      teo: teos[t0 + i]!,
+      ew: null,
+      mv: null,
+    };
+    for (let w = 0; w < weightings.length; w++) {
+      const wKey = weightings[w]!.toLowerCase();
+      if (wKey !== "ew" && wKey !== "mv") continue;
+      const block: Record<string, number | null> = {};
+      for (const s of series) {
+        block[s.name] = s.data?.[i]?.[w] ?? null;
+      }
+      row[wKey as "ew" | "mv"] = block as unknown as CohortPortfolioRowPerWeighting;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Per-cell cohort holdings — Slice 5b (equity_style_9box/{Cell_Name}/ds_symbols.zarr)
+// dims (teo, symbol, weighting) for weight + contribution_*; (teo, symbol)
+// for n_funds_holding. Top-N at latest teo for one weighting.
+// ---------------------------------------------------------------------------
+
+/** Read a single (teoIdx, *, weightingIdx) slice from a (teo, symbol, weighting) float var. */
+async function readFloat3dSlice(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nSymbols: number,
+  weightingIdx: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [teoIdx, slice(0, nSymbols), weightingIdx]);
+    const d = ch?.data;
+    if (!(d instanceof Float32Array || d instanceof Float64Array)) return null;
+    return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+  } catch {
+    return null;
+  }
+}
+
+/** Read all symbols at one teo for a (teo, symbol) integer var (e.g. n_funds_holding). */
+async function readIntRowAtTeoSymbol(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nSymbols: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [teoIdx, slice(0, nSymbols)]);
+    const d = ch?.data;
+    if (
+      d instanceof Int32Array ||
+      d instanceof Int16Array ||
+      d instanceof Float32Array ||
+      d instanceof Float64Array
+    ) {
+      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface CohortHolding {
+  bw_sym_id: string;
+  weight: number;
+  contribution_gross: number | null;
+  contribution_market: number | null;
+  contribution_sector: number | null;
+  contribution_subsector: number | null;
+  contribution_idiosyncratic: number | null;
+  n_funds_holding: number | null;
+}
+
+export interface CohortHoldingsSnapshot {
+  teo: string;
+  weighting: "ew" | "mv";
+  n_returned: number;
+  n_total_holdings: number;
+  holdings: CohortHolding[];
+}
+
+/**
+ * Top-N cohort holdings at the latest teo for the chosen weighting. Sorted
+ * by `weight` descending. Returns null when the per-cell zarr is missing
+ * or the requested weighting isn't present.
+ */
+export async function readStyleCohortHoldingsTopN(
+  pathComponent: string,
+  options: { weighting?: "ew" | "mv"; n?: number } = {},
+): Promise<CohortHoldingsSnapshot | null> {
+  const requestedWeighting = options.weighting ?? "mv";
+  const n = options.n ?? 25;
+  const safeN = Math.min(Math.max(n, 1), 100);
+
+  const grp = await openCohortZarrGroup(
+    "equity_style_9box",
+    pathComponent,
+    "ds_symbols.zarr",
+  );
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+  const weightings = await readWeightingCoord(grp);
+  if (!weightings || weightings.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+  const wIdx = weightings.findIndex((w) => w.toLowerCase() === requestedWeighting);
+  if (wIdx < 0) return null;
+
+  const [
+    weightVec,
+    contribGross,
+    contribMarket,
+    contribSector,
+    contribSubsector,
+    contribIdio,
+    nFundsHolding,
+  ] = await Promise.all([
+    readFloat3dSlice(grp, "weight", teoIdx, symbols.length, wIdx),
+    readFloat3dSlice(grp, "contribution_gross", teoIdx, symbols.length, wIdx),
+    readFloat3dSlice(grp, "contribution_market", teoIdx, symbols.length, wIdx),
+    readFloat3dSlice(grp, "contribution_sector", teoIdx, symbols.length, wIdx),
+    readFloat3dSlice(grp, "contribution_subsector", teoIdx, symbols.length, wIdx),
+    readFloat3dSlice(grp, "contribution_idiosyncratic", teoIdx, symbols.length, wIdx),
+    readIntRowAtTeoSymbol(grp, "n_funds_holding", teoIdx, symbols.length),
+  ]);
+  if (!weightVec) return null;
+
+  const all: CohortHolding[] = [];
+  for (let i = 0; i < weightVec.length; i++) {
+    const w = weightVec[i];
+    if (w != null && w > 0) {
+      all.push({
+        bw_sym_id: symbols[i]!,
+        weight: w,
+        contribution_gross: contribGross?.[i] ?? null,
+        contribution_market: contribMarket?.[i] ?? null,
+        contribution_sector: contribSector?.[i] ?? null,
+        contribution_subsector: contribSubsector?.[i] ?? null,
+        contribution_idiosyncratic: contribIdio?.[i] ?? null,
+        n_funds_holding: nFundsHolding?.[i] ?? null,
+      });
+    }
+  }
+  if (all.length === 0) return null;
+
+  all.sort((a, b) => b.weight - a.weight);
+
+  return {
+    teo,
+    weighting: requestedWeighting,
+    n_returned: Math.min(safeN, all.length),
+    n_total_holdings: all.length,
+    holdings: all.slice(0, safeN),
+  };
 }

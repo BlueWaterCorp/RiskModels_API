@@ -40,3 +40,15 @@ export function styleNameToSlug(name: string): string | null {
 export function isValidStyleSlug(slug: string): boolean {
   return SLUG_TO_NAME.has(slug.trim().toLowerCase());
 }
+
+/**
+ * Convert a slug into the underscore-separated path component used by the
+ * Funds_DAG GCS layout (`portfolio_style/{Large_Blend}/...`,
+ * `equity_style_9box/{Large_Blend}/...`). Per ARCHITECTURE_FUNDS_API.md
+ * §3.1.1.
+ */
+export function styleSlugToPathComponent(slug: string): string | null {
+  const name = styleSlugToName(slug);
+  if (!name) return null;
+  return name.replace(/\s+/g, "_");
+}

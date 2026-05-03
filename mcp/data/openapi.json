@@ -2213,6 +2213,156 @@
           }
         }
       },
+      "CohortPortfolioRow": {
+        "type": "object",
+        "description": "One teo of a cohort portfolio time series. Both EW + MV blocks side-by-side.",
+        "required": [
+          "teo"
+        ],
+        "properties": {
+          "teo": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "ew": {
+            "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+          },
+          "mv": {
+            "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+          }
+        }
+      },
+      "CohortPortfolioHistoryResponse": {
+        "type": "object",
+        "description": "Per-cell cohort portfolio time series from Slice 6's per-cell ds_portfolio.zarr. Each row carries both EW and MV blocks.\n",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "n_periods",
+          "start_teo",
+          "end_teo",
+          "rows"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "n_periods": {
+            "type": "integer"
+          },
+          "start_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CohortPortfolioRow"
+            }
+          }
+        }
+      },
+      "CohortHolding": {
+        "type": "object",
+        "description": "One cohort-aggregated holding within a 9-box cell.",
+        "required": [
+          "bw_sym_id",
+          "weight"
+        ],
+        "properties": {
+          "bw_sym_id": {
+            "type": "string",
+            "description": "Internal symbol id. Resolve via /api/data/symbols/batch."
+          },
+          "weight": {
+            "type": "number",
+            "format": "float",
+            "description": "Cohort weight at this teo (sums to 1.0 within the chosen weighting)."
+          },
+          "contribution_gross": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_market": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_sector": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_subsector": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_idiosyncratic": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "n_funds_holding": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Number of funds in the cell holding this symbol."
+          }
+        }
+      },
+      "CohortHoldingsResponse": {
+        "type": "object",
+        "description": "Top-N cohort holdings at the latest teo for the chosen weighting.",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "teo",
+          "weighting",
+          "n_returned",
+          "n_total_holdings",
+          "holdings"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "weighting": {
+            "type": "string",
+            "enum": [
+              "ew",
+              "mv"
+            ]
+          },
+          "n_returned": {
+            "type": "integer"
+          },
+          "n_total_holdings": {
+            "type": "integer"
+          },
+          "holdings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CohortHolding"
+            }
+          }
+        }
+      },
       "StyleCohortReturnsBlock": {
         "type": "object",
         "description": "Portfolio return components + diagnostics for one weighting in a cohort.",
@@ -8181,6 +8331,230 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/portfolio": {
+      "get": {
+        "summary": "Per-cell cohort portfolio time series",
+        "description": "Time series of cohort portfolio metrics from Slice 6's per-cell `ds_portfolio.zarr` on GCS. Each row carries both EW and MV blocks side-by-side. Optional inclusive `start_date` / `end_date` params trim the panel.\n",
+        "operationId": "getStyleCohortPortfolioHistory",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-portfolio-history",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_portfolio_history_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cohort time series rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortPortfolioHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid slug or malformed date params.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort portfolio history available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/holdings": {
+      "get": {
+        "summary": "Top-N cohort holdings within a 9-box style cell",
+        "description": "Top-N cohort holdings at the latest teo. Reads `weight (teo, symbol, weighting)` and `contribution_*` / `n_funds_holding` from Slice 5b's per-cell `ds_symbols.zarr`. Sorted by `weight` descending.\n\n`?weighting` defaults to `mv` (market-cap-weighted, Morningstar- comparable). Switch to `ew` to see equal-weight cohort exposures — radically different top-N lists for non-uniform cells.\n",
+        "operationId": "getStyleCohortHoldings",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-holdings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_holdings_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "weighting",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ew",
+                "mv"
+              ],
+              "default": "mv"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N cohort holdings snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortHoldingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid slug, weighting, or limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort holdings panel available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }

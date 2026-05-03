@@ -1274,6 +1274,88 @@ export const CAPABILITIES: Capability[] = [
     },
     tags: ["funds", "cohort", "rankings", "differentiated-wedge"],
   },
+  {
+    id: "style-cohort-portfolio-history",
+    name: "Style Cohort Portfolio History",
+    description:
+      "Per-cell cohort portfolio time series. Reads Slice 6's per-cell ds_portfolio.zarr " +
+      "(dims teo, weighting). Each row carries both EW and MV blocks side-by-side. Optional " +
+      "?start_date and ?end_date (inclusive YYYY-MM-DD) trim the panel.",
+    endpoint: "/api/funds/style/{slug}/portfolio",
+    method: "GET",
+    parameters: {
+      slug: { type: "string", required: true, description: "9-box style slug" },
+      start_date: { type: "string", required: false, description: "Inclusive lower bound YYYY-MM-DD" },
+      end_date: { type: "string", required: false, description: "Inclusive upper bound YYYY-MM-DD" },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["portfolio_style/{Cell_Name}/ds_portfolio.zarr"],
+    },
+    tags: ["funds", "cohort", "history", "time-series"],
+  },
+  {
+    id: "style-cohort-holdings",
+    name: "Style Cohort Top-N Holdings",
+    description:
+      "Top-N cohort holdings at the latest teo. Reads weight (teo, symbol, weighting) and " +
+      "contribution_* / n_funds_holding from Slice 5b's per-cell ds_symbols.zarr. Sorted by " +
+      "weight desc. ?weighting defaults to mv (Morningstar-comparable); switch to ew for " +
+      "equal-weight cohort exposures. ?limit default 25, capped 100.",
+    endpoint: "/api/funds/style/{slug}/holdings",
+    method: "GET",
+    parameters: {
+      slug: { type: "string", required: true, description: "9-box style slug" },
+      weighting: {
+        type: "string",
+        required: false,
+        description: "ew or mv (default mv)",
+        default: "mv",
+        enum: ["ew", "mv"],
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max holdings (default 25, capped 100)",
+        default: 25,
+        min: 1,
+        max: 100,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["equity_style_9box/{Cell_Name}/ds_symbols.zarr"],
+    },
+    tags: ["funds", "cohort", "holdings", "differentiated-wedge"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {
