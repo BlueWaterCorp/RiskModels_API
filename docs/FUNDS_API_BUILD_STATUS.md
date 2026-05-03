@@ -111,9 +111,11 @@ of focused work**, naturally splitting across 4–6 sessions.
 
 - **No synthetic test data when real fixtures exist** — pull from
   `Funds_DAG/data/sync/funds/*.json`.
-- **No `/Users/...` paths in committed files** — the `Public safety
-  audit` CI step blocks them. Reference paths relative to repo root or
-  by repo name only.
+- **No absolute home-directory paths in committed files** — the
+  `Public safety audit` CI step greps the working tree for the literal
+  substring `/Users` (and the Windows equivalent) and fails on a hit.
+  Reference paths relative to repo root or by repo name only — even in
+  comments and docs.
 - **`app/api/data/...` route files require `git add -f`** — the
   `data/` glob in `.gitignore:100` (intended for Zarr stores) catches
   them. Existing `app/api/data/symbols/*` follows this pattern too.
