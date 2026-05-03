@@ -409,3 +409,93 @@ export async function readFundHoldingsTopN(
     holdings: holdings.slice(0, safeN),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Hedge ratios — ds_hr.zarr (Slice 7)
+//
+// Layout: coords (teo, symbol = ETF symbol); data_vars L1_HR / L2_HR / L3_HR
+// each (teo, symbol). Many entries are NaN (an ETF only has a non-NaN HR
+// at the level where it's the matched factor ETF). At the latest teo we
+// return per-level lists of { etf, hr } dropping NaN entries.
+// ---------------------------------------------------------------------------
+
+/** Read all symbols at one teo from a (teo, symbol) float var. */
+async function readFloatRowAtTeo(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nSymbols: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [teoIdx, slice(0, nSymbols)]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface HedgeLeg {
+  etf: string;
+  hr: number;
+}
+
+export interface FundHedgeSnapshot {
+  teo: string;
+  L1: HedgeLeg[];
+  L2: HedgeLeg[];
+  L3: HedgeLeg[];
+}
+
+/**
+ * Latest L1/L2/L3 hedge ratios for a fund. Returns null when the per-fund
+ * `ds_hr.zarr` is missing or empty.
+ */
+export async function readFundHedgeLatest(
+  bwFundId: string,
+): Promise<FundHedgeSnapshot | null> {
+  const grp = await openFundZarrGroup(bwFundId, "ds_hr.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+
+  const [l1, l2, l3] = await Promise.all([
+    readFloatRowAtTeo(grp, "L1_HR", teoIdx, symbols.length),
+    readFloatRowAtTeo(grp, "L2_HR", teoIdx, symbols.length),
+    readFloatRowAtTeo(grp, "L3_HR", teoIdx, symbols.length),
+  ]);
+
+  const symbolNames = symbols;
+  function pack(row: (number | null)[] | null): HedgeLeg[] {
+    if (!row) return [];
+    const legs: HedgeLeg[] = [];
+    for (let i = 0; i < row.length; i++) {
+      const v = row[i];
+      if (v != null) legs.push({ etf: symbolNames[i]!, hr: v });
+    }
+    return legs;
+  }
+
+  const out: FundHedgeSnapshot = {
+    teo,
+    L1: pack(l1),
+    L2: pack(l2),
+    L3: pack(l3),
+  };
+  if (out.L1.length === 0 && out.L2.length === 0 && out.L3.length === 0) {
+    return null;
+  }
+  return out;
+}
