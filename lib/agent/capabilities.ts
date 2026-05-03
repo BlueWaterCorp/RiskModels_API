@@ -1079,6 +1079,53 @@ export const CAPABILITIES: Capability[] = [
     },
     tags: ["funds", "history", "time-series"],
   },
+  {
+    id: "fund-holdings",
+    name: "Fund Top-N Holdings",
+    description:
+      "Top-N current holdings for a mutual fund at the latest teo. Reads adj_mv (symbol, teo) " +
+      "and aum_erm3 (teo,) from Slice 5's per-fund ds_ph.zarr on GCS, sorts symbols by adj_mv " +
+      "descending, and returns the top N with weight = adj_mv / aum_erm3. Default 25; caller " +
+      "may request up to 1000 via ?limit=. Symbols are bw_sym_id; resolve to ticker via " +
+      "/api/data/symbols/batch if needed.",
+    endpoint: "/api/funds/{bw_fund_id}/holdings",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max holdings to return (default 25, capped 1000)",
+        default: 25,
+        min: 1,
+        max: 1000,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_ph.zarr", "funds"],
+    },
+    tags: ["funds", "holdings", "knowledge-mode"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {
