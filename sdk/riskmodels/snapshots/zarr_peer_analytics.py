@@ -46,6 +46,24 @@ def _open_zarr_stores(zarr_root: Path) -> tuple[xr.Dataset, xr.Dataset, xr.Datas
     )
     ret_path = zarr_root / "ds_erm3_returns_SPY_uni_mc_3000.zarr"
     ds_returns = xr.open_zarr(ret_path, consolidated=True) if ret_path.is_dir() else None
+    # PIT survivorship-corrected market_cap (used by peer-cap weighting). When
+    # available, supersedes ds_daily.market_cap for symbols that have shares
+    # in shares_history but were missing from fundamentals.csv.
+    mc_path = zarr_root / "ds_market_cap.zarr"
+    if mc_path.is_dir():
+        ds_market_cap = xr.open_zarr(mc_path, consolidated=True)
+        # Overlay PIT mc onto ds_daily for the rest of this module.
+        try:
+            mc_pit = ds_market_cap["market_cap"].reindex(
+                teo=ds_daily.teo.values,
+                symbol=ds_daily.symbol.values,
+                method=None,
+            ).values
+            mc_legacy = ds_daily["market_cap"].values
+            mc_merged = np.where(np.isnan(mc_pit), mc_legacy, mc_pit)
+            ds_daily = ds_daily.assign(market_cap=(("teo", "symbol"), mc_merged.astype(ds_daily["market_cap"].dtype)))
+        except Exception:
+            pass  # graceful fallback; legacy ds_daily.market_cap stays in place
     return ds_daily, ds_erm, ds_returns
 
 
