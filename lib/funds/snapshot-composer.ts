@@ -24,6 +24,7 @@ import type {
   CohortPortfolioRow,
   FundHedgeSnapshot,
   FundHoldingsSnapshot,
+  FundNavRow,
   FundPortfolioRow,
 } from "@/lib/dal/funds-zarr-reader";
 import { formatFundMetrics, type FundMetricsResponse } from "@/lib/funds/format";
@@ -41,6 +42,12 @@ export interface FundSnapshotPrimitives {
   holdings: FundHoldingsSnapshot | null;
   hedge: FundHedgeSnapshot | null;
   portfolioHistory: FundPortfolioRow[];
+  /**
+   * yfinance NAV history for this fund (Funds_DAG fund_nav_zarr asset).
+   * Optional — funds without a yfinance-resolvable ticker won't have a
+   * ds_nav.zarr, in which case the composer drops the nav_history block.
+   */
+  navHistory: FundNavRow[];
   cohortRanks: StyleRankingRow[];
   /** Optional cell metrics (e.g. for n_funds_in_cell when the fund's cell row exists). */
   cohortMetrics: StylePortfolioRow[];
@@ -73,6 +80,18 @@ export interface FundSnapshot {
     n_periods: number;
     rows: FundPortfolioRow[];
   };
+  /**
+   * Actual fund NAV (yfinance) over the same lookback window as
+   * portfolio_history. Pairs with portfolio_history so consumers can
+   * overlay 13F-derived attribution against realised NAV — the gap
+   * surfaces intra-quarter trading, fees, and cash drag. Null when the
+   * fund has no yfinance ticker or no NAV zarr.
+   */
+  nav_history: {
+    lookback_months: number;
+    n_periods: number;
+    rows: FundNavRow[];
+  } | null;
   cohort_context: {
     equity_style_9box: string | null;
     n_funds_in_cell: number | null;
@@ -87,9 +106,10 @@ export interface FundSnapshot {
 }
 
 export function composeFundSnapshot(p: FundSnapshotPrimitives): FundSnapshot {
-  const { fund, latest, holdings, hedge, portfolioHistory, cohortRanks } = p;
+  const { fund, latest, holdings, hedge, portfolioHistory, navHistory, cohortRanks } = p;
 
   const trimmed = trimToLookbackMonths(portfolioHistory, FUND_LOOKBACK_MONTHS);
+  const navTrimmed = trimNavToLookbackMonths(navHistory, FUND_LOOKBACK_MONTHS);
 
   const ranks: FundCohortRankEntry[] = cohortRanks.map((r) => ({
     metric: r.metric,
@@ -131,6 +151,13 @@ export function composeFundSnapshot(p: FundSnapshotPrimitives): FundSnapshot {
       n_periods: trimmed.length,
       rows: trimmed,
     },
+    nav_history: navTrimmed.length > 0
+      ? {
+          lookback_months: FUND_LOOKBACK_MONTHS,
+          n_periods: navTrimmed.length,
+          rows: navTrimmed,
+        }
+      : null,
     cohort_context: fund.equity_style_9box
       ? {
           equity_style_9box: fund.equity_style_9box,
@@ -294,6 +321,14 @@ function trimToLookbackMonths(
   rows: FundPortfolioRow[],
   months: number,
 ): FundPortfolioRow[] {
+  if (rows.length <= months) return rows;
+  return rows.slice(rows.length - months);
+}
+
+function trimNavToLookbackMonths(
+  rows: FundNavRow[],
+  months: number,
+): FundNavRow[] {
   if (rows.length <= months) return rows;
   return rows.slice(rows.length - months);
 }

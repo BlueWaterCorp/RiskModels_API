@@ -18,6 +18,7 @@ vi.mock("@/lib/dal/funds-zarr-reader", () => ({
   readFundHoldingsTopN: vi.fn(),
   readFundHedgeLatest: vi.fn(),
   readFundPortfolioSeries: vi.fn(),
+  readFundNavSeries: vi.fn(),
   readStyleCohortHoldingsTopN: vi.fn(),
   readStyleCohortPortfolioSeries: vi.fn(),
 }));
@@ -31,6 +32,7 @@ import {
 import {
   readFundHedgeLatest,
   readFundHoldingsTopN,
+  readFundNavSeries,
   readFundPortfolioSeries,
   readStyleCohortHoldingsTopN,
   readStyleCohortPortfolioSeries,
@@ -87,6 +89,7 @@ beforeEach(() => {
   vi.mocked(readFundHoldingsTopN).mockReset();
   vi.mocked(readFundHedgeLatest).mockReset();
   vi.mocked(readFundPortfolioSeries).mockReset();
+  vi.mocked(readFundNavSeries).mockReset();
   vi.mocked(readStyleCohortHoldingsTopN).mockReset();
   vi.mocked(readStyleCohortPortfolioSeries).mockReset();
 });
@@ -97,6 +100,7 @@ describe("GET /api/funds/snapshot/[bw_fund_id]", () => {
     vi.mocked(readFundHoldingsTopN).mockResolvedValue(null);
     vi.mocked(readFundHedgeLatest).mockResolvedValue(null);
     vi.mocked(readFundPortfolioSeries).mockResolvedValue([]);
+    vi.mocked(readFundNavSeries).mockResolvedValue([]);
     vi.mocked(fetchFundCohortRanks).mockResolvedValue(FUND_COHORT_RANKS);
     vi.mocked(fetchStyleCohortLatest).mockResolvedValue(COHORT_METRICS);
 
