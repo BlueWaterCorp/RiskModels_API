@@ -397,6 +397,13 @@ def fetch_stock_context_zarr(
     ds_erm = xr.open_zarr(root / "ds_erm3_hedge_weights_SPY_uni_mc_3000.zarr", consolidated=True)
     ds_etf = xr.open_zarr(root / "ds_etf.zarr", consolidated=True)
     ds_rank = xr.open_zarr(root / "ds_rankings_SPY_uni_mc_3000.zarr", consolidated=True)
+    # PIT survivorship-corrected market_cap (shares × close from EDGAR-sourced
+    # shares_history). When present, supersedes ds_daily.market_cap which is
+    # only populated for currently-listed entities (fundamentals.csv path).
+    # Critical for historical context queries on names that delisted before
+    # the snapshot — Lehman, Kraft pre-merger, etc. now have correct mcap.
+    _market_cap_zarr = root / "ds_market_cap.zarr"
+    ds_market_cap = xr.open_zarr(_market_cap_zarr, consolidated=True) if _market_cap_zarr.is_dir() else None
     # ds_erm3_returns has the daily L*_cfr / L*_rr series indexed by (teo, symbol, level)
     # where level ∈ {market, sector, subsector}. Required for the Section I 5-line
     # bridge — without these, build_p1_data_from_stock_context falls back to gross
@@ -423,6 +430,22 @@ def fetch_stock_context_zarr(
     else:
         sub_d = ds_daily.sel(symbol=sym).isel(teo=slice(-n_days, None))
         sub_e = ds_erm.sel(symbol=sym).isel(teo=slice(-n_days, None))
+    # PIT survivorship-corrected market_cap: prefer ds_market_cap.zarr where
+    # available, fall back to sub_d.market_cap. Reindex onto sub_d's teo
+    # range so the merge below stays aligned.
+    if ds_market_cap is not None and "market_cap" in ds_market_cap.data_vars:
+        try:
+            sub_mc = ds_market_cap.sel(symbol=sym).reindex(teo=sub_d.teo.values, method=None)
+            mc_pit = sub_mc["market_cap"].values
+            mc_legacy = sub_d["market_cap"].values
+            # Where PIT has a value, use it; otherwise keep legacy (currently-listed names
+            # often have legacy values where PIT is NaN — we want both populated).
+            import numpy as _np
+            mc_merged = _np.where(_np.isnan(mc_pit), mc_legacy, mc_pit)
+            sub_d = sub_d.assign(market_cap=("teo", mc_merged.astype(sub_d["market_cap"].dtype)))
+        except Exception:
+            # Any failure → fall back to legacy. No silent corruption.
+            pass
     merged = xr.merge(
         [
             sub_d[["return", "close", "market_cap", "volatility", "bw_sector_code", "fs_industry_code"]],
