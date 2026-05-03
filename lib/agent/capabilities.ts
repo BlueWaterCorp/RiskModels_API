@@ -1031,6 +1031,54 @@ export const CAPABILITIES: Capability[] = [
     },
     tags: ["funds", "metrics", "knowledge-mode"],
   },
+  {
+    id: "fund-portfolio-history",
+    name: "Fund Portfolio History",
+    description:
+      "Per-fund time series of portfolio_*_return components, identity_residual, and diagnostics " +
+      "(weight_sum, n_holdings_active, effective_n, top10_weight_sum) from Slice 8's per-fund " +
+      "ds_portfolio.zarr on GCS. One row per teo (month-end). Optional ?start_date and ?end_date " +
+      "query params (inclusive, YYYY-MM-DD) trim the panel; default returns the full history.",
+    endpoint: "/api/funds/{bw_fund_id}/portfolio",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_portfolio.zarr", "funds"],
+    },
+    tags: ["funds", "history", "time-series"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {
