@@ -1,0 +1,48 @@
+[
+  {
+    "effective_n": 65.2170090757721,
+    "equity_style_9box": "Large Blend",
+    "extracted_at": "2026-05-03T06:28:08.404876+00:00",
+    "filing_date_max": "2026-07-14",
+    "identity_residual": -0.003004171058298255,
+    "last_synced_at": "2026-05-03T06:28:08.404876+00:00",
+    "metadata": {
+      "filing_date_source": "placeholder_lag_75d"
+    },
+    "model_version": "funds_dag.v20260503",
+    "n_funds_in_cell": null,
+    "n_holdings_active": 2325,
+    "portfolio_gross_return": 0.07133504463037593,
+    "portfolio_idiosyncratic_return": -0.004544717329449204,
+    "portfolio_market_return": 0.09880092790386356,
+    "portfolio_sector_return": -0.009668168807726252,
+    "portfolio_subsector_return": -0.010248826078013923,
+    "report_date": "2026-04-30",
+    "top10_weight_sum": 0.33786638423588355,
+    "weight_sum": 0.9935348396872593,
+    "weighting": "ew"
+  },
+  {
+    "effective_n": 27.46912341171696,
+    "equity_style_9box": "Large Blend",
+    "extracted_at": "2026-05-03T06:28:08.404876+00:00",
+    "filing_date_max": "2026-07-14",
+    "identity_residual": -0.0025953538184741026,
+    "last_synced_at": "2026-05-03T06:28:08.404876+00:00",
+    "metadata": {
+      "filing_date_source": "placeholder_lag_75d"
+    },
+    "model_version": "funds_dag.v20260503",
+    "n_funds_in_cell": null,
+    "n_holdings_active": 2325,
+    "portfolio_gross_return": 0.06890182593856069,
+    "portfolio_idiosyncratic_return": -0.015371163494048047,
+    "portfolio_market_return": 0.10085489406106234,
+    "portfolio_sector_return": -0.0067855392988973575,
+    "portfolio_subsector_return": -0.007201011511082143,
+    "report_date": "2026-04-30",
+    "top10_weight_sum": 0.488836098916015,
+    "weight_sum": 0.9964057624626077,
+    "weighting": "mv"
+  }
+]

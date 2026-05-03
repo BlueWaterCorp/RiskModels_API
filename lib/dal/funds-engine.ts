@@ -299,6 +299,35 @@ const STYLE_RANKING_COLUMNS =
   "rank, entity_id, metric, value, cohort_size, period_window, weighting, report_date, filing_date_max";
 
 /**
+ * All rank entries for one fund within its 9-box cell. Reads
+ * `style_rankings_top` filtered to `cohort_type='fund'` and
+ * `entity_id=bw_fund_id`. One row per (metric, period_window). Returns
+ * [] if the fund isn't in the cohort or has no rank coverage yet.
+ */
+export async function fetchFundCohortRanks(
+  bwFundId: string,
+): Promise<StyleRankingRow[]> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("style_rankings_top")
+      .select(STYLE_RANKING_COLUMNS)
+      .eq("cohort_type", "fund")
+      .eq("entity_id", bwFundId)
+      .order("metric", { ascending: true })
+      .order("period_window", { ascending: true });
+    if (error) {
+      console.error("[Funds DAL] fetchFundCohortRanks error:", error);
+      return [];
+    }
+    return (data ?? []) as StyleRankingRow[];
+  } catch (error) {
+    console.error("[Funds DAL] fetchFundCohortRanks error:", error);
+    return [];
+  }
+}
+
+/**
  * Top-N rankings within a 9-box cell × cohort_type × metric × period_window
  * × weighting. Always sorted by `rank` ascending. Cap N at 50 (data ceiling
  * per Slice 9 default). For `cohort_type='fund'` the writer stores `'ew'`
