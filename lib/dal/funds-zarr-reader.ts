@@ -284,6 +284,66 @@ export async function readFundPortfolioSeries(
 }
 
 // ---------------------------------------------------------------------------
+// NAV — ds_nav.zarr (per-fund yfinance NAV time series)
+//
+// Layout: coords (teo,); data_vars nav_close (teo,) and nav_return_monthly
+// (teo,). Produced by Funds_DAG's fund_nav_zarr v3 asset, which pulls daily
+// NAV by ticker_primary and resamples to month-end. Replaces the legacy
+// step_1b factset_fund_id-keyed multi-fund yf_nav_returns zarr at the API
+// surface — the API only ever sees bw_fund_id-keyed per-fund layouts.
+// ---------------------------------------------------------------------------
+
+export interface FundNavRow {
+  teo: string;
+  nav_close: number | null;
+  nav_return_monthly: number | null;
+}
+
+const NAV_VARS = ["nav_close", "nav_return_monthly"] as const;
+
+/**
+ * Read the per-fund NAV time series from GCS.
+ * Returns [] when the fund has no zarr or no overlap with the date window.
+ */
+export async function readFundNavSeries(
+  bwFundId: string,
+  options: FundPortfolioOptions = {},
+): Promise<FundNavRow[]> {
+  const grp = await openFundZarrGroup(bwFundId, "ds_nav.zarr");
+  if (!grp) return [];
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return [];
+
+  let t0 = 0;
+  let t1 = teos.length;
+  if (options.startDate) {
+    while (t0 < t1 && teos[t0]! < options.startDate) t0++;
+  }
+  if (options.endDate) {
+    while (t1 > t0 && teos[t1 - 1]! > options.endDate) t1--;
+  }
+  if (t0 >= t1) return [];
+
+  const series = await Promise.all(
+    NAV_VARS.map(async (varName) => ({
+      name: varName,
+      data: await readFloatSlice1d(grp, varName, t0, t1),
+    })),
+  );
+
+  const rows: FundNavRow[] = [];
+  for (let i = 0; i < t1 - t0; i++) {
+    const row: Record<string, unknown> = { teo: teos[t0 + i]! };
+    for (const s of series) {
+      row[s.name] = s.data?.[i] ?? null;
+    }
+    rows.push(row as unknown as FundNavRow);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
 // Holdings — ds_ph.zarr (Slice 5)
 //
 // Layout: coords (symbol = bw_sym_id, teo); data_vars adj_mv (symbol, teo),

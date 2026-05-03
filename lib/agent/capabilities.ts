@@ -1080,6 +1080,56 @@ export const CAPABILITIES: Capability[] = [
     tags: ["funds", "history", "time-series"],
   },
   {
+    id: "fund-nav-history",
+    name: "Fund NAV History",
+    description:
+      "Per-fund NAV time series from yfinance (Funds_DAG fund_nav_zarr asset). One row per teo " +
+      "(month-end) with nav_close (month-end close) and nav_return_monthly (pct_change of " +
+      "consecutive closes). Pairs with /portfolio: portfolio returns are derived from quarterly " +
+      "13F holdings; NAV returns are what investors actually realised. The gap surfaces " +
+      "intra-quarter trading, fees, and cash drag not visible in 13F. Optional ?start_date and " +
+      "?end_date trim the panel; default returns the full history.",
+    endpoint: "/api/funds/{bw_fund_id}/nav",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_nav_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "daily",
+      sources: ["ds_nav.zarr", "funds"],
+    },
+    tags: ["funds", "history", "time-series", "nav"],
+  },
+  {
     id: "fund-holdings",
     name: "Fund Top-N Holdings",
     description:
