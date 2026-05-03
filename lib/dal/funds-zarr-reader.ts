@@ -31,6 +31,7 @@ import {
   root,
   slice,
   tryWithConsolidated,
+  UnicodeStringArray,
 } from "zarrita";
 import type { AbsolutePath, Readable } from "@zarrita/storage";
 import type { Group } from "zarrita";
@@ -265,4 +266,146 @@ export async function readFundPortfolioSeries(
     rows.push(row as unknown as FundPortfolioRow);
   }
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Holdings — ds_ph.zarr (Slice 5)
+//
+// Layout: coords (symbol = bw_sym_id, teo); data_vars adj_mv (symbol, teo),
+// has_new_data (symbol, teo), aum_reported (teo,), aum_erm3 (teo,).
+// We surface top-N at the latest teo only — full panel stays GCS-only.
+// ---------------------------------------------------------------------------
+
+async function readSymbolStrings(
+  grp: Group<Readable>,
+): Promise<string[] | null> {
+  try {
+    const loc = grp.resolve("symbol");
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof UnicodeStringArray) {
+      const out: string[] = [];
+      for (let i = 0; i < d.length; i++) out.push(String(d.get(i)).trim());
+      return out;
+    }
+    if (Array.isArray(d)) {
+      return d.map((v) => String(v).trim());
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read all symbols at a single teo for a (symbol, teo) float var. */
+async function readFloatAtTeo(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nSymbols: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(0, nSymbols), teoIdx]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read a single scalar from a 1-D (teo,) variable via a length-1 slice. */
+async function readScalarAtTeo(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+): Promise<number | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(teoIdx, teoIdx + 1)]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      const v = d[0];
+      return v != null && Number.isFinite(v) ? v : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface FundHolding {
+  bw_sym_id: string;
+  adj_mv: number;
+  /** Fraction of `aum_erm3` (post-universe-filter denominator). Null when AUM is null/0. */
+  weight: number | null;
+}
+
+export interface FundHoldingsSnapshot {
+  teo: string;
+  aum_reported: number | null;
+  aum_erm3: number | null;
+  n_holdings_returned: number;
+  n_total_holdings: number;
+  holdings: FundHolding[];
+}
+
+/**
+ * Top-N current holdings at the latest teo for a fund. Default n=25.
+ * Returns null when the fund has no zarr or no positive holdings.
+ */
+export async function readFundHoldingsTopN(
+  bwFundId: string,
+  n = 25,
+): Promise<FundHoldingsSnapshot | null> {
+  const grp = await openFundZarrGroup(bwFundId, "ds_ph.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+
+  const [adjMv, aumReported, aumErm3] = await Promise.all([
+    readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
+    readScalarAtTeo(grp, "aum_reported", teoIdx),
+    readScalarAtTeo(grp, "aum_erm3", teoIdx),
+  ]);
+  if (!adjMv) return null;
+
+  const holdings: FundHolding[] = [];
+  for (let i = 0; i < adjMv.length; i++) {
+    const v = adjMv[i];
+    if (v != null && v > 0) {
+      holdings.push({
+        bw_sym_id: symbols[i]!,
+        adj_mv: v,
+        weight:
+          aumErm3 != null && aumErm3 > 0 ? v / aumErm3 : null,
+      });
+    }
+  }
+  if (holdings.length === 0) return null;
+
+  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  const safeN = Math.min(Math.max(n, 1), 1000);
+
+  return {
+    teo,
+    aum_reported: aumReported,
+    aum_erm3: aumErm3,
+    n_holdings_returned: Math.min(safeN, holdings.length),
+    n_total_holdings: holdings.length,
+    holdings: holdings.slice(0, safeN),
+  };
 }

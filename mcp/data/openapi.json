@@ -2213,6 +2213,88 @@
           }
         }
       },
+      "FundHolding": {
+        "type": "object",
+        "description": "One holding (security) within a fund's top-N snapshot.",
+        "required": [
+          "bw_sym_id",
+          "adj_mv"
+        ],
+        "properties": {
+          "bw_sym_id": {
+            "type": "string",
+            "description": "Internal symbol id. Resolve to ticker via /api/data/symbols/batch.",
+            "example": "BW-BBG000B9XRY4"
+          },
+          "adj_mv": {
+            "type": "number",
+            "format": "float",
+            "description": "Adjusted market value of this position at the snapshot teo."
+          },
+          "weight": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Fraction of `aum_erm3`. Null when aum_erm3 is null/0."
+          }
+        }
+      },
+      "FundHoldingsResponse": {
+        "type": "object",
+        "description": "Top-N current holdings for a fund at the latest teo. Sourced from per-fund `ds_ph.zarr` (Slice 5). `aum_reported` is sum(adj_mv) BEFORE universe filter; `aum_erm3` is sum AFTER (ERM3-mapped symbols only — the denominator for `weight`).\n",
+        "required": [
+          "bw_fund_id",
+          "teo",
+          "n_holdings_returned",
+          "n_total_holdings",
+          "holdings"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "aum_reported": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "aum_erm3": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "n_holdings_returned": {
+            "type": "integer",
+            "example": 25
+          },
+          "n_total_holdings": {
+            "type": "integer",
+            "example": 503
+          },
+          "holdings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundHolding"
+            }
+          }
+        }
+      },
       "FundPortfolioRow": {
         "type": "object",
         "description": "One teo (month-end) of a fund's portfolio time series.",
@@ -7815,6 +7897,117 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}/holdings": {
+      "get": {
+        "summary": "Top-N current fund holdings",
+        "description": "Top-N holdings for a fund at the latest teo. Reads `adj_mv (symbol, teo)` and `aum_erm3 (teo,)` from Slice 5's per-fund `ds_ph.zarr` on GCS, sorts by `adj_mv` descending, and returns `bw_sym_id` + `adj_mv` + `weight = adj_mv / aum_erm3`. Resolve `bw_sym_id` to ticker via `/api/data/symbols/batch` if needed.\n",
+        "operationId": "getFundHoldings",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-holdings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_holdings_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 25
+            },
+            "description": "Max holdings to return (default 25)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N holdings snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "Latest teo in the per-fund holdings panel."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundHoldingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed limit param.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no holdings panel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
