@@ -2213,6 +2213,115 @@
           }
         }
       },
+      "FundPortfolioRow": {
+        "type": "object",
+        "description": "One teo (month-end) of a fund's portfolio time series.",
+        "required": [
+          "teo"
+        ],
+        "properties": {
+          "teo": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "portfolio_gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_market_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_sector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_subsector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_idiosyncratic_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "identity_residual": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "n_holdings_active": {
+            "type": "integer",
+            "nullable": true
+          },
+          "effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "top10_weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          }
+        }
+      },
+      "FundPortfolioHistoryResponse": {
+        "type": "object",
+        "description": "Per-fund portfolio time series. Long-form rows indexed by teo (month-end). The `start_teo` / `end_teo` summary fields reflect the post-filter window, not the full panel.\n",
+        "required": [
+          "bw_fund_id",
+          "n_periods",
+          "start_teo",
+          "end_teo",
+          "rows"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "n_periods": {
+            "type": "integer",
+            "example": 85
+          },
+          "start_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundPortfolioRow"
+            }
+          }
+        }
+      },
       "FundMetricsResponse": {
         "type": "object",
         "description": "Latest knowledge-mode metrics for a single mutual fund. Joins `public.funds` (registry) with `public.funds_latest` (the wide-row snapshot) and groups return components / diagnostics / meta into nested objects. Bitemporal triple is at the top level; lineage in `_metadata`.\n",
@@ -7706,6 +7815,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}/portfolio": {
+      "get": {
+        "summary": "Per-fund portfolio time series",
+        "description": "Time series of portfolio-level return components and diagnostics from Slice 8's per-fund `ds_portfolio.zarr` on GCS. One row per teo (month-end). Optional inclusive `start_date` / `end_date` params trim the panel.\n\nBitemporal: `X-Data-As-Of` reflects the latest teo in the returned slice; `X-Data-Filing-Date` carries the registry's `latest_filing_date`.\n",
+        "operationId": "getFundPortfolioHistory",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-portfolio-history",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_portfolio_history_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive lower bound (YYYY-MM-DD). Default = first teo in the fund's panel."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive upper bound (YYYY-MM-DD). Default = latest teo in the fund's panel."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Time series rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "Latest teo in the returned slice."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds.latest_filing_date for the fund."
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundPortfolioHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed date params or start_date > end_date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or zarr returned no rows for the date window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
