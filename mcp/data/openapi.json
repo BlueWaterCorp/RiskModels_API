@@ -2213,6 +2213,221 @@
           }
         }
       },
+      "StyleCohortReturnsBlock": {
+        "type": "object",
+        "description": "Portfolio return components + diagnostics for one weighting in a cohort.",
+        "properties": {
+          "portfolio_gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_market_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_sector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_subsector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_idiosyncratic_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "identity_residual": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Cohort coverage (fraction of cohort AUM in mapped symbols)."
+          },
+          "n_holdings_active": {
+            "type": "integer",
+            "nullable": true
+          },
+          "effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "top10_weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          }
+        }
+      },
+      "StyleCohortMetricsResponse": {
+        "type": "object",
+        "description": "Latest cohort metrics for a 9-box style cell. Both equal-weight (EW) and market-value-weighted (MV) cohort portfolios are returned side-by-side under `weightings`. Bitemporal lineage at top level.\n",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "report_date",
+          "weightings",
+          "_metadata"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string",
+            "example": "Large Blend"
+          },
+          "slug": {
+            "type": "string",
+            "example": "large-blend"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filing_date_max": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "n_funds_in_cell": {
+            "type": "integer",
+            "nullable": true
+          },
+          "weightings": {
+            "type": "object",
+            "properties": {
+              "ew": {
+                "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+              },
+              "mv": {
+                "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+              }
+            }
+          },
+          "_metadata": {
+            "type": "object",
+            "properties": {
+              "model_version": {
+                "type": "string",
+                "nullable": true
+              },
+              "data_as_of": {
+                "type": "string",
+                "format": "date"
+              },
+              "data_freshness": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "last_synced_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "StyleCohortRankingRow": {
+        "type": "object",
+        "required": [
+          "rank",
+          "entity_id"
+        ],
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "example": 1
+          },
+          "entity_id": {
+            "type": "string",
+            "description": "bw_sym_id (cohort=symbol), sector code (cohort=sector), or bw_fund_id (cohort=fund)."
+          },
+          "value": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "cohort_size": {
+            "type": "integer",
+            "nullable": true
+          }
+        }
+      },
+      "StyleCohortRankingsResponse": {
+        "type": "object",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "cohort_type",
+          "metric",
+          "period_window",
+          "weighting",
+          "report_date",
+          "n_returned",
+          "rows"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "cohort_type": {
+            "type": "string",
+            "enum": [
+              "symbol",
+              "sector",
+              "fund"
+            ]
+          },
+          "metric": {
+            "type": "string"
+          },
+          "period_window": {
+            "type": "string",
+            "enum": [
+              "1m",
+              "3m",
+              "12m",
+              "36m"
+            ]
+          },
+          "weighting": {
+            "type": "string",
+            "enum": [
+              "ew",
+              "mv"
+            ]
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filing_date_max": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "n_returned": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StyleCohortRankingRow"
+            }
+          }
+        }
+      },
       "FundHedgeLeg": {
         "type": "object",
         "description": "One ETF hedge leg at a given factor level.",
@@ -7966,6 +8181,278 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}": {
+      "get": {
+        "summary": "Latest cohort metrics for a 9-box style cell",
+        "description": "Latest portfolio return decomposition + diagnostics for a 9-box style cell, aggregated across all funds in the cell. Both EW and MV cohort portfolios are returned side-by-side under `weightings`.\n\nThe differentiated wedge: Morningstar reports per-fund metrics but doesn't expose cohort aggregates with this attribution depth.\n",
+        "operationId": "getStyleCohortMetrics",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-metrics",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_metrics_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest cohort metrics (both weightings).",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleCohortMetricsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort metrics available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/rankings/{cohort_type}": {
+      "get": {
+        "summary": "Top-N rankings within a 9-box style cell",
+        "description": "Top-N rankings within a 9-box style cell × cohort_type × metric × period_window × weighting. `cohort_type` selects what gets ranked: symbols (holdings), sector codes, or funds.\n\nFor `cohort_type=fund`, the `weighting` parameter is ignored (writer stores `'ew'` placeholder since fund returns are scalar). Top-N is capped at 50 — the data ceiling per Slice 9.\n",
+        "operationId": "getStyleCohortRankings",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-rankings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_rankings_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cohort_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "symbol",
+                "sector",
+                "fund"
+              ]
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Metric to rank by (e.g. weight, gross_return, n_funds_holding)."
+          },
+          {
+            "name": "period_window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1m",
+                "3m",
+                "12m",
+                "36m"
+              ],
+              "default": "1m"
+            }
+          },
+          {
+            "name": "weighting",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ew",
+                "mv"
+              ],
+              "default": "mv"
+            },
+            "description": "Ignored for cohort_type=fund."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N ranked rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleCohortRankingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid slug, cohort_type, period_window, weighting, or missing metric.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No rankings for this combination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }

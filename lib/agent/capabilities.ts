@@ -1164,6 +1164,116 @@ export const CAPABILITIES: Capability[] = [
     },
     tags: ["funds", "hedge-ratios", "knowledge-mode"],
   },
+  {
+    id: "style-cohort-metrics",
+    name: "Style Cohort Latest Metrics",
+    description:
+      "Latest portfolio return decomposition + diagnostics for one of the 9-box style cells, " +
+      "aggregated across all funds in the cell. Returns both equal-weight (EW) and " +
+      "market-value-weighted (MV) cohort portfolios side-by-side. Sourced from Slice 6's " +
+      "per-cell ds_portfolio.zarr (latest snapshot in style_portfolios_latest). " +
+      "The differentiated wedge — Morningstar reports per-fund metrics but doesn't expose " +
+      "cohort aggregates with this attribution depth.",
+    endpoint: "/api/funds/style/{slug}",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description:
+          "9-box style slug (large-value, large-blend, large-growth, mid-*, small-*).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["style_portfolios_latest"],
+    },
+    tags: ["funds", "cohort", "knowledge-mode", "differentiated-wedge"],
+  },
+  {
+    id: "style-cohort-rankings",
+    name: "Style Cohort Top-N Rankings",
+    description:
+      "Top-N rankings within a 9-box style cell × cohort_type × metric × period_window × " +
+      "weighting. cohort_type ∈ {symbol, sector, fund}. period_window ∈ {1m, 3m, 12m, 36m}. " +
+      "weighting ∈ {ew, mv} — ignored for cohort_type=fund (writer stores 'ew' placeholder). " +
+      "Top-N capped at 50 (Slice 9 storage ceiling).",
+    endpoint: "/api/funds/style/{slug}/rankings/{cohort_type}",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "9-box style slug",
+      },
+      cohort_type: {
+        type: "string",
+        required: true,
+        description: "One of: symbol, sector, fund",
+        enum: ["symbol", "sector", "fund"],
+      },
+      metric: {
+        type: "string",
+        required: true,
+        description: "Metric to rank by (e.g. weight, gross_return, n_funds_holding).",
+      },
+      period_window: {
+        type: "string",
+        required: false,
+        description: "Trailing window (1m / 3m / 12m / 36m). Default 1m.",
+        default: "1m",
+        enum: ["1m", "3m", "12m", "36m"],
+      },
+      weighting: {
+        type: "string",
+        required: false,
+        description: "Cohort weighting (ew / mv). Default mv. Ignored for cohort_type=fund.",
+        default: "mv",
+        enum: ["ew", "mv"],
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows to return (default 25, capped 50).",
+        default: 25,
+        min: 1,
+        max: 50,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_rankings_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["style_rankings_top"],
+    },
+    tags: ["funds", "cohort", "rankings", "differentiated-wedge"],
+  },
 ];
 
 export async function getCapabilities(): Promise<Capability[]> {

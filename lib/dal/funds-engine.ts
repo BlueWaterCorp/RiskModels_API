@@ -217,6 +217,131 @@ export async function searchFunds(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cohort tables — style_portfolios_latest, style_rankings_top
+// ---------------------------------------------------------------------------
+
+export interface StylePortfolioRow {
+  equity_style_9box: string;
+  weighting: "ew" | "mv";
+  report_date: string;
+  filing_date_max: string | null;
+  extracted_at: string | null;
+  portfolio_gross_return: number | null;
+  portfolio_market_return: number | null;
+  portfolio_sector_return: number | null;
+  portfolio_subsector_return: number | null;
+  portfolio_idiosyncratic_return: number | null;
+  identity_residual: number | null;
+  weight_sum: number | null;
+  n_holdings_active: number | null;
+  effective_n: number | null;
+  top10_weight_sum: number | null;
+  n_funds_in_cell: number | null;
+  model_version: string | null;
+  last_synced_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
+const STYLE_PORTFOLIO_COLUMNS =
+  "equity_style_9box, weighting, report_date, filing_date_max, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, n_funds_in_cell, model_version, last_synced_at, metadata";
+
+/**
+ * Latest cohort metrics for a 9-box cell. Returns both EW + MV rows when
+ * available (Slice 6 emits them side-by-side). Empty array if the cell has
+ * no data yet.
+ */
+export async function fetchStyleCohortLatest(
+  equityStyle9Box: string,
+): Promise<StylePortfolioRow[]> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("style_portfolios_latest")
+      .select(STYLE_PORTFOLIO_COLUMNS)
+      .eq("equity_style_9box", equityStyle9Box);
+    if (error) {
+      console.error("[Funds DAL] fetchStyleCohortLatest error:", error);
+      return [];
+    }
+    return (data ?? []) as StylePortfolioRow[];
+  } catch (error) {
+    console.error("[Funds DAL] fetchStyleCohortLatest error:", error);
+    return [];
+  }
+}
+
+export type CohortType = "symbol" | "sector" | "fund";
+export type RankPeriodWindow = "1m" | "3m" | "12m" | "36m";
+export type Weighting = "ew" | "mv";
+
+export interface StyleRankingRow {
+  rank: number;
+  entity_id: string;
+  metric: string;
+  value: number | null;
+  cohort_size: number | null;
+  period_window: RankPeriodWindow;
+  weighting: Weighting;
+  report_date: string;
+  filing_date_max: string | null;
+}
+
+export interface FetchStyleRankingsOptions {
+  metric: string;
+  cohortType: CohortType;
+  periodWindow?: RankPeriodWindow;
+  weighting?: Weighting;
+  limit?: number;
+}
+
+const STYLE_RANKING_COLUMNS =
+  "rank, entity_id, metric, value, cohort_size, period_window, weighting, report_date, filing_date_max";
+
+/**
+ * Top-N rankings within a 9-box cell × cohort_type × metric × period_window
+ * × weighting. Always sorted by `rank` ascending. Cap N at 50 (data ceiling
+ * per Slice 9 default). For `cohort_type='fund'` the writer stores `'ew'`
+ * placeholder regardless of the requested weighting; we coerce here.
+ */
+export async function fetchStyleRankings(
+  equityStyle9Box: string,
+  options: FetchStyleRankingsOptions,
+): Promise<StyleRankingRow[]> {
+  const {
+    metric,
+    cohortType,
+    periodWindow = "1m",
+    limit = 25,
+  } = options;
+  const safeLimit = Math.min(Math.max(limit, 1), 50);
+  // For fund cohort: writer uses 'ew' as a NOT-NULL placeholder; ignore caller's choice.
+  const effectiveWeighting: Weighting =
+    cohortType === "fund" ? "ew" : options.weighting ?? "mv";
+
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("style_rankings_top")
+      .select(STYLE_RANKING_COLUMNS)
+      .eq("equity_style_9box", equityStyle9Box)
+      .eq("cohort_type", cohortType)
+      .eq("metric", metric)
+      .eq("period_window", periodWindow)
+      .eq("weighting", effectiveWeighting)
+      .order("rank", { ascending: true })
+      .limit(safeLimit);
+    if (error) {
+      console.error("[Funds DAL] fetchStyleRankings error:", error);
+      return [];
+    }
+    return (data ?? []) as StyleRankingRow[];
+  } catch (error) {
+    console.error("[Funds DAL] fetchStyleRankings error:", error);
+    return [];
+  }
+}
+
 export async function getStyleCellMembers(
   equityStyle9Box: string,
   options: { primaryOnly?: boolean; limit?: number } = {},
