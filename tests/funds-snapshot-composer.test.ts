@@ -38,6 +38,7 @@ describe("composeFundSnapshot (real fixtures: NOLCX / Northern Large Cap Core)",
     holdings: null,
     hedge: null,
     portfolioHistory: [],
+    navHistory: [],
     cohortRanks: FUND_COHORT_RANKS,
     cohortMetrics: COHORT_METRICS,
   };
@@ -121,6 +122,42 @@ describe("composeFundSnapshot (real fixtures: NOLCX / Northern Large Cap Core)",
     expect(snap.portfolio_history.n_periods).toBe(12);
     expect(snap.portfolio_history.rows[0].teo).toBe(teos[6]);
     expect(snap.portfolio_history.rows[11].teo).toBe(teos[17]);
+  });
+
+  it("nav_history is null when navHistory is empty (fund has no yfinance ticker / zarr)", () => {
+    const snap = composeFundSnapshot(basePrimitives);
+    expect(snap.nav_history).toBeNull();
+  });
+
+  it("populates nav_history with the rows + lookback_months when navHistory is provided", () => {
+    const navRows = [
+      { teo: "2026-03-31", nav_close: 32.5, nav_return_monthly: 0.012 },
+      { teo: "2026-04-30", nav_close: 33.16, nav_return_monthly: 0.0203 },
+    ];
+    const snap = composeFundSnapshot({ ...basePrimitives, navHistory: navRows });
+    expect(snap.nav_history).not.toBeNull();
+    expect(snap.nav_history!.lookback_months).toBe(12);
+    expect(snap.nav_history!.n_periods).toBe(2);
+    expect(snap.nav_history!.rows).toEqual(navRows);
+  });
+
+  it("trims nav_history to the trailing 12 months when more is provided", () => {
+    const teos: string[] = [];
+    for (let m = 1; m <= 18; m++) {
+      const d = new Date(Date.UTC(2025, m - 1, 1));
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      d.setUTCDate(0);
+      teos.push(d.toISOString().slice(0, 10));
+    }
+    const synthetic = teos.map((teo) => ({
+      teo,
+      nav_close: 100,
+      nav_return_monthly: 0.01,
+    }));
+    const snap = composeFundSnapshot({ ...basePrimitives, navHistory: synthetic });
+    expect(snap.nav_history!.n_periods).toBe(12);
+    expect(snap.nav_history!.rows[0].teo).toBe(teos[6]);
+    expect(snap.nav_history!.rows[11].teo).toBe(teos[17]);
   });
 });
 
