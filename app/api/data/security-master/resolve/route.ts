@@ -1,3 +1,7 @@
+// licensed-id-ok-file: client-supplied CUSIP/ISIN translator endpoint.
+// Inputs are user's own licensed identifiers; outputs are our internal
+// ticker / bw_sym_id / FIGI. The CUSIP/ISIN values in the response are
+// echoes of the user-supplied input (not redistributed by us).
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";

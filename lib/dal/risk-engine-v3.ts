@@ -1,3 +1,9 @@
+// licensed-id-ok-file: AUDIT-PENDING — DAL still selects/returns `isin`
+// from the symbols table; downstream consumers (api/data/symbols/*) echo
+// it in responses. Pre-existing exposure flagged for license-team review.
+// To clear: either remove `isin` from public response shapes (Path 1) or
+// confirm ANNA license covers redistribution scope (Path 2), then change
+// this marker to a definitive reason.
 /**
  * ERM3 V3 Risk Engine DAL — pure-Zarr history, Supabase relational + `_latest`
  *

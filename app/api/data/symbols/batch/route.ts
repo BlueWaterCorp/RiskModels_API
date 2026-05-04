@@ -1,3 +1,8 @@
+// licensed-id-ok-file: AUDIT-PENDING — public batch symbol endpoint
+// selects and returns `isin` from the symbols table. Pre-existing exposure
+// flagged for license-team review; clear by either removing `isin` from
+// the response shape (Path 1) or confirming ANNA license covers
+// redistribution (Path 2).
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";

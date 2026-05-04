@@ -289,7 +289,7 @@ export async function readFundPortfolioSeries(
 // Layout: coords (teo,); data_vars nav_close (teo,) and nav_return_monthly
 // (teo,). Produced by Funds_DAG's fund_nav_zarr v3 asset, which pulls daily
 // NAV by ticker_primary and resamples to month-end. Replaces the legacy
-// step_1b factset_fund_id-keyed multi-fund yf_nav_returns zarr at the API
+// step_1b factset_fund_id-keyed multi-fund yf_nav_returns zarr at the API // licensed-id-ok: comment names a legacy upstream key that this layer replaces; no FactSet ID exposed
 // surface — the API only ever sees bw_fund_id-keyed per-fund layouts.
 // ---------------------------------------------------------------------------
 

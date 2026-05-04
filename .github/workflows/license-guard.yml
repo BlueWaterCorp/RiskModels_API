@@ -1,0 +1,56 @@
+name: License-Guard — licensed-identifier exposure
+
+# Two-pronged check for accidental exposure of LICENSED third-party
+# identifiers (CUSIP, ISIN, fsym_id, factset_*_id):
+#
+#   1. Code scan      — scripts/check-licensed-identifiers.sh
+#                       Walks API-exposed paths (app/api, lib, sdk,
+#                       OpenAPI specs, MCP spec) for whole-word matches.
+#
+#   2. Commit scan    — scripts/check-licensed-identifiers-git.sh
+#                       Walks the PR commit range for the same tokens
+#                       in commit messages. GitHub log is public + indexed,
+#                       so a leak there has the same compliance impact as
+#                       a leak in code.
+#
+# Allowlist markers (case-insensitive, in either code or commit message):
+#   licensed-id-ok: <reason>          — line-level skip
+#   licensed-id-ok-file: <reason>     — file-level skip when in first 40 lines
+#   AUDIT-PENDING                     — surfaced as warning, doesn't fail
+#
+# See scripts/check-licensed-identifiers.sh header for full rationale.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  code-scan:
+    name: Licensed-identifier code scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run code scan
+        run: bash scripts/check-licensed-identifiers.sh
+
+  commit-message-scan:
+    name: Licensed-identifier commit-message scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need PR base ref + full HEAD history for the range scan.
+          fetch-depth: 0
+
+      - name: Run commit-message scan
+        env:
+          # GITHUB_BASE_REF is set on pull_request events. On push to main
+          # it's empty and the script falls back to HEAD~20..HEAD.
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/check-licensed-identifiers-git.sh
