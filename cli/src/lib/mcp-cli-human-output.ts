@@ -4,7 +4,7 @@ import type { SharedConfigWriteResult, ConfigWriteResult } from "./mcp-config-wr
 import type { InstallPlan } from "./mcp-install-plan.js";
 import type { ClientDetection } from "./mcp-config-paths.js";
 import { configPath } from "./config.js";
-import { getCliPackageVersion } from "./cli-version.js";
+import { formatCliVersionLabel } from "./cli-version.js";
 import { abbreviatePath } from "./path-display.js";
 
 const BULLET = "•";
@@ -36,7 +36,7 @@ function logRiskmodelsCliFooter(phase: "done" | "dry-run"): void {
     );
   }
   logLine("");
-  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
+  logLine(chalk.dim(`riskmodels CLI ${formatCliVersionLabel()}`));
 }
 
 function logLine(line = ""): void {
@@ -112,16 +112,6 @@ export function printInstallSuccessHuman(opts: {
     logLine(chalk.dim(`VS Code: ${vsSkipped.message}`));
   }
 
-  if (showClaudeCodeMcpTip) {
-    logLine("");
-    logLine(`${chalk.bold("Claude Code:")}`);
-    logLine(
-      chalk.dim(
-        "CLI detected — you may prefer registering MCP with: claude mcp add … (see RiskModels quickstart); merged files above still apply to Claude Desktop.",
-      ),
-    );
-  }
-
   const backupPaths: string[] = [];
   if (sharedConfigWrite.backupPath) backupPaths.push(sharedConfigWrite.backupPath);
   for (const w of writes) {
@@ -149,9 +139,15 @@ export function printInstallSuccessHuman(opts: {
     );
   }
 
+  if (showClaudeCodeMcpTip) {
+    logLine("");
+    logLine("Claude Code users: you can also run");
+    logLine(chalk.dim("  claude mcp add riskmodels npx -y @riskmodels/mcp"));
+  }
+
   if (!hadErrors) {
     logLine("");
-    logLine(`${chalk.bold("Next step:")} Restart your AI clients, then paste this into any of them:`);
+    logLine(`${chalk.bold("Next step:")} Restart your AI clients, then try:`);
     logLine("");
     logLine(`"${firstPrompt}"`);
     logLine("");
@@ -167,7 +163,7 @@ export function printInstallSuccessHuman(opts: {
     }
   }
 
-  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
+  logLine(chalk.dim(`riskmodels CLI ${formatCliVersionLabel()}`));
 }
 
 export function printInstallDryRunHuman(opts: {
@@ -199,7 +195,7 @@ export function printInstallDryRunHuman(opts: {
   logLine("");
   logLine(`${chalk.bold("First prompt to paste into your AI client:")} "${opts.firstPrompt}"`);
   logLine("");
-  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
+  logLine(chalk.dim(`riskmodels CLI ${formatCliVersionLabel()}`));
 }
 
 export function printInstallMissingKeyHuman(): void {
@@ -212,7 +208,7 @@ export function printInstallMissingKeyHuman(): void {
   logLine("");
   logLine(chalk.dim("Pass --api-key, set RISKMODELS_API_KEY, or rerun without --yes to enter it interactively."));
   logLine("");
-  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
+  logLine(chalk.dim(`riskmodels CLI ${formatCliVersionLabel()}`));
 }
 
 export function printUninstallSuccessHuman(removals: ConfigWriteResult[]): void {

@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { ClientDetection } from "./mcp-config-paths.js";
 import { abbreviatePath } from "./path-display.js";
-import { getCliPackageVersion } from "./cli-version.js";
+import { formatCliVersionLabel } from "./cli-version.js";
 
 const BULLET = "•";
 
@@ -18,7 +18,7 @@ export type DoctorPayload = {
 
 export function printDoctorHuman(payload: DoctorPayload): void {
   logLine("");
-  logLine(`${chalk.bold("riskmodels doctor")} ${chalk.dim(`(CLI ${getCliPackageVersion()})`)}`);
+  logLine(`${chalk.bold("riskmodels doctor")} ${chalk.dim(`(CLI ${formatCliVersionLabel()})`)}`);
   logLine("");
   logLine(payload.ok ? chalk.green.bold("All checks passed") : chalk.yellow.bold("Some checks need attention"));
   logLine("");
@@ -49,7 +49,7 @@ export type StatusPayload = {
 
 export function printStatusHuman(payload: StatusPayload): void {
   logLine("");
-  logLine(`${chalk.bold("riskmodels status")} ${chalk.dim(`(CLI ${getCliPackageVersion()})`)}`);
+  logLine(`${chalk.bold("riskmodels status")} ${chalk.dim(`(CLI ${formatCliVersionLabel()})`)}`);
   logLine("");
   const cfgDisp = abbreviatePath(payload.configPath);
   logLine(`${chalk.bold("Shared config:")} ${cfgDisp}`);
