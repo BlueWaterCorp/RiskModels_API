@@ -47,6 +47,10 @@ const C = {
   mcp_bck: '#56d364',
 };
 
+/** Stylized demo labels — keep in sync with `sdk/pyproject.toml` (riskmodels-py) and `cli/package.json` (npm CLI). */
+const LANDING_PYPI_VERSION = '0.3.4';
+const LANDING_NPM_CLI_VERSION = '2.0.2';
+
 // ─── Scenario A: Agent Decompose ──────────────────────────────────────────────
 const scenarioA: Scenario = {
   id: 'decompose',
@@ -144,7 +148,7 @@ const scenarioPythonSdk: Scenario = {
   label: 'Python SDK',
   titleBarLabel: 'pip install riskmodels-py (PyPI) → portfolio analyze',
   contextBadge: 'PyPI · NVDA 40% · GOOGL 60%',
-  command: 'pip install riskmodels-py && python portfolio_analyze.py',
+  command: `python3 -m pip install "riskmodels-py>=${LANDING_PYPI_VERSION}" && python portfolio_analyze.py`,
   lines: [
     {
       id: 0,
@@ -161,7 +165,7 @@ const scenarioPythonSdk: Scenario = {
       content: (
         <>
           <span style={{ color: C.muted }}> </span>
-          <span style={{ color: C.muted }}>Downloading riskmodels_py-0.2.0-py3-none-any.whl (35 kB)</span>
+          <span style={{ color: C.muted }}>{`Downloading riskmodels_py-${LANDING_PYPI_VERSION}-py3-none-any.whl (42 kB)`}</span>
         </>
       ),
     },
@@ -179,7 +183,7 @@ const scenarioPythonSdk: Scenario = {
       delayMs: 900,
       content: (
         <>
-          <span style={{ color: C.green }}>Successfully installed riskmodels-py-0.2.0</span>
+          <span style={{ color: C.green }}>{`Successfully installed riskmodels-py-${LANDING_PYPI_VERSION}`}</span>
         </>
       ),
     },
@@ -190,7 +194,7 @@ const scenarioPythonSdk: Scenario = {
         <>
           <span style={{ color: C.dim }}>
             <span style={{ color: C.muted }}>
-              Optional: pip install riskmodels-py[xarray] for get_dataset / xarray cubes
+              {`Optional: pip install "riskmodels-py[xarray]" for get_dataset / xarray cubes · "riskmodels-py[viz]" adds Kaleido + Seaborn helpers`}
             </span>
           </span>
         </>
@@ -475,16 +479,16 @@ const scenarioE: Scenario = {
 const scenarioF: Scenario = {
   id: 'riskmodels-cli',
   label: 'RiskModels CLI',
-  titleBarLabel: 'npm install -g riskmodels → agent decompose',
+  titleBarLabel: 'npm install -g riskmodels@latest → agent decompose',
   contextBadge: 'npm · NVDA 40% · GOOGL 60%',
-  command: 'npm install -g riskmodels && riskmodels agent decompose --portfolio ./positions.json',
+  command: `npm install -g riskmodels@latest && riskmodels agent decompose --portfolio ./positions.json`,
   lines: [
     {
       id: 0,
       delayMs: 0,
       content: (
         <>
-          <span style={{ color: C.muted }}>npm install -g riskmodels</span>
+          <span style={{ color: C.muted }}>npm install -g riskmodels@latest</span>
         </>
       ),
     },
@@ -512,7 +516,7 @@ const scenarioF: Scenario = {
       delayMs: 900,
       content: (
         <>
-          <span style={{ color: C.green }}>found 0 vulnerabilities · riskmodels@2.0.0</span>
+          <span style={{ color: C.green }}>{`found 0 vulnerabilities · riskmodels@${LANDING_NPM_CLI_VERSION}`}</span>
         </>
       ),
     },
@@ -523,7 +527,7 @@ const scenarioF: Scenario = {
       content: (
         <>
           <span style={{ color: C.info }}>[INFO]</span>{' '}
-          <span style={{ color: C.muted }}>riskmodels 1.0.1 — RISKMODELS_API_KEY from environment</span>
+          <span style={{ color: C.muted }}>{`riskmodels ${LANDING_NPM_CLI_VERSION} — RISKMODELS_API_KEY from environment`}</span>
         </>
       ),
     },
@@ -803,7 +807,7 @@ export default function TerminalShowcase({ embedded = false, scenarioIds }: Term
         Stylized demos (not live recordings) — REST and SDK shapes match the API; CLI &apos;agent&apos; and some MCP
         tool names illustrate product workflows.{' '}
         <span className="font-medium text-zinc-300">Python SDK:</span>{' '}
-        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">pip install riskmodels-py</code>
+        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">{`python3 -m pip install "riskmodels-py>=${LANDING_PYPI_VERSION}"`}</code>
         {' on '}
         <a
           href="https://pypi.org/project/riskmodels-py/"
@@ -814,9 +818,10 @@ export default function TerminalShowcase({ embedded = false, scenarioIds }: Term
           PyPI
         </a>
         {' '}
-        (<code className="text-zinc-400 text-[0.8rem]">[xarray]</code> optional for cubes).{' '}
+        (<code className="text-zinc-400 text-[0.8rem]">[xarray]</code> optional for dataset helpers;{' '}
+        <code className="text-zinc-400 text-[0.8rem]">[viz]</code> for Kaleido static PNG).{' '}
         <span className="font-medium text-zinc-300">CLI:</span>{' '}
-        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">npm install -g riskmodels</code>
+        <code className="text-zinc-300 bg-zinc-900/80 px-1 py-0.5 rounded text-[0.8rem]">npm install -g riskmodels@latest</code>
         {' on '}
         <a
           href="https://www.npmjs.com/package/riskmodels"
@@ -961,7 +966,7 @@ export default function TerminalShowcase({ embedded = false, scenarioIds }: Term
   }
 
   return (
-    <section className="relative w-full z-[3] bg-zinc-950 px-4 py-16 sm:px-6 lg:px-8">
+    <section className="relative w-full z-[3] border-b border-zinc-800/80 bg-zinc-950 px-4 py-16 sm:px-6 lg:px-8">
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950 to-transparent"
         aria-hidden

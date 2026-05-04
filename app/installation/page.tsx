@@ -28,7 +28,9 @@ const BLOCKS: Block[] = [
     icon: Code2,
     setup: {
       kind: 'code',
-      code: 'pip install riskmodels-py',
+      code: `# Python 3.10+
+python3 -m pip install "riskmodels-py>=0.3.4"
+# Optional extras: [viz] (Kaleido, Seaborn), [xarray] (cubes)`,
       language: 'bash',
       filename: 'install',
     },
@@ -43,7 +45,8 @@ const BLOCKS: Block[] = [
     icon: Terminal,
     setup: {
       kind: 'code',
-      code: 'npm install -g riskmodels',
+      code: `npm install -g riskmodels@latest
+riskmodels doctor   # verify key + API reachability`,
       language: 'bash',
       filename: 'install',
     },
