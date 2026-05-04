@@ -57,7 +57,8 @@ const CLAUDE_CODE_STDIO = `claude mcp add --scope user --transport stdio riskmod
 const CLAUDE_CODE_REMOTE_JQ = `API=$(jq -r '.apiKey' ~/.config/riskmodels/config.json)
 claude mcp add --scope user --env "AUTHORIZATION=Bearer $API" riskmodels -- npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
 
-const PYTHON_PIP = `pip install "riskmodels-py[viz]"`;
+const PYTHON_PIP = `python3 -m pip install "riskmodels-py>=0.3.4"
+# Optional — notebooks / Kaleido PNG: python3 -m pip install "riskmodels-py[viz]"`;
 
 const PYTHON_SNIPPET = `from riskmodels import RiskModelsClient
 client = RiskModelsClient(api_key="rm_agent_live_...")   # or set RISKMODELS_API_KEY env var
@@ -76,7 +77,8 @@ const COLAB_SNIPPET = `from google.colab import userdata
 import os
 os.environ["RISKMODELS_API_KEY"] = userdata.get("RISKMODELS_API_KEY")
 
-!pip install -q "riskmodels-py[viz]"
+!pip install -q "riskmodels-py>=0.3.4"
+# For Kaleido static PNG helpers: !pip install -q "riskmodels-py[viz]"
 
 from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()     # reads RISKMODELS_API_KEY
@@ -89,6 +91,7 @@ client = RiskModelsClient.from_env()`;
 
 const CLI_SNIPPET = `npm install -g riskmodels@latest
 export RISKMODELS_API_KEY="rm_agent_live_..."
+riskmodels doctor
 riskmodels metrics NVDA`;
 
 /** Bash single-quoted literal (safe for API keys with special characters). */
@@ -148,6 +151,7 @@ echo '.env' >> .gitignore         # never commit it`;
 
   const cliSnippet = `npm install -g riskmodels@latest
 export RISKMODELS_API_KEY=${shSingleQuoted(k)}
+riskmodels doctor
 riskmodels metrics NVDA`;
 
   return {
@@ -229,7 +233,7 @@ export const KeyIssuedEmail = ({
                   </td>
                   <td style={td}>
                     A <strong>Python library</strong>.{" "}
-                    <code style={inlineCode}>pip install riskmodels-py</code>, then{" "}
+                    <code style={inlineCode}>python3 -m pip install &quot;riskmodels-py&gt;=0.3.4&quot;</code>, then{" "}
                     <code style={inlineCode}>client.get_metrics(&quot;NVDA&quot;)</code> in a notebook.
                     Best for Jupyter, Colab, research scripts, anywhere you want a DataFrame back.
                   </td>
@@ -240,8 +244,10 @@ export const KeyIssuedEmail = ({
                   </td>
                   <td style={td}>
                     A <strong>terminal command</strong>.{" "}
-                    <code style={inlineCode}>riskmodels metrics NVDA</code> prints JSON. Nice for quick
-                    checks, shell scripts, and demos; not needed if you&apos;re happy in Python.
+                    <code style={inlineCode}>npm install -g riskmodels@latest</code>, then{" "}
+                    <code style={inlineCode}>riskmodels doctor</code> / <code style={inlineCode}>riskmodels metrics NVDA</code>
+                    {" "}
+                    prints JSON. Nice for quick checks, shell scripts, and demos; not needed if you&apos;re happy in Python.
                   </td>
                 </tr>
               </tbody>
@@ -404,8 +410,9 @@ export const KeyIssuedEmail = ({
           <Text style={h3}>B1. Python — 3 lines in a notebook</Text>
           <CodeBlock theme={dracula} language="bash" code={PYTHON_PIP} />
           <Text style={paragraph}>
-            (<code style={inlineCode}>[viz]</code> pulls in Plotly / Matplotlib for built-in charts. Drop{" "}
-            <code style={inlineCode}>[viz]</code> if you just want the data.)
+            <code style={inlineCode}>riskmodels-py</code> 0.3.4+ bundles matplotlib and plotly, so a plain{" "}
+            <code style={inlineCode}>import riskmodels</code> works. Add <code style={inlineCode}>[viz]</code> for
+            Kaleido static PNG + Seaborn; <code style={inlineCode}>[xarray]</code> for dataset helpers.
           </Text>
           <CodeBlock theme={dracula} language="python" code={snippets.pythonSnippet} />
           <Text style={paragraph}>

@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn';
 type TypingStep = { command: string; outcome: string };
 
 const STEPS: TypingStep[] = [
-  { command: 'pip install riskmodels-py',                    outcome: 'installs the SDK' },
+  { command: 'python3 -m pip install "riskmodels-py>=0.3.4"', outcome: 'installs the SDK' },
   { command: 'riskmodels decompose NVDA',                    outcome: 'returns L3 + hedge ratios' },
   { command: 'curl -X POST /decompose',                      outcome: 'same payload over HTTP' },
   { command: 'import { decompose } from "riskmodels"',       outcome: 'TypeScript SDK, same surface' },
