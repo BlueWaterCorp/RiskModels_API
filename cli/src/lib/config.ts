@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -21,6 +21,17 @@ export const DEFAULT_API_BASE = "https://riskmodels.app";
 
 export function configPath(): string {
   return path.join(homedir(), ".config", "riskmodels", "config.json");
+}
+
+/** True when shared config file exists (used for MCP install welcome on first-ever setup). */
+export async function sharedRiskmodelsConfigExists(): Promise<boolean> {
+  try {
+    await stat(configPath());
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 export async function loadConfig(): Promise<RiskmodelsConfig | null> {

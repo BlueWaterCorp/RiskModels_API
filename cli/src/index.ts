@@ -45,6 +45,7 @@ program
 ${chalk.bold("Quick start")}
   ${chalk.dim("$")} riskmodels config init
   ${chalk.dim("$")} riskmodels install --dry-run
+  ${chalk.dim("$")} riskmodels uninstall --dry-run
   ${chalk.dim("$")} riskmodels health
   ${chalk.dim("$")} riskmodels metrics NVDA
   ${chalk.dim("$")} riskmodels decompose NVDA

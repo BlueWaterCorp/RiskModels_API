@@ -1,10 +1,21 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import chalk from "chalk";
-import { configPath, DEFAULT_API_BASE, loadConfig } from "../lib/config.js";
+import {
+  configPath,
+  DEFAULT_API_BASE,
+  loadConfig,
+  sharedRiskmodelsConfigExists,
+} from "../lib/config.js";
 import { detectClients, selectedClients } from "../lib/mcp-config-paths.js";
 import { buildInstallPlans, firstPrompt } from "../lib/mcp-install-plan.js";
 import { printResults } from "../lib/display.js";
+import {
+  API_KEY_EMAIL_HINT,
+  printInstallDryRunHuman,
+  printInstallMissingKeyHuman,
+  printInstallSuccessHuman,
+} from "../lib/mcp-cli-human-output.js";
 import { redactSecret } from "../lib/redact.js";
 import { installMcpConfig, writeSharedApiKey } from "../lib/mcp-config-writer.js";
 import { apiRootFromUserBase } from "../lib/api-url.js";
@@ -51,6 +62,7 @@ async function resolveApiKey(opts: InstallOptions): Promise<{ apiKey?: string; s
 
   console.error(chalk.yellow("No RiskModels API key found."));
   console.error(chalk.dim("Get a key: https://riskmodels.app/get-key"));
+  console.error(chalk.dim(API_KEY_EMAIL_HINT));
   const answer = await inquirer.prompt<{ apiKey: string }>([
     {
       type: "password",
@@ -65,14 +77,16 @@ async function resolveApiKey(opts: InstallOptions): Promise<{ apiKey?: string; s
 
 export function installCommand(): Command {
   return new Command("install")
-    .description("Detect AI clients and install/register the RiskModels MCP server")
+    .description(
+      "Detect AI clients and install/register the RiskModels MCP server (default: friendly summary; pass --json for machine-readable)",
+    )
     .option("--client <name>", "claude | cursor | codex | vscode")
     .option("--all", "Target all detected clients")
     .option("--api-key <key>", "RiskModels API key for one-shot setup")
     .option("--dry-run", "Show planned config changes without writing")
     .option("--yes", "Non-interactive mode")
     .option("--embed-key", "Explicitly embed the API key in MCP config env (not recommended)")
-    .option("--json", "JSON output")
+    .option("--json", "Structured JSON instead of formatted text (matches historical output shape)")
     .action(async (opts: InstallOptions, cmd: Command) => {
       const json = opts.json || (cmd.optsWithGlobals() as { json?: boolean }).json || false;
       let clients;
@@ -108,25 +122,36 @@ export function installCommand(): Command {
       };
 
       if (dryRun) {
-        printResults(output, json);
-        if (!json) {
-          console.error(chalk.green(`First prompt to try: "${firstPrompt()}"`));
+        if (json) {
+          printResults(output, json);
+        } else {
+          printInstallDryRunHuman({
+            plans,
+            willStoreSharedKey: !!apiKey && source !== configPath(),
+            firstPrompt: firstPrompt(),
+          });
         }
         return;
       }
 
       if (!apiKey) {
-        printResults(
-          {
-            ...output,
-            error: "No RiskModels API key found. Get one at https://riskmodels.app/get-key or pass --api-key.",
-          },
-          json,
-        );
+        if (json) {
+          printResults(
+            {
+              ...output,
+              error:
+                "No RiskModels API key found. Get one at https://riskmodels.app/get-key or pass --api-key.",
+            },
+            json,
+          );
+        } else {
+          printInstallMissingKeyHuman();
+        }
         process.exitCode = 1;
         return;
       }
 
+      const sharedBefore = await sharedRiskmodelsConfigExists();
       const sharedConfigWrite = await writeSharedApiKey(apiKey, existingConfig?.apiBaseUrl ?? DEFAULT_API_BASE);
       const writes = await Promise.all(
         detections.map((detection) =>
@@ -145,14 +170,21 @@ export function installCommand(): Command {
         connectionTest: test,
       };
 
-      printResults(result, json);
+      if (json) {
+        printResults(result, json);
+      } else {
+        printInstallSuccessHuman({
+          isFirstInstall: !sharedBefore,
+          writes,
+          sharedConfigWrite,
+          connectionTest: test,
+          firstPrompt: firstPrompt(),
+          hadErrors: writes.some((w) => w.action === "error") || !test.ok,
+        });
+      }
       if (writes.some((write) => write.action === "error") || !test.ok) {
         process.exitCode = 1;
         return;
-      }
-      if (!json) {
-        console.error(chalk.green("RiskModels MCP install completed with backups."));
-        console.error(chalk.green(`First prompt to try: "${firstPrompt()}"`));
       }
     });
 }
