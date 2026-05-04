@@ -1,8 +1,8 @@
-export { RiskModelsClient } from "./client";
+export { RiskModelsClient } from "./client.js";
 export {
   listWhitepaperExamples,
   runWhitepaperExample,
-} from "./whitepaper";
+} from "./whitepaper.js";
 export type {
   ApiCallMetadata,
   ChartDatum,
@@ -16,4 +16,4 @@ export type {
   SuggestedChart,
   WhitepaperExampleId,
   WhitepaperExampleResult,
-} from "./types";
+} from "./types.js";

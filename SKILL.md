@@ -18,6 +18,8 @@ You are an expert at using the `riskmodels` npm package and the associated MCP s
 ## CLI / MCP first-time install
 Use **`RISKMODELS_API_KEY=… npx -y riskmodels@latest install`** (optional `--dry-run` first). This pins the published `riskmodels` CLI so `npx` does not pick an outdated cache. Prerequisites: Node.js LTS (`brew install node` on macOS with Homebrew, or [nodejs.org](https://nodejs.org)). Full steps: [Quickstart](https://riskmodels.app/quickstart).
 
+**Claude Code (`claude` in the terminal)** does **not** read the same MCP config as Claude Desktop or Cursor. After `riskmodels install`, register RiskModels for Claude Code: `claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp`, restart `claude`, then `claude mcp list`. If the server fails to connect, use the hosted `mcp-remote` + Bearer flow from the [MCP README](./mcp/README.md). Machine-readable overview for crawlers and agents: [llms.txt](https://riskmodels.app/llms.txt).
+
 ## Instructions for Research Requests
 When a user asks to "graph," "analyze," or "compare" tickers:
 1. **Discovery:** Use MCP tools **`riskmodels_list_endpoints`** (first), then **`riskmodels_get_capability`** / **`riskmodels_get_schema`**, to confirm endpoint ids and parameters.

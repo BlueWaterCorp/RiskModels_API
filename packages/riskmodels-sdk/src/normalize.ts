@@ -6,7 +6,7 @@ import type {
   RiskLayer,
   RiskModelsResult,
   SuggestedChart,
-} from "./types";
+} from "./types.js";
 
 const LAYERS: RiskLayer[] = ["market", "sector", "subsector", "residual"];
 const LAYER_LABELS: Record<RiskLayer, string> = {

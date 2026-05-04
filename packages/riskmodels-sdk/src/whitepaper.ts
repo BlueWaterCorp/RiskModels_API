@@ -1,5 +1,5 @@
-import type { RiskModelsClient } from "./client";
-import type { RiskModelsResult, WhitepaperExampleId, WhitepaperExampleResult } from "./types";
+import type { RiskModelsClient } from "./client.js";
+import type { RiskModelsResult, WhitepaperExampleId, WhitepaperExampleResult } from "./types.js";
 
 interface WhitepaperExampleDefinition {
   id: WhitepaperExampleId;
