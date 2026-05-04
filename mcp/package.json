@@ -1,6 +1,6 @@
 {
   "name": "@riskmodels/mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "MCP server for RiskModels: decompose US equities into four-bet variance shares with ETF hedge ratios",
   "type": "module",
   "main": "dist/index.js",
@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@riskmodels/sdk": "^0.1.0",
+    "@riskmodels/sdk": "file:../packages/riskmodels-sdk",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -2,7 +2,7 @@
 
 NPM package: `@riskmodels/mcp`
 
-Release note: publish `@riskmodels/sdk` first, then add the published SDK version as a runtime dependency before publishing this package.
+Release note: publish **`@riskmodels/sdk`** to npm first, then **`@riskmodels/mcp`**. In this monorepo, `mcp/package.json` uses `"@riskmodels/sdk": "file:../packages/riskmodels-sdk"` so `cd mcp && npm ci && npm run build` works without publishing; **before `npm publish` of `@riskmodels/mcp`**, replace that dependency with a semver range (e.g. `^0.1.1`) after `@riskmodels/sdk` is live on the registry.
 
 **Decompose** a US stock into market, sector, subsector, and residual risk &mdash; with SPY / sector / subsector **ETF hedge ratios**. One call, daily history since 2006.
 
@@ -113,6 +113,20 @@ This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.j
   - **`riskmodels mcp-config`** — prints a ready-to-paste `mcpServers` block for Claude Desktop (`--client claude-desktop`) or Cursor. Use **`riskmodels mcp-config --embed-key`** only if you want the key in the JSON env block.
   - **`riskmodels mcp`** — runs the stdio MCP server (same as `node mcp/dist/index.js`). Requires `mcp/dist/index.js` to exist (build `mcp/` first), or set **`RISKMODELS_MCP_SERVER_PATH`** to that file.
   - **`node /absolute/path/to/RiskModels_API/mcp/dist/index.js`** — always works if the build exists.
+
+### Claude Code (`claude` CLI)
+
+The **`riskmodels install`** command merges MCP into **Claude Desktop** (`claude_desktop_config.json`) and **Cursor** — not into **Claude Code** (the `claude` terminal application), which maintains its own MCP configuration.
+
+After you have run `riskmodels install` and have a key in `~/.config/riskmodels/config.json`, register the stdio server for Claude Code:
+
+```bash
+claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp
+```
+
+Restart **`claude`**, then run **`claude mcp list`** — `riskmodels` should show as connected. If it does not, use the **hosted** `mcp-remote` transport with `AUTHORIZATION=Bearer <key>` (same JSON pattern as in the “Hosted endpoint” section below).
+
+`@riskmodels/sdk` powers in-tool SDK calls inside `@riskmodels/mcp`; published builds use Node ESM with `.js` import specifiers so `npx -y @riskmodels/mcp` loads under Node 18+.
 
 ### Hosted endpoint (`https://riskmodels.app/api/mcp/sse`)
 

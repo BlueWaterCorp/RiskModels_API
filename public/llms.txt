@@ -1,0 +1,39 @@
+# RiskModels (riskmodels.app)
+
+RiskModels is an agent-friendly US equity risk API: hierarchical (L3) variance decomposition,
+ETF hedge ratios, metrics, portfolio snapshots, and a hosted MCP surface.
+
+## First-time setup (human runs once in a terminal)
+
+- Install Node.js LTS (https://nodejs.org).
+- Get an API key: https://riskmodels.app/get-key
+- Run (pins the CLI so `npx` does not use a stale cache):
+
+  RISKMODELS_API_KEY=… npx -y riskmodels@latest install
+
+  Optional: add --dry-run first. The installer stores the key in ~/.config/riskmodels/config.json
+  and merges the RiskModels MCP server into supported clients (Cursor, Claude Desktop, Codex, etc.).
+
+## Claude Code (terminal `claude`) vs Claude Desktop
+
+`riskmodels install` updates Claude Desktop and Cursor configs. The **Claude Code** CLI uses a
+separate MCP store. After install, register RiskModels for Claude Code:
+
+  claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp
+
+Then restart `claude` and check `claude mcp list`. If the server does not connect, use the hosted
+MCP URL with `mcp-remote` and AUTHORIZATION=Bearer … (see Quickstart / MCP README).
+
+## Where to integrate without a local install
+
+- Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — use with an MCP client and
+  Bearer token; discovery tools need no key; data tools bill per underlying REST route.
+- OpenAPI: https://riskmodels.app/openapi (or /api-docs in the portal)
+- Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/docs/python-sdk
+
+## Agent prompts
+
+- Compare tickers: "Compare AAPL and NVDA using RiskModels. What am I really betting on?"
+- Do not paste real API keys into LLM chats; use env vars or local config only.
+
+Canonical site: https://riskmodels.app  |  Terms: https://riskmodels.net/terms/api

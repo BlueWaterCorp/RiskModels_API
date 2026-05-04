@@ -52,9 +52,10 @@ const PATH_A_INSTALLER = `# Node.js LTS required (macOS/Homebrew: brew install n
 RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run   # optional: inspect plan
 RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install`;
 
-const CLAUDE_CODE_BASH = `claude mcp add riskmodels npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
+const CLAUDE_CODE_STDIO = `claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp`;
 
-const CLAUDE_CODE_EXPORT = `export AUTHORIZATION="Bearer rm_agent_live_..."`;
+const CLAUDE_CODE_REMOTE_JQ = `API=$(jq -r '.apiKey' ~/.config/riskmodels/config.json)
+claude mcp add --scope user --env "AUTHORIZATION=Bearer $API" riskmodels -- npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
 
 const PYTHON_PIP = `pip install "riskmodels-py[viz]"`;
 
@@ -100,7 +101,8 @@ export function buildKeyIssuedSnippetStrings(plaintextKey?: string) {
     return {
       pathAInstaller: PATH_A_INSTALLER,
       mcpCursorJson: MCP_CURSOR_JSON,
-      claudeCodeExport: CLAUDE_CODE_EXPORT,
+      claudeCodeStdio: CLAUDE_CODE_STDIO,
+      claudeCodeRemote: CLAUDE_CODE_REMOTE_JQ,
       pythonSnippet: PYTHON_SNIPPET,
       echoEnvForDotenv: `# Run once, in the project directory
 echo 'RISKMODELS_API_KEY=rm_agent_live_...' >> .env
@@ -131,7 +133,7 @@ RISKMODELS_API_KEY=${shSingleQuoted(k)} npx -y riskmodels@latest install`;
     2,
   );
 
-  const claudeCodeExport = `export AUTHORIZATION=${shSingleQuoted(`Bearer ${k}`)}`;
+  const claudeCodeRemote = `claude mcp add --scope user --env ${shSingleQuoted(`AUTHORIZATION=Bearer ${k}`)} riskmodels -- npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
 
   const pyKey = JSON.stringify(k);
   const pythonSnippet = `from riskmodels import RiskModelsClient
@@ -151,7 +153,8 @@ riskmodels metrics NVDA`;
   return {
     pathAInstaller,
     mcpCursorJson,
-    claudeCodeExport,
+    claudeCodeStdio: CLAUDE_CODE_STDIO,
+    claudeCodeRemote,
     pythonSnippet,
     echoEnvForDotenv,
     exportShellProfile,
@@ -330,11 +333,19 @@ export const KeyIssuedEmail = ({
           </Text>
 
           <Text style={h3}>Claude Code (CLI)</Text>
-          <Text style={paragraph}>In the project you&apos;re working in, run:</Text>
-          <CodeBlock theme={dracula} language="bash" code={CLAUDE_CODE_BASH} />
-          <Text style={paragraph}>Then set the key:</Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeExport} />
-          <Text style={paragraph}>Next <code style={inlineCode}>claude</code> session can call the tools.</Text>
+          <Text style={paragraph}>
+            <code style={inlineCode}>riskmodels install</code> merges MCP into <strong>Claude Desktop</strong> and
+            Cursor — not into the <strong>Claude Code</strong> terminal app (<code style={inlineCode}>claude</code>
+            ). Register RiskModels for Claude Code separately (your key is already in{" "}
+            <code style={inlineCode}>~/.config/riskmodels/config.json</code> after install):
+          </Text>
+          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeStdio} />
+          <Text style={paragraph}>
+            Restart <code style={inlineCode}>claude</code>, then run <code style={inlineCode}>claude mcp list</code>{" "}
+            — <code style={inlineCode}>riskmodels</code> should show connected. If it shows failed, use the hosted
+            transport instead:
+          </Text>
+          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeRemote} />
 
           <Text style={h3}>Codex / Windsurf / Zed</Text>
           <Text style={paragraph}>
