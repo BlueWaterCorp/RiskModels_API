@@ -7,6 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
+import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       subsector_etf: row.subsector_etf,
       is_adr: row.is_adr,
       isin: row.isin,
-      metadata: row.metadata,
+      metadata: filterSafeMetadata(row.metadata),
       latest_metrics: row.latest_metrics,
       latest_vol: row.latest_vol,
       latest_teo: row.latest_teo,
