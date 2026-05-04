@@ -20,6 +20,7 @@ import { redactSecret } from "../lib/redact.js";
 import { installMcpConfig, writeSharedApiKey } from "../lib/mcp-config-writer.js";
 import { apiRootFromUserBase } from "../lib/api-url.js";
 import { apiFetchOptionalAuth } from "../lib/api-client.js";
+import { warnIfGlobalJsonBeforeSubcommand } from "../lib/global-json-hint.js";
 
 type InstallOptions = {
   client?: string;
@@ -123,6 +124,7 @@ export function installCommand(): Command {
 
       if (dryRun) {
         if (json) {
+          warnIfGlobalJsonBeforeSubcommand("install");
           printResults(output, json);
         } else {
           printInstallDryRunHuman({
@@ -136,6 +138,7 @@ export function installCommand(): Command {
 
       if (!apiKey) {
         if (json) {
+          warnIfGlobalJsonBeforeSubcommand("install");
           printResults(
             {
               ...output,
@@ -171,6 +174,7 @@ export function installCommand(): Command {
       };
 
       if (json) {
+        warnIfGlobalJsonBeforeSubcommand("install");
         printResults(result, json);
       } else {
         printInstallSuccessHuman({
@@ -180,6 +184,7 @@ export function installCommand(): Command {
           connectionTest: test,
           firstPrompt: firstPrompt(),
           hadErrors: writes.some((w) => w.action === "error") || !test.ok,
+          showClaudeCodeMcpTip: detections.some((d) => d.client === "claude" && d.commandAvailable),
         });
       }
       if (writes.some((write) => write.action === "error") || !test.ok) {

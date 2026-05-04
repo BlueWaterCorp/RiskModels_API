@@ -1,8 +1,11 @@
 import chalk from "chalk";
+import { platform } from "node:os";
 import type { SharedConfigWriteResult, ConfigWriteResult } from "./mcp-config-writer.js";
 import type { InstallPlan } from "./mcp-install-plan.js";
 import type { ClientDetection } from "./mcp-config-paths.js";
 import { configPath } from "./config.js";
+import { getCliPackageVersion } from "./cli-version.js";
+import { abbreviatePath } from "./path-display.js";
 
 const BULLET = "•";
 
@@ -10,12 +13,41 @@ const BULLET = "•";
 export const API_KEY_EMAIL_HINT =
   "If you requested a key already, check your inbox for mail from RiskModels (service@riskmodels.app).";
 
+function logRiskmodelsCliFooter(phase: "done" | "dry-run"): void {
+  logLine("");
+  logLine(chalk.bold("riskmodels CLI (still on PATH):"));
+  logLine(
+    chalk.dim(
+      phase === "dry-run"
+        ? "Uninstalling MCP only edits AI client configs; it does not remove the riskmodels terminal command."
+        : 'The RiskModels MCP integration was removed from the configs above. The "riskmodels" terminal command was not.',
+    ),
+  );
+  logLine(chalk.dim("To remove the CLI, use what matches how you installed it:"));
+  if (platform() !== "win32") {
+    logLine(chalk.dim(`  ${BULLET} Homebrew (macOS / Linux): brew uninstall riskmodels`));
+  }
+  logLine(chalk.dim(`  ${BULLET} npm (any OS): npm uninstall -g riskmodels`));
+  if (platform() === "win32") {
+    logLine(
+      chalk.dim(
+        `  ${BULLET} Package manager installs (winget / Chocolatey / Scoop / etc.): use that tool's uninstall`,
+      ),
+    );
+  }
+  logLine("");
+  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
+}
+
 function logLine(line = ""): void {
   console.log(line);
 }
 
 function formatBackupBullets(paths: string[]): string[] {
-  return paths.filter(Boolean).sort().map((p) => `${BULLET} ${p}`);
+  return paths
+    .filter(Boolean)
+    .sort()
+    .map((p) => `${BULLET} ${abbreviatePath(p)}`);
 }
 
 export function printInstallSuccessHuman(opts: {
@@ -25,9 +57,18 @@ export function printInstallSuccessHuman(opts: {
   connectionTest: { ok: boolean; endpoint: string; message: string };
   firstPrompt: string;
   hadErrors: boolean;
+  /** When Claude CLI is detected, suggest native `claude mcp` as an alternative. */
+  showClaudeCodeMcpTip?: boolean;
 }): void {
-  const { isFirstInstall, writes, sharedConfigWrite, connectionTest, firstPrompt, hadErrors } =
-    opts;
+  const {
+    isFirstInstall,
+    writes,
+    sharedConfigWrite,
+    connectionTest,
+    firstPrompt,
+    hadErrors,
+    showClaudeCodeMcpTip,
+  } = opts;
 
   if (isFirstInstall) {
     logLine("");
@@ -71,6 +112,16 @@ export function printInstallSuccessHuman(opts: {
     logLine(chalk.dim(`VS Code: ${vsSkipped.message}`));
   }
 
+  if (showClaudeCodeMcpTip) {
+    logLine("");
+    logLine(`${chalk.bold("Claude Code:")}`);
+    logLine(
+      chalk.dim(
+        "CLI detected — you may prefer registering MCP with: claude mcp add … (see RiskModels quickstart); merged files above still apply to Claude Desktop.",
+      ),
+    );
+  }
+
   const backupPaths: string[] = [];
   if (sharedConfigWrite.backupPath) backupPaths.push(sharedConfigWrite.backupPath);
   for (const w of writes) {
@@ -87,12 +138,15 @@ export function printInstallSuccessHuman(opts: {
 
   logLine("");
   if (connectionTest.ok) {
-    logLine(
-      `${chalk.bold("Connection test:")} OK (${chalk.cyan(connectionTest.endpoint)})`,
-    );
+    logLine(`${chalk.bold("Connection test:")} OK (${chalk.cyan(connectionTest.endpoint)})`);
   } else {
     logLine(`${chalk.bold("Connection test:")} ${chalk.red("FAILED")} ${chalk.dim(`(${connectionTest.endpoint})`)}`);
     logLine(chalk.dim(`  ${connectionTest.message}`));
+    logLine(
+      chalk.dim(
+        "Tip: check network/VPN, apiBaseUrl in shared config if non-default, corporate proxy, then run: riskmodels health",
+      ),
+    );
   }
 
   if (!hadErrors) {
@@ -112,6 +166,8 @@ export function printInstallSuccessHuman(opts: {
       logLine("");
     }
   }
+
+  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
 }
 
 export function printInstallDryRunHuman(opts: {
@@ -124,14 +180,16 @@ export function printInstallDryRunHuman(opts: {
   logLine("");
   logLine(chalk.bold("Clients to merge into:"));
   for (const p of opts.plans) {
-    const pathPart = p.configPath ? chalk.dim(` — ${p.configPath}`) : "";
+    const pathPart = p.configPath ? chalk.dim(` — ${abbreviatePath(p.configPath)}`) : "";
     logLine(`  ${BULLET} ${p.label}${pathPart}`);
   }
   logLine("");
+  const cfgAbs = configPath();
+  const cfgShort = abbreviatePath(cfgAbs);
   if (opts.willStoreSharedKey) {
-    logLine(
-      chalk.dim(`A shared API key file would be created or updated at ${configPath()} (with backup if replacing).`),
-    );
+    logLine(chalk.dim(`A shared API key file would be created or updated at ${cfgShort}`));
+    if (cfgShort !== cfgAbs) logLine(chalk.dim(`  (full path: ${cfgAbs})`));
+    logLine(chalk.dim("(with backup if replacing)."));
   } else {
     logLine(chalk.dim("No API key resolved — rerun with --api-key or set RISKMODELS_API_KEY after obtaining a key."));
     logLine(chalk.dim(API_KEY_EMAIL_HINT));
@@ -141,6 +199,7 @@ export function printInstallDryRunHuman(opts: {
   logLine("");
   logLine(`${chalk.bold("First prompt to paste into your AI client:")} "${opts.firstPrompt}"`);
   logLine("");
+  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
 }
 
 export function printInstallMissingKeyHuman(): void {
@@ -153,6 +212,7 @@ export function printInstallMissingKeyHuman(): void {
   logLine("");
   logLine(chalk.dim("Pass --api-key, set RISKMODELS_API_KEY, or rerun without --yes to enter it interactively."));
   logLine("");
+  logLine(chalk.dim(`riskmodels CLI ${getCliPackageVersion()}`));
 }
 
 export function printUninstallSuccessHuman(removals: ConfigWriteResult[]): void {
@@ -163,11 +223,12 @@ export function printUninstallSuccessHuman(removals: ConfigWriteResult[]): void 
   logLine("");
   for (const r of removals) {
     const bullet = `${BULLET} ${r.label}`;
-    const pathSuffix = r.configPath ? chalk.dim(` — ${r.configPath}`) : "";
+    const pathSuffix =
+      r.configPath !== undefined ? chalk.dim(` — ${abbreviatePath(r.configPath)}`) : "";
     if (r.action === "written") {
       logLine(`  ${bullet}${pathSuffix}`);
       logLine(chalk.green.dim(`      ${r.message}`));
-      if (r.backupPath) logLine(chalk.dim(`      backup: ${r.backupPath}`));
+      if (r.backupPath) logLine(chalk.dim(`      backup: ${abbreviatePath(r.backupPath)}`));
     } else if (r.action === "skipped") {
       logLine(`  ${bullet}${pathSuffix}`);
       logLine(chalk.dim(`      (skipped — ${r.message})`));
@@ -178,7 +239,17 @@ export function printUninstallSuccessHuman(removals: ConfigWriteResult[]): void 
   }
 
   logLine("");
-  logLine(`${chalk.bold("Shared API key:")} preserved ${chalk.dim(`(${configPath()} was not modified)`)}`);
+  const sharedAbs = configPath();
+  const sharedShort = abbreviatePath(sharedAbs);
+  logLine(`${chalk.bold("Shared API key / billing profile:")} unchanged ${chalk.dim(`(${sharedShort})`)}`);
+  if (sharedShort !== sharedAbs) {
+    logLine(chalk.dim(`  (full path: ${sharedAbs})`));
+  }
+  logLine(
+    chalk.dim(
+      "Only the riskmodels MCP server block was removed from each AI client config above; your key file was not modified.",
+    ),
+  );
 
   const backupPaths = removals.filter((r) => r.backupPath).map((r) => r.backupPath!);
   if (backupPaths.length > 0) {
@@ -187,7 +258,7 @@ export function printUninstallSuccessHuman(removals: ConfigWriteResult[]): void 
     for (const line of formatBackupBullets(backupPaths)) logLine(`  ${line}`);
   }
 
-  logLine("");
+  logRiskmodelsCliFooter("done");
 }
 
 /** Human-readable detection list for uninstall dry-run (before removals computed). */
@@ -196,11 +267,17 @@ export function printUninstallPlannedHuman(detections: ClientDetection[]): void 
   logLine(chalk.bold("Dry run — RiskModels MCP would be inspected on:"));
   logLine("");
   for (const d of detections) {
-    logLine(`  ${BULLET} ${d.label}${d.configPath ? chalk.dim(` — ${d.configPath}`) : ""}`);
+    const p = d.configPath ? chalk.dim(` — ${abbreviatePath(d.configPath)}`) : "";
+    logLine(`  ${BULLET} ${d.label}${p}`);
   }
   logLine("");
+  const sharedAbs = configPath();
+  const sharedShort = abbreviatePath(sharedAbs);
   logLine(
-    chalk.dim(`Only the "riskmodels" MCP server block would be removed; ${configPath()} would not be touched.`),
+    chalk.dim(
+      `Only the "riskmodels" MCP server block would be removed; ${sharedShort} would not be touched.`,
+    ),
   );
-  logLine("");
+  if (sharedShort !== sharedAbs) logLine(chalk.dim(`  (full path: ${sharedAbs})`));
+  logRiskmodelsCliFooter("dry-run");
 }
