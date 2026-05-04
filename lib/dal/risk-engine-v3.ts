@@ -1,9 +1,3 @@
-// licensed-id-ok-file: AUDIT-PENDING — DAL still selects/returns `isin`
-// from the symbols table; downstream consumers (api/data/symbols/*) echo
-// it in responses. Pre-existing exposure flagged for license-team review.
-// To clear: either remove `isin` from public response shapes (Path 1) or
-// confirm ANNA license covers redistribution scope (Path 2), then change
-// this marker to a definitive reason.
 /**
  * ERM3 V3 Risk Engine DAL — pure-Zarr history, Supabase relational + `_latest`
  *
@@ -104,7 +98,6 @@ export interface SymbolRegistryRow {
   sector_etf: string | null;
   subsector_etf: string | null;
   is_adr: boolean | null;
-  isin: string | null;
 }
 
 // Fetch options
@@ -209,7 +202,6 @@ function normalizeSymbolRow(row: Record<string, unknown> | null): SymbolRegistry
     sector_etf: (row.sector_etf as string | null) ?? (metadata.sector_etf as string | null) ?? null,
     subsector_etf: row.subsector_etf as string | null,
     is_adr: row.is_adr as boolean | null,
-    isin: row.isin as string | null,
   };
 }
 
@@ -227,7 +219,7 @@ export async function resolveSymbolByTicker(
       const admin = createAdminClient();
       const { data, error } = await admin
         .from("symbols")
-        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata")
+        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
         .eq("ticker", t)
         .maybeSingle();
       if (error) {
@@ -267,7 +259,7 @@ export async function resolveSymbolsByTickers(
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("symbols")
-      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata")
+      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
       .in("ticker", upperTickers);
 
     if (error) {
@@ -303,7 +295,7 @@ export async function resolveSymbolsByTickers(
 
     const { data: aliasData } = await admin
       .from("symbols")
-      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata")
+      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
       .in("ticker", Array.from(allAliases));
 
     for (const row of aliasData ?? []) {
