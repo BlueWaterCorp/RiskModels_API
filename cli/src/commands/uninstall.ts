@@ -6,6 +6,7 @@ import {
   printUninstallSuccessHuman,
 } from "../lib/mcp-cli-human-output.js";
 import { uninstallMcpConfig } from "../lib/mcp-config-writer.js";
+import { warnIfGlobalJsonBeforeSubcommand } from "../lib/global-json-hint.js";
 
 export function uninstallCommand(): Command {
   return new Command("uninstall")
@@ -37,6 +38,7 @@ export function uninstallCommand(): Command {
 
       if (dryRun) {
         if (json) {
+          warnIfGlobalJsonBeforeSubcommand("uninstall");
           printResults(output, json);
         } else {
           printUninstallPlannedHuman(detections);
@@ -46,6 +48,7 @@ export function uninstallCommand(): Command {
 
       const removals = await Promise.all(detections.map((detection) => uninstallMcpConfig(detection)));
       if (json) {
+        warnIfGlobalJsonBeforeSubcommand("uninstall");
         printResults({ ...output, removals }, json);
       } else {
         printUninstallSuccessHuman(removals);

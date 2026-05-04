@@ -3,6 +3,9 @@ import { Command } from "commander";
 import { configPath, loadConfig, maskSecret } from "../lib/config.js";
 import { detectClients } from "../lib/mcp-config-paths.js";
 import { printResults } from "../lib/display.js";
+import { printDoctorHuman, type DoctorPayload } from "../lib/cli-human-diagnostics.js";
+import { warnIfGlobalJsonBeforeSubcommand } from "../lib/global-json-hint.js";
+import { abbreviatePath } from "../lib/path-display.js";
 
 function commandOk(command: string, args = ["--version"]): boolean {
   const result = spawnSync(command, args, { stdio: "ignore" });
@@ -11,8 +14,10 @@ function commandOk(command: string, args = ["--version"]): boolean {
 
 export function doctorCommand(): Command {
   return new Command("doctor")
-    .description("Run local diagnostics for RiskModels CLI and MCP install readiness")
-    .option("--json", "JSON output")
+    .description(
+      "Run local diagnostics for RiskModels CLI and MCP install readiness (default: readable summary; use --json for scripts)",
+    )
+    .option("--json", "Structured JSON instead of readable summary")
     .action(async (opts: { json?: boolean }, cmd: Command) => {
       const json = opts.json || (cmd.optsWithGlobals() as { json?: boolean }).json || false;
       const cfg = await loadConfig();
@@ -32,7 +37,7 @@ export function doctorCommand(): Command {
           id: "api_credentials",
           ok: !!cfg?.apiKey || !!process.env.RISKMODELS_API_KEY || (!!cfg?.clientId && !!cfg?.clientSecret),
           detail: cfg?.apiKey
-            ? `Config API key ${maskSecret(cfg.apiKey)} in ${configPath()}`
+            ? `Config API key ${maskSecret(cfg.apiKey)} in ${abbreviatePath(configPath())}`
             : process.env.RISKMODELS_API_KEY
               ? "RISKMODELS_API_KEY is set in the environment."
               : "No API key found. Get one at https://riskmodels.app/get-key",
@@ -44,14 +49,19 @@ export function doctorCommand(): Command {
         },
       ];
 
-      printResults(
-        {
-          ok: checks.every((check) => check.ok),
-          checks,
-          clients,
-          note: "Run `riskmodels install --dry-run` to inspect config writes, or `riskmodels install` to write configs with backups and run a connection test.",
-        },
-        json,
-      );
+      const payload: DoctorPayload = {
+        ok: checks.every((check) => check.ok),
+        checks,
+        clients,
+        note:
+          "Run `riskmodels install --dry-run` to inspect config writes, or `riskmodels install` to write configs with backups and run a connection test.",
+      };
+
+      if (json) {
+        warnIfGlobalJsonBeforeSubcommand("doctor");
+        printResults(payload, json);
+      } else {
+        printDoctorHuman(payload);
+      }
     });
 }
