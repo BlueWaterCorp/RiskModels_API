@@ -19,3 +19,9 @@ export function getCliPackageVersion(): string {
     return cachedVersion;
   }
 }
+
+/** e.g. `v2.0.2` for human-facing footers (package.json omits leading v). */
+export function formatCliVersionLabel(): string {
+  const v = getCliPackageVersion();
+  return v.startsWith("v") ? v : `v${v}`;
+}
