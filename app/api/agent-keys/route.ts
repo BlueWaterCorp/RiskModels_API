@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
               : formatExpiresAt(new Date().toISOString()),
             expiresAtFormatted: formatExpiresAt(expiresAt),
             termsUrl: API_TERMS_URL,
+            plaintextKey: plainKey,
           },
           userId: user.id,
         });
