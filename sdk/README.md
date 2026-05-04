@@ -13,13 +13,16 @@ Python SDK for the [RiskModels API](https://riskmodels.app): **POST /decompose**
 
 ```bash
 pip install riskmodels-py
-# Optional xarray panel interface:
-pip install riskmodels-py[xarray]
-# Optional Plotly/Matplotlib charts (L3 decomposition, portfolio cascades):
-pip install riskmodels-py[viz]
 ```
 
-**Colab / notebooks:** use **`riskmodels-py[viz]`** so Plotly helpers (including **`plot_l3_year_end_stack`**, **≥0.3.3**) resolve. Quickstart notebooks try PyPI first, then **fall back to installing `main` from GitHub** if the wheel is not uploaded yet. For a manual one-liner (same fallback clients can paste anywhere):
+Since **v0.3.4**, the default install includes **matplotlib** and **plotly** so `import riskmodels` succeeds on a clean venv (snapshots/visuals pull them at import time). Heavy PDF/PNG exporters and Seaborn tooling stay behind extras:
+
+```bash
+pip install riskmodels-py[xarray]      # optional xarray panel helpers
+pip install riskmodels-py[viz]          # Seaborn + Kaleido (static PNG/export paths)
+```
+
+**Colab / notebooks:** use **`riskmodels-py[viz]`** when you rely on Kaleido-backed PNG helpers (including **`plot_l3_year_end_stack`**, **≥0.3.3**). Quickstart notebooks try PyPI first, then **fall back to installing `main` from GitHub** if the wheel is not uploaded yet. For a manual one-liner:
 
 ```bash
 pip install -U "riskmodels-py[viz] @ git+https://github.com/BlueWaterCorp/RiskModels_API.git@main#subdirectory=sdk"

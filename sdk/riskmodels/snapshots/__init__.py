@@ -26,8 +26,8 @@ P4 (History × Portfolio)  — Portfolio vs Benchmark         [planned]
 
 Requires
 --------
-    pip install riskmodels-py[pdf]
-    # installs: matplotlib (only renderer needed)
+Base ``pip install riskmodels-py`` (>=0.3.4) includes **matplotlib** and **plotly** used by snapshot themes/renderers.
+Optional **[viz]** adds kaleido/seaborn for static exports and notebooks; **[pdf]** adds WeasyPrint for legacy flows.
 """
 
 # Design system (Matplotlib — legacy S1/S2 only)
