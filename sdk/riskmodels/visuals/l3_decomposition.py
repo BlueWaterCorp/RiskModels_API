@@ -238,7 +238,7 @@ def plot_l3_decomposition(
     try:
         import plotly.graph_objects as go
     except ImportError as e:  # pragma: no cover
-        raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+        raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
 
     mapping = _resolve_l3_mapping(data, metric)
     x_raw = _get_path(data, mapping.x_field) if mapping.x_field else list(range(1))
@@ -397,7 +397,7 @@ def plot_l3_year_end_stack(
     try:
         import plotly.graph_objects as go
     except ImportError as e:  # pragma: no cover
-        raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+        raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
 
     mapping = _resolve_l3_mapping(data, "variance")
     if mapping.x_field is None:
@@ -585,13 +585,13 @@ def plot_l3_horizontal(
             try:
                 import plotly.graph_objects as go
             except ImportError as e:  # pragma: no cover
-                raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+                raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
             return go.Figure()
     elif not rows:
         try:
             import plotly.graph_objects as go
         except ImportError as e:  # pragma: no cover
-            raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+            raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
         return go.Figure()
 
     data = build_l3_decomposition_data(

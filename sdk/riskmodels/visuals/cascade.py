@@ -41,7 +41,7 @@ def plot_risk_cascade(
         try:
             import plotly.graph_objects as go
         except ImportError as e:  # pragma: no cover
-            raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+            raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
         return go.Figure()
 
     data = build_risk_cascade_data(
@@ -72,7 +72,7 @@ def plot_attribution_cascade(
         try:
             import plotly.graph_objects as go
         except ImportError as e:  # pragma: no cover
-            raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+            raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
         return go.Figure()
 
     col = "returns_gross" if "returns_gross" in returns_long.columns else (
@@ -82,7 +82,7 @@ def plot_attribution_cascade(
         try:
             import plotly.graph_objects as go
         except ImportError as e:  # pragma: no cover
-            raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+            raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
         return go.Figure()
 
     data = build_attribution_cascade_data(

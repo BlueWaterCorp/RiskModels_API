@@ -121,7 +121,7 @@ def plot_risk_cascade_from_data(
     try:
         import plotly.graph_objects as go
     except ImportError as e:  # pragma: no cover
-        raise ImportError("Plotting requires: pip install riskmodels-py[viz]") from e
+        raise ImportError("Plotting requires Plotly — run: pip install -U riskmodels-py") from e
 
     if not data.positions:
         return go.Figure()
