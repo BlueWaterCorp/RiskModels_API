@@ -5,7 +5,7 @@
 > sibling repo) which defines Stages A–F. This file tracks what's
 > actually shipped vs planned in *this* repo.
 >
-> Last updated: 2026-05-03.
+> Last updated: 2026-05-04.
 
 ## Status
 
@@ -26,8 +26,15 @@
 | **C.3** | `GET /api/funds/style/{slug}/holdings` | **✅ Shipped** | #26 | Top-N cohort holdings from Slice 5b zarr, $0.005 |
 | **D.1** | `GET /api/funds/snapshot/{bw_fund_id}` | **✅ Shipped** | #28 | Composed JSON tearsheet, $0.01 |
 | D.1 | `GET /api/funds/style/{slug}/snapshot` | **✅ Shipped** | #28 | Composed cohort JSON, $0.005 — the differentiated wedge |
-| **D.2** | `GET /api/funds/snapshot.pdf/{bw_fund_id}` | Planned | — | Server-rendered PDF via Playwright (mirrors `metrics/[ticker]/snapshot.pdf`), $0.25 |
-| D.2 | `GET /api/funds/style/{slug}/snapshot.pdf` | Planned | — | Server-rendered cohort PDF, $0.10 |
+| **B.2.d** | `GET /api/funds/{bw_fund_id}/nav` | **✅ Shipped** | RiskModels_API #31 | Per-fund yfinance NAV time series from `ds_nav.zarr`, $0.005. Pairs with `/portfolio` — the gap surfaces intra-quarter trading + fees not in 13F. |
+| B.2.d | `nav_history` block on `D.1` snapshot response | **✅ Shipped** | RiskModels_API #32 | Optional 12-month NAV rows on the composed fund snapshot |
+| B.2.d | OpenAPI: `/nav` + `nav_history` schema | **✅ Shipped** | RiskModels_API #33, Risk_Models #35 (mirror) | Cross-repo mirror landed |
+| B.2.d | Funds_DAG `fund_nav_zarr` v3 asset | **✅ Shipped** | Funds_DAG #2, #3 (yfinance MultiIndex hotfix) | Per-fund `ds_nav.zarr` keyed by `bw_fund_id` (replaces step_1b's factset-keyed multi-fund zarr at the API surface) |
+| **D.2.a** | F1 fund tearsheet HTML template (Playwright route) | **✅ Shipped** | RiskModels_API #34 | Letter landscape, pure SVG. 4 zones: identity rail, AI summary, I. Cumulative Returns (line + waterfall, with NAV overlay), II. Cohort Rank Card, III. Top Holdings. `app/(print)/render-snapshot/funds/[bw_fund_id]/page.tsx` |
+| **D.2.b** | `GET /api/funds/snapshot.pdf/{bw_fund_id}` | Planned | — | Wires the D.2.a template into Playwright PDF render. Mirrors `app/api/metrics/[ticker]/snapshot.pdf/route.ts`. Capability `fund-snapshot-pdf` @ $0.25, content-keyed Redis cache on `(bw_fund_id, report_date)`. |
+| **D.2.c** | C1 cohort tearsheet HTML template | Planned | — | Sibling of D.2.a for the 9-box cell. EW vs MV cumulative + 4 zones (identity rail, top holdings in cell, top performing funds, top symbols concentration). |
+| **D.2.d** | `GET /api/funds/style/{slug}/snapshot.pdf` | Planned | — | C1 PDF route. Capability `style-cohort-snapshot-pdf` @ $0.10. |
+| **D.2.e** | OpenAPI for both PDF endpoints + mirror PR | Planned | — | Closes Stage D.2. |
 | **D.3** | SDK `riskmodels.snapshots.f1_fund_tearsheet` | Planned | — | Public Python renderer (mirrors `r1_risk_profile.py`) |
 | D.3 | SDK `riskmodels.snapshots.c1_cohort_report` | Planned | — | Public Python cohort renderer |
 | **E** | AOM extensions: `subject:fund:*`, `subject:style:*` | Planned | — | New public intent presets (`compare_to_cohort`, `analyze_fund_attribution`, `screen_fund_universe`, `decompose_cohort_return`) |
@@ -53,7 +60,7 @@ Convention used so far:
 ```
 
 Mirror PRs landed during the funds build: #27 (A), #28 (B.1+B.2.a),
-#30 (B.2.b+B.2.c), #31 (C.0+C.1), #32 (C.2+C.3), #33 (D.1).
+#30 (B.2.b+B.2.c), #31 (C.0+C.1), #32 (C.2+C.3), #33 (D.1), #35 (B.2.d).
 
 If `mcp/data/schemas/*.json` changes too, those must be mirrored
 similarly. See `BWMACRO/docs/AGENTS_CROSS_REPO.md` §1–3.
@@ -84,28 +91,47 @@ PR-per-slice cadence used for A–D.1.
 
 | Stage | Effort | Notes |
 |:---|:---|:---|
-| D.2 | 4–6 hours | Server PDF templates (Playwright HTML), 2 routes, Redis cache, capability + OpenAPI. Gating decision: 1-page tearsheet HTML structure for fund + cohort — design taste call needed before building. |
+| D.2.b–e | 2–3 hours | F1 PDF route (~30 min — straight clone of `metrics/[ticker]/snapshot.pdf/route.ts` pointed at the new template), C1 cohort template (~1 h, mirrors D.2.a layout for the per-cell view), C1 PDF route (~30 min), OpenAPI + mirror (~30 min). D.2.a (the heavy template work) already shipped. |
 | D.3 | 6–8 hours | SDK Python F1 + C1 (~600 LOC each), Plotly compositions, fetch/render separation, tests using cached JSON, new pip release. The "differentiated wedge" cohort tearsheet visual is the meatiest part. |
 | E | 4–5 hours | AOM `subject` extensions, 4 new public intent presets, MCP tool registrations, TS/Python SDK convenience wrappers. Mostly mechanical; the AOM compiler already handles new subject types. |
 | F | 6–8 hours | 13F endpoints. Mirrors funds with `bw_filer_id` instead of `bw_fund_id`. **Blocked on Funds_DAG Slice 13c+** materializing filer panels (registry exists; per-filer ds_portfolio + ds_ph + rankings still pending per Funds_DAG main). |
 
-Total to reach feature-complete public funds API + 13F: **~20–27 hours
-of focused work**, naturally splitting across 4–6 sessions.
+Total to reach feature-complete public funds API + 13F: **~18–24 hours
+of focused work** remaining (B.2.d + D.2.a complete), naturally splitting
+across 3–5 sessions.
 
 ## Pickup recipe for the next session
 
 1. Read `Funds_DAG/docs/ARCHITECTURE_FUNDS_API.md` §6 (public/private
    boundary) and §7.2 (Stage list).
 2. Read this file's status table to confirm what's on `main`.
-3. For Stage D.2: inspect the existing
-   `app/api/metrics/[ticker]/snapshot.pdf/route.ts` and
-   `lib/portfolio/risk-snapshot-pdf.ts` — Playwright pattern is in
-   place; the new work is the HTML templates + 2 new routes.
-4. For Stage D.3: mirror `sdk/riskmodels/snapshots/r1_risk_profile.py`
+3. **Before D.2.b can ship**: Funds_DAG zarr v2 GCS sync needs to
+   resume. See `Funds_DAG/docs/ZARR_V2_MIGRATION_RESUME.md` — the local
+   v2 universe is materialized but the GCS push was paused for
+   correctness verification. Production is unaffected (existing 86-fund
+   GCS baseline still serves), but new funds (incl. FCNTX sample target)
+   need their zarrs pushed before the API can render snapshots for them.
+4. For Stage D.2.b–e: D.2.a's template already mounts at
+   `/render-snapshot/funds/[bw_fund_id]`. The new D.2.b route is a clone
+   of `app/api/metrics/[ticker]/snapshot.pdf/route.ts` with the path
+   swapped — `lib/portfolio/playwright-pdf-worker.ts` is the worker. Do
+   D.2.c (cohort template) before D.2.d (cohort PDF route).
+5. For Stage D.3: mirror `sdk/riskmodels/snapshots/r1_risk_profile.py`
    one-to-one. Both R1 and the new F1 follow the same fetch/render
    separation + JSON handshake pattern.
-5. Real fixtures for tests live at `tests/fixtures/funds/*.json` —
+6. Real fixtures for tests live at `tests/fixtures/funds/*.json` —
    extend with a 13F sample when Stage F starts.
+
+## Cross-cutting work parked elsewhere
+
+- **`Funds_DAG/docs/ZARR_V2_MIGRATION_RESUME.md`** — local v2 zarr
+  universe is materialized; GCS sync paused mid-flight pending
+  correctness verification. Read top-to-bottom on resume; sequenced
+  6-step checklist. Blocks D.2 sample renders for funds outside the
+  86-fund GCS baseline.
+- **`BWMACRO/docs/ceo/FUNDS_DAG_CLEANUP_QUEUE.md`** — low-priority
+  retire-legacy-`step_*.py` queue. Surfaces in `/gstack-plan-ceo-review`.
+  Frees ~3.7 GB of legacy zarr data on ext_2t once both PRs land.
 
 ## Constraints to remember (lessons from A–D.1)
 
