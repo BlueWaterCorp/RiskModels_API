@@ -28,6 +28,12 @@ export interface KeyIssuedEmailProps {
   createdDateFormatted: string;
   expiresAtFormatted: string;
   termsUrl: string;
+  /**
+   * Full secret from key creation — embedded into installer / MCP / Python / CLI snippets so the
+   * recipient can copy-paste without hunting for placeholders. Email is a credential channel; treat
+   * like a password (don't forward). Omitted in previews / fixtures → placeholder ellipses remain.
+   */
+  plaintextKey?: string;
 }
 
 const MCP_CURSOR_JSON = `{
@@ -84,6 +90,75 @@ const CLI_SNIPPET = `npm install -g riskmodels@latest
 export RISKMODELS_API_KEY="rm_agent_live_..."
 riskmodels metrics NVDA`;
 
+/** Bash single-quoted literal (safe for API keys with special characters). */
+function shSingleQuoted(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildKeyIssuedSnippetStrings(plaintextKey?: string) {
+  if (!plaintextKey?.trim()) {
+    return {
+      pathAInstaller: PATH_A_INSTALLER,
+      mcpCursorJson: MCP_CURSOR_JSON,
+      claudeCodeExport: CLAUDE_CODE_EXPORT,
+      pythonSnippet: PYTHON_SNIPPET,
+      echoEnvForDotenv: `# Run once, in the project directory
+echo 'RISKMODELS_API_KEY=rm_agent_live_...' >> .env
+echo '.env' >> .gitignore         # never commit it`,
+      exportShellProfile: `export RISKMODELS_API_KEY="rm_agent_live_..."`,
+      cliSnippet: CLI_SNIPPET,
+    };
+  }
+
+  const k = plaintextKey.trim();
+  const riskmodelsEnvLine = `RISKMODELS_API_KEY=${k}`;
+  const pathAInstaller = `# Node.js LTS required (macOS/Homebrew: brew install node; otherwise https://nodejs.org)
+
+RISKMODELS_API_KEY=${shSingleQuoted(k)} npx -y riskmodels@latest install --dry-run   # optional: inspect plan
+RISKMODELS_API_KEY=${shSingleQuoted(k)} npx -y riskmodels@latest install`;
+
+  const mcpCursorJson = JSON.stringify(
+    {
+      mcpServers: {
+        riskmodels: {
+          command: "npx",
+          args: ["-y", "mcp-remote", "https://riskmodels.app/api/mcp/sse"],
+          env: { AUTHORIZATION: `Bearer ${k}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const claudeCodeExport = `export AUTHORIZATION=${shSingleQuoted(`Bearer ${k}`)}`;
+
+  const pyKey = JSON.stringify(k);
+  const pythonSnippet = `from riskmodels import RiskModelsClient
+client = RiskModelsClient(api_key=${pyKey})   # or set RISKMODELS_API_KEY env var
+client.get_metrics("NVDA")`;
+
+  const echoEnvForDotenv = `# Run once, in the project directory
+echo ${shSingleQuoted(riskmodelsEnvLine)} >> .env
+echo '.env' >> .gitignore         # never commit it`;
+
+  const exportShellProfile = `export RISKMODELS_API_KEY=${shSingleQuoted(k)}`;
+
+  const cliSnippet = `npm install -g riskmodels@latest
+export RISKMODELS_API_KEY=${shSingleQuoted(k)}
+riskmodels metrics NVDA`;
+
+  return {
+    pathAInstaller,
+    mcpCursorJson,
+    claudeCodeExport,
+    pythonSnippet,
+    echoEnvForDotenv,
+    exportShellProfile,
+    cliSnippet,
+  };
+}
+
 export const KeyIssuedEmail = ({
   firstName = "there",
   keyName = "API Key 1",
@@ -91,7 +166,9 @@ export const KeyIssuedEmail = ({
   createdDateFormatted = "April 17, 2026",
   expiresAtFormatted = "April 17, 2027",
   termsUrl = API_TERMS_URL,
+  plaintextKey,
 }: KeyIssuedEmailProps) => {
+  const snippets = buildKeyIssuedSnippetStrings(plaintextKey);
   const getKeyUrl = `${BASE_URL}/get-key`;
   const usageUrl = `${BASE_URL}/account/usage`;
   const apiDocsUrl = `${BASE_URL}/api-docs`;
@@ -187,7 +264,19 @@ export const KeyIssuedEmail = ({
             <Link href={getKeyUrl} style={link}>
               {getKeyUrl.replace(/^https?:\/\//, "")}
             </Link>
-            . The full key was shown <strong>once</strong> — copy it now if that screen is still open.
+            .{" "}
+            {plaintextKey?.trim() ? (
+              <>
+                Your full key is embedded in each copy-paste block below (Path A installer, Cursor JSON,
+                Claude env export, Python, <code style={inlineCode}>.env</code>, shell profile, and CLI). It was
+                also shown once on the confirmation screen. This email is a credential — don&apos;t forward it;
+                delete or archive after you store the key in a secret manager.
+              </>
+            ) : (
+              <>
+                The full key was shown <strong>once</strong> — copy it now if that screen is still open.
+              </>
+            )}{" "}
             You can rename keys later with the pencil icon on the key list.
           </Text>
           <Text style={paragraph}>
@@ -215,7 +304,7 @@ export const KeyIssuedEmail = ({
             </Link>
             ):
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={PATH_A_INSTALLER} />
+          <CodeBlock theme={dracula} language="bash" code={snippets.pathAInstaller} />
           <Text style={paragraph}>
             <strong>Manual / advanced:</strong> paste JSON for the hosted endpoint (below) or use{" "}
             <code style={inlineCode}>mcp-remote</code> if you prefer not to use the installer.
@@ -226,7 +315,7 @@ export const KeyIssuedEmail = ({
             Create or open <code style={inlineCode}>.cursor/mcp.json</code> in your project (or{" "}
             <code style={inlineCode}>~/.cursor/mcp.json</code> for a global install) and paste:
           </Text>
-          <CodeBlock theme={dracula} language="json" code={MCP_CURSOR_JSON} />
+          <CodeBlock theme={dracula} language="json" code={snippets.mcpCursorJson} />
           <Text style={paragraph}>
             Restart Cursor. Open a chat → the tools icon should list &quot;riskmodels&quot; with 6 tools.
             Test with: <em>What&apos;s NVDA&apos;s L3 subsector hedge ratio today?</em>
@@ -244,7 +333,7 @@ export const KeyIssuedEmail = ({
           <Text style={paragraph}>In the project you&apos;re working in, run:</Text>
           <CodeBlock theme={dracula} language="bash" code={CLAUDE_CODE_BASH} />
           <Text style={paragraph}>Then set the key:</Text>
-          <CodeBlock theme={dracula} language="bash" code={CLAUDE_CODE_EXPORT} />
+          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeExport} />
           <Text style={paragraph}>Next <code style={inlineCode}>claude</code> session can call the tools.</Text>
 
           <Text style={h3}>Codex / Windsurf / Zed</Text>
@@ -307,7 +396,7 @@ export const KeyIssuedEmail = ({
             (<code style={inlineCode}>[viz]</code> pulls in Plotly / Matplotlib for built-in charts. Drop{" "}
             <code style={inlineCode}>[viz]</code> if you just want the data.)
           </Text>
-          <CodeBlock theme={dracula} language="python" code={PYTHON_SNIPPET} />
+          <CodeBlock theme={dracula} language="python" code={snippets.pythonSnippet} />
           <Text style={paragraph}>
             You should get back a dict with NVDA&apos;s latest <code style={inlineCode}>teo</code>, L3 hedge
             ratios (<code style={inlineCode}>l3_market_hr</code>, <code style={inlineCode}>l3_sector_hr</code>
@@ -331,26 +420,16 @@ export const KeyIssuedEmail = ({
           <Text style={paragraph}>
             Put the key in a local <code style={inlineCode}>.env</code> file and load it at runtime:
           </Text>
-          <CodeBlock
-            theme={dracula}
-            language="bash"
-            code={`# Run once, in the project directory
-echo 'RISKMODELS_API_KEY=rm_agent_live_...' >> .env
-echo '.env' >> .gitignore         # never commit it`}
-          />
+          <CodeBlock theme={dracula} language="bash" code={snippets.echoEnvForDotenv} />
           <CodeBlock theme={dracula} language="python" code={DOTENV_SNIPPET} />
           <Text style={paragraph}>
             Or set it once in your shell profile (<code style={inlineCode}>~/.zshrc</code>,{" "}
             <code style={inlineCode}>~/.bashrc</code>):
           </Text>
-          <CodeBlock
-            theme={dracula}
-            language="bash"
-            code={`export RISKMODELS_API_KEY="rm_agent_live_..."`}
-          />
+          <CodeBlock theme={dracula} language="bash" code={snippets.exportShellProfile} />
 
           <Text style={h3}>B4. Terminal-only (CLI) — optional</Text>
-          <CodeBlock theme={dracula} language="bash" code={CLI_SNIPPET} />
+          <CodeBlock theme={dracula} language="bash" code={snippets.cliSnippet} />
           <Text style={paragraph}>
             Other commands: <code style={inlineCode}>riskmodels l3 NVDA</code>,{" "}
             <code style={inlineCode}>riskmodels returns ticker NVDA</code>,{" "}

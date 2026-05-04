@@ -121,6 +121,8 @@ interface EmailData {
     createdDateFormatted: string;
     expiresAtFormatted: string;
     termsUrl: string;
+    /** Full key — embedded into copy-paste blocks; send when available (e.g. right after mint). */
+    plaintextKey?: string;
   };
 }
 
