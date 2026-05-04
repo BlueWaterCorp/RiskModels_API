@@ -1,8 +1,3 @@
-// licensed-id-ok-file: AUDIT-PENDING — public per-ticker symbol endpoint
-// selects and returns `isin` from the symbols table. Pre-existing exposure
-// flagged for license-team review; clear by either removing `isin` from
-// the response shape (Path 1) or confirming ANNA license covers
-// redistribution (Path 2).
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
@@ -36,7 +31,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("symbols")
     .select(
-      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata, latest_metrics, latest_vol, latest_teo",
+      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata, latest_metrics, latest_vol, latest_teo",
     )
     .eq("ticker", canonicalTicker)
     .maybeSingle();
@@ -61,7 +56,6 @@ export async function GET(
       data.sector_etf ?? (metadata.sector_etf as string | null) ?? null,
     subsector_etf: data.subsector_etf,
     is_adr: data.is_adr,
-    isin: data.isin,
     metadata: filterSafeMetadata(data.metadata),
     latest_metrics: data.latest_metrics,
     latest_vol: data.latest_vol,

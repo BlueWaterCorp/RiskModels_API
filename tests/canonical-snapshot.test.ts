@@ -91,7 +91,6 @@ describe("buildCanonicalPortfolioSnapshot", () => {
       sector_etf: "XLK",
       subsector_etf: "SOXX",
       is_adr: false,
-      isin: null,
     };
     vi.mocked(resolveSymbolsByTickers).mockResolvedValue(
       new Map<string, SymbolRegistryRow>([["MSFT", msftRow]]),
