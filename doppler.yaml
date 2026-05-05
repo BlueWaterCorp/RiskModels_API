@@ -16,6 +16,13 @@
 #   doppler run -p erm3 -c prd -- bash sdk/scripts/publish_pypi.sh
 # Optional --build rebuilds sdk/dist first. See sdk/scripts/publish_pypi.sh.
 #
+# Optional: LLMS_TXT_PUBLIC_AGENT_KEY — plaintext rm_agent_* / rm_user_* appended to /llms.txt for LLM crawlers (MAG7).
+# Store the same value in prd and stg if Preview/staging should match; Vercel Preview must receive the var separately
+# from Production (do not run a full prd→preview allowlist sync — use the llms-only allowlist):
+#   npm run vercel:sync-env:doppler:preview-llms
+# Production-only key update (both envs on Vercel, same Doppler prd value):
+#   npm run vercel:sync-env:doppler:prod+preview-llms
+#
 # Maintainer-only (not synced to Vercel): store SUPABASE_MANAGEMENT_ACCESS_TOKEN in Doppler
 # (Supabase Dashboard, Account, Access tokens), then:
 #   DOPPLER_CONFIG=prd npm run supabase:auth-smtp:resend:doppler
