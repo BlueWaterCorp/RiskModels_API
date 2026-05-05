@@ -18,7 +18,11 @@
   "servers": [
     {
       "url": "https://riskmodels.app/api",
-      "description": "Production"
+      "description": "Production — all metered endpoints (`/metrics`, `/snapshot`, `/decompose`, `/batch/analyze`, `/portfolio/*`, etc.)."
+    },
+    {
+      "url": "https://riskmodels.app",
+      "description": "Discovery origin — `/.well-known/*` manifests (`mcp.json`, `ai-plugin.json`, `agentic-disclosure.json`) live at the site origin without the `/api` prefix. Generated clients that hard-code the first server entry must strip `/api` before requesting these paths."
     }
   ],
   "components": {
@@ -3811,8 +3815,14 @@
     "/.well-known/ai-plugin.json": {
       "get": {
         "summary": "OpenAI GPT Plugin Manifest",
-        "description": "Plugin manifest for OpenAI GPT Store integration. Enables ChatGPT and other OpenAI models to discover and use the RiskModels API.\n",
+        "description": "Plugin manifest for OpenAI GPT Store integration. Enables ChatGPT and other OpenAI models to discover and use the RiskModels API.\n**Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/ai-plugin.json`), not under `/api`. Generated clients that combine the first `servers[0].url` with this path must strip `/api` first.\n",
         "operationId": "getAIPluginManifest",
+        "servers": [
+          {
+            "url": "https://riskmodels.app",
+            "description": "Site origin (discovery)"
+          }
+        ],
         "tags": [
           "Compliance",
           "Discovery"
@@ -3895,7 +3905,13 @@
     "/.well-known/agentic-disclosure.json": {
       "get": {
         "summary": "Agentic Privacy Disclosure",
-        "description": "Comprehensive data handling and privacy disclosure for AI marketplace compliance. Documents encryption, retention, third-party sharing, and regulatory compliance.\n\n**Key sections:**\n- Data handling (AES-256-GCM, GCP KMS)\n- Cryptographic shredding for GDPR compliance\n- Third-party sharing policy (none)\n- AI model usage (no training on user data)\n- Compliance (GDPR, SOC2, PCI-DSS)\n",
+        "servers": [
+          {
+            "url": "https://riskmodels.app",
+            "description": "Site origin (discovery)"
+          }
+        ],
+        "description": "Comprehensive data handling and privacy disclosure for AI marketplace compliance. Documents encryption, retention, third-party sharing, and regulatory compliance.\n**Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/agentic-disclosure.json`), not under `/api`.\n\n**Key sections:**\n- Data handling (AES-256-GCM, GCP KMS)\n- Cryptographic shredding for GDPR compliance\n- Third-party sharing policy (none)\n- AI model usage (no training on user data)\n- Compliance (GDPR, SOC2, PCI-DSS)\n",
         "operationId": "getAgenticDisclosure",
         "tags": [
           "Compliance",
@@ -3936,7 +3952,13 @@
     "/.well-known/mcp.json": {
       "get": {
         "summary": "MCP Server Manifest",
-        "description": "Model Context Protocol server connection manifest. Enables AI model clients to discover and connect to the RiskModels MCP server.\n",
+        "servers": [
+          {
+            "url": "https://riskmodels.app",
+            "description": "Site origin (discovery)"
+          }
+        ],
+        "description": "Model Context Protocol server connection manifest. Enables AI model clients to discover and connect to the RiskModels MCP server.\n**Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/mcp.json`), not under `/api`.\n",
         "operationId": "getMCPManifest",
         "tags": [
           "MCP",
@@ -6077,7 +6099,7 @@
     "/batch/analyze": {
       "post": {
         "summary": "(internal/legacy) Multi-ticker batch analysis",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` for new clients.** This endpoint remains callable as an internal building block (cohort scans, parity checks, zarr alignment).\nFetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.005/position, minimum $0.01/call.\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` for new clients.** This endpoint remains callable as an internal building block (cohort scans, parity checks, zarr alignment).\nFetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.005/position, minimum $0.01/call.\n## Status code semantics (clients must read `summary` to detect partial / total failure)\nThis endpoint **always returns HTTP 200** as long as the request is well-formed and authentication passes. Per-ticker failures are reported in `results[ticker].status = \"error\"` with a human-readable `error` string, and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**: you cannot infer success from the HTTP code alone.\nRecommended client logic: - `summary.errors == 0` → all ok - `0 < summary.errors < summary.total` → partial; retry only the failed tickers (see `results[ticker].error`) - `summary.errors == summary.total` → total failure; surface or escalate (do **not** loop-retry the whole batch — the failure is likely structural, e.g. all tickers unresolvable or upstream zarr gap)\n4xx is reserved for malformed requests (`tickers` empty, > 100, unknown `metrics` flags, bad auth).\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
         "operationId": "batchAnalyze",
         "tags": [
           "Risk Metrics"

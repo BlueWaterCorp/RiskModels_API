@@ -92,7 +92,9 @@ info:
 
 servers:
   - url: https://riskmodels.app/api
-    description: Production
+    description: Production — all metered endpoints (`/metrics`, `/snapshot`, `/decompose`, `/batch/analyze`, `/portfolio/*`, etc.).
+  - url: https://riskmodels.app
+    description: Discovery origin — `/.well-known/*` manifests (`mcp.json`, `ai-plugin.json`, `agentic-disclosure.json`) live at the site origin without the `/api` prefix. Generated clients that hard-code the first server entry must strip `/api` before requesting these paths.
 
 components:
   securitySchemes:
@@ -2681,7 +2683,14 @@ paths:
       description: >
         Plugin manifest for OpenAI GPT Store integration.
         Enables ChatGPT and other OpenAI models to discover and use the RiskModels API.
+
+        **Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/ai-plugin.json`),
+        not under `/api`. Generated clients that combine the first `servers[0].url` with this path
+        must strip `/api` first.
       operationId: getAIPluginManifest
+      servers:
+        - url: https://riskmodels.app
+          description: Site origin (discovery)
       tags:
         - Compliance
         - Discovery
@@ -2735,9 +2744,15 @@ paths:
   /.well-known/agentic-disclosure.json:
     get:
       summary: Agentic Privacy Disclosure
+      servers:
+        - url: https://riskmodels.app
+          description: Site origin (discovery)
       description: >
         Comprehensive data handling and privacy disclosure for AI marketplace compliance.
         Documents encryption, retention, third-party sharing, and regulatory compliance.
+
+        **Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/agentic-disclosure.json`),
+        not under `/api`.
 
 
         **Key sections:**
@@ -2778,9 +2793,15 @@ paths:
   /.well-known/mcp.json:
     get:
       summary: MCP Server Manifest
+      servers:
+        - url: https://riskmodels.app
+          description: Site origin (discovery)
       description: >
         Model Context Protocol server connection manifest.
         Enables AI model clients to discover and connect to the RiskModels MCP server.
+
+        **Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/mcp.json`),
+        not under `/api`.
       operationId: getMCPManifest
       tags:
         - MCP
@@ -4190,6 +4211,20 @@ paths:
         (`L*_ER` / `L*_HR`), request `["full_metrics","hedge_ratios"]` and see docs/ERM3_ZARR_API_PARITY.md.
         The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost:
         $0.005/position, minimum $0.01/call.
+
+        ## Status code semantics (clients must read `summary` to detect partial / total failure)
+
+        This endpoint **always returns HTTP 200** as long as the request is well-formed and authentication
+        passes. Per-ticker failures are reported in `results[ticker].status = "error"` with a human-readable
+        `error` string, and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**:
+        you cannot infer success from the HTTP code alone.
+
+        Recommended client logic:
+        - `summary.errors == 0` → all ok
+        - `0 < summary.errors < summary.total` → partial; retry only the failed tickers (see `results[ticker].error`)
+        - `summary.errors == summary.total` → total failure; surface or escalate (do **not** loop-retry the whole batch — the failure is likely structural, e.g. all tickers unresolvable or upstream zarr gap)
+
+        4xx is reserved for malformed requests (`tickers` empty, > 100, unknown `metrics` flags, bad auth).
 
         **Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table
         of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`.
