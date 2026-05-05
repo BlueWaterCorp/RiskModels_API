@@ -19,7 +19,11 @@ export type IntentShorthand =
   | 'reduce_risk'
   | 'find_hidden_bets'
   | 'compare_peers'
-  | 'screen_universe';
+  | 'screen_universe'
+  | 'compare_to_cohort'
+  | 'analyze_fund_attribution'
+  | 'screen_fund_universe'
+  | 'decompose_cohort_return';
 
 export type StockSubject = {
   type: 'stock';
@@ -55,11 +59,26 @@ export type ComparisonSubject = {
   alignment?: ComparisonAlignment;
 };
 
+/** Funds-stage extension (D.6). Identifies a single mutual fund row. */
+export type FundSubject = {
+  type: 'fund';
+  bw_fund_id: string;
+};
+
+/** Funds-stage extension (D.6). Identifies a 9-box style cohort cell. */
+export type StyleCohortSubject = {
+  type: 'style_cohort';
+  /** 9-box slug (`large-blend`, `small-growth`, etc.). */
+  slug: string;
+};
+
 export type Subject =
   | StockSubject
   | PortfolioSubject
   | UniverseSubject
-  | ComparisonSubject;
+  | ComparisonSubject
+  | FundSubject
+  | StyleCohortSubject;
 
 export type DateRangePreset = {
   preset: 'ytd' | 'mtd' | '1y' | '5y' | string;
