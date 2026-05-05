@@ -920,5 +920,53 @@
         }
       }
     ]
+  },
+  {
+    "id": "fund-snapshot-json",
+    "name": "Fund Snapshot (JSON)",
+    "description": "Composed JSON snapshot for a single mutual fund (Stage D.1). Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (rank N of cohort_size). Matching server-rendered PDF is /funds/snapshot.pdf/{bw_fund_id}.",
+    "endpoint": "/api/funds/snapshot/{bw_fund_id}",
+    "method": "GET",
+    "parameters": {
+      "bw_fund_id": { "type": "string", "required": true, "description": "Funds_DAG canonical fund id (BW-FUND-{series_id})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.01, "currency": "USD", "billing_code": "fund_snapshot_json_v1" },
+    "tags": ["funds", "snapshot", "tearsheet"]
+  },
+  {
+    "id": "fund-snapshot-pdf",
+    "name": "Fund Snapshot (PDF)",
+    "description": "Server-rendered F1 fund tearsheet PDF (Stage D.2.b). Same composition as /api/funds/snapshot/{bw_fund_id} (JSON), rendered via Playwright. Letter landscape, single page. Cached 24h per (user, bw_fund_id, report_date).",
+    "endpoint": "/api/funds/snapshot.pdf/{bw_fund_id}",
+    "method": "GET",
+    "parameters": {
+      "bw_fund_id": { "type": "string", "required": true, "description": "Funds_DAG canonical fund id (BW-FUND-{series_id})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.25, "currency": "USD", "billing_code": "fund_snapshot_pdf_v1" },
+    "tags": ["funds", "snapshot", "pdf", "tearsheet"]
+  },
+  {
+    "id": "style-cohort-snapshot-json",
+    "name": "Style Cohort Snapshot (JSON)",
+    "description": "Composed JSON snapshot for a 9-box style cell (Stage D.1) — the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell + top-15 symbols in cell.",
+    "endpoint": "/api/funds/style/{slug}/snapshot",
+    "method": "GET",
+    "parameters": {
+      "slug": { "type": "string", "required": true, "description": "9-box style slug (large-blend, etc.)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "style_cohort_snapshot_json_v1" },
+    "tags": ["funds", "snapshot", "cohort", "differentiated-wedge"]
+  },
+  {
+    "id": "style-cohort-snapshot-pdf",
+    "name": "Style Cohort Snapshot (PDF)",
+    "description": "Server-rendered C1 cohort tearsheet PDF (Stage D.2.d). Same composition as /api/funds/style/{slug}/snapshot (JSON), rendered via Playwright. Letter landscape, single page. Cached 24h per (user, slug, report_date).",
+    "endpoint": "/api/funds/style/{slug}/snapshot.pdf",
+    "method": "GET",
+    "parameters": {
+      "slug": { "type": "string", "required": true, "description": "9-box style slug (large-blend, etc.)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.10, "currency": "USD", "billing_code": "style_cohort_snapshot_pdf_v1" },
+    "tags": ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"]
   }
 ]
