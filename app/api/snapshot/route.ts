@@ -12,6 +12,7 @@ import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-header
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
   buildCanonicalPortfolioSnapshot,
+  buildCanonicalTickerSnapshot,
   resolveSnapshotPortfolioToWeights,
 } from "@/lib/portfolio/canonical-snapshot";
 
@@ -23,6 +24,9 @@ async function getPositionCount(request: NextRequest): Promise<number | undefine
     const body = await request.clone().json();
     if (body?.type === "portfolio" && Array.isArray(body.portfolio)) {
       return body.portfolio.length;
+    }
+    if (body?.type === "ticker") {
+      return 1;
     }
   } catch {
     // ignore
@@ -57,27 +61,30 @@ export const POST = withBilling(
       );
     }
 
-    if (parsed.data.type !== "portfolio") {
-      return NextResponse.json(
-        { error: "Invalid request", message: "Expected type: portfolio" },
-        { status: 400, headers: getCorsHeaders(origin) },
-      );
+    let built;
+    if (parsed.data.type === "ticker") {
+      built = await buildCanonicalTickerSnapshot({
+        ticker: parsed.data.ticker,
+        lookbackDays: parsed.data.lookback_days,
+        mode: parsed.data.mode,
+        benchmark: parsed.data.benchmark ?? null,
+      });
+    } else {
+      const { portfolio, lookback_days, mode, benchmark } = parsed.data;
+      const resolved = await resolveSnapshotPortfolioToWeights(portfolio);
+      if (!resolved.ok) {
+        return NextResponse.json(
+          { error: "Invalid portfolio", message: resolved.error },
+          { status: resolved.status, headers: getCorsHeaders(origin) },
+        );
+      }
+      built = await buildCanonicalPortfolioSnapshot({
+        positions: resolved.positions,
+        lookbackDays: lookback_days,
+        mode,
+        benchmark: benchmark ?? null,
+      });
     }
-    const { portfolio, lookback_days, mode, benchmark } = parsed.data;
-    const resolved = await resolveSnapshotPortfolioToWeights(portfolio);
-    if (!resolved.ok) {
-      return NextResponse.json(
-        { error: "Invalid portfolio", message: resolved.error },
-        { status: resolved.status, headers: getCorsHeaders(origin) },
-      );
-    }
-
-    const built = await buildCanonicalPortfolioSnapshot({
-      positions: resolved.positions,
-      lookbackDays: lookback_days,
-      mode,
-      benchmark: benchmark ?? null,
-    });
 
     if (!built.ok) {
       return NextResponse.json(
@@ -90,9 +97,13 @@ export const POST = withBilling(
     }
 
     const metadata = await getRiskMetadata();
+    const tickerFactors = built.body.snapshot.ticker_meta?.factors;
     const responseBody = {
       ...built.body,
-      _metadata: buildMetadataBody(metadata),
+      _metadata: buildMetadataBody(
+        metadata,
+        tickerFactors ? { factors: tickerFactors } : undefined,
+      ),
       _agent: {
         cost_usd: context.costUsd,
         request_id: context.requestId,

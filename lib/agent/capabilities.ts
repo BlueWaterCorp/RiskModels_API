@@ -772,9 +772,9 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "portfolio-risk-snapshot",
-    name: "Portfolio risk snapshot",
+    name: "Snapshot — portfolio or ticker",
     description:
-      "One-page portfolio risk report as PDF or structured JSON (`POST /api/portfolio/risk-snapshot`), or the canonical JSON-only portfolio snapshot (`POST /api/snapshot` with `type: \"portfolio\"`): L3 explained-risk decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and per-position breakdown. Single bundled charge per request; uses internal data access only (no double-billing).",
+      "Canonical JSON snapshot via `POST /api/snapshot` for either a weighted portfolio (`type: \"portfolio\"`) or a single name (`type: \"ticker\"`, a shim over `/metrics` + `/decompose`): L3 explained-risk decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, risk summary. Ticker mode also returns `snapshot.ticker_meta` with sector/subsector ETFs and the active L3 factor list. Also serves the bundled PDF/JSON via `POST /api/portfolio/risk-snapshot`. Single bundled charge per request; uses internal data access only (no double-billing).",
     endpoint: "/api/portfolio/risk-snapshot",
     method: "POST",
     parameters: {
@@ -990,6 +990,59 @@ export const CAPABILITIES: Capability[] = [
         },
       },
     ],
+  },
+  {
+    id: "fund-search",
+    name: "Fund Search & Discovery",
+    description:
+      "Search the funds universe by ticker, fund name, or equity style 9-box cohort. " +
+      "Returns a list of FundRow records (bw_fund_id, ticker, fund_name, equity_style_9box, " +
+      "asset_class, total_assets, etc.) for downstream calls to /api/funds/{bw_fund_id}/*. " +
+      "Free for users (no per-request cost) — discovery is intentionally unbilled so quants and agents " +
+      "can resolve a bw_fund_id without paying. Per-fund follow-up calls are metered.",
+    endpoint: "/api/funds/search",
+    method: "GET",
+    parameters: {
+      q: {
+        type: "string",
+        required: false,
+        description: "Full-text search on ticker or fund name (case-insensitive ilike).",
+      },
+      equity_style_9box: {
+        type: "string",
+        required: false,
+        description: "Style slug (e.g. 'large-blend') or canonical name ('Large Blend').",
+      },
+      primary: {
+        type: "boolean",
+        required: false,
+        description: "If true, filters to share-class primaries only.",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows returned (default 50, max 500).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.0,
+      currency: "USD",
+      billing_code: "fund_search_v1",
+    },
+    performance: {
+      avg_latency_ms: 60,
+      p95_latency_ms: 200,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["funds", "funds_latest"],
+    },
+    tags: ["funds", "search", "discovery", "free"],
   },
   {
     id: "fund-metrics",

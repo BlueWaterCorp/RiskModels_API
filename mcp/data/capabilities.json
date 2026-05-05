@@ -666,8 +666,8 @@
   },
   {
     "id": "portfolio-risk-snapshot",
-    "name": "Portfolio risk snapshot",
-    "description": "PDF or JSON via POST /api/portfolio/risk-snapshot, or canonical JSON-only via POST /api/snapshot (type=portfolio): L3 decomposition, hedge ratios, return attribution, cumulative return / drawdown. Bundled charge; internal DAL only.",
+    "name": "Snapshot — portfolio or ticker",
+    "description": "Canonical JSON snapshot (POST /api/snapshot) for either a weighted portfolio (type=portfolio) or a single ticker (type=ticker — shim over /metrics + /decompose). Returns L3 decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and risk summary in one unified shape. Also serves the bundled PDF/JSON via POST /api/portfolio/risk-snapshot. Bundled charge; internal DAL only.",
     "endpoint": "/api/portfolio/risk-snapshot",
     "method": "POST",
     "parameters": {

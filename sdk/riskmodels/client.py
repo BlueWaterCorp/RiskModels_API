@@ -1307,6 +1307,51 @@ class RiskModelsClient:
         )
         return data, lineage
 
+    def snapshot_ticker(
+        self,
+        ticker: str,
+        *,
+        lookback_days: int = 252,
+        mode: Literal["frozen"] = "frozen",
+        benchmark: str | None = None,
+    ) -> tuple[dict, RiskLineage]:
+        """Canonical v3 single-ticker snapshot via ``POST /api/snapshot`` with ``type="ticker"``.
+
+        Returns the same ``CanonicalSnapshotResponse`` shape as :meth:`snapshot`, with
+        ``snapshot.ticker_meta`` populated (sector_etf, subsector_etf, asset_type, factors).
+
+        Per Snapshot Architecture v3 this is the canonical surface for stock-level analysis;
+        :meth:`get_metrics` and :meth:`decompose` remain available as internal building blocks.
+
+        Args:
+            ticker: US equity ticker (case-insensitive).
+            lookback_days: Trading-day window for attribution + cumulative return (default 252).
+            mode: Weight handling mode (``"frozen"``).
+            benchmark: Optional benchmark ticker for relative attribution.
+
+        Returns:
+            Tuple of ``(data_dict, lineage)`` matching the ``CanonicalSnapshotResponse`` shape.
+
+        Example:
+            >>> data, lineage = client.snapshot_ticker("NVDA", lookback_days=120)
+            >>> data["snapshot"]["ticker_meta"]["factors"]
+            ['SPY', 'XLK', 'SMH']
+        """
+        body: dict[str, Any] = {
+            "type": "ticker",
+            "ticker": ticker,
+            "lookback_days": lookback_days,
+            "mode": mode,
+        }
+        if benchmark is not None:
+            body["benchmark"] = benchmark
+        data, lineage, _r = self._transport.request(
+            "POST",
+            "/snapshot",
+            json=body,
+        )
+        return data, lineage
+
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int
     ) -> tuple[dict[str, Any], RiskLineage]:

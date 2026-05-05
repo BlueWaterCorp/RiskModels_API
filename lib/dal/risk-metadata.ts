@@ -54,7 +54,7 @@ export async function getRiskMetadata(): Promise<RiskMetadata> {
     data_as_of: dataAsOf,
     factor_set_id: "SPY_uni_mc_3000",
     universe_size: universeCount ?? 0,
-    wiki_uri: "https://riskmodels.net/docs/methodology/erm3-l3",
+    wiki_uri: "https://riskmodels.net/docs/methodology",
     factors: L3_FACTORS,
   };
 
