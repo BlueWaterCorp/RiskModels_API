@@ -1352,6 +1352,186 @@ class RiskModelsClient:
         )
         return data, lineage
 
+    # -------------------------------------------------------------------
+    # Funds API (Stages A–D.1, per docs/FUNDS_API_BUILD_STATUS.md)
+    # -------------------------------------------------------------------
+    # All endpoints are GET except /api/data/funds/batch. Per-fund methods
+    # take a ``bw_fund_id`` (BlueWater fund identifier); per-cohort methods
+    # take a 9-box style ``slug`` (e.g. ``"large-cap-growth"``). The
+    # composed snapshots (``get_fund_snapshot`` / ``get_style_snapshot``)
+    # are the canonical Funds analytical surface — they pre-bundle
+    # holdings, hedge, portfolio time series, and cohort context.
+
+    def get_fund(self, bw_fund_id: str) -> dict[str, Any]:
+        """Latest fund metrics row (Stage B.1, ``$0.005``)."""
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/{quote(bw_fund_id, safe='')}"
+        )
+        return data
+
+    def get_fund_portfolio(
+        self,
+        bw_fund_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-fund portfolio time series from ``ds_portfolio.zarr`` (B.2.a, ``$0.005``)."""
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_fund_holdings(
+        self, bw_fund_id: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        """Top-N holdings from ``ds_ph.zarr`` (B.2.b, ``$0.005``)."""
+        params = {"limit": str(limit)} if limit is not None else None
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/holdings",
+            params=params,
+        )
+        return data
+
+    def get_fund_hedge(self, bw_fund_id: str) -> dict[str, Any]:
+        """L1/L2/L3 hedge ratios from ``ds_hr.zarr`` (B.2.c, ``$0.005``)."""
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/{quote(bw_fund_id, safe='')}/hedge"
+        )
+        return data
+
+    def get_fund_nav(
+        self,
+        bw_fund_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-fund yfinance NAV time series from ``ds_nav.zarr`` (B.2.d, ``$0.005``)."""
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/nav",
+            params=params or None,
+        )
+        return data
+
+    def get_fund_snapshot(self, bw_fund_id: str) -> dict[str, Any]:
+        """Composed JSON fund tearsheet (D.1, ``$0.01``).
+
+        Bundles registry + holdings + L1/L2/L3 hedge + 12-month portfolio
+        time series + cohort rank context in one call.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/snapshot/{quote(bw_fund_id, safe='')}"
+        )
+        return data
+
+    def get_style(self, slug: str) -> dict[str, Any]:
+        """Latest 9-box cohort metrics (EW + MV) (Stage C.0, ``$0.005``)."""
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/style/{quote(slug, safe='')}"
+        )
+        return data
+
+    def get_style_rankings(
+        self,
+        slug: str,
+        cohort_type: str,
+        *,
+        metric: str,
+        period_window: str = "1m",
+        weighting: str = "mv",
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Top-N rankings within a 9-box cell (C.1, ``$0.005``).
+
+        Args:
+            cohort_type: ``"symbol"``, ``"sector"``, or ``"fund"``.
+            metric: Required ranking metric (e.g. ``"return"``, ``"er"``).
+            period_window: ``"1m"`` | ``"3m"`` | ``"12m"`` | ``"36m"``.
+            weighting: ``"mv"`` (market-value, default) or ``"ew"`` (equal-weight).
+            limit: Top-N (server default applies if omitted).
+        """
+        params: dict[str, str] = {
+            "metric": metric,
+            "period_window": period_window,
+            "weighting": weighting,
+        }
+        if limit is not None:
+            params["limit"] = str(limit)
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/style/{quote(slug, safe='')}/rankings/{quote(cohort_type, safe='')}",
+            params=params,
+        )
+        return data
+
+    def get_style_portfolio(
+        self,
+        slug: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-cell time series from Slice 6 zarr (C.2, ``$0.005``)."""
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/style/{quote(slug, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_style_holdings(
+        self, slug: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        """Top-N cohort holdings from Slice 5b zarr (C.3, ``$0.005``)."""
+        params = {"limit": str(limit)} if limit is not None else None
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/style/{quote(slug, safe='')}/holdings",
+            params=params,
+        )
+        return data
+
+    def get_style_snapshot(self, slug: str) -> dict[str, Any]:
+        """Composed JSON 9-box cohort tearsheet (D.1, ``$0.005``).
+
+        The differentiated wedge — pre-bundles cohort returns, top funds,
+        top holdings, and concentration metrics for one call.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/style/{quote(slug, safe='')}/snapshot"
+        )
+        return data
+
+    # -------------------------------------------------------------------
+    # End funds API
+    # -------------------------------------------------------------------
+    # Note: /api/data/funds/* routes (Stage A — registry / search /
+    # batch / style members / funds-latest) are intentionally not exposed
+    # in this SDK. They are service-to-service only (gateway auth keyed
+    # to RISKMODELS_API_SERVICE_KEY, not user-Bearer), used by .net and
+    # internal sync code paths. End users should compose with
+    # ``get_fund`` / ``get_style`` / the snapshot methods above.
+
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int
     ) -> tuple[dict[str, Any], RiskLineage]:
