@@ -1,0 +1,6 @@
+# Only LLMS_TXT_PUBLIC_AGENT_KEY — use for Preview without overwriting other preview secrets.
+# Example:
+#   ALLOWLIST=scripts/doppler-vercel-allowlist-llms-txt.txt \
+#   DOPPLER_CONFIG=prd VERCEL_ENVS=preview npm run vercel:sync-env:doppler
+
+LLMS_TXT_PUBLIC_AGENT_KEY

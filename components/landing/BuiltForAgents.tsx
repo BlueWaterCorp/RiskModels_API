@@ -25,6 +25,18 @@ export default function BuiltForAgents() {
           <h2 className="mt-4 text-3xl font-bold tracking-tighter text-white sm:text-4xl">
             Built for <span className="text-primary">agents.</span>
           </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-zinc-400">
+            Zero-friction API bootstrap:{' '}
+            <a
+              href="/llms.txt"
+              className="font-mono text-purple-300 underline-offset-2 hover:underline"
+            >
+              /llms.txt
+            </a>{' '}
+            — copy-paste MAG7 demo <span className="text-zinc-300">RISKMODELS_API_KEY</span> when published (no sign-in; optional alternative:{' '}
+            <code className="rounded bg-zinc-900 px-1 py-0.5 text-zinc-300">POST /api/auth/provision-free</code>
+            ).
+          </p>
         </div>
 
         <div className="mt-10 grid gap-6 md:grid-cols-2">

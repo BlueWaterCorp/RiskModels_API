@@ -24,3 +24,6 @@ ZARR_GCS_PREFIX
 ZARR_FACTOR_SET_ID
 UPSTASH_REDIS_REST_URL
 UPSTASH_REDIS_REST_TOKEN
+
+# Plaintext rm_agent_* / rm_user_* key surfaced in https://riskmodels.app/llms.txt (MAG7 agent examples)
+LLMS_TXT_PUBLIC_AGENT_KEY

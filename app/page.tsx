@@ -1,3 +1,4 @@
+import AgentBootstrapBar from '@/components/AgentBootstrapBar';
 import HeroLanding from '@/components/landing/HeroLanding';
 import TerminalShowcase from '@/components/TerminalShowcase';
 import FailureContrast from '@/components/landing/FailureContrast';
@@ -14,6 +15,7 @@ import FinalCta from '@/components/landing/FinalCta';
 export default function HomePage() {
   return (
     <div className="mx-auto min-h-screen w-full max-w-[90rem] overflow-x-hidden">
+      <AgentBootstrapBar />
       <HeroLanding />
       <TerminalShowcase />
       <FailureContrast />

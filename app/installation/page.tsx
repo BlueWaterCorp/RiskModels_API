@@ -96,6 +96,18 @@ export default function InstallationPage() {
           <p className="mt-4 text-base leading-relaxed text-zinc-400 sm:text-lg">
             Use RiskModels from Python, CLI, API, or your AI agent.
           </p>
+          <p className="mx-auto mt-4 max-w-2xl rounded-lg border border-emerald-500/25 bg-emerald-950/35 px-4 py-3 text-left text-sm leading-relaxed text-emerald-100/90">
+            <strong className="text-emerald-200">Browsers &amp; AI agents:</strong> if you need a Bearer token for MAG7
+            demos before sign-in, open{' '}
+            <a
+              className="font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+              href={`${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://riskmodels.app'}/llms.txt`}
+            >
+              llms.txt
+            </a>{' '}
+            — it includes a shared <code className="rounded bg-black/35 px-1">RISKMODELS_API_KEY</code> when the host enables one (faster than{' '}
+            <code className="rounded bg-black/35 px-1">POST /api/auth/provision-free</code> for one-shot questions).
+          </p>
         </div>
 
         <div className="mx-auto mt-10 max-w-2xl">

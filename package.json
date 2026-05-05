@@ -12,6 +12,8 @@
     "vercel:sync-env": "./scripts/sync-env-to-vercel.sh",
     "vercel:sync-env:doppler": "./scripts/doppler-sync-to-vercel.sh",
     "vercel:sync-env:doppler:email": "ALLOWLIST=scripts/doppler-vercel-allowlist-email.txt ./scripts/doppler-sync-to-vercel.sh",
+    "vercel:sync-env:doppler:preview-llms": "ALLOWLIST=scripts/doppler-vercel-allowlist-llms-txt.txt DOPPLER_CONFIG=prd VERCEL_ENVS=preview ./scripts/doppler-sync-to-vercel.sh",
+    "vercel:sync-env:doppler:prod+preview-llms": "ALLOWLIST=scripts/doppler-vercel-allowlist-llms-txt.txt DOPPLER_CONFIG=prd VERCEL_ENVS=production,preview ./scripts/doppler-sync-to-vercel.sh",
     "env:recon": "bash ./scripts/recon-env.sh",
     "env:recon:fingerprints": "bash ./scripts/recon-env.sh --fingerprints",
     "doppler:env": "doppler secrets download --no-file --format env -p erm3 -c dev > .env.local",

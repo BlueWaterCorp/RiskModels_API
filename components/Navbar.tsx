@@ -46,8 +46,8 @@ export default function Navbar() {
   const navLinks = [
     { href: '/installation', label: 'Installation' },
     { href: '/api-reference', label: 'API' },
-    { href: '/cli', label: 'CLI' },
-    { href: '/pricing', label: 'Pricing' },
+    { href: '/cli', label: 'CLI' },    
+    { href: '/llms.txt', label: 'Agents' },
     { href: '/docs/api', label: 'Docs' },
   ];
 
