@@ -139,9 +139,9 @@ export default function PortfolioConcentration() {
             Portfolio risk
           </p>
           <h2 className="mt-3 text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl md:text-6xl">
-            You&rsquo;re not diversified.
+            Your Portfolio has a Benchmark -
             <br />
-            You&rsquo;re concentrated.
+            You just haven&rsquo;t seen it
           </h2>
         </div>
 
