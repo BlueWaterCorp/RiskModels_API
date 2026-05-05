@@ -36,6 +36,16 @@ export type CanonicalSnapshotResponse = {
     lookback_trading_days: number;
     mode: "frozen";
     benchmark: string | null;
+    /** Populated only when the request was `type: "ticker"`. */
+    ticker_meta?: {
+      ticker: string;
+      symbol: string;
+      sector_etf: string | null;
+      subsector_etf: string | null;
+      asset_type: string | null;
+      /** Active L3 factors for this ticker: [SPY, sector_etf, subsector_etf] (deduped). */
+      factors: string[];
+    };
     positions: Array<{
       ticker: string;
       weight: number;
@@ -403,4 +413,60 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   };
 
   return { ok: true, body };
+}
+
+/**
+ * Snapshot Architecture v3 — `type: "ticker"` shim.
+ *
+ * Delegates to `buildCanonicalPortfolioSnapshot` with a single-position
+ * portfolio at weight 1.0, so the response shape (snapshot / time_behavior /
+ * attribution / risk_summary) stays identical across both branches per the v3
+ * spec. Augments `snapshot.ticker_meta` with sector/subsector/asset_type and
+ * the active L3 factor list for the ticker.
+ *
+ * Null-guard: if `subsector_etf` is missing in the registry (per F.9 — 40 XLY
+ * tickers don't have a subsector mapping yet), it falls back to `sector_etf`
+ * for the factor list. The downstream computation already handles null
+ * subsectors via `subsector_etf || sector_etf` semantics in the DAL.
+ */
+export async function buildCanonicalTickerSnapshot(input: {
+  ticker: string;
+  lookbackDays: number;
+  mode: "frozen";
+  benchmark: string | null;
+}): Promise<
+  { ok: true; body: CanonicalSnapshotResponse } | { ok: false; error: string; status: number; details?: unknown }
+> {
+  const { ticker, lookbackDays, mode, benchmark } = input;
+
+  const symMap = await resolveSymbolsByTickers([ticker]);
+  const symRec = symMap.get(ticker);
+  if (!symRec) {
+    return { ok: false, error: `Symbol not found for ticker ${ticker}`, status: 404 };
+  }
+
+  const portfolioResult = await buildCanonicalPortfolioSnapshot({
+    positions: [{ ticker, weight: 1.0 }],
+    lookbackDays,
+    mode,
+    benchmark,
+  });
+  if (!portfolioResult.ok) return portfolioResult;
+
+  const sectorEtf = symRec.sector_etf || null;
+  const subsectorEtf = symRec.subsector_etf || symRec.sector_etf || null;
+  const factors = ["SPY"];
+  if (sectorEtf && !factors.includes(sectorEtf)) factors.push(sectorEtf);
+  if (subsectorEtf && !factors.includes(subsectorEtf)) factors.push(subsectorEtf);
+
+  portfolioResult.body.snapshot.ticker_meta = {
+    ticker: symRec.ticker,
+    symbol: symRec.symbol,
+    sector_etf: sectorEtf,
+    subsector_etf: subsectorEtf,
+    asset_type: symRec.asset_type || null,
+    factors,
+  };
+
+  return { ok: true, body: portfolioResult.body };
 }

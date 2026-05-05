@@ -167,6 +167,14 @@ export const POST = withBilling(
         );
       }
 
+      const tickerFactors = ["SPY"];
+      if (sectorEtf && !tickerFactors.includes(sectorEtf)) {
+        tickerFactors.push(sectorEtf);
+      }
+      if (subsectorEtf && !tickerFactors.includes(subsectorEtf)) {
+        tickerFactors.push(subsectorEtf);
+      }
+
       const responseBody = {
         ticker: symbolRecord.ticker,
         symbol: symbolRecord.symbol,
@@ -174,7 +182,7 @@ export const POST = withBilling(
         teo: latestData.teo,
         exposure: layers,
         hedge,
-        _metadata: buildMetadataBody(metadata),
+        _metadata: buildMetadataBody(metadata, { factors: tickerFactors }),
         _data_health: {
           er_populated: erPopulated,
           er_sum: erPopulated ? erSum : null,

@@ -24,6 +24,22 @@ import {
 } from "@/lib/cache/redis";
 
 /**
+ * L3 factor list for a single ticker: [SPY, sector_etf, subsector_etf] deduped.
+ * Falls back gracefully when sector/subsector are missing.
+ */
+function tickerFactors(symbolRecord: {
+  sector_etf?: string | null;
+  subsector_etf?: string | null;
+}): string[] {
+  const out = ["SPY"];
+  const sector = symbolRecord.sector_etf || null;
+  const subsector = symbolRecord.subsector_etf || sector;
+  if (sector && !out.includes(sector)) out.push(sector);
+  if (subsector && !out.includes(subsector)) out.push(subsector);
+  return out;
+}
+
+/**
  * Trailing-252-day annualised daily-return volatility, keyed by (symbol, data_as_of).
  * Cached for 24h because vol_252d only rolls once per EOD; on a warm cache this is
  * O(10ms), on cold ~3-5s for the history pull. `data_as_of` in the key auto-invalidates
@@ -231,7 +247,9 @@ export const GET = withBilling(
         subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf || null,
         asset_type: symbolRecord.asset_type || null,
       },
-      _metadata: buildMetadataBody(metadata),
+      _metadata: buildMetadataBody(metadata, {
+        factors: tickerFactors(symbolRecord),
+      }),
     };
 
     const format = parseFormat(request.nextUrl.searchParams, request.headers.get("accept"));

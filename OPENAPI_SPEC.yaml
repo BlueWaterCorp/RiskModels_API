@@ -664,6 +664,37 @@ components:
           nullable: true
           description: Optional benchmark ticker (reserved).
 
+    CanonicalSnapshotTickerRequest:
+      type: object
+      description: >
+        Request body for `POST /api/snapshot` when `type` is `ticker`. Single-name shim that
+        delegates to the same DAL paths used by `/metrics/{ticker}` and `/decompose`, returning
+        the unified `CanonicalSnapshotResponse` shape. Response includes `snapshot.ticker_meta`
+        with the active L3 factors (`[SPY, sector_etf, subsector_etf]` deduped).
+      required: [type, ticker]
+      properties:
+        type:
+          type: string
+          enum: [ticker]
+        ticker:
+          type: string
+          description: US equity ticker (case-insensitive; normalized to uppercase).
+        lookback_days:
+          type: integer
+          minimum: 20
+          maximum: 2000
+          default: 252
+          description: Trading days of history for return curves and attribution series.
+        mode:
+          type: string
+          enum: [frozen]
+          default: frozen
+          description: Currently only `frozen`.
+        benchmark:
+          type: string
+          nullable: true
+          description: Optional benchmark ticker (reserved).
+
     CanonicalSnapshotResponse:
       type: object
       description: >
@@ -2995,8 +3026,11 @@ paths:
 
   /metrics/{ticker}:
     get:
-      summary: Latest risk metrics snapshot
+      summary: "(internal/legacy) Latest risk metrics snapshot"
       description: >
+        **Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: "ticker"` for new clients.**
+        This endpoint remains callable as an internal building block.
+
         Returns the latest V3 daily metrics for the ticker. Numeric fields are under the
         `metrics` object using abbreviated keys (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`,
         `l3_mkt_er`, `l3_res_er`, `vol_23d`, etc.). The observation date is `teo`.
@@ -3083,8 +3117,11 @@ paths:
 
   /decompose:
     post:
-      summary: Decompose a position into four additive bets with hedge ratios
+      summary: "(internal/legacy) Decompose a position into four additive bets with hedge ratios"
       description: >
+        **Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: "ticker"` for new clients.**
+        This endpoint remains callable as an internal building block.
+
         Returns the simplified four-layer ERM3 exposure for a single ticker:
         `market`, `sector`, `subsector`, and `residual`. Each tradable layer
         (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`;
@@ -4140,8 +4177,11 @@ paths:
 
   /batch/analyze:
     post:
-      summary: Multi-ticker batch analysis
+      summary: "(internal/legacy) Multi-ticker batch analysis"
       description: >
+        **Per Snapshot Architecture v3, prefer `POST /snapshot` for new clients.** This endpoint
+        remains callable as an internal building block (cohort scans, parity checks, zarr alignment).
+
         Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker).
         Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation
         schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …),
@@ -4423,8 +4463,11 @@ paths:
 
   /portfolio/risk-snapshot:
     post:
-      summary: Portfolio risk snapshot (bundled PDF or JSON)
+      summary: "(legacy) Portfolio risk snapshot (bundled PDF or JSON)"
       description: >
+        **Per Snapshot Architecture v3, prefer `POST /snapshot` (JSON) for new clients.**
+        This endpoint remains the canonical surface for the bundled **PDF** report; for JSON,
+        `/snapshot` returns the same shape with stronger v3 contract guarantees.
         One bundled report for a weighted portfolio: L3 explained-risk decomposition, per-name hedge ratios,
         and volatility. Uses internal data access only (no separate charges for underlying metrics calls).
         `format=json` returns structured data; `format=pdf` returns `application/pdf`. `format=png` is not
@@ -4532,14 +4575,21 @@ paths:
 
   /snapshot:
     post:
-      summary: Canonical JSON portfolio snapshot
+      summary: Canonical JSON snapshot (portfolio or single ticker)
       description: >
-        One structured response for a weighted portfolio: L3 explained-risk decomposition, L3 hedge ratios,
-        frozen-weight daily return attribution (gross, market, sector/subsector strips, residual),
-        cumulative return and drawdown over `lookback_days` trading days, and concentration-style
-        risk summary. JSON-only (no PDF). `type: "ticker"` is reserved and rejected by validation.
+        Per Snapshot Architecture v3, this is the canonical public analysis interface.
+        One structured response shape (`snapshot / time_behavior / attribution / risk_summary`) for either
+        a weighted portfolio (`type: "portfolio"`) or a single name (`type: "ticker"`):
+        L3 explained-risk decomposition, L3 hedge ratios, frozen-weight daily return attribution
+        (gross, market, sector/subsector strips, residual), cumulative return and drawdown over
+        `lookback_days` trading days, and risk summary.
 
-        **Billing:** Same as `POST /portfolio/risk-snapshot` — `portfolio-risk-snapshot` ($0.25 per request).
+        For `type: "ticker"` the response also includes `snapshot.ticker_meta` with sector/subsector
+        ETFs and the active L3 factor list. Internal endpoints `/decompose`, `/metrics/{ticker}`,
+        `/portfolio/risk-snapshot`, `/batch/analyze` remain callable but are not the recommended
+        public surface; new clients should use `/snapshot`.
+
+        **Billing:** `portfolio-risk-snapshot` capability ($0.25 per request, single bundled charge).
       operationId: postCanonicalSnapshot
       tags: [Risk Metrics]
       x-pricing:
@@ -4557,7 +4607,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CanonicalSnapshotPortfolioRequest"
+              oneOf:
+                - $ref: "#/components/schemas/CanonicalSnapshotPortfolioRequest"
+                - $ref: "#/components/schemas/CanonicalSnapshotTickerRequest"
+              discriminator:
+                propertyName: type
+                mapping:
+                  portfolio: "#/components/schemas/CanonicalSnapshotPortfolioRequest"
+                  ticker: "#/components/schemas/CanonicalSnapshotTickerRequest"
       responses:
         "200":
           description: Canonical snapshot JSON (includes `_metadata` and `_agent` on the wire).
