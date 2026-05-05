@@ -1506,6 +1506,53 @@ export const CAPABILITIES: Capability[] = [
     tags: ["funds", "snapshot", "tearsheet", "knowledge-mode"],
   },
   {
+    id: "fund-snapshot-pdf",
+    name: "Fund Snapshot (PDF)",
+    description:
+      "Server-rendered F1 fund tearsheet PDF. Same composition as " +
+      "`/api/funds/snapshot/{bw_fund_id}` (JSON), rendered via Playwright " +
+      "through `app/(print)/render-snapshot/funds/[bw_fund_id]/page.tsx`. " +
+      "Letter landscape, single page. Cached 24h per (user, bw_fund_id, " +
+      "report_date); cache hits return $0 with `X-Cache: HIT`.",
+    endpoint: "/api/funds/snapshot.pdf/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description: "Funds_DAG canonical fund id (BW-FUND-{series_id}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.25,
+      currency: "USD",
+      billing_code: "fund_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 3500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "funds",
+        "funds_latest",
+        "style_rankings_top",
+        "style_portfolios_latest",
+        "ds_portfolio.zarr",
+        "ds_ph.zarr",
+        "ds_hr.zarr",
+        "ds_nav.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "pdf", "tearsheet", "knowledge-mode"],
+  },
+  {
     id: "style-cohort-snapshot-json",
     name: "Style Cohort Snapshot (JSON)",
     description:
@@ -1546,6 +1593,49 @@ export const CAPABILITIES: Capability[] = [
       ],
     },
     tags: ["funds", "snapshot", "cohort", "differentiated-wedge"],
+  },
+  {
+    id: "style-cohort-snapshot-pdf",
+    name: "Style Cohort Snapshot (PDF)",
+    description:
+      "Server-rendered C1 cohort tearsheet PDF. Same composition as " +
+      "`/api/funds/style/{slug}/snapshot` (JSON), rendered via Playwright " +
+      "through `app/(print)/render-snapshot/funds/style/[slug]/page.tsx`. " +
+      "Letter landscape, single page. Cached 24h per (user, slug, " +
+      "report_date); cache hits return $0 with `X-Cache: HIT`.",
+    endpoint: "/api/funds/style/{slug}/snapshot.pdf",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "9-box style slug (large-blend, etc.).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.10,
+      currency: "USD",
+      billing_code: "style_cohort_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 3500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "style_portfolios_latest",
+        "style_rankings_top",
+        "portfolio_style/{Cell_Name}/ds_portfolio.zarr",
+        "equity_style_9box/{Cell_Name}/ds_symbols.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"],
   },
 ];
 

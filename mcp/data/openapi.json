@@ -8883,7 +8883,7 @@
     "/funds/snapshot/{bw_fund_id}": {
       "get": {
         "summary": "Composed fund snapshot (JSON)",
-        "description": "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (rank N of `cohort_size` on every metric the rankings table covers).\n\nThe matching server-rendered PDF is `/api/funds/snapshot.pdf/{bw_fund_id}` (Stage D.2 — not yet shipped). The SDK can render this JSON locally via `riskmodels.snapshots.f1_fund_tearsheet` (Stage D.3).\n",
+        "description": "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (rank N of `cohort_size` on every metric the rankings table covers).\n\nThe matching server-rendered PDF is `/api/funds/snapshot.pdf/{bw_fund_id}` (Stage D.2.b, ✅ shipped). The SDK can render this JSON locally via `riskmodels.snapshots.f1_fund_tearsheet` (Stage D.3, planned).\n",
         "operationId": "getFundSnapshotJson",
         "tags": [
           "Funds"
@@ -8973,10 +8973,118 @@
         }
       }
     },
+    "/funds/snapshot.pdf/{bw_fund_id}": {
+      "get": {
+        "summary": "Composed fund snapshot (PDF)",
+        "description": "Server-rendered F1 fund tearsheet PDF (Stage D.2.b). Same composition as `/api/funds/snapshot/{bw_fund_id}` (JSON), rendered via Playwright through `app/(print)/render-snapshot/funds/[bw_fund_id]/page.tsx`. Letter landscape, single page.\n**Caching:** Content-keyed on `(user, bw_fund_id, report_date)` for 24h. Cache hits return $0 with `X-Cache: HIT`.\n",
+        "operationId": "getFundSnapshotPdf",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-snapshot-pdf",
+          "tier": "premium",
+          "cost_usd": 0.25,
+          "billing_code": "fund_snapshot_pdf_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF tearsheet (Letter landscape).",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Cache": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "HIT",
+                    "MISS"
+                  ]
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no funds_latest row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PDF rendering disabled (`PLAYWRIGHT_PDF_ENABLED` is not `true` on the runtime).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/funds/style/{slug}/snapshot": {
       "get": {
         "summary": "Composed cohort snapshot (JSON)",
-        "description": "Composed JSON snapshot for a 9-box style cell — the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell (by 12-month gross return) + top-15 symbols in cell (by current weight, MV).\n\nMatching server-rendered PDF is `/api/funds/style/{slug}/snapshot.pdf` (Stage D.2 — not yet shipped).\n",
+        "description": "Composed JSON snapshot for a 9-box style cell — the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell (by 12-month gross return) + top-15 symbols in cell (by current weight, MV).\n\nMatching server-rendered PDF is `/api/funds/style/{slug}/snapshot.pdf` (Stage D.2.d, ✅ shipped).\n",
         "operationId": "getStyleCohortSnapshotJson",
         "tags": [
           "Funds"
@@ -9079,6 +9187,134 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/snapshot.pdf": {
+      "get": {
+        "summary": "Composed cohort snapshot (PDF)",
+        "description": "Server-rendered C1 cohort tearsheet PDF (Stage D.2.d). Same composition as `/api/funds/style/{slug}/snapshot` (JSON), rendered via Playwright through `app/(print)/render-snapshot/funds/style/[slug]/page.tsx`. Letter landscape, single page. Differentiated wedge: cohort aggregates EW + MV, top funds, top symbols, cohort top holdings — content Morningstar does not present at this granularity.\n**Caching:** Content-keyed on `(user, slug, report_date)` for 24h.\n",
+        "operationId": "getStyleCohortSnapshotPdf",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-snapshot-pdf",
+          "tier": "premium",
+          "cost_usd": 0.1,
+          "billing_code": "style_cohort_snapshot_pdf_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF cohort tearsheet (Letter landscape).",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Cache": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "HIT",
+                    "MISS"
+                  ]
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort metrics available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PDF rendering disabled (`PLAYWRIGHT_PDF_ENABLED` is not `true` on the runtime).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
