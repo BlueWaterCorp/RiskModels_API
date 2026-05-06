@@ -263,6 +263,7 @@ def _render_one(
         peer_correlations: dict = {}
         peer_sharpes: dict = {}
         alpha_trajectory: list = []
+        peer_rankings: dict = {}
         # Zarr-only peer path — no HTTP calls, no rate limits, no billing.
         try:
             peer_comparison = build_peer_comparison_from_zarr(ticker, zarr_root)
@@ -270,7 +271,7 @@ def _render_one(
             peer_error = f"peer_discovery: {type(exc).__name__}: {exc}"[:400]
         if peer_comparison is not None and not peer_comparison.peer_detail.empty:
             try:
-                peer_correlations, peer_sharpes, alpha_trajectory = (
+                peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory = (
                     compute_peer_analytics_from_zarr(ticker, zarr_root, peer_comparison)
                 )
             except Exception as exc:
@@ -283,6 +284,7 @@ def _render_one(
             peer_comparison=peer_comparison,
             peer_correlations=peer_correlations,
             peer_sharpes=peer_sharpes,
+            peer_rankings=peer_rankings,
             alpha_trajectory=alpha_trajectory,
             company_profile_text=profile_blurb,
         )

@@ -83,6 +83,9 @@ class DDData:
     peer_correlations: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
     # 3-year Sharpe ratios: ticker → (gross_sharpe_3y, l3_resid_sharpe_3y)
     peer_sharpes: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
+    # 252d subsector-cohort rank percentiles: ticker → (gross_pct, l3_resid_pct).
+    # 100 = best. Both target and peers populated when /rankings is reachable.
+    peer_rankings: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
     # Multi-year alpha quality trajectory (kept for cache compat)
     alpha_trajectory: list[tuple[str, float, float]] = field(default_factory=list)
     # SEC / LLM plain-text blurb (ERM3 company_profiles); left panel when set
@@ -153,11 +156,19 @@ class DDData:
             for k, v in ps_raw.items()
         } if ps_raw else {}
 
+        # Peer 252d subsector-cohort rank percentiles
+        pr_raw = d.get("peer_rankings", {})
+        peer_rankings = {
+            k: (v[0] if len(v) > 0 else None, v[1] if len(v) > 1 else None)
+            for k, v in pr_raw.items()
+        } if pr_raw else {}
+
         return cls(
             p1=p1,
             peer_comparison=pc,
             peer_correlations=peer_correlations,
             peer_sharpes=peer_sharpes,
+            peer_rankings=peer_rankings,
             alpha_trajectory=alpha_trajectory,
             company_profile_text=d.get("company_profile_text"),
         )
@@ -207,22 +218,53 @@ def compute_peer_analytics(
 ) -> tuple[
     dict[str, tuple[float | None, float | None]],
     dict[str, tuple[float | None, float | None]],
+    dict[str, tuple[float | None, float | None]],
     list[tuple[str, float, float]],
 ]:
-    """Compute peer_correlations, peer_sharpes, and alpha_trajectory.
+    """Compute peer_correlations, peer_sharpes, peer_rankings, and alpha_trajectory.
 
     Identical computation to :func:`get_data_for_dd`, but re-usable from the
     bulk renderer without paying the API-based ``get_data_for_p1`` cost when
     the target P1 is already available from zarr.
 
-    Returns ``(peer_correlations, peer_sharpes, alpha_trajectory)``. Missing /
-    failing peers are silently dropped; any hard error is swallowed so the
-    caller can always render a DD with zero peer-analytics as a fallback.
+    Returns ``(peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory)``.
+    Missing / failing peers are silently dropped; any hard error is swallowed so
+    the caller can always render a DD with zero peer-analytics as a fallback.
+
+    `peer_rankings` is the new (2026-05-05) per-ticker 252d subsector-cohort
+    rank: ``ticker → (gross_pct, l3_resid_pct)`` where 100 = best. Drives the
+    two new pill columns added to `_make_peer_dna_chart` in the same revision.
     """
     peer_correlations: dict[str, tuple[float | None, float | None]] = {}
     peer_sharpes: dict[str, tuple[float | None, float | None]] = {}
+    peer_rankings: dict[str, tuple[float | None, float | None]] = {}
     alpha_trajectory: list[tuple[str, float, float]] = []
     er_cols = ["l3_market_er", "l3_sector_er", "l3_subsector_er"]
+
+    def _fetch_rankings(tk: str) -> tuple[float | None, float | None]:
+        """252d subsector-cohort percentiles for one ticker. (gross, l3_resid)."""
+        try:
+            df = client.get_rankings(
+                tk, cohort="subsector", window="252d", as_dataframe=True,
+            )
+        except Exception:
+            return (None, None)
+        if df is None or len(df) == 0:
+            return (None, None)
+        g_pct: float | None = None
+        r_pct: float | None = None
+        try:
+            grow = df[df["metric"] == "gross_return"]
+            if len(grow) > 0:
+                v = grow.iloc[0].get("rank_percentile")
+                g_pct = float(v) if v is not None and pd.notna(v) else None
+            rrow = df[df["metric"] == "subsector_residual"]
+            if len(rrow) > 0:
+                v = rrow.iloc[0].get("rank_percentile")
+                r_pct = float(v) if v is not None and pd.notna(v) else None
+        except Exception:
+            pass
+        return (g_pct, r_pct)
 
     def _l3_resid_series(df):
         gr = pd.to_numeric(df["returns_gross"], errors="coerce")
@@ -268,6 +310,7 @@ def compute_peer_analytics(
                 target_df = target_df.set_index("date").sort_index()
                 g_s, r_s = _sharpe_3y(target_df)
                 peer_sharpes[ticker] = (g_s, r_s)
+                peer_rankings[ticker] = _fetch_rankings(ticker)
 
                 for pt in top_peer_tickers:
                     try:
@@ -277,6 +320,7 @@ def compute_peer_analytics(
                         peer_df = peer_df.set_index("date").sort_index()
                         pg_s, pr_s = _sharpe_3y(peer_df)
                         peer_sharpes[str(pt)] = (pg_s, pr_s)
+                        peer_rankings[str(pt)] = _fetch_rankings(str(pt))
 
                         common = target_df.index.intersection(peer_df.index)
                         common_1y = common[-252:] if len(common) > 252 else common
@@ -343,7 +387,7 @@ def compute_peer_analytics(
     except Exception:
         pass
 
-    return peer_correlations, peer_sharpes, alpha_trajectory
+    return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
 
 
 def get_data_for_dd(ticker: str, client: Any, *, years: int = 3) -> DDData:
@@ -386,9 +430,9 @@ def get_data_for_dd(ticker: str, client: Any, *, years: int = 3) -> DDData:
         except Exception:
             pass
 
-    # ── Peer analytics: correlations (1Y) + Sharpe ratios (3Y) + alpha trajectory ──
+    # ── Peer analytics: correlations (1Y) + Sharpe ratios (3Y) + 252d ranks + alpha trajectory ──
     # (Shared helper so the bulk renderer can reuse the same computation.)
-    peer_correlations, peer_sharpes, alpha_trajectory = compute_peer_analytics(
+    peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory = compute_peer_analytics(
         ticker, client, peer_comparison,
     )
 
@@ -397,6 +441,7 @@ def get_data_for_dd(ticker: str, client: Any, *, years: int = 3) -> DDData:
         peer_comparison=peer_comparison,
         peer_correlations=peer_correlations,
         peer_sharpes=peer_sharpes,
+        peer_rankings=peer_rankings,
         alpha_trajectory=alpha_trajectory,
         company_profile_text=None,
     )
@@ -471,11 +516,16 @@ def _make_dd_cum_chart(data: P1Data) -> go.Figure:
     pal = T.palette
     fnt = T.fonts
 
-    STOCK_COLOR  = "#4f46e5"    # indigo-600
-    ALPHA_COLOR  = "#10b981"    # emerald-500
-    SPY_COLOR    = "#94a3b8"    # slate-400
-    SECTOR_COLOR = "#0891b2"    # cyan-600
-    SUB_COLOR    = "#7c3aed"    # violet-600
+    # DD revision v9 (2026-05-05): canonical factor palette. Subsector
+    # eased from violet-600 to violet-500 so it stops over-signaling in the
+    # stacked bars. Market stays slate-400 (visually de-emphasized via
+    # dash style on the trace + alpha on the bars). Same hex everywhere
+    # the layer appears — line chart, stacked bars, waterfall.
+    STOCK_COLOR  = "#4f46e5"    # indigo-600 — gross stock
+    SPY_COLOR    = "#94a3b8"    # slate-400  — market / L1 (context, low weight)
+    SECTOR_COLOR = "#14B8A6"    # teal-500   — sector / L2
+    SUB_COLOR    = "#8B5CF6"    # violet-500 — subsector / L3 (less saturated)
+    ALPHA_COLOR  = "#10b981"    # emerald-500 — residual / α (the story)
 
     def _trace(series, name, color, width=1.5, dash="solid"):
         if not series:
@@ -840,10 +890,46 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     WHITE_C    = "#ffffff"
     DEEP_BLUE  = "#002a5e"
     SLATE      = "#64748b"
+    # DD revision v9 (2026-05-05): canonical factor palette — identical to
+    # the Section I cumulative-return line traces so a teal line maps 1:1
+    # to a teal segment, etc. Zero translation cost between panels.
+    # Subsector eased from violet-600 to violet-500 so it stops over-
+    # signaling in the dense stacked bars; per-segment market alpha drops
+    # in the bar plotting loop below so market reads as context, not story.
     LAYER_COLORS = {
-        "mkt": "#3b82f6", "sec": "#06b6d4",
-        "sub": "#f97316", "res": "#94a3b8",
+        "mkt": "#94A3B8",   # slate-400  (market)
+        "sec": "#14B8A6",   # teal-500   (sector)
+        "sub": "#8B5CF6",   # violet-500 (subsector — less saturated)
+        "res": "#10B981",   # emerald-500 (residual)
     }
+    # Per-layer fill alpha — market deemphasized so the eye lands on
+    # residual / sector / subsector first.
+    LAYER_ALPHAS = {"mkt": 0.78, "sec": 1.0, "sub": 1.0, "res": 1.0}
+
+    def _draw_mag_bar(a, cx, cy, w, h, frac, color, signed=False):
+        """Thin horizontal magnitude bar centered at (cx, cy).
+
+        Used in the data table on the right pane to encode each cell's
+        magnitude visually without competing with the number above it.
+        Background is light grey; filled portion uses the column accent.
+        Width/height are in axis-data units. `frac` is 0..1.
+        """
+        from matplotlib.patches import Rectangle as _Rect
+        x_lft = cx - w / 2
+        # Track (background)
+        a.add_patch(_Rect(
+            (x_lft, cy - h / 2), w, h,
+            facecolor="#e2e8f0", edgecolor="none", zorder=2, clip_on=False,
+        ))
+        # Fill — left-anchored
+        a.add_patch(_Rect(
+            (x_lft, cy - h / 2), max(0.001, w * frac), h,
+            facecolor=color,
+            # Negative sharpe etc. get a softer fill (still left-anchored
+            # since we display |value|; sign is conveyed by the +/- in text).
+            alpha=0.45 if signed else 0.85,
+            edgecolor="none", zorder=3, clip_on=False,
+        ))
     pc = dd.peer_comparison
     m  = dd.metrics
     sub_etf = dd.subsector_etf or dd.sector_etf or ""
@@ -895,6 +981,9 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
         "l3_subsector_er": _g("l3_subsector_er", "l3_sub_er") or 0.0,
         "l3_residual_er": _g("l3_residual_er", "l3_res_er") or 0.0,
         "vol_23d": _g("vol_23d", "volatility"),
+        # Pull MC from /metrics — without this the target falls to MC=0 and the
+        # MC-scaled bar collapses to the floor while peers dominate visually.
+        "market_cap": _g("market_cap", "market_cap"),
         "subsector_etf": sub_etf,
     }
     target_row["vol_23d"] = _vol(target_row)
@@ -930,52 +1019,130 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     xmax = float(np.nanmax(totals)) * 1.07 if n else 0.6
     xmax = max(xmax, 0.05)
 
-    # ── Layout: 6 columns — bars | mkt cap | gross ρ | resid ρ | gross Sharpe | resid Sharpe ──
-    # When peers are available, each row is 0.52" + 1.6" chrome.  When peers are
-    # missing (peerless), the whole panel collapses to a single bar: let it sit in
-    # a short figure so the 7-bar and 1-bar renders both look deliberate.
-    fig_h = 2.4 if peerless else max(3.0, n * 0.52 + 1.6)
-    peer_corrs = dd.peer_correlations or {}
+    # ── MC weights for thickness scaling ────────────────────────────────
+    # Per the .app landing "Per-stock risk" view: bar thickness ∝ market-cap
+    # weight (length still = annualized σ). Floor at 30% of max so the
+    # smallest peer stays readable even when MC ratios are large (e.g.
+    # AAPL ~$3.5T vs TSLA ~$650B). Target gets a +30% bump on top of its
+    # MC weight so it's always the visually dominant bar regardless of cap.
+    mkt_caps_arr = np.array(
+        [
+            float(r.get("market_cap"))
+            if r.get("market_cap") is not None
+            and _math.isfinite(float(r.get("market_cap") or 0))
+            and float(r.get("market_cap") or 0) > 0
+            else 0.0
+            for r in rows
+        ],
+        dtype=float,
+    )
+    mc_total = float(mkt_caps_arr.sum())
+    if mc_total > 0:
+        mc_share = mkt_caps_arr / mc_total
+    else:
+        mc_share = np.full(n, 1.0 / max(n, 1))
+
+    # ── DD revision v7 (2026-05-05): equal-thickness bars (Medium style) ─
+    # Match the Per-ticker DNA chart in _mag7_dna.py — uniform bar height,
+    # one row per ticker, MC weight is no longer encoded in thickness.
+    # Plotly's `bargap=0.32` corresponds to a fill fraction of 0.68 in
+    # matplotlib's `barh(..., height=...)` since slot pitch is 1.0.
+    BAR_HEIGHT = 0.68
+    bar_heights = np.full(n, BAR_HEIGHT)
+    mc_norm = np.ones(n)  # kept for downstream label-sizing compat
+    h_bar_target = BAR_HEIGHT
+
+    # ── DD revision v3 (2026-05-05): sort by market cap descending ─
+    # Matches the .app-landing "Per-stock risk" chart aesthetic — biggest
+    # cap at top, target placed in its actual MC-rank position. Target is
+    # called out via the FancyBboxPatch outline + bold label rather than
+    # by being forced to row 0.
+    if not peerless:
+        sort_order = sorted(range(n), key=lambda i: -float(mkt_caps_arr[i]))
+        target_idx = sort_order.index(0)
+        tickers = [tickers[i] for i in sort_order]
+        sigma = sigma[sort_order]
+        mkt_a = mkt_a[sort_order]
+        sec_a = sec_a[sort_order]
+        sub_a = sub_a[sort_order]
+        res_a = res_a[sort_order]
+        mkt_v = mkt_v[sort_order]
+        sec_v = sec_v[sort_order]
+        sub_v = sub_v[sort_order]
+        res_v = res_v[sort_order]
+        totals = totals[sort_order]
+        mkt_caps_arr = mkt_caps_arr[sort_order]
+        mc_share = mc_share[sort_order]
+        mc_norm = mc_norm[sort_order]
+        bar_heights = bar_heights[sort_order]
+    else:
+        target_idx = 0
+
+    # Integer y-slots — one slot per ticker (0..n-1).
+    y_centers = np.arange(n, dtype=float)
+
     peer_sharpes = dd.peer_sharpes or {}
-    has_extras = bool(peer_corrs) or bool(peer_sharpes)
+    peer_ranks = dd.peer_rankings or {}
+    has_extras = bool(peer_sharpes) or bool(peer_ranks) or n > 1
+
+    # Figure sizing — equal-thickness bars (Medium style); enough vertical
+    # room for 7 rows + legend without crowding.
+    fig_h = 2.6 if peerless else max(4.5, n * 0.55 + 1.8)
 
     if has_extras:
-        # 70/30 split: bars=0.70, gross_rho=0.075, resid_rho=0.075, g_sharpe=0.075, r_sharpe=0.075
-        fig, axes = plt.subplots(
-            1, 5, figsize=(10, fig_h),
-            gridspec_kw={
-                "width_ratios": [0.70, 0.075, 0.075, 0.075, 0.075],
-                "wspace": 0.02,
-            },
+        # DD revision v4 (2026-05-05):
+        # Left  (0.62 width, both rows): full-width .app-landing-style stacked
+        #                                 bar chart, MC-sorted, MC-thickness
+        #                                 scaled, residual % labeled inside
+        #                                 the emerald segment.
+        # Right (0.38 width, two rows):  two vertical mini-charts —
+        #                                 top: Residual Sharpe (3Y), sorted desc
+        #                                 bot: Residual Rank (TTM), sorted desc
+        #                                 No row alignment between left and right
+        #                                 (intentional — each chart sorts by its
+        #                                 own metric, target highlighted by color).
+        fig = plt.figure(figsize=(16, fig_h))
+        gs = fig.add_gridspec(
+            2, 2,
+            width_ratios=[0.62, 0.38],
+            height_ratios=[1, 1],
+            # DD revision v9: hspace bumped 0.30 → 0.55 — Sharpe and Rank
+            # are two distinct decisions; reading them as one block was
+            # losing the "structure vs judgment" separation.
+            wspace=0.06, hspace=0.55,
         )
-        ax, ax_g, ax_r, ax_gs, ax_rs = axes
+        ax = fig.add_subplot(gs[:, 0])
+        ax_sharpe = fig.add_subplot(gs[0, 1])
+        ax_rank = fig.add_subplot(gs[1, 1])
     else:
         fig, ax = plt.subplots(figsize=(8.5, fig_h))
     fig.patch.set_facecolor(WHITE_C)
     ax.set_facecolor("#fafbfc")
 
-    # ── Stacked bars ──
-    h_bar = 0.55
-    h_bar_target = 0.72  # META bar 30% thicker
+    # ── Stacked bars (MC-scaled thickness) ──
+    # h_bar_target preserved for the legacy outline call below; per-row
+    # heights live in `bar_heights` (computed above from MC weights).
+    h_bar = 0.55  # used only as a fallback / pill geometry reference
 
     from matplotlib.patches import FancyBboxPatch
 
+    # DD revision v5 (2026-05-05): no inside-bar labels — replicates the
+    # .app-landing aesthetic exactly. Bar lengths encode proportions; the
+    # narrative numbers live in the right-pane mini-charts.
+    # DD revision v9: per-layer alpha (market deemphasized).
     for i in range(n):
-        hb = h_bar_target if i == 0 else h_bar
-        segs = [(mkt_v[i], LAYER_COLORS["mkt"]),
-                (sec_v[i], LAYER_COLORS["sec"]),
-                (sub_v[i], LAYER_COLORS["sub"]),
-                (res_v[i], LAYER_COLORS["res"])]
+        hb = float(bar_heights[i])
+        yc = float(y_centers[i])
+        segs = [
+            (mkt_v[i], LAYER_COLORS["mkt"], LAYER_ALPHAS["mkt"]),
+            (sec_v[i], LAYER_COLORS["sec"], LAYER_ALPHAS["sec"]),
+            (sub_v[i], LAYER_COLORS["sub"], LAYER_ALPHAS["sub"]),
+            (res_v[i], LAYER_COLORS["res"], LAYER_ALPHAS["res"]),
+        ]
         lft = 0.0
-        for val, col in segs:
-            ax.barh(i, val, left=lft, color=col, height=hb,
-                    edgecolor=WHITE_C, linewidth=0.5)
-            # Inside % labels for segments ≥ 8% of total
-            seg_frac = val / max(totals[i], 1e-9)
-            if seg_frac >= 0.08 and val > 0.005:
-                ax.text(lft + val / 2, i, f"{seg_frac:.0%}",
-                        ha="center", va="center", fontsize=6.5,
-                        color="white", fontweight="bold", zorder=12)
+        for val, col, alf in segs:
+            ax.barh(yc, val, left=lft, color=col, height=hb,
+                    edgecolor=WHITE_C, linewidth=0.5, alpha=alf)
             lft += val
 
     # Target-only fallback: the legend below shows segment percentages inline so
@@ -983,12 +1150,12 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
     # explains why peers are missing.
     _peerless_legend_pcts: list[str] = []
     if peerless:
-        _tot = max(totals[0], 1e-9)
+        _tot = max(totals[target_idx], 1e-9)
         _peerless_legend_pcts = [
-            f"{mkt_v[0]/_tot:.0%}",
-            f"{sec_v[0]/_tot:.1%}",
-            f"{sub_v[0]/_tot:.1%}",
-            f"{res_v[0]/_tot:.0%}",
+            f"{mkt_v[target_idx]/_tot:.0%}",
+            f"{sec_v[target_idx]/_tot:.1%}",
+            f"{sub_v[target_idx]/_tot:.1%}",
+            f"{res_v[target_idx]/_tot:.0%}",
         ]
         ax.text(
             0.99, 0.97,
@@ -1000,19 +1167,27 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
             zorder=15,
         )
 
-    # Target row (0): dark border to pop as reference
-    total_0 = float(totals[0])
-    _outline = FancyBboxPatch(
-        (0, -h_bar_target / 2), total_0, h_bar_target,
-        boxstyle="round,pad=0", linewidth=2.5,
-        edgecolor=DEEP_BLUE, facecolor="none", zorder=10, clip_on=False,
+    # Target row: dark navy border to mark the focus stock. The outline
+    # used to extend half a linewidth outside the bar (FancyBboxPatch with
+    # clip_on=False), pushing the target's left edge visually past x=0
+    # while peer bars sat flush against the y-axis. DD revision v9 fixes
+    # this two ways: (a) clip the outline at the axes boundary so the
+    # leftmost half of the line is cut at x=0, and (b) drop the negative
+    # xlim padding below so x=0 is the true axis spine. Net result: every
+    # bar — target included — starts at exactly the same x.
+    from matplotlib.patches import Rectangle as _OutlineRect
+    total_t = float(totals[target_idx])
+    _outline = _OutlineRect(
+        (0, target_idx - h_bar_target / 2), total_t, h_bar_target,
+        linewidth=2.5, edgecolor=DEEP_BLUE, facecolor="none",
+        zorder=10, clip_on=True,
     )
     ax.add_patch(_outline)
 
     # Add legend entries manually (bars drawn per-row, so no auto-legend).
     # In peerless mode, extend each label with the target's segment percentage so
     # the tiny Sector/Subsector slivers are still readable.
-    _labels = ["Market", "Sector", "Subsector", "Residual"]
+    _labels = ["Market", "Sector", "Subsector", "Idiosyncratic"]
     if peerless and len(_peerless_legend_pcts) == 4:
         _labels = [f"{lab} {pct}"
                    for lab, pct in zip(_labels, _peerless_legend_pcts)]
@@ -1020,10 +1195,26 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
                                    LAYER_COLORS["sub"], LAYER_COLORS["res"])):
         ax.barh([], [], color=col, label=lab)
 
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(tickers, fontsize=9.5, fontweight="bold", color=DEEP_BLUE)
-    _xpad = max(xmax * 0.004, 0.001)
-    ax.set_xlim(-_xpad, xmax)
+    # Y-axis ticker labels — Medium "Per-ticker DNA" style: bold ticker
+    # name on the left, target colored navy, peers slate. No MC% subscript
+    # (the Medium chart shows only ticker names — bar length and stack
+    # widths carry the data).
+    ax.set_yticks(y_centers)
+    ax.set_yticklabels([""] * n)
+    LABEL_X = -xmax * 0.012
+    for i, tk in enumerate(tickers):
+        is_target = (i == target_idx)
+        tk_color = DEEP_BLUE if is_target else SLATE
+        ax.text(
+            LABEL_X, float(y_centers[i]), tk,
+            ha="right", va="center",
+            fontsize=10.5 if is_target else 9.5,
+            fontweight="bold",
+            color=tk_color, transform=ax.transData,
+        )
+    # DD revision v9: x range starts exactly at 0 — every bar's left edge
+    # sits flush against the y-axis spine, including the target.
+    ax.set_xlim(0.0, xmax)
     ax.set_xticks(np.linspace(0, xmax, min(6, max(3, int(xmax / 0.05) + 1))))
     ax.set_ylim(-0.5, n - 0.5)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0%}"))
@@ -1038,148 +1229,245 @@ def _make_peer_dna_chart(dd: DDData) -> "Image.Image":
         )
     ax.invert_yaxis()
     ax.grid(axis="x", color="#e2e8f0", linewidth=0.8, linestyle="--", alpha=0.8)
-    ax.grid(axis="y", color="#e2e8f0", linewidth=0.5, linestyle="-", alpha=0.4)
+    ax.grid(axis="y", visible=False)
     ax.set_axisbelow(True)
-    for spine in ax.spines.values():
-        spine.set_visible(False)
+    # DD revision v9: bolder axis frame — analytical chart, not floating
+    # bars. Spines bumped from 0.9pt → 1.3pt and from 0.8 → 1.0 alpha so
+    # the chart frame is unmistakably present without becoming heavy.
+    AXIS_LINE = "#64748b"   # slate-500 — darker than prior slate-400
+    AXIS_LINE_W = 1.3
+    AXIS_TICK_C = "#334155"
+    for side, sp in ax.spines.items():
+        if side in ("bottom", "left"):
+            sp.set_visible(True)
+            sp.set_color(AXIS_LINE)
+            sp.set_linewidth(AXIS_LINE_W)
+            sp.set_alpha(1.0)
+        else:
+            sp.set_visible(False)
+    ax.tick_params(axis="x", colors=AXIS_TICK_C, length=4, width=1.0,
+                   labelsize=8.5)
+    ax.tick_params(axis="y", length=0)
 
-    # Legend sits below the axis. The peerless case has no xlabel so it can
-    # sit closer; the multi-row case needs more clearance below the xlabel.
-    _legend_y = -0.28 if peerless else -0.14
+    # DD revision v9 (2026-05-05): legend moves above the chart (was below)
+    # and bumps 1.4x — peer DNA palette is the analytical key, so it
+    # belongs at the top of the panel rather than tucked under the axis.
+    _legend_y = 1.06 if peerless else 1.04
     ax.legend(
-        loc="upper center", bbox_to_anchor=(0.5, _legend_y), ncol=4,
-        frameon=True, fancybox=True, fontsize=7.5, columnspacing=1.5,
-        handlelength=1.1, handletextpad=0.5,
-        edgecolor="#e2e8f0", facecolor="#fafafa",
+        loc="lower center", bbox_to_anchor=(0.5, _legend_y), ncol=4,
+        frameon=True, fancybox=True, fontsize=10.5, columnspacing=2.0,
+        handlelength=1.6, handletextpad=0.7, borderpad=0.7,
+        edgecolor="#cbd5e1", facecolor="#ffffff",
     )
 
-    # ── Extra columns: Mkt Cap, Correlations, Sharpe ──
+    # ── DD revision v4 (2026-05-05): two vertical mini-charts on the right ─
+    # Right pane is split vertically: top = Residual Sharpe (3Y), bottom =
+    # Residual Rank (TTM). Each chart is independently sorted descending by
+    # its metric. No row alignment with the left pane (intentional — each
+    # chart tells its own story; target highlighted by emerald fill).
     if has_extras:
-        GROSS_THEME = "#1e40af"    # deep blue
-        RESID_THEME = "#0f766e"    # emerald/teal
-        SHARPE_GROSS = "#475569"   # neutral grey-blue
-        SHARPE_RESID = "#065f46"   # deep green
+        target_ticker = tickers[target_idx]
 
-        # Build data arrays for all rows
-        gross_rhos, resid_rhos = [], []
-        gross_sharpes, resid_sharpes = [], []
-        mkt_caps = []
-        for r in rows:
-            tk = r["ticker"]
-            # Market cap
-            mc = r.get("market_cap")
-            try:
-                mc = float(mc) if mc is not None and _math.isfinite(float(mc)) else 0
-            except (TypeError, ValueError):
-                mc = 0
-            mkt_caps.append(mc)
+        # Color palette for the right-pane mini-charts
+        SHARPE_POS = "#0f766e"   # teal — positive residual Sharpe
+        SHARPE_NEG = "#cbd5e1"   # soft slate — negative (de-emphasized)
+        RANK_PEER  = "#1e3a8a"   # navy — peer rank
+        TARGET_FILL = LAYER_COLORS["res"]  # emerald — matches stacked-bar residual
 
-            if tk == dd.ticker:
-                gross_rhos.append(1.0)
-                resid_rhos.append(1.0)
-            else:
-                g, l3r = peer_corrs.get(tk, (None, None))
-                gross_rhos.append(g if g is not None else 0.0)
-                resid_rhos.append(l3r if l3r is not None else 0.0)
+        def _vbar_chart(a, title, pairs, *, signed=False, max_val=None,
+                        positive_color=SHARPE_POS, negative_color=SHARPE_NEG,
+                        target_color=TARGET_FILL, fmt_value=None,
+                        y_ticks=None, y_tick_fmt=None):
+            """Render a vertical bar mini-chart.
 
-            gs, rs = peer_sharpes.get(tk, (None, None))
-            gross_sharpes.append(gs)
-            resid_sharpes.append(rs)
-
-        # ── Shared helpers ──
-        def _pill_bg(v, base_hex, scale=1.0):
-            a = min(abs(v) * scale, 1.0)
-            br, bg, bb = int(base_hex[1:3], 16), int(base_hex[3:5], 16), int(base_hex[5:7], 16)
-            r = int(0xec + a * (br - 0xec))
-            g = int(0xef + a * (bg - 0xef))
-            b = int(0xf5 + a * (bb - 0xf5))
-            return f"#{r:02x}{g:02x}{b:02x}"
-
-        def _pill_tc(v, threshold=0.5):
-            return "white" if abs(v) > threshold else DEEP_BLUE
-
-        from matplotlib.patches import FancyBboxPatch as _FBP
-
-        def _setup_pill_column(a, values, base_color, header, fmt="+.2f",
-                               scale=1.0, threshold=0.5, bold_all=False):
+            `pairs`: list of (ticker, value) — already sorted descending.
+            `signed`: True for sharpes (negatives go below 0). False for ranks.
+            `max_val`: optional fixed y-axis max (use 100 for ranks).
+            `fmt_value`: function(value) → str for the on-bar label. Default:
+                          ".2f" signed for sharpe, ".0f" int for rank.
+            `y_ticks`: optional explicit tick positions; otherwise auto.
+            `y_tick_fmt`: optional callable(v)→str for tick labels.
+            """
             a.set_facecolor("#fafbfc")
-            a.set_ylim(-0.5, n - 0.5)
-            a.invert_yaxis()
-            a.set_yticks(y_pos)
-            a.set_yticklabels([])
-            a.set_xlim(0, 1)
+            # DD revision v9: bolder left + bottom axes (1.3pt @ slate-500)
+            # so each mini chart reads as an analytical object.
+            AXIS_LINE = "#64748b"
+            AXIS_TICK_C = "#334155"
+            for side, sp in a.spines.items():
+                if side in ("bottom", "left"):
+                    sp.set_visible(True)
+                    sp.set_color(AXIS_LINE)
+                    sp.set_linewidth(1.3)
+                    sp.set_alpha(1.0)
+                else:
+                    sp.set_visible(False)
             a.set_xticks([])
-            for spine in a.spines.values():
-                spine.set_visible(False)
-            a.grid(axis="y", color="#e2e8f0", linewidth=0.5, linestyle="-", alpha=0.4)
-            a.set_axisbelow(True)
 
-            a.text(0.5, -0.78, header, ha="center", va="center",
-                   fontsize=7, color=SLATE, fontweight="bold")
+            if not pairs:
+                a.set_yticks([])
+                a.text(0.5, 0.5, "—", transform=a.transAxes,
+                       ha="center", va="center", color="#94a3b8")
+                return
 
-            pill_h = h_bar * 0.72
-            pill_w = 0.82
-            pill_x = (1 - pill_w) / 2
+            # Title
+            a.text(
+                0.5, 1.10, title, transform=a.transAxes,
+                ha="center", va="center", fontsize=10,
+                color=DEEP_BLUE, fontweight="bold",
+            )
 
-            for i, v in enumerate(values):
-                is_target = (i == 0)
-                if v is None:
-                    a.text(0.5, i, "—", ha="center", va="center",
-                           fontsize=7.5, color="#94a3b8")
-                    continue
-                bg = _pill_bg(v, base_color, scale)
-                tc = _pill_tc(v, threshold)
-                pill = _FBP(
-                    (pill_x, i - pill_h / 2), pill_w, pill_h,
-                    boxstyle="round,pad=0.02,rounding_size=0.08",
-                    facecolor=bg,
-                    edgecolor=base_color if is_target else "#d1d5db",
-                    linewidth=1.5 if is_target else 0.5,
-                    zorder=8,
+            n_bars = len(pairs)
+            xs = np.arange(n_bars)
+            vals = [p[1] for p in pairs]
+            tks = [p[0] for p in pairs]
+
+            # Y range — DD revision v7: auto-rescale signed charts (Sharpe)
+            # tightly around actual data instead of forcing a symmetric
+            # range about zero. This recovers ~half the chart area when
+            # all sharpes are same-signed (typical case).
+            if signed:
+                vmin_d = float(min(vals))
+                vmax_d = float(max(vals))
+                if vmin_d < 0 and vmax_d > 0:
+                    # crosses zero — keep symmetric padding around zero
+                    absmax = max(abs(vmin_d), abs(vmax_d))
+                    pad = max(absmax * 0.18, 0.05)
+                    ymin, ymax = -(absmax + pad), (absmax + pad)
+                else:
+                    rng = max(vmax_d - vmin_d, 0.10)
+                    pad = rng * 0.20
+                    if vmin_d >= 0:
+                        ymin = max(0.0, vmin_d - pad)
+                        ymax = vmax_d + pad
+                    else:
+                        ymin = vmin_d - pad
+                        ymax = min(0.0, vmax_d + pad)
+            else:
+                _peak = max(vals + [0])
+                ymax = max((max_val or _peak) * 1.18, 1.0)
+                ymin = 0
+
+            for x, tk, v in zip(xs, tks, vals):
+                is_target = (tk == target_ticker)
+                if is_target:
+                    color = target_color
+                elif signed:
+                    color = positive_color if v >= 0 else negative_color
+                else:
+                    color = RANK_PEER
+                # DD revision v9: target ticker pops harder — outline thicker,
+                # so it's "instantly findable" without scanning ticker labels.
+                a.bar(
+                    x, v, color=color,
+                    edgecolor=DEEP_BLUE if is_target else "none",
+                    linewidth=2.4 if is_target else 0,
+                    width=0.78 if is_target else 0.72,
+                    zorder=5 if is_target else 3,
                 )
-                a.add_patch(pill)
-                fs = 8.5 if is_target else (8 if bold_all else 7.5)
-                fw = "bold" if (is_target or bold_all) else "semibold"
-                a.text(0.5, i, f"{v:{fmt}}",
-                       ha="center", va="center",
-                       fontsize=fs, color=tc, fontweight=fw, zorder=12)
+                # Value label
+                if fmt_value is None:
+                    label = f"{v:+.2f}" if signed else f"{v:.0f}"
+                    if signed and abs(v) < 0.005:
+                        label = "+0.00"
+                else:
+                    label = fmt_value(v)
+                if v >= 0:
+                    label_y = v + ymax * 0.04
+                    label_va = "bottom"
+                else:
+                    label_y = v - ymax * 0.04
+                    label_va = "top"
+                # DD revision v8: bump value prominence, dial back ticker
+                # label size so the eye lands on the number first.
+                a.text(
+                    x, label_y, label,
+                    ha="center", va=label_va,
+                    fontsize=11.5 if is_target else 10.5,
+                    fontweight="bold",
+                    color=DEEP_BLUE if is_target else "#0f172a",
+                    zorder=10,
+                )
+                # Ticker label below baseline — smaller, more deferential.
+                ticker_y = ymin - (ymax - ymin) * 0.08
+                a.text(
+                    x, ticker_y, tk,
+                    ha="center", va="top",
+                    fontsize=8.5 if is_target else 8,
+                    fontweight="bold" if is_target else "normal",
+                    color=DEEP_BLUE if is_target else SLATE,
+                )
 
-        # ── Correlation pills ──
-        _setup_pill_column(ax_g, gross_rhos, GROSS_THEME, "GROSS ρ")
-        _setup_pill_column(ax_r, resid_rhos, RESID_THEME, "RESID ρ")
+            # Zero line for signed charts — only draw if zero is inside
+            # the auto-rescaled y-range. DD revision v9: bumped from
+            # 0.9pt slate-400 → 1.6pt slate-600 so negative bars feel
+            # anchored to the baseline rather than floating.
+            if signed and ymin <= 0 <= ymax:
+                a.axhline(0, color="#475569", linewidth=1.6, zorder=3,
+                          alpha=1.0)
 
-        # ── 3Y Sharpe pills (bold L3 Resid values) ──
-        _setup_pill_column(ax_gs, gross_sharpes, SHARPE_GROSS,
-                           "GROSS\nSHARPE 3Y", fmt=".2f", scale=0.5, threshold=1.0)
-        _setup_pill_column(ax_rs, resid_sharpes, SHARPE_RESID,
-                           "L3 RESID\nSHARPE 3Y", fmt=".2f", scale=0.5,
-                           threshold=1.0, bold_all=True)
+            a.set_xlim(-0.6, n_bars - 0.4)
+            a.set_ylim(ymin - (ymax - ymin) * 0.18, ymax)
 
-        # Vertical separators
-        for sep_ax in [ax_g, ax_gs]:
-            pos = sep_ax.get_position()
-            fig.patches.append(plt.Rectangle(
-                (pos.x0 - 0.002, 0.06), 0.001, 0.90,
-                transform=fig.transFigure, facecolor="#cbd5e1",
-                edgecolor="none", zorder=5,
-            ))
+            # Y-ticks — Sharpe gets 0 + a positive marker; Rank gets 25/50/75.
+            # Caller can override via y_ticks; defaults below cover both modes.
+            if y_ticks is None:
+                if signed:
+                    _ticks = [t for t in (0.0, max(0.5, round(ymax, 1)))
+                              if ymin <= t <= ymax]
+                else:
+                    _ticks = [t for t in (25, 50, 75) if ymin <= t <= ymax]
+            else:
+                _ticks = [t for t in y_ticks if ymin <= t <= ymax]
+            a.set_yticks(_ticks)
+            if y_tick_fmt is None:
+                _fmt = (lambda v: f"{v:+.1f}") if signed else (lambda v: f"{int(v)}")
+            else:
+                _fmt = y_tick_fmt
+            a.set_yticklabels([_fmt(t) for t in _ticks])
+            a.tick_params(axis="y", colors=AXIS_TICK_C, length=2.5,
+                          width=0.7, pad=2, labelsize=6.5)
+            # Subtle horizontal gridlines at the tick positions. The Rank
+            # chart's median (50) gets bumped slightly so "above/below the
+            # median" is the dominant mental anchor.
+            for t in _ticks:
+                if t == 0:
+                    continue
+                _is_median = (not signed) and (t == 50)
+                a.axhline(
+                    t,
+                    color="#94a3b8" if _is_median else "#e2e8f0",
+                    linewidth=1.0 if _is_median else 0.5,
+                    linestyle="-" if _is_median else "--",
+                    zorder=2 if _is_median else 1,
+                    alpha=0.8 if _is_median else 0.7,
+                )
 
-        # Spanning headers
-        corr_cx = (ax_g.get_position().x0 + ax_r.get_position().x1) / 2
-        fig.text(corr_cx, 0.995, f"Correlation vs {dd.ticker}",
-                 ha="center", va="top", fontsize=8, color=DEEP_BLUE, fontweight="bold")
+        # Top chart — Residual Sharpe (3Y), sorted desc, drop None entries
+        sharpe_pairs = [
+            (tk, peer_sharpes.get(tk, (None, None))[1]) for tk in tickers
+        ]
+        sharpe_pairs = [(tk, v) for tk, v in sharpe_pairs if v is not None]
+        sharpe_pairs.sort(key=lambda x: -x[1])
+        _vbar_chart(ax_sharpe, "RESIDUAL SHARPE (3Y)", sharpe_pairs, signed=True)
 
-        sharpe_cx = (ax_gs.get_position().x0 + ax_rs.get_position().x1) / 2
-        fig.text(sharpe_cx, 0.995, "3-Year Quality",
-                 ha="center", va="top", fontsize=8, color=DEEP_BLUE, fontweight="bold")
+        # Bottom chart — Residual Rank (TTM), sorted desc, fixed 0-100 scale
+        rank_pairs = [
+            (tk, peer_ranks.get(tk, (None, None))[1]) for tk in tickers
+        ]
+        rank_pairs = [(tk, v) for tk, v in rank_pairs if v is not None]
+        rank_pairs.sort(key=lambda x: -x[1])
+        _vbar_chart(
+            ax_rank, "RESIDUAL RANK (TTM)", rank_pairs, signed=False, max_val=100,
+        )
 
-        # Highlight target row
-        ax.axhspan(-0.40, 0.40, color="#f1f5f9", zorder=0)
+        # Highlight target row in left pane (subtle tint).
+        ax.axhspan(target_idx - 0.40, target_idx + 0.40,
+                   color="#f1f5f9", zorder=0)
 
-    # Reserve more bottom space in the single-bar case so the legend (which
-    # sits below the xlabel) doesn't overlap "Annualized σ; segments = …".
-    _bottom_rect = 0.28 if peerless else 0.08
-    plt.tight_layout(rect=[0, _bottom_rect, 0.995, 1.0])
+    # DD revision v9: legend now sits ABOVE the chart, so reserve space at
+    # the top of the rect and shrink the bottom margin (no legend down there).
+    _top_rect = 0.92 if peerless else 0.92
+    plt.tight_layout(rect=[0, 0.04, 0.995, _top_rect])
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=250, bbox_inches="tight",
@@ -1254,25 +1542,113 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
             f"at {target_res_vol*100:.1f}% residual volatility."
         )
 
-    # Risk DNA insight (Panel III)
+    # Risk DNA insight (Panel III) — DD revision v2 (2026-05-05).
+    # Replaces the prior "X% vol splits Y% systematic / Z% idio" caption (which
+    # restated the chart) with a structured, decision-focused 1-2 sentence
+    # judgment that references the residual share + peer rank chart on the right.
+    #
+    # Decision tree (per spec):
+    #   1. Dominant driver — systematic > 0.6 → beta; residual > 0.5 → idio; else mixed.
+    #   2. Residual quality — peer rank ≥ 75 = strong; ≤ 25 = weak.
+    #   3. Peer placement — top quartile / above median / near median / below.
+    #   4. Compose 1-2 sentences with a clear judgment, no number restating.
     dna = _risk_dna_segments(data.metrics)
     sys_pct = dna["systematic_pct"]
-    vol_pct = dna["vol"] * 100
-    if sys_pct > 70:
-        dna_insight = (
-            f"{ticker}'s {vol_pct:.1f}% annualized vol is {sys_pct:.0f}% systematic — "
-            f"risk is dominated by factor exposure, leaving limited idiosyncratic risk."
-        )
-    elif sys_pct < 40:
-        dna_insight = (
-            f"Only {sys_pct:.0f}% of {ticker}'s {vol_pct:.1f}% vol is systematic — "
-            f"the stock is primarily driven by stock-specific (residual) risk."
-        )
+    res_share = float(data.metrics.get("l3_residual_er") or data.metrics.get("l3_res_er") or 0.0)
+    systematic_share_unit = sys_pct / 100.0  # 0..1
+
+    # Target's TTM residual rank (subsector cohort) and peer distribution
+    _rank_row = (data.p1.rankings or {}).get("252d_subsector_subsector_residual") or {}
+    target_resid_rank = _rank_row.get("rank_percentile")
+    try:
+        target_resid_rank = float(target_resid_rank) if target_resid_rank is not None else None
+    except (TypeError, ValueError):
+        target_resid_rank = None
+
+    peer_resid_ranks_list: list[float] = []
+    for _tk, _tup in (data.peer_rankings or {}).items():
+        if _tk == ticker:
+            continue
+        if _tup is None:
+            continue
+        _r = _tup[1] if len(_tup) > 1 else None
+        if _r is not None:
+            try:
+                peer_resid_ranks_list.append(float(_r))
+            except (TypeError, ValueError):
+                pass
+
+    peer_median = None
+    peer_top_quartile = None
+    if peer_resid_ranks_list:
+        _sp = sorted(peer_resid_ranks_list)
+        peer_median = _sp[len(_sp) // 2]
+        _q_idx = max(0, int(len(_sp) * 0.75) - 1)
+        peer_top_quartile = _sp[_q_idx] if _q_idx < len(_sp) else _sp[-1]
+
+    # Step 1: dominant driver
+    if systematic_share_unit > 0.60:
+        _driver = "beta"
+    elif res_share > 0.50:
+        _driver = "idio"
     else:
-        dna_insight = (
-            f"{ticker}'s {vol_pct:.1f}% vol splits {sys_pct:.0f}% systematic / "
-            f"{100-sys_pct:.0f}% idiosyncratic."
-        )
+        _driver = "mixed"
+
+    # Step 2 + 3: peer placement
+    if target_resid_rank is None:
+        _peer_phrase = "rank unavailable"
+    elif peer_top_quartile is not None and target_resid_rank >= peer_top_quartile:
+        _peer_phrase = "ranks near the top of the cohort"
+    elif peer_median is not None and target_resid_rank > peer_median + 5:
+        _peer_phrase = "ranks above the cohort median"
+    elif peer_median is not None and target_resid_rank < peer_median - 5:
+        _peer_phrase = "ranks below the cohort median"
+    else:
+        _peer_phrase = "sits near the cohort median"
+
+    # Step 4: compose judgment with no restated numbers, no filler.
+    # DD revision v9 (2026-05-05): lead each insight with the ticker so the
+    # subheader reads as "{TICKER} performance ..." — anchors the panel to
+    # the focus stock at a glance.
+    if _driver == "beta":
+        if _peer_phrase.startswith("ranks near the top"):
+            dna_insight = (
+                f"{ticker} performance is largely beta-driven, but residual alpha {_peer_phrase}."
+            )
+        elif _peer_phrase.startswith("ranks below"):
+            dna_insight = (
+                f"{ticker} performance is beta-driven with weak idiosyncratic add — residual alpha {_peer_phrase}."
+            )
+        else:
+            dna_insight = (
+                f"{ticker} performance is largely beta-driven; residual alpha {_peer_phrase}."
+            )
+    elif _driver == "idio":
+        if _peer_phrase.startswith("ranks near the top"):
+            dna_insight = (
+                f"{ticker} returns are driven by idiosyncratic exposure, and that risk is being rewarded — residual alpha {_peer_phrase}."
+            )
+        elif _peer_phrase.startswith("ranks below"):
+            dna_insight = (
+                f"{ticker} returns are driven by idiosyncratic exposure, but that risk has not been rewarded — residual alpha {_peer_phrase}."
+            )
+        else:
+            dna_insight = (
+                f"{ticker} returns are driven by idiosyncratic exposure; residual alpha {_peer_phrase}."
+            )
+    else:  # mixed
+        if _peer_phrase.startswith("ranks near the top") and res_share < 0.30:
+            dna_insight = (
+                f"{ticker} delivers high alpha quality despite a modest residual share — efficient exposure rather than concentrated bets."
+            )
+        elif _peer_phrase.startswith("ranks below"):
+            dna_insight = (
+                f"{ticker} shows mixed systematic / idiosyncratic exposure with residual alpha {_peer_phrase}."
+            )
+        else:
+            dna_insight = (
+                f"{ticker} returns split between systematic and idiosyncratic drivers; residual alpha {_peer_phrase}."
+            )
 
     # Unified top summary — integrates all 3 panels into a cohesive 2-sentence narrative
     p1d = data.p1
@@ -1302,11 +1678,38 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
         )
     unified_summary = f"{sent1} {sent2}"
 
-    # Dynamic "So What?" headline — template from env var or default
+    # Dynamic "So What?" headline — DD revision v9 (2026-05-05): split
+    # residual *quality* (Sharpe / peer rank) from residual *contribution*
+    # (the geometric residual return over the window). The prior template
+    # blended both into "Strong Residual Alpha", which read as
+    # "residual added value" even when the period contribution was
+    # negative. A PM glancing at the page must not see the headline say
+    # "Strong" while the chart shows a negative residual bar.
+    #
+    # Rule:
+    #   - residual quality adjective comes from peer rank percentile
+    #     (Strong / Solid / Muted) — describes risk-adjusted alpha quality
+    #   - residual contribution adjective comes from the sign + magnitude
+    #     of the geometric residual return (Positive / Flat / Negative)
+    #   - "Strong Residual Alpha" is only used when BOTH are positive
     import os as _os
-    _HEADLINE_TPL = _os.environ.get(
-        "RISKMODELS_HEADLINE_TEMPLATE",
-        "{ticker}: {sys_drag} Systematic Exposure with {alpha_adj} Residual Alpha; {vs_bench} {sub}.",
+
+    # Residual contribution from the geometric attribution (matches the
+    # Section I waterfall and cum chart endpoint).
+    _res_contrib_pct: float | None = None
+    if p1d.l3_er_series:
+        _pl3 = 1.0
+        _pgross = 1.0
+        for _d, _mkt, _sec, _sub, _res in p1d.l3_er_series:
+            _pl3   *= (1 + _mkt + _sec + _sub)
+            _pgross *= (1 + _mkt + _sec + _sub + _res)
+        _res_contrib_pct = (_pgross - _pl3) * 100.0
+
+    sys_drag = "High" if sys_pct > 65 else ("Moderate" if sys_pct > 40 else "Low")
+    alpha_quality_adj = (
+        "Strong" if rank_pct >= 60
+        else "Solid" if rank_pct >= 40
+        else "Muted"
     )
 
     tr_1y_bench = p1d.tr_subsector.get("1y") or p1d.tr_sector.get("1y")
@@ -1315,11 +1718,38 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
     else:
         vs_bench_word = "vs"
 
-    sys_drag = "High" if sys_pct > 65 else ("Moderate" if sys_pct > 40 else "Low")
-    alpha_adj = "Strong" if rank_pct >= 60 else ("Solid" if rank_pct >= 40 else "Muted")
+    # Compose the residual clause based on the *combination* of quality and
+    # contribution sign. Negative contribution always shows "Negative
+    # Contribution" regardless of how strong the risk-adjusted rank is.
+    if _res_contrib_pct is None:
+        _res_clause = f"{alpha_quality_adj} Residual Quality"
+    elif _res_contrib_pct > 0.5:
+        # Positive contribution — quality adjective applies cleanly
+        _res_clause = f"{alpha_quality_adj} Residual Alpha"
+    elif _res_contrib_pct < -0.5:
+        # Negative contribution — split: quality stays honest, contribution
+        # called out so the headline matches the waterfall sign. Tightened
+        # ("but" → comma) so the longer split clause still fits one line.
+        _res_clause = (
+            f"{alpha_quality_adj} Residual Quality, Negative Contribution"
+        )
+    else:
+        # ~Flat residual contribution
+        _res_clause = f"{alpha_quality_adj} Residual Quality, Flat Contribution"
 
+    # DD revision v9 tightening: drop "Exposure with" to save ~14 chars so
+    # the longer split residual clause fits on a single line at 52pt.
+    _HEADLINE_TPL = _os.environ.get(
+        "RISKMODELS_HEADLINE_TEMPLATE",
+        "{ticker}: {sys_drag} Systematic; {res_clause}; {vs_bench} {sub}.",
+    )
+
+    # Backward-compat: env-var templates referencing {alpha_adj} still
+    # resolve, though they won't get the new contribution split.
     headline = _HEADLINE_TPL.format(
-        ticker=ticker, sys_drag=sys_drag, alpha_adj=alpha_adj,
+        ticker=ticker, sys_drag=sys_drag,
+        res_clause=_res_clause,
+        alpha_adj=alpha_quality_adj,  # legacy template support
         vs_bench=vs_bench_word, sub=sub,
     )
 
@@ -1458,8 +1888,20 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     _lw, _ = logo_img.size
     page.paste_image(logo_img, W - MARGIN - _lw, y - 10)
 
-    page.text(MARGIN, y, insights.get("headline", f"{data.ticker} — {data.company_name}"),
-              font_size=52, bold=True, color=NAVY, max_width=W - MARGIN * 2 - 500)
+    # DD revision v9: auto-shrink the headline if the longer "split residual"
+    # form would otherwise wrap past the logo. 52pt is the design target;
+    # 46/40pt are graceful fallbacks for the longest "Strong Residual
+    # Quality, Negative Contribution" variants.
+    _headline_text = insights.get("headline", f"{data.ticker} — {data.company_name}")
+    if len(_headline_text) <= 70:
+        _headline_font = 52
+    elif len(_headline_text) <= 90:
+        _headline_font = 46
+    else:
+        _headline_font = 40
+    page.text(MARGIN, y, _headline_text,
+              font_size=_headline_font, bold=True, color=NAVY,
+              max_width=W - MARGIN * 2 - 500)
     y += 68
 
     page.text(MARGIN, y,
@@ -1919,10 +2361,13 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
                   font_size=30, bold=True, color=TEXT_DARK, max_width=CONTENT_W - 50)
         y += box_h + 16
 
-    # Compute chart layout
+    # Compute chart layout. DD revision v9: shift more vertical real estate
+    # to Section II (peer DNA + mini charts) — the legend used to live below
+    # the bars and the QR used to occupy the bottom-right corner; both have
+    # moved (legend → top, QR → bottom-left), freeing space we can use.
     OVERHEAD = 96 + 21 + 96   # section headers + divider + section headers
     chart_area = FOOTER_Y - y - OVERHEAD - GAP
-    chart_h_top = int(chart_area * 0.50)
+    chart_h_top = int(chart_area * 0.45)
     chart_h_bot = chart_area - chart_h_top
 
     # ── Section I: Cumulative Returns (in card) ────────────────────
@@ -1930,7 +2375,7 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     _draw_card(page, CONTENT_X - CARD_PAD, y - CARD_PAD,
                CONTENT_W + CARD_PAD * 2, sec1_h)
 
-    page.text(CONTENT_X, y, "I. Cumulative Returns",
+    page.text(CONTENT_X, y, f"I. {data.ticker} Cumulative Returns",
               font_size=38, bold=True, color=NAVY)
     y += 56
     page.text(CONTENT_X, y, insights["cum_insight"],
@@ -1941,8 +2386,11 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     # S-curve connector can use paper coordinates for exact alignment.
     from plotly.subplots import make_subplots
 
-    line_col_frac = 0.62   # line chart gets 62% of width
-    h_spacing = 0.08       # 8% gutter — more breathing room between charts
+    # DD revision v8 (2026-05-05): more breathing room — line chart gets a
+    # touch more width, gutter widens 8% → 12% so the cumulative-return panel
+    # reads as primary and the waterfall as supporting.
+    line_col_frac = 0.66
+    h_spacing = 0.12
     combined = make_subplots(
         rows=1, cols=2,
         column_widths=[line_col_frac, 1 - line_col_frac],
@@ -1976,7 +2424,26 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     has_waterfall = bool(p1.l3_er_series)
     if has_waterfall:
         wf_fig = _make_cum_waterfall(p1)
+        # DD revision v8 (2026-05-05): remap waterfall positive-bar colors
+        # so each layer reads as the same color across line chart, stacked
+        # bars, and waterfall. Negative bars keep their red+hatch styling.
+        _WF_REMAP = {
+            "#002a5e": "#94A3B8",   # navy   → slate-400   (market)
+            "#006f8e": "#14B8A6",   # teal   → teal-500    (sector)
+            "#2a7fbf": "#7C3AED",   # slate  → violet-600  (subsector)
+            "#00AA00": "#10B981",   # green  → emerald-500 (residual α)
+        }
+        def _remap(c):
+            if isinstance(c, str):
+                return _WF_REMAP.get(c.lower(), _WF_REMAP.get(c, c))
+            return c
         for trace in wf_fig.data:
+            mk = getattr(trace, "marker", None)
+            if mk is not None and mk.color is not None:
+                if isinstance(mk.color, (list, tuple)):
+                    trace.marker.color = [_remap(c) for c in mk.color]
+                else:
+                    trace.marker.color = _remap(mk.color)
             combined.add_trace(trace, row=1, col=2)
 
         # Transfer waterfall annotations → remap to x2/y2
@@ -2102,40 +2569,29 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
                        margin=dict(t=5, b=55, l=5, r=5))
     y += chart_h_top + GAP + CARD_PAD
 
-    # ── Sections II + III side by side ─────────────────────────────────
-    sec23_title_h = 56 + 40
-    sec23_card_h = sec23_title_h + chart_h_bot + CARD_PAD * 2
+    # ── Section II: Factor Decomposition + Peer Analytics (full width) ─
+    # Stock snapshot revision (2026-05-05): the prior II. L3 Residual Alpha
+    # Quality scatter was removed; the σ-scaled bar chart now spans the full
+    # content width (matching the cumulative-returns row above), and the
+    # right-side stat columns extend to 6 pills (correlations + 3Y Sharpe +
+    # 252d subsector rank).
+    sec2_title_h = 56 + 40
+    sec2_card_h = sec2_title_h + chart_h_bot + CARD_PAD * 2
 
-    # Card II (left)
     _draw_card(page, CONTENT_X - CARD_PAD, y - CARD_PAD,
-               half_w + CARD_PAD * 2, sec23_card_h)
-    # Card III (right)
-    _draw_card(page, CONTENT_X + half_w + 40 - CARD_PAD, y - CARD_PAD,
-               half_w + CARD_PAD * 2, sec23_card_h)
+               CONTENT_W + CARD_PAD * 2, sec2_card_h)
 
-    page.text(CONTENT_X, y, "II. L3 Residual Alpha Quality",
-              font_size=38, bold=True, color=NAVY)
-    page.text(CONTENT_X + half_w + 40, y,
-              "III. Factor Decomposition & Peer Analytics",
+    page.text(CONTENT_X, y, "II. Factor Decomposition & Peer Analytics",
               font_size=38, bold=True, color=NAVY)
     y += 56
-
-    page.text(CONTENT_X, y, insights.get("alpha_quality_insight", ""),
-              font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
-    page.text(CONTENT_X + half_w + 40, y, insights["dna_insight"],
-              font_size=26, italic=True, color=TEAL, max_width=half_w - 20)
+    page.text(CONTENT_X, y, insights["dna_insight"],
+              font_size=26, italic=True, color=TEAL, max_width=CONTENT_W - 20)
     y += 40
 
-    # II. L3 Residual Alpha Quality scatter (Plotly)
-    scatter_fig = _make_alpha_quality_scatter(data)
-    page.paste_figure(
-        scatter_fig, CONTENT_X, y, half_w, chart_h_bot,
-        margin=dict(t=8, b=48, l=52, r=52, pad=2),
-    )
-
-    # III. Factor Decomposition + Correlations + Sharpe (Matplotlib → PIL)
+    # Factor Decomposition + Correlations + Sharpe + Subsector Ranks
+    # (Matplotlib → PIL, MC-thickness scaled, 6 pill columns)
     dna_img = _make_peer_dna_chart(data)
-    page.paste_image(dna_img, CONTENT_X + half_w + 40, y, half_w, chart_h_bot)
+    page.paste_image(dna_img, CONTENT_X, y, CONTENT_W, chart_h_bot)
 
     # ════════════════════════════════════════════════════════════════
     # FOOTER + QR Code
@@ -2144,12 +2600,13 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
     _display_ticker_url = f"RiskModels.app/ticker/{data.ticker.lower()}"
     _full_url = f"https://{_ticker_url}?ref=snapshot_{data.teo}"
 
-    # QR code — bottom-right, above footer line (pre-sized; do not LANCZOS-resize in paste_image)
+    # QR code — bottom-LEFT (DD revision v9), above the footer line. Frees
+    # the bottom-right corner so the Section II chart can extend into it.
     QR_SIZE = 120
     _qr_url = f"https://{_ticker_url}?ref=qr_{data.teo}"
     _qr_pil = _build_qr_pil(_qr_url, QR_SIZE)
     if _qr_pil is not None:
-        page.paste_image(_qr_pil, W - MARGIN - QR_SIZE, H - 80 - QR_SIZE - 16)
+        page.paste_image(_qr_pil, MARGIN, H - 80 - QR_SIZE - 16)
     else:
         warnings.warn(
             "QR code skipped: install snapshot extras "
