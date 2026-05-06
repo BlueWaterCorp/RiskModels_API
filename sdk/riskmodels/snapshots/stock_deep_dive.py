@@ -39,7 +39,10 @@ import math as _math
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..interpretation import Judgment
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -1857,11 +1860,41 @@ def _draw_card(
         page.draw.rectangle([x, y + radius, x + 5, y + h - radius], fill=NAVY)
 
 
-def _compose_dd_page(data: DDData) -> SnapshotComposer:
-    """Compose the Stock Deep Dive using Pillow layout + Plotly/Matplotlib charts."""
+def _compose_dd_page(
+    data: DDData,
+    judgment: "Judgment | None" = None,
+) -> SnapshotComposer:
+    """Compose the Stock Deep Dive using Pillow layout + Plotly/Matplotlib charts.
+
+    ``judgment`` is the public Risk Interpretation Engine output. When
+    provided (typically by BWMACRO at the API/route layer), the renderer
+    reads ``judgment.text`` for headline/insight strings. When ``None``,
+    the legacy in-SDK editorial generator is used to preserve current
+    behavior. See ``sdk/riskmodels/interpretation.py`` and
+    ``.cursor/skills/risk-judgment-shape/SKILL.md`` for the boundary spec.
+    """
     apply_theme()
 
-    insights = _generate_dd_insights(data)
+    if judgment is None:
+        # Backward-compat path: legacy editorial generator. Phase 1B will
+        # replace this with a BWMACRO call site at the API route layer; in
+        # Phase 2 the in-SDK function is deleted and this branch falls
+        # through to the bland numeric default.
+        from ..interpretation import (
+            INTERPRETER_VERSION as _IVERSION,
+            Judgment as _Judgment,
+            compute_features as _compute_features,
+        )
+        legacy_text = _generate_dd_insights(data)
+        judgment = _Judgment(
+            version=_IVERSION,
+            as_of=data.teo,
+            ticker=data.ticker,
+            features=_compute_features(data),
+            text=legacy_text,
+        )
+    insights = judgment.text  # all downstream code reads via this dict
+
     p1  = data.p1      # shortcut to underlying P1Data
     m   = data.metrics  # goes through DDData.metrics property → p1.metrics
     pal = T.palette
@@ -2632,19 +2665,44 @@ def _compose_dd_page(data: DDData) -> SnapshotComposer:
 # Public render API
 # ---------------------------------------------------------------------------
 
-def render_dd_to_pdf(data: DDData, output_path: str | Path) -> Path:
-    """Render the Stock Deep Dive snapshot to a PDF file."""
-    page = _compose_dd_page(data)
+def render_dd_to_pdf(
+    data: DDData,
+    output_path: str | Path,
+    *,
+    judgment: "Judgment | None" = None,
+) -> Path:
+    """Render the Stock Deep Dive snapshot to a PDF file.
+
+    ``judgment``: optional pre-computed risk Judgment (typically from the
+    BWMACRO interpretation engine). When omitted, the snapshot uses the
+    legacy in-SDK editorial generator. See ``riskmodels.interpretation``.
+    """
+    page = _compose_dd_page(data, judgment=judgment)
     return page.save(output_path)
 
 
-def render_dd_to_png(data: DDData, output_path: str | Path) -> Path:
-    """Render the Stock Deep Dive snapshot to a PNG file."""
-    page = _compose_dd_page(data)
+def render_dd_to_png(
+    data: DDData,
+    output_path: str | Path,
+    *,
+    judgment: "Judgment | None" = None,
+) -> Path:
+    """Render the Stock Deep Dive snapshot to a PNG file.
+
+    See :func:`render_dd_to_pdf` for the ``judgment`` parameter semantics.
+    """
+    page = _compose_dd_page(data, judgment=judgment)
     return page.save(output_path)
 
 
-def render_dd_to_png_bytes(data: DDData) -> bytes:
-    """Render the Stock Deep Dive snapshot to PNG bytes in memory."""
-    page = _compose_dd_page(data)
+def render_dd_to_png_bytes(
+    data: DDData,
+    *,
+    judgment: "Judgment | None" = None,
+) -> bytes:
+    """Render the Stock Deep Dive snapshot to PNG bytes in memory.
+
+    See :func:`render_dd_to_pdf` for the ``judgment`` parameter semantics.
+    """
+    page = _compose_dd_page(data, judgment=judgment)
     return page.to_png_bytes()
