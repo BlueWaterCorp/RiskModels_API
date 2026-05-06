@@ -10,6 +10,7 @@ Before adding SDK methods, HTTP clients, or MCP tools: run the **RiskModels API 
 | [SEMANTIC_ALIASES.md](./SEMANTIC_ALIASES.md) | Metric names, batch column semantics |
 | [docs/ERM3_ZARR_API_PARITY.md](./docs/ERM3_ZARR_API_PARITY.md) | Zarr vs API field parity |
 | [SUPABASE_TABLES.md](./SUPABASE_TABLES.md) | DB tables used by DAL / SDK |
+| [.cursor/skills/risk-judgment-shape/SKILL.md](./.cursor/skills/risk-judgment-shape/SKILL.md) | Interpretation boundary — qualifier wording lives in BWMACRO, not here |
 
 **Cross-repo edits** (schemas, `schema-paths.json`, MCP copies, `current_state.md`): do not duplicate the checklist here — use **[docs/AGENTS_CROSS_REPO.md](./docs/AGENTS_CROSS_REPO.md)** (synced from BWMACRO). End-user / analyst-facing pointers stay in [AGENTS.md](./AGENTS.md).
 
