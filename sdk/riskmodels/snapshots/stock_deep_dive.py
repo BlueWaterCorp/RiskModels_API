@@ -1613,6 +1613,25 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
     # DD revision v9 (2026-05-05): lead each insight with the ticker so the
     # subheader reads as "{TICKER} performance ..." — anchors the panel to
     # the focus stock at a glance.
+    #
+    # 2026-05-05 fix: pre-compute residual *contribution* sign (geometric
+    # over the window) so the dna_insight branches can guard against the
+    # "rewarded" wording when contribution is negative. Without this, a
+    # name like MSFT (high peer rank, but −12.6% period contribution)
+    # produces a dna_insight that contradicts the headline. Same axis the
+    # headline composer uses — moved earlier in the function.
+    _dna_p1d = data.p1
+    _dna_res_contrib_pct: float | None = None
+    if _dna_p1d.l3_er_series:
+        _pl3_e = 1.0
+        _pgr_e = 1.0
+        for _d, _mkt, _sec, _sub, _res in _dna_p1d.l3_er_series:
+            _pl3_e *= (1 + _mkt + _sec + _sub)
+            _pgr_e *= (1 + _mkt + _sec + _sub + _res)
+        _dna_res_contrib_pct = (_pgr_e - _pl3_e) * 100.0
+    _contrib_negative = (
+        _dna_res_contrib_pct is not None and _dna_res_contrib_pct < -0.5
+    )
     if _driver == "beta":
         if _peer_phrase.startswith("ranks near the top"):
             dna_insight = (
@@ -1628,9 +1647,19 @@ def _generate_dd_insights(data: DDData) -> dict[str, str]:
             )
     elif _driver == "idio":
         if _peer_phrase.startswith("ranks near the top"):
-            dna_insight = (
-                f"{ticker} returns are driven by idiosyncratic exposure, and that risk is being rewarded — residual alpha {_peer_phrase}."
-            )
+            if _contrib_negative:
+                # Peer rank is high but the period contribution flipped
+                # negative. Don't say "rewarded" — that contradicts the
+                # headline + waterfall.
+                dna_insight = (
+                    f"{ticker} returns are driven by idiosyncratic exposure; "
+                    f"residual alpha quality ranks near the top of the cohort, "
+                    f"but the period contribution was negative."
+                )
+            else:
+                dna_insight = (
+                    f"{ticker} returns are driven by idiosyncratic exposure, and that risk is being rewarded — residual alpha {_peer_phrase}."
+                )
         elif _peer_phrase.startswith("ranks below"):
             dna_insight = (
                 f"{ticker} returns are driven by idiosyncratic exposure, but that risk has not been rewarded — residual alpha {_peer_phrase}."
