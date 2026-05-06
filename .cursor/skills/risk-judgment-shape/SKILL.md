@@ -128,6 +128,17 @@ route layer injects into `render_dd_to_*` calls.
   community gets bland numeric output; BWMACRO callers get the rich
   editorial version.
 
+## No mock data — paired rule
+
+When real data is missing for a chart panel, API response, or chat
+output: look in `Funds_DAG/data/sync/funds/*.json`, the per-fund
+`ds_*.zarr` stores, and the RiskModels SDK / API endpoints (use
+`riskmodels-api-discovery` first). If the fetcher genuinely isn't
+wired yet, render an explicit "data unavailable" placeholder and
+add a backlog entry. Do not synthesize plausible values — even with
+a watermark; screenshots crop watermarks. Cross-repo full directive:
+[`BWMACRO/.cursor/skills/no-mock-data/SKILL.md`](../../../BWMACRO/.cursor/skills/no-mock-data/SKILL.md).
+
 ## Tracking
 
 The MASTER_BACKLOG entry for this initiative is at
