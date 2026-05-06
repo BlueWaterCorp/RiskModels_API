@@ -356,16 +356,22 @@ def compute_peer_analytics_from_zarr(
 ) -> tuple[
     dict[str, tuple[float | None, float | None]],
     dict[str, tuple[float | None, float | None]],
+    dict[str, tuple[float | None, float | None]],
     list[tuple[str, float, float]],
 ]:
     """Zarr equivalent of :func:`compute_peer_analytics`, no HTTP calls.
 
-    Returns ``(peer_correlations, peer_sharpes, alpha_trajectory)`` with the
-    same keys/shapes as the API path so :func:`_make_peer_dna_chart` renders
-    identically.
+    Returns ``(peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory)``
+    with the same keys/shapes as the API path so :func:`_make_peer_dna_chart`
+    renders identically.
+
+    `peer_rankings` is currently always empty in the zarr path — pulling 252d
+    subsector-cohort percentiles from `ds_rankings_*.zarr` is a follow-up; the
+    chart degrades gracefully (empty rank pills render as "—").
     """
     peer_correlations: dict[str, tuple[float | None, float | None]] = {}
     peer_sharpes: dict[str, tuple[float | None, float | None]] = {}
+    peer_rankings: dict[str, tuple[float | None, float | None]] = {}
     alpha_trajectory: list[tuple[str, float, float]] = []
     ticker = ticker.upper()
 
@@ -375,12 +381,12 @@ def compute_peer_analytics_from_zarr(
         try:
             target_sym = _symbol_for_ticker(ds_daily, ticker)
         except ValueError:
-            return peer_correlations, peer_sharpes, alpha_trajectory
+            return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
 
         # Target history (5Y — enough for trajectory + 3Y Sharpe + 1Y correlation).
         target_df = _history_df_from_zarr(ds_daily, ds_erm, ds_returns, target_sym, years=5)
         if target_df.empty:
-            return peer_correlations, peer_sharpes, alpha_trajectory
+            return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
         target_df = target_df.set_index("date").sort_index()
 
         # Target's own Sharpe lands under target ticker (matches API convention).
@@ -471,7 +477,7 @@ def compute_peer_analytics_from_zarr(
         except Exception:
             pass
 
-        return peer_correlations, peer_sharpes, alpha_trajectory
+        return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
     finally:
         ds_daily.close()
         ds_erm.close()

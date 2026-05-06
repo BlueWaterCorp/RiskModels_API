@@ -907,31 +907,33 @@ def _make_cum_waterfall(data: P1Data) -> go.Figure:
 
     # ── Sign-coded styling for the waterfall ────────────────────────
     #
-    # The bars in this waterfall are layered contributions.  When a bar
-    # is positive it *adds* to the running cumulative; when negative it
-    # *subtracts*.  The chart encodes direction three ways so the reader
-    # grasps the step direction at a glance:
+    # The bars in this waterfall are layered contributions.  Positive bars
+    # *add* to the running cumulative; negative bars *subtract*. The chart
+    # encodes step direction so the reader grasps it at a glance:
     #
-    #   1. Base color for POSITIVES keeps the factor-hierarchy palette
-    #      (navy / teal / slate) for systematic layers and pal.green for
-    #      the residual when α outperforms the stack.
-    #   2. Base color for NEGATIVES switches to pal.red — for the
-    #      residual this means "the stock lagged its factor stack"
-    #      (risk-off signal); for a systematic layer (sector or
-    #      subsector) it means "this exposure was a drag over the window".
-    #   3. NEGATIVE bars also carry a diagonal hatch ("/") so the step
-    #      direction remains visible in grayscale prints and in
-    #      colorblind views.
+    #   1. Color = LAYER IDENTITY, regardless of sign — so a residual bar
+    #      always reads as the residual color (green) wherever it appears
+    #      across the page (line chart, stacked bars, waterfall). Color
+    #      should never carry two meanings.
+    #   2. Sign is encoded purely via a diagonal hatch pattern ("/"). A
+    #      negative residual bar is green-with-stripes, not red. This also
+    #      keeps the chart readable in grayscale prints and colorblind
+    #      views.
     #
     # See CHANGELOG entry under "P1 waterfall negative-bar styling".
-    NEG_RED = pal.red   # "#CC2936" — institutional negative-signal red
-    NEG_HATCH = "/"      # Plotly diagonal hatch
+    NEG_HATCH = "/"      # Plotly diagonal hatch — encodes negative sign
 
+    # DD/P1 revision v9 (2026-05-05): color = LAYER IDENTITY, never sign.
+    # Bars previously flipped to red when the contribution was negative,
+    # which created two simultaneous meanings for color (green = residual
+    # everywhere else, red = residual when negative in this chart). That
+    # breaks the mental map. Sign is now encoded purely via the diagonal
+    # hatch pattern; color stays anchored to factor identity.
     labels = ["SPY", sector_label]
     values = [mkt_pct, sec_pct]
     colors = [
-        pal.navy if mkt_pct >= 0 else NEG_RED,
-        pal.teal if sec_pct >= 0 else NEG_RED,
+        pal.navy,
+        pal.teal,
     ]
     patterns = [
         "" if mkt_pct >= 0 else NEG_HATCH,
@@ -941,14 +943,14 @@ def _make_cum_waterfall(data: P1Data) -> go.Figure:
     if show_sub:
         labels.append(sub_label)
         values.append(sub_pct)
-        colors.append(pal.slate if sub_pct >= 0 else NEG_RED)
+        colors.append(pal.slate)
         patterns.append("" if sub_pct >= 0 else NEG_HATCH)
 
     labels.append("α Residual")
     values.append(res_pct)
-    # Residual uses green/red semantics: positive α = stock beat its factor
-    # stack (green), negative α = stock lagged its factor stack (red hatched).
-    colors.append(pal.green if res_pct >= 0 else NEG_RED)
+    # Residual: identity green always; hatched stripes when negative so a
+    # PM still reads the sign at a glance without double-encoding.
+    colors.append(pal.green)
     patterns.append("" if res_pct >= 0 else NEG_HATCH)
 
     # 5th position: "Gross" column — no bar, just a label and dashed line.
