@@ -102,3 +102,6 @@ data/
 !mcp/data/
 !mcp/data/whitepaper/
 !mcp/data/whitepaper/*.md
+
+# Auto-generated smoke test reports (sdk/scripts/smoke_v3_all_endpoints.py)
+sdk/scripts/smoke_reports/

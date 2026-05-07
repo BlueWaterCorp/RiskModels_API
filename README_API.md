@@ -98,7 +98,7 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 ### Data plane (`/api/data/*`)
 
-Extra **read** routes under `/api/data/` expose the V3 Supabase shape directly (e.g. `symbols`, long-form `security_history` by metric key, `security_history_latest`, `trading_calendar`, landing cache). They are **not** fully mirrored in [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml). When `RISKMODELS_API_SERVICE_KEY` is set, requests that send `Authorization: Bearer …` must use the valid service key; otherwise the header can be omitted for public read (see [lib/gateway-auth.ts](lib/gateway-auth.ts)).
+Extra **read** routes under `/api/data/` expose the V3 Supabase shape directly (e.g. `symbols`, long-form `security_history` by metric key, `security_history_latest`, `trading_calendar`, landing cache). They are **not** fully mirrored in [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml). Public reads work with **no** `Authorization` header. User API keys (`rm_agent_*` / `rm_user_*`) may be sent on these routes without affecting access. When `RISKMODELS_API_SERVICE_KEY` is set, matching `Authorization: Bearer <service key>` is reserved for future gateway-only behaviors; see [lib/gateway-auth.ts](lib/gateway-auth.ts).
 
 ---
 
