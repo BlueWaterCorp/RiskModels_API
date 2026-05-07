@@ -9,6 +9,9 @@ on:
     - cron: "30 7 * * *"
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   integration:
     name: SDK pytest integration
@@ -29,7 +32,7 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
         if: steps.gate.outputs.run == 'true'
