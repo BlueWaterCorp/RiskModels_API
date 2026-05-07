@@ -77,8 +77,6 @@ screenshots/
 # Archived runbooks and drafts — low secret risk; optional noise for a public clone.
 archive/
 
-# Documentation build output
-docs/
 # Whitelist: portal doc assets served under /docs/readme/ are public
 # screenshots produced by scripts/generate_readme_assets.py and must ship
 # in the Next.js build.
@@ -102,3 +100,7 @@ data/
 !mcp/data/
 !mcp/data/whitepaper/
 !mcp/data/whitepaper/*.md
+
+# Local-only scratch (handoff notes, untitled notebooks)
+CLAUDE_CODE_HANDOFF.md
+Untitled.ipynb
