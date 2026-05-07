@@ -15,6 +15,10 @@ import {
   buildCanonicalTickerSnapshot,
   resolveSnapshotPortfolioToWeights,
 } from "@/lib/portfolio/canonical-snapshot";
+import {
+  applySnapshotResponseOptions,
+  snapshotWantsCompact,
+} from "@/lib/portfolio/snapshot-response-shape";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -98,8 +102,13 @@ export const POST = withBilling(
 
     const metadata = await getRiskMetadata();
     const tickerFactors = built.body.snapshot.ticker_meta?.factors;
+    const compact = snapshotWantsCompact(request);
+    const shaped = applySnapshotResponseOptions(
+      { ...built.body } as Record<string, unknown>,
+      { compact },
+    );
     const responseBody = {
-      ...built.body,
+      ...shaped,
       _metadata: buildMetadataBody(
         metadata,
         tickerFactors ? { factors: tickerFactors } : undefined,
@@ -107,6 +116,7 @@ export const POST = withBilling(
       _agent: {
         cost_usd: context.costUsd,
         request_id: context.requestId,
+        ...(compact ? { compact: true } : {}),
       },
     };
 

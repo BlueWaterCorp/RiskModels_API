@@ -2523,6 +2523,9 @@ paths:
         - Tool-call billing: charged per-invocation on the underlying REST
           endpoint (e.g. `get_metrics` bills the same as `GET /metrics/{ticker}`).
 
+        - **POST requests:** send `Accept: application/json, text/event-stream` (required by some MCP clients;
+          omitting it can yield **406 Not Acceptable**).
+
 
         **Usage — mcp-remote proxy:**
 
@@ -3365,196 +3368,58 @@ paths:
 
   /returns:
     get:
-      summary: Daily gross returns time series (single ticker)
+      summary: Daily gross returns time series (single ticker) — REMOVED
       description: >
-        DEPRECATED — use `/ticker-returns` instead. `/ticker-returns` now accepts
-        both stocks and ETFs and returns daily gross returns plus (for stocks)
-        rolling hedge ratios. This route returns 404 today and will be removed from
-        the spec once the SDK drops its `get_returns` wrapper.
+        DEPRECATED — returns **410 Gone** with JSON (not HTML). Use `GET /ticker-returns?ticker=...`.
+        SDK `get_returns()` already forwards to `/ticker-returns`.
       deprecated: true
       operationId: getReturns
       tags: [Risk Metrics, Deprecated]
-      x-pricing:
-        capability_id: ticker-returns
-        tier: baseline
-        model: per_request
-        cost_usd: 0.005
-        currency: USD
-        billing_code: ticker_returns_v2
-      parameters:
-        - name: ticker
-          in: query
-          required: true
-          schema:
-            type: string
-          example: AAPL
-        - $ref: "#/components/parameters/FormatQueryTabular"
+      security: []
       responses:
-        "200":
-          description: >
-            Daily gross returns. JSON uses a parallel `returns_gross` array (see schema). Parquet/CSV
-            use a long table `#/components/schemas/GrossReturnDailyRow` (`date`, `returns_gross` per row).
+        "410":
+          description: Route removed; use /ticker-returns.
           headers:
-            X-Risk-Model-Version:
+            Deprecation:
               schema: { type: string }
-            X-Data-As-Of:
-              schema: { type: string, format: date }
-            X-Factor-Set-Id:
+            Link:
               schema: { type: string }
-            X-Universe-Size:
-              schema: { type: integer }
           content:
-            application/vnd.apache.parquet:
-              schema:
-                type: string
-                format: binary
-              description: >
-                Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.
-            text/csv:
-              schema:
-                type: string
-              description: >
-                UTF-8 CSV with header `date,returns_gross`.
-              example: |
-                date,returns_gross
-                2025-03-20,0.0123
             application/json:
               schema:
                 type: object
+                required: [error, message, replacement]
                 properties:
-                  symbol: { type: string }
-                  ticker: { type: string }
-                  periodicity: { type: string }
-                  returns_gross:
-                    { type: array, items: { type: "number", nullable: true } }
-                  _metadata: { $ref: "#/components/schemas/RiskMetadata" }
-        "400":
-          description: Missing ticker.
-        "401":
-          description: Missing or invalid Bearer token.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "402":
-          description: Insufficient balance.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InsufficientBalance"
-        "404":
-          description: Ticker not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "429":
-          description: Rate limit exceeded.
-          headers:
-            Retry-After:
-              schema: { type: integer }
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RateLimitExceeded"
+                  error: { type: string, example: gone }
+                  message: { type: string }
+                  replacement: { type: string, format: uri }
 
   /etf-returns:
     get:
-      summary: Daily gross returns time series (ETF)
+      summary: Daily gross returns time series (ETF) — REMOVED
       description: >
-        DEPRECATED — use `/ticker-returns` with the ETF ticker (e.g. `SPY`, `XLK`).
-        ETF returns now flow through `/ticker-returns`, served from `ds_etf.zarr`;
-        L1/L2/L3 columns are `null` for ETFs because they are not factor-decomposed.
-        This route returns 404 today and will be removed from the spec once the SDK
-        drops its `get_etf_returns` wrapper.
+        DEPRECATED — returns **410 Gone** with JSON. Use `GET /ticker-returns?ticker=SPY` (or another ETF).
       deprecated: true
       operationId: getEtfReturns
-      tags: [Risk Metrics]
-      x-pricing:
-        capability_id: ticker-returns
-        tier: baseline
-        model: per_request
-        cost_usd: 0.005
-        currency: USD
-        billing_code: ticker_returns_v2
-      parameters:
-        - name: etf
-          in: query
-          required: true
-          schema:
-            type: string
-          example: SPY
-          description: ETF ticker symbol.
-        - $ref: "#/components/parameters/FormatQueryTabular"
+      tags: [Risk Metrics, Deprecated]
+      security: []
       responses:
-        "200":
-          description: >
-            Daily ETF gross returns. JSON exposes parallel `dates` and `returns_gross` arrays. Parquet/CSV
-            flatten to `#/components/schemas/GrossReturnDailyRow`.
+        "410":
+          description: Route removed; use /ticker-returns with an ETF ticker.
           headers:
-            X-Risk-Model-Version:
+            Deprecation:
               schema: { type: string }
-            X-Data-As-Of:
-              schema: { type: string, format: date }
-            X-Factor-Set-Id:
+            Link:
               schema: { type: string }
-            X-Universe-Size:
-              schema: { type: integer }
           content:
-            application/vnd.apache.parquet:
-              schema:
-                type: string
-                format: binary
-              description: >
-                Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.
-            text/csv:
-              schema:
-                type: string
-              description: >
-                UTF-8 CSV with header `date,returns_gross`.
-              example: |
-                date,returns_gross
-                2025-03-20,0.0012
             application/json:
               schema:
                 type: object
+                required: [error, message, replacement]
                 properties:
-                  symbol: { type: string }
-                  ticker: { type: string }
-                  periodicity: { type: string }
-                  dates: { type: array, items: { type: string } }
-                  returns_gross:
-                    { type: array, items: { type: "number", nullable: true } }
-                  _metadata: { $ref: "#/components/schemas/RiskMetadata" }
-        "400":
-          description: Missing etf.
-        "401":
-          description: Missing or invalid Bearer token.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "402":
-          description: Insufficient balance.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InsufficientBalance"
-        "404":
-          description: ETF not found.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "429":
-          description: Rate limit exceeded.
-          headers:
-            Retry-After:
-              schema: { type: integer }
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RateLimitExceeded"
+                  error: { type: string, example: gone }
+                  message: { type: string }
+                  replacement: { type: string, format: uri }
 
   /l3-decomposition:
     get:
@@ -4625,6 +4490,12 @@ paths:
         public surface; new clients should use `/snapshot`.
 
         **Billing:** `portfolio-risk-snapshot` capability ($0.25 per request, single bundled charge).
+
+        **Compact response:** `?compact=1` or `Prefer: return=minimal` omits `time_behavior` and `attribution`
+        (large daily arrays); keeps `snapshot`, `risk_summary`, and `_metadata`.
+
+        **Idempotency:** Optional `Idempotency-Key` header (POST). Repeating the same key with the same JSON body
+        within 24h returns the cached response without a second charge when Redis is configured (`X-Idempotent-Replayed: true`).
       operationId: postCanonicalSnapshot
       tags: [Risk Metrics]
       x-pricing:
@@ -4637,6 +4508,29 @@ paths:
       security:
         - BearerAuth: []
         - OAuth2ClientCredentials: ["*"]
+      parameters:
+        - name: compact
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["0", "1", "true", "false", "yes", "no"]
+          description: When `1`, `true`, or `yes`, returns a smaller payload (drops time series blocks).
+        - name: Prefer
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Include `return=minimal` for the same effect as `compact=1`.
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+          description: >
+            Optional. Dedupes identical POST bodies per user for 24h; second response includes `X-Idempotent-Replayed: true`.
+            Requires Upstash Redis (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`).
       requestBody:
         required: true
         content:
