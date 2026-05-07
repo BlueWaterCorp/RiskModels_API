@@ -21,6 +21,9 @@ on:
       - "OPENAPI_SPEC.yaml"
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   detect-drift:
     # Fork PRs do not receive REPO_ACCESS_TOKEN; skip instead of failing checkout of Risk_Models.
@@ -32,12 +35,12 @@ jobs:
 
     steps:
       - name: Checkout RiskModels_API
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - name: Checkout Risk_Models (private)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: BlueWaterCorp/Risk_Models
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
@@ -197,5 +200,6 @@ jobs:
             echo "   cp RiskModels_API/mcp/data/openapi.json \\"
             echo "      Risk_Models/riskmodels_com/mcp-server/data/openapi.json"
             echo ""
+            echo "Or after merge to main: run Actions -> \"Sync MCP data to Risk_Models\" (workflow_dispatch)."
             echo "See AGENTS.md for full sync rules."
           fi

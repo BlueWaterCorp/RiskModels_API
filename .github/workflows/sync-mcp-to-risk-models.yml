@@ -1,0 +1,111 @@
+# =============================================================================
+# Push canonical MCP / OpenAPI artifacts to Risk_Models
+# =============================================================================
+#
+# Canonical: RiskModels_API (OPENAPI_SPEC.yaml, mcp/data/*).
+# Mirror: Risk_Models/riskmodels_com/mcp-server/data/ (portal + bundled MCP).
+#
+# TRIGGERS:
+#   - push to main when spec or MCP data changes
+#   - weekly schedule (catches missed manual regenerates)
+#   - workflow_dispatch
+#
+# REQUIRED SECRET (repo: RiskModels_API): REPO_ACCESS_TOKEN
+#   - contents: write on BlueWaterCorp/Risk_Models
+#   - Same token pattern as Cross-Repo Drift Detection.
+#
+name: Sync MCP data to Risk_Models
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "OPENAPI_SPEC.yaml"
+      - "mcp/data/**"
+      - "scripts/yaml-to-json.js"
+  schedule:
+    # Monday 06:00 UTC — reconcile mirror if a commit omitted regen or copy
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sync:
+    if: github.repository == 'BlueWaterCorp/RiskModels_API'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: sync-mcp-to-risk-models
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout RiskModels_API
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'schedule' && 'main' || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies (for openapi build)
+        run: npm ci
+
+      - name: Regenerate OpenAPI JSON
+        run: npm run build:openapi
+
+      - name: Clone Risk_Models
+        env:
+          TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "REPO_ACCESS_TOKEN is not set; cannot push to Risk_Models"
+            exit 1
+          fi
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/BlueWaterCorp/Risk_Models.git" risk_models
+
+      - name: Copy MCP artifacts
+        run: |
+          set -e
+          DST="risk_models/riskmodels_com/mcp-server/data"
+          if [ ! -d "$DST" ]; then
+            echo "Expected directory missing: $DST"
+            exit 1
+          fi
+          mkdir -p "$DST/schemas"
+          cp mcp/data/schema-paths.json "$DST/"
+          cp mcp/data/openapi.json "$DST/"
+          if [ -f mcp/data/capabilities.json ]; then
+            cp mcp/data/capabilities.json "$DST/"
+          fi
+          if [ -d mcp/data/schemas ]; then
+            for f in mcp/data/schemas/*.json; do
+              [ -f "$f" ] && cp "$f" "$DST/schemas/"
+            done
+          fi
+          echo "Staged copy into Risk_Models (listing):"
+          ls -la "$DST"
+          ls -la "$DST/schemas" | head -40
+
+      - name: Commit and push Risk_Models
+        run: |
+          cd risk_models
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add riskmodels_com/mcp-server/data/schema-paths.json \
+                  riskmodels_com/mcp-server/data/openapi.json \
+                  riskmodels_com/mcp-server/data/schemas/
+          if [ -f riskmodels_com/mcp-server/data/capabilities.json ]; then
+            git add riskmodels_com/mcp-server/data/capabilities.json
+          fi
+          if git diff --staged --quiet; then
+            echo "No changes; Risk_Models mirror already matches."
+          else
+            git commit -m "chore(mcp): sync from RiskModels_API ${GITHUB_SHA:0:7}" \
+              -m "Workflow: sync-mcp-to-risk-models.yml"
+            git push origin HEAD
+          fi
