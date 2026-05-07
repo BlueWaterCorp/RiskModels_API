@@ -26,6 +26,11 @@ import { Redis } from "@upstash/redis";
 import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 import { checkFreeTierLimit, incrementFreeTierUsage } from "./free-tier";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getIdempotentResponse,
+  idempotencyFingerprint,
+  setIdempotentResponse,
+} from "./idempotency-cache";
 
 /**
  * Check if user has exceeded their monthly spend cap
@@ -297,6 +302,8 @@ export function withBilling(
       // 1. Authenticate the request (try API key first, then session)
       let userId: string | undefined;
       let apiKey: string | undefined;
+      /** Fingerprint for Idempotency-Key replay (POST only, when Redis configured). */
+      let idempotencyFingerprintVal: string | null = null;
 
       // Try API key authentication first
       const extractedKey = extractApiKey(req);
@@ -374,6 +381,41 @@ export function withBilling(
               },
             );
           }
+        }
+      }
+
+      // 1c. Idempotent replay (POST + Idempotency-Key); avoids double billing on identical body.
+      const idemHeader = req.headers.get("idempotency-key")?.trim();
+      if (
+        idemHeader &&
+        idemHeader.length <= 256 &&
+        req.method === "POST" &&
+        userId
+      ) {
+        try {
+          const bodyText = await req.clone().text();
+          idempotencyFingerprintVal = idempotencyFingerprint(
+            idemHeader,
+            options.capabilityId,
+            bodyText,
+          );
+          const cached = await getIdempotentResponse(userId, idempotencyFingerprintVal);
+          if (cached) {
+            const headers = new Headers({
+              "Content-Type": "application/json",
+              "X-Idempotent-Replayed": "true",
+            });
+            for (const [k, v] of Object.entries(cached.headers)) {
+              if (v) headers.set(k, v);
+            }
+            if (!headers.has("X-Request-ID")) headers.set("X-Request-ID", requestId);
+            return new NextResponse(cached.body, {
+              status: cached.status,
+              headers,
+            });
+          }
+        } catch (e) {
+          console.error("[Billing] Idempotency lookup failed:", e);
         }
       }
 
@@ -664,6 +706,35 @@ export function withBilling(
         }
       } catch {
         // Silently skip if we can't fetch spend cap data
+      }
+
+      if (
+        idempotencyFingerprintVal &&
+        userId &&
+        req.method === "POST" &&
+        response.status < 500
+      ) {
+        try {
+          const bodyText = await response.clone().text();
+          const headers: Record<string, string> = {};
+          response.headers.forEach((v, k) => {
+            const kl = k.toLowerCase();
+            if (
+              kl.startsWith("x-") ||
+              kl === "content-type" ||
+              kl === "retry-after"
+            ) {
+              headers[k] = v;
+            }
+          });
+          await setIdempotentResponse(userId, idempotencyFingerprintVal, {
+            status: response.status,
+            body: bodyText,
+            headers,
+          });
+        } catch (e) {
+          console.error("[Billing] Idempotency store failed:", e);
+        }
       }
 
       return response;

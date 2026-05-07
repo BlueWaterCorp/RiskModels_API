@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from './server';
 import { createAdminClient } from './admin';
 import { cookies } from 'next/headers';
+import { getRequestId } from '@/lib/api/request-id';
 
 /**
  * Authenticate user for API routes with three-tier support:
@@ -143,7 +144,9 @@ export async function authenticateOrRespond(
   opts: { corsHeaders?: Record<string, string> } = {},
 ): Promise<{ user: User } | { response: NextResponse }> {
   const { user, error: authError, serverError } = await authenticateRequest(request);
-  const headers = opts.corsHeaders;
+  const headers = { ...opts.corsHeaders };
+  const requestId = getRequestId(request);
+  headers['X-Request-ID'] = requestId;
 
   if (serverError) {
     return {

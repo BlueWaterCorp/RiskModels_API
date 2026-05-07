@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateOrRespond } from '@/lib/supabase/auth-helper';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCorsHeaders } from '@/lib/cors';
+import { createErrorResponse } from '@/lib/api-response';
+import { getRequestId } from '@/lib/api/request-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +26,9 @@ function isAllowedRefillAmount(n: number): boolean {
 export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
-  const auth = await authenticateOrRespond(request, { corsHeaders });
+  const requestId = getRequestId(request);
+  const withReqId = { ...corsHeaders, 'X-Request-ID': requestId };
+  const auth = await authenticateOrRespond(request, { corsHeaders: withReqId });
   if ('response' in auth) return auth.response;
   const { user } = auth;
 
@@ -35,20 +39,30 @@ export async function GET(request: NextRequest) {
       'auto_top_up, auto_top_up_amount, auto_top_up_threshold, stripe_payment_method_id',
     )
     .eq('user_id', user.id)
+    .limit(1)
     .maybeSingle();
 
   if (error) {
-    console.error('[billing-config] GET error:', error);
-    return NextResponse.json(
-      { error: 'Failed to load billing settings' },
-      { status: 500, headers: getCorsHeaders(origin) },
+    console.error('[billing-config] GET error:', error, { requestId, code: error.code });
+    const res = createErrorResponse(
+      'billing_settings_error',
+      'Failed to load billing settings.',
+      500,
+      {
+        hint:
+          'Contact support with X-Request-ID if this persists. Reads use limit(1) per user to tolerate duplicate agent_accounts rows.',
+        supabase_code: error.code,
+      },
+      requestId,
     );
+    res.headers.set('Access-Control-Allow-Origin', corsHeaders['Access-Control-Allow-Origin'] ?? '*');
+    return res;
   }
 
   if (!account) {
     return NextResponse.json(
       { error: 'Account not found' },
-      { status: 404, headers: getCorsHeaders(origin) },
+      { status: 404, headers: withReqId },
     );
   }
 
@@ -61,7 +75,7 @@ export async function GET(request: NextRequest) {
       allowed_refill_amounts: [...ALLOWED_REFILL_AMOUNTS],
       threshold_bounds: { min: MIN_THRESHOLD, max: MAX_THRESHOLD },
     },
-    { headers: getCorsHeaders(origin) },
+    { headers: withReqId },
   );
 }
 
@@ -74,7 +88,9 @@ type PatchBody = {
 export async function PATCH(request: NextRequest) {
   const origin = request.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
-  const auth = await authenticateOrRespond(request, { corsHeaders });
+  const requestId = getRequestId(request);
+  const withReqId = { ...corsHeaders, 'X-Request-ID': requestId };
+  const auth = await authenticateOrRespond(request, { corsHeaders: withReqId });
   if ('response' in auth) return auth.response;
   const { user } = auth;
 
@@ -155,6 +171,7 @@ export async function PATCH(request: NextRequest) {
       .from('agent_accounts')
       .select('stripe_payment_method_id')
       .eq('user_id', user.id)
+      .limit(1)
       .maybeSingle();
 
     if (!acct?.stripe_payment_method_id) {
@@ -185,17 +202,23 @@ export async function PATCH(request: NextRequest) {
     .eq('user_id', user.id);
 
   if (updateError) {
-    console.error('[billing-config] PATCH error:', updateError);
-    return NextResponse.json(
-      { error: 'Failed to update billing settings' },
-      { status: 500, headers: getCorsHeaders(origin) },
+    console.error('[billing-config] PATCH error:', updateError, { requestId });
+    const res = createErrorResponse(
+      'billing_settings_update_error',
+      'Failed to update billing settings.',
+      500,
+      { supabase_code: updateError.code },
+      requestId,
     );
+    res.headers.set('Access-Control-Allow-Origin', corsHeaders['Access-Control-Allow-Origin'] ?? '*');
+    return res;
   }
 
   const { data: updated } = await admin
     .from('agent_accounts')
     .select('auto_top_up, auto_top_up_amount, auto_top_up_threshold')
     .eq('user_id', user.id)
+    .limit(1)
     .maybeSingle();
 
   return NextResponse.json(
@@ -205,6 +228,6 @@ export async function PATCH(request: NextRequest) {
       auto_top_up_amount: parseFloat(String(updated?.auto_top_up_amount ?? 50)),
       auto_top_up_threshold: parseFloat(String(updated?.auto_top_up_threshold ?? 5)),
     },
-    { headers: getCorsHeaders(origin) },
+    { headers: withReqId },
   );
 }

@@ -86,6 +86,8 @@ Run `riskmodels config init` once — the CLI's stored key is automatically pick
 
 Base URL resolution: `RISKMODELS_API_BASE` env → `apiBaseUrl` in CLI config → `https://riskmodels.app` default.
 
+**Hosted transport (`POST https://riskmodels.app/api/mcp/sse`):** send header `Accept: application/json, text/event-stream`. Without it, some clients receive **406 Not Acceptable**.
+
 ---
 
 ## Python SDK on PyPI
