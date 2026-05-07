@@ -18,7 +18,7 @@ CORS already allows `http://localhost:3000` for browser clients ([`lib/cors.ts`]
 
 - Full variable list and Doppler/CLI flows: [DEPLOYMENT.md](./DEPLOYMENT.md).
 - **`npm run vercel:sync-env`** only uploads an allowlisted subset from `.env.local` ([`scripts/sync-env-to-vercel.sh`](./scripts/sync-env-to-vercel.sh)). Set other secrets (e.g. `API_KEY_SECRET`) manually in Vercel or via Doppler’s Vercel integration.
-- **Gateway:** `RISKMODELS_API_SERVICE_KEY` authorizes trusted server-to-server access to gateway-style routes ([`lib/gateway-auth.ts`](./lib/gateway-auth.ts)).
+- **Gateway:** `RISKMODELS_API_SERVICE_KEY` may be set for future strict gateway routes ([`lib/gateway-auth.ts`](./lib/gateway-auth.ts)). Public `/api/data/*` reads allow any Bearer (including user keys) or no auth.
 
 ## Webhooks (outbound)
 
