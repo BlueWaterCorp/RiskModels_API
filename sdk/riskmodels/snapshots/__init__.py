@@ -93,6 +93,30 @@ from .r1_risk_profile import (
 from .s1_forensic import S1Data, get_data_for_s1, render_s1_to_pdf
 from .s2_waterfall import S2Data, get_data_for_s2, render_s2_to_pdf
 
+# Canonical contract — the single semantic object backing all stock snapshots.
+# Premium institutional renderers live in BWMACRO; this repo exposes the
+# contract + a public reference renderer.
+from .canonical import (
+    CANONICAL_SCHEMA_VERSION,
+    CanonicalStockSnapshot,
+    Identity,
+    CoreMetrics,
+    AttributionPoint,
+    PerformanceAttribution,
+    DecompositionPoint,
+    RiskDecomposition,
+    PeerRow,
+    PeerContext,
+    HedgeBasis,
+    MacroBasis,
+    from_dd_data,
+)
+from .reference_renderer import (
+    render_canonical_to_pdf,
+    render_canonical_to_png,
+    render_canonical_to_png_bytes,
+)
+
 __all__ = [
     # Design system — Matplotlib (legacy S1/S2)
     "THEME", "Theme", "Palette", "Typography", "Layout", "Strokes",
@@ -145,4 +169,21 @@ __all__ = [
     "S2Data",
     "get_data_for_s2",
     "render_s2_to_pdf",
+    # Canonical contract + reference renderer
+    "CANONICAL_SCHEMA_VERSION",
+    "CanonicalStockSnapshot",
+    "Identity",
+    "CoreMetrics",
+    "AttributionPoint",
+    "PerformanceAttribution",
+    "DecompositionPoint",
+    "RiskDecomposition",
+    "PeerRow",
+    "PeerContext",
+    "HedgeBasis",
+    "MacroBasis",
+    "from_dd_data",
+    "render_canonical_to_pdf",
+    "render_canonical_to_png",
+    "render_canonical_to_png_bytes",
 ]
