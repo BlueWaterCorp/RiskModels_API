@@ -46,7 +46,8 @@ from typing import Any, TYPE_CHECKING
 from ..interpretation import Judgment
 
 if TYPE_CHECKING:
-    from .stock_deep_dive import DDData
+    from ..peer_group import PeerComparison
+    from ._stock_data import P1Data
 
 
 CANONICAL_SCHEMA_VERSION = "canonical-stock/1.0"
@@ -352,7 +353,7 @@ def _from_jsonable(raw: dict[str, Any]) -> CanonicalStockSnapshot:
 
 
 # ---------------------------------------------------------------------------
-# Adapter: DDData → CanonicalStockSnapshot
+# Adapter: P1Data (+ peer context) → CanonicalStockSnapshot
 # ---------------------------------------------------------------------------
 
 def _g(d: dict, *keys: str) -> Any:
@@ -376,22 +377,27 @@ def _to_float(v: Any) -> float | None:
     return f if math.isfinite(f) else None
 
 
-def from_dd_data(
-    dd: "DDData",
+def from_components(
+    p1: "P1Data",
     *,
+    peer_comparison: "PeerComparison | None" = None,
+    peer_rankings: dict[str, tuple[float | None, float | None]] | None = None,
     judgment: Judgment | None = None,
     generated_utc: str | None = None,
 ) -> CanonicalStockSnapshot:
-    """Convert a :class:`DDData` (existing pipeline) into the canonical schema.
+    """Build a :class:`CanonicalStockSnapshot` from public component data.
 
-    This is the migration bridge: every cached DD JSON in the repo can be
-    replayed through the canonical pipeline without re-fetching. Use it to
-    validate the contract against real shipped data before downstream
-    renderers move off DDData.
+    Public bucket pipeline entry point: ``zarr_context.build_p1_from_zarr`` produces
+    ``p1``; ``zarr_peer_analytics.build_peer_comparison_from_zarr`` produces
+    ``peer_comparison``; ``compute_peer_analytics_from_zarr`` produces
+    ``peer_rankings``. No BWMACRO imports.
+
+    For callers holding the legacy ``DDData`` wrapper, see
+    :func:`from_dd_data` (a thin shim around this function).
     """
     from datetime import datetime, timezone
 
-    p1 = dd.p1
+    peer_rankings = peer_rankings or {}
     m = dict(p1.metrics or {})
 
     identity = Identity(
@@ -486,8 +492,8 @@ def from_dd_data(
 
     # ── Section III: peer context ──────────────────────────────────────
     peer: PeerContext | None = None
-    if dd.peer_comparison is not None:
-        pc = dd.peer_comparison
+    if peer_comparison is not None:
+        pc = peer_comparison
         target_metrics = pc.target_metrics or {}
         target_row = PeerRow(
             ticker=pc.target_ticker,
@@ -496,10 +502,10 @@ def from_dd_data(
             subsector_hr=_to_float(_g(target_metrics, "l3_subsector_hr", "l3_sub_hr")),
             residual_er=_to_float(_g(target_metrics, "l3_residual_er", "l3_res_er")),
             residual_quality_pct=_to_float(
-                (dd.peer_rankings.get(pc.target_ticker) or (None, None))[1]
+                (peer_rankings.get(pc.target_ticker) or (None, None))[1]
             ),
             gross_rank_pct=_to_float(
-                (dd.peer_rankings.get(pc.target_ticker) or (None, None))[0]
+                (peer_rankings.get(pc.target_ticker) or (None, None))[0]
             ),
         )
 
@@ -507,7 +513,7 @@ def from_dd_data(
         peer_detail = pc.peer_detail
         if peer_detail is not None and not peer_detail.empty:
             for tk, row in peer_detail.iterrows():
-                rk = dd.peer_rankings.get(str(tk), (None, None))
+                rk = peer_rankings.get(str(tk), (None, None))
                 peer_rows.append(
                     PeerRow(
                         ticker=str(tk),
@@ -542,7 +548,7 @@ def from_dd_data(
         sector_hr=_to_float(_g(m, "l3_sector_hr", "l3_sec_hr")),
         subsector_hr=_to_float(_g(m, "l3_subsector_hr", "l3_sub_hr")),
         residual_quality_pct=_to_float(
-            (dd.peer_rankings.get(p1.ticker) or (None, None))[1]
+            (peer_rankings.get(p1.ticker) or (None, None))[1]
         ),
     )
 
@@ -565,4 +571,24 @@ def from_dd_data(
         hedge=hedge,
         macro=macro,
         judgment=judgment,
+    )
+
+
+def from_dd_data(
+    dd: Any,
+    *,
+    judgment: Judgment | None = None,
+    generated_utc: str | None = None,
+) -> CanonicalStockSnapshot:
+    """Thin shim around :func:`from_components` for callers holding a DDData wrapper.
+
+    Structurally typed (``Any``): the DDData class itself lives in BWMACRO post-PR 3.
+    Any object exposing ``.p1``, ``.peer_comparison``, ``.peer_rankings`` works.
+    """
+    return from_components(
+        dd.p1,
+        peer_comparison=dd.peer_comparison,
+        peer_rankings=getattr(dd, "peer_rankings", None) or {},
+        judgment=judgment,
+        generated_utc=generated_utc,
     )

@@ -45,9 +45,19 @@ type SnapshotCache = {
   etag?: string;
 };
 
+// Bumped during PR 3 (snapshot canonicalization, 2026-05) to invalidate cached
+// PNG/PDF bytes after the subsector slate→violet color cutover and the move to
+// the canonical reference renderer. Bump again whenever the rendered output
+// changes deterministically and old hashes would otherwise still match.
+const SNAPSHOT_CACHE_VERSION = "v2";
+
 function snapshotCacheKey(ticker: string, format: SnapshotFormat) {
   const h = createHash("sha256")
-    .update(JSON.stringify({ ticker: ticker.toUpperCase(), format }))
+    .update(JSON.stringify({
+      ticker: ticker.toUpperCase(),
+      format,
+      v: SNAPSHOT_CACHE_VERSION,
+    }))
     .digest("hex");
   return generateCacheKey("dd_snapshot", h);
 }

@@ -1,4 +1,9 @@
-"""Publication-style Plotly/Matplotlib charts for ERM3."""
+"""Publication-style Plotly/Matplotlib charts for ERM3.
+
+Public visuals: cascade, l3_decomposition, waterfall, components, save, styles, utils.
+Curated Mag7 demos and the gallery moved to BWMACRO during PR 3 (2026-05) — only the
+generic primitives stay public.
+"""
 
 from .cascade import plot_attribution_cascade, plot_risk_cascade
 from .components import (
@@ -20,17 +25,6 @@ from .components import (
     plot_risk_cascade_from_data,
     plot_variance_waterfall_from_data,
 )
-from .gallery import (
-    MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026,
-    MAG7_SNAPSHOT_DATE_DOC,
-    mag7_cap_weighted_positions,
-    run_gallery_all,
-    run_gallery_mag7_attribution_cascade,
-    run_gallery_mag7_l3_er,
-    run_gallery_mag7_l3_sigma_rr,
-    run_gallery_mag7_risk_cascade,
-    run_gallery_nvda_l3,
-)
 from .l3_decomposition import (
     L3_API_FIELD_MAPPINGS,
     L3_API_LAYER_COLORS,
@@ -38,20 +32,6 @@ from .l3_decomposition import (
     plot_l3_decomposition,
     plot_l3_horizontal,
     plot_l3_year_end_stack,
-)
-from .mag7_l3_er import (
-    MAG7_L3_ER_DEFAULT_TICKERS,
-    MAG7_L3_ER_SUBTITLE,
-    MAG7_L3_ER_TITLE,
-    plot_mag7_l3_explained_risk,
-    save_mag7_l3_explained_risk_png,
-)
-from .mag7_l3_sigma_rr import (
-    MAG7_L3_SIGMA_RR_DEFAULT_TICKERS,
-    MAG7_L3_SIGMA_RR_SUBTITLE,
-    MAG7_L3_SIGMA_RR_TITLE,
-    plot_mag7_l3_sigma_rr,
-    save_mag7_l3_sigma_rr_png,
 )
 from .save import (
     get_plotly_json,
@@ -85,43 +65,28 @@ __all__ = [
     "plot_l3_decomposition_from_data",
     "plot_risk_cascade_from_data",
     "plot_variance_waterfall_from_data",
-    # Existing exports
-    "MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026",
-    "MAG7_L3_ER_DEFAULT_TICKERS",
-    "MAG7_L3_ER_SUBTITLE",
-    "MAG7_L3_ER_TITLE",
-    "MAG7_L3_SIGMA_RR_DEFAULT_TICKERS",
-    "MAG7_L3_SIGMA_RR_SUBTITLE",
-    "MAG7_L3_SIGMA_RR_TITLE",
-    "MAG7_SNAPSHOT_DATE_DOC",
+    # Save helpers
     "adjacent_bar_positions",
     "cascade_plotly_layout",
     "get_plotly_json",
     "get_preset",
     "get_rm_template",
     "install_rm_template",
-    "mag7_cap_weighted_positions",
+    # Top-level plotters
     "plot_attribution_cascade",
     "plot_l3_decomposition",
     "plot_l3_horizontal",
     "plot_l3_year_end_stack",
-    "plot_mag7_l3_explained_risk",
-    "plot_mag7_l3_sigma_rr",
     "plot_risk_cascade",
     "plot_variance_waterfall",
+    # Style presets
     "PRESET_REGISTRY",
-    "run_gallery_all",
-    "run_gallery_mag7_attribution_cascade",
-    "run_gallery_mag7_l3_er",
-    "run_gallery_mag7_l3_sigma_rr",
-    "run_gallery_mag7_risk_cascade",
-    "run_gallery_nvda_l3",
+    # Save
     "save_l3_decomposition_png",
-    "save_mag7_l3_explained_risk_png",
-    "save_mag7_l3_sigma_rr_png",
     "save_portfolio_attribution_cascade_png",
     "save_portfolio_risk_cascade_png",
     "write_plotly_png",
+    # L3 mapping error
     "L3_API_FIELD_MAPPINGS",
     "L3_API_LAYER_COLORS",
     "L3DecompositionMappingError",

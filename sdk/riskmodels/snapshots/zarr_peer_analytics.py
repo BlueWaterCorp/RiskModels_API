@@ -1,7 +1,7 @@
 """Zarr-only peer discovery + peer analytics (drops all API calls for bulk DD renders).
 
 Mirrors the API path used by :mod:`riskmodels.peer_group.PeerGroupProxy` +
-:func:`riskmodels.snapshots.stock_deep_dive.compute_peer_analytics`, but reads
+the legacy ``compute_peer_analytics`` (now private to BWMACRO), but reads
 everything from the local ERM3 zarr stack:
 
 - Peer discovery  → ds_daily (fs_industry_code + market_cap at latest teo)

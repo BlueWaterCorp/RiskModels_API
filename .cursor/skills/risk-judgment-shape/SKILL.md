@@ -144,3 +144,27 @@ a watermark; screenshots crop watermarks. Cross-repo full directive:
 The MASTER_BACKLOG entry for this initiative is at
 `BWMACRO/docs/ceo/MASTER_BACKLOG.md` under
 "Risk Interpretation Engine".
+
+## Sister boundary — Snapshot composition (PR 3, 2026-05)
+
+A second cross-repo split governs which **snapshot layouts** ship public
+vs private. Same shape as the interpretation boundary above, different axis:
+
+| Public (this repo) | Private (BWMACRO) |
+|---|---|
+| `riskmodels.snapshots.canonical.CanonicalStockSnapshot` — semantic schema | `bwmacro.snapshots.stock.r1_risk_profile` |
+| `riskmodels.snapshots.canonical.from_components(p1, peer_comparison=…)` | `bwmacro.snapshots.stock.p1_stock_performance` |
+| `riskmodels.snapshots.canonical.from_dd_data(dd)` (structurally typed) | `bwmacro.snapshots.stock.stock_deep_dive` (DDData class) |
+| `riskmodels.snapshots.reference_renderer` — clean, less-opinionated PDF/PNG | `bwmacro.snapshots.stock.{s1_forensic,s2_waterfall,product_tear_sheet}` |
+| `riskmodels.snapshots._stock_data.P1Data` — data dataclass | All curated layout / chart composition for the institutional 1-page PDFs |
+| `riskmodels.visuals.{cascade,l3_decomposition,waterfall,components}` | `riskmodels.visuals._mag7`, `gallery`, `mag7_l3_*`, `smart_subheader` |
+
+**Hard rule:** the `rm_api_public` GCS bucket pipeline (`bulk_dd_render.py`
++ `app/api/snapshot/[ticker]`) **never imports `bwmacro.*`**. It must stay
+self-sufficient on the public canonical pipeline. User confirmed this directly
+during PR 2 and PR 3.
+
+If you need to add a new institutional renderer, put it in BWMACRO and
+write an adapter in `bwmacro/snapshots/stock/adapters.py` that maps the
+private data class onto `CanonicalStockSnapshot` via
+`riskmodels.snapshots.canonical.from_components`.

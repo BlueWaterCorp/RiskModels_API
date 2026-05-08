@@ -44,11 +44,9 @@ Examples
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py --upload-gcs
 
-    # At least 1k names to gs://rm_api_public/snapshot (with SEC profile blurbs):
+    # At least 1k names to gs://rm_api_public/snapshot:
     export ERM3_ZARR_ROOT=/path/to/zarr/root
-    export ERM3_ROOT=/path/to/ERM3
-    PYTHONPATH=sdk:$ERM3_ROOT python sdk/scripts/bulk_dd_render.py \\
-        --sec-profile-json-root /path/to/company_profiles/v1 \\
+    PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py \\
         --limit 1000 --upload-gcs --resume
 
     # Regenerate every ticker after a layout change (same flags as above plus):
@@ -209,7 +207,6 @@ def _render_one(
     gcs_bucket: str,
     resume: bool,
     force: bool = False,
-    sec_profile_json_root: Path | None = None,
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -218,10 +215,10 @@ def _render_one(
     storage rsync`` of the whole output tree is several × faster than N×2
     invocations of ``gcloud storage cp``.
     """
-    from riskmodels.snapshots.stock_deep_dive import (
-        DDData,
-        render_dd_to_pdf,
-        render_dd_to_png,
+    from riskmodels.snapshots.canonical import from_components
+    from riskmodels.snapshots.reference_renderer import (
+        render_canonical_to_pdf,
+        render_canonical_to_png,
     )
     from riskmodels.snapshots.zarr_context import build_p1_from_zarr
     from riskmodels.snapshots.zarr_peer_analytics import (
@@ -246,18 +243,6 @@ def _render_one(
     try:
         p1 = build_p1_from_zarr(ticker, zarr_root)
 
-        profile_blurb: str | None = None
-        if sec_profile_json_root is not None:
-            try:
-                from riskmodels.snapshots.zarr_context import symbol_for_ticker_zarr
-                from riskmodels.snapshots.sec_profile_blurb import load_sec_profile_blurb
-
-                sym = symbol_for_ticker_zarr(ticker, zarr_root)
-                root_v = sec_profile_json_root.expanduser().resolve()
-                profile_blurb = load_sec_profile_blurb(sym, root_v)
-            except Exception:
-                profile_blurb = None
-
         peer_comparison = None
         peer_error: str | None = None
         peer_correlations: dict = {}
@@ -279,19 +264,15 @@ def _render_one(
                     f"analytics: {type(exc).__name__}: {exc}"[:400]
                 )
 
-        dd = DDData(
-            p1=p1,
+        snap = from_components(
+            p1,
             peer_comparison=peer_comparison,
-            peer_correlations=peer_correlations,
-            peer_sharpes=peer_sharpes,
             peer_rankings=peer_rankings,
-            alpha_trajectory=alpha_trajectory,
-            company_profile_text=profile_blurb,
         )
 
         tdir.mkdir(parents=True, exist_ok=True)
-        render_dd_to_png(dd, png)
-        render_dd_to_pdf(dd, pdf)
+        render_canonical_to_png(snap, png)
+        render_canonical_to_pdf(snap, pdf)
 
         uploaded = False
         if upload_gcs:
@@ -449,16 +430,6 @@ def main() -> int:
     )
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve the ticker list, print the count + first 10, exit.")
-    ap.add_argument(
-        "--sec-profile-json-root",
-        type=Path,
-        default=None,
-        help=(
-            "Company_profiles version root (contains json/). Injects SEC/LLM blurb into DD left panel; "
-            "set ERM3_ROOT so erm3.shared.company_profiles matches Supabase company_snapshot text. "
-            "Override with env BULK_DD_SEC_PROFILE_ROOT."
-        ),
-    )
     args = ap.parse_args()
 
     sys.path.insert(0, str(_SDK_ROOT))
@@ -514,16 +485,11 @@ def main() -> int:
 
     workers = max(1, int(args.workers or 1))
 
-    sec_profile_root = args.sec_profile_json_root
-    if sec_profile_root is None and os.environ.get("BULK_DD_SEC_PROFILE_ROOT", "").strip():
-        sec_profile_root = Path(os.environ["BULK_DD_SEC_PROFILE_ROOT"]).expanduser()
-
     if args.dry_run:
         print(f"source: {source}")
         print(f"out_dir: {args.out_dir}")
         print(f"count: {len(tickers)}")
         print(f"first 10: {tickers[:10]}")
-        print(f"sec_profile_json_root: {sec_profile_root}")
         return 0
 
     if not args.out_dir.parent.is_dir() and not args.out_dir.is_dir():
@@ -548,7 +514,6 @@ def main() -> int:
     print(f"  workers      : {workers}")
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
-    print(f"  sec_profile  : {sec_profile_root}")
     print()
 
     log_lock = threading.Lock()
@@ -564,7 +529,6 @@ def main() -> int:
             gcs_bucket=args.gcs_bucket,
             resume=args.resume,
             force=args.force,
-            sec_profile_json_root=sec_profile_root,
         )
         row["i"] = i
         row["ts"] = datetime.now(timezone.utc).isoformat()
@@ -620,7 +584,6 @@ def main() -> int:
         "workers": workers,
         "resume": args.resume,
         "force": args.force,
-        "sec_profile_json_root": str(sec_profile_root) if sec_profile_root else None,
         "log_file": str(log_path),
     }
     if batch_upload is not None:
