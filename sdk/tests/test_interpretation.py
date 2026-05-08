@@ -4,20 +4,17 @@ Focuses on shape/contract guarantees that the BWMACRO engine and the
 SDK community both rely on. The editorial engine itself lives in
 BWMACRO and is tested there.
 
-Specifically covered:
-
-- ``Judgment`` is constructable with the expected fields and is frozen.
-- ``compute_features`` returns the documented keys for a synthetic
-  ``DDData``, and is deterministic.
-- ``derive_default_judgment`` produces a Judgment whose text fields
-  contain only raw numerics — no qualifier vocabulary.
-- ``render_dd_to_*`` accepts an optional ``judgment`` parameter and
-  preserves behavior when ``judgment=None`` (legacy path).
+The ``DDData`` class moved to BWMACRO during PR 3 (2026-05). These public-side
+tests use a ``_DDLike`` stand-in that exposes the same attribute surface
+``compute_features`` / ``derive_default_judgment`` consume — the interpretation
+module is structurally typed (``Any``) at runtime.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 
@@ -27,8 +24,49 @@ from riskmodels.interpretation import (
     compute_features,
     derive_default_judgment,
 )
-from riskmodels.snapshots.p1_stock_performance import P1Data
-from riskmodels.snapshots.stock_deep_dive import DDData
+from riskmodels.snapshots._stock_data import P1Data
+
+
+# ---------------------------------------------------------------------------
+# Structural DDData stand-in — public side has no DDData class.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _DDLike:
+    """Minimal DDData-shaped object for exercising the public interpretation surface."""
+    p1: P1Data
+    peer_comparison: Any = None
+    peer_sharpes: dict[str, tuple[float, float]] = field(default_factory=dict)
+    peer_rankings: dict[str, tuple[float, float]] = field(default_factory=dict)
+
+    # Delegate the same handful of fields BWMACRO's DDData exposes as properties.
+    @property
+    def ticker(self) -> str:
+        return self.p1.ticker
+
+    @property
+    def teo(self) -> str:
+        return self.p1.teo
+
+    @property
+    def metrics(self) -> dict[str, Any]:
+        return self.p1.metrics
+
+    @property
+    def sector_etf(self):
+        return self.p1.sector_etf
+
+    @property
+    def subsector_etf(self):
+        return self.p1.subsector_etf
+
+    @property
+    def subsector_label(self) -> str:
+        return self.p1.subsector_label
+
+    @property
+    def company_name(self) -> str:
+        return self.p1.company_name
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +89,8 @@ def _make_ddata(
     sharpe_resid_3y: float = 1.42,
     res_series_pct: float = 0.04,
     gross_series_pct: float = 0.32,
-) -> DDData:
-    """Build a minimal DDData with all the fields compute_features reads.
+) -> _DDLike:
+    """Build a minimal DDData-shaped fixture covering compute_features inputs.
 
     The helper is intentionally explicit — every value is a parameter
     so eval cases can produce 'high residual + positive', 'high
@@ -111,7 +149,7 @@ def _make_ddata(
         l3_er_series=l3_er_series,
     )
 
-    return DDData(
+    return _DDLike(
         p1=p1,
         peer_comparison=None,
         peer_sharpes={ticker: (1.10, sharpe_resid_3y)},

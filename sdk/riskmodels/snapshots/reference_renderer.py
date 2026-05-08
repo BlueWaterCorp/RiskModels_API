@@ -100,7 +100,7 @@ def _render_section_i_performance(page: SnapshotPage, snap: CanonicalStockSnapsh
     strk = THEME.strokes
     typ = THEME.type
 
-    palette = [pal.navy, pal.teal, pal.slate, pal.green, pal.orange]
+    palette = [pal.navy, pal.teal, pal.subsector, pal.green, pal.orange]
 
     drawn = 0
     for i, label in enumerate(ordered_labels):

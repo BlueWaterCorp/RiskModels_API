@@ -13,8 +13,9 @@ What is here:
                                consumer (snapshot, chat, API) reads.
     INTERPRETER_VERSION      — bump when the schema or the public
                                feature dictionary changes shape.
-    compute_features(data)   — pure numeric extraction from a DDData;
-                               no qualifiers, no states, no flags.
+    compute_features(data)   — pure numeric extraction from a DDData-shaped
+                               object (structurally typed); no qualifiers,
+                               no states, no flags.
     derive_default_judgment  — bland public stub. Renders text fields
                                using raw numerics only — no editorial
                                vocabulary. SDK community uses this when
@@ -37,10 +38,10 @@ from __future__ import annotations
 
 import math as _math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from .snapshots.stock_deep_dive import DDData
+# DDData lives privately in BWMACRO post-PR 3. This module is structurally typed:
+# any object exposing ``.p1.metrics``, ``.peer_comparison``, etc. works at runtime.
 
 
 INTERPRETER_VERSION = "v1"
@@ -93,8 +94,8 @@ def _to_float(v: Any) -> float | None:
     return f if _math.isfinite(f) else None
 
 
-def compute_features(data: "DDData") -> dict[str, Any]:
-    """Extract numeric features from a DDData. Pure; no API calls.
+def compute_features(data: Any) -> dict[str, Any]:
+    """Extract numeric features from a DDData-shaped object. Pure; no API calls.
 
     Returns a flat dict suitable for both the bland stub renderer and
     the BWMACRO interpretation engine. Values are ``None`` when the
@@ -217,7 +218,7 @@ def _fmt_int(v: float | None) -> str:
     return f"{int(round(v))}"
 
 
-def derive_default_judgment(data: "DDData") -> Judgment:
+def derive_default_judgment(data: Any) -> Judgment:
     """Public stub — produces a Judgment whose ``text`` is purely numeric.
 
     Used when no BWMACRO judgment is injected into the renderer. SDK

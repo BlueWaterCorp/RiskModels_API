@@ -1,45 +1,35 @@
-"""Institutional PDF Snapshot Suite — Risk (R1–R4) and Performance (P1–P4).
+"""Public stock snapshot surface — canonical contract + reference renderer.
 
 Architecture
 ------------
-Pure Matplotlib figures (11×8.5 landscape). One figure = one page, zero whitespace.
-No HTML/WeasyPrint. GridSpec controls all panel sizing.
+Pure Plotly + Matplotlib primitives. The canonical contract
+(:class:`CanonicalStockSnapshot`) is the single semantic object backing all
+public stock snapshots; the reference renderer paints it onto a 1-page,
+landscape PDF/PNG.
+
+Premium institutional renderers (R1 Risk Profile, P1 Stock Performance,
+Stock Deep Dive, S1/S2 legacy) and curated content live in BWMACRO. The
+``rm_api_public`` GCS bucket pipeline never imports ``bwmacro.*`` — it must
+stay self-sufficient on this canonical pipeline.
 
 Data layer
 ----------
-    fetch_stock_context(ticker, client)  → StockContext  (all stock-level data in one call)
-
-Each snapshot follows fetch/render separation:
-    get_data_for_XX(context)             → dataclass    (select + compute)
-    render_XX_to_pdf(data, output_path)  → Path         (Matplotlib only)
-
-Available snapshots
--------------------
-R1 (Current × Stock)      — Factor Risk Profile           [shipped]
-R2 (History × Stock)      — Risk Attribution Drift         [planned]
-R3 (Current × Portfolio)  — Concentration Mekko            [planned]
-R4 (History × Portfolio)  — Style Drift                    [planned]
-P1 (Current × Stock)      — Return + Relative Performance  [planned]
-P2 (History × Stock)      — Cumulative Performance         [planned]
-P3 (Current × Portfolio)  — Return Contribution            [planned]
-P4 (History × Portfolio)  — Portfolio vs Benchmark         [planned]
-
-Requires
---------
-Base ``pip install riskmodels-py`` (>=0.3.4) includes **matplotlib** and **plotly** used by snapshot themes/renderers.
-Optional **[viz]** adds kaleido/seaborn for static exports and notebooks; **[pdf]** adds WeasyPrint for legacy flows.
+    fetch_stock_context(ticker, client)  → StockContext
+    build_p1_data_from_stock_context(ctx) → P1Data
+    from_components(p1, peer_comparison=…) → CanonicalStockSnapshot
+    render_canonical_to_pdf(snap, path)   → Path
 """
 
-# Design system (Matplotlib — legacy S1/S2 only)
+# Design system (Matplotlib)
 from ._theme import THEME, Theme, Palette, Typography, Layout, Strokes
 
-# Design system (Plotly — all new snapshots)
+# Design system (Plotly)
 from ._plotly_theme import PLOTLY_THEME, PlotlyTheme, apply_theme
 
-# Layout engine (Matplotlib — legacy)
+# Layout engine (Matplotlib)
 from ._page import SnapshotPage
 
-# Chart primitives — Matplotlib (legacy S1/S2)
+# Chart primitives — Matplotlib
 from ._charts import (
     chart_hbar,
     chart_grouped_vbar,
@@ -52,7 +42,7 @@ from ._charts import (
     chart_bullet,
 )
 
-# Chart primitives — Plotly (all new snapshots)
+# Chart primitives — Plotly
 from ._plotly_charts import (
     chart_hbar as px_hbar,
     chart_grouped_vbar as px_grouped_vbar,
@@ -76,26 +66,19 @@ from ._data import (
     relative_returns,
 )
 
+# Stock data layer (P1Data + builders)
+from ._stock_data import (
+    P1Data,
+    build_p1_data_from_stock_context,
+    cumulative_benchmark_line_labels,
+    fetch_macro_correlations_resilient,
+    get_data_for_p1,
+)
+
 # JSON-first pipeline
 from ._json_io import dump_json, load_json
 
-# R1 — Factor Risk Profile (pure Plotly)
-from .r1_risk_profile import (
-    R1Data,
-    get_data_for_r1,
-    render_r1_to_pdf,
-    render_r1_to_png,
-    render_r1_to_png_bytes,
-    render_r1_to_json,
-)
-
-# Legacy S1/S2 (will be replaced by R1/R2)
-from .s1_forensic import S1Data, get_data_for_s1, render_s1_to_pdf
-from .s2_waterfall import S2Data, get_data_for_s2, render_s2_to_pdf
-
-# Canonical contract — the single semantic object backing all stock snapshots.
-# Premium institutional renderers live in BWMACRO; this repo exposes the
-# contract + a public reference renderer.
+# Canonical contract — single semantic object backing all stock snapshots.
 from .canonical import (
     CANONICAL_SCHEMA_VERSION,
     CanonicalStockSnapshot,
@@ -109,6 +92,7 @@ from .canonical import (
     PeerContext,
     HedgeBasis,
     MacroBasis,
+    from_components,
     from_dd_data,
 )
 from .reference_renderer import (
@@ -118,13 +102,13 @@ from .reference_renderer import (
 )
 
 __all__ = [
-    # Design system — Matplotlib (legacy S1/S2)
+    # Design system — Matplotlib
     "THEME", "Theme", "Palette", "Typography", "Layout", "Strokes",
-    # Design system — Plotly (all new snapshots)
+    # Design system — Plotly
     "PLOTLY_THEME", "PlotlyTheme", "apply_theme",
-    # Layout engine — Matplotlib (legacy)
+    # Layout engine — Matplotlib
     "SnapshotPage",
-    # Chart primitives — Matplotlib (legacy)
+    # Chart primitives — Matplotlib
     "chart_hbar",
     "chart_grouped_vbar",
     "chart_stacked_area",
@@ -134,7 +118,7 @@ __all__ = [
     "chart_table",
     "chart_histogram",
     "chart_bullet",
-    # Chart primitives — Plotly (new)
+    # Chart primitives — Plotly
     "px_hbar",
     "px_grouped_vbar",
     "px_stacked_area",
@@ -144,7 +128,7 @@ __all__ = [
     "px_table",
     "px_histogram",
     "px_bullet",
-    # Data layer
+    # Shared data layer
     "StockContext",
     "fetch_stock_context",
     "trailing_returns",
@@ -152,23 +136,15 @@ __all__ = [
     "rolling_sharpe",
     "max_drawdown_series",
     "relative_returns",
+    # Stock data layer
+    "P1Data",
+    "build_p1_data_from_stock_context",
+    "cumulative_benchmark_line_labels",
+    "fetch_macro_correlations_resilient",
+    "get_data_for_p1",
     # JSON-first pipeline
     "dump_json",
     "load_json",
-    # R1 — Factor Risk Profile
-    "R1Data",
-    "get_data_for_r1",
-    "render_r1_to_pdf",
-    "render_r1_to_png",
-    "render_r1_to_png_bytes",
-    "render_r1_to_json",
-    # Legacy
-    "S1Data",
-    "get_data_for_s1",
-    "render_s1_to_pdf",
-    "S2Data",
-    "get_data_for_s2",
-    "render_s2_to_pdf",
     # Canonical contract + reference renderer
     "CANONICAL_SCHEMA_VERSION",
     "CanonicalStockSnapshot",
@@ -182,6 +158,7 @@ __all__ = [
     "PeerContext",
     "HedgeBasis",
     "MacroBasis",
+    "from_components",
     "from_dd_data",
     "render_canonical_to_pdf",
     "render_canonical_to_png",
