@@ -100,6 +100,8 @@ export type CanonicalSnapshotResponse = {
       l3_sub_er: number | null;
     }>;
     systematic_risk_share: number;
+    /** Present when daily series used a relaxed same-day coverage threshold (sparse factor history). */
+    time_series_caveat?: string;
   };
   metadata: {
     data_as_of: string;
@@ -175,6 +177,129 @@ function compoundAndDrawdown(daily: number[]): { cumulative: number[]; drawdown:
   return { cumulative, drawdown };
 }
 
+/** All layer inputs present for frozen-weight attribution on this date. */
+function layerRowComplete(m: Record<string, number | null> | undefined): boolean {
+  return (
+    !!m &&
+    m.returns_gross != null &&
+    m.l1_fr != null &&
+    m.l2_fr != null &&
+    m.l3_fr != null &&
+    m.l3_rr != null
+  );
+}
+
+function aggregatePortfolioDailySeries(
+  sortedTeos: string[],
+  byDate: Map<string, Map<string, Record<string, number | null>>>,
+  resolvedTickers: string[],
+  weightMap: Map<string, number>,
+  /** Minimum fraction of resolved portfolio weight that must have complete strips (same calendar day). */
+  minWeightCoverage: number,
+): {
+  teoOut: string[];
+  gross: number[];
+  market: number[];
+  sector: number[];
+  subsector: number[];
+  residual: number[];
+  systematicDaily: number[];
+} {
+  const teoOut: string[] = [];
+  const gross: number[] = [];
+  const market: number[] = [];
+  const sector: number[] = [];
+  const subsector: number[] = [];
+  const residual: number[] = [];
+  const systematicDaily: number[] = [];
+
+  const totalW = resolvedTickers.reduce((s, t) => s + (weightMap.get(t) ?? 0), 0);
+
+  for (const teo of sortedTeos) {
+    const dateMap = byDate.get(teo)!;
+    let wCov = 0;
+    const complete: string[] = [];
+    for (const t of resolvedTickers) {
+      const m = dateMap.get(t);
+      if (!layerRowComplete(m)) continue;
+      wCov += weightMap.get(t) ?? 0;
+      complete.push(t);
+    }
+    const coverRatio = totalW > 0 ? wCov / totalW : 0;
+    if (coverRatio + 1e-9 < minWeightCoverage) continue;
+
+    const rn = wCov > 0 ? 1 / wCov : 0;
+    let gSum = 0;
+    let mSum = 0;
+    let sSum = 0;
+    let uSum = 0;
+    let rSum = 0;
+    for (const tk of complete) {
+      const w = (weightMap.get(tk) ?? 0) * rn;
+      const m = dateMap.get(tk)!;
+      const g = m.returns_gross!;
+      const l1 = m.l1_fr!;
+      const l2 = m.l2_fr!;
+      const l3 = m.l3_fr!;
+      const rr = m.l3_rr!;
+      gSum += w * num(g);
+      mSum += w * num(l1);
+      const secStrip = num(l2) - num(l1);
+      const subStrip = num(l3) - num(l2);
+      sSum += w * secStrip;
+      uSum += w * subStrip;
+      rSum += w * num(rr);
+    }
+    teoOut.push(teo);
+    gross.push(gSum);
+    market.push(mSum);
+    sector.push(sSum);
+    subsector.push(uSum);
+    residual.push(rSum);
+    systematicDaily.push(mSum + sSum + uSum);
+  }
+
+  return { teoOut, gross, market, sector, subsector, residual, systematicDaily };
+}
+
+function resolveDailySeriesWithCoverageFallback(
+  sortedTeos: string[],
+  byDate: Map<string, Map<string, Record<string, number | null>>>,
+  resolvedTickers: string[],
+  weightMap: Map<string, number>,
+): {
+  teoOut: string[];
+  gross: number[];
+  market: number[];
+  sector: number[];
+  subsector: number[];
+  residual: number[];
+  systematicDaily: number[];
+  coverageTierUsed: number;
+} {
+  const tiers = [1 - 1e-9, 0.94, 0.8] as const;
+  for (const tier of tiers) {
+    const s = aggregatePortfolioDailySeries(
+      sortedTeos,
+      byDate,
+      resolvedTickers,
+      weightMap,
+      tier,
+    );
+    if (s.teoOut.length > 0) return { ...s, coverageTierUsed: tier };
+  }
+  return {
+    teoOut: [],
+    gross: [],
+    market: [],
+    sector: [],
+    subsector: [],
+    residual: [],
+    systematicDaily: [],
+    coverageTierUsed: tiers[tiers.length - 1]!,
+  };
+}
+
 export async function buildCanonicalPortfolioSnapshot(input: {
   positions: { ticker: string; weight: number }[];
   lookbackDays: number;
@@ -240,64 +365,15 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   }
 
   const sortedTeos = Array.from(byDate.keys()).sort();
-  const gross: number[] = [];
-  const market: number[] = [];
-  const sector: number[] = [];
-  const subsector: number[] = [];
-  const residual: number[] = [];
-  const systematicDaily: number[] = [];
-  const teoOut: string[] = [];
 
-  for (const teo of sortedTeos) {
-    const dateMap = byDate.get(teo)!;
-    let dayComplete = true;
-    for (const t of resolvedTickers) {
-      const m = dateMap.get(t);
-      if (
-        !m ||
-        m.returns_gross == null ||
-        m.l1_fr == null ||
-        m.l2_fr == null ||
-        m.l3_fr == null ||
-        m.l3_rr == null
-      ) {
-        dayComplete = false;
-        break;
-      }
-    }
-    if (!dayComplete) continue;
-
-    const layerSums = {
-      gross: 0,
-      mkt: 0,
-      sec: 0,
-      sub: 0,
-      res: 0,
-    };
-    for (const t of resolvedTickers) {
-      const w = weightMap.get(t) ?? 0;
-      const m = dateMap.get(t)!;
-      const g = m.returns_gross!;
-      const l1 = m.l1_fr!;
-      const l2 = m.l2_fr!;
-      const l3 = m.l3_fr!;
-      const rr = m.l3_rr!;
-      layerSums.gross += w * num(g);
-      layerSums.mkt += w * num(l1);
-      const secStrip = num(l2) - num(l1);
-      const subStrip = num(l3) - num(l2);
-      layerSums.sec += w * secStrip;
-      layerSums.sub += w * subStrip;
-      layerSums.res += w * num(rr);
-    }
-    teoOut.push(teo);
-    gross.push(layerSums.gross);
-    market.push(layerSums.mkt);
-    sector.push(layerSums.sec);
-    subsector.push(layerSums.sub);
-    residual.push(layerSums.res);
-    systematicDaily.push(layerSums.mkt + layerSums.sec + layerSums.sub);
-  }
+  const daily = resolveDailySeriesWithCoverageFallback(
+    sortedTeos,
+    byDate,
+    resolvedTickers,
+    weightMap,
+  );
+  const { teoOut, gross, market, sector, subsector, residual, systematicDaily, coverageTierUsed } =
+    daily;
 
   const sliceStart = Math.max(0, teoOut.length - lookbackDays);
   const teoS = teoOut.slice(sliceStart);
@@ -307,6 +383,11 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   const uS = subsector.slice(sliceStart);
   const rS = residual.slice(sliceStart);
   const sysS = systematicDaily.slice(sliceStart);
+
+  let timeSeriesCaveat: string | undefined;
+  if (teoS.length > 0 && coverageTierUsed < 1 - 1e-9) {
+    timeSeriesCaveat = `Daily return / attribution lines include only dates where at least ${(coverageTierUsed * 100).toFixed(0)}% of portfolio weight had full gross + factor strips; holdings missing that day were dropped and the rest were reweighted to sum to one for that day's portfolio return (frozen weights elsewhere).`;
+  }
 
   const { cumulative, drawdown } = compoundAndDrawdown(gS);
 
@@ -403,6 +484,7 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       },
       top_exposures,
       systematic_risk_share,
+      ...(timeSeriesCaveat ? { time_series_caveat: timeSeriesCaveat } : {}),
     },
     metadata: {
       data_as_of: meta.data_as_of,

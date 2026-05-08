@@ -27,6 +27,9 @@ Ticker selection (mutually exclusive, falls through in this order):
 
 Examples
 --------
+    # Use BWMACRO monorepo Python 3.12 venv: .../BWMACRO/.venv/bin/python (+ PYTHONPATH=sdk),
+    # or run ./sdk/scripts/run_bulk_dd_render.sh (defaults that venv).
+
     # Bulk MAG7 to external drive (will skip the GCS upload step):
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py \
@@ -70,6 +73,12 @@ mag7_dd_zarr_vs_api.py --no-api-peers behaves).
 
 from __future__ import annotations
 
+# Headless backend before any matplotlib.pyplot import (pulls pyplot lazily inside
+# riskmodels.snapshots, but Agg is safe to set unconditionally here).
+import matplotlib as _matplotlib
+
+_matplotlib.use("Agg")
+
 import argparse
 import json
 import os
@@ -81,6 +90,9 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+
+# pyplot.figure is not thread-safe; SnapshotPage uses pyplot internally.
+_MATPLOTLIB_RENDER_LOCK = threading.Lock()
 
 # -----------------------------------------------------------------------------
 # Paths
@@ -271,8 +283,9 @@ def _render_one(
         )
 
         tdir.mkdir(parents=True, exist_ok=True)
-        render_canonical_to_png(snap, png)
-        render_canonical_to_pdf(snap, pdf)
+        with _MATPLOTLIB_RENDER_LOCK:
+            render_canonical_to_png(snap, png)
+            render_canonical_to_pdf(snap, pdf)
 
         uploaded = False
         if upload_gcs:
@@ -423,9 +436,10 @@ def main() -> int:
         type=int,
         default=1,
         help=(
-            "Threads rendering in parallel (default 1). Each worker does its "
-            "own zarr reads + matplotlib render + optional per-ticker upload. "
-            "Good starting point: 4 on a laptop, 8 on a VM."
+            "Thread pool size for ticker jobs (default 1). Each task loads zarr "
+            "peer context in parallel, but matplotlib snapshots are serialized "
+            "with an internal lock (pyplot is not thread-safe). Use 4–8 to "
+            "overlap I/O without expecting linear speedups on PNG/PDF throughput."
         ),
     )
     ap.add_argument("--dry-run", action="store_true",

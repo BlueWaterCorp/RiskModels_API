@@ -14,6 +14,8 @@ import { AutoRefillFailedEmail } from "@/emails/auto-refill-failed";
 import { MonthlySpendResetEmail } from "@/emails/monthly-spend-reset";
 import { KeyExpiringEmail } from "@/emails/key-expiring";
 import { KeyIssuedEmail } from "@/emails/key-issued";
+import { SnapshotDigestEmail } from "@/emails/snapshot-digest";
+import type { SnapshotDigestEmailProps } from "@/emails/snapshot-digest";
 import { DEFAULT_RESEND_FROM } from "@/emails/constants";
 
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -40,7 +42,8 @@ export type EmailTemplate =
   | "auto-refill-failed"
   | "monthly-spend-reset"
   | "key-expiring"
-  | "key-issued";
+  | "key-issued"
+  | "snapshot-digest";
 
 interface EmailData {
   welcome: {
@@ -124,6 +127,7 @@ interface EmailData {
     /** Full key — embedded into copy-paste blocks; send when available (e.g. right after mint). */
     plaintextKey?: string;
   };
+  "snapshot-digest": SnapshotDigestEmailProps;
 }
 
 /** Default outbound From when `RESEND_FROM_EMAIL` is unset (re-export for callers). */
@@ -199,6 +203,11 @@ export async function sendEmail<T extends EmailTemplate>({
         break;
       case "key-issued":
         emailHtml = await render(KeyIssuedEmail(data as EmailData["key-issued"]));
+        break;
+      case "snapshot-digest":
+        emailHtml = await render(
+          SnapshotDigestEmail(data as EmailData["snapshot-digest"]),
+        );
         break;
       default: {
         const _exhaustive: never = template;

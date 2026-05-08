@@ -71,6 +71,7 @@ The metric keys below are the same ones the API exposes in range-history respons
 | `agent_accounts`, `agent_api_keys` | Agent keys and provisioning |
 | `billing_events`, `agent_invoices`, `balance_top_ups` | Billing and prepaid balance |
 | `user_generated_api_keys` | User-generated API keys (dashboard) |
+| `user_email_preferences` | J.12 digest: per-user watch tickers (max 5), fund company slugs (max 2), `frequency`, `last_digest_sent_at`. RLS: users own row; cron uses service role. |
 
 ---
 
