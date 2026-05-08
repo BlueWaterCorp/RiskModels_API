@@ -168,17 +168,32 @@ def _sector_etf(bw_code: float | int | None) -> str | None:
         return None
 
 
+def _ticker_coord_scalar_str(v: Any) -> str:
+    """Normalize a single ticker coord value (zarr bytes | numpy str | unicode)."""
+    if hasattr(v, "item") and callable(v.item):
+        try:
+            v = v.item()
+        except Exception:
+            pass
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return bytes(v).decode("utf-8").strip().upper()
+    # Avoid np.bytes_.astype(str) / object quirks that yield "b'NVDA'" in some stacks.
+    return str(v).strip().upper()
+
+
 def _symbol_for_ticker(ds: xr.Dataset, ticker: str) -> str:
     """Resolve ticker to symbol using the dataset's ticker coordinate.
 
     Falls back to matching by symbol substring if the ticker coordinate is
     unpopulated (e.g. ds_erm3 where ticker coord may be 'None').
     """
+    want = ticker.upper()
     if "ticker" in ds.coords:
-        tick = ds["ticker"].values.astype(str)
-        idx = np.where(tick == ticker.upper())[0]
-        if len(idx):
-            return str(ds["symbol"].values[int(idx[0])])
+        raw = np.asarray(ds["ticker"].values)
+        syms = np.asarray(ds["symbol"].values)
+        for i in range(int(raw.size)):
+            if _ticker_coord_scalar_str(raw.flat[i]) == want:
+                return str(syms.flat[i])
     raise ValueError(f"No symbol for ticker {ticker} in {list(ds.dims)}")
 
 
@@ -196,11 +211,13 @@ def symbol_for_ticker_zarr(ticker: str, zarr_root: Path | None = None) -> str:
 
 
 def _etf_symbol(ds_etf: xr.Dataset, etf_ticker: str) -> str:
-    tick = ds_etf["ticker"].values.astype(str)
-    idx = np.where(tick == etf_ticker.upper())[0]
-    if not len(idx):
-        raise ValueError(f"ETF {etf_ticker} not in ds_etf")
-    return str(ds_etf["symbol"].values[int(idx[0])])
+    want = etf_ticker.upper()
+    raw = np.asarray(ds_etf["ticker"].values)
+    syms = np.asarray(ds_etf["symbol"].values)
+    for i in range(int(raw.size)):
+        if _ticker_coord_scalar_str(raw.flat[i]) == want:
+            return str(syms.flat[i])
+    raise ValueError(f"ETF {etf_ticker} not in ds_etf")
 
 
 def _df_from_etf_slice(ds_etf: xr.Dataset, etf_sym: str, n_days: int) -> pd.DataFrame:
