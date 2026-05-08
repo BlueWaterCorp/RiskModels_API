@@ -1,20 +1,15 @@
 """Smoke tests for the canonical stock-snapshot contract.
 
-Two layers:
+Schema round-trip (unconditional). Builds a minimal valid
+``CanonicalStockSnapshot``, dumps to JSON, reloads, asserts the reload equals
+the original. Tests the contract itself, not data.
 
-  1. Schema round-trip (unconditional). Builds a minimal valid
-     ``CanonicalStockSnapshot``, dumps to JSON, reloads, asserts the
-     reload equals the original. Tests the contract itself, not data.
+The cache-driven adapter test (DDData → canonical → PNG) moved to BWMACRO
+during PR 3 since DDData is now private to that repo.
 
-  2. Adapter + reference renderer (conditional on local DD cache,
-     which is gitignored). Loads ``AAPL_dd_cache.json`` if present,
-     converts via :func:`from_dd_data`, renders to PDF + PNG bytes,
-     and asserts non-empty output. Skipped on CI / fresh checkouts.
-
-Per the project rule against synthetic test data: the round-trip test
-constructs a clearly-marked ``__TEST__`` snapshot to exercise
-serialization only — it does not pretend to be real ticker data. The
-end-to-end render path is covered by the real-fixture conditional test.
+Per the project rule against synthetic test data: this round-trip uses an
+obvious ``__TEST__`` identity to exercise serialization only — it does not
+pretend to be real ticker data.
 """
 
 from __future__ import annotations
@@ -38,7 +33,6 @@ from riskmodels.snapshots.canonical import (
     PeerRow,
     PerformanceAttribution,
     RiskDecomposition,
-    from_dd_data,
 )
 
 
@@ -166,39 +160,5 @@ def test_optional_sections_can_be_absent() -> None:
     assert reloaded == snap
 
 
-# ---------------------------------------------------------------------------
-# 2. Adapter + reference render — conditional on real cache
-# ---------------------------------------------------------------------------
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DD_CACHE = REPO_ROOT / "sdk" / "riskmodels" / "snapshots" / "output" / "AAPL_dd_cache.json"
-
-
-@pytest.mark.skipif(not DD_CACHE.exists(), reason="AAPL_dd_cache.json not present (gitignored)")
-def test_from_dd_data_renders() -> None:
-    """Real DD cache → canonical → reference renderer produces non-empty PNG bytes."""
-    from riskmodels.snapshots.stock_deep_dive import DDData
-    from riskmodels.snapshots.reference_renderer import render_canonical_to_png_bytes
-
-    dd = DDData.from_json(DD_CACHE)
-    snap = from_dd_data(dd)
-
-    # Identity flows through
-    assert snap.identity.ticker == dd.p1.ticker
-    assert snap.identity.as_of == dd.p1.teo
-
-    # Variance shares are populated and roughly normalized
-    shares = [
-        snap.core_metrics.market_share,
-        snap.core_metrics.sector_share,
-        snap.core_metrics.subsector_share,
-        snap.core_metrics.residual_share,
-    ]
-    if all(s is not None for s in shares):
-        total = sum(shares)
-        assert 0.99 <= total <= 1.01, f"variance shares should sum to ~1.0; got {total}"
-
-    # Reference renderer produces non-empty PNG bytes
-    png_bytes = render_canonical_to_png_bytes(snap)
-    assert len(png_bytes) > 1000, "PNG output suspiciously small"
-    assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n", "not a valid PNG header"
+# The DDData-driven smoke test moved to BWMACRO (tests/snapshots/stock/) since
+# the DDData class is private to that repo post-PR 3.

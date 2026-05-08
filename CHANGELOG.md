@@ -4,6 +4,18 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Removed
+
+- **Snapshot canonicalization PR 3** — Curated stock-snapshot layouts moved to BWMACRO. Deleted from `sdk/riskmodels/snapshots/`: `r1_risk_profile.py`, `p1_stock_performance.py`, `stock_deep_dive.py`, `s1_forensic.py`, `s2_waterfall.py`, `product_tear_sheet.py`, `_base_template.py`, `_compare_waterfall.py`, `_mag7_dna.py`, `section2_alternatives.py`, `sec_profile_blurb.py`, `refine.py`. From `sdk/riskmodels/visuals/`: `_mag7.py`, `gallery.py`, `mag7_l3_er.py`, `mag7_l3_sigma_rr.py`, `smart_subheader.py`. Demo / zarr-vs-API diff scripts: `scripts/preview_l3_plotly.py`, `scripts/run_visuals_gallery.py`, `scripts/generate_sdk_visual_gallery.py`, `sdk/scripts/p1_zarr_vs_api_diff.py`, `sdk/scripts/mag7_dd_zarr_vs_api.py`. Institutional renderers continue to ship as private IP via [BWMACRO `bwmacro/snapshots/stock/`](../BWMACRO/src/bwmacro/snapshots/stock/).
+
+### Changed
+
+- **Public stock snapshots → canonical pipeline** — `bulk_dd_render.py` (the `rm_api_public` GCS bucket writer) now builds `CanonicalStockSnapshot` via `riskmodels.snapshots.canonical.from_components(p1, peer_comparison=…, peer_rankings=…)` and renders through `reference_renderer.render_canonical_to_pdf/png`. P1Data extracted to slim public module [`sdk/riskmodels/snapshots/_stock_data.py`](sdk/riskmodels/snapshots/_stock_data.py) (dataclass + builders only — no rendering). Hard rule: the public bucket pipeline never imports `bwmacro.*`.
+
+- **Subsector swatch: slate (`#2a7fbf`) → institutional violet (`#6d28d9`)** — `Palette.slate` field renamed to `Palette.subsector` across `_theme.py`, `_charts.py`, `_plotly_charts.py`, `reference_renderer.py`. Snapshot cache key version bumped (`SNAPSHOT_CACHE_VERSION = "v2"` in [`app/api/snapshot/[ticker]/route.ts`](app/api/snapshot/[ticker]/route.ts)) so cached PDF/PNG bytes refresh on first read after deploy.
+
+- **`from_dd_data` now structurally typed** — `riskmodels.snapshots.canonical.from_dd_data` no longer imports `DDData` (which moved to BWMACRO); typed as `Any` and delegates to the new `from_components(p1, …)` adapter. `interpretation.compute_features` / `derive_default_judgment` similarly typed `Any` — both already operated duck-typedly at runtime.
+
 ### Added
 
 - **AOM portfolio support — `riskmodels-py 0.3.3`** — The Analysis Object Model executor and compiler now accept `portfolio` subjects in both single-analyze and chain forms. Portfolio composition collapses to one `client.snapshot()` call against `POST /api/snapshot`; the response already carries variance decomposition, per-position hedge ratios, and attribution time series, so chains like `risk_decomposition → hedge_action` resolve in a single request rather than fanning out per-ticker. Stock subjects continue to compose normally. Compiler maps `date_range_preset` to `lookback_days` (`mtd`→21, `ytd`/`1y`→252, `3y`→756, `5y`→1260). New tests cover portfolio compile shape, mock execute, and lookback presets (16/16 in [`sdk/tests/test_aom.py`](sdk/tests/test_aom.py)). Live smoke: [`sdk/scripts/smoke_aom_portfolio_chain.py`](sdk/scripts/smoke_aom_portfolio_chain.py). Verified end-to-end against prod 2026-05-01 (warm latency ~3s).

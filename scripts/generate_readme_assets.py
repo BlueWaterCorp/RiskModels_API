@@ -13,8 +13,6 @@ Requires ``RISKMODELS_API_KEY`` (free tier is enough: MAG7 + rankings + correlat
 Outputs:
   - ``assets/`` — paths referenced by ``README.md`` (GitHub)
   - ``public/docs/readme/`` — same files for the Next.js site (``/docs/readme/...``)
-  - ``mag7_l3_sigma_rr.png`` — Plotly **MAG7 L3 σ-scaled** horizontal bars (annualized vol × L3 RR + HR
-    residual share). Requires ``kaleido`` (``pip install riskmodels-py[viz]``).
   - ``mag7_risk_cascade.png`` — Plotly **portfolio risk cascade** (MAG7 weights ∝ ``market_cap`` from
     ``get_metrics``), for ``sdk/README.md``. Requires ``kaleido`` (``pip install riskmodels-py[viz]``).
 
@@ -51,34 +49,78 @@ from riskmodels.env import load_repo_dotenv
 load_repo_dotenv(ROOT)
 load_repo_dotenv(ROOT / "sdk")
 
-from riskmodels.visuals._mag7 import (
-    mag7_cap_weighted_positions as _mag7_cap_weighted_positions_full,
-    mag7_tickers as _mag7_tickers,
-    normalize_tickers as _normalize_tickers,
-)
+# MAG7 ticker resolution + cap weighting — inlined from the legacy
+# ``riskmodels.visuals._mag7`` module that moved to BWMACRO during PR 3.
+# These helpers stay public-side because the README assets pipeline runs
+# from the ``rm_api_public`` boundary and cannot import ``bwmacro.*``.
 
-MACRO_KEYS = ("vix", "gold", "bitcoin")
-MACRO_LABELS = {"macro_corr_vix": "VIX", "macro_corr_gold": "Gold", "macro_corr_bitcoin": "BTC"}
+MAG7_FALLBACK_LIST: list[str] = ["AAPL", "MSFT", "GOOG", "AMZN", "META", "NVDA", "TSLA"]
+
+MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026: dict[str, float] = {
+    "NVDA": 0.22, "AAPL": 0.18, "MSFT": 0.14, "GOOG": 0.12,
+    "AMZN": 0.10, "META": 0.10, "TSLA": 0.14,
+}
+
+
+def _normalize_tickers(tickers: list[str]) -> list[str]:
+    """Strip whitespace; map GOOGL → GOOG (single class for cap-weight roll-up)."""
+    out: list[str] = []
+    for t in tickers:
+        u = str(t).strip()
+        if u.upper() == "GOOGL":
+            u = "GOOG"
+        out.append(u)
+    return out
+
+
+def _mag7_tickers(client) -> list[str]:
+    """Resolve MAG7 from API; fall back to the canonical 7-name list."""
+    df = client.search_tickers(mag7=True)
+    if getattr(df, "empty", True):
+        return list(MAG7_FALLBACK_LIST)
+    col = "ticker" if "ticker" in df.columns else df.columns[0]
+    out = [str(x).strip() for x in df[col].tolist() if x and str(x).strip()]
+    return _normalize_tickers(out if out else list(MAG7_FALLBACK_LIST))
 
 
 def _mag7_cap_weighted_positions(client) -> list[dict[str, Any]]:
-    """MAG7 list with weights proportional to latest ``market_cap`` from ``get_metrics`` (same as sdk README)."""
-    positions, _src = _mag7_cap_weighted_positions_full(client)
-    return positions
+    """MAG7 list with weights ∝ latest ``market_cap`` from ``get_metrics``."""
+    import pandas as pd
+
+    tickers = _mag7_tickers(client)
+    caps: list[tuple[str, float]] = []
+    for sym in tickers:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            snap = client.get_metrics(sym, as_dataframe=True)
+        row = snap.iloc[0]
+        cap = row.get("market_cap")
+        if cap is None or (isinstance(cap, float) and pd.isna(cap)):
+            continue
+        try:
+            caps.append((str(sym).upper(), float(cap)))
+        except (TypeError, ValueError):
+            continue
+
+    if len(caps) >= 3:
+        wdf = pd.DataFrame(caps, columns=["ticker", "market_cap"])
+        wdf["weight"] = wdf["market_cap"] / wdf["market_cap"].sum()
+        return wdf[["ticker", "weight"]].to_dict("records")
+
+    positions: list[dict[str, Any]] = []
+    for t in tickers:
+        w = MAG7_CAP_WEIGHTS_FALLBACK_EARLY_2026.get(str(t).upper(), 0.0)
+        if w > 0:
+            positions.append({"ticker": t, "weight": w})
+    s = sum(float(p["weight"]) for p in positions)
+    if s <= 0:
+        n = len(tickers)
+        return [{"ticker": t, "weight": 1.0 / n} for t in tickers]
+    return [{"ticker": p["ticker"], "weight": float(p["weight"]) / s} for p in positions]
 
 
-def _write_mag7_l3_sigma_rr_png(client, path: Path) -> None:
-    """MAG7 L3 σ-scaled RR + HR (``save_mag7_l3_sigma_rr_png``); Kaleido static export."""
-    from riskmodels.visuals.mag7_l3_sigma_rr import save_mag7_l3_sigma_rr_png
-
-    save_mag7_l3_sigma_rr_png(
-        client,
-        filename=path,
-        width=1600,
-        height=1000,
-        scale=3,
-        theme="light",
-    )
+MACRO_KEYS = ("vix", "gold", "bitcoin")
+MACRO_LABELS = {"macro_corr_vix": "VIX", "macro_corr_gold": "Gold", "macro_corr_bitcoin": "BTC"}
 
 
 def _write_mag7_risk_cascade_png(client, path: Path) -> None:
@@ -320,11 +362,6 @@ def main() -> int:
         help="Skip MAG7 cap-weighted portfolio risk cascade PNG (sdk/README.md asset).",
     )
     parser.add_argument(
-        "--no-mag7-l3-sigma",
-        action="store_true",
-        help="Skip MAG7 L3 σ-scaled RR+HR PNG (README asset mag7_l3_sigma_rr.png).",
-    )
-    parser.add_argument(
         "--only-sdk-cascade",
         action="store_true",
         help="Only write mag7_risk_cascade.png (MAG7 cap weights + portfolio risk cascade); skip correlation/rankings.",
@@ -507,19 +544,6 @@ def main() -> int:
             dpi=readme_dpi,
         )
 
-    sigma_rr_path: Path | None = None
-    if not args.no_mag7_l3_sigma:
-        sigma_rr_path = args.out_dir / "mag7_l3_sigma_rr.png"
-        try:
-            _write_mag7_l3_sigma_rr_png(client, sigma_rr_path)
-            print("Wrote", sigma_rr_path, file=sys.stderr)
-        except Exception as e:
-            print(
-                f"MAG7 L3 σ-scaled PNG not written (install kaleido + riskmodels-py[viz]): {e}",
-                file=sys.stderr,
-            )
-            sigma_rr_path = None
-
     cascade_path: Path | None = None
     if not args.no_sdk_cascade:
         cascade_path = args.out_dir / "mag7_risk_cascade.png"
@@ -530,7 +554,7 @@ def main() -> int:
             print(f"MAG7 risk cascade PNG not written (install kaleido + riskmodels-py[viz]): {e}", file=sys.stderr)
             cascade_path = None
 
-    extra = tuple(p for p in (sigma_rr_path, cascade_path) if p is not None)
+    extra = tuple(p for p in (cascade_path,) if p is not None)
     for src in (macro_path, bar_path, needle_path, hero_path, *extra):
         if src is None:
             continue
@@ -547,8 +571,6 @@ def main() -> int:
     wrote.extend([bar_path, needle_path])
     if hero_path is not None:
         wrote.append(hero_path)
-    if sigma_rr_path is not None:
-        wrote.append(sigma_rr_path)
     if cascade_path is not None:
         wrote.append(cascade_path)
     print(
@@ -576,12 +598,6 @@ def main() -> int:
         f"  Rankings charts: GET /rankings/{ranking_ticker} — metric={args.metric}, "
         f"window={args.window} (all cohort rows returned by the API).\n"
         f"{hero_right_blurb}"
-        + (
-            "  MAG7 L3 σ-scaled: POST /batch/analyze (full_metrics + hedge_ratios + returns) → "
-            "save_mag7_l3_sigma_rr_png.\n"
-            if sigma_rr_path is not None
-            else ""
-        )
         + "---\n",
         file=sys.stderr,
     )

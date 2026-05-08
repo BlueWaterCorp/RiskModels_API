@@ -1,7 +1,7 @@
 """Build :class:`StockContext` from local ERM3 zarr (same shape as API ``fetch_stock_context``).
 
 Use :func:`build_p1_from_zarr` so :class:`P1Data` is assembled only via
-:func:`riskmodels.snapshots.p1_stock_performance.build_p1_data_from_stock_context`
+:func:`riskmodels.snapshots._stock_data.build_p1_data_from_stock_context`
 — the same tail/cum/l3_er rules as production, plus rankings and macro correlations
 from zarr (``ds_rankings_*``, ``ds_macro_factor.zarr``). Gold is not in
 ``ds_macro_factor``; that slot stays empty unless you supply API macro later.
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .p1_stock_performance import P1Data
+    from ._stock_data import P1Data
 
 import numpy as np
 import pandas as pd
@@ -655,7 +655,7 @@ def build_p1_from_zarr(
 
     See :func:`fetch_stock_context_zarr` for parameter docs.
     """
-    from .p1_stock_performance import build_p1_data_from_stock_context
+    from ._stock_data import build_p1_data_from_stock_context
 
     ctx, rankings, macro_corr, macro_win = fetch_stock_context_zarr(
         ticker, zarr_root,
