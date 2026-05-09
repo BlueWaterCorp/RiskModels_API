@@ -1532,6 +1532,141 @@ class RiskModelsClient:
     # internal sync code paths. End users should compose with
     # ``get_fund`` / ``get_style`` / the snapshot methods above.
 
+    # -------------------------------------------------------------------
+    # 13F Filers API (D.8 Phase 1)
+    #
+    # Surface mirror of the funds API but partitioned by filer_type ×
+    # aum_tier rather than equity_style_9box. NAV is permanently absent
+    # by design (filers have no NAV time series). Hedge ratios are
+    # Phase 3 (D.8.10).
+    #
+    # Plan: BWMACRO/docs/13f_pipeline_plan.md
+    # -------------------------------------------------------------------
+
+    def search_filers(
+        self,
+        *,
+        q: str | None = None,
+        filer_type: str | None = None,
+        aum_tier: str | None = None,
+        modelable_only: bool = False,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Search the 13F filer universe (free, no per-request cost).
+
+        Args:
+            q: Full-text search on name, CIK, or LEI.
+            filer_type: Exact match (e.g. 'hedge_fund', 'investment_adviser').
+            aum_tier: Exact match.
+            modelable_only: If True, restrict to filers passing the
+                modelability gate (BWMACRO/docs/13f_pipeline_plan.md §6).
+            limit: Max rows (default 50, capped 500).
+
+        Returns:
+            ``{"results": [FilerRow, ...]}``
+        """
+        params: dict[str, str] = {"limit": str(min(max(int(limit), 1), 500))}
+        if q is not None:
+            params["q"] = q
+        if filer_type is not None:
+            params["filer_type"] = filer_type
+        if aum_tier is not None:
+            params["aum_tier"] = aum_tier
+        if modelable_only:
+            params["modelable_only"] = "true"
+        data, _lineage, _r = self._transport.request(
+            "GET", "/13f/filers/search", params=params
+        )
+        return data
+
+    def get_filer(self, bw_filer_id: str) -> dict[str, Any]:
+        """Latest 13F filer metrics (Stage 1, ``$0.005``).
+
+        Returns diagnostics, AUM (total + in-ERM3), portfolio-derived
+        9-box style attribution, and modelability flag. Return components
+        are NULL until D.8 Phase 2.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/13f/filers/{quote(bw_filer_id, safe='')}"
+        )
+        return data
+
+    def get_filer_holdings(
+        self, bw_filer_id: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        """Top-N filer holdings at the latest teo (``$0.005``).
+
+        Each holding carries ``security_id`` (post-D.8.1 = bw_sym_id;
+        pre-migration = raw CUSIP), ``adj_mv``, and ``weight``.
+        """
+        params = {"limit": str(limit)} if limit is not None else None
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/holdings",
+            params=params,
+        )
+        return data
+
+    def get_filer_portfolio(
+        self,
+        bw_filer_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-filer portfolio time series (``$0.005``).
+
+        Diagnostics + AUM + ERM3 coverage + portfolio style attribution
+        per quarter-end teo. Return components NULL until Phase 2.
+        """
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_filer_snapshot(self, bw_filer_id: str) -> dict[str, Any]:
+        """Composed JSON 13F filer tearsheet (``$0.01``).
+
+        Bundles registry + latest metrics + top-25 holdings + 12mo
+        portfolio history + cohort ranks (filer_type and aum_tier
+        partitions) + portfolio-derived 9-box style attribution + ERM3
+        coverage diagnostics + modelability flag.
+
+        NAV is intentionally absent (``_metadata.nav_applicable: false``).
+        Hedge ratios are Phase 3 (D.8.10) and not present today.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/13f/filers/{quote(bw_filer_id, safe='')}/snapshot"
+        )
+        return data
+
+    def get_filer_snapshot_pdf(self, bw_filer_id: str) -> bytes:
+        """Rendered F1 13F filer tearsheet PDF bytes (``$0.05``).
+
+        Same content as :meth:`get_filer_snapshot` rendered through the
+        F1 print template (Letter landscape). Server requires
+        ``PLAYWRIGHT_PDF_ENABLED=true`` on the API runtime.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/snapshot.pdf",
+            headers={"Accept": "application/pdf"},
+            expect_json=False,
+        )
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(
+                f"Expected PDF bytes from /13f/filers/{bw_filer_id}/snapshot.pdf; "
+                f"got {type(data).__name__}"
+            )
+        return bytes(data)
+
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int
     ) -> tuple[dict[str, Any], RiskLineage]:
