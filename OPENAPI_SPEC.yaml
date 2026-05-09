@@ -6735,6 +6735,322 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  # =========================================================================
+  # 13F Filer endpoints (D.8 Phase 1)
+  # =========================================================================
+
+  /13f/filers/search:
+    get:
+      summary: 13F filer search
+      description: >
+        Discovery surface for 13F filers. Search by name, CIK, or LEI;
+        filter by filer_type / aum_tier; optionally restrict to filers
+        passing the modelability gate. Free for users (no per-request
+        cost) — per-filer follow-up calls are metered.
+      operationId: searchFilers
+      tags:
+        - 13F Filers
+      x-pricing:
+        capability_id: filer-search
+        tier: baseline
+        cost_usd: 0.0
+        billing_code: filer_search_v1
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: filer_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: aum_tier
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: modelable_only
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+      responses:
+        "200":
+          description: Filer search results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+        "429":
+          description: Rate limit exceeded.
+
+  /13f/filers/{bw_filer_id}:
+    get:
+      summary: Latest 13F filer metrics
+      description: >
+        Latest knowledge-mode portfolio metrics for a single 13F filer.
+        Reads `public.filers` + `public.filer_portfolios_latest`. Returns
+        diagnostics, AUM (total + in-ERM3), ERM3-coverage modelability
+        inputs, and portfolio-derived 9-box style attribution. Return
+        components are NULL until D.8 Phase 2. NAV is permanently absent
+        — filers have no NAV time series.
+      operationId: getFilerMetrics
+      tags:
+        - 13F Filers
+      x-pricing:
+        capability_id: filer-metrics
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: filer_metrics_v1
+      parameters:
+        - name: bw_filer_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: BW-FILER-CIK0001067983
+      responses:
+        "200":
+          description: Latest filer metrics.
+          headers:
+            X-Data-As-Of:
+              schema:
+                type: string
+                format: date
+            X-Data-Filing-Date:
+              schema:
+                type: string
+                format: date
+            X-Risk-Model-Version:
+              schema:
+                type: string
+            X-API-Cost-USD:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Filer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /13f/filers/{bw_filer_id}/holdings:
+    get:
+      summary: 13F filer top holdings
+      description: >
+        Top-N current holdings at the filer's latest teo. Reads per-filer
+        ds_ph.zarr from GCS. Each holding carries `security_id` (post-
+        D.8.1 = bw_sym_id; pre-migration = raw CUSIP), `adj_mv`, and
+        `weight` (fraction of total in-portfolio AUM).
+      operationId: getFilerHoldings
+      tags:
+        - 13F Filers
+      x-pricing:
+        capability_id: filer-holdings
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: filer_holdings_v1
+      parameters:
+        - name: bw_filer_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 25
+            maximum: 1000
+      responses:
+        "200":
+          description: Top-N holdings at the latest teo.
+          content:
+            application/json:
+              schema:
+                type: object
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Filer not found, or no holdings panel available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /13f/filers/{bw_filer_id}/portfolio:
+    get:
+      summary: 13F filer portfolio history
+      description: >
+        Per-filer portfolio time series from per-filer ds_portfolio.zarr.
+        One row per teo (quarter-end) with diagnostics, AUM, ERM3 coverage,
+        and portfolio style attribution. Return components are NULL until
+        D.8 Phase 2 (CUSIP↔ERM3 attribution bridge).
+      operationId: getFilerPortfolioHistory
+      tags:
+        - 13F Filers
+      x-pricing:
+        capability_id: filer-portfolio-history
+        tier: baseline
+        cost_usd: 0.005
+        billing_code: filer_portfolio_history_v1
+      parameters:
+        - name: bw_filer_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Portfolio history rows.
+          content:
+            application/json:
+              schema:
+                type: object
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Filer not found, or no portfolio history available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /13f/filers/{bw_filer_id}/snapshot:
+    get:
+      summary: 13F filer composed snapshot (JSON)
+      description: >
+        Single-call composed snapshot for a 13F filer: registry + latest
+        metrics + top-25 holdings + 12mo portfolio history + cohort ranks
+        (filer_type and aum_tier partitions) + portfolio-derived 9-box
+        style attribution + ERM3 coverage diagnostics + modelability flag.
+        NAV is intentionally absent (`_metadata.nav_applicable: false`) —
+        filers have no NAV time series. Hedge ratios are Phase 3 (D.8.10)
+        and absent today.
+      operationId: getFilerSnapshot
+      tags:
+        - 13F Filers
+      x-pricing:
+        capability_id: filer-snapshot-json
+        tier: premium
+        cost_usd: 0.01
+        billing_code: filer_snapshot_json_v1
+      parameters:
+        - name: bw_filer_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Composed FilerSnapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Filer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /13f/filers/{bw_filer_id}/snapshot.pdf:
+    get:
+      summary: 13F filer F1 tearsheet (PDF)
+      description: >
+        Rendered 1-page F1 tearsheet PDF for a 13F filer. Same content as
+        /snapshot (JSON). NAV section is absent by design. Server-rendered
+        via headless Chromium (Playwright); requires PLAYWRIGHT_PDF_ENABLED=true
+        on the API runtime.
+      operationId: getFilerSnapshotPdf
+      tags:
+        - 13F Filers
+      x-pricing:
+        capability_id: filer-snapshot-pdf
+        tier: premium
+        cost_usd: 0.05
+        billing_code: filer_snapshot_pdf_v1
+      parameters:
+        - name: bw_filer_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PDF tearsheet bytes.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "402":
+          description: Insufficient prepaid balance.
+        "404":
+          description: Filer not found.
+        "503":
+          description: PDF rendering disabled (PLAYWRIGHT_PDF_ENABLED unset).
+
 tags:
   - name: Risk Metrics
     description: ERM3 factor hedge ratios, explained risk, and return decompositions.
@@ -6772,3 +7088,11 @@ tags:
       and hedge ratios (Stage B.2) read from GCS Zarr. Style-cohort
       surfaces (Stage C) and snapshot tearsheets (Stage D) follow.
       Billable per request.
+  - name: 13F Filers
+    description: >
+      Compute-bearing 13F filer endpoints (D.8 Phase 1). Mirror the funds
+      surface but partition by `filer_type × aum_tier` rather than
+      `equity_style_9box`, and include a portfolio-derived 9-box style
+      attribution block. NAV is permanently absent (filers have no NAV
+      time series); hedge ratios are Phase 3 (D.8.10). Plan reference:
+      BWMACRO/docs/13f_pipeline_plan.md.

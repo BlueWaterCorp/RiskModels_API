@@ -40,7 +40,7 @@ export interface PerformanceSpec {
 
 export interface ConfidenceSpec {
   data_quality_score: number;
-  update_frequency: "real-time" | "daily" | "weekly" | "monthly" | "hourly";
+  update_frequency: "real-time" | "daily" | "weekly" | "monthly" | "hourly" | "quarterly";
   sources: string[];
   methodology_url?: string;
 }
@@ -1636,6 +1636,291 @@ export const CAPABILITIES: Capability[] = [
       ],
     },
     tags: ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"],
+  },
+
+  // ===========================================================================
+  // 13F FILER CAPABILITIES (D.8 Phase 1)
+  // Plan: BWMACRO/docs/13f_pipeline_plan.md
+  // ===========================================================================
+  {
+    id: "filer-search",
+    name: "13F Filer Search & Discovery",
+    description:
+      "Search the 13F filer universe by name, CIK, LEI, or filer_type/aum_tier cohort. " +
+      "Returns a list of FilerRow records (bw_filer_id, cik, name, filer_type, aum_tier, " +
+      "latest_aum_usd, etc.) for downstream calls to /api/13f/filers/{bw_filer_id}/*. " +
+      "Optional modelable_only filter restricts results to filers whose in-ERM3 sub-portfolio " +
+      "carries signal value (passes the modelability gate). Free for users — discovery is " +
+      "unbilled; per-filer follow-up calls are metered.",
+    endpoint: "/api/13f/filers/search",
+    method: "GET",
+    parameters: {
+      q: {
+        type: "string",
+        required: false,
+        description: "Full-text search on name, CIK, or LEI (case-insensitive ilike).",
+      },
+      filer_type: {
+        type: "string",
+        required: false,
+        description: "Filer type filter (e.g. 'hedge_fund', 'investment_adviser').",
+      },
+      aum_tier: {
+        type: "string",
+        required: false,
+        description: "AUM tier bucket from filer_master.",
+      },
+      modelable_only: {
+        type: "boolean",
+        required: false,
+        description: "If true, restricts to filers passing the modelability gate.",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows returned (default 50, max 500).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.0,
+      currency: "USD",
+      billing_code: "filer_search_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 250,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "quarterly",
+      sources: ["filers", "filer_portfolios_latest"],
+    },
+    tags: ["13f", "filers", "search", "discovery", "free"],
+  },
+  {
+    id: "filer-metrics",
+    name: "Latest 13F Filer Metrics",
+    description:
+      "Latest knowledge-mode portfolio metrics for a single 13F filer. Returns diagnostics " +
+      "(weight_sum, n_holdings_active, effective_n, top10_weight_sum), AUM (total_aum_usd + " +
+      "aum_in_erm3 — the latter is the absolute scale of holdings inside the ERM3 universe), " +
+      "ERM3-coverage modelability inputs, and the portfolio-derived 9-box style attribution " +
+      "(portfolio_style_hhi, dominant_9box, effective_n_styles). Return components are NULL " +
+      "until D.8 Phase 2 (CUSIP↔ERM3 attribution bridge). NAV is permanently absent — filers " +
+      "have no NAV time series. Resolves bw_filer_id against public.filers + " +
+      "public.filer_portfolios_latest.",
+    endpoint: "/api/13f/filers/{bw_filer_id}",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik} or BW-FILER-CRD{crd}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["filers", "filer_portfolios_latest"],
+    },
+    tags: ["13f", "filers", "metrics", "knowledge-mode"],
+  },
+  {
+    id: "filer-holdings",
+    name: "13F Filer Top Holdings",
+    description:
+      "Top-N current holdings for a 13F filer at the latest report_date. Reads per-filer " +
+      "ds_ph.zarr from GCS. Each holding carries security_id (post-D.8.1 = bw_sym_id; pre-" +
+      "migration = raw CUSIP), adj_mv, and weight (fraction of total in-portfolio AUM). " +
+      "Default N=25, max 1000.",
+    endpoint: "/api/13f/filers/{bw_filer_id}/holdings",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Top-N to return (default 25, max 1000).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 250,
+      p95_latency_ms: 600,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["bw_filer_id/{id}/ds_ph.zarr", "filers"],
+    },
+    tags: ["13f", "filers", "holdings"],
+  },
+  {
+    id: "filer-portfolio-history",
+    name: "13F Filer Portfolio History",
+    description:
+      "Per-filer portfolio time series of diagnostics + AUM + style attribution from per-" +
+      "filer ds_portfolio.zarr on GCS. One row per teo (quarter-end). Optional ?start_date " +
+      "and ?end_date trim the panel. Return components (portfolio_*_return, identity_residual) " +
+      "are NULL until D.8 Phase 2 (CUSIP↔ERM3 attribution bridge).",
+    endpoint: "/api/13f/filers/{bw_filer_id}/portfolio",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD.",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD.",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["bw_filer_id/{id}/ds_portfolio.zarr", "filers"],
+    },
+    tags: ["13f", "filers", "history", "time-series"],
+  },
+  {
+    id: "filer-snapshot-json",
+    name: "13F Filer Snapshot (JSON)",
+    description:
+      "Single-call composed snapshot for a 13F filer: registry + latest metrics + top 25 " +
+      "holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) " +
+      "+ portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability " +
+      "flag. Permanently no NAV (surfaced as _metadata.nav_applicable: false) — filers have " +
+      "no NAV time series. Hedge ratios are Phase 3 (D.8.10) and absent today.",
+    endpoint: "/api/13f/filers/{bw_filer_id}/snapshot",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.01,
+      currency: "USD",
+      billing_code: "filer_snapshot_json_v1",
+    },
+    performance: {
+      avg_latency_ms: 350,
+      p95_latency_ms: 900,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: [
+        "filers",
+        "filer_portfolios_latest",
+        "filer_rankings_top",
+        "bw_filer_id/{id}/ds_ph.zarr",
+        "bw_filer_id/{id}/ds_portfolio.zarr",
+      ],
+    },
+    tags: ["13f", "filers", "snapshot", "differentiated-wedge"],
+  },
+  {
+    id: "filer-snapshot-pdf",
+    name: "13F Filer Snapshot (PDF)",
+    description:
+      "Rendered 1-page tearsheet PDF for a 13F filer. Same content as filer-snapshot-json: " +
+      "filer registry, top holdings, portfolio history, cohort ranks, 9-box style attribution, " +
+      "and coverage diagnostics. NAV section is intentionally absent (filers have no NAV).",
+    endpoint: "/api/13f/filers/{bw_filer_id}/snapshot.pdf",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.05,
+      currency: "USD",
+      billing_code: "filer_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 3500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: [
+        "filers",
+        "filer_portfolios_latest",
+        "filer_rankings_top",
+        "bw_filer_id/{id}/ds_ph.zarr",
+        "bw_filer_id/{id}/ds_portfolio.zarr",
+      ],
+    },
+    tags: ["13f", "filers", "snapshot", "pdf", "differentiated-wedge"],
   },
 ];
 
