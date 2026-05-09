@@ -219,6 +219,7 @@ def _render_one(
     gcs_bucket: str,
     resume: bool,
     force: bool = False,
+    renderer: str = "public",
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -226,12 +227,27 @@ def _render_one(
     ``--upload-mode batch`` in :func:`main` when running at scale — ``gcloud
     storage rsync`` of the whole output tree is several × faster than N×2
     invocations of ``gcloud storage cp``.
+
+    ``renderer``: ``"public"`` (default) routes through the public
+    ``riskmodels.snapshots.reference_renderer`` (no narrative). ``"institutional"``
+    routes through ``bwmacro.snapshots.stock.stock_deep_dive`` (full editorial
+    layout with optional ``Judgment`` from ``bwmacro.risk_interpretation``).
+    Requires the ``bwmacro`` package to be importable from the current venv —
+    intended for BWMACRO-driven Dagster runs (``DD_Snapshots`` code location).
     """
-    from riskmodels.snapshots.canonical import from_components
-    from riskmodels.snapshots.reference_renderer import (
-        render_canonical_to_pdf,
-        render_canonical_to_png,
-    )
+    if renderer == "institutional":
+        from bwmacro.risk_interpretation import derive_judgment
+        from bwmacro.snapshots.stock.stock_deep_dive import (
+            DDData,
+            render_dd_to_pdf,
+            render_dd_to_png,
+        )
+    else:
+        from riskmodels.snapshots.canonical import from_components
+        from riskmodels.snapshots.reference_renderer import (
+            render_canonical_to_pdf,
+            render_canonical_to_png,
+        )
     from riskmodels.snapshots.zarr_context import build_p1_from_zarr
     from riskmodels.snapshots.zarr_peer_analytics import (
         build_peer_comparison_from_zarr,
@@ -276,16 +292,32 @@ def _render_one(
                     f"analytics: {type(exc).__name__}: {exc}"[:400]
                 )
 
-        snap = from_components(
-            p1,
-            peer_comparison=peer_comparison,
-            peer_rankings=peer_rankings,
-        )
-
         tdir.mkdir(parents=True, exist_ok=True)
         with _MATPLOTLIB_RENDER_LOCK:
-            render_canonical_to_png(snap, png)
-            render_canonical_to_pdf(snap, pdf)
+            if renderer == "institutional":
+                dd = DDData(
+                    p1=p1,
+                    peer_comparison=peer_comparison,
+                    peer_correlations=peer_correlations,
+                    peer_sharpes=peer_sharpes,
+                    peer_rankings=peer_rankings,
+                    alpha_trajectory=alpha_trajectory,
+                    company_profile_text=None,
+                )
+                try:
+                    judgment = derive_judgment(dd)
+                except Exception:
+                    judgment = None
+                render_dd_to_png(dd, png, judgment=judgment)
+                render_dd_to_pdf(dd, pdf, judgment=judgment)
+            else:
+                snap = from_components(
+                    p1,
+                    peer_comparison=peer_comparison,
+                    peer_rankings=peer_rankings,
+                )
+                render_canonical_to_png(snap, png)
+                render_canonical_to_pdf(snap, pdf)
 
         uploaded = False
         if upload_gcs:
@@ -442,6 +474,19 @@ def main() -> int:
             "overlap I/O without expecting linear speedups on PNG/PDF throughput."
         ),
     )
+    ap.add_argument(
+        "--renderer",
+        choices=["public", "institutional"],
+        default="public",
+        help=(
+            "Renderer to use. 'public' (default) → public SDK reference_renderer "
+            "(no narrative, OSS-safe). 'institutional' → BWMACRO private "
+            "stock_deep_dive renderer with full editorial layout + Judgment "
+            "from bwmacro.risk_interpretation. Requires the 'bwmacro' package "
+            "to be importable from the venv (used by the BWMACRO Dagster "
+            "DD_Snapshots code location)."
+        ),
+    )
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve the ticker list, print the count + first 10, exit.")
     args = ap.parse_args()
@@ -528,6 +573,7 @@ def main() -> int:
     print(f"  workers      : {workers}")
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
+    print(f"  renderer     : {args.renderer}")
     print()
 
     log_lock = threading.Lock()
@@ -543,6 +589,7 @@ def main() -> int:
             gcs_bucket=args.gcs_bucket,
             resume=args.resume,
             force=args.force,
+            renderer=args.renderer,
         )
         row["i"] = i
         row["ts"] = datetime.now(timezone.utc).isoformat()
