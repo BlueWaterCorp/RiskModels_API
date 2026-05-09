@@ -87,9 +87,25 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Suppress matplotlib's per-figure tight_layout-incompat warning. The
+# institutional renderer's _compose_dd_page composes axes that aren't
+# tight_layout-friendly by design (intentional inset placement). The warning
+# is decorative noise at 1k-ticker scale (2× per render → 2000 lines/run).
+warnings.filterwarnings(
+    "ignore",
+    message=r"This figure includes Axes that are not compatible with tight_layout.*",
+    category=UserWarning,
+)
+
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # tqdm is in BWMACRO venv; fall back to plain prints if missing
+    tqdm = None  # type: ignore[assignment]
 
 # pyplot.figure is not thread-safe; SnapshotPage uses pyplot internally.
 _MATPLOTLIB_RENDER_LOCK = threading.Lock()
@@ -580,6 +596,25 @@ def main() -> int:
     total = len(tickers)
     per_ticker_upload = (upload_mode == "per-ticker")
 
+    # tqdm: one updating progress line + inline error pings via pbar.write.
+    # `mininterval=2.0` keeps the captured Dagster log readable
+    # (~30 update lines per hour instead of 1000+ per-ticker prints).
+    is_tty = sys.stdout.isatty()
+    use_pbar = tqdm is not None
+    pbar = (
+        tqdm(
+            total=total,
+            desc="DD render",
+            unit="tk",
+            smoothing=0.1,
+            mininterval=2.0 if not is_tty else 0.5,
+            ncols=100,
+            ascii=not is_tty,  # plain ASCII in non-TTY (Dagster log capture)
+        )
+        if use_pbar
+        else None
+    )
+
     def _dispatch(i: int, ticker: str, logf) -> dict:
         row = _render_one(
             ticker,
@@ -597,11 +632,25 @@ def main() -> int:
             counts[row["status"]] = counts.get(row["status"], 0) + 1
             logf.write(json.dumps(row) + "\n")
             logf.flush()
-            tag = {"ok": "✓", "skipped_resume": "⤳", "error": "✗",
-                   "uploaded_partial": "⚠"}.get(row["status"], "?")
-            extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
-            err = f" — {row.get('error','')}" if row["status"] == "error" else ""
-            print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
+            if pbar is not None:
+                pbar.update(1)
+                pbar.set_postfix(
+                    ok=counts["ok"],
+                    skip=counts["skipped_resume"],
+                    err=counts["error"],
+                    last=ticker,
+                    refresh=False,
+                )
+                # Surface errors inline above the bar (kept visible in the log).
+                if row["status"] == "error":
+                    err_msg = (row.get("error") or "")[:120]
+                    pbar.write(f"  ✗ {ticker}: {err_msg}")
+            else:
+                tag = {"ok": "✓", "skipped_resume": "⤳", "error": "✗",
+                       "uploaded_partial": "⚠"}.get(row["status"], "?")
+                extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
+                err = f" — {row.get('error','')}" if row["status"] == "error" else ""
+                print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
         return row
 
     with log_path.open("w") as logf:
@@ -616,6 +665,9 @@ def main() -> int:
                 ]
                 for _ in as_completed(futs):
                     pass
+
+    if pbar is not None:
+        pbar.close()
 
     batch_upload: dict | None = None
     if upload_mode == "batch":
