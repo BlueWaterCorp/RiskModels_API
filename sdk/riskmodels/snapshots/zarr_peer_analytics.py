@@ -365,9 +365,10 @@ def compute_peer_analytics_from_zarr(
     with the same keys/shapes as the API path so :func:`_make_peer_dna_chart`
     renders identically.
 
-    `peer_rankings` is currently always empty in the zarr path — pulling 252d
-    subsector-cohort percentiles from `ds_rankings_*.zarr` is a follow-up; the
-    chart degrades gracefully (empty rank pills render as "—").
+    `peer_rankings` is populated when `ds_rankings_SPY_uni_mc_3000.zarr` is
+    available alongside the other zarrs (it lives in the same root). The
+    chart degrades gracefully (empty rank pills render as "—") if the
+    rankings store is missing or the symbol isn't covered.
     """
     peer_correlations: dict[str, tuple[float | None, float | None]] = {}
     peer_sharpes: dict[str, tuple[float | None, float | None]] = {}
@@ -449,6 +450,57 @@ def compute_peer_analytics_from_zarr(
                     peer_correlations[str(pt)] = (gross_rho, resid_rho)
                 except Exception:
                     continue
+
+        # ── Peer rankings (252d subsector cohort) ──
+        # Populates the bottom-right RESIDUAL RANK (TTM) panel. Reads
+        # rank_ord/cohort_size pairs from ds_rankings_SPY_uni_mc_3000.zarr
+        # using the same percentile convention as the API path:
+        #   pct = (1 - (rank-1)/cohort) * 100   ; 100 = best.
+        try:
+            rankings_path = zarr_root / "ds_rankings_SPY_uni_mc_3000.zarr"
+            if rankings_path.is_dir():
+                # Build [(ticker, sym)] for target + peers we already resolved.
+                pairs: list[tuple[str, str]] = [(ticker, target_sym)]
+                if peer_comparison is not None and not peer_comparison.peer_detail.empty:
+                    for pt in top_peer_tickers:
+                        s = lookup.get(str(pt).upper())
+                        if s is not None:
+                            pairs.append((str(pt), s))
+
+                ds_rank = xr.open_zarr(rankings_path, consolidated=True)
+                try:
+                    teo_last = ds_rank.teo.values[-1]
+
+                    def _pct(ro_var: str, cs_var: str, sym_id: str) -> float | None:
+                        if ro_var not in ds_rank.data_vars or cs_var not in ds_rank.data_vars:
+                            return None
+                        try:
+                            r = float(ds_rank[ro_var].sel(symbol=sym_id, teo=teo_last).values)
+                            c = float(ds_rank[cs_var].sel(symbol=sym_id, teo=teo_last).values)
+                        except Exception:
+                            return None
+                        if not (np.isfinite(r) and np.isfinite(c)) or c <= 0:
+                            return None
+                        return (1.0 - (r - 1.0) / c) * 100.0
+
+                    for tkr, sym_id in pairs:
+                        gross_pct = _pct(
+                            "rank_ord_252d_subsector_gross_return",
+                            "cohort_size_252d_subsector_gross_return",
+                            sym_id,
+                        )
+                        resid_pct = _pct(
+                            "rank_ord_252d_subsector_subsector_residual",
+                            "cohort_size_252d_subsector_subsector_residual",
+                            sym_id,
+                        )
+                        if gross_pct is not None or resid_pct is not None:
+                            peer_rankings[tkr] = (gross_pct, resid_pct)
+                finally:
+                    ds_rank.close()
+        except Exception:
+            # Rankings are decorative — never fail the whole peer-analytics call.
+            pass
 
         # Alpha trajectory — per-year trailing-252-day residual vol + residual ER.
         try:

@@ -106,6 +106,12 @@ class P1Data:
 
     sdk_version: str = "0.3.0"
 
+    # Human-readable classification (populated by build_p1_from_zarr from
+    # bw_sector_code + subsector_etf lookup). Renderers fall back to the
+    # ETF tickers when these are None for back-compat.
+    sector_name: str | None = None
+    subsector_name: str | None = None
+
     @property
     def subsector_label(self) -> str:
         return self.subsector_etf or self.sector_etf or "—"
