@@ -310,7 +310,62 @@ export function withBilling(
       let apiKeyRateLimit: number | undefined;
       let apiKeyDailyCapOverride: number | null = null;
       let apiKeyScope: string | null = null;
-      if (extractedKey) {
+
+      const serviceKeyEnv = process.env.RISKMODELS_API_SERVICE_KEY?.trim();
+      const isTrustedServiceGateway = Boolean(
+        extractedKey &&
+          serviceKeyEnv &&
+          extractedKey === serviceKeyEnv,
+      );
+
+      // Trusted gateway (.net landing / BFF): Authorization stays the service key;
+      // optional end-user JWT is forwarded as X-RiskModels-User-Authorization.
+      if (isTrustedServiceGateway) {
+        const fwd =
+          req.headers.get("x-riskmodels-user-authorization")?.trim() ?? "";
+        const forwardJwt =
+          fwd.toLowerCase().startsWith("bearer ")
+            ? fwd.slice(7).trim()
+            : "";
+        if (forwardJwt) {
+          try {
+            const supabaseAdmin = createAdminClient();
+            const {
+              data: { user: fwdUser },
+              error: fwdErr,
+            } = await supabaseAdmin.auth.getUser(forwardJwt);
+            if (fwdUser?.id && !fwdErr) {
+              userId = fwdUser.id;
+            }
+          } catch {
+            // Ignore invalid JWT — fall through to gateway billing fallback.
+          }
+        }
+        if (!userId) {
+          const gatewayUid =
+            process.env.RISKMODELS_GATEWAY_BILLING_USER_ID?.trim();
+          if (gatewayUid) {
+            userId = gatewayUid;
+          }
+        }
+      }
+
+      if (isTrustedServiceGateway && !userId) {
+        return NextResponse.json(
+          {
+            error: "Service gateway misconfigured",
+            message:
+              "Anonymous gateway snapshot requires RISKMODELS_GATEWAY_BILLING_USER_ID on the API, or forward a signed-in user JWT via X-RiskModels-User-Authorization.",
+            _agent: {
+              action: "contact_support",
+              support: "service@riskmodels.app",
+            },
+          },
+          { status: 503 },
+        );
+      }
+
+      if (!userId && extractedKey && !isTrustedServiceGateway) {
         const validation = await validateApiKey(extractedKey);
         if (validation.valid && validation.userId) {
           userId = validation.userId;
