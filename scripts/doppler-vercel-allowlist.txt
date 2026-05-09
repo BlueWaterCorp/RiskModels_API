@@ -17,6 +17,8 @@ CRON_SECRET
 
 # Gateway service key for trusted server-to-server API access
 RISKMODELS_API_SERVICE_KEY
+# Pooled billing user for .net BFF when X-RiskModels-User-Authorization is absent (same Supabase project as API).
+RISKMODELS_GATEWAY_BILLING_USER_ID
 
 # GCS Zarr (API history). Set in Doppler via docs/DEPLOY_ZARR_GCS_API.md Part B1.
 GCP_SERVICE_ACCOUNT_JSON
