@@ -369,6 +369,17 @@ def main(argv: list[str] | None = None) -> int:
             "byte-stable on re-runs."
         ),
     )
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help=(
+            "Exit 0 when the fixture set is empty instead of 1. Default "
+            "(without this flag) is exit 1 — the right behavior for "
+            "production batches where missing fixtures indicate a real "
+            "problem. CI / fresh clones may want this flag to avoid "
+            "spurious failures when caches are gitignored."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.composition == "p1":
@@ -386,8 +397,11 @@ def main(argv: list[str] | None = None) -> int:
         ]
 
     if not targets:
-        print(f"No fixtures found in {args.fixture_dir}", file=sys.stderr)
-        return 1
+        print(
+            f"No {args.composition.upper()} fixtures found in {args.fixture_dir}",
+            file=sys.stderr,
+        )
+        return 0 if args.allow_empty else 1
 
     n_pass = 0
     n_fail = 0
