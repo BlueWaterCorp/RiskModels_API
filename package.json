@@ -2,7 +2,9 @@
   "name": "riskmodels-api-portal",
   "version": "1.1.0",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "description": "RiskModels API Developer Portal",
   "scripts": {
     "dev": "next dev",
@@ -35,15 +37,16 @@
     "postinstall": "npm run build:sdk && npm run build:web-sdk"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
     "@google-cloud/storage": "^7.19.0",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@riskmodels/sdk": "workspace:*",
-    "@riskmodels/web": "workspace:*",
     "@next/mdx": "^15.1.0",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^1.0.4",
+    "@riskmodels/sdk": "workspace:*",
+    "@riskmodels/web": "workspace:*",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.99.2",
     "@tailwindcss/typography": "^0.5.19",

@@ -54,12 +54,25 @@ export function modelSupportsParallelToolCalls(model: string): boolean {
 }
 
 /**
- * Run the tool-calling agent loop against OpenAI. Shared by
- * POST /api/chat (billed) and POST /api/landing/chat (keyless MAG7 demo).
+ * Run the tool-calling agent loop. Shared by POST /api/chat (billed) and
+ * POST /api/landing/chat (keyless MAG7 demo).
+ *
+ * Dispatches by `model` prefix:
+ *   - `claude-*`  → Anthropic Messages API runner (lib/chat/anthropic-agent.ts)
+ *   - otherwise    → OpenAI tool loop (this function below)
+ *
+ * Both runners implement the same RunChatAgentOptions / RunChatAgentResult
+ * contract and share `executeToolCalls()` for billing + idempotency, so dispatch
+ * is transparent to callers (route, landing demo, internal tools).
  */
 export async function runChatAgent(
   opts: RunChatAgentOptions,
 ): Promise<RunChatAgentResult> {
+  if (opts.model.startsWith("claude-")) {
+    const { runAnthropicChatAgent } = await import("@/lib/chat/anthropic-agent");
+    return runAnthropicChatAgent(opts);
+  }
+
   const {
     userMessages,
     model,
