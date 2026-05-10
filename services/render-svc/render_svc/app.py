@@ -16,6 +16,7 @@ from .gcs import GcsObjectStore, ObjectStore
 from .render import (
     CanonicalNotFound,
     GateFailure,
+    LiveRenderUnavailable,
     RenderError,
     render_from_gcs,
 )
@@ -74,9 +75,15 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
                 as_of=req.as_of,
                 fmt=req.format,
                 persist=settings.persist_renders,
+                live_render=settings.live_render,
+                generated_utc=settings.generated_utc_anchor,
+                zarr_root_uri=settings.zarr_root_uri,
             )
         except CanonicalNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc))
+        except LiveRenderUnavailable as exc:
+            log.warning("live render unavailable: %s", exc)
+            raise HTTPException(status_code=503, detail=str(exc))
         except GateFailure as exc:
             log.error("contract gate failed: %s", exc.failures)
             raise HTTPException(

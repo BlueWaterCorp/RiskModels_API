@@ -31,6 +31,16 @@ class Settings:
     # Tests set this to False to avoid bucket writes.
     persist_renders: bool
 
+    # Phase 2: enable cache-miss live render. When False (default), cache
+    # miss returns 404 cleanly. When True, the service fetches source data,
+    # computes the canonical from scratch, writes it to GCS, and serves the
+    # result. Disable this if upstream zarr access misbehaves in production.
+    live_render: bool
+
+    # Phase 2: zarr root URI for P1 cache-miss compute. Defaults to the
+    # ERM3 EODHD zarr path. Used only when live_render is True.
+    zarr_root_uri: str
+
 
 def load_from_env() -> Settings:
     return Settings(
@@ -39,4 +49,8 @@ def load_from_env() -> Settings:
         generated_utc_anchor=os.environ.get("RENDER_SVC_GENERATED_UTC") or None,
         log_level=os.environ.get("RENDER_SVC_LOG_LEVEL", "INFO"),
         persist_renders=os.environ.get("RENDER_SVC_PERSIST_RENDERS", "1") != "0",
+        live_render=os.environ.get("RENDER_SVC_LIVE_RENDER", "0") == "1",
+        zarr_root_uri=os.environ.get(
+            "RENDER_SVC_ZARR_ROOT_URI", "gs://rm_api_data/eodhd"
+        ),
     )
