@@ -1,6 +1,7 @@
 import AgentBootstrapBar from '@/components/AgentBootstrapBar';
 import HeroLanding from '@/components/landing/HeroLanding';
 import TerminalShowcase from '@/components/TerminalShowcase';
+import SnapshotProof from '@/components/landing/SnapshotProof';
 import FailureContrast from '@/components/landing/FailureContrast';
 import RiskWalkthroughWithToggle from '@/components/landing/RiskWalkthroughWithToggle';
 import BridgeSection from '@/components/landing/BridgeSection';
@@ -17,6 +18,7 @@ export default function HomePage() {
     <div className="mx-auto min-h-screen w-full max-w-[90rem] overflow-x-hidden">
       <AgentBootstrapBar />
       <HeroLanding />
+      <SnapshotProof />
       <TerminalShowcase />
       <FailureContrast />
       <RiskWalkthroughWithToggle />
