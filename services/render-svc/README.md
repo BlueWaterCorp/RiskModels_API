@@ -57,6 +57,8 @@ All from environment variables:
 | `RENDER_SVC_GENERATED_UTC` | (unset) | Anchored timestamp for re-render determinism. Production: trading-day close in UTC |
 | `RENDER_SVC_LOG_LEVEL` | `INFO` | Standard Python log level |
 | `RENDER_SVC_PERSIST_RENDERS` | `1` | Whether to write rendered formats back to GCS (`0` for tests) |
+| `RENDER_SVC_LIVE_RENDER` | `0` | Phase 2: enable cache-miss live render. `1` triggers compute-from-zarr on miss |
+| `RENDER_SVC_ZARR_ROOT_URI` | `gs://rm_api_data/eodhd` | Zarr root for the P1 cache-miss compute path |
 
 ---
 
@@ -91,10 +93,24 @@ See `RUNBOOK.md` for the full Cloud Run deployment sequence.
 
 ---
 
-## Phase 2 (not yet shipped)
+## Phase 2 — cache-miss live render (shipped, gated off by default)
 
-- Cache-miss live render: fetch raw zarr from GCS, compute canonical from
-  scratch via `riskmodels.snapshots.from_components` / `from_fund_components`,
-  write canonical JSON + rendered formats to GCS in one transaction.
-- Requires the FundData reader promotion (RiskModels_API tracker task #11) to
-  finish before F1 cache-miss is feasible without `bwmacro.*` imports.
+Phase 2 framework is in: `RENDER_SVC_LIVE_RENDER=1` enables compute-from-zarr
+on cache miss for P1 (via `build_p1_from_zarr`) and F1 (via `get_data_for_f1`).
+The freshly-computed canonical JSON + rendered format is written back to GCS
+so future requests hit the fast path.
+
+**Default is OFF (`RENDER_SVC_LIVE_RENDER=0`)** — flip it on after verifying
+production zarr access works for the deployed service account. Toggle without
+a redeploy:
+
+```bash
+gcloud run services update render-svc --region us-central1 \
+    --update-env-vars=RENDER_SVC_LIVE_RENDER=1
+```
+
+Phase 2.5 follow-ups:
+- Verify `build_p1_from_zarr` accepts `gs://...` URIs in production (it currently
+  expects a `Path`; xarray/fsspec may bridge but is untested in this container).
+- C1 compute path (currently no zarr-direct fetcher exists for compare).
+- Cross-region redundancy.

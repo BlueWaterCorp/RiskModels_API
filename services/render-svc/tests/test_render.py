@@ -83,12 +83,93 @@ class TestCacheHit:
 
 
 class TestCacheMiss:
-    def test_returns_canonical_not_found(self, store):
+    def test_returns_canonical_not_found_when_live_disabled(self, store):
         with pytest.raises(CanonicalNotFound):
             render_from_gcs(
                 store=store, prefix=PREFIX,
                 composition="p1", identifier="MISSING", as_of="2026-05-08",
                 fmt="png", persist=False,
+                live_render=False,
+            )
+
+    def test_live_render_p1_writes_canonical_back(self, store):
+        """Cache miss + live_render=True: compute → cache → render."""
+        from riskmodels.snapshots import (
+            AomProvenance, AttributionPoint, CanonicalStockSnapshot,
+            CoreMetrics, DecompositionPoint, Identity, PerformanceAttribution,
+            RiskDecomposition, TemporalContext,
+        )
+        from riskmodels.snapshots.canonical import (
+            CANONICAL_ONTOLOGY_VERSION, CANONICAL_SCHEMA_VERSION,
+        )
+
+        fake_snap = CanonicalStockSnapshot(
+            schema_version=CANONICAL_SCHEMA_VERSION,
+            generated_utc="2026-05-09T16:00:00+00:00",
+            identity=Identity(
+                ticker="LIVE", company_name="Live Co", as_of="2026-05-08",
+                sector_etf="XLK", subsector_etf="SMH", market_cap_usd=1e10,
+            ),
+            core_metrics=CoreMetrics(
+                beta=1.0, vol_23d=0.2, residual_er=0.01,
+                market_share=0.55, sector_share=0.20,
+                subsector_share=0.10, residual_share=0.15,
+            ),
+            performance=PerformanceAttribution(
+                window_label="1Y", window_start="2025-05-08", window_end="2026-05-08",
+                series=[AttributionPoint("Market", 0.18, 0)],
+            ),
+            risk=RiskDecomposition(
+                total_variance=0.04,
+                components=[DecompositionPoint("Market", 1.0, 0)],
+            ),
+            aom=AomProvenance(
+                composition="P1", subject_type="stock", subject_id="LIVE",
+                as_of="2026-05-08",
+                lenses=["return_attribution", "risk_decomposition", "exposure"],
+                view="snapshot", observation_mode="knowledge",
+                ontology_version=CANONICAL_ONTOLOGY_VERSION,
+            ),
+            temporal=TemporalContext(
+                observation_mode="knowledge",
+                report_date="2026-05-08",
+                filing_date="2026-05-08",
+            ),
+        )
+
+        def fake_compute_p1(*, ticker, as_of, generated_utc, zarr_root_uri):
+            return fake_snap
+
+        result = render_from_gcs(
+            store=store, prefix=PREFIX,
+            composition="p1", identifier="LIVE", as_of="2026-05-08",
+            fmt="png", persist=True,
+            live_render=True,
+            compute_p1=fake_compute_p1,
+        )
+
+        assert result.content_type == "image/png"
+        assert result.data[:8] == b"\x89PNG\r\n\x1a\n"
+        assert result.written_to_cache is True
+        # The canonical JSON should now be in the store at the canonical path
+        assert canonical_path(PREFIX, "p1", "LIVE", "2026-05-08", "json") in store.objects
+        # And the rendered PNG too
+        assert canonical_path(PREFIX, "p1", "LIVE", "2026-05-08", "png") in store.objects
+
+    def test_live_render_unavailable_raises_503_class(self, store):
+        """When the compute path raises LiveRenderUnavailable, propagate."""
+        from render_svc.render import LiveRenderUnavailable
+
+        def failing_compute(**kwargs):
+            raise LiveRenderUnavailable("zarr root unreachable in test env")
+
+        with pytest.raises(LiveRenderUnavailable):
+            render_from_gcs(
+                store=store, prefix=PREFIX,
+                composition="p1", identifier="MISSING", as_of="2026-05-08",
+                fmt="png", persist=False,
+                live_render=True,
+                compute_p1=failing_compute,
             )
 
 
