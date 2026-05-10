@@ -116,16 +116,21 @@ describe("GET /api/data/funds/[bw_fund_id]", () => {
     expect(res.headers.get("X-Data-Filing-Date")).toBeNull();
   });
 
-  it("rejects an invalid Bearer token (soft auth still validates when service key set)", async () => {
+  it("treats an invalid Bearer token as anonymous public read (soft auth)", async () => {
+    // Soft-auth contract per lib/gateway-auth.ts: only the matching service key
+    // grants elevated role; user API keys, JWTs, or any other Bearer fall back
+    // to public read (same as omitting Authorization). An invalid Bearer must
+    // NOT 401 — that's the requireGatewayAuth path, not used here.
     process.env.RISKMODELS_API_SERVICE_KEY = "secret";
+    vi.mocked(resolveFundById).mockResolvedValue({ fund: FUND, latest: LATEST });
     const res = await getFund(
       req("http://localhost/api/data/funds/BW-FUND-X", {
         headers: { authorization: "Bearer wrong" },
       }),
       { params: Promise.resolve({ bw_fund_id: "BW-FUND-X" }) },
     );
-    expect(res.status).toBe(401);
-    expect(vi.mocked(resolveFundById)).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(vi.mocked(resolveFundById)).toHaveBeenCalledWith("BW-FUND-X");
   });
 });
 
