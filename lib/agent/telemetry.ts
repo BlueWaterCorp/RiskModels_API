@@ -77,21 +77,27 @@ export interface HealthStatus {
 }
 
 /**
- * Log a telemetry event
- * Non-blocking - failures are silently ignored
+ * Log a telemetry event (request_id, capability_id, latency, success).
+ *
+ * Telemetry rows always insert with cost_usd=0. The authoritative billing
+ * row is written by `deductBalance` (lib/agent/billing.ts) with type='debit'
+ * and the actual cost. H.20 (2026-05-10): prior code also wrote event.cost_usd
+ * here, doubling revenue tracking on every billable request.
+ *
+ * Non-blocking - failures are silently ignored.
  */
 export async function logTelemetry(event: TelemetryEvent): Promise<void> {
   try {
-    // Insert into billing_events table for now
-    // In production, this might go to a separate telemetry table
-    // or a time-series database like TimescaleDB
+    // Insert into billing_events table for now; long-term this should move to
+    // a separate request_telemetry table (or TimescaleDB). Discriminate from
+    // debit rows via `latency_ms IS NOT NULL` (debit rows leave it null).
     const { error } = await createAdminClient()
       .from("billing_events")
       .insert({
         user_id: event.user_id,
         request_id: event.request_id,
         capability_id: event.capability_id,
-        cost_usd: event.cost_usd || 0,
+        cost_usd: 0, // H.20: never duplicate the deductBalance row's cost
         latency_ms: event.latency_ms,
         success: event.success,
         metadata: {
