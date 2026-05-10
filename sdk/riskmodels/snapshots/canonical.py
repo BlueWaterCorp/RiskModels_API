@@ -30,11 +30,12 @@ What is NOT here
     - Editorial vocabulary or qualifier strings (those live in
       ``bwmacro/risk_interpretation/`` and reach the snapshot via the
       ``Judgment`` field, populated by the BWMACRO engine).
-    - Premium institutional layouts (those live in
+    - Institutional renderer layouts (those live in
       ``bwmacro/snapshots/stock/``).
     - Any rendering logic. This file is data only.
 
-The reference public renderer is :mod:`riskmodels.snapshots.reference_renderer`.
+The public reference renderer is :mod:`riskmodels.snapshots.reference_renderer`.
+The institutional renderer is private to BWMACRO. Both consume this contract.
 """
 
 from __future__ import annotations
@@ -51,6 +52,20 @@ if TYPE_CHECKING:
 
 
 CANONICAL_SCHEMA_VERSION = "canonical-stock/1.0"
+
+# Ontology version — governs *semantic* meaning of decomposition, hedge,
+# residual, Judgment vocabulary, observational frame, and rendering
+# assumptions. Distinct from ``CANONICAL_SCHEMA_VERSION``, which governs
+# the *data shape* only.
+#
+# Bump history:
+#   1.0  — initial release. P1 with AOM provenance.
+#   2.0  — adds bi-temporal ``TemporalContext`` (observation_mode + the
+#          three-axis date model from Funds_DAG/docs/BITEMPORAL_v1.md);
+#          adds ``observation_mode`` to AomProvenance. Governance event:
+#          downstream consumers must declare which observational frame
+#          (reality / knowledge / system) produced the analysis.
+CANONICAL_ONTOLOGY_VERSION = "riskmodels-ontology/2.0"
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +247,90 @@ class MacroBasis:
 
 
 # ---------------------------------------------------------------------------
+# Temporal context — bi-temporal observational frame
+# ---------------------------------------------------------------------------
+
+# The three observational modes from ``Funds_DAG/docs/BITEMPORAL_v1.md``.
+# Vocabulary is intentionally aligned verbatim with the data-layer spec to
+# avoid stack-wide terminology drift.
+OBSERVATION_MODES = ("reality", "knowledge", "system")
+
+
+@dataclass(frozen=True)
+class TemporalContext:
+    """Bi-temporal observational frame the canonical object was produced under.
+
+    Every canonical object declares which observational stance the analysis
+    represents. This is not a timestamp detail — it is the analytical
+    perspective, and it determines whether the result is suitable for PM
+    evaluation, look-ahead-bias-free backtesting, or amendment-safe replay.
+
+    Mirrors the three-axis model defined in
+    ``Funds_DAG/docs/BITEMPORAL_v1.md``:
+
+      - ``report_date``   — valid time. "What was true on date X?"
+      - ``filing_date``   — knowledge time (TEO). "What was knowable to
+                            anyone on date X?"  Look-ahead-bias-free.
+      - ``extracted_at``  — system time. "What did *we* know in our
+                            system on date X?"  Amendment-safe replay.
+
+    The ``observation_mode`` declares which axis is the as-of anchor for
+    the analysis:
+
+      - ``'reality'``   — anchored on ``report_date`` (PM evaluation,
+                          attribution, manager analysis).
+      - ``'knowledge'`` — anchored on ``filing_date`` (default for
+                          backtests; what an external participant could
+                          have known).
+      - ``'system'``    — anchored on ``extracted_at`` (audit replay
+                          even after the source publishes amendments).
+
+    Stocks collapse all three axes (a closing print is observable EOD);
+    funds and 13F filings have material lag between ``report_date`` and
+    ``filing_date`` — that lag is exactly where look-ahead bias hides.
+    """
+
+    observation_mode: str            # 'reality' | 'knowledge' | 'system'
+    report_date: str                 # ISO date — valid time
+    filing_date: str | None = None   # ISO date — knowledge time / TEO
+    extracted_at: str | None = None  # ISO timestamp — system time
+
+
+# ---------------------------------------------------------------------------
+# AOM provenance — how to re-issue this canonical via the AOM compiler
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AomProvenance:
+    """AOM-shaped intent block: what this canonical IS, in AOM vocabulary.
+
+    A canonical snapshot is a composition of one or more AOM primitive
+    analyses rendered as a single institutional artifact. This block
+    records the high-level AOM intent so a downstream agent can:
+
+      1. Identify what the snapshot is (``composition`` — e.g. ``"P1"``).
+      2. Re-issue the underlying AOM analysis from
+         ``{subject_type, subject_id, as_of, lenses, ...}``.
+      3. Chain a ``hedge_action`` onto it (per AOM_SPEC §4 ``ChainStage``).
+
+    Field values are string-typed against AOM_SPEC v1 vocabulary; this is
+    a declarative provenance record, not a re-implementation of the AOM
+    compiler. See ``RiskModels_API/aom/AOM_SPEC.md``.
+    """
+
+    composition: str                                # "P1" | "F1" | …
+    subject_type: str                               # "stock" | "fund" | "portfolio" | "universe" | "comparison"
+    subject_id: str                                 # ticker / fund symbol / portfolio id
+    as_of: str                                      # ISO date — must match Identity.as_of
+    lenses: list[str] = field(default_factory=list) # ordered AOM lenses composed
+    resolution: str | None = None                   # "market_only" | "market_sector" | "full_stack"
+    view: str = "snapshot"                          # AOM_SPEC view primitive
+    attribution_mode: str | None = None             # "incremental" | "cumulative"
+    observation_mode: str | None = None             # 'reality' | 'knowledge' | 'system' (mirrors TemporalContext)
+    ontology_version: str = CANONICAL_ONTOLOGY_VERSION  # semantic version this provenance was produced under
+
+
+# ---------------------------------------------------------------------------
 # Top-level snapshot
 # ---------------------------------------------------------------------------
 
@@ -246,6 +345,13 @@ class CanonicalStockSnapshot:
     `judgment` carries the editorial layer when populated by the BWMACRO
     interpretation engine; the public reference renderer gracefully falls
     back to numeric headlines when it is None.
+
+    Two version axes are recorded:
+
+      - ``schema_version`` — data shape. Bumped on dataclass changes.
+      - ``ontology_version`` — semantic meaning of the analytical model
+        (decomposition, hedge, residual, Judgment vocabulary). Bumped when
+        the meaning of a field changes even if its shape does not.
     """
 
     schema_version: str
@@ -262,6 +368,10 @@ class CanonicalStockSnapshot:
     macro: MacroBasis | None = None
 
     judgment: Judgment | None = None
+    aom: AomProvenance | None = None
+    temporal: TemporalContext | None = None
+
+    ontology_version: str = CANONICAL_ONTOLOGY_VERSION
 
     # ---- JSON I/O ----------------------------------------------------------
 
@@ -337,6 +447,8 @@ def _from_jsonable(raw: dict[str, Any]) -> CanonicalStockSnapshot:
     hedge = _opt("hedge", lambda h: HedgeBasis(**h))
     macro = _opt("macro", lambda m: MacroBasis(**m))
     judgment = _opt("judgment", lambda j: Judgment(**j))
+    aom = _opt("aom", lambda a: AomProvenance(**a))
+    temporal = _opt("temporal", lambda t: TemporalContext(**t))
 
     return CanonicalStockSnapshot(
         schema_version=raw["schema_version"],
@@ -349,6 +461,9 @@ def _from_jsonable(raw: dict[str, Any]) -> CanonicalStockSnapshot:
         hedge=hedge,
         macro=macro,
         judgment=judgment,
+        aom=aom,
+        temporal=temporal,
+        ontology_version=raw.get("ontology_version", CANONICAL_ONTOLOGY_VERSION),
     )
 
 
@@ -384,6 +499,8 @@ def from_components(
     peer_rankings: dict[str, tuple[float | None, float | None]] | None = None,
     judgment: Judgment | None = None,
     generated_utc: str | None = None,
+    aom_provenance: AomProvenance | None = None,
+    temporal: TemporalContext | None = None,
 ) -> CanonicalStockSnapshot:
     """Build a :class:`CanonicalStockSnapshot` from public component data.
 
@@ -560,6 +677,29 @@ def from_components(
             window_label=p1.macro_window or "252d",
         )
 
+    # Stocks collapse the three temporal axes: a closing print is observable
+    # the same trading day. Default to ``observation_mode='knowledge'`` (the
+    # spec default for backtests), with ``report_date == filing_date == teo``.
+    # Funds (F1) will populate filing_date with material lag from report_date.
+    temporal_context = temporal or TemporalContext(
+        observation_mode="knowledge",
+        report_date=p1.teo,
+        filing_date=p1.teo,
+        extracted_at=None,
+    )
+
+    aom = aom_provenance or AomProvenance(
+        composition="P1",
+        subject_type="stock",
+        subject_id=p1.ticker,
+        as_of=p1.teo,
+        lenses=["return_attribution", "risk_decomposition", "exposure"],
+        resolution="full_stack",
+        view="snapshot",
+        attribution_mode="incremental",
+        observation_mode=temporal_context.observation_mode,
+    )
+
     return CanonicalStockSnapshot(
         schema_version=CANONICAL_SCHEMA_VERSION,
         generated_utc=generated_utc or datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -571,6 +711,9 @@ def from_components(
         hedge=hedge,
         macro=macro,
         judgment=judgment,
+        aom=aom,
+        temporal=temporal_context,
+        ontology_version=CANONICAL_ONTOLOGY_VERSION,
     )
 
 
