@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .gcs import GcsObjectStore, ObjectStore
@@ -22,6 +22,19 @@ from .render import (
 from .settings import Settings, load_from_env
 
 
+class RenderRequest(BaseModel):
+    """Request body for ``POST /render``.
+
+    Defined at module scope (not inside ``_make_app``) so pydantic v2 can
+    resolve the type adapter — closures defeat the v2 type machinery.
+    """
+
+    composition: Literal["p1", "f1", "c1"] = Field(..., description="Snapshot family")
+    identifier: str = Field(..., min_length=1, max_length=64)
+    as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    format: Literal["json", "pdf", "png"] = "pdf"
+
+
 def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
     app = FastAPI(
         title="riskmodels-render-svc",
@@ -32,16 +45,11 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
 
     log = logging.getLogger("render_svc")
 
-    class RenderRequest(BaseModel):
-        composition: Literal["p1", "f1", "c1"] = Field(
-            ..., description="Snapshot family"
-        )
-        identifier: str = Field(..., min_length=1, max_length=64)
-        as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-        format: Literal["json", "pdf", "png"] = "pdf"
-
-    @app.get("/healthz")
-    def healthz() -> dict[str, str]:
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        # ``/healthz`` is intentionally NOT used: Google's Cloud Run frontend
+        # intercepts that path and returns its own 404 before requests reach
+        # the user container.
         return {"status": "ok"}
 
     @app.get("/readyz")
@@ -56,7 +64,7 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
             raise HTTPException(status_code=503, detail=f"not ready: {exc}")
 
     @app.post("/render")
-    def render(req: RenderRequest):
+    def render(req: RenderRequest = Body(...)):
         try:
             result = render_from_gcs(
                 store=store,
