@@ -10,8 +10,14 @@
 #       --out-dir /Volumes/ext_2t/Stock_Snapshots \
 #       --limit 1000 --upload-mode batch --resume --force --workers 8
 #
-# One-liner using BWMACRO .venv (replace BW_Code paths if yours differ):
-#   export ERM3_ZARR_ROOT=/Volumes/ext_2t/factset/processed && cd /Users/conradgann/BW_Code/RiskModels_API && mkdir -p /Volumes/ext_2t/Stock_Snapshots && PYTHONPATH=sdk /Users/conradgann/BW_Code/BWMACRO/.venv/bin/python sdk/scripts/bulk_dd_render.py --out-dir /Volumes/ext_2t/Stock_Snapshots --limit 1000 --upload-mode batch --resume --force --workers 8 2>&1 | tee "$HOME/_bulk_stdout.log"
+# One-liner using BWMACRO .venv (run from RiskModels_API repo root; assumes
+# sibling BWMACRO clone per docs/SUBMODULES.md):
+#   export ERM3_ZARR_ROOT=/Volumes/ext_2t/factset/processed && \
+#     mkdir -p /Volumes/ext_2t/Stock_Snapshots && \
+#     PYTHONPATH=sdk ../BWMACRO/.venv/bin/python sdk/scripts/bulk_dd_render.py \
+#       --out-dir /Volumes/ext_2t/Stock_Snapshots --limit 1000 \
+#       --upload-mode batch --resume --force --workers 8 \
+#     2>&1 | tee "$HOME/_bulk_stdout.log"
 
 set -euo pipefail
 
