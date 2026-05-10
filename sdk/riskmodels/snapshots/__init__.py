@@ -81,8 +81,16 @@ from ._stock_data import (
     get_data_for_p1,
 )
 
-# Fund data stub (F1 cache JSON)
-from ._fund_data import FundData
+# Fund data layer (F1 — zarr-backed; BWMACRO may enrich with Supabase downstream)
+from ._fund_data import (
+    FundData,
+    FundHolding,
+    ZARR_FUNDS_GCS_PREFIX,
+    from_fixture_row,
+    load_fund_from_fixture,
+    get_data_for_f1,
+    _funds_latest_path,
+)
 
 # JSON-first pipeline
 from ._json_io import dump_json, load_json
@@ -169,8 +177,14 @@ __all__ = [
     "cumulative_benchmark_line_labels",
     "fetch_macro_correlations_resilient",
     "get_data_for_p1",
-    # Fund data layer (F1 stub)
+    # Fund data layer (F1)
     "FundData",
+    "FundHolding",
+    "from_fixture_row",
+    "load_fund_from_fixture",
+    "get_data_for_f1",
+    "ZARR_FUNDS_GCS_PREFIX",
+    "_funds_latest_path",
     # JSON-first pipeline
     "dump_json",
     "load_json",

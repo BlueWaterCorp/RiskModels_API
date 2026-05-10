@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..interpretation import Judgment
-from ._fund_data import FundData
+from ._fund_data import FundData, FundHolding
 from .canonical import (
     AomProvenance,
     AttributionPoint,
@@ -262,20 +262,53 @@ def _to_float(v: Any) -> float | None:
     return f if math.isfinite(f) else None
 
 
+def _fund_tr_returns(dmap: dict[str, Any] | None, *keys: str) -> float | None:
+    if not dmap:
+        return None
+    for k in keys:
+        v = dmap.get(k)
+        if v is not None:
+            return _to_float(v)
+    return None
+
+
+def _next_hr_with_prefix(hr: dict[str, float], prefix: str) -> float | None:
+    for k, raw in hr.items():
+        if isinstance(k, str) and k.startswith(prefix):
+            f = _to_float(raw)
+            if f is not None:
+                return f
+    return None
+
+
+def _holding_row_from_fund_holding(h: FundHolding) -> HoldingRow:
+    return HoldingRow(
+        ticker=h.ticker,
+        weight=float(h.weight),
+        market_value_usd=None,
+        shares=None,
+        market_share=_to_float(h.market_share),
+        sector_share=_to_float(h.sector_share),
+        subsector_share=_to_float(h.subsector_share),
+        residual_share=_to_float(h.residual_share),
+    )
+
+
 def _portfolio_from_fund(fund_data: FundData) -> FundPortfolio:
-    holdings = [
-        _holding_from_raw(h)
-        for h in fund_data.holdings
-        if "ticker" in h and "weight" in h
-    ]
+    rows: list[HoldingRow] = []
+    for h in fund_data.holdings:
+        if isinstance(h, FundHolding):
+            rows.append(_holding_row_from_fund_holding(h))
+        elif isinstance(h, dict) and "ticker" in h and "weight" in h:
+            rows.append(_holding_from_raw(h))
     total_count = fund_data.total_holdings_count
     if total_count <= 0:
-        total_count = max(len(holdings), 0)
-    coverage = _to_float(fund_data.coverage_pct)
-    if coverage is None and holdings:
-        coverage = sum(h.weight for h in holdings)
+        total_count = max(len(rows), int(getattr(fund_data, "n_holdings", 0)), 0)
+    coverage = _to_float(getattr(fund_data, "coverage_pct", None))
+    if coverage is None and rows:
+        coverage = sum(h.weight for h in rows)
     return FundPortfolio(
-        holdings=holdings,
+        holdings=rows,
         total_holdings_count=total_count,
         coverage_pct=coverage,
     )
@@ -304,7 +337,7 @@ def from_fund_components(
 
     identity = FundIdentity(
         symbol_id=fund_data.symbol_id,
-        name=fund_data.name,
+        name=fund_data.fund_name,
         as_of=report_date,
         fund_family=fund_data.fund_family,
         share_class_count=fund_data.share_class_count,
@@ -314,8 +347,8 @@ def from_fund_components(
         filer_metadata=None,
     )
 
-    mkt_er = _to_float(_g(m, "l3_market_er", "l3_mkt_er")) or 0.0
-    sec_er = _to_float(_g(m, "l3_sector_er", "l3_sec_er")) or 0.0
+    mkt_er = _to_float(_g(m, "l1_market_er", "l3_market_er", "l3_mkt_er")) or 0.0
+    sec_er = _to_float(_g(m, "l2_sector_er", "l3_sector_er", "l3_sec_er")) or 0.0
     sub_er = _to_float(_g(m, "l3_subsector_er", "l3_sub_er")) or 0.0
     res_er = _to_float(_g(m, "l3_residual_er", "l3_res_er")) or 0.0
     total_er = mkt_er + sec_er + sub_er + res_er
@@ -326,10 +359,12 @@ def from_fund_components(
     core = CoreMetrics(
         beta=_to_float(_g(m, "l1_mkt_beta", "beta_252d", "beta")),
         vol_23d=_to_float(
-            fund_data.vol_23d if fund_data.vol_23d is not None else _g(m, "vol_23d")
+            getattr(fund_data, "vol_23d", None)
+            if getattr(fund_data, "vol_23d", None) is not None
+            else _g(m, "vol_23d")
         ),
-        max_drawdown_pct=_to_float(fund_data.max_drawdown),
-        sharpe_252d=_to_float(fund_data.sharpe_1y),
+        max_drawdown_pct=_to_float(getattr(fund_data, "max_drawdown", None)),
+        sharpe_252d=_to_float(getattr(fund_data, "sharpe_1y", None)),
         residual_er=_to_float(res_er) if total_er > 0 else None,
         residual_vol=_to_float(_g(m, "residual_vol", "res_vol")),
         market_share=_share(mkt_er),
@@ -347,11 +382,17 @@ def from_fund_components(
             DecompositionPoint("Residual", res_er / total_er, 3),
         ]
     risk = RiskDecomposition(
-        total_variance=_to_float(_g(m, "stock_var", "variance", "portfolio_var")),
+        total_variance=_to_float(
+            _g(m, "total_vol_ann", "adjusted_total_vol_ann", "stock_var", "variance", "portfolio_var")
+        ),
         components=components,
     )
 
-    cum_fund = list(fund_data.cum_fund or [])
+    cum_fund = list(
+        getattr(fund_data, "cum_fund", None)
+        or fund_data.cum_nav_return
+        or []
+    )
     window_start = cum_fund[0][0] if cum_fund else report_date
     window_end = cum_fund[-1][0] if cum_fund else report_date
     fund_label = fund_data.symbol_id
@@ -359,18 +400,24 @@ def from_fund_components(
     cumulative_curves: dict[str, list[tuple[str, float]]] = {}
     if cum_fund:
         cumulative_curves[fund_label] = cum_fund
-    if fund_data.cum_spy:
-        cumulative_curves["SPY"] = list(fund_data.cum_spy)
+    cum_bench_lines = getattr(fund_data, "cum_spy", None) or fund_data.cum_bench_return
+    if cum_bench_lines:
+        cumulative_curves["SPY"] = list(cum_bench_lines)
 
     drawdown_curves: dict[str, list[tuple[str, float]]] = {}
-    if fund_data.dd_fund:
-        drawdown_curves[fund_label] = list(fund_data.dd_fund)
-    if fund_data.dd_spy:
-        drawdown_curves["SPY"] = list(fund_data.dd_spy)
+    dd_fund = getattr(fund_data, "dd_fund", None) or ()
+    dd_spy = getattr(fund_data, "dd_spy", None) or ()
+    if dd_fund:
+        drawdown_curves[fund_label] = list(dd_fund)
+    if dd_spy:
+        drawdown_curves["SPY"] = list(dd_spy)
 
+    tr_fmap = getattr(fund_data, "tr_fund", None) or {}
+    tr_bench = getattr(fund_data, "tr_bench", None) or {}
     trailing = {
-        fund_label: _to_float(fund_data.tr_fund.get("1Y")) if fund_data.tr_fund else None,
-        "SPY": _to_float(fund_data.tr_spy.get("1Y")) if fund_data.tr_spy else None,
+        fund_label: _fund_tr_returns(tr_fmap, "1Y", "1y", "365d"),
+        "SPY": _fund_tr_returns(getattr(fund_data, "tr_spy", None), "1Y", "1y", "365d")
+        or _fund_tr_returns(tr_bench, "1Y", "1y", "365d"),
     }
 
     performance = PerformanceAttribution(
@@ -381,27 +428,38 @@ def from_fund_components(
         trailing_returns=trailing,
         cumulative_curves=cumulative_curves,
         drawdown_curves=drawdown_curves,
-        uses_combined_factor_returns=fund_data.cumulative_bench_lines_use_cfr,
+        uses_combined_factor_returns=getattr(fund_data, "cumulative_bench_lines_use_cfr", False),
     )
 
     portfolio = _portfolio_from_fund(fund_data)
 
+    hedge_ratios_raw = getattr(fund_data, "hedge_ratios", None) or {}
+    hedge_ratios_f: dict[str, float] = {}
+    for k_raw, raw in hedge_ratios_raw.items():
+        fv = _to_float(raw)
+        if fv is not None:
+            hedge_ratios_f[str(k_raw)] = float(fv)
     hedge = HedgeBasis(
-        market_hr=_to_float(_g(m, "l3_market_hr", "l3_mkt_hr")),
-        sector_hr=_to_float(_g(m, "l3_sector_hr", "l3_sec_hr")),
-        subsector_hr=_to_float(_g(m, "l3_subsector_hr", "l3_sub_hr")),
+        market_hr=_to_float(_g(m, "l3_market_hr", "l3_mkt_hr"))
+        or _to_float(hedge_ratios_f.get("l1_spy")),
+        sector_hr=_to_float(_g(m, "l3_sector_hr", "l3_sec_hr"))
+        or _next_hr_with_prefix(hedge_ratios_f, "l2_"),
+        subsector_hr=_to_float(_g(m, "l3_subsector_hr", "l3_sub_hr"))
+        or _next_hr_with_prefix(hedge_ratios_f, "l3_"),
         residual_quality_pct=_to_float(_g(m, "residual_quality_pct")),
     )
 
     macro: MacroBasis | None = None
-    if fund_data.macro_correlations:
+    macro_corr = getattr(fund_data, "macro_correlations", None) or {}
+    if macro_corr:
+        correlations: dict[str, float] = {}
+        for kk, vv in macro_corr.items():
+            fc = _to_float(vv)
+            if fc is not None:
+                correlations[str(kk)] = float(fc)
         macro = MacroBasis(
-            correlations={
-                k: float(v)
-                for k, v in fund_data.macro_correlations.items()
-                if v is not None
-            },
-            window_label=fund_data.macro_window or "252d",
+            correlations=correlations,
+            window_label=getattr(fund_data, "macro_window", None) or "252d",
         )
 
     temporal_context = temporal or TemporalContext(
