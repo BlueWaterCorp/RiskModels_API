@@ -29,3 +29,7 @@ UPSTASH_REDIS_REST_TOKEN
 
 # Plaintext rm_agent_* / rm_user_* key surfaced in https://riskmodels.app/llms.txt (MAG7 agent examples)
 LLMS_TXT_PUBLIC_AGENT_KEY
+
+# Anthropic Messages API key for the Phase 2A Claude tool loop (lib/chat/anthropic-agent.ts).
+# Server-only; never reaches the browser. Read by /api/chat when `model: "claude-*"`.
+ANTHROPIC_API_KEY
