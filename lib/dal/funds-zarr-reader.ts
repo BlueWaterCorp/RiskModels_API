@@ -1517,3 +1517,105 @@ export async function computeBenchmarkFit(
     top_underweights: under,
   };
 }
+
+// ===========================================================================
+// SURFACE PORTFOLIO READER — per-ETF / per-benchmark ds_portfolio (L.6/L.8)
+//
+// ETF and benchmark surfaces get the same L1/L2/L3 return decomposition funds
+// have (Funds_DAG `surface_portfolios_zarr`): `<prefix>/{id}/ds_portfolio.zarr`,
+// same (teo,) schema as the per-fund one (PORTFOLIO_VARS). The group attrs carry
+// `source_kind`, `weight_basis` (v1: "latest_holdings_constant" — the factor
+// profile of the surface's current composition over ERM3 monthly's full history;
+// "time_varying" once a daily surface has accumulated months), and `teo_frequency`
+// (always "monthly" — the decomposition is vs ds_erm3_monthly).
+// ===========================================================================
+
+export interface SurfacePortfolioRow {
+  teo: string;
+  portfolio_gross_return: number | null;
+  portfolio_market_return: number | null;
+  portfolio_sector_return: number | null;
+  portfolio_subsector_return: number | null;
+  portfolio_idiosyncratic_return: number | null;
+  identity_residual: number | null;
+  weight_sum: number | null;
+  n_holdings_active: number | null;
+  effective_n: number | null;
+  top10_weight_sum: number | null;
+}
+
+export interface SurfacePortfolioSeries {
+  portfolio_id: string;
+  source_kind: string;             // fund | etf | benchmark | filer_13f
+  weight_basis: string | null;     // latest_holdings_constant | time_varying
+  teo_frequency: string;           // "monthly"
+  /** Diversification-credited variance shares (full-window), from the zarr attrs; null if absent. */
+  variance_shares: {
+    market: number | null;
+    sector: number | null;
+    subsector: number | null;
+    residual: number | null;
+  } | null;
+  n_rows: number;
+  rows: SurfacePortfolioRow[];
+}
+
+/**
+ * Read the per-ETF / per-benchmark portfolio return-decomposition time series.
+ * `portfolioId` = a BW-* surface id (BW-ETF-…, BW-BENCH-…, also BW-FUND-…/BW-FILER-…
+ * fall through to their own ds_portfolio.zarr). Returns null when there's no zarr,
+ * no teos, or nothing in the requested date window.
+ */
+export async function readSurfacePortfolioSeries(
+  portfolioId: string,
+  options: FundPortfolioOptions = {},
+): Promise<SurfacePortfolioSeries | null> {
+  const grp = await openSurfaceGroup(portfolioId, "ds_portfolio.zarr");
+  if (!grp) return null;
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+
+  let t0 = 0;
+  let t1 = teos.length;
+  if (options.startDate) while (t0 < t1 && teos[t0]! < options.startDate) t0++;
+  if (options.endDate) while (t1 > t0 && teos[t1 - 1]! > options.endDate) t1--;
+  if (t0 >= t1) return null;
+
+  const series = await Promise.all(
+    PORTFOLIO_VARS.map(async (varName) => ({
+      name: varName,
+      data: await readFloatSlice1d(grp, varName, t0, t1),
+    })),
+  );
+  const rows: SurfacePortfolioRow[] = [];
+  for (let i = 0; i < t1 - t0; i++) {
+    const row: Record<string, unknown> = { teo: teos[t0 + i]! };
+    for (const s of series) row[s.name] = s.data?.[i] ?? null;
+    rows.push(row as unknown as SurfacePortfolioRow);
+  }
+
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const numAttr = (k: string): number | null => {
+    const v = attrs[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+  const varianceShares =
+    attrs.adjusted_l1_market_er != null || attrs.adjusted_l3_residual_er != null
+      ? {
+          market: numAttr("adjusted_l1_market_er"),
+          sector: numAttr("adjusted_l2_sector_er"),
+          subsector: numAttr("adjusted_l3_subsector_er"),
+          residual: numAttr("adjusted_l3_residual_er"),
+        }
+      : null;
+
+  return {
+    portfolio_id: portfolioId.toUpperCase(),
+    source_kind: typeof attrs.source_kind === "string" ? attrs.source_kind : _portfolioSourceKind(portfolioId),
+    weight_basis: typeof attrs.weight_basis === "string" ? attrs.weight_basis : null,
+    teo_frequency: typeof attrs.teo_frequency === "string" ? attrs.teo_frequency : "monthly",
+    variance_shares: varianceShares,
+    n_rows: rows.length,
+    rows,
+  };
+}

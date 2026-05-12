@@ -1024,5 +1024,37 @@
     "performance": { "avg_latency_ms": 200, "p95_latency_ms": 400, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
     "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["benchmark_surfaces_zarr", "fund/filer/etf ds_ph.zarr"] },
     "tags": ["benchmark", "benchmark-fit", "active-share", "portfolio-surface"]
+  },
+  {
+    "id": "etf-portfolio",
+    "name": "ETF Return Decomposition",
+    "description": "An ETF's L1/L2/L3 portfolio return-decomposition time series (Funds_DAG surface_portfolios_zarr) — same schema as the per-fund /api/funds/{bw_fund_id}/portfolio: portfolio_{gross,market,sector,subsector,idiosyncratic}_return + identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum. Reports weight_basis (v1: latest_holdings_constant — the factor profile of the ETF's current composition over ERM3 monthly's full history) and variance_shares (diversification-credited full-window market/sector/subsector/residual). MASTER_BACKLOG L.6.",
+    "endpoint": "/api/data/etf/{ticker}/portfolio",
+    "method": "GET",
+    "parameters": {
+      "ticker": { "type": "string", "required": true, "description": "ETF ticker, e.g. IWM." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.002, "currency": "USD", "billing_code": "etf_portfolio_v1" },
+    "performance": { "avg_latency_ms": 150, "p95_latency_ms": 300, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["surface_portfolios_zarr", "erm3_monthly"] },
+    "tags": ["etf", "return-attribution", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "benchmark-portfolio",
+    "name": "Benchmark Return Decomposition",
+    "description": "A benchmark's L1/L2/L3 portfolio return-decomposition time series (Funds_DAG surface_portfolios_zarr) — same schema as /api/data/etf/{ticker}/portfolio and /api/funds/{bw_fund_id}/portfolio. `id` accepts a bw_bench_id (BW-BENCH-SPY) or an alias (SPY, 70/30). Reports weight_basis (v1: latest_holdings_constant — the factor profile of the benchmark's current composition over ERM3 monthly's full history; the right view for a benchmark's risk profile) and variance_shares. MASTER_BACKLOG L.8.",
+    "endpoint": "/api/data/benchmark/{id}/portfolio",
+    "method": "GET",
+    "parameters": {
+      "id": { "type": "string", "required": true, "description": "bw_bench_id (BW-BENCH-...) or alias (e.g. SPY, 70/30)." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.002, "currency": "USD", "billing_code": "benchmark_portfolio_v1" },
+    "performance": { "avg_latency_ms": 150, "p95_latency_ms": 300, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["surface_portfolios_zarr", "erm3_monthly"] },
+    "tags": ["benchmark", "return-attribution", "portfolio-surface"]
   }
 ]
