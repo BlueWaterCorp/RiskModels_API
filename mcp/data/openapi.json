@@ -1665,6 +1665,121 @@
           }
         }
       },
+      "SurfacePortfolioSeries": {
+        "type": "object",
+        "description": "L1/L2/L3 return-decomposition time series for an ETF / benchmark PortfolioSurface (same shape funds expose). The first key is the surface id (`ticker` for ETFs, `benchmark_context_id` for benchmarks).\n",
+        "properties": {
+          "portfolio_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string"
+          },
+          "benchmark_context_id": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "fund",
+              "etf",
+              "benchmark",
+              "filer_13f"
+            ]
+          },
+          "weight_basis": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "latest_holdings_constant",
+              "time_varying"
+            ],
+            "description": "How the per-teo weights were derived. v1 = latest_holdings_constant."
+          },
+          "teo_frequency": {
+            "type": "string",
+            "example": "monthly"
+          },
+          "variance_shares": {
+            "type": "object",
+            "nullable": true,
+            "description": "Diversification-credited full-window variance shares (≈ sum to 1).",
+            "properties": {
+              "market": {
+                "type": "number",
+                "nullable": true
+              },
+              "sector": {
+                "type": "number",
+                "nullable": true
+              },
+              "subsector": {
+                "type": "number",
+                "nullable": true
+              },
+              "residual": {
+                "type": "number",
+                "nullable": true
+              }
+            }
+          },
+          "n_rows": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "teo": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "portfolio_gross_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_market_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_sector_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_subsector_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_idiosyncratic_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "identity_residual": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "weight_sum": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "n_holdings_active": {
+                  "type": "integer",
+                  "nullable": true
+                },
+                "effective_n": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "top10_weight_sum": {
+                  "type": "number",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {
@@ -8862,6 +8977,79 @@
         }
       }
     },
+    "/data/etf/{ticker}/portfolio": {
+      "get": {
+        "summary": "ETF L1/L2/L3 return decomposition time series",
+        "description": "An ETF's portfolio return decomposition (Funds_DAG `surface_portfolios_zarr`) — same `(teo,)` schema as `/api/funds/{bw_fund_id}/portfolio`: `portfolio_{gross,market,sector,subsector,idiosyncratic}_return`, `identity_residual`, `weight_sum`, `n_holdings_active`, `effective_n`, `top10_weight_sum`. The response reports `weight_basis` — v1 = `latest_holdings_constant` (the factor profile of the ETF's *current* composition over ERM3 monthly's full history; the time-varying month-end basis matching the per-fund semantic is a follow-on) — and `variance_shares` (the diversification-credited full-window market/sector/subsector/residual shares). Soft gateway auth (public read).\n",
+        "operationId": "getEtfPortfolioSeries",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "IWM"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ETF portfolio decomposition time series.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfacePortfolioSeries"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ETF not found or no portfolio decomposition available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/data/benchmark/{id}": {
       "get": {
         "summary": "Benchmark surface + BenchmarkContext",
@@ -9171,6 +9359,79 @@
           },
           "404": {
             "description": "Unknown benchmark, or no surface for the subject/benchmark.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/benchmark/{id}/portfolio": {
+      "get": {
+        "summary": "Benchmark L1/L2/L3 return decomposition time series",
+        "description": "A benchmark's portfolio return decomposition (Funds_DAG `surface_portfolios_zarr`) — same `(teo,)` schema as `/api/data/etf/{ticker}/portfolio` and `/api/funds/{bw_fund_id}/portfolio`. `id` accepts a `bw_bench_id` (`BW-BENCH-SPY`) or an alias (`SPY`, `70/30`). `weight_basis` (reported in the response) is v1 = `latest_holdings_constant` — the factor profile of the benchmark's current composition over ERM3 monthly's full history (the right view for a benchmark's risk profile). `variance_shares` carries the diversification-credited full-window market/sector/subsector/residual shares. Soft gateway auth (public read).\n",
+        "operationId": "getBenchmarkPortfolioSeries",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SPY"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Benchmark portfolio decomposition time series.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfacePortfolioSeries"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Benchmark not found (unknown id/alias) or no portfolio decomposition available.",
             "content": {
               "application/json": {
                 "schema": {
