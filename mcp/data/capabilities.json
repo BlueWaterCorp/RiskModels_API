@@ -992,5 +992,37 @@
       "sources": ["ishares_holdings", "erm3_secmaster"]
     },
     "tags": ["etf", "holdings", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "benchmark-context",
+    "name": "Benchmark Surface + Context",
+    "description": "A benchmark's canonical PortfolioSurface snapshot (Funds_DAG benchmark_surfaces_zarr, source_kind=benchmark): the BenchmarkContext (immutable definition — methodology, rebalance schedule, observation semantics, benchmark_kind, proxy/components) + the latest constituent weight vector (top-N). `id` accepts a bw_bench_id (BW-BENCH-SPY) or an alias (SPY, 70/30). v1: SPY (index_proxy via IVV holdings), EQ70-30 (blend 70% IWB + 30% IWM). MASTER_BACKLOG L.8.",
+    "endpoint": "/api/data/benchmark/{id}",
+    "method": "GET",
+    "parameters": {
+      "id": { "type": "string", "required": true, "description": "bw_bench_id (BW-BENCH-...) or alias (e.g. SPY, 70/30)." },
+      "top": { "type": "integer", "required": false, "default": 25, "description": "Top constituents to return (1-1000)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.001, "currency": "USD", "billing_code": "benchmark_context_v1" },
+    "performance": { "avg_latency_ms": 120, "p95_latency_ms": 250, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.97, "update_frequency": "daily", "sources": ["benchmark_surfaces_zarr", "ishares_holdings"] },
+    "tags": ["benchmark", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "benchmark-fit",
+    "name": "Benchmark Fit",
+    "description": "BenchmarkFit (comparison facet): fit a subject portfolio's weight vector against a benchmark surface at a common teo (subject's latest teo ≤ as_of; benchmark then at its latest teo ≤ that — never peeking ahead). Returns active share, an active-weight RMS (coarse tracking-error proxy — factor-based TE is a follow-on), overlap, weight_in_benchmark / benchmark_coverage, and the top over/underweights. subject = a BW-* portfolio id (fund / 13F filer / ETF / benchmark) or an ETF ticker; benchmark = bw_bench_id or alias. MASTER_BACKLOG L.8.",
+    "endpoint": "/api/data/benchmark-fit",
+    "method": "GET",
+    "parameters": {
+      "subject": { "type": "string", "required": true, "description": "BW-* portfolio id (BW-FUND-/BW-FILER-/BW-ETF-/BW-BENCH-) or an ETF ticker." },
+      "benchmark": { "type": "string", "required": true, "description": "bw_bench_id (BW-BENCH-...) or alias (e.g. SPY, 70/30)." },
+      "as_of": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound on the subject's teo." },
+      "top": { "type": "integer", "required": false, "default": 10, "description": "Top over/underweights to return (1-100)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.002, "currency": "USD", "billing_code": "benchmark_fit_v1" },
+    "performance": { "avg_latency_ms": 200, "p95_latency_ms": 400, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["benchmark_surfaces_zarr", "fund/filer/etf ds_ph.zarr"] },
+    "tags": ["benchmark", "benchmark-fit", "active-share", "portfolio-surface"]
   }
 ]

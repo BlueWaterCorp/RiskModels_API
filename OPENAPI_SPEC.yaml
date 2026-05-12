@@ -5929,6 +5929,169 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /data/benchmark/{id}:
+    get:
+      summary: Benchmark surface + BenchmarkContext
+      description: >
+        A benchmark's canonical PortfolioSurface snapshot (Funds_DAG
+        `benchmark_surfaces_zarr` — `source_kind=benchmark`): the
+        `BenchmarkContext` (the immutable definition — methodology, rebalance
+        schedule, observation semantics, `benchmark_kind`, proxy/components) plus
+        the latest constituent weight vector (top-N). `id` accepts a
+        `bw_bench_id` (e.g. `BW-BENCH-SPY`) or an alias (e.g. `SPY`, `70/30`).
+        v1 catalog: SPY (index_proxy ← IVV's holdings), EQ70-30 (blend: 70% IWB +
+        30% IWM). `report_date` (the surface's latest teo) and
+        `availability_date` are surfaced distinctly + as headers
+        `X-Data-As-Of` / `X-Data-Availability`. See
+        docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md §9.
+      operationId: getBenchmarkSurface
+      tags: [Funds Data Plane]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          example: SPY
+        - name: top
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 25 }
+      responses:
+        "200":
+          description: Benchmark surface snapshot + context.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+            X-Data-Availability:
+              schema: { type: string, format: date }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  benchmark_context_id: { type: string, example: BW-BENCH-SPY }
+                  name: { type: string }
+                  benchmark_kind: { type: string, enum: [index_proxy, blend, peer_cohort, constructed_hedge] }
+                  source_kind: { type: string, enum: [benchmark] }
+                  teo_frequency: { type: string }
+                  report_date: { type: string, format: date }
+                  availability_date: { type: string, format: date, nullable: true }
+                  benchmark_context:
+                    type: object
+                    nullable: true
+                    description: The full serialized BenchmarkContext (methodology, rebalance_schedule, aliases, proxy/components, …).
+                  n_constituents: { type: integer }
+                  top_constituents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        bw_sym_id: { type: string }
+                        weight: { type: number }
+        "404":
+          description: Benchmark not found (unknown id/alias or missing surface).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /data/benchmark-fit:
+    get:
+      summary: BenchmarkFit — fit a portfolio surface to a benchmark
+      description: >
+        `BenchmarkFit` (the comparison facet — CANONICAL_INTELLIGENCE_OBJECTS.md
+        §9): fit a subject portfolio's weight vector against a benchmark surface
+        at a common teo (the subject's latest teo ≤ `as_of`; the benchmark then
+        at its latest teo ≤ the subject's teo — never peeking ahead). Returns
+        active share, an active-weight RMS (a coarse tracking-error *proxy* —
+        factor-based TE is a follow-on), overlap, and the top over/underweights.
+        `subject` = a `BW-*` portfolio id (`BW-FUND-…`, `BW-FILER-…`,
+        `BW-ETF-…`, `BW-BENCH-…`) or an ETF ticker (→ `BW-ETF-{TICKER}`);
+        `benchmark` = a `bw_bench_id` or an alias (`SPY`, `70/30`, …).
+      operationId: getBenchmarkFit
+      tags: [Funds Data Plane]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000004310
+        - name: benchmark
+          in: query
+          required: true
+          schema: { type: string }
+          example: SPY
+        - name: as_of
+          in: query
+          schema: { type: string, format: date }
+        - name: top
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        "200":
+          description: BenchmarkFit result.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: the subject surface teo the fit was computed at.
+            X-Benchmark-As-Of:
+              schema: { type: string, format: date }
+              description: the benchmark surface teo the fit was computed at.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fit_schema_version: { type: string }
+                  subject_id: { type: string }
+                  subject_source_kind: { type: string }
+                  benchmark_context_id: { type: string }
+                  benchmark_name: { type: string }
+                  subject_teo: { type: string, format: date }
+                  benchmark_teo: { type: string, format: date }
+                  n_subject_holdings: { type: integer }
+                  n_benchmark_constituents: { type: integer }
+                  n_overlap: { type: integer }
+                  active_share: { type: number }
+                  active_weight_rms: { type: number, description: coarse tracking-error proxy }
+                  weight_in_benchmark: { type: number }
+                  benchmark_coverage: { type: number }
+                  top_overweights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        bw_sym_id: { type: string }
+                        subject_weight: { type: number }
+                        benchmark_weight: { type: number }
+                        active_weight: { type: number }
+                  top_underweights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        bw_sym_id: { type: string }
+                        subject_weight: { type: number }
+                        benchmark_weight: { type: number }
+                        active_weight: { type: number }
+        "400":
+          description: Missing/invalid query params.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Unknown benchmark, or no surface for the subject/benchmark.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /funds/snapshot/{bw_fund_id}:
     get:
       summary: Composed fund snapshot (JSON)
