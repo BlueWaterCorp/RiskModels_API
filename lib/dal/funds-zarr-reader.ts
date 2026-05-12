@@ -1239,3 +1239,281 @@ export async function readEtfHoldingsTopN(
     holdings: holdings.slice(0, safeN),
   };
 }
+
+// ===========================================================================
+// BENCHMARK READERS — canonical PortfolioSurface, source_kind=benchmark (L.8)
+//
+// Per the Option-3 design (CANONICAL_INTELLIGENCE_OBJECTS.md §9): a benchmark is
+// a PortfolioSurface with source_kind=benchmark carrying a serialized
+// BenchmarkContext (the immutable definition). Per-benchmark stores live under
+// bw_bench_id/{BW-BENCH-...}/ds_ph.zarr — same (symbol, teo) layout as the other
+// surfaces, but `adj_mv` is the normalized in-ERM3 weight (each teo column sums
+// to ~1.0), not dollars. The BenchmarkContext JSON is the group attr
+// `benchmark_context`. v1 catalog: BW-BENCH-SPY (index_proxy ← IVV),
+// BW-BENCH-EQ70-30 (blend 70% IWB + 30% IWM).
+// ===========================================================================
+
+// Alias → bw_bench_id (mirrors Funds_DAG configs/benchmark_universe.yaml; the
+// authoritative copy is benchmark_master.parquet — a synced JSON catalog is a
+// follow-on). Case-insensitive.
+const BENCHMARK_ALIASES: Record<string, string> = {
+  spy: "BW-BENCH-SPY",
+  "s&p 500": "BW-BENCH-SPY",
+  sp500: "BW-BENCH-SPY",
+  spx: "BW-BENCH-SPY",
+  ivv: "BW-BENCH-SPY",
+  "70/30": "BW-BENCH-EQ70-30",
+  "eq70-30": "BW-BENCH-EQ70-30",
+  "70-30-large-small": "BW-BENCH-EQ70-30",
+  "us-large-small-70-30": "BW-BENCH-EQ70-30",
+};
+
+/** Resolve a `benchmark=` string (alias or bw_bench_id) → bw_bench_id, or null if unknown. */
+export function resolveBenchmarkId(input: string): string | null {
+  const s = (input ?? "").trim();
+  if (!s) return null;
+  if (s.toUpperCase().startsWith("BW-BENCH-")) return s.toUpperCase();
+  return BENCHMARK_ALIASES[s.toLowerCase()] ?? null;
+}
+
+/** Resolve a fit-subject string: a BW-* portfolio id as-is, else an ETF ticker → BW-ETF-{TICKER}. */
+export function resolveSubjectId(input: string): string {
+  const s = (input ?? "").trim();
+  return s.toUpperCase().startsWith("BW-") ? s.toUpperCase() : tickerToBwEtfId(s);
+}
+
+async function openBenchmarkZarrGroup(
+  bwBenchId: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAt(`bw_bench_id/${bwBenchId}/${basename}`);
+}
+
+/** Dispatch a portfolio_id to its ds_*.zarr group by prefix (fund / filer / ETF / benchmark). */
+async function openSurfaceGroup(
+  portfolioId: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  const id = portfolioId.toUpperCase();
+  if (id.startsWith("BW-FUND-")) return openFundZarrGroup(id, basename);
+  if (id.startsWith("BW-FILER-")) return openFilerZarrGroup(id, basename);
+  if (id.startsWith("BW-ETF-")) return openEtfZarrGroup(id, basename);
+  if (id.startsWith("BW-BENCH-")) return openBenchmarkZarrGroup(id, basename);
+  return null;
+}
+
+const _BENCH_PORTFOLIO_KIND: Record<string, string> = {
+  "BW-FUND-": "fund",
+  "BW-FILER-": "filer_13f",
+  "BW-ETF-": "etf",
+  "BW-BENCH-": "benchmark",
+};
+
+function _portfolioSourceKind(portfolioId: string): string {
+  const id = portfolioId.toUpperCase();
+  for (const [pfx, kind] of Object.entries(_BENCH_PORTFOLIO_KIND)) {
+    if (id.startsWith(pfx)) return kind;
+  }
+  return "unknown";
+}
+
+interface SurfaceWeightVector {
+  portfolio_id: string;
+  source_kind: string;
+  teo: string;
+  /** symbol → in-ERM3 weight (Σ adj_mv normalized to 1; positive entries only). */
+  weights: Map<string, number>;
+}
+
+/**
+ * Read a portfolio surface's normalized weight vector at the latest teo
+ * (or the latest teo ≤ `asOfTeo`). Works for fund / 13F filer / ETF / benchmark
+ * ids. Returns null when the surface is missing or has no usable teo.
+ */
+export async function readSurfaceWeightVector(
+  portfolioId: string,
+  opts: { asOfTeo?: string } = {},
+): Promise<SurfaceWeightVector | null> {
+  const grp = await openSurfaceGroup(portfolioId, "ds_ph.zarr");
+  if (!grp) return null;
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  let teoIdx = teos.length - 1;
+  if (opts.asOfTeo) {
+    teoIdx = -1;
+    for (let i = teos.length - 1; i >= 0; i--) {
+      if ((teos[i] ?? "") <= opts.asOfTeo) { teoIdx = i; break; }
+    }
+    if (teoIdx < 0) return null;
+  }
+  const adj = await readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length);
+  if (!adj) return null;
+  let total = 0;
+  for (const v of adj) if (v != null && v > 0) total += v;
+  const weights = new Map<string, number>();
+  if (total > 0) {
+    for (let i = 0; i < adj.length; i++) {
+      const v = adj[i];
+      if (v != null && v > 0) weights.set(symbols[i]!, v / total);
+    }
+  }
+  if (weights.size === 0) return null;
+  return { portfolio_id: portfolioId.toUpperCase(), source_kind: _portfolioSourceKind(portfolioId), teo: teos[teoIdx]!, weights };
+}
+
+export interface BenchmarkSnapshot {
+  benchmark_context_id: string;
+  name: string;
+  benchmark_kind: string;
+  source_kind: "benchmark";
+  teo_frequency: string;
+  /** Economic-truth axis: the benchmark surface's latest teo. */
+  report_date: string;
+  /** Tradeable/observable axis: when that snapshot was first observed. May be null. */
+  availability_date: string | null;
+  /** The full serialized BenchmarkContext (methodology, rebalance schedule, proxy/components, …). */
+  benchmark_context: Record<string, unknown> | null;
+  n_constituents: number;
+  top_constituents: { bw_sym_id: string; weight: number }[];
+}
+
+/**
+ * Read a benchmark's surface snapshot by bw_bench_id *or* alias (e.g. "SPY").
+ * Returns null when the alias doesn't resolve or the surface is missing.
+ */
+export async function readBenchmarkSurface(
+  idOrAlias: string,
+  n = 25,
+): Promise<BenchmarkSnapshot | null> {
+  const bwBenchId = resolveBenchmarkId(idOrAlias);
+  if (!bwBenchId) return null;
+  const grp = await openBenchmarkZarrGroup(bwBenchId, "ds_ph.zarr");
+  if (!grp) return null;
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+  const teoIdx = teos.length - 1;
+
+  const [adj, availStrings] = await Promise.all([
+    readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
+    readDatetimeVarStrings(grp, "availability_date"),
+  ]);
+  if (!adj) return null;
+
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  let ctx: Record<string, unknown> | null = null;
+  if (typeof attrs.benchmark_context === "string") {
+    try { ctx = JSON.parse(attrs.benchmark_context); } catch { ctx = null; }
+  }
+  const cons: { bw_sym_id: string; weight: number }[] = [];
+  let total = 0;
+  for (const v of adj) if (v != null && v > 0) total += v;
+  for (let i = 0; i < adj.length; i++) {
+    const v = adj[i];
+    if (v != null && v > 0) cons.push({ bw_sym_id: symbols[i]!, weight: total > 0 ? v / total : v });
+  }
+  cons.sort((a, b) => b.weight - a.weight);
+  const safeN = Math.min(Math.max(n, 1), 1000);
+
+  return {
+    benchmark_context_id: bwBenchId,
+    name: typeof attrs.name === "string" ? attrs.name : bwBenchId,
+    benchmark_kind: typeof attrs.benchmark_kind === "string" ? attrs.benchmark_kind : (ctx?.benchmark_kind as string) ?? "index_proxy",
+    source_kind: "benchmark",
+    teo_frequency: typeof attrs.teo_frequency === "string" ? attrs.teo_frequency : "daily",
+    report_date: teos[teoIdx]!,
+    availability_date: availStrings && availStrings[teoIdx] ? availStrings[teoIdx]! : null,
+    benchmark_context: ctx,
+    n_constituents: cons.length,
+    top_constituents: cons.slice(0, safeN),
+  };
+}
+
+export interface BenchmarkFitResult {
+  fit_schema_version: string;
+  subject_id: string;
+  subject_source_kind: string;
+  benchmark_context_id: string;
+  benchmark_name: string;
+  subject_teo: string;
+  benchmark_teo: string;
+  n_subject_holdings: number;
+  n_benchmark_constituents: number;
+  n_overlap: number;
+  active_share: number;
+  active_weight_rms: number;       // a coarse tracking-error proxy
+  weight_in_benchmark: number;     // share of the subject that overlaps the benchmark
+  benchmark_coverage: number;      // share of the benchmark the subject touches
+  top_overweights: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[];
+  top_underweights: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[];
+}
+
+const BENCHMARK_FIT_SCHEMA_VERSION = "benchmark-fit/1.0";
+
+/**
+ * Fit a subject portfolio's weight vector against a benchmark surface.
+ *   - `subjectId`: a BW-* portfolio id, or an ETF ticker (→ BW-ETF-{TICKER}).
+ *   - `benchmarkIdOrAlias`: a bw_bench_id or alias ("SPY", "70/30", …).
+ *   - `asOf`: optional YYYY-MM-DD upper bound on the subject's teo; the benchmark
+ *     is then taken at its latest teo ≤ the subject's teo (knowledge-friendly).
+ * Returns null when the benchmark alias doesn't resolve or either surface is missing.
+ */
+export async function computeBenchmarkFit(
+  subjectId: string,
+  benchmarkIdOrAlias: string,
+  opts: { asOf?: string; topN?: number } = {},
+): Promise<BenchmarkFitResult | null> {
+  const bwBenchId = resolveBenchmarkId(benchmarkIdOrAlias);
+  if (!bwBenchId) return null;
+  const resolvedSubject = resolveSubjectId(subjectId);
+
+  const subj = await readSurfaceWeightVector(resolvedSubject, { asOfTeo: opts.asOf });
+  if (!subj) return null;
+  // benchmark at its latest teo ≤ the subject's teo (never peek ahead)
+  const bench = await readSurfaceWeightVector(bwBenchId, { asOfTeo: subj.teo });
+  if (!bench) return null;
+
+  const benchAttrs = await (async () => {
+    const g = await openBenchmarkZarrGroup(bwBenchId, "ds_ph.zarr");
+    return g ? ((g.attrs ?? {}) as Record<string, unknown>) : {};
+  })();
+
+  const topN = Math.min(Math.max(opts.topN ?? 10, 1), 100);
+  const allSyms = new Set<string>([...subj.weights.keys(), ...bench.weights.keys()]);
+  let activeAbs = 0, activeSq = 0, weightInBench = 0, benchCoverage = 0, nOverlap = 0;
+  const active: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[] = [];
+  for (const s of allSyms) {
+    const wp = subj.weights.get(s) ?? 0;
+    const wb = bench.weights.get(s) ?? 0;
+    const a = wp - wb;
+    activeAbs += Math.abs(a);
+    activeSq += a * a;
+    if (wp > 0 && wb > 0) { nOverlap++; weightInBench += wp; benchCoverage += wb; }
+    active.push({ bw_sym_id: s, subject_weight: wp, benchmark_weight: wb, active_weight: a });
+  }
+  const over = active.filter((r) => r.active_weight > 0).sort((a, b) => b.active_weight - a.active_weight).slice(0, topN);
+  const under = active.filter((r) => r.active_weight < 0).sort((a, b) => a.active_weight - b.active_weight).slice(0, topN);
+
+  return {
+    fit_schema_version: BENCHMARK_FIT_SCHEMA_VERSION,
+    subject_id: resolvedSubject,
+    subject_source_kind: subj.source_kind,
+    benchmark_context_id: bwBenchId,
+    benchmark_name: typeof benchAttrs.name === "string" ? benchAttrs.name : bwBenchId,
+    subject_teo: subj.teo,
+    benchmark_teo: bench.teo,
+    n_subject_holdings: subj.weights.size,
+    n_benchmark_constituents: bench.weights.size,
+    n_overlap: nOverlap,
+    active_share: 0.5 * activeAbs,
+    active_weight_rms: Math.sqrt(activeSq),
+    weight_in_benchmark: weightInBench,
+    benchmark_coverage: benchCoverage,
+    top_overweights: over,
+    top_underweights: under,
+  };
+}
