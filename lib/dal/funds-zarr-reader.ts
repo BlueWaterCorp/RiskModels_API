@@ -1,27 +1,28 @@
 /**
- * Funds-side Zarr reader on GCS.
+ * Entity-side Zarr reader on GCS (funds + 13F filers).
  *
- * Per-fund stores live at:
- *   gs://{bucket}/{basePath}/bw_fund_id/{BW-FUND-...}/ds_portfolio.zarr
- *   gs://{bucket}/{basePath}/bw_fund_id/{BW-FUND-...}/ds_ph.zarr        (B.2.b)
- *   gs://{bucket}/{basePath}/bw_fund_id/{BW-FUND-...}/ds_hr.zarr        (B.2.c)
+ * Per-entity stores live at:
+ *   gs://{bucket}/{basePath}/bw_fund_id/{BW-FUND-...}/{ds_portfolio,ds_ph,ds_hr,ds_nav}.zarr
+ *   gs://{bucket}/{basePath}/bw_filer_id/{BW-FILER-CIK...}/{ds_portfolio,ds_ph}.zarr
  *
  * Default GCS prefix is `rm_api_data/ERM3_Funds` (env override:
  * `ZARR_FUNDS_GCS_PREFIX`). The bucket is shared with the stocks-side
  * `rm_api_data` per ARCHITECTURE_FUNDS_API.md §3.1.1; only the basePath
  * differs.
  *
- * Stage B.2.a ships `readFundPortfolioSeries` only — Slice 8's per-fund
- * `ds_portfolio.zarr` (dim `(teo,)`, ten data_vars). Holdings (ds_ph) and
- * hedge (ds_hr) follow in B.2.b / B.2.c.
+ * Folder-as-entity-key convention (BWMACRO/docs/13f_pipeline_plan.md §2):
+ * dataset names are universal (ds_ph, ds_portfolio); the path prefix
+ * (`bw_fund_id/` vs `bw_filer_id/`) discriminates entity kind. ds_nav is
+ * fund-only by design (no NAV time series for filers); ds_hr is fund-only
+ * today and lands on the filer side in D.8 Phase 3.
  *
  * Internal-only: never expose bucket names, gs:// URLs, or zarr paths in
  * thrown errors or API JSON.
  *
- * TODO(dedup): the GCS plumbing here (getGcs, GcsZarrStore, openFundZarrGroup,
+ * TODO(dedup): the GCS plumbing here (getGcs, GcsZarrStore, openZarrGroupAt,
  * readTeoStrings) is structurally identical to lib/dal/zarr-reader.ts.
- * Extract to lib/dal/zarr-gcs.ts as a follow-up — kept duplicated in B.2.a
- * so the stocks-side module stays untouched.
+ * Extract to lib/dal/zarr-gcs.ts as a follow-up — kept duplicated so the
+ * stocks-side module stays untouched.
  */
 
 import { Storage, type Bucket } from "@google-cloud/storage";
@@ -111,6 +112,13 @@ async function openFundZarrGroup(
   return openZarrGroupAt(`bw_fund_id/${bwFundId}/${basename}`);
 }
 
+async function openFilerZarrGroup(
+  bwFilerId: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAt(`bw_filer_id/${bwFilerId}/${basename}`);
+}
+
 /** Per-cell stores: portfolio_style/{Cell_Name}/... and equity_style_9box/{Cell_Name}/... */
 async function openCohortZarrGroup(
   kind: "portfolio_style" | "equity_style_9box",
@@ -120,57 +128,84 @@ async function openCohortZarrGroup(
   return openZarrGroupAt(`${kind}/${pathComponent}/${basename}`);
 }
 
-function nsToIsoDate(ns: bigint): string {
-  const ms = Number(ns / 1_000_000n);
-  const d = new Date(ms);
-  if (!Number.isFinite(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
+/** NaT sentinel for numpy datetime64 stored as int64. */
+const DATETIME64_NAT = -9223372036854775808n;
+
+const _CF_UNIT_MS: Record<string, number> = {
+  days: 86_400_000,
+  hours: 3_600_000,
+  minutes: 60_000,
+  seconds: 1_000,
+  milliseconds: 1,
+  microseconds: 1e-3,
+  nanoseconds: 1e-6,
+};
+
+/**
+ * Decode a numeric array of CF-encoded datetimes (`units: "<unit> since <date>"`,
+ * the standard xarray/zarr encoding) — or, when there's no CF `units` attr, a raw
+ * int64-nanoseconds-since-epoch array (numpy `datetime64[ns]`) — into ISO date
+ * strings; NaT → "".
+ *
+ * Works for whatever numeric typed array zarrita hands back for the dtype: `<i8`
+ * may surface as `BigInt64Array`, but some codecs/paths surface `Float64Array`/
+ * `Int32Array`. The CF branch is tried regardless of typed-array kind — the
+ * earlier "CF only if BigInt64Array" logic mis-decoded a `<i8` CF array surfaced
+ * as a non-BigInt array to 1970-01-01.
+ */
+function decodeCfOrNsDates(
+  d: unknown,
+  attrs: Record<string, unknown>,
+): string[] | null {
+  if (!ArrayBuffer.isView(d) || d instanceof Uint8Array) return null;
+  const entries: { v: number; nat: boolean }[] =
+    d instanceof BigInt64Array
+      ? Array.from(d, (raw) => ({ v: Number(raw), nat: raw === DATETIME64_NAT }))
+      : Array.from(d as unknown as ArrayLike<number>, (raw) => ({
+          v: Number(raw),
+          nat: !Number.isFinite(Number(raw)),
+        }));
+
+  const units = typeof attrs.units === "string" ? attrs.units : "";
+  const cf = units.match(
+    /^(days|hours|minutes|seconds|milliseconds|microseconds|nanoseconds) since (\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2}))?/i,
+  );
+
+  const toIso = (ms: number, nat: boolean): string => {
+    if (nat || !Number.isFinite(ms)) return "";
+    const dt = new Date(ms);
+    return Number.isFinite(dt.getTime()) ? dt.toISOString().slice(0, 10) : "";
+  };
+
+  if (cf) {
+    const unitMs = _CF_UNIT_MS[cf[1].toLowerCase()] ?? 86_400_000;
+    const baseMs = Date.parse(`${cf[2]}T${cf[3] ?? "00:00:00"}Z`);
+    if (!Number.isFinite(baseMs)) return null;
+    return entries.map(({ v, nat }) => toIso(baseMs + v * unitMs, nat || !Number.isFinite(v)));
+  }
+  // no CF units → assume int64 nanoseconds since epoch
+  return entries.map(({ v, nat }) => toIso(v / 1_000_000, nat || !Number.isFinite(v)));
+}
+
+/** Read a 1-D datetime variable (`teo`, `availability_date`, …) as ISO date strings. */
+async function readDatetimeVarStrings(
+  grp: Group<Readable>,
+  varName: string,
+): Promise<string[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    return decodeCfOrNsDates(ch?.data, (arr.attrs ?? {}) as Record<string, unknown>);
+  } catch {
+    return null;
+  }
 }
 
 async function readTeoStrings(
   grp: Group<Readable>,
 ): Promise<string[] | null> {
-  try {
-    const loc = grp.resolve("teo");
-    const arr = await open.v2(loc, { kind: "array" });
-    const ch = await get(arr, null);
-    const d = ch?.data;
-
-    const attrs = (arr.attrs ?? {}) as Record<string, unknown>;
-    const units = typeof attrs.units === "string" ? attrs.units : "";
-    const cfMatch = units.match(
-      /^days since (\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}:\d{2})?/,
-    );
-
-    if (d instanceof BigInt64Array && cfMatch) {
-      const baseMs = Date.parse(`${cfMatch[1]}T00:00:00Z`);
-      if (!Number.isFinite(baseMs)) return null;
-      const MS_PER_DAY = 86_400_000;
-      return Array.from(d, (v) => {
-        const t = baseMs + Number(v) * MS_PER_DAY;
-        const dt = new Date(t);
-        return Number.isFinite(dt.getTime())
-          ? dt.toISOString().slice(0, 10)
-          : "";
-      });
-    }
-    if (d instanceof BigInt64Array) {
-      return Array.from(d, (v) => nsToIsoDate(v));
-    }
-    if (ArrayBuffer.isView(d) && !(d instanceof Uint8Array)) {
-      const nums = d as unknown as ArrayLike<number>;
-      return Array.from(nums, (v) => {
-        const ms = Number(v) / 1_000_000;
-        const dt = new Date(ms);
-        return Number.isFinite(dt.getTime())
-          ? dt.toISOString().slice(0, 10)
-          : "";
-      });
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return readDatetimeVarStrings(grp, "teo");
 }
 
 async function readFloatSlice1d(
@@ -883,5 +918,324 @@ export async function readStyleCohortHoldingsTopN(
     n_returned: Math.min(safeN, all.length),
     n_total_holdings: all.length,
     holdings: all.slice(0, safeN),
+  };
+}
+
+// ===========================================================================
+// 13F FILER READERS (D.8 Phase 1)
+//
+// Per-filer stores live under bw_filer_id/{BW-FILER-CIK...}/ — same internal
+// helpers, different path prefix. Phase 1 schemas:
+//
+//   ds_ph.zarr        coords (symbol = bw_sym_id post-D.8.1, teo);
+//                     data_vars adj_mv (symbol, teo). Pre-D.8.1 the symbol
+//                     coord is a raw 9-char security id — readers tolerate
+//                     either by treating the coord as opaque string ids and
+//                     surfacing them under `security_id`.
+//   ds_portfolio.zarr dim (teo,); diagnostics + AUM + portfolio style
+//                     attribution columns. Return components (Phase 2)
+//                     are absent for filers today and read as null.
+// ===========================================================================
+
+export interface FilerHolding {
+  /**
+   * Opaque security id from the zarr's `symbol` coord. Post-D.8.1 this is
+   * a `bw_sym_id` (FIGI namespace, `BW-{eodhd_code}`). Pre-migration this
+   * may be a raw 9-char security identifier — surfaced as-is so consumers
+   * can detect the transition by string shape (`BW-` prefix vs digits).
+   */
+  security_id: string;
+  adj_mv: number;
+  /** Fraction of total in-portfolio AUM at this teo. Null when AUM is null/0. */
+  weight: number | null;
+}
+
+export interface FilerHoldingsSnapshot {
+  teo: string;
+  total_aum_usd: number | null;
+  /** Sum of `adj_mv` over the in-ERM3 mapped subset; null pre-D.8.1. */
+  aum_in_erm3: number | null;
+  n_holdings_returned: number;
+  n_total_holdings: number;
+  holdings: FilerHolding[];
+}
+
+/**
+ * Top-N current holdings at the latest teo for a 13F filer. Default n=25.
+ * Returns null when the filer has no zarr or no positive holdings.
+ *
+ * Symmetric to `readFundHoldingsTopN` but reads `bw_filer_id/...` and
+ * surfaces the security id under `security_id` (since pre-D.8.1 it may be
+ * a raw security id rather than bw_sym_id).
+ */
+export async function readFilerHoldingsTopN(
+  bwFilerId: string,
+  n = 25,
+): Promise<FilerHoldingsSnapshot | null> {
+  const grp = await openFilerZarrGroup(bwFilerId, "ds_ph.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+
+  // total_aum_usd may not exist on filer ds_ph — readScalarAtTeo returns null on missing var.
+  const [adjMv, totalAumUsd, aumInErm3] = await Promise.all([
+    readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
+    readScalarAtTeo(grp, "total_aum_usd", teoIdx),
+    readScalarAtTeo(grp, "aum_in_erm3", teoIdx),
+  ]);
+  if (!adjMv) return null;
+
+  const denom = totalAumUsd != null && totalAumUsd > 0 ? totalAumUsd : null;
+  const holdings: FilerHolding[] = [];
+  for (let i = 0; i < adjMv.length; i++) {
+    const v = adjMv[i];
+    if (v != null && v > 0) {
+      holdings.push({
+        security_id: symbols[i]!,
+        adj_mv: v,
+        weight: denom != null ? v / denom : null,
+      });
+    }
+  }
+  if (holdings.length === 0) return null;
+
+  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  const safeN = Math.min(Math.max(n, 1), 1000);
+
+  return {
+    teo,
+    total_aum_usd: totalAumUsd,
+    aum_in_erm3: aumInErm3,
+    n_holdings_returned: Math.min(safeN, holdings.length),
+    n_total_holdings: holdings.length,
+    holdings: holdings.slice(0, safeN),
+  };
+}
+
+/**
+ * One row of the per-filer portfolio time series. Phase 1 emits only
+ * diagnostics + AUM + (post-kernel) style-attribution metrics. Return
+ * components are NULL for filers until Phase 2 lands.
+ */
+export interface FilerPortfolioRow {
+  teo: string;
+  // Diagnostics (parallel to fund-side)
+  weight_sum: number | null;
+  n_holdings_active: number | null;
+  effective_n: number | null;
+  top10_weight_sum: number | null;
+  // AUM
+  total_aum_usd: number | null;
+  aum_in_erm3: number | null;
+  // ERM3-coverage modelability inputs (post D.8.3 kernel)
+  n_holdings_in_erm3: number | null;
+  effective_n_in_erm3: number | null;
+  coverage_in_erm3: number | null;
+  // Portfolio style attribution (post D.8.3 kernel)
+  portfolio_style_hhi: number | null;
+  effective_n_styles: number | null;
+  // Phase 2 return components — NULL on filer side until bridge attribution lands
+  portfolio_gross_return: number | null;
+  portfolio_market_return: number | null;
+  portfolio_sector_return: number | null;
+  portfolio_subsector_return: number | null;
+  portfolio_idiosyncratic_return: number | null;
+  identity_residual: number | null;
+}
+
+const FILER_PORTFOLIO_VARS = [
+  "weight_sum",
+  "n_holdings_active",
+  "effective_n",
+  "top10_weight_sum",
+  "total_aum_usd",
+  "aum_in_erm3",
+  "n_holdings_in_erm3",
+  "effective_n_in_erm3",
+  "coverage_in_erm3",
+  "portfolio_style_hhi",
+  "effective_n_styles",
+  "portfolio_gross_return",
+  "portfolio_market_return",
+  "portfolio_sector_return",
+  "portfolio_subsector_return",
+  "portfolio_idiosyncratic_return",
+  "identity_residual",
+] as const;
+
+/**
+ * Read the per-filer portfolio time series from GCS. Returns [] when the
+ * filer has no zarr or no overlap with the date window. Variables not yet
+ * emitted by the writer (e.g. style attribution pre-D.8.3, returns pre-
+ * Phase 2) read as null per row.
+ */
+export async function readFilerPortfolioSeries(
+  bwFilerId: string,
+  options: FundPortfolioOptions = {},
+): Promise<FilerPortfolioRow[]> {
+  const grp = await openFilerZarrGroup(bwFilerId, "ds_portfolio.zarr");
+  if (!grp) return [];
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return [];
+
+  let t0 = 0;
+  let t1 = teos.length;
+  if (options.startDate) {
+    while (t0 < t1 && teos[t0]! < options.startDate) t0++;
+  }
+  if (options.endDate) {
+    while (t1 > t0 && teos[t1 - 1]! > options.endDate) t1--;
+  }
+  if (t0 >= t1) return [];
+
+  const series = await Promise.all(
+    FILER_PORTFOLIO_VARS.map(async (varName) => ({
+      name: varName,
+      data: await readFloatSlice1d(grp, varName, t0, t1),
+    })),
+  );
+
+  const rows: FilerPortfolioRow[] = [];
+  for (let i = 0; i < t1 - t0; i++) {
+    const row: Record<string, unknown> = { teo: teos[t0 + i]! };
+    for (const s of series) {
+      row[s.name] = s.data?.[i] ?? null;
+    }
+    rows.push(row as unknown as FilerPortfolioRow);
+  }
+  return rows;
+}
+
+// ===========================================================================
+// ETF SPONSOR HOLDINGS READERS (canonical PortfolioSurface, MASTER_BACKLOG L.6 / D.9)
+//
+// Per-ETF stores live under bw_etf_id/{BW-ETF-...}/ — same internal helpers,
+// different path prefix. ds_ph.zarr schema matches the per-fund layout
+// (coords symbol = bw_sym_id, teo; data_vars adj_mv, has_new_data, aum_reported,
+// aum_erm3) with one addition: an `availability_date` coordinate aligned to
+// `teo` (the tradeable/observable axis is explicit from day one — see
+// docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md §3 / §9). teo_frequency
+// is `daily` here (vs `monthly` for funds, `quarterly` for 13F filers). Only
+// the in-ERM3 sleeve is materialized (cash / unresolvable lines are dropped,
+// same as the fund path), so every returned holding is in-ERM3 by construction.
+// ===========================================================================
+
+/** ticker → bw_etf_id, per the per-entity-id convention. */
+export function tickerToBwEtfId(ticker: string): string {
+  return `BW-ETF-${ticker.trim().toUpperCase()}`;
+}
+
+async function openEtfZarrGroup(
+  bwEtfId: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAt(`bw_etf_id/${bwEtfId}/${basename}`);
+}
+
+export interface EtfHolding {
+  bw_sym_id: string;
+  adj_mv: number;
+  /** Fraction of `aum_erm3` (the in-ERM3 denominator). Null when AUM is null/0. */
+  weight: number | null;
+}
+
+export interface EtfHoldingsSnapshot {
+  portfolio_id: string;
+  ticker: string;
+  source_kind: "etf";
+  teo_frequency: "daily";
+  sponsor: string | null;
+  /** Economic-truth axis: the sponsor's "Fund Holdings as of" date (= latest teo). */
+  report_date: string;
+  /** Tradeable/observable axis: when that holdings file was first observed. May be null. */
+  availability_date: string | null;
+  aum_reported: number | null;
+  aum_erm3: number | null;
+  /** aum_erm3 / aum_reported — share of the resolved sleeve that is in the ERM3 universe. */
+  coverage_pct: number | null;
+  n_holdings_returned: number;
+  n_total_holdings: number;
+  holdings: EtfHolding[];
+}
+
+/**
+ * Top-N current holdings at the latest teo for an ETF (by ticker). Default n=25.
+ * Returns null when the ETF has no zarr or no positive holdings.
+ *
+ * Symmetric to `readFundHoldingsTopN` but reads `bw_etf_id/...` and surfaces the
+ * canonical-surface metadata (source_kind, teo_frequency, report_date vs
+ * availability_date, sponsor) alongside the holdings.
+ */
+export async function readEtfHoldingsTopN(
+  ticker: string,
+  n = 25,
+): Promise<EtfHoldingsSnapshot | null> {
+  const bwEtfId = tickerToBwEtfId(ticker);
+  const grp = await openEtfZarrGroup(bwEtfId, "ds_ph.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+
+  const [adjMv, aumReported, aumErm3, availStrings] = await Promise.all([
+    readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
+    readScalarAtTeo(grp, "aum_reported", teoIdx),
+    readScalarAtTeo(grp, "aum_erm3", teoIdx),
+    readDatetimeVarStrings(grp, "availability_date"),
+  ]);
+  if (!adjMv) return null;
+
+  const groupAttrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const sponsor = typeof groupAttrs.sponsor === "string" ? groupAttrs.sponsor : null;
+
+  const holdings: EtfHolding[] = [];
+  for (let i = 0; i < adjMv.length; i++) {
+    const v = adjMv[i];
+    if (v != null && v > 0) {
+      holdings.push({
+        bw_sym_id: symbols[i]!,
+        adj_mv: v,
+        weight: aumErm3 != null && aumErm3 > 0 ? v / aumErm3 : null,
+      });
+    }
+  }
+  if (holdings.length === 0) return null;
+  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  const safeN = Math.min(Math.max(n, 1), 1000);
+
+  const availability_date =
+    availStrings && availStrings[teoIdx] ? availStrings[teoIdx]! : null;
+  const coverage_pct =
+    aumReported != null && aumReported > 0 && aumErm3 != null
+      ? aumErm3 / aumReported
+      : null;
+
+  return {
+    portfolio_id: bwEtfId,
+    ticker: ticker.trim().toUpperCase(),
+    source_kind: "etf",
+    teo_frequency: "daily",
+    sponsor,
+    report_date: teo,
+    availability_date,
+    aum_reported: aumReported,
+    aum_erm3: aumErm3,
+    coverage_pct,
+    n_holdings_returned: Math.min(safeN, holdings.length),
+    n_total_holdings: holdings.length,
+    holdings: holdings.slice(0, safeN),
   };
 }

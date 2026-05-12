@@ -10,6 +10,7 @@
 import type { Browser } from "playwright-core";
 import type { SnapshotReportData } from "./snapshot-report-types";
 import type { CohortSnapshot, FundSnapshot } from "@/lib/funds/snapshot-composer";
+import type { FilerSnapshot } from "@/lib/13f/filer-snapshot-composer";
 
 let browser: Browser | null = null;
 let launching: Promise<Browser> | null = null;
@@ -173,6 +174,54 @@ export async function renderCohortSnapshotPdf(
     await page.waitForSelector('[data-report-ready="true"]', {
       timeout: 10_000,
     });
+    await page.waitForTimeout(500);
+
+    const pdfBuffer = await page.pdf({
+      format: "Letter",
+      landscape: true,
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+
+    return new Uint8Array(pdfBuffer);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Render a `FilerSnapshot` to a Letter-landscape PDF via the F1 13F filer
+ * tearsheet print template (D.8.8).
+ *
+ * Mirrors `renderFundSnapshotPdf` but targets
+ * `/render-snapshot/13f/{bw_filer_id}` and uses the filer-specific window
+ * key + ready event.
+ */
+export async function renderFilerSnapshotPdf(
+  snap: FilerSnapshot,
+  baseUrl: string,
+): Promise<Uint8Array> {
+  const b = await getBrowser();
+  const page = await b.newPage();
+
+  try {
+    await page.goto(
+      `${baseUrl}/render-snapshot/13f/${encodeURIComponent(snap.bw_filer_id)}`,
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 15_000,
+      },
+    );
+
+    await page.evaluate((s: FilerSnapshot) => {
+      (window as unknown as { __FILER_SNAPSHOT__?: FilerSnapshot }).__FILER_SNAPSHOT__ = s;
+      window.dispatchEvent(new Event("filer-snapshot-ready"));
+    }, snap);
+
+    await page.waitForSelector('[data-report-ready="true"]', {
+      timeout: 10_000,
+    });
+
     await page.waitForTimeout(500);
 
     const pdfBuffer = await page.pdf({
