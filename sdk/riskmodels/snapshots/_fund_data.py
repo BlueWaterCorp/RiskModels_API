@@ -17,6 +17,70 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
+# Realized fund variance decomposition (matches the canonical /api/snapshot
+# "realized_strips" basis — RiskModels_API #52). Computed from the per-filing
+# portfolio layer return strips in ds_portfolio.zarr; no "residuals are mutually
+# uncorrelated" assumption — var(residual_strip) carries every cross-holding
+# residual covariance.
+# ---------------------------------------------------------------------------
+
+# ds_portfolio.zarr is sparse (one strip per filing, ≈ quarterly), so this is a
+# floor on filing-aligned observations — ~12 ≈ three years.
+_MIN_REALIZED_FUND_OBS = 12
+
+
+def _realized_variance_shares(
+    layer_series: list[tuple[str, float, float, float, float]],
+) -> dict[str, float] | None:
+    """Fund variance decomposition from the layer return strips.
+
+    ``layer_series`` is ``[(teo, mkt, sec, sub, res), ...]`` — the per-filing
+    portfolio layer returns from ``ds_portfolio.zarr``, which sum to the
+    portfolio's gross return per period. Each layer's share of fund variance is
+    ``cov(strip_k, gross) / var(gross)``; since ``gross = mkt + sec + sub + res``
+    exactly, ``Σ_k cov(strip_k, gross) = cov(gross, gross) = var(gross)``, so the
+    four shares sum to exactly 1 before clamping. ``var(residual_strip)`` is the
+    *realized* portfolio residual variance — it already includes every
+    cross-holding residual covariance — so there is no uncorrelated-residuals
+    assumption anywhere.
+
+    A layer whose strip moved against the portfolio over the window (it hedged)
+    has negative covariance → negative share; for a clean shares-of-100% headline
+    those are clamped to 0 and the positives renormalized. Returns ``None`` when
+    there aren't enough observations or the fund variance is degenerate (caller
+    falls back to the naive top-N aggregation).
+    """
+    if len(layer_series) < _MIN_REALIZED_FUND_OBS:
+        return None
+    mkt = [float(t[1]) for t in layer_series]
+    sec = [float(t[2]) for t in layer_series]
+    sub = [float(t[3]) for t in layer_series]
+    res = [float(t[4]) for t in layer_series]
+    gross = [a + b + c + d for a, b, c, d in zip(mkt, sec, sub, res)]
+    n = len(gross)
+    g_mean = sum(gross) / n
+    g_var = sum((g - g_mean) ** 2 for g in gross) / n
+    if not (g_var > 1e-15):
+        return None
+
+    def _cov_with_gross(a: list[float]) -> float:
+        a_mean = sum(a) / n
+        return sum((a[i] - a_mean) * (gross[i] - g_mean) for i in range(n)) / n
+
+    raw = {
+        "market": _cov_with_gross(mkt) / g_var,
+        "sector": _cov_with_gross(sec) / g_var,
+        "subsector": _cov_with_gross(sub) / g_var,
+        "residual": _cov_with_gross(res) / g_var,
+    }
+    clamped = {k: max(0.0, v) for k, v in raw.items()}
+    total = sum(clamped.values())
+    if not (total > 1e-12):
+        return None
+    return {k: v / total for k, v in clamped.items()}
+
+
+# ---------------------------------------------------------------------------
 # FundData — the dataclass every F1/C1 renderer reads
 # ---------------------------------------------------------------------------
 
@@ -1016,34 +1080,66 @@ def get_data_for_f1(
         pass
 
     # ── Portfolio variance shares ───────────────────────────────────────
-    # Preferred path: read the diversification-credited shares written
-    # to ds_portfolio.zarr attrs by Funds_DAG `aggregate_fund_portfolio`
-    # (strict CFR-ortho — see Funds_DAG/docs/PORTFOLIO_DIVERSIFICATION_FIX_PLAN.md).
-    #
-    # Fallback path (legacy): sum per-holding L3 ER × weight across the
-    # top-N holdings only. This top-N naive aggregation systematically
-    # over-states idio variance for diversified funds because it skips
-    # the LLN cancellation that diversified residuals provide. Kept as
-    # a fallback for older zarrs that haven't been re-materialized yet.
+    # Headline `portfolio_metrics`, in order of preference (`_basis` records it):
+    #   1. "realized_strips" — cov(strip_k, gross)/var(gross) over the per-filing
+    #      portfolio layer returns in ds_portfolio.zarr. Fully empirical: the
+    #      residual share is the realized portfolio residual variance, so it
+    #      already carries every cross-holding residual covariance — no "residuals
+    #      are mutually uncorrelated" assumption. Matches the canonical
+    #      /api/snapshot "realized_strips" basis (RiskModels_API #52). See
+    #      Funds_DAG/docs/PORTFOLIO_DIVERSIFICATION_FIX_PLAN.md.
+    #   2. "adjusted_attrs" — ds_portfolio.zarr `adjusted_*` attrs, if a Funds_DAG
+    #      asset ever precomputes them (dormant — none does today).
+    #   3. "naive_top_n" — sum per-holding L3 ER × weight over the top-N holdings.
+    #      Over-states idio variance for diversified funds (skips the LLN
+    #      cancellation diversified residuals provide). Last resort.
+    # `portfolio_metrics_naive` always carries the naive number for the F1
+    # side-by-side comparison, even when `portfolio_metrics` is realized.
     pm: dict[str, Any] | None = None
     pm_naive: dict[str, Any] | None = None
     pm_recent: dict[str, Any] | None = None
 
-    if adj_variance_shares:
+    realized = _realized_variance_shares(layer_series)
+    if realized is not None:
+        pm = {
+            "l1_market_er":    realized["market"],
+            "l2_sector_er":    realized["sector"],
+            "l3_subsector_er": realized["subsector"],
+            "l3_residual_er":  realized["residual"],
+            "_basis":          "realized_strips",
+        }
+        # "Recent" window = trailing slice of the same realized series, when
+        # there's a meaningful distinction (strictly more than the floor).
+        if len(layer_series) > _MIN_REALIZED_FUND_OBS:
+            realized_recent = _realized_variance_shares(
+                layer_series[-_MIN_REALIZED_FUND_OBS:]
+            )
+            if realized_recent is not None:
+                pm_recent = {
+                    "l1_market_er":    realized_recent["market"],
+                    "l2_sector_er":    realized_recent["sector"],
+                    "l3_subsector_er": realized_recent["subsector"],
+                    "l3_residual_er":  realized_recent["residual"],
+                    "_basis":          "realized_strips_recent",
+                }
+
+    if pm is None and adj_variance_shares:
         pm = {
             "l1_market_er":    adj_variance_shares["market"],
             "l2_sector_er":    adj_variance_shares["sector"],
             "l3_subsector_er": adj_variance_shares["subsector"],
             "l3_residual_er":  adj_variance_shares["residual"],
             "total_vol_ann":   adj_variance_shares.get("total_vol_ann", 0.0),
+            "_basis":          "adjusted_attrs",
         }
-    if adj_variance_shares_recent:
+    if pm_recent is None and adj_variance_shares_recent:
         pm_recent = {
             "l1_market_er":    adj_variance_shares_recent["market"],
             "l2_sector_er":    adj_variance_shares_recent["sector"],
             "l3_subsector_er": adj_variance_shares_recent["subsector"],
             "l3_residual_er":  adj_variance_shares_recent["residual"],
             "total_vol_ann":   adj_variance_shares_recent.get("total_vol_ann", 0.0),
+            "_basis":          "adjusted_attrs_recent",
         }
 
     if holdings_list:
@@ -1061,8 +1157,8 @@ def get_data_for_f1(
                 "l3_subsector_er": agg["subsector"] / total,
                 "l3_residual_er":  agg["residual"]  / total,
             }
-        if pm is None:
-            pm = pm_naive
+        if pm is None and pm_naive is not None:
+            pm = {**pm_naive, "_basis": "naive_top_n"}
 
     return FundData(
         bw_fund_id=bw_fund_id,
