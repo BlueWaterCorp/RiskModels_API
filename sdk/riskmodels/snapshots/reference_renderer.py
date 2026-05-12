@@ -1,11 +1,19 @@
 """Public reference renderer for :class:`CanonicalStockSnapshot`.
 
-Produces a clean, institutional, single-page PDF / PNG. Intentionally
-less opinionated than the BWMACRO renderers — no narrative, no curated
-peer benchmarking layout, no hedge-construction artwork — but trustworthy
-as a working reference. Open-source consumers and the SDK community
-render through this; the premium institutional layouts live privately
-in BWMACRO.
+Produces a clean, institutional, single-page PDF / PNG. The **reference
+renderer** is the deterministic baseline that ships in the public SDK:
+it has no narrative, no curated peer-benchmark layout, no hedge-construction
+artwork, and depends only on the canonical contract. Its job is to be
+trustworthy and stable.
+
+The **institutional renderer** — the enriched composition with `Judgment`
+narrative, curated peer presentation, and hedge-construction visuals —
+lives privately in BWMACRO and consumes the same canonical object. Both
+renderers read one source of truth; only the institutional renderer adds
+editorial layers on top.
+
+See ``BWMACRO/docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md`` for
+the boundary between the two.
 
 Sections rendered (in order):
 

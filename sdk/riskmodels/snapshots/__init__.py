@@ -7,10 +7,16 @@ Pure Plotly + Matplotlib primitives. The canonical contract
 public stock snapshots; the reference renderer paints it onto a 1-page,
 landscape PDF/PNG.
 
-Premium institutional renderers (R1 Risk Profile, P1 Stock Performance,
+Institutional renderers (R1 Risk Profile, P1 Stock Performance,
 Stock Deep Dive, S1/S2 legacy) and curated content live in BWMACRO. The
 ``rm_api_public`` GCS bucket pipeline never imports ``bwmacro.*`` — it must
 stay self-sufficient on this canonical pipeline.
+
+The terminology is deliberate: this module is the *reference renderer* —
+the deterministic baseline that anyone with the canonical contract can run.
+The BWMACRO renderers are *institutional renderers* — enriched compositions
+with Judgment narrative, peer presentation, and hedge-construction visuals.
+Both consume the same canonical object.
 
 Data layer
 ----------
@@ -75,11 +81,23 @@ from ._stock_data import (
     get_data_for_p1,
 )
 
+# Fund data layer (F1 — zarr-backed; BWMACRO may enrich with Supabase downstream)
+from ._fund_data import (
+    FundData,
+    FundHolding,
+    ZARR_FUNDS_GCS_PREFIX,
+    from_fixture_row,
+    load_fund_from_fixture,
+    get_data_for_f1,
+    _funds_latest_path,
+)
+
 # JSON-first pipeline
 from ._json_io import dump_json, load_json
 
 # Canonical contract — single semantic object backing all stock snapshots.
 from .canonical import (
+    CANONICAL_ONTOLOGY_VERSION,
     CANONICAL_SCHEMA_VERSION,
     CanonicalStockSnapshot,
     Identity,
@@ -92,13 +110,30 @@ from .canonical import (
     PeerContext,
     HedgeBasis,
     MacroBasis,
+    AomProvenance,
+    OBSERVATION_MODES,
+    TemporalContext,
     from_components,
     from_dd_data,
+)
+from .canonical_fund import (
+    CANONICAL_FUND_SCHEMA_VERSION,
+    CanonicalFundSnapshot,
+    FilerMetadata,
+    FundIdentity,
+    FundPortfolio,
+    HoldingRow,
+    from_fund_components,
 )
 from .reference_renderer import (
     render_canonical_to_pdf,
     render_canonical_to_png,
     render_canonical_to_png_bytes,
+)
+from .reference_renderer_fund import (
+    render_canonical_fund_to_pdf,
+    render_canonical_fund_to_png,
+    render_canonical_fund_to_png_bytes,
 )
 
 __all__ = [
@@ -142,10 +177,19 @@ __all__ = [
     "cumulative_benchmark_line_labels",
     "fetch_macro_correlations_resilient",
     "get_data_for_p1",
+    # Fund data layer (F1)
+    "FundData",
+    "FundHolding",
+    "from_fixture_row",
+    "load_fund_from_fixture",
+    "get_data_for_f1",
+    "ZARR_FUNDS_GCS_PREFIX",
+    "_funds_latest_path",
     # JSON-first pipeline
     "dump_json",
     "load_json",
     # Canonical contract + reference renderer
+    "CANONICAL_ONTOLOGY_VERSION",
     "CANONICAL_SCHEMA_VERSION",
     "CanonicalStockSnapshot",
     "Identity",
@@ -158,9 +202,22 @@ __all__ = [
     "PeerContext",
     "HedgeBasis",
     "MacroBasis",
+    "AomProvenance",
+    "OBSERVATION_MODES",
+    "TemporalContext",
     "from_components",
     "from_dd_data",
+    "CANONICAL_FUND_SCHEMA_VERSION",
+    "CanonicalFundSnapshot",
+    "FundIdentity",
+    "FilerMetadata",
+    "HoldingRow",
+    "FundPortfolio",
+    "from_fund_components",
     "render_canonical_to_pdf",
     "render_canonical_to_png",
     "render_canonical_to_png_bytes",
+    "render_canonical_fund_to_pdf",
+    "render_canonical_fund_to_png",
+    "render_canonical_fund_to_png_bytes",
 ]

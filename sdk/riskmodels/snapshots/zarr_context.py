@@ -140,6 +140,85 @@ BW_SECTOR_TO_ETF = {
     11: "XLRE",
 }
 
+# GICS-style sector full names (parallel to BW_SECTOR_TO_ETF). Drives the
+# IDENTITY panel and header subtitle; renderers fall back to the ETF ticker
+# when this returns None.
+BW_SECTOR_TO_NAME = {
+    1: "Energy",
+    2: "Materials",
+    3: "Industrials",
+    4: "Consumer Discretionary",
+    5: "Consumer Staples",
+    6: "Health Care",
+    7: "Financials",
+    8: "Information Technology",
+    9: "Communication Services",
+    10: "Utilities",
+    11: "Real Estate",
+}
+
+
+def _sector_name(bw_code: float | int | None) -> str | None:
+    if bw_code is None:
+        return None
+    try:
+        return BW_SECTOR_TO_NAME.get(int(bw_code))
+    except (TypeError, ValueError):
+        return None
+
+
+# Reverse map for renderers that only carry the ETF ticker downstream
+# (e.g. P1Data.sector_etf without a separate bw_sector_code field).
+_ETF_TO_BW_SECTOR_NAME = {
+    etf: BW_SECTOR_TO_NAME[code] for code, etf in BW_SECTOR_TO_ETF.items()
+}
+
+
+def _sector_name_from_etf(sector_etf: str | None) -> str | None:
+    if not sector_etf:
+        return None
+    return _ETF_TO_BW_SECTOR_NAME.get(sector_etf)
+
+
+def _clean_etf_display_name(raw_name: str) -> str:
+    """Strip common ETF marketing prefixes/suffixes for compact identity rows.
+
+    'iShares U.S. Industrials ETF'    → 'U.S. Industrials'
+    'SPDR S&P Semiconductor ETF'      → 'S&P Semiconductor'
+    'Invesco Aerospace & Defense ETF' → 'Aerospace & Defense'
+    """
+    s = (raw_name or "").strip()
+    for pre in (
+        "iShares ", "SPDR ", "Invesco ", "First Trust ", "Vanguard ",
+        "ProShares ", "VanEck ", "Global X ", "Direxion ", "Alerian ",
+    ):
+        if s.startswith(pre):
+            s = s[len(pre):]
+            break
+    for suf in (" ETF", " Fund", " Trust"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+    return s.strip()
+
+
+def _subsector_name(subsector_etf: str | None, erm3_root: Path) -> str | None:
+    """Look up the subsector ETF's marketing name + apply :func:`_clean_etf_display_name`.
+
+    Returns None if the ETF isn't registered or the lookup fails. Callers
+    fall back to the raw ETF ticker when this returns None.
+    """
+    if not subsector_etf:
+        return None
+    _ensure_erm3_import(erm3_root)
+    try:
+        from erm3.shared.etf_register import get_etf_name
+        raw = get_etf_name(subsector_etf)
+        if not raw:
+            return None
+        return _clean_etf_display_name(raw)
+    except Exception:
+        return None
+
 
 def _ensure_erm3_import(erm3_root: Path) -> None:
     if str(erm3_root) not in sys.path:
@@ -683,10 +762,15 @@ def build_p1_from_zarr(
         sector_etf_override=sector_etf_override,
         subsector_etf_override=subsector_etf_override,
     )
-    return build_p1_data_from_stock_context(
+    p1 = build_p1_data_from_stock_context(
         ctx,
         client=None,
         rankings=rankings,
         macro_correlations=macro_corr,
         macro_window=macro_win,
     )
+    # Populate human-readable classification (None when ETF not in registry).
+    p1.sector_name = _sector_name_from_etf(p1.sector_etf)
+    erm3 = Path(erm3_root) if erm3_root is not None else _DEFAULT_ERM3
+    p1.subsector_name = _subsector_name(p1.subsector_etf, erm3)
+    return p1

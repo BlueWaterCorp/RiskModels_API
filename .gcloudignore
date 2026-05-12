@@ -1,0 +1,89 @@
+# Cloud Build upload exclusions for `gcloud builds submit .`
+# Without these, the upload is 4.5 GB and includes nothing the container needs.
+
+.git/
+.github/
+.next/
+.venv/
+.vercel/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cursor/
+.claude/
+.agents/
+.vscode/
+.idea/
+.DS_Store
+
+node_modules/
+**/node_modules/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Big static asset trees we don't need at build time
+public/snapshots/
+public/dd_pdfs/
+public/r1_pdfs/
+public/p1_pdfs/
+public/agent_thumbnails/
+public/snapshot_pages/
+images/
+captures/
+audit_findings/
+archive/
+sdk/notebooks/
+sdk/dist/
+sdk/scripts/smoke_reports/
+
+# CI-generated artifacts
+**/coverage/
+**/dist/
+**/build/
+**/htmlcov/
+*.log
+
+# Editor / OS metadata
+*.swp
+*.swo
+*~
+
+# Top-level dirs unused by the render-svc container build.
+# All entries anchored with leading "/" so they only match repo-root paths,
+# not nested ones like sdk/riskmodels/visuals/components/.
+# Keep ONLY: /sdk/, /services/render-svc/, and required root files.
+/app/
+/lib/
+/components/
+/mcp/
+/cli/
+/packages/
+/emails/
+/content/
+/notebooks/
+/figures/
+/site_images/
+/supabase/
+/docs/
+/tests/
+/scripts/
+/examples/
+/assets/
+/aom/
+/logs/
+/api-server/
+/sdk/notebooks/
+/sdk/scripts/
+/sdk/tests/
+/sdk/dist/
+/sdk/__pycache__/
+/services/render-svc/_sdk_build/
+/services/render-svc/.pytest_cache/
+/services/render-svc/__pycache__/
+
+# Keep top-level config files needed by the Dockerfile (Dockerfile is copied
+# implicitly as part of the build context; the COPY lines reference sdk/ and
+# services/render-svc/).

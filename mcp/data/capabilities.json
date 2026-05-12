@@ -968,5 +968,29 @@
     },
     "pricing": { "model": "per_request", "cost_usd": 0.10, "currency": "USD", "billing_code": "style_cohort_snapshot_pdf_v1" },
     "tags": ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"]
+  },
+  {
+    "id": "etf-holdings",
+    "name": "ETF Holdings (canonical PortfolioSurface)",
+    "description": "Top-N current holdings of an ETF from its canonical PortfolioSurface zarr (Funds_DAG etf_holdings_zarr — source_kind=etf, teo_frequency=daily; iShares today, State Street/Vanguard follow). In-ERM3 sleeve only — every holding carries a bw_sym_id. Surfaces report_date (sponsor 'Fund Holdings as of') and availability_date (when observed) distinctly. MASTER_BACKLOG L.6 / D.9.",
+    "endpoint": "/api/data/etf/{ticker}/holdings",
+    "method": "GET",
+    "parameters": {
+      "ticker": { "type": "string", "required": true, "description": "ETF ticker, e.g. IVV." },
+      "top": { "type": "integer", "required": false, "default": 25, "description": "Number of top holdings to return (1-1000)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.001, "currency": "USD", "billing_code": "etf_holdings_v1" },
+    "performance": {
+      "avg_latency_ms": 120,
+      "p95_latency_ms": 250,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["ishares_holdings", "erm3_secmaster"]
+    },
+    "tags": ["etf", "holdings", "portfolio-surface", "funds"]
   }
 ]
