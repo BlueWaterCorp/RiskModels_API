@@ -929,9 +929,9 @@ export async function readStyleCohortHoldingsTopN(
 //
 //   ds_ph.zarr        coords (symbol = bw_sym_id post-D.8.1, teo);
 //                     data_vars adj_mv (symbol, teo). Pre-D.8.1 the symbol
-//                     coord is CUSIP — readers tolerate either by treating
-//                     the coord as opaque string ids and surfacing them
-//                     under `security_id`.
+//                     coord is a raw 9-char security id — readers tolerate
+//                     either by treating the coord as opaque string ids and
+//                     surfacing them under `security_id`.
 //   ds_portfolio.zarr dim (teo,); diagnostics + AUM + portfolio style
 //                     attribution columns. Return components (Phase 2)
 //                     are absent for filers today and read as null.
@@ -941,8 +941,8 @@ export interface FilerHolding {
   /**
    * Opaque security id from the zarr's `symbol` coord. Post-D.8.1 this is
    * a `bw_sym_id` (FIGI namespace, `BW-{eodhd_code}`). Pre-migration this
-   * may be a raw 9-char CUSIP — surfaced as-is so consumers can detect the
-   * transition by string shape (`BW-` prefix vs digits).
+   * may be a raw 9-char security identifier — surfaced as-is so consumers
+   * can detect the transition by string shape (`BW-` prefix vs digits).
    */
   security_id: string;
   adj_mv: number;
@@ -966,7 +966,7 @@ export interface FilerHoldingsSnapshot {
  *
  * Symmetric to `readFundHoldingsTopN` but reads `bw_filer_id/...` and
  * surfaces the security id under `security_id` (since pre-D.8.1 it may be
- * CUSIP rather than bw_sym_id).
+ * a raw security id rather than bw_sym_id).
  */
 export async function readFilerHoldingsTopN(
   bwFilerId: string,

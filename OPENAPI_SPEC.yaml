@@ -6942,8 +6942,9 @@ paths:
       description: >
         Top-N current holdings at the filer's latest teo. Reads per-filer
         ds_ph.zarr from GCS. Each holding carries `security_id` (post-
-        D.8.1 = bw_sym_id; pre-migration = raw CUSIP), `adj_mv`, and
-        `weight` (fraction of total in-portfolio AUM).
+        D.8.1 = bw_sym_id; pre-migration = a raw 9-char security
+        identifier), `adj_mv`, and `weight` (fraction of total
+        in-portfolio AUM).
       operationId: getFilerHoldings
       tags:
         - 13F Filers
@@ -6994,7 +6995,7 @@ paths:
         Per-filer portfolio time series from per-filer ds_portfolio.zarr.
         One row per teo (quarter-end) with diagnostics, AUM, ERM3 coverage,
         and portfolio style attribution. Return components are NULL until
-        D.8 Phase 2 (CUSIP↔ERM3 attribution bridge).
+        D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).
       operationId: getFilerPortfolioHistory
       tags:
         - 13F Filers

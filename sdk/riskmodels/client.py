@@ -1597,7 +1597,8 @@ class RiskModelsClient:
         """Top-N filer holdings at the latest teo (``$0.005``).
 
         Each holding carries ``security_id`` (post-D.8.1 = bw_sym_id;
-        pre-migration = raw CUSIP), ``adj_mv``, and ``weight``.
+        pre-migration = a raw 9-char security identifier), ``adj_mv``,
+        and ``weight``.
         """
         params = {"limit": str(limit)} if limit is not None else None
         data, _lineage, _r = self._transport.request(

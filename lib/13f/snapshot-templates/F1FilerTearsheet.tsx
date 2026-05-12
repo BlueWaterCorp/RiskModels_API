@@ -163,7 +163,7 @@ function NineBoxHeatmap({
       <div style={{ padding: SPACING.md, color: PALETTE.textMid, fontSize: 11, textAlign: "center" }}>
         Style attribution data unavailable for this filer.
         <div style={{ fontSize: 9, marginTop: 4 }}>
-          Awaits CUSIP↔ERM3 bridge migration (D.8.1 → D.8.3 kernel).
+          Awaits the security-master ↔ ERM3 bridge migration (D.8.1 → D.8.3 kernel).
         </div>
       </div>
     );
