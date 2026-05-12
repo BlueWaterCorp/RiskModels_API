@@ -38,6 +38,7 @@ from . import (
 )
 from .canonical import CANONICAL_ONTOLOGY_VERSION, CANONICAL_SCHEMA_VERSION
 from .canonical_fund import CANONICAL_FUND_SCHEMA_VERSION, CanonicalFundSnapshot
+from ..interpretation import judgment_narrative_violations
 
 
 # AOM_SPEC v1 string vocabulary.
@@ -197,6 +198,13 @@ def check_one(p1_cache: Path, *, generated_utc: str) -> tuple[bool, list[str]]:
         elif reloaded.aom != snap_a.aom:
             failures.append("aom provenance drifted across JSON round-trip")
 
+    # 9. Editorial narrative — no recommendation language (THE_ANALYST §2).
+    #    Only fires when an editorial Judgment is attached; the pre-render batch
+    #    runs without one today, but a violating Judgment must never ship.
+    if snap_a.judgment is not None:
+        for v in judgment_narrative_violations(snap_a.judgment):
+            failures.append(f"judgment recommendation language: {v}")
+
     return len(failures) == 0, failures
 
 
@@ -327,6 +335,11 @@ def check_one_fund(f1_cache: Path, *, generated_utc: str) -> tuple[bool, list[st
         failures.append(
             f"len(holdings)={len(port.holdings)} > total_holdings_count={port.total_holdings_count}"
         )
+
+    # Editorial narrative — no recommendation language (THE_ANALYST §2).
+    if snap_a.judgment is not None:
+        for v in judgment_narrative_violations(snap_a.judgment):
+            failures.append(f"judgment recommendation language: {v}")
 
     return len(failures) == 0, failures
 
