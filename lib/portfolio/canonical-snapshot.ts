@@ -68,13 +68,14 @@ export type CanonicalSnapshotResponse = {
       vol_23d: number | null;
     }>;
     /**
-     * Diversification-adjusted shares of the *portfolio's* variance, renormalized
-     * to sum to ~1. Position residuals are largely uncorrelated, so a portfolio's
-     * idiosyncratic variance is far smaller than the naive position-weighted sum;
-     * sector/subsector exposures partially cancel via realized ETF correlations.
-     * The naive PWS figures, the credit, and per-layer multipliers are in
-     * `diversification` below. (Falls back to the naive decomposition only if the
-     * adjusted total is degenerate.)
+     * Shares of the *portfolio's* realized variance, summing to ~1. Computed
+     * from the daily layer return strips as cov(strip_k, gross)/var(gross) when
+     * there's enough history (`variance_decomposition_basis: "realized_strips"`)
+     * — fully empirical, so the residual share already reflects every
+     * cross-holding residual covariance (no "residuals are mutually uncorrelated"
+     * assumption). Falls back to `"etf_correlation_adjusted"` (the
+     * `diversification.correlation_adjusted` shares, renormalized) for short
+     * windows, or `"naive_pws"` (per-holding ER weighted sum) as a last resort.
      */
     variance_decomposition: {
       market: number;
@@ -83,13 +84,17 @@ export type CanonicalSnapshotResponse = {
       residual: number;
       systematic: number;
     };
+    /** How `variance_decomposition` was derived (see above). */
+    variance_decomposition_basis: "realized_strips" | "etf_correlation_adjusted" | "naive_pws";
     /**
      * Naive (position-weighted-sum, "if residuals were perfectly correlated")
-     * vs correlation-adjusted decomposition + per-layer diversification credit.
-     * `correlation_adjusted` is in variance-fraction-of-average-position units
-     * (so its `total` is < 1 by the total diversification benefit);
-     * `variance_decomposition` above is that, renormalized to the portfolio's
-     * own variance.
+     * vs an ETF-correlation-adjusted decomposition + per-layer diversification
+     * credit. `correlation_adjusted` is in variance-fraction-of-average-position
+     * units (so its `total` is < 1 by the total diversification benefit). It's a
+     * useful supplementary view; the headline `variance_decomposition` above is
+     * usually the realized-strip decomposition instead (see
+     * `variance_decomposition_basis`) and only falls back to a renormalized
+     * `correlation_adjusted` for short windows.
      */
     diversification: DiversificationResult;
     portfolio_volatility_23d: number | null;
@@ -183,6 +188,72 @@ function yearsForLookback(lookbackDays: number): number {
 function num(x: number | null | undefined): number {
   if (x == null || !Number.isFinite(x)) return 0;
   return x;
+}
+
+/** Minimum daily observations for a stable realized variance decomposition. */
+const MIN_REALIZED_VAR_OBS = 60;
+
+/**
+ * Realized variance decomposition from the daily layer return strips.
+ *
+ * `gross = market + sector + subsector + residual` (exactly, by construction of
+ * the strips), so each layer's share of portfolio variance is
+ *   cov(strip_k, gross) / var(gross)
+ * and the four shares sum to exactly 1 before clamping. This is fully empirical
+ * — `var(residual_strip)` carries *all* the cross-holding residual covariances
+ * (the residual strip is the weighted sum of per-holding residual returns), so
+ * there is no "residuals are mutually uncorrelated" assumption anywhere.
+ *
+ * A layer can have negative covariance with the portfolio (it acts as a hedge);
+ * for a clean "shares of 100%" headline we clamp negatives to 0 and renormalize
+ * the positives. Returns null when there aren't enough observations or the
+ * portfolio variance is degenerate — the caller then falls back.
+ */
+export function realizedVarianceShares(strips: {
+  gross: number[];
+  market: number[];
+  sector: number[];
+  subsector: number[];
+  residual: number[];
+}): { market: number; sector: number; subsector: number; residual: number } | null {
+  const g = strips.gross;
+  const n = g.length;
+  if (n < MIN_REALIZED_VAR_OBS) return null;
+  const mean = (a: number[]): number => a.reduce((s, v) => s + num(v), 0) / a.length;
+  const gMean = mean(g);
+  let gVar = 0;
+  for (const v of g) gVar += (num(v) - gMean) ** 2;
+  gVar /= n;
+  if (!(gVar > 1e-15)) return null;
+
+  const covWithGross = (a: number[]): number => {
+    if (a.length !== n) return 0;
+    const aMean = mean(a);
+    let c = 0;
+    for (let i = 0; i < n; i++) c += (num(a[i]) - aMean) * (num(g[i]) - gMean);
+    return c / n;
+  };
+
+  const raw = {
+    market: covWithGross(strips.market) / gVar,
+    sector: covWithGross(strips.sector) / gVar,
+    subsector: covWithGross(strips.subsector) / gVar,
+    residual: covWithGross(strips.residual) / gVar,
+  };
+  const clamped = {
+    market: Math.max(0, raw.market),
+    sector: Math.max(0, raw.sector),
+    subsector: Math.max(0, raw.subsector),
+    residual: Math.max(0, raw.residual),
+  };
+  const total = clamped.market + clamped.sector + clamped.subsector + clamped.residual;
+  if (!(total > 1e-12)) return null;
+  return {
+    market: clamped.market / total,
+    sector: clamped.sector / total,
+    subsector: clamped.subsector / total,
+    residual: clamped.residual / total,
+  };
 }
 
 /**
@@ -497,21 +568,47 @@ export async function buildCanonicalPortfolioSnapshot(input: {
     windowDays: lookbackDays,
   });
 
+  // Headline decomposition, in order of preference:
+  //  1. realized_strips      — cov(strip_k, gross)/var(gross) from the daily
+  //                            layer return strips (fully empirical; the residual
+  //                            strip carries all cross-holding residual
+  //                            covariances — no "uncorrelated residuals" assumption).
+  //  2. etf_correlation_adjusted — `correlation_adjusted` from computeDiversificationMetrics
+  //                            (sector/subsector get a realized-ETF-correlation
+  //                            multiplier; residual gets a concentration multiplier),
+  //                            renormalized to sum to 1. Used when the strip series
+  //                            is too short / degenerate.
+  //  3. naive_pws            — last-resort weighted sum of per-holding ER.
   const adj = diversification.correlation_adjusted;
-  const decomp =
-    adj.total > 1e-9
-      ? {
-          market: adj.market_er / adj.total,
-          sector: adj.sector_er / adj.total,
-          subsector: adj.subsector_er / adj.total,
-          residual: adj.residual_er / adj.total,
-        }
-      : {
-          market: core.portfolioER.market,
-          sector: core.portfolioER.sector,
-          subsector: core.portfolioER.subsector,
-          residual: core.portfolioER.residual,
-        };
+  const stripDecomp = realizedVarianceShares({
+    gross: gS,
+    market: mS,
+    sector: sS,
+    subsector: uS,
+    residual: rS,
+  });
+  let varianceDecompBasis: "realized_strips" | "etf_correlation_adjusted" | "naive_pws";
+  let decomp: { market: number; sector: number; subsector: number; residual: number };
+  if (stripDecomp) {
+    decomp = stripDecomp;
+    varianceDecompBasis = "realized_strips";
+  } else if (adj.total > 1e-9) {
+    decomp = {
+      market: adj.market_er / adj.total,
+      sector: adj.sector_er / adj.total,
+      subsector: adj.subsector_er / adj.total,
+      residual: adj.residual_er / adj.total,
+    };
+    varianceDecompBasis = "etf_correlation_adjusted";
+  } else {
+    decomp = {
+      market: core.portfolioER.market,
+      sector: core.portfolioER.sector,
+      subsector: core.portfolioER.subsector,
+      residual: core.portfolioER.residual,
+    };
+    varianceDecompBasis = "naive_pws";
+  }
   const decompSystematic = decomp.market + decomp.sector + decomp.subsector;
   const highLayer = Math.max(decomp.market, decomp.sector, decomp.subsector) > 0.55;
 
@@ -548,6 +645,7 @@ export async function buildCanonicalPortfolioSnapshot(input: {
         residual: decomp.residual,
         systematic: decompSystematic,
       },
+      variance_decomposition_basis: varianceDecompBasis,
       diversification,
       portfolio_volatility_23d: core.portfolioVol,
       unresolved: core.errorsList,
