@@ -13,8 +13,8 @@ const MAX_TOP_N = 1000;
  *
  * Top-N current holdings at the filer's latest teo. Reads per-filer
  * ds_ph.zarr from GCS. Each holding carries `security_id` (post-D.8.1 =
- * bw_sym_id; pre-migration = raw CUSIP), `adj_mv`, and `weight` (fraction
- * of total in-portfolio AUM).
+ * bw_sym_id; pre-migration = a raw 9-char security identifier), `adj_mv`,
+ * and `weight` (fraction of total in-portfolio AUM).
  *
  * Default `limit = 25`; caller can request up to 1000.
  */

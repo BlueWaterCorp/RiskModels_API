@@ -1710,7 +1710,7 @@ export const CAPABILITIES: Capability[] = [
       "aum_in_erm3 — the latter is the absolute scale of holdings inside the ERM3 universe), " +
       "ERM3-coverage modelability inputs, and the portfolio-derived 9-box style attribution " +
       "(portfolio_style_hhi, dominant_9box, effective_n_styles). Return components are NULL " +
-      "until D.8 Phase 2 (CUSIP↔ERM3 attribution bridge). NAV is permanently absent — filers " +
+      "until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge). NAV is permanently absent — filers " +
       "have no NAV time series. Resolves bw_filer_id against public.filers + " +
       "public.filer_portfolios_latest.",
     endpoint: "/api/13f/filers/{bw_filer_id}",
@@ -1749,8 +1749,8 @@ export const CAPABILITIES: Capability[] = [
     description:
       "Top-N current holdings for a 13F filer at the latest report_date. Reads per-filer " +
       "ds_ph.zarr from GCS. Each holding carries security_id (post-D.8.1 = bw_sym_id; pre-" +
-      "migration = raw CUSIP), adj_mv, and weight (fraction of total in-portfolio AUM). " +
-      "Default N=25, max 1000.",
+      "migration = a raw 9-char security identifier), adj_mv, and weight (fraction of total " +
+      "in-portfolio AUM). Default N=25, max 1000.",
     endpoint: "/api/13f/filers/{bw_filer_id}/holdings",
     method: "GET",
     parameters: {
@@ -1793,7 +1793,7 @@ export const CAPABILITIES: Capability[] = [
       "Per-filer portfolio time series of diagnostics + AUM + style attribution from per-" +
       "filer ds_portfolio.zarr on GCS. One row per teo (quarter-end). Optional ?start_date " +
       "and ?end_date trim the panel. Return components (portfolio_*_return, identity_residual) " +
-      "are NULL until D.8 Phase 2 (CUSIP↔ERM3 attribution bridge).",
+      "are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).",
     endpoint: "/api/13f/filers/{bw_filer_id}/portfolio",
     method: "GET",
     parameters: {

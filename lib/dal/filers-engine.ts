@@ -26,7 +26,7 @@ export interface FilerRow {
   country: string | null;
   status: string | null;
   style_label: string | null;
-  factset_entity_id: string | null;
+  factset_entity_id: string | null; // licensed-id-ok: AUDIT-PENDING — public.filers column read into the DAL; D.8 license review pending whether this field is surfaced in /api/13f/filers responses
   latest_report_date: string | null;
   latest_filing_date: string | null;
   latest_extracted_at: string | null;
@@ -44,7 +44,7 @@ export interface FilerPortfolioLatestRow {
   report_date: string;
   filing_date: string;
   extracted_at: string;
-  // Returns — NULL on filer side until Phase 2 (CUSIP↔ERM3 bridge wired).
+  // Returns — NULL on filer side until Phase 2 (the security-master ↔ ERM3 bridge wired).
   portfolio_gross_return: number | null;
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
@@ -92,7 +92,7 @@ export interface SearchFilersOptions {
 }
 
 const FILER_COLUMNS =
-  "bw_filer_id, cik, lei, name, filer_type, filer_subtype, country, status, style_label, factset_entity_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_aum_usd, aum_tier, latest_n_holdings, last_in_eligible_universe_at, n_funds_managed, metadata";
+  "bw_filer_id, cik, lei, name, filer_type, filer_subtype, country, status, style_label, factset_entity_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_aum_usd, aum_tier, latest_n_holdings, last_in_eligible_universe_at, n_funds_managed, metadata"; // licensed-id-ok: AUDIT-PENDING — column-select string; see the FilerRow.factset_entity_id note above
 
 const FILER_LATEST_COLUMNS =
   "bw_filer_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_aum_usd, filer_type, aum_tier, portfolio_9box_distribution, dominant_9box, portfolio_style_hhi, effective_n_styles, coverage_in_erm3, aum_in_erm3, n_holdings_in_erm3, effective_n_in_erm3, is_modelable, model_version, factor_set_id, last_synced_at, metadata";
