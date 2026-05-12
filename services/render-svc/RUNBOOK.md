@@ -63,8 +63,8 @@ The Dockerfile expects the `riskmodels-py` SDK source at a sibling path during
 build. Use a buildable context that includes both:
 
 ```bash
-# From the repo root
-cd /Users/conradgann/BW_Code/RiskModels_API
+# From the RiskModels_API repo root
+cd "$(git rev-parse --show-toplevel)"
 
 # Build with the SDK as additional context. The Dockerfile references
 # --from=sdk-context for the SDK source.
