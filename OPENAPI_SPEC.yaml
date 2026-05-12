@@ -5853,6 +5853,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /data/etf/{ticker}/holdings:
+    get:
+      summary: ETF top-N holdings (canonical PortfolioSurface)
+      description: >
+        Top-N current holdings of an ETF, read from its canonical
+        `PortfolioSurface` zarr (Funds_DAG `etf_holdings_zarr` — `source_kind=etf`,
+        `teo_frequency=daily`). Only the in-ERM3 sleeve is materialized, so every
+        holding carries a `bw_sym_id` (resolve to ticker/name via
+        `/api/data/symbols/batch`). `report_date` (the sponsor's "Fund Holdings
+        as of" date) and `availability_date` (when that file was first observed)
+        are surfaced distinctly — never collapsed — and also as headers
+        `X-Data-As-Of` (= `report_date`) and `X-Data-Availability`
+        (= `availability_date`).
+
+
+        v1 returns the latest snapshot only (no `?as_of=` query). See
+        docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md §9.
+      operationId: getEtfHoldingsDataPlane
+      tags: [Funds Data Plane]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema: { type: string }
+          example: IVV
+        - name: top
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 25 }
+      responses:
+        "200":
+          description: ETF holdings snapshot.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: report_date — the sponsor's "Fund Holdings as of" date.
+            X-Data-Availability:
+              schema: { type: string, format: date }
+              description: availability_date — when that holdings file was first observed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  portfolio_id: { type: string, example: BW-ETF-IVV }
+                  ticker: { type: string, example: IVV }
+                  source_kind: { type: string, enum: [etf] }
+                  teo_frequency: { type: string, enum: [daily] }
+                  sponsor: { type: string, nullable: true, example: ishares }
+                  report_date: { type: string, format: date }
+                  availability_date: { type: string, format: date, nullable: true }
+                  aum_reported: { type: number, nullable: true }
+                  aum_erm3: { type: number, nullable: true }
+                  coverage_pct:
+                    type: number
+                    nullable: true
+                    description: aum_erm3 / aum_reported — in-ERM3 share of the resolved sleeve.
+                  n_holdings_returned: { type: integer }
+                  n_total_holdings: { type: integer }
+                  holdings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        bw_sym_id: { type: string }
+                        adj_mv: { type: number }
+                        weight: { type: number, nullable: true }
+        "404":
+          description: ETF not found or no holdings available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /funds/snapshot/{bw_fund_id}:
     get:
       summary: Composed fund snapshot (JSON)
