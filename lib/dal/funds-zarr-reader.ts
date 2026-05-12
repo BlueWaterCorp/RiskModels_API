@@ -128,57 +128,84 @@ async function openCohortZarrGroup(
   return openZarrGroupAt(`${kind}/${pathComponent}/${basename}`);
 }
 
-function nsToIsoDate(ns: bigint): string {
-  const ms = Number(ns / 1_000_000n);
-  const d = new Date(ms);
-  if (!Number.isFinite(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
+/** NaT sentinel for numpy datetime64 stored as int64. */
+const DATETIME64_NAT = -9223372036854775808n;
+
+const _CF_UNIT_MS: Record<string, number> = {
+  days: 86_400_000,
+  hours: 3_600_000,
+  minutes: 60_000,
+  seconds: 1_000,
+  milliseconds: 1,
+  microseconds: 1e-3,
+  nanoseconds: 1e-6,
+};
+
+/**
+ * Decode a numeric array of CF-encoded datetimes (`units: "<unit> since <date>"`,
+ * the standard xarray/zarr encoding) — or, when there's no CF `units` attr, a raw
+ * int64-nanoseconds-since-epoch array (numpy `datetime64[ns]`) — into ISO date
+ * strings; NaT → "".
+ *
+ * Works for whatever numeric typed array zarrita hands back for the dtype: `<i8`
+ * may surface as `BigInt64Array`, but some codecs/paths surface `Float64Array`/
+ * `Int32Array`. The CF branch is tried regardless of typed-array kind — the
+ * earlier "CF only if BigInt64Array" logic mis-decoded a `<i8` CF array surfaced
+ * as a non-BigInt array to 1970-01-01.
+ */
+function decodeCfOrNsDates(
+  d: unknown,
+  attrs: Record<string, unknown>,
+): string[] | null {
+  if (!ArrayBuffer.isView(d) || d instanceof Uint8Array) return null;
+  const entries: { v: number; nat: boolean }[] =
+    d instanceof BigInt64Array
+      ? Array.from(d, (raw) => ({ v: Number(raw), nat: raw === DATETIME64_NAT }))
+      : Array.from(d as unknown as ArrayLike<number>, (raw) => ({
+          v: Number(raw),
+          nat: !Number.isFinite(Number(raw)),
+        }));
+
+  const units = typeof attrs.units === "string" ? attrs.units : "";
+  const cf = units.match(
+    /^(days|hours|minutes|seconds|milliseconds|microseconds|nanoseconds) since (\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2}))?/i,
+  );
+
+  const toIso = (ms: number, nat: boolean): string => {
+    if (nat || !Number.isFinite(ms)) return "";
+    const dt = new Date(ms);
+    return Number.isFinite(dt.getTime()) ? dt.toISOString().slice(0, 10) : "";
+  };
+
+  if (cf) {
+    const unitMs = _CF_UNIT_MS[cf[1].toLowerCase()] ?? 86_400_000;
+    const baseMs = Date.parse(`${cf[2]}T${cf[3] ?? "00:00:00"}Z`);
+    if (!Number.isFinite(baseMs)) return null;
+    return entries.map(({ v, nat }) => toIso(baseMs + v * unitMs, nat || !Number.isFinite(v)));
+  }
+  // no CF units → assume int64 nanoseconds since epoch
+  return entries.map(({ v, nat }) => toIso(v / 1_000_000, nat || !Number.isFinite(v)));
+}
+
+/** Read a 1-D datetime variable (`teo`, `availability_date`, …) as ISO date strings. */
+async function readDatetimeVarStrings(
+  grp: Group<Readable>,
+  varName: string,
+): Promise<string[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    return decodeCfOrNsDates(ch?.data, (arr.attrs ?? {}) as Record<string, unknown>);
+  } catch {
+    return null;
+  }
 }
 
 async function readTeoStrings(
   grp: Group<Readable>,
 ): Promise<string[] | null> {
-  try {
-    const loc = grp.resolve("teo");
-    const arr = await open.v2(loc, { kind: "array" });
-    const ch = await get(arr, null);
-    const d = ch?.data;
-
-    const attrs = (arr.attrs ?? {}) as Record<string, unknown>;
-    const units = typeof attrs.units === "string" ? attrs.units : "";
-    const cfMatch = units.match(
-      /^days since (\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}:\d{2})?/,
-    );
-
-    if (d instanceof BigInt64Array && cfMatch) {
-      const baseMs = Date.parse(`${cfMatch[1]}T00:00:00Z`);
-      if (!Number.isFinite(baseMs)) return null;
-      const MS_PER_DAY = 86_400_000;
-      return Array.from(d, (v) => {
-        const t = baseMs + Number(v) * MS_PER_DAY;
-        const dt = new Date(t);
-        return Number.isFinite(dt.getTime())
-          ? dt.toISOString().slice(0, 10)
-          : "";
-      });
-    }
-    if (d instanceof BigInt64Array) {
-      return Array.from(d, (v) => nsToIsoDate(v));
-    }
-    if (ArrayBuffer.isView(d) && !(d instanceof Uint8Array)) {
-      const nums = d as unknown as ArrayLike<number>;
-      return Array.from(nums, (v) => {
-        const ms = Number(v) / 1_000_000;
-        const dt = new Date(ms);
-        return Number.isFinite(dt.getTime())
-          ? dt.toISOString().slice(0, 10)
-          : "";
-      });
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return readDatetimeVarStrings(grp, "teo");
 }
 
 async function readFloatSlice1d(
@@ -1085,4 +1112,130 @@ export async function readFilerPortfolioSeries(
     rows.push(row as unknown as FilerPortfolioRow);
   }
   return rows;
+}
+
+// ===========================================================================
+// ETF SPONSOR HOLDINGS READERS (canonical PortfolioSurface, MASTER_BACKLOG L.6 / D.9)
+//
+// Per-ETF stores live under bw_etf_id/{BW-ETF-...}/ — same internal helpers,
+// different path prefix. ds_ph.zarr schema matches the per-fund layout
+// (coords symbol = bw_sym_id, teo; data_vars adj_mv, has_new_data, aum_reported,
+// aum_erm3) with one addition: an `availability_date` coordinate aligned to
+// `teo` (the tradeable/observable axis is explicit from day one — see
+// docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md §3 / §9). teo_frequency
+// is `daily` here (vs `monthly` for funds, `quarterly` for 13F filers). Only
+// the in-ERM3 sleeve is materialized (cash / unresolvable lines are dropped,
+// same as the fund path), so every returned holding is in-ERM3 by construction.
+// ===========================================================================
+
+/** ticker → bw_etf_id, per the per-entity-id convention. */
+export function tickerToBwEtfId(ticker: string): string {
+  return `BW-ETF-${ticker.trim().toUpperCase()}`;
+}
+
+async function openEtfZarrGroup(
+  bwEtfId: string,
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAt(`bw_etf_id/${bwEtfId}/${basename}`);
+}
+
+export interface EtfHolding {
+  bw_sym_id: string;
+  adj_mv: number;
+  /** Fraction of `aum_erm3` (the in-ERM3 denominator). Null when AUM is null/0. */
+  weight: number | null;
+}
+
+export interface EtfHoldingsSnapshot {
+  portfolio_id: string;
+  ticker: string;
+  source_kind: "etf";
+  teo_frequency: "daily";
+  sponsor: string | null;
+  /** Economic-truth axis: the sponsor's "Fund Holdings as of" date (= latest teo). */
+  report_date: string;
+  /** Tradeable/observable axis: when that holdings file was first observed. May be null. */
+  availability_date: string | null;
+  aum_reported: number | null;
+  aum_erm3: number | null;
+  /** aum_erm3 / aum_reported — share of the resolved sleeve that is in the ERM3 universe. */
+  coverage_pct: number | null;
+  n_holdings_returned: number;
+  n_total_holdings: number;
+  holdings: EtfHolding[];
+}
+
+/**
+ * Top-N current holdings at the latest teo for an ETF (by ticker). Default n=25.
+ * Returns null when the ETF has no zarr or no positive holdings.
+ *
+ * Symmetric to `readFundHoldingsTopN` but reads `bw_etf_id/...` and surfaces the
+ * canonical-surface metadata (source_kind, teo_frequency, report_date vs
+ * availability_date, sponsor) alongside the holdings.
+ */
+export async function readEtfHoldingsTopN(
+  ticker: string,
+  n = 25,
+): Promise<EtfHoldingsSnapshot | null> {
+  const bwEtfId = tickerToBwEtfId(ticker);
+  const grp = await openEtfZarrGroup(bwEtfId, "ds_ph.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+
+  const [adjMv, aumReported, aumErm3, availStrings] = await Promise.all([
+    readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
+    readScalarAtTeo(grp, "aum_reported", teoIdx),
+    readScalarAtTeo(grp, "aum_erm3", teoIdx),
+    readDatetimeVarStrings(grp, "availability_date"),
+  ]);
+  if (!adjMv) return null;
+
+  const groupAttrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const sponsor = typeof groupAttrs.sponsor === "string" ? groupAttrs.sponsor : null;
+
+  const holdings: EtfHolding[] = [];
+  for (let i = 0; i < adjMv.length; i++) {
+    const v = adjMv[i];
+    if (v != null && v > 0) {
+      holdings.push({
+        bw_sym_id: symbols[i]!,
+        adj_mv: v,
+        weight: aumErm3 != null && aumErm3 > 0 ? v / aumErm3 : null,
+      });
+    }
+  }
+  if (holdings.length === 0) return null;
+  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  const safeN = Math.min(Math.max(n, 1), 1000);
+
+  const availability_date =
+    availStrings && availStrings[teoIdx] ? availStrings[teoIdx]! : null;
+  const coverage_pct =
+    aumReported != null && aumReported > 0 && aumErm3 != null
+      ? aumErm3 / aumReported
+      : null;
+
+  return {
+    portfolio_id: bwEtfId,
+    ticker: ticker.trim().toUpperCase(),
+    source_kind: "etf",
+    teo_frequency: "daily",
+    sponsor,
+    report_date: teo,
+    availability_date,
+    aum_reported: aumReported,
+    aum_erm3: aumErm3,
+    coverage_pct,
+    n_holdings_returned: Math.min(safeN, holdings.length),
+    n_total_holdings: holdings.length,
+    holdings: holdings.slice(0, safeN),
+  };
 }
