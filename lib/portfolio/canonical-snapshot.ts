@@ -14,6 +14,13 @@ import {
   normalizeWeights,
   runPortfolioRiskComputation,
 } from "@/lib/portfolio/portfolio-risk-core";
+import {
+  computeDiversificationMetrics,
+  type CorrelationMatrix,
+  type DiversificationResult,
+  type DiversificationTickerMetrics,
+} from "@/lib/portfolio/portfolio-diversification";
+import { fetchEtfCorrelationMatrices } from "@/lib/portfolio/portfolio-diversification-etf-returns";
 
 const RETURN_LAYER_KEYS: V3MetricKey[] = [
   "returns_gross",
@@ -60,6 +67,15 @@ export type CanonicalSnapshotResponse = {
       l3_sub_hr: number | null;
       vol_23d: number | null;
     }>;
+    /**
+     * Diversification-adjusted shares of the *portfolio's* variance, renormalized
+     * to sum to ~1. Position residuals are largely uncorrelated, so a portfolio's
+     * idiosyncratic variance is far smaller than the naive position-weighted sum;
+     * sector/subsector exposures partially cancel via realized ETF correlations.
+     * The naive PWS figures, the credit, and per-layer multipliers are in
+     * `diversification` below. (Falls back to the naive decomposition only if the
+     * adjusted total is degenerate.)
+     */
     variance_decomposition: {
       market: number;
       sector: number;
@@ -67,6 +83,15 @@ export type CanonicalSnapshotResponse = {
       residual: number;
       systematic: number;
     };
+    /**
+     * Naive (position-weighted-sum, "if residuals were perfectly correlated")
+     * vs correlation-adjusted decomposition + per-layer diversification credit.
+     * `correlation_adjusted` is in variance-fraction-of-average-position units
+     * (so its `total` is < 1 by the total diversification benefit);
+     * `variance_decomposition` above is that, renormalized to the portfolio's
+     * own variance.
+     */
+    diversification: DiversificationResult;
     portfolio_volatility_23d: number | null;
     unresolved: { ticker: string; error: string }[];
   };
@@ -419,15 +444,82 @@ export async function buildCanonicalPortfolioSnapshot(input: {
 
   const maxW = perPositions[0]?.weight ?? 0;
   const highSingle = maxW > 0.4;
-  const er = core.portfolioER;
-  const layerMax = Math.max(er.market, er.sector, er.subsector);
-  const highLayer = layerMax > 0.55;
+
+  // ── Diversification-adjusted decomposition ───────────────────────────────
+  // `core.portfolioER` is the naive position-weighted sum (treats the book as
+  // one weighted-average position — wrong for residual, which is ~uncorrelated
+  // across names, and overstated for sector/subsector). Compute the
+  // correlation-adjusted decomposition and make *that* the headline. The naive
+  // figures + the credit stay available in `snapshot.diversification`.
+  const tickerMetrics = new Map<string, DiversificationTickerMetrics>();
+  const sectorEtfSet = new Set<string>();
+  const subsectorEtfSet = new Set<string>();
+  for (const t of resolvedTickers) {
+    const pt = core.perTicker[t] as Record<string, unknown>;
+    const sectorEtf =
+      (pt.sector_etf as string | undefined) ?? symbolMap.get(t)?.sector_etf ?? null;
+    const subsectorEtf =
+      (pt.subsector_etf as string | undefined) ?? symbolMap.get(t)?.subsector_etf ?? null;
+    tickerMetrics.set(t, {
+      l3_mkt_er: (pt.l3_mkt_er as number) ?? null,
+      l3_sec_er: (pt.l3_sec_er as number) ?? null,
+      l3_sub_er: (pt.l3_sub_er as number) ?? null,
+      l3_res_er: (pt.l3_res_er as number) ?? null,
+      sector_etf: sectorEtf,
+      subsector_etf: subsectorEtf,
+    });
+    if (sectorEtf) sectorEtfSet.add(sectorEtf);
+    if (subsectorEtf) subsectorEtfSet.add(subsectorEtf);
+  }
+
+  let etfCorrelations: { sector: CorrelationMatrix; subsector: CorrelationMatrix } = {
+    sector: { etfs: [], R: [] },
+    subsector: { etfs: [], R: [] },
+  };
+  try {
+    etfCorrelations = await fetchEtfCorrelationMatrices(
+      [...sectorEtfSet],
+      [...subsectorEtfSet],
+      lookbackDays,
+    );
+  } catch {
+    // Non-fatal: residual still gets its concentration multiplier (needs no
+    // correlations); sector/subsector simply receive no diversification credit.
+  }
+
+  // `positions` are already normalized to sum to 1 (resolveSnapshotPortfolioToWeights
+  // → normalizeWeights); computeDiversificationMetrics skips any ticker not in
+  // tickerMetrics, exactly as computePortfolioER does.
+  const diversification = computeDiversificationMetrics({
+    positions,
+    tickerMetrics,
+    etfCorrelations,
+    windowDays: lookbackDays,
+  });
+
+  const adj = diversification.correlation_adjusted;
+  const decomp =
+    adj.total > 1e-9
+      ? {
+          market: adj.market_er / adj.total,
+          sector: adj.sector_er / adj.total,
+          subsector: adj.subsector_er / adj.total,
+          residual: adj.residual_er / adj.total,
+        }
+      : {
+          market: core.portfolioER.market,
+          sector: core.portfolioER.sector,
+          subsector: core.portfolioER.subsector,
+          residual: core.portfolioER.residual,
+        };
+  const decompSystematic = decomp.market + decomp.sector + decomp.subsector;
+  const highLayer = Math.max(decomp.market, decomp.sector, decomp.subsector) > 0.55;
 
   const driverScores: { label: string; value: number }[] = [
-    { label: "market", value: er.market },
-    { label: "sector", value: er.sector },
-    { label: "subsector", value: er.subsector },
-    { label: "residual", value: er.residual },
+    { label: "market", value: decomp.market },
+    { label: "sector", value: decomp.sector },
+    { label: "subsector", value: decomp.subsector },
+    { label: "residual", value: decomp.residual },
   ].sort((a, b) => b.value - a.value);
   const dominant_drivers = driverScores.slice(0, 3).map((d) => d.label);
 
@@ -439,11 +531,8 @@ export async function buildCanonicalPortfolioSnapshot(input: {
     l3_sub_er: p.l3_sub_er,
   }));
 
-  const systematicEr = core.systematic;
-  const systematic_risk_share =
-    systematicEr + er.residual > 0
-      ? systematicEr / (systematicEr + er.residual)
-      : 0;
+  // Shares sum to ~1, so systematic_risk_share == decompSystematic.
+  const systematic_risk_share = decompSystematic;
 
   const body: CanonicalSnapshotResponse = {
     snapshot: {
@@ -453,12 +542,13 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       benchmark: benchmark,
       positions: perPositions,
       variance_decomposition: {
-        market: er.market,
-        sector: er.sector,
-        subsector: er.subsector,
-        residual: er.residual,
-        systematic: core.systematic,
+        market: decomp.market,
+        sector: decomp.sector,
+        subsector: decomp.subsector,
+        residual: decomp.residual,
+        systematic: decompSystematic,
       },
+      diversification,
       portfolio_volatility_23d: core.portfolioVol,
       unresolved: core.errorsList,
     },
