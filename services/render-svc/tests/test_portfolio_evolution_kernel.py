@@ -42,9 +42,11 @@ FIXTURES = Path(__file__).parent / "fixtures" / "m4"
 
 # Candidate local paths for `ds_erm3_monthly_SPY_uni_mc_3000.zarr`. Production
 # loads via `read_monthly_returns()`; tests probe the typical local-dev paths.
+# ERM3_Data is the pipeline's authoritative write target — Funds_DAG paths are
+# downstream copies that can lag. Try the authoritative path first.
 ERM3_MONTHLY_CANDIDATES = [
-    Path("/Volumes/ext_2t/Funds_DAG_data/funds_data/zarr/ds_erm3_monthly_SPY_uni_mc_3000.zarr"),
     Path("/Volumes/ext_2t/ERM3_Data/stock_data/zarr/eodhd/ds_erm3_monthly_SPY_uni_mc_3000.zarr"),
+    Path("/Volumes/ext_2t/Funds_DAG_data/funds_data/zarr/ds_erm3_monthly_SPY_uni_mc_3000.zarr"),
 ]
 
 
