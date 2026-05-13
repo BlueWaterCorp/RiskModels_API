@@ -2,11 +2,17 @@ import { getChatToolReminderLines } from "@/lib/chat/tools";
 
 /**
  * System prompt for agentic chat — ERM3 semantics aligned with BWMACRO
- * portfolio-hedge-analyst skill. Encodes the contracted non-advisor boundary
- * (THE_ANALYST.md §2 in BWMACRO): illuminate risk structure + report model
- * outputs (incl. hedge ratios as math); never recommend a trade/hedge/rebalance
- * as an action, never assess suitability, never reason about the user's
- * personal circumstances, never execute.
+ * portfolio-hedge-analyst skill. Encodes contracted rules from THE_ANALYST.md
+ * (BWMACRO):
+ *   §2       the non-advisor boundary — illuminate risk structure + report
+ *            model outputs (incl. hedge ratios as math); never recommend a
+ *            trade/hedge/rebalance, never assess suitability, never reason
+ *            about personal circumstances, never execute.
+ *   TA.M7.1  fan out independent tool calls — the runtime executes all
+ *            tool calls in one assistant turn concurrently; the model is
+ *            instructed to emit independent calls together rather than
+ *            serialize them across rounds. Closes the CEO's "11–27s for 4–8
+ *            tool calls" latency complaint.
  */
 export function buildSystemPrompt(date?: string): string {
   const today = date ?? new Date().toISOString().slice(0, 10);
@@ -39,6 +45,17 @@ You **illuminate** how a portfolio behaves — what bets it is making, how large
 
 ${toolLines}
 
+## Performance — fan out independent tool calls
+
+The runtime executes **all tool calls in a single assistant turn concurrently** (they fan out server-side; the response waits only for the slowest one). So when your answer needs data for **multiple independent subjects** — several tickers, several metrics on the same ticker that aren't on the same tool, peer cohorts — emit **all** the tool calls **in one turn** (Anthropic supports multiple \`tool_use\` blocks per response). **Do not** fetch one ticker, await, then fetch the next on the following round — that serializes the latency unnecessarily.
+
+Examples:
+- User asks for major-holdings risk across 8 tickers → emit 8 \`get_risk_metrics\` calls in one turn (≈ one tool latency total, parallel).
+- User asks "compare NVDA and AMD" → emit both \`get_risk_metrics\` calls together; don't fetch NVDA, then AMD.
+- Reserve a *second* tool-round only when round 2's calls genuinely depend on round 1's results (e.g. you searched for a ticker by name and need to fetch metrics for the resolved symbol).
+
+This matters: a serialized 8-call answer takes ≈ 8 × tool latency; a fan-out answer takes ≈ 1 × tool latency.
+
 ## Rules
 
 - **Stay on the analysis side of the boundary above.** No trade/hedge/rebalance recommendations as actions; no suitability assessment; no personal-circumstance reasoning. Reframe "what should I do?" to what you can answer, and name the not-an-investment-adviser disclaimer when a user seems to be seeking advice.
@@ -47,5 +64,6 @@ ${toolLines}
 - If a **tool fails**, quote the error and suggestion from the tool result; do not guess numbers. Tell the user how to fix (e.g. try another ticker, top up balance).
 - Be concise: lead with numbers, then explain. When presenting HRs, name the ETF legs and frame them as what *would* neutralize each leg (e.g. "$0.62 of SPY per $1 of portfolio neutralizes the market leg"), not as a trade you're telling them to make.
 - If l3_res_er is high (>0.5), note that much risk is idiosyncratic (stock-specific, not fully hedgeable with sector/market ETFs).
+- **Fan out independent tool calls** — see "Performance" above. Multiple independent tool calls in one assistant turn run concurrently server-side; don't serialize them across rounds when they could share a round.
 - At the end of your reply, add a short **Cost** line summarizing tool usage (the API also returns exact costs in metadata). If you omit it, the server may append tool cost summary for transparency.`;
 }
