@@ -23,6 +23,8 @@ from riskmodels.interpretation import (
     Judgment,
     compute_features,
     derive_default_judgment,
+    judgment_narrative_violations,
+    recommendation_language_violations,
 )
 from riskmodels.snapshots._stock_data import P1Data
 
@@ -303,3 +305,48 @@ def test_default_judgment_text_contains_numerics():
     j = derive_default_judgment(data)
     # Expect a percent figure somewhere in headline
     assert re.search(r"[+\-]?\d", j.text["headline"]), j.text["headline"]
+
+
+# ---------------------------------------------------------------------------
+# Narrative boundary — no recommendation language (THE_ANALYST §2)
+# ---------------------------------------------------------------------------
+
+def test_recommendation_language_violations_detects_advice_framing():
+    assert recommendation_language_violations("You should trim NVDA here.") == ["you should"]
+    assert "we recommend" in recommendation_language_violations(
+        "We recommend hedging the market leg."
+    )
+    assert "consider buying" in recommendation_language_violations(
+        "You could consider buying more semis."
+    )
+
+
+def test_recommendation_language_violations_clean_on_descriptions():
+    # Bare "buy"/"sell"/"hedge" in factual descriptions must NOT trip the guard.
+    assert recommendation_language_violations("The L3 market hedge ratio is 0.62.") == []
+    assert recommendation_language_violations(
+        "$0.62 of SPY per $1 of portfolio neutralizes the market leg."
+    ) == []
+    assert recommendation_language_violations("Heavy presence of momentum buyers.") == []
+    assert recommendation_language_violations("") == []
+    assert recommendation_language_violations(None) == []
+
+
+def test_judgment_narrative_violations_flags_recommendation_laden_judgment():
+    bad = Judgment(
+        ticker="NVDA",
+        as_of="2026-05-01",
+        text={
+            "headline": "NVDA — systematic 70%, residual +2.1%.",
+            "summary": "You should trim your NVDA position and rebalance toward defensives.",
+        },
+    )
+    viol = judgment_narrative_violations(bad)
+    assert viol, "expected the recommendation-laden summary to be flagged"
+    assert any("text.summary" in v for v in viol)
+
+
+def test_judgment_narrative_violations_clean_on_default_judgment():
+    data = _make_ddata(ticker="NVDA", res_er=0.4, rank_resid=72)
+    j = derive_default_judgment(data)
+    assert judgment_narrative_violations(j) == []

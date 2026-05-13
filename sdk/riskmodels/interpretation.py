@@ -201,6 +201,64 @@ def compute_features(data: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Narrative boundary — no recommendation language in a Judgment
+#
+# The Analyst illuminates risk structure and reports model outputs (including
+# hedge ratios *as math*); it never recommends a specific trade / hedge /
+# rebalance, never assesses suitability, never reasons about the user's personal
+# circumstances. See THE_ANALYST.md §2 (BWMACRO). Same class of guard as the
+# no-mock-data rule: a Judgment whose deterministic narrative text trips this
+# fails CI (`contract_check`). The BWMACRO editorial engine imports the same
+# check so it can't ship recommendation-laden text either.
+# ---------------------------------------------------------------------------
+
+# Unambiguous recommendation framings. Low false-positive on purpose — we flag
+# *advice framing* ("you should …", "we recommend …", "consider buying …"), not
+# the bare words "buy"/"sell"/"hedge", which appear in legitimate descriptions
+# ("the L3 market hedge ratio is 0.62", "buyers and sellers").
+_RECOMMENDATION_MARKERS: tuple[str, ...] = (
+    "you should", "you shouldn't", "you ought to", "you need to", "you must ",
+    "you'll want to", "you will want to", "you might want to", "you may want to",
+    "you could trim", "you could buy", "you could sell", "you could hedge",
+    "you could rebalance", "you could add", "you could reduce",
+    "we recommend", "we'd recommend", "we would recommend", "i recommend",
+    "i'd recommend", "we suggest you", "we suggest that you", "i suggest you",
+    "we'd suggest", "i'd suggest", "we advise", "i advise",
+    "our recommendation", "our advice", "is recommended", "is advised",
+    "consider buying", "consider selling", "consider trimming",
+    "consider hedging", "consider rebalancing", "consider adding",
+    "consider reducing", "consider rotating",
+)
+
+
+def recommendation_language_violations(text: str | None) -> list[str]:
+    """Return the recommendation-framing markers found in ``text`` (case-insensitive).
+
+    Empty list ⇒ clean. See the section comment above for the boundary.
+    """
+    if not text:
+        return []
+    low = text.lower()
+    return [m for m in _RECOMMENDATION_MARKERS if m in low]
+
+
+def judgment_narrative_violations(judgment: Judgment) -> list[str]:
+    """Scan a Judgment's deterministic narrative text fields for recommendation
+    language. Returns ``["text.<field>: '<marker>'", ...]`` — empty when clean.
+
+    Only the free-text ``text`` dict is scanned; ``states``/``flags`` are
+    machine labels, not prose.
+    """
+    out: list[str] = []
+    for field_name, value in (judgment.text or {}).items():
+        if not isinstance(value, str):
+            continue
+        for marker in recommendation_language_violations(value):
+            out.append(f"text.{field_name}: {marker!r}")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Bland public stub — raw numerics, no editorial vocabulary
 # ---------------------------------------------------------------------------
 
@@ -298,4 +356,6 @@ __all__ = [
     "Judgment",
     "compute_features",
     "derive_default_judgment",
+    "recommendation_language_violations",
+    "judgment_narrative_violations",
 ]
