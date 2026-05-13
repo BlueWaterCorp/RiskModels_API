@@ -56,42 +56,34 @@ def _find_erm3_monthly() -> Path | None:
 
 
 def _is_local_erm3_stale(em: xr.Dataset) -> bool:
-    """Two staleness signals — either trips → skip ground-truth tests:
+    """L3-bucket staleness — skips ground-truth tests when the local zarr's
+    incremental subsector decomposition is broken (H.22 in MASTER_BACKLOG).
 
-    (a) L3 decomp staleness: ≥ 50 % of a 30-symbol recent sample has
-        `factor_return.sel(level='sector') == factor_return.sel(level='subsector')`
-        (a known data bug in the locally-mounted external-drive zarr).
-    (b) Date staleness: `last_teo` is older than the fixtures' typical expected
-        window (≤ 2026-01) — D.8.22 ran against a more recent zarr.
+    Uses a **canary** of high-weight Berkshire/Pershing names. If any of these
+    still show `factor_return.sector == factor_return.subsector` at the last
+    teo, the H.22 rebuild missed the symbols that dominate Berkshire/Baupost
+    portfolio weights, so the strict L3 ground-truth comparison will fail.
     """
 
-    if em.sizes.get("teo", 0) < 2:
+    if em.sizes.get("teo", 0) < 2 or "ticker" not in em.coords:
         return True
 
-    syms = em["symbol"].values
-    if len(syms) < 30:
-        return True
-    import numpy as _np
-
-    idx = _np.linspace(0, len(syms) - 1, 30).astype(int)
-    sample = [str(syms[i]) for i in idx]
+    canary_tickers = ["AAPL", "AXP", "V", "MA", "KR"]
+    tickers = em["ticker"].values
+    symbols = em["symbol"].values
     teo_last = em["teo"].values[-1]
-    n_equal = 0
-    for s in sample:
+    for tk in canary_tickers:
+        idx = np.where(tickers == tk)[0]
+        if len(idx) == 0:
+            continue
+        s = str(symbols[idx[0]])
         try:
             sec = float(em["factor_return"].sel(symbol=s, teo=teo_last, level="sector").values)
             sub = float(em["factor_return"].sel(symbol=s, teo=teo_last, level="subsector").values)
         except (KeyError, ValueError):
             continue
         if abs(sec - sub) < 1e-9 and abs(sec) > 1e-6:
-            n_equal += 1
-    if n_equal >= 15:
-        return True
-
-    last_teo_str = str(teo_last)[:10]
-    if last_teo_str < "2026-01-01":
-        return True
-
+            return True
     return False
 
 
