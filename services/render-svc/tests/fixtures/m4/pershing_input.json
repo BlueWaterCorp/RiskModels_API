@@ -1,0 +1,255 @@
+{
+  "filer": {
+    "name": "Pershing Square Capital Management",
+    "owner": "Bill Ackman",
+    "cik": "0001336528",
+    "archetype": "concentrated activist value, high residual share"
+  },
+  "window_quarters": 8,
+  "first_as_of": "2024-03-31",
+  "last_as_of": "2025-12-31",
+  "_bridge_misses_per_quarter": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "portfolio_history": [
+    {
+      "as_of_date": "2024-03-31",
+      "holdings": [
+        {
+          "ticker": "QSR",
+          "weight": 0.3100575368638728
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.23864644436648896
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.22882914895332535
+        },
+        {
+          "ticker": "CP",
+          "weight": 0.22246686981631295
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 5982790629.0
+    },
+    {
+      "as_of_date": "2024-06-30",
+      "holdings": [
+        {
+          "ticker": "QSR",
+          "weight": 0.2886312256471338
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.2453574395523514
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.2165771497052009
+        },
+        {
+          "ticker": "CP",
+          "weight": 0.20882393555484305
+        },
+        {
+          "ticker": "NKE",
+          "weight": 0.040610249540470864
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 5642288624.0
+    },
+    {
+      "as_of_date": "2024-09-30",
+      "holdings": [
+        {
+          "ticker": "QSR",
+          "weight": 0.23389316715666753
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.20581872678838609
+        },
+        {
+          "ticker": "NKE",
+          "weight": 0.20292352810573452
+        },
+        {
+          "ticker": "CP",
+          "weight": 0.17944044405793644
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.17792413389127545
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 7092237615.0
+    },
+    {
+      "as_of_date": "2024-12-31",
+      "holdings": [
+        {
+          "ticker": "HTZ",
+          "weight": 1.0
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 46533105.0
+    },
+    {
+      "as_of_date": "2025-03-31",
+      "holdings": [
+        {
+          "ticker": "UBER",
+          "weight": 0.3056426097111897
+        },
+        {
+          "ticker": "QSR",
+          "weight": 0.2122000813248113
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.19334161524793086
+        },
+        {
+          "ticker": "CP",
+          "weight": 0.14385341144896605
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.13678040530565289
+        },
+        {
+          "ticker": "HTZ",
+          "weight": 0.008181876961449255
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 7223281440.0
+    },
+    {
+      "as_of_date": "2025-06-30",
+      "holdings": [
+        {
+          "ticker": "UBER",
+          "weight": 0.34782909925043587
+        },
+        {
+          "ticker": "QSR",
+          "weight": 0.18759364095404468
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.15718539293006661
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.15656247482482974
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.13802193867074244
+        },
+        {
+          "ticker": "HTZ",
+          "weight": 0.012807453369880657
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 8127837283.0
+    },
+    {
+      "as_of_date": "2025-09-30",
+      "holdings": [
+        {
+          "ticker": "UBER",
+          "weight": 0.33295341977912524
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.1739172707783869
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.17292295291577772
+        },
+        {
+          "ticker": "QSR",
+          "weight": 0.1650170186334453
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.14355353072374022
+        },
+        {
+          "ticker": "HTZ",
+          "weight": 0.011635807169524585
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 8906959568.0
+    },
+    {
+      "as_of_date": "2025-12-31",
+      "holdings": [
+        {
+          "ticker": "UBER",
+          "weight": 0.21412347615217947
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.19238420014286972
+        },
+        {
+          "ticker": "GOOG",
+          "weight": 0.16779437845539616
+        },
+        {
+          "ticker": "META",
+          "weight": 0.1530965756288212
+        },
+        {
+          "ticker": "QSR",
+          "weight": 0.13534779292539154
+        },
+        {
+          "ticker": "HHH",
+          "weight": 0.13045761177305623
+        },
+        {
+          "ticker": "HTZ",
+          "weight": 0.006795964922285689
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Pershing Square Capital Management (CIK 0001336528)",
+      "_total_mv_usd": 11527339222.0
+    }
+  ]
+}

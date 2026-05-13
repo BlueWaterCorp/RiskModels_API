@@ -1,0 +1,635 @@
+{
+  "filer": {
+    "name": "Baupost Group",
+    "owner": "Seth Klarman",
+    "cik": "0001061165",
+    "archetype": "deep-value canon (Marks-substitute), long history + broader book"
+  },
+  "window_quarters": 8,
+  "first_as_of": "2024-03-31",
+  "last_as_of": "2025-12-31",
+  "_bridge_misses_per_quarter": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "portfolio_history": [
+    {
+      "as_of_date": "2024-03-31",
+      "holdings": [
+        {
+          "ticker": "META",
+          "weight": 0.11210851118125231
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.08768782187807429
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.08753435992019061
+        },
+        {
+          "ticker": "CRM",
+          "weight": 0.07807157686662347
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.07594999903140097
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.06600804864521269
+        },
+        {
+          "ticker": "INTU",
+          "weight": 0.06334958496062738
+        },
+        {
+          "ticker": "XYZ",
+          "weight": 0.061528005372102255
+        },
+        {
+          "ticker": "BBWI",
+          "weight": 0.05276692222280419
+        },
+        {
+          "ticker": "VST",
+          "weight": 0.048237142193928
+        },
+        {
+          "ticker": "SPOT",
+          "weight": 0.04809152667815757
+        },
+        {
+          "ticker": "WDAY",
+          "weight": 0.04167488839903218
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.03976707397637493
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.03538720942802289
+        },
+        {
+          "ticker": "DKS",
+          "weight": 0.02911396443303399
+        },
+        {
+          "ticker": "EPAM",
+          "weight": 0.027733982023464495
+        },
+        {
+          "ticker": "IBN",
+          "weight": 0.027502536442195077
+        },
+        {
+          "ticker": "CEG",
+          "weight": 0.017486846347502683
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 9259610783.0
+    },
+    {
+      "as_of_date": "2024-06-30",
+      "holdings": [
+        {
+          "ticker": "MSFT",
+          "weight": 0.1103788004478666
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.10508552677639837
+        },
+        {
+          "ticker": "META",
+          "weight": 0.0859508651402621
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.08263588227601532
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.08214997641216337
+        },
+        {
+          "ticker": "INTU",
+          "weight": 0.07250343776891088
+        },
+        {
+          "ticker": "VST",
+          "weight": 0.071871758104411
+        },
+        {
+          "ticker": "SPOT",
+          "weight": 0.06472801537387111
+        },
+        {
+          "ticker": "XYZ",
+          "weight": 0.060471207370725165
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.05801223129680664
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.05627863950869942
+        },
+        {
+          "ticker": "BBWI",
+          "weight": 0.05401652600945505
+        },
+        {
+          "ticker": "CEG",
+          "weight": 0.03929248562290225
+        },
+        {
+          "ticker": "GEV",
+          "weight": 0.030967317086452686
+        },
+        {
+          "ticker": "ARES",
+          "weight": 0.025657330805060045
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 8180290249.0
+    },
+    {
+      "as_of_date": "2024-09-30",
+      "holdings": [
+        {
+          "ticker": "META",
+          "weight": 0.11493251882721889
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.10843937352287206
+        },
+        {
+          "ticker": "VST",
+          "weight": 0.08564844236013773
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.07563411847620914
+        },
+        {
+          "ticker": "CRM",
+          "weight": 0.06792781184049217
+        },
+        {
+          "ticker": "CEG",
+          "weight": 0.0660871216269864
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.06269333296322017
+        },
+        {
+          "ticker": "INTU",
+          "weight": 0.0607386952461528
+        },
+        {
+          "ticker": "SPOT",
+          "weight": 0.06073745651325125
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.05774366191138015
+        },
+        {
+          "ticker": "XYZ",
+          "weight": 0.054662017484644526
+        },
+        {
+          "ticker": "SBUX",
+          "weight": 0.041922798517210154
+        },
+        {
+          "ticker": "WDAY",
+          "weight": 0.041626663010703634
+        },
+        {
+          "ticker": "ARES",
+          "weight": 0.03394387223665584
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.0328431420783335
+        },
+        {
+          "ticker": "GEV",
+          "weight": 0.03129047217933906
+        },
+        {
+          "ticker": "HUT",
+          "weight": 0.001604391058096456
+        },
+        {
+          "ticker": "WULF",
+          "weight": 0.0015241101470960725
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 9420109844.0
+    },
+    {
+      "as_of_date": "2024-12-31",
+      "holdings": [
+        {
+          "ticker": "META",
+          "weight": 0.11866737934223565
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.0827115692453026
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.07745723916313386
+        },
+        {
+          "ticker": "VST",
+          "weight": 0.07343195823797366
+        },
+        {
+          "ticker": "INTU",
+          "weight": 0.07233862103594825
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.06876732193576607
+        },
+        {
+          "ticker": "LLY",
+          "weight": 0.06013431026761396
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.0595764076747296
+        },
+        {
+          "ticker": "SBUX",
+          "weight": 0.05878917951291696
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.057412405427411044
+        },
+        {
+          "ticker": "CRM",
+          "weight": 0.052067194286266105
+        },
+        {
+          "ticker": "SPOT",
+          "weight": 0.04066646969724302
+        },
+        {
+          "ticker": "WDAY",
+          "weight": 0.03962667536908462
+        },
+        {
+          "ticker": "CEG",
+          "weight": 0.038675651615853096
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.03496334509740982
+        },
+        {
+          "ticker": "XYZ",
+          "weight": 0.031845289635361006
+        },
+        {
+          "ticker": "ARES",
+          "weight": 0.029540102462660336
+        },
+        {
+          "ticker": "HUT",
+          "weight": 0.001412521969989953
+        },
+        {
+          "ticker": "CIFR",
+          "weight": 0.0010823479789417248
+        },
+        {
+          "ticker": "WULF",
+          "weight": 0.0008340100441586544
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 10050301023.0
+    },
+    {
+      "as_of_date": "2025-03-31",
+      "holdings": [
+        {
+          "ticker": "META",
+          "weight": 0.10937634786515335
+        },
+        {
+          "ticker": "INTU",
+          "weight": 0.09303846857429658
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.08939343325517923
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.07943407470386539
+        },
+        {
+          "ticker": "SBUX",
+          "weight": 0.06996531704120844
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.061471772465614534
+        },
+        {
+          "ticker": "CVNA",
+          "weight": 0.06088304848475913
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.05944860604919008
+        },
+        {
+          "ticker": "VST",
+          "weight": 0.05837421882672428
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.05461577932449213
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.05154784260859296
+        },
+        {
+          "ticker": "CRM",
+          "weight": 0.050162690612736656
+        },
+        {
+          "ticker": "LLY",
+          "weight": 0.0491961446112234
+        },
+        {
+          "ticker": "TOL",
+          "weight": 0.043317967068374305
+        },
+        {
+          "ticker": "CDNS",
+          "weight": 0.033448678073013174
+        },
+        {
+          "ticker": "ARES",
+          "weight": 0.0253911717832555
+        },
+        {
+          "ticker": "WING",
+          "weight": 0.01093443865232085
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 9264129163.0
+    },
+    {
+      "as_of_date": "2025-06-30",
+      "holdings": [
+        {
+          "ticker": "VST",
+          "weight": 0.13052983359824416
+        },
+        {
+          "ticker": "META",
+          "weight": 0.1279311129781857
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.11495819005451136
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.09604458758006469
+        },
+        {
+          "ticker": "CVNA",
+          "weight": 0.07537385194410647
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.0723128421725804
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.06823043333747154
+        },
+        {
+          "ticker": "INTU",
+          "weight": 0.06327028634455249
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.05746838627095709
+        },
+        {
+          "ticker": "SBUX",
+          "weight": 0.05305340518096262
+        },
+        {
+          "ticker": "CRM",
+          "weight": 0.05288980643132225
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.052284835532944336
+        },
+        {
+          "ticker": "WIX",
+          "weight": 0.03565242857409686
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 9606204225.0
+    },
+    {
+      "as_of_date": "2025-09-30",
+      "holdings": [
+        {
+          "ticker": "META",
+          "weight": 0.11718314668624956
+        },
+        {
+          "ticker": "VST",
+          "weight": 0.1111050873838862
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.0961753973860109
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.09032284124307342
+        },
+        {
+          "ticker": "CVNA",
+          "weight": 0.08036399131155178
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.07554394819702338
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.07450829971750596
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.06591692787617043
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.06399169488487687
+        },
+        {
+          "ticker": "SBUX",
+          "weight": 0.05678389907214825
+        },
+        {
+          "ticker": "VMC",
+          "weight": 0.05140127334034008
+        },
+        {
+          "ticker": "WING",
+          "weight": 0.04529238194117421
+        },
+        {
+          "ticker": "SE",
+          "weight": 0.040322793545165235
+        },
+        {
+          "ticker": "ETSY",
+          "weight": 0.03108831741482372
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 8286526915.0
+    },
+    {
+      "as_of_date": "2025-12-31",
+      "holdings": [
+        {
+          "ticker": "VST",
+          "weight": 0.10896269477517563
+        },
+        {
+          "ticker": "CVNA",
+          "weight": 0.09730987696817898
+        },
+        {
+          "ticker": "KKR",
+          "weight": 0.08261790308931846
+        },
+        {
+          "ticker": "MSFT",
+          "weight": 0.07734482838595823
+        },
+        {
+          "ticker": "DASH",
+          "weight": 0.07425017533990211
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.07222243397915999
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.07207603439345764
+        },
+        {
+          "ticker": "APP",
+          "weight": 0.06815557322073727
+        },
+        {
+          "ticker": "VMC",
+          "weight": 0.06224040394019803
+        },
+        {
+          "ticker": "PM",
+          "weight": 0.0549495999162076
+        },
+        {
+          "ticker": "CRS",
+          "weight": 0.05356757656849187
+        },
+        {
+          "ticker": "WING",
+          "weight": 0.049302504499937734
+        },
+        {
+          "ticker": "CLH",
+          "weight": 0.041875720617105414
+        },
+        {
+          "ticker": "AFRM",
+          "weight": 0.036817763005870904
+        },
+        {
+          "ticker": "ENTG",
+          "weight": 0.033345676004289226
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.007127058572314731
+        },
+        {
+          "ticker": "TDG",
+          "weight": 0.003313634868601957
+        },
+        {
+          "ticker": "BSX",
+          "weight": 0.0024923035208363063
+        },
+        {
+          "ticker": "SPOT",
+          "weight": 0.0013366541365427433
+        },
+        {
+          "ticker": "V",
+          "weight": 0.0006915841977151577
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "_source": "13F Baupost Group (CIK 0001061165)",
+      "_total_mv_usd": 7716708996.0
+    }
+  ]
+}
