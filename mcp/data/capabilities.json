@@ -1069,6 +1069,30 @@
     "tags": ["etf", "metrics", "portfolio-surface", "funds"]
   },
   {
+    "id": "etf-search",
+    "name": "ETF Search & Discovery",
+    "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name / sponsor in the committed cross-repo catalog (mirror of Funds_DAG configs/etf_universe.yaml). Returns ticker + bw_etf_id + name + sponsor + product_url per hit, with a ranking score (100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-prefix; 30 name substring; 20 sponsor). Empty q returns the universe (capped at limit). Mirrors the /api/data/funds/search + /api/13f/filers/search pattern. MASTER_BACKLOG L.6 / D.9.",
+    "endpoint": "/api/data/etf/search",
+    "method": "GET",
+    "parameters": {
+      "q": { "type": "string", "required": false, "description": "Search query (ticker / name / sponsor; case-insensitive)." },
+      "limit": { "type": "integer", "required": false, "default": 25, "description": "Max rows returned (1-100)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.0, "currency": "USD", "billing_code": "etf_search_v1" },
+    "performance": {
+      "avg_latency_ms": 20,
+      "p95_latency_ms": 50,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "weekly",
+      "sources": ["funds_dag.configs.etf_universe", "etf_master.json"]
+    },
+    "tags": ["etf", "search", "discovery", "free", "funds"]
+  },
+  {
     "id": "etf-holdings",
     "name": "ETF Holdings (canonical PortfolioSurface)",
     "description": "Top-N current holdings of an ETF from its canonical PortfolioSurface zarr (Funds_DAG etf_holdings_zarr — source_kind=etf, teo_frequency=daily; iShares today, State Street/Vanguard follow). In-ERM3 sleeve only — every holding carries a bw_sym_id. Surfaces report_date (sponsor 'Fund Holdings as of') and availability_date (when observed) distinctly. MASTER_BACKLOG L.6 / D.9.",
