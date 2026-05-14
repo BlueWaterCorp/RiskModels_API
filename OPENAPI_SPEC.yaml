@@ -703,6 +703,14 @@ components:
         Canonical JSON portfolio snapshot: L3 variance decomposition, frozen-weight daily
         attribution (gross and factor strips), cumulative return and drawdown, and risk summary.
         Response also includes `_metadata` and `_agent` (see other metered POST routes).
+
+
+        When the request supplies a `benchmark` (alias like `SPY` or `70/30`, or a `BW-BENCH-*`
+        id), both `snapshot.benchmark_context_id` and `metadata.benchmark_context_id` carry the
+        resolved `BenchmarkContext` id — the same id consumers can fetch from
+        `/api/data/benchmark/{id}` for methodology / components / `benchmark_kind`. The raw
+        `benchmark` string still echoes back unchanged; unresolved values produce a `null`
+        `benchmark_context_id` (and the raw string is preserved for back-compat).
       required: [snapshot, time_behavior, attribution, risk_summary, metadata]
       properties:
         snapshot:
