@@ -7,6 +7,8 @@ Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) 
 
 **Try the Analysis Object Model without cloning:** open the **[AOM quickstart (Colab)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)** — install cell, API key (Secrets or paste), then `rm` / `run` examples. Same flows live in-repo as [`notebooks/quickstart.ipynb`](./notebooks/quickstart.ipynb).
 
+**Thin surface walkthroughs (Colab):** [![Open in Colab — stocks (SDK)](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/surface_stocks_sdk.ipynb) · [![Open in Colab — funds & 13F (HTTP)](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/surface_funds_http.ipynb) — [`surface_stocks_sdk.ipynb`](./notebooks/surface_stocks_sdk.ipynb) (`get_metrics`, `analyze_portfolio`) and [`surface_funds_http.ipynb`](./notebooks/surface_funds_http.ipynb) (funds search, `GET /data/benchmark/…`, 13F via `quickstart_connect`). For the full REST → SDK → AOM ladder, use [`riskmodels_quickstart.ipynb`](./notebooks/riskmodels_quickstart.ipynb).
+
 Python SDK for the [RiskModels API](https://riskmodels.app): **POST /decompose** returns variance shares and ETF hedge ratios for any US equity, separating factor exposure from the residual bet so you can hedge what you don't want. ERM3 model; batch portfolio analysis included.
 
 ## Install
