@@ -533,3 +533,155 @@ def test_kernel_noise_floor_formula(
     trade_bps = result["return_attribution"]["trade_effect_bps"]
     expected_above = abs(trade_bps) > expected_floor_bps
     assert result["return_attribution"]["above_noise"] == expected_above
+
+
+# ── narrative_v1 (THE_ANALYST §6 NarrativeEvaluator constraints) ────────────
+
+from render_svc.portfolio_evolution import _build_narrative_v1  # noqa: E402
+
+
+# Recommendation verbs forbidden in narrative_v1 (THE_ANALYST §2 / contract_check).
+# Tokenized (whitespace / punctuation boundaries) so "considerable", "should"-in-ticker
+# etc. don't false-positive.
+_RECOMMENDATION_TOKENS = {
+    "buy", "sell", "trim", "trimmed", "trimming", "add", "added", "adding",
+    "should", "must", "consider", "recommend", "recommended", "suggest",
+    "ought", "advise", "advised", "purchase", "purchased", "divest",
+}
+
+
+def _assert_no_recommendation_language(text: str) -> None:
+    import re
+
+    tokens = {t.lower() for t in re.findall(r"[A-Za-z']+", text)}
+    leaked = tokens & _RECOMMENDATION_TOKENS
+    assert not leaked, f"narrative_v1 leaked recommendation tokens: {leaked} — text: {text!r}"
+
+
+def _baseline_kwargs():
+    """Minimal kwargs for _build_narrative_v1 — happy-path, above noise, full coverage."""
+    return dict(
+        window={"from_date": "2026-04-15", "to_date": "2026-05-12"},
+        return_attribution={
+            "total_return_pct": 1.84,
+            "static_return_pct": 1.21,
+            "trade_effect_bps": 63,
+            "market_effect_bps": 121,
+            "noise_floor_bps": 25,
+            "above_noise": True,
+            "top_contributors_by_trade": [
+                {"ticker": "PLTR", "symbol": "P1", "contribution_bps": 45},
+                {"ticker": "AAPL", "symbol": "A1", "contribution_bps": -12},
+            ],
+        },
+        variance_share_attribution={
+            "by_l3_bucket": {
+                "market": {"actual_share": 0.4, "static_share": 0.42, "delta": -0.02, "above_noise": False},
+                "sector": {"actual_share": 0.2, "static_share": 0.2, "delta": 0.0, "above_noise": False},
+                "subsector": {"actual_share": 0.1, "static_share": 0.1, "delta": 0.0, "above_noise": False},
+                "residual": {"actual_share": 0.3, "static_share": 0.28, "delta": 0.02, "above_noise": True},
+            },
+        },
+        coverage_in_erm3=0.92,
+    )
+
+
+def test_narrative_v1_happy_path_grounded_and_compact():
+    kw = _baseline_kwargs()
+    text = _build_narrative_v1(**kw)
+    assert "Your book moved +1.84%" in text
+    assert "2026-04-15" in text and "2026-05-12" in text
+    assert "+63bps" in text  # trade effect
+    assert "+121bps" in text  # market effect
+    assert "PLTR" in text  # dominant lead-mover surfaced
+    assert "AAPL" not in text  # second contributor not surfaced
+    assert "Residual variance share rose" in text  # above-noise variance sentence
+    _assert_no_recommendation_language(text)
+
+
+def test_narrative_v1_below_noise_does_not_claim_attribution():
+    kw = _baseline_kwargs()
+    kw["return_attribution"]["above_noise"] = False
+    kw["return_attribution"]["trade_effect_bps"] = 8
+    kw["return_attribution"]["noise_floor_bps"] = 220
+    text = _build_narrative_v1(**kw)
+    assert "+8bps" in text
+    assert "±220bps" in text or "220bps" in text
+    assert "noise floor" in text.lower()
+    # Below-noise must not name a lead mover (would be a fabricated insight).
+    assert "PLTR" not in text
+    assert "led by" not in text.lower()
+    _assert_no_recommendation_language(text)
+
+
+def test_narrative_v1_low_coverage_opens_with_caveat():
+    kw = _baseline_kwargs()
+    kw["coverage_in_erm3"] = 0.42
+    text = _build_narrative_v1(**kw)
+    assert text.startswith("Of the 42% of your book I model,")
+    assert "+1.84%" in text
+    _assert_no_recommendation_language(text)
+
+
+def test_narrative_v1_high_coverage_no_caveat():
+    kw = _baseline_kwargs()
+    kw["coverage_in_erm3"] = 0.85
+    text = _build_narrative_v1(**kw)
+    assert text.startswith("Your book moved")
+    assert "I model" not in text
+
+
+def test_narrative_v1_residual_share_below_noise_omits_sentence():
+    kw = _baseline_kwargs()
+    kw["variance_share_attribution"]["by_l3_bucket"]["residual"]["above_noise"] = False
+    text = _build_narrative_v1(**kw)
+    assert "Residual variance share" not in text
+
+
+def test_narrative_v1_lead_mover_gate_drops_weak_leaders():
+    """A lead < 30% of |trade_effect_bps| or < 10bps absolute should not be cited
+    (no-mock-data discipline — don't manufacture an insight from a noisy ordering)."""
+    kw = _baseline_kwargs()
+    kw["return_attribution"]["trade_effect_bps"] = 200
+    kw["return_attribution"]["top_contributors_by_trade"] = [
+        {"ticker": "TINY", "symbol": "T1", "contribution_bps": 8},
+    ]
+    text = _build_narrative_v1(**kw)
+    assert "TINY" not in text
+    assert "led by" not in text.lower()
+
+
+def test_narrative_v1_residual_share_fell_says_more_systematic():
+    kw = _baseline_kwargs()
+    kw["variance_share_attribution"]["by_l3_bucket"]["residual"]["delta"] = -0.05
+    kw["variance_share_attribution"]["by_l3_bucket"]["residual"]["above_noise"] = True
+    text = _build_narrative_v1(**kw)
+    assert "Residual variance share fell 5.0pp" in text
+    assert "more systematic" in text
+
+
+def test_narrative_v1_negative_return_renders_sign():
+    kw = _baseline_kwargs()
+    kw["return_attribution"]["total_return_pct"] = -3.4
+    text = _build_narrative_v1(**kw)
+    assert "-3.40%" in text  # explicit sign + 2 decimals
+
+
+def test_kernel_emits_narrative_v1_on_happy_path(
+    erm3_monthly: xr.Dataset, ticker_to_symbol: dict[str, str]
+):
+    """End-to-end: real Berkshire fixture → kernel must emit a non-empty
+    narrative_v1 that mentions the window dates and respects the §6 guardrails.
+    """
+    inp, _exp = _load_pair("berkshire")
+    result = compute_portfolio_evolution(
+        inp["portfolio_history"],
+        portfolio_id="berkshire/narrative",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+    )
+    text = result["narrative_v1"]
+    assert text and isinstance(text, str)
+    assert result["window"]["from_date"] in text
+    assert result["window"]["to_date"] in text
+    _assert_no_recommendation_language(text)

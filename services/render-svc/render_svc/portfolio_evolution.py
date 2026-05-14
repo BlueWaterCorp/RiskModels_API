@@ -35,7 +35,6 @@ endpoint's tests verify against.
   functional). Stub-empty for now; the variance-share *evolution* (the
   time-series) is populated.
 - The noise-floor enforcement (`above_noise` per slice). Stub-true for now.
-- The editorial `narrative_v1` (template English). Stub-string for now.
 - The `include_full_breakdown` query-param path. Default-only for now.
 """
 
@@ -184,6 +183,85 @@ def _empty_narrative(reason: str, n_snapshots: int) -> str:
     if reason == "window_too_short":
         return "Window too short for an attribution story — try a longer span between snapshots."
     return f"Cannot build a what-changed view yet ({reason})."
+
+
+def _build_narrative_v1(
+    *,
+    window: dict[str, Any],
+    return_attribution: dict[str, Any],
+    variance_share_attribution: dict[str, Any],
+    coverage_in_erm3: float,
+) -> str:
+    """Template English for the M4 happy path (design §1 example shape).
+
+    NarrativeEvaluator (THE_ANALYST.md §6) constraints enforced here:
+
+    - **Grounded** — every claim reads a field already present in this response;
+      no field invented from outside the kernel.
+    - **Non-contradictory with noise floor** — the trade-effect claim is only
+      made when `return_attribution.above_noise` is True. Below the floor the
+      sentence explicitly says the move is inside noise; it does not name a
+      lead position.
+    - **§2 boundary** — descriptive past-tense only ("the book moved", "led
+      by"); no recommendation verbs ("buy", "sell", "trim", "add", "should",
+      "consider"). The lead-mover citation names the ticker but never the
+      direction of the user's action.
+    - **No-mock-data** — the lead-mover clause is gated on `top_contributors_by_trade`
+      actually carrying a dominant entry (≥ 30% of |trade_effect_bps| AND ≥ 10bps
+      absolute); a quiet rebalance produces no fabricated lead.
+    - **Coverage-honest** — when `coverage_in_erm3 < 0.70`, the sentence opens
+      "Of the X% of your book I model, …" rather than implying the result
+      describes the whole portfolio.
+    """
+    from_d = window["from_date"]
+    to_d = window["to_date"]
+    total_pct = float(return_attribution["total_return_pct"])  # percent value
+    trade_bps = int(return_attribution["trade_effect_bps"])
+    market_bps = int(return_attribution["market_effect_bps"])
+    noise_floor_bps = int(return_attribution["noise_floor_bps"])
+    above_noise = bool(return_attribution["above_noise"])
+
+    if coverage_in_erm3 < 0.70:
+        cov_pct = int(round(coverage_in_erm3 * 100))
+        opener = f"Of the {cov_pct}% of your book I model, the covered sleeve moved {total_pct:+.2f}%"
+    else:
+        opener = f"Your book moved {total_pct:+.2f}%"
+
+    sentence_1 = f"{opener} from {from_d} to {to_d}."
+
+    if above_noise:
+        trade_clause = f"about {trade_bps:+d}bps came from rebalancing"
+        market_clause = f"{market_bps:+d}bps from the market move"
+        lead_clause = ""
+        top_trade_list = return_attribution.get("top_contributors_by_trade") or []
+        if top_trade_list:
+            lead = top_trade_list[0]
+            lead_bps = abs(int(lead.get("contribution_bps", 0)))
+            if lead_bps >= 10 and lead_bps >= abs(trade_bps) * 0.30:
+                lead_clause = f" (led by {lead['ticker']})"
+        sentence_2 = f"{trade_clause}{lead_clause}, and {market_clause}."
+        sentence_2 = sentence_2[0].upper() + sentence_2[1:]
+    else:
+        sentence_2 = (
+            f"The trade effect ({trade_bps:+d}bps) was inside the ±{noise_floor_bps}bps "
+            f"noise floor, so I can't tell rebalancing apart from natural variation."
+        )
+
+    sentences = [sentence_1, sentence_2]
+
+    residual_change = variance_share_attribution.get("by_l3_bucket", {}).get("residual", {})
+    if residual_change.get("above_noise"):
+        delta_pp = float(residual_change["delta"]) * 100
+        if delta_pp > 0:
+            sentences.append(
+                f"Residual variance share rose {abs(delta_pp):.1f}pp — the book's risk profile became more idiosyncratic."
+            )
+        else:
+            sentences.append(
+                f"Residual variance share fell {abs(delta_pp):.1f}pp — the book's risk profile became more systematic."
+            )
+
+    return " ".join(sentences)
 
 
 def _variance_shares(
@@ -631,15 +709,23 @@ def compute_portfolio_evolution(
         "top_contributors_by_variance_change": top_var_contributors,
     }
 
+    window_block = {
+        "from_date": snapshots[0].as_of_date,
+        "to_date": snapshots[-1].as_of_date,
+        "n_dated_points": len(snapshots),
+        "frequency_used": frequency_used,
+        "truncated_window": False,
+    }
+    narrative_v1 = _build_narrative_v1(
+        window=window_block,
+        return_attribution=return_attribution,
+        variance_share_attribution=variance_share_attribution,
+        coverage_in_erm3=coverage_in_erm3,
+    )
+
     response: dict[str, Any] = {
         "portfolio_id": portfolio_id,
-        "window": {
-            "from_date": snapshots[0].as_of_date,
-            "to_date": snapshots[-1].as_of_date,
-            "n_dated_points": len(snapshots),
-            "frequency_used": frequency_used,
-            "truncated_window": False,
-        },
+        "window": window_block,
         "return_attribution": return_attribution,
         "variance_share_evolution": {
             "teo": teo_vals,
@@ -647,7 +733,7 @@ def compute_portfolio_evolution(
             "residual_share": [round(x, 6) for x in res_share_series],
         },
         "variance_share_attribution": variance_share_attribution,
-        "narrative_v1": "",  # follow-up — template English layer
+        "narrative_v1": narrative_v1,
         "_metadata": {
             "kernel_version": KERNEL_VERSION,
             "generated_at": now,
