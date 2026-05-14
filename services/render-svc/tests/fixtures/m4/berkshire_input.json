@@ -104,7 +104,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 222373712646.0
     },
@@ -197,7 +197,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 172207510403.0
     },
@@ -290,7 +290,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 169495872946.0
     },
@@ -379,7 +379,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 176226286315.0
     },
@@ -396,7 +396,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 885006138.0
     },
@@ -497,7 +497,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 168121181918.0
     },
@@ -594,7 +594,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 169148280999.0
     },
@@ -691,7 +691,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
       "_source": "13F Berkshire Hathaway (CIK 0001067983)",
       "_total_mv_usd": 176510883983.0
     }

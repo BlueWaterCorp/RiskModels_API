@@ -96,7 +96,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 9259610783.0
     },
@@ -165,7 +165,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 8180290249.0
     },
@@ -246,7 +246,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 9420109844.0
     },
@@ -335,7 +335,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 10050301023.0
     },
@@ -412,7 +412,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 9264129163.0
     },
@@ -473,7 +473,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 9606204225.0
     },
@@ -538,7 +538,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 8286526915.0
     },
@@ -627,7 +627,7 @@
         }
       ],
       "ingest_adapter": "paste",
-      "recorded_at": "2026-05-13T13:33:12+00:00",
+      "recorded_at": "2026-05-14T00:51:35+00:00",
       "_source": "13F Baupost Group (CIK 0001061165)",
       "_total_mv_usd": 7716708996.0
     }

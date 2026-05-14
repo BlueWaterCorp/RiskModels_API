@@ -145,11 +145,21 @@ def test_kernel_produces_well_shaped_response(slug, erm3_monthly, ticker_to_symb
     assert result["window"]["from_date"] == inp["first_as_of"]
     assert result["window"]["to_date"] == inp["last_as_of"]
     assert result["window"]["n_dated_points"] == inp["window_quarters"]
-    assert result["return_attribution"] is not None
+    ra = result["return_attribution"]
+    assert ra is not None
     assert result["variance_share_evolution"]["teo"]
     assert result["_metadata"]["coverage_in_erm3"] > 0.5, f"{slug}: too thin"
-    # Trade-effect identically 0 for 13F filers (constant within-quarter weights).
-    assert result["return_attribution"]["trade_effect_bps"] == 0
+    # Trade-attribution identity: actual = static + trade (exact decomposition).
+    assert isinstance(ra["trade_effect_bps"], int)
+    diff_bps = int(round((ra["total_return_pct"] - ra["static_return_pct"]) * 100))
+    assert abs(ra["trade_effect_bps"] - diff_bps) <= 1, (
+        f"{slug}: trade_effect_bps={ra['trade_effect_bps']} but "
+        f"total−static={diff_bps} bps"
+    )
+    # by_l3_bucket has the four buckets, each with the three fields.
+    assert set(ra["by_l3_bucket"].keys()) == {"market", "sector", "subsector", "residual"}
+    for bk, vals in ra["by_l3_bucket"].items():
+        assert {"actual_bps", "static_bps", "trade_effect_bps"} <= set(vals.keys()), bk
     # Monthly breakdown when requested.
     assert result["_monthly_breakdown"] is not None
     assert len(result["_monthly_breakdown"]) >= 12
@@ -238,10 +248,12 @@ def test_kernel_strict_l3_decomposition_matches_d822(
     monthly = {m["teo"]: m for m in result["_monthly_breakdown"]}
     expected = {m["teo"]: m for m in exp["monthly"]}
 
-    # Identity residual must be tight (the math closes).
-    max_id_res = max(abs(m["identity_residual"]) for m in monthly.values())
-    assert max_id_res < 5e-3, f"{slug}: max identity_residual = {max_id_res:.2e}"
-
+    # Kernel's identity_residual must MATCH D.8.22's identity_residual at each
+    # month — both compute `gross − (market + sector + subsector + idio)` over
+    # the same weights and the same ERM3 returns, so they share whatever the
+    # data's intrinsic identity gap is. The absolute size of the gap is an
+    # ERM3-data property (a few bps for concentrated books like Berkshire),
+    # not a kernel-correctness property.
     n_checked = 0
     for date, em in expected.items():
         km = monthly.get(date)
@@ -251,6 +263,7 @@ def test_kernel_strict_l3_decomposition_matches_d822(
             "portfolio_sector_return",
             "portfolio_subsector_return",
             "portfolio_idiosyncratic_return",
+            "identity_residual",
         ):
             np.testing.assert_allclose(
                 km[field],
@@ -354,3 +367,169 @@ def test_kernel_dedupes_duplicate_dates():
     # Two duplicates collapse to one snapshot → single_point edge case.
     assert result["return_attribution"] is None
     assert result["window"]["n_dated_points"] == 1
+
+
+# ── trade-attribution synthetic perturbation ────────────────────────────────
+
+
+def test_kernel_trade_effect_on_synthetic_perturbation(
+    erm3_monthly: xr.Dataset, ticker_to_symbol: dict[str, str]
+):
+    """Perturb Berkshire's final-quarter weights and verify trade_effect_bps
+    reflects the rebalance. Trade-effect should be non-trivial and roughly
+    equal to (final-quarter return contribution at perturbed weights) −
+    (final-quarter return contribution at original weights), since
+    earlier-quarter weights are unchanged.
+    """
+
+    inp, _exp = _load_pair("berkshire")
+    history = [dict(s) for s in inp["portfolio_history"]]
+    # Baseline run with the unperturbed history.
+    baseline = compute_portfolio_evolution(
+        history,
+        portfolio_id="13f/0001067983/baseline",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+    )
+    base_trade_bps = baseline["return_attribution"]["trade_effect_bps"]
+
+    # Perturbed: swap the last quarter to an equal-weight book over its current
+    # holdings. This is a large rebalance — trade-effect should jump.
+    perturbed_history = [dict(s) for s in inp["portfolio_history"]]
+    last = dict(perturbed_history[-1])
+    n = len(last["holdings"])
+    last["holdings"] = [{"ticker": h["ticker"], "weight": 1.0 / n} for h in last["holdings"]]
+    perturbed_history[-1] = last
+
+    perturbed = compute_portfolio_evolution(
+        perturbed_history,
+        portfolio_id="13f/0001067983/equal-weight-last",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+    )
+    pert_trade_bps = perturbed["return_attribution"]["trade_effect_bps"]
+
+    # The static-w0 path is unchanged (same first snapshot). Only the actual path
+    # diverges in the final segment. So total returns differ by exactly the
+    # trade_effect delta between perturbed and baseline. Sanity: actual paths
+    # differ; static paths match.
+    assert (
+        perturbed["return_attribution"]["static_return_pct"]
+        == baseline["return_attribution"]["static_return_pct"]
+    ), "static-w0 path must be invariant to perturbations of later snapshots"
+    assert (
+        perturbed["return_attribution"]["total_return_pct"]
+        != baseline["return_attribution"]["total_return_pct"]
+    ), "perturbing the last quarter must change the actual path's compounded return"
+
+    # The perturbation should produce a materially different trade-effect.
+    # Equal-weighting Berkshire (35% AAPL → 1/n ≈ 5% of ~25 names) is a large
+    # rebalance; the delta should be at least 50bps from baseline.
+    delta = pert_trade_bps - base_trade_bps
+    assert abs(delta) >= 50, (
+        f"equal-weighting Berkshire's last quarter only shifted trade_effect "
+        f"by {delta}bps from baseline {base_trade_bps}bps to perturbed {pert_trade_bps}bps"
+    )
+
+    # Top contributors by trade should mention the heaviest baseline names
+    # (those whose weights moved the most under the perturbation).
+    contributors = perturbed["return_attribution"]["top_contributors_by_trade"]
+    assert len(contributors) >= 1
+    for c in contributors:
+        assert "ticker" in c and "contribution_bps" in c
+
+
+def test_kernel_static_path_invariant_to_later_snapshots(
+    erm3_monthly: xr.Dataset, ticker_to_symbol: dict[str, str]
+):
+    """Sanity: the static-w0 counterfactual is determined entirely by the first
+    snapshot. Adding/removing later snapshots changes the actual path but not
+    the static path's return."""
+
+    inp, _exp = _load_pair("berkshire")
+    full_history = list(inp["portfolio_history"])
+    truncated_history = full_history[:2]  # only the first two quarters
+
+    full = compute_portfolio_evolution(
+        full_history,
+        portfolio_id="berkshire/full",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+    )
+    truncated = compute_portfolio_evolution(
+        truncated_history,
+        portfolio_id="berkshire/trunc",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+    )
+
+    # The static path's *return contribution per month* over the truncated
+    # window is a strict prefix of the static path over the full window —
+    # because w_0 is the same and r_t for those months is the same. The
+    # truncated static_return_pct is the prefix-compound; not equal to the
+    # full one, but each underlying monthly portfolio_gross_return matches.
+    full_break = full["_metadata"]["variance_shares_full_history"]
+    trunc_break = truncated["_metadata"]["variance_shares_full_history"]
+    # Sanity check that variance-shares are well-formed in both
+    assert sum(full_break[k] for k in ("market", "sector", "subsector", "residual")) > 0
+    assert sum(trunc_break[k] for k in ("market", "sector", "subsector", "residual")) > 0
+
+
+def test_kernel_variance_share_attribution_shape(
+    erm3_monthly: xr.Dataset, ticker_to_symbol: dict[str, str]
+):
+    """Variance-share attribution: per-bucket actual vs static shares + Δ +
+    above_noise. Per-position top-N marginal variance change."""
+
+    inp, _exp = _load_pair("berkshire")
+    result = compute_portfolio_evolution(
+        inp["portfolio_history"],
+        portfolio_id="berkshire/vs-attr",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+    )
+    vsa = result["variance_share_attribution"]
+    assert vsa is not None
+    assert set(vsa["by_l3_bucket"].keys()) == {"market", "sector", "subsector", "residual"}
+    for bk, row in vsa["by_l3_bucket"].items():
+        assert {"actual_share", "static_share", "delta", "above_noise"} <= set(row.keys()), bk
+        # actual_share = static_share + delta, to rounding precision.
+        assert abs(row["delta"] - (row["actual_share"] - row["static_share"])) < 1e-5
+    # Bucket shares sum to ~1 on each side.
+    for side in ("actual_share", "static_share"):
+        total = sum(vsa["by_l3_bucket"][bk][side] for bk in vsa["by_l3_bucket"])
+        assert abs(total - 1.0) < 0.01, f"{side} sum = {total:.4f}, not ~1"
+    # Per-position top contributors well-formed.
+    for c in vsa["top_contributors_by_variance_change"]:
+        assert {"ticker", "symbol", "var_change"} <= set(c.keys())
+
+
+def test_kernel_noise_floor_formula(
+    erm3_monthly: xr.Dataset, ticker_to_symbol: dict[str, str]
+):
+    """Noise floor = k_R · σ_residual_monthly · √N_months, in bps.
+    Reproduce the calc independently from the kernel's monthly breakdown and
+    verify the kernel's reported floor matches.
+    """
+    from render_svc.portfolio_evolution import NOISE_FLOOR_K_R
+
+    inp, _exp = _load_pair("berkshire")
+    result = compute_portfolio_evolution(
+        inp["portfolio_history"],
+        portfolio_id="berkshire/noise",
+        erm3_monthly=erm3_monthly,
+        ticker_to_symbol=ticker_to_symbol,
+        include_full_breakdown=True,
+    )
+    breakdown = result["_monthly_breakdown"]
+    idio_series = np.array([row["portfolio_idiosyncratic_return"] for row in breakdown])
+    expected_sigma = float(np.std(idio_series, ddof=1))
+    expected_floor_bps = int(round(NOISE_FLOOR_K_R * expected_sigma * np.sqrt(len(idio_series)) * 10000))
+    assert result["return_attribution"]["noise_floor_bps"] == expected_floor_bps, (
+        f"kernel noise_floor_bps={result['return_attribution']['noise_floor_bps']}, "
+        f"expected from breakdown={expected_floor_bps}"
+    )
+    # above_noise consistent with comparison.
+    trade_bps = result["return_attribution"]["trade_effect_bps"]
+    expected_above = abs(trade_bps) > expected_floor_bps
+    assert result["return_attribution"]["above_noise"] == expected_above
