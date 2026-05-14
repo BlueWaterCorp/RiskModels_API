@@ -13,8 +13,8 @@
  * Folder-as-entity-key convention (BWMACRO/docs/13f_pipeline_plan.md §2):
  * dataset names are universal (ds_ph, ds_portfolio); the path prefix
  * (`bw_fund_id/` vs `bw_filer_id/`) discriminates entity kind. ds_nav is
- * fund-only by design (no NAV time series for filers); ds_hr is fund-only
- * today and lands on the filer side in D.8 Phase 3.
+ * fund-only by design (no NAV time series for filers). ds_hr exists for filers
+ * when D.8.10 Phase 3 writes hedge sleeves (sparse — reader mirrors funds).
  *
  * Internal-only: never expose bucket names, gs:// URLs, or zarr paths in
  * thrown errors or API JSON.
@@ -950,6 +950,13 @@ export interface FilerHolding {
   adj_mv: number;
   /** Fraction of total in-portfolio AUM at this teo. Null when AUM is null/0. */
   weight: number | null;
+  /** Display ticker when enriched from Supabase `symbols` / registry (optional). */
+  ticker?: string | null;
+  /** Latest daily L3 explained-risk shares from `security_history_latest` (optional). */
+  l3_market_er?: number | null;
+  l3_sector_er?: number | null;
+  l3_subsector_er?: number | null;
+  l3_residual_er?: number | null;
 }
 
 export interface FilerHoldingsSnapshot {
@@ -1114,6 +1121,224 @@ export async function readFilerPortfolioSeries(
     rows.push(row as unknown as FilerPortfolioRow);
   }
   return rows;
+}
+
+const FILER_RETURNS_VARS = [
+  "portfolio_gross_return",
+  "portfolio_market_return",
+  "portfolio_sector_return",
+  "portfolio_subsector_return",
+  "portfolio_idiosyncratic_return",
+] as const;
+
+/** One monthly row from filer ``ds_returns.zarr`` (D.8.22). */
+export interface FilerMonthlyReturnRow {
+  teo: string;
+  portfolio_gross_return: number | null;
+  portfolio_market_return: number | null;
+  portfolio_sector_return: number | null;
+  portfolio_subsector_return: number | null;
+  portfolio_idiosyncratic_return: number | null;
+}
+
+export interface FilerVarianceSharesBlock {
+  market: number | null;
+  sector: number | null;
+  subsector: number | null;
+  residual: number | null;
+}
+
+export interface FilerReturnsDecomposition {
+  n_periods: number;
+  rows: FilerMonthlyReturnRow[];
+  variance_shares_full: FilerVarianceSharesBlock | null;
+  variance_shares_recent: FilerVarianceSharesBlock | null;
+  waterfall_latest_month: Partial<
+    Record<
+      | "portfolio_gross_return"
+      | "portfolio_market_return"
+      | "portfolio_sector_return"
+      | "portfolio_subsector_return"
+      | "portfolio_idiosyncratic_return",
+      number
+    >
+  > | null;
+}
+
+function filerVarianceSharesFromAttrs(attrs: Record<string, unknown>): {
+  full: FilerVarianceSharesBlock | null;
+  recent: FilerVarianceSharesBlock | null;
+} {
+  const num = (k: string): number | null => {
+    const v = attrs[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+  const full: FilerVarianceSharesBlock = {
+    market: num("adjusted_l1_market_er"),
+    sector: num("adjusted_l2_sector_er"),
+    subsector: num("adjusted_l3_subsector_er"),
+    residual: num("adjusted_l3_residual_er"),
+  };
+  const recent: FilerVarianceSharesBlock = {
+    market: num("adjusted_recent_l1_market_er"),
+    sector: num("adjusted_recent_l2_sector_er"),
+    subsector: num("adjusted_recent_l3_subsector_er"),
+    residual: num("adjusted_recent_l3_residual_er"),
+  };
+  const hasAny = (v: FilerVarianceSharesBlock) =>
+    v.market != null || v.sector != null || v.subsector != null || v.residual != null;
+  return {
+    full: hasAny(full) ? full : null,
+    recent: hasAny(recent) ? recent : null,
+  };
+}
+
+function waterfallLatestFromSlices(
+  teos: string[],
+  slices: Record<(typeof FILER_RETURNS_VARS)[number], (number | null)[] | null>,
+): FilerReturnsDecomposition["waterfall_latest_month"] {
+  const n = teos.length;
+  if (n === 0) return null;
+  let idx: number | null = null;
+  for (let i = n - 1; i >= 0; i--) {
+    const g = slices.portfolio_gross_return?.[i];
+    if (g != null && Number.isFinite(g)) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx == null) return null;
+  const keys = [
+    "portfolio_gross_return",
+    "portfolio_market_return",
+    "portfolio_sector_return",
+    "portfolio_subsector_return",
+    "portfolio_idiosyncratic_return",
+  ] as const;
+  const out: Partial<
+    Record<(typeof keys)[number], number>
+  > = {};
+  for (const k of keys) {
+    const v = slices[k]?.[idx];
+    if (v != null && Number.isFinite(v)) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Monthly L3 portfolio decomposition for a filer from ``ds_returns.zarr``.
+ * Null when zarr is missing or the date window is empty.
+ */
+export async function readFilerReturnsDecomposition(
+  bwFilerId: string,
+  options: FundPortfolioOptions = {},
+): Promise<FilerReturnsDecomposition | null> {
+  const grp = await openFilerZarrGroup(bwFilerId, "ds_returns.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+
+  let t0 = 0;
+  let t1 = teos.length;
+  if (options.startDate) {
+    while (t0 < t1 && teos[t0]! < options.startDate) t0++;
+  }
+  if (options.endDate) {
+    while (t1 > t0 && teos[t1 - 1]! > options.endDate) t1--;
+  }
+  if (t0 >= t1) return null;
+
+  const series = await Promise.all(
+    FILER_RETURNS_VARS.map(async (varName) => ({
+      name: varName,
+      data: await readFloatSlice1d(grp, varName, t0, t1),
+    })),
+  );
+
+  const slices: Record<(typeof FILER_RETURNS_VARS)[number], (number | null)[] | null> = {
+    portfolio_gross_return: null,
+    portfolio_market_return: null,
+    portfolio_sector_return: null,
+    portfolio_subsector_return: null,
+    portfolio_idiosyncratic_return: null,
+  };
+  for (const s of series) {
+    if (s.name in slices) {
+      slices[s.name as keyof typeof slices] = s.data;
+    }
+  }
+
+  const trimmedTeos = teos.slice(t0, t1);
+  const rows: FilerMonthlyReturnRow[] = [];
+  for (let i = 0; i < t1 - t0; i++) {
+    rows.push({
+      teo: trimmedTeos[i]!,
+      portfolio_gross_return: slices.portfolio_gross_return?.[i] ?? null,
+      portfolio_market_return: slices.portfolio_market_return?.[i] ?? null,
+      portfolio_sector_return: slices.portfolio_sector_return?.[i] ?? null,
+      portfolio_subsector_return: slices.portfolio_subsector_return?.[i] ?? null,
+      portfolio_idiosyncratic_return: slices.portfolio_idiosyncratic_return?.[i] ?? null,
+    });
+  }
+
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const { full, recent } = filerVarianceSharesFromAttrs(attrs);
+
+  return {
+    n_periods: rows.length,
+    rows,
+    variance_shares_full: full,
+    variance_shares_recent: recent,
+    waterfall_latest_month: waterfallLatestFromSlices(trimmedTeos, slices),
+  };
+}
+
+/**
+ * Latest hedge sleeve for a filer from ``ds_hr.zarr`` (same schema as funds).
+ */
+export async function readFilerHedgeLatest(
+  bwFilerId: string,
+): Promise<FundHedgeSnapshot | null> {
+  const grp = await openFilerZarrGroup(bwFilerId, "ds_hr.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+
+  const teoIdx = teos.length - 1;
+  const teo = teos[teoIdx]!;
+
+  const [l1, l2, l3] = await Promise.all([
+    readFloatRowAtTeo(grp, "L1_HR", teoIdx, symbols.length),
+    readFloatRowAtTeo(grp, "L2_HR", teoIdx, symbols.length),
+    readFloatRowAtTeo(grp, "L3_HR", teoIdx, symbols.length),
+  ]);
+
+  const symbolNames = symbols;
+  function pack(row: (number | null)[] | null): HedgeLeg[] {
+    if (!row) return [];
+    const legs: HedgeLeg[] = [];
+    for (let i = 0; i < row.length; i++) {
+      const v = row[i];
+      if (v != null) legs.push({ etf: symbolNames[i]!, hr: v });
+    }
+    return legs;
+  }
+
+  const out: FundHedgeSnapshot = {
+    teo,
+    L1: pack(l1),
+    L2: pack(l2),
+    L3: pack(l3),
+  };
+  if (out.L1.length === 0 && out.L2.length === 0 && out.L3.length === 0) {
+    return null;
+  }
+  return out;
 }
 
 // ===========================================================================
