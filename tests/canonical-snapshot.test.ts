@@ -215,4 +215,77 @@ describe("buildCanonicalPortfolioSnapshot", () => {
     expect(r.body.time_behavior.teo.length).toBe(3);
     expect(r.body.attribution.gross.length).toBe(3);
   });
+
+  // L.8-v2 #2 — benchmark resolution via the catalog mirror.
+  describe("benchmark_context_id (L.8-v2 #2)", () => {
+    it("null benchmark → benchmark_context_id is null on snapshot + metadata", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: null,
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBeNull();
+      expect(r.body.snapshot.benchmark_context_id).toBeNull();
+      expect(r.body.metadata.benchmark).toBeNull();
+      expect(r.body.metadata.benchmark_context_id).toBeNull();
+    });
+
+    it("alias 'SPY' resolves to BW-BENCH-SPY; raw string still echoed", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "SPY",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("SPY");
+      expect(r.body.snapshot.benchmark_context_id).toBe("BW-BENCH-SPY");
+      expect(r.body.metadata.benchmark).toBe("SPY");
+      expect(r.body.metadata.benchmark_context_id).toBe("BW-BENCH-SPY");
+    });
+
+    it("alias '70/30' resolves to BW-BENCH-EQ70-30 (blend kind)", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "70/30",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("70/30");
+      expect(r.body.snapshot.benchmark_context_id).toBe("BW-BENCH-EQ70-30");
+    });
+
+    it("bw-bench id passthrough is uppercased + preserved as benchmark_context_id", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "BW-BENCH-EQ70-30",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("BW-BENCH-EQ70-30");
+      expect(r.body.snapshot.benchmark_context_id).toBe("BW-BENCH-EQ70-30");
+    });
+
+    it("unknown alias → benchmark_context_id null, raw string preserved (back-compat)", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "totally-unknown",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("totally-unknown");
+      expect(r.body.snapshot.benchmark_context_id).toBeNull();
+      expect(r.body.metadata.benchmark_context_id).toBeNull();
+    });
+  });
 });
