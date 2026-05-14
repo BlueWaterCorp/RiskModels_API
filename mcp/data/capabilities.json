@@ -667,7 +667,7 @@
   {
     "id": "portfolio-risk-snapshot",
     "name": "Snapshot — portfolio or ticker",
-    "description": "Canonical JSON snapshot (POST /api/snapshot) for either a weighted portfolio (type=portfolio) or a single ticker (type=ticker — shim over /metrics + /decompose). Returns L3 decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and risk summary in one unified shape. Also serves the bundled PDF/JSON via POST /api/portfolio/risk-snapshot. Bundled charge; internal DAL only.",
+    "description": "Canonical JSON snapshot (POST /api/snapshot) for either a weighted portfolio (type=portfolio) or a single ticker (type=ticker — shim over /metrics + /decompose). Returns L3 decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and risk summary in one unified shape. When the request includes `benchmark` (alias like 'SPY' / '70/30' or a BW-BENCH-* id), the response also carries `snapshot.benchmark_context_id` + `metadata.benchmark_context_id` — the resolved `BenchmarkContext` id (or null when unknown), chaseable via `/api/data/benchmark/{id}`. Also serves the bundled PDF/JSON via POST /api/portfolio/risk-snapshot. Bundled charge; internal DAL only.",
     "endpoint": "/api/portfolio/risk-snapshot",
     "method": "POST",
     "parameters": {

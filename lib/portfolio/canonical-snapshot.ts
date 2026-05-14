@@ -3,6 +3,7 @@
  * Reuses runPortfolioRiskComputation + V3 Zarr history (fetchBatchHistory); no duplicated risk math.
  */
 
+import { resolveBenchmarkId } from "@/lib/dal/funds-zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
   fetchBatchHistory,
@@ -43,6 +44,13 @@ export type CanonicalSnapshotResponse = {
     lookback_trading_days: number;
     mode: "frozen";
     benchmark: string | null;
+    /**
+     * Resolved `BenchmarkContext` id (e.g. `BW-BENCH-SPY`) when `benchmark` is
+     * a known alias or `BW-BENCH-*` id; `null` if `benchmark` is null or
+     * unresolvable. Lets consumers chase the resolved id back to its
+     * definition via `/api/data/benchmark/{id}` (L.8-v2 #2).
+     */
+    benchmark_context_id: string | null;
     /** Populated only when the request was `type: "ticker"`. */
     ticker_meta?: {
       ticker: string;
@@ -138,6 +146,8 @@ export type CanonicalSnapshotResponse = {
     lookback_days: number;
     mode: string;
     benchmark: string | null;
+    /** Mirror of `snapshot.benchmark_context_id` (additive — L.8-v2 #2). */
+    benchmark_context_id: string | null;
   };
 };
 
@@ -405,6 +415,9 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   { ok: true; body: CanonicalSnapshotResponse } | { ok: false; error: string; status: number; details?: unknown }
 > {
   const { positions, lookbackDays, mode, benchmark } = input;
+  // L.8-v2 #2: resolve once via the catalog mirror; null when benchmark is null
+  // or the alias / id is unknown. Raw string still echoes back unchanged.
+  const benchmark_context_id = benchmark ? resolveBenchmarkId(benchmark) : null;
   const years = yearsForLookback(lookbackDays);
 
   const core = await runPortfolioRiskComputation(positions, {
@@ -637,6 +650,7 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       lookback_trading_days: teoS.length,
       mode,
       benchmark: benchmark,
+      benchmark_context_id,
       positions: perPositions,
       variance_decomposition: {
         market: decomp.market,
@@ -679,6 +693,7 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       lookback_days: lookbackDays,
       mode,
       benchmark: benchmark,
+      benchmark_context_id,
     },
   };
 
