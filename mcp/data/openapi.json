@@ -8829,6 +8829,104 @@
         }
       }
     },
+    "/data/etf/search": {
+      "get": {
+        "summary": "ETF search & discovery (free)",
+        "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name / sponsor in the committed cross-repo catalog (mirror of `Funds_DAG/configs/etf_universe.yaml` at `mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).\n\nRanking (higher = better): 100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-boundary prefix; 30 name substring; 20 sponsor exact / substring. Public read; soft gateway auth.\n",
+        "operationId": "searchEtfs",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SPY",
+            "description": "Search query — ticker, partial name, or sponsor. Case-insensitive."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ETF search results (possibly empty).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    },
+                    "n_results": {
+                      "type": "integer"
+                    },
+                    "n_universe": {
+                      "type": "integer",
+                      "description": "Total ETFs in the catalog."
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "example": "etf-master/1.0"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_etf_id": {
+                            "type": "string",
+                            "example": "BW-ETF-IVV"
+                          },
+                          "ticker": {
+                            "type": "string",
+                            "example": "IVV"
+                          },
+                          "sponsor": {
+                            "type": "string",
+                            "example": "ishares"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "product_url": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "score": {
+                            "type": "integer",
+                            "description": "Match score (higher = better)."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/data/etf/{ticker}": {
       "get": {
         "summary": "ETF base metrics (canonical PortfolioSurface)",
