@@ -6,13 +6,16 @@ from raw zarr data is Phase 2.
 
 from __future__ import annotations
 
+import functools
 import logging
-from typing import Literal
+from typing import Any, Literal
 
+import xarray as xr
 from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .gcs import GcsObjectStore, ObjectStore
+from .portfolio_evolution import KERNEL_VERSION, compute_portfolio_evolution
 from .render import (
     CanonicalNotFound,
     GateFailure,
@@ -34,6 +37,34 @@ class RenderRequest(BaseModel):
     identifier: str = Field(..., min_length=1, max_length=64)
     as_of: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     format: Literal["json", "pdf", "png"] = "pdf"
+
+
+class PortfolioEvolutionRequest(BaseModel):
+    """Request body for ``POST /portfolio-evolution`` (The Analyst M4)."""
+
+    portfolio_id: str = Field(..., min_length=1, max_length=128)
+    portfolio_history: list[dict[str, Any]] = Field(
+        ..., description="M3c CmlPortfolioSnapshot[] jsonb shape: [{as_of_date, holdings, ingest_adapter}, ...]"
+    )
+    include_full_breakdown: bool = False
+
+
+@functools.lru_cache(maxsize=1)
+def _load_erm3_resources(zarr_root_uri: str) -> tuple[xr.Dataset, dict[str, str]]:
+    """Open the ERM3 monthly zarr and build the ticker→symbol bridge from its
+    coords. Cached per-process; the zarr is ~14MB and we want one open per
+    worker. Override via monkeypatch in tests."""
+    em_uri = f"{zarr_root_uri.rstrip('/')}/ds_erm3_monthly_SPY_uni_mc_3000.zarr"
+    em = xr.open_zarr(em_uri)
+    tickers = em["ticker"].values
+    symbols = em["symbol"].values
+    bridge: dict[str, str] = {}
+    for t, s in zip(tickers, symbols):
+        ts = str(t).strip().upper()
+        if not ts or ts == "NAN":
+            continue
+        bridge[ts] = str(s)
+    return em, bridge
 
 
 def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
@@ -102,7 +133,48 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
             },
         )
 
+    @app.post("/portfolio-evolution")
+    def portfolio_evolution(req: PortfolioEvolutionRequest = Body(...)):
+        """The Analyst M4 — what changed since the last portfolio snapshot.
+
+        Reads `portfolio_history` (M3c jsonb shape) + a cached ERM3 monthly
+        zarr, runs the constant-holdings-within-segment kernel, returns the
+        design-§5 response shape.
+        """
+        try:
+            erm3, bridge = _load_erm3_resources(settings.zarr_root_uri)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("failed to load ERM3 resources")
+            raise HTTPException(status_code=503, detail=f"ERM3 monthly unavailable: {exc}")
+
+        try:
+            result = compute_portfolio_evolution(
+                req.portfolio_history,
+                portfolio_id=req.portfolio_id,
+                erm3_monthly=erm3,
+                ticker_to_symbol=bridge,
+                include_full_breakdown=req.include_full_breakdown,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("portfolio-evolution kernel failed")
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        return Response(
+            content=_json_dumps(result),
+            media_type="application/json",
+            headers={
+                "X-Kernel-Version": KERNEL_VERSION,
+                "X-Coverage-In-Erm3": str(result["_metadata"]["coverage_in_erm3"]),
+            },
+        )
+
     return app
+
+
+def _json_dumps(obj: Any) -> bytes:
+    import json
+
+    return json.dumps(obj, default=str, separators=(",", ":")).encode("utf-8")
 
 
 # Module-level app instance for ``uvicorn render_svc.app:app``.

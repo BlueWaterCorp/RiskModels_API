@@ -1056,5 +1056,79 @@
     "performance": { "avg_latency_ms": 150, "p95_latency_ms": 300, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
     "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["surface_portfolios_zarr", "erm3_monthly"] },
     "tags": ["benchmark", "return-attribution", "portfolio-surface"]
+  },
+  {
+    "id": "portfolio-evolution",
+    "name": "Portfolio Evolution — what changed since last look",
+    "description": "The Analyst M4 kernel. Given a portfolio_history (list of CmlPortfolioSnapshot — {as_of_date, holdings[]} pairs across time), returns a constant-holdings-within-segment return attribution + variance-share evolution + per-position trade-effect attribution. Two analytical paths: (a) actual vs static-w0 counterfactual return attribution (Brinson-style; isolates rebalancing P&L); (b) variance-share change attribution (compares variance composition at d_N vs d_0). Each slice carries an above_noise flag (k_R=1.5·sigma_residual·sqrt(N_months) for returns; k_V=2.0·sqrt(2/N) for variance shares). Reads M3c jsonb portfolio_history + ERM3 monthly; produces design-doc §5 response shape. v1 treats out-of-coverage holdings (ETFs, cash, bonds) as outside the modeled sleeve; M4.5 adds ETF look-through.",
+    "endpoint": "/api/portfolio-evolution",
+    "method": "POST",
+    "parameters": {
+      "portfolio_id": {
+        "type": "string",
+        "required": true,
+        "description": "Stable identifier for the portfolio. Convention: 'cml/{cml_id}' for client portfolios, '13f/{cik}' for filer portfolios."
+      },
+      "portfolio_history": {
+        "type": "array",
+        "required": true,
+        "description": "M3c CmlPortfolioSnapshot[] jsonb shape — list of {as_of_date, holdings[{ticker, weight}], ingest_adapter} dated points oldest→newest.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "as_of_date": { "type": "string", "required": true, "description": "ISO YYYY-MM-DD" },
+            "holdings": { "type": "array", "required": true, "description": "[{ticker, weight}] — weights renormalized to 1.0 on the ERM3-covered sleeve" }
+          }
+        }
+      },
+      "include_full_breakdown": {
+        "type": "boolean",
+        "required": false,
+        "description": "If true, includes _monthly_breakdown — per-month L3 components and holding-quarter mapping. Default false (cheaper).",
+        "default": false
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.04,
+      "currency": "USD",
+      "min_charge": 0.03,
+      "billing_code": "portfolio_evolution_m4_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 250,
+      "p95_latency_ms": 500,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.96,
+      "update_frequency": "monthly",
+      "sources": ["erm3_monthly", "cml_activation_state.portfolio_history"],
+      "methodology_url": "https://riskmodels.app/docs/m4-portfolio-evolution"
+    },
+    "tags": ["the-analyst", "portfolio-evolution", "return-attribution", "what-changed", "m4"],
+    "examples": [
+      {
+        "request": {
+          "portfolio_id": "cml/abc123",
+          "portfolio_history": [
+            { "as_of_date": "2026-01-31", "holdings": [{ "ticker": "AAPL", "weight": 0.5 }, { "ticker": "NVDA", "weight": 0.5 }] },
+            { "as_of_date": "2026-04-30", "holdings": [{ "ticker": "AAPL", "weight": 0.3 }, { "ticker": "NVDA", "weight": 0.4 }, { "ticker": "META", "weight": 0.3 }] }
+          ]
+        },
+        "response": {
+          "portfolio_id": "cml/abc123",
+          "window": { "from_date": "2026-01-31", "to_date": "2026-04-30", "n_dated_points": 2 },
+          "return_attribution": {
+            "total_return_pct": 4.2,
+            "static_return_pct": 3.8,
+            "trade_effect_bps": 40,
+            "noise_floor_bps": 220,
+            "above_noise": false
+          }
+        }
+      }
+    ]
   }
 ]
