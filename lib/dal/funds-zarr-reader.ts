@@ -38,6 +38,10 @@ import type { AbsolutePath, Readable } from "@zarrita/storage";
 import type { Group } from "zarrita";
 
 import { lookupBenchmarkAlias } from "@/lib/dal/benchmark-catalog";
+import {
+  applyScrubToFilerHoldings,
+  applyScrubToHoldings,
+} from "@/lib/dal/symbols-batch";
 
 let _storage: Storage | null = null;
 
@@ -511,6 +515,7 @@ export async function readFundHoldingsTopN(
 
   holdings.sort((a, b) => b.adj_mv - a.adj_mv);
   const safeN = Math.min(Math.max(n, 1), 1000);
+  const top = holdings.slice(0, safeN);
 
   return {
     teo,
@@ -518,7 +523,7 @@ export async function readFundHoldingsTopN(
     aum_erm3: aumErm3,
     n_holdings_returned: Math.min(safeN, holdings.length),
     n_total_holdings: holdings.length,
-    holdings: holdings.slice(0, safeN),
+    holdings: await applyScrubToHoldings(top),
   };
 }
 
@@ -913,13 +918,14 @@ export async function readStyleCohortHoldingsTopN(
   if (all.length === 0) return null;
 
   all.sort((a, b) => b.weight - a.weight);
+  const top = all.slice(0, safeN);
 
   return {
     teo,
     weighting: requestedWeighting,
     n_returned: Math.min(safeN, all.length),
     n_total_holdings: all.length,
-    holdings: all.slice(0, safeN),
+    holdings: await applyScrubToHoldings(top),
   };
 }
 
@@ -1017,6 +1023,7 @@ export async function readFilerHoldingsTopN(
 
   holdings.sort((a, b) => b.adj_mv - a.adj_mv);
   const safeN = Math.min(Math.max(n, 1), 1000);
+  const top = holdings.slice(0, safeN);
 
   return {
     teo,
@@ -1024,7 +1031,7 @@ export async function readFilerHoldingsTopN(
     aum_in_erm3: aumInErm3,
     n_holdings_returned: Math.min(safeN, holdings.length),
     n_total_holdings: holdings.length,
-    holdings: holdings.slice(0, safeN),
+    holdings: await applyScrubToFilerHoldings(top),
   };
 }
 
@@ -1450,6 +1457,7 @@ export async function readEtfHoldingsTopN(
       ? aumErm3 / aumReported
       : null;
 
+  const top = holdings.slice(0, safeN);
   return {
     portfolio_id: bwEtfId,
     ticker: ticker.trim().toUpperCase(),
@@ -1463,7 +1471,7 @@ export async function readEtfHoldingsTopN(
     coverage_pct,
     n_holdings_returned: Math.min(safeN, holdings.length),
     n_total_holdings: holdings.length,
-    holdings: holdings.slice(0, safeN),
+    holdings: await applyScrubToHoldings(top),
   };
 }
 
