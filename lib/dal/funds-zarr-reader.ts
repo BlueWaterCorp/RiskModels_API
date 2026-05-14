@@ -37,6 +37,8 @@ import {
 import type { AbsolutePath, Readable } from "@zarrita/storage";
 import type { Group } from "zarrita";
 
+import { lookupBenchmarkAlias } from "@/lib/dal/benchmark-catalog";
+
 let _storage: Storage | null = null;
 
 function getGcs(): Storage {
@@ -1253,27 +1255,23 @@ export async function readEtfHoldingsTopN(
 // BW-BENCH-EQ70-30 (blend 70% IWB + 30% IWM).
 // ===========================================================================
 
-// Alias → bw_bench_id (mirrors Funds_DAG configs/benchmark_universe.yaml; the
-// authoritative copy is benchmark_master.parquet — a synced JSON catalog is a
-// follow-on). Case-insensitive.
-const BENCHMARK_ALIASES: Record<string, string> = {
-  spy: "BW-BENCH-SPY",
-  "s&p 500": "BW-BENCH-SPY",
-  sp500: "BW-BENCH-SPY",
-  spx: "BW-BENCH-SPY",
-  ivv: "BW-BENCH-SPY",
-  "70/30": "BW-BENCH-EQ70-30",
-  "eq70-30": "BW-BENCH-EQ70-30",
-  "70-30-large-small": "BW-BENCH-EQ70-30",
-  "us-large-small-70-30": "BW-BENCH-EQ70-30",
-};
-
-/** Resolve a `benchmark=` string (alias or bw_bench_id) → bw_bench_id, or null if unknown. */
+/**
+ * Resolve a `benchmark=` string (alias or `bw_bench_id`) → `bw_bench_id`, or null.
+ *
+ * Backed by the committed cross-repo mirror at `mcp/data/benchmark_master.json`
+ * (generated from `Funds_DAG/configs/benchmark_universe.yaml` via
+ * `Funds_DAG/scripts/export_benchmark_master_json.py` — same pattern as the
+ * OpenAPI/capabilities mirror). Adding a benchmark is one-touch on the YAML —
+ * regenerate the JSON and commit it; no edits to this file are needed.
+ *
+ * Degrades safely: if the mirror is missing/empty, only `BW-BENCH-*` ids pass
+ * through (aliases return null).
+ */
 export function resolveBenchmarkId(input: string): string | null {
   const s = (input ?? "").trim();
   if (!s) return null;
   if (s.toUpperCase().startsWith("BW-BENCH-")) return s.toUpperCase();
-  return BENCHMARK_ALIASES[s.toLowerCase()] ?? null;
+  return lookupBenchmarkAlias(s);
 }
 
 /** Resolve a fit-subject string: a BW-* portfolio id as-is, else an ETF ticker → BW-ETF-{TICKER}. */
