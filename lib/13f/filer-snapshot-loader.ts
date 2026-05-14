@@ -13,11 +13,14 @@ import {
 import {
   readFilerHoldingsTopN,
   readFilerPortfolioSeries,
+  readFilerReturnsDecomposition,
+  readFilerHedgeLatest,
 } from "@/lib/dal/funds-zarr-reader";
 import {
   composeFilerSnapshot,
   type FilerSnapshot,
 } from "@/lib/13f/filer-snapshot-composer";
+import { enrichFilerHoldingsWithL3 } from "@/lib/13f/enrich-filer-holdings";
 
 const HOLDINGS_TOP_N = 25;
 const FILER_LOOKBACK_MONTHS = 12;
@@ -56,14 +59,22 @@ export async function loadFilerSnapshot(
     startDate = startWindow.toISOString().slice(0, 10);
   }
 
-  const [holdings, portfolioHistory, cohortRanks] = await Promise.all([
-    readFilerHoldingsTopN(bwFilerId, HOLDINGS_TOP_N),
-    readFilerPortfolioSeries(bwFilerId, {
-      startDate,
-      endDate: referenceDate ?? undefined,
-    }),
-    fetchFilerRanks(bwFilerId),
-  ]);
+  const [holdingsRaw, portfolioHistory, cohortRanks, returnsDec, hedgeSleeve] =
+    await Promise.all([
+      readFilerHoldingsTopN(bwFilerId, HOLDINGS_TOP_N),
+      readFilerPortfolioSeries(bwFilerId, {
+        startDate,
+        endDate: referenceDate ?? undefined,
+      }),
+      fetchFilerRanks(bwFilerId),
+      readFilerReturnsDecomposition(bwFilerId, {
+        startDate,
+        endDate: referenceDate ?? undefined,
+      }),
+      readFilerHedgeLatest(bwFilerId),
+    ]);
+
+  const holdings = await enrichFilerHoldingsWithL3(holdingsRaw);
 
   const snapshot = composeFilerSnapshot({
     filer,
@@ -71,6 +82,8 @@ export async function loadFilerSnapshot(
     holdings,
     portfolioHistory,
     cohortRanks,
+    returnsDecomposition: returnsDec,
+    hedgeSleeve,
   });
 
   return {
