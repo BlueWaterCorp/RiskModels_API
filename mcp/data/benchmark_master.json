@@ -1,0 +1,68 @@
+{
+  "schema_version": "benchmark-master/1.0",
+  "n_contexts": 2,
+  "aliases": {
+    "70-30-large-small": "BW-BENCH-EQ70-30",
+    "70/30": "BW-BENCH-EQ70-30",
+    "eq70-30": "BW-BENCH-EQ70-30",
+    "ivv": "BW-BENCH-SPY",
+    "s&p 500": "BW-BENCH-SPY",
+    "sp500": "BW-BENCH-SPY",
+    "spx": "BW-BENCH-SPY",
+    "spy": "BW-BENCH-SPY",
+    "us-large-small-70-30": "BW-BENCH-EQ70-30"
+  },
+  "contexts": {
+    "BW-BENCH-EQ70-30": {
+      "bw_bench_id": "BW-BENCH-EQ70-30",
+      "name": "70/30 US Large/Small all-equity blend (70% IWB + 30% IWM)",
+      "benchmark_kind": "blend",
+      "aliases": [
+        "70/30",
+        "EQ70-30",
+        "70-30-large-small",
+        "US-LARGE-SMALL-70-30"
+      ],
+      "methodology": "Fixed-weight all-equity blend: 70% iShares Russell 1000 ETF (IWB) + 30% iShares Russell 2000 ETF (IWM). Each component's in-ERM3 weight vector is renormalized to 1, scaled by its notional weight, and the two are summed over the union of symbols at each teo the components share. Illustrative large/small split (IWB \u222a IWM \u2248 Russell 3000).",
+      "rebalance_schedule": "Notional weights fixed at 70/30; the component weight vectors drift with the underlying ETF holdings (no rebalancing of the blend itself in v1).",
+      "observation_mode": "reality",
+      "proxy": null,
+      "components": [
+        {
+          "source_kind": "etf",
+          "ref": "IWB",
+          "weight": 0.7
+        },
+        {
+          "source_kind": "etf",
+          "ref": "IWM",
+          "weight": 0.3
+        }
+      ],
+      "benchmark_context_version": "benchmark-context/1.0",
+      "notes": ""
+    },
+    "BW-BENCH-SPY": {
+      "bw_bench_id": "BW-BENCH-SPY",
+      "name": "S&P 500 (proxy: iShares Core S&P 500 ETF, IVV)",
+      "benchmark_kind": "index_proxy",
+      "aliases": [
+        "SPY",
+        "S&P 500",
+        "SP500",
+        "SPX",
+        "IVV"
+      ],
+      "methodology": "Float-adjusted market-cap-weighted S&P 500 constituents, proxied by iShares Core S&P 500 ETF (IVV)'s published daily holdings. The benchmark surface = IVV's in-ERM3 holdings renormalized to weights summing to 1 (cash / non-ERM3 lines dropped, as for any portfolio surface).",
+      "rebalance_schedule": "S&P 500 reconstitution is quarterly (effective the 3rd Friday of Mar/Jun/Sep/Dec) plus ad-hoc index changes; the surface tracks IVV's daily-published holdings, so per-teo weights move with IVV (which itself tracks the index ~daily).",
+      "observation_mode": "reality",
+      "proxy": {
+        "source_kind": "etf",
+        "ref": "IVV"
+      },
+      "components": [],
+      "benchmark_context_version": "benchmark-context/1.0",
+      "notes": "v1 proxies the index via IVV; a direct S&P-constituent feed would be a follow-on."
+    }
+  }
+}
