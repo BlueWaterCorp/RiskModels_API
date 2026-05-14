@@ -1,0 +1,304 @@
+{
+  "schema_version": "etf-master/1.0",
+  "n_entries": 37,
+  "aliases": {
+    "dia": "BW-ETF-DIA",
+    "ijh": "BW-ETF-IJH",
+    "ijr": "BW-ETF-IJR",
+    "itot": "BW-ETF-ITOT",
+    "ivv": "BW-ETF-IVV",
+    "iwb": "BW-ETF-IWB",
+    "iwd": "BW-ETF-IWD",
+    "iwf": "BW-ETF-IWF",
+    "iwm": "BW-ETF-IWM",
+    "mdy": "BW-ETF-MDY",
+    "qqq": "BW-ETF-QQQ",
+    "rsp": "BW-ETF-RSP",
+    "splg": "BW-ETF-SPLG",
+    "spmd": "BW-ETF-SPMD",
+    "spsm": "BW-ETF-SPSM",
+    "spy": "BW-ETF-SPY",
+    "spyg": "BW-ETF-SPYG",
+    "spyv": "BW-ETF-SPYV",
+    "vb": "BW-ETF-VB",
+    "vo": "BW-ETF-VO",
+    "voo": "BW-ETF-VOO",
+    "vti": "BW-ETF-VTI",
+    "vtv": "BW-ETF-VTV",
+    "vug": "BW-ETF-VUG",
+    "vv": "BW-ETF-VV",
+    "vxf": "BW-ETF-VXF",
+    "xlb": "BW-ETF-XLB",
+    "xlc": "BW-ETF-XLC",
+    "xle": "BW-ETF-XLE",
+    "xlf": "BW-ETF-XLF",
+    "xli": "BW-ETF-XLI",
+    "xlk": "BW-ETF-XLK",
+    "xlp": "BW-ETF-XLP",
+    "xlre": "BW-ETF-XLRE",
+    "xlu": "BW-ETF-XLU",
+    "xlv": "BW-ETF-XLV",
+    "xly": "BW-ETF-XLY"
+  },
+  "entries": {
+    "BW-ETF-DIA": {
+      "bw_etf_id": "BW-ETF-DIA",
+      "ticker": "DIA",
+      "sponsor": "state_street",
+      "name": "SPDR Dow Jones Industrial Average ETF Trust",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-dia.xlsx"
+    },
+    "BW-ETF-IJH": {
+      "bw_etf_id": "BW-ETF-IJH",
+      "ticker": "IJH",
+      "sponsor": "ishares",
+      "name": "iShares Core S&P Mid-Cap ETF",
+      "product_url": "https://www.ishares.com/us/products/239763/ishares-core-sp-midcap-etf/1467271812596.ajax?fileType=csv&fileName=IJH_holdings&dataType=fund"
+    },
+    "BW-ETF-IJR": {
+      "bw_etf_id": "BW-ETF-IJR",
+      "ticker": "IJR",
+      "sponsor": "ishares",
+      "name": "iShares Core S&P Small-Cap ETF",
+      "product_url": "https://www.ishares.com/us/products/239774/ishares-core-sp-smallcap-etf/1467271812596.ajax?fileType=csv&fileName=IJR_holdings&dataType=fund"
+    },
+    "BW-ETF-ITOT": {
+      "bw_etf_id": "BW-ETF-ITOT",
+      "ticker": "ITOT",
+      "sponsor": "ishares",
+      "name": "iShares Core S&P Total U.S. Stock Market ETF",
+      "product_url": "https://www.ishares.com/us/products/239724/ishares-core-sp-total-us-stock-market-etf/1467271812596.ajax?fileType=csv&fileName=ITOT_holdings&dataType=fund"
+    },
+    "BW-ETF-IVV": {
+      "bw_etf_id": "BW-ETF-IVV",
+      "ticker": "IVV",
+      "sponsor": "ishares",
+      "name": "iShares Core S&P 500 ETF",
+      "product_url": "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf/1467271812596.ajax?fileType=csv&fileName=IVV_holdings&dataType=fund"
+    },
+    "BW-ETF-IWB": {
+      "bw_etf_id": "BW-ETF-IWB",
+      "ticker": "IWB",
+      "sponsor": "ishares",
+      "name": "iShares Russell 1000 ETF",
+      "product_url": "https://www.ishares.com/us/products/239707/ishares-russell-1000-etf/1467271812596.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund"
+    },
+    "BW-ETF-IWD": {
+      "bw_etf_id": "BW-ETF-IWD",
+      "ticker": "IWD",
+      "sponsor": "ishares",
+      "name": "iShares Russell 1000 Value ETF",
+      "product_url": "https://www.ishares.com/us/products/239708/ishares-russell-1000-value-etf/1467271812596.ajax?fileType=csv&fileName=IWD_holdings&dataType=fund"
+    },
+    "BW-ETF-IWF": {
+      "bw_etf_id": "BW-ETF-IWF",
+      "ticker": "IWF",
+      "sponsor": "ishares",
+      "name": "iShares Russell 1000 Growth ETF",
+      "product_url": "https://www.ishares.com/us/products/239706/ishares-russell-1000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWF_holdings&dataType=fund"
+    },
+    "BW-ETF-IWM": {
+      "bw_etf_id": "BW-ETF-IWM",
+      "ticker": "IWM",
+      "sponsor": "ishares",
+      "name": "iShares Russell 2000 ETF",
+      "product_url": "https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund"
+    },
+    "BW-ETF-MDY": {
+      "bw_etf_id": "BW-ETF-MDY",
+      "ticker": "MDY",
+      "sponsor": "state_street",
+      "name": "SPDR S&P MidCap 400 ETF Trust",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-mdy.xlsx"
+    },
+    "BW-ETF-QQQ": {
+      "bw_etf_id": "BW-ETF-QQQ",
+      "ticker": "QQQ",
+      "sponsor": "invesco",
+      "name": "Invesco QQQ Trust (Nasdaq-100)",
+      "product_url": "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/QQQ/holdings/fund?idType=ticker&interval=daily&productType=ETF"
+    },
+    "BW-ETF-RSP": {
+      "bw_etf_id": "BW-ETF-RSP",
+      "ticker": "RSP",
+      "sponsor": "invesco",
+      "name": "Invesco S&P 500 Equal Weight ETF",
+      "product_url": "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46137V357/holdings/fund?idType=cusip&interval=daily&productType=ETF"
+    },
+    "BW-ETF-SPLG": {
+      "bw_etf_id": "BW-ETF-SPLG",
+      "ticker": "SPLG",
+      "sponsor": "state_street",
+      "name": "SPDR Portfolio S&P 500 ETF",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-splg.xlsx"
+    },
+    "BW-ETF-SPMD": {
+      "bw_etf_id": "BW-ETF-SPMD",
+      "ticker": "SPMD",
+      "sponsor": "state_street",
+      "name": "SPDR Portfolio S&P 400 Mid Cap ETF",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spmd.xlsx"
+    },
+    "BW-ETF-SPSM": {
+      "bw_etf_id": "BW-ETF-SPSM",
+      "ticker": "SPSM",
+      "sponsor": "state_street",
+      "name": "SPDR Portfolio S&P 600 Small Cap ETF",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spsm.xlsx"
+    },
+    "BW-ETF-SPY": {
+      "bw_etf_id": "BW-ETF-SPY",
+      "ticker": "SPY",
+      "sponsor": "state_street",
+      "name": "SPDR S&P 500 ETF Trust",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spy.xlsx"
+    },
+    "BW-ETF-SPYG": {
+      "bw_etf_id": "BW-ETF-SPYG",
+      "ticker": "SPYG",
+      "sponsor": "state_street",
+      "name": "SPDR Portfolio S&P 500 Growth ETF",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spyg.xlsx"
+    },
+    "BW-ETF-SPYV": {
+      "bw_etf_id": "BW-ETF-SPYV",
+      "ticker": "SPYV",
+      "sponsor": "state_street",
+      "name": "SPDR Portfolio S&P 500 Value ETF",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spyv.xlsx"
+    },
+    "BW-ETF-VB": {
+      "bw_etf_id": "BW-ETF-VB",
+      "ticker": "VB",
+      "sponsor": "vanguard",
+      "name": "Vanguard Small-Cap ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vb/portfolio-holding/stock"
+    },
+    "BW-ETF-VO": {
+      "bw_etf_id": "BW-ETF-VO",
+      "ticker": "VO",
+      "sponsor": "vanguard",
+      "name": "Vanguard Mid-Cap ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vo/portfolio-holding/stock"
+    },
+    "BW-ETF-VOO": {
+      "bw_etf_id": "BW-ETF-VOO",
+      "ticker": "VOO",
+      "sponsor": "vanguard",
+      "name": "Vanguard S&P 500 ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/voo/portfolio-holding/stock"
+    },
+    "BW-ETF-VTI": {
+      "bw_etf_id": "BW-ETF-VTI",
+      "ticker": "VTI",
+      "sponsor": "vanguard",
+      "name": "Vanguard Total Stock Market ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vti/portfolio-holding/stock"
+    },
+    "BW-ETF-VTV": {
+      "bw_etf_id": "BW-ETF-VTV",
+      "ticker": "VTV",
+      "sponsor": "vanguard",
+      "name": "Vanguard Value ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vtv/portfolio-holding/stock"
+    },
+    "BW-ETF-VUG": {
+      "bw_etf_id": "BW-ETF-VUG",
+      "ticker": "VUG",
+      "sponsor": "vanguard",
+      "name": "Vanguard Growth ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vug/portfolio-holding/stock"
+    },
+    "BW-ETF-VV": {
+      "bw_etf_id": "BW-ETF-VV",
+      "ticker": "VV",
+      "sponsor": "vanguard",
+      "name": "Vanguard Large-Cap ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vv/portfolio-holding/stock"
+    },
+    "BW-ETF-VXF": {
+      "bw_etf_id": "BW-ETF-VXF",
+      "ticker": "VXF",
+      "sponsor": "vanguard",
+      "name": "Vanguard Extended Market ETF",
+      "product_url": "https://investor.vanguard.com/investment-products/etfs/profile/api/vxf/portfolio-holding/stock"
+    },
+    "BW-ETF-XLB": {
+      "bw_etf_id": "BW-ETF-XLB",
+      "ticker": "XLB",
+      "sponsor": "state_street",
+      "name": "Materials Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlb.xlsx"
+    },
+    "BW-ETF-XLC": {
+      "bw_etf_id": "BW-ETF-XLC",
+      "ticker": "XLC",
+      "sponsor": "state_street",
+      "name": "Communication Services Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlc.xlsx"
+    },
+    "BW-ETF-XLE": {
+      "bw_etf_id": "BW-ETF-XLE",
+      "ticker": "XLE",
+      "sponsor": "state_street",
+      "name": "Energy Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xle.xlsx"
+    },
+    "BW-ETF-XLF": {
+      "bw_etf_id": "BW-ETF-XLF",
+      "ticker": "XLF",
+      "sponsor": "state_street",
+      "name": "Financial Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlf.xlsx"
+    },
+    "BW-ETF-XLI": {
+      "bw_etf_id": "BW-ETF-XLI",
+      "ticker": "XLI",
+      "sponsor": "state_street",
+      "name": "Industrial Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xli.xlsx"
+    },
+    "BW-ETF-XLK": {
+      "bw_etf_id": "BW-ETF-XLK",
+      "ticker": "XLK",
+      "sponsor": "state_street",
+      "name": "Technology Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlk.xlsx"
+    },
+    "BW-ETF-XLP": {
+      "bw_etf_id": "BW-ETF-XLP",
+      "ticker": "XLP",
+      "sponsor": "state_street",
+      "name": "Consumer Staples Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlp.xlsx"
+    },
+    "BW-ETF-XLRE": {
+      "bw_etf_id": "BW-ETF-XLRE",
+      "ticker": "XLRE",
+      "sponsor": "state_street",
+      "name": "Real Estate Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlre.xlsx"
+    },
+    "BW-ETF-XLU": {
+      "bw_etf_id": "BW-ETF-XLU",
+      "ticker": "XLU",
+      "sponsor": "state_street",
+      "name": "Utilities Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlu.xlsx"
+    },
+    "BW-ETF-XLV": {
+      "bw_etf_id": "BW-ETF-XLV",
+      "ticker": "XLV",
+      "sponsor": "state_street",
+      "name": "Health Care Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xlv.xlsx"
+    },
+    "BW-ETF-XLY": {
+      "bw_etf_id": "BW-ETF-XLY",
+      "ticker": "XLY",
+      "sponsor": "state_street",
+      "name": "Consumer Discretionary Select Sector SPDR Fund",
+      "product_url": "https://www.ssga.com/us/en/intermediary/etfs/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xly.xlsx"
+    }
+  }
+}
