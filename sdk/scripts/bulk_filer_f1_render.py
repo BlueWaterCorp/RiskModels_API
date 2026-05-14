@@ -54,12 +54,10 @@ def _default_filer_parent() -> Path:
     raw = os.environ.get("FUNDS_DAG_ZARR_ROOT", "").strip()
     if raw:
         return Path(raw).expanduser().resolve()
-    # Developer fallback — mirrors BWMACRO `_data.py`
-    mac = Path("/Users/conradgann/BW_Code/Funds_DAG/data/sec_data/zarr")
-    if mac.is_dir():
-        return mac.resolve()
     raise RuntimeError(
-        "Set FUNDS_DAG_ZARR_ROOT to the zarr directory that contains bw_filer_id/",
+        "FUNDS_DAG_ZARR_ROOT is not set. Point it at the zarr directory "
+        "that contains bw_filer_id/ (e.g. "
+        "<funds_dag_root>/data/sec_data/zarr).",
     )
 
 
