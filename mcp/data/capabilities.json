@@ -970,6 +970,82 @@
     "tags": ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"]
   },
   {
+    "id": "filer-metrics",
+    "name": "13F Filer Metrics",
+    "description": "Latest knowledge-mode metrics for a single 13F filer — registry row (filer_type, aum_tier, n_funds_managed) + portfolio metrics (total_aum_usd, coverage_in_erm3, aum_in_erm3, n_holdings_active, effective_n, top10_weight_sum, dominant_9box, portfolio_style_hhi, is_modelable, portfolio_*_return + variance shares once D.8.22 populates). Reads public.filers + public.filer_portfolios_latest. Bitemporal lineage on response headers (X-Data-As-Of, X-Data-Filing-Date, X-Risk-Model-Version). Per-filer holdings + portfolio history live on GCS zarr and surface via /holdings + /portfolio. MASTER_BACKLOG D.8.8.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_metrics_v1" },
+    "tags": ["13f", "filer", "metrics", "funds"]
+  },
+  {
+    "id": "filer-holdings",
+    "name": "13F Filer Holdings",
+    "description": "Top-N current holdings of a 13F filer from its canonical PortfolioSurface zarr (Funds_DAG filer_holdings_zarr — source_kind=filer_13f, teo_frequency=quarterly; SEC 13F-HR/HR-A snapshots back to ~2005). bw_sym_id-keyed post-D.8.1 migration; reports the in-ERM3 sleeve (coverage_in_erm3 fraction surfaced separately). Matches the schema of /api/data/funds/{bw_fund_id}/holdings and /api/data/etf/{ticker}/holdings. MASTER_BACKLOG D.8.8.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/holdings",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." },
+      "top": { "type": "integer", "required": false, "default": 25, "description": "Number of top holdings to return (1-1000)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_holdings_v1" },
+    "tags": ["13f", "filer", "holdings", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "filer-portfolio-history",
+    "name": "13F Filer Portfolio History",
+    "description": "A 13F filer's L1/L2/L3 portfolio return-decomposition time series (Funds_DAG filer_portfolios_zarr — ds_portfolio.zarr per-filer, quarterly). Same schema as /api/data/funds/{bw_fund_id}/portfolio and /api/data/etf/{ticker}/portfolio: portfolio_{gross,market,sector,subsector,idiosyncratic}_return + identity_residual, total_aum_usd, n_holdings_active, effective_n, top10_weight_sum, coverage_in_erm3, aum_in_erm3, portfolio_9box_distribution, dominant_9box. Constant-holdings-within-quarter weighting (industry-standard 13F-perf convention, D.8.22). MASTER_BACKLOG D.8.8.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/portfolio",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound on report_date." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound on report_date." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_portfolio_history_v1" },
+    "tags": ["13f", "filer", "return-attribution", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "filer-snapshot-json",
+    "name": "13F Filer Snapshot (JSON)",
+    "description": "Composed JSON snapshot for a single 13F filer. Bundles registry + latest metrics + top-25 holdings + portfolio history + cohort context. Cohort axis = filer_type × aum_tier (vs equity_style_9box on the fund side). No NAV section (filers have no NAV by construction); hedge section gated on D.8.10 Phase 3. Matching server-rendered PDF is /api/13f/filers/{bw_filer_id}/snapshot.pdf. MASTER_BACKLOG D.8.8 / D.8.9.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/snapshot",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.01, "currency": "USD", "billing_code": "filer_snapshot_json_v1" },
+    "tags": ["13f", "filer", "snapshot", "tearsheet"]
+  },
+  {
+    "id": "filer-snapshot-pdf",
+    "name": "13F Filer Snapshot (PDF)",
+    "description": "Server-rendered F1 filer tearsheet PDF — same composition as /api/13f/filers/{bw_filer_id}/snapshot (JSON), rendered via Playwright (parity with fund F1). Letter landscape, single page. Cached 24h per (user, bw_filer_id, report_date). MASTER_BACKLOG D.8.8 / D.8.34.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/snapshot.pdf",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.25, "currency": "USD", "billing_code": "filer_snapshot_pdf_v1" },
+    "tags": ["13f", "filer", "snapshot", "pdf", "tearsheet"]
+  },
+  {
+    "id": "filer-search",
+    "name": "13F Filer Search",
+    "description": "Free discovery endpoint for 13F filers. Returns bw_filer_id + filer_name + cik + filer_type + aum_tier + n_funds_managed for matching filers. Free (skipBilling) for rm_agent_live_* keys — paid follow-up calls via /api/13f/filers/{bw_filer_id}. Mirrors the /api/data/funds/search pattern.",
+    "endpoint": "/api/13f/filers/search",
+    "method": "GET",
+    "parameters": {
+      "q": { "type": "string", "required": true, "description": "Search query (filer name, partial match)." },
+      "limit": { "type": "integer", "required": false, "default": 25, "description": "Max results (1-100)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.0, "currency": "USD", "billing_code": "filer_search_v1" },
+    "tags": ["13f", "filer", "search", "discovery"]
+  },
+  {
     "id": "etf-holdings",
     "name": "ETF Holdings (canonical PortfolioSurface)",
     "description": "Top-N current holdings of an ETF from its canonical PortfolioSurface zarr (Funds_DAG etf_holdings_zarr — source_kind=etf, teo_frequency=daily; iShares today, State Street/Vanguard follow). In-ERM3 sleeve only — every holding carries a bw_sym_id. Surfaces report_date (sponsor 'Fund Holdings as of') and availability_date (when observed) distinctly. MASTER_BACKLOG L.6 / D.9.",
