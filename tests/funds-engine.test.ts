@@ -11,6 +11,7 @@ import {
   fetchStyleCohortLatest,
   fetchStyleRankings,
   getStyleCellMembers,
+  mergeFundRegistryWithLatest,
   resolveFundById,
   resolveFundsByIds,
   searchFunds,
@@ -110,7 +111,10 @@ beforeEach(() => {
 
 describe("fetchFund", () => {
   it("returns the row when found", async () => {
-    setMockClient({ funds: { data: FUND_VFINX, error: null } });
+    setMockClient({
+      funds: { data: FUND_VFINX, error: null },
+      funds_latest: { data: FUND_LATEST_VFINX, error: null },
+    });
     const r = await fetchFund("BW-FUND-S000004310");
     expect(r?.bw_fund_id).toBe("BW-FUND-S000004310");
     expect(r?.ticker).toBe("VFINX");
@@ -119,15 +123,31 @@ describe("fetchFund", () => {
   it("returns null on error", async () => {
     setMockClient({
       funds: { data: null, error: { message: "boom" } },
+      funds_latest: { data: null, error: null },
     });
     const r = await fetchFund("BW-FUND-MISSING");
     expect(r).toBeNull();
   });
 
   it("returns null when no row", async () => {
-    setMockClient({ funds: { data: null, error: null } });
+    setMockClient({
+      funds: { data: null, error: null },
+      funds_latest: { data: null, error: null },
+    });
     const r = await fetchFund("BW-FUND-MISSING");
     expect(r).toBeNull();
+  });
+
+  it("coalesces latest_total_adj_mv from funds_latest when registry MV is 0", async () => {
+    setMockClient({
+      funds: {
+        data: { ...FUND_VFINX, latest_total_adj_mv: 0 },
+        error: null,
+      },
+      funds_latest: { data: FUND_LATEST_VFINX, error: null },
+    });
+    const r = await fetchFund("BW-FUND-S000004310");
+    expect(r?.latest_total_adj_mv).toBe(25_000_000_000);
   });
 });
 
@@ -204,16 +224,40 @@ describe("resolveFundsByIds", () => {
 
 describe("searchFunds", () => {
   it("returns rows when DB returns rows", async () => {
-    setMockClient({ funds: { data: [FUND_VFINX], error: null } });
+    setMockClient({
+      funds: { data: [FUND_VFINX], error: null },
+      funds_latest: { data: [], error: null },
+    });
     const r = await searchFunds({ q: "VFINX", limit: 10 });
     expect(r.length).toBe(1);
     expect(r[0].ticker).toBe("VFINX");
   });
 
   it("clamps limit at 500 (does not throw)", async () => {
-    setMockClient({ funds: { data: [], error: null } });
+    setMockClient({
+      funds: { data: [], error: null },
+      funds_latest: { data: [], error: null },
+    });
     const r = await searchFunds({ limit: 999_999 });
     expect(r).toEqual([]);
+  });
+});
+
+describe("mergeFundRegistryWithLatest", () => {
+  it("fills zero registry MV from latest.total_adj_mv", () => {
+    const merged = mergeFundRegistryWithLatest(
+      { ...FUND_VFINX, latest_total_adj_mv: 0 },
+      FUND_LATEST_VFINX,
+    );
+    expect(merged.latest_total_adj_mv).toBe(25_000_000_000);
+  });
+
+  it("does not overwrite non-zero registry MV", () => {
+    const merged = mergeFundRegistryWithLatest(FUND_VFINX, {
+      ...FUND_LATEST_VFINX,
+      total_adj_mv: 99,
+    });
+    expect(merged.latest_total_adj_mv).toBe(25_000_000_000);
   });
 });
 
