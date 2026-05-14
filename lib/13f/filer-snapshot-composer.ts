@@ -13,7 +13,7 @@
  *     D.8.3 kernel — the only 9-box signal on the filer side.
  *   - A `coverage` block always reports the in-ERM3 fraction so consumers
  *     never confuse a low-coverage filer with a non-modelable one.
- *   - Hedge is absent today — Phase 3 follow-on (D.8.10).
+ *   - Hedge sleeve from ``ds_hr.zarr`` when present (D.8.10 Phase 3).
  */
 
 import type {
@@ -24,6 +24,8 @@ import type {
 import type {
   FilerHoldingsSnapshot,
   FilerPortfolioRow,
+  FilerReturnsDecomposition,
+  FundHedgeSnapshot,
 } from "@/lib/dal/funds-zarr-reader";
 import {
   formatFilerMetrics,
@@ -32,12 +34,23 @@ import {
 
 const FILER_LOOKBACK_MONTHS = 12;
 
+export interface FilerSnapshotErm3Decomposition {
+  monthly_returns: FilerReturnsDecomposition["rows"];
+  variance_shares_full: FilerReturnsDecomposition["variance_shares_full"];
+  variance_shares_recent: FilerReturnsDecomposition["variance_shares_recent"];
+  waterfall_latest_month: FilerReturnsDecomposition["waterfall_latest_month"];
+}
+
 export interface FilerSnapshotPrimitives {
   filer: FilerRow;
   latest: FilerPortfolioLatestRow | null;
   holdings: FilerHoldingsSnapshot | null;
   portfolioHistory: FilerPortfolioRow[];
   cohortRanks: FilerRankingRow[];
+  /** Monthly L3 from ``ds_returns_monthly.zarr`` (D.8.22); null when missing. */
+  returnsDecomposition: FilerReturnsDecomposition | null;
+  /** Latest hedge legs when ``ds_hr.zarr`` exists (Phase 3). */
+  hedgeSleeve: FundHedgeSnapshot | null;
 }
 
 export interface FilerCohortRankEntry {
@@ -107,6 +120,13 @@ export interface FilerSnapshot {
     partition_axes: Array<"filer_type" | "aum_tier">;
     ranks: FilerCohortRankEntry[];
   } | null;
+  /**
+   * ERM3 monthly portfolio decomposition + variance attrs + latest-month
+   * component returns (``ds_returns_monthly.zarr``). Null when the artifact is absent.
+   */
+  erm3_decomposition: FilerSnapshotErm3Decomposition | null;
+  /** Hedge ETF legs at latest teo when ``ds_hr.zarr`` is populated. */
+  hedge_sleeve: FundHedgeSnapshot | null;
   _metadata: {
     model_version: string | null;
     factor_set_id: string | null;
@@ -120,7 +140,15 @@ export interface FilerSnapshot {
 export function composeFilerSnapshot(
   p: FilerSnapshotPrimitives,
 ): FilerSnapshot {
-  const { filer, latest, holdings, portfolioHistory, cohortRanks } = p;
+  const {
+    filer,
+    latest,
+    holdings,
+    portfolioHistory,
+    cohortRanks,
+    returnsDecomposition,
+    hedgeSleeve,
+  } = p;
 
   const trimmed = trimToLookbackMonths(portfolioHistory, FILER_LOOKBACK_MONTHS);
 
@@ -188,6 +216,16 @@ export function composeFilerSnapshot(
           ranks,
         }
       : null,
+    erm3_decomposition:
+      returnsDecomposition && returnsDecomposition.rows.length > 0
+        ? {
+            monthly_returns: returnsDecomposition.rows,
+            variance_shares_full: returnsDecomposition.variance_shares_full,
+            variance_shares_recent: returnsDecomposition.variance_shares_recent,
+            waterfall_latest_month: returnsDecomposition.waterfall_latest_month,
+          }
+        : null,
+    hedge_sleeve: hedgeSleeve ?? null,
     _metadata: {
       model_version: latest?.model_version ?? null,
       factor_set_id: latest?.factor_set_id ?? null,
