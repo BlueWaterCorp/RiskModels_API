@@ -1,0 +1,699 @@
+{
+  "filer": {
+    "name": "Berkshire Hathaway",
+    "owner": "Warren Buffett",
+    "cik": "0001067983",
+    "archetype": "concentrated stockpicker, ~25 quarters of post-ERM3 history"
+  },
+  "window_quarters": 8,
+  "first_as_of": "2024-03-31",
+  "last_as_of": "2025-12-31",
+  "_bridge_misses_per_quarter": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "portfolio_history": [
+    {
+      "as_of_date": "2024-03-31",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.6087090969267713
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.15523525632705193
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.11004897885100896
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.04360210895716413
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.012845493138603593
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.01092164532444652
+        },
+        {
+          "ticker": "V",
+          "weight": 0.010413349264381467
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.008633439870908833
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.008349960230937394
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.00811157028650907
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.006152939498645421
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.005004211647855567
+        },
+        {
+          "ticker": "TMUS",
+          "weight": 0.0038475736624591105
+        },
+        {
+          "ticker": "FND",
+          "weight": 0.0027862268099391957
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.002489654583774197
+        },
+        {
+          "ticker": "FWONK",
+          "weight": 0.00227811453058956
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.00040475447807665596
+        },
+        {
+          "ticker": "JEF",
+          "weight": 8.59809721773961e-05
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 4.0361335398882836e-05
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 3.928330330081006e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 222373712646.0
+    },
+    {
+      "as_of_date": "2024-06-30",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.48922372667047354
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.20385555486428095
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.14784488748730246
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.06030079425513312
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.01449704484524334
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.013231803808484212
+        },
+        {
+          "ticker": "V",
+          "weight": 0.012646569948682448
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.01122192635778523
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.010212967064468758
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.007894241934156184
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.006989695148505154
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.006647214156462588
+        },
+        {
+          "ticker": "TMUS",
+          "weight": 0.004779773879047151
+        },
+        {
+          "ticker": "FWONK",
+          "weight": 0.0032215835343168357
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.0028516840342838203
+        },
+        {
+          "ticker": "FND",
+          "weight": 0.0022962997146558314
+        },
+        {
+          "ticker": "ULTA",
+          "weight": 0.0015463390729987638
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.000489665513441689
+        },
+        {
+          "ticker": "JEF",
+          "weight": 0.00012527819460087943
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 7.172899701698964e-05
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 5.1220518660063846e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 172207510403.0
+    },
+    {
+      "as_of_date": "2024-09-30",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.41239942179754174
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.2425830265088489
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.1695852500736558
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.06907560484219036
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.016903066429899243
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.014362909277299024
+        },
+        {
+          "ticker": "V",
+          "weight": 0.013459835849376883
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.011614482097904425
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.010993188020534471
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.008369283424688113
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.008038797501778081
+        },
+        {
+          "ticker": "TMUS",
+          "weight": 0.0056881262253928675
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.00539549742483321
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.003781665269243517
+        },
+        {
+          "ticker": "FWONK",
+          "weight": 0.00352781085820598
+        },
+        {
+          "ticker": "DPZ",
+          "weight": 0.0032413703440144176
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.0006432529601162364
+        },
+        {
+          "ticker": "JEF",
+          "weight": 0.00015744038209415152
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 7.189172094993813e-05
+        },
+        {
+          "ticker": "ULTA",
+          "weight": 5.556401366185746e-05
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 5.251497777079097e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 169495872946.0
+    },
+    {
+      "as_of_date": "2024-12-31",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.42630416591605513
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.25533386984374074
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.14131830455466068
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.06626669072016868
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.017349852084692953
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.015585987757186314
+        },
+        {
+          "ticker": "V",
+          "weight": 0.01488046597834249
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.01244933457928325
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.011912236709384237
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.00835605193068555
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.007538512146964095
+        },
+        {
+          "ticker": "DPZ",
+          "weight": 0.005673775126899972
+        },
+        {
+          "ticker": "TMUS",
+          "weight": 0.005448537332754722
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.0038740828413058874
+        },
+        {
+          "ticker": "FWONK",
+          "weight": 0.003576163529165612
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.003328614177067129
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.0005157229315809747
+        },
+        {
+          "ticker": "JEF",
+          "weight": 0.0001928823883812773
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 4.855494137069423e-05
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 4.619451030959552e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 176226286315.0
+    },
+    {
+      "as_of_date": "2025-03-31",
+      "holdings": [
+        {
+          "ticker": "NUE",
+          "weight": 0.7827498400920695
+        },
+        {
+          "ticker": "DHI",
+          "weight": 0.21725015990793048
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 885006138.0
+    },
+    {
+      "as_of_date": "2025-06-30",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.34170352209407906
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.2876543011075645
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.16833096030578193
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.07360234925088376
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.02282946919723665
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.02133282647720911
+        },
+        {
+          "ticker": "V",
+          "weight": 0.017523152879313556
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.013325251175623252
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.01304951568250371
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.009048437458297027
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.008700367100163678
+        },
+        {
+          "ticker": "DPZ",
+          "weight": 0.007059318209997263
+        },
+        {
+          "ticker": "NUE",
+          "weight": 0.0050962767345871665
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.0028974073608261175
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.002579681899997193
+        },
+        {
+          "ticker": "FWONK",
+          "weight": 0.0018762596979234496
+        },
+        {
+          "ticker": "DHI",
+          "weight": 0.0011390077075082582
+        },
+        {
+          "ticker": "LAMR",
+          "weight": 0.0008442206293150264
+        },
+        {
+          "ticker": "ALLE",
+          "weight": 0.0006687602758755191
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.00048815653722937086
+        },
+        {
+          "ticker": "JEF",
+          "weight": 0.00014103688024014145
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 6.221629470283962e-05
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 4.7505043141413395e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 168121181918.0
+    },
+    {
+      "as_of_date": "2025-09-30",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.35859729545438657
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.29772108717024276
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.15683280872453462
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.06949320295527858
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.019926303602340045
+        },
+        {
+          "ticker": "V",
+          "weight": 0.016746176066765622
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.014858565142703747
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.013406256543709163
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.01298091820402822
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.008985884994060247
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.008643173855302989
+        },
+        {
+          "ticker": "DPZ",
+          "weight": 0.007610692041307891
+        },
+        {
+          "ticker": "NUE",
+          "weight": 0.005130418363548906
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.002975260570357054
+        },
+        {
+          "ticker": "FWONK",
+          "weight": 0.001863974426094605
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.0017254325097263354
+        },
+        {
+          "ticker": "LAMR",
+          "weight": 0.0008700195185599907
+        },
+        {
+          "ticker": "ALLE",
+          "weight": 0.0008179603551561837
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.0005278276638266742
+        },
+        {
+          "ticker": "JEF",
+          "weight": 0.0001676834303753148
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 6.40688095438822e-05
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 5.498959815060131e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 169148280999.0
+    },
+    {
+      "as_of_date": "2025-12-31",
+      "holdings": [
+        {
+          "ticker": "AAPL",
+          "weight": 0.35103634339606854
+        },
+        {
+          "ticker": "AXP",
+          "weight": 0.31776158613766814
+        },
+        {
+          "ticker": "KO",
+          "weight": 0.15842649115446755
+        },
+        {
+          "ticker": "MCO",
+          "weight": 0.0713981812771034
+        },
+        {
+          "ticker": "KR",
+          "weight": 0.0176986253170704
+        },
+        {
+          "ticker": "V",
+          "weight": 0.01648624793743748
+        },
+        {
+          "ticker": "MA",
+          "weight": 0.01289380891786364
+        },
+        {
+          "ticker": "VRSN",
+          "weight": 0.01237369218665492
+        },
+        {
+          "ticker": "COF",
+          "weight": 0.009817377608096367
+        },
+        {
+          "ticker": "DPZ",
+          "weight": 0.007910826621515783
+        },
+        {
+          "ticker": "AON",
+          "weight": 0.007203096190501503
+        },
+        {
+          "ticker": "NUE",
+          "weight": 0.005921266243846252
+        },
+        {
+          "ticker": "AMZN",
+          "weight": 0.0029762828679199002
+        },
+        {
+          "ticker": "LPX",
+          "weight": 0.0025918440420028793
+        },
+        {
+          "ticker": "NYT",
+          "weight": 0.00199230744339748
+        },
+        {
+          "ticker": "CHTR",
+          "weight": 0.0012546485123338287
+        },
+        {
+          "ticker": "LAMR",
+          "weight": 0.0008622757677348593
+        },
+        {
+          "ticker": "ALLE",
+          "weight": 0.0007037117099926999
+        },
+        {
+          "ticker": "NVR",
+          "weight": 0.00045910630648592077
+        },
+        {
+          "ticker": "JEF",
+          "weight": 0.0001522149138553272
+        },
+        {
+          "ticker": "LILAK",
+          "weight": 5.426741277281545e-05
+        },
+        {
+          "ticker": "BATRK",
+          "weight": 2.5798035210330524e-05
+        }
+      ],
+      "ingest_adapter": "paste",
+      "recorded_at": "2026-05-14T00:51:32+00:00",
+      "_source": "13F Berkshire Hathaway (CIK 0001067983)",
+      "_total_mv_usd": 176510883983.0
+    }
+  ]
+}
