@@ -1046,6 +1046,29 @@
     "tags": ["13f", "filer", "search", "discovery"]
   },
   {
+    "id": "etf-metrics",
+    "name": "ETF Base Metrics (canonical PortfolioSurface)",
+    "description": "Latest knowledge-mode metrics for a single ETF — registry-level metadata (portfolio_id, ticker, source_kind, teo_frequency, sponsor) + the latest aggregate metrics from the canonical PortfolioSurface zarr (aum_reported, aum_erm3, coverage_pct, n_total_holdings, report_date, availability_date). Symmetric to /api/data/funds/{bw_fund_id} and /api/13f/filers/{bw_filer_id} — closes the 'base entity metrics' parity gap for the ETF surface. MASTER_BACKLOG L.6 / D.9.",
+    "endpoint": "/api/data/etf/{ticker}",
+    "method": "GET",
+    "parameters": {
+      "ticker": { "type": "string", "required": true, "description": "ETF ticker, e.g. IVV." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.001, "currency": "USD", "billing_code": "etf_metrics_v1" },
+    "performance": {
+      "avg_latency_ms": 100,
+      "p95_latency_ms": 200,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["ishares_holdings", "erm3_secmaster"]
+    },
+    "tags": ["etf", "metrics", "portfolio-surface", "funds"]
+  },
+  {
     "id": "etf-holdings",
     "name": "ETF Holdings (canonical PortfolioSurface)",
     "description": "Top-N current holdings of an ETF from its canonical PortfolioSurface zarr (Funds_DAG etf_holdings_zarr — source_kind=etf, teo_frequency=daily; iShares today, State Street/Vanguard follow). In-ERM3 sleeve only — every holding carries a bw_sym_id. Surfaces report_date (sponsor 'Fund Holdings as of') and availability_date (when observed) distinctly. MASTER_BACKLOG L.6 / D.9.",

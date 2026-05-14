@@ -78,7 +78,62 @@ const FUND_COLUMNS =
 const FUND_LATEST_COLUMNS =
   "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata";
 
-export async function fetchFund(bwFundId: string): Promise<FundRow | null> {
+/**
+ * True when `public.funds.latest_total_adj_mv` is missing or non-finite or exactly 0.
+ * In those cases we coalesce from `funds_latest.total_adj_mv` so search/detail match
+ * the hot-cache row (registry denormalization can lag ds_ph sums).
+ */
+function registryMvNeedsCoalesce(mv: number | null | undefined): boolean {
+  if (mv == null) return true;
+  if (!Number.isFinite(mv)) return true;
+  return mv === 0;
+}
+
+/**
+ * Merge registry (`funds`) summary fields from `funds_latest` when the registry
+ * value is null/0/non-finite but the latest row has a usable value.
+ */
+export function mergeFundRegistryWithLatest(
+  fund: FundRow,
+  latest: FundLatestRow | null | undefined,
+): FundRow {
+  if (!latest) return fund;
+
+  const out: FundRow = { ...fund };
+  const t = latest.total_adj_mv;
+  if (
+    registryMvNeedsCoalesce(fund.latest_total_adj_mv) &&
+    t != null &&
+    Number.isFinite(t) &&
+    t !== 0
+  ) {
+    out.latest_total_adj_mv = t;
+  }
+
+  if (
+    (fund.latest_n_holdings == null || fund.latest_n_holdings === 0) &&
+    latest.n_holdings_active != null &&
+    latest.n_holdings_active > 0
+  ) {
+    out.latest_n_holdings = latest.n_holdings_active;
+  }
+
+  const eff = latest.effective_n;
+  if (
+    (fund.latest_effective_n == null || fund.latest_effective_n === 0) &&
+    eff != null &&
+    Number.isFinite(eff) &&
+    eff !== 0
+  ) {
+    out.latest_effective_n = eff;
+  }
+
+  return out;
+}
+
+async function fetchFundRegistryRow(
+  bwFundId: string,
+): Promise<FundRow | null> {
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -95,6 +150,12 @@ export async function fetchFund(bwFundId: string): Promise<FundRow | null> {
     console.error(`[Funds DAL] Error fetching fund ${bwFundId}:`, error);
     return null;
   }
+}
+
+/** Registry row + `funds_latest` coalesced fields (single-fund reads). */
+export async function fetchFund(bwFundId: string): Promise<FundRow | null> {
+  const resolved = await resolveFundById(bwFundId);
+  return resolved?.fund ?? null;
 }
 
 export async function fetchFundLatest(
@@ -128,11 +189,11 @@ export async function resolveFundById(
   bwFundId: string,
 ): Promise<FundWithLatest | null> {
   const [fund, latest] = await Promise.all([
-    fetchFund(bwFundId),
+    fetchFundRegistryRow(bwFundId),
     fetchFundLatest(bwFundId),
   ]);
   if (!fund) return null;
-  return { fund, latest };
+  return { fund: mergeFundRegistryWithLatest(fund, latest), latest };
 }
 
 export async function resolveFundsByIds(
@@ -166,9 +227,10 @@ export async function resolveFundsByIds(
     }
 
     for (const fund of (fundsRes.data ?? []) as FundRow[]) {
+      const latest = latestById.get(fund.bw_fund_id) ?? null;
       result.set(fund.bw_fund_id, {
-        fund,
-        latest: latestById.get(fund.bw_fund_id) ?? null,
+        fund: mergeFundRegistryWithLatest(fund, latest),
+        latest,
       });
     }
     return result;
@@ -210,7 +272,25 @@ export async function searchFunds(
       console.error("[Funds DAL] searchFunds error:", error);
       return [];
     }
-    return (data ?? []) as FundRow[];
+    const rows = (data ?? []) as FundRow[];
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.bw_fund_id);
+    const { data: latestData, error: latestErr } = await admin
+      .from("funds_latest")
+      .select(FUND_LATEST_COLUMNS)
+      .in("bw_fund_id", ids);
+    if (latestErr) {
+      console.error("[Funds DAL] searchFunds funds_latest batch error:", latestErr);
+      return rows;
+    }
+    const latestById = new Map<string, FundLatestRow>();
+    for (const row of (latestData ?? []) as FundLatestRow[]) {
+      latestById.set(row.bw_fund_id, row);
+    }
+    return rows.map((fund) =>
+      mergeFundRegistryWithLatest(fund, latestById.get(fund.bw_fund_id)),
+    );
   } catch (error) {
     console.error("[Funds DAL] searchFunds error:", error);
     return [];
