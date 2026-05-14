@@ -5904,6 +5904,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /data/etf/{ticker}:
+    get:
+      summary: ETF base metrics (canonical PortfolioSurface)
+      description: >
+        Latest knowledge-mode metrics for a single ETF — registry-level metadata
+        (`portfolio_id`, `ticker`, `source_kind`, `teo_frequency`, `sponsor`) +
+        the latest aggregate metrics from the canonical PortfolioSurface zarr
+        (`aum_reported`, `aum_erm3`, `coverage_pct`, `n_total_holdings`,
+        `report_date`, `availability_date`).
+
+
+        Symmetric to `/api/data/funds/{bw_fund_id}` and
+        `/api/13f/filers/{bw_filer_id}` — closes the "base entity metrics"
+        parity gap for the ETF surface. MASTER_BACKLOG L.6 / D.9.
+
+
+        Bitemporal lineage on response headers — never collapsed: `X-Data-As-Of`
+        (= `report_date`) and `X-Data-Availability` (= `availability_date`). No
+        per-holding rows — call `/api/data/etf/{ticker}/holdings` for those.
+      operationId: getEtfMetricsDataPlane
+      tags: [Funds Data Plane]
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema: { type: string }
+          example: IVV
+      responses:
+        "200":
+          description: ETF latest metrics block.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: report_date — the sponsor's "Fund Holdings as of" date.
+            X-Data-Availability:
+              schema: { type: string, format: date }
+              description: availability_date — when that holdings file was first observed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  portfolio_id: { type: string, example: BW-ETF-IVV }
+                  ticker: { type: string, example: IVV }
+                  source_kind: { type: string, enum: [etf] }
+                  teo_frequency: { type: string, enum: [daily] }
+                  sponsor: { type: string, nullable: true, example: ishares }
+                  report_date: { type: string, format: date }
+                  availability_date: { type: string, format: date, nullable: true }
+                  aum_reported: { type: number, nullable: true }
+                  aum_erm3: { type: number, nullable: true }
+                  coverage_pct:
+                    type: number
+                    nullable: true
+                    description: aum_erm3 / aum_reported — in-ERM3 share of the resolved sleeve.
+                  n_total_holdings: { type: integer }
+        "404":
+          description: ETF not found or no holdings available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /data/etf/{ticker}/holdings:
     get:
       summary: ETF top-N holdings (canonical PortfolioSurface)
