@@ -1131,7 +1131,7 @@ const FILER_RETURNS_VARS = [
   "portfolio_idiosyncratic_return",
 ] as const;
 
-/** One monthly row from filer ``ds_returns.zarr`` (D.8.22). */
+/** One monthly row from filer ``ds_returns_monthly.zarr`` (D.8.22). */
 export interface FilerMonthlyReturnRow {
   teo: string;
   portfolio_gross_return: number | null;
@@ -1226,14 +1226,14 @@ function waterfallLatestFromSlices(
 }
 
 /**
- * Monthly L3 portfolio decomposition for a filer from ``ds_returns.zarr``.
+ * Monthly L3 portfolio decomposition for a filer from ``ds_returns_monthly.zarr``.
  * Null when zarr is missing or the date window is empty.
  */
 export async function readFilerReturnsDecomposition(
   bwFilerId: string,
   options: FundPortfolioOptions = {},
 ): Promise<FilerReturnsDecomposition | null> {
-  const grp = await openFilerZarrGroup(bwFilerId, "ds_returns.zarr");
+  const grp = await openFilerZarrGroup(bwFilerId, "ds_returns_monthly.zarr");
   if (!grp) return null;
 
   const teos = await readTeoStrings(grp);

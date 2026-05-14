@@ -47,7 +47,7 @@ export interface FilerSnapshotPrimitives {
   holdings: FilerHoldingsSnapshot | null;
   portfolioHistory: FilerPortfolioRow[];
   cohortRanks: FilerRankingRow[];
-  /** Monthly L3 from ``ds_returns.zarr`` (D.8.22); null when missing. */
+  /** Monthly L3 from ``ds_returns_monthly.zarr`` (D.8.22); null when missing. */
   returnsDecomposition: FilerReturnsDecomposition | null;
   /** Latest hedge legs when ``ds_hr.zarr`` exists (Phase 3). */
   hedgeSleeve: FundHedgeSnapshot | null;
@@ -122,7 +122,7 @@ export interface FilerSnapshot {
   } | null;
   /**
    * ERM3 monthly portfolio decomposition + variance attrs + latest-month
-   * component returns (``ds_returns.zarr``). Null when the artifact is absent.
+   * component returns (``ds_returns_monthly.zarr``). Null when the artifact is absent.
    */
   erm3_decomposition: FilerSnapshotErm3Decomposition | null;
   /** Hedge ETF legs at latest teo when ``ds_hr.zarr`` is populated. */

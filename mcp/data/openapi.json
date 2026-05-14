@@ -11238,7 +11238,7 @@
     "/13f/filers/{bw_filer_id}/snapshot": {
       "get": {
         "summary": "13F filer composed snapshot (JSON)",
-        "description": "Single-call composed snapshot for a 13F filer: registry + latest metrics + top-25 holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) + portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability flag. NAV is intentionally absent (`_metadata.nav_applicable: false`) — filers have no NAV time series. Adds `erm3_decomposition` from filer `ds_returns.zarr` (monthly L3 rows, variance share attrs, latest-month waterfall) when present (D.8.22). Holdings may include latest daily L3 ER shares per `bw_sym_id` from `security_history_latest`. `hedge_sleeve` is populated when filer `ds_hr.zarr` exists (D.8.10 Phase 3); otherwise null.\n",
+        "description": "Single-call composed snapshot for a 13F filer: registry + latest metrics + top-25 holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) + portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability flag. NAV is intentionally absent (`_metadata.nav_applicable: false`) — filers have no NAV time series. Adds `erm3_decomposition` from filer `ds_returns_monthly.zarr` (monthly L3 rows, variance share attrs, latest-month waterfall) when present (D.8.22). Holdings may include latest daily L3 ER shares per `bw_sym_id` from `security_history_latest`. `hedge_sleeve` is populated when filer `ds_hr.zarr` exists (D.8.10 Phase 3); otherwise null.\n",
         "operationId": "getFilerSnapshot",
         "tags": [
           "13F Filers"
