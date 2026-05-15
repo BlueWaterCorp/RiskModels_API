@@ -14,6 +14,7 @@ import xarray as xr
 from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from .artifacts import ArtifactRenderRequest, render_artifact
 from .gcs import GcsObjectStore, ObjectStore
 from .portfolio_evolution import KERNEL_VERSION, compute_portfolio_evolution
 from .render import (
@@ -130,6 +131,31 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
             headers={
                 "X-Canonical-Path": f"gs://{settings.bucket}/{result.gcs_path}",
                 "X-Cache-Written": "1" if result.written_to_cache else "0",
+            },
+        )
+
+    @app.post("/artifacts/render")
+    def post_artifacts_render(req: ArtifactRenderRequest = Body(...)):
+        """Artifact registry render endpoint — see render_svc.artifacts.
+
+        Cache-first; live-renders on GCS miss by importing
+        `bwmacro.snapshots.artifacts.{slug}.{version}` and calling its
+        `render_data` / `render_figure`. Phase 1B scope: fund subjects +
+        as_of='latest'. See ARTIFACT_REGISTRY_PHASE_1B_PLAN.md §10.
+        """
+        data, mime, gcs_path, resolved_as_of, cache_control = render_artifact(
+            req,
+            store=store,
+            prefix=settings.prefix,
+            persist=settings.persist_renders,
+        )
+        return Response(
+            content=data,
+            media_type=mime,
+            headers={
+                "X-Artifact-GCS-Path": f"gs://{settings.bucket}/{gcs_path}",
+                "X-Artifact-Resolved-As-Of": resolved_as_of,
+                "Cache-Control": cache_control,
             },
         )
 
