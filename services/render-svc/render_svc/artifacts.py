@@ -32,9 +32,11 @@ Phase 1B deliberately defers
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
 from fastapi import HTTPException
@@ -53,6 +55,7 @@ _SUBJECT_PREFIX_KIND: dict[str, str] = {
     "BW-FILER-": "filer_13f",
     "BW-COHORT-": "cohort",
     "BW-STOCK-": "stock",
+    "BW-PORTFOLIO-": "client_portfolio",
 }
 
 _FORMAT_MIME: dict[str, str] = {
@@ -74,6 +77,16 @@ class ArtifactRenderRequest(BaseModel):
         pattern=r"^(latest|\d{4}-\d{2}-\d{2})$",
     )
     format: Literal["json", "png", "svg"] = "json"
+    subject_payload: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Inline subject data for kinds the server can't resolve from a "
+            "stable identifier (today: client_portfolio). Required when "
+            "subject_kind == 'client_portfolio'; the GCS cache key is "
+            "derived from a stable hash of the payload so render-once "
+            "still holds for identical pastes."
+        ),
+    )
 
 
 def _resolve_subject_kind(subject_id: str) -> str:
@@ -116,33 +129,102 @@ def _import_artifact_module(slug: str, version: str) -> Any:
 def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
     """Resolve the adapter for ``(slug, subject_kind)``.
 
-    Phase 1B only wires the fund adapters. Filer / ETF / cohort / client
-    adapters land alongside their Phase 2 artifact rows in
-    ``BWMACRO/src/bwmacro/snapshots/artifacts/adapters.py``.
+    Currently wired:
+      - fund: ``top_holdings_erm_stacked``, ``cumulative_return_strip``
+      - client_portfolio: ``top_holdings_erm_stacked``
+
+    Filer / ETF / cohort adapters land alongside their Phase 2 artifact
+    rows in ``BWMACRO/src/bwmacro/snapshots/artifacts/adapters.py``.
     """
-    if subject_kind != "fund":
+    from bwmacro.snapshots.artifacts import adapters
+
+    if subject_kind == "fund":
+        if slug == "top_holdings_erm_stacked":
+            return lambda fd: adapters.holdings_from_fund_data(fd, top_n=12)
+        if slug == "cumulative_return_strip":
+            return adapters.cumulative_return_series_from_fund_data
         raise HTTPException(
             status_code=501,
             detail=(
-                f"subject_kind={subject_kind!r} adapter not yet wired "
-                f"(Phase 2 task; see ARTIFACT_REGISTRY.md §13)"
+                f"No fund adapter wired for slug={slug!r} "
+                f"(add to bwmacro.snapshots.artifacts.adapters)"
             ),
         )
 
-    from bwmacro.snapshots.artifacts import adapters
-
-    if slug == "top_holdings_erm_stacked":
-        return lambda fd: adapters.holdings_from_fund_data(fd, top_n=12)
-    if slug == "cumulative_return_strip":
-        return adapters.cumulative_return_series_from_fund_data
+    if subject_kind == "client_portfolio":
+        if slug == "top_holdings_erm_stacked":
+            return lambda positions: adapters.holdings_from_client_portfolio(
+                positions, top_n=12
+            )
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"No client_portfolio adapter wired for slug={slug!r} "
+                f"(only top_holdings_erm_stacked is widened so far)"
+            ),
+        )
 
     raise HTTPException(
         status_code=501,
         detail=(
-            f"No fund adapter wired for slug={slug!r} "
-            f"(add to bwmacro.snapshots.artifacts.adapters)"
+            f"subject_kind={subject_kind!r} adapter not yet wired "
+            f"(Phase 2 task; see ARTIFACT_REGISTRY.md §13)"
         ),
     )
+
+
+def _payload_hash(positions: list[dict]) -> str:
+    """Stable 16-char hex hash of a positions list (for the GCS cache key).
+
+    Round-trips the list through ``json.dumps(sort_keys=True)`` so two
+    equivalent payloads with different key ordering hash to the same
+    digest. Truncates to 16 hex chars (64 bits) — enough collision
+    resistance for an artifact-registry cache key, short enough to stay
+    readable in URLs and logs.
+    """
+    canonical = json.dumps(positions, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _resolve_client_portfolio(
+    req: "ArtifactRenderRequest",
+) -> tuple[list[dict], str, str]:
+    """Validate + resolve a client_portfolio request.
+
+    Returns ``(positions, resolved_subject_id, resolved_as_of)``.
+
+    - ``positions`` is the raw list from ``subject_payload['positions']``.
+    - ``resolved_subject_id`` is ``BW-PORTFOLIO-<payload-hash>`` so two
+      pastes of the same portfolio hit the same GCS key (render-once).
+    - ``resolved_as_of`` is today's UTC date when the request asks for
+      ``latest`` (a pasted portfolio is time-anchored to the paste), or
+      the literal ISO date the caller supplied.
+    """
+    if req.subject_payload is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "subject_payload is required for subject_kind='client_portfolio'. "
+                "Pass the workspace snapshot positions list under the "
+                "'positions' key."
+            ),
+        )
+    positions = req.subject_payload.get("positions")
+    if not isinstance(positions, list) or not positions:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "subject_payload.positions must be a non-empty list of "
+                "position rows (ticker / weight / l3_*_er fields)."
+            ),
+        )
+
+    resolved_subject_id = f"BW-PORTFOLIO-{_payload_hash(positions)}"
+    if req.as_of == "latest":
+        resolved_as_of = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    else:
+        resolved_as_of = req.as_of
+    return positions, resolved_subject_id, resolved_as_of
 
 
 def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
@@ -228,10 +310,18 @@ def render_artifact(
     """
     subject_kind = _resolve_subject_kind(req.subject_id)
 
-    subject_data, resolved_as_of = _load_subject_data(req.subject_id, subject_kind, req.as_of)
+    if subject_kind == "client_portfolio":
+        # Subject data is supplied inline; cache key is payload-hash-derived.
+        subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
+    else:
+        # Loader-resolved path (fund today; etf / filer / cohort to follow).
+        subject_data, resolved_as_of = _load_subject_data(
+            req.subject_id, subject_kind, req.as_of
+        )
+        resolved_subject_id = req.subject_id
 
     gcs_path = _artifact_gcs_path(
-        prefix, req.slug, req.version, req.subject_id, resolved_as_of, req.format
+        prefix, req.slug, req.version, resolved_subject_id, resolved_as_of, req.format
     )
 
     raw = store.read(gcs_path)

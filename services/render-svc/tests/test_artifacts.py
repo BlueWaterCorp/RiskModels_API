@@ -29,6 +29,7 @@ from render_svc.artifacts import (
     ArtifactRenderRequest,
     _artifact_gcs_path,
     _cache_control_for,
+    _payload_hash,
     render_artifact,
 )
 
@@ -326,3 +327,168 @@ class TestRenderArtifactErrors:
             )
         assert exc.value.status_code == 404
         assert "nonexistent_artifact@v1" in str(exc.value.detail)
+
+
+# ── client_portfolio subject_payload path ─────────────────────────────────
+
+
+def _patch_client_portfolio_adapter(monkeypatch):
+    """Wire a fake `holdings_from_client_portfolio` onto the bwmacro stub
+    package the test installs for `top_holdings_erm_stacked@v1`.
+
+    The adapter is called by the endpoint's client_portfolio dispatch
+    branch; without a fake it tries to import the real BWMACRO module.
+    """
+    _install_fake_bwmacro_artifact(
+        monkeypatch,
+        slug="top_holdings_erm_stacked",
+        version="v1",
+        applicable=("fund", "client_portfolio"),
+        render_data_result={
+            "slug": "top_holdings_erm_stacked",
+            "rows": [{"label": "NVDA", "weight_pct": 20.0}],
+        },
+    )
+    adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+    adapters_mod.holdings_from_client_portfolio = (
+        lambda positions, top_n=12: list(positions)[:top_n]
+    )
+
+
+class TestPayloadHash:
+    def test_hash_is_stable_across_key_order(self):
+        a = [{"ticker": "NVDA", "weight": 0.2}, {"weight": 0.1, "ticker": "AAPL"}]
+        b = [{"weight": 0.2, "ticker": "NVDA"}, {"ticker": "AAPL", "weight": 0.1}]
+        assert _payload_hash(a) == _payload_hash(b)
+
+    def test_hash_changes_when_payload_changes(self):
+        a = [{"ticker": "NVDA", "weight": 0.2}]
+        b = [{"ticker": "NVDA", "weight": 0.3}]
+        assert _payload_hash(a) != _payload_hash(b)
+
+    def test_hash_is_16_chars(self):
+        h = _payload_hash([{"ticker": "X", "weight": 0.5}])
+        assert len(h) == 16
+        # hex-only
+        assert all(c in "0123456789abcdef" for c in h)
+
+
+class TestClientPortfolioPath:
+    def _payload(self):
+        return {
+            "positions": [
+                {"ticker": "NVDA", "weight": 0.2,
+                 "l3_mkt_er": 0.1, "l3_sec_er": 0.15,
+                 "l3_sub_er": 0.05, "l3_res_er": 0.7},
+                {"ticker": "AAPL", "weight": 0.1},
+            ]
+        }
+
+    def test_happy_path_renders_and_writes(self, store, monkeypatch):
+        _patch_client_portfolio_adapter(monkeypatch)
+        req = _req(
+            subject_id="BW-PORTFOLIO-",  # placeholder; server rewrites with hash
+            subject_payload=self._payload(),
+        )
+        data, mime, gcs_path, resolved_as_of, cache_control = render_artifact(
+            req, store=store, prefix=PREFIX,
+        )
+
+        assert mime == "application/json"
+        body = json.loads(data)
+        assert body["slug"] == "top_holdings_erm_stacked"
+
+        # GCS path uses BW-PORTFOLIO-<hash> + today's UTC date.
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        expected_hash = _payload_hash(self._payload()["positions"])
+        expected_path = (
+            f"snapshots/artifacts/top_holdings_erm_stacked@v1/"
+            f"BW-PORTFOLIO-{expected_hash}/{today}.json"
+        )
+        assert gcs_path == expected_path
+        assert resolved_as_of == today
+        # `as_of=latest` cache-control is the short ttl for client_portfolio too.
+        assert cache_control == "public, max-age=3600"
+        # Persisted to the cache for subsequent identical pastes.
+        assert gcs_path in store.objects
+
+    def test_missing_subject_payload_returns_400(self, store, monkeypatch):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id="BW-PORTFOLIO-", subject_payload=None),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+        assert "subject_payload" in str(exc.value.detail)
+
+    def test_empty_positions_returns_400(self, store, monkeypatch):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(
+                    subject_id="BW-PORTFOLIO-",
+                    subject_payload={"positions": []},
+                ),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+        assert "positions" in str(exc.value.detail)
+
+    def test_non_list_positions_returns_400(self, store, monkeypatch):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(
+                    subject_id="BW-PORTFOLIO-",
+                    subject_payload={"positions": "not-a-list"},
+                ),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+
+    def test_explicit_as_of_uses_immutable_cache(self, store, monkeypatch):
+        _patch_client_portfolio_adapter(monkeypatch)
+        _, _, gcs_path, resolved_as_of, cache_control = render_artifact(
+            _req(
+                subject_id="BW-PORTFOLIO-",
+                subject_payload=self._payload(),
+                as_of="2025-11-30",
+            ),
+            store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == "2025-11-30"
+        assert "/2025-11-30.json" in gcs_path
+        assert "immutable" in cache_control
+
+    def test_same_payload_hits_cache(self, store, monkeypatch):
+        """Two pastes of the same portfolio resolve to the same GCS key.
+
+        First call live-renders + writes. Second call hits the cache.
+        The fake adapter would return a different mutable object each
+        invocation, so cache identity means we hit step 1, not the adapter.
+        """
+        _patch_client_portfolio_adapter(monkeypatch)
+        req1 = _req(
+            subject_id="BW-PORTFOLIO-",
+            subject_payload=self._payload(),
+        )
+        data1, _, gcs_path1, _, _ = render_artifact(req1, store=store, prefix=PREFIX)
+
+        # Swap the adapter to return something obviously different — proves
+        # the second call comes from cache, not from a fresh render.
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.holdings_from_client_portfolio = lambda positions, top_n=12: []
+        mod = sys.modules["bwmacro.snapshots.artifacts.top_holdings_erm_stacked.v1"]
+        mod.render_data = lambda data: {"slug": "DIFFERENT", "rows": []}
+
+        req2 = _req(
+            subject_id="BW-PORTFOLIO-",
+            subject_payload=self._payload(),  # identical payload
+        )
+        data2, _, gcs_path2, _, _ = render_artifact(req2, store=store, prefix=PREFIX)
+
+        assert gcs_path1 == gcs_path2
+        assert data1 == data2  # cached bytes, not the new fake's bytes
+        assert b"DIFFERENT" not in data2
