@@ -1,3 +1,4 @@
+// licensed-id-ok-file: this module's entire purpose is to prevent ISIN redistribution by detecting ISIN-flavored bw_sym_id values at the read boundary and substituting non-licensed equivalents (FIGI / ticker / RESTRICTED placeholder). Doc comments name ISIN to explain the substitution; no licensed identifier values are emitted to public responses. See MASTER_BACKLOG H.24.
 /**
  * `bw_sym_id` ISIN-leak scrub at the public-API read boundary.
  *
