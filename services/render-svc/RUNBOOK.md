@@ -229,3 +229,142 @@ file /tmp/nvda.png
    resources (Supabase via private IP, etc.). Not needed for Phase 1.
 5. **Phase 2 — cache-miss live render** depends on the FundData reader
    promotion (tracker task #11).
+
+---
+
+## Phase 1B — artifact registry endpoint ops checklist
+
+After PRs [#68](https://github.com/BlueWaterCorp/RiskModels_API/pull/68)
++ [#70](https://github.com/BlueWaterCorp/RiskModels_API/pull/70) land
+(Dockerfile multi-repo build + `POST /artifacts/render` endpoint), the
+artifact registry is live in code but **not deployed** until the four
+steps below complete. They each need interactive auth and can't run from
+a Claude session.
+
+Cross-repo dependency map: parent SSOT is
+`BWMACRO/docs/architecture/intelligence_runtime/ARTIFACT_REGISTRY_PHASE_1B_PLAN.md`.
+Workspace consumer is `Risk_Models` PRs #82 (proxy + table prop) + #83
+(visible preview panel).
+
+### 1. Create the Secret Manager secret with a BWMACRO read token
+
+The Dockerfile clones BWMACRO into the build context at `bwmacro-src/` so
+`pip install --no-deps /tmp/bwmacro` can install the artifact subtree.
+Cloud Build needs a GitHub access token to do the clone (BWMACRO is
+private).
+
+Generate a PAT (or GitHub App installation token) with `repo:read` scope
+limited to `BlueWaterCorp/BWMACRO`, then store it:
+
+```bash
+echo -n "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" | \
+  gcloud secrets create github-bwmacro-read \
+    --replication-policy="automatic" \
+    --data-file=-
+```
+
+Grant the Cloud Build service account access:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe "$(gcloud config get-value project)" \
+  --format='value(projectNumber)')
+gcloud secrets add-iam-policy-binding github-bwmacro-read \
+  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+### 2. Update the render-svc Cloud Build trigger to inject the token
+
+The current `cloudbuild.yaml` expects `_BWMACRO_GIT_TOKEN` as a build
+substitution; the prep step bails loudly if it's empty. Wire the secret
+into the trigger so the substitution gets populated automatically on
+each build (Console: Cloud Build → Triggers → `render-svc-deploy` →
+Edit → Substitutions → `_BWMACRO_GIT_TOKEN` mapped to
+`projects/<PROJECT_NUMBER>/secrets/github-bwmacro-read/versions/latest`).
+
+For ad-hoc CLI builds (no trigger), pass the token at submit time:
+
+```bash
+TOKEN=$(gcloud secrets versions access latest --secret=github-bwmacro-read)
+gcloud builds submit --config services/render-svc/cloudbuild.yaml \
+  --substitutions=_BWMACRO_GIT_TOKEN="${TOKEN}" .
+```
+
+### 3. Deploy the artifact-registry-aware image
+
+Once the trigger is wired (or you run an ad-hoc build), the next push to
+`main` rebuilds the image with the bwmacro artifact subtree. The
+Dockerfile's **import-firewall smoke (§5)** catches drift at BUILD time:
+if a future refactor reintroduces `bwmacro.snapshots.funds._ai_insight`
+/ `_data` / `supabase` at module scope, the build fails with the
+offending module listed instead of producing a bloated image. Verify
+the smoke output in the Cloud Build logs:
+
+```
+=== Step "build-image" ===
+...
+artifact import firewall OK
+```
+
+After the build, deploy the new revision:
+
+```bash
+gcloud run services update render-svc \
+  --image=us-central1-docker.pkg.dev/$(gcloud config get-value project)/cloud-run-source-deploy/render-svc:latest \
+  --region=us-central1
+```
+
+Smoke the endpoint (the Cloud Run URL is what feeds `RENDER_SVC_URL`
+below):
+
+```bash
+RENDER_URL=$(gcloud run services describe render-svc \
+  --region=us-central1 --format='value(status.url)')
+
+curl -X POST "${RENDER_URL}/artifacts/render" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "slug": "top_holdings_erm_stacked",
+    "version": "v1",
+    "subject_id": "BW-FUND-S000004563",
+    "as_of": "latest",
+    "format": "json"
+  }' \
+  -i | head -40
+```
+
+Expected:
+- `HTTP/2 200` with `X-Artifact-Resolved-As-Of: 2025-MM-DD`
+- `X-Artifact-GCS-Path: gs://rm_api_public/snapshots/artifacts/top_holdings_erm_stacked@v1/BW-FUND-S000004563/2025-MM-DD.json`
+- JSON body matching the `TopHoldingsErmStackedV1` shape in the SDK.
+
+### 4. Wire RENDER_SVC_URL on the Risk_Models Vercel project
+
+The Next.js proxy route (`riskmodels_com/src/app/api/artifacts/render/route.ts`)
+returns 503 with a friendly message when `RENDER_SVC_URL` is unset,
+so the workspace preview panel (Risk_Models PR #83) degrades cleanly.
+To activate it:
+
+```bash
+# Vercel CLI from riskmodels_com/:
+vercel env add RENDER_SVC_URL production
+# paste the Cloud Run URL from step 3
+vercel env add RENDER_SVC_URL preview   # if you want preview deploys to use it too
+vercel deploy --prod                    # or push a commit to trigger the build
+```
+
+Or via the Vercel UI: Project Settings → Environment Variables → add
+`RENDER_SVC_URL = <CLOUD_RUN_URL>` for Production (and Preview if desired).
+
+After redeploy, the AHA panel's "Artifact Registry · live preview"
+section should render AGTHX's top holdings within ~2 seconds of the
+snapshot landing.
+
+### Phase 2 follow-ons (not in this checklist)
+
+- Postgres `artifact_registry` UPSERT (Dagster reconciliation job).
+- `FundData` arbitrary `as_of` threaded through `get_data_for_f1`.
+- Widen `top_holdings_erm_stacked@v1` to `client_portfolio` + add adapter
+  + extend endpoint with `subject_payload` — at that point the workspace
+  preview goes away and the user's own positions render via the artifact path.
+- Nightly byte-compare Dagster job against real AGTHX zarr.
