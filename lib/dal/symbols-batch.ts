@@ -1,3 +1,4 @@
+// licensed-id-ok-file: sibling of sym-id-scrub.ts (which carries the same marker). This module is the batch-resolver that feeds the scrub — it reads symbols.metadata.figi from Postgres to pick the FIGI substitute for ISIN-flavored bw_sym_ids. ISIN mentions in doc comments describe what we're scrubbing; no licensed identifier values leak to public responses. See MASTER_BACKLOG H.24.
 /**
  * Batch-resolve `bw_sym_id` → `{ticker, figi}` for the public-API scrub
  * helpers in `sym-id-scrub.ts`, plus the convenience helper
