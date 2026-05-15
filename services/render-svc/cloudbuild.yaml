@@ -1,9 +1,46 @@
 # Cloud Build config for the render service.
 # Invoke from repo root:
 #   gcloud builds submit --config services/render-svc/cloudbuild.yaml .
+#
+# Multi-repo note: the artifact registry endpoint imports
+# `bwmacro.snapshots.artifacts.*` (narrow leaf surface — see Dockerfile §5
+# import-firewall smoke). BWMACRO lives in a sibling repo; we clone it
+# into the build context as `./bwmacro-src/` before docker build runs.
+#
+# To enable the clone step in production: store a GitHub PAT (or App
+# token) with read access to BlueWaterCorp/BWMACRO in Secret Manager
+# under name `github-bwmacro-read`, then uncomment the secretEnv +
+# availableSecrets blocks below. For staging / local dev, fall back to
+# a symlink: `ln -s ../BWMACRO bwmacro-src` from the RiskModels_API
+# repo root before invoking `docker build` directly.
 
 steps:
+  # Phase 1B addition: clone BWMACRO into the build context so the
+  # Dockerfile's `COPY bwmacro-src/` step can install the artifact subtree.
+  - name: 'gcr.io/cloud-builders/git'
+    id: clone-bwmacro
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ -n "${_BWMACRO_GIT_TOKEN:-}" ]; then
+          git clone --depth=1 \
+            "https://x-access-token:${_BWMACRO_GIT_TOKEN}@github.com/BlueWaterCorp/BWMACRO.git" \
+            bwmacro-src
+        else
+          # No token configured — bail loudly so a misconfigured build
+          # fails the clone step instead of producing an image without
+          # the artifact subtree.
+          echo "ERROR: _BWMACRO_GIT_TOKEN substitution not set. Provide via" >&2
+          echo "  --substitutions=_BWMACRO_GIT_TOKEN=\$(gcloud secrets versions access latest --secret=github-bwmacro-read)" >&2
+          exit 1
+        fi
+        echo "BWMACRO HEAD: $(git -C bwmacro-src rev-parse HEAD)"
+
   - name: 'gcr.io/cloud-builders/docker'
+    id: build-image
+    waitFor: ['clone-bwmacro']
     args:
       - 'build'
       - '-t'
@@ -21,3 +58,9 @@ images:
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
+
+# Substitutions documented for the trigger config. Set `_BWMACRO_GIT_TOKEN`
+# at trigger time from a Secret Manager binding, e.g. via Console or:
+#   gcloud builds triggers update <trigger> --update-substitutions=_BWMACRO_GIT_TOKEN=...
+substitutions:
+  _BWMACRO_GIT_TOKEN: ''
