@@ -11,7 +11,7 @@ shares backed by RiskModels Supabase reads; pip consumers work without keys.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -601,20 +601,208 @@ def _open_fund_zarr(bw_fund_id: str, store: str):
 
 
 def _fund_identity(bw_fund_id: str) -> dict[str, Any]:
-    """Read identity (ticker, fund_name, equity_style_9box) from funds.json.
+    """Read identity (ticker, fund_name, equity_style_9box, latest_*) for a fund.
 
-    The funds_latest.json fixture omits these display fields; funds.json
-    is the canonical identity registry. Returns ``{}`` on miss.
+    Tries two sources in priority order:
+
+    1. **Local ``funds.json``** under the path resolved by
+       :func:`_funds_latest_path` (sibling Funds_DAG clone, or
+       ``FUNDS_DAG_DATA_ROOT`` if set). This is the canonical source
+       on a laptop where the Funds_DAG clone is checked out next to
+       this repo.
+    2. **Supabase ``public.funds``** (fallback). Used when the local
+       file isn't present — the production Cloud Run case where the
+       SDK is installed under ``site-packages`` and the sibling path
+       doesn't exist, but Supabase credentials ARE wired.
+
+    Returns ``{}`` if neither source has the fund. This is the
+    structural half of MASTER_BACKLOG P.2 / O.9 (the operational
+    half — wiring ``FUNDS_DAG_DATA_ROOT`` on Cloud Run — stays
+    operator-side and is independent of this fix).
     """
     import json
     p = _funds_latest_path().parent / "funds.json"
-    if not p.exists():
+    if p.exists():
+        rows = json.loads(p.read_text())
+        for row in rows:
+            if row.get("bw_fund_id") == bw_fund_id:
+                return row
+    # Local funds.json unavailable (Cloud Run case) — try Supabase.
+    return _fund_identity_from_supabase(bw_fund_id)
+
+
+# ---------------------------------------------------------------------------
+# Supabase enrichment — moved from BWMACRO/src/bwmacro/snapshots/funds/_data.py
+# so the public SDK's get_data_for_f1 returns real tickers / fund identity by
+# default. Previously the enricher lived only in the BWMACRO renderer wrapper,
+# so render-svc (which calls the public SDK directly) bypassed it entirely
+# and rendered raw FIGI/symbol IDs (MASTER_BACKLOG P.1). All Supabase reads
+# soft-fail to an empty result when credentials are missing — pip consumers
+# without keys still work, the holdings just don't get enriched.
+# ---------------------------------------------------------------------------
+
+
+def _supabase_creds() -> tuple[str, str] | None:
+    """Resolve Supabase URL + key from env. Returns ``None`` when missing.
+
+    Checks both the server-style (``SUPABASE_URL`` + ``SUPABASE_SERVICE_ROLE_KEY``)
+    and Next.js-frontend-style (``NEXT_PUBLIC_SUPABASE_URL`` +
+    ``NEXT_PUBLIC_SUPABASE_ANON_KEY``) conventions so callers don't have to
+    care which one is wired in any given env.
+    """
+    import os
+    url = (
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+        or ""
+    ).strip().strip('"').strip("'").rstrip("/")
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        or ""
+    ).strip().strip('"').strip("'")
+    if not url or not key:
+        return None
+    return url, key
+
+
+def _supabase_query(path: str, params: dict[str, str]) -> list[dict[str, Any]]:
+    """GET ``{SUPABASE_URL}/rest/v1/{path}?{params}`` and return rows.
+
+    Soft-fails (returns ``[]``) when credentials are missing or the request
+    raises — render-svc and pip consumers without keys behave as if the
+    enrichment didn't happen rather than crashing.
+    """
+    creds = _supabase_creds()
+    if creds is None:
+        return []
+    url, key = creds
+    try:
+        import httpx
+        r = httpx.get(
+            f"{url}/rest/v1/{path}",
+            params=params,
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+
+def _fund_identity_from_supabase(bw_fund_id: str) -> dict[str, Any]:
+    """Query ``public.funds`` for the fund identity row.
+
+    Returns the same shape ``funds.json`` rows would have — ``ticker``,
+    ``fund_name``, ``equity_style_9box``, ``latest_report_date``,
+    ``latest_total_adj_mv`` — so callers can treat both sources
+    interchangeably. ``{}`` when not found.
+    """
+    rows = _supabase_query(
+        "funds",
+        {
+            "bw_fund_id": f"eq.{bw_fund_id}",
+            "select": (
+                "bw_fund_id,ticker,fund_name,equity_style_9box,"
+                "latest_report_date,latest_total_adj_mv"
+            ),
+            "limit": "1",
+        },
+    )
+    return rows[0] if rows else {}
+
+
+def _resolve_holdings_metadata(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """Resolve ``symbol → {ticker, name, sector_etf, subsector_etf}``."""
+    if not symbols:
         return {}
-    rows = json.loads(p.read_text())
-    for row in rows:
-        if row.get("bw_fund_id") == bw_fund_id:
-            return row
-    return {}
+    in_clause = "(" + ",".join(symbols) + ")"
+    rows = _supabase_query(
+        "symbols",
+        {"symbol": f"in.{in_clause}", "select": "symbol,ticker,name,sector_etf,subsector_etf"},
+    )
+    return {r["symbol"]: r for r in rows}
+
+
+def _resolve_l3_decomposition(symbols: list[str]) -> dict[str, dict[str, float]]:
+    """Resolve ``symbol → ERM3 L3 explained-variance share dict``."""
+    if not symbols:
+        return {}
+    in_clause = "(" + ",".join(symbols) + ")"
+    rows = _supabase_query(
+        "security_history_latest",
+        {
+            "symbol": f"in.{in_clause}",
+            "periodicity": "eq.daily",
+            "select": "symbol,l3_mkt_er,l3_sec_er,l3_sub_er,l3_res_er",
+        },
+    )
+    return {
+        r["symbol"]: {
+            "market_share": float(r["l3_mkt_er"] or 0.0),
+            "sector_share": float(r["l3_sec_er"] or 0.0),
+            "subsector_share": float(r["l3_sub_er"] or 0.0),
+            "residual_share": float(r["l3_res_er"] or 0.0),
+        }
+        for r in rows
+    }
+
+
+def _share_or_fallback(
+    shares: dict[str, float],
+    key: str,
+    fallback: float | None,
+) -> float | None:
+    if not shares:
+        return fallback
+    v = shares.get(key)
+    return fallback if v is None else float(v)
+
+
+def enrich_fund_data_with_supabase(fd: FundData) -> FundData:
+    """Resolve tickers / sector ETFs / per-stock L3 shares for holdings.
+
+    The public SDK's ``get_data_for_f1`` calls this by default so renders
+    show real tickers (``AAPL``) instead of raw symbol/FIGI IDs
+    (``BW-FIGI-BBG000B9XRY4``). Soft-fails to an unchanged ``FundData``
+    when Supabase credentials are not wired (pip consumers; CI tests
+    without env access) — never raises.
+
+    Returns the input unchanged when holdings are empty.
+    """
+    if not fd.holdings:
+        return fd
+
+    syms = [h.symbol for h in fd.holdings]
+    ticker_map = _resolve_holdings_metadata(syms)
+    l3_map = _resolve_l3_decomposition(syms)
+    new_holdings: list[FundHolding] = []
+    for h in fd.holdings:
+        meta = ticker_map.get(h.symbol, {})
+        shares = l3_map.get(h.symbol, {})
+        new_holdings.append(
+            FundHolding(
+                symbol=h.symbol,
+                ticker=meta.get("ticker") or h.ticker,
+                company_name=(
+                    meta.get("name") or meta.get("ticker") or h.company_name
+                ),
+                weight=h.weight,
+                sector_etf=meta.get("sector_etf") or h.sector_etf,
+                subsector_etf=meta.get("subsector_etf") or h.subsector_etf,
+                market_share=_share_or_fallback(
+                    shares, "market_share", h.market_share),
+                sector_share=_share_or_fallback(
+                    shares, "sector_share", h.sector_share),
+                subsector_share=_share_or_fallback(
+                    shares, "subsector_share", h.subsector_share),
+                residual_share=_share_or_fallback(
+                    shares, "residual_share", h.residual_share),
+            )
+        )
+    return replace(fd, holdings=new_holdings)
 
 
 def get_data_for_f1(
@@ -624,6 +812,7 @@ def get_data_for_f1(
     benchmark_ticker: str = "SPY",        # ditto — benchmark wiring deferred
     top_n_holdings: int = 10,
     nav_lookback_months: int = 60,
+    enrich: bool = True,
 ) -> FundData:
     """Populate ``FundData`` directly from the per-fund GCS zarrs.
 
@@ -1183,7 +1372,7 @@ def get_data_for_f1(
         if pm is None and pm_naive is not None:
             pm = {**pm_naive, "_basis": "naive_top_n"}
 
-    return FundData(
+    fd = FundData(
         bw_fund_id=bw_fund_id,
         ticker_primary=ticker_primary,
         fund_name=fund_name,
@@ -1211,6 +1400,14 @@ def get_data_for_f1(
         peer_cohort_size=identity.get("n_funds_in_cell_at_report_date"),
         **fit_kw,
     )
+    # Default-enrich holdings against Supabase so render-svc + every other
+    # public-SDK consumer gets real tickers / sector ETFs / per-stock L3
+    # shares. Soft-fails when Supabase creds aren't wired (returns ``fd``
+    # unchanged); callers can pass ``enrich=False`` to skip the round-trip
+    # entirely. Closes MASTER_BACKLOG P.1.
+    if enrich:
+        fd = enrich_fund_data_with_supabase(fd)
+    return fd
 
 
 __all__ = [
