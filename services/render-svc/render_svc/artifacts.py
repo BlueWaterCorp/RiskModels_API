@@ -167,11 +167,18 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
     if subject_kind == "filer_13f":
         if slug == "top_holdings_erm_stacked":
             return lambda fd: adapters.holdings_from_filer_data(fd, top_n=12)
+        if slug == "cumulative_return_strip":
+            return adapters.cumulative_return_series_from_filer_data
+        if slug == "entity_header":
+            return adapters.entity_header_from_filer_data
+        if slug == "return_composition_bars":
+            return adapters.attribution_waterfall_from_filer_data
         raise HTTPException(
             status_code=501,
             detail=(
                 f"No filer_13f adapter wired for slug={slug!r} "
-                f"(only top_holdings_erm_stacked is widened so far)"
+                f"(widen APPLICABLE_SUBJECT_KINDS on the artifact module + "
+                f"add the matching adapter in BWMACRO adapters.py)"
             ),
         )
 
