@@ -19,7 +19,11 @@ dependencies = [
   "fastapi>=0.110,<1",
   "uvicorn[standard]>=0.27,<1",
   "google-cloud-storage>=2.14,<3",
+  # GCS-backed per-fund zarrs: ``riskmodels.snapshots._fund_data`` opens
+  # ``gs://...`` with gcsfs + zarr (not pulled in by the PyPI SDK extras today).
+  "gcsfs>=2023.6.0",
   "pydantic>=2.6,<3",
+  "zarr>=2.18,<3",
   # Public SDK with F1 canonical schema + reference renderers.
   # In dev installs from local sibling path; container build installs from PyPI
   # once the SDK with F1 is published, or from the in-tree wheel.

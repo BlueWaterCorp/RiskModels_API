@@ -581,13 +581,23 @@ def _open_fund_zarr(bw_fund_id: str, store: str):
     """Return an open zarr group for one of the per-fund stores on GCS.
 
     ``store`` is one of: ``ds_nav.zarr``, ``ds_ph.zarr``, ``ds_hr.zarr``,
-    ``ds_portfolio.zarr``. Raises if not present.
+    ``ds_portfolio.zarr``. Raises :exc:`FileNotFoundError` when the store
+    is missing or not a zarr group (callers treat that as soft-fail).
+
+    ``zarr.open`` raises :class:`zarr.errors.PathNotFoundError` (e.g. message
+    ``nothing found at path ''``) for missing GCS prefixes — not
+    :exc:`FileNotFoundError`, so we normalize here.
     """
     import gcsfs
     import zarr
+    from zarr.errors import ArrayNotFoundError, GroupNotFoundError, PathNotFoundError
+
     fs = gcsfs.GCSFileSystem()
     path = f"gs://{ZARR_FUNDS_GCS_PREFIX}/bw_fund_id/{bw_fund_id}/{store}"
-    return zarr.open(fs.get_mapper(path), mode="r")
+    try:
+        return zarr.open(fs.get_mapper(path), mode="r")
+    except (GroupNotFoundError, PathNotFoundError, ArrayNotFoundError, KeyError) as e:
+        raise FileNotFoundError(path) from e
 
 
 def _fund_identity(bw_fund_id: str) -> dict[str, Any]:
