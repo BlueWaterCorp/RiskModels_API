@@ -160,6 +160,56 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
             },
         )
 
+    @app.get("/portfolio-evolution/health")
+    def portfolio_evolution_health() -> dict[str, Any]:
+        """Diagnostic probe for the ERM3 monthly zarr open path.
+
+        The ``POST /portfolio-evolution`` endpoint converts every load
+        failure into a 503 with a generic ``"ERM3 monthly unavailable"``
+        prefix — useful for the API contract, but it hides the underlying
+        error class (gcsfs auth vs missing zarr vs xarray engine vs
+        anything else) so root-cause diagnosis requires turning on
+        xarray/gcsfs debug logging in production. This endpoint always
+        attempts a fresh open + returns the underlying error class +
+        message + the zarr URI it tried, so an operator can curl this
+        once and see which gap is biting without code changes.
+
+        On success: 200 with ``status="ok"`` + zarr URI + n_tickers in
+        the resolved bridge (proves the zarr opened AND the ticker
+        coords were readable, not just that the bucket was reachable).
+
+        On failure: 503 with structured detail naming the error class
+        + message + zarr URI. Use the error class to triage:
+
+          - ``FileNotFoundError`` / ``PathNotFoundError`` → wrong URI or
+            zarr not on the bucket
+          - ``DefaultCredentialsError`` / ``RefreshError`` → Cloud Run
+            service account missing storage.objects.get on the bucket
+          - ``ImportError`` → xarray / gcsfs missing from the deploy
+
+        Closes MASTER_BACKLOG P.9.
+        """
+        zarr_uri = settings.zarr_root_uri
+        try:
+            _, bridge = _load_erm3_resources(zarr_uri)
+            return {
+                "status": "ok",
+                "zarr_root_uri": zarr_uri,
+                "n_tickers_in_bridge": len(bridge),
+            }
+        except Exception as exc:  # noqa: BLE001
+            log.exception("portfolio-evolution health probe failed")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "error",
+                    "zarr_root_uri": zarr_uri,
+                    "error_class": type(exc).__name__,
+                    "error_module": type(exc).__module__,
+                    "error_message": str(exc),
+                },
+            )
+
     @app.post("/portfolio-evolution")
     def portfolio_evolution(req: PortfolioEvolutionRequest = Body(...)):
         """The Analyst M4 — what changed since the last portfolio snapshot.
