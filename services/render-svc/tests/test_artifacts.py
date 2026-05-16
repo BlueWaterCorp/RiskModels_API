@@ -676,6 +676,18 @@ class TestFilerAdapterRouting:
         fn = _adapter_for("return_composition_bars", "filer_13f")
         assert fn is adapters_mod.attribution_waterfall_from_filer_data
 
+    def test_active_risk_composition_routes_to_filer_arc(self, monkeypatch):
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="active_risk_composition",
+            version="v1",
+            applicable=("fund", "filer_13f"),
+        )
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.active_risk_composition_from_filer_data = lambda fd: fd
+        fn = _adapter_for("active_risk_composition", "filer_13f")
+        assert fn is adapters_mod.active_risk_composition_from_filer_data
+
     def test_unwidened_slug_returns_501(self, monkeypatch):
         """Slugs that haven't been widened to filer_13f yet (e.g.
         risk_summary_panel, active_risk_composition) raise 501 with a
