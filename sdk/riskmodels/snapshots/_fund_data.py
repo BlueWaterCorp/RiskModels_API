@@ -11,9 +11,12 @@ shares backed by RiskModels Supabase reads; pip consumers work without keys.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -1246,8 +1249,19 @@ def get_data_for_f1(
             if len(gross_d_safe) >= 252:
                 ttm_window = gross_d_safe[-252:]
                 tr_fund["1y"] = float(np.prod(1.0 + ttm_window) - 1.0)
-    except (FileNotFoundError, KeyError):
-        pass
+    except (FileNotFoundError, KeyError) as e:
+        # P.4 — surface the silent monthly downgrade so operators see
+        # which funds are rendering coarse charts. The chart still draws
+        # (cum_nav from the monthly NAV block above remains the
+        # authority) but with ~12 monthly points instead of ~252 daily.
+        # WARN-level: a missing daily store IS a degradation worth
+        # noticing, not a normal absence.
+        log.warning(
+            "ds_fund_returns_daily.zarr unavailable for %s (%s); F1 chart "
+            "falls back to monthly NAV granularity. Daily store is the "
+            "preferred source for the cumulative-return strip.",
+            bw_fund_id, type(e).__name__,
+        )
 
     # ── ERM3 fit row from fund_fit_parquet ──────────────────────────
     # Joined ERM3 vs yfinance NAV stats (coverage, monthly correlation,
