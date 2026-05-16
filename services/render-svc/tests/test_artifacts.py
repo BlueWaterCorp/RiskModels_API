@@ -688,18 +688,33 @@ class TestFilerAdapterRouting:
         fn = _adapter_for("active_risk_composition", "filer_13f")
         assert fn is adapters_mod.active_risk_composition_from_filer_data
 
-    def test_unwidened_slug_returns_501(self, monkeypatch):
-        """Slugs that haven't been widened to filer_13f yet (e.g.
-        risk_summary_panel, active_risk_composition) raise 501 with a
-        helpful message pointing to BWMACRO adapters.py."""
+    def test_risk_summary_panel_routes_to_filer_pass_through(self, monkeypatch):
+        """Phase 2 close-out: risk_summary_panel is the 6th and last
+        widened artifact. Adapter is a pass-through (the artifact's
+        render_data dispatches on FundData vs FilerData internally)."""
         _install_fake_bwmacro_artifact(
             monkeypatch,
             slug="risk_summary_panel",
+            version="v1",
+            applicable=("fund", "filer_13f"),
+        )
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.risk_summary_panel_from_filer_data = lambda fd: fd
+        fn = _adapter_for("risk_summary_panel", "filer_13f")
+        assert fn is adapters_mod.risk_summary_panel_from_filer_data
+
+    def test_unwidened_slug_returns_501(self, monkeypatch):
+        """All Phase 2 slugs are widened — this test exercises the 501
+        path with a hypothetical un-widened slug. Use a stub slug that's
+        registered as fund-only to assert the helpful error message."""
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="not_yet_widened_slug",
             version="v1",
             applicable=("fund",),
         )
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc:
-            _adapter_for("risk_summary_panel", "filer_13f")
+            _adapter_for("not_yet_widened_slug", "filer_13f")
         assert exc.value.status_code == 501
         assert "BWMACRO adapters.py" in str(exc.value.detail)
