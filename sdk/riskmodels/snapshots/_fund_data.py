@@ -858,6 +858,19 @@ def get_data_for_f1(
     except FileNotFoundError:
         pass
 
+    # ── teo_str fallback chain ──────────────────────────────────────────
+    # If ds_ph.zarr was the only source of teo_str and it was missing,
+    # thin (no valid AUM periods), or lacked the teo array, teo_str is
+    # still "" — and render-svc rejects the request with
+    # "no resolved as_of". Fall back to ds_nav's last monthly NAV teo,
+    # then ds_portfolio's last populated quarter, in priority order.
+    # Both fallback sources are pre-decoded to YYYY-MM-DD strings by the
+    # blocks above, so we can use them directly.
+    if not teo_str and nav_teo_all:
+        teo_str = nav_teo_all[-1]
+    if not teo_str and layer_series:
+        teo_str = layer_series[-1][0]
+
     # If layer-returns series exists, expand cum_nav back to the layer
     # start so the gross line and the L*/Residual lines share a common
     # anchor at 0%. We rebuild cum_nav from raw monthly returns to
