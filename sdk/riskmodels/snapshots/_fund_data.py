@@ -577,6 +577,62 @@ def load_fund_from_fixture(
 ZARR_FUNDS_GCS_PREFIX = "rm_api_data/ERM3_Funds"
 
 
+def _decode_teo_array(teo_arr: Any) -> "Any":  # numpy ndarray
+    """Decode a zarr ``teo`` array into a ``datetime64[D]`` numpy array.
+
+    Per-fund zarr stores written by Funds_DAG over time settled on three
+    different ``teo`` encodings, and the four read sites in this module
+    historically each decoded inline with subtly different logic:
+
+      1. **CF int days** — ``units = "days since YYYY-MM-DD"`` on the array
+         attrs. Post-2026-05 xarray-aware writers (e.g. ds_ph rewritten by
+         the holdings pipeline) emit this.
+      2. **CF int seconds** — ``units = "seconds since YYYY-MM-DD"`` (rare;
+         covered defensively).
+      3. **Legacy int seconds-since-Unix-epoch** — older writers (notably
+         ds_portfolio) wrote a plain int64 without a ``units`` attr; the
+         caller decoded by passing dtype ``datetime64[s]`` to numpy.
+      4. **Native datetime64** — ds_nav historically wrote already-decoded
+         datetime64 values; the caller naively ``str(t)``-stringified them.
+         If a writer started emitting CF int days here, the naive stringify
+         silently produced raw integers ("12345") instead of dates, and
+         those rotted forward as if they were dates — a P.7 / silent date
+         misalignment bug.
+
+    This helper centralizes the decoding decision so all four stores
+    produce the same ``datetime64[D]`` output regardless of which writer
+    flavor is on disk. Returns a numpy ``datetime64[D]`` array shaped
+    like the input.
+    """
+    import numpy as np
+
+    raw = teo_arr[:]
+
+    # Native datetime64 already on disk → cast to day precision.
+    if hasattr(raw, "dtype") and raw.dtype.kind == "M":
+        return raw.astype("datetime64[D]")
+
+    units = ""
+    try:
+        units = dict(teo_arr.attrs).get("units", "")
+    except (AttributeError, TypeError):
+        pass
+
+    if units.startswith("days since "):
+        epoch_str = units.removeprefix("days since ").split(" ")[0]
+        epoch = np.datetime64(epoch_str)
+        return (epoch + raw.astype("timedelta64[D]")).astype("datetime64[D]")
+
+    if units.startswith("seconds since "):
+        epoch_str = units.removeprefix("seconds since ").split(" ")[0]
+        epoch = np.datetime64(epoch_str)
+        return (epoch + raw.astype("timedelta64[s]")).astype("datetime64[D]")
+
+    # Legacy default: integer seconds-since-Unix-epoch. ds_portfolio.zarr
+    # writers used this convention without setting a units attr.
+    return np.asarray(raw, dtype="datetime64[s]").astype("datetime64[D]")
+
+
 def _open_fund_zarr(bw_fund_id: str, store: str):
     """Return an open zarr group for one of the per-fund stores on GCS.
 
@@ -863,25 +919,9 @@ def get_data_for_f1(
             mv_real = adj_mv[mask]
             n_holdings_total = int(mask.sum())
             aum_usd = float(ph_aum[idx])
-            # teo decoding: post-2026-05 ds_ph.zarr is xarray-CF-encoded
-            # ("days since YYYY-MM-DD"), not raw seconds-since-epoch. Read
-            # the units from .zattrs and decode accordingly. Falls back
-            # to the legacy seconds-since-epoch interpretation for older
-            # zarrs that may still be on GCS.
             if "teo" in ph.array_keys():
-                teo_arr = ph["teo"]
-                teo_units = dict(teo_arr.attrs).get("units", "")
-                raw_teo = int(teo_arr[idx])
-                if teo_units.startswith("days since "):
-                    epoch_str = teo_units.removeprefix("days since ").split(" ")[0]
-                    teo_str = str(
-                        (np.datetime64(epoch_str) + np.timedelta64(raw_teo, "D"))
-                        .astype("datetime64[D]")
-                    )
-                else:
-                    teo_str = np.datetime_as_string(
-                        np.array(raw_teo, dtype="datetime64[s]"), unit="D"
-                    )
+                teo_decoded = _decode_teo_array(ph["teo"])
+                teo_str = str(teo_decoded[idx])
             order = np.argsort(-mv_real)[:top_n_holdings]
             top_syms = [str(sym_real[i]) for i in order]
             ticker_map = {s: {} for s in top_syms}
@@ -912,10 +952,10 @@ def get_data_for_f1(
     tr_fund: dict[str, float | None] = {}
     try:
         nv = _open_fund_zarr(bw_fund_id, "ds_nav.zarr")
-        nav_teo = nv["teo"][:]
+        nav_teo_decoded = _decode_teo_array(nv["teo"])
         nav_ret = nv["nav_return_monthly"][:]
         finite = np.isfinite(nav_ret)
-        nav_teo_all = [str(t) for t in nav_teo[finite]]
+        nav_teo_all = [str(t) for t in nav_teo_decoded[finite]]
         nav_ret_all = nav_ret[finite].tolist()
         if len(nav_ret_all) >= 12:
             ttm_window = np.array(nav_ret_all[-12:])
@@ -997,14 +1037,11 @@ def get_data_for_f1(
             sec_arr = pt["portfolio_sector_return"][:]
             sub_arr = pt["portfolio_subsector_return"][:]
             res_arr = pt["portfolio_idiosyncratic_return"][:]
-            teo_arr = pt["teo"][:]
+            teo_decoded = _decode_teo_array(pt["teo"])
             for i in nz:
-                d = np.datetime_as_string(
-                    np.array(int(teo_arr[i]), dtype="datetime64[s]"),
-                    unit="D",
-                )
+                d = str(teo_decoded[i])
                 layer_series.append((
-                    str(d),
+                    d,
                     float(mkt_arr[i]),
                     float(sec_arr[i]),
                     float(sub_arr[i]),
@@ -1149,19 +1186,7 @@ def get_data_for_f1(
         lag_basis_arr = list(fr["lag_basis"][:])
         report_idx = lag_basis_arr.index("report_date")
 
-        fr_teo_raw = fr["teo"][:]            # int64 days since some epoch
-        # Decode by reading the .zattrs units. zarr Python doesn't auto-decode
-        # CF date units the way xarray does; pull the units string and
-        # apply ourselves so we don't pay the xarray import cost on every
-        # F1 render.
-        teo_attrs = dict(fr["teo"].attrs)
-        units = teo_attrs.get("units", "")
-        if units.startswith("days since "):
-            epoch = np.datetime64(units.removeprefix("days since ").split(" ")[0])
-            fr_teo = (epoch + fr_teo_raw.astype("timedelta64[D]")).astype("datetime64[D]")
-        else:
-            # Fallback: assume already a recognizable encoding.
-            fr_teo = np.asarray(fr_teo_raw, dtype="datetime64[ns]").astype("datetime64[D]")
+        fr_teo = _decode_teo_array(fr["teo"])
 
         gross_d = fr["gross_return"][:, report_idx]
         l1_d    = fr["l1_market"][:, report_idx]
