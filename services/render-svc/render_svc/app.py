@@ -143,7 +143,7 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
         `render_data` / `render_figure`. Phase 1B scope: fund subjects +
         as_of='latest'. See ARTIFACT_REGISTRY_PHASE_1B_PLAN.md §10.
         """
-        data, mime, gcs_path, resolved_as_of, cache_control = render_artifact(
+        data, mime, gcs_path, resolved_as_of, cache_control, receipt_id = render_artifact(
             req,
             store=store,
             prefix=settings.prefix,
@@ -155,6 +155,7 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
             headers={
                 "X-Artifact-GCS-Path": f"gs://{settings.bucket}/{gcs_path}",
                 "X-Artifact-Resolved-As-Of": resolved_as_of,
+                "X-Artifact-Receipt-Id": receipt_id,
                 "Cache-Control": cache_control,
             },
         )

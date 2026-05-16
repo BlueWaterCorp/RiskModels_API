@@ -30,6 +30,7 @@ from render_svc.artifacts import (
     _artifact_gcs_path,
     _cache_control_for,
     _payload_hash,
+    _receipt_id,
     render_artifact,
 )
 
@@ -204,7 +205,7 @@ class TestRenderArtifactCacheMiss:
         )
         _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
 
-        data, mime, gcs_path, resolved_as_of, cache_control = render_artifact(
+        data, mime, gcs_path, resolved_as_of, cache_control, receipt_id = render_artifact(
             _req(), store=store, prefix=PREFIX,
         )
 
@@ -214,6 +215,9 @@ class TestRenderArtifactCacheMiss:
         assert resolved_as_of == "2025-11-30"
         assert gcs_path == "snapshots/artifacts/top_holdings_erm_stacked@v1/BW-FUND-S000004563/2025-11-30.json"
         assert cache_control == "public, max-age=3600"
+        # Receipt-id is 8-hex-char stable hash of the GCS path.
+        assert len(receipt_id) == 8
+        assert all(c in "0123456789abcdef" for c in receipt_id)
         # Bytes written to cache for subsequent hits.
         assert gcs_path in store.objects
 
@@ -226,7 +230,7 @@ class TestRenderArtifactCacheMiss:
         )
         _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
 
-        data, mime, gcs_path, _, _ = render_artifact(
+        data, mime, gcs_path, _, _, _ = render_artifact(
             _req(format="png"), store=store, prefix=PREFIX,
         )
 
@@ -243,7 +247,7 @@ class TestRenderArtifactCacheMiss:
         )
         _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
 
-        _, _, _, _, cache_control = render_artifact(
+        _, _, _, _, cache_control, _ = render_artifact(
             _req(as_of="2025-11-30"), store=store, prefix=PREFIX,
         )
         assert "immutable" in cache_control
@@ -258,7 +262,7 @@ class TestRenderArtifactCacheHit:
         path = "snapshots/artifacts/top_holdings_erm_stacked@v1/BW-FUND-S000004563/2025-11-30.json"
         store.write(path, cached, content_type="application/json")
 
-        data, mime, gcs_path, resolved_as_of, _ = render_artifact(
+        data, mime, gcs_path, resolved_as_of, _, _ = render_artifact(
             _req(), store=store, prefix=PREFIX, persist=False,
         )
 
@@ -355,6 +359,36 @@ def _patch_client_portfolio_adapter(monkeypatch):
     )
 
 
+class TestReceiptId:
+    """8-hex-char stable hash of the GCS path — for the LANDING masthead.
+
+    The masthead's "#run_seq" token reads `run_seq` for snapshot-table-backed
+    records and this `receipt_id` for artifact-registry-backed records.
+    Both render identically in the UI.
+    """
+
+    def test_receipt_id_is_8_hex_chars(self):
+        rid = _receipt_id("snapshots/artifacts/x@v1/BW-FUND-Y/2025-11-30.json")
+        assert len(rid) == 8
+        assert all(c in "0123456789abcdef" for c in rid)
+
+    def test_receipt_id_is_deterministic(self):
+        path = "snapshots/artifacts/x@v1/BW-FUND-Y/2025-11-30.json"
+        assert _receipt_id(path) == _receipt_id(path)
+
+    def test_receipt_id_changes_with_path(self):
+        a = _receipt_id("snapshots/artifacts/x@v1/BW-FUND-Y/2025-11-30.json")
+        b = _receipt_id("snapshots/artifacts/x@v1/BW-FUND-Z/2025-11-30.json")
+        assert a != b
+
+    def test_receipt_id_distinguishes_format(self):
+        """Same artifact in JSON vs PNG → different receipt id (the GCS path
+        differs by extension, so the masthead reads distinct records)."""
+        json_rid = _receipt_id("snapshots/artifacts/x@v1/BW-FUND-Y/2025-11-30.json")
+        png_rid = _receipt_id("snapshots/artifacts/x@v1/BW-FUND-Y/2025-11-30.png")
+        assert json_rid != png_rid
+
+
 class TestPayloadHash:
     def test_hash_is_stable_across_key_order(self):
         a = [{"ticker": "NVDA", "weight": 0.2}, {"weight": 0.1, "ticker": "AAPL"}]
@@ -390,13 +424,17 @@ class TestClientPortfolioPath:
             subject_id="BW-PORTFOLIO-",  # placeholder; server rewrites with hash
             subject_payload=self._payload(),
         )
-        data, mime, gcs_path, resolved_as_of, cache_control = render_artifact(
+        data, mime, gcs_path, resolved_as_of, cache_control, receipt_id = render_artifact(
             req, store=store, prefix=PREFIX,
         )
 
         assert mime == "application/json"
         body = json.loads(data)
         assert body["slug"] == "top_holdings_erm_stacked"
+        # Receipt-id is the 8-hex-char hash of the gcs_path — proves the
+        # masthead can read a stable record identifier without parsing the path.
+        assert len(receipt_id) == 8
+        assert all(c in "0123456789abcdef" for c in receipt_id)
 
         # GCS path uses BW-PORTFOLIO-<hash> + today's UTC date.
         from datetime import datetime, timezone
@@ -450,7 +488,7 @@ class TestClientPortfolioPath:
 
     def test_explicit_as_of_uses_immutable_cache(self, store, monkeypatch):
         _patch_client_portfolio_adapter(monkeypatch)
-        _, _, gcs_path, resolved_as_of, cache_control = render_artifact(
+        _, _, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
             _req(
                 subject_id="BW-PORTFOLIO-",
                 subject_payload=self._payload(),
@@ -474,7 +512,7 @@ class TestClientPortfolioPath:
             subject_id="BW-PORTFOLIO-",
             subject_payload=self._payload(),
         )
-        data1, _, gcs_path1, _, _ = render_artifact(req1, store=store, prefix=PREFIX)
+        data1, _, gcs_path1, _, _, _ = render_artifact(req1, store=store, prefix=PREFIX)
 
         # Swap the adapter to return something obviously different — proves
         # the second call comes from cache, not from a fresh render.
@@ -487,7 +525,7 @@ class TestClientPortfolioPath:
             subject_id="BW-PORTFOLIO-",
             subject_payload=self._payload(),  # identical payload
         )
-        data2, _, gcs_path2, _, _ = render_artifact(req2, store=store, prefix=PREFIX)
+        data2, _, gcs_path2, _, _, _ = render_artifact(req2, store=store, prefix=PREFIX)
 
         assert gcs_path1 == gcs_path2
         assert data1 == data2  # cached bytes, not the new fake's bytes

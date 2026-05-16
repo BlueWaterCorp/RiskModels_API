@@ -285,6 +285,23 @@ def _render_bytes(mod: Any, data: Any, fmt: str) -> bytes:
     raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt!r}")
 
 
+def _receipt_id(gcs_path: str) -> str:
+    """Stable 8-hex-char receipt token derived from the GCS path.
+
+    The masthead's "#run_seq" line on the LANDING workspace wants a short
+    versioned-record identifier. For artifact-registry-backed records this
+    is a deterministic hash of the GCS key (which already encodes
+    slug@version, subject_id, as_of, and format). Two views of the same
+    artifact instance share the same receipt id.
+
+    The portfolio_snapshots-backed path uses an integer ``run_seq`` from
+    its own table; the receipt id here looks visually identical when
+    rendered as "#a1b2c3d4". Soft unification per the artifact-registry →
+    LANDING handoff doc dated 2026-05-15.
+    """
+    return hashlib.sha256(gcs_path.encode("utf-8")).hexdigest()[:8]
+
+
 def _cache_control_for(requested_as_of: str) -> str:
     """Pick the Cache-Control header value.
 
@@ -303,10 +320,13 @@ def render_artifact(
     store: ObjectStore,
     prefix: str,
     persist: bool = True,
-) -> tuple[bytes, str, str, str, str]:
+) -> tuple[bytes, str, str, str, str, str]:
     """Render one artifact instance.
 
-    Returns ``(bytes, content_type, gcs_path, resolved_as_of, cache_control)``.
+    Returns ``(bytes, content_type, gcs_path, resolved_as_of, cache_control,
+    receipt_id)``. ``receipt_id`` is an 8-hex-char stable hash of the GCS
+    path — see ``_receipt_id`` for the LANDING-masthead unification
+    rationale.
     """
     subject_kind = _resolve_subject_kind(req.subject_id)
 
@@ -323,6 +343,7 @@ def render_artifact(
     gcs_path = _artifact_gcs_path(
         prefix, req.slug, req.version, resolved_subject_id, resolved_as_of, req.format
     )
+    receipt_id = _receipt_id(gcs_path)
 
     raw = store.read(gcs_path)
     if raw is not None:
@@ -332,6 +353,7 @@ def render_artifact(
             gcs_path,
             resolved_as_of,
             _cache_control_for(req.as_of),
+            receipt_id,
         )
 
     # Cache miss → live render.
@@ -361,4 +383,5 @@ def render_artifact(
         gcs_path,
         resolved_as_of,
         _cache_control_for(req.as_of),
+        receipt_id,
     )
