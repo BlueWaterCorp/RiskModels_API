@@ -27,6 +27,7 @@ import pytest
 
 from render_svc.artifacts import (
     ArtifactRenderRequest,
+    _adapter_for,
     _artifact_gcs_path,
     _cache_control_for,
     _payload_hash,
@@ -611,3 +612,70 @@ class TestFilerPath:
             )
         # 501 (filer cache miss), not 422 (wrong prefix).
         assert exc.value.status_code == 501
+
+
+# ── _adapter_for routing — verifies filer_13f dispatches by slug ──────────
+
+
+class TestFilerAdapterRouting:
+    """Direct tests on `_adapter_for` for the filer_13f subject_kind.
+
+    Verifies the slug → adapter map without going through the full
+    cache-miss path (which raises 501 before the adapter is invoked).
+    Touches BWMACRO via the same fake-adapters stub used by other tests.
+    """
+
+    def test_top_holdings_routes_to_holdings_from_filer(self, monkeypatch):
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="top_holdings_erm_stacked",
+            version="v1",
+            applicable=("fund", "filer_13f"),
+        )
+        # Add the filer adapter to the fake adapters module.
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.holdings_from_filer_data = lambda fd, top_n=12: list(
+            getattr(fd, "holdings", [])
+        )[:top_n]
+        fn = _adapter_for("top_holdings_erm_stacked", "filer_13f")
+        assert callable(fn)
+
+    def test_cumulative_return_strip_routes_to_filer_returns(self, monkeypatch):
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="cumulative_return_strip",
+            version="v1",
+            applicable=("fund", "filer_13f"),
+        )
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.cumulative_return_series_from_filer_data = lambda fd: fd
+        fn = _adapter_for("cumulative_return_strip", "filer_13f")
+        assert fn is adapters_mod.cumulative_return_series_from_filer_data
+
+    def test_entity_header_routes_to_filer_header(self, monkeypatch):
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="entity_header",
+            version="v1",
+            applicable=("fund", "filer_13f"),
+        )
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.entity_header_from_filer_data = lambda fd: fd
+        fn = _adapter_for("entity_header", "filer_13f")
+        assert fn is adapters_mod.entity_header_from_filer_data
+
+    def test_unwidened_slug_returns_501(self, monkeypatch):
+        """Slugs that haven't been widened to filer_13f yet (e.g.
+        risk_summary_panel, return_composition_bars) raise 501 with a
+        helpful message pointing to BWMACRO adapters.py."""
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="risk_summary_panel",
+            version="v1",
+            applicable=("fund",),
+        )
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            _adapter_for("risk_summary_panel", "filer_13f")
+        assert exc.value.status_code == 501
+        assert "BWMACRO adapters.py" in str(exc.value.detail)
