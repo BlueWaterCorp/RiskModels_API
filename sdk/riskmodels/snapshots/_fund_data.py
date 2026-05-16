@@ -1293,15 +1293,39 @@ def get_data_for_f1(
     # 5y endpoint delta) computed by Funds_DAG asset `fund_fit_parquet`.
     # Section III renders these in the fit card + drives the deterministic
     # narrative wording. Soft-fails when the parquet is absent or this
-    # fund has no row.
+    # fund has no row. WARN-on-silent-fallback per P.3 — missing
+    # fund_fit.parquet collapses the entire Section III fit card to None,
+    # which is a real degradation, not a normal absence. In prod
+    # (render-svc on Cloud Run), the typical cause is
+    # FUNDS_DAG_DATA_ROOT not being set, so `_funds_latest_path()` falls
+    # back to a sibling path that doesn't exist. Surface that loudly.
     fit_kw: dict[str, Any] = {}
     try:
         import pandas as _pd
         fit_path = _funds_latest_path().parent / "fund_fit.parquet"
-        if fit_path.exists():
+        if not fit_path.exists():
+            log.warning(
+                "fund_fit.parquet missing at %s for %s; Section III fit card "
+                "renders blank (fit_coverage / correlation_monthly / "
+                "delta_5y_pp etc. all None). Operational cause is usually "
+                "FUNDS_DAG_DATA_ROOT unset on render-svc Cloud Run, or "
+                "fund_fit.parquet not baked into the mounted root. See "
+                "BWMACRO master backlog P.3 / O.9.",
+                fit_path, bw_fund_id,
+            )
+        else:
             _fit_df = _pd.read_parquet(fit_path)
             _hit = _fit_df[_fit_df["bw_fund_id"] == bw_fund_id]
-            if len(_hit):
+            if not len(_hit):
+                log.warning(
+                    "fund_fit.parquet present at %s but contains no row for "
+                    "bw_fund_id=%s; Section III fit card renders blank for "
+                    "this fund only (other funds presumably fine). Likely "
+                    "the fund-fit asset run hasn't covered this id yet — "
+                    "cross-check against the asset's expected universe.",
+                    fit_path, bw_fund_id,
+                )
+            else:
                 _r = _hit.iloc[0]
                 def _opt(v: Any) -> Any:
                     if v is None or (isinstance(v, float) and not np.isfinite(v)):
@@ -1327,8 +1351,12 @@ def get_data_for_f1(
                     "fit_residual_vol":       _opt(_r.get("nav_residual_vol_5y")),
                     "fit_erm3_multifactor_r2": _opt(_r.get("erm3_multifactor_r2_5y")),
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning(
+            "fund_fit.parquet read failed for %s: %s — Section III fit card "
+            "renders blank. Falling through silently to preserve f1 render.",
+            bw_fund_id, e,
+        )
 
     # ── Portfolio variance shares ───────────────────────────────────────
     # Headline `portfolio_metrics`, in order of preference (`_basis` records it):
