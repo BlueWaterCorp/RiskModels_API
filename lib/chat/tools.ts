@@ -8,6 +8,8 @@ import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import { TickerSchema, YearsSchema } from "@/lib/api/schemas";
 import { parseMacroFactorsSeriesQuery } from "@/lib/api/macro-factors-series-query";
 import { searchTickers } from "@/lib/dal/ticker-search";
+import { searchFunds, fetchFund } from "@/lib/dal/funds-engine";
+import { readFundHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
 import { fetchMacroFactorSeriesRows } from "@/lib/dal/macro-factors";
 import {
   resolveSymbolByTicker,
@@ -88,6 +90,16 @@ const macroFactorsArgs = z.object({
 const searchTickersArgs = z.object({
   search: z.string().min(1, "Search query is required"),
   include_metadata: z.boolean().default(true),
+});
+
+const searchFundsArgs = z.object({
+  query: z.string().min(1, "Fund ticker or name required"),
+  limit: z.coerce.number().int().min(1).max(25).default(10),
+});
+
+const getFundHoldingsArgs = z.object({
+  bw_fund_id: z.string().min(1, "bw_fund_id required (call search_funds first)"),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 const portfolioRiskArgs = z.object({
@@ -276,6 +288,62 @@ async function execMacroFactors(args: z.infer<typeof macroFactorsArgs>) {
 
 async function execSearchTickers(args: z.infer<typeof searchTickersArgs>) {
   return searchTickers(args.search, args.include_metadata);
+}
+
+async function execSearchFunds(args: z.infer<typeof searchFundsArgs>) {
+  const rows = await searchFunds({ q: args.query, limit: args.limit });
+  // Slim payload — the analyst only needs id + ticker + name + style + identity
+  // signals to decide which fund to drill into. Skip the AUM / lineage cruft.
+  return {
+    query: args.query,
+    n_results: rows.length,
+    funds: rows.map((r) => ({
+      bw_fund_id: r.bw_fund_id,
+      ticker: r.ticker,
+      fund_name: r.fund_name,
+      morningstar_category: r.morningstar_category,
+      equity_style_9box: r.equity_style_9box,
+      latest_report_date: r.latest_report_date,
+      latest_n_holdings: r.latest_n_holdings,
+    })),
+  };
+}
+
+async function execGetFundHoldings(args: z.infer<typeof getFundHoldingsArgs>) {
+  const [fund, holdings] = await Promise.all([
+    fetchFund(args.bw_fund_id),
+    readFundHoldingsTopN(args.bw_fund_id, args.limit),
+  ]);
+  if (!fund) {
+    return {
+      bw_fund_id: args.bw_fund_id,
+      error: "fund_not_found",
+      message: `No fund with bw_fund_id=${args.bw_fund_id}. Call search_funds first.`,
+    };
+  }
+  if (!holdings) {
+    return {
+      bw_fund_id: args.bw_fund_id,
+      ticker: fund.ticker,
+      fund_name: fund.fund_name,
+      error: "holdings_unavailable",
+      message:
+        "Fund metadata exists but the zarr holdings cube is empty for this fund (typically: not yet ingested or insufficient coverage). Don't fabricate; tell the user.",
+    };
+  }
+  return {
+    bw_fund_id: args.bw_fund_id,
+    ticker: fund.ticker,
+    fund_name: fund.fund_name,
+    morningstar_category: fund.morningstar_category,
+    equity_style_9box: fund.equity_style_9box,
+    as_of: holdings.teo,
+    aum_reported: holdings.aum_reported,
+    aum_erm3: holdings.aum_erm3,
+    n_holdings_returned: holdings.n_holdings_returned,
+    n_total_holdings: holdings.n_total_holdings,
+    holdings: holdings.holdings,
+  };
 }
 
 function sanitizeL3DecompositionResult(result: unknown): unknown {
@@ -567,6 +635,50 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: null,
     argSchema: searchTickersArgs,
     executor: async (a) => execSearchTickers(searchTickersArgs.parse(a)),
+  },
+  {
+    name: "search_funds",
+    openaiTool: fnTool(
+      "search_funds",
+      "Resolve a mutual-fund or ETF ticker / fund name to bw_fund_id (free lookup). Use this when the user mentions a mutual fund (FCNTX, VTSAX, FXAIX) or ETF (SPY, QQQ, XLK) — BEFORE calling get_fund_holdings. Returns up to 10 matching funds with ticker, fund_name, morningstar_category, equity_style_9box, latest_report_date.",
+      {
+        query: {
+          type: "string",
+          description: "Fund ticker (e.g. FCNTX) or partial fund name (e.g. Contrafund)",
+        },
+        limit: {
+          type: "integer",
+          description: "Max results, default 10, max 25",
+        },
+      },
+      ["query", "limit"],
+    ),
+    /** Free: same surface as the public /api/funds/search (no billing). */
+    capabilityId: null,
+    argSchema: searchFundsArgs,
+    executor: async (a) => execSearchFunds(searchFundsArgs.parse(a)),
+  },
+  {
+    name: "get_fund_holdings",
+    openaiTool: fnTool(
+      "get_fund_holdings",
+      "Top-N current holdings for a mutual fund or ETF at its latest report date (from the most recent N-PORT filing in the system). Use AFTER search_funds resolved a bw_fund_id. Returns per-holding bw_sym_id, market value, weight, plus fund identity (ticker, fund_name, category, style, as_of date, AUM).",
+      {
+        bw_fund_id: {
+          type: "string",
+          description: "BW fund identifier from search_funds",
+        },
+        limit: {
+          type: "integer",
+          description: "Max holdings to return, default 25, max 100",
+        },
+      },
+      ["bw_fund_id", "limit"],
+    ),
+    /** Same billing surface as public /api/funds/{bw_fund_id}/holdings. */
+    capabilityId: "fund-holdings",
+    argSchema: getFundHoldingsArgs,
+    executor: async (a) => execGetFundHoldings(getFundHoldingsArgs.parse(a)),
   },
   {
     name: "compute_portfolio_risk_index",
