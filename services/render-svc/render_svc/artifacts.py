@@ -175,6 +175,8 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
             return adapters.attribution_waterfall_from_filer_data
         if slug == "active_risk_composition":
             return adapters.active_risk_composition_from_filer_data
+        if slug == "risk_summary_panel":
+            return adapters.risk_summary_panel_from_filer_data
         raise HTTPException(
             status_code=501,
             detail=(
