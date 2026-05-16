@@ -72,7 +72,8 @@ RUN pip install --no-deps /tmp/bwmacro && rm -rf /tmp/bwmacro
 # 3. Install the service.
 COPY services/render-svc/pyproject.toml services/render-svc/README.md /app/
 COPY services/render-svc/render_svc /app/render_svc
-RUN pip install /app
+RUN pip install /app && \
+    python -c "import gcsfs; import zarr; print('gcsfs+zarr OK')"
 
 # 4. Build-time import smoke. If aom or snapshots can't import, fail the
 #    BUILD here (with full traceback in build logs) instead of getting a
@@ -95,7 +96,7 @@ hit = [m for m in forbidden if m in sys.modules]; \
 assert not hit, f'forbidden modules imported at artifact import: {hit}'; \
 print('artifact import firewall OK')"
 
-# 4. Run as non-root.
+# 6. Run as non-root.
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 USER app
 
