@@ -3,8 +3,48 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import warnings
+
+log = logging.getLogger(__name__)
+
+
+def _warn_if_supabase_creds_missing() -> None:
+    """Emit a WARN when Supabase enrichment credentials are not wired.
+
+    The SDK's Supabase-backed methods (``get_ticker_metadata``,
+    ``peer_group_from_supabase``, etc.) raise ``ValueError`` at call
+    time if ``SUPABASE_URL`` + ``SUPABASE_SERVICE_ROLE_KEY`` are not
+    set. Surfacing the gap at ``from_env()`` time gives developers a
+    pre-production signal — without it, the error only fires deep
+    into the first Supabase-touching call, which CI tests with
+    mocked HTTP often miss.
+
+    Checks both the server-style (``SUPABASE_*``) and Next.js-style
+    (``NEXT_PUBLIC_SUPABASE_*``) conventions — the SDK now accepts
+    either (see RiskModels_API #80). Silent only when at least one
+    URL + at least one key is present.
+
+    Closes MASTER_BACKLOG P.5.
+    """
+    has_url = bool(
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+    )
+    has_key = bool(
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    )
+    if not (has_url and has_key):
+        log.warning(
+            "Supabase credentials not wired (need SUPABASE_URL + "
+            "SUPABASE_SERVICE_ROLE_KEY, or the NEXT_PUBLIC_* equivalents). "
+            "Supabase-backed SDK methods (get_ticker_metadata, "
+            "peer_group_from_supabase) will raise ValueError at call time, "
+            "and FundData enrichment will silently skip the Supabase round-trip. "
+            "Set the env vars to silence this warning."
+        )
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
@@ -151,6 +191,10 @@ class RiskModelsClient:
             csec = csec.strip()
         scope = os.environ.get("RISKMODELS_OAUTH_SCOPE", DEFAULT_SCOPE)
         timeout = _timeout_seconds_from_env()
+        # Surface Supabase-enrichment readiness at init time, not at first
+        # get_ticker_metadata() call. WARN-only — Supabase access is optional;
+        # callers that never touch enrichment-backed methods can suppress.
+        _warn_if_supabase_creds_missing()
         if key:
             return cls(base_url=base, api_key=key, timeout=timeout)
         if cid and csec:
