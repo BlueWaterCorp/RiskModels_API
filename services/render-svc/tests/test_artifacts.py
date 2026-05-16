@@ -492,3 +492,84 @@ class TestClientPortfolioPath:
         assert gcs_path1 == gcs_path2
         assert data1 == data2  # cached bytes, not the new fake's bytes
         assert b"DIFFERENT" not in data2
+
+
+# ── filer_13f subject (Phase 2 — LANDING Berkshire preload) ───────────────
+
+
+class TestFilerPath:
+    """Filer subjects use the pre-render-to-GCS path; cache hits work
+    end-to-end, cache misses raise 501 (no SDK loader inside render-svc).
+    """
+
+    BERKSHIRE = "BW-FILER-CIK0001067983"
+
+    def test_cache_hit_returns_pre_rendered_bytes(self, store, monkeypatch):
+        """The LANDING daily-refresh job pre-renders Berkshire artifacts
+        into GCS; subsequent requests hit the cache and never touch the
+        adapter chain."""
+        cached = b'{"slug":"top_holdings_erm_stacked","pre_rendered":true}'
+        path = (
+            "snapshots/artifacts/top_holdings_erm_stacked@v1/"
+            f"{self.BERKSHIRE}/2026-03-31.json"
+        )
+        store.write(path, cached, content_type="application/json")
+
+        data, mime, gcs_path, resolved_as_of, _ = render_artifact(
+            _req(subject_id=self.BERKSHIRE, as_of="2026-03-31"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+
+        assert data == cached
+        assert mime == "application/json"
+        assert gcs_path == path
+        assert resolved_as_of == "2026-03-31"
+
+    def test_cache_miss_returns_501_with_pre_render_guidance(self, store, monkeypatch):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id=self.BERKSHIRE, as_of="2026-03-31"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 501
+        msg = str(exc.value.detail)
+        assert "filer_13f" in msg
+        # Message tells the operator where to pre-render to.
+        assert "Pre-render" in msg or "pre-render" in msg
+        assert "daily refresh" in msg
+
+    def test_latest_as_of_rejected_for_filer(self, store):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id=self.BERKSHIRE, as_of="latest"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+        assert "latest" in str(exc.value.detail)
+        assert "filer_13f" in str(exc.value.detail)
+
+    def test_cache_hit_uses_immutable_cache_for_explicit_date(self, store):
+        cached = b'{"ok":true}'
+        path = (
+            "snapshots/artifacts/top_holdings_erm_stacked@v1/"
+            f"{self.BERKSHIRE}/2026-03-31.json"
+        )
+        store.write(path, cached, content_type="application/json")
+        _, _, _, _, cache_control = render_artifact(
+            _req(subject_id=self.BERKSHIRE, as_of="2026-03-31"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert "immutable" in cache_control
+
+    def test_subject_id_prefix_routing_for_filer(self, store):
+        """BW-FILER-* dispatches to filer_13f even when no cache + no payload."""
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id="BW-FILER-CIK0000320193", as_of="2025-12-31"),
+                store=store, prefix=PREFIX,
+            )
+        # 501 (filer cache miss), not 422 (wrong prefix).
+        assert exc.value.status_code == 501
