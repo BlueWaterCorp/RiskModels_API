@@ -12,9 +12,18 @@ describe("buildSystemPrompt — contracted boundaries", () => {
   });
 
   it("encodes the no-fabricated-portfolio rule (TA.NMD.1)", () => {
-    // Header + the unambiguous decline-and-redirect instruction.
+    // Header + the unambiguous decline-and-redirect instruction. After
+    // PRs #83 (search_funds + get_fund_holdings) and #85 (search_filers
+    // + get_filer_holdings) landed, the prompt copy was rewritten from
+    // "no tool that returns a fund's, ETF's, or filer's holdings" to
+    // "two tool families that return real holdings — use them before
+    // declining." The decline-and-redirect rule still holds for the
+    // off-panel case; this test asserts both the new tool-families
+    // framing AND the unchanged hard-decline language.
     expect(prompt).toMatch(/What you must NOT fabricate/);
-    expect(prompt).toMatch(/no tool that returns a fund's, ETF's, or filer's holdings/i);
+    expect(prompt).toMatch(/two tool families/i);
+    expect(prompt).toMatch(/search_funds/);
+    expect(prompt).toMatch(/search_filers/);
     expect(prompt).toMatch(/Even labeled-as-approximate fabrication is forbidden/i);
     expect(prompt).toMatch(/Never fabricate portfolio composition/i);
   });
