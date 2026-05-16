@@ -554,7 +554,7 @@ class TestFilerPath:
         )
         store.write(path, cached, content_type="application/json")
 
-        data, mime, gcs_path, resolved_as_of, _ = render_artifact(
+        data, mime, gcs_path, resolved_as_of, _, _ = render_artifact(
             _req(subject_id=self.BERKSHIRE, as_of="2026-03-31"),
             store=store, prefix=PREFIX, persist=False,
         )
@@ -596,7 +596,7 @@ class TestFilerPath:
             f"{self.BERKSHIRE}/2026-03-31.json"
         )
         store.write(path, cached, content_type="application/json")
-        _, _, _, _, cache_control = render_artifact(
+        _, _, _, _, cache_control, _ = render_artifact(
             _req(subject_id=self.BERKSHIRE, as_of="2026-03-31"),
             store=store, prefix=PREFIX, persist=False,
         )
@@ -664,9 +664,21 @@ class TestFilerAdapterRouting:
         fn = _adapter_for("entity_header", "filer_13f")
         assert fn is adapters_mod.entity_header_from_filer_data
 
+    def test_return_composition_bars_routes_to_filer_waterfall(self, monkeypatch):
+        _install_fake_bwmacro_artifact(
+            monkeypatch,
+            slug="return_composition_bars",
+            version="v1",
+            applicable=("fund", "filer_13f"),
+        )
+        adapters_mod = sys.modules["bwmacro.snapshots.artifacts.adapters"]
+        adapters_mod.attribution_waterfall_from_filer_data = lambda fd: fd
+        fn = _adapter_for("return_composition_bars", "filer_13f")
+        assert fn is adapters_mod.attribution_waterfall_from_filer_data
+
     def test_unwidened_slug_returns_501(self, monkeypatch):
         """Slugs that haven't been widened to filer_13f yet (e.g.
-        risk_summary_panel, return_composition_bars) raise 501 with a
+        risk_summary_panel, active_risk_composition) raise 501 with a
         helpful message pointing to BWMACRO adapters.py."""
         _install_fake_bwmacro_artifact(
             monkeypatch,

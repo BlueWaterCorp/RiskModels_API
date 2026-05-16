@@ -171,6 +171,8 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
             return adapters.cumulative_return_series_from_filer_data
         if slug == "entity_header":
             return adapters.entity_header_from_filer_data
+        if slug == "return_composition_bars":
+            return adapters.attribution_waterfall_from_filer_data
         raise HTTPException(
             status_code=501,
             detail=(
