@@ -37,4 +37,9 @@ describe("buildSystemPrompt — contracted boundaries", () => {
   it("frames hedge ratios as math, never as advice", () => {
     expect(prompt).toMatch(/\$0\.62 of SPY per \$1 of portfolio neutralizes the market leg/);
   });
+
+  it("warns against inferring market exposure from negative l3_market_hr alone", () => {
+    expect(prompt).toMatch(/never infer aggregate market stance from the sign of.*l3_market_hr/i);
+    expect(prompt).toMatch(/offsets market exposure already carried inside the sector/i);
+  });
 });

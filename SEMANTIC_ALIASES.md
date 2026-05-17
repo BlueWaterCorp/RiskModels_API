@@ -215,7 +215,11 @@ values where the rolling regression window has insufficient data.
 time series (e.g. `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`). That is expected under
 orthogonalization (neutralizing factors against one another); **negative market
 HR at L2 or L3 is especially common**. It does not by itself indicate a sign
-error in the underlying data.
+error in the underlying data. **Do not equate a negative `l3_market_hr` with
+“negative market exposure” or “betting against SPY” in isolation** — at L3,
+sector and subsector legs embed market beta; the SPY hedge ratio is one leg of a
+**joint** three-ETF replication. Use **`l3_mkt_er`** (variance share) for how much
+risk sits in the market layer at L3, not the sign of `l3_market_hr` alone.
 
 ---
 
