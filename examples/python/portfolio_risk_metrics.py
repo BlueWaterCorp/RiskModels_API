@@ -12,7 +12,7 @@ Computes portfolio-level risk metrics that don't ship with `analyze_portfolio`:
   - Annualized return, vol, Sharpe (rf = 0 by default)
 
 Always prints a per-ticker residual-Sharpe diagnostic on L3 residuals
-(gross_return − l3_combined_factor_return) so the user can sanity-check the
+(gross_return - l3_combined_factor_return) so the user can sanity-check the
 factor model before drawing inferences from anything downstream.
 
 Optional ``--optimize`` flag does walk-forward out-of-sample evaluation:
@@ -64,7 +64,19 @@ DEFAULT_PORTFOLIO: dict[str, float] = {
 # ── Data panel ────────────────────────────────────────────────────────────────
 @dataclass
 class Panel:
-    """Aligned daily returns + rolling L3 HRs for the portfolio + SPY benchmark."""
+    """Aligned daily returns + rolling L3 HRs for the portfolio + SPY benchmark.
+
+    The hedge-ratio series (``market_hr``, ``sector_hr``, ``subsector_hr``) are
+    loaded for completeness — they're surfaced so callers extending this
+    script can do hedge-implied analyses (residual-return decomposition with
+    rolling HRs, hedge-stability checks, or optimizer constraints driven by
+    factor exposures) without re-fetching the same daily series from
+    ``get_dataset``. The metric path in this file does not consume them;
+    residual returns are computed separately via ``compute_residual_returns``
+    using ``get_ticker_returns`` so the residual is L3-combined-factor-return
+    consistent with the published L3 model rather than reconstructed from
+    HRs at this granularity.
+    """
     returns: pd.DataFrame      # date × ticker, gross daily returns
     spy_returns: pd.Series      # date-indexed SPY daily returns
     market_hr: pd.DataFrame     # date × ticker, rolling L3 market HR
@@ -135,6 +147,19 @@ def fetch_per_ticker_er(client: RiskModelsClient, tickers: list[str]) -> pd.Data
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
 def compute_summary_stats(port_rets: pd.Series, rf: float = 0.0) -> dict[str, float]:
+    """Annualized return / vol / Sharpe with a mixed-convention annualization.
+
+    Convention used here (the de facto industry default; CFA-style):
+        annualized_return = (1 + R̄_daily) ** 252 − 1        (compound)
+        annualized_vol    = σ_daily × √252                    (square-root-of-time)
+        sharpe            = (annualized_return − rf) / annualized_vol
+
+    These two annualizations are not mathematically self-consistent — pure
+    arithmetic Sharpe would use ``R̄_daily × 252`` in the numerator. We keep
+    the compound return because it matches the cumulative-return narrative
+    most readers expect, and label the convention explicitly in the printed
+    output (see ``run_metrics``) so downstream comparisons are unambiguous.
+    """
     daily_mean = float(port_rets.mean())
     daily_std  = float(port_rets.std(ddof=0))
     ann_ret = (1.0 + daily_mean) ** TRADING_DAYS - 1.0
@@ -201,7 +226,7 @@ L3_CFR_COLS = ("l3_combined_factor_return", "l3_cfr")  # newer SDK / older SDK
 def compute_residual_returns(
     client: RiskModelsClient, tickers: list[str], years: int, panel: Panel,
 ) -> pd.DataFrame:
-    """L3 residual returns: gross_return − l3 combined-factor return, per ticker."""
+    """L3 residual returns: gross_return - l3 combined-factor return, per ticker."""
     parts: dict[str, pd.Series] = {}
     for t in tickers:
         df = client.get_ticker_returns(t, years=years)
@@ -270,6 +295,11 @@ def print_residual_sharpe_diagnostic(residuals: pd.DataFrame) -> None:
         "\nNote: residuals should cluster near zero. Wide dispersion suggests\n"
         "the factor model is missing return drivers, or the window is too short."
     )
+    print(
+        "Convention: diagnostic uses raw residual Sharpe (no rf subtraction) —\n"
+        "residuals are factor-orthogonal returns and the benchmark is zero, not rf.\n"
+        "Portfolio-level Sharpe blocks below respect --rf as set on the CLI."
+    )
 
 
 def run_metrics(
@@ -306,7 +336,7 @@ def run_metrics(
     print(_row(
         f"Sharpe (annualized, rf={rf:.2%})",
         f"{summary['sharpe']:.3f}",
-        "(annualized return - rf) / annualized vol",
+        "((1 + R̄_daily)^252 - 1 - rf) / (σ_daily × √252)  — compound return / √n vol",
     ))
     print(_row(
         "Tracking error vs SPY (annualized)",
@@ -342,7 +372,16 @@ def run_metrics(
     fb.index = [c.replace("l3_", "").replace("_er", "") for c in fb.index]
     print(fb.to_string())
     print(f"\nFactor shares sum: {fb.sum():.2f}%")
-    print("share_L = Σᵢ wᵢ × σᵢ² × ER_iL  (additive approx, normalized to 100% — ignores cross-asset covariance)")
+    print(
+        "share_L = Σᵢ wᵢ × σᵢ² × ER_iL  (additive approx, normalized to 100%;\n"
+        "  ignores cross-asset covariance)"
+    )
+    print(
+        "Caveat — time mixing: ER_iL comes from the latest analyze_portfolio\n"
+        "  snapshot (as-of today), while σᵢ is computed on the window above.\n"
+        "  Reading: ER as-of snapshot, vol/cov window-specific. Treat the\n"
+        "  decomposition as illustrative when ER drifts inside the window."
+    )
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -524,7 +563,7 @@ def main() -> int:
         print(_row(
             f"Optimized portfolio Sharpe (rf={args.rf:.2%})",
             f"{oos_summary['sharpe']:.3f}",
-            "(annualized return - rf) / annualized vol  ·  OOS test slice",
+            "((1 + R̄_daily)^252 - 1 - rf) / (σ_daily × √252)  ·  OOS test slice",
         ))
         print(
             f"  test window: {test_dates[0].date()} → {test_dates[-1].date()} "
