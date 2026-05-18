@@ -1,7 +1,7 @@
 """Build :class:`StockContext` from local ERM3 zarr (same shape as API ``fetch_stock_context``).
 
 Use :func:`build_p1_from_zarr` so :class:`P1Data` is assembled only via
-:func:`riskmodels.snapshots.p1_stock_performance.build_p1_data_from_stock_context`
+:func:`riskmodels.snapshots._stock_data.build_p1_data_from_stock_context`
 — the same tail/cum/l3_er rules as production, plus rankings and macro correlations
 from zarr (``ds_rankings_*``, ``ds_macro_factor.zarr``). Gold is not in
 ``ds_macro_factor``; that slot stays empty unless you supply API macro later.
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .p1_stock_performance import P1Data
+    from ._stock_data import P1Data
 
 import numpy as np
 import pandas as pd
@@ -140,6 +140,85 @@ BW_SECTOR_TO_ETF = {
     11: "XLRE",
 }
 
+# GICS-style sector full names (parallel to BW_SECTOR_TO_ETF). Drives the
+# IDENTITY panel and header subtitle; renderers fall back to the ETF ticker
+# when this returns None.
+BW_SECTOR_TO_NAME = {
+    1: "Energy",
+    2: "Materials",
+    3: "Industrials",
+    4: "Consumer Discretionary",
+    5: "Consumer Staples",
+    6: "Health Care",
+    7: "Financials",
+    8: "Information Technology",
+    9: "Communication Services",
+    10: "Utilities",
+    11: "Real Estate",
+}
+
+
+def _sector_name(bw_code: float | int | None) -> str | None:
+    if bw_code is None:
+        return None
+    try:
+        return BW_SECTOR_TO_NAME.get(int(bw_code))
+    except (TypeError, ValueError):
+        return None
+
+
+# Reverse map for renderers that only carry the ETF ticker downstream
+# (e.g. P1Data.sector_etf without a separate bw_sector_code field).
+_ETF_TO_BW_SECTOR_NAME = {
+    etf: BW_SECTOR_TO_NAME[code] for code, etf in BW_SECTOR_TO_ETF.items()
+}
+
+
+def _sector_name_from_etf(sector_etf: str | None) -> str | None:
+    if not sector_etf:
+        return None
+    return _ETF_TO_BW_SECTOR_NAME.get(sector_etf)
+
+
+def _clean_etf_display_name(raw_name: str) -> str:
+    """Strip common ETF marketing prefixes/suffixes for compact identity rows.
+
+    'iShares U.S. Industrials ETF'    → 'U.S. Industrials'
+    'SPDR S&P Semiconductor ETF'      → 'S&P Semiconductor'
+    'Invesco Aerospace & Defense ETF' → 'Aerospace & Defense'
+    """
+    s = (raw_name or "").strip()
+    for pre in (
+        "iShares ", "SPDR ", "Invesco ", "First Trust ", "Vanguard ",
+        "ProShares ", "VanEck ", "Global X ", "Direxion ", "Alerian ",
+    ):
+        if s.startswith(pre):
+            s = s[len(pre):]
+            break
+    for suf in (" ETF", " Fund", " Trust"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+    return s.strip()
+
+
+def _subsector_name(subsector_etf: str | None, erm3_root: Path) -> str | None:
+    """Look up the subsector ETF's marketing name + apply :func:`_clean_etf_display_name`.
+
+    Returns None if the ETF isn't registered or the lookup fails. Callers
+    fall back to the raw ETF ticker when this returns None.
+    """
+    if not subsector_etf:
+        return None
+    _ensure_erm3_import(erm3_root)
+    try:
+        from erm3.shared.etf_register import get_etf_name
+        raw = get_etf_name(subsector_etf)
+        if not raw:
+            return None
+        return _clean_etf_display_name(raw)
+    except Exception:
+        return None
+
 
 def _ensure_erm3_import(erm3_root: Path) -> None:
     if str(erm3_root) not in sys.path:
@@ -168,17 +247,32 @@ def _sector_etf(bw_code: float | int | None) -> str | None:
         return None
 
 
+def _ticker_coord_scalar_str(v: Any) -> str:
+    """Normalize a single ticker coord value (zarr bytes | numpy str | unicode)."""
+    if hasattr(v, "item") and callable(v.item):
+        try:
+            v = v.item()
+        except Exception:
+            pass
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return bytes(v).decode("utf-8").strip().upper()
+    # Avoid np.bytes_.astype(str) / object quirks that yield "b'NVDA'" in some stacks.
+    return str(v).strip().upper()
+
+
 def _symbol_for_ticker(ds: xr.Dataset, ticker: str) -> str:
     """Resolve ticker to symbol using the dataset's ticker coordinate.
 
     Falls back to matching by symbol substring if the ticker coordinate is
     unpopulated (e.g. ds_erm3 where ticker coord may be 'None').
     """
+    want = ticker.upper()
     if "ticker" in ds.coords:
-        tick = ds["ticker"].values.astype(str)
-        idx = np.where(tick == ticker.upper())[0]
-        if len(idx):
-            return str(ds["symbol"].values[int(idx[0])])
+        raw = np.asarray(ds["ticker"].values)
+        syms = np.asarray(ds["symbol"].values)
+        for i in range(int(raw.size)):
+            if _ticker_coord_scalar_str(raw.flat[i]) == want:
+                return str(syms.flat[i])
     raise ValueError(f"No symbol for ticker {ticker} in {list(ds.dims)}")
 
 
@@ -196,11 +290,13 @@ def symbol_for_ticker_zarr(ticker: str, zarr_root: Path | None = None) -> str:
 
 
 def _etf_symbol(ds_etf: xr.Dataset, etf_ticker: str) -> str:
-    tick = ds_etf["ticker"].values.astype(str)
-    idx = np.where(tick == etf_ticker.upper())[0]
-    if not len(idx):
-        raise ValueError(f"ETF {etf_ticker} not in ds_etf")
-    return str(ds_etf["symbol"].values[int(idx[0])])
+    want = etf_ticker.upper()
+    raw = np.asarray(ds_etf["ticker"].values)
+    syms = np.asarray(ds_etf["symbol"].values)
+    for i in range(int(raw.size)):
+        if _ticker_coord_scalar_str(raw.flat[i]) == want:
+            return str(syms.flat[i])
+    raise ValueError(f"ETF {etf_ticker} not in ds_etf")
 
 
 def _df_from_etf_slice(ds_etf: xr.Dataset, etf_sym: str, n_days: int) -> pd.DataFrame:
@@ -397,6 +493,13 @@ def fetch_stock_context_zarr(
     ds_erm = xr.open_zarr(root / "ds_erm3_hedge_weights_SPY_uni_mc_3000.zarr", consolidated=True)
     ds_etf = xr.open_zarr(root / "ds_etf.zarr", consolidated=True)
     ds_rank = xr.open_zarr(root / "ds_rankings_SPY_uni_mc_3000.zarr", consolidated=True)
+    # PIT survivorship-corrected market_cap (shares × close from EDGAR-sourced
+    # shares_history). When present, supersedes ds_daily.market_cap which is
+    # only populated for currently-listed entities (fundamentals.csv path).
+    # Critical for historical context queries on names that delisted before
+    # the snapshot — Lehman, Kraft pre-merger, etc. now have correct mcap.
+    _market_cap_zarr = root / "ds_market_cap.zarr"
+    ds_market_cap = xr.open_zarr(_market_cap_zarr, consolidated=True) if _market_cap_zarr.is_dir() else None
     # ds_erm3_returns has the daily L*_cfr / L*_rr series indexed by (teo, symbol, level)
     # where level ∈ {market, sector, subsector}. Required for the Section I 5-line
     # bridge — without these, build_p1_data_from_stock_context falls back to gross
@@ -423,6 +526,22 @@ def fetch_stock_context_zarr(
     else:
         sub_d = ds_daily.sel(symbol=sym).isel(teo=slice(-n_days, None))
         sub_e = ds_erm.sel(symbol=sym).isel(teo=slice(-n_days, None))
+    # PIT survivorship-corrected market_cap: prefer ds_market_cap.zarr where
+    # available, fall back to sub_d.market_cap. Reindex onto sub_d's teo
+    # range so the merge below stays aligned.
+    if ds_market_cap is not None and "market_cap" in ds_market_cap.data_vars:
+        try:
+            sub_mc = ds_market_cap.sel(symbol=sym).reindex(teo=sub_d.teo.values, method=None)
+            mc_pit = sub_mc["market_cap"].values
+            mc_legacy = sub_d["market_cap"].values
+            # Where PIT has a value, use it; otherwise keep legacy (currently-listed names
+            # often have legacy values where PIT is NaN — we want both populated).
+            import numpy as _np
+            mc_merged = _np.where(_np.isnan(mc_pit), mc_legacy, mc_pit)
+            sub_d = sub_d.assign(market_cap=("teo", mc_merged.astype(sub_d["market_cap"].dtype)))
+        except Exception:
+            # Any failure → fall back to legacy. No silent corruption.
+            pass
     merged = xr.merge(
         [
             sub_d[["return", "close", "market_cap", "volatility", "bw_sector_code", "fs_industry_code"]],
@@ -632,7 +751,7 @@ def build_p1_from_zarr(
 
     See :func:`fetch_stock_context_zarr` for parameter docs.
     """
-    from .p1_stock_performance import build_p1_data_from_stock_context
+    from ._stock_data import build_p1_data_from_stock_context
 
     ctx, rankings, macro_corr, macro_win = fetch_stock_context_zarr(
         ticker, zarr_root,
@@ -643,10 +762,15 @@ def build_p1_from_zarr(
         sector_etf_override=sector_etf_override,
         subsector_etf_override=subsector_etf_override,
     )
-    return build_p1_data_from_stock_context(
+    p1 = build_p1_data_from_stock_context(
         ctx,
         client=None,
         rankings=rankings,
         macro_correlations=macro_corr,
         macro_window=macro_win,
     )
+    # Populate human-readable classification (None when ETF not in registry).
+    p1.sector_name = _sector_name_from_etf(p1.sector_etf)
+    erm3 = Path(erm3_root) if erm3_root is not None else _DEFAULT_ERM3
+    p1.subsector_name = _subsector_name(p1.subsector_etf, erm3)
+    return p1

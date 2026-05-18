@@ -5,8 +5,10 @@ Import ``THEME`` and pass values to Matplotlib; never hard-code styling elsewher
 
 Palette
 -------
-Navy / Teal / Slate / Green / Orange — maps to Market / Sector / Subsector /
-Residual / Gross-return across both Risk and Performance suites.
+Navy / Teal / Subsector / Green / Orange — maps to Market / Sector / Subsector /
+Residual / Gross-return across both Risk and Performance suites. The Subsector
+swatch is institutional violet (formerly slate); renamed during PR 3 to surface
+the semantic role rather than the colour name.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ class Palette:
 
     navy:       str = "#002a5e"
     teal:       str = "#006f8e"
-    slate:      str = "#2a7fbf"
+    subsector:  str = "#6d28d9"   # institutional violet (was slate #2a7fbf, renamed PR 3)
     green:      str = "#00AA00"
     orange:     str = "#E07000"
 
@@ -53,7 +55,7 @@ class Palette:
     # Factor colours (ordered: market, sector, subsector, residual)
     @property
     def factor_colors(self) -> list[str]:
-        return [self.navy, self.teal, self.slate, self.green]
+        return [self.navy, self.teal, self.subsector, self.green]
 
     @property
     def factor_labels(self) -> list[str]:
@@ -62,7 +64,7 @@ class Palette:
     # Extended series palette (for multi-line / multi-bar charts)
     @property
     def series(self) -> list[str]:
-        return [self.navy, self.teal, self.slate, self.green, self.orange,
+        return [self.navy, self.teal, self.subsector, self.green, self.orange,
                 "#7c3aed", "#d946ef", "#06b6d4"]
 
 

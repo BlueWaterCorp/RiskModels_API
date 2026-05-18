@@ -12,8 +12,22 @@ import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const runtime = "nodejs";
 
+/**
+ * Classify a thrown error into a stable telemetry class so 500s carry a
+ * useful signal and can be triaged without log-diving.
+ */
+function classifyL3Error(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("zarr") || m.includes("gcs")) return "zarr_read_failed";
+  if (m.includes("registry") || m.includes("metric_key")) return "registry_resolve_failed";
+  if (m.includes("supabase") || m.includes("postgres")) return "supabase_query_failed";
+  if (m.includes("timeout") || m.includes("aborted")) return "upstream_timeout";
+  if (m.includes("network") || m.includes("econnreset")) return "network_error";
+  return "internal_error";
+}
+
 export const GET = withBilling(
-  async (request: NextRequest, _context: BillingContext) => {
+  async (request: NextRequest, context: BillingContext) => {
     const { searchParams } = new URL(request.url);
     const origin = request.headers.get("origin");
 
@@ -91,8 +105,21 @@ export const GET = withBilling(
       addMetadataHeaders(response, metadata);
       return response;
     } catch (e) {
-      console.error("[L3 Decomposition] Error:", e);
-      return NextResponse.json({ error: "Internal Error" }, { status: 500 });
+      const errMessage = e instanceof Error ? e.message : String(e);
+      const errClass = classifyL3Error(errMessage);
+      console.error(
+        `[L3 Decomposition] ${errClass} for ticker=${ticker} years=${years}:`,
+        errMessage,
+      );
+      return NextResponse.json(
+        {
+          error: "Internal Error",
+          error_class: errClass,
+          message: errMessage,
+          request_id: context.requestId,
+        },
+        { status: 500, headers: getCorsHeaders(origin) },
+      );
     }
   },
   { capabilityId: "l3-decomposition" },

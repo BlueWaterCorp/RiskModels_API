@@ -38,17 +38,19 @@ from .peer_group import PeerComparison, PeerGroupProxy
 from .performance.base import PerformanceResult
 from .portfolio_math import PortfolioAnalysis, PositionsInput, positions_to_weights
 from .snapshots import (  # noqa: F401
-    S1Data,
-    S2Data,
+    CanonicalStockSnapshot,
+    P1Data,
     StockContext,
     cumulative_returns,
     fetch_stock_context,
-    get_data_for_s1,
-    get_data_for_s2,
+    from_components,
+    from_dd_data,
+    get_data_for_p1,
     max_drawdown_series,
     relative_returns,
-    render_s1_to_pdf,
-    render_s2_to_pdf,
+    render_canonical_to_pdf,
+    render_canonical_to_png,
+    render_canonical_to_png_bytes,
     rolling_sharpe,
     trailing_returns,
 )
@@ -75,7 +77,6 @@ except ImportError:  # pragma: no cover — older installs / partial checkouts
             "(monorepo: pip install -e ./sdk[viz])."
         )
 
-from .visuals.mag7_l3_er import plot_mag7_l3_explained_risk, save_mag7_l3_explained_risk_png
 from .visuals.save import (
     save_l3_decomposition_png,
     save_portfolio_attribution_cascade_png,
@@ -96,21 +97,21 @@ __all__ = [
     "PeerComparison",
     "PeerGroupProxy",
     "PerformanceResult",
-    "S1Data",
-    "get_data_for_s1",
-    "render_s1_to_pdf",
-    "S2Data",
-    "get_data_for_s2",
-    "render_s2_to_pdf",
+    "CanonicalStockSnapshot",
+    "P1Data",
+    "from_components",
+    "from_dd_data",
+    "get_data_for_p1",
+    "render_canonical_to_pdf",
+    "render_canonical_to_png",
+    "render_canonical_to_png_bytes",
     "PositionsInput",
     "RefinementResult",
     "RiskLineage",
     "RiskModelsClient",
-    "plot_mag7_l3_explained_risk",
     "plot_l3_decomposition",
     "plot_l3_year_end_stack",
     "save_l3_decomposition_png",
-    "save_mag7_l3_explained_risk_png",
     "save_portfolio_attribution_cascade_png",
     "save_portfolio_risk_cascade_png",
     "write_plotly_png",
@@ -149,4 +150,4 @@ __all__ = [
     "run",
 ]
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"

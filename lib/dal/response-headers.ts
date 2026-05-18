@@ -57,6 +57,12 @@ export type HistoryMetadataExtras = {
   data_source?: "zarr" | "supabase";
   /** Inclusive ISO date bounds for the returned history window (when applicable). */
   range?: [string, string];
+  /**
+   * Override the global factor universe with the factors actually used for
+   * this response (e.g. for a single ticker the L3 factors are
+   * [SPY, sector_etf, subsector_etf] deduped, not all 12 sector ETFs).
+   */
+  factors?: readonly string[];
 };
 
 /**
@@ -72,7 +78,7 @@ export function buildMetadataBody(
     factor_set_id: metadata.factor_set_id,
     universe_size: metadata.universe_size,
     wiki_uri: metadata.wiki_uri,
-    factors: [...metadata.factors],
+    factors: extras?.factors ? [...extras.factors] : [...metadata.factors],
   };
   if (extras?.data_source) {
     body.data_source = extras.data_source;

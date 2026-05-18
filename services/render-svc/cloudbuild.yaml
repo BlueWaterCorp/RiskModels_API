@@ -1,0 +1,66 @@
+# Cloud Build config for the render service.
+# Invoke from repo root:
+#   gcloud builds submit --config services/render-svc/cloudbuild.yaml .
+#
+# Multi-repo note: the artifact registry endpoint imports
+# `bwmacro.snapshots.artifacts.*` (narrow leaf surface — see Dockerfile §5
+# import-firewall smoke). BWMACRO lives in a sibling repo; we clone it
+# into the build context as `./bwmacro-src/` before docker build runs.
+#
+# Clone requires Secret `github-bwmacro-read` (GitHub PAT with repo read to
+# BlueWaterCorp/BWMACRO) and Cloud Build SA `roles/secretmanager.secretAccessor`
+# on that secret. Local dev: `ln -s ../BWMACRO bwmacro-src` + `docker build`.
+#
+# IAM: the build often runs as the default Compute SA
+# (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`), not `@cloudbuild` — grant
+# that identity secretAccessor too, or set `serviceAccount:` on the build to a
+# dedicated builder SA. PAT must be valid for HTTPS clone (repo scope + SSO
+# authorize org if required); no trailing newline when storing the secret.
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/github-bwmacro-read/versions/latest
+      env: BWMACRO_GIT_TOKEN
+
+steps:
+  # Phase 1B addition: clone BWMACRO into the build context so the
+  # Dockerfile's `COPY bwmacro-src/` step can install the artifact subtree.
+  # Token comes from Secret Manager (see availableSecrets). Use $$ so Cloud
+  # Build does not treat this as a user substitution; the shell sees $BWMACRO_GIT_TOKEN.
+  - name: 'gcr.io/cloud-builders/git'
+    id: clone-bwmacro
+    secretEnv: [BWMACRO_GIT_TOKEN]
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -eo pipefail
+        export GIT_TERMINAL_PROMPT=0
+        : "$${BWMACRO_GIT_TOKEN:?BWMACRO_GIT_TOKEN missing: set Secret github-bwmacro-read and grant Cloud Build SA secretAccessor}"
+        # Local `gcloud builds submit` may pack a root `bwmacro-src` symlink/dir; remove before clone.
+        rm -rf bwmacro-src
+        git clone --depth=1 \
+          "https://x-access-token:$${BWMACRO_GIT_TOKEN}@github.com/BlueWaterCorp/BWMACRO.git" \
+          bwmacro-src
+        echo "BWMACRO HEAD: $(git -C bwmacro-src rev-parse HEAD)"
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build-image
+    waitFor: ['clone-bwmacro']
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/render-svc:$BUILD_ID'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/render-svc:latest'
+      - '-f'
+      - 'services/render-svc/Dockerfile'
+      - '.'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/render-svc:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/render-svc:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

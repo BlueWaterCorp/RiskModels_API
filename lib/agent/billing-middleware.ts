@@ -26,6 +26,11 @@ import { Redis } from "@upstash/redis";
 import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 import { checkFreeTierLimit, incrementFreeTierUsage } from "./free-tier";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getIdempotentResponse,
+  idempotencyFingerprint,
+  setIdempotentResponse,
+} from "./idempotency-cache";
 
 /**
  * Check if user has exceeded their monthly spend cap
@@ -297,13 +302,70 @@ export function withBilling(
       // 1. Authenticate the request (try API key first, then session)
       let userId: string | undefined;
       let apiKey: string | undefined;
+      /** Fingerprint for Idempotency-Key replay (POST only, when Redis configured). */
+      let idempotencyFingerprintVal: string | null = null;
 
       // Try API key authentication first
       const extractedKey = extractApiKey(req);
       let apiKeyRateLimit: number | undefined;
       let apiKeyDailyCapOverride: number | null = null;
       let apiKeyScope: string | null = null;
-      if (extractedKey) {
+
+      const serviceKeyEnv = process.env.RISKMODELS_API_SERVICE_KEY?.trim();
+      const isTrustedServiceGateway = Boolean(
+        extractedKey &&
+          serviceKeyEnv &&
+          extractedKey === serviceKeyEnv,
+      );
+
+      // Trusted gateway (.net landing / BFF): Authorization stays the service key;
+      // optional end-user JWT is forwarded as X-RiskModels-User-Authorization.
+      if (isTrustedServiceGateway) {
+        const fwd =
+          req.headers.get("x-riskmodels-user-authorization")?.trim() ?? "";
+        const forwardJwt =
+          fwd.toLowerCase().startsWith("bearer ")
+            ? fwd.slice(7).trim()
+            : "";
+        if (forwardJwt) {
+          try {
+            const supabaseAdmin = createAdminClient();
+            const {
+              data: { user: fwdUser },
+              error: fwdErr,
+            } = await supabaseAdmin.auth.getUser(forwardJwt);
+            if (fwdUser?.id && !fwdErr) {
+              userId = fwdUser.id;
+            }
+          } catch {
+            // Ignore invalid JWT — fall through to gateway billing fallback.
+          }
+        }
+        if (!userId) {
+          const gatewayUid =
+            process.env.RISKMODELS_GATEWAY_BILLING_USER_ID?.trim();
+          if (gatewayUid) {
+            userId = gatewayUid;
+          }
+        }
+      }
+
+      if (isTrustedServiceGateway && !userId) {
+        return NextResponse.json(
+          {
+            error: "Service gateway misconfigured",
+            message:
+              "Anonymous gateway snapshot requires RISKMODELS_GATEWAY_BILLING_USER_ID on the API, or forward a signed-in user JWT via X-RiskModels-User-Authorization.",
+            _agent: {
+              action: "contact_support",
+              support: "service@riskmodels.app",
+            },
+          },
+          { status: 503 },
+        );
+      }
+
+      if (!userId && extractedKey && !isTrustedServiceGateway) {
         const validation = await validateApiKey(extractedKey);
         if (validation.valid && validation.userId) {
           userId = validation.userId;
@@ -374,6 +436,41 @@ export function withBilling(
               },
             );
           }
+        }
+      }
+
+      // 1c. Idempotent replay (POST + Idempotency-Key); avoids double billing on identical body.
+      const idemHeader = req.headers.get("idempotency-key")?.trim();
+      if (
+        idemHeader &&
+        idemHeader.length <= 256 &&
+        req.method === "POST" &&
+        userId
+      ) {
+        try {
+          const bodyText = await req.clone().text();
+          idempotencyFingerprintVal = idempotencyFingerprint(
+            idemHeader,
+            options.capabilityId,
+            bodyText,
+          );
+          const cached = await getIdempotentResponse(userId, idempotencyFingerprintVal);
+          if (cached) {
+            const headers = new Headers({
+              "Content-Type": "application/json",
+              "X-Idempotent-Replayed": "true",
+            });
+            for (const [k, v] of Object.entries(cached.headers)) {
+              if (v) headers.set(k, v);
+            }
+            if (!headers.has("X-Request-ID")) headers.set("X-Request-ID", requestId);
+            return new NextResponse(cached.body, {
+              status: cached.status,
+              headers,
+            });
+          }
+        } catch (e) {
+          console.error("[Billing] Idempotency lookup failed:", e);
         }
       }
 
@@ -664,6 +761,35 @@ export function withBilling(
         }
       } catch {
         // Silently skip if we can't fetch spend cap data
+      }
+
+      if (
+        idempotencyFingerprintVal &&
+        userId &&
+        req.method === "POST" &&
+        response.status < 500
+      ) {
+        try {
+          const bodyText = await response.clone().text();
+          const headers: Record<string, string> = {};
+          response.headers.forEach((v, k) => {
+            const kl = k.toLowerCase();
+            if (
+              kl.startsWith("x-") ||
+              kl === "content-type" ||
+              kl === "retry-after"
+            ) {
+              headers[k] = v;
+            }
+          });
+          await setIdempotentResponse(userId, idempotencyFingerprintVal, {
+            status: response.status,
+            body: bodyText,
+            headers,
+          });
+        } catch (e) {
+          console.error("[Billing] Idempotency store failed:", e);
+        }
       }
 
       return response;

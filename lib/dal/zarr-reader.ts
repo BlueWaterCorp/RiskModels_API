@@ -449,7 +449,7 @@ export async function readHistorySlice(
   const returnsSymMap = returnsGrp ? await readSymbolIndexMap(returnsGrp) : null;
   const levelMaps = returnsGrp ? await readLevelIndexMap(returnsGrp) : null;
 
-  // ETF store. Disjoint from ds_daily — ~100 ETFs with their own CUSIP-based
+  // ETF store. Disjoint from ds_daily — ~100 ETFs with their own CUSIP-based // licensed-id-ok: comment explains internal bw_sym_id derivation; no CUSIP value exposed
   // bw_sym_ids (e.g. SPY = BW-US78462F1030). Always opened because the
   // caller's symbol list can contain a mix of stocks and ETFs and we can't
   // tell which is which upfront without a Supabase round-trip. The store is

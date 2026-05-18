@@ -21,6 +21,15 @@ const nextConfig = {
       { source: '/docs', destination: '/docs/api', permanent: true },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: '/snapshots/:file*',
+        destination:
+          'https://storage.googleapis.com/rm_api_public/snapshot/:file*',
+      },
+    ];
+  },
   images: {
     formats: ['image/avif', 'image/webp'],
   },

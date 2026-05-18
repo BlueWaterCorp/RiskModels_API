@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "riskmodels-render-svc"
+version = "0.1.0"
+description = "Cloud Run render service — re-renders canonical-snapshot artifacts (P1, F1, C1) from GCS-stored canonical JSON on demand."
+readme = "README.md"
+license = { text = "Proprietary" }
+requires-python = ">=3.12"
+authors = [{ name = "RiskModels" }]
+classifiers = [
+  "Private :: Do Not Upload",
+  "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+  "fastapi>=0.110,<1",
+  "uvicorn[standard]>=0.27,<1",
+  "google-cloud-storage>=2.14,<3",
+  # GCS-backed per-fund zarrs: ``riskmodels.snapshots._fund_data`` opens
+  # ``gs://...`` with gcsfs + zarr (not pulled in by the PyPI SDK extras today).
+  "gcsfs>=2023.6.0",
+  "pydantic>=2.6,<3",
+  "zarr>=2.18,<3",
+  # Public SDK with F1 canonical schema + reference renderers.
+  # In dev installs from local sibling path; container build installs from PyPI
+  # once the SDK with F1 is published, or from the in-tree wheel.
+  # Tracks the local SDK editable install. Production should pin to the
+  # PyPI release that includes the F1 canonical schema (canonical-fund/1.0)
+  # and ontology riskmodels-ontology/2.0.
+  "riskmodels-py>=0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9",
+  "httpx>=0.27,<1",
+  "pytest-asyncio>=0.23,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["render_svc"]

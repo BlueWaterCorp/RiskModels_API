@@ -1,0 +1,26 @@
+{
+  "aum_erm3": null,
+  "bw_fund_id": "BW-FUND-S000001243",
+  "effective_n": 22.487919742808565,
+  "equity_style_9box": "Large Blend",
+  "extracted_at": "2026-05-03T06:25:04.475416+00:00",
+  "factor_set_id": "uni_mc_3000_SPY",
+  "filing_date": "2026-07-14",
+  "identity_residual": -0.003039029284969741,
+  "last_synced_at": "2026-05-03T06:25:04.475416+00:00",
+  "metadata": {
+    "filing_date_source": "placeholder_lag_75d"
+  },
+  "model_version": "funds_dag.v20260503",
+  "n_funds_in_cell_at_report_date": null,
+  "n_holdings_active": 130,
+  "portfolio_gross_return": 0.08561318457344588,
+  "portfolio_idiosyncratic_return": -0.0072475316872165655,
+  "portfolio_market_return": 0.10755820921834393,
+  "portfolio_sector_return": -0.005126053183473485,
+  "portfolio_subsector_return": -0.006532410489238246,
+  "report_date": "2026-04-30",
+  "top10_weight_sum": 0.5029973223993413,
+  "total_adj_mv": 237809196.01999986,
+  "weight_sum": 1.0000000000000004
+}

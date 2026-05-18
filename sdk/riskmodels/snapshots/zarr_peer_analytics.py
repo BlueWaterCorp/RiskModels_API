@@ -1,7 +1,7 @@
 """Zarr-only peer discovery + peer analytics (drops all API calls for bulk DD renders).
 
 Mirrors the API path used by :mod:`riskmodels.peer_group.PeerGroupProxy` +
-:func:`riskmodels.snapshots.stock_deep_dive.compute_peer_analytics`, but reads
+the legacy ``compute_peer_analytics`` (now private to BWMACRO), but reads
 everything from the local ERM3 zarr stack:
 
 - Peer discovery  → ds_daily (fs_industry_code + market_cap at latest teo)
@@ -46,6 +46,24 @@ def _open_zarr_stores(zarr_root: Path) -> tuple[xr.Dataset, xr.Dataset, xr.Datas
     )
     ret_path = zarr_root / "ds_erm3_returns_SPY_uni_mc_3000.zarr"
     ds_returns = xr.open_zarr(ret_path, consolidated=True) if ret_path.is_dir() else None
+    # PIT survivorship-corrected market_cap (used by peer-cap weighting). When
+    # available, supersedes ds_daily.market_cap for symbols that have shares
+    # in shares_history but were missing from fundamentals.csv.
+    mc_path = zarr_root / "ds_market_cap.zarr"
+    if mc_path.is_dir():
+        ds_market_cap = xr.open_zarr(mc_path, consolidated=True)
+        # Overlay PIT mc onto ds_daily for the rest of this module.
+        try:
+            mc_pit = ds_market_cap["market_cap"].reindex(
+                teo=ds_daily.teo.values,
+                symbol=ds_daily.symbol.values,
+                method=None,
+            ).values
+            mc_legacy = ds_daily["market_cap"].values
+            mc_merged = np.where(np.isnan(mc_pit), mc_legacy, mc_pit)
+            ds_daily = ds_daily.assign(market_cap=(("teo", "symbol"), mc_merged.astype(ds_daily["market_cap"].dtype)))
+        except Exception:
+            pass  # graceful fallback; legacy ds_daily.market_cap stays in place
     return ds_daily, ds_erm, ds_returns
 
 
@@ -338,16 +356,23 @@ def compute_peer_analytics_from_zarr(
 ) -> tuple[
     dict[str, tuple[float | None, float | None]],
     dict[str, tuple[float | None, float | None]],
+    dict[str, tuple[float | None, float | None]],
     list[tuple[str, float, float]],
 ]:
     """Zarr equivalent of :func:`compute_peer_analytics`, no HTTP calls.
 
-    Returns ``(peer_correlations, peer_sharpes, alpha_trajectory)`` with the
-    same keys/shapes as the API path so :func:`_make_peer_dna_chart` renders
-    identically.
+    Returns ``(peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory)``
+    with the same keys/shapes as the API path so :func:`_make_peer_dna_chart`
+    renders identically.
+
+    `peer_rankings` is populated when `ds_rankings_SPY_uni_mc_3000.zarr` is
+    available alongside the other zarrs (it lives in the same root). The
+    chart degrades gracefully (empty rank pills render as "—") if the
+    rankings store is missing or the symbol isn't covered.
     """
     peer_correlations: dict[str, tuple[float | None, float | None]] = {}
     peer_sharpes: dict[str, tuple[float | None, float | None]] = {}
+    peer_rankings: dict[str, tuple[float | None, float | None]] = {}
     alpha_trajectory: list[tuple[str, float, float]] = []
     ticker = ticker.upper()
 
@@ -357,12 +382,12 @@ def compute_peer_analytics_from_zarr(
         try:
             target_sym = _symbol_for_ticker(ds_daily, ticker)
         except ValueError:
-            return peer_correlations, peer_sharpes, alpha_trajectory
+            return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
 
         # Target history (5Y — enough for trajectory + 3Y Sharpe + 1Y correlation).
         target_df = _history_df_from_zarr(ds_daily, ds_erm, ds_returns, target_sym, years=5)
         if target_df.empty:
-            return peer_correlations, peer_sharpes, alpha_trajectory
+            return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
         target_df = target_df.set_index("date").sort_index()
 
         # Target's own Sharpe lands under target ticker (matches API convention).
@@ -426,6 +451,57 @@ def compute_peer_analytics_from_zarr(
                 except Exception:
                     continue
 
+        # ── Peer rankings (252d subsector cohort) ──
+        # Populates the bottom-right RESIDUAL RANK (TTM) panel. Reads
+        # rank_ord/cohort_size pairs from ds_rankings_SPY_uni_mc_3000.zarr
+        # using the same percentile convention as the API path:
+        #   pct = (1 - (rank-1)/cohort) * 100   ; 100 = best.
+        try:
+            rankings_path = zarr_root / "ds_rankings_SPY_uni_mc_3000.zarr"
+            if rankings_path.is_dir():
+                # Build [(ticker, sym)] for target + peers we already resolved.
+                pairs: list[tuple[str, str]] = [(ticker, target_sym)]
+                if peer_comparison is not None and not peer_comparison.peer_detail.empty:
+                    for pt in top_peer_tickers:
+                        s = lookup.get(str(pt).upper())
+                        if s is not None:
+                            pairs.append((str(pt), s))
+
+                ds_rank = xr.open_zarr(rankings_path, consolidated=True)
+                try:
+                    teo_last = ds_rank.teo.values[-1]
+
+                    def _pct(ro_var: str, cs_var: str, sym_id: str) -> float | None:
+                        if ro_var not in ds_rank.data_vars or cs_var not in ds_rank.data_vars:
+                            return None
+                        try:
+                            r = float(ds_rank[ro_var].sel(symbol=sym_id, teo=teo_last).values)
+                            c = float(ds_rank[cs_var].sel(symbol=sym_id, teo=teo_last).values)
+                        except Exception:
+                            return None
+                        if not (np.isfinite(r) and np.isfinite(c)) or c <= 0:
+                            return None
+                        return (1.0 - (r - 1.0) / c) * 100.0
+
+                    for tkr, sym_id in pairs:
+                        gross_pct = _pct(
+                            "rank_ord_252d_subsector_gross_return",
+                            "cohort_size_252d_subsector_gross_return",
+                            sym_id,
+                        )
+                        resid_pct = _pct(
+                            "rank_ord_252d_subsector_subsector_residual",
+                            "cohort_size_252d_subsector_subsector_residual",
+                            sym_id,
+                        )
+                        if gross_pct is not None or resid_pct is not None:
+                            peer_rankings[tkr] = (gross_pct, resid_pct)
+                finally:
+                    ds_rank.close()
+        except Exception:
+            # Rankings are decorative — never fail the whole peer-analytics call.
+            pass
+
         # Alpha trajectory — per-year trailing-252-day residual vol + residual ER.
         try:
             traj_df = target_df.reset_index()
@@ -453,7 +529,7 @@ def compute_peer_analytics_from_zarr(
         except Exception:
             pass
 
-        return peer_correlations, peer_sharpes, alpha_trajectory
+        return peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory
     finally:
         ds_daily.close()
         ds_erm.close()

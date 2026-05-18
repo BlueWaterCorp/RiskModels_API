@@ -3,8 +3,48 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import warnings
+
+log = logging.getLogger(__name__)
+
+
+def _warn_if_supabase_creds_missing() -> None:
+    """Emit a WARN when Supabase enrichment credentials are not wired.
+
+    The SDK's Supabase-backed methods (``get_ticker_metadata``,
+    ``peer_group_from_supabase``, etc.) raise ``ValueError`` at call
+    time if ``SUPABASE_URL`` + ``SUPABASE_SERVICE_ROLE_KEY`` are not
+    set. Surfacing the gap at ``from_env()`` time gives developers a
+    pre-production signal — without it, the error only fires deep
+    into the first Supabase-touching call, which CI tests with
+    mocked HTTP often miss.
+
+    Checks both the server-style (``SUPABASE_*``) and Next.js-style
+    (``NEXT_PUBLIC_SUPABASE_*``) conventions — the SDK now accepts
+    either (see RiskModels_API #80). Silent only when at least one
+    URL + at least one key is present.
+
+    Closes MASTER_BACKLOG P.5.
+    """
+    has_url = bool(
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+    )
+    has_key = bool(
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    )
+    if not (has_url and has_key):
+        log.warning(
+            "Supabase credentials not wired (need SUPABASE_URL + "
+            "SUPABASE_SERVICE_ROLE_KEY, or the NEXT_PUBLIC_* equivalents). "
+            "Supabase-backed SDK methods (get_ticker_metadata, "
+            "peer_group_from_supabase) will raise ValueError at call time, "
+            "and FundData enrichment will silently skip the Supabase round-trip. "
+            "Set the env vars to silence this warning."
+        )
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
@@ -151,6 +191,10 @@ class RiskModelsClient:
             csec = csec.strip()
         scope = os.environ.get("RISKMODELS_OAUTH_SCOPE", DEFAULT_SCOPE)
         timeout = _timeout_seconds_from_env()
+        # Surface Supabase-enrichment readiness at init time, not at first
+        # get_ticker_metadata() call. WARN-only — Supabase access is optional;
+        # callers that never touch enrichment-backed methods can suppress.
+        _warn_if_supabase_creds_missing()
         if key:
             return cls(base_url=base, api_key=key, timeout=timeout)
         if cid and csec:
@@ -302,6 +346,11 @@ class RiskModelsClient:
             >>> print(f"Residual risk: {df['l3_residual_er'].iloc[0]:.1%}")
         """
         t, _ = resolve_ticker(ticker, self)
+        # Endpoint is /metrics/{ticker} per app/api/metrics/[ticker]/route.ts;
+        # an earlier refactor dropped the path construction and left an
+        # undefined `path` reference. Restored here so client_mock test
+        # (test_get_metrics_resolves_googl) passes.
+        path = f"/metrics/{t}"
         body, lineage, _r = self._transport.request("GET", path)
         meta = body.get("_metadata") if isinstance(body, dict) else None
         lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
@@ -1257,6 +1306,411 @@ class RiskModelsClient:
             json=body,
         )
         return data, lineage
+
+    def snapshot(
+        self,
+        positions: PositionsInput,
+        *,
+        lookback_days: int = 252,
+        mode: Literal["frozen"] = "frozen",
+        benchmark: str | None = None,
+    ) -> tuple[dict, RiskLineage]:
+        """Canonical v3 portfolio snapshot via ``POST /api/snapshot``.
+
+        Returns the full snapshot bundle: variance decomposition, per-position hedge ratios,
+        attribution time series, dominant drivers, and concentration flags.
+
+        Args:
+            positions: Portfolio weights — dict, list of tuples, or list of dicts.
+            lookback_days: Trading-day window for attribution + cumulative return (default 252).
+            mode: Weight handling mode (``"frozen"``).
+            benchmark: Optional benchmark ticker for relative attribution.
+
+        Returns:
+            Tuple of ``(data_dict, lineage)`` matching the ``CanonicalSnapshotResponse`` shape.
+
+        Example:
+            >>> data, lineage = client.snapshot(
+            ...     {"NVDA": 0.5, "AAPL": 0.5}, lookback_days=120
+            ... )
+            >>> data["snapshot"]["variance_decomposition"]
+        """
+        weights = positions_to_weights(positions)
+        body: dict[str, Any] = {
+            "type": "portfolio",
+            "portfolio": [{"ticker": k, "weight": float(v)} for k, v in weights.items()],
+            "lookback_days": lookback_days,
+            "mode": mode,
+        }
+        if benchmark is not None:
+            body["benchmark"] = benchmark
+        data, lineage, _r = self._transport.request(
+            "POST",
+            "/snapshot",
+            json=body,
+        )
+        return data, lineage
+
+    def snapshot_ticker(
+        self,
+        ticker: str,
+        *,
+        lookback_days: int = 252,
+        mode: Literal["frozen"] = "frozen",
+        benchmark: str | None = None,
+    ) -> tuple[dict, RiskLineage]:
+        """Canonical v3 single-ticker snapshot via ``POST /api/snapshot`` with ``type="ticker"``.
+
+        Returns the same ``CanonicalSnapshotResponse`` shape as :meth:`snapshot`, with
+        ``snapshot.ticker_meta`` populated (sector_etf, subsector_etf, asset_type, factors).
+
+        Per Snapshot Architecture v3 this is the canonical surface for stock-level analysis;
+        :meth:`get_metrics` and :meth:`decompose` remain available as internal building blocks.
+
+        Args:
+            ticker: US equity ticker (case-insensitive).
+            lookback_days: Trading-day window for attribution + cumulative return (default 252).
+            mode: Weight handling mode (``"frozen"``).
+            benchmark: Optional benchmark ticker for relative attribution.
+
+        Returns:
+            Tuple of ``(data_dict, lineage)`` matching the ``CanonicalSnapshotResponse`` shape.
+
+        Example:
+            >>> data, lineage = client.snapshot_ticker("NVDA", lookback_days=120)
+            >>> data["snapshot"]["ticker_meta"]["factors"]
+            ['SPY', 'XLK', 'SMH']
+        """
+        body: dict[str, Any] = {
+            "type": "ticker",
+            "ticker": ticker,
+            "lookback_days": lookback_days,
+            "mode": mode,
+        }
+        if benchmark is not None:
+            body["benchmark"] = benchmark
+        data, lineage, _r = self._transport.request(
+            "POST",
+            "/snapshot",
+            json=body,
+        )
+        return data, lineage
+
+    # -------------------------------------------------------------------
+    # Funds API (Stages A–D.1, per docs/FUNDS_API_BUILD_STATUS.md)
+    # -------------------------------------------------------------------
+    # All endpoints are GET except /api/data/funds/batch. Per-fund methods
+    # take a ``bw_fund_id`` (BlueWater fund identifier); per-cohort methods
+    # take a 9-box style ``slug`` (e.g. ``"large-cap-growth"``). The
+    # composed snapshots (``get_fund_snapshot`` / ``get_style_snapshot``)
+    # are the canonical Funds analytical surface — they pre-bundle
+    # holdings, hedge, portfolio time series, and cohort context.
+
+    def get_fund(self, bw_fund_id: str) -> dict[str, Any]:
+        """Latest fund metrics row (Stage B.1, ``$0.005``)."""
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/{quote(bw_fund_id, safe='')}"
+        )
+        return data
+
+    def get_fund_portfolio(
+        self,
+        bw_fund_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-fund portfolio time series from ``ds_portfolio.zarr`` (B.2.a, ``$0.005``)."""
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_fund_holdings(
+        self, bw_fund_id: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        """Top-N holdings from ``ds_ph.zarr`` (B.2.b, ``$0.005``)."""
+        params = {"limit": str(limit)} if limit is not None else None
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/holdings",
+            params=params,
+        )
+        return data
+
+    def get_fund_hedge(self, bw_fund_id: str) -> dict[str, Any]:
+        """L1/L2/L3 hedge ratios from ``ds_hr.zarr`` (B.2.c, ``$0.005``)."""
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/{quote(bw_fund_id, safe='')}/hedge"
+        )
+        return data
+
+    def get_fund_nav(
+        self,
+        bw_fund_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-fund yfinance NAV time series from ``ds_nav.zarr`` (B.2.d, ``$0.005``)."""
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/nav",
+            params=params or None,
+        )
+        return data
+
+    def get_fund_snapshot(self, bw_fund_id: str) -> dict[str, Any]:
+        """Composed JSON fund tearsheet (D.1, ``$0.01``).
+
+        Bundles registry + holdings + L1/L2/L3 hedge + 12-month portfolio
+        time series + cohort rank context in one call.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/snapshot/{quote(bw_fund_id, safe='')}"
+        )
+        return data
+
+    def get_style(self, slug: str) -> dict[str, Any]:
+        """Latest 9-box cohort metrics (EW + MV) (Stage C.0, ``$0.005``)."""
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/style/{quote(slug, safe='')}"
+        )
+        return data
+
+    def get_style_rankings(
+        self,
+        slug: str,
+        cohort_type: str,
+        *,
+        metric: str,
+        period_window: str = "1m",
+        weighting: str = "mv",
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Top-N rankings within a 9-box cell (C.1, ``$0.005``).
+
+        Args:
+            cohort_type: ``"symbol"``, ``"sector"``, or ``"fund"``.
+            metric: Required ranking metric (e.g. ``"return"``, ``"er"``).
+            period_window: ``"1m"`` | ``"3m"`` | ``"12m"`` | ``"36m"``.
+            weighting: ``"mv"`` (market-value, default) or ``"ew"`` (equal-weight).
+            limit: Top-N (server default applies if omitted).
+        """
+        params: dict[str, str] = {
+            "metric": metric,
+            "period_window": period_window,
+            "weighting": weighting,
+        }
+        if limit is not None:
+            params["limit"] = str(limit)
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/style/{quote(slug, safe='')}/rankings/{quote(cohort_type, safe='')}",
+            params=params,
+        )
+        return data
+
+    def get_style_portfolio(
+        self,
+        slug: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-cell time series from Slice 6 zarr (C.2, ``$0.005``)."""
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/style/{quote(slug, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_style_holdings(
+        self, slug: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        """Top-N cohort holdings from Slice 5b zarr (C.3, ``$0.005``)."""
+        params = {"limit": str(limit)} if limit is not None else None
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/style/{quote(slug, safe='')}/holdings",
+            params=params,
+        )
+        return data
+
+    def get_style_snapshot(self, slug: str) -> dict[str, Any]:
+        """Composed JSON 9-box cohort tearsheet (D.1, ``$0.005``).
+
+        The differentiated wedge — pre-bundles cohort returns, top funds,
+        top holdings, and concentration metrics for one call.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/funds/style/{quote(slug, safe='')}/snapshot"
+        )
+        return data
+
+    # -------------------------------------------------------------------
+    # End funds API
+    # -------------------------------------------------------------------
+    # Note: /api/data/funds/* routes (Stage A — registry / search /
+    # batch / style members / funds-latest) are intentionally not exposed
+    # in this SDK. They are service-to-service only (gateway auth keyed
+    # to RISKMODELS_API_SERVICE_KEY, not user-Bearer), used by .net and
+    # internal sync code paths. End users should compose with
+    # ``get_fund`` / ``get_style`` / the snapshot methods above.
+
+    # -------------------------------------------------------------------
+    # 13F Filers API (D.8 Phase 1)
+    #
+    # Surface mirror of the funds API but partitioned by filer_type ×
+    # aum_tier rather than equity_style_9box. NAV is permanently absent
+    # by design (filers have no NAV time series). Hedge ratios are
+    # Phase 3 (D.8.10).
+    #
+    # Plan: BWMACRO/docs/13f_pipeline_plan.md
+    # -------------------------------------------------------------------
+
+    def search_filers(
+        self,
+        *,
+        q: str | None = None,
+        filer_type: str | None = None,
+        aum_tier: str | None = None,
+        modelable_only: bool = False,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Search the 13F filer universe (free, no per-request cost).
+
+        Args:
+            q: Full-text search on name, CIK, or LEI.
+            filer_type: Exact match (e.g. 'hedge_fund', 'investment_adviser').
+            aum_tier: Exact match.
+            modelable_only: If True, restrict to filers passing the
+                modelability gate (BWMACRO/docs/13f_pipeline_plan.md §6).
+            limit: Max rows (default 50, capped 500).
+
+        Returns:
+            ``{"results": [FilerRow, ...]}``
+        """
+        params: dict[str, str] = {"limit": str(min(max(int(limit), 1), 500))}
+        if q is not None:
+            params["q"] = q
+        if filer_type is not None:
+            params["filer_type"] = filer_type
+        if aum_tier is not None:
+            params["aum_tier"] = aum_tier
+        if modelable_only:
+            params["modelable_only"] = "true"
+        data, _lineage, _r = self._transport.request(
+            "GET", "/13f/filers/search", params=params
+        )
+        return data
+
+    def get_filer(self, bw_filer_id: str) -> dict[str, Any]:
+        """Latest 13F filer metrics (Stage 1, ``$0.005``).
+
+        Returns diagnostics, AUM (total + in-ERM3), portfolio-derived
+        9-box style attribution, and modelability flag. Return components
+        are NULL until D.8 Phase 2.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/13f/filers/{quote(bw_filer_id, safe='')}"
+        )
+        return data
+
+    def get_filer_holdings(
+        self, bw_filer_id: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        """Top-N filer holdings at the latest teo (``$0.005``).
+
+        Each holding carries ``security_id`` (post-D.8.1 = bw_sym_id;
+        pre-migration = a raw 9-char security identifier), ``adj_mv``,
+        and ``weight``.
+        """
+        params = {"limit": str(limit)} if limit is not None else None
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/holdings",
+            params=params,
+        )
+        return data
+
+    def get_filer_portfolio(
+        self,
+        bw_filer_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Per-filer portfolio time series (``$0.005``).
+
+        Diagnostics + AUM + ERM3 coverage + portfolio style attribution
+        per quarter-end teo. Return components NULL until Phase 2.
+        """
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_filer_snapshot(self, bw_filer_id: str) -> dict[str, Any]:
+        """Composed JSON 13F filer tearsheet (``$0.01``).
+
+        Bundles registry + latest metrics + top-25 holdings + 12mo
+        portfolio history + cohort ranks (filer_type and aum_tier
+        partitions) + portfolio-derived 9-box style attribution + ERM3
+        coverage diagnostics + modelability flag.
+
+        NAV is intentionally absent (``_metadata.nav_applicable: false``).
+        Hedge ratios are Phase 3 (D.8.10) and not present today.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET", f"/13f/filers/{quote(bw_filer_id, safe='')}/snapshot"
+        )
+        return data
+
+    def get_filer_snapshot_pdf(self, bw_filer_id: str) -> bytes:
+        """Rendered F1 13F filer tearsheet PDF bytes (``$0.05``).
+
+        Same content as :meth:`get_filer_snapshot` rendered through the
+        F1 print template (Letter landscape). Server requires
+        ``PLAYWRIGHT_PDF_ENABLED=true`` on the API runtime.
+        """
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/snapshot.pdf",
+            headers={"Accept": "application/pdf"},
+            expect_json=False,
+        )
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(
+                f"Expected PDF bytes from /13f/filers/{bw_filer_id}/snapshot.pdf; "
+                f"got {type(data).__name__}"
+            )
+        return bytes(data)
 
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int

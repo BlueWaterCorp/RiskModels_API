@@ -200,8 +200,10 @@ const SnapshotPortfolioPositionRowSchema = z
   });
 
 /**
- * POST /api/snapshot — canonical JSON portfolio snapshot.
- * Discriminated by `type`; only `portfolio` is implemented today.
+ * POST /api/snapshot — canonical JSON snapshot. Per Snapshot Architecture v3,
+ * this is the only public analysis interface. Discriminated by `type`:
+ *   - "portfolio" → multi-position L3 risk + return attribution
+ *   - "ticker"    → single-name L3 decomposition (shim over /metrics + /decompose)
  */
 export const SnapshotRequestSchema = z.discriminatedUnion("type", [
   z
@@ -226,13 +228,13 @@ export const SnapshotRequestSchema = z.discriminatedUnion("type", [
         });
       }
     }),
-  z
-    .object({
-      type: z.literal("ticker"),
-    })
-    .refine(() => false, {
-      message: 'Snapshot type "ticker" is not yet supported',
-    }),
+  z.object({
+    type: z.literal("ticker"),
+    ticker: TickerSchema,
+    lookback_days: z.coerce.number().int().min(20).max(2000).default(252),
+    mode: z.enum(["frozen"]).default("frozen"),
+    benchmark: TickerSchema.optional(),
+  }),
 ]);
 
 export type SnapshotRequest = z.infer<typeof SnapshotRequestSchema>;

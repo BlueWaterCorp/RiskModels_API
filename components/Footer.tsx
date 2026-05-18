@@ -32,6 +32,13 @@ export default function Footer() {
             >
               Documentation
             </Link>
+            <Link
+              href="/llms.txt"
+              className="hover:text-zinc-100 transition-colors"
+              prefetch={false}
+            >
+              llms.txt (agents)
+            </Link>
             <a
               href="https://github.com/BlueWaterCorp/RiskModels_API/blob/main/CONTRIBUTING.md"
               target="_blank"

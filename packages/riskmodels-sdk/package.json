@@ -1,6 +1,6 @@
 {
   "name": "@riskmodels/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for RiskModels API agent-ready risk decomposition responses",
   "type": "module",
   "sideEffects": false,

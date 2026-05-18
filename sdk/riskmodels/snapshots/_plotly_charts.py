@@ -493,7 +493,7 @@ def chart_histogram(
         x=list(values),
         nbinsx=bins,
         marker=dict(
-            color=pal.slate,
+            color=pal.subsector,
             line=dict(color="#ffffff", width=0.5),
         ),
         opacity=0.8,

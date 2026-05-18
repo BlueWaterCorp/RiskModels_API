@@ -1,8 +1,10 @@
 """Minimal RiskModels CLI wrapper over the SDK.
 
 Usage:
-    python -m riskmodels.cli metrics NVDA
-    python -m riskmodels.cli decompose NVDA
+    python -m riskmodels.cli snapshot --ticker NVDA            # canonical v3 surface
+    python -m riskmodels.cli snapshot --file portfolio.json    # canonical v3 surface
+    python -m riskmodels.cli metrics NVDA                      # internal/legacy
+    python -m riskmodels.cli decompose NVDA                    # internal/legacy
     python -m riskmodels.cli returns NVDA --window 21
     python -m riskmodels.cli l3 NVDA
     python -m riskmodels.cli rankings NVDA
@@ -83,6 +85,39 @@ def cmd_batch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    c = _client(args)
+    if args.ticker:
+        data, _lineage = c.snapshot_ticker(
+            args.ticker,
+            lookback_days=args.lookback_days,
+            mode=args.mode,
+            benchmark=args.benchmark,
+        )
+    elif args.file:
+        with open(args.file, "r") as fh:
+            payload = json.load(fh)
+        # Accept either a raw weights map {"NVDA": 0.5, ...} or a list of {ticker, weight} rows.
+        if isinstance(payload, dict):
+            positions = payload
+        elif isinstance(payload, list):
+            positions = payload
+        else:
+            sys.stderr.write("error: --file must contain a dict or list of positions\n")
+            return 2
+        data, _lineage = c.snapshot(
+            positions,
+            lookback_days=args.lookback_days,
+            mode=args.mode,
+            benchmark=args.benchmark,
+        )
+    else:
+        sys.stderr.write("error: pass --ticker TICKER or --file portfolio.json\n")
+        return 2
+    _print(data)
+    return 0
+
+
 def cmd_health(args: argparse.Namespace) -> int:
     import urllib.request
 
@@ -121,6 +156,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("tickers", nargs="+")
     sp.add_argument("--metrics", help="Comma-separated capability ids (default: metrics-snapshot)")
     sp.set_defaults(func=cmd_batch)
+
+    sp = sub.add_parser(
+        "snapshot",
+        help="Canonical v3 snapshot — single ticker or portfolio (POST /snapshot)",
+    )
+    sp.add_argument("--ticker", help="Single-name snapshot (mutually exclusive with --file)")
+    sp.add_argument(
+        "--file",
+        help="Path to JSON portfolio file: dict {ticker:weight} or list of {ticker, weight}",
+    )
+    sp.add_argument("--lookback-days", type=int, default=252, help="Trading days (20-2000, default 252)")
+    sp.add_argument("--mode", default="frozen", choices=["frozen"])
+    sp.add_argument("--benchmark", help="Optional benchmark ticker (reserved)")
+    sp.set_defaults(func=cmd_snapshot)
 
     sp = sub.add_parser("health", help="API health check (no auth)")
     sp.set_defaults(func=cmd_health)

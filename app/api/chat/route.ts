@@ -9,7 +9,20 @@ import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-header
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+/**
+ * Default model when the request omits `model`. Flips with the AGENT_BACKEND
+ * env flag (Doppler): `claude` → `claude-sonnet-4-6`; anything else (incl.
+ * unset) → `gpt-4o-mini`, today's behavior. A request-supplied `model:`
+ * always wins over this default (see `const model = modelOpt?.trim() || ...`).
+ *
+ * Phase 2A note: the trial surface on `.net` /activation passes
+ * `model: "claude-sonnet-4-6"` explicitly, so it doesn't depend on this flag.
+ * Flip AGENT_BACKEND only when you want *all* default chat traffic on Claude.
+ */
+const DEFAULT_MODEL =
+  process.env.AGENT_BACKEND?.toLowerCase() === "claude"
+    ? "claude-sonnet-4-6"
+    : "gpt-4o-mini";
 const MAX_TOOL_ROUNDS = 5;
 
 function appendCostLineIfMissing(content: string, toolTotalUsd: number, toolCallCount: number): string {
@@ -46,11 +59,15 @@ export const POST = withBilling(
   async (request: NextRequest, context: BillingContext) => {
     const origin = request.headers.get("origin");
 
-    if (!process.env.OPENAI_API_KEY) {
+    // At least one backend must be configured. The runner picks per-request
+    // based on the resolved model (claude-* → Anthropic, else OpenAI), so we
+    // only hard-fail here if neither key is present.
+    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
         {
           error: "Service unavailable",
-          message: "AI chat is not configured (missing OPENAI_API_KEY)",
+          message:
+            "AI chat is not configured (need OPENAI_API_KEY or ANTHROPIC_API_KEY)",
         },
         { status: 503, headers: getCorsHeaders(origin) },
       );

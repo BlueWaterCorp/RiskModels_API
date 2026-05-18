@@ -7,19 +7,24 @@ Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) 
 
 **Try the Analysis Object Model without cloning:** open the **[AOM quickstart (Colab)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)** — install cell, API key (Secrets or paste), then `rm` / `run` examples. Same flows live in-repo as [`notebooks/quickstart.ipynb`](./notebooks/quickstart.ipynb).
 
+**Thin surface walkthroughs (Colab):** [![Open in Colab — stocks (SDK)](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/surface_stocks_sdk.ipynb) · [![Open in Colab — funds & 13F (HTTP)](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/surface_funds_http.ipynb) — [`surface_stocks_sdk.ipynb`](./notebooks/surface_stocks_sdk.ipynb) (`get_metrics`, `analyze_portfolio`) and [`surface_funds_http.ipynb`](./notebooks/surface_funds_http.ipynb) (funds search, `GET /data/benchmark/…`, 13F via `quickstart_connect`). For the full REST → SDK → AOM ladder, use [`riskmodels_quickstart.ipynb`](./notebooks/riskmodels_quickstart.ipynb).
+
 Python SDK for the [RiskModels API](https://riskmodels.app): **POST /decompose** returns variance shares and ETF hedge ratios for any US equity, separating factor exposure from the residual bet so you can hedge what you don't want. ERM3 model; batch portfolio analysis included.
 
 ## Install
 
 ```bash
 pip install riskmodels-py
-# Optional xarray panel interface:
-pip install riskmodels-py[xarray]
-# Optional Plotly/Matplotlib charts (L3 decomposition, portfolio cascades):
-pip install riskmodels-py[viz]
 ```
 
-**Colab / notebooks:** use **`riskmodels-py[viz]`** so Plotly helpers (including **`plot_l3_year_end_stack`**, **≥0.3.3**) resolve. Quickstart notebooks try PyPI first, then **fall back to installing `main` from GitHub** if the wheel is not uploaded yet. For a manual one-liner (same fallback clients can paste anywhere):
+Since **v0.3.4**, the default install includes **matplotlib** and **plotly** so `import riskmodels` succeeds on a clean venv (snapshots/visuals pull them at import time). Heavy PDF/PNG exporters and Seaborn tooling stay behind extras:
+
+```bash
+pip install riskmodels-py[xarray]      # optional xarray panel helpers
+pip install riskmodels-py[viz]          # Seaborn + Kaleido (static PNG/export paths)
+```
+
+**Colab / notebooks:** use **`riskmodels-py[viz]`** when you rely on Kaleido-backed PNG helpers (including **`plot_l3_year_end_stack`**, **≥0.3.3**). Quickstart notebooks try PyPI first, then **fall back to installing `main` from GitHub** if the wheel is not uploaded yet. For a manual one-liner:
 
 ```bash
 pip install -U "riskmodels-py[viz] @ git+https://github.com/BlueWaterCorp/RiskModels_API.git@main#subdirectory=sdk"

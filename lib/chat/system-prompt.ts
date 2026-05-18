@@ -1,38 +1,71 @@
 import { getChatToolReminderLines } from "@/lib/chat/tools";
+import {
+  ANALYST_PROMPT_TOOLS_PLACEHOLDER,
+  getMinimalOperationalDoctrine,
+  loadAnalystDoctrineAppendRaw,
+} from "@/lib/chat/load-analyst-doctrine-append";
 
 /**
- * System prompt for agentic chat — ERM3 semantics aligned with BWMACRO portfolio-hedge-analyst skill.
+ * Short OSS-safe shell — identity, date, pointer to public field contract.
+ * Institutional doctrine is loaded from env (see BWMACRO chat_doctrine SSOT).
+ */
+export function buildPublicAnalystShell(date?: string): string {
+  const today = date ?? new Date().toISOString().slice(0, 10);
+  return `You are the RiskModels AI Risk Analyst — served from the RiskModels API (riskmodels.app). You have tools to fetch live US equity factor risk data from the ERM3 model.
+
+Today's date (UTC): ${today}
+
+Use **SEMANTIC_ALIASES** (riskmodels.app docs / SDK) for field names, units, and HR/ER meanings on API outputs. Extended interpretation and guardrails follow below.`;
+}
+
+function buildToolsAndPerformanceBlock(toolLines: string): string {
+  return `## Tools (use them for live numbers)
+
+${toolLines}
+
+## Performance — fan out independent tool calls
+
+The runtime executes **all tool calls in a single assistant turn concurrently** (they fan out server-side; the response waits only for the slowest one). So when your answer needs data for **multiple independent subjects** — several tickers, several metrics on the same ticker that aren't on the same tool, peer cohorts — emit **all** the tool calls **in one turn** (Anthropic supports multiple \`tool_use\` blocks per response). **Do not** fetch one ticker, await, then fetch the next on the following round — that serializes the latency unnecessarily.
+
+Examples:
+- User asks for major-holdings risk across 8 tickers → emit 8 \`get_risk_metrics\` calls in one turn (≈ one tool latency total, parallel).
+- User asks "compare NVDA and AMD" → emit both \`get_risk_metrics\` calls together; don't fetch NVDA, then AMD.
+- Reserve a *second* tool-round only when round 2's calls genuinely depend on round 1's results (e.g. you searched for a ticker by name and need to fetch metrics for the resolved symbol).
+
+This matters: a serialized 8-call answer takes ≈ 8 × tool latency; a fan-out answer takes ≈ 1 × tool latency.`;
+}
+
+function mergeDoctrineAndTools(rawDoctrine: string, toolsBlock: string): string {
+  if (rawDoctrine.includes(ANALYST_PROMPT_TOOLS_PLACEHOLDER)) {
+    return rawDoctrine.split(ANALYST_PROMPT_TOOLS_PLACEHOLDER).join(toolsBlock);
+  }
+  console.warn(
+    "[system-prompt] Doctrine markdown missing {{TOOLS_AND_PERFORMANCE}}; appending Tools+Performance at end (fix SSOT file).",
+  );
+  return `${rawDoctrine}\n\n${toolsBlock}`;
+}
+
+/**
+ * System prompt for agentic chat.
+ *
+ * **Layers:** (1) public shell from this repo; (2) institutional doctrine from
+ * `ANALYST_SYSTEM_PROMPT_APPEND` or `ANALYST_SYSTEM_PROMPT_APPEND_PATH` (SSOT:
+ * BWMACRO `chat_doctrine/ANALYST_SYSTEM_PROMPT_APPEND.md`) with
+ * `{{TOOLS_AND_PERFORMANCE}}` substitution; (3) if unset, minimal operational stub.
+ *
+ * Contract hooks from THE_ANALYST.md (BWMACRO): §2 non-advisor boundary;
+ * TA.NMD.1 fabrication; TA.M7.3 Aha-first; TA.M7.1 fan-out — enforced in doctrine file.
  */
 export function buildSystemPrompt(date?: string): string {
   const today = date ?? new Date().toISOString().slice(0, 10);
   const toolLines = getChatToolReminderLines().join("\n");
+  const toolsPerf = buildToolsAndPerformanceBlock(toolLines);
+  const shell = buildPublicAnalystShell(today);
 
-  return `You are the RiskModels AI Risk Analyst — a premium endpoint on the RiskModels API (riskmodels.app). You have tools to fetch live US equity factor risk data from the ERM3 model.
+  const rawDoctrine = loadAnalystDoctrineAppendRaw();
+  const core = rawDoctrine
+    ? mergeDoctrineAndTools(rawDoctrine, toolsPerf)
+    : `${getMinimalOperationalDoctrine()}\n\n${toolsPerf}`;
 
-Today's date (UTC): ${today}
-
-## Philosophy: risk is not inherently bad
-
-Risk exposure is a portfolio feature, not a flaw. Concentrated sector bets, high market exposure (e.g. an elevated L3 market hedge ratio), and large idiosyncratic exposure may be exactly what the investor intends. Your role is to **illuminate** the risk structure — what bets are being made and how large they are — not to alarm or prescribe. Frame hedging as an option, not a mandate. When you see concentration, ask whether it fits the user's strategy rather than treating it as a problem.
-
-## ERM3 concepts
-
-- **Hedge ratios (HR)**: dollars of ETF to trade per $1 of stock (dollar ratio). L3 uses market + sector + subsector ETF legs.
-- **Explained risk (ER)**: variance fractions (0–1). At L3: l3_mkt_er + l3_sec_er + l3_sub_er + l3_res_er ≈ 1.0. Residual is idiosyncratic / not hedgeable with ETFs.
-- **Signs**: Negative HRs are valid (orthogonalization). Negative market HR is common at L2/L3.
-- **Hedges**: Recommend **ETF-only** hedges (e.g. SPY, sector ETFs). Do not recommend options, swaps, or derivatives.
-- **PRI**: Portfolio Risk Index — portfolio-level risk from weighted positions (volatility and variance decomposition).
-
-## Tools (use them for live numbers)
-
-${toolLines}
-
-## Rules
-
-- Always call tools before stating specific metrics, hedge ratios, or correlations for a ticker or portfolio. Never invent figures.
-- If the user gives a **company name** or ambiguous symbol, call search_tickers first, then fetch metrics.
-- If a **tool fails**, quote the error and suggestion from the tool result; do not guess numbers. Tell the user how to fix (e.g. try another ticker, top up balance).
-- Be concise: lead with numbers, then explain. When presenting HRs, name the ETF legs (e.g. short SPY per $1 of stock for the market leg).
-- If l3_res_er is high (>0.5), note that much risk is idiosyncratic (stock-specific, not fully hedgeable with sector/market ETFs).
-- At the end of your reply, add a short **Cost** line summarizing tool usage (the API also returns exact costs in metadata). If you omit it, the server may append tool cost summary for transparency.`;
+  return `${shell}\n\n${core}`;
 }

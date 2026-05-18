@@ -107,6 +107,11 @@ data/
 !mcp/data/whitepaper/
 !mcp/data/whitepaper/*.md
 
-# Local-only scratch (handoff notes, untitled notebooks)
-CLAUDE_CODE_HANDOFF.md
-Untitled.ipynb
+# Auto-generated smoke test reports (sdk/scripts/smoke_v3_all_endpoints.py)
+sdk/scripts/smoke_reports/
+
+# BWMACRO clone / symlink at repo root — used by services/render-svc Docker
+# build context (cloudbuild clones; local dev creates a symlink via
+# `ln -s ../BWMACRO bwmacro-src`). Never committed.
+bwmacro-src
+bwmacro-src/

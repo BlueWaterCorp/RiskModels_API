@@ -33,7 +33,7 @@ program
   .description(
     "RiskModels CLI — REST API, SQL query, schema, billing, and agent manifests",
   )
-  .version("2.0.0", "-V, --version", "output version")
+  .version("2.0.2", "-V, --version", "output version")
   .option(
     "--json",
     "JSON output for supported commands (query, schema, balance, API calls, config list)",
@@ -45,6 +45,7 @@ program
 ${chalk.bold("Quick start")}
   ${chalk.dim("$")} riskmodels config init
   ${chalk.dim("$")} riskmodels install --dry-run
+  ${chalk.dim("$")} riskmodels uninstall --dry-run
   ${chalk.dim("$")} riskmodels health
   ${chalk.dim("$")} riskmodels metrics NVDA
   ${chalk.dim("$")} riskmodels decompose NVDA

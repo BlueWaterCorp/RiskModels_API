@@ -666,8 +666,8 @@
   },
   {
     "id": "portfolio-risk-snapshot",
-    "name": "Portfolio risk snapshot",
-    "description": "PDF or JSON via POST /api/portfolio/risk-snapshot, or canonical JSON-only via POST /api/snapshot (type=portfolio): L3 decomposition, hedge ratios, return attribution, cumulative return / drawdown. Bundled charge; internal DAL only.",
+    "name": "Snapshot — portfolio or ticker",
+    "description": "Canonical JSON snapshot (POST /api/snapshot) for either a weighted portfolio (type=portfolio) or a single ticker (type=ticker — shim over /metrics + /decompose). Returns L3 decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and risk summary in one unified shape. When the request includes `benchmark` (alias like 'SPY' / '70/30' or a BW-BENCH-* id), the response also carries `snapshot.benchmark_context_id` + `metadata.benchmark_context_id` — the resolved `BenchmarkContext` id (or null when unknown), chaseable via `/api/data/benchmark/{id}`. Also serves the bundled PDF/JSON via POST /api/portfolio/risk-snapshot. Bundled charge; internal DAL only.",
     "endpoint": "/api/portfolio/risk-snapshot",
     "method": "POST",
     "parameters": {
@@ -917,6 +917,339 @@
             "residual":  { "er": 0.13, "hr": null, "hedge_etf": null }
           },
           "hedge": { "SPY": -1.10, "XLK": -0.35, "SMH": -0.60 }
+        }
+      }
+    ]
+  },
+  {
+    "id": "fund-snapshot-json",
+    "name": "Fund Snapshot (JSON)",
+    "description": "Composed JSON snapshot for a single mutual fund (Stage D.1). Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (rank N of cohort_size). Matching server-rendered PDF is /funds/snapshot.pdf/{bw_fund_id}.",
+    "endpoint": "/api/funds/snapshot/{bw_fund_id}",
+    "method": "GET",
+    "parameters": {
+      "bw_fund_id": { "type": "string", "required": true, "description": "Funds_DAG canonical fund id (BW-FUND-{series_id})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.01, "currency": "USD", "billing_code": "fund_snapshot_json_v1" },
+    "tags": ["funds", "snapshot", "tearsheet"]
+  },
+  {
+    "id": "fund-snapshot-pdf",
+    "name": "Fund Snapshot (PDF)",
+    "description": "Server-rendered F1 fund tearsheet PDF (Stage D.2.b). Same composition as /api/funds/snapshot/{bw_fund_id} (JSON), rendered via Playwright. Letter landscape, single page. Cached 24h per (user, bw_fund_id, report_date).",
+    "endpoint": "/api/funds/snapshot.pdf/{bw_fund_id}",
+    "method": "GET",
+    "parameters": {
+      "bw_fund_id": { "type": "string", "required": true, "description": "Funds_DAG canonical fund id (BW-FUND-{series_id})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.25, "currency": "USD", "billing_code": "fund_snapshot_pdf_v1" },
+    "tags": ["funds", "snapshot", "pdf", "tearsheet"]
+  },
+  {
+    "id": "style-cohort-snapshot-json",
+    "name": "Style Cohort Snapshot (JSON)",
+    "description": "Composed JSON snapshot for a 9-box style cell (Stage D.1) — the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell + top-15 symbols in cell.",
+    "endpoint": "/api/funds/style/{slug}/snapshot",
+    "method": "GET",
+    "parameters": {
+      "slug": { "type": "string", "required": true, "description": "9-box style slug (large-blend, etc.)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "style_cohort_snapshot_json_v1" },
+    "tags": ["funds", "snapshot", "cohort", "differentiated-wedge"]
+  },
+  {
+    "id": "style-cohort-snapshot-pdf",
+    "name": "Style Cohort Snapshot (PDF)",
+    "description": "Server-rendered C1 cohort tearsheet PDF (Stage D.2.d). Same composition as /api/funds/style/{slug}/snapshot (JSON), rendered via Playwright. Letter landscape, single page. Cached 24h per (user, slug, report_date).",
+    "endpoint": "/api/funds/style/{slug}/snapshot.pdf",
+    "method": "GET",
+    "parameters": {
+      "slug": { "type": "string", "required": true, "description": "9-box style slug (large-blend, etc.)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.10, "currency": "USD", "billing_code": "style_cohort_snapshot_pdf_v1" },
+    "tags": ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"]
+  },
+  {
+    "id": "filer-metrics",
+    "name": "13F Filer Metrics",
+    "description": "Latest knowledge-mode metrics for a single 13F filer — registry row (filer_type, aum_tier, n_funds_managed) + portfolio metrics (total_aum_usd, coverage_in_erm3, aum_in_erm3, n_holdings_active, effective_n, top10_weight_sum, dominant_9box, portfolio_style_hhi, is_modelable, portfolio_*_return + variance shares once D.8.22 populates). Reads public.filers + public.filer_portfolios_latest. Bitemporal lineage on response headers (X-Data-As-Of, X-Data-Filing-Date, X-Risk-Model-Version). Per-filer holdings + portfolio history live on GCS zarr and surface via /holdings + /portfolio. MASTER_BACKLOG D.8.8.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_metrics_v1" },
+    "tags": ["13f", "filer", "metrics", "funds"]
+  },
+  {
+    "id": "filer-holdings",
+    "name": "13F Filer Holdings",
+    "description": "Top-N current holdings of a 13F filer from its canonical PortfolioSurface zarr (Funds_DAG filer_holdings_zarr — source_kind=filer_13f, teo_frequency=quarterly; SEC 13F-HR/HR-A snapshots back to ~2005). bw_sym_id-keyed post-D.8.1 migration; reports the in-ERM3 sleeve (coverage_in_erm3 fraction surfaced separately). Matches the schema of /api/data/funds/{bw_fund_id}/holdings and /api/data/etf/{ticker}/holdings. MASTER_BACKLOG D.8.8.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/holdings",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." },
+      "top": { "type": "integer", "required": false, "default": 25, "description": "Number of top holdings to return (1-1000)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_holdings_v1" },
+    "tags": ["13f", "filer", "holdings", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "filer-portfolio-history",
+    "name": "13F Filer Portfolio History",
+    "description": "A 13F filer's L1/L2/L3 portfolio return-decomposition time series (Funds_DAG filer_portfolios_zarr — ds_portfolio.zarr per-filer, quarterly). Same schema as /api/data/funds/{bw_fund_id}/portfolio and /api/data/etf/{ticker}/portfolio: portfolio_{gross,market,sector,subsector,idiosyncratic}_return + identity_residual, total_aum_usd, n_holdings_active, effective_n, top10_weight_sum, coverage_in_erm3, aum_in_erm3, portfolio_9box_distribution, dominant_9box. Constant-holdings-within-quarter weighting (industry-standard 13F-perf convention, D.8.22). MASTER_BACKLOG D.8.8.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/portfolio",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound on report_date." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound on report_date." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_portfolio_history_v1" },
+    "tags": ["13f", "filer", "return-attribution", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "filer-snapshot-json",
+    "name": "13F Filer Snapshot (JSON)",
+    "description": "Composed JSON snapshot for a single 13F filer. Bundles registry + latest metrics + top-25 holdings + portfolio history + cohort context. Cohort axis = filer_type × aum_tier (vs equity_style_9box on the fund side). No NAV section (filers have no NAV by construction); hedge section gated on D.8.10 Phase 3. Matching server-rendered PDF is /api/13f/filers/{bw_filer_id}/snapshot.pdf. MASTER_BACKLOG D.8.8 / D.8.9.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/snapshot",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.01, "currency": "USD", "billing_code": "filer_snapshot_json_v1" },
+    "tags": ["13f", "filer", "snapshot", "tearsheet"]
+  },
+  {
+    "id": "filer-snapshot-pdf",
+    "name": "13F Filer Snapshot (PDF)",
+    "description": "Server-rendered F1 filer tearsheet PDF — same composition as /api/13f/filers/{bw_filer_id}/snapshot (JSON), rendered via Playwright (parity with fund F1). Letter landscape, single page. Cached 24h per (user, bw_filer_id, report_date). MASTER_BACKLOG D.8.8 / D.8.34.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/snapshot.pdf",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.25, "currency": "USD", "billing_code": "filer_snapshot_pdf_v1" },
+    "tags": ["13f", "filer", "snapshot", "pdf", "tearsheet"]
+  },
+  {
+    "id": "filer-search",
+    "name": "13F Filer Search",
+    "description": "Free discovery endpoint for 13F filers. Returns bw_filer_id + filer_name + cik + filer_type + aum_tier + n_funds_managed for matching filers. Free (skipBilling) for rm_agent_live_* keys — paid follow-up calls via /api/13f/filers/{bw_filer_id}. Mirrors the /api/data/funds/search pattern.",
+    "endpoint": "/api/13f/filers/search",
+    "method": "GET",
+    "parameters": {
+      "q": { "type": "string", "required": true, "description": "Search query (filer name, partial match)." },
+      "limit": { "type": "integer", "required": false, "default": 25, "description": "Max results (1-100)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.0, "currency": "USD", "billing_code": "filer_search_v1" },
+    "tags": ["13f", "filer", "search", "discovery"]
+  },
+  {
+    "id": "etf-metrics",
+    "name": "ETF Base Metrics (canonical PortfolioSurface)",
+    "description": "Latest knowledge-mode metrics for a single ETF — registry-level metadata (portfolio_id, ticker, source_kind, teo_frequency, sponsor) + the latest aggregate metrics from the canonical PortfolioSurface zarr (aum_reported, aum_erm3, coverage_pct, n_total_holdings, report_date, availability_date). Symmetric to /api/data/funds/{bw_fund_id} and /api/13f/filers/{bw_filer_id} — closes the 'base entity metrics' parity gap for the ETF surface. MASTER_BACKLOG L.6 / D.9.",
+    "endpoint": "/api/data/etf/{ticker}",
+    "method": "GET",
+    "parameters": {
+      "ticker": { "type": "string", "required": true, "description": "ETF ticker, e.g. IVV." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.001, "currency": "USD", "billing_code": "etf_metrics_v1" },
+    "performance": {
+      "avg_latency_ms": 100,
+      "p95_latency_ms": 200,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["ishares_holdings", "erm3_secmaster"]
+    },
+    "tags": ["etf", "metrics", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "etf-search",
+    "name": "ETF Search & Discovery",
+    "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name / sponsor in the committed cross-repo catalog (mirror of Funds_DAG configs/etf_universe.yaml). Returns ticker + bw_etf_id + name + sponsor + product_url per hit, with a ranking score (100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-prefix; 30 name substring; 20 sponsor). Empty q returns the universe (capped at limit). Mirrors the /api/data/funds/search + /api/13f/filers/search pattern. MASTER_BACKLOG L.6 / D.9.",
+    "endpoint": "/api/data/etf/search",
+    "method": "GET",
+    "parameters": {
+      "q": { "type": "string", "required": false, "description": "Search query (ticker / name / sponsor; case-insensitive)." },
+      "limit": { "type": "integer", "required": false, "default": 25, "description": "Max rows returned (1-100)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.0, "currency": "USD", "billing_code": "etf_search_v1" },
+    "performance": {
+      "avg_latency_ms": 20,
+      "p95_latency_ms": 50,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "weekly",
+      "sources": ["funds_dag.configs.etf_universe", "etf_master.json"]
+    },
+    "tags": ["etf", "search", "discovery", "free", "funds"]
+  },
+  {
+    "id": "etf-holdings",
+    "name": "ETF Holdings (canonical PortfolioSurface)",
+    "description": "Top-N current holdings of an ETF from its canonical PortfolioSurface zarr (Funds_DAG etf_holdings_zarr — source_kind=etf, teo_frequency=daily; iShares today, State Street/Vanguard follow). In-ERM3 sleeve only — every holding carries a bw_sym_id. Surfaces report_date (sponsor 'Fund Holdings as of') and availability_date (when observed) distinctly. MASTER_BACKLOG L.6 / D.9.",
+    "endpoint": "/api/data/etf/{ticker}/holdings",
+    "method": "GET",
+    "parameters": {
+      "ticker": { "type": "string", "required": true, "description": "ETF ticker, e.g. IVV." },
+      "top": { "type": "integer", "required": false, "default": 25, "description": "Number of top holdings to return (1-1000)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.001, "currency": "USD", "billing_code": "etf_holdings_v1" },
+    "performance": {
+      "avg_latency_ms": 120,
+      "p95_latency_ms": 250,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 120
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["ishares_holdings", "erm3_secmaster"]
+    },
+    "tags": ["etf", "holdings", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "benchmark-context",
+    "name": "Benchmark Surface + Context",
+    "description": "A benchmark's canonical PortfolioSurface snapshot (Funds_DAG benchmark_surfaces_zarr, source_kind=benchmark): the BenchmarkContext (immutable definition — methodology, rebalance schedule, observation semantics, benchmark_kind, proxy/components) + the latest constituent weight vector (top-N). `id` accepts a bw_bench_id (BW-BENCH-SPY) or an alias (SPY, 70/30). v1: SPY (index_proxy via IVV holdings), EQ70-30 (blend 70% IWB + 30% IWM). MASTER_BACKLOG L.8.",
+    "endpoint": "/api/data/benchmark/{id}",
+    "method": "GET",
+    "parameters": {
+      "id": { "type": "string", "required": true, "description": "bw_bench_id (BW-BENCH-...) or alias (e.g. SPY, 70/30)." },
+      "top": { "type": "integer", "required": false, "default": 25, "description": "Top constituents to return (1-1000)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.001, "currency": "USD", "billing_code": "benchmark_context_v1" },
+    "performance": { "avg_latency_ms": 120, "p95_latency_ms": 250, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.97, "update_frequency": "daily", "sources": ["benchmark_surfaces_zarr", "ishares_holdings"] },
+    "tags": ["benchmark", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "benchmark-fit",
+    "name": "Benchmark Fit",
+    "description": "BenchmarkFit (comparison facet): fit a subject portfolio's weight vector against a benchmark surface at a common teo (subject's latest teo ≤ as_of; benchmark then at its latest teo ≤ that — never peeking ahead). Returns active share, an active-weight RMS (coarse tracking-error proxy — factor-based TE is a follow-on), overlap, weight_in_benchmark / benchmark_coverage, and the top over/underweights. subject = a BW-* portfolio id (fund / 13F filer / ETF / benchmark) or an ETF ticker; benchmark = bw_bench_id or alias. MASTER_BACKLOG L.8.",
+    "endpoint": "/api/data/benchmark-fit",
+    "method": "GET",
+    "parameters": {
+      "subject": { "type": "string", "required": true, "description": "BW-* portfolio id (BW-FUND-/BW-FILER-/BW-ETF-/BW-BENCH-) or an ETF ticker." },
+      "benchmark": { "type": "string", "required": true, "description": "bw_bench_id (BW-BENCH-...) or alias (e.g. SPY, 70/30)." },
+      "as_of": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound on the subject's teo." },
+      "top": { "type": "integer", "required": false, "default": 10, "description": "Top over/underweights to return (1-100)." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.002, "currency": "USD", "billing_code": "benchmark_fit_v1" },
+    "performance": { "avg_latency_ms": 200, "p95_latency_ms": 400, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["benchmark_surfaces_zarr", "fund/filer/etf ds_ph.zarr"] },
+    "tags": ["benchmark", "benchmark-fit", "active-share", "portfolio-surface"]
+  },
+  {
+    "id": "etf-portfolio",
+    "name": "ETF Return Decomposition",
+    "description": "An ETF's L1/L2/L3 portfolio return-decomposition time series (Funds_DAG surface_portfolios_zarr) — same schema as the per-fund /api/funds/{bw_fund_id}/portfolio: portfolio_{gross,market,sector,subsector,idiosyncratic}_return + identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum. Reports weight_basis (v1: latest_holdings_constant — the factor profile of the ETF's current composition over ERM3 monthly's full history) and variance_shares (diversification-credited full-window market/sector/subsector/residual). MASTER_BACKLOG L.6.",
+    "endpoint": "/api/data/etf/{ticker}/portfolio",
+    "method": "GET",
+    "parameters": {
+      "ticker": { "type": "string", "required": true, "description": "ETF ticker, e.g. IWM." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.002, "currency": "USD", "billing_code": "etf_portfolio_v1" },
+    "performance": { "avg_latency_ms": 150, "p95_latency_ms": 300, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["surface_portfolios_zarr", "erm3_monthly"] },
+    "tags": ["etf", "return-attribution", "portfolio-surface", "funds"]
+  },
+  {
+    "id": "benchmark-portfolio",
+    "name": "Benchmark Return Decomposition",
+    "description": "A benchmark's L1/L2/L3 portfolio return-decomposition time series (Funds_DAG surface_portfolios_zarr) — same schema as /api/data/etf/{ticker}/portfolio and /api/funds/{bw_fund_id}/portfolio. `id` accepts a bw_bench_id (BW-BENCH-SPY) or an alias (SPY, 70/30). Reports weight_basis (v1: latest_holdings_constant — the factor profile of the benchmark's current composition over ERM3 monthly's full history; the right view for a benchmark's risk profile) and variance_shares. MASTER_BACKLOG L.8.",
+    "endpoint": "/api/data/benchmark/{id}/portfolio",
+    "method": "GET",
+    "parameters": {
+      "id": { "type": "string", "required": true, "description": "bw_bench_id (BW-BENCH-...) or alias (e.g. SPY, 70/30)." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.002, "currency": "USD", "billing_code": "benchmark_portfolio_v1" },
+    "performance": { "avg_latency_ms": 150, "p95_latency_ms": 300, "availability_sla": 99.5, "rate_limit_per_minute": 120 },
+    "confidence": { "data_quality_score": 0.95, "update_frequency": "daily", "sources": ["surface_portfolios_zarr", "erm3_monthly"] },
+    "tags": ["benchmark", "return-attribution", "portfolio-surface"]
+  },
+  {
+    "id": "portfolio-evolution",
+    "name": "Portfolio Evolution — what changed since last look",
+    "description": "The Analyst M4 kernel. Given a portfolio_history (list of CmlPortfolioSnapshot — {as_of_date, holdings[]} pairs across time), returns a constant-holdings-within-segment return attribution + variance-share evolution + per-position trade-effect attribution. Two analytical paths: (a) actual vs static-w0 counterfactual return attribution (Brinson-style; isolates rebalancing P&L); (b) variance-share change attribution (compares variance composition at d_N vs d_0). Each slice carries an above_noise flag (k_R=1.5·sigma_residual·sqrt(N_months) for returns; k_V=2.0·sqrt(2/N) for variance shares). Reads M3c jsonb portfolio_history + ERM3 monthly; produces design-doc §5 response shape. v1 treats out-of-coverage holdings (ETFs, cash, bonds) as outside the modeled sleeve; M4.5 adds ETF look-through.",
+    "endpoint": "/api/portfolio-evolution",
+    "method": "POST",
+    "parameters": {
+      "portfolio_id": {
+        "type": "string",
+        "required": true,
+        "description": "Stable identifier for the portfolio. Convention: 'cml/{cml_id}' for client portfolios, '13f/{cik}' for filer portfolios."
+      },
+      "portfolio_history": {
+        "type": "array",
+        "required": true,
+        "description": "M3c CmlPortfolioSnapshot[] jsonb shape — list of {as_of_date, holdings[{ticker, weight}], ingest_adapter} dated points oldest→newest.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "as_of_date": { "type": "string", "required": true, "description": "ISO YYYY-MM-DD" },
+            "holdings": { "type": "array", "required": true, "description": "[{ticker, weight}] — weights renormalized to 1.0 on the ERM3-covered sleeve" }
+          }
+        }
+      },
+      "include_full_breakdown": {
+        "type": "boolean",
+        "required": false,
+        "description": "If true, includes _monthly_breakdown — per-month L3 components and holding-quarter mapping. Default false (cheaper).",
+        "default": false
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.04,
+      "currency": "USD",
+      "min_charge": 0.03,
+      "billing_code": "portfolio_evolution_m4_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 250,
+      "p95_latency_ms": 500,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.96,
+      "update_frequency": "monthly",
+      "sources": ["erm3_monthly", "cml_activation_state.portfolio_history"],
+      "methodology_url": "https://riskmodels.app/docs/m4-portfolio-evolution"
+    },
+    "tags": ["the-analyst", "portfolio-evolution", "return-attribution", "what-changed", "m4"],
+    "examples": [
+      {
+        "request": {
+          "portfolio_id": "cml/abc123",
+          "portfolio_history": [
+            { "as_of_date": "2026-01-31", "holdings": [{ "ticker": "AAPL", "weight": 0.5 }, { "ticker": "NVDA", "weight": 0.5 }] },
+            { "as_of_date": "2026-04-30", "holdings": [{ "ticker": "AAPL", "weight": 0.3 }, { "ticker": "NVDA", "weight": 0.4 }, { "ticker": "META", "weight": 0.3 }] }
+          ]
+        },
+        "response": {
+          "portfolio_id": "cml/abc123",
+          "window": { "from_date": "2026-01-31", "to_date": "2026-04-30", "n_dated_points": 2 },
+          "return_attribution": {
+            "total_return_pct": 4.2,
+            "static_return_pct": 3.8,
+            "trade_effect_bps": 40,
+            "noise_floor_bps": 220,
+            "above_noise": false
+          }
         }
       }
     ]

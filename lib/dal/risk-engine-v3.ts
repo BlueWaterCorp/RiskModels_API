@@ -98,7 +98,6 @@ export interface SymbolRegistryRow {
   sector_etf: string | null;
   subsector_etf: string | null;
   is_adr: boolean | null;
-  isin: string | null;
 }
 
 // Fetch options
@@ -183,11 +182,111 @@ export const RANKING_METRICS = [
 
 /**
  * Ticker aliases for resolution fallback (e.g. symbols has GOOG but user requests GOOGL).
+ * In-process fast path; the authoritative source is `public.security_aliases`
+ * (mirrored from ERM3 `eodhd_extractions.db` via sync_ticker_history_from_sqlite).
  */
 const TICKER_ALIASES: Record<string, string[]> = {
   GOOGL: ["GOOG"],
   GOOG: ["GOOGL"],
 };
+
+/** Alias types in security_aliases that represent a ticker symbol. */
+const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER"] as const;
+
+/**
+ * Historical-ticker recall (C.1' — FB→META): consult `public.security_aliases`
+ * for the canonical `bw_sym_id` behind a possibly-renamed ticker. Returns
+ * the canonical id (e.g. `BW-BBG000MM2P62` for FB) or null.
+ *
+ * Picks the highest-confidence active alias first. "Active" means
+ * `valid_to IS NULL` (still current) or, if all are closed, the most recent
+ * close date. This biases toward the most recent identity for the same
+ * ticker string while still returning a hit when the ticker is fully retired.
+ */
+async function resolveAliasToCanonicalSymbol(
+  upper: string,
+): Promise<string | null> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("security_aliases")
+      .select("bw_sym_id, alias_type, valid_from, valid_to, confidence_score")
+      .eq("alias_value", upper)
+      .in("alias_type", TICKER_ALIAS_TYPES as unknown as string[])
+      .order("valid_to", { ascending: false, nullsFirst: true })
+      .order("confidence_score", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error(`[V3 DAL] Error querying security_aliases for ${upper}:`, error);
+      return null;
+    }
+    return ((data as { bw_sym_id?: string } | null)?.bw_sym_id) ?? null;
+  } catch (error) {
+    console.error(`[V3 DAL] Error querying security_aliases for ${upper}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Batch variant — one round-trip resolves many missing tickers via
+ * security_aliases. Returns Map<requestedTicker, bw_sym_id>.
+ */
+async function resolveAliasesToCanonicalSymbols(
+  uppers: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (uppers.length === 0) return out;
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("security_aliases")
+      .select("bw_sym_id, alias_type, alias_value, valid_to, confidence_score")
+      .in("alias_value", uppers)
+      .in("alias_type", TICKER_ALIAS_TYPES as unknown as string[]);
+    if (error) {
+      console.error("[V3 DAL] Error batch querying security_aliases:", error);
+      return out;
+    }
+    type Row = {
+      bw_sym_id: string;
+      alias_type: string;
+      alias_value: string;
+      valid_to: string | null;
+      confidence_score: number | null;
+    };
+    const candidates = new Map<string, Row>();
+    for (const r of (data ?? []) as Row[]) {
+      const key = r.alias_value;
+      const existing = candidates.get(key);
+      if (!existing) {
+        candidates.set(key, r);
+        continue;
+      }
+      // Prefer current alias (valid_to null), then later valid_to, then higher confidence.
+      const aActive = existing.valid_to === null ? 1 : 0;
+      const bActive = r.valid_to === null ? 1 : 0;
+      if (bActive !== aActive) {
+        if (bActive > aActive) candidates.set(key, r);
+        continue;
+      }
+      const aTo = existing.valid_to ?? "";
+      const bTo = r.valid_to ?? "";
+      if (bTo > aTo) {
+        candidates.set(key, r);
+        continue;
+      }
+      if (bTo === aTo && (r.confidence_score ?? 0) > (existing.confidence_score ?? 0)) {
+        candidates.set(key, r);
+      }
+    }
+    for (const [k, v] of candidates) out.set(k, v.bw_sym_id);
+    return out;
+  } catch (error) {
+    console.error("[V3 DAL] Error batch querying security_aliases:", error);
+    return out;
+  }
+}
 
 /**
  * Normalize symbol row: fall back to metadata JSONB for name/sector_etf when top-level columns are null.
@@ -203,7 +302,6 @@ function normalizeSymbolRow(row: Record<string, unknown> | null): SymbolRegistry
     sector_etf: (row.sector_etf as string | null) ?? (metadata.sector_etf as string | null) ?? null,
     subsector_etf: row.subsector_etf as string | null,
     is_adr: row.is_adr as boolean | null,
-    isin: row.isin as string | null,
   };
 }
 
@@ -221,7 +319,7 @@ export async function resolveSymbolByTicker(
       const admin = createAdminClient();
       const { data, error } = await admin
         .from("symbols")
-        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata")
+        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
         .eq("ticker", t)
         .maybeSingle();
       if (error) {
@@ -248,6 +346,31 @@ export async function resolveSymbolByTicker(
     }
   }
 
+  // Historical-ticker recall (C.1'): query the security_aliases mirror so
+  // renamed tickers (e.g. FB → META: BW-BBG000MM2P62) resolve to the
+  // canonical bw_sym_id. We then look up the symbols row by that bw_sym_id.
+  const canonicalId = await resolveAliasToCanonicalSymbol(upper);
+  if (canonicalId) {
+    try {
+      const admin = createAdminClient();
+      const { data, error } = await admin
+        .from("symbols")
+        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
+        .eq("symbol", canonicalId)
+        .maybeSingle();
+      if (!error && data) {
+        const normalized = normalizeSymbolRow(data as Record<string, unknown>);
+        if (normalized) {
+          // Surface the requested ticker label to the caller; the canonical
+          // bw_sym_id lookup keeps the zarr loader happy.
+          return { ...normalized, ticker: upper };
+        }
+      }
+    } catch (err) {
+      console.error(`[V3 DAL] Error resolving alias canonical id ${canonicalId}:`, err);
+    }
+  }
+
   return null;
 }
 
@@ -261,7 +384,7 @@ export async function resolveSymbolsByTickers(
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("symbols")
-      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata")
+      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
       .in("ticker", upperTickers);
 
     if (error) {
@@ -293,19 +416,44 @@ export async function resolveSymbolsByTickers(
       }
     }
 
-    if (allAliases.size === 0) return result;
+    if (allAliases.size > 0) {
+      const { data: aliasData } = await admin
+        .from("symbols")
+        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
+        .in("ticker", Array.from(allAliases));
 
-    const { data: aliasData } = await admin
-      .from("symbols")
-      .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata")
-      .in("ticker", Array.from(allAliases));
+      for (const row of aliasData ?? []) {
+        const normalized = normalizeSymbolRow(row as Record<string, unknown>);
+        if (normalized) {
+          const requested = aliasToRequested.get(normalized.ticker);
+          if (requested && !result.has(requested)) {
+            result.set(requested, { ...normalized, ticker: requested });
+          }
+        }
+      }
+    }
 
-    for (const row of aliasData ?? []) {
-      const normalized = normalizeSymbolRow(row as Record<string, unknown>);
-      if (normalized) {
-        const requested = aliasToRequested.get(normalized.ticker);
-        if (requested && !result.has(requested)) {
-          result.set(requested, { ...normalized, ticker: requested });
+    // Historical-ticker recall (C.1'): for any tickers still missing after
+    // direct + hardcoded alias passes, consult the security_aliases mirror.
+    const stillMissing = upperTickers.filter(t => !result.has(t));
+    if (stillMissing.length > 0) {
+      const canonicalMap = await resolveAliasesToCanonicalSymbols(stillMissing);
+      const canonicalIds = Array.from(new Set(canonicalMap.values()));
+      if (canonicalIds.length > 0) {
+        const { data: histData } = await admin
+          .from("symbols")
+          .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
+          .in("symbol", canonicalIds);
+        const bySymbol = new Map<string, SymbolRegistryRow>();
+        for (const row of histData ?? []) {
+          const normalized = normalizeSymbolRow(row as Record<string, unknown>);
+          if (normalized) bySymbol.set(normalized.symbol, normalized);
+        }
+        for (const requested of stillMissing) {
+          const canonicalId = canonicalMap.get(requested);
+          if (!canonicalId) continue;
+          const row = bySymbol.get(canonicalId);
+          if (row) result.set(requested, { ...row, ticker: requested });
         }
       }
     }

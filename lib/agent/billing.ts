@@ -16,6 +16,14 @@ import {
 // Token conversion constant: $20 = 1M tokens
 const TOKEN_PRICE_USD = 0.00002;
 const STARTER_CREDIT_USD = 20;
+/**
+ * Two-sided affiliate referral bonus: when a user signs up with a valid
+ * referral_code, they get this much added on top of STARTER_CREDIT_USD,
+ * for an effective $40 starter. The affiliate's pitch becomes a discount
+ * link, not a favor request. Granted exactly once per user; deduped via
+ * billing_events.capability_id = 'referral_bonus'.
+ */
+export const REFERRAL_BONUS_USD = 20;
 
 // Lazy initialization to avoid build-time errors
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -388,6 +396,76 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
   console.log(
     `[Billing] Provisioned starter credit ($${STARTER_CREDIT_USD}) for first-time user ${userId}`,
   );
+}
+
+/**
+ * Two-sided referral bonus. Adds REFERRAL_BONUS_USD on top of the starter
+ * credit when the new user signed up with a valid affiliate referral_code.
+ * Idempotent: if the user already has a 'referral_bonus' billing_event
+ * row, this is a no-op (re-granting on every key creation would let one
+ * user farm bonuses by repeatedly minting keys).
+ *
+ * Call AFTER ensureStarterCredits — it assumes the agent_account already
+ * exists.
+ */
+export async function applyReferralBonus(
+  userId: string,
+  referralCode: string,
+): Promise<{ ok: true; granted: boolean } | { ok: false; message: string }> {
+  const client = getSupabase();
+
+  const { data: priorBonus } = await client
+    .from("billing_events")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("capability_id", "referral_bonus")
+    .limit(1)
+    .maybeSingle();
+  if (priorBonus) {
+    return { ok: true, granted: false };
+  }
+
+  const { data: account } = await client
+    .from("agent_accounts")
+    .select("balance_usd")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!account) {
+    /** ensureStarterCredits should have run first; if no account, log and skip
+     *  rather than create a stub here (avoids racing with the starter path). */
+    return { ok: false, message: "agent_account missing — ensureStarterCredits not run" };
+  }
+
+  const currentBalance = parseFloat(String(account.balance_usd ?? 0));
+  const newBalance = currentBalance + REFERRAL_BONUS_USD;
+
+  const { error: updErr } = await client
+    .from("agent_accounts")
+    .update({ balance_usd: newBalance, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (updErr) {
+    return { ok: false, message: `balance update failed: ${updErr.message}` };
+  }
+
+  const { error: evtErr } = await client.from("billing_events").insert({
+    user_id: userId,
+    request_id: `referral_bonus_${Date.now()}`,
+    capability_id: "referral_bonus",
+    cost_usd: -REFERRAL_BONUS_USD,
+    balance_after_usd: newBalance,
+    type: "credit",
+    description: `Affiliate referral bonus (code: ${referralCode})`,
+    metadata: { source: "two_sided_referral_v1", referral_code: referralCode },
+    created_at: new Date().toISOString(),
+  });
+  if (evtErr) {
+    console.warn(`[Billing] Failed to log referral_bonus event: ${evtErr.message}`);
+  }
+
+  console.log(
+    `[Billing] Granted referral bonus ($${REFERRAL_BONUS_USD}) to user ${userId} via code ${referralCode}`,
+  );
+  return { ok: true, granted: true };
 }
 
 const USER_KEY_FLOOR_CAPABILITY = "user_key_floor_credit";

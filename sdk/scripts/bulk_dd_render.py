@@ -27,6 +27,9 @@ Ticker selection (mutually exclusive, falls through in this order):
 
 Examples
 --------
+    # Use BWMACRO monorepo Python 3.12 venv: .../BWMACRO/.venv/bin/python (+ PYTHONPATH=sdk),
+    # or run ./sdk/scripts/run_bulk_dd_render.sh (defaults that venv).
+
     # Bulk MAG7 to external drive (will skip the GCS upload step):
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py \
@@ -44,11 +47,9 @@ Examples
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py --upload-gcs
 
-    # At least 1k names to gs://rm_api_public/snapshot (with SEC profile blurbs):
+    # At least 1k names to gs://rm_api_public/snapshot:
     export ERM3_ZARR_ROOT=/path/to/zarr/root
-    export ERM3_ROOT=/path/to/ERM3
-    PYTHONPATH=sdk:$ERM3_ROOT python sdk/scripts/bulk_dd_render.py \\
-        --sec-profile-json-root /path/to/company_profiles/v1 \\
+    PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py \\
         --limit 1000 --upload-gcs --resume
 
     # Regenerate every ticker after a layout change (same flags as above plus):
@@ -72,6 +73,12 @@ mag7_dd_zarr_vs_api.py --no-api-peers behaves).
 
 from __future__ import annotations
 
+# Headless backend before any matplotlib.pyplot import (pulls pyplot lazily inside
+# riskmodels.snapshots, but Agg is safe to set unconditionally here).
+import matplotlib as _matplotlib
+
+_matplotlib.use("Agg")
+
 import argparse
 import json
 import os
@@ -80,9 +87,28 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Suppress matplotlib's per-figure tight_layout-incompat warning. The
+# institutional renderer's _compose_dd_page composes axes that aren't
+# tight_layout-friendly by design (intentional inset placement). The warning
+# is decorative noise at 1k-ticker scale (2× per render → 2000 lines/run).
+warnings.filterwarnings(
+    "ignore",
+    message=r"This figure includes Axes that are not compatible with tight_layout.*",
+    category=UserWarning,
+)
+
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # tqdm is in BWMACRO venv; fall back to plain prints if missing
+    tqdm = None  # type: ignore[assignment]
+
+# pyplot.figure is not thread-safe; SnapshotPage uses pyplot internally.
+_MATPLOTLIB_RENDER_LOCK = threading.Lock()
 
 # -----------------------------------------------------------------------------
 # Paths
@@ -209,7 +235,7 @@ def _render_one(
     gcs_bucket: str,
     resume: bool,
     force: bool = False,
-    sec_profile_json_root: Path | None = None,
+    renderer: str = "public",
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -217,12 +243,27 @@ def _render_one(
     ``--upload-mode batch`` in :func:`main` when running at scale — ``gcloud
     storage rsync`` of the whole output tree is several × faster than N×2
     invocations of ``gcloud storage cp``.
+
+    ``renderer``: ``"public"`` (default) routes through the public
+    ``riskmodels.snapshots.reference_renderer`` (no narrative). ``"institutional"``
+    routes through ``bwmacro.snapshots.stock.stock_deep_dive`` (full editorial
+    layout with optional ``Judgment`` from ``bwmacro.risk_interpretation``).
+    Requires the ``bwmacro`` package to be importable from the current venv —
+    intended for BWMACRO-driven Dagster runs (``DD_Snapshots`` code location).
     """
-    from riskmodels.snapshots.stock_deep_dive import (
-        DDData,
-        render_dd_to_pdf,
-        render_dd_to_png,
-    )
+    if renderer == "institutional":
+        from bwmacro.risk_interpretation import derive_judgment
+        from bwmacro.snapshots.stock.stock_deep_dive import (
+            DDData,
+            render_dd_to_pdf,
+            render_dd_to_png,
+        )
+    else:
+        from riskmodels.snapshots.canonical import from_components
+        from riskmodels.snapshots.reference_renderer import (
+            render_canonical_to_pdf,
+            render_canonical_to_png,
+        )
     from riskmodels.snapshots.zarr_context import build_p1_from_zarr
     from riskmodels.snapshots.zarr_peer_analytics import (
         build_peer_comparison_from_zarr,
@@ -246,23 +287,12 @@ def _render_one(
     try:
         p1 = build_p1_from_zarr(ticker, zarr_root)
 
-        profile_blurb: str | None = None
-        if sec_profile_json_root is not None:
-            try:
-                from riskmodels.snapshots.zarr_context import symbol_for_ticker_zarr
-                from riskmodels.snapshots.sec_profile_blurb import load_sec_profile_blurb
-
-                sym = symbol_for_ticker_zarr(ticker, zarr_root)
-                root_v = sec_profile_json_root.expanduser().resolve()
-                profile_blurb = load_sec_profile_blurb(sym, root_v)
-            except Exception:
-                profile_blurb = None
-
         peer_comparison = None
         peer_error: str | None = None
         peer_correlations: dict = {}
         peer_sharpes: dict = {}
         alpha_trajectory: list = []
+        peer_rankings: dict = {}
         # Zarr-only peer path — no HTTP calls, no rate limits, no billing.
         try:
             peer_comparison = build_peer_comparison_from_zarr(ticker, zarr_root)
@@ -270,7 +300,7 @@ def _render_one(
             peer_error = f"peer_discovery: {type(exc).__name__}: {exc}"[:400]
         if peer_comparison is not None and not peer_comparison.peer_detail.empty:
             try:
-                peer_correlations, peer_sharpes, alpha_trajectory = (
+                peer_correlations, peer_sharpes, peer_rankings, alpha_trajectory = (
                     compute_peer_analytics_from_zarr(ticker, zarr_root, peer_comparison)
                 )
             except Exception as exc:
@@ -278,18 +308,32 @@ def _render_one(
                     f"analytics: {type(exc).__name__}: {exc}"[:400]
                 )
 
-        dd = DDData(
-            p1=p1,
-            peer_comparison=peer_comparison,
-            peer_correlations=peer_correlations,
-            peer_sharpes=peer_sharpes,
-            alpha_trajectory=alpha_trajectory,
-            company_profile_text=profile_blurb,
-        )
-
         tdir.mkdir(parents=True, exist_ok=True)
-        render_dd_to_png(dd, png)
-        render_dd_to_pdf(dd, pdf)
+        with _MATPLOTLIB_RENDER_LOCK:
+            if renderer == "institutional":
+                dd = DDData(
+                    p1=p1,
+                    peer_comparison=peer_comparison,
+                    peer_correlations=peer_correlations,
+                    peer_sharpes=peer_sharpes,
+                    peer_rankings=peer_rankings,
+                    alpha_trajectory=alpha_trajectory,
+                    company_profile_text=None,
+                )
+                try:
+                    judgment = derive_judgment(dd)
+                except Exception:
+                    judgment = None
+                render_dd_to_png(dd, png, judgment=judgment)
+                render_dd_to_pdf(dd, pdf, judgment=judgment)
+            else:
+                snap = from_components(
+                    p1,
+                    peer_comparison=peer_comparison,
+                    peer_rankings=peer_rankings,
+                )
+                render_canonical_to_png(snap, png)
+                render_canonical_to_pdf(snap, pdf)
 
         uploaded = False
         if upload_gcs:
@@ -440,23 +484,27 @@ def main() -> int:
         type=int,
         default=1,
         help=(
-            "Threads rendering in parallel (default 1). Each worker does its "
-            "own zarr reads + matplotlib render + optional per-ticker upload. "
-            "Good starting point: 4 on a laptop, 8 on a VM."
+            "Thread pool size for ticker jobs (default 1). Each task loads zarr "
+            "peer context in parallel, but matplotlib snapshots are serialized "
+            "with an internal lock (pyplot is not thread-safe). Use 4–8 to "
+            "overlap I/O without expecting linear speedups on PNG/PDF throughput."
+        ),
+    )
+    ap.add_argument(
+        "--renderer",
+        choices=["public", "institutional"],
+        default="public",
+        help=(
+            "Renderer to use. 'public' (default) → public SDK reference_renderer "
+            "(no narrative, OSS-safe). 'institutional' → BWMACRO private "
+            "stock_deep_dive renderer with full editorial layout + Judgment "
+            "from bwmacro.risk_interpretation. Requires the 'bwmacro' package "
+            "to be importable from the venv (used by the BWMACRO Dagster "
+            "DD_Snapshots code location)."
         ),
     )
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve the ticker list, print the count + first 10, exit.")
-    ap.add_argument(
-        "--sec-profile-json-root",
-        type=Path,
-        default=None,
-        help=(
-            "Company_profiles version root (contains json/). Injects SEC/LLM blurb into DD left panel; "
-            "set ERM3_ROOT so erm3.shared.company_profiles matches Supabase company_snapshot text. "
-            "Override with env BULK_DD_SEC_PROFILE_ROOT."
-        ),
-    )
     args = ap.parse_args()
 
     sys.path.insert(0, str(_SDK_ROOT))
@@ -512,16 +560,11 @@ def main() -> int:
 
     workers = max(1, int(args.workers or 1))
 
-    sec_profile_root = args.sec_profile_json_root
-    if sec_profile_root is None and os.environ.get("BULK_DD_SEC_PROFILE_ROOT", "").strip():
-        sec_profile_root = Path(os.environ["BULK_DD_SEC_PROFILE_ROOT"]).expanduser()
-
     if args.dry_run:
         print(f"source: {source}")
         print(f"out_dir: {args.out_dir}")
         print(f"count: {len(tickers)}")
         print(f"first 10: {tickers[:10]}")
-        print(f"sec_profile_json_root: {sec_profile_root}")
         return 0
 
     if not args.out_dir.parent.is_dir() and not args.out_dir.is_dir():
@@ -546,12 +589,31 @@ def main() -> int:
     print(f"  workers      : {workers}")
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
-    print(f"  sec_profile  : {sec_profile_root}")
+    print(f"  renderer     : {args.renderer}")
     print()
 
     log_lock = threading.Lock()
     total = len(tickers)
     per_ticker_upload = (upload_mode == "per-ticker")
+
+    # tqdm: one updating progress line + inline error pings via pbar.write.
+    # `mininterval=2.0` keeps the captured Dagster log readable
+    # (~30 update lines per hour instead of 1000+ per-ticker prints).
+    is_tty = sys.stdout.isatty()
+    use_pbar = tqdm is not None
+    pbar = (
+        tqdm(
+            total=total,
+            desc="DD render",
+            unit="tk",
+            smoothing=0.1,
+            mininterval=2.0 if not is_tty else 0.5,
+            ncols=100,
+            ascii=not is_tty,  # plain ASCII in non-TTY (Dagster log capture)
+        )
+        if use_pbar
+        else None
+    )
 
     def _dispatch(i: int, ticker: str, logf) -> dict:
         row = _render_one(
@@ -562,7 +624,7 @@ def main() -> int:
             gcs_bucket=args.gcs_bucket,
             resume=args.resume,
             force=args.force,
-            sec_profile_json_root=sec_profile_root,
+            renderer=args.renderer,
         )
         row["i"] = i
         row["ts"] = datetime.now(timezone.utc).isoformat()
@@ -570,11 +632,25 @@ def main() -> int:
             counts[row["status"]] = counts.get(row["status"], 0) + 1
             logf.write(json.dumps(row) + "\n")
             logf.flush()
-            tag = {"ok": "✓", "skipped_resume": "⤳", "error": "✗",
-                   "uploaded_partial": "⚠"}.get(row["status"], "?")
-            extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
-            err = f" — {row.get('error','')}" if row["status"] == "error" else ""
-            print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
+            if pbar is not None:
+                pbar.update(1)
+                pbar.set_postfix(
+                    ok=counts["ok"],
+                    skip=counts["skipped_resume"],
+                    err=counts["error"],
+                    last=ticker,
+                    refresh=False,
+                )
+                # Surface errors inline above the bar (kept visible in the log).
+                if row["status"] == "error":
+                    err_msg = (row.get("error") or "")[:120]
+                    pbar.write(f"  ✗ {ticker}: {err_msg}")
+            else:
+                tag = {"ok": "✓", "skipped_resume": "⤳", "error": "✗",
+                       "uploaded_partial": "⚠"}.get(row["status"], "?")
+                extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
+                err = f" — {row.get('error','')}" if row["status"] == "error" else ""
+                print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
         return row
 
     with log_path.open("w") as logf:
@@ -589,6 +665,9 @@ def main() -> int:
                 ]
                 for _ in as_completed(futs):
                     pass
+
+    if pbar is not None:
+        pbar.close()
 
     batch_upload: dict | None = None
     if upload_mode == "batch":
@@ -618,7 +697,6 @@ def main() -> int:
         "workers": workers,
         "resume": args.resume,
         "force": args.force,
-        "sec_profile_json_root": str(sec_profile_root) if sec_profile_root else None,
         "log_file": str(log_path),
     }
     if batch_upload is not None:

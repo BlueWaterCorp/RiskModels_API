@@ -173,6 +173,8 @@ For live risk data and portfolio math, call the **REST API** (e.g. `GET /api/met
 
 See [mcp/README.md](./mcp/README.md) for install and config.
 
+**Anthropic Claude (Managed Agents vs Messages API):** internal engineering design for optional cloud-hosted agents, billing, and compliance — see [docs/ANTHROPIC_CLOUD_AGENTS.md](./docs/ANTHROPIC_CLOUD_AGENTS.md).
+
 ---
 
 ## ⌨️ Command-line CLI (`riskmodels`)

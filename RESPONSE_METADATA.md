@@ -134,6 +134,16 @@ def check_agent_freshness(response_body, max_age_days=3):
 
 ---
 
+## Platform notes
+
+| Concern | Behavior |
+|--------|----------|
+| **Compression** | Production (Vercel) typically gzip/brotles responses automatically. |
+| **`X-Request-ID`** | Generated if omitted; echoed on success and error JSON paths. |
+| **`Idempotency-Key`** | On billed `POST` routes using `withBilling`, duplicate body + key within **24h** may replay from Redis without a second charge (`X-Idempotent-Replayed: true`). Requires Upstash env vars. |
+
+---
+
 ## Pricing Reference
 
 | Endpoint | Cost | Notes |

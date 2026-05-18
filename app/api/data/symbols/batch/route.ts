@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
+import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase
     .from("symbols")
     .select(
-      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata, latest_metrics, latest_vol, latest_teo",
+      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata, latest_metrics, latest_vol, latest_teo",
     )
     .in("ticker", canonicalTickers);
 
@@ -68,8 +69,7 @@ export async function POST(request: NextRequest) {
         row.sector_etf ?? (metadata.sector_etf as string | null) ?? null,
       subsector_etf: row.subsector_etf,
       is_adr: row.is_adr,
-      isin: row.isin,
-      metadata: row.metadata,
+      metadata: filterSafeMetadata(row.metadata),
       latest_metrics: row.latest_metrics,
       latest_vol: row.latest_vol,
       latest_teo: row.latest_teo,

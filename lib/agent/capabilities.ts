@@ -40,7 +40,7 @@ export interface PerformanceSpec {
 
 export interface ConfidenceSpec {
   data_quality_score: number;
-  update_frequency: "real-time" | "daily" | "weekly" | "monthly" | "hourly";
+  update_frequency: "real-time" | "daily" | "weekly" | "monthly" | "hourly" | "quarterly";
   sources: string[];
   methodology_url?: string;
 }
@@ -772,9 +772,9 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "portfolio-risk-snapshot",
-    name: "Portfolio risk snapshot",
+    name: "Snapshot — portfolio or ticker",
     description:
-      "One-page portfolio risk report as PDF or structured JSON (`POST /api/portfolio/risk-snapshot`), or the canonical JSON-only portfolio snapshot (`POST /api/snapshot` with `type: \"portfolio\"`): L3 explained-risk decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, and per-position breakdown. Single bundled charge per request; uses internal data access only (no double-billing).",
+      "Canonical JSON snapshot via `POST /api/snapshot` for either a weighted portfolio (`type: \"portfolio\"`) or a single name (`type: \"ticker\"`, a shim over `/metrics` + `/decompose`): L3 explained-risk decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, risk summary. Ticker mode also returns `snapshot.ticker_meta` with sector/subsector ETFs and the active L3 factor list. Also serves the bundled PDF/JSON via `POST /api/portfolio/risk-snapshot`. Single bundled charge per request; uses internal data access only (no double-billing).",
     endpoint: "/api/portfolio/risk-snapshot",
     method: "POST",
     parameters: {
@@ -990,6 +990,937 @@ export const CAPABILITIES: Capability[] = [
         },
       },
     ],
+  },
+  {
+    id: "fund-search",
+    name: "Fund Search & Discovery",
+    description:
+      "Search the funds universe by ticker, fund name, or equity style 9-box cohort. " +
+      "Returns a list of FundRow records (bw_fund_id, ticker, fund_name, equity_style_9box, " +
+      "asset_class, total_assets, etc.) for downstream calls to /api/funds/{bw_fund_id}/*. " +
+      "Free for users (no per-request cost) — discovery is intentionally unbilled so quants and agents " +
+      "can resolve a bw_fund_id without paying. Per-fund follow-up calls are metered.",
+    endpoint: "/api/funds/search",
+    method: "GET",
+    parameters: {
+      q: {
+        type: "string",
+        required: false,
+        description: "Full-text search on ticker or fund name (case-insensitive ilike).",
+      },
+      equity_style_9box: {
+        type: "string",
+        required: false,
+        description: "Style slug (e.g. 'large-blend') or canonical name ('Large Blend').",
+      },
+      primary: {
+        type: "boolean",
+        required: false,
+        description: "If true, filters to share-class primaries only.",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows returned (default 50, max 500).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.0,
+      currency: "USD",
+      billing_code: "fund_search_v1",
+    },
+    performance: {
+      avg_latency_ms: 60,
+      p95_latency_ms: 200,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["funds", "funds_latest"],
+    },
+    tags: ["funds", "search", "discovery", "free"],
+  },
+  {
+    id: "fund-metrics",
+    name: "Latest Fund Metrics",
+    description:
+      "Latest knowledge-mode portfolio return decomposition + diagnostics for a single mutual fund. " +
+      "Returns the gross / market / sector / subsector / idiosyncratic return components, the " +
+      "identity_residual, ERM3 universe coverage (weight_sum), n_holdings_active, effective_n (HHI-derived " +
+      "diversification), and top10_weight_sum. Resolves bw_fund_id against public.funds + public.funds_latest. " +
+      "Bitemporal lineage surfaces as X-Data-As-Of (report_date) and X-Data-Filing-Date headers; " +
+      "v1 returns the latest knowledge-mode answer only (no ?as_of= / ?mode= — deferred to v2).",
+    endpoint: "/api/funds/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id}, e.g. BW-FUND-S000004310)",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["funds", "funds_latest"],
+    },
+    tags: ["funds", "metrics", "knowledge-mode"],
+  },
+  {
+    id: "fund-portfolio-history",
+    name: "Fund Portfolio History",
+    description:
+      "Per-fund time series of portfolio_*_return components, identity_residual, and diagnostics " +
+      "(weight_sum, n_holdings_active, effective_n, top10_weight_sum) from Slice 8's per-fund " +
+      "ds_portfolio.zarr on GCS. One row per teo (month-end). Optional ?start_date and ?end_date " +
+      "query params (inclusive, YYYY-MM-DD) trim the panel; default returns the full history.",
+    endpoint: "/api/funds/{bw_fund_id}/portfolio",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_portfolio.zarr", "funds"],
+    },
+    tags: ["funds", "history", "time-series"],
+  },
+  {
+    id: "fund-nav-history",
+    name: "Fund NAV History",
+    description:
+      "Per-fund NAV time series from yfinance (Funds_DAG fund_nav_zarr asset). One row per teo " +
+      "(month-end) with nav_close (month-end close) and nav_return_monthly (pct_change of " +
+      "consecutive closes). Pairs with /portfolio: portfolio returns are derived from quarterly " +
+      "13F holdings; NAV returns are what investors actually realised. The gap surfaces " +
+      "intra-quarter trading, fees, and cash drag not visible in 13F. Optional ?start_date and " +
+      "?end_date trim the panel; default returns the full history.",
+    endpoint: "/api/funds/{bw_fund_id}/nav",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_nav_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "daily",
+      sources: ["ds_nav.zarr", "funds"],
+    },
+    tags: ["funds", "history", "time-series", "nav"],
+  },
+  {
+    id: "fund-holdings",
+    name: "Fund Top-N Holdings",
+    description:
+      "Top-N current holdings for a mutual fund at the latest teo. Reads adj_mv (symbol, teo) " +
+      "and aum_erm3 (teo,) from Slice 5's per-fund ds_ph.zarr on GCS, sorts symbols by adj_mv " +
+      "descending, and returns the top N with weight = adj_mv / aum_erm3. Default 25; caller " +
+      "may request up to 1000 via ?limit=. Symbols are bw_sym_id; resolve to ticker via " +
+      "/api/data/symbols/batch if needed.",
+    endpoint: "/api/funds/{bw_fund_id}/holdings",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max holdings to return (default 25, capped 1000)",
+        default: 25,
+        min: 1,
+        max: 1000,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_ph.zarr", "funds"],
+    },
+    tags: ["funds", "holdings", "knowledge-mode"],
+  },
+  {
+    id: "fund-hedge",
+    name: "Fund Hedge Ratios",
+    description:
+      "Latest L1/L2/L3 ETF hedge ratios for a mutual fund. Reads L{1,2,3}_HR (teo, symbol) " +
+      "from Slice 7's per-fund ds_hr.zarr at the latest teo and returns per-level lists of " +
+      "{etf, hr} dropping NaN entries. Use these to compose hedging baskets at each ERM3 " +
+      "factor level.",
+    endpoint: "/api/funds/{bw_fund_id}/hedge",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fund_hedge_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_hr.zarr", "funds"],
+    },
+    tags: ["funds", "hedge-ratios", "knowledge-mode"],
+  },
+  {
+    id: "style-cohort-metrics",
+    name: "Style Cohort Latest Metrics",
+    description:
+      "Latest portfolio return decomposition + diagnostics for one of the 9-box style cells, " +
+      "aggregated across all funds in the cell. Returns both equal-weight (EW) and " +
+      "market-value-weighted (MV) cohort portfolios side-by-side. Sourced from Slice 6's " +
+      "per-cell ds_portfolio.zarr (latest snapshot in style_portfolios_latest). " +
+      "The differentiated wedge — Morningstar reports per-fund metrics but doesn't expose " +
+      "cohort aggregates with this attribution depth.",
+    endpoint: "/api/funds/style/{slug}",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description:
+          "9-box style slug (large-value, large-blend, large-growth, mid-*, small-*).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["style_portfolios_latest"],
+    },
+    tags: ["funds", "cohort", "knowledge-mode", "differentiated-wedge"],
+  },
+  {
+    id: "style-cohort-rankings",
+    name: "Style Cohort Top-N Rankings",
+    description:
+      "Top-N rankings within a 9-box style cell × cohort_type × metric × period_window × " +
+      "weighting. cohort_type ∈ {symbol, sector, fund}. period_window ∈ {1m, 3m, 12m, 36m}. " +
+      "weighting ∈ {ew, mv} — ignored for cohort_type=fund (writer stores 'ew' placeholder). " +
+      "Top-N capped at 50 (Slice 9 storage ceiling).",
+    endpoint: "/api/funds/style/{slug}/rankings/{cohort_type}",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "9-box style slug",
+      },
+      cohort_type: {
+        type: "string",
+        required: true,
+        description: "One of: symbol, sector, fund",
+        enum: ["symbol", "sector", "fund"],
+      },
+      metric: {
+        type: "string",
+        required: true,
+        description: "Metric to rank by (e.g. weight, gross_return, n_funds_holding).",
+      },
+      period_window: {
+        type: "string",
+        required: false,
+        description: "Trailing window (1m / 3m / 12m / 36m). Default 1m.",
+        default: "1m",
+        enum: ["1m", "3m", "12m", "36m"],
+      },
+      weighting: {
+        type: "string",
+        required: false,
+        description: "Cohort weighting (ew / mv). Default mv. Ignored for cohort_type=fund.",
+        default: "mv",
+        enum: ["ew", "mv"],
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows to return (default 25, capped 50).",
+        default: 25,
+        min: 1,
+        max: 50,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_rankings_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["style_rankings_top"],
+    },
+    tags: ["funds", "cohort", "rankings", "differentiated-wedge"],
+  },
+  {
+    id: "style-cohort-portfolio-history",
+    name: "Style Cohort Portfolio History",
+    description:
+      "Per-cell cohort portfolio time series. Reads Slice 6's per-cell ds_portfolio.zarr " +
+      "(dims teo, weighting). Each row carries both EW and MV blocks side-by-side. Optional " +
+      "?start_date and ?end_date (inclusive YYYY-MM-DD) trim the panel.",
+    endpoint: "/api/funds/style/{slug}/portfolio",
+    method: "GET",
+    parameters: {
+      slug: { type: "string", required: true, description: "9-box style slug" },
+      start_date: { type: "string", required: false, description: "Inclusive lower bound YYYY-MM-DD" },
+      end_date: { type: "string", required: false, description: "Inclusive upper bound YYYY-MM-DD" },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["portfolio_style/{Cell_Name}/ds_portfolio.zarr"],
+    },
+    tags: ["funds", "cohort", "history", "time-series"],
+  },
+  {
+    id: "style-cohort-holdings",
+    name: "Style Cohort Top-N Holdings",
+    description:
+      "Top-N cohort holdings at the latest teo. Reads weight (teo, symbol, weighting) and " +
+      "contribution_* / n_funds_holding from Slice 5b's per-cell ds_symbols.zarr. Sorted by " +
+      "weight desc. ?weighting defaults to mv (Morningstar-comparable); switch to ew for " +
+      "equal-weight cohort exposures. ?limit default 25, capped 100.",
+    endpoint: "/api/funds/style/{slug}/holdings",
+    method: "GET",
+    parameters: {
+      slug: { type: "string", required: true, description: "9-box style slug" },
+      weighting: {
+        type: "string",
+        required: false,
+        description: "ew or mv (default mv)",
+        default: "mv",
+        enum: ["ew", "mv"],
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max holdings (default 25, capped 100)",
+        default: 25,
+        min: 1,
+        max: 100,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["equity_style_9box/{Cell_Name}/ds_symbols.zarr"],
+    },
+    tags: ["funds", "cohort", "holdings", "differentiated-wedge"],
+  },
+  {
+    id: "fund-snapshot-json",
+    name: "Fund Snapshot (JSON)",
+    description:
+      "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + " +
+      "top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context " +
+      "(fund's rank within its 9-box cell on every metric we rank, expressed as rank N of " +
+      "cohort_size). The matching server-rendered PDF is /funds/snapshot.pdf/{bw_fund_id} " +
+      "(Stage D.2).",
+    endpoint: "/api/funds/snapshot/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description: "Funds_DAG canonical fund id (BW-FUND-{series_id}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.01,
+      currency: "USD",
+      billing_code: "fund_snapshot_json_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "funds",
+        "funds_latest",
+        "style_rankings_top",
+        "style_portfolios_latest",
+        "ds_portfolio.zarr",
+        "ds_ph.zarr",
+        "ds_hr.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "tearsheet", "knowledge-mode"],
+  },
+  {
+    id: "fund-snapshot-pdf",
+    name: "Fund Snapshot (PDF)",
+    description:
+      "Server-rendered F1 fund tearsheet PDF. Same composition as " +
+      "`/api/funds/snapshot/{bw_fund_id}` (JSON), rendered via Playwright " +
+      "through `app/(print)/render-snapshot/funds/[bw_fund_id]/page.tsx`. " +
+      "Letter landscape, single page. Cached 24h per (user, bw_fund_id, " +
+      "report_date); cache hits return $0 with `X-Cache: HIT`.",
+    endpoint: "/api/funds/snapshot.pdf/{bw_fund_id}",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description: "Funds_DAG canonical fund id (BW-FUND-{series_id}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.25,
+      currency: "USD",
+      billing_code: "fund_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 3500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "funds",
+        "funds_latest",
+        "style_rankings_top",
+        "style_portfolios_latest",
+        "ds_portfolio.zarr",
+        "ds_ph.zarr",
+        "ds_hr.zarr",
+        "ds_nav.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "pdf", "tearsheet", "knowledge-mode"],
+  },
+  {
+    id: "style-cohort-snapshot-json",
+    name: "Style Cohort Snapshot (JSON)",
+    description:
+      "Composed JSON snapshot for a 9-box style cell — the differentiated wedge vs Morningstar. " +
+      "Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort " +
+      "portfolio history (both weightings) + top-10 funds in cell + top-15 symbols in cell. " +
+      "Matching server-rendered PDF is /funds/style/{slug}/snapshot.pdf (Stage D.2).",
+    endpoint: "/api/funds/style/{slug}/snapshot",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "9-box style slug (large-blend, etc.).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "style_cohort_snapshot_json_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "style_portfolios_latest",
+        "style_rankings_top",
+        "portfolio_style/{Cell_Name}/ds_portfolio.zarr",
+        "equity_style_9box/{Cell_Name}/ds_symbols.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "cohort", "differentiated-wedge"],
+  },
+  {
+    id: "style-cohort-snapshot-pdf",
+    name: "Style Cohort Snapshot (PDF)",
+    description:
+      "Server-rendered C1 cohort tearsheet PDF. Same composition as " +
+      "`/api/funds/style/{slug}/snapshot` (JSON), rendered via Playwright " +
+      "through `app/(print)/render-snapshot/funds/style/[slug]/page.tsx`. " +
+      "Letter landscape, single page. Cached 24h per (user, slug, " +
+      "report_date); cache hits return $0 with `X-Cache: HIT`.",
+    endpoint: "/api/funds/style/{slug}/snapshot.pdf",
+    method: "GET",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "9-box style slug (large-blend, etc.).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.10,
+      currency: "USD",
+      billing_code: "style_cohort_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 3500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: [
+        "style_portfolios_latest",
+        "style_rankings_top",
+        "portfolio_style/{Cell_Name}/ds_portfolio.zarr",
+        "equity_style_9box/{Cell_Name}/ds_symbols.zarr",
+      ],
+    },
+    tags: ["funds", "snapshot", "cohort", "pdf", "differentiated-wedge"],
+  },
+
+  // ===========================================================================
+  // 13F FILER CAPABILITIES (D.8 Phase 1)
+  // Plan: BWMACRO/docs/13f_pipeline_plan.md
+  // ===========================================================================
+  {
+    id: "filer-search",
+    name: "13F Filer Search & Discovery",
+    description:
+      "Search the 13F filer universe by name, CIK, LEI, or filer_type/aum_tier cohort. " +
+      "Returns a list of FilerRow records (bw_filer_id, cik, name, filer_type, aum_tier, " +
+      "latest_aum_usd, etc.) for downstream calls to /api/13f/filers/{bw_filer_id}/*. " +
+      "Optional modelable_only filter restricts results to filers whose in-ERM3 sub-portfolio " +
+      "carries signal value (passes the modelability gate). Free for users — discovery is " +
+      "unbilled; per-filer follow-up calls are metered.",
+    endpoint: "/api/13f/filers/search",
+    method: "GET",
+    parameters: {
+      q: {
+        type: "string",
+        required: false,
+        description: "Full-text search on name, CIK, or LEI (case-insensitive ilike).",
+      },
+      filer_type: {
+        type: "string",
+        required: false,
+        description: "Filer type filter (e.g. 'hedge_fund', 'investment_adviser').",
+      },
+      aum_tier: {
+        type: "string",
+        required: false,
+        description: "AUM tier bucket from filer_master.",
+      },
+      modelable_only: {
+        type: "boolean",
+        required: false,
+        description: "If true, restricts to filers passing the modelability gate.",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows returned (default 50, max 500).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.0,
+      currency: "USD",
+      billing_code: "filer_search_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 250,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "quarterly",
+      sources: ["filers", "filer_portfolios_latest"],
+    },
+    tags: ["13f", "filers", "search", "discovery", "free"],
+  },
+  {
+    id: "filer-metrics",
+    name: "Latest 13F Filer Metrics",
+    description:
+      "Latest knowledge-mode portfolio metrics for a single 13F filer. Returns diagnostics " +
+      "(weight_sum, n_holdings_active, effective_n, top10_weight_sum), AUM (total_aum_usd + " +
+      "aum_in_erm3 — the latter is the absolute scale of holdings inside the ERM3 universe), " +
+      "ERM3-coverage modelability inputs, and the portfolio-derived 9-box style attribution " +
+      "(portfolio_style_hhi, dominant_9box, effective_n_styles). Return components are NULL " +
+      "until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge). NAV is permanently absent — filers " +
+      "have no NAV time series. Resolves bw_filer_id against public.filers + " +
+      "public.filer_portfolios_latest.",
+    endpoint: "/api/13f/filers/{bw_filer_id}",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik} or BW-FILER-CRD{crd}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_metrics_v1",
+    },
+    performance: {
+      avg_latency_ms: 80,
+      p95_latency_ms: 150,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["filers", "filer_portfolios_latest"],
+    },
+    tags: ["13f", "filers", "metrics", "knowledge-mode"],
+  },
+  {
+    id: "filer-holdings",
+    name: "13F Filer Top Holdings",
+    description:
+      "Top-N current holdings for a 13F filer at the latest report_date. Reads per-filer " +
+      "ds_ph.zarr from GCS. Each holding carries security_id (post-D.8.1 = bw_sym_id; pre-" +
+      "migration = a raw 9-char security identifier), adj_mv, and weight (fraction of total " +
+      "in-portfolio AUM). Default N=25, max 1000.",
+    endpoint: "/api/13f/filers/{bw_filer_id}/holdings",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Top-N to return (default 25, max 1000).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_holdings_v1",
+    },
+    performance: {
+      avg_latency_ms: 250,
+      p95_latency_ms: 600,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["bw_filer_id/{id}/ds_ph.zarr", "filers"],
+    },
+    tags: ["13f", "filers", "holdings"],
+  },
+  {
+    id: "filer-portfolio-history",
+    name: "13F Filer Portfolio History",
+    description:
+      "Per-filer portfolio time series of diagnostics + AUM + style attribution from per-" +
+      "filer ds_portfolio.zarr on GCS. One row per teo (quarter-end). Optional ?start_date " +
+      "and ?end_date trim the panel. Return components (portfolio_*_return, identity_residual) " +
+      "are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).",
+    endpoint: "/api/13f/filers/{bw_filer_id}/portfolio",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD.",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD.",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_portfolio_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["bw_filer_id/{id}/ds_portfolio.zarr", "filers"],
+    },
+    tags: ["13f", "filers", "history", "time-series"],
+  },
+  {
+    id: "filer-snapshot-json",
+    name: "13F Filer Snapshot (JSON)",
+    description:
+      "Single-call composed snapshot for a 13F filer: registry + latest metrics + top 25 " +
+      "holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) " +
+      "+ portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability " +
+      "flag. Permanently no NAV (surfaced as _metadata.nav_applicable: false) — filers have " +
+      "no NAV time series. Hedge ratios are Phase 3 (D.8.10) and absent today.",
+    endpoint: "/api/13f/filers/{bw_filer_id}/snapshot",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.01,
+      currency: "USD",
+      billing_code: "filer_snapshot_json_v1",
+    },
+    performance: {
+      avg_latency_ms: 350,
+      p95_latency_ms: 900,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: [
+        "filers",
+        "filer_portfolios_latest",
+        "filer_rankings_top",
+        "bw_filer_id/{id}/ds_ph.zarr",
+        "bw_filer_id/{id}/ds_portfolio.zarr",
+      ],
+    },
+    tags: ["13f", "filers", "snapshot", "differentiated-wedge"],
+  },
+  {
+    id: "filer-snapshot-pdf",
+    name: "13F Filer Snapshot (PDF)",
+    description:
+      "Rendered 1-page tearsheet PDF for a 13F filer. Same content as filer-snapshot-json: " +
+      "filer registry, top holdings, portfolio history, cohort ranks, 9-box style attribution, " +
+      "and coverage diagnostics. NAV section is intentionally absent (filers have no NAV).",
+    endpoint: "/api/13f/filers/{bw_filer_id}/snapshot.pdf",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.05,
+      currency: "USD",
+      billing_code: "filer_snapshot_pdf_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 3500,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: [
+        "filers",
+        "filer_portfolios_latest",
+        "filer_rankings_top",
+        "bw_filer_id/{id}/ds_ph.zarr",
+        "bw_filer_id/{id}/ds_portfolio.zarr",
+      ],
+    },
+    tags: ["13f", "filers", "snapshot", "pdf", "differentiated-wedge"],
   },
 ];
 

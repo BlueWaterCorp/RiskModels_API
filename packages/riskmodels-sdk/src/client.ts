@@ -3,7 +3,7 @@ import {
   normalizeDecomposeResult,
   normalizeHedgePositionResult,
   normalizePortfolioResult,
-} from "./normalize";
+} from "./normalize.js";
 import type {
   ApiCallMetadata,
   FetchLike,
@@ -11,8 +11,8 @@ import type {
   PositionInput,
   RiskModelsClientOptions,
   RiskModelsResult,
-} from "./types";
-import { runWhitepaperExample } from "./whitepaper";
+} from "./types.js";
+import { runWhitepaperExample } from "./whitepaper.js";
 
 const DEFAULT_BASE_URL = "https://riskmodels.app/api";
 

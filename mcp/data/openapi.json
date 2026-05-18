@@ -18,7 +18,11 @@
   "servers": [
     {
       "url": "https://riskmodels.app/api",
-      "description": "Production"
+      "description": "Production — all metered endpoints (`/metrics`, `/snapshot`, `/decompose`, `/batch/analyze`, `/portfolio/*`, etc.)."
+    },
+    {
+      "url": "https://riskmodels.app",
+      "description": "Discovery origin — `/.well-known/*` manifests (`mcp.json`, `ai-plugin.json`, `agentic-disclosure.json`) live at the site origin without the `/api` prefix. Generated clients that hard-code the first server entry must strip `/api` before requesting these paths."
     }
   ],
   "components": {
@@ -668,9 +672,49 @@
           }
         }
       },
+      "CanonicalSnapshotTickerRequest": {
+        "type": "object",
+        "description": "Request body for `POST /api/snapshot` when `type` is `ticker`. Single-name shim that delegates to the same DAL paths used by `/metrics/{ticker}` and `/decompose`, returning the unified `CanonicalSnapshotResponse` shape. Response includes `snapshot.ticker_meta` with the active L3 factors (`[SPY, sector_etf, subsector_etf]` deduped).\n",
+        "required": [
+          "type",
+          "ticker"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ticker"
+            ]
+          },
+          "ticker": {
+            "type": "string",
+            "description": "US equity ticker (case-insensitive; normalized to uppercase)."
+          },
+          "lookback_days": {
+            "type": "integer",
+            "minimum": 20,
+            "maximum": 2000,
+            "default": 252,
+            "description": "Trading days of history for return curves and attribution series."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "frozen"
+            ],
+            "default": "frozen",
+            "description": "Currently only `frozen`."
+          },
+          "benchmark": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional benchmark ticker (reserved)."
+          }
+        }
+      },
       "CanonicalSnapshotResponse": {
         "type": "object",
-        "description": "Canonical JSON portfolio snapshot: L3 variance decomposition, frozen-weight daily attribution (gross and factor strips), cumulative return and drawdown, and risk summary. Response also includes `_metadata` and `_agent` (see other metered POST routes).\n",
+        "description": "Canonical JSON portfolio snapshot: L3 variance decomposition, frozen-weight daily attribution (gross and factor strips), cumulative return and drawdown, and risk summary. Response also includes `_metadata` and `_agent` (see other metered POST routes).\n\nWhen the request supplies a `benchmark` (alias like `SPY` or `70/30`, or a `BW-BENCH-*` id), both `snapshot.benchmark_context_id` and `metadata.benchmark_context_id` carry the resolved `BenchmarkContext` id — the same id consumers can fetch from `/api/data/benchmark/{id}` for methodology / components / `benchmark_kind`. The raw `benchmark` string still echoes back unchanged; unresolved values produce a `null` `benchmark_context_id` (and the raw string is preserved for back-compat).\n",
         "required": [
           "snapshot",
           "time_behavior",
@@ -1621,6 +1665,121 @@
           }
         }
       },
+      "SurfacePortfolioSeries": {
+        "type": "object",
+        "description": "L1/L2/L3 return-decomposition time series for an ETF / benchmark PortfolioSurface (same shape funds expose). The first key is the surface id (`ticker` for ETFs, `benchmark_context_id` for benchmarks).\n",
+        "properties": {
+          "portfolio_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string"
+          },
+          "benchmark_context_id": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "fund",
+              "etf",
+              "benchmark",
+              "filer_13f"
+            ]
+          },
+          "weight_basis": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "latest_holdings_constant",
+              "time_varying"
+            ],
+            "description": "How the per-teo weights were derived. v1 = latest_holdings_constant."
+          },
+          "teo_frequency": {
+            "type": "string",
+            "example": "monthly"
+          },
+          "variance_shares": {
+            "type": "object",
+            "nullable": true,
+            "description": "Diversification-credited full-window variance shares (≈ sum to 1).",
+            "properties": {
+              "market": {
+                "type": "number",
+                "nullable": true
+              },
+              "sector": {
+                "type": "number",
+                "nullable": true
+              },
+              "subsector": {
+                "type": "number",
+                "nullable": true
+              },
+              "residual": {
+                "type": "number",
+                "nullable": true
+              }
+            }
+          },
+          "n_rows": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "teo": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "portfolio_gross_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_market_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_sector_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_subsector_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "portfolio_idiosyncratic_return": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "identity_residual": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "weight_sum": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "n_holdings_active": {
+                  "type": "integer",
+                  "nullable": true
+                },
+                "effective_n": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "top10_weight_sum": {
+                  "type": "number",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {
@@ -1905,6 +2064,1574 @@
             "example": 60
           }
         }
+      },
+      "Fund": {
+        "type": "object",
+        "description": "Mutual fund registry row from `public.funds`. One row per `bw_fund_id`. Latest temporal triple (`latest_report_date` / `latest_filing_date` / `latest_extracted_at`) reflects the most recent N-PORT snapshot known for this fund. Q5 lock: `primary_bw_fund_id` is reserved as a nullable column; NULL means this row IS the primary share class (or no primary chosen yet). See ARCHITECTURE_FUNDS_API.md §4.1.\n",
+        "properties": {
+          "bw_fund_id": {
+            "type": "string",
+            "description": "Funds_DAG canonical fund id. Format `BW-FUND-{series_id}`.",
+            "example": "BW-FUND-S000004310"
+          },
+          "series_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "SEC series id.",
+            "example": "S000004310"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true,
+            "example": "VFINX"
+          },
+          "cik": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true,
+            "example": "Vanguard 500 Index Fund Investor Shares"
+          },
+          "morningstar_category": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "Large Value",
+              "Large Blend",
+              "Large Growth",
+              "Mid Value",
+              "Mid Blend",
+              "Mid Growth",
+              "Small Value",
+              "Small Blend",
+              "Small Growth"
+            ]
+          },
+          "style_link_method": {
+            "type": "string",
+            "nullable": true
+          },
+          "primary_bw_fund_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "latest_report_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Period end of the most recent reported holdings (= \"fund_date\")."
+          },
+          "latest_filing_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "SEC acceptance date for the latest filing (= \"release_date\")."
+          },
+          "latest_extracted_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "latest_total_adj_mv": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "latest_n_holdings": {
+            "type": "integer",
+            "nullable": true
+          },
+          "latest_effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "last_in_eligible_universe_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        }
+      },
+      "FundLatest": {
+        "type": "object",
+        "description": "Wide-row latest knowledge-mode snapshot from `public.funds_latest`. One row per `bw_fund_id`. Returns and diagnostics flatten the per-fund `ds_portfolio.zarr` (Funds_DAG Slice 8). Multi-quarter history lives in GCS Zarr (Stage B+). See ARCHITECTURE_FUNDS_API.md §4.2.\n",
+        "required": [
+          "bw_fund_id",
+          "report_date",
+          "filing_date",
+          "extracted_at",
+          "last_synced_at"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string",
+            "example": "BW-FUND-S000004310"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "filing_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-07-14"
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "portfolio_gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_market_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_sector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_subsector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_idiosyncratic_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "identity_residual": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "ERM3 universe coverage (fraction of fund AUM mapping to in-universe symbols)."
+          },
+          "n_holdings_active": {
+            "type": "integer",
+            "nullable": true
+          },
+          "effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "HHI-derived diversification (1 / sum(w_i^2))."
+          },
+          "top10_weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "total_adj_mv": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "n_funds_in_cell_at_report_date": {
+            "type": "integer",
+            "nullable": true
+          },
+          "model_version": {
+            "type": "string",
+            "nullable": true,
+            "example": "funds_dag.v20260502"
+          },
+          "factor_set_id": {
+            "type": "string",
+            "nullable": true,
+            "example": "uni_mc_3000_SPY"
+          },
+          "last_synced_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          }
+        }
+      },
+      "FundWithLatest": {
+        "type": "object",
+        "description": "Fund registry row joined with the latest knowledge-mode snapshot.",
+        "required": [
+          "fund"
+        ],
+        "properties": {
+          "fund": {
+            "$ref": "#/components/schemas/Fund"
+          },
+          "latest": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FundLatest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "FundsBatchRequest": {
+        "type": "object",
+        "required": [
+          "fund_ids"
+        ],
+        "properties": {
+          "fund_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 1000,
+            "example": [
+              "BW-FUND-S000004310",
+              "BW-FUND-S000123456"
+            ]
+          }
+        }
+      },
+      "FundsBatchResponse": {
+        "type": "object",
+        "description": "Multi-fund lookup. Keys are `bw_fund_id`s present in the registry.",
+        "properties": {
+          "results": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FundWithLatest"
+            }
+          }
+        }
+      },
+      "FundsSearchResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fund"
+            }
+          }
+        }
+      },
+      "FundsStyleMembersResponse": {
+        "type": "object",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "fund_ids",
+          "count"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string",
+            "example": "Large Blend"
+          },
+          "slug": {
+            "type": "string",
+            "example": "large-blend"
+          },
+          "fund_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "FundCohortRankEntry": {
+        "type": "object",
+        "description": "One ranking row for a fund within its 9-box cell. The \"n of n_group\" view: this fund placed `rank` out of `cohort_size` peers on this `metric` over `period_window`.\n",
+        "required": [
+          "metric",
+          "period_window",
+          "rank"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string",
+            "example": "portfolio_gross_return"
+          },
+          "period_window": {
+            "type": "string",
+            "enum": [
+              "1m",
+              "3m",
+              "12m",
+              "36m"
+            ]
+          },
+          "rank": {
+            "type": "integer",
+            "example": 5
+          },
+          "cohort_size": {
+            "type": "integer",
+            "nullable": true,
+            "example": 540
+          },
+          "value": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          }
+        }
+      },
+      "FundSnapshotResponse": {
+        "type": "object",
+        "description": "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (rank-within-cell on every metric the rankings table covers).\n",
+        "required": [
+          "bw_fund_id",
+          "report_date",
+          "filing_date",
+          "metrics",
+          "portfolio_history",
+          "_metadata"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filing_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/FundMetricsResponse"
+          },
+          "holdings": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "n_total_holdings": {
+                "type": "integer"
+              },
+              "n_returned": {
+                "type": "integer"
+              },
+              "top": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FundHolding"
+                }
+              }
+            }
+          },
+          "hedge": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FundHedgeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "nullable": true
+          },
+          "portfolio_history": {
+            "type": "object",
+            "required": [
+              "lookback_months",
+              "n_periods",
+              "rows"
+            ],
+            "properties": {
+              "lookback_months": {
+                "type": "integer",
+                "example": 12
+              },
+              "n_periods": {
+                "type": "integer"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FundPortfolioRow"
+                }
+              }
+            }
+          },
+          "nav_history": {
+            "type": "object",
+            "nullable": true,
+            "description": "Trailing 12-month yfinance NAV history. `null` when the fund has no yfinance-resolvable ticker (~35% of the universe — institutional SMAs, separately-managed accounts, mutual funds without retail tickers). Pair with `portfolio_history` on the same teos to surface the gap between 13F-derived attribution and realised NAV (intra-quarter trading, fees, cash drag).\n",
+            "required": [
+              "lookback_months",
+              "n_periods",
+              "rows"
+            ],
+            "properties": {
+              "lookback_months": {
+                "type": "integer",
+                "example": 12
+              },
+              "n_periods": {
+                "type": "integer"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FundNavRow"
+                }
+              }
+            }
+          },
+          "cohort_context": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "equity_style_9box": {
+                "type": "string",
+                "nullable": true
+              },
+              "n_funds_in_cell": {
+                "type": "integer",
+                "nullable": true
+              },
+              "ranks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FundCohortRankEntry"
+                }
+              }
+            }
+          },
+          "_metadata": {
+            "type": "object",
+            "properties": {
+              "model_version": {
+                "type": "string",
+                "nullable": true
+              },
+              "factor_set_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "data_as_of": {
+                "type": "string",
+                "format": "date"
+              },
+              "data_freshness": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "CohortRankEntry": {
+        "type": "object",
+        "description": "One ranked entity inside a top_funds / top_symbols block.",
+        "required": [
+          "rank",
+          "entity_id"
+        ],
+        "properties": {
+          "rank": {
+            "type": "integer"
+          },
+          "entity_id": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "cohort_size": {
+            "type": "integer",
+            "nullable": true
+          }
+        }
+      },
+      "CohortRankBlock": {
+        "type": "object",
+        "description": "A ranked list scoped to one (metric, period_window, weighting) tuple.",
+        "required": [
+          "metric",
+          "period_window",
+          "weighting",
+          "rows"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "period_window": {
+            "type": "string",
+            "enum": [
+              "1m",
+              "3m",
+              "12m",
+              "36m"
+            ]
+          },
+          "weighting": {
+            "type": "string",
+            "enum": [
+              "ew",
+              "mv"
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CohortRankEntry"
+            }
+          }
+        }
+      },
+      "CohortSnapshotResponse": {
+        "type": "object",
+        "description": "Composed JSON snapshot for a 9-box style cell — the differentiated wedge surface. Bundles cohort metrics (EW + MV), top-25 cohort holdings, 12-month cohort portfolio history, top-10 funds in cell, and top-15 symbols in cell.\n",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "report_date",
+          "metrics",
+          "portfolio_history",
+          "_metadata"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filing_date_max": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "n_funds_in_cell": {
+            "type": "integer",
+            "nullable": true
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "weightings": {
+                "type": "object",
+                "properties": {
+                  "ew": {
+                    "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+                  },
+                  "mv": {
+                    "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+                  }
+                }
+              }
+            }
+          },
+          "holdings": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "weighting": {
+                "type": "string",
+                "enum": [
+                  "ew",
+                  "mv"
+                ]
+              },
+              "n_total_holdings": {
+                "type": "integer"
+              },
+              "n_returned": {
+                "type": "integer"
+              },
+              "top": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CohortHolding"
+                }
+              }
+            }
+          },
+          "portfolio_history": {
+            "type": "object",
+            "required": [
+              "lookback_months",
+              "n_periods",
+              "rows"
+            ],
+            "properties": {
+              "lookback_months": {
+                "type": "integer",
+                "example": 12
+              },
+              "n_periods": {
+                "type": "integer"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CohortPortfolioRow"
+                }
+              }
+            }
+          },
+          "top_funds": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CohortRankBlock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "nullable": true
+          },
+          "top_symbols": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CohortRankBlock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "nullable": true
+          },
+          "_metadata": {
+            "type": "object",
+            "properties": {
+              "model_version": {
+                "type": "string",
+                "nullable": true
+              },
+              "data_as_of": {
+                "type": "string",
+                "format": "date"
+              },
+              "data_freshness": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "CohortPortfolioRow": {
+        "type": "object",
+        "description": "One teo of a cohort portfolio time series. Both EW + MV blocks side-by-side.",
+        "required": [
+          "teo"
+        ],
+        "properties": {
+          "teo": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "ew": {
+            "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+          },
+          "mv": {
+            "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+          }
+        }
+      },
+      "CohortPortfolioHistoryResponse": {
+        "type": "object",
+        "description": "Per-cell cohort portfolio time series from Slice 6's per-cell ds_portfolio.zarr. Each row carries both EW and MV blocks.\n",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "n_periods",
+          "start_teo",
+          "end_teo",
+          "rows"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "n_periods": {
+            "type": "integer"
+          },
+          "start_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CohortPortfolioRow"
+            }
+          }
+        }
+      },
+      "CohortHolding": {
+        "type": "object",
+        "description": "One cohort-aggregated holding within a 9-box cell.",
+        "required": [
+          "bw_sym_id",
+          "weight"
+        ],
+        "properties": {
+          "bw_sym_id": {
+            "type": "string",
+            "description": "Internal symbol id. Resolve via /api/data/symbols/batch."
+          },
+          "weight": {
+            "type": "number",
+            "format": "float",
+            "description": "Cohort weight at this teo (sums to 1.0 within the chosen weighting)."
+          },
+          "contribution_gross": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_market": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_sector": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_subsector": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "contribution_idiosyncratic": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "n_funds_holding": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Number of funds in the cell holding this symbol."
+          }
+        }
+      },
+      "CohortHoldingsResponse": {
+        "type": "object",
+        "description": "Top-N cohort holdings at the latest teo for the chosen weighting.",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "teo",
+          "weighting",
+          "n_returned",
+          "n_total_holdings",
+          "holdings"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "weighting": {
+            "type": "string",
+            "enum": [
+              "ew",
+              "mv"
+            ]
+          },
+          "n_returned": {
+            "type": "integer"
+          },
+          "n_total_holdings": {
+            "type": "integer"
+          },
+          "holdings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CohortHolding"
+            }
+          }
+        }
+      },
+      "StyleCohortReturnsBlock": {
+        "type": "object",
+        "description": "Portfolio return components + diagnostics for one weighting in a cohort.",
+        "properties": {
+          "portfolio_gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_market_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_sector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_subsector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_idiosyncratic_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "identity_residual": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Cohort coverage (fraction of cohort AUM in mapped symbols)."
+          },
+          "n_holdings_active": {
+            "type": "integer",
+            "nullable": true
+          },
+          "effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "top10_weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          }
+        }
+      },
+      "StyleCohortMetricsResponse": {
+        "type": "object",
+        "description": "Latest cohort metrics for a 9-box style cell. Both equal-weight (EW) and market-value-weighted (MV) cohort portfolios are returned side-by-side under `weightings`. Bitemporal lineage at top level.\n",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "report_date",
+          "weightings",
+          "_metadata"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string",
+            "example": "Large Blend"
+          },
+          "slug": {
+            "type": "string",
+            "example": "large-blend"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filing_date_max": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "n_funds_in_cell": {
+            "type": "integer",
+            "nullable": true
+          },
+          "weightings": {
+            "type": "object",
+            "properties": {
+              "ew": {
+                "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+              },
+              "mv": {
+                "$ref": "#/components/schemas/StyleCohortReturnsBlock"
+              }
+            }
+          },
+          "_metadata": {
+            "type": "object",
+            "properties": {
+              "model_version": {
+                "type": "string",
+                "nullable": true
+              },
+              "data_as_of": {
+                "type": "string",
+                "format": "date"
+              },
+              "data_freshness": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "last_synced_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "StyleCohortRankingRow": {
+        "type": "object",
+        "required": [
+          "rank",
+          "entity_id"
+        ],
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "example": 1
+          },
+          "entity_id": {
+            "type": "string",
+            "description": "bw_sym_id (cohort=symbol), sector code (cohort=sector), or bw_fund_id (cohort=fund)."
+          },
+          "value": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "cohort_size": {
+            "type": "integer",
+            "nullable": true
+          }
+        }
+      },
+      "StyleCohortRankingsResponse": {
+        "type": "object",
+        "required": [
+          "equity_style_9box",
+          "slug",
+          "cohort_type",
+          "metric",
+          "period_window",
+          "weighting",
+          "report_date",
+          "n_returned",
+          "rows"
+        ],
+        "properties": {
+          "equity_style_9box": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "cohort_type": {
+            "type": "string",
+            "enum": [
+              "symbol",
+              "sector",
+              "fund"
+            ]
+          },
+          "metric": {
+            "type": "string"
+          },
+          "period_window": {
+            "type": "string",
+            "enum": [
+              "1m",
+              "3m",
+              "12m",
+              "36m"
+            ]
+          },
+          "weighting": {
+            "type": "string",
+            "enum": [
+              "ew",
+              "mv"
+            ]
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filing_date_max": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "n_returned": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StyleCohortRankingRow"
+            }
+          }
+        }
+      },
+      "FundHedgeLeg": {
+        "type": "object",
+        "description": "One ETF hedge leg at a given factor level.",
+        "required": [
+          "etf",
+          "hr"
+        ],
+        "properties": {
+          "etf": {
+            "type": "string",
+            "description": "ETF symbol (e.g. SPY, XLK, SMH)."
+          },
+          "hr": {
+            "type": "number",
+            "format": "float",
+            "description": "Hedge ratio (dollar_ratio) — ETF notional per $1 of fund exposure at this level."
+          }
+        }
+      },
+      "FundHedgeResponse": {
+        "type": "object",
+        "description": "Latest L1/L2/L3 hedge ratios for a fund. Empty arrays are emitted for levels with no non-NaN entries (e.g. small / niche funds may only have an L1 market hedge). Composing a full hedge basket means concatenating L1 + L2 + L3 entries.\n",
+        "required": [
+          "bw_fund_id",
+          "teo",
+          "L1",
+          "L2",
+          "L3"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "L1": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundHedgeLeg"
+            }
+          },
+          "L2": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundHedgeLeg"
+            }
+          },
+          "L3": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundHedgeLeg"
+            }
+          }
+        }
+      },
+      "FundHolding": {
+        "type": "object",
+        "description": "One holding (security) within a fund's top-N snapshot.",
+        "required": [
+          "bw_sym_id",
+          "adj_mv"
+        ],
+        "properties": {
+          "bw_sym_id": {
+            "type": "string",
+            "description": "Internal symbol id. Resolve to ticker via /api/data/symbols/batch.",
+            "example": "BW-BBG000B9XRY4"
+          },
+          "adj_mv": {
+            "type": "number",
+            "format": "float",
+            "description": "Adjusted market value of this position at the snapshot teo."
+          },
+          "weight": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Fraction of `aum_erm3`. Null when aum_erm3 is null/0."
+          }
+        }
+      },
+      "FundHoldingsResponse": {
+        "type": "object",
+        "description": "Top-N current holdings for a fund at the latest teo. Sourced from per-fund `ds_ph.zarr` (Slice 5). `aum_reported` is sum(adj_mv) BEFORE universe filter; `aum_erm3` is sum AFTER (ERM3-mapped symbols only — the denominator for `weight`).\n",
+        "required": [
+          "bw_fund_id",
+          "teo",
+          "n_holdings_returned",
+          "n_total_holdings",
+          "holdings"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "aum_reported": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "aum_erm3": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "n_holdings_returned": {
+            "type": "integer",
+            "example": 25
+          },
+          "n_total_holdings": {
+            "type": "integer",
+            "example": 503
+          },
+          "holdings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundHolding"
+            }
+          }
+        }
+      },
+      "FundPortfolioRow": {
+        "type": "object",
+        "description": "One teo (month-end) of a fund's portfolio time series.",
+        "required": [
+          "teo"
+        ],
+        "properties": {
+          "teo": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "portfolio_gross_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_market_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_sector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_subsector_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "portfolio_idiosyncratic_return": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "identity_residual": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "n_holdings_active": {
+            "type": "integer",
+            "nullable": true
+          },
+          "effective_n": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "top10_weight_sum": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          }
+        }
+      },
+      "FundPortfolioHistoryResponse": {
+        "type": "object",
+        "description": "Per-fund portfolio time series. Long-form rows indexed by teo (month-end). The `start_teo` / `end_teo` summary fields reflect the post-filter window, not the full panel.\n",
+        "required": [
+          "bw_fund_id",
+          "n_periods",
+          "start_teo",
+          "end_teo",
+          "rows"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "n_periods": {
+            "type": "integer",
+            "example": 85
+          },
+          "start_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundPortfolioRow"
+            }
+          }
+        }
+      },
+      "FundNavRow": {
+        "type": "object",
+        "description": "One month-end NAV observation from yfinance. Pairs with `FundPortfolioRow` on the same teo: the portfolio row is 13F-derived attribution, the NAV row is what investors actually realised.\n",
+        "required": [
+          "teo"
+        ],
+        "properties": {
+          "teo": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "nav_close": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Month-end close price from yfinance."
+          },
+          "nav_return_monthly": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "pct_change of consecutive month-end closes (the realised return)."
+          }
+        }
+      },
+      "FundNavHistoryResponse": {
+        "type": "object",
+        "description": "Per-fund NAV time series. Same shape as the portfolio history response — rows indexed by teo (month-end), filtered to the post-`start_date` / pre-`end_date` window.\n",
+        "required": [
+          "bw_fund_id",
+          "n_periods",
+          "start_teo",
+          "end_teo",
+          "rows"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true
+          },
+          "n_periods": {
+            "type": "integer",
+            "example": 196
+          },
+          "start_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "end_teo": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundNavRow"
+            }
+          }
+        }
+      },
+      "FundMetricsResponse": {
+        "type": "object",
+        "description": "Latest knowledge-mode metrics for a single mutual fund. Joins `public.funds` (registry) with `public.funds_latest` (the wide-row snapshot) and groups return components / diagnostics / meta into nested objects. Bitemporal triple is at the top level; lineage in `_metadata`.\n",
+        "required": [
+          "bw_fund_id",
+          "report_date",
+          "filing_date",
+          "extracted_at",
+          "returns",
+          "diagnostics",
+          "meta",
+          "_metadata"
+        ],
+        "properties": {
+          "bw_fund_id": {
+            "type": "string",
+            "example": "BW-FUND-S000004310"
+          },
+          "ticker": {
+            "type": "string",
+            "nullable": true,
+            "example": "VFINX"
+          },
+          "fund_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "equity_style_9box": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "Large Value",
+              "Large Blend",
+              "Large Growth",
+              "Mid Value",
+              "Mid Blend",
+              "Mid Growth",
+              "Small Value",
+              "Small Blend",
+              "Small Growth"
+            ]
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-30"
+          },
+          "filing_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-07-14"
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "returns": {
+            "type": "object",
+            "description": "Portfolio-level return components from the per-fund Slice 8 zarr.",
+            "properties": {
+              "gross": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              },
+              "market": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              },
+              "sector": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              },
+              "subsector": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              },
+              "idiosyncratic": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              },
+              "identity_residual": {
+                "type": "number",
+                "format": "float",
+                "nullable": true,
+                "description": "L3 noise diagnostic (gross − sum of layer returns)."
+              }
+            }
+          },
+          "diagnostics": {
+            "type": "object",
+            "properties": {
+              "weight_sum": {
+                "type": "number",
+                "format": "float",
+                "nullable": true,
+                "description": "ERM3 universe coverage (fraction of fund AUM in mapped symbols)."
+              },
+              "n_holdings_active": {
+                "type": "integer",
+                "nullable": true
+              },
+              "effective_n": {
+                "type": "number",
+                "format": "float",
+                "nullable": true,
+                "description": "HHI-derived diversification (1 / sum(w_i^2))."
+              },
+              "top10_weight_sum": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              }
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total_adj_mv": {
+                "type": "number",
+                "format": "float",
+                "nullable": true
+              },
+              "n_funds_in_cell_at_report_date": {
+                "type": "integer",
+                "nullable": true
+              },
+              "morningstar_category": {
+                "type": "string",
+                "nullable": true
+              },
+              "primary_bw_fund_id": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "_metadata": {
+            "type": "object",
+            "properties": {
+              "model_version": {
+                "type": "string",
+                "nullable": true,
+                "example": "funds_dag.v20260502"
+              },
+              "factor_set_id": {
+                "type": "string",
+                "nullable": true,
+                "example": "uni_mc_3000_SPY"
+              },
+              "data_as_of": {
+                "type": "string",
+                "format": "date"
+              },
+              "data_freshness": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "last_synced_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -1982,7 +3709,7 @@
     "/mcp/sse": {
       "get": {
         "summary": "MCP Streamable HTTP Connection",
-        "description": "Model Context Protocol endpoint using the Streamable HTTP transport (successor to the legacy SSE+companion-POST pattern). A single URL handles both `GET` (optional server→client event stream) and `POST` (client→server JSON-RPC 2.0 messages).\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.\n\n**Connection:**\n- Transport: Streamable HTTP (stateless mode)\n- Authentication: `Authorization: Bearer <key>` (preferred) or\n  `?api_key=<key>` query param (for `EventSource`, which can't set\n  custom headers).\n\n- Tool-call billing: charged per-invocation on the underlying REST\n  endpoint (e.g. `get_metrics` bills the same as `GET /metrics/{ticker}`).\n\n\n**Usage — mcp-remote proxy:**\n```json\n{\n  \"mcpServers\": {\n    \"riskmodels\": {\n      \"command\": \"npx\",\n      \"args\": [\"mcp-remote\", \"https://riskmodels.app/api/mcp/sse\"],\n      \"env\": { \"AUTHORIZATION\": \"Bearer rm_agent_live_...\" }\n    }\n  }\n}\n```\n",
+        "description": "Model Context Protocol endpoint using the Streamable HTTP transport (successor to the legacy SSE+companion-POST pattern). A single URL handles both `GET` (optional server→client event stream) and `POST` (client→server JSON-RPC 2.0 messages).\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.\n\n**Connection:**\n- Transport: Streamable HTTP (stateless mode)\n- Authentication: `Authorization: Bearer <key>` (preferred) or\n  `?api_key=<key>` query param (for `EventSource`, which can't set\n  custom headers).\n\n- Tool-call billing: charged per-invocation on the underlying REST\n  endpoint (e.g. `get_metrics` bills the same as `GET /metrics/{ticker}`).\n\n- **POST requests:** send `Accept: application/json, text/event-stream` (required by some MCP clients;\n  omitting it can yield **406 Not Acceptable**).\n\n\n**Usage — mcp-remote proxy:**\n```json\n{\n  \"mcpServers\": {\n    \"riskmodels\": {\n      \"command\": \"npx\",\n      \"args\": [\"mcp-remote\", \"https://riskmodels.app/api/mcp/sse\"],\n      \"env\": { \"AUTHORIZATION\": \"Bearer rm_agent_live_...\" }\n    }\n  }\n}\n```\n",
         "operationId": "mcpServerSSE",
         "tags": [
           "MCP"
@@ -2203,8 +3930,14 @@
     "/.well-known/ai-plugin.json": {
       "get": {
         "summary": "OpenAI GPT Plugin Manifest",
-        "description": "Plugin manifest for OpenAI GPT Store integration. Enables ChatGPT and other OpenAI models to discover and use the RiskModels API.\n",
+        "description": "Plugin manifest for OpenAI GPT Store integration. Enables ChatGPT and other OpenAI models to discover and use the RiskModels API.\n**Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/ai-plugin.json`), not under `/api`. Generated clients that combine the first `servers[0].url` with this path must strip `/api` first.\n",
         "operationId": "getAIPluginManifest",
+        "servers": [
+          {
+            "url": "https://riskmodels.app",
+            "description": "Site origin (discovery)"
+          }
+        ],
         "tags": [
           "Compliance",
           "Discovery"
@@ -2287,7 +4020,13 @@
     "/.well-known/agentic-disclosure.json": {
       "get": {
         "summary": "Agentic Privacy Disclosure",
-        "description": "Comprehensive data handling and privacy disclosure for AI marketplace compliance. Documents encryption, retention, third-party sharing, and regulatory compliance.\n\n**Key sections:**\n- Data handling (AES-256-GCM, GCP KMS)\n- Cryptographic shredding for GDPR compliance\n- Third-party sharing policy (none)\n- AI model usage (no training on user data)\n- Compliance (GDPR, SOC2, PCI-DSS)\n",
+        "servers": [
+          {
+            "url": "https://riskmodels.app",
+            "description": "Site origin (discovery)"
+          }
+        ],
+        "description": "Comprehensive data handling and privacy disclosure for AI marketplace compliance. Documents encryption, retention, third-party sharing, and regulatory compliance.\n**Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/agentic-disclosure.json`), not under `/api`.\n\n**Key sections:**\n- Data handling (AES-256-GCM, GCP KMS)\n- Cryptographic shredding for GDPR compliance\n- Third-party sharing policy (none)\n- AI model usage (no training on user data)\n- Compliance (GDPR, SOC2, PCI-DSS)\n",
         "operationId": "getAgenticDisclosure",
         "tags": [
           "Compliance",
@@ -2328,7 +4067,13 @@
     "/.well-known/mcp.json": {
       "get": {
         "summary": "MCP Server Manifest",
-        "description": "Model Context Protocol server connection manifest. Enables AI model clients to discover and connect to the RiskModels MCP server.\n",
+        "servers": [
+          {
+            "url": "https://riskmodels.app",
+            "description": "Site origin (discovery)"
+          }
+        ],
+        "description": "Model Context Protocol server connection manifest. Enables AI model clients to discover and connect to the RiskModels MCP server.\n**Discovery URL:** Served at the **site origin** (`https://riskmodels.app/.well-known/mcp.json`), not under `/api`.\n",
         "operationId": "getMCPManifest",
         "tags": [
           "MCP",
@@ -2689,8 +4434,8 @@
     },
     "/metrics/{ticker}": {
       "get": {
-        "summary": "Latest risk metrics snapshot",
-        "description": "Returns the latest V3 daily metrics for the ticker. Numeric fields are under the `metrics` object using abbreviated keys (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_res_er`, `vol_23d`, etc.). The observation date is `teo`. Optional `display` maps keys to human-readable labels.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n",
+        "summary": "(internal/legacy) Latest risk metrics snapshot",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the latest V3 daily metrics for the ticker. Numeric fields are under the `metrics` object using abbreviated keys (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_res_er`, `vol_23d`, etc.). The observation date is `teo`. Optional `display` maps keys to human-readable labels.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n",
         "operationId": "getMetrics",
         "tags": [
           "Risk Metrics"
@@ -2831,8 +4576,8 @@
     },
     "/decompose": {
       "post": {
-        "summary": "Decompose a position into four additive bets with hedge ratios",
-        "description": "Returns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "summary": "(internal/legacy) Decompose a position into four additive bets with hedge ratios",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "decomposePosition",
         "tags": [
           "Risk Metrics"
@@ -3146,151 +4891,52 @@
     },
     "/returns": {
       "get": {
-        "summary": "Daily gross returns time series (single ticker)",
-        "description": "DEPRECATED — use `/ticker-returns` instead. `/ticker-returns` now accepts both stocks and ETFs and returns daily gross returns plus (for stocks) rolling hedge ratios. This route returns 404 today and will be removed from the spec once the SDK drops its `get_returns` wrapper.\n",
+        "summary": "Daily gross returns time series (single ticker) — REMOVED",
+        "description": "DEPRECATED — returns **410 Gone** with JSON (not HTML). Use `GET /ticker-returns?ticker=...`. SDK `get_returns()` already forwards to `/ticker-returns`.\n",
         "deprecated": true,
         "operationId": "getReturns",
         "tags": [
           "Risk Metrics",
           "Deprecated"
         ],
-        "x-pricing": {
-          "capability_id": "ticker-returns",
-          "tier": "baseline",
-          "model": "per_request",
-          "cost_usd": 0.005,
-          "currency": "USD",
-          "billing_code": "ticker_returns_v2"
-        },
-        "parameters": [
-          {
-            "name": "ticker",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "example": "AAPL"
-          },
-          {
-            "$ref": "#/components/parameters/FormatQueryTabular"
-          }
-        ],
+        "security": [],
         "responses": {
-          "200": {
-            "description": "Daily gross returns. JSON uses a parallel `returns_gross` array (see schema). Parquet/CSV use a long table `#/components/schemas/GrossReturnDailyRow` (`date`, `returns_gross` per row).\n",
+          "410": {
+            "description": "Route removed; use /ticker-returns.",
             "headers": {
-              "X-Risk-Model-Version": {
+              "Deprecation": {
                 "schema": {
                   "type": "string"
                 }
               },
-              "X-Data-As-Of": {
-                "schema": {
-                  "type": "string",
-                  "format": "date"
-                }
-              },
-              "X-Factor-Set-Id": {
+              "Link": {
                 "schema": {
                   "type": "string"
-                }
-              },
-              "X-Universe-Size": {
-                "schema": {
-                  "type": "integer"
                 }
               }
             },
             "content": {
-              "application/vnd.apache.parquet": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                },
-                "description": "Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.\n"
-              },
-              "text/csv": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "UTF-8 CSV with header `date,returns_gross`.\n",
-                "example": "date,returns_gross\n2025-03-20,0.0123\n"
-              },
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "error",
+                    "message",
+                    "replacement"
+                  ],
                   "properties": {
-                    "symbol": {
+                    "error": {
+                      "type": "string",
+                      "example": "gone"
+                    },
+                    "message": {
                       "type": "string"
                     },
-                    "ticker": {
-                      "type": "string"
-                    },
-                    "periodicity": {
-                      "type": "string"
-                    },
-                    "returns_gross": {
-                      "type": "array",
-                      "items": {
-                        "type": "number",
-                        "nullable": true
-                      }
-                    },
-                    "_metadata": {
-                      "$ref": "#/components/schemas/RiskMetadata"
+                    "replacement": {
+                      "type": "string",
+                      "format": "uri"
                     }
                   }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing ticker."
-          },
-          "401": {
-            "description": "Missing or invalid Bearer token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "402": {
-            "description": "Insufficient balance.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientBalance"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Ticker not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limit exceeded.",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "integer"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
@@ -3300,157 +4946,52 @@
     },
     "/etf-returns": {
       "get": {
-        "summary": "Daily gross returns time series (ETF)",
-        "description": "DEPRECATED — use `/ticker-returns` with the ETF ticker (e.g. `SPY`, `XLK`). ETF returns now flow through `/ticker-returns`, served from `ds_etf.zarr`; L1/L2/L3 columns are `null` for ETFs because they are not factor-decomposed. This route returns 404 today and will be removed from the spec once the SDK drops its `get_etf_returns` wrapper.\n",
+        "summary": "Daily gross returns time series (ETF) — REMOVED",
+        "description": "DEPRECATED — returns **410 Gone** with JSON. Use `GET /ticker-returns?ticker=SPY` (or another ETF).\n",
         "deprecated": true,
         "operationId": "getEtfReturns",
         "tags": [
-          "Risk Metrics"
+          "Risk Metrics",
+          "Deprecated"
         ],
-        "x-pricing": {
-          "capability_id": "ticker-returns",
-          "tier": "baseline",
-          "model": "per_request",
-          "cost_usd": 0.005,
-          "currency": "USD",
-          "billing_code": "ticker_returns_v2"
-        },
-        "parameters": [
-          {
-            "name": "etf",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "example": "SPY",
-            "description": "ETF ticker symbol."
-          },
-          {
-            "$ref": "#/components/parameters/FormatQueryTabular"
-          }
-        ],
+        "security": [],
         "responses": {
-          "200": {
-            "description": "Daily ETF gross returns. JSON exposes parallel `dates` and `returns_gross` arrays. Parquet/CSV flatten to `#/components/schemas/GrossReturnDailyRow`.\n",
+          "410": {
+            "description": "Route removed; use /ticker-returns with an ETF ticker.",
             "headers": {
-              "X-Risk-Model-Version": {
+              "Deprecation": {
                 "schema": {
                   "type": "string"
                 }
               },
-              "X-Data-As-Of": {
-                "schema": {
-                  "type": "string",
-                  "format": "date"
-                }
-              },
-              "X-Factor-Set-Id": {
+              "Link": {
                 "schema": {
                   "type": "string"
-                }
-              },
-              "X-Universe-Size": {
-                "schema": {
-                  "type": "integer"
                 }
               }
             },
             "content": {
-              "application/vnd.apache.parquet": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                },
-                "description": "Apache Parquet; columns `date`, `returns_gross` per `#/components/schemas/GrossReturnDailyRow`.\n"
-              },
-              "text/csv": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "UTF-8 CSV with header `date,returns_gross`.\n",
-                "example": "date,returns_gross\n2025-03-20,0.0012\n"
-              },
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "error",
+                    "message",
+                    "replacement"
+                  ],
                   "properties": {
-                    "symbol": {
+                    "error": {
+                      "type": "string",
+                      "example": "gone"
+                    },
+                    "message": {
                       "type": "string"
                     },
-                    "ticker": {
-                      "type": "string"
-                    },
-                    "periodicity": {
-                      "type": "string"
-                    },
-                    "dates": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "returns_gross": {
-                      "type": "array",
-                      "items": {
-                        "type": "number",
-                        "nullable": true
-                      }
-                    },
-                    "_metadata": {
-                      "$ref": "#/components/schemas/RiskMetadata"
+                    "replacement": {
+                      "type": "string",
+                      "format": "uri"
                     }
                   }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing etf."
-          },
-          "401": {
-            "description": "Missing or invalid Bearer token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "402": {
-            "description": "Insufficient balance.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsufficientBalance"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "ETF not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limit exceeded.",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "integer"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RateLimitExceeded"
                 }
               }
             }
@@ -4468,8 +6009,8 @@
     },
     "/batch/analyze": {
       "post": {
-        "summary": "Multi-ticker batch analysis",
-        "description": "Fetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.005/position, minimum $0.01/call.\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
+        "summary": "(internal/legacy) Multi-ticker batch analysis",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` for new clients.** This endpoint remains callable as an internal building block (cohort scans, parity checks, zarr alignment).\nFetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.005/position, minimum $0.01/call.\n## Status code semantics (clients must read `summary` to detect partial / total failure)\nThis endpoint **always returns HTTP 200** as long as the request is well-formed and authentication passes. Per-ticker failures are reported in `results[ticker].status = \"error\"` with a human-readable `error` string, and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**: you cannot infer success from the HTTP code alone.\nRecommended client logic: - `summary.errors == 0` → all ok - `0 < summary.errors < summary.total` → partial; retry only the failed tickers (see `results[ticker].error`) - `summary.errors == summary.total` → total failure; surface or escalate (do **not** loop-retry the whole batch — the failure is likely structural, e.g. all tickers unresolvable or upstream zarr gap)\n4xx is reserved for malformed requests (`tickers` empty, > 100, unknown `metrics` flags, bad auth).\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
         "operationId": "batchAnalyze",
         "tags": [
           "Risk Metrics"
@@ -4915,8 +6456,8 @@
     },
     "/portfolio/risk-snapshot": {
       "post": {
-        "summary": "Portfolio risk snapshot (bundled PDF or JSON)",
-        "description": "One bundled report for a weighted portfolio: L3 explained-risk decomposition, per-name hedge ratios, and volatility. Uses internal data access only (no separate charges for underlying metrics calls). `format=json` returns structured data; `format=pdf` returns `application/pdf`. `format=png` is not implemented yet (501). Identical requests are cached 24 hours per user; cache hits return `X-Cache: HIT` and `X-API-Cost-USD: 0`.\n**Billing:** $0.25 per successful response (not charged on cache hit).\n",
+        "summary": "(legacy) Portfolio risk snapshot (bundled PDF or JSON)",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` (JSON) for new clients.** This endpoint remains the canonical surface for the bundled **PDF** report; for JSON, `/snapshot` returns the same shape with stronger v3 contract guarantees. One bundled report for a weighted portfolio: L3 explained-risk decomposition, per-name hedge ratios, and volatility. Uses internal data access only (no separate charges for underlying metrics calls). `format=json` returns structured data; `format=pdf` returns `application/pdf`. `format=png` is not implemented yet (501). Identical requests are cached 24 hours per user; cache hits return `X-Cache: HIT` and `X-API-Cost-USD: 0`.\n**Billing:** $0.25 per successful response (not charged on cache hit).\n",
         "operationId": "postPortfolioRiskSnapshot",
         "tags": [
           "Risk Metrics"
@@ -5083,8 +6624,8 @@
     },
     "/snapshot": {
       "post": {
-        "summary": "Canonical JSON portfolio snapshot",
-        "description": "One structured response for a weighted portfolio: L3 explained-risk decomposition, L3 hedge ratios, frozen-weight daily return attribution (gross, market, sector/subsector strips, residual), cumulative return and drawdown over `lookback_days` trading days, and concentration-style risk summary. JSON-only (no PDF). `type: \"ticker\"` is reserved and rejected by validation.\n**Billing:** Same as `POST /portfolio/risk-snapshot` — `portfolio-risk-snapshot` ($0.25 per request).\n",
+        "summary": "Canonical JSON snapshot (portfolio or single ticker)",
+        "description": "Per Snapshot Architecture v3, this is the canonical public analysis interface. One structured response shape (`snapshot / time_behavior / attribution / risk_summary`) for either a weighted portfolio (`type: \"portfolio\"`) or a single name (`type: \"ticker\"`): L3 explained-risk decomposition, L3 hedge ratios, frozen-weight daily return attribution (gross, market, sector/subsector strips, residual), cumulative return and drawdown over `lookback_days` trading days, and risk summary.\nFor `type: \"ticker\"` the response also includes `snapshot.ticker_meta` with sector/subsector ETFs and the active L3 factor list. Internal endpoints `/decompose`, `/metrics/{ticker}`, `/portfolio/risk-snapshot`, `/batch/analyze` remain callable but are not the recommended public surface; new clients should use `/snapshot`.\n**Billing:** `portfolio-risk-snapshot` capability ($0.25 per request, single bundled charge).\n**Compact response:** `?compact=1` or `Prefer: return=minimal` omits `time_behavior` and `attribution` (large daily arrays); keeps `snapshot`, `risk_summary`, and `_metadata`.\n**Idempotency:** Optional `Idempotency-Key` header (POST). Repeating the same key with the same JSON body within 24h returns the cached response without a second charge when Redis is configured (`X-Idempotent-Replayed: true`).\n",
         "operationId": "postCanonicalSnapshot",
         "tags": [
           "Risk Metrics"
@@ -5107,12 +6648,64 @@
             ]
           }
         ],
+        "parameters": [
+          {
+            "name": "compact",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1",
+                "true",
+                "false",
+                "yes",
+                "no"
+              ]
+            },
+            "description": "When `1`, `true`, or `yes`, returns a smaller payload (drops time series blocks)."
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Include `return=minimal` for the same effect as `compact=1`."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "description": "Optional. Dedupes identical POST bodies per user for 24h; second response includes `X-Idempotent-Replayed: true`. Requires Upstash Redis (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`).\n"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CanonicalSnapshotPortfolioRequest"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CanonicalSnapshotPortfolioRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CanonicalSnapshotTickerRequest"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "portfolio": "#/components/schemas/CanonicalSnapshotPortfolioRequest",
+                    "ticker": "#/components/schemas/CanonicalSnapshotTickerRequest"
+                  }
+                }
               }
             }
           }
@@ -6908,6 +8501,3063 @@
           }
         }
       }
+    },
+    "/data/funds/{bw_fund_id}": {
+      "get": {
+        "summary": "Get fund (registry + latest snapshot)",
+        "description": "Returns the registry row from `public.funds` joined with the latest knowledge-mode snapshot from `public.funds_latest`. Bitemporal lineage surfaces as response headers `X-Data-As-Of` (= `report_date`) and `X-Data-Filing-Date` (= `filing_date`).\n\nv1 returns the latest knowledge-mode answer only (no `?as_of=` / `?mode=` query params — deferred to v2 per ARCHITECTURE_FUNDS_API.md §3.5).\n",
+        "operationId": "getFundDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fund + latest snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds_latest.report_date (period end of the snapshot)."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds_latest.filing_date (SEC acceptance date)."
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundWithLatest"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds-latest/{bw_fund_id}": {
+      "get": {
+        "summary": "Get just the funds_latest row",
+        "description": "Returns only the wide-row snapshot from `public.funds_latest`. Skips the registry join — useful when the SDK already has the registry row or only needs the metric columns.\n",
+        "operationId": "getFundLatestDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest snapshot row.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundLatest"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No funds_latest row for this fund.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds/batch": {
+      "post": {
+        "summary": "Resolve multiple funds in one call",
+        "description": "Multi-fund lookup. Returns a registry+latest payload keyed by `bw_fund_id`. Up to 1000 ids per request.\n",
+        "operationId": "postFundsBatchDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundsBatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lookup map.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body (missing/oversized fund_ids array).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds/search": {
+      "get": {
+        "summary": "Search funds by ticker or name",
+        "description": "Full-text ilike search over `ticker` and `fund_name`, optionally filtered by 9-box style cell (slug or canonical name) and share-class primary flag (`?primary=true` filters `primary_bw_fund_id IS NULL`).\n",
+        "operationId": "getFundsSearchDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "ilike pattern on ticker / fund_name."
+          },
+          {
+            "name": "equity_style_9box",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "9-box slug (\"large-blend\") or canonical name (\"Large Blend\")."
+          },
+          {
+            "name": "primary",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, returns only primary share-class funds (Q5 lock)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to `limit` matching funds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/funds/style/{slug}/members": {
+      "get": {
+        "summary": "List fund_ids in a 9-box style cell",
+        "description": "Returns the `bw_fund_id` list for a 9-box style cell. SDK consumers typically chain this into `/api/data/funds/batch` to materialize a peer cohort's full registry+latest payload.\n",
+        "operationId": "getStyleCellMembersDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          },
+          {
+            "name": "primary",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20000,
+              "default": 5000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fund id list for the cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsStyleMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/etf/search": {
+      "get": {
+        "summary": "ETF search & discovery (free)",
+        "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name / sponsor in the committed cross-repo catalog (mirror of `Funds_DAG/configs/etf_universe.yaml` at `mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).\n\nRanking (higher = better): 100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-boundary prefix; 30 name substring; 20 sponsor exact / substring. Public read; soft gateway auth.\n",
+        "operationId": "searchEtfs",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SPY",
+            "description": "Search query — ticker, partial name, or sponsor. Case-insensitive."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ETF search results (possibly empty).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    },
+                    "n_results": {
+                      "type": "integer"
+                    },
+                    "n_universe": {
+                      "type": "integer",
+                      "description": "Total ETFs in the catalog."
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "example": "etf-master/1.0"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_etf_id": {
+                            "type": "string",
+                            "example": "BW-ETF-IVV"
+                          },
+                          "ticker": {
+                            "type": "string",
+                            "example": "IVV"
+                          },
+                          "sponsor": {
+                            "type": "string",
+                            "example": "ishares"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "product_url": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "score": {
+                            "type": "integer",
+                            "description": "Match score (higher = better)."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/etf/{ticker}": {
+      "get": {
+        "summary": "ETF base metrics (canonical PortfolioSurface)",
+        "description": "Latest knowledge-mode metrics for a single ETF — registry-level metadata (`portfolio_id`, `ticker`, `source_kind`, `teo_frequency`, `sponsor`) + the latest aggregate metrics from the canonical PortfolioSurface zarr (`aum_reported`, `aum_erm3`, `coverage_pct`, `n_total_holdings`, `report_date`, `availability_date`).\n\nSymmetric to `/api/data/funds/{bw_fund_id}` and `/api/13f/filers/{bw_filer_id}` — closes the \"base entity metrics\" parity gap for the ETF surface. MASTER_BACKLOG L.6 / D.9.\n\nBitemporal lineage on response headers — never collapsed: `X-Data-As-Of` (= `report_date`) and `X-Data-Availability` (= `availability_date`). No per-holding rows — call `/api/data/etf/{ticker}/holdings` for those.\n",
+        "operationId": "getEtfMetricsDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "IVV"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ETF latest metrics block.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "report_date — the sponsor's \"Fund Holdings as of\" date."
+              },
+              "X-Data-Availability": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "availability_date — when that holdings file was first observed."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "portfolio_id": {
+                      "type": "string",
+                      "example": "BW-ETF-IVV"
+                    },
+                    "ticker": {
+                      "type": "string",
+                      "example": "IVV"
+                    },
+                    "source_kind": {
+                      "type": "string",
+                      "enum": [
+                        "etf"
+                      ]
+                    },
+                    "teo_frequency": {
+                      "type": "string",
+                      "enum": [
+                        "daily"
+                      ]
+                    },
+                    "sponsor": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "ishares"
+                    },
+                    "report_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availability_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "aum_reported": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "aum_erm3": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "coverage_pct": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "aum_erm3 / aum_reported — in-ERM3 share of the resolved sleeve."
+                    },
+                    "n_total_holdings": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ETF not found or no holdings available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/etf/{ticker}/holdings": {
+      "get": {
+        "summary": "ETF top-N holdings (canonical PortfolioSurface)",
+        "description": "Top-N current holdings of an ETF, read from its canonical `PortfolioSurface` zarr (Funds_DAG `etf_holdings_zarr` — `source_kind=etf`, `teo_frequency=daily`). Only the in-ERM3 sleeve is materialized, so every holding carries a `bw_sym_id` (resolve to ticker/name via `/api/data/symbols/batch`). `report_date` (the sponsor's \"Fund Holdings as of\" date) and `availability_date` (when that file was first observed) are surfaced distinctly — never collapsed — and also as headers `X-Data-As-Of` (= `report_date`) and `X-Data-Availability` (= `availability_date`).\n\nv1 returns the latest snapshot only (no `?as_of=` query). See docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md §9.\n",
+        "operationId": "getEtfHoldingsDataPlane",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "IVV"
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ETF holdings snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "report_date — the sponsor's \"Fund Holdings as of\" date."
+              },
+              "X-Data-Availability": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "availability_date — when that holdings file was first observed."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "portfolio_id": {
+                      "type": "string",
+                      "example": "BW-ETF-IVV"
+                    },
+                    "ticker": {
+                      "type": "string",
+                      "example": "IVV"
+                    },
+                    "source_kind": {
+                      "type": "string",
+                      "enum": [
+                        "etf"
+                      ]
+                    },
+                    "teo_frequency": {
+                      "type": "string",
+                      "enum": [
+                        "daily"
+                      ]
+                    },
+                    "sponsor": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "ishares"
+                    },
+                    "report_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availability_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "aum_reported": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "aum_erm3": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "coverage_pct": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "aum_erm3 / aum_reported — in-ERM3 share of the resolved sleeve."
+                    },
+                    "n_holdings_returned": {
+                      "type": "integer"
+                    },
+                    "n_total_holdings": {
+                      "type": "integer"
+                    },
+                    "holdings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_sym_id": {
+                            "type": "string"
+                          },
+                          "adj_mv": {
+                            "type": "number"
+                          },
+                          "weight": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ETF not found or no holdings available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/etf/{ticker}/portfolio": {
+      "get": {
+        "summary": "ETF L1/L2/L3 return decomposition time series",
+        "description": "An ETF's portfolio return decomposition (Funds_DAG `surface_portfolios_zarr`) — same `(teo,)` schema as `/api/funds/{bw_fund_id}/portfolio`: `portfolio_{gross,market,sector,subsector,idiosyncratic}_return`, `identity_residual`, `weight_sum`, `n_holdings_active`, `effective_n`, `top10_weight_sum`. The response reports `weight_basis` — v1 = `latest_holdings_constant` (the factor profile of the ETF's *current* composition over ERM3 monthly's full history; the time-varying month-end basis matching the per-fund semantic is a follow-on) — and `variance_shares` (the diversification-credited full-window market/sector/subsector/residual shares). Soft gateway auth (public read).\n",
+        "operationId": "getEtfPortfolioSeries",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "IWM"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ETF portfolio decomposition time series.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfacePortfolioSeries"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ETF not found or no portfolio decomposition available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/benchmark/{id}": {
+      "get": {
+        "summary": "Benchmark surface + BenchmarkContext",
+        "description": "A benchmark's canonical PortfolioSurface snapshot (Funds_DAG `benchmark_surfaces_zarr` — `source_kind=benchmark`): the `BenchmarkContext` (the immutable definition — methodology, rebalance schedule, observation semantics, `benchmark_kind`, proxy/components) plus the latest constituent weight vector (top-N). `id` accepts a `bw_bench_id` (e.g. `BW-BENCH-SPY`) or an alias (e.g. `SPY`, `70/30`). v1 catalog: SPY (index_proxy ← IVV's holdings), EQ70-30 (blend: 70% IWB + 30% IWM). `report_date` (the surface's latest teo) and `availability_date` are surfaced distinctly + as headers `X-Data-As-Of` / `X-Data-Availability`. See docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md §9.\n",
+        "operationId": "getBenchmarkSurface",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SPY"
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Benchmark surface snapshot + context.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Availability": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "benchmark_context_id": {
+                      "type": "string",
+                      "example": "BW-BENCH-SPY"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "benchmark_kind": {
+                      "type": "string",
+                      "enum": [
+                        "index_proxy",
+                        "blend",
+                        "peer_cohort",
+                        "constructed_hedge"
+                      ]
+                    },
+                    "source_kind": {
+                      "type": "string",
+                      "enum": [
+                        "benchmark"
+                      ]
+                    },
+                    "teo_frequency": {
+                      "type": "string"
+                    },
+                    "report_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "availability_date": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true
+                    },
+                    "benchmark_context": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "The full serialized BenchmarkContext (methodology, rebalance_schedule, aliases, proxy/components, …)."
+                    },
+                    "n_constituents": {
+                      "type": "integer"
+                    },
+                    "top_constituents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_sym_id": {
+                            "type": "string"
+                          },
+                          "weight": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Benchmark not found (unknown id/alias or missing surface).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/benchmark-fit": {
+      "get": {
+        "summary": "BenchmarkFit — fit a portfolio surface to a benchmark",
+        "description": "`BenchmarkFit` (the comparison facet — CANONICAL_INTELLIGENCE_OBJECTS.md §9): fit a subject portfolio's weight vector against a benchmark surface at a common teo (the subject's latest teo ≤ `as_of`; the benchmark then at its latest teo ≤ the subject's teo — never peeking ahead). Returns active share, an active-weight RMS (a coarse tracking-error *proxy* — factor-based TE is a follow-on), overlap, and the top over/underweights. `subject` = a `BW-*` portfolio id (`BW-FUND-…`, `BW-FILER-…`, `BW-ETF-…`, `BW-BENCH-…`) or an ETF ticker (→ `BW-ETF-{TICKER}`); `benchmark` = a `bw_bench_id` or an alias (`SPY`, `70/30`, …).\n",
+        "operationId": "getBenchmarkFit",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          },
+          {
+            "name": "benchmark",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SPY"
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "BenchmarkFit result.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "the subject surface teo the fit was computed at."
+              },
+              "X-Benchmark-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "the benchmark surface teo the fit was computed at."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "fit_schema_version": {
+                      "type": "string"
+                    },
+                    "subject_id": {
+                      "type": "string"
+                    },
+                    "subject_source_kind": {
+                      "type": "string"
+                    },
+                    "benchmark_context_id": {
+                      "type": "string"
+                    },
+                    "benchmark_name": {
+                      "type": "string"
+                    },
+                    "subject_teo": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "benchmark_teo": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "n_subject_holdings": {
+                      "type": "integer"
+                    },
+                    "n_benchmark_constituents": {
+                      "type": "integer"
+                    },
+                    "n_overlap": {
+                      "type": "integer"
+                    },
+                    "active_share": {
+                      "type": "number"
+                    },
+                    "active_weight_rms": {
+                      "type": "number",
+                      "description": "coarse tracking-error proxy"
+                    },
+                    "weight_in_benchmark": {
+                      "type": "number"
+                    },
+                    "benchmark_coverage": {
+                      "type": "number"
+                    },
+                    "top_overweights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_sym_id": {
+                            "type": "string"
+                          },
+                          "subject_weight": {
+                            "type": "number"
+                          },
+                          "benchmark_weight": {
+                            "type": "number"
+                          },
+                          "active_weight": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "top_underweights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_sym_id": {
+                            "type": "string"
+                          },
+                          "subject_weight": {
+                            "type": "number"
+                          },
+                          "benchmark_weight": {
+                            "type": "number"
+                          },
+                          "active_weight": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid query params.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown benchmark, or no surface for the subject/benchmark.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/benchmark/{id}/portfolio": {
+      "get": {
+        "summary": "Benchmark L1/L2/L3 return decomposition time series",
+        "description": "A benchmark's portfolio return decomposition (Funds_DAG `surface_portfolios_zarr`) — same `(teo,)` schema as `/api/data/etf/{ticker}/portfolio` and `/api/funds/{bw_fund_id}/portfolio`. `id` accepts a `bw_bench_id` (`BW-BENCH-SPY`) or an alias (`SPY`, `70/30`). `weight_basis` (reported in the response) is v1 = `latest_holdings_constant` — the factor profile of the benchmark's current composition over ERM3 monthly's full history (the right view for a benchmark's risk profile). `variance_shares` carries the diversification-credited full-window market/sector/subsector/residual shares. Soft gateway auth (public read).\n",
+        "operationId": "getBenchmarkPortfolioSeries",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "SPY"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Benchmark portfolio decomposition time series.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfacePortfolioSeries"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Benchmark not found (unknown id/alias) or no portfolio decomposition available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/snapshot/{bw_fund_id}": {
+      "get": {
+        "summary": "Composed fund snapshot (JSON)",
+        "description": "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (rank N of `cohort_size` on every metric the rankings table covers).\n\nThe matching server-rendered PDF is `/api/funds/snapshot.pdf/{bw_fund_id}` (Stage D.2.b, ✅ shipped). The SDK can render this JSON locally via `riskmodels.snapshots.f1_fund_tearsheet` (Stage D.3, planned).\n",
+        "operationId": "getFundSnapshotJson",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-snapshot-json",
+          "tier": "baseline",
+          "cost_usd": 0.01,
+          "billing_code": "fund_snapshot_json_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Composed fund snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundSnapshotResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no funds_latest row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/snapshot.pdf/{bw_fund_id}": {
+      "get": {
+        "summary": "Composed fund snapshot (PDF)",
+        "description": "Server-rendered F1 fund tearsheet PDF (Stage D.2.b). Same composition as `/api/funds/snapshot/{bw_fund_id}` (JSON), rendered via Playwright through `app/(print)/render-snapshot/funds/[bw_fund_id]/page.tsx`. Letter landscape, single page.\n**Caching:** Content-keyed on `(user, bw_fund_id, report_date)` for 24h. Cache hits return $0 with `X-Cache: HIT`.\n",
+        "operationId": "getFundSnapshotPdf",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-snapshot-pdf",
+          "tier": "premium",
+          "cost_usd": 0.25,
+          "billing_code": "fund_snapshot_pdf_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF tearsheet (Letter landscape).",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Cache": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "HIT",
+                    "MISS"
+                  ]
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no funds_latest row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PDF rendering disabled (`PLAYWRIGHT_PDF_ENABLED` is not `true` on the runtime).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/snapshot": {
+      "get": {
+        "summary": "Composed cohort snapshot (JSON)",
+        "description": "Composed JSON snapshot for a 9-box style cell — the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell (by 12-month gross return) + top-15 symbols in cell (by current weight, MV).\n\nMatching server-rendered PDF is `/api/funds/style/{slug}/snapshot.pdf` (Stage D.2.d, ✅ shipped).\n",
+        "operationId": "getStyleCohortSnapshotJson",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-snapshot-json",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_snapshot_json_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Composed cohort snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortSnapshotResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort metrics available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/snapshot.pdf": {
+      "get": {
+        "summary": "Composed cohort snapshot (PDF)",
+        "description": "Server-rendered C1 cohort tearsheet PDF (Stage D.2.d). Same composition as `/api/funds/style/{slug}/snapshot` (JSON), rendered via Playwright through `app/(print)/render-snapshot/funds/style/[slug]/page.tsx`. Letter landscape, single page. Differentiated wedge: cohort aggregates EW + MV, top funds, top symbols, cohort top holdings — content Morningstar does not present at this granularity.\n**Caching:** Content-keyed on `(user, slug, report_date)` for 24h.\n",
+        "operationId": "getStyleCohortSnapshotPdf",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-snapshot-pdf",
+          "tier": "premium",
+          "cost_usd": 0.1,
+          "billing_code": "style_cohort_snapshot_pdf_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF cohort tearsheet (Letter landscape).",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Cache": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "HIT",
+                    "MISS"
+                  ]
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort metrics available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PDF rendering disabled (`PLAYWRIGHT_PDF_ENABLED` is not `true` on the runtime).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/portfolio": {
+      "get": {
+        "summary": "Per-cell cohort portfolio time series",
+        "description": "Time series of cohort portfolio metrics from Slice 6's per-cell `ds_portfolio.zarr` on GCS. Each row carries both EW and MV blocks side-by-side. Optional inclusive `start_date` / `end_date` params trim the panel.\n",
+        "operationId": "getStyleCohortPortfolioHistory",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-portfolio-history",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_portfolio_history_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cohort time series rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortPortfolioHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid slug or malformed date params.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort portfolio history available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/holdings": {
+      "get": {
+        "summary": "Top-N cohort holdings within a 9-box style cell",
+        "description": "Top-N cohort holdings at the latest teo. Reads `weight (teo, symbol, weighting)` and `contribution_*` / `n_funds_holding` from Slice 5b's per-cell `ds_symbols.zarr`. Sorted by `weight` descending.\n\n`?weighting` defaults to `mv` (market-cap-weighted, Morningstar- comparable). Switch to `ew` to see equal-weight cohort exposures — radically different top-N lists for non-uniform cells.\n",
+        "operationId": "getStyleCohortHoldings",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-holdings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_holdings_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "weighting",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ew",
+                "mv"
+              ],
+              "default": "mv"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N cohort holdings snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortHoldingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid slug, weighting, or limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort holdings panel available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}": {
+      "get": {
+        "summary": "Latest cohort metrics for a 9-box style cell",
+        "description": "Latest portfolio return decomposition + diagnostics for a 9-box style cell, aggregated across all funds in the cell. Both EW and MV cohort portfolios are returned side-by-side under `weightings`.\n\nThe differentiated wedge: Morningstar reports per-fund metrics but doesn't expose cohort aggregates with this attribution depth.\n",
+        "operationId": "getStyleCohortMetrics",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-metrics",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_metrics_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "large-value",
+                "large-blend",
+                "large-growth",
+                "mid-value",
+                "mid-blend",
+                "mid-growth",
+                "small-value",
+                "small-blend",
+                "small-growth"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest cohort metrics (both weightings).",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleCohortMetricsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid style slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No cohort metrics available for this cell.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/style/{slug}/rankings/{cohort_type}": {
+      "get": {
+        "summary": "Top-N rankings within a 9-box style cell",
+        "description": "Top-N rankings within a 9-box style cell × cohort_type × metric × period_window × weighting. `cohort_type` selects what gets ranked: symbols (holdings), sector codes, or funds.\n\nFor `cohort_type=fund`, the `weighting` parameter is ignored (writer stores `'ew'` placeholder since fund returns are scalar). Top-N is capped at 50 — the data ceiling per Slice 9.\n",
+        "operationId": "getStyleCohortRankings",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "style-cohort-rankings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "style_cohort_rankings_v1"
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cohort_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "symbol",
+                "sector",
+                "fund"
+              ]
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Metric to rank by (e.g. weight, gross_return, n_funds_holding)."
+          },
+          {
+            "name": "period_window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1m",
+                "3m",
+                "12m",
+                "36m"
+              ],
+              "default": "1m"
+            }
+          },
+          {
+            "name": "weighting",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ew",
+                "mv"
+              ],
+              "default": "mv"
+            },
+            "description": "Ignored for cohort_type=fund."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N ranked rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleCohortRankingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid slug, cohort_type, period_window, weighting, or missing metric.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No rankings for this combination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}/hedge": {
+      "get": {
+        "summary": "Latest fund hedge ratios (L1 / L2 / L3)",
+        "description": "Latest L1/L2/L3 ETF hedge ratios for a fund. Reads `L{1,2,3}_HR (teo, symbol)` from Slice 7's per-fund `ds_hr.zarr` at the latest teo. Empty arrays are emitted for levels with no non-NaN entries (small / niche funds may only have an L1 market hedge).\n",
+        "operationId": "getFundHedge",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-hedge",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_hedge_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-level hedge legs.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundHedgeResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no hedge ratio panel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}/holdings": {
+      "get": {
+        "summary": "Top-N current fund holdings",
+        "description": "Top-N holdings for a fund at the latest teo. Reads `adj_mv (symbol, teo)` and `aum_erm3 (teo,)` from Slice 5's per-fund `ds_ph.zarr` on GCS, sorts by `adj_mv` descending, and returns `bw_sym_id` + `adj_mv` + `weight = adj_mv / aum_erm3`. Resolve `bw_sym_id` to ticker via `/api/data/symbols/batch` if needed.\n",
+        "operationId": "getFundHoldings",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-holdings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_holdings_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 25
+            },
+            "description": "Max holdings to return (default 25)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N holdings snapshot.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "Latest teo in the per-fund holdings panel."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundHoldingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed limit param.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no holdings panel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}/portfolio": {
+      "get": {
+        "summary": "Per-fund portfolio time series",
+        "description": "Time series of portfolio-level return components and diagnostics from Slice 8's per-fund `ds_portfolio.zarr` on GCS. One row per teo (month-end). Optional inclusive `start_date` / `end_date` params trim the panel.\n\nBitemporal: `X-Data-As-Of` reflects the latest teo in the returned slice; `X-Data-Filing-Date` carries the registry's `latest_filing_date`.\n",
+        "operationId": "getFundPortfolioHistory",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-portfolio-history",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_portfolio_history_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive lower bound (YYYY-MM-DD). Default = first teo in the fund's panel."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive upper bound (YYYY-MM-DD). Default = latest teo in the fund's panel."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Time series rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "Latest teo in the returned slice."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds.latest_filing_date for the fund."
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundPortfolioHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed date params or start_date > end_date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or zarr returned no rows for the date window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}/nav": {
+      "get": {
+        "summary": "Per-fund NAV time series (yfinance)",
+        "description": "Time series of actual fund NAV from yfinance, resampled to month-end and stored in the per-fund `ds_nav.zarr` on GCS (Funds_DAG `fund_nav_zarr` asset). One row per teo with `nav_close` (month-end close) and `nav_return_monthly` (pct_change of consecutive closes).\n\nPairs with `/funds/{bw_fund_id}/portfolio`: portfolio returns are 13F-derived holdings attribution; NAV returns are what investors actually realised. The gap surfaces intra-quarter trading, fees, and cash drag not visible in 13F.\n\nReturns 404 when the fund has no yfinance-resolvable ticker (institutional SMAs, separately-managed accounts).\n\nBitemporal: `X-Data-As-Of` reflects the latest teo in the returned slice; `X-Data-Filing-Date` carries the registry's `latest_filing_date`.\n",
+        "operationId": "getFundNavHistory",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-nav-history",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_nav_history_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000001243"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive lower bound (YYYY-MM-DD). Default = first teo in the fund's NAV panel."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Inclusive upper bound (YYYY-MM-DD). Default = latest teo in the fund's NAV panel."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "NAV time series rows.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "Latest teo in the returned slice."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds.latest_filing_date for the fund."
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundNavHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed date params or start_date > end_date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or no NAV zarr for the date window (e.g. institutional SMA without a yfinance ticker).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{bw_fund_id}": {
+      "get": {
+        "summary": "Latest fund metrics",
+        "description": "Knowledge-mode portfolio return decomposition + diagnostics for a single mutual fund. Returns the gross / market / sector / subsector / idiosyncratic return components from the per-fund Slice 8 zarr (materialized in `public.funds_latest`), plus diagnostics (`weight_sum`, `n_holdings_active`, `effective_n`, `top10_weight_sum`) and registry-side meta. Bitemporal lineage on response headers (`X-Data-As-Of`, `X-Data-Filing-Date`).\n\nPer-fund time series, holdings panel, and hedge ratios live in GCS Zarr and ship under `/funds/{bw_fund_id}/portfolio`, `/holdings`, `/hedge` in Stage B.2.\n\nv1 returns the latest knowledge-mode answer only — `?as_of=` / `?mode=` is deferred to v2 (schema is forward-compatible).\n",
+        "operationId": "getFundMetrics",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-metrics",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "fund_metrics_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_fund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FUND-S000004310"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest fund metrics.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds_latest.report_date (period end of the snapshot)."
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "description": "funds_latest.filing_date (SEC acceptance date)."
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "USD cost deducted from prepaid balance for this request."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundMetricsResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found, or registry exists but no funds_latest row yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/13f/filers/search": {
+      "get": {
+        "summary": "13F filer search",
+        "description": "Discovery surface for 13F filers. Search by name, CIK, or LEI; filter by filer_type / aum_tier; optionally restrict to filers passing the modelability gate. Free for users (no per-request cost) — per-filer follow-up calls are metered.\n",
+        "operationId": "searchFilers",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-search",
+          "tier": "baseline",
+          "cost_usd": 0,
+          "billing_code": "filer_search_v1"
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filer_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "aum_tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modelable_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filer search results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        }
+      }
+    },
+    "/13f/filers/{bw_filer_id}": {
+      "get": {
+        "summary": "Latest 13F filer metrics",
+        "description": "Latest knowledge-mode portfolio metrics for a single 13F filer. Reads `public.filers` + `public.filer_portfolios_latest`. Returns diagnostics, AUM (total + in-ERM3), ERM3-coverage modelability inputs, and portfolio-derived 9-box style attribution. Return components are NULL until D.8 Phase 2. NAV is permanently absent — filers have no NAV time series.\n",
+        "operationId": "getFilerMetrics",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-metrics",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "filer_metrics_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_filer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "BW-FILER-CIK0001067983"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest filer metrics.",
+            "headers": {
+              "X-Data-As-Of": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Data-Filing-Date": {
+                "schema": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "X-Risk-Model-Version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-API-Cost-USD": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filer not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        }
+      }
+    },
+    "/13f/filers/{bw_filer_id}/holdings": {
+      "get": {
+        "summary": "13F filer top holdings",
+        "description": "Top-N current holdings at the filer's latest teo. Reads per-filer ds_ph.zarr from GCS. Each holding carries `security_id` (post- D.8.1 = bw_sym_id; pre-migration = a raw 9-char security identifier), `adj_mv`, and `weight` (fraction of total in-portfolio AUM).\n",
+        "operationId": "getFilerHoldings",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-holdings",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "filer_holdings_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_filer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Top-N holdings at the latest teo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filer not found, or no holdings panel available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        }
+      }
+    },
+    "/13f/filers/{bw_filer_id}/portfolio": {
+      "get": {
+        "summary": "13F filer portfolio history",
+        "description": "Per-filer portfolio time series from per-filer ds_portfolio.zarr. One row per teo (quarter-end) with diagnostics, AUM, ERM3 coverage, and portfolio style attribution. Return components are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).\n",
+        "operationId": "getFilerPortfolioHistory",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-portfolio-history",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "filer_portfolio_history_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_filer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio history rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filer not found, or no portfolio history available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        }
+      }
+    },
+    "/13f/filers/{bw_filer_id}/snapshot": {
+      "get": {
+        "summary": "13F filer composed snapshot (JSON)",
+        "description": "Single-call composed snapshot for a 13F filer: registry + latest metrics + top-25 holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) + portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability flag. NAV is intentionally absent (`_metadata.nav_applicable: false`) — filers have no NAV time series. Adds `erm3_decomposition` from filer `ds_returns_monthly.zarr` (monthly L3 rows, variance share attrs, latest-month waterfall) when present (D.8.22). Holdings may include latest daily L3 ER shares per `bw_sym_id` from `security_history_latest`. `hedge_sleeve` is populated when filer `ds_hr.zarr` exists (D.8.10 Phase 3); otherwise null.\n",
+        "operationId": "getFilerSnapshot",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-snapshot-json",
+          "tier": "premium",
+          "cost_usd": 0.01,
+          "billing_code": "filer_snapshot_json_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_filer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Composed FilerSnapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filer not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        }
+      }
+    },
+    "/13f/filers/{bw_filer_id}/snapshot.pdf": {
+      "get": {
+        "summary": "13F filer F1 tearsheet (PDF)",
+        "description": "Rendered 1-page F1 tearsheet PDF for a 13F filer. Same content as /snapshot (JSON). NAV section is absent by design. Server-rendered via headless Chromium (Playwright); requires PLAYWRIGHT_PDF_ENABLED=true on the API runtime.\n",
+        "operationId": "getFilerSnapshotPdf",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-snapshot-pdf",
+          "tier": "premium",
+          "cost_usd": 0.05,
+          "billing_code": "filer_snapshot_pdf_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_filer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF tearsheet bytes.",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance."
+          },
+          "404": {
+            "description": "Filer not found."
+          },
+          "503": {
+            "description": "PDF rendering disabled (PLAYWRIGHT_PDF_ENABLED unset)."
+          }
+        }
+      }
     }
   },
   "tags": [
@@ -6950,6 +11600,18 @@
     {
       "name": "Discovery",
       "description": "Service discovery and capability manifests."
+    },
+    {
+      "name": "Funds Data Plane",
+      "description": "Raw-shape reads against the funds Supabase tables (`funds`, `funds_latest`). Latest knowledge-mode snapshot only — history reads via the per-fund Zarr endpoints in later stages. Public; soft Bearer auth; not metered. The compute-bearing `/funds/*`, `/funds/style/*`, and `/funds/snapshot/*` surfaces ship in subsequent stages.\n"
+    },
+    {
+      "name": "Funds",
+      "description": "Compute-bearing fund endpoints. Latest metrics (Stage B.1) join `public.funds` with `public.funds_latest` and return a shaped response with bitemporal lineage. Per-fund time series, holdings, and hedge ratios (Stage B.2) read from GCS Zarr. Style-cohort surfaces (Stage C) and snapshot tearsheets (Stage D) follow. Billable per request.\n"
+    },
+    {
+      "name": "13F Filers",
+      "description": "Compute-bearing 13F filer endpoints (D.8 Phase 1). Mirror the funds surface but partition by `filer_type × aum_tier` rather than `equity_style_9box`, and include a portfolio-derived 9-box style attribution block. NAV is permanently absent (filers have no NAV time series); hedge ratios are Phase 3 (D.8.10). Plan reference: BWMACRO/docs/13f_pipeline_plan.md.\n"
     }
   ]
 }

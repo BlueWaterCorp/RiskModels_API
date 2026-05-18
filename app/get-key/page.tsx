@@ -67,6 +67,37 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+/** sessionStorage key — chosen over localStorage so a closed tab doesn't keep the code around forever. */
+const REFERRAL_STORAGE_KEY = 'rm_referral_code';
+
+/** Read once from URL or sessionStorage. URL wins if both are present (latest click). */
+function readPersistedReferralCode(searchParams: URLSearchParams | null): string | null {
+  if (typeof window === 'undefined') return null;
+  const urlRef = searchParams?.get('ref') ?? null;
+  if (urlRef) {
+    try {
+      window.sessionStorage.setItem(REFERRAL_STORAGE_KEY, urlRef);
+    } catch {
+      /* private browsing — fall through */
+    }
+    return urlRef;
+  }
+  try {
+    return window.sessionStorage.getItem(REFERRAL_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedReferralCode() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function GetKeyPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
@@ -116,6 +147,10 @@ function GetKeyPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
+
+    /** Capture ?ref=CODE before any router.replace clears it. Persisted to sessionStorage so it
+     *  survives the OAuth / magic-link round-trip even if `next=` doesn't preserve it. */
+    readPersistedReferralCode(searchParams);
 
     const code = searchParams.get('code');
     const stripe = searchParams.get('stripe');
@@ -184,13 +219,23 @@ function GetKeyPage() {
     }
   }, [user, stripeStatus, fetchAccountData]);
 
+  /** Append `?ref=CODE` onto the post-auth `next=` so the param survives the round-trip even if
+   *  sessionStorage is unavailable (e.g. cross-domain OAuth in some browsers). Belt + suspenders. */
+  const buildNextPath = () => {
+    const ref = readPersistedReferralCode(searchParams);
+    return ref ? `/get-key?ref=${encodeURIComponent(ref)}` : '/get-key';
+  };
+
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
+    const next = buildNextPath();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/get-key` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
     });
     if (error) setAuthError(error.message);
     else setEmailSent(true);
@@ -198,8 +243,10 @@ function GetKeyPage() {
   };
 
   /** Build at click time only — `window` is undefined during SSR. */
-  const oauthRedirectTo = () =>
-    `${window.location.origin}/auth/callback?next=/get-key`;
+  const oauthRedirectTo = () => {
+    const next = buildNextPath();
+    return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  };
 
   const signInWithGitHub = async () => {
     setAuthError('');
@@ -254,10 +301,14 @@ function GetKeyPage() {
     // auto-numbers ("API Key 1", "API Key 2", …). Sending a literal fallback
     // like "API Key" would override the server's numbering logic.
     const trimmed = newKeyName.trim();
+    const referralCode = readPersistedReferralCode(searchParams);
+    const payload: Record<string, string> = {};
+    if (trimmed) payload.name = trimmed;
+    if (referralCode) payload.referral_code = referralCode;
     const res = await fetch('/api/agent-keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(trimmed ? { name: trimmed } : {}),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -265,6 +316,8 @@ function GetKeyPage() {
     } else {
       setRevealedKey({ plainKey: data.key.plainKey, name: data.key.name });
       setNewKeyName('');
+      /** Clear the stored ref so a second key issued in the same session isn't double-attributed. */
+      clearPersistedReferralCode();
       await fetchAccountData();
     }
     setGenerating(false);
@@ -348,6 +401,19 @@ function GetKeyPage() {
             <p className="text-zinc-400 mt-2 text-sm">
               Sign in with Google, GitHub, or email — no password needed.
             </p>
+            <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-950/40 px-3 py-2.5 text-left text-xs leading-relaxed text-emerald-100/90">
+              <strong className="text-emerald-200">AI agent trying the API first?</strong> You don&apos;t need this page for a one-off MAG7 answer.
+              Open{' '}
+              <a
+                href={`${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://riskmodels.app').replace(/\/$/, '')}/llms.txt`}
+                className="font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+                target="_blank"
+                rel="noreferrer"
+              >
+                llms.txt
+              </a>{' '}
+              for a copy-paste <code className="rounded bg-black/35 px-0.5">RISKMODELS_API_KEY</code> when enabled.
+            </div>
           </div>
 
           {emailSent ? (

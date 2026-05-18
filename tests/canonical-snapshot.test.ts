@@ -91,7 +91,6 @@ describe("buildCanonicalPortfolioSnapshot", () => {
       sector_etf: "XLK",
       subsector_etf: "SOXX",
       is_adr: false,
-      isin: null,
     };
     vi.mocked(resolveSymbolsByTickers).mockResolvedValue(
       new Map<string, SymbolRegistryRow>([["MSFT", msftRow]]),
@@ -127,6 +126,78 @@ describe("buildCanonicalPortfolioSnapshot", () => {
     expect(getRiskMetadata).toHaveBeenCalled();
   });
 
+  it("fills time_behavior when one of six holdings has no batch history (80% coverage tier)", async () => {
+    const tickers = ["TKA", "TKB", "TKC", "TKD", "TKE", "TKF"] as const;
+    const w = 1 / 6;
+    const tickerRow = (ticker: string, symbol: string) => ({
+      weight: w,
+      symbol,
+      teo: "2026-01-14",
+      l3_mkt_er: 0.6,
+      l3_sec_er: 0.15,
+      l3_sub_er: 0.1,
+      l3_res_er: 0.15,
+      l3_mkt_hr: 0.9,
+      l3_sec_hr: 0.1,
+      l3_sub_hr: 0.05,
+      vol_23d: 0.2,
+      price_close: 100,
+    });
+    vi.mocked(runPortfolioRiskComputation).mockResolvedValue({
+      ...mockCoreOk,
+      perTicker: Object.fromEntries(
+        tickers.map((t, i) => [
+          t,
+          tickerRow(t, `FSYM_${t}_${i}`),
+        ]),
+      ),
+      summary: { total_positions: 6, resolved: 6, errors: 0 },
+    });
+
+    vi.mocked(resolveSymbolsByTickers).mockResolvedValue(
+      new Map(
+        tickers.map((t, i) => [
+          t,
+          {
+            symbol: `FSYM_${t}_${i}`,
+            ticker: t,
+            name: t,
+            asset_type: "stock",
+            sector_etf: "XLK",
+            subsector_etf: "SOXX",
+            is_adr: false,
+          } satisfies SymbolRegistryRow,
+        ]),
+      ),
+    );
+
+    const teos = ["2026-01-10", "2026-01-11", "2026-01-12", "2026-01-13", "2026-01-14"];
+    const daily = teos.map(() => ({ g: 0.01, l1: 0.006, l2: 0.007, l3: 0.008, rr: 0.002, vol: 0.2 }));
+
+    /** No rows for `TKF` — strict aggregation would omit every calendar day (<100% strip coverage). */
+    const mergedHistory = tickers.slice(0, 5).flatMap((t, i) =>
+      historyRowsForOneTicker(`FSYM_${t}_${i}`, teos, daily),
+    );
+    vi.mocked(fetchBatchHistory).mockResolvedValue(mergedHistory);
+
+    const positions = tickers.map((t) => ({ ticker: t, weight: w }));
+    const r = await buildCanonicalPortfolioSnapshot({
+      positions,
+      lookbackDays: 5,
+      mode: "frozen",
+      benchmark: null,
+    });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    expect(r.body.time_behavior.teo.length).toBe(5);
+    expect(r.body.time_behavior.cumulative_return.length).toBe(5);
+    expect(r.body.attribution.gross.length).toBe(5);
+    expect(typeof r.body.risk_summary.time_series_caveat).toBe("string");
+    expect(r.body.risk_summary.time_series_caveat).toContain("80%");
+  });
+
   it("slices to lookback length", async () => {
     const teos = Array.from({ length: 20 }, (_, i) => `2026-01-${String(i + 1).padStart(2, "0")}`);
     const daily = teos.map(() => ({ g: 0, l1: 0, l2: 0, l3: 0, rr: 0, vol: 0.2 }));
@@ -143,5 +214,78 @@ describe("buildCanonicalPortfolioSnapshot", () => {
     if (!r.ok) return;
     expect(r.body.time_behavior.teo.length).toBe(3);
     expect(r.body.attribution.gross.length).toBe(3);
+  });
+
+  // L.8-v2 #2 — benchmark resolution via the catalog mirror.
+  describe("benchmark_context_id (L.8-v2 #2)", () => {
+    it("null benchmark → benchmark_context_id is null on snapshot + metadata", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: null,
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBeNull();
+      expect(r.body.snapshot.benchmark_context_id).toBeNull();
+      expect(r.body.metadata.benchmark).toBeNull();
+      expect(r.body.metadata.benchmark_context_id).toBeNull();
+    });
+
+    it("alias 'SPY' resolves to BW-BENCH-SPY; raw string still echoed", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "SPY",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("SPY");
+      expect(r.body.snapshot.benchmark_context_id).toBe("BW-BENCH-SPY");
+      expect(r.body.metadata.benchmark).toBe("SPY");
+      expect(r.body.metadata.benchmark_context_id).toBe("BW-BENCH-SPY");
+    });
+
+    it("alias '70/30' resolves to BW-BENCH-EQ70-30 (blend kind)", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "70/30",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("70/30");
+      expect(r.body.snapshot.benchmark_context_id).toBe("BW-BENCH-EQ70-30");
+    });
+
+    it("bw-bench id passthrough is uppercased + preserved as benchmark_context_id", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "BW-BENCH-EQ70-30",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("BW-BENCH-EQ70-30");
+      expect(r.body.snapshot.benchmark_context_id).toBe("BW-BENCH-EQ70-30");
+    });
+
+    it("unknown alias → benchmark_context_id null, raw string preserved (back-compat)", async () => {
+      const r = await buildCanonicalPortfolioSnapshot({
+        positions: [{ ticker: "MSFT", weight: 1 }],
+        lookbackDays: 5,
+        mode: "frozen",
+        benchmark: "totally-unknown",
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.body.snapshot.benchmark).toBe("totally-unknown");
+      expect(r.body.snapshot.benchmark_context_id).toBeNull();
+      expect(r.body.metadata.benchmark_context_id).toBeNull();
+    });
   });
 });

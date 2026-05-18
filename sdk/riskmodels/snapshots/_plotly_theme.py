@@ -325,3 +325,51 @@ def apply_theme() -> None:
     # Set default color sequences for px
     px.defaults.color_discrete_sequence = PRISM
     px.defaults.color_continuous_scale = G10
+
+
+# ── F1 / artifact primitives ────────────────────────────────────────────────
+#
+# The canonical decomposition palette used by the F1 fund tearsheet and by
+# every artifact module under ``bwmacro.snapshots.artifacts.*``. Hoisted from
+# the legacy `bwmacro.snapshots.funds.f1_tearsheet` so the artifact modules
+# don't need to import the full monolithic renderer just to reach the four
+# layer colors + the empty-panel helper.
+
+LAYER_COLORS: dict[str, str] = {
+    "market":    "#64748B",   # slate-500
+    "sector":    "#14B8A6",   # teal-500
+    "subsector": "#8B5CF6",   # violet-500
+    "residual":  "#4FA48A",   # desaturated emerald — calmer green, less dominant
+}
+"""F1 ontology layer palette (Market → Sector → Subsector → Residual)."""
+
+FUND_LINE_COLOR: str = "#4F46E5"   # indigo-600
+"""F1 fund / portfolio gross-return line color."""
+
+BENCH_LINE_COLOR: str = "#94A3B8"  # slate-400
+"""F1 benchmark line color."""
+
+
+def _empty_panel_placeholder(message: str) -> go.Figure:
+    """A blank Plotly figure with a single centered "data unavailable" line.
+
+    Used for any panel whose underlying real data isn't yet wired —
+    explicitly tells the viewer the field is empty rather than inventing
+    a synthetic shape. Fundamental rule: no mock data leaks into a
+    rendered F1 page or artifact.
+    """
+    fnt = PLOTLY_THEME.fonts
+    fig = go.Figure()
+    apply_theme()
+    PLOTLY_THEME.style(fig)
+    fig.add_annotation(
+        x=0.5, y=0.5, xref="paper", yref="paper",
+        text=message, showarrow=False,
+        font=dict(family=fnt.family, size=fnt.body + 2, color="#94a3b8"),
+    )
+    fig.update_layout(
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        margin=dict(t=10, b=10, l=10, r=10),
+    )
+    return fig

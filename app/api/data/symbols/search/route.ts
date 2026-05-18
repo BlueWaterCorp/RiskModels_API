@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("symbols")
     .select(
-      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, isin, metadata, latest_metrics, latest_vol, latest_teo",
+      "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata, latest_metrics, latest_vol, latest_teo",
     );
 
   if (q) {

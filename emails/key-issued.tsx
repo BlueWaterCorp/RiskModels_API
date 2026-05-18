@@ -28,6 +28,12 @@ export interface KeyIssuedEmailProps {
   createdDateFormatted: string;
   expiresAtFormatted: string;
   termsUrl: string;
+  /**
+   * Full secret from key creation — embedded into installer / MCP / Python / CLI snippets so the
+   * recipient can copy-paste without hunting for placeholders. Email is a credential channel; treat
+   * like a password (don't forward). Omitted in previews / fixtures → placeholder ellipses remain.
+   */
+  plaintextKey?: string;
 }
 
 const MCP_CURSOR_JSON = `{
@@ -46,11 +52,13 @@ const PATH_A_INSTALLER = `# Node.js LTS required (macOS/Homebrew: brew install n
 RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run   # optional: inspect plan
 RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install`;
 
-const CLAUDE_CODE_BASH = `claude mcp add riskmodels npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
+const CLAUDE_CODE_STDIO = `claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp`;
 
-const CLAUDE_CODE_EXPORT = `export AUTHORIZATION="Bearer rm_agent_live_..."`;
+const CLAUDE_CODE_REMOTE_JQ = `API=$(jq -r '.apiKey' ~/.config/riskmodels/config.json)
+claude mcp add --scope user --env "AUTHORIZATION=Bearer $API" riskmodels -- npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
 
-const PYTHON_PIP = `pip install "riskmodels-py[viz]"`;
+const PYTHON_PIP = `python3 -m pip install "riskmodels-py>=0.3.4"
+# Optional — notebooks / Kaleido PNG: python3 -m pip install "riskmodels-py[viz]"`;
 
 const PYTHON_SNIPPET = `from riskmodels import RiskModelsClient
 client = RiskModelsClient(api_key="rm_agent_live_...")   # or set RISKMODELS_API_KEY env var
@@ -69,7 +77,8 @@ const COLAB_SNIPPET = `from google.colab import userdata
 import os
 os.environ["RISKMODELS_API_KEY"] = userdata.get("RISKMODELS_API_KEY")
 
-!pip install -q "riskmodels-py[viz]"
+!pip install -q "riskmodels-py>=0.3.4"
+# For Kaleido static PNG helpers: !pip install -q "riskmodels-py[viz]"
 
 from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()     # reads RISKMODELS_API_KEY
@@ -82,7 +91,80 @@ client = RiskModelsClient.from_env()`;
 
 const CLI_SNIPPET = `npm install -g riskmodels@latest
 export RISKMODELS_API_KEY="rm_agent_live_..."
+riskmodels doctor
 riskmodels metrics NVDA`;
+
+/** Bash single-quoted literal (safe for API keys with special characters). */
+function shSingleQuoted(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildKeyIssuedSnippetStrings(plaintextKey?: string) {
+  if (!plaintextKey?.trim()) {
+    return {
+      pathAInstaller: PATH_A_INSTALLER,
+      mcpCursorJson: MCP_CURSOR_JSON,
+      claudeCodeStdio: CLAUDE_CODE_STDIO,
+      claudeCodeRemote: CLAUDE_CODE_REMOTE_JQ,
+      pythonSnippet: PYTHON_SNIPPET,
+      echoEnvForDotenv: `# Run once, in the project directory
+echo 'RISKMODELS_API_KEY=rm_agent_live_...' >> .env
+echo '.env' >> .gitignore         # never commit it`,
+      exportShellProfile: `export RISKMODELS_API_KEY="rm_agent_live_..."`,
+      cliSnippet: CLI_SNIPPET,
+    };
+  }
+
+  const k = plaintextKey.trim();
+  const riskmodelsEnvLine = `RISKMODELS_API_KEY=${k}`;
+  const pathAInstaller = `# Node.js LTS required (macOS/Homebrew: brew install node; otherwise https://nodejs.org)
+
+RISKMODELS_API_KEY=${shSingleQuoted(k)} npx -y riskmodels@latest install --dry-run   # optional: inspect plan
+RISKMODELS_API_KEY=${shSingleQuoted(k)} npx -y riskmodels@latest install`;
+
+  const mcpCursorJson = JSON.stringify(
+    {
+      mcpServers: {
+        riskmodels: {
+          command: "npx",
+          args: ["-y", "mcp-remote", "https://riskmodels.app/api/mcp/sse"],
+          env: { AUTHORIZATION: `Bearer ${k}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const claudeCodeRemote = `claude mcp add --scope user --env ${shSingleQuoted(`AUTHORIZATION=Bearer ${k}`)} riskmodels -- npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
+
+  const pyKey = JSON.stringify(k);
+  const pythonSnippet = `from riskmodels import RiskModelsClient
+client = RiskModelsClient(api_key=${pyKey})   # or set RISKMODELS_API_KEY env var
+client.get_metrics("NVDA")`;
+
+  const echoEnvForDotenv = `# Run once, in the project directory
+echo ${shSingleQuoted(riskmodelsEnvLine)} >> .env
+echo '.env' >> .gitignore         # never commit it`;
+
+  const exportShellProfile = `export RISKMODELS_API_KEY=${shSingleQuoted(k)}`;
+
+  const cliSnippet = `npm install -g riskmodels@latest
+export RISKMODELS_API_KEY=${shSingleQuoted(k)}
+riskmodels doctor
+riskmodels metrics NVDA`;
+
+  return {
+    pathAInstaller,
+    mcpCursorJson,
+    claudeCodeStdio: CLAUDE_CODE_STDIO,
+    claudeCodeRemote,
+    pythonSnippet,
+    echoEnvForDotenv,
+    exportShellProfile,
+    cliSnippet,
+  };
+}
 
 export const KeyIssuedEmail = ({
   firstName = "there",
@@ -91,7 +173,9 @@ export const KeyIssuedEmail = ({
   createdDateFormatted = "April 17, 2026",
   expiresAtFormatted = "April 17, 2027",
   termsUrl = API_TERMS_URL,
+  plaintextKey,
 }: KeyIssuedEmailProps) => {
+  const snippets = buildKeyIssuedSnippetStrings(plaintextKey);
   const getKeyUrl = `${BASE_URL}/get-key`;
   const usageUrl = `${BASE_URL}/account/usage`;
   const apiDocsUrl = `${BASE_URL}/api-docs`;
@@ -149,7 +233,7 @@ export const KeyIssuedEmail = ({
                   </td>
                   <td style={td}>
                     A <strong>Python library</strong>.{" "}
-                    <code style={inlineCode}>pip install riskmodels-py</code>, then{" "}
+                    <code style={inlineCode}>python3 -m pip install &quot;riskmodels-py&gt;=0.3.4&quot;</code>, then{" "}
                     <code style={inlineCode}>client.get_metrics(&quot;NVDA&quot;)</code> in a notebook.
                     Best for Jupyter, Colab, research scripts, anywhere you want a DataFrame back.
                   </td>
@@ -160,8 +244,10 @@ export const KeyIssuedEmail = ({
                   </td>
                   <td style={td}>
                     A <strong>terminal command</strong>.{" "}
-                    <code style={inlineCode}>riskmodels metrics NVDA</code> prints JSON. Nice for quick
-                    checks, shell scripts, and demos; not needed if you&apos;re happy in Python.
+                    <code style={inlineCode}>npm install -g riskmodels@latest</code>, then{" "}
+                    <code style={inlineCode}>riskmodels doctor</code> / <code style={inlineCode}>riskmodels metrics NVDA</code>
+                    {" "}
+                    prints JSON. Nice for quick checks, shell scripts, and demos; not needed if you&apos;re happy in Python.
                   </td>
                 </tr>
               </tbody>
@@ -187,7 +273,19 @@ export const KeyIssuedEmail = ({
             <Link href={getKeyUrl} style={link}>
               {getKeyUrl.replace(/^https?:\/\//, "")}
             </Link>
-            . The full key was shown <strong>once</strong> — copy it now if that screen is still open.
+            .{" "}
+            {plaintextKey?.trim() ? (
+              <>
+                Your full key is embedded in each copy-paste block below (Path A installer, Cursor JSON,
+                Claude env export, Python, <code style={inlineCode}>.env</code>, shell profile, and CLI). It was
+                also shown once on the confirmation screen. This email is a credential — don&apos;t forward it;
+                delete or archive after you store the key in a secret manager.
+              </>
+            ) : (
+              <>
+                The full key was shown <strong>once</strong> — copy it now if that screen is still open.
+              </>
+            )}{" "}
             You can rename keys later with the pencil icon on the key list.
           </Text>
           <Text style={paragraph}>
@@ -215,7 +313,7 @@ export const KeyIssuedEmail = ({
             </Link>
             ):
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={PATH_A_INSTALLER} />
+          <CodeBlock theme={dracula} language="bash" code={snippets.pathAInstaller} />
           <Text style={paragraph}>
             <strong>Manual / advanced:</strong> paste JSON for the hosted endpoint (below) or use{" "}
             <code style={inlineCode}>mcp-remote</code> if you prefer not to use the installer.
@@ -226,7 +324,7 @@ export const KeyIssuedEmail = ({
             Create or open <code style={inlineCode}>.cursor/mcp.json</code> in your project (or{" "}
             <code style={inlineCode}>~/.cursor/mcp.json</code> for a global install) and paste:
           </Text>
-          <CodeBlock theme={dracula} language="json" code={MCP_CURSOR_JSON} />
+          <CodeBlock theme={dracula} language="json" code={snippets.mcpCursorJson} />
           <Text style={paragraph}>
             Restart Cursor. Open a chat → the tools icon should list &quot;riskmodels&quot; with 6 tools.
             Test with: <em>What&apos;s NVDA&apos;s L3 subsector hedge ratio today?</em>
@@ -241,11 +339,19 @@ export const KeyIssuedEmail = ({
           </Text>
 
           <Text style={h3}>Claude Code (CLI)</Text>
-          <Text style={paragraph}>In the project you&apos;re working in, run:</Text>
-          <CodeBlock theme={dracula} language="bash" code={CLAUDE_CODE_BASH} />
-          <Text style={paragraph}>Then set the key:</Text>
-          <CodeBlock theme={dracula} language="bash" code={CLAUDE_CODE_EXPORT} />
-          <Text style={paragraph}>Next <code style={inlineCode}>claude</code> session can call the tools.</Text>
+          <Text style={paragraph}>
+            <code style={inlineCode}>riskmodels install</code> merges MCP into <strong>Claude Desktop</strong> and
+            Cursor — not into the <strong>Claude Code</strong> terminal app (<code style={inlineCode}>claude</code>
+            ). Register RiskModels for Claude Code separately (your key is already in{" "}
+            <code style={inlineCode}>~/.config/riskmodels/config.json</code> after install):
+          </Text>
+          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeStdio} />
+          <Text style={paragraph}>
+            Restart <code style={inlineCode}>claude</code>, then run <code style={inlineCode}>claude mcp list</code>{" "}
+            — <code style={inlineCode}>riskmodels</code> should show connected. If it shows failed, use the hosted
+            transport instead:
+          </Text>
+          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeRemote} />
 
           <Text style={h3}>Codex / Windsurf / Zed</Text>
           <Text style={paragraph}>
@@ -304,10 +410,11 @@ export const KeyIssuedEmail = ({
           <Text style={h3}>B1. Python — 3 lines in a notebook</Text>
           <CodeBlock theme={dracula} language="bash" code={PYTHON_PIP} />
           <Text style={paragraph}>
-            (<code style={inlineCode}>[viz]</code> pulls in Plotly / Matplotlib for built-in charts. Drop{" "}
-            <code style={inlineCode}>[viz]</code> if you just want the data.)
+            <code style={inlineCode}>riskmodels-py</code> 0.3.4+ bundles matplotlib and plotly, so a plain{" "}
+            <code style={inlineCode}>import riskmodels</code> works. Add <code style={inlineCode}>[viz]</code> for
+            Kaleido static PNG + Seaborn; <code style={inlineCode}>[xarray]</code> for dataset helpers.
           </Text>
-          <CodeBlock theme={dracula} language="python" code={PYTHON_SNIPPET} />
+          <CodeBlock theme={dracula} language="python" code={snippets.pythonSnippet} />
           <Text style={paragraph}>
             You should get back a dict with NVDA&apos;s latest <code style={inlineCode}>teo</code>, L3 hedge
             ratios (<code style={inlineCode}>l3_market_hr</code>, <code style={inlineCode}>l3_sector_hr</code>
@@ -331,26 +438,16 @@ export const KeyIssuedEmail = ({
           <Text style={paragraph}>
             Put the key in a local <code style={inlineCode}>.env</code> file and load it at runtime:
           </Text>
-          <CodeBlock
-            theme={dracula}
-            language="bash"
-            code={`# Run once, in the project directory
-echo 'RISKMODELS_API_KEY=rm_agent_live_...' >> .env
-echo '.env' >> .gitignore         # never commit it`}
-          />
+          <CodeBlock theme={dracula} language="bash" code={snippets.echoEnvForDotenv} />
           <CodeBlock theme={dracula} language="python" code={DOTENV_SNIPPET} />
           <Text style={paragraph}>
             Or set it once in your shell profile (<code style={inlineCode}>~/.zshrc</code>,{" "}
             <code style={inlineCode}>~/.bashrc</code>):
           </Text>
-          <CodeBlock
-            theme={dracula}
-            language="bash"
-            code={`export RISKMODELS_API_KEY="rm_agent_live_..."`}
-          />
+          <CodeBlock theme={dracula} language="bash" code={snippets.exportShellProfile} />
 
           <Text style={h3}>B4. Terminal-only (CLI) — optional</Text>
-          <CodeBlock theme={dracula} language="bash" code={CLI_SNIPPET} />
+          <CodeBlock theme={dracula} language="bash" code={snippets.cliSnippet} />
           <Text style={paragraph}>
             Other commands: <code style={inlineCode}>riskmodels l3 NVDA</code>,{" "}
             <code style={inlineCode}>riskmodels returns ticker NVDA</code>,{" "}

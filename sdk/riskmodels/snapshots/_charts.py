@@ -650,7 +650,7 @@ def chart_histogram(
 
     ax.hist(
         values, bins=bins,
-        color=pal.slate,
+        color=pal.subsector,
         alpha=0.7,
         edgecolor=pal.panel_bg,
         linewidth=strk.bar_edge_lw,
