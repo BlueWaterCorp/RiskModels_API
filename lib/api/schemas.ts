@@ -55,6 +55,24 @@ export const L3DecompositionRequestSchema = z.object({
 });
 
 /**
+ * Schema for GET /api/lstar — per-(ticker, date) recommended hedge level.
+ * `threshold` is accepted for SDK callers; chat / agentic surfaces should
+ * leave it at the 1% default and treat the response as server-authoritative.
+ */
+export const LstarRequestSchema = z.object({
+  ticker: TickerSchema,
+  market_factor_etf: z.string().default("SPY"),
+  years: YearsSchema,
+  threshold: z.coerce
+    .number()
+    .min(0, "threshold must be >= 0")
+    .max(0.5, "threshold must be <= 0.5 (50%)")
+    .default(0.01),
+});
+
+export type LstarRequest = z.infer<typeof LstarRequestSchema>;
+
+/**
  * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
  * Returns market / sector / subsector / residual with each tradable layer's
  * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).

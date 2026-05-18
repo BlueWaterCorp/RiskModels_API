@@ -46,6 +46,7 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "metrics": "metrics-snapshot",
   "metrics-snapshot": "metrics-snapshot",
   "l3-decomposition": "l3-decomposition",
+  lstar: "lstar",
   "portfolio-returns": "portfolio-returns",
   "portfolio-risk-index": "portfolio-risk-index",
   "macro-factors": "macro-factor-series",
