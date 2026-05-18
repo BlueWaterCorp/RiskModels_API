@@ -684,6 +684,59 @@ export const CAPABILITIES: Capability[] = [
     tags: ["risk", "decomposition", "l3"],
   },
   {
+    id: "lstar",
+    name: "Lstar Recommended Hedge Level",
+    description:
+      "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios. Selection rule picks the simplest level whose marginal explained-return clears the threshold (default 1%); routes mega-caps with noisy subsector hedges down to L2.",
+    endpoint: "/api/lstar",
+    method: "GET",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: true,
+        description: "Stock ticker symbol",
+      },
+      market_factor_etf: {
+        type: "string",
+        required: false,
+        description: "Market factor ETF",
+        default: "SPY",
+      },
+      years: {
+        type: "integer",
+        required: false,
+        description: "Calendar years of daily history",
+        default: 1,
+      },
+      threshold: {
+        type: "number",
+        required: false,
+        description:
+          "Marginal-ER threshold for level selection. Chat / agentic surfaces should leave at the 1% default; SDK callers may override.",
+        default: 0.01,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "lstar_v1",
+    },
+    performance: {
+      avg_latency_ms: 130,
+      p95_latency_ms: 220,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["erm3_models", "security_history"],
+    },
+    tags: ["risk", "decomposition", "lstar", "hedge"],
+  },
+  {
     id: "portfolio-returns",
     name: "Portfolio Returns",
     description: "Batch fetch returns for multiple tickers (portfolio analytics)",

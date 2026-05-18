@@ -1368,6 +1368,119 @@
           }
         }
       },
+      "LstarResponse": {
+        "type": "object",
+        "description": "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios and total explained-return. Arrays are parallel by date index. Each L\\* is a standalone hedge solution (not stacked layers) — `market_hr`/`sector_hr`/`subsector_hr` come from the chosen level's solver and are `null` where the chosen level doesn't use that ETF (sector_hr is null when L\\*=L1; subsector_hr is null when L\\*∈{L1,L2}).\n",
+        "required": [
+          "ticker",
+          "dates",
+          "lstar",
+          "market_hr",
+          "sector_hr",
+          "subsector_hr",
+          "total_er",
+          "l2_sector_er",
+          "l3_subsector_er",
+          "threshold_used",
+          "market_factor_etf",
+          "universe",
+          "data_source"
+        ],
+        "properties": {
+          "ticker": {
+            "type": "string"
+          },
+          "dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "lstar": {
+            "type": "array",
+            "description": "Recommended level per date. `null` where source ERs are unavailable.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "L1",
+                "L2",
+                "L3"
+              ],
+              "nullable": true
+            }
+          },
+          "market_hr": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "sector_hr": {
+            "type": "array",
+            "description": "Hedge ratio for the sector ETF. `null` when `lstar` = `L1`.",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "subsector_hr": {
+            "type": "array",
+            "description": "Hedge ratio for the subsector ETF. `null` when `lstar` ∈ {`L1`, `L2`}.",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "total_er": {
+            "type": "array",
+            "description": "Sum of explained-return components at the chosen level (market + sector + subsector, omitting residual).\n",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "l2_sector_er": {
+            "type": "array",
+            "description": "Marginal sector ER at level L2 (input to the selection rule, exposed for audit).",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "l3_subsector_er": {
+            "type": "array",
+            "description": "Marginal subsector ER at level L3 (input to the selection rule, exposed for audit).",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "threshold_used": {
+            "type": "number",
+            "format": "float",
+            "example": 0.01,
+            "description": "The marginal-ER threshold used to assign each date's level."
+          },
+          "market_factor_etf": {
+            "type": "string"
+          },
+          "universe": {
+            "type": "string"
+          },
+          "data_source": {
+            "type": "string",
+            "example": "zarr"
+          }
+        }
+      },
       "FactorCorrelationRequest": {
         "type": "object",
         "required": [
@@ -5055,6 +5168,138 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/L3DecompositionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ticker not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lstar": {
+      "get": {
+        "summary": "Recommended hedge level (L*) per date with dispatched HRs",
+        "description": "Per-(ticker, date) recommended hedge level — the simplest level whose marginal explained-return clears the threshold:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nDefault `θ = 0.01` (1%). The chat-facing default is server-authoritative; SDK callers can override via `?threshold=`. Response carries the chosen level's market / sector / subsector hedge ratios (nulls below the chosen level), the chosen level's total ER, and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.\n**Billing:** $0.02 per request.\n",
+        "operationId": "getLstar",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "lstar",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.02,
+          "currency": "USD",
+          "billing_code": "lstar_v1"
+        },
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AAPL"
+          },
+          {
+            "name": "market_factor_etf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "SPY"
+            },
+            "description": "Market factor ETF passed through to the underlying L1/L2/L3 fields."
+          },
+          {
+            "name": "years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 15,
+              "default": 1
+            },
+            "description": "Calendar years of daily history."
+          },
+          {
+            "name": "threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "default": 0.01
+            },
+            "description": "Marginal-ER threshold for the L*/L1/L2/L3 selection rule. Default 0.01 (1%). Chat / agentic surfaces should leave at the default; SDK callers may tune. Backtests across 275 tickers × 11 sectors found no compelling reason for per-sector thresholds.\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-date recommended level + dispatched hedge ratios.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LstarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

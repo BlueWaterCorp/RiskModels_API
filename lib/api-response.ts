@@ -112,6 +112,7 @@ export const PRICING = {
   RETURNS: 0.005,
   ETF_RETURNS: 0.005,
   L3_DECOMPOSITION: 0.02,
+  LSTAR: 0.02,
   BATCH_ANALYZE_PER_POSITION: 0.005,
   BATCH_ANALYZE_MIN: 0.01,
   TICKERS: 0.001,
@@ -138,6 +139,8 @@ export function estimateCost(
       return PRICING.ETF_RETURNS;
     case "l3-decomposition":
       return PRICING.L3_DECOMPOSITION;
+    case "lstar":
+      return PRICING.LSTAR;
     case "batch-analyze":
       return Math.max(
         PRICING.BATCH_ANALYZE_MIN,

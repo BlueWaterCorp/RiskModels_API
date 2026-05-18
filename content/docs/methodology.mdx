@@ -380,6 +380,51 @@ This +0.408% is pure stock-specific return — idiosyncratic alpha after neutral
 
 ---
 
+## Choosing a Level: The L\* Rule
+
+### The Problem
+
+L1, L2, and L3 are not stacked layers — each is a **standalone hedge solution** with its own market/sector/subsector ratios. By construction, total explained risk is monotonic in level: $ER^{L3} \geq ER^{L2} \geq ER^{L1}$. So "always pick L3" looks optimal.
+
+In practice it isn't. For mega-cap names where the subsector ETF effectively *is* the stock (AAPL ≈ XLK ≈ semiconductors), the L3 subsector hedge ratio gets unstable. The orthogonalization machinery does its job correctly, but the marginal explained-return from the third ETF can be under 1% — and the L3 hedge ratios that absorb a near-zero variance contribution flicker noisily month to month.
+
+### The Rule
+
+**L\* (L-star)** picks the simplest level whose marginal explained-return clears a threshold $\theta$:
+
+$$
+L^{*} =
+\begin{cases}
+L_3 & \text{if } ER^{L3}_{\text{subsector}} \geq \theta \\
+L_2 & \text{else if } ER^{L2}_{\text{sector}} \geq \theta \\
+L_1 & \text{otherwise}
+\end{cases}
+$$
+
+The decision is made per (ticker, month). $ER^{L2}_{\text{sector}}$ and $ER^{L3}_{\text{subsector}}$ are the orthogonalized incremental contributions at each level (defined in the variance decomposition above), so the rule is checking whether the next ETF earns its keep.
+
+### The Default: 1%
+
+The chat-facing default is $\theta = 0.01$ (1%). SDK callers can override.
+
+We chose 1% via a side study across 275 tickers (top 25 by market cap in each of 11 GICS sectors) over a 60-month window. Three variants were compared: $\theta = 1\%$ with monthly point-read inputs vs 3-month vs 12-month trailing-mean inputs. The monthly point-read won or tied in 10 of 11 sectors on forward 12-month realized explained-return, and the 12-month smoothing degraded results by up to 176 bps in Energy and Financials (where regime changes punish lagged decisions). Per-sector thresholds offered ≤ 25 bps of improvement in four sectors — not enough to trade away operational simplicity.
+
+The full study is at [`RM_ORG/content/Medium/series/drafts/lstar_selection/`](https://github.com/) (raw CSV, reproducible script, write-up).
+
+### Implications for the Hedge
+
+When L\* picks a lower level, the hedge is **smaller and simpler**, not a subset of the L3 hedge. The L\*=L2 instruction is "trade SPY + your sector ETF, in the ratios L2's solver emitted." It is not "use L3's ratios and zero out subsector." Each L\*'s ratios are internally consistent within that level's regression.
+
+When L\*=L1 — usually idiosyncratic-heavy names like Tesla or Netflix — neither the sector ETF nor the subsector ETF clears the bar. The model is telling you the residual is most of the story; sector hedging would just trade noise.
+
+### When Lower Levels Win
+
+A useful diagnostic: if a name spends most of its history at L1, the stock's risk decomposition is dominated by idiosyncrasy. Sector and subsector ETFs aren't useful tools for it. If a name oscillates between L2 and L3, the subsector ETF is borderline-useful — a quant PM might prefer L3 for completeness, but the chat-facing recommendation will alternate as the marginal explained-return crosses the 1% line.
+
+If a name parks at L3 indefinitely (typical for liquid mid-caps in well-defined subsectors — AMD in semis, MAR in hotels), the full three-ETF hedge is doing real work and the recommendation stays there.
+
+---
+
 ## Why This Matters for Trading
 
 ### Direct Hedging
