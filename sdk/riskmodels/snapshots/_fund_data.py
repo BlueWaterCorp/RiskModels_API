@@ -207,11 +207,13 @@ class FundData:
     # Hedge ratios (position-weighted β; not tradeable notional)
     hedge_ratios: dict[str, float] = field(default_factory=dict)
 
-    # Cumulative layer attribution shares (mkt / sec / sub / res), summing
-    # to 1.0 — derived from the available periods in ds_portfolio.zarr.
-    # Used by the Section I waterfall to bridge the NAV chart's gross
-    # endpoint back to a layer decomposition. Empty when ds_portfolio.zarr
-    # has no populated periods.
+    # Cascade-telescoping layer attribution shares (mkt / sec / sub / res),
+    # summing to 1.0 — derived from prod(1+cumulative_layer_sum) over
+    # the available periods. Each share is `(P_layer − P_prev) / PG`
+    # where P_n are the cascade compound levels. Used by the Section I
+    # waterfall: `share × gross_pct` gives the absolute pp contribution
+    # that telescopes exactly to the line chart's cascade levels.
+    # Empty when the underlying returns store has no populated periods.
     layer_attribution: dict[str, float] = field(default_factory=dict)
 
     # Per-period layer returns from ds_portfolio.zarr — the dense input to
@@ -1020,13 +1022,25 @@ def get_data_for_f1(
     except FileNotFoundError:
         pass
 
-    # ── Layer attribution from ds_portfolio.zarr — sum of monthly returns
-    # over the populated periods, expressed as fractions of gross. The
-    # zarr is sparse (filings land at quarter-end, ~24 of 85 months
-    # populated for AGTHX) so we treat the available months as
-    # representative samples: each layer's contribution share = sum(layer)
-    # / sum(gross). The Section I waterfall multiplies these fractions by
-    # the NAV chart's gross endpoint, so bars and line agree visually.
+    # ── Layer attribution from ds_portfolio.zarr — cascade-telescoping
+    # cumulative contributions over the populated periods, expressed as
+    # fractions of compound gross summing to 1.0. Consumers multiply by
+    # the NAV-chart's compound gross endpoint to recover absolute pp
+    # values that telescope exactly to gross:
+    #   share[layer] * gross_pct == cascade pp contribution.
+    #
+    # Cascade math (over the populated months, sparse-month-safe):
+    #   P1 = prod(1+mkt) - 1                         (market alone)
+    #   P2 = prod(1+mkt+sec) - 1                     (+ sector)
+    #   P3 = prod(1+mkt+sec+sub) - 1                 (+ subsector)
+    #   PG = prod(1+mkt+sec+sub+res) - 1             (full gross)
+    #   share = (P1, P2-P1, P3-P2, PG-P3) / PG
+    #
+    # Note: signs are preserved. For benchmark-aware large-cap funds
+    # the L1 cascade can exceed gross while L2/L3 contributions are
+    # negative — the share dict reflects this honestly (market > 1.0,
+    # sector/subsector < 0) so the rendered bars float above and below
+    # the gross line as expected.
     layer_attr: dict[str, float] = {}
     layer_series: list[tuple[str, float, float, float, float]] = []
     adj_variance_shares: dict[str, float] = {}
@@ -1050,17 +1064,20 @@ def get_data_for_f1(
                     float(sub_arr[i]),
                     float(res_arr[i]),
                 ))
-            mkt_s = float(mkt_arr[nz].sum())
-            sec_s = float(sec_arr[nz].sum())
-            sub_s = float(sub_arr[nz].sum())
-            res_s = float(res_arr[nz].sum())
-            tot = mkt_s + sec_s + sub_s + res_s
-            if tot != 0:
+            mkt_nz = mkt_arr[nz]
+            sec_nz = sec_arr[nz]
+            sub_nz = sub_arr[nz]
+            res_nz = res_arr[nz]
+            P1 = float(np.prod(1.0 + mkt_nz) - 1.0)
+            P2 = float(np.prod(1.0 + mkt_nz + sec_nz) - 1.0)
+            P3 = float(np.prod(1.0 + mkt_nz + sec_nz + sub_nz) - 1.0)
+            PG = float(np.prod(1.0 + mkt_nz + sec_nz + sub_nz + res_nz) - 1.0)
+            if abs(PG) > 1e-12:
                 layer_attr = {
-                    "market":    mkt_s / tot,
-                    "sector":    sec_s / tot,
-                    "subsector": sub_s / tot,
-                    "residual":  res_s / tot,
+                    "market":    P1            / PG,
+                    "sector":    (P2 - P1)     / PG,
+                    "subsector": (P3 - P2)     / PG,
+                    "residual":  (PG - P3)     / PG,
                 }
         # Strict CFR-ortho variance shares written by Funds_DAG
         # `aggregate_fund_portfolio` as zarr attrs. Two windows: the
@@ -1268,6 +1285,24 @@ def get_data_for_f1(
             cum_l2  = cum_l2_new
             cum_l3  = cum_l3_new
             cum_res = cum_res_new
+
+            # When the daily-returns cube is present, recompute
+            # layer_attribution from the SAME cascade endpoints that
+            # drive the line chart so the Section I waterfall's bars
+            # exactly match the line-chart cascade levels by
+            # construction. Fractions are `(P_layer − P_prev) / PG`
+            # per the cascade-telescoping identity; consumers multiply
+            # by gross_pct to recover pp. Falls back to the
+            # monthly-derived layer_attribution above only when the
+            # daily block hasn't run (no ds_fund_returns_daily).
+            PG_d = prod_g - 1.0
+            if abs(PG_d) > 1e-12:
+                layer_attr = {
+                    "market":    (prod_l1 - 1.0)        / PG_d,
+                    "sector":    (prod_l2 - prod_l1)    / PG_d,
+                    "subsector": (prod_l3 - prod_l2)    / PG_d,
+                    "residual":  (prod_g  - prod_l3)    / PG_d,
+                }
 
             # Refresh tr_fund["1y"] from the daily series (last 252 days
             # compounded). Replaces the monthly-NAV-based calculation.
