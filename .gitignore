@@ -77,8 +77,13 @@ screenshots/
 # Archived runbooks and drafts — low secret risk; optional noise for a public clone.
 archive/
 
-# Documentation build output
-docs/
+# Documentation build output — narrowed from a blanket docs/ ignore so
+# source markdown under docs/ still ships. If new doc tooling lands and
+# emits to a different path, add it here.
+docs/_build/
+docs/site/
+docs/.cache/
+
 # Whitelist: portal doc assets served under /docs/readme/ are public
 # screenshots produced by scripts/generate_readme_assets.py and must ship
 # in the Next.js build.
@@ -92,7 +97,6 @@ repomix*
 
 # Generated files
 public/openapi.json
-
 .vercel
 .env*.local
 
