@@ -96,6 +96,22 @@ This ensures each $\beta$ captures **only the incremental effect** of its own le
 
 Because factors are orthogonalized against one another, **published L3 component hedge ratios** (`l3_sector_hr`, `l3_subsector_hr` in SDK naming; `l3_sec_hr`, `l3_sub_hr` on the wire) **can occasionally be negative** even when the economic story is long the stock. That outcome is a **mathematically valid** feature of the neutralization construction, not a data bug — and it is why the Python SDK may emit `validate="warn"` on names like TSLA when sign checks are enabled.
 
+### Beta Estimation: Huber + Vasicek Peer Adjustment
+
+Each level's $\beta$ is fit by a **252-day rolling Huber-M regression** on the orthogonalized factor — robust to fat tails (binary events, earnings gaps, single-day reclassifications) without sacrificing efficiency on the bulk of normal trading days.
+
+For L2 (sector) and L3 (subsector) only, the Huber estimate is then **Vasicek-shrunk** toward a log-mcap-weighted peer mean within the stock's EODHD-derived 4-digit industry cohort:
+
+$$
+\beta_\text{published} = (1 - \alpha) \cdot \beta_\text{Huber} + \alpha \cdot \beta_\text{peer}
+$$
+
+with $\alpha = \sigma^2_i / (\sigma^2_i + \tau^2)$, where $\sigma^2_i$ is the per-stock $\beta$-noise variance and $\tau^2$ is the cross-sectional weighted variance across peers. Short-history and small-cap names are pulled more strongly toward the cohort mean (large $\alpha$); mega-caps with long stable estimates barely move ($\alpha \approx 0$).
+
+**L1 (market $\beta_m$) is NOT shrunk** — out-of-sample validation against 5,910 stocks × 19 years shows market $\beta$ shrinkage actively *hurts* residual variance for most stocks (41% win rate, well below coin-flip). Market $\beta$ is the most over-determined coefficient in the cascade; pulling it toward peers introduces bias without reducing variance.
+
+Per-cell shrinkage intensity is stored alongside the adjusted $\beta$ in `ds_erm3_betas_adjusted_*.zarr` and is exposed as `shrinkage_alpha` for transparency. The unshrunk Huber estimate is preserved as `factor_beta_raw` for audit / reversibility. Methodology research and OOS evidence: see [ERM3/docs/research/](https://github.com/BlueWaterCorp/ERM3/tree/main/docs/research).
+
 ---
 
 ## Hedge Ratios: Making It Tradeable
