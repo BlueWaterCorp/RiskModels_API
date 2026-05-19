@@ -37,6 +37,21 @@ export const MetricsRequestSchema = z.object({
 });
 
 /**
+ * Schema for GET /api/hedge-basket/[ticker]
+ *
+ * user_segment drives the leverage cap applied to the recommendation. The four
+ * accepted values mirror SEGMENT_LEVERAGE_CAPS in lib/dal/hedge-recommendation:
+ *   retail (1.5×) | family_office (2.0× default) | ls_equity (3.0×) | stat_arb (5.0×)
+ */
+export const HedgeBasketRequestSchema = z.object({
+  ticker: TickerSchema,
+  user_segment: z
+    .enum(["retail", "family_office", "ls_equity", "stat_arb"])
+    .default("family_office"),
+  market_factor_etf: z.string().default("SPY"),
+});
+
+/**
  * Schema for GET /api/ticker-returns
  */
 export const TickerReturnsRequestSchema = z.object({
