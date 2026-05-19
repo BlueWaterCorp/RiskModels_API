@@ -645,6 +645,44 @@ export const CAPABILITIES: Capability[] = [
     tags: ["metrics", "snapshot", "risk"],
   },
   {
+    id: "hedge-basket",
+    name: "Hedge Basket",
+    description: "Structured 4-leg hedge basket (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution, net market β subtotal, marginal ERs, recommended_hedge_level, and a human-readable decision_trace narration. Replaces the easy-to-misread single 'Market HR (L3)' row in chat/SDK surfaces.",
+    endpoint: "/api/hedge-basket",
+    method: "GET",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: true,
+        description: "Stock ticker symbol",
+      },
+      user_segment: {
+        type: "string",
+        required: false,
+        description: "Drives leverage cap: retail (1.5×) | family_office (2.0× default) | ls_equity (3.0×) | stat_arb (5.0×)",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.001,
+      currency: "USD",
+      billing_code: "hedge_basket_v1",
+    },
+    performance: {
+      avg_latency_ms: 110,
+      p95_latency_ms: 220,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["security_history", "symbols", "ds_erm3_link_betas"],
+    },
+    tags: ["hedge", "basket", "recommendation", "decompose"],
+  },
+  {
     id: "l3-decomposition",
     name: "L3 Decomposition",
     description: "Decompose stock risk into market, sector, and idiosyncratic components",
