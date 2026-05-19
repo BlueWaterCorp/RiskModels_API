@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { SEGMENT_LEVERAGE_CAPS } from "@/lib/dal/hedge-recommendation";
 import {
+  buildHedgeBasket,
   computeHedgeRecommendationSnapshot,
   isValidUserSegment,
   VALID_USER_SEGMENTS,
@@ -128,6 +129,86 @@ describe("computeHedgeRecommendationSnapshot — edge cases", () => {
     expect(snap.l1_hedge_gross).toBeCloseTo(0.5, 6);
     expect(snap.l2_hedge_gross).toBe(0);
     expect(snap.l3_hedge_gross).toBeCloseTo(0.8, 6);
+  });
+
+  it("buildHedgeBasket for AAPL (live numbers, family_office) — 4 legs, L3→L1 downgrade trace", () => {
+    const basket = buildHedgeBasket({
+      ticker: "AAPL",
+      as_of: "2026-05-18",
+      l1_mkt_hr: -0.862,
+      l2_mkt_hr: -1.396,
+      l2_sec_hr:  0.357,
+      l3_mkt_hr: -2.002,
+      l3_sec_hr: -0.026,
+      l3_sub_hr:  0.410,
+      l2_sec_er:  0.007,
+      l3_sub_er:  0.020,
+      beta_m_aapl: 0.862,
+      sector_etf_ticker: "XLK",
+      subsector_etf_ticker: "SOXX",
+      lambda_s_to_m: 1.497,
+      lambda_u_to_m: 1.478,
+      user_segment: "family_office",
+    });
+
+    expect(basket.ticker).toBe("AAPL");
+    expect(basket.lstar).toBe("L3");
+    expect(basket.recommended_hedge_level).toBe("L1");      // downgraded
+    expect(basket.user_segment_applied).toBe("family_office");
+    expect(basket.leverage_cap_applied).toBe(2.0);
+    expect(basket.haircut_applied).toBe(0.7);
+
+    // Four legs: AAPL + SPY + XLK + SOXX
+    expect(basket.legs).toHaveLength(4);
+    expect(basket.legs[0]!.leg).toBe("AAPL");
+    expect(basket.legs[0]!.side).toBe("long");
+    expect(basket.legs[0]!.market_beta_contribution).toBeCloseTo(0.862, 3);
+    expect(basket.legs[1]!.leg).toBe("SPY");
+    expect(basket.legs[1]!.side).toBe("short");
+    expect(basket.legs[1]!.market_beta_contribution).toBeCloseTo(-2.002, 3);
+    expect(basket.legs[2]!.leg).toBe("XLK");
+    expect(basket.legs[2]!.market_beta_contribution).toBeCloseTo(-0.026 * 1.497, 3);
+    expect(basket.legs[3]!.leg).toBe("SOXX");
+    expect(basket.legs[3]!.side).toBe("long");
+    expect(basket.legs[3]!.market_beta_contribution).toBeCloseTo(0.410 * 1.478, 3);
+
+    // Net market β (the residual the methodology task #22 is investigating)
+    const expectedNet =
+      0.862 + (-2.002) * 1.0 + (-0.026) * 1.497 + 0.410 * 1.478;
+    expect(basket.net_market_beta_after_hedge).toBeCloseTo(expectedNet, 3);
+
+    // Decision trace narrates the two downgrades + final.
+    expect(basket.decision_trace.length).toBeGreaterThanOrEqual(3);
+    expect(basket.decision_trace[0]).toMatch(/Lstar=L3/);
+    expect(basket.decision_trace.some((s) => /L3 hedge gross/.test(s))).toBe(true);
+    expect(basket.decision_trace.some((s) => /L2 sector haircut/.test(s))).toBe(true);
+    expect(basket.decision_trace[basket.decision_trace.length - 1]).toBe("Final: L1");
+  });
+
+  it("buildHedgeBasket — SPY-as-sector convention (λ=1.0, no XLK leg)", () => {
+    const basket = buildHedgeBasket({
+      ticker: "SPY",
+      as_of: "2026-05-18",
+      l1_mkt_hr: -1.0,
+      l2_mkt_hr: -1.0,
+      l2_sec_hr: 0.0,
+      l3_mkt_hr: -1.0,
+      l3_sec_hr: 0.0,
+      l3_sub_hr: 0.0,
+      l2_sec_er: 0.0,
+      l3_sub_er: 0.0,
+      beta_m_aapl: 1.0,
+      sector_etf_ticker: "SPY",
+      subsector_etf_ticker: "SPY",
+      lambda_s_to_m: null,
+      lambda_u_to_m: null,
+      user_segment: "retail",
+    });
+    // Only one hedge leg (the SPY hedge); SPY sector/subsector are deduped.
+    expect(basket.legs.map((l) => l.leg)).toEqual(["SPY", "SPY"]);
+    expect(basket.legs[0]!.side).toBe("long");
+    expect(basket.legs[1]!.side).toBe("short");
+    expect(basket.net_market_beta_after_hedge).toBeCloseTo(0, 6);
   });
 
   it("custom threshold flips lstar without affecting hedge gross", () => {

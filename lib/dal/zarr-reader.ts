@@ -26,6 +26,7 @@ import {
   zarrDailyBasename,
   zarrEtfBasename,
   zarrHedgeBasename,
+  zarrLinkBetasBasename,
   zarrRankingsBasename,
   zarrReturnsBasename,
 } from "@/lib/zarr-config";
@@ -787,6 +788,128 @@ export async function readLatestRankSnapshot(
   });
 
   return { teo: teoStr, rows };
+}
+
+// =====================================================================
+// Link-betas: latest-teo lookup for the cascade hedge basket
+// =====================================================================
+//
+// `ds_erm3_link_betas_{marketFactorEtf}.zarr` carries ETF-to-ETF betas:
+//   L2_link_sec_mkt_BF  — sector ETF's slope on SPY (λ_s→m)
+//   L3_link_sub_mkt_BF  — subsector ETF's slope on SPY (λ_u→m)
+//   L3_link_sub_sec_BF  — subsector ETF's slope on the sector ETF (λ_u→s)
+// Indexed (teo, symbol) over ~51 ETFs with `ticker` as an extra string coord.
+// The hedge-basket endpoint reads three cells per call: λ_s→m at the sector
+// ETF's index, λ_u→m + λ_u→s at the subsector ETF's index. SPY itself is the
+// market root by convention, so λ_*→SPY = 1.0 and never reads from this store.
+
+async function readTickerIndexMap(grp: Group<Readable>): Promise<Map<string, number> | null> {
+  try {
+    const loc = grp.resolve("ticker");
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    const m = new Map<string, number>();
+    if (d instanceof UnicodeStringArray) {
+      for (let i = 0; i < d.length; i++) {
+        m.set(String(d.get(i)).trim().toUpperCase(), i);
+      }
+      return m;
+    }
+    if (Array.isArray(d)) {
+      for (let i = 0; i < d.length; i++) {
+        m.set(String(d[i]).trim().toUpperCase(), i);
+      }
+      return m;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function readFloatScalarTeoSymbol(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  symIdx: number,
+): Promise<number | null> {
+  // Slice with a 1-element teo range to get a typed-array result (zarrita's
+  // scalar-indexed get returns a 0-d type that TS doesn't surface `.data` for).
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(teoIdx, teoIdx + 1), symIdx]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      const v = d[0];
+      return v != null && Number.isFinite(v) ? v : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface LatestLinkBetas {
+  teo: string;
+  /** Sector ETF's slope on SPY. Null if the sector ETF isn't in the store. */
+  lambda_s_to_m: number | null;
+  /** Subsector ETF's slope on SPY. Null if absent. */
+  lambda_u_to_m: number | null;
+  /** Subsector ETF's slope on the sector ETF. Null if absent. */
+  lambda_u_to_s: number | null;
+}
+
+/**
+ * Read the latest-teo link-betas for a given (sector_etf, subsector_etf) pair.
+ *
+ * - Ticker matching is case-insensitive against the ETF roster in the link-betas
+ *   zarr (~51 ETFs).
+ * - If either ticker resolves to "SPY", the corresponding lambda is implicitly
+ *   1.0 (sector_etf=SPY) or 0.0 (subsector→sector when subsector_etf=SPY), and
+ *   no zarr read is needed for that leg. The caller can apply that convention
+ *   without checking — this function only returns store-derived values.
+ * - Returns null if the store can't be opened or the latest teo is empty.
+ */
+export async function readLatestLinkBetas(
+  sectorEtfTicker: string | null,
+  subsectorEtfTicker: string | null,
+  marketFactorEtf = "SPY",
+): Promise<LatestLinkBetas | null> {
+  const grp = await openZarrGroup(zarrLinkBetasBasename(marketFactorEtf));
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return null;
+  const teoIdx = teos.length - 1;
+  const teoStr = teos[teoIdx]!;
+
+  const tickerMap = await readTickerIndexMap(grp);
+  if (!tickerMap?.size) return null;
+
+  const secIdx = sectorEtfTicker ? tickerMap.get(sectorEtfTicker.toUpperCase()) : undefined;
+  const subIdx = subsectorEtfTicker ? tickerMap.get(subsectorEtfTicker.toUpperCase()) : undefined;
+
+  // Parallelize the three single-cell reads. NaN-safe via Float32Array unpacking.
+  const [lam_s_m, lam_u_m, lam_u_s] = await Promise.all([
+    secIdx !== undefined
+      ? readFloatScalarTeoSymbol(grp, "L2_link_sec_mkt_BF", teoIdx, secIdx)
+      : Promise.resolve(null),
+    subIdx !== undefined
+      ? readFloatScalarTeoSymbol(grp, "L3_link_sub_mkt_BF", teoIdx, subIdx)
+      : Promise.resolve(null),
+    subIdx !== undefined
+      ? readFloatScalarTeoSymbol(grp, "L3_link_sub_sec_BF", teoIdx, subIdx)
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    teo: teoStr,
+    lambda_s_to_m: lam_s_m,
+    lambda_u_to_m: lam_u_m,
+    lambda_u_to_s: lam_u_s,
+  };
 }
 
 export interface SymbolRankResult {

@@ -51,3 +51,15 @@ export function zarrHedgeBasename(factorSetId = getZarrFactorSetId()): string {
 export function zarrRankingsBasename(factorSetId = getZarrFactorSetId()): string {
   return `ds_rankings_${factorSetId}.zarr`;
 }
+
+/**
+ * ETF-to-ETF link betas (sector→market, subsector→market, subsector→sector).
+ * Indexed (teo, symbol) over ~51 ETFs. The cascade hedge basket reads three
+ * cells per ticker (sector ETF + subsector ETF at the latest teo).
+ *
+ * Factor-set agnostic — link betas are SPY-rooted right now, so the basename
+ * uses the market_factor_etf, not the universe.
+ */
+export function zarrLinkBetasBasename(marketFactorEtf = "SPY"): string {
+  return `ds_erm3_link_betas_${marketFactorEtf}.zarr`;
+}
