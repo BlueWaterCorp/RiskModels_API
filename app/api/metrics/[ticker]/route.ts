@@ -9,6 +9,11 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
+import {
+  computeHedgeRecommendationSnapshot,
+  isValidUserSegment,
+} from "@/lib/risk/hedge-recommendation-service";
+import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { checkPlaygroundMetricsRateLimit } from "@/lib/ratelimit/playground-metrics-rate-limit";
 import {
@@ -201,6 +206,27 @@ export const GET = withBilling(
       metadata.data_as_of,
     );
 
+    // Hedge recommendation snapshot: economic recommendation on top of Lstar.
+    // user_segment query param drives the leverage cap; falls back to family_office
+    // (2.0×) on missing / invalid values. Pure compute from already-fetched metrics
+    // — no extra IO. See docs/plans/hedge-recommendation-ts-port.md for the spec
+    // and ~/BW_Code/ERM3/erm3/shared/hedge_recommendation.py for the Python SSOT.
+    const userSegmentRaw = request.nextUrl.searchParams.get("user_segment");
+    const userSegment = isValidUserSegment(userSegmentRaw)
+      ? userSegmentRaw
+      : DEFAULT_USER_SEGMENT;
+    const hedgeRec = computeHedgeRecommendationSnapshot({
+      l1_mkt_hr: m.l1_mkt_hr ?? null,
+      l2_mkt_hr: m.l2_mkt_hr ?? null,
+      l2_sec_hr: m.l2_sec_hr ?? null,
+      l3_mkt_hr: m.l3_mkt_hr ?? null,
+      l3_sec_hr: m.l3_sec_hr ?? null,
+      l3_sub_hr: m.l3_sub_hr ?? null,
+      l2_sec_er: m.l2_sec_er ?? null,
+      l3_sub_er: m.l3_sub_er ?? null,
+      user_segment: userSegment,
+    });
+
     const formattedData = {
       symbol: symbolRecord.symbol,
       ticker: symbolRecord.ticker,
@@ -241,6 +267,16 @@ export const GET = withBilling(
         l1_mkt_beta: m.l1_mkt_beta ?? null,
         l2_sec_beta: m.l2_sec_beta ?? null,
         l3_sub_beta: m.l3_sub_beta ?? null,
+        // Hedge-recommendation snapshot — economic layer on Lstar.
+        // recommended_hedge_level ≠ lstar is the regime-change alert the chat surfaces.
+        lstar: hedgeRec.lstar,
+        recommended_hedge_level: hedgeRec.recommended_hedge_level,
+        user_segment_applied: hedgeRec.user_segment_applied,
+        leverage_cap_applied: hedgeRec.leverage_cap_applied,
+        l1_hedge_gross: hedgeRec.l1_hedge_gross,
+        l2_hedge_gross: hedgeRec.l2_hedge_gross,
+        l3_hedge_gross: hedgeRec.l3_hedge_gross,
+        higher_er_haircut: hedgeRec.higher_er_haircut,
       },
       meta: {
         sector_etf: symbolRecord.sector_etf || null,

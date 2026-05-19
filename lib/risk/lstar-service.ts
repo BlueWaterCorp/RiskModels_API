@@ -53,7 +53,7 @@ export interface LstarResult {
   data_source: string;
 }
 
-function pickLstar(
+export function pickLstar(
   l2SecEr: number | null,
   l3SubEr: number | null,
   threshold: number,
