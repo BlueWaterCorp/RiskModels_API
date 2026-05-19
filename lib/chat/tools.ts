@@ -18,10 +18,17 @@ import { fetchMacroFactorSeriesRows } from "@/lib/dal/macro-factors";
 import {
   resolveSymbolByTicker,
   fetchLatestMetrics,
+  fetchLatestMetricsWithFallback,
   fetchHistory,
   pivotHistory,
   fetchRankingsFromSecurityHistory,
 } from "@/lib/dal/risk-engine-v3";
+import { readLatestLinkBetas } from "@/lib/dal/zarr-reader";
+import {
+  buildHedgeBasket,
+  isValidUserSegment,
+} from "@/lib/risk/hedge-recommendation-service";
+import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 import { getL3DecompositionService } from "@/lib/risk/l3-decomposition-service";
 import {
   computeFactorCorrelation,
@@ -60,6 +67,13 @@ function fnTool(
 
 const getRiskMetricsArgs = z.object({
   ticker: TickerSchema,
+});
+
+const getHedgeBasketArgs = z.object({
+  ticker: TickerSchema,
+  user_segment: z
+    .enum(["retail", "family_office", "ls_equity", "stat_arb"])
+    .default("family_office"),
 });
 
 const getL3Args = z.object({
@@ -177,6 +191,74 @@ async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
       asset_type: symbolRecord.asset_type || null,
     },
   };
+}
+
+/**
+ * Structured per-leg hedge basket + economic recommendation + decision-trace
+ * narration. Replaces single-row "Market HR (L3) = -2.00" displays which
+ * readers correctly mistake for a beta of 2.0. Includes the per-leg market-β
+ * contribution column so net hedged market β is legible.
+ *
+ * `user_segment` drives the leverage cap that produces `recommended_hedge_level`.
+ * Default is family_office (2.0× hedge gross cap). When `recommended_hedge_level`
+ * differs from `lstar`, the `decision_trace` array narrates the reason — the
+ * chat should render those lines verbatim.
+ */
+async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
+  const { ticker, user_segment } = args;
+  const symbolRecord = await resolveSymbolByTicker(ticker);
+  if (!symbolRecord) {
+    throw new Error(`Symbol not found for ticker ${ticker}`);
+  }
+
+  const latestData = await fetchLatestMetricsWithFallback(
+    symbolRecord.symbol,
+    [
+      "l1_mkt_hr",
+      "l2_mkt_hr",
+      "l2_sec_hr",
+      "l3_mkt_hr",
+      "l3_sec_hr",
+      "l3_sub_hr",
+      "l2_sec_er",
+      "l3_sub_er",
+      "l1_mkt_beta",
+    ],
+    "daily",
+  );
+  if (!latestData) {
+    throw new Error("No metrics found");
+  }
+
+  const m = latestData.metrics;
+  const sectorEtf = symbolRecord.sector_etf || null;
+  const subsectorEtf = symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
+
+  const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, "SPY");
+
+  const segment = isValidUserSegment(user_segment) ? user_segment : DEFAULT_USER_SEGMENT;
+
+  const basket = buildHedgeBasket({
+    ticker: symbolRecord.ticker,
+    as_of: latestData.teo,
+    l1_mkt_hr: m.l1_mkt_hr ?? null,
+    l2_mkt_hr: m.l2_mkt_hr ?? null,
+    l2_sec_hr: m.l2_sec_hr ?? null,
+    l3_mkt_hr: m.l3_mkt_hr ?? null,
+    l3_sec_hr: m.l3_sec_hr ?? null,
+    l3_sub_hr: m.l3_sub_hr ?? null,
+    l2_sec_er: m.l2_sec_er ?? null,
+    l3_sub_er: m.l3_sub_er ?? null,
+    beta_m_aapl: m.l1_mkt_beta ?? null,
+    sector_etf_ticker: sectorEtf,
+    subsector_etf_ticker: subsectorEtf,
+    market_etf_ticker: "SPY",
+    lambda_s_to_m: linkBetas?.lambda_s_to_m ?? null,
+    lambda_u_to_m: linkBetas?.lambda_u_to_m ?? null,
+    user_segment: segment,
+  });
+
+  return basket;
 }
 
 async function execGetL3(args: z.infer<typeof getL3Args>) {
@@ -532,6 +614,28 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: "metrics-snapshot",
     argSchema: getRiskMetricsArgs,
     executor: async (a) => execGetRiskMetrics(getRiskMetricsArgs.parse(a)),
+  },
+  {
+    name: "get_hedge_basket",
+    openaiTool: fnTool(
+      "get_hedge_basket",
+      "Structured hedge basket for a ticker: the four legs (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution and a net market β subtotal, plus the L1/L2/L3 marginal ER and a `decision_trace` narration of why `recommended_hedge_level` was chosen. PREFER this over get_risk_metrics when answering 'how should I hedge X?' — it surfaces the legs that compose the L3 market HR and prevents readers from mis-reading 'Market HR (L3) = −2.00' as a beta of 2.0. The narrative answer should walk through `legs[]` as a 4-row table, show `recommended_hedge_level` (and flag the divergence from `lstar` if any), and quote the `decision_trace` lines verbatim.",
+      {
+        ticker: {
+          type: "string",
+          description: "US stock ticker symbol, e.g. AAPL, NVDA, MSFT",
+        },
+        user_segment: {
+          type: "string",
+          enum: ["retail", "family_office", "ls_equity", "stat_arb"],
+          description: "Drives the leverage cap on `recommended_hedge_level`. retail=1.5×, family_office=2.0× (default), ls_equity=3.0×, stat_arb=5.0×. Infer from session context; family_office is the safe default.",
+        },
+      },
+      ["ticker"],
+    ),
+    capabilityId: "hedge-basket",
+    argSchema: getHedgeBasketArgs,
+    executor: async (a) => execGetHedgeBasket(getHedgeBasketArgs.parse(a)),
   },
   {
     name: "get_l3_decomposition",
