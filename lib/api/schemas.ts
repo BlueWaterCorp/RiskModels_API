@@ -88,6 +88,37 @@ export const LstarRequestSchema = z.object({
 export type LstarRequest = z.infer<typeof LstarRequestSchema>;
 
 /**
+ * Schema for GET /api/residual-signal/[ticker] — Phase D residual
+ * mean-reversion factor. `days` is a calendar-day lookback for the history
+ * window.
+ */
+export const ResidualSignalTickerRequestSchema = z.object({
+  ticker: TickerSchema,
+  days: z.coerce
+    .number()
+    .int()
+    .min(1, "days must be >= 1")
+    .max(730, "days must be <= 730")
+    .default(90),
+});
+
+export type ResidualSignalTickerRequest = z.infer<
+  typeof ResidualSignalTickerRequestSchema
+>;
+
+/**
+ * Schema for GET /api/residual-signal/latest — paginated universe snapshot.
+ */
+export const ResidualSignalLatestRequestSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(2000).default(500),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type ResidualSignalLatestRequest = z.infer<
+  typeof ResidualSignalLatestRequestSchema
+>;
+
+/**
  * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
  * Returns market / sector / subsector / residual with each tradable layer's
  * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).

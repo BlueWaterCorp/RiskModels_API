@@ -775,6 +775,47 @@ export const CAPABILITIES: Capability[] = [
     tags: ["risk", "decomposition", "lstar", "hedge"],
   },
   {
+    id: "residual-signal",
+    name: "Residual Mean-Reversion Signal",
+    description:
+      "L3 orthogonal-residual 5-day mean-reversion factor. A combo-input building block for multi-signal alpha stacks — NOT a standalone strategy. Returns residual_z_5d, decile_rank, signal_quality_quintile (subsector-tracking conditioning), industry_percentile and a residual autocorrelation diagnostic. Every response carries an explicit gross-Sharpe + market-impact capacity disclosure.",
+    endpoint: "/api/residual-signal",
+    method: "GET",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: false,
+        description:
+          "Stock ticker for the per-ticker snapshot + history route (/api/residual-signal/{ticker}). Omit for the /latest and /decile routes.",
+      },
+      days: {
+        type: "integer",
+        required: false,
+        description: "Calendar-day lookback for the per-ticker history window.",
+        default: 90,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "residual_signal_v1",
+    },
+    performance: {
+      avg_latency_ms: 140,
+      p95_latency_ms: 240,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["erm3_models"],
+    },
+    tags: ["risk", "signal", "mean-reversion", "stat-arb", "factor"],
+  },
+  {
     id: "portfolio-returns",
     name: "Portfolio Returns",
     description: "Batch fetch returns for multiple tickers (portfolio analytics)",
