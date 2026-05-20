@@ -1,0 +1,144 @@
+---
+title: Factor correlation (macro + style)
+description: Stock correlations (gross and ERM3 residuals) against the macro and style factor sleeves stored in macro_factors, plus raw long-format series.
+---
+
+# Factor correlation (macro + style)
+
+RiskModels stores **daily factor total returns** in Supabase **`macro_factors`**: one row per **`factor_key`** and trading date (**`teo`**), with **`return_gross`** and optional **`metadata`**. Two sleeves share the table and the correlation endpoints:
+
+- **Macro sleeve (10 keys)** — rates, credit, commodities, FX, volatility, crypto. Backed by **`ds_macro_factor.zarr`**.
+- **Style sleeve (8 keys)** — momentum, quality, low vol, value, growth, size, dividend, moat. Mirrored from **`ds_etf.zarr`** into the same table, with **`metadata.category = "style"`** so callers can distinguish the two.
+
+All 18 canonical keys are valid anywhere a **`factor_key`** is accepted.
+
+## Macro sleeve (10 keys)
+
+| Key | Underlying | Typical meaning |
+| --- | --- | --- |
+| `inflation` | TIP | US TIPS — inflation expectations proxy |
+| `term_spread` | VGIT | Intermediate Treasury — long-end / slope proxy (`ust10y2y` legacy alias) |
+| `short_rates` | BIL | 1–3mo Treasury bills — short-rate proxy |
+| `credit` | HYG | High-yield corporate — credit spread proxy |
+| `oil` | USO | WTI crude daily return |
+| `gold` | GLD | Gold daily return |
+| `usd` | UUP | US Dollar (DXY) daily return (`dxy` legacy alias) |
+| `volatility` | VXX | VIX short-term futures — captures roll cost |
+| `bitcoin` | BITO | Bitcoin futures ETF (`btc` alias) |
+| `vix_spot` | FRED VIXCLS | Pure spot VIX (`vix` legacy alias) |
+
+`volatility` and `vix_spot` are **different factors** — VXX captures futures roll dynamics and term structure; VIXCLS is the pure spot index. Keep both if you care about regime detection vs cost of carrying vol.
+
+## Style sleeve (8 keys)
+
+| Key | Underlying | History | Interpretation |
+| --- | --- | --- | --- |
+| `momentum` | MTUM | 2013-04– | MSCI USA Momentum |
+| `quality` | QUAL | 2013-07– | MSCI USA Quality |
+| `low_vol` | USMV | 2011-10– | MSCI USA Min Vol (`minvol` alias) |
+| `value` | VLUE | 2013-04– | MSCI USA Value |
+| `growth` | IWF | 2000-05– | Russell 1000 Growth |
+| `size` | IWM | 2000-05– | Russell 2000 small-cap (`small_cap` alias) |
+| `dividend` | SCHD | 2011-10– | Schwab US Dividend Equity (`div`, `yield` aliases) |
+| `moat` | MOAT | 2012-04– | VanEck Wide Moat |
+
+MSCI factor ETFs only go back to 2011–2013; pre-launch windows return `null` correlations. IWF/IWM extend to 2000-05 for deeper growth/size history.
+
+### Why style factors pair naturally with ERM3 residuals
+
+The ERM3 cascade (L1 market → L2 sector → L3 subsector) produces a **residual** that is **orthogonal by construction** to SPY, the sector ETF, and the subsector ETF. When you correlate that residual against a raw style ETF (MTUM, QUAL, …), the market and sector components embedded in the style ETF contribute **zero** to the correlation. What remains is the **pure-style tilt** sitting inside your idiosyncratic residual — the part of your "alpha" that actually comes from systematic style exposure you did not consciously size for.
+
+Use **`return_type=l3_residual`** with style factors to read this cleanly. `gross` works too but conflates market / sector / subsector exposure back in.
+
+Common names aliases are normalized server-side: `mtum` → `momentum`, `qual` → `quality`, `usmv` / `minvol` → `low_vol`, `vlue` → `value`, `iwf` → `growth`, `iwm` / `small_cap` → `size`, `schd` / `div` → `dividend`, `moat` → `moat`.
+
+## Correlation vs a stock (ERM3)
+
+Use these when you want **Pearson** or **Spearman** correlation between a **stock** return series and one or more factor series:
+
+- **`POST /api/correlation`** — single ticker or batch (array of tickers).
+- **`GET /api/metrics/{ticker}/correlation`** — same math; pass factor keys as a comma-separated **`factors`** (or **`factor`**) query parameter.
+
+**`return_type`** selects the **stock** return series (not the factor series):
+
+| Value | Meaning |
+| --- | --- |
+| `gross` | Stock gross daily return |
+| `l1` | Residual vs market only (uses L1 hedge ratio and SPY) |
+| `l2` | Residual vs market + sector ETFs |
+| `l3_residual` | Residual after L3 hedge replication (market + sector + subsector ETFs) — **recommended for style factors** |
+
+Correlations are **return correlations** in roughly **[-1, 1]** — they are **not** hedge notionals (**`l3_market_hr`**) or variance shares (**`l3_residual_er`**). See [SEMANTIC_ALIASES.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) for full semantics and JSON Schema links.
+
+The implementation requires **at least ~30** overlapping paired days per factor; otherwise that factor's entry is `null`. A `null` is not a sign error — it means insufficient overlap (including pre-launch windows for short-history MSCI style factors).
+
+### Example: style DNA of a residual
+
+```python
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()
+
+style = client.get_factor_correlation_single(
+    "NVDA",
+    factors=["momentum", "quality", "low_vol", "value",
+             "growth", "size", "dividend", "moat"],
+    return_type="l3_residual",
+    window_days=504,       # ~2 years
+)
+print(style["correlations"])
+# e.g. {"momentum": 0.41, "quality": 0.10, "low_vol": -0.19, "value": -0.31,
+#       "growth": 0.28, "size": -0.06, "dividend": -0.12, "moat": 0.08}
+```
+
+A PM reads this as: "My NVDA residual — the part I thought was pure idiosyncratic alpha — is materially positive momentum and negative value. If I am value-styled, I am carrying anti-value exposure inside my residual that I did not consciously size."
+
+## Raw factor time series (no ticker)
+
+**`GET /api/macro-factors`** returns **long-format** rows: **`factor_key`**, **`teo`**, **`return_gross`** (and optional **`metadata`** when non-empty), for a date range you choose. No equity ticker is required. Both sleeves are returned when no filter is passed.
+
+Query parameters:
+
+- **`factors`** or **`factor`** — comma-separated keys (optional; default all **18** canonical keys).
+- **`start`**, **`end`** — inclusive **`YYYY-MM-DD`** (optional; defaults: **`end`** = today UTC, **`start`** = five calendar years before **`end`**). Maximum span: **20 years**.
+
+OAuth scope: **`macro-factor-series`**. Billing is per request (see OpenAPI / pricing).
+
+**Python SDK** (requires scope on your key):
+
+```python
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()
+
+# Macro series only
+macro = client.get_macro_factor_series(
+    factors=["bitcoin", "vix_spot", "oil"],
+    start="2023-01-01",
+    end="2023-12-31",
+    as_dataframe=True,
+)
+
+# Style series only
+style = client.get_macro_factor_series(
+    factors=["momentum", "quality", "low_vol", "value"],
+    start="2023-01-01",
+    end="2023-12-31",
+    as_dataframe=True,
+)
+```
+
+**CLI:**
+
+```bash
+riskmodels macro-factors --factors momentum,quality,low_vol --start 2023-01-01 --end 2023-12-31
+```
+
+JSON Schema for the success body: **`/schemas/macro-factors-series-v1.json`** (also under **MCP** `schema-paths`).
+
+## Related
+
+- [API Documentation](/docs/api) — hub and live asset examples
+- [API Reference](/api-reference) — full OpenAPI
+- [ERM3 Engine](/docs/erm3-engine) — L1 → L3 cascade and residual construction
+- [Authentication](/docs/authentication) — OAuth scopes including **`macro-factor-series`**

@@ -1,0 +1,53 @@
+---
+title: Response metadata and HTTP headers
+description: JSON _metadata lineage, optional history fields, billing headers, and how Parquet or CSV exports differ from JSON.
+---
+
+# Response metadata and HTTP headers
+
+Metered JSON responses combine **model lineage** (`_metadata`), optional **history provenance** (`data_source`, `range`), **billing telemetry** (`_agent` or mirrored HTTP headers), and **risk lineage** (`X-Risk-*` headers). This page is the portal summary; the full contract lives in [RESPONSE_METADATA.md](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/RESPONSE_METADATA.md) on GitHub.
+
+## `_metadata` (JSON bodies)
+
+| Field | Meaning |
+| --- | --- |
+| `model_version` | ERM3 build label (for example `ERM3-L3-v30`). |
+| `data_as_of` | Latest trading date reflected in the snapshot or series. |
+| `factor_set_id` | Factor universe identifier. |
+| `universe_size` | Equity count in the tradable universe. |
+| `factors` | L3 factor ETF identifiers when present. |
+
+### History responses: `data_source` and `range`
+
+Some time-series JSON payloads extend `_metadata` with:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `data_source` | string | Daily history is served from consolidated **Zarr** on GCS (see [API_HISTORY_SUPABASE_AND_ZARR.md](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/docs/API_HISTORY_SUPABASE_AND_ZARR.md)). |
+| `range` | two ISO dates | Inclusive date bounds of the rows returned. |
+
+These fields are **omitted from Parquet and CSV** bodies — use the same **`X-Risk-Model-Version`**, **`X-Data-As-Of`**, **`X-Factor-Set-Id`**, and **`X-Universe-Size`** headers on the HTTP response for lineage when you export tabular formats.
+
+## HTTP headers you should log
+
+| Header | When to use it |
+| --- | --- |
+| `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size` | Reproducibility and support tickets alongside `_metadata`. |
+| `X-API-Cost-USD`, `X-API-Billing-Code`, `X-Cache-Status` | Cost attribution; cached responses bill **0** when documented. |
+| `X-Request-ID`, `X-Response-Latency-Ms` | Latency debugging and correlation with server logs. |
+| `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` | Client-side throttling (see [Authentication](/docs/authentication)). |
+
+## JSON vs Parquet vs CSV
+
+- **JSON** (default): structured payload, `_metadata` in body where documented, `_agent` on metered routes.
+- **`?format=parquet`**, **`?format=csv`**, or **`Accept: application/vnd.apache.parquet`** / **`Accept: text/csv`**: single flat table; **no** `_metadata` object in the file — rely on **`X-Risk-*`** and cost headers on the response.
+
+Use Parquet for typed pipelines (pandas, Polars, Arrow); CSV for spreadsheets.
+
+## `GET /api/health` — coverage signal
+
+The health payload includes **`teo_coverage`** (names may evolve; see OpenAPI **`/health`** schema). Use **`latest_session_returns_pending`**: when **true**, gross returns coverage on the newest `teo` is sparse versus the stock universe (often intraday backfill). Pair with **`latest_teo_coverage_pct`** for how complete that session is.
+
+---
+
+**See also:** [Returns decomposition metrics](/docs/returns-decomposition-metrics) (distinct from ER and hedge ratios), [Authentication](/docs/authentication), [API Reference](/api-reference).
