@@ -1,0 +1,78 @@
+**Yes, you can absolutely add endpoints that return SDK-style Python code** for an agent (or any client) to fetch and run a finely tuned graph on your API's risk metrics (e.g., L3 hedge ratios, explained risk, residuals, volatility time series, etc.).  
+
+Your platform at riskmodels.app is already **highly agent-native** (MCP server, `/.well-known/agent-manifest`, `riskmodels-py` SDK with `to_llm_context()` + semantic metadata, discoverable tools via `riskmodels_list_endpoints` / `riskmodels_get_schema`, etc.), so this fits perfectly and extends what you already have.
+
+### Why this works well on your stack
+- You control the full backend (OpenAPI 3.0 spec + MCP server in the repo).
+- The existing Python SDK (`riskmodels-py`) already returns clean `pandas` DataFrames / `xarray.Dataset` objects with `attrs` for legends, semantic cheatsheets, and lineage — perfect input for plotting code.
+- Agents (Cursor, Claude, Zed, etc.) already know how to call your MCP tools and can execute the returned Python code locally or in a sandbox.
+- No platform restrictions on adding endpoints — the docs explicitly call out extensibility via the MCP server.
+
+### Recommended endpoint design (simple & powerful)
+Add something like this (FastAPI-style example, but works with whatever you use):
+
+```http
+GET /api/generate-graph-code
+   ?metric=l3_residual_er          # or l3_market_hr, vol_23d, etc.
+   &tickers=NVDA,AAPL,MSFT
+   &timeframe=last_2y              # or full_history, monthly, etc.
+   &style=interactive              # or static, dark_mode, etc.
+   &format=plotly                  # or matplotlib, seaborn
+```
+
+**Response** (Content-Type: `text/x-python` or `application/json` with a `"code"` field):
+
+```python
+# Finely-tuned graph code generated for riskmodels.app metrics
+# Agent: copy-paste or exec() this directly
+
+from riskmodels import RiskModelsClient
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import pandas as pd
+
+client = RiskModelsClient.from_env()   # auto-loads your keys
+
+# Fetch the exact data the agent needs
+df = client.get_l3_decomposition(
+    tickers=["NVDA", "AAPL", "MSFT"],
+    period="last_2y"
+)
+
+# Finely tuned interactive plot (your branding + semantic labels)
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                    subplot_titles=("L3 Residual ER (%)", "Market Hedge Ratio ($)"),
+                    vertical_spacing=0.08)
+
+fig.add_trace(go.Scatter(x=df.index, y=df['l3_residual_er']*100,
+                         name="Residual Risk", line=dict(color="#00ff88", width=3)), row=1, col=1)
+
+fig.add_trace(go.Scatter(x=df.index, y=df['l3_market_hr'],
+                         name="Market HR", line=dict(color="#ff8800", width=3)), row=2, col=1)
+
+fig.update_layout(
+    title="RiskModels.app — NVDA / AAPL / MSFT L3 Decomposition (Last 2Y)",
+    template="plotly_dark",
+    height=700,
+    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    hovermode="x unified"
+)
+fig.show()   # or fig.write_html("risk_graph.html")
+```
+
+You can make it even smarter: return a full runnable script that also calls the right endpoint(s) internally, adds error handling, exports to PNG/PDF, or includes your semantic legend from the SDK.
+
+### How to expose it to agents (2-minute integration)
+1. Add the endpoint to your OpenAPI spec (Redoc will pick it up automatically).
+2. Extend the MCP server tool definitions (`riskmodels_get_capability` etc.) so agents auto-discover it.
+3. (Optional) Add it to the agent manifest and Cursor/Claude rules — your existing `to_llm_context()` helpers already make this trivial.
+4. Document the new endpoint on `/docs/agent-integration` (you already mention agents building graphs there).
+
+### Bonus ideas you can ship in the same PR
+- `/api/generate-graph-code/batch` → returns code for a multi-metric dashboard (e.g., ER vs HR waterfall + Sharpe scatter).
+- Parameter `include_sdk_snippet=true` → also returns a tiny helper function the agent can paste into its own codebase.
+- Support for `xarray` panels if the agent passes a full portfolio.
+
+This is a natural evolution of what you already built for agentic quant research. Agents will love being able to say “give me the exact Python code to graph the L3 residual drift for my portfolio” and get production-ready, branded, finely-tuned code in one call.
+
+If you want, drop the exact backend framework you're using (FastAPI/Flask/whatever) or a snippet of your current MCP tool defs and I can give you the precise code to copy-paste for the new endpoint.

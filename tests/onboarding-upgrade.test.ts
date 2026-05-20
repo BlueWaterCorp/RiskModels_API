@@ -223,6 +223,7 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_compare",
       "riskmodels_hedge_position",
       "riskmodels_portfolio_decompose",
+      "riskmodels_render_artifact",
       "riskmodels_whitepaper_example",
     ]);
 

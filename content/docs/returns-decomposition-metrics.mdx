@@ -1,0 +1,51 @@
+---
+title: Returns decomposition metrics (CFR / FR / RR)
+description: Daily simple return keys l*_cfr, l*_fr, and l*_rr from ds_erm3_returns — distinct from hedge ratios and explained risk (ER).
+---
+
+# Returns decomposition metrics (`l*_cfr` / `l*_fr` / `l*_rr`)
+
+ERM3 can sync **nine optional daily metrics** (`l1_cfr` … `l3_rr`, including incremental `l*_fr`) into the V3 pipeline: wide columns on **`security_history_latest`** when present, and **historical slices** served from consolidated **Zarr** via the public API (the legacy long-form `security_history` table is not used by this API). They describe **actual simple returns** from a returns-decomposition pipeline step, not hedge notionals and not variance fractions.
+
+## What the keys mean
+
+| Wire key | Meaning |
+| --- | --- |
+| `l1_cfr` | Combined factor return through **L1** (market) |
+| `l1_fr` | Incremental **L1** (market-only) factor return |
+| `l1_rr` | Residual return at **L1** |
+| `l2_cfr` | Combined factor return through **L2** (sector) |
+| `l2_fr` | Incremental **L2** (sector) factor return on top of L1 |
+| `l2_rr` | Residual return at **L2** |
+| `l3_cfr` | Combined factor return through **L3** (subsector) |
+| `l3_fr` | Incremental **L3** (subsector) factor return on top of L1+L2 |
+| `l3_rr` | Residual return at **L3** |
+
+**Units:** daily **simple** returns as **decimals** (same convention as `returns_gross`), e.g. `0.01` ≈ 1%.
+
+**Naming:** `*_cfr` = **c**ombined **f**actor **r**eturn; `*_rr` = **r**esidual **r**eturn at that level.
+
+## Not the same as ER or hedge ratios
+
+- **`l*_res_er`** (and other `*_er` fields) are **explained risk** — variance shares in [0, 1] from hedge-weight regressions.
+- **`l*_mkt_hr`**, **`l*_sec_hr`**, **`l*_sub_hr`** are **hedge ratios** (dollars of ETF per {'$'}1 of stock).
+- The **`l*_cfr` / `l*_rr`** series come from **`ds_erm3_returns_*`** (returns decomposition), not from `ds_erm3_hedge_weights`.
+
+Do not confuse **`l3_rr`** (residual **return** for one day) with informal “residual risk” language around **`l3_residual_er`** (idiosyncratic **variance** share). See [SEMANTIC_ALIASES.md](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/SEMANTIC_ALIASES.md#returns-decomposition-l_cfr--l_rr) for the full wire ↔ SDK name table.
+
+## Where they appear in the API
+
+- **`GET /api/metrics/{ticker}`** — optional fields under `metrics` when populated on the latest row.
+- **Daily history** — `GET /api/ticker-returns` and data-plane history routes return Zarr-backed series; `_metadata.data_source` / `_metadata.range` describe provenance on JSON (see [Response metadata](/docs/response-metadata)).
+- **`security_history_latest`** — optional wide columns when the ERM3 sync has materialized them (`supabase/migrations/` in this repo).
+
+Sync progress uses **`erm3_sync_state_v3`** with **`table_name = security_history_returns_decomp`**.
+
+## Populating data (ERM3 sync)
+
+This repository does not ship the ERM3 sync CLI. In the **ERM3** repo, V3 sync supports the returns-decomposition dataset (often included in dataset set **`all`**) and a ticker filter:
+
+- CLI: **`--returns-decomp-tickers`** with values such as **`mag7`**, **`all`**, or a comma-separated ticker list.
+- Python: **`run_sync(..., returns_decomp_tickers="mag7" | "all" | "A,B,C")`**.
+
+See the propagation note [ERM3_V3_RETURNS_DECOMP_SUPABASE_PROPAGATION.md](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/docs/planning/ERM3_V3_RETURNS_DECOMP_SUPABASE_PROPAGATION.md) for zarr variables, `metric_key` table, and checklist.
