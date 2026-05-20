@@ -28,6 +28,7 @@ import {
   zarrHedgeBasename,
   zarrLinkBetasBasename,
   zarrRankingsBasename,
+  zarrResidualSignalBasename,
   zarrReturnsBasename,
 } from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
@@ -1001,4 +1002,179 @@ export async function readSymbolRankSnapshot(
   });
 
   return { teo: teoStr, results };
+}
+
+// =====================================================================
+// Residual mean-reversion signal (Phase D)
+// =====================================================================
+//
+// `ds_erm3_residual_signal_{factorSetId}.zarr` is a flat (teo, symbol) store
+// with seven float32 variables — see erm3/core/residual_signal.py. Chunked
+// {teo: 500, symbol: 1000}. Carries a `ticker` string coord so tickers
+// resolve in-zarr without a Supabase round-trip.
+
+const RESIDUAL_SIGNAL_VARS = [
+  "residual_z_5d",
+  "signal_strength",
+  "decile_rank",
+  "industry_percentile",
+  "residual_autocorr_5d",
+  "l3_subsector_er",
+  "signal_quality_quintile",
+] as const;
+
+export interface ResidualSignalPoint {
+  date: string;
+  residual_z_5d: number | null;
+  signal_strength: number | null;
+  decile_rank: number | null;
+  industry_percentile: number | null;
+  residual_autocorr_5d: number | null;
+  l3_subsector_er: number | null;
+  signal_quality_quintile: number | null;
+}
+
+export interface ResidualSignalSeriesResult {
+  ticker: string;
+  points: ResidualSignalPoint[];
+  range: [string, string];
+}
+
+export interface ResidualSignalSnapshotRow {
+  ticker: string;
+  residual_z_5d: number | null;
+  signal_strength: number | null;
+  decile_rank: number | null;
+  industry_percentile: number | null;
+  residual_autocorr_5d: number | null;
+  l3_subsector_er: number | null;
+  signal_quality_quintile: number | null;
+}
+
+export interface ResidualSignalSnapshotResult {
+  teo: string | null;
+  rows: ResidualSignalSnapshotRow[];
+}
+
+/** Build idx→ticker from the zarr's `ticker` coord. */
+async function readTickerByIndex(grp: Group<Readable>): Promise<string[] | null> {
+  try {
+    const loc = grp.resolve("ticker");
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof UnicodeStringArray) {
+      return Array.from({ length: d.length }, (_, i) => String(d.get(i)).trim());
+    }
+    if (Array.isArray(d)) {
+      return d.map((x) => String(x).trim());
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Per-ticker residual-signal time series. Resolves the ticker against the
+ * store's own `ticker` coord (case-insensitive). Returns up to the
+ * [startDate, endDate] window — caller passes a 90d window for the API
+ * snapshot+history shape. Null if the store is unavailable or the ticker
+ * isn't in the universe.
+ */
+export async function readResidualSignalSeries(
+  ticker: string,
+  startDate?: string,
+  endDate?: string,
+): Promise<ResidualSignalSeriesResult | null> {
+  const grp = await openZarrGroup(zarrResidualSignalBasename());
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return null;
+
+  const tickerMap = await readTickerIndexMap(grp);
+  if (!tickerMap?.size) return null;
+  const symIdx = tickerMap.get(ticker.trim().toUpperCase());
+  if (symIdx === undefined) return null;
+
+  const t0 = startDate ? lowerBound(teos, startDate) : 0;
+  const t1 = endDate ? upperBoundInclusive(teos, endDate) : teos.length;
+  if (t1 <= t0) {
+    return { ticker: ticker.toUpperCase(), points: [], range: ["", ""] };
+  }
+
+  const series = await Promise.all(
+    RESIDUAL_SIGNAL_VARS.map((v) =>
+      readFloatSeriesTeoSymbol(grp, v, t0, t1, symIdx),
+    ),
+  );
+
+  const points: ResidualSignalPoint[] = [];
+  for (let i = 0; i < t1 - t0; i++) {
+    const date = teos[t0 + i];
+    if (!date) continue;
+    points.push({
+      date,
+      residual_z_5d: series[0]?.[i] ?? null,
+      signal_strength: series[1]?.[i] ?? null,
+      decile_rank: series[2]?.[i] ?? null,
+      industry_percentile: series[3]?.[i] ?? null,
+      residual_autocorr_5d: series[4]?.[i] ?? null,
+      l3_subsector_er: series[5]?.[i] ?? null,
+      signal_quality_quintile: series[6]?.[i] ?? null,
+    });
+  }
+
+  return {
+    ticker: ticker.toUpperCase(),
+    points,
+    range: [teos[t0] ?? "", teos[t1 - 1] ?? ""],
+  };
+}
+
+/**
+ * Full active-universe residual-signal cross-section at the latest teo.
+ * Backs both /api/residual-signal/latest and /api/residual-signal/decile/{n}
+ * (the route filters by decile_rank). One chunk-row read per variable.
+ */
+export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshotResult> {
+  const grp = await openZarrGroup(zarrResidualSignalBasename());
+  if (!grp) return { teo: null, rows: [] };
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return { teo: null, rows: [] };
+  const teoIdx = teos.length - 1;
+  const teoStr = teos[teoIdx] ?? null;
+  if (!teoStr) return { teo: null, rows: [] };
+
+  const symMap = await readSymbolIndexMap(grp);
+  const tickerByIndex = await readTickerByIndex(grp);
+  if (!symMap?.size || !tickerByIndex?.length) return { teo: teoStr, rows: [] };
+  const nSymbol = symMap.size;
+
+  const rowsByVar = await Promise.all(
+    RESIDUAL_SIGNAL_VARS.map((v) => readFloatRowAtTeo(grp, v, teoIdx, nSymbol)),
+  );
+
+  const rows: ResidualSignalSnapshotRow[] = [];
+  for (let i = 0; i < nSymbol; i++) {
+    const z = rowsByVar[0]?.[i] ?? null;
+    // Skip symbols with no signal at this teo (inactive / insufficient history).
+    if (z == null) continue;
+    const ticker = tickerByIndex[i];
+    if (!ticker) continue;
+    rows.push({
+      ticker,
+      residual_z_5d: z,
+      signal_strength: rowsByVar[1]?.[i] ?? null,
+      decile_rank: rowsByVar[2]?.[i] ?? null,
+      industry_percentile: rowsByVar[3]?.[i] ?? null,
+      residual_autocorr_5d: rowsByVar[4]?.[i] ?? null,
+      l3_subsector_er: rowsByVar[5]?.[i] ?? null,
+      signal_quality_quintile: rowsByVar[6]?.[i] ?? null,
+    });
+  }
+
+  return { teo: teoStr, rows };
 }

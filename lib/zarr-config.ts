@@ -53,6 +53,17 @@ export function zarrRankingsBasename(factorSetId = getZarrFactorSetId()): string
 }
 
 /**
+ * Residual mean-reversion signal store (Phase D). Per-(teo, symbol) factor
+ * served at /api/residual-signal: residual_z_5d, signal_strength, decile_rank,
+ * industry_percentile, residual_autocorr_5d, l3_subsector_er,
+ * signal_quality_quintile. Carries a `ticker` string coord for in-zarr
+ * ticker resolution (no Supabase round-trip needed).
+ */
+export function zarrResidualSignalBasename(factorSetId = getZarrFactorSetId()): string {
+  return `ds_erm3_residual_signal_${factorSetId}.zarr`;
+}
+
+/**
  * ETF-to-ETF link betas (sector→market, subsector→market, subsector→sector).
  * Indexed (teo, symbol) over ~51 ETFs. The cascade hedge basket reads three
  * cells per ticker (sector ETF + subsector ETF at the latest teo).
