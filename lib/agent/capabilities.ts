@@ -1926,6 +1926,53 @@ export const CAPABILITIES: Capability[] = [
     tags: ["13f", "filers", "history", "time-series"],
   },
   {
+    id: "filer-concentration",
+    name: "13F Filer Concentration Summary",
+    description:
+      "Quarter-end concentration panel from per-filer ds_portfolio.zarr on GCS. " +
+      "Returns median and latest effective N, top-5 / top-10 weight share, and weight HHI " +
+      "over an optional ?start_date / ?end_date window.",
+    endpoint: "/api/13f/filers/{bw_filer_id}/concentration",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description:
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD.",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD.",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "filer_concentration_v1",
+    },
+    performance: {
+      avg_latency_ms: 200,
+      p95_latency_ms: 500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["bw_filer_id/{id}/ds_portfolio.zarr", "filers"],
+    },
+    tags: ["13f", "filers", "concentration"],
+  },
+  {
     id: "filer-snapshot-json",
     name: "13F Filer Snapshot (JSON)",
     description:
