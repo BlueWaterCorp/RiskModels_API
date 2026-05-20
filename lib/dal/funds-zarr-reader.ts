@@ -1007,7 +1007,14 @@ export async function readFilerHoldingsTopN(
   ]);
   if (!adjMv) return null;
 
-  const denom = totalAumUsd != null && totalAumUsd > 0 ? totalAumUsd : null;
+  let denom = totalAumUsd != null && totalAumUsd > 0 ? totalAumUsd : null;
+  if (denom == null) {
+    let sumAdj = 0;
+    for (const v of adjMv) {
+      if (v != null && v > 0) sumAdj += v;
+    }
+    denom = sumAdj > 0 ? sumAdj : null;
+  }
   const holdings: FilerHolding[] = [];
   for (let i = 0; i < adjMv.length; i++) {
     const v = adjMv[i];
@@ -1046,7 +1053,9 @@ export interface FilerPortfolioRow {
   weight_sum: number | null;
   n_holdings_active: number | null;
   effective_n: number | null;
+  top5_weight_sum: number | null;
   top10_weight_sum: number | null;
+  weight_hhi: number | null;
   // AUM
   total_aum_usd: number | null;
   aum_in_erm3: number | null;
@@ -1070,7 +1079,9 @@ const FILER_PORTFOLIO_VARS = [
   "weight_sum",
   "n_holdings_active",
   "effective_n",
+  "top5_weight_sum",
   "top10_weight_sum",
+  "weight_hhi",
   "total_aum_usd",
   "aum_in_erm3",
   "n_holdings_in_erm3",
@@ -1128,6 +1139,72 @@ export async function readFilerPortfolioSeries(
     rows.push(row as unknown as FilerPortfolioRow);
   }
   return rows;
+}
+
+function medianFinite(values: Array<number | null>): number | null {
+  const nums = values.filter(
+    (v): v is number => v != null && Number.isFinite(v),
+  );
+  if (nums.length === 0) return null;
+  nums.sort((a, b) => a - b);
+  const mid = Math.floor(nums.length / 2);
+  if (nums.length % 2 === 1) return nums[mid]!;
+  return (nums[mid - 1]! + nums[mid]!) / 2;
+}
+
+export interface FilerConcentrationLatest {
+  teo: string;
+  effective_n: number | null;
+  top5_weight_sum: number | null;
+  top10_weight_sum: number | null;
+  weight_hhi: number | null;
+  n_holdings_active: number | null;
+}
+
+export interface FilerConcentrationSummary {
+  n_periods: number;
+  start_teo: string;
+  end_teo: string;
+  latest: FilerConcentrationLatest;
+  median: {
+    effective_n: number | null;
+    top5_weight_sum: number | null;
+    top10_weight_sum: number | null;
+    weight_hhi: number | null;
+  };
+}
+
+/**
+ * Median + latest quarter-end concentration from ``ds_portfolio.zarr``.
+ * Null when the filer has no portfolio panel in the date window.
+ */
+export async function readFilerConcentrationSummary(
+  bwFilerId: string,
+  options: FundPortfolioOptions = {},
+): Promise<FilerConcentrationSummary | null> {
+  const rows = await readFilerPortfolioSeries(bwFilerId, options);
+  if (rows.length === 0) return null;
+
+  const latest = rows[rows.length - 1]!;
+  return {
+    n_periods: rows.length,
+    start_teo: rows[0]!.teo,
+    end_teo: latest.teo,
+    latest: {
+      teo: latest.teo,
+      effective_n: latest.effective_n,
+      top5_weight_sum: latest.top5_weight_sum,
+      top10_weight_sum: latest.top10_weight_sum,
+      weight_hhi: latest.weight_hhi,
+      n_holdings_active: latest.n_holdings_active,
+    },
+    median: {
+      effective_n: medianFinite(rows.map((r) => r.effective_n)),
+      top5_weight_sum: medianFinite(rows.map((r) => r.top5_weight_sum)),
+      top10_weight_sum: medianFinite(rows.map((r) => r.top10_weight_sum)),
+      weight_hhi: medianFinite(rows.map((r) => r.weight_hhi)),
+    },
+  };
 }
 
 const FILER_RETURNS_VARS = [
