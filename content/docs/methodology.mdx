@@ -457,6 +457,29 @@ The residual $\varepsilon$ at L3 is your true idiosyncratic return. Positive res
 
 ---
 
+## Residual Mean-Reversion Signal
+
+The L3 residual — the part of a stock's return left after market, sector, and subsector exposures are hedged out — is, by construction, the genuinely idiosyncratic component. The **residual mean-reversion signal** measures how stretched that residual is right now and surfaces it as a factor.
+
+**The signal.** For each stock, `residual_z_5d` is the trailing 5-day cumulative L3 residual return, z-scored by the stock's own 60-day residual volatility. A large negative value means the stock has under-performed its cascade-implied path over the past week ("oversold"); a large positive value means it has over-performed ("overbought").
+
+**What it is — and what it isn't.** This is a **combo-input factor** — a building block for multi-signal alpha stacks, not a standalone trading strategy. In a 5-year backtest the cross-sectional decile long-short carries a gross Sharpe of ~0.79 (rising to ~1.28 within the high-subsector-ER quintile). But under realistic market-impact costs (Kissell-Glantz square-root model) the net-of-cost capacity caps below ~$1M of book size:
+
+| Book size | Net Sharpe (decile L-S) |
+| --- | --- |
+| $0.5M | ~0.0 |
+| $1M | ~−0.2 |
+| $5M | ~−1.0 |
+| $25M | ~−2.8 |
+
+The signal is informative *pre-cost*; it earns its place inside a diversified signal portfolio where many uncorrelated factors combine, not as a strategy traded on its own. Every API response carries a `capacity_note` stating this.
+
+**Signal-quality conditioning.** The reversion is materially cleaner for stocks that track their subsector tightly. `signal_quality_quintile` (1–5, derived from `L3_subsector_ER`) flags this: quintile 5 — the tightest subsector trackers — show gross Sharpe ~1.28 vs ~0.20 in the middle quintiles. A residual deviation only means "temporary dislocation" when the stock normally tracks its cohort; for loose trackers the residual is idiosyncratic drift that does not revert.
+
+**Access.** `GET /api/residual-signal/{ticker}` (snapshot + history), `/api/residual-signal/latest` (universe cross-section), `/api/residual-signal/decile/{n}` (decile members). SDK: `client.residual_signal()`, `client.residual_signal_latest()`. This is informational analytics, not investment advice.
+
+---
+
 ## How We Compare to Traditional Risk Models
 
 | Feature | RiskModels | Barra / Axioma |

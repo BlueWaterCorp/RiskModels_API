@@ -30,6 +30,7 @@ import {
 } from "@/lib/risk/hedge-recommendation-service";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 import { getL3DecompositionService } from "@/lib/risk/l3-decomposition-service";
+import { getResidualSignalForTicker } from "@/lib/risk/residual-signal-service";
 import {
   computeFactorCorrelation,
   DEFAULT_MACRO_FACTORS,
@@ -66,6 +67,10 @@ function fnTool(
 }
 
 const getRiskMetricsArgs = z.object({
+  ticker: TickerSchema,
+});
+
+const getResidualSignalArgs = z.object({
   ticker: TickerSchema,
 });
 
@@ -586,6 +591,26 @@ async function execPortfolioRisk(args: z.infer<typeof portfolioRiskArgs>) {
   return body;
 }
 
+/**
+ * Phase D residual mean-reversion factor for one ticker. Returns the latest
+ * reading only — the 63-point history is dropped (chat narrates the current
+ * state; SDK/API callers get the full series). Always surfaces `capacity_note`
+ * so the agent frames this as a combo-input factor, not a trade idea.
+ */
+async function execGetResidualSignal(
+  args: z.infer<typeof getResidualSignalArgs>,
+) {
+  const { ticker } = args;
+  const result = await getResidualSignalForTicker(ticker, 90);
+  if (!result) {
+    throw new Error(
+      `No residual signal for ticker ${ticker} (not in the active universe, or insufficient history).`,
+    );
+  }
+  const { history, ...snapshot } = result;
+  return { ...snapshot, history_points: history.length };
+}
+
 export interface ChatToolDef {
   /** Stable tool name (OpenAI function name) */
   name: string;
@@ -636,6 +661,23 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: "hedge-basket",
     argSchema: getHedgeBasketArgs,
     executor: async (a) => execGetHedgeBasket(getHedgeBasketArgs.parse(a)),
+  },
+  {
+    name: "get_residual_signal",
+    openaiTool: fnTool(
+      "get_residual_signal",
+      "Residual mean-reversion factor for a ticker: `residual_z_5d` (5-day cumulative L3 orthogonal residual, z-scored — negative = oversold, positive = overbought), `decile_rank` (1-10 cross-sectional), `signal_quality_quintile` (1-5 by subsector-tracking quality; 5 = cleanest reversion regime), `industry_percentile`, and `residual_autocorr_5d` (negative = mean-reverting). This is a COMBO-INPUT FACTOR for multi-signal alpha stacks — NOT a standalone strategy and NOT a trade recommendation. Always quote the `capacity_note` verbatim: the signal is informative pre-cost (gross Sharpe ~0.79) but net-of-impact capacity caps near ~$1M book. Never tell the user to buy or sell based on it; describe the reading and its conditioning only.",
+      {
+        ticker: {
+          type: "string",
+          description: "US stock ticker symbol, e.g. AAPL, NVDA, MSFT",
+        },
+      },
+      ["ticker"],
+    ),
+    capabilityId: "residual-signal",
+    argSchema: getResidualSignalArgs,
+    executor: async (a) => execGetResidualSignal(getResidualSignalArgs.parse(a)),
   },
   {
     name: "get_l3_decomposition",

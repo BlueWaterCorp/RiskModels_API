@@ -1368,6 +1368,72 @@
           }
         }
       },
+      "ResidualSignalReading": {
+        "type": "object",
+        "description": "One residual mean-reversion reading. In /residual-signal/{ticker} this is both the latest `signal` object and each `history` item; history items additionally carry `date`.\n",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Trading day (present on history items; omitted on the latest `signal`)."
+          },
+          "residual_z_5d": {
+            "type": "number",
+            "nullable": true,
+            "description": "5-day cumulative L3 residual return, z-scored by 60-day residual vol. Negative = oversold."
+          },
+          "signal_strength": {
+            "type": "number",
+            "nullable": true,
+            "description": "Absolute value of residual_z_5d."
+          },
+          "decile_rank": {
+            "type": "integer",
+            "nullable": true,
+            "description": "1-10 cross-sectional decile of residual_z_5d (1 = most oversold)."
+          },
+          "industry_percentile": {
+            "type": "number",
+            "nullable": true,
+            "description": "0-1 percentile of residual_z_5d within the stock's EODHD industry cohort."
+          },
+          "residual_autocorr_5d": {
+            "type": "number",
+            "nullable": true,
+            "description": "Trailing-252d lag-5 autocorrelation of the 5-day cumulative residual. Negative = mean-reverting."
+          },
+          "l3_subsector_er": {
+            "type": "number",
+            "nullable": true,
+            "description": "Subsector variance-explained fraction — the signal-quality conditioning variable."
+          },
+          "signal_quality_quintile": {
+            "type": "integer",
+            "nullable": true,
+            "description": "1-5 quintile of l3_subsector_er (5 = tight subsector tracker = cleanest reversion regime)."
+          }
+        }
+      },
+      "ResidualSignalRow": {
+        "description": "A universe cross-section row — a ResidualSignalReading keyed by ticker.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResidualSignalReading"
+          },
+          {
+            "type": "object",
+            "required": [
+              "ticker"
+            ],
+            "properties": {
+              "ticker": {
+                "type": "string",
+                "description": "Stock ticker."
+              }
+            }
+          }
+        ]
+      },
       "LstarResponse": {
         "type": "object",
         "description": "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios and total explained-return. Arrays are parallel by date index. Each L\\* is a standalone hedge solution (not stacked layers) — `market_hr`/`sector_hr`/`subsector_hr` come from the chosen level's solver and are `null` where the chosen level doesn't use that ETF (sector_hr is null when L\\*=L1; subsector_hr is null when L\\*∈{L1,L2}).\n",
@@ -5330,6 +5396,362 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/residual-signal/{ticker}": {
+      "get": {
+        "summary": "Residual mean-reversion factor — snapshot + history for one ticker",
+        "description": "Phase D residual mean-reversion factor. `residual_z_5d` is the trailing 5-day cumulative L3 orthogonal residual return, z-scored by the stock's own 60-day residual volatility (negative = oversold, positive = overbought).\n\nA combo-input factor building block for multi-signal alpha stacks — NOT a standalone strategy. Gross Sharpe ~0.79 (decile long-short, 5-day horizon), ~1.28 within the high-subsector-ER quintile; net of market-impact costs, standalone capacity caps near ~$1M book. Every response carries `capacity_note` with this disclosure.\n\n**Billing:** $0.02 per request.\n",
+        "operationId": "getResidualSignal",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "residual-signal",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.02,
+          "currency": "USD",
+          "billing_code": "residual_signal_v1"
+        },
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "AAPL"
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 730,
+              "default": 90
+            },
+            "description": "Calendar-day lookback for the returned history window."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest signal reading + history window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticker": {
+                      "type": "string"
+                    },
+                    "as_of_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "signal": {
+                      "$ref": "#/components/schemas/ResidualSignalReading"
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ResidualSignalReading"
+                      }
+                    },
+                    "capacity_note": {
+                      "type": "string"
+                    },
+                    "methodology_link": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ticker not in the active universe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/residual-signal/latest": {
+      "get": {
+        "summary": "Residual mean-reversion factor — active-universe cross-section",
+        "description": "Full active-universe residual mean-reversion cross-section at the latest trading day, sorted by `residual_z_5d` ascending (most oversold first), paginated. Combo-input factor — see `/residual-signal/{ticker}` for the framing and capacity disclosure.\n\n**Billing:** $0.02 per request.\n",
+        "operationId": "getResidualSignalLatest",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "residual-signal",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.02,
+          "currency": "USD",
+          "billing_code": "residual_signal_v1"
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000,
+              "default": 500
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated universe cross-section.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "as_of_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ResidualSignalRow"
+                      }
+                    },
+                    "capacity_note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/residual-signal/decile/{n}": {
+      "get": {
+        "summary": "Residual mean-reversion factor — members of decile n",
+        "description": "Current members of residual-signal decile `n` (1 = most oversold, 10 = most overbought), sorted by `residual_z_5d`. Combo-input factor — see `/residual-signal/{ticker}` for the framing and capacity disclosure.\n\n**Billing:** $0.02 per request.\n",
+        "operationId": "getResidualSignalDecile",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "residual-signal",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.02,
+          "currency": "USD",
+          "billing_code": "residual_signal_v1"
+        },
+        "parameters": [
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Decile members.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "as_of_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "decile": {
+                      "type": "integer"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ResidualSignalRow"
+                      }
+                    },
+                    "capacity_note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decile (must be 1-10).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
                 }
               }
             }
