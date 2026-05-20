@@ -5,6 +5,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hasComplimentaryProfessionalAccess } from "@/lib/subscription-comp";
 
 export interface FreeTierLimits {
   queries_per_day: number;
@@ -30,12 +31,43 @@ export interface FreeTierStatus {
 /**
  * Check if user can proceed with a query based on free tier limits
  */
+async function hasComplimentaryBypass(userId: string): Promise<boolean> {
+  try {
+    const supabase = createAdminClient();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email, complimentary_professional, complimentary_professional_until")
+      .eq("id", userId)
+      .maybeSingle();
+
+    return hasComplimentaryProfessionalAccess(
+      profile?.email,
+      profile?.complimentary_professional,
+      profile?.complimentary_professional_until,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function checkFreeTierLimit(
   userId: string,
   limits: FreeTierLimits = DEFAULT_FREE_LIMITS,
 ): Promise<FreeTierStatus> {
   try {
     const supabase = createAdminClient();
+
+    if (await hasComplimentaryBypass(userId)) {
+      return {
+        user_id: userId,
+        tier: "paid",
+        queries_today: 0,
+        queries_this_month: 0,
+        remaining_today: Infinity,
+        rate_limit_per_minute: 60,
+        can_proceed: true,
+      };
+    }
 
     // Get account tier
     const { data: account } = await supabase
