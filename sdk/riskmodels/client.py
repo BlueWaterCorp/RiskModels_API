@@ -930,6 +930,90 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lineage, kind="l3_decomposition")
         return df
 
+    def residual_signal(
+        self,
+        ticker: str,
+        *,
+        days: int = 90,
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Fetch the residual mean-reversion factor for a single ticker.
+
+        The signal is the L3 orthogonal residual's 5-day mean-reversion factor
+        (Phase D). It is a **combo-input building block** for multi-signal
+        alpha stacks — informative pre-cost (gross Sharpe ~0.79) but not a
+        standalone strategy; net-of-impact capacity caps near ~$1M book. Every
+        response carries ``capacity_note`` with the full disclosure.
+
+        Args:
+            ticker: Stock ticker symbol (e.g. ``"AAPL"``).
+            days: Calendar-day lookback for the returned history window
+                (default 90).
+            as_dataframe: If True, return the history as a DataFrame (one row
+                per trading day) with the latest snapshot + capacity_note in
+                ``df.attrs``. If False (default), return the full dict.
+
+        Returns:
+            Dict with ``ticker``, ``as_of_date``, ``signal`` (residual_z_5d,
+            signal_strength, decile_rank, industry_percentile,
+            residual_autocorr_5d, l3_subsector_er, signal_quality_quintile),
+            ``history``, ``capacity_note``, ``methodology_link``. With
+            ``as_dataframe=True``, the history DataFrame.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> sig = client.residual_signal("AAPL")
+            >>> print(sig["signal"]["residual_z_5d"], sig["signal"]["decile_rank"])
+        """
+        t, _ = resolve_ticker(ticker, self)
+        body, lineage, _r = self._transport.request(
+            "GET", f"/residual-signal/{t}", params={"days": days}
+        )
+        if not as_dataframe:
+            return body
+        df = pd.DataFrame(body.get("history", []))
+        attach_sdk_metadata(df, lineage, kind="residual_signal")
+        df.attrs["residual_signal_snapshot"] = body.get("signal")
+        df.attrs["capacity_note"] = body.get("capacity_note")
+        return df
+
+    def residual_signal_latest(
+        self,
+        *,
+        limit: int = 500,
+        offset: int = 0,
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Fetch the residual mean-reversion factor across the active universe.
+
+        Returns the latest-teo cross-section, sorted by ``residual_z_5d``
+        ascending (most "oversold" first), paginated. See :meth:`residual_signal`
+        for the combo-input framing and capacity disclosure.
+
+        Args:
+            limit: Page size (default 500, max 2000).
+            offset: Pagination offset (default 0).
+            as_dataframe: If True, return the rows as a DataFrame.
+
+        Returns:
+            Dict with ``as_of_date``, ``count``, ``total``, ``rows``,
+            ``capacity_note``. With ``as_dataframe=True``, the rows DataFrame.
+
+        Example:
+            >>> client = RiskModelsClient.from_env()
+            >>> df = client.residual_signal_latest(limit=10, as_dataframe=True)
+            >>> print(df[["ticker", "residual_z_5d", "decile_rank"]])
+        """
+        body, lineage, _r = self._transport.request(
+            "GET", "/residual-signal/latest", params={"limit": limit, "offset": offset}
+        )
+        if not as_dataframe:
+            return body
+        df = pd.DataFrame(body.get("rows", []))
+        attach_sdk_metadata(df, lineage, kind="residual_signal_latest")
+        df.attrs["capacity_note"] = body.get("capacity_note")
+        return df
+
     def get_factor_correlation(
         self,
         ticker: str | list[str],
