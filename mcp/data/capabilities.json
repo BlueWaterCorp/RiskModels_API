@@ -1009,6 +1009,20 @@
     "tags": ["13f", "filer", "return-attribution", "portfolio-surface", "funds"]
   },
   {
+    "id": "filer-concentration",
+    "name": "13F Filer Concentration Summary",
+    "description": "Quarter-end concentration panel from per-filer ds_portfolio.zarr (median + latest effective N, top-5 / top-10 weight share, weight HHI). Optional ?start_date / ?end_date window.",
+    "endpoint": "/api/13f/filers/{bw_filer_id}/concentration",
+    "method": "GET",
+    "parameters": {
+      "bw_filer_id": { "type": "string", "required": true, "description": "Funds_DAG canonical 13F filer id (BW-FILER-CIK{cik})." },
+      "start_date": { "type": "string", "required": false, "description": "YYYY-MM-DD lower bound on report_date." },
+      "end_date": { "type": "string", "required": false, "description": "YYYY-MM-DD upper bound on report_date." }
+    },
+    "pricing": { "model": "per_request", "cost_usd": 0.005, "currency": "USD", "billing_code": "filer_concentration_v1" },
+    "tags": ["13f", "filer", "concentration", "portfolio-surface"]
+  },
+  {
     "id": "filer-snapshot-json",
     "name": "13F Filer Snapshot (JSON)",
     "description": "Composed JSON snapshot for a single 13F filer. Bundles registry + latest metrics + top-25 holdings + portfolio history + cohort context. Cohort axis = filer_type × aum_tier (vs equity_style_9box on the fund side). No NAV section (filers have no NAV by construction); hedge section gated on D.8.10 Phase 3. Matching server-rendered PDF is /api/13f/filers/{bw_filer_id}/snapshot.pdf. MASTER_BACKLOG D.8.8 / D.8.9.",

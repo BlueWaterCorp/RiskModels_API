@@ -11695,6 +11695,85 @@
         }
       }
     },
+    "/13f/filers/{bw_filer_id}/concentration": {
+      "get": {
+        "summary": "13F filer concentration summary",
+        "description": "Quarter-end concentration panel from per-filer ds_portfolio.zarr. Returns median and latest effective N, top-5 / top-10 weight share, and weight HHI over an optional date window (same underlying series as /portfolio, summarized for diligence).\n",
+        "operationId": "getFilerConcentration",
+        "tags": [
+          "13F Filers"
+        ],
+        "x-pricing": {
+          "capability_id": "filer-concentration",
+          "tier": "baseline",
+          "cost_usd": 0.005,
+          "billing_code": "filer_concentration_v1"
+        },
+        "parameters": [
+          {
+            "name": "bw_filer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Concentration summary (median + latest).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filer not found, or no concentration panel available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        }
+      }
+    },
     "/13f/filers/{bw_filer_id}/snapshot": {
       "get": {
         "summary": "13F filer composed snapshot (JSON)",
