@@ -43,6 +43,10 @@ import {
   sanitizePortfolioRiskIndexResult,
   truncateRowsWithSummary,
 } from "@/lib/chat/utils";
+import {
+  renderArtifact,
+  WIRED_ARTIFACT_RENDER_MATRIX,
+} from "@/lib/artifacts/render-client";
 
 function fnTool(
   name: string,
@@ -133,6 +137,15 @@ const searchFilersArgs = z.object({
 const getFilerHoldingsArgs = z.object({
   bw_filer_id: z.string().min(1, "bw_filer_id required (call search_filers first)"),
   limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+const renderArtifactArgs = z.object({
+  slug: z.string().min(1),
+  subject_id: z.string().min(1),
+  version: z.string().default("v1"),
+  as_of: z.string().default("latest"),
+  format: z.enum(["json", "png", "svg"]).default("json"),
+  subject_payload_json: z.string().default(""),
 });
 
 const portfolioRiskArgs = z.object({
@@ -466,6 +479,51 @@ async function execGetFilerHoldings(args: z.infer<typeof getFilerHoldingsArgs>) 
     n_holdings_returned: holdings.n_holdings_returned,
     n_total_holdings: holdings.n_total_holdings,
     holdings: holdings.holdings,
+  };
+}
+
+async function execRenderArtifact(args: z.infer<typeof renderArtifactArgs>) {
+  let subject_payload: Record<string, unknown> | undefined;
+  const raw = args.subject_payload_json?.trim();
+  if (raw) {
+    try {
+      subject_payload = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {
+        error: "invalid_subject_payload_json",
+        message: "subject_payload_json must be valid JSON (e.g. {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}).",
+      };
+    }
+  }
+
+  const result = await renderArtifact({
+    slug: args.slug,
+    version: args.version,
+    subject_id: args.subject_id,
+    as_of: args.as_of,
+    format: args.format,
+    subject_payload,
+  });
+
+  if (!result.ok) {
+    return {
+      error: "artifact_render_failed",
+      status: result.status,
+      message: result.error,
+      detail: result.detail,
+      wired_slugs: WIRED_ARTIFACT_RENDER_MATRIX,
+    };
+  }
+
+  return {
+    slug: args.slug,
+    version: args.version,
+    subject_id: args.subject_id,
+    format: result.format,
+    resolved_as_of: result.resolved_as_of,
+    gcs_path: result.gcs_path,
+    receipt_id: result.receipt_id,
+    artifact: result.data,
   };
 }
 
@@ -942,6 +1000,46 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: "filer-holdings",
     argSchema: getFilerHoldingsArgs,
     executor: async (a) => execGetFilerHoldings(getFilerHoldingsArgs.parse(a)),
+  },
+  {
+    name: "render_artifact",
+    openaiTool: fnTool(
+      "render_artifact",
+      "Deterministic artifact from the intelligence registry (fund BW-FUND-…, filer BW-FILER-…, or client portfolio BW-PORTFOLIO-…). Returns JSON chart/table/narrative payloads or PNG/SVG (base64). Use AFTER search_funds/search_filers resolved a subject_id. Prefer format=json for chat tables. For client_portfolio pass subject_payload_json with {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}. Filer slugs need explicit as_of (filing period end). Do not invent chart data — cite fields from the artifact JSON.",
+      {
+        slug: {
+          type: "string",
+          description:
+            "Artifact slug, e.g. top_holdings_erm_stacked, narrative_profile, entity_header, risk_summary_panel",
+        },
+        subject_id: {
+          type: "string",
+          description: "BW-FUND-…, BW-FILER-…, or BW-PORTFOLIO-…",
+        },
+        version: {
+          type: "string",
+          description: "Registry version tag, default v1",
+        },
+        as_of: {
+          type: "string",
+          description: "YYYY-MM-DD or latest; filers should use filing period end",
+        },
+        format: {
+          type: "string",
+          enum: ["json", "png", "svg"],
+          description: "Output format, default json",
+        },
+        subject_payload_json: {
+          type: "string",
+          description:
+            "Optional JSON string for BW-PORTFOLIO-* subjects: {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}",
+        },
+      },
+      ["slug", "subject_id", "version", "as_of", "format", "subject_payload_json"],
+    ),
+    capabilityId: "artifact-render",
+    argSchema: renderArtifactArgs,
+    executor: async (a) => execRenderArtifact(renderArtifactArgs.parse(a)),
   },
   {
     name: "compute_portfolio_risk_index",

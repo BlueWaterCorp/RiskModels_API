@@ -14,6 +14,7 @@ Runnable scripts for the RiskModels API and Python SDK. Install the SDK from the
 | [python/ai_risk_analyst.py](python/ai_risk_analyst.py) | Python | Agent-style analyst script |
 | [typescript/quickstart.ts](typescript/quickstart.ts) | TypeScript | HTTP quickstart |
 | [typescript/hedge_portfolio.ts](typescript/hedge_portfolio.ts) | TypeScript | Portfolio hedge (TS) |
+| [agents/risk-analyst-agent/](agents/risk-analyst-agent/) | Docs | **P0** MCP + artifact registry agent guide (`riskmodels_render_artifact`, workflows) |
 
 > **Note on `portfolio_risk_metrics.py` performance**: residual returns are assembled by calling `get_ticker_returns` once per name (N requests), which is fine at the default portfolio of ~8 tickers but scales linearly with portfolio size. For larger universes prefer the batch dataset path (`get_dataset`) where the residual reconstruction can be vectorised.
 

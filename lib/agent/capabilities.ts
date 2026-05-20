@@ -961,6 +961,66 @@ export const CAPABILITIES: Capability[] = [
     tags: ["portfolio", "pdf", "risk", "report"],
   },
   {
+    id: "artifact-render",
+    name: "Artifact registry render",
+    description:
+      "Deterministic render-once artifact from the intelligence registry (fund / filer / client_portfolio subjects). " +
+      "Invokes render-svc `POST /artifacts/render` — same contract as riskmodels.net workspace `fetchArtifact`. " +
+      "Returns JSON chart/table/narrative payloads or PNG/SVG bytes (base64). Chat tool: `render_artifact`; MCP: `riskmodels_render_artifact`.",
+    endpoint: "/artifacts/render",
+    method: "POST",
+    parameters: {
+      slug: {
+        type: "string",
+        required: true,
+        description: "Artifact slug (e.g. top_holdings_erm_stacked, narrative_profile)",
+      },
+      version: {
+        type: "string",
+        required: false,
+        description: "Semantic version tag, default v1",
+        default: "v1",
+      },
+      subject_id: {
+        type: "string",
+        required: true,
+        description: "BW-FUND-…, BW-FILER-…, or BW-PORTFOLIO-…",
+      },
+      as_of: {
+        type: "string",
+        required: false,
+        description: "YYYY-MM-DD or latest",
+        default: "latest",
+      },
+      format: {
+        type: "string",
+        required: false,
+        description: "json | png | svg",
+        enum: ["json", "png", "svg"],
+        default: "json",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.05,
+      currency: "USD",
+      billing_code: "artifact_render_v1",
+    },
+    performance: {
+      avg_latency_ms: 1200,
+      p95_latency_ms: 4000,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 30,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["Funds_DAG", "ERM3", "render-svc"],
+    },
+    tags: ["artifact", "registry", "render", "fund", "filer"],
+  },
+  {
     id: "factor-correlation",
     name: "Macro factor correlation",
     description:
