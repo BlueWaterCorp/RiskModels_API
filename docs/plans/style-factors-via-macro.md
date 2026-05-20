@@ -166,10 +166,10 @@ Concrete example: take NVDA's L3 residual from Part 1 (+11.5pp over the trailing
 
 ## Related files
 
-- Python canonical source: `/Users/conradgann/BW_Code/ERM3/erm3/shared/macro_factor_constants.py`
-- TS canonical source: `/Users/conradgann/BW_Code/RiskModels_API/lib/risk/macro-factor-keys.ts`
-- Correlation API: `/Users/conradgann/BW_Code/RiskModels_API/app/api/metrics/[ticker]/correlation/route.ts`, `/api/correlation/route.ts`
-- Macro factors endpoint: `/Users/conradgann/BW_Code/RiskModels_API/app/api/macro-factors/route.ts`
+- Python canonical source: `ERM3/erm3/shared/macro_factor_constants.py`
+- TS canonical source: `lib/risk/macro-factor-keys.ts`
+- Correlation API: `app/api/metrics/[ticker]/correlation/route.ts`, `/api/correlation/route.ts`
+- Macro factors endpoint: `app/api/macro-factors/route.ts`
 - Supabase schema: `SUPABASE_TABLES.md` — `macro_factors` row
 - Build script: `erm3/**/build_macro_factor_zarr.py` (ERM3 repo)
 - Cross-repo sync checklist: `docs/AGENTS_CROSS_REPO.md`

@@ -20,6 +20,9 @@ RISKMODELS_API_SERVICE_KEY
 # Pooled billing user for .net BFF when X-RiskModels-User-Authorization is absent (same Supabase project as API).
 RISKMODELS_GATEWAY_BILLING_USER_ID
 
+# render-svc (artifact registry + chat/MCP render_artifact). Cloud Run URL + GCP_SERVICE_ACCOUNT_JSON for ID tokens.
+RENDER_SVC_URL
+
 # GCS Zarr (API history). Set in Doppler via docs/DEPLOY_ZARR_GCS_API.md Part B1.
 GCP_SERVICE_ACCOUNT_JSON
 ZARR_GCS_PREFIX

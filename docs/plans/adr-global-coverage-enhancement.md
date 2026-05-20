@@ -138,13 +138,13 @@ If Tier 1 data confirms coverage, the content opportunity is:
 
 ## Related files / reference paths
 
-- Classification logic: `/Users/conradgann/BW_Code/ERM3/erm3/core/eodhd_daily.py:855-913`
-- Schema: `/Users/conradgann/BW_Code/ERM3/erm3/core/security_master_schema.sql`
-- API symbol endpoints: `/Users/conradgann/BW_Code/RiskModels_API/app/api/data/symbols/`
-- SymbolRow typing: `/Users/conradgann/BW_Code/RiskModels_API/lib/dal/risk-engine-v3.ts:90-230`
-- OpenAPI spec: `/Users/conradgann/BW_Code/RiskModels_API/OPENAPI_SPEC.yaml`
-- Supabase table reference: `/Users/conradgann/BW_Code/RiskModels_API/SUPABASE_TABLES.md` (symbols row)
-- Cross-repo sync checklist: `/Users/conradgann/BW_Code/RiskModels_API/docs/AGENTS_CROSS_REPO.md`
+- Classification logic: `ERM3/erm3/core/eodhd_daily.py:855-913`
+- Schema: `ERM3/erm3/core/security_master_schema.sql`
+- API symbol endpoints: `app/api/data/symbols/`
+- SymbolRow typing: `lib/dal/risk-engine-v3.ts:90-230`
+- OpenAPI spec: `OPENAPI_SPEC.yaml`
+- Supabase table reference: `SUPABASE_TABLES.md` (symbols row)
+- Cross-repo sync checklist: `docs/AGENTS_CROSS_REPO.md`
 
 ## Recommended order of operations (when scheduled)
 
