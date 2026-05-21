@@ -54,7 +54,7 @@ The table above is the **baseline** production set—assume you need all of them
 
 | What you’re enabling | New Vercel / Doppler keys? | What you do |
 |----------------------|----------------------------|-------------|
-| **Outbound webhooks** (`POST /api/webhooks/subscribe`, `batch.completed` notifications) | **None.** Signing uses **per-subscription secrets in Supabase**, not a global env var. | Apply [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql). Keep **`SUPABASE_SERVICE_ROLE_KEY`** set so the API can read/write `webhook_subscriptions`. |
+| **Outbound webhooks** (`POST /api/webhooks/subscribe`, `batch.completed` notifications) | **None.** Signing uses **per-subscription secrets in Supabase**, not a global env var. | Apply the `20250326120000_webhook_subscriptions.sql` migration (in `BWMACRO/supabase/migrations/`). Keep **`SUPABASE_SERVICE_ROLE_KEY`** set so the API can read/write `webhook_subscriptions`. |
 | **Trusted gateway** (`/api/data/*` with service key) | **`RISKMODELS_API_SERVICE_KEY`** is the key for that pattern (already in the table). | Not webhook-specific—same variable as gateway auth. |
 | **PyPI Python SDK (`riskmodels-py`)** | **None** on Vercel | Users install from PyPI; no extra server env for “0.2.0 SDK” itself. |
 | **Hashed API keys** (`rm_agent_*` / `rm_user_*`) | **`API_KEY_SECRET`**, **`API_KEY_SALT`** | Set in Vercel or Doppler; **not** in the default `vercel:sync-env` allowlist. The landing “try” block uses a **public** `GET /api/tickers?mag7=true` curl (no demo env var). |
@@ -68,7 +68,7 @@ So: **webhooks did not add a new row to the Vercel env table**—they rely on **
 ### Webhooks (outbound subscriptions)
 
 - **Not** a separate “webhook signing” env var: outbound `X-RiskModels-Signature` uses **per-subscription secrets** stored in Supabase (`webhook_subscriptions`), not `API_KEY_SECRET`. Maintainer-only webhook documentation: `internal/WEBHOOKS_GUIDE.md` (gitignored; see [`internal/README.md`](./internal/README.md)).
-- Apply [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql) before enabling `POST /api/webhooks/subscribe` in production.
+- Apply the `20250326120000_webhook_subscriptions.sql` migration (in `BWMACRO/supabase/migrations/`) before enabling `POST /api/webhooks/subscribe` in production.
 - Clients register at **`POST /api/webhooks/subscribe`** (not `/subscribe`).
 
 ## GitHub Actions (smoke test)

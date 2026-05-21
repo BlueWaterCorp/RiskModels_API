@@ -46,6 +46,6 @@ When a user requests risk analysis, you should:
 
 This repo owns the **canonical** API contract and MCP schemas. When you change schemas, `OPENAPI_SPEC.yaml`, `schema-paths.json`, or cross-cutting docs, follow the shared checklist: **[docs/AGENTS_CROSS_REPO.md](./docs/AGENTS_CROSS_REPO.md)** (synced from BWMACRO).
 
-**Supabase SQL migrations** are **not** committed here (public repo). Author locally under `supabase/migrations/`, store the team copy in **BWMACRO** `private/riskmodels-supabase-migrations/`, and apply via Supabase CLI or dashboard — see **[docs/SUPABASE_MIGRATIONS.md](./docs/SUPABASE_MIGRATIONS.md)**.
+**Supabase SQL migrations** live in **BWMACRO** (private) at `BWMACRO/supabase/` — RiskModels_API is a public repo, so DB DDL is not committed here. Add and apply migrations there; see **[docs/SUPABASE_MIGRATIONS.md](./docs/SUPABASE_MIGRATIONS.md)**.
 
 Do not duplicate that checklist in this file; keep it in one place so updates stay consistent.
