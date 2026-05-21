@@ -23,7 +23,7 @@ CORS already allows `http://localhost:3000` for browser clients ([`lib/cors.ts`]
 ## Webhooks (outbound)
 
 - Operator guide (not in the public clone): `internal/WEBHOOKS_GUIDE.md` — **gitignored**; see [`internal/README.md`](./internal/README.md).
-- Apply [`supabase/migrations/20250326120000_webhook_subscriptions.sql`](./supabase/migrations/20250326120000_webhook_subscriptions.sql) on Supabase before relying on subscription APIs.
+- Apply the `20250326120000_webhook_subscriptions.sql` migration (in `BWMACRO/supabase/migrations/`) on Supabase before relying on subscription APIs.
 - Signing uses **per-subscription secrets** in the database, not a global webhook env var ([`DEPLOYMENT.md`](./DEPLOYMENT.md) webhooks subsection).
 
 ## Cross-repo drift (RiskModels_API vs Risk_Models)

@@ -1,39 +1,34 @@
-# Supabase migrations (private)
+# Supabase migrations
 
-SQL migration files are **not** in the public **RiskModels_API** GitHub repo. They are gitignored at `supabase/migrations/`.
+The Supabase project for this backend — CLI config (`config.toml`) and
+**all SQL DDL migrations** — lives in **BWMACRO** (private) at
+**`BWMACRO/supabase/`**.
 
-## Canonical team copy (private)
+RiskModels_API is a public repo, so committing SQL DDL here would
+publish the database schema. The project was relocated to BWMACRO so the
+migrations are properly version-controlled without that exposure.
 
-**BWMACRO** (private): `private/riskmodels-supabase-migrations/`
+## Adding / applying a migration
 
-When you add or change a migration:
+Work in `BWMACRO/supabase/`:
 
-1. Create `YYYYMMDDHHMMSS_description.sql` under your local **`RiskModels_API/supabase/migrations/`** (folder stays on disk; Git ignores it).
-2. Copy the same file into **`BWMACRO/private/riskmodels-supabase-migrations/`** and commit on a BWMACRO branch (private repo only).
-3. Apply to the shared Supabase project (one of):
-   - **Supabase CLI** from `RiskModels_API`: `supabase db push` (with project linked locally)
-   - **SQL Editor** in the Supabase dashboard (paste file contents; use for one-offs or if CLI times out)
-   - **CI** (optional): private workflow with `SUPABASE_DB_URL` / service role — not documented here
+1. Add `migrations/YYYYMMDDHHMMSS_description.sql`.
+2. Apply it — `./check-cli.sh db push` (Supabase CLI, project linked),
+   or paste the file into the Supabase dashboard SQL editor for one-offs.
+3. Commit the migration on a BWMACRO branch.
 
-## Local checkout
+See `BWMACRO/supabase/README.md` for details.
 
-After clone, populate migrations from BWMACRO:
+## What stays in RiskModels_API
 
-```bash
-mkdir -p /path/to/RiskModels_API/supabase/migrations
-cp /path/to/BWMACRO/private/riskmodels-supabase-migrations/*.sql \
-   /path/to/RiskModels_API/supabase/migrations/
-```
-
-Or maintain your own gitignored copy; do not rely on the public API repo for migration history.
-
-## Portal repo (Risk_Models)
-
-**Do not** mirror migrations into `riskmodels_com/supabase/migrations/` on GitHub. Portal schema changes are applied via the same Supabase project; app code references table/column names in TypeScript and docs only.
+`lib/supabase/` — the app's runtime Supabase client — is application
+code and remains in this repo.
 
 ## Git history note
 
-Migrations were removed from the public repo in May 2026. Older commits may still contain SQL in history; rotate any secrets that ever appeared in migration files if concerned.
+SQL DDL appeared in this repo's earlier git history before the move;
+migration files do not carry secrets, but rotate anything sensitive if
+it ever did.
 
 ## Related
 

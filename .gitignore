@@ -3,13 +3,6 @@
 .env.local
 .env.*.local
 
-# Supabase local temp (contains project ID + pooler URL)
-supabase/.temp/
-
-# Schema migrations — private; canonical copy in BWMACRO (private repo).
-# See docs/SUPABASE_MIGRATIONS.md. Never commit SQL migrations to this public repo.
-supabase/migrations/
-
 # Proprietary strategy documents
 PREMIUM_TIER_DESIGN.md
 PREMIUM_TIER_IMPLEMENTATION.md
