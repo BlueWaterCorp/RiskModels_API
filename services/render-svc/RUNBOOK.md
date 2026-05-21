@@ -109,7 +109,7 @@ gcloud run deploy render-svc \
     --region us-central1 \
     --service-account render-svc@$(gcloud config get-value project).iam.gserviceaccount.com \
     --allow-unauthenticated=false \
-    --min-instances=0 \
+    --min-instances=1 \
     --max-instances=10 \
     --memory=2Gi \
     --cpu=2 \
@@ -122,8 +122,12 @@ gcloud run deploy render-svc \
 - `--allow-unauthenticated=false` — the service is internal; only the Vercel
   front-end (or a service account) should call it. Vercel attaches an
   OIDC token to the call.
-- `--min-instances=0` — scales to zero between requests; cold start ~2-3s
-  for the first request after idle. Acceptable for institutional use.
+- `--min-instances=1` — keeps one instance always warm. A scale-to-zero
+  cold start is ~2-3s (Python + matplotlib container), which blows the
+  workspace's <5s first-artifact budget. One warm instance removes that
+  penalty; the cost is one always-on Cloud Run instance (small at this
+  CPU/memory). To apply to a running service without a full redeploy:
+  `gcloud run services update render-svc --region us-central1 --min-instances=1`.
 - `--memory=2Gi --cpu=2` — matplotlib + numpy + xarray comfortably fit;
   PDF render uses ~600 MB peak.
 - `--timeout=60s` — render-from-canonical-JSON completes in <3s warm; the
