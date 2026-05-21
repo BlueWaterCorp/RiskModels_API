@@ -6,6 +6,11 @@ const SITES: { id: EcosystemSite; label: string; href: string }[] = [
   { id: 'app', label: 'API', href: 'https://riskmodels.app' },
 ];
 
+/** Cross-site UTM tags so .org/.net/.app traffic is attributable (Q.14 phase 2). */
+function withUtm(href: string, from: EcosystemSite): string {
+  return `${href}?utm_source=riskmodels-${from}&utm_medium=ecosystem-bar&utm_campaign=cross-site`;
+}
+
 /**
  * Cross-site ecosystem strip (MASTER_BACKLOG Q.14) — the same three-link
  * element on riskmodels .org / .net / .app, current site marked. Keeps the
@@ -37,7 +42,7 @@ export function EcosystemBar({
             </span>
           ) : (
             <a
-              href={s.href}
+              href={withUtm(s.href, current)}
               className="text-zinc-400 transition-colors hover:text-zinc-100"
             >
               {s.label}
