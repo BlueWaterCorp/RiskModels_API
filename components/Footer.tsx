@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { EcosystemBar } from './EcosystemBar';
 
 export default function Footer() {
   return (
@@ -54,6 +55,10 @@ export default function Footer() {
               Legal / Disclosures
             </Link>
           </nav>
+        </div>
+
+        <div className="mt-3 border-t border-white/5 pt-3">
+          <EcosystemBar current="app" />
         </div>
       </div>
     </footer>
