@@ -6,6 +6,7 @@ import { ChatPostSchema } from "@/lib/api/schemas";
 import { runChatAgent, AgentUpstreamError } from "@/lib/chat/agent-runner";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
+import type { ToolCallResult } from "@/lib/chat/tool-executor";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,49 @@ const DEFAULT_MODEL =
     ? "claude-sonnet-4-6"
     : "gpt-4o-mini";
 const MAX_TOOL_ROUNDS = 5;
+
+/** A rendered artifact surfaced to the chat UI for inline display. */
+export interface ChatArtifact {
+  tool_call_id: string;
+  slug: string;
+  version: string;
+  subject_id: string;
+  format: string;
+  resolved_as_of: string | null;
+  receipt_id: string | null;
+  gcs_path: string | null;
+  /** Payload: base64 string for png/svg, JSON object for json. */
+  artifact: unknown;
+}
+
+/**
+ * Pull successfully-rendered artifacts out of the render_artifact tool results
+ * so the chat UI can show them inline. Without this the route returns only the
+ * LLM's text and the rendered artifact payload is discarded.
+ */
+function extractChatArtifacts(toolCallResults: ToolCallResult[]): ChatArtifact[] {
+  const out: ChatArtifact[] = [];
+  for (const r of toolCallResults) {
+    if (r.name !== "render_artifact" || r.error) continue;
+    const res = r.result;
+    if (!res || typeof res !== "object") continue;
+    const o = res as Record<string, unknown>;
+    // execRenderArtifact returns {error: ...} on a failed render — skip those.
+    if (o.error !== undefined || o.artifact === undefined) continue;
+    out.push({
+      tool_call_id: r.tool_call_id,
+      slug: String(o.slug ?? ""),
+      version: String(o.version ?? ""),
+      subject_id: String(o.subject_id ?? ""),
+      format: String(o.format ?? "json"),
+      resolved_as_of: o.resolved_as_of != null ? String(o.resolved_as_of) : null,
+      receipt_id: o.receipt_id != null ? String(o.receipt_id) : null,
+      gcs_path: o.gcs_path != null ? String(o.gcs_path) : null,
+      artifact: o.artifact,
+    });
+  }
+  return out;
+}
 
 function appendCostLineIfMissing(content: string, toolTotalUsd: number, toolCallCount: number): string {
   if (toolCallCount === 0) return content;
@@ -146,6 +190,7 @@ export const POST = withBilling(
     const toolCostTotal = toolCallResults.reduce((s, r) => s + r.cost_usd, 0);
     const totalCost = context.costUsd + toolCostTotal;
     const finalContent = appendCostLineIfMissing(rawContent, toolCostTotal, toolCallResults.length);
+    const chatArtifacts = extractChatArtifacts(toolCallResults);
 
     const latency = Math.round(performance.now() - fetchStart);
     const metadata = await getRiskMetadata();
@@ -172,6 +217,7 @@ export const POST = withBilling(
                 error: r.error ?? null,
               }))
             : null,
+        artifacts: chatArtifacts.length > 0 ? chatArtifacts : null,
         _metadata: buildMetadataBody(metadata),
         _agent: {
           cost_usd: totalCost,
