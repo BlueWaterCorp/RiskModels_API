@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
+import { clearUTMData, getUTMData } from '@/lib/utm';
 
 interface ApiKey {
   id: string;
@@ -302,9 +303,11 @@ function GetKeyPage() {
     // like "API Key" would override the server's numbering logic.
     const trimmed = newKeyName.trim();
     const referralCode = readPersistedReferralCode(searchParams);
-    const payload: Record<string, string> = {};
+    const payload: Record<string, unknown> = {};
     if (trimmed) payload.name = trimmed;
     if (referralCode) payload.referral_code = referralCode;
+    const signupUtm = getUTMData();
+    if (signupUtm) payload.utm = signupUtm;
     const res = await fetch('/api/agent-keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -318,6 +321,7 @@ function GetKeyPage() {
       setNewKeyName('');
       /** Clear the stored ref so a second key issued in the same session isn't double-attributed. */
       clearPersistedReferralCode();
+      clearUTMData();
       await fetchAccountData();
     }
     setGenerating(false);
