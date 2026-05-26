@@ -49,9 +49,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch usage' }, { status: 500 });
   }
 
-  const usage = usageRows ?? [];
+  type UsageRow = {
+    created_at: string;
+    cost_usd: number | string | null;
+    capability_id: string | null;
+  };
+  const usage = (usageRows ?? []) as UsageRow[];
   const totalCalls = usage.length;
-  const totalSpend = usage.reduce((sum, row) => {
+  const totalSpend = usage.reduce((sum: number, row: UsageRow) => {
     const c =
       typeof row.cost_usd === 'number'
         ? row.cost_usd
