@@ -7,6 +7,51 @@
     { "$ref": "#/definitions/DecomposeResponse" }
   ],
   "definitions": {
+    "LevelHedgeSnapshot": {
+      "type": "object",
+      "required": [
+        "market_hr",
+        "sector_hr",
+        "subsector_hr",
+        "market_er",
+        "sector_er",
+        "subsector_er",
+        "residual_er",
+        "hedge_etfs"
+      ],
+      "properties": {
+        "market_hr": { "type": ["number", "null"] },
+        "sector_hr": { "type": ["number", "null"] },
+        "subsector_hr": { "type": ["number", "null"] },
+        "market_er": { "type": ["number", "null"] },
+        "sector_er": { "type": ["number", "null"] },
+        "subsector_er": { "type": ["number", "null"] },
+        "residual_er": { "type": ["number", "null"] },
+        "hedge_etfs": {
+          "type": "object",
+          "required": ["market", "sector", "subsector"],
+          "properties": {
+            "market": { "type": "string" },
+            "sector": { "type": ["string", "null"] },
+            "subsector": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "HedgeLevelsBlock": {
+      "type": "object",
+      "required": ["L1", "L2", "L3"],
+      "properties": {
+        "L1": { "$ref": "#/definitions/LevelHedgeSnapshot" },
+        "L2": { "$ref": "#/definitions/LevelHedgeSnapshot" },
+        "L3": { "$ref": "#/definitions/LevelHedgeSnapshot" },
+        "recommended_level": { "type": ["string", "null"], "enum": ["L1", "L2", "L3", null] },
+        "statistical_lstar": { "type": ["string", "null"], "enum": ["L1", "L2", "L3", null] }
+      },
+      "additionalProperties": true
+    },
     "DecomposeRequest": {
       "type": "object",
       "required": ["ticker"],
@@ -72,6 +117,7 @@
           "additionalProperties": { "type": "number" },
           "description": "Map of hedge-ETF -> dollar ratio (= negative of layer hr). Duplicate ETFs across layers are summed."
         },
+        "hedge_levels": { "$ref": "#/definitions/HedgeLevelsBlock" },
         "_metadata": { "type": "object" },
         "_data_health": {
           "type": "object",

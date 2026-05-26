@@ -13,6 +13,7 @@ import {
   computeHedgeRecommendationSnapshot,
   isValidUserSegment,
 } from "@/lib/risk/hedge-recommendation-service";
+import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { checkPlaygroundMetricsRateLimit } from "@/lib/ratelimit/playground-metrics-rate-limit";
@@ -227,6 +228,20 @@ export const GET = withBilling(
       user_segment: userSegment,
     });
 
+    const sectorEtfMn = symbolRecord.sector_etf || null;
+    const subsectorEtfMn =
+      symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
+    const hedge_levels = buildHedgeLevels(m, {
+      market_etf: "SPY",
+      sector_etf: sectorEtfMn,
+      subsector_etf: subsectorEtfMn,
+      },
+      {
+      recommended_level: hedgeRec.recommended_hedge_level,
+      statistical_lstar: hedgeRec.lstar,
+      },
+    );
+
     const formattedData = {
       symbol: symbolRecord.symbol,
       ticker: symbolRecord.ticker,
@@ -283,6 +298,7 @@ export const GET = withBilling(
         subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf || null,
         asset_type: symbolRecord.asset_type || null,
       },
+      hedge_levels,
       _metadata: buildMetadataBody(metadata, {
         factors: tickerFactors(symbolRecord),
       }),

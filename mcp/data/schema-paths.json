@@ -10,6 +10,7 @@
   "/schemas/telemetry-v1.json",
   "/schemas/estimate-v1.json",
   "/schemas/decompose-v1.json",
+  "/schemas/hedge-levels-v1.json",
   "/schemas/risk-metadata-v1.json",
   "/schemas/portfolio-risk-snapshot-v1.json",
   "/schemas/canonical-snapshot-v1.json",

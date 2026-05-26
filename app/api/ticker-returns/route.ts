@@ -67,6 +67,14 @@ export const GET = withBilling(
           "l1_cfr",
           "l2_cfr",
           "l3_cfr",
+          "l1_mkt_hr",
+          "l1_mkt_er",
+          "l1_res_er",
+          "l2_mkt_hr",
+          "l2_sec_hr",
+          "l2_mkt_er",
+          "l2_sec_er",
+          "l2_res_er",
           "l3_mkt_hr",
           "l3_sec_hr",
           "l3_sub_hr",
@@ -127,6 +135,14 @@ export const GET = withBilling(
       base.l1_cfr = row.l1_cfr ?? null;
       base.l2_cfr = row.l2_cfr ?? null;
       base.l3_cfr = row.l3_cfr ?? null;
+      base.l1_mkt_hr = row.l1_mkt_hr ?? null;
+      base.l1_mkt_er = row.l1_mkt_er ?? null;
+      base.l1_res_er = row.l1_res_er ?? null;
+      base.l2_mkt_hr = row.l2_mkt_hr ?? null;
+      base.l2_sec_hr = row.l2_sec_hr ?? null;
+      base.l2_mkt_er = row.l2_mkt_er ?? null;
+      base.l2_sec_er = row.l2_sec_er ?? null;
+      base.l2_res_er = row.l2_res_er ?? null;
       base.l3_mkt_hr = row.l3_mkt_hr ?? null;
       base.l3_sec_hr = row.l3_sec_hr ?? null;
       base.l3_sub_hr = row.l3_sub_hr ?? null;

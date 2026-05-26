@@ -26,6 +26,7 @@ import { readLatestLinkBetas } from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { buildHedgeBasket } from "@/lib/risk/hedge-recommendation-service";
+import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
 import { HedgeBasketRequestSchema } from "@/lib/api/schemas";
 
 export const runtime = "nodejs";
@@ -70,13 +71,20 @@ export const GET = withBilling(
         symbolRecord.symbol,
         [
           "l1_mkt_hr",
+          "l1_mkt_er",
+          "l1_res_er",
           "l2_mkt_hr",
           "l2_sec_hr",
+          "l2_mkt_er",
+          "l2_sec_er",
+          "l2_res_er",
           "l3_mkt_hr",
           "l3_sec_hr",
           "l3_sub_hr",
-          "l2_sec_er",
+          "l3_mkt_er",
+          "l3_sec_er",
           "l3_sub_er",
+          "l3_res_er",
           "l1_mkt_beta",
         ],
         "daily",
@@ -120,13 +128,24 @@ export const GET = withBilling(
         user_segment,
       });
 
+      const marketEtf = market_factor_etf ?? "SPY";
+      const hedge_levels = buildHedgeLevels(m, {
+        market_etf: marketEtf,
+        sector_etf: sectorEtf,
+        subsector_etf: subsectorEtf,
+      }, {
+        recommended_level: basket.recommended_hedge_level,
+        statistical_lstar: basket.lstar,
+      });
+
       const metadata = await getRiskMetadata();
       const fetchLatency = Math.round(performance.now() - fetchStart);
 
       const responseBody = {
         ...basket,
+        hedge_levels,
         _metadata: buildMetadataBody(metadata, {
-          factors: [market_factor_etf, sectorEtf, subsectorEtf].filter(Boolean) as string[],
+          factors: [marketEtf, sectorEtf, subsectorEtf].filter(Boolean) as string[],
         }),
       };
 

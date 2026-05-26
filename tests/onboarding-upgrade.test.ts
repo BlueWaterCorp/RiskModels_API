@@ -210,8 +210,11 @@ describe("RiskModels MCP live-paper tools", () => {
         plain_english: "NVDA is primarily a market bet.",
         api_call: apiCall,
       }),
+      getHedgeLevels: async () => ({}),
       compare: async () => ({}),
       hedgePosition: async () => ({}),
+      analyzePortfolio: async () => ({}),
+      hedgePortfolio: async () => ({}),
       portfolioDecompose: async () => ({}),
       whitepaperExample: async () => ({}),
     };
@@ -220,8 +223,11 @@ describe("RiskModels MCP live-paper tools", () => {
 
     expect([...tools.keys()]).toEqual([
       "riskmodels_decompose",
+      "riskmodels_get_hedge_levels",
       "riskmodels_compare",
       "riskmodels_hedge_position",
+      "riskmodels_analyze_portfolio",
+      "riskmodels_hedge_portfolio",
       "riskmodels_portfolio_decompose",
       "riskmodels_render_artifact",
       "riskmodels_whitepaper_example",

@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "riskmodels:///schemas/hedge-levels-v1.json",
+  "title": "Hedge levels (canonical L1/L2/L3)",
+  "description": "Canonical hedge_levels block emitted on GET /metrics/{ticker}, POST /decompose, POST /batch/analyze (success rows), hedge-basket, and related surfaces. Compare standalone L1/L2/L3 hedge solutions without parsing flat l*_mkt_hr wire keys.",
+  "oneOf": [{ "$ref": "#/definitions/HedgeLevelsBlock" }],
+  "definitions": {
+    "LevelHedgeSnapshot": {
+      "type": "object",
+      "required": [
+        "market_hr",
+        "sector_hr",
+        "subsector_hr",
+        "market_er",
+        "sector_er",
+        "subsector_er",
+        "residual_er",
+        "hedge_etfs"
+      ],
+      "properties": {
+        "market_hr": {
+          "type": ["number", "null"],
+          "description": "Dollar-ratio HR — ETF notional per $1 stock."
+        },
+        "sector_hr": { "type": ["number", "null"] },
+        "subsector_hr": { "type": ["number", "null"] },
+        "market_er": {
+          "type": ["number", "null"],
+          "description": "Explained-risk variance fraction for the populated leg(s) when defined."
+        },
+        "sector_er": { "type": ["number", "null"] },
+        "subsector_er": { "type": ["number", "null"] },
+        "residual_er": { "type": ["number", "null"] },
+        "hedge_etfs": {
+          "type": "object",
+          "required": ["market", "sector", "subsector"],
+          "properties": {
+            "market": { "type": "string", "examples": ["SPY"] },
+            "sector": { "type": ["string", "null"] },
+            "subsector": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "HedgeLevelsBlock": {
+      "type": "object",
+      "required": ["L1", "L2", "L3"],
+      "properties": {
+        "L1": { "$ref": "#/definitions/LevelHedgeSnapshot" },
+        "L2": { "$ref": "#/definitions/LevelHedgeSnapshot" },
+        "L3": { "$ref": "#/definitions/LevelHedgeSnapshot" },
+        "recommended_level": {
+          "type": ["string", "null"],
+          "enum": ["L1", "L2", "L3", null],
+          "description": "Economically gated recommendation when emitted by the hedge stack."
+        },
+        "statistical_lstar": {
+          "type": ["string", "null"],
+          "enum": ["L1", "L2", "L3", null],
+          "description": "Cascade statistical layer pick (orthogonal Lstar)."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

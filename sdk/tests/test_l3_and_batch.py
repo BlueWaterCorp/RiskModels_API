@@ -114,3 +114,37 @@ def test_batch_analyze_parquet_long_normalizes_columns():
     assert BATCH_RETURNS_LONG_RENAME["l1"] in df.columns
     assert "l3_market_hr" in df.columns
     assert df.attrs.get("riskmodels_kind") == "batch_returns_long"
+
+
+def test_batch_returns_long_dual_write_prefers_explicit_hr_columns():
+    from riskmodels.parsing import batch_returns_long_normalize
+
+    long_df = pd.DataFrame(
+        [
+            {
+                "ticker": "AAPL",
+                "date": "2026-01-01",
+                "l1": 0.5,
+                "l3_market_hr": 0.6,
+                "l2": 0.1,
+                "l3_sector_hr": 0.2,
+                "l3": -0.02,
+                "l3_subsector_hr": -0.03,
+            },
+        ],
+    )
+    out = batch_returns_long_normalize(long_df)
+    assert "l1" not in out.columns
+    assert "l2" not in out.columns
+    assert "l3" not in out.columns
+    assert out["l3_market_hr"].iloc[0] == 0.6
+    assert out["l3_sector_hr"].iloc[0] == 0.2
+    assert out["l3_subsector_hr"].iloc[0] == -0.03
+
+
+def test_extract_hedge_levels_from_body():
+    from riskmodels.mapping import extract_hedge_levels
+
+    hl = {"L1": {"market_hr": 0.5}}
+    assert extract_hedge_levels({"hedge_levels": hl}) == hl
+    assert extract_hedge_levels(None) is None

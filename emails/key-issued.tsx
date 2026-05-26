@@ -326,7 +326,7 @@ export const KeyIssuedEmail = ({
           </Text>
           <CodeBlock theme={dracula} language="json" code={snippets.mcpCursorJson} />
           <Text style={paragraph}>
-            Restart Cursor. Open a chat → the tools icon should list &quot;riskmodels&quot; with 6 tools.
+            Restart Cursor. Open a chat → the tools icon should list &quot;riskmodels&quot; with 9 SDK-backed tools.
             Test with: <em>What&apos;s NVDA&apos;s L3 subsector hedge ratio today?</em>
           </Text>
 

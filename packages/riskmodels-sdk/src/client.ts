@@ -1,12 +1,19 @@
 import {
+  normalizeAnalyzePortfolioResult,
   normalizeCompareResult,
   normalizeDecomposeResult,
+  normalizeHedgeLevelsResult,
   normalizeHedgePositionResult,
+  normalizeHedgePortfolioResult,
+  normalizeHedgeLevel,
   normalizePortfolioResult,
 } from "./normalize.js";
 import type {
+  AnalyzePortfolioOptions,
   ApiCallMetadata,
   FetchLike,
+  HedgePortfolioOptions,
+  HedgePortfolioPosition,
   HedgePositionInput,
   PositionInput,
   RiskModelsClientOptions,
@@ -98,6 +105,13 @@ export class RiskModelsClient {
     return normalizeDecomposeResult(raw, apiCall);
   }
 
+  /** GET /metrics/{ticker} narrowed to `hedge_levels` (canonical L1/L2/L3 block). */
+  async getHedgeLevels(ticker: string): Promise<RiskModelsResult> {
+    const trimmed = ticker.trim().toUpperCase();
+    const { raw, apiCall } = await this.request("GET", `/metrics/${trimmed}`);
+    return normalizeHedgeLevelsResult(raw, apiCall);
+  }
+
   async compare(tickers: string[]): Promise<RiskModelsResult> {
     const body = {
       tickers: tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean),
@@ -119,6 +133,67 @@ export class RiskModelsClient {
     const body = { ticker: input.ticker.trim().toUpperCase() };
     const { raw, apiCall } = await this.request("POST", "/decompose", { body });
     return normalizeHedgePositionResult(raw, apiCall, input.dollars);
+  }
+
+  /**
+   * POST /batch/analyze with hedge_ratios and aggregate per-ticker `hedge_levels` into
+   * holdings-weighted portfolio L1/L2/L3 snapshots.
+   */
+  async analyzePortfolio(
+    positions: PositionInput[],
+    options?: AnalyzePortfolioOptions,
+  ): Promise<RiskModelsResult> {
+    if (positions.length === 0) {
+      throw new Error("analyzePortfolio requires at least one position");
+    }
+    let denom = 0;
+    const accWeights: Record<string, number> = {};
+    for (const position of positions) {
+      denom += positionWeight(position);
+    }
+    for (const position of positions) {
+      const title = position.ticker.trim().toUpperCase();
+      accWeights[title] = (accWeights[title] ?? 0) + positionWeight(position) / denom;
+    }
+    const tickers = Object.keys(accWeights);
+    const body = {
+      tickers,
+      metrics: ["hedge_ratios"],
+      years: options?.years ?? 1,
+      format: "json",
+    };
+    const { raw, apiCall } = await this.request("POST", "/batch/analyze", { body });
+    return normalizeAnalyzePortfolioResult(raw, apiCall, accWeights);
+  }
+
+  /**
+   * Batch-analyze holdings, choose one cascade level, and aggregate scaled ETF hedge notionals
+   * (`hr * stock_usd`) across names.
+   */
+  async hedgePortfolio(
+    inputs: HedgePortfolioPosition[],
+    options?: HedgePortfolioOptions,
+  ): Promise<RiskModelsResult> {
+    if (inputs.length === 0) {
+      throw new Error("hedgePortfolio requires at least one line");
+    }
+    const merged: Record<string, number> = {};
+    for (const line of inputs) {
+      if (!Number.isFinite(line.dollars) || line.dollars <= 0) {
+        throw new Error("hedgePortfolio requires positive dollars on every line");
+      }
+      const key = line.ticker.trim().toUpperCase();
+      merged[key] = (merged[key] ?? 0) + line.dollars;
+    }
+    const tickers = Object.keys(merged);
+    const body = {
+      tickers,
+      metrics: ["hedge_ratios"],
+      years: options?.years ?? 1,
+      format: "json",
+    };
+    const { raw, apiCall } = await this.request("POST", "/batch/analyze", { body });
+    return normalizeHedgePortfolioResult(raw, apiCall, merged, normalizeHedgeLevel(options?.level));
   }
 
   async portfolioDecompose(positions: PositionInput[]): Promise<RiskModelsResult> {

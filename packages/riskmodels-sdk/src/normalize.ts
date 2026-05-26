@@ -7,6 +7,12 @@ import type {
   RiskModelsResult,
   SuggestedChart,
 } from "./types.js";
+import {
+  aggregatePortfolioHedgeLevels,
+  notionalsFromLevelSnapshot,
+  type HedgeLevelId,
+  type HedgeLevelsBlock,
+} from "./hedge-levels-internal.js";
 
 const LAYERS: RiskLayer[] = ["market", "sector", "subsector", "residual"];
 const LAYER_LABELS: Record<RiskLayer, string> = {
@@ -160,6 +166,31 @@ export function plainEnglishForComponents(
   return `${ticker} is primarily a ${top.label.toLowerCase()} bet: ${pct}% of explained variance sits in that layer.`;
 }
 
+export function normalizeHedgeLevel(raw: unknown): HedgeLevelId {
+  const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (v === "L1" || v === "L2" || v === "L3") return v;
+  return "L3";
+}
+
+function renormalizeWeights(
+  weights: Record<string, number>,
+  successfulTickers: string[],
+): Record<string, number> {
+  const picks = successfulTickers.filter((t) => t in weights);
+  const ws: Record<string, number> = Object.fromEntries(picks.map((t) => [t, weights[t]]));
+  let sum = Object.values(ws).reduce((acc, cur) => acc + cur, 0);
+  if (picks.length === 0 && successfulTickers.length > 0) {
+    const u = successfulTickers.length;
+    return Object.fromEntries(successfulTickers.map((t) => [t, 1 / u]));
+  }
+  if (!(sum > 0)) {
+    const keys = Object.keys(ws);
+    const n = keys.length || 1;
+    return Object.fromEntries(keys.map((t) => [t, 1 / n]));
+  }
+  return Object.fromEntries(Object.entries(ws).map(([t, v]) => [t, v / sum]));
+}
+
 export function normalizeDecomposeResult<TRaw>(
   raw: TRaw,
   apiCall: ApiCallMetadata,
@@ -168,6 +199,7 @@ export function normalizeDecomposeResult<TRaw>(
   const ticker = str(record.ticker) ?? undefined;
   const exposure = isRecord(record.exposure) ? (record.exposure as unknown as LayerExposure) : {};
   const components = componentsFromExposure(exposure, ticker);
+  const hedgeLevelsBlock = isRecord(record.hedge_levels) ? record.hedge_levels : undefined;
   const call = apiCallWithLineage(raw, apiCall);
   return {
     raw,
@@ -175,7 +207,10 @@ export function normalizeDecomposeResult<TRaw>(
       ticker,
       components,
       hedge: isRecord(record.hedge) ? (record.hedge as Record<string, number>) : undefined,
-      metadata: metadataFromRaw(raw),
+      metadata: {
+        ...(metadataFromRaw(raw) ?? {}),
+        ...(hedgeLevelsBlock ? { hedge_levels: hedgeLevelsBlock } : {}),
+      },
     },
     chart_data: chartDataFromComponents(components),
     suggested_chart: "bar",
@@ -226,6 +261,7 @@ export function normalizeHedgePositionResult<TRaw>(
   const ticker = str(record.ticker) ?? undefined;
   const exposure = isRecord(record.exposure) ? (record.exposure as unknown as LayerExposure) : {};
   const components = componentsFromExposure(exposure, ticker, dollars);
+  const hedgeLevelsBlock = isRecord(record.hedge_levels) ? record.hedge_levels : undefined;
   const chartData = chartDataFromComponents(
     components.filter((component) => component.layer !== "residual"),
     "hedge_notional",
@@ -236,11 +272,38 @@ export function normalizeHedgePositionResult<TRaw>(
       ticker,
       components,
       hedge: isRecord(record.hedge) ? (record.hedge as Record<string, number>) : undefined,
-      metadata: metadataFromRaw(raw),
+      metadata: {
+        ...(metadataFromRaw(raw) ?? {}),
+        ...(hedgeLevelsBlock ? { hedge_levels: hedgeLevelsBlock } : {}),
+      },
     },
     chart_data: chartData,
     suggested_chart: "bar",
     plain_english: `${ticker ?? "This position"} hedge notionals are scaled to a $${dollars.toLocaleString("en-US")} stock position.`,
+    api_call: apiCallWithLineage(raw, apiCall),
+  };
+}
+
+export function normalizeHedgeLevelsResult<TRaw>(
+  raw: TRaw,
+  apiCall: ApiCallMetadata,
+): RiskModelsResult<TRaw> {
+  const record: Record<string, unknown> = isRecord(raw) ? raw : {};
+  const ticker = str(record.ticker) ?? undefined;
+  const hedgeLevels = isRecord(record.hedge_levels) ? record.hedge_levels : undefined;
+  return {
+    raw,
+    normalized: {
+      ticker,
+      components: [],
+      metadata:
+        hedgeLevels !== undefined ? { ...(metadataFromRaw(raw) ?? {}), hedge_levels: hedgeLevels } : metadataFromRaw(raw),
+    },
+    chart_data: [],
+    suggested_chart: "table",
+    plain_english: ticker
+      ? `${ticker}: L1/L2/L3 hedge_levels from GET /metrics (compare cascade levels).`
+      : "L1/L2/L3 hedge_levels from GET /metrics.",
     api_call: apiCallWithLineage(raw, apiCall),
   };
 }
@@ -274,6 +337,124 @@ export function normalizePortfolioResult<TRaw>(
     suggested_chart: "bar",
     plain_english: "The portfolio was decomposed into market, sector, subsector, and residual risk layers.",
     api_call: apiCallWithLineage(raw, apiCall),
+  };
+}
+
+export function normalizeAnalyzePortfolioResult<TRaw>(
+  raw: TRaw,
+  apiCall: ApiCallMetadata,
+  requestedWeights: Record<string, number>,
+): RiskModelsResult<TRaw> {
+  const record: Record<string, unknown> = isRecord(raw) ? raw : {};
+  const results = isRecord(record.results) ? record.results : {};
+
+  const successful: string[] = [];
+  const blocks: Record<string, HedgeLevelsBlock | undefined> = {};
+  for (const [key, value] of Object.entries(results)) {
+    if (!isRecord(value) || value.status === "error") continue;
+    const ticker = str(value.ticker) ?? key.toUpperCase();
+    successful.push(ticker);
+    if (!isRecord(value.hedge_levels)) continue;
+    blocks[ticker] = value.hedge_levels as unknown as HedgeLevelsBlock;
+  }
+
+  const weightsEffective = renormalizeWeights(requestedWeights, successful);
+  const portfolioLevels = aggregatePortfolioHedgeLevels(weightsEffective, blocks);
+  const call = apiCallWithLineage(raw, apiCall);
+
+  return {
+    raw,
+    normalized: {
+      tickers: successful.sort(),
+      components: [],
+      portfolio: {
+        weights_effective: weightsEffective,
+        hedge_levels_by_ticker: blocks,
+        portfolio_hedge_levels: portfolioLevels,
+      },
+      metadata: metadataFromRaw(raw),
+    },
+    chart_data: [],
+    suggested_chart: "table",
+    plain_english:
+      successful.length > 0
+        ? `Holdings-weighted L1/L2/L3 hedge_levels for ${successful.length} name${successful.length === 1 ? "" : "s"}.`
+        : "No hedge_levels rows returned from portfolio batch analyze.",
+    api_call: call,
+  };
+}
+
+export function normalizeHedgePortfolioResult<TRaw>(
+  raw: TRaw,
+  apiCall: ApiCallMetadata,
+  dollarsByTicker: Record<string, number>,
+  level: HedgeLevelId,
+): RiskModelsResult<TRaw> {
+  let sumD = 0;
+  for (const amount of Object.values(dollarsByTicker)) {
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    sumD += amount;
+  }
+  const weights: Record<string, number> =
+    sumD > 0 ? Object.fromEntries(Object.entries(dollarsByTicker).map(([t, d]) => [t, d / sumD])) : {};
+
+  const record: Record<string, unknown> = isRecord(raw) ? raw : {};
+  const results = isRecord(record.results) ? record.results : {};
+  const blocks: Record<string, HedgeLevelsBlock | undefined> = {};
+  for (const [key, value] of Object.entries(results)) {
+    if (!isRecord(value) || value.status === "error") continue;
+    const ticker = str(value.ticker) ?? key.toUpperCase();
+    if (!isRecord(value.hedge_levels)) continue;
+    blocks[ticker] = value.hedge_levels as unknown as HedgeLevelsBlock;
+  }
+
+  const portfolioLevels = aggregatePortfolioHedgeLevels(weights, blocks);
+  const totals = new Map<string, number>();
+  const hedgeNotionalsByTicker: Array<Record<string, unknown>> = [];
+
+  for (const [tk, bucks] of Object.entries(dollarsByTicker)) {
+    const snapshot = blocks[tk]?.[level];
+    const legs = snapshot ? notionalsFromLevelSnapshot(bucks, snapshot) : [];
+    hedgeNotionalsByTicker.push({ ticker: tk, dollars: bucks, hedge_legs: legs });
+    for (const leg of legs) {
+      totals.set(leg.etf, (totals.get(leg.etf) ?? 0) + leg.hedge_usd);
+    }
+  }
+
+  const aggregateMap = Object.fromEntries([...totals]);
+  const chartData: ChartDatum[] = Object.entries(aggregateMap).map(([etf, hedgeUsd]) => ({
+    label: etf,
+    metric: "hedge_notional",
+    value: num(hedgeUsd),
+    unit: "usd",
+    series: level,
+  }));
+
+  const call = apiCallWithLineage(raw, apiCall);
+  const tickersListed = Object.keys(weights).sort();
+  const plain =
+    Object.keys(aggregateMap).length === 0
+      ? `No hedge_levels available to scale ${level} ETF notionals.`
+      : `${level} portfolio hedge ETFs aggregated across positions (${tickersListed.join(", ")}).`;
+
+  return {
+    raw,
+    normalized: {
+      tickers: tickersListed,
+      components: [],
+      portfolio: {
+        hedge_level: level,
+        hedge_notionals_usd_aggregate: aggregateMap,
+        hedge_notionals_by_ticker: hedgeNotionalsByTicker,
+        portfolio_hedge_levels: portfolioLevels,
+        hedge_levels_by_ticker: blocks,
+      },
+      metadata: metadataFromRaw(raw),
+    },
+    chart_data: chartData,
+    suggested_chart: Object.keys(chartData).length ? "bar" : "table",
+    plain_english: plain,
+    api_call: call,
   };
 }
 

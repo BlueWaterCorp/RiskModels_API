@@ -55,7 +55,7 @@ from .auth import OAuthClientCredentialsAuth, StaticBearerAuth
 from .capabilities import DISCOVER_SPEC, discover_markdown
 from .legends import COMBINED_ERM3_MACRO_LEGEND, SHORT_MACRO_SERIES_LEGEND, SHORT_RANKINGS_LEGEND
 from .lineage import RiskLineage
-from .mapping import TICKER_RETURNS_COLUMN_RENAME
+from .mapping import TICKER_RETURNS_COLUMN_RENAME, extract_hedge_levels
 from .metadata_attach import attach_sdk_metadata
 from .parsing import (
     batch_returns_long_normalize,
@@ -338,6 +338,8 @@ class RiskModelsClient:
               ``l3_subsector_er``, ``l3_residual_er`` — variance fractions summing to ~1.0.
             - **Betas**: ``l1_mkt_beta``, ``l2_sec_beta``, ``l3_sub_beta``.
             - **Price/vol**: ``price_close``, ``market_cap``, ``vol_23d``, ``vol_252d_ann``.
+            - **Levels block**: ``hedge_levels`` — canonical L1/L2/L3 HR/ER + ETF hints (see
+              :meth:`get_hedge_levels`).
 
         Example:
             >>> client = RiskModelsClient.from_env()
@@ -363,6 +365,26 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lineage, kind="metrics_snapshot")
         return df
 
+    def get_hedge_levels(self, ticker: str) -> dict[str, Any] | None:
+        """Return the canonical ``hedge_levels`` object (L1/L2/L3) for one ticker.
+
+        Thin ``GET /metrics/{ticker}`` — avoids hand-parsing flat ``l*_mkt_*`` keys when
+        comparing model levels.
+
+        Args:
+            ticker: Equity symbol (e.g. ``"NVDA"``).
+
+        Returns:
+            Parsed ``hedge_levels`` subtree or ``None`` if absent.
+
+        Note:
+            :meth:`decompose` still returns the L3 four-bet exposure table; use this method for
+            the unified L1/L2/L3 hedge snapshot alongside flat metrics.
+        """
+        t, _ = resolve_ticker(ticker, self)
+        body, _lineage, _r = self._transport.request("GET", f"/metrics/{t}")
+        return extract_hedge_levels(body if isinstance(body, dict) else None)
+
     def decompose(
         self,
         ticker: str,
@@ -380,6 +402,9 @@ class RiskModelsClient:
             Dict or DataFrame with columns: ``ticker``, ``layer``, ``er``
             (explained risk fraction), ``hr`` (hedge ratio), ``hedge_etf``
             (which ETF to trade), ``data_as_of``.
+
+            Raw JSON dict also includes ``hedge_levels`` (L1/L2/L3) when the route adds it —
+            compare levels with :meth:`get_hedge_levels` which reads from ``GET /metrics``.
 
             Sign convention: ``hedge[etf] == -exposure[layer].hr``. A positive
             stock ``hr`` yields a negative ETF dollar ratio (short the ETF to

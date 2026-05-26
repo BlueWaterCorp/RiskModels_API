@@ -480,6 +480,114 @@
           }
         }
       },
+      "LevelHedgeSnapshot": {
+        "type": "object",
+        "description": "One hierarchical level (L1, L2, or L3) as a standalone hedge solution — HR and ER for each populated leg plus resolved ETF mnemonics. Null legs indicate that leg is not part of this level.\n",
+        "required": [
+          "market_hr",
+          "sector_hr",
+          "subsector_hr",
+          "market_er",
+          "sector_er",
+          "subsector_er",
+          "residual_er",
+          "hedge_etfs"
+        ],
+        "properties": {
+          "market_hr": {
+            "type": "number",
+            "nullable": true,
+            "description": "Dollar-ratio HR (ETF notional per $1 stock)."
+          },
+          "sector_hr": {
+            "type": "number",
+            "nullable": true
+          },
+          "subsector_hr": {
+            "type": "number",
+            "nullable": true
+          },
+          "market_er": {
+            "type": "number",
+            "nullable": true,
+            "description": "Explained-risk variance fraction where defined for this level."
+          },
+          "sector_er": {
+            "type": "number",
+            "nullable": true
+          },
+          "subsector_er": {
+            "type": "number",
+            "nullable": true
+          },
+          "residual_er": {
+            "type": "number",
+            "nullable": true
+          },
+          "hedge_etfs": {
+            "type": "object",
+            "required": [
+              "market",
+              "sector",
+              "subsector"
+            ],
+            "properties": {
+              "market": {
+                "type": "string",
+                "example": "SPY"
+              },
+              "sector": {
+                "type": "string",
+                "nullable": true
+              },
+              "subsector": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          }
+        }
+      },
+      "HedgeLevelsBlock": {
+        "type": "object",
+        "description": "Canonical L1/L2/L3 hedge snapshots (additive on metrics, decompose, batch success rows). Prefer this block over parsing flat `l*_mkt_hr` wire keys when comparing cascade levels.\n",
+        "required": [
+          "L1",
+          "L2",
+          "L3"
+        ],
+        "properties": {
+          "L1": {
+            "$ref": "#/components/schemas/LevelHedgeSnapshot"
+          },
+          "L2": {
+            "$ref": "#/components/schemas/LevelHedgeSnapshot"
+          },
+          "L3": {
+            "$ref": "#/components/schemas/LevelHedgeSnapshot"
+          },
+          "recommended_level": {
+            "type": "string",
+            "enum": [
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "nullable": true,
+            "description": "Economic recommendation when emitted (user-segment hedge gate)."
+          },
+          "statistical_lstar": {
+            "type": "string",
+            "enum": [
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "nullable": true,
+            "description": "Orthogonal cascade statistical layer pick."
+          }
+        }
+      },
       "DecomposeRequest": {
         "type": "object",
         "description": "Request body for `POST /decompose`.",
@@ -587,6 +695,11 @@
               "XLK": -0.35,
               "SMH": -0.6
             }
+          },
+          "hedge_levels": {
+            "$ref": "#/components/schemas/HedgeLevelsBlock",
+            "nullable": true,
+            "description": "Canonical L1/L2/L3 compare alongside the L3-focused `exposure` map. Prefer this when the user asks how L1/L2/L3 hedge ratios differ — `exposure` alone is the four-bet semantic view for L3.\n"
           },
           "_metadata": {
             "type": "object",
@@ -797,6 +910,11 @@
                 "nullable": true
               }
             }
+          },
+          "hedge_levels": {
+            "$ref": "#/components/schemas/HedgeLevelsBlock",
+            "nullable": true,
+            "description": "Canonical L1/L2/L3 hedge snapshots for cross-level comparison."
           }
         }
       },
@@ -1232,6 +1350,11 @@
                 "nullable": true
               }
             }
+          },
+          "hedge_levels": {
+            "$ref": "#/components/schemas/HedgeLevelsBlock",
+            "nullable": true,
+            "description": "Present when status is success — canonical L1/L2/L3 block for this ticker row."
           }
         }
       },
@@ -2166,11 +2289,17 @@
               "riskmodels_list_endpoints",
               "riskmodels_get_capability",
               "riskmodels_get_schema",
-              "analyze_portfolio",
-              "hedge_portfolio",
-              "get_risk_decomposition"
+              "riskmodels_decompose",
+              "riskmodels_compare",
+              "riskmodels_get_hedge_levels",
+              "riskmodels_analyze_portfolio",
+              "riskmodels_hedge_portfolio",
+              "get_l3_decomposition",
+              "get_metrics",
+              "get_portfolio_risk_snapshot",
+              "post_snapshot"
             ],
-            "description": "Available tools:\n- `riskmodels_list_endpoints`: List all available API endpoints with summaries, tags, and costs. No required inputs.\n- `riskmodels_get_capability`: Get detailed schema and documentation for a specific capability by ID (e.g. \"ticker-returns\", \"metrics\", \"l3-decomposition\"). Input: `{ id: string }`.\n- `riskmodels_get_schema`: Fetch the JSON response schema for a given endpoint path. Input: `{ path: string }`.\n- `analyze_portfolio`: Analyze a portfolio of ticker positions — returns per-ticker risk metrics (volatility, hedge ratios, explained risk) and portfolio-level aggregates. Input: `{ positions: Array<{ ticker: string, weight?: number }> }`.\n- `hedge_portfolio`: Compute optimal hedge notionals for a portfolio using ERM3 factor model. Returns L1/L2/L3 hedge amounts in USD. Input: `{ positions: Array<{ ticker: string, notional_usd: number }>, level?: \"l1\"|\"l2\"|\"l3\" }`.\n- `get_risk_decomposition`: Get monthly L3 factor risk decomposition time series for a ticker. Input: `{ ticker: string, from?: string, to?: string }`.\n"
+            "description": "Representative MCP tool names for this deployment (hosted Streamable HTTP and stdio share the RiskModels subset;\nhosted adds live REST-backed tools).\n\nStdio/SDK-oriented tools (`registerRiskModelsTools`):\n- `riskmodels_decompose` — POST /decompose: L3 four-layer `exposure` + `hedge` map. For comparing L1/L2/L3\n  standalone solutions, prefer `riskmodels_get_hedge_levels` or read `hedge_levels` when present on decompose metrics.\n- `riskmodels_get_hedge_levels` — GET /metrics/{ticker} narrowed to the canonical `hedge_levels` block.\n- `riskmodels_compare` / `riskmodels_analyze_portfolio` — POST /batch/analyze for multiple tickers; portfolio path\n  renormalizes weights and surfaces aggregated `portfolio_hedge_levels` in the MCP wrapper output.\n- `riskmodels_hedge_portfolio` — Uses batch `/batch/analyze` per-ticker `hedge_levels` at the chosen cascade level and\n  scales to `notional_usd` positions (sums hedge notionals across ETFs).\n- `riskmodels_list_endpoints` / `riskmodels_get_capability` / `riskmodels_get_schema` — discovery.\n\nHosted-only tools (`mcp/src/server.ts`):\n- `get_l3_decomposition`, `get_metrics`, `get_portfolio_risk_snapshot`, `post_snapshot` — proxied REST with billing headers surfaced in the MCP JSON envelope.\n"
           },
           "description": {
             "type": "string"

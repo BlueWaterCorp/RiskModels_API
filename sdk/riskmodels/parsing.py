@@ -9,7 +9,7 @@ import pandas as pd
 
 from .lineage import RiskLineage
 from .legends import RANKINGS_SMALL_COHORT_THRESHOLD
-from .mapping import BATCH_RETURNS_LONG_RENAME, TICKER_RETURNS_COLUMN_RENAME
+from .mapping import TICKER_RETURNS_COLUMN_RENAME
 from .metadata_attach import attach_sdk_metadata
 
 
@@ -48,9 +48,23 @@ def l3_decomposition_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
 
 
 def batch_returns_long_normalize(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize batch returns long table; handles API dual-write of legacy ``l1``/``l2``/``l3`` vs ``l3_*_hr``."""
     if df.empty:
         return df
-    out = df.rename(columns=BATCH_RETURNS_LONG_RENAME)
+    out = df.copy()
+    for legacy, explicit in (
+        ("l1", "l3_market_hr"),
+        ("l2", "l3_sector_hr"),
+        ("l3", "l3_subsector_hr"),
+    ):
+        if explicit in out.columns and legacy in out.columns:
+            out = out.drop(columns=[legacy])
+        elif legacy in out.columns and explicit not in out.columns:
+            out = out.rename(columns={legacy: explicit})
+    if "gross_return" in out.columns and "returns_gross" not in out.columns:
+        out = out.rename(columns={"gross_return": "returns_gross"})
+    elif "gross_return" in out.columns:
+        out = out.drop(columns=["gross_return"])
     if "date" in out.columns:
         out["date"] = pd.to_datetime(out["date"]).dt.date.astype(str)
     return out

@@ -461,6 +461,10 @@ curl -X POST https://riskmodels.app/api/decompose \
 
 **ER invariant.** Across the four layers, `market_er + sector_er + subsector_er + residual_er ≈ 1` (variance fractions). The handler emits a warning when the sum deviates by more than 0.05.
 
+### Compare cascade depth: `hedge_levels`
+
+`POST /decompose` is the **four additive L3-factor bets** view (`exposure` / `hedge`). Many routes also return a parallel **`hedge_levels`** object with **`L1`**, **`L2`**, and **`L3`** keys. Each value is a snapshot of that **standalone** hedge depth: semantic **`market_hr` / `sector_hr` / `subsector_hr`**, matching **`market_er` / `sector_er` / `subsector_er` / `residual_er`**, and **`hedge_etfs`** (market / sector / subsector tickers). **`L2.market_hr`** is always sourced from **`l2_mkt_hr`** on the flat metrics row, **`L3.market_hr`** from **`l3_mkt_hr`** — cascade levels never share prefixed HR or ER inputs across **L1** / **L2** / **L3**. Use **`hedge_levels`** when you need to choose whether to trade a one-ETF, two-ETF, or three-ETF hedge; keep using **`exposure`** for the telescoping four-layer story. See **`SEMANTIC_ALIASES.md`** and the OpenAPI **`HedgeLevelsBlock`** component.
+
 ## 🤖 Agent-Native Helpers (Python SDK)
 
 The `riskmodels-py` package includes methods and metadata designed for agent workflows and LLM reasoning:

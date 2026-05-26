@@ -8,7 +8,7 @@
  *
  * SOURCE OF TRUTH REMINDER: if you change tool schemas or handler logic,
  * mirror the edit to `mcp/src/server.ts` so the stdio binary stays in sync.
- * The lists (6 tools, 5 resources) must match exactly.
+ * The lists (9 SDK-backed tools from registerRiskModelsTools, 5 resources) must match exactly.
  */
 
 import { readFileSync, existsSync } from "fs";

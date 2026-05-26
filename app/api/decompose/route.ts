@@ -11,6 +11,12 @@ import {
   buildMetadataBody,
 } from "@/lib/dal/response-headers";
 import { DecomposeRequestSchema } from "@/lib/api/schemas";
+import {
+  computeHedgeRecommendationSnapshot,
+  isValidUserSegment,
+} from "@/lib/risk/hedge-recommendation-service";
+import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
+import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 
 /**
  * POST /api/decompose — simplified four-layer exposure + hedge map.
@@ -83,7 +89,18 @@ export const POST = withBilling(
 
       const latestData = await fetchLatestMetricsWithFallback(
         symbolRecord.symbol,
-        [
+          [
+          // L1
+          "l1_mkt_hr",
+          "l1_mkt_er",
+          "l1_res_er",
+          // L2
+          "l2_mkt_hr",
+          "l2_sec_hr",
+          "l2_mkt_er",
+          "l2_sec_er",
+          "l2_res_er",
+          // L3
           "l3_mkt_hr",
           "l3_sec_hr",
           "l3_sub_hr",
@@ -175,6 +192,34 @@ export const POST = withBilling(
         tickerFactors.push(subsectorEtf);
       }
 
+      const userSegmentRaw = request.nextUrl.searchParams.get("user_segment");
+      const userSegment = isValidUserSegment(userSegmentRaw)
+        ? userSegmentRaw
+        : DEFAULT_USER_SEGMENT;
+      const hedgeRec = computeHedgeRecommendationSnapshot({
+        l1_mkt_hr: m.l1_mkt_hr ?? null,
+        l2_mkt_hr: m.l2_mkt_hr ?? null,
+        l2_sec_hr: m.l2_sec_hr ?? null,
+        l3_mkt_hr: m.l3_mkt_hr ?? null,
+        l3_sec_hr: m.l3_sec_hr ?? null,
+        l3_sub_hr: m.l3_sub_hr ?? null,
+        l2_sec_er: m.l2_sec_er ?? null,
+        l3_sub_er: m.l3_sub_er ?? null,
+        user_segment: userSegment,
+      });
+      const hedge_levels = buildHedgeLevels(
+        m,
+        {
+          market_etf: MARKET_ETF,
+          sector_etf: sectorEtf,
+          subsector_etf: subsectorEtf,
+        },
+        {
+          recommended_level: hedgeRec.recommended_hedge_level,
+          statistical_lstar: hedgeRec.lstar,
+        },
+      );
+
       const responseBody = {
         ticker: symbolRecord.ticker,
         symbol: symbolRecord.symbol,
@@ -182,6 +227,7 @@ export const POST = withBilling(
         teo: latestData.teo,
         exposure: layers,
         hedge,
+        hedge_levels,
         _metadata: buildMetadataBody(metadata, { factors: tickerFactors }),
         _data_health: {
           er_populated: erPopulated,

@@ -9,6 +9,13 @@ import {
   resolveSymbolsByTickers,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
+import { computeHedgeRecommendationSnapshot } from "@/lib/risk/hedge-recommendation-service";
+import {
+  aggregatePortfolioHedgeLevels,
+  buildHedgeLevels,
+  type HedgeLevelsBlock,
+} from "@/lib/risk/hedge-levels";
 
 export const L3_ER_KEYS: V3MetricKey[] = [
   "l3_mkt_er",
@@ -17,13 +24,30 @@ export const L3_ER_KEYS: V3MetricKey[] = [
   "l3_res_er",
 ];
 
-const L3_HR_KEYS: V3MetricKey[] = ["l3_mkt_hr", "l3_sec_hr", "l3_sub_hr"];
+/** Full L1/L2/L3 hedge scalars + L3 ER for portfolio snapshots / hedge_levels. */
+const PORTFOLIO_HEDGE_LEVEL_KEYS: V3MetricKey[] = [
+  "l1_mkt_hr",
+  "l1_mkt_er",
+  "l1_res_er",
+  "l2_mkt_hr",
+  "l2_sec_hr",
+  "l2_mkt_er",
+  "l2_sec_er",
+  "l2_res_er",
+  "l3_mkt_hr",
+  "l3_sec_hr",
+  "l3_sub_hr",
+  "l3_mkt_er",
+  "l3_sec_er",
+  "l3_sub_er",
+  "l3_res_er",
+];
 
 const EXTRA_METRIC_KEYS: V3MetricKey[] = ["vol_23d", "price_close"];
 
 function metricKeys(includeHedgeRatios: boolean): V3MetricKey[] {
   if (includeHedgeRatios) {
-    return [...L3_ER_KEYS, ...L3_HR_KEYS, ...EXTRA_METRIC_KEYS];
+    return [...PORTFOLIO_HEDGE_LEVEL_KEYS, ...EXTRA_METRIC_KEYS];
   }
   return [...L3_ER_KEYS, ...EXTRA_METRIC_KEYS];
 }
@@ -82,6 +106,8 @@ export type PortfolioRiskComputationOk = {
   portfolioER: ReturnType<typeof computePortfolioER>;
   systematic: number;
   portfolioVol: number | null;
+  /** Holdings-weighted mean HR/ER per L1/L2/L3 when `includeHedgeRatios` was true. */
+  portfolio_hedge_levels?: HedgeLevelsBlock;
   perTicker: Record<string, Record<string, unknown>>;
   summary: {
     total_positions: number;
@@ -180,10 +206,39 @@ export async function runPortfolioRiskComputation(
       vol_23d: m?.vol_23d ?? null,
       price_close: m?.price_close ?? null,
     };
-    if (options.includeHedgeRatios) {
-      row.l3_mkt_hr = m?.l3_mkt_hr ?? null;
-      row.l3_sec_hr = m?.l3_sec_hr ?? null;
-      row.l3_sub_hr = m?.l3_sub_hr ?? null;
+    if (options.includeHedgeRatios && m) {
+      row.l1_mkt_hr = m.l1_mkt_hr ?? null;
+      row.l1_mkt_er = m.l1_mkt_er ?? null;
+      row.l1_res_er = m.l1_res_er ?? null;
+      row.l2_mkt_hr = m.l2_mkt_hr ?? null;
+      row.l2_sec_hr = m.l2_sec_hr ?? null;
+      row.l2_mkt_er = m.l2_mkt_er ?? null;
+      row.l2_sec_er = m.l2_sec_er ?? null;
+      row.l2_res_er = m.l2_res_er ?? null;
+      row.l3_mkt_hr = m.l3_mkt_hr ?? null;
+      row.l3_sec_hr = m.l3_sec_hr ?? null;
+      row.l3_sub_hr = m.l3_sub_hr ?? null;
+
+      const hedgeSnap = computeHedgeRecommendationSnapshot({
+        l1_mkt_hr: row.l1_mkt_hr as number | null,
+        l2_mkt_hr: row.l2_mkt_hr as number | null,
+        l2_sec_hr: row.l2_sec_hr as number | null,
+        l3_mkt_hr: row.l3_mkt_hr as number | null,
+        l3_sec_hr: row.l3_sec_hr as number | null,
+        l3_sub_hr: row.l3_sub_hr as number | null,
+        l2_sec_er: row.l2_sec_er as number | null,
+        l3_sub_er: m.l3_sub_er ?? null,
+        user_segment: DEFAULT_USER_SEGMENT,
+      });
+
+      row.hedge_levels = buildHedgeLevels(m, {
+        market_etf: "SPY",
+        sector_etf: sym.sector_etf ?? null,
+        subsector_etf: sym.subsector_etf ?? sym.sector_etf ?? null,
+      }, {
+        recommended_level: hedgeSnap.recommended_hedge_level,
+        statistical_lstar: hedgeSnap.lstar,
+      });
     }
     perTicker[ticker] = row;
   }
@@ -226,12 +281,24 @@ export async function runPortfolioRiskComputation(
 
   const fetchLatencyMs = Math.round(performance.now() - fetchStart);
 
+  let portfolio_hedge_levels: HedgeLevelsBlock | undefined;
+  if (options.includeHedgeRatios) {
+    const weightsObj = Object.fromEntries(weightMap);
+    const blocksByTicker: Record<string, HedgeLevelsBlock> = {};
+    for (const t of resolvedTickers) {
+      const hl = perTicker[t]?.hedge_levels as HedgeLevelsBlock | undefined;
+      if (hl) blocksByTicker[t] = hl;
+    }
+    portfolio_hedge_levels = aggregatePortfolioHedgeLevels(weightsObj, blocksByTicker);
+  }
+
   return {
     status: "ok",
     fetchLatencyMs,
     portfolioER,
     systematic,
     portfolioVol,
+    portfolio_hedge_levels,
     perTicker,
     summary: {
       total_positions: tickers.length,

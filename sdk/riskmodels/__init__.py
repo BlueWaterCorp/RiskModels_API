@@ -27,6 +27,7 @@ from .legends import (
 )
 from .lineage import RiskLineage
 from .llm import to_llm_context
+from .mapping import extract_hedge_levels
 from .metadata_attach import (
     attach_sdk_metadata,
     build_semantic_cheatsheet_md,
@@ -135,6 +136,7 @@ __all__ = [
     "RiskModelsValidationIssue",
     "PortfolioAnalysis",
     "positions_to_weights",
+    "extract_hedge_levels",
     "format_metrics_snapshot",
     "COMBINED_ERM3_MACRO_LEGEND",
     "RANKINGS_SMALL_COHORT_THRESHOLD",

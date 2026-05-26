@@ -148,6 +148,9 @@ async function buildSnapshotResponse(
     title,
     as_of: asOf,
     portfolio_risk_index: portfolioRiskIndex,
+    ...(core.portfolio_hedge_levels
+      ? { portfolio_hedge_levels: core.portfolio_hedge_levels }
+      : {}),
     per_ticker: core.perTicker,
     summary: core.summary,
     ...(core.errorsList.length ? { errors: core.errorsList } : {}),

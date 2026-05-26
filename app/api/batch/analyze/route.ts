@@ -13,6 +13,14 @@ import { formatResponse } from "@/lib/api/format-response";
 import { BatchAnalyzeRequestSchema } from "@/lib/api/schemas";
 import { dispatchWebhookEvent } from "@/lib/api/webhooks";
 import { getCorsHeaders } from "@/lib/cors";
+import {
+  computeHedgeRecommendationSnapshot,
+} from "@/lib/risk/hedge-recommendation-service";
+import {
+  buildHedgeLevels,
+  type HedgeLevelsBlock,
+} from "@/lib/risk/hedge-levels";
+import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 
 function getSupabase() {
   return createAdminClient();
@@ -59,9 +67,15 @@ interface PositionAnalysis {
   returns?: {
     dates: string[];
     values: number[];
+    /** @deprecated Prefer `l3_market_hr` — orthogonal L3 market-leg HR history. */
     l1: number[];
+    /** @deprecated Prefer `l3_sector_hr`. */
     l2: number[];
+    /** @deprecated Prefer `l3_subsector_hr`. */
     l3: number[];
+    l3_market_hr?: number[];
+    l3_sector_hr?: number[];
+    l3_subsector_hr?: number[];
   };
   l3_decomposition?: {
     market_factor_etf: string;
@@ -69,13 +83,26 @@ interface PositionAnalysis {
     dates: string[];
   };
   hedge_ratios?: {
+    l1_market_hr: number | null;
+    l2_market_hr: number | null;
+    l2_sector_hr: number | null;
+    l3_market_hr: number | null;
+    l3_sector_hr: number | null;
+    l3_subsector_hr: number | null;
+    /** @deprecated Prefer `l1_market_hr`. */
     l1_market: number | null;
+    /** @deprecated Prefer `l2_market_hr`. */
     l2_market: number | null;
+    /** @deprecated Prefer `l2_sector_hr`. */
     l2_sector: number | null;
+    /** @deprecated Prefer `l3_market_hr`. */
     l3_market: number | null;
+    /** @deprecated Prefer `l3_sector_hr`. */
     l3_sector: number | null;
+    /** @deprecated Prefer `l3_subsector_hr`. */
     l3_subsector: number | null;
   };
+  hedge_levels?: HedgeLevelsBlock;
   full_metrics?: any;
   meta?: {
     market_etf: string;
@@ -185,6 +212,9 @@ export const POST = withBilling(
                 l1: l1?.[i] ?? null,
                 l2: l2?.[i] ?? null,
                 l3: l3?.[i] ?? null,
+                l3_market_hr: l1?.[i] ?? null,
+                l3_sector_hr: l2?.[i] ?? null,
+                l3_subsector_hr: l3?.[i] ?? null,
               });
             }
           }
@@ -365,6 +395,9 @@ async function analyzeTicker(
         l1: pivoted.map((p) => p.l3_mkt_hr as number ?? 0),
         l2: pivoted.map((p) => p.l3_sec_hr as number ?? 0),
         l3: pivoted.map((p) => p.l3_sub_hr as number ?? 0),
+        l3_market_hr: pivoted.map((p) => p.l3_mkt_hr as number ?? 0),
+        l3_sector_hr: pivoted.map((p) => p.l3_sec_hr as number ?? 0),
+        l3_subsector_hr: pivoted.map((p) => p.l3_sub_hr as number ?? 0),
       };
 
       result.meta = {
@@ -415,16 +448,53 @@ async function analyzeTicker(
       const m = latestData?.metrics;
       const teo = latestData?.teo ?? null;
 
+      const sectorEtf = symbolRecord.sector_etf || null;
+      const subsectorEtf =
+        symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
+      let hedge_levelsBuilt: HedgeLevelsBlock | undefined;
+      if (m) {
+        const hedgeRec = computeHedgeRecommendationSnapshot({
+          l1_mkt_hr: m.l1_mkt_hr ?? null,
+          l2_mkt_hr: m.l2_mkt_hr ?? null,
+          l2_sec_hr: m.l2_sec_hr ?? null,
+          l3_mkt_hr: m.l3_mkt_hr ?? null,
+          l3_sec_hr: m.l3_sec_hr ?? null,
+          l3_sub_hr: m.l3_sub_hr ?? null,
+          l2_sec_er: m.l2_sec_er ?? null,
+          l3_sub_er: m.l3_sub_er ?? null,
+          user_segment: DEFAULT_USER_SEGMENT,
+        });
+        hedge_levelsBuilt = buildHedgeLevels(
+          m,
+          {
+            market_etf: "SPY",
+            sector_etf: sectorEtf,
+            subsector_etf: subsectorEtf,
+          },
+          {
+            recommended_level: hedgeRec.recommended_hedge_level,
+            statistical_lstar: hedgeRec.lstar,
+          },
+        );
+      }
+
       if (metrics.includes("hedge_ratios")) {
         result.hedge_ratios = {
-          l1_market: m?.l1_mkt_hr ?? null,
-          l2_market: m?.l2_mkt_hr ?? null,
-          l2_sector: m?.l2_sec_hr ?? null,
-          l3_market: m?.l3_mkt_hr ?? null,
-          l3_sector: m?.l3_sec_hr ?? null,
-          l3_subsector: m?.l3_sub_hr ?? null,
+          l1_market_hr: (m?.l1_mkt_hr ?? null) as number | null,
+          l2_market_hr: (m?.l2_mkt_hr ?? null) as number | null,
+          l2_sector_hr: (m?.l2_sec_hr ?? null) as number | null,
+          l3_market_hr: (m?.l3_mkt_hr ?? null) as number | null,
+          l3_sector_hr: (m?.l3_sec_hr ?? null) as number | null,
+          l3_subsector_hr: (m?.l3_sub_hr ?? null) as number | null,
+          l1_market: (m?.l1_mkt_hr ?? null) as number | null,
+          l2_market: (m?.l2_mkt_hr ?? null) as number | null,
+          l2_sector: (m?.l2_sec_hr ?? null) as number | null,
+          l3_market: (m?.l3_mkt_hr ?? null) as number | null,
+          l3_sector: (m?.l3_sec_hr ?? null) as number | null,
+          l3_subsector: (m?.l3_sub_hr ?? null) as number | null,
         };
       }
+      if (hedge_levelsBuilt) result.hedge_levels = hedge_levelsBuilt;
       if (metrics.includes("full_metrics")) {
         result.full_metrics = {
           ticker: symbolRecord.ticker,
