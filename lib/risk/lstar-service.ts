@@ -24,6 +24,8 @@ import {
   resolveSymbolByTicker,
   fetchHistory,
   pivotHistory,
+  extractMetric,
+  type PivotedHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 
@@ -44,6 +46,11 @@ export interface LstarResult {
   subsector_hr: (number | null)[];
   /** Total explained-return at the chosen level (market + sector + subsector). */
   total_er: (number | null)[];
+  /**
+   * Daily simple residual return at the chosen Lstar level (`l1_rr` / `l2_rr` / `l3_rr`).
+   * Parallel to `dates`; null when Lstar or source return is unavailable.
+   */
+  residual_return: (number | null)[];
   /** Raw inputs to the selection rule, surfaced for audit / SDK override. */
   l2_sector_er: (number | null)[];
   l3_subsector_er: (number | null)[];
@@ -65,6 +72,17 @@ export function pickLstar(
   if (l3SubEr != null && l3SubEr >= threshold) return "L3";
   if (l2SecEr != null && l2SecEr >= threshold) return "L2";
   return "L1";
+}
+
+/** Residual return at the chosen Lstar level (same dispatch rule as hedge ratios). */
+export function dispatchLstarResidualReturn(
+  chosen: LstarLevel | null,
+  row: PivotedHistoryRow,
+): number | null {
+  if (chosen === "L3") return extractMetric(row, "l3_rr");
+  if (chosen === "L2") return extractMetric(row, "l2_rr");
+  if (chosen === "L1") return extractMetric(row, "l1_rr");
+  return null;
 }
 
 export class LstarService {
@@ -105,6 +123,9 @@ export class LstarService {
       "l3_mkt_er",
       "l3_sec_er",
       "l3_sub_er",
+      "l1_rr",
+      "l2_rr",
+      "l3_rr",
     ];
 
     const rows = await fetchHistory(symbolRecord.symbol, keys, {
@@ -128,6 +149,7 @@ export class LstarService {
     const sector_hr: (number | null)[] = [];
     const subsector_hr: (number | null)[] = [];
     const total_er: (number | null)[] = [];
+    const residual_return: (number | null)[] = [];
     const l2_sector_er: (number | null)[] = [];
     const l3_subsector_er: (number | null)[] = [];
 
@@ -169,6 +191,8 @@ export class LstarService {
         subsector_hr.push(null);
         total_er.push(null);
       }
+
+      residual_return.push(dispatchLstarResidualReturn(chosen, p));
     }
 
     return {
@@ -179,6 +203,7 @@ export class LstarService {
       sector_hr,
       subsector_hr,
       total_er,
+      residual_return,
       l2_sector_er,
       l3_subsector_er,
       threshold_used: threshold,
@@ -201,6 +226,7 @@ export class LstarService {
       sector_hr: [],
       subsector_hr: [],
       total_er: [],
+      residual_return: [],
       l2_sector_er: [],
       l3_subsector_er: [],
       threshold_used: threshold,

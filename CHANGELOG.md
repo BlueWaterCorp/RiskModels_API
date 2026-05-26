@@ -4,6 +4,11 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Added
+
+- **`GET /api/lstar` — `residual_return` series** — Parallel daily array of Lstar-dispatched residual returns (`l1_rr` / `l2_rr` / `l3_rr` by chosen level), aligned with existing `dates` and `lstar`. OpenAPI `LstarResponse` updated; unit tests in `tests/lstar-service.test.ts`.
+- **Python SDK — `RiskModelsClient.get_lstar()`** — Wraps `GET /lstar`; returns a DataFrame with `date`, dispatched hedge ratios, `total_er`, and `residual_return`. Registered in `capabilities.py` discover output.
+
 ## [0.3.5] — 2026-05-26
 
 ### Added

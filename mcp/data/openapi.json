@@ -1568,6 +1568,7 @@
           "sector_hr",
           "subsector_hr",
           "total_er",
+          "residual_return",
           "l2_sector_er",
           "l3_subsector_er",
           "threshold_used",
@@ -1628,6 +1629,15 @@
           "total_er": {
             "type": "array",
             "description": "Sum of explained-return components at the chosen level (market + sector + subsector, omitting residual).\n",
+            "items": {
+              "type": "number",
+              "format": "float",
+              "nullable": true
+            }
+          },
+          "residual_return": {
+            "type": "array",
+            "description": "Daily simple residual return at the chosen Lstar level (`l1_rr`, `l2_rr`, or `l3_rr` from returns decomposition). Parallel to `dates`; `null` when Lstar or source return is unavailable. Not a hedge ratio and not explained-risk variance (`l*_res_er`).\n",
             "items": {
               "type": "number",
               "format": "float",
@@ -5420,7 +5430,7 @@
     "/lstar": {
       "get": {
         "summary": "Recommended hedge level (L*) per date with dispatched HRs",
-        "description": "Per-(ticker, date) recommended hedge level — the simplest level whose marginal explained-return clears the threshold:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nDefault `θ = 0.01` (1%). The chat-facing default is server-authoritative; SDK callers can override via `?threshold=`. Response carries the chosen level's market / sector / subsector hedge ratios (nulls below the chosen level), the chosen level's total ER, and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.\n**Billing:** $0.02 per request.\n",
+        "description": "Per-(ticker, date) recommended hedge level — the simplest level whose marginal explained-return clears the threshold:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nDefault `θ = 0.01` (1%). The chat-facing default is server-authoritative; SDK callers can override via `?threshold=`. Response carries the chosen level's market / sector / subsector hedge ratios (nulls below the chosen level), the chosen level's total ER and daily residual return (`residual_return`), and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.\n**Billing:** $0.02 per request.\n",
         "operationId": "getLstar",
         "tags": [
           "Risk Metrics"
