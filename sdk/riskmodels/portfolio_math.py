@@ -298,14 +298,26 @@ def analyze_batch_to_portfolio(
         if entry.get("status") != "success":
             errors[ticker] = str(entry.get("error") or "error")
             continue
+        hl_raw = entry.get("hedge_levels")
+        hedge_ratios_payload = entry.get("hedge_ratios")
         raw_fm = entry.get("full_metrics")
         if raw_fm is None:
-            errors[ticker] = "missing full_metrics"
+            # POST /batch/analyze with metrics=["hedge_ratios"] omits full_metrics but still
+            # returns hedge_ratios + hedge_levels — same path TS analyzePortfolio uses.
+            if isinstance(hl_raw, dict) or hedge_ratios_payload:
+                fm_base: dict[str, Any] = {}
+            else:
+                errors[ticker] = "missing full_metrics"
+                continue
+        elif isinstance(raw_fm, dict):
+            fm_base = dict(raw_fm)
+        else:
+            errors[ticker] = "invalid full_metrics"
             continue
         # Batch often puts HRs under `hedge_ratios` (short keys); merge before normalize.
         fm_merged = merge_batch_hedge_ratios_into_full_metrics(
-            dict(raw_fm),
-            entry.get("hedge_ratios"),
+            fm_base,
+            hedge_ratios_payload,
         )
         fm_merged = omit_nan_float_fields(fm_merged)
         # Wire keys (l3_mkt_er, …) → semantic names so ER/HR validation matches GET /metrics.
@@ -316,7 +328,6 @@ def analyze_batch_to_portfolio(
                 row[k] = v
             elif _is_metric_scalar(v):
                 row[k] = v
-        hl_raw = entry.get("hedge_levels")
         if isinstance(hl_raw, dict):
             row["hedge_levels"] = hl_raw
             hl_blocks[ticker] = hl_raw

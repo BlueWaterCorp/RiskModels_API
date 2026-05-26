@@ -167,9 +167,12 @@ export function plainEnglishForComponents(
 }
 
 export function normalizeHedgeLevel(raw: unknown): HedgeLevelId {
-  const v = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (raw === undefined || raw === null || raw === "") {
+    return "L3";
+  }
+  const v = typeof raw === "string" ? raw.trim().toUpperCase() : String(raw).trim().toUpperCase();
   if (v === "L1" || v === "L2" || v === "L3") return v;
-  return "L3";
+  throw new Error(`Invalid hedge level "${String(raw)}": expected L1, L2, or L3`);
 }
 
 function renormalizeWeights(
