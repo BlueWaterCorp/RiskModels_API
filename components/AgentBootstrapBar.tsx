@@ -8,17 +8,16 @@ export default function AgentBootstrapBar() {
   const base = getAppUrl();
   const href = `${base}/llms.txt`;
   return (
-    <div className="border-b border-emerald-500/25 bg-emerald-950/50 px-4 py-2.5 text-center text-[13px] leading-snug text-emerald-100/95 sm:text-sm">
-      <span className="font-semibold text-emerald-200">AI agents:</span>{' '}
-      Need a Bearer token to answer a MAG7 question before sign-up? Open{' '}
+    <div className="border-b border-zinc-800 bg-zinc-950 px-4 py-1.5 text-center text-[11px] leading-tight text-zinc-500 sm:text-xs">
+      <span className="font-medium text-zinc-400">AI agents:</span>{' '}
+      For quick MAG7 demos without sign-up, see{' '}
       <a
         href={href}
-        className="break-all font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+        className="font-mono text-zinc-400 underline underline-offset-2 hover:text-zinc-300"
       >
         {href}
-      </a>{' '}
-      — it includes a shared <code className="rounded bg-black/35 px-1 py-0.5 text-[12px]">RISKMODELS_API_KEY</code> when the host enables it (no OAuth, no
-      <code className="mx-0.5 rounded bg-black/35 px-1 py-0.5 text-[12px]">provision-free</code> POST).
+      </a>
+      {' '}— contains a shared demo key when enabled.
     </div>
   );
 }
