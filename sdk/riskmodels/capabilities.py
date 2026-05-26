@@ -528,6 +528,43 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "pandas.DataFrame", "description": "Columns l3_market_hr, l3_*_er, …"},
     },
     {
+        "name": "get_lstar",
+        "aliases": [],
+        "summary": "Lstar-dispatched HRs and residual returns (GET /lstar).",
+        "description": (
+            "Per-date recommended hedge level (L1/L2/L3) with dispatched hedge ratios, "
+            "total explained-return, and daily residual return at the chosen level."
+        ),
+        "scopes": ["risk-decomposition", "hedging"],
+        "parameters": [
+            {"name": "ticker", "type": "string", "required": True, "description": "Symbol."},
+            {
+                "name": "market_factor_etf",
+                "type": "string",
+                "required": False,
+                "description": "Optional market ETF override (e.g. SPY).",
+            },
+            {
+                "name": "years",
+                "type": "integer",
+                "required": False,
+                "default": 1,
+                "description": "Calendar years of daily history (1–15).",
+            },
+            {
+                "name": "threshold",
+                "type": "number",
+                "required": False,
+                "default": 0.01,
+                "description": "Marginal-ER threshold for L1/L2/L3 selection.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame",
+            "description": "Columns date, lstar, market_hr, sector_hr, subsector_hr, total_er, residual_return, …",
+        },
+    },
+    {
         "name": "get_factor_correlation",
         "aliases": [],
         "summary": "Correlation vs macro factors (POST /correlation).",

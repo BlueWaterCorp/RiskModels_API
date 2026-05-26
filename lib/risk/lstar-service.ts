@@ -24,6 +24,8 @@ import {
   resolveSymbolByTicker,
   fetchHistory,
   pivotHistory,
+  extractMetric,
+  type PivotedHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 
@@ -75,11 +77,11 @@ export function pickLstar(
 /** Residual return at the chosen Lstar level (same dispatch rule as hedge ratios). */
 export function dispatchLstarResidualReturn(
   chosen: LstarLevel | null,
-  row: { l1_rr?: number | null; l2_rr?: number | null; l3_rr?: number | null },
+  row: PivotedHistoryRow,
 ): number | null {
-  if (chosen === "L3") return (row.l3_rr as number | null) ?? null;
-  if (chosen === "L2") return (row.l2_rr as number | null) ?? null;
-  if (chosen === "L1") return (row.l1_rr as number | null) ?? null;
+  if (chosen === "L3") return extractMetric(row, "l3_rr");
+  if (chosen === "L2") return extractMetric(row, "l2_rr");
+  if (chosen === "L1") return extractMetric(row, "l1_rr");
   return null;
 }
 

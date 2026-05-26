@@ -130,3 +130,53 @@ def test_get_plaid_holdings_calls_endpoint():
     out = client.get_plaid_holdings()
     assert "/plaid/holdings" in captured["url"]
     assert out["connections_count"] == 0
+
+
+def test_get_lstar_returns_dataframe_with_residual_return():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "ticker": "NVDA",
+                "dates": ["2026-01-02", "2026-01-03"],
+                "lstar": ["L3", "L2"],
+                "market_hr": [0.9, 0.8],
+                "sector_hr": [0.1, 0.2],
+                "subsector_hr": [0.05, None],
+                "total_er": [0.7, 0.5],
+                "residual_return": [0.012, 0.008],
+                "l2_sector_er": [0.02, 0.015],
+                "l3_subsector_er": [0.03, 0.01],
+                "threshold_used": 0.01,
+                "market_factor_etf": "SPY",
+                "universe": "US_EQUITY",
+                "data_source": "zarr",
+            },
+            headers={"X-Risk-Model-Version": "ERM3-test"},
+        )
+
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    df = client.get_lstar("NVDA", years=2, threshold=0.01)
+    assert "/lstar" in captured["url"]
+    assert "ticker=NVDA" in captured["url"]
+    assert list(df.columns) == [
+        "date",
+        "lstar",
+        "market_hr",
+        "sector_hr",
+        "subsector_hr",
+        "total_er",
+        "residual_return",
+        "l2_sector_er",
+        "l3_subsector_er",
+    ]
+    assert len(df) == 2
+    assert df.iloc[0]["residual_return"] == 0.012

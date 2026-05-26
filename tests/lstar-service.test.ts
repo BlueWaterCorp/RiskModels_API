@@ -25,7 +25,7 @@ describe("pickLstar", () => {
 });
 
 describe("dispatchLstarResidualReturn", () => {
-  const row = { l1_rr: 0.01, l2_rr: 0.02, l3_rr: 0.03 };
+  const row = { teo: "2026-01-01", l1_rr: 0.01, l2_rr: 0.02, l3_rr: 0.03 };
 
   it("routes to the matching level residual return", () => {
     expect(dispatchLstarResidualReturn("L1", row)).toBe(0.01);

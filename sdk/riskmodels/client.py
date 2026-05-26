@@ -64,6 +64,7 @@ from .parsing import (
     factor_correlation_batch_item_to_row,
     factor_correlation_body_to_row,
     l3_decomposition_json_to_dataframe,
+    lstar_json_to_dataframe,
     parquet_bytes_to_dataframe,
     rankings_grid_headline,
     rankings_grid_to_dataframe,
@@ -953,6 +954,47 @@ class RiskModelsClient:
             last = df.iloc[-1].to_dict()
             run_validation(last, mode=mode, er_tolerance=self._er_tolerance)
         attach_sdk_metadata(df, lineage, kind="l3_decomposition")
+        return df
+
+    def get_lstar(
+        self,
+        ticker: str,
+        *,
+        market_factor_etf: str | None = None,
+        years: int = 1,
+        threshold: float | None = None,
+    ) -> pd.DataFrame:
+        """Historical Lstar selection with dispatched hedge ratios and residual returns.
+
+        Calls ``GET /lstar``. For each trading date, the API picks the simplest hedge
+        level (L1/L2/L3) whose marginal explained-return clears ``threshold`` (default
+        1%), then returns that level's market/sector/subsector hedge ratios, total ER,
+        and daily residual return.
+
+        Args:
+            ticker: Stock ticker symbol (e.g. ``"NVDA"``).
+            market_factor_etf: Market factor ETF override (default SPY on server).
+            years: Calendar years of daily history (1–15).
+            threshold: Marginal-ER threshold for Lstar selection (default 0.01).
+
+        Returns:
+            DataFrame with columns: ``date``, ``lstar``, ``market_hr``, ``sector_hr``,
+            ``subsector_hr``, ``total_er``, ``residual_return``, ``l2_sector_er``,
+            ``l3_subsector_er``.
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"ticker": t, "years": years}
+        if market_factor_etf:
+            params["market_factor_etf"] = market_factor_etf
+        if threshold is not None:
+            params["threshold"] = threshold
+        body, lineage, _ = self._transport.request("GET", "/lstar", params=params)
+        df = lstar_json_to_dataframe(body)
+        attach_sdk_metadata(df, lineage, kind="lstar")
+        if threshold is not None and not df.empty:
+            df.attrs["threshold_used"] = threshold
+        elif isinstance(body, dict) and body.get("threshold_used") is not None:
+            df.attrs["threshold_used"] = body["threshold_used"]
         return df
 
     def residual_signal(

@@ -30,6 +30,24 @@ def ticker_returns_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
     return df
 
 
+def lstar_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
+    n = len(body.get("dates") or [])
+    if n == 0:
+        return pd.DataFrame()
+    cols = {
+        "date": body["dates"],
+        "lstar": body.get("lstar", [None] * n),
+        "market_hr": body.get("market_hr", [None] * n),
+        "sector_hr": body.get("sector_hr", [None] * n),
+        "subsector_hr": body.get("subsector_hr", [None] * n),
+        "total_er": body.get("total_er", [None] * n),
+        "residual_return": body.get("residual_return", [None] * n),
+        "l2_sector_er": body.get("l2_sector_er", [None] * n),
+        "l3_subsector_er": body.get("l3_subsector_er", [None] * n),
+    }
+    return pd.DataFrame(cols)
+
+
 def l3_decomposition_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
     n = len(body.get("dates") or [])
     if n == 0:
