@@ -253,7 +253,12 @@ export function registerRiskModelsTools(
     async ({ positions, level, years }) => {
       try {
         return textResult(
-          await sdk.hedgePortfolio(positions.map((row) => ({ ticker: row.ticker, dollars: row.dollars })), {
+          await sdk.hedgePortfolio(
+            positions.map((row: { ticker: string; dollars: number }) => ({
+              ticker: row.ticker,
+              dollars: row.dollars,
+            })),
+            {
             level,
             years,
           }),
