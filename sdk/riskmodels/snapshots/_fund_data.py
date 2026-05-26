@@ -638,12 +638,35 @@ def _decode_teo_array(teo_arr: Any) -> "Any":  # numpy ndarray
     return np.asarray(raw, dtype="datetime64[s]").astype("datetime64[D]")
 
 
+def _local_fund_zarr_root() -> Path | None:
+    """Resolve local per-fund zarr parent (contains ``bw_fund_id/``).
+
+    Priority: ``FUNDS_DAG_ZARR_ROOT`` (explicit zarr dir), then
+    ``FUNDS_DAG_DATA_ROOT/sec_data/zarr`` (canonical external data root).
+    """
+    import os
+
+    zarr_root = os.environ.get("FUNDS_DAG_ZARR_ROOT", "").strip()
+    if zarr_root:
+        return Path(zarr_root).expanduser().resolve()
+    data_root = os.environ.get("FUNDS_DAG_DATA_ROOT", "").strip()
+    if data_root:
+        return Path(data_root).expanduser().resolve() / "sec_data" / "zarr"
+    return None
+
+
 def _open_fund_zarr(bw_fund_id: str, store: str):
-    """Return an open zarr group for one of the per-fund stores on GCS.
+    """Return an open zarr group for one of the per-fund stores.
 
     ``store`` is one of: ``ds_nav.zarr``, ``ds_ph.zarr``, ``ds_hr.zarr``,
-    ``ds_portfolio.zarr``. Raises :exc:`FileNotFoundError` when the store
-    is missing or not a zarr group (callers treat that as soft-fail).
+    ``ds_portfolio.zarr``, ``ds_fund_returns_daily.zarr``.
+
+    Reads local zarr under :func:`_local_fund_zarr_root` when present
+    (post-Dagster laptop rebuilds); otherwise GCS
+    ``gs://rm_api_data/ERM3_Funds/bw_fund_id/...``.
+
+    Raises :exc:`FileNotFoundError` when the store is missing or not a zarr
+    group (callers treat that as soft-fail).
 
     ``zarr.open`` raises :class:`zarr.errors.PathNotFoundError` (e.g. message
     ``nothing found at path ''``) for missing GCS prefixes — not
@@ -652,6 +675,15 @@ def _open_fund_zarr(bw_fund_id: str, store: str):
     import gcsfs
     import zarr
     from zarr.errors import ArrayNotFoundError, GroupNotFoundError, PathNotFoundError
+
+    local_root = _local_fund_zarr_root()
+    if local_root is not None:
+        local_path = local_root / "bw_fund_id" / bw_fund_id / store
+        if local_path.is_dir():
+            try:
+                return zarr.open(str(local_path), mode="r")
+            except (GroupNotFoundError, PathNotFoundError, ArrayNotFoundError, KeyError) as e:
+                raise FileNotFoundError(str(local_path)) from e
 
     fs = gcsfs.GCSFileSystem()
     path = f"gs://{ZARR_FUNDS_GCS_PREFIX}/bw_fund_id/{bw_fund_id}/{store}"
