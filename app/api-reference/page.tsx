@@ -486,10 +486,10 @@ riskmodels returns ticker NVDA --years 3</pre>
 
                     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                       <div className="font-mono text-[11px] text-emerald-400 mb-2">Python SDK (nice names + DataFrames)</div>
-                      <pre className="text-xs text-zinc-300 overflow-x-auto">from riskmodels import RiskModelsClient
+                      <pre className="text-xs text-zinc-300 overflow-x-auto">{`from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()
 print(client.metrics("NVDA").l3_res_er)
-df = client.ticker_returns("NVDA", years=3)</pre>
+df = client.ticker_returns("NVDA", years=3)`}</pre>
                     </div>
 
                     <div className="text-[11px] text-zinc-500">
