@@ -1,8 +1,11 @@
 import { getAppUrl } from '@/lib/app-url';
 
 /**
- * Crawler / agent-visible strip: points to /llms.txt for copy-paste MAG7 demo Bearer
- * without signing in or calling POST /api/auth/provision-free.
+ * @deprecated
+ * Previously rendered on the homepage. Agent bootstrap information now lives primarily in
+ * /llms.txt (and secondarily in the API reference "For AI Agents & MCP" section).
+ *
+ * Keeping the component for now in case we want a subtle version on docs pages later.
  */
 export default function AgentBootstrapBar() {
   const base = getAppUrl();
