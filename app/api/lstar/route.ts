@@ -32,9 +32,10 @@ function classifyLstarError(message: string): string {
  * θ defaults to 1% (chat-safe). SDK callers can override via `?threshold=`.
  *
  * Response carries the lstar string per date, the chosen level's market /
- * sector / subsector HRs (nulls below the chosen level), and the raw ER
- * inputs (`l2_sector_er`, `l3_subsector_er`) so callers can audit or apply
- * their own threshold without a second request.
+ * sector / subsector HRs (nulls below the chosen level), the chosen level's
+ * daily residual return (`residual_return`), and the raw ER inputs
+ * (`l2_sector_er`, `l3_subsector_er`) so callers can audit or apply their
+ * own threshold without a second request.
  */
 export const GET = withBilling(
   async (request: NextRequest, context: BillingContext) => {

@@ -4,6 +4,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Added
+
+- **`GET /api/lstar` — `residual_return` series** — Parallel daily array of Lstar-dispatched residual returns (`l1_rr` / `l2_rr` / `l3_rr` by chosen level), aligned with existing `dates` and `lstar`. OpenAPI `LstarResponse` updated; unit tests in `tests/lstar-service.test.ts`.
+
 ## [0.3.5] — 2026-05-26
 
 ### Added
