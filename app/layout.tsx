@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
+import { UTMTracker } from '@/components/UTMTracker';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -93,6 +94,7 @@ export default async function RootLayout({
         </div>
         <ChatBubble />
         <GoogleAdsTag />
+        <UTMTracker />
       </body>
     </html>
   );

@@ -10,6 +10,40 @@ import {
   resolveRecipient,
 } from '@/lib/agent/notify-expiring-api-keys';
 import { API_TERMS_URL } from '@/emails/key-issued';
+import { parseValidatedSignupUtm, type UTMData } from '@/lib/utm';
+
+async function persistSignupAttributionIfVacant(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  attribution: UTMData,
+): Promise<void> {
+  const { data: row, error: selErr } = await admin
+    .from('agent_accounts')
+    .select('id')
+    .eq('user_id', userId)
+    .is('signup_attribution', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (selErr) {
+    console.warn('[agent-keys] signup_attribution select failed:', selErr.message);
+    return;
+  }
+  if (!row?.id) return;
+
+  const { error: upErr } = await admin
+    .from('agent_accounts')
+    .update({
+      signup_attribution: attribution as Record<string, unknown>,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id);
+
+  if (upErr) {
+    console.warn('[agent-keys] signup_attribution update failed:', upErr.message);
+  }
+}
 
 export async function GET() {
   const supabase = await createClient();
@@ -41,7 +75,11 @@ export async function POST(request: NextRequest) {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
+  const bodyUnknown = await request.json().catch(() => ({}));
+  const body = bodyUnknown as Record<string, unknown>;
+
+  const validatedSignupUtm =
+    typeof body.utm !== 'undefined' ? parseValidatedSignupUtm(body.utm) : null;
 
   try {
     await ensureStarterCredits(user.id);
@@ -60,7 +98,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
 
   // Auto-number if no name given: "API Key 1", "API Key 2", etc.
-  let name = (body.name as string)?.trim();
+  let name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) {
     const { count } = await admin
       .from('agent_api_keys')
@@ -118,6 +156,10 @@ export async function POST(request: NextRequest) {
   if (insertErr) {
     console.error('[agent-keys] insert error:', insertErr);
     return NextResponse.json({ error: 'Failed to create key' }, { status: 500 });
+  }
+
+  if (validatedSignupUtm) {
+    await persistSignupAttributionIfVacant(admin, user.id, validatedSignupUtm);
   }
 
   const expiresAt = newKey.expires_at as string | null;
