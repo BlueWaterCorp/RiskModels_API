@@ -725,7 +725,7 @@ export const CAPABILITIES: Capability[] = [
     id: "lstar",
     name: "Lstar Recommended Hedge Level",
     description:
-      "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios. Selection rule picks the simplest level whose marginal explained-return clears the threshold (default 1%); routes mega-caps with noisy subsector hedges down to L2.",
+      "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios and daily residual return at that level (`residual_return[]`, aligned with `dates`). Selection rule picks the simplest level whose marginal explained-return clears the threshold (default 1%); routes mega-caps with noisy subsector hedges down to L2.",
     endpoint: "/api/lstar",
     method: "GET",
     parameters: {

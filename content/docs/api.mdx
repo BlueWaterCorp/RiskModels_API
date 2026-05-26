@@ -354,6 +354,13 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().decompose("NVDA")' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/lstar</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Per-date Lstar level (L1/L2/L3) with dispatched hedge ratios, total ER, and daily <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">residual_return</code> at the chosen level (up to 15y)</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_lstar("NFLX", years=5)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/l3-decomposition</td>
         <td className="py-3 px-3">GET</td>
         <td className="py-3 px-3">Monthly historical HR/ER time series</td>
@@ -465,12 +472,25 @@ curl -X POST https://riskmodels.app/api/decompose \
 
 `POST /decompose` is the **four additive L3-factor bets** view (`exposure` / `hedge`). Many routes also return a parallel **`hedge_levels`** object with **`L1`**, **`L2`**, and **`L3`** keys. Each value is a snapshot of that **standalone** hedge depth: semantic **`market_hr` / `sector_hr` / `subsector_hr`**, matching **`market_er` / `sector_er` / `subsector_er` / `residual_er`**, and **`hedge_etfs`** (market / sector / subsector tickers). **`L2.market_hr`** is always sourced from **`l2_mkt_hr`** on the flat metrics row, **`L3.market_hr`** from **`l3_mkt_hr`** — cascade levels never share prefixed HR or ER inputs across **L1** / **L2** / **L3**. Use **`hedge_levels`** when you need to choose whether to trade a one-ETF, two-ETF, or three-ETF hedge; keep using **`exposure`** for the telescoping four-layer story. See **`SEMANTIC_ALIASES.md`** and the OpenAPI **`HedgeLevelsBlock`** component.
 
+## GET /lstar — historical level dispatch + residual returns
+
+`GET /api/lstar` returns **daily** series for one ticker: the server picks **L1**, **L2**, or **L3** per date using marginal explained-return vs a threshold (default **1%**, override with `?threshold=`). Parallel arrays include **`lstar`**, dispatched **`market_hr` / `sector_hr` / `subsector_hr`** (nulls below the chosen level), **`total_er`**, and **`residual_return`** — the daily residual at the chosen level (`l1_rr`, `l2_rr`, or `l3_rr`). Raw **`l2_sector_er`** and **`l3_subsector_er`** are included for audit.
+
+Billing: **{'$'}0.02/call** (`billing_code: lstar_v1`). MCP capability id **`lstar`**; Python SDK: **`client.get_lstar(ticker, years=5)`**.
+
+```bash
+curl -sS "https://riskmodels.app/api/lstar?ticker=NFLX&years=5" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  | jq '{ticker, threshold_used, last: {lstar: .lstar[-1], residual_return: .residual_return[-1]}}'
+```
+
 ## 🤖 Agent-Native Helpers (Python SDK)
 
 The `riskmodels-py` package includes methods and metadata designed for agent workflows and LLM reasoning:
 
 | Tool | Purpose |
 |------|---------|
+| **`client.get_lstar()`** | Daily Lstar-dispatched hedge ratios, total ER, and **`residual_return`** at the chosen level (`GET /lstar`). Returns a DataFrame with `date` index. |
 | **`client.discover(format="json")`** | Returns JSON digest with method names, parameters (name/type/required/defaults/enums), return types, and **`tool_definition_hints`** for Claude Desktop or MCP-style tool synthesis. Acts as a map for agents. |
 | **`to_llm_context(obj)`** | One call → Markdown tables + lineage + semantic field cheatsheet + ERM3 legend. Works on `DataFrame`, `PortfolioAnalysis`, `xarray.Dataset`, or `dict`. Includes all metadata agents need to interpret results without guessing. |
 | **`client.from_env()`** | Auto-discover API key or OAuth credentials from environment variables (`RISKMODELS_API_KEY` or `RISKMODELS_CLIENT_ID` + `RISKMODELS_CLIENT_SECRET`). |
