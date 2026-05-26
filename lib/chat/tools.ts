@@ -24,6 +24,7 @@ import {
   fetchRankingsFromSecurityHistory,
 } from "@/lib/dal/risk-engine-v3";
 import { readLatestLinkBetas } from "@/lib/dal/zarr-reader";
+import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
 import {
   buildHedgeBasket,
   isValidUserSegment,
@@ -233,13 +234,20 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
     symbolRecord.symbol,
     [
       "l1_mkt_hr",
+      "l1_mkt_er",
+      "l1_res_er",
       "l2_mkt_hr",
       "l2_sec_hr",
+      "l2_mkt_er",
+      "l2_sec_er",
+      "l2_res_er",
       "l3_mkt_hr",
       "l3_sec_hr",
       "l3_sub_hr",
-      "l2_sec_er",
+      "l3_mkt_er",
+      "l3_sec_er",
       "l3_sub_er",
+      "l3_res_er",
       "l1_mkt_beta",
     ],
     "daily",
@@ -276,7 +284,16 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
     user_segment: segment,
   });
 
-  return basket;
+  const hedge_levels = buildHedgeLevels(
+    m,
+    { market_etf: "SPY", sector_etf: sectorEtf, subsector_etf: subsectorEtf },
+    {
+      recommended_level: basket.recommended_hedge_level,
+      statistical_lstar: basket.lstar,
+    },
+  );
+
+  return { ...basket, hedge_levels };
 }
 
 async function execGetL3(args: z.infer<typeof getL3Args>) {

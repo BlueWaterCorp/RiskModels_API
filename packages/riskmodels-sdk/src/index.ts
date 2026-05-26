@@ -4,10 +4,13 @@ export {
   runWhitepaperExample,
 } from "./whitepaper.js";
 export type {
+  AnalyzePortfolioOptions,
   ApiCallMetadata,
   ChartDatum,
   DecompositionComponent,
   FetchLike,
+  HedgePortfolioOptions,
+  HedgePortfolioPosition,
   HedgePositionInput,
   PositionInput,
   RiskLayer,
@@ -17,3 +20,4 @@ export type {
   WhitepaperExampleId,
   WhitepaperExampleResult,
 } from "./types.js";
+export type { HedgeLevelId, HedgeLevelsBlock } from "./hedge-levels-internal.js";

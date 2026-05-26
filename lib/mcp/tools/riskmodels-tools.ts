@@ -110,7 +110,17 @@ export function createRiskModelsSdk(opts: { apiKey?: string | null; apiBase?: st
 }
 
 export function registerRiskModelsTools(
-  sdk: Pick<RiskModelsClient, "decompose" | "compare" | "hedgePosition" | "portfolioDecompose" | "whitepaperExample">,
+  sdk: Pick<
+    RiskModelsClient,
+    | "decompose"
+    | "getHedgeLevels"
+    | "compare"
+    | "hedgePosition"
+    | "analyzePortfolio"
+    | "hedgePortfolio"
+    | "portfolioDecompose"
+    | "whitepaperExample"
+  >,
   server: McpLikeServer,
 ): void {
   server.registerTool(
@@ -118,7 +128,7 @@ export function registerRiskModelsTools(
     {
       title: "RiskModels Single-Stock Decomposition",
       description:
-        "Decompose one stock into market, sector, subsector, and residual risk. Returns chart_data, suggested_chart, plain_english, and reproducible api_call metadata.",
+        "L3 four-bet view: decompose one stock into additive market, sector, subsector, and residual layers (same semantics as POST /decompose exposure/hedge). Returns chart_data and plain_english. To compare standalone L1 vs L2 vs L3 hedge solutions (HR/ER + ETF legs), call riskmodels_get_hedge_levels or read hedge_levels on the API response.",
       inputSchema: {
         ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA or AAPL"),
       },
@@ -126,6 +136,25 @@ export function registerRiskModelsTools(
     async ({ ticker }) => {
       try {
         return textResult(await sdk.decompose(ticker));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_hedge_levels",
+    {
+      title: "RiskModels L1/L2/L3 hedge_levels",
+      description:
+        "Canonical L1, L2, and L3 hedge snapshots (semantic HR/ER + hedge_etfs) from GET /metrics/{ticker}. Use this when you need to compare which cascade depth to trade, distinct from decompose four-bet exposure.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA or AAPL"),
+      },
+    },
+    async ({ ticker }) => {
+      try {
+        return textResult(await sdk.getHedgeLevels(ticker));
       } catch (error) {
         return errorResult(error);
       }
@@ -165,6 +194,75 @@ export function registerRiskModelsTools(
     async ({ ticker, dollars }) => {
       try {
         return textResult(await sdk.hedgePosition({ ticker, dollars }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_analyze_portfolio",
+    {
+      title: "RiskModels Portfolio hedge_levels aggregate",
+      description:
+        "Holdings-weighted L1/L2/L3 hedge_levels across names via POST /batch/analyze (hedge_ratios). Returns normalized portfolio.portfolio_hedge_levels and per-ticker blocks when present.",
+      inputSchema: {
+        positions: z
+          .array(
+            z.object({
+              ticker: z.string().min(1),
+              weight: z.number().positive().optional(),
+              dollars: z.number().positive().optional(),
+            }),
+          )
+          .min(1)
+          .max(100)
+          .describe("Positions with weight or dollars (combined per ticker)"),
+        years: z.number().int().min(1).max(30).optional().describe("Batch lookback window, default 1"),
+      },
+    },
+    async ({ positions, years }) => {
+      try {
+        return textResult(await sdk.analyzePortfolio(positions as PositionInput[], { years }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_hedge_portfolio",
+    {
+      title: "RiskModels Portfolio ETF hedge notionals",
+      description:
+        "Batch hedge_ratios at a chosen cascade level (L1/L2/L3), scale HRs by dollar notionals per ticker, and aggregate ETF USD hedge legs.",
+      inputSchema: {
+        positions: z
+          .array(
+            z.object({
+              ticker: z.string().min(1),
+              dollars: z.number().positive(),
+            }),
+          )
+          .min(1)
+          .max(100),
+        level: z.enum(["L1", "L2", "L3"]).optional().describe("Cascade depth; default L3"),
+        years: z.number().int().min(1).max(30).optional(),
+      },
+    },
+    async ({ positions, level, years }) => {
+      try {
+        return textResult(
+          await sdk.hedgePortfolio(
+            positions.map((row: { ticker: string; dollars: number }) => ({
+              ticker: row.ticker,
+              dollars: row.dollars,
+            })),
+            {
+            level,
+            years,
+          }),
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -369,7 +467,7 @@ ${CHART_INSTRUCTION}`),
     },
     () =>
       promptText(
-        `Ask me for tickers and weights or dollar notionals, then call riskmodels_portfolio_decompose. Render chart_data using suggested_chart and explain the market, sector, subsector, and residual risk layers.`,
+        `Ask me for tickers and weights or dollar notionals, then call riskmodels_portfolio_decompose (L3 four-bet aggregation) or riskmodels_analyze_portfolio for holdings-weighted hedge_levels across L1/L2/L3. Render chart_data using suggested_chart and explain the layers.`,
       ),
   );
 }

@@ -6,13 +6,14 @@ import numbers
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
 from .legends import SHORT_ERM3_LEGEND
 from .lineage import RiskLineage
 from .mapping import (
+    extract_hedge_levels,
     merge_batch_hedge_ratios_into_full_metrics,
     normalize_metrics_v3,
     omit_nan_float_fields,
@@ -117,24 +118,87 @@ def renormalize_weights(weights: dict[str, float], successful: list[str]) -> dic
     return {t: v / s for t, v in ws.items()}
 
 
+def aggregate_portfolio_hedge_levels(
+    weights_eff: Mapping[str, float],
+    blocks_by_ticker: Mapping[str, Mapping[str, Any] | None],
+) -> dict[str, Any]:
+    """Holdings-weighted mean HR/ER per ``L1``/``L2``/``L3`` snapshot (portfolio ETF placeholders)."""
+
+    snapshot_keys = (
+        "market_hr",
+        "sector_hr",
+        "subsector_hr",
+        "market_er",
+        "sector_er",
+        "subsector_er",
+        "residual_er",
+    )
+
+    def wmean(weights: Mapping[str, float], get_val: Callable[[str], Any]) -> float | None:
+        num = 0.0
+        den = 0.0
+        for ticker, wf in weights.items():
+            if wf <= 0:
+                continue
+            v = get_val(ticker)
+            if v is None:
+                continue
+            if isinstance(v, float) and pd.isna(v):
+                continue
+            num += float(wf) * float(v)
+            den += float(wf)
+        return (num / den) if den > 0 else None
+
+    out: dict[str, Any] = {}
+    for lid in ("L1", "L2", "L3"):
+        lvl_row: dict[str, Any] = {
+            "hedge_etfs": {"market": "SPY", "sector": None, "subsector": None},
+        }
+        for sk in snapshot_keys:
+
+            def get_val(ticker: str, lvl: str = lid, field: str = sk) -> Any:
+                blk = blocks_by_ticker.get(ticker)
+                if not isinstance(blk, Mapping):
+                    return None
+                sub = blk.get(lvl)
+                if not isinstance(sub, Mapping):
+                    return None
+                return sub.get(field)
+
+            lvl_row[sk] = wmean(weights_eff, get_val)
+        out[lid] = lvl_row
+    return out
+
+
 def returns_payload_to_rows(ticker: str, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     dates = payload.get("dates") or []
     values = payload.get("values") or []
     l1 = payload.get("l1") or []
     l2 = payload.get("l2") or []
     l3 = payload.get("l3") or []
+    l3_market_hr = payload.get("l3_market_hr")
+    l3_sector_hr = payload.get("l3_sector_hr")
+    l3_subsector_hr = payload.get("l3_subsector_hr")
+    use_l3m = isinstance(l3_market_hr, list) and len(l3_market_hr) == len(dates)
+    use_l3s = isinstance(l3_sector_hr, list) and len(l3_sector_hr) == len(dates)
+    use_l3u = isinstance(l3_subsector_hr, list) and len(l3_subsector_hr) == len(dates)
     rows: list[dict[str, Any]] = []
     for i, d in enumerate(dates):
-        rows.append(
-            {
-                "ticker": ticker,
-                "date": d,
-                "gross_return": values[i] if i < len(values) else None,
-                "l1": l1[i] if i < len(l1) else None,
-                "l2": l2[i] if i < len(l2) else None,
-                "l3": l3[i] if i < len(l3) else None,
-            }
-        )
+        row: dict[str, Any] = {
+            "ticker": ticker,
+            "date": d,
+            "gross_return": values[i] if i < len(values) else None,
+            "l1": l1[i] if i < len(l1) else None,
+            "l2": l2[i] if i < len(l2) else None,
+            "l3": l3[i] if i < len(l3) else None,
+        }
+        if use_l3m:
+            row["l3_market_hr"] = l3_market_hr[i]
+        if use_l3s:
+            row["l3_sector_hr"] = l3_sector_hr[i]
+        if use_l3u:
+            row["l3_subsector_hr"] = l3_subsector_hr[i]
+        rows.append(row)
     return rows
 
 
@@ -164,6 +228,7 @@ class PortfolioAnalysis:
     errors: dict[str, str]
     returns_long: pd.DataFrame | None = None
     panel: Any = None  # xarray.Dataset when [xarray] + include_returns_panel
+    portfolio_hedge_levels: dict[str, Any] | None = None
     issues: list[RiskModelsValidationIssue] = field(default_factory=list)
     legend: str = SHORT_ERM3_LEGEND
 
@@ -186,6 +251,8 @@ class PortfolioAnalysis:
             row.update(self.portfolio_hedge_ratios)
         if self.portfolio_l3_er_weighted_mean:
             row.update(self.portfolio_l3_er_weighted_mean)
+        if self.portfolio_hedge_levels:
+            row["hedge_levels"] = self.portfolio_hedge_levels
         return row
 
     def to_dataframe(self, include_summary: bool = True) -> pd.DataFrame:
@@ -221,6 +288,7 @@ def analyze_batch_to_portfolio(
     errors: dict[str, str] = {}
     rows: list[dict[str, Any]] = []
     successful: list[str] = []
+    hl_blocks: dict[str, dict[str, Any]] = {}
     collected_issues: list[RiskModelsValidationIssue] = []
 
     for tkey, entry in results.items():
@@ -230,14 +298,26 @@ def analyze_batch_to_portfolio(
         if entry.get("status") != "success":
             errors[ticker] = str(entry.get("error") or "error")
             continue
+        hl_raw = entry.get("hedge_levels")
+        hedge_ratios_payload = entry.get("hedge_ratios")
         raw_fm = entry.get("full_metrics")
         if raw_fm is None:
-            errors[ticker] = "missing full_metrics"
+            # POST /batch/analyze with metrics=["hedge_ratios"] omits full_metrics but still
+            # returns hedge_ratios + hedge_levels — same path TS analyzePortfolio uses.
+            if isinstance(hl_raw, dict) or hedge_ratios_payload:
+                fm_base: dict[str, Any] = {}
+            else:
+                errors[ticker] = "missing full_metrics"
+                continue
+        elif isinstance(raw_fm, dict):
+            fm_base = dict(raw_fm)
+        else:
+            errors[ticker] = "invalid full_metrics"
             continue
         # Batch often puts HRs under `hedge_ratios` (short keys); merge before normalize.
         fm_merged = merge_batch_hedge_ratios_into_full_metrics(
-            dict(raw_fm),
-            entry.get("hedge_ratios"),
+            fm_base,
+            hedge_ratios_payload,
         )
         fm_merged = omit_nan_float_fields(fm_merged)
         # Wire keys (l3_mkt_er, …) → semantic names so ER/HR validation matches GET /metrics.
@@ -248,6 +328,9 @@ def analyze_batch_to_portfolio(
                 row[k] = v
             elif _is_metric_scalar(v):
                 row[k] = v
+        if isinstance(hl_raw, dict):
+            row["hedge_levels"] = hl_raw
+            hl_blocks[ticker] = hl_raw
         rows.append(row)
         successful.append(ticker)
 
@@ -255,6 +338,8 @@ def analyze_batch_to_portfolio(
         collected_issues.extend(run_validation(m, mode=validate, er_tolerance=er_tolerance))
 
     w_eff = renormalize_weights(weights, successful)
+    portfolio_hl = aggregate_portfolio_hedge_levels(w_eff, hl_blocks) if hl_blocks else None
+
     per_ticker = pd.DataFrame(rows)
     if not per_ticker.empty:
         per_ticker = per_ticker.set_index("ticker", drop=False)
@@ -308,6 +393,7 @@ def analyze_batch_to_portfolio(
         errors=errors,
         returns_long=returns_long,
         panel=panel,
+        portfolio_hedge_levels=portfolio_hl,
         issues=collected_issues,
     )
 
@@ -317,4 +403,7 @@ def metrics_body_to_row(body: dict[str, Any]) -> dict[str, Any]:
     row = normalize_metrics_v3(dict(m))
     row["ticker"] = body.get("ticker") or body.get("symbol")
     row["teo"] = body.get("teo")
+    hl = extract_hedge_levels(body)
+    if hl is not None:
+        row["hedge_levels"] = hl
     return row

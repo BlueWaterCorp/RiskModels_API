@@ -15,11 +15,18 @@ def test_metrics_v3_to_semantic_is_injective_on_targets():
 
 
 def test_ticker_returns_column_rename_maps_all_wire_keys():
-    assert len(TICKER_RETURNS_COLUMN_RENAME) == 10
     expected = {
         "l1_cfr": "l1_combined_factor_return",
         "l2_cfr": "l2_combined_factor_return",
         "l3_cfr": "l3_combined_factor_return",
+        "l1_mkt_hr": "l1_market_hr",
+        "l1_mkt_er": "l1_market_er",
+        "l1_res_er": "l1_residual_er",
+        "l2_mkt_hr": "l2_market_hr",
+        "l2_sec_hr": "l2_sector_hr",
+        "l2_mkt_er": "l2_market_er",
+        "l2_sec_er": "l2_sector_er",
+        "l2_res_er": "l2_residual_er",
         "l3_mkt_hr": "l3_market_hr",
         "l3_sec_hr": "l3_sector_hr",
         "l3_sub_hr": "l3_subsector_hr",
@@ -28,8 +35,7 @@ def test_ticker_returns_column_rename_maps_all_wire_keys():
         "l3_sub_er": "l3_subsector_er",
         "l3_res_er": "l3_residual_er",
     }
-    for k, v in TICKER_RETURNS_COLUMN_RENAME.items():
-        assert expected[k] == v
+    assert TICKER_RETURNS_COLUMN_RENAME == expected
 
 
 def test_batch_returns_long_rename_l1_l2_l3_to_semantic_hr():

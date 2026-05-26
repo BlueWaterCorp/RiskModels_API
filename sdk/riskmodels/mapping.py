@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Any
 
 # Curated share-class shortcuts (upper-case keys). Expand as needed.
@@ -39,7 +40,9 @@ METRICS_V3_TO_SEMANTIC: dict[str, str] = {
     "l3_sub_beta": "l3_subsector_beta",
 }
 
-# Batch Parquet/CSV long table: OpenAPI field names → semantic (L3 component HR series)
+# Batch Parquet/CSV long table: OpenAPI legacy field names → semantic (L3 component HR series).
+# When the API dual-writes `l3_market_hr` alongside deprecated `l1`, consumers should prefer the
+# explicit names; see ``batch_returns_long_normalize`` dedupe logic.
 BATCH_RETURNS_LONG_RENAME: dict[str, str] = {
     "gross_return": "returns_gross",
     "l1": "l3_market_hr",
@@ -52,6 +55,14 @@ TICKER_RETURNS_COLUMN_RENAME: dict[str, str] = {
     "l1_cfr": "l1_combined_factor_return",
     "l2_cfr": "l2_combined_factor_return",
     "l3_cfr": "l3_combined_factor_return",
+    "l1_mkt_hr": "l1_market_hr",
+    "l1_mkt_er": "l1_market_er",
+    "l1_res_er": "l1_residual_er",
+    "l2_mkt_hr": "l2_market_hr",
+    "l2_sec_hr": "l2_sector_hr",
+    "l2_mkt_er": "l2_market_er",
+    "l2_sec_er": "l2_sector_er",
+    "l2_res_er": "l2_residual_er",
     "l3_mkt_hr": "l3_market_hr",
     "l3_sec_hr": "l3_sector_hr",
     "l3_sub_hr": "l3_subsector_hr",
@@ -78,6 +89,7 @@ COLUMN_AGENT_HINTS: dict[str, str] = {
     "l3_market_hr": "SPY component of L3 hedge; may be negative (common).",
     "l3_sector_hr": "Sector ETF component of L3 hedge; may be negative.",
     "l3_subsector_hr": "Subsector ETF component; may be negative.",
+    "hedge_levels": "Canonical L1/L2/L3 block: nested dict with L1/L2/L3 snapshots (market_hr, ERs, hedge_etfs) plus optional recommended_level / statistical_lstar.",
     "l3_residual_er": "Idiosyncratic variance share at L3 (not hedgeable with these ETFs).",
     "l1_combined_factor_return": "Daily simple combined factor return through L1 (market); decimal like returns_gross — not an ER field.",
     "l1_residual_return": "Daily simple residual return at L1; decimal — not l1_residual_er (variance fraction).",
@@ -148,3 +160,11 @@ def normalize_metrics_v3(metrics: dict) -> dict:
     if "price_close" in out and "close_price" not in out:
         out["close_price"] = out["price_close"]
     return out
+
+
+def extract_hedge_levels(body: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Return the canonical ``hedge_levels`` subtree from metrics/decompose/batch JSON if present."""
+    if not body or not isinstance(body, Mapping):
+        return None
+    hl = body.get("hedge_levels")
+    return hl if isinstance(hl, dict) else None

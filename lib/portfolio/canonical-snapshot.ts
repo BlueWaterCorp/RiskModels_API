@@ -22,6 +22,7 @@ import {
   type DiversificationTickerMetrics,
 } from "@/lib/portfolio/portfolio-diversification";
 import { fetchEtfCorrelationMatrices } from "@/lib/portfolio/portfolio-diversification-etf-returns";
+import type { HedgeLevelsBlock } from "@/lib/risk/hedge-levels";
 
 const RETURN_LAYER_KEYS: V3MetricKey[] = [
   "returns_gross",
@@ -74,6 +75,7 @@ export type CanonicalSnapshotResponse = {
       l3_sec_hr: number | null;
       l3_sub_hr: number | null;
       vol_23d: number | null;
+      hedge_levels?: HedgeLevelsBlock | null;
     }>;
     /**
      * Shares of the *portfolio's* realized variance, summing to ~1. Computed
@@ -106,6 +108,8 @@ export type CanonicalSnapshotResponse = {
      */
     diversification: DiversificationResult;
     portfolio_volatility_23d: number | null;
+    /** Holdings-weighted L1/L2/L3 hedge snapshot (descriptive aggregates). */
+    portfolio_hedge_levels?: HedgeLevelsBlock | null;
     unresolved: { ticker: string; error: string }[];
   };
   time_behavior: {
@@ -522,6 +526,8 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       l3_sec_hr: (pt.l3_sec_hr as number) ?? null,
       l3_sub_hr: (pt.l3_sub_hr as number) ?? null,
       vol_23d: (pt.vol_23d as number) ?? null,
+      hedge_levels:
+        pt.hedge_levels != null ? (pt.hedge_levels as HedgeLevelsBlock) : undefined,
     });
   }
   perPositions.sort((a, b) => b.weight - a.weight);
@@ -662,6 +668,9 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       variance_decomposition_basis: varianceDecompBasis,
       diversification,
       portfolio_volatility_23d: core.portfolioVol,
+      ...(core.portfolio_hedge_levels
+        ? { portfolio_hedge_levels: core.portfolio_hedge_levels }
+        : {}),
       unresolved: core.errorsList,
     },
     time_behavior: {

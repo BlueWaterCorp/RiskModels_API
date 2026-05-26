@@ -75,6 +75,21 @@ export interface HedgePositionInput {
   dollars: number;
 }
 
+/** Dollar notionals used by {@link RiskModelsClient.hedgePortfolio} (combined per ticker internally). */
+export interface HedgePortfolioPosition {
+  ticker: string;
+  dollars: number;
+}
+
+export interface AnalyzePortfolioOptions {
+  years?: number;
+}
+
+export interface HedgePortfolioOptions extends AnalyzePortfolioOptions {
+  /** L1 market-only | L2 + sector | L3 full cascade; default L3 */
+  level?: string;
+}
+
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
 export interface RiskModelsClientOptions {
