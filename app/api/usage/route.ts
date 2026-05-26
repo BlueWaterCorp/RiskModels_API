@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { applyChargeDebitFilters } from '@/lib/billing-event-filters';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,11 +37,10 @@ export async function GET() {
   );
   const firstOfMonthIso = firstOfMonth.toISOString();
 
-  const { data: usageRows, error: usageError } = await admin
-    .from('billing_events')
-    .select('created_at, cost_usd, capability_id')
+  const { data: usageRows, error: usageError } = await applyChargeDebitFilters(
+    admin.from('billing_events').select('created_at, cost_usd, capability_id'),
+  )
     .eq('user_id', user.id)
-    .eq('type', 'debit')
     .gte('created_at', firstOfMonthIso)
     .order('created_at', { ascending: true });
 
@@ -49,9 +49,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch usage' }, { status: 500 });
   }
 
-  const usage = usageRows ?? [];
+  type UsageRow = {
+    created_at: string;
+    cost_usd: number | string | null;
+    capability_id: string | null;
+  };
+  const usage = (usageRows ?? []) as UsageRow[];
   const totalCalls = usage.length;
-  const totalSpend = usage.reduce((sum, row) => {
+  const totalSpend = usage.reduce((sum: number, row: UsageRow) => {
     const c =
       typeof row.cost_usd === 'number'
         ? row.cost_usd

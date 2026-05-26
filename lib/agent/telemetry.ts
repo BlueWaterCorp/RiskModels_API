@@ -10,6 +10,7 @@ import {
   getTeoCoverageHealth,
   type TeoCoverageHealth,
 } from "@/lib/dal/teo-coverage-health";
+import { applyTelemetryFilters } from "@/lib/billing-event-filters";
 
 export interface TelemetryEvent {
   request_id: string;
@@ -85,6 +86,9 @@ export interface HealthStatus {
  * here, doubling revenue tracking on every billable request.
  *
  * Non-blocking - failures are silently ignored.
+ *
+ * Rows use type='telemetry' (see BWMACRO migration 20260526120000). Legacy rows
+ * are still discriminated via latency_ms IS NOT NULL vs balance-backed debits.
  */
 export async function logTelemetry(event: TelemetryEvent): Promise<void> {
   try {
@@ -97,6 +101,7 @@ export async function logTelemetry(event: TelemetryEvent): Promise<void> {
         user_id: event.user_id,
         request_id: event.request_id,
         capability_id: event.capability_id,
+        type: "telemetry",
         cost_usd: 0, // H.20: never duplicate the deductBalance row's cost
         latency_ms: event.latency_ms,
         success: event.success,
@@ -307,9 +312,11 @@ export async function getTelemetryMetrics(
     Date.now() - days * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: events, error } = await createAdminClient()
-    .from("billing_events")
-    .select("success, latency_ms, cost_usd")
+  const { data: events, error } = await applyTelemetryFilters(
+    createAdminClient()
+      .from("billing_events")
+      .select("success, latency_ms, cost_usd"),
+  )
     .eq("capability_id", capabilityId)
     .gte("created_at", startDate);
 

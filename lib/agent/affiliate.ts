@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { applyChargeDebitFilters } from '@/lib/billing-event-filters';
 
 /**
  * Public-side affiliate helper for riskmodels.app.
@@ -106,11 +107,9 @@ export async function getStatsForUser(
 
   let totalRevenueUsd = 0;
   if (distinctUserIds.length > 0) {
-    const { data: spendRows } = await admin
-      .from('billing_events')
-      .select('cost_usd')
-      .in('user_id', distinctUserIds)
-      .eq('type', 'debit');
+    const { data: spendRows } = await applyChargeDebitFilters(
+      admin.from('billing_events').select('cost_usd'),
+    ).in('user_id', distinctUserIds);
     for (const row of spendRows ?? []) {
       totalRevenueUsd += parseFloat(String((row as { cost_usd: unknown }).cost_usd)) || 0;
     }
