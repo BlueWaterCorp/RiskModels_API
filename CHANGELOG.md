@@ -4,6 +4,12 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+## [0.3.5] — 2026-05-26
+
+### Added
+
+- **Unified `hedge_levels` (L1/L2/L3)** — Shipped on **riskmodels.app** (PR #108): canonical `HedgeLevelsBlock` on `GET /metrics/{ticker}`, `POST /decompose`, `POST /batch/analyze` (per-ticker rows), `GET /hedge-basket`, ticker returns, portfolio snapshots, and chat hedge-basket tooling. MCP registers **`riskmodels_get_hedge_levels`**, **`riskmodels_analyze_portfolio`**, and **`riskmodels_hedge_portfolio`**. **`riskmodels-py 0.3.5`**: **`get_hedge_levels`**, **`extract_hedge_levels`**, portfolio aggregation in **`portfolio_math.py`** (including hedge-ratios-only batch rows without `full_metrics`). **`@riskmodels/sdk 0.1.2`**: **`getHedgeLevels`**, **`analyzePortfolio`**, **`hedgePortfolio`**. **`@riskmodels/mcp 1.0.4`**: stdio/hosted tool parity for the three portfolio/level tools. JSON Schema [`mcp/data/schemas/hedge-levels-v1.json`](mcp/data/schemas/hedge-levels-v1.json); OpenAPI **`HedgeLevelsBlock`**. Portal: [`content/docs/api.mdx`](content/docs/api.mdx). Prod smoke 2026-05-26: metrics, decompose, batch row, hedge-basket, SDK `get_hedge_levels` verified live.
+
 ### Removed
 
 - **Snapshot canonicalization PR 3** — Curated stock-snapshot layouts moved to BWMACRO. Deleted from `sdk/riskmodels/snapshots/`: `r1_risk_profile.py`, `p1_stock_performance.py`, `stock_deep_dive.py`, `s1_forensic.py`, `s2_waterfall.py`, `product_tear_sheet.py`, `_base_template.py`, `_compare_waterfall.py`, `_mag7_dna.py`, `section2_alternatives.py`, `sec_profile_blurb.py`, `refine.py`. From `sdk/riskmodels/visuals/`: `_mag7.py`, `gallery.py`, `mag7_l3_er.py`, `mag7_l3_sigma_rr.py`, `smart_subheader.py`. Demo / zarr-vs-API diff scripts: `scripts/preview_l3_plotly.py`, `scripts/run_visuals_gallery.py`, `scripts/generate_sdk_visual_gallery.py`, `sdk/scripts/p1_zarr_vs_api_diff.py`, `sdk/scripts/mag7_dd_zarr_vs_api.py`. Institutional renderers continue to ship as private IP via [BWMACRO `bwmacro/snapshots/stock/`](../BWMACRO/src/bwmacro/snapshots/stock/).
@@ -17,8 +23,6 @@ All notable changes to the RiskModels API surface and public assets.
 - **`from_dd_data` now structurally typed** — `riskmodels.snapshots.canonical.from_dd_data` no longer imports `DDData` (which moved to BWMACRO); typed as `Any` and delegates to the new `from_components(p1, …)` adapter. `interpretation.compute_features` / `derive_default_judgment` similarly typed `Any` — both already operated duck-typedly at runtime.
 
 ### Added
-
-- **Unified `hedge_levels` (L1/L2/L3)** — Canonical `HedgeLevelsBlock` on `GET /metrics/{ticker}`, `POST /decompose`, `POST /batch/analyze`, `GET /hedge-basket`, ticker returns, snapshots, and chat hedge-basket tooling. MCP registers **`riskmodels_get_hedge_levels`**, **`riskmodels_analyze_portfolio`**, and **`riskmodels_hedge_portfolio`** (SDK-backed via `registerRiskModelsTools`). TypeScript `@riskmodels/sdk` adds **`getHedgeLevels`**, **`analyzePortfolio`**, **`hedgePortfolio`** with portfolio aggregations in **`packages/riskmodels-sdk/src/normalize.ts`**; Python **`get_hedge_levels`** / **`extract_hedge_levels`**. JSON Schema [`mcp/data/schemas/hedge-levels-v1.json`](mcp/data/schemas/hedge-levels-v1.json); OpenAPI **`HedgeLevelsBlock`**. Portal: [`content/docs/api.mdx`](content/docs/api.mdx). Cross-repo: sync `mcp/data` copies to **Risk_Models** `riskmodels_com/mcp-server/data/`.
 
 - **`agent_accounts.signup_attribution` (jsonb)** — Persists validated first-touch UTM payload from `/get-key` when `POST /api/agent-keys` includes `utm`; only fills when column is currently null (oldest qualifying row wins if duplicates exist). Supabase migration `20260524120000_add_agent_accounts_signup_attribution.sql` mirrored in Risk_Models and RiskModels_API.
 
