@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateRequestId } from "@/lib/agent/telemetry";
 import { createAgentErrorResponse } from "@/lib/agent/response-utils";
 import { getCorsHeaders } from "@/lib/cors";
+import { applyChargeDebitFilters } from "@/lib/billing-event-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,13 @@ export async function GET(request: NextRequest) {
     }
 
     const all = rows ?? [];
-    const debits = all.filter((r) => r.type === "debit");
+    const debits = all.filter(
+      (r) =>
+        r.type === "debit" &&
+        (typeof r.cost_usd === "number"
+          ? r.cost_usd
+          : parseFloat(String(r.cost_usd ?? 0))) > 0,
+    );
     const totalSpent = debits.reduce((sum, r) => {
       const c =
         typeof r.cost_usd === "number"
