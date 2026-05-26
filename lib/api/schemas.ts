@@ -78,11 +78,15 @@ export const LstarRequestSchema = z.object({
   ticker: TickerSchema,
   market_factor_etf: z.string().default("SPY"),
   years: YearsSchema,
-  threshold: z.coerce
-    .number()
-    .min(0, "threshold must be >= 0")
-    .max(0.5, "threshold must be <= 0.5 (50%)")
-    .default(0.01),
+  // z.coerce.number() turns null → 0; preprocess so omitted query params get .default(0.01).
+  threshold: z.preprocess(
+    (val) => (val === null || val === "" || val === undefined ? undefined : val),
+    z.coerce
+      .number()
+      .min(0, "threshold must be >= 0")
+      .max(0.5, "threshold must be <= 0.5 (50%)")
+      .default(0.01),
+  ),
 });
 
 export type LstarRequest = z.infer<typeof LstarRequestSchema>;

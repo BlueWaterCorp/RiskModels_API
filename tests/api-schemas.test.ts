@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FactorCorrelationRequestSchema,
+  LstarRequestSchema,
   PortfolioRiskSnapshotRequestSchema,
   SnapshotRequestSchema,
 } from "@/lib/api/schemas";
@@ -156,6 +157,34 @@ describe("SnapshotRequestSchema", () => {
   it("rejects type ticker", () => {
     const r = SnapshotRequestSchema.safeParse({ type: "ticker" });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("LstarRequestSchema", () => {
+  it("defaults threshold to 0.01 when omitted or null (not z.coerce 0)", () => {
+    for (const input of [
+      { ticker: "NFLX", years: "5" },
+      { ticker: "NFLX", years: "5", threshold: null },
+      { ticker: "NFLX", years: "5", threshold: undefined },
+    ]) {
+      const r = LstarRequestSchema.safeParse(input);
+      expect(r.success).toBe(true);
+      if (r.success) {
+        expect(r.data.threshold).toBe(0.01);
+      }
+    }
+  });
+
+  it("accepts explicit threshold including zero", () => {
+    const r = LstarRequestSchema.safeParse({
+      ticker: "NFLX",
+      years: "5",
+      threshold: "0",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.threshold).toBe(0);
+    }
   });
 });
 

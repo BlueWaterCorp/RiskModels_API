@@ -46,7 +46,9 @@ export const GET = withBilling(
       ticker: searchParams.get("ticker"),
       market_factor_etf: searchParams.get("market_factor_etf") || "SPY",
       years: searchParams.get("years") || "1",
-      threshold: searchParams.get("threshold"),
+      threshold: searchParams.has("threshold")
+        ? searchParams.get("threshold")
+        : undefined,
     });
 
     if (!validation.success) {
