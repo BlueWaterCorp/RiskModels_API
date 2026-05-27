@@ -30,6 +30,7 @@ import {
   zarrRankingsBasename,
   zarrResidualSignalBasename,
   zarrReturnsBasename,
+  zarrIndustryBasename,
 } from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
@@ -299,6 +300,40 @@ async function readFloatRowAtTeo(
   }
 }
 
+/** Read a single (teo-slice, symIdx) column from a flat 2D array. Handles
+ *  Float32/Float64 (with NaN→null) AND integer typed arrays (Uint8/Int8/
+ *  Uint16/Int16/Int32) for companion vars like `lstar_level`. */
+async function readNumericSeriesTeoSymbol(
+  grp: Group<Readable>,
+  varName: string,
+  t0: number,
+  t1: number,
+  symIdx: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(t0, t1), symIdx]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+    }
+    if (
+      d instanceof Uint8Array ||
+      d instanceof Int8Array ||
+      d instanceof Uint16Array ||
+      d instanceof Int16Array ||
+      d instanceof Int32Array ||
+      d instanceof Uint32Array
+    ) {
+      return Array.from(d, (x) => x as number);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function readFloatSeriesTeoSymbolLevel(
   grp: Group<Readable>,
   varName: string,
@@ -440,7 +475,10 @@ export async function readHistorySlice(
   }
 
   const needHedge = keys.some((k) => getZarrSpec(k)?.role === "hedge");
-  const needReturns = keys.some((k) => getZarrSpec(k)?.role === "returns");
+  const needReturns = keys.some((k) => {
+    const r = getZarrSpec(k)?.role;
+    return r === "returns" || r === "returnsFlat";
+  });
 
   const hedgeGrp = needHedge ? await openZarrGroup(zarrHedgeBasename()) : null;
   const hedgeTeo = hedgeGrp ? await readTeoStrings(hedgeGrp) : null;
@@ -662,6 +700,38 @@ export async function readHistorySlice(
             metric_value: vals[i] ?? null,
           });
         }
+        continue;
+      }
+
+      if (spec.role === "returnsFlat") {
+        if (
+          !returnsGrp ||
+          returnsIdx === undefined ||
+          !returnsTeo ||
+          rt1 <= rt0
+        ) continue;
+        const vals = await readNumericSeriesTeoSymbol(
+          returnsGrp,
+          spec.zarrVar,
+          rt0,
+          rt1,
+          returnsIdx,
+        );
+        if (!vals) continue;
+        const sentinel = spec.nullSentinel;
+        for (let i = 0; i < vals.length; i++) {
+          const teoStr = returnsTeo[rt0 + i];
+          if (!teoStr) continue;
+          const v = vals[i];
+          const mv = (v != null && sentinel !== undefined && v === sentinel) ? null : v ?? null;
+          rows.push({
+            symbol,
+            teo: teoStr,
+            periodicity: "daily",
+            metric_key: key,
+            metric_value: mv,
+          });
+        }
       }
     }
   }
@@ -708,6 +778,67 @@ export interface ReadLatestRankSnapshotResult {
 }
 
 /**
+ * Full cross-section for one ranking variable at one teo. `prefix` is the
+ * `{window}_{cohort}_{metric}` triple — reads `rank_ord_${prefix}` and
+ * `cohort_size_${prefix}`. When `teo` is omitted, uses the latest date in
+ * the store (same as GET /rankings/top).
+ */
+export async function readRankingsCrossSection(
+  prefix: string,
+  options?: { teo?: string },
+): Promise<ReadLatestRankSnapshotResult> {
+  const rankVar = `rank_ord_${prefix}`;
+  const cohortVar = `cohort_size_${prefix}`;
+
+  const grp = await openZarrGroup(zarrRankingsBasename());
+  if (!grp) return { teo: null, rows: [] };
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return { teo: null, rows: [] };
+
+  const symMap = await readSymbolIndexMap(grp);
+  if (!symMap?.size) return { teo: null, rows: [] };
+  const symByIndex: string[] = new Array(symMap.size);
+  for (const [sym, idx] of symMap) symByIndex[idx] = sym;
+  const nSymbol = symByIndex.length;
+
+  const teoIdx = resolveTeoIndex(teos, options?.teo);
+  const teoStr = teos[teoIdx] ?? null;
+  if (!teoStr) return { teo: null, rows: [] };
+
+  const rankRow = await readFloatRowAtTeo(grp, rankVar, teoIdx, nSymbol);
+  if (!rankRow) {
+    return { teo: teoStr, rows: [] };
+  }
+
+  const candidates: { symbol: string; rank: number; idx: number }[] = [];
+  for (let i = 0; i < nSymbol; i++) {
+    const v = rankRow[i];
+    if (v == null || !Number.isFinite(v)) continue;
+    const r = Math.round(v);
+    if (r < 1) continue;
+    const sym = symByIndex[i];
+    if (!sym) continue;
+    candidates.push({ symbol: sym, rank: r, idx: i });
+  }
+  if (candidates.length === 0) return { teo: teoStr, rows: [] };
+
+  candidates.sort((a, b) => a.rank - b.rank);
+
+  const cohortRow = await readFloatRowAtTeo(grp, cohortVar, teoIdx, nSymbol);
+  const rows: RankingSnapshotRow[] = candidates.map((c) => {
+    const cs = cohortRow?.[c.idx];
+    return {
+      symbol: c.symbol,
+      rank_ordinal: c.rank,
+      cohort_size: cs != null && Number.isFinite(cs) ? Math.round(cs) : null,
+    };
+  });
+
+  return { teo: teoStr, rows };
+}
+
+/**
  * Read the top-K symbols for one ranking variable at the latest teo in the
  * rankings store. `prefix` is the `{window}_{cohort}_{metric}` triple that
  * the API constructs from request params — the function looks up
@@ -722,73 +853,11 @@ export async function readLatestRankSnapshot(
   limit: number,
 ): Promise<ReadLatestRankSnapshotResult> {
   const cap = Math.min(100, Math.max(1, Math.floor(limit)));
-  const rankVar = `rank_ord_${prefix}`;
-  const cohortVar = `cohort_size_${prefix}`;
-
-  const grp = await openZarrGroup(zarrRankingsBasename());
-  if (!grp) return { teo: null, rows: [] };
-
-  const teos = await readTeoStrings(grp);
-  if (!teos?.length) return { teo: null, rows: [] };
-
-  // Resolve symbols via the same coord helper as the daily store. Rankings
-  // uses the universe symbol roster (e.g. uni_mc_3000), which may differ
-  // from ds_daily's roster — never share indices across stores.
-  const symMap = await readSymbolIndexMap(grp);
-  if (!symMap?.size) return { teo: null, rows: [] };
-  const symByIndex: string[] = new Array(symMap.size);
-  for (const [sym, idx] of symMap) symByIndex[idx] = sym;
-  const nSymbol = symByIndex.length;
-
-  // Latest teo = last entry in the sorted teo coord. Rankings are written
-  // dense per teo, so we trust the last index rather than scanning for the
-  // last non-null row (which would defeat the chunking optimization).
-  const teoIdx = teos.length - 1;
-  const teoStr = teos[teoIdx] ?? null;
-  if (!teoStr) return { teo: null, rows: [] };
-
-  const rankRow = await readFloatRowAtTeo(grp, rankVar, teoIdx, nSymbol);
-  if (!rankRow) {
-    // Variable doesn't exist in this store (e.g. PIT-only metrics under a
-    // non-1d window: rank_ord_252d_universe_mkt_cap is never written).
-    // Return empty rather than erroring — matches the prior Supabase
-    // behavior where the EAV row simply wasn't present.
-    return { teo: teoStr, rows: [] };
+  const snapshot = await readRankingsCrossSection(prefix);
+  if (!snapshot.teo || snapshot.rows.length === 0) {
+    return snapshot;
   }
-
-  // Build (symbol, rank_ordinal) pairs, drop nulls and invalid (<1) ranks.
-  const candidates: { symbol: string; rank: number; idx: number }[] = [];
-  for (let i = 0; i < nSymbol; i++) {
-    const v = rankRow[i];
-    if (v == null || !Number.isFinite(v)) continue;
-    const r = Math.round(v);
-    if (r < 1) continue;
-    const sym = symByIndex[i];
-    if (!sym) continue;
-    candidates.push({ symbol: sym, rank: r, idx: i });
-  }
-  if (candidates.length === 0) return { teo: teoStr, rows: [] };
-
-  // Top-K by ascending rank (1 = best). Partial sort would be faster but
-  // candidates is already small (low thousands) — full sort is fine.
-  candidates.sort((a, b) => a.rank - b.rank);
-  const top = candidates.slice(0, cap);
-
-  // Cohort sizes: read the row once, index by symbol position. Same chunk
-  // shape as rank, so this is a second ~12KB read. Skip if the variable is
-  // missing (cohort_size_* should always exist alongside rank_ord_*, but
-  // be defensive).
-  const cohortRow = await readFloatRowAtTeo(grp, cohortVar, teoIdx, nSymbol);
-  const rows: RankingSnapshotRow[] = top.map((c) => {
-    const cs = cohortRow?.[c.idx];
-    return {
-      symbol: c.symbol,
-      rank_ordinal: c.rank,
-      cohort_size: cs != null && Number.isFinite(cs) ? Math.round(cs) : null,
-    };
-  });
-
-  return { teo: teoStr, rows };
+  return { teo: snapshot.teo, rows: snapshot.rows.slice(0, cap) };
 }
 
 // =====================================================================
@@ -1177,4 +1246,172 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
   }
 
   return { teo: teoStr, rows };
+}
+
+// =====================================================================
+// Industry panel — cross-section at (teo × fs_industry_code × level)
+// =====================================================================
+
+export const INDUSTRY_PANEL_LEVELS = ["market", "sector", "subsector"] as const;
+export type IndustryPanelLevel = (typeof INDUSTRY_PANEL_LEVELS)[number];
+
+const INDUSTRY_PANEL_VARS = [
+  "beta_mean",
+  "beta_variance",
+  "n_companies",
+  "total_log_mcap_weight",
+] as const;
+
+export interface IndustryPanelRow {
+  industry_code: number;
+  level: IndustryPanelLevel;
+  beta_mean: number | null;
+  beta_variance: number | null;
+  n_companies: number | null;
+  total_log_mcap_weight: number | null;
+}
+
+export interface ReadIndustryPanelResult {
+  teo: string | null;
+  rows: IndustryPanelRow[];
+  min_peers: number;
+}
+
+async function readIndustryCodeInts(grp: Group<Readable>): Promise<number[] | null> {
+  try {
+    const loc = grp.resolve("fs_industry_code");
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof Int16Array) {
+      return Array.from(d, (x) => Number(x));
+    }
+    if (d instanceof Int32Array || d instanceof Uint16Array) {
+      return Array.from(d, (x) => Number(x));
+    }
+    if (ArrayBuffer.isView(d) && !(d instanceof Uint8Array)) {
+      return Array.from(d as unknown as ArrayLike<number>, (x) => Number(x));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function readFloatRowAtTeoIndustryLevel(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  levelIdx: number,
+  nIndustry: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [teoIdx, slice(0, nIndustry), levelIdx]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveTeoIndex(teos: string[], teo?: string): number {
+  if (!teo) return teos.length - 1;
+  const exact = teos.indexOf(teo);
+  if (exact >= 0) return exact;
+  const prior = upperBoundInclusive(teos, teo) - 1;
+  return prior >= 0 ? prior : teos.length - 1;
+}
+
+function readMinPeersAttr(grp: Group<Readable>): number {
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const raw = attrs.min_peers;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 1) {
+    return Math.floor(raw);
+  }
+  if (typeof raw === "string") {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 1) return n;
+  }
+  return 5;
+}
+
+/**
+ * Industry peer β cross-section at one teo. Chunk shape is typically
+ * {teo: 500, fs_industry_code: 72, level: 3} — one teo × level slice
+ * touches one chunk per variable.
+ */
+export async function readIndustryPanelSnapshot(params: {
+  teo?: string;
+  level?: IndustryPanelLevel;
+  minPeers?: number;
+}): Promise<ReadIndustryPanelResult> {
+  const grp = await openZarrGroup(zarrIndustryBasename());
+  if (!grp) return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+
+  const industryCodes = await readIndustryCodeInts(grp);
+  const levelMap = await readLevelIndexMap(grp);
+  if (!industryCodes?.length || !levelMap?.size) {
+    return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+  }
+
+  const teoIdx = resolveTeoIndex(teos, params.teo);
+  const teoStr = teos[teoIdx] ?? null;
+  if (!teoStr) return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+
+  const defaultMinPeers = readMinPeersAttr(grp);
+  const minPeers = params.minPeers ?? defaultMinPeers;
+  const nIndustry = industryCodes.length;
+
+  const levels: IndustryPanelLevel[] = params.level
+    ? [params.level]
+    : [...INDUSTRY_PANEL_LEVELS];
+
+  const rows: IndustryPanelRow[] = [];
+
+  for (const levelName of levels) {
+    const levelIdx = levelMap.get(levelName);
+    if (levelIdx === undefined) continue;
+
+    const planes = await Promise.all(
+      INDUSTRY_PANEL_VARS.map((v) =>
+        readFloatRowAtTeoIndustryLevel(grp, v, teoIdx, levelIdx, nIndustry),
+      ),
+    );
+    if (!planes[0]) continue;
+
+    for (let i = 0; i < nIndustry; i++) {
+      const nCo = planes[2]?.[i];
+      if (nCo == null || !Number.isFinite(nCo)) continue;
+      const peerCount = Math.round(nCo);
+      if (peerCount < minPeers) continue;
+
+      const betaMean = planes[0]?.[i] ?? null;
+      if (betaMean == null) continue;
+
+      rows.push({
+        industry_code: industryCodes[i]!,
+        level: levelName,
+        beta_mean: betaMean,
+        beta_variance: planes[1]?.[i] ?? null,
+        n_companies: peerCount,
+        total_log_mcap_weight: planes[3]?.[i] ?? null,
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const lc = a.level.localeCompare(b.level);
+    if (lc !== 0) return lc;
+    return a.industry_code - b.industry_code;
+  });
+
+  return { teo: teoStr, rows, min_peers: minPeers };
 }

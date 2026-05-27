@@ -15,7 +15,19 @@ export type ZarrMetricSpec =
   | {
       role: "returns";
       zarrVar: "combined_factor_return" | "factor_return" | "residual_return";
-      level: "market" | "sector" | "subsector";
+      level: "market" | "sector" | "subsector" | "lstar";
+    }
+  | {
+      /**
+       * Flat (teo, symbol) var in the returns zarr — no level dim. Used for
+       * companion arrays alongside the level-indexed cubes (e.g. lstar_level).
+       * Reader returns the raw numeric value unless `nullSentinel` is set, in
+       * which case matching values are mapped to null at the API boundary.
+       */
+      role: "returnsFlat";
+      zarrVar: string;
+      /** Treat this raw value as "missing" — emit null instead. */
+      nullSentinel?: number;
     }
   | {
       role: "hedge";
@@ -78,6 +90,18 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   l3_cfr: { role: "returns", zarrVar: "combined_factor_return", level: "subsector" },
   l3_fr: { role: "returns", zarrVar: "factor_return", level: "subsector" },
   l3_rr: { role: "returns", zarrVar: "residual_return", level: "subsector" },
+
+  // Lstar-dispatched idiosyncratic return: residual_return.sel(level='lstar')
+  // is materialized in the returns zarr at the canonical 1% threshold by
+  // erm3.shared.output_manager.materialize_lstar_level_in_returns_zarr. SDK
+  // callers wanting a non-default threshold still hit GET /lstar.
+  lstar_rr: { role: "returns", zarrVar: "residual_return", level: "lstar" },
+
+  // Companion uint8 var: per (teo, symbol) which level Lstar dispatched to.
+  // Raw encoding 0 = no recommendation (both L2 and L3 ER NaN), 1 = L1, 2 = L2,
+  // 3 = L3. We map 0 → null at the API boundary so callers see null (matches
+  // the `lstar: null` semantics of GET /lstar) or 1/2/3.
+  lstar_level: { role: "returnsFlat", zarrVar: "lstar_level", nullSentinel: 0 },
 };
 
 export function getZarrSpec(key: V3MetricKey): ZarrMetricSpec | undefined {

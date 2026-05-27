@@ -73,7 +73,7 @@
   {
     "id": "metrics",
     "name": "Latest Risk Metrics",
-    "description": "Fetch latest hedge ratios (HR), explained risk (ER), volatility, and stock variance for a ticker from security_history (V3)",
+    "description": "Fetch latest hedge ratios (HR), explained risk (ER), volatility, stock variance, plus the Lstar-dispatched lstar_rr (residual return at the level Lstar picked) and lstar_level (1/2/3/null) for a ticker from security_history (V3)",
     "endpoint": "/api/metrics/{ticker}",
     "method": "GET",
     "parameters": {
@@ -506,7 +506,7 @@
   {
     "id": "metrics-snapshot",
     "name": "Metrics Snapshot",
-    "description": "Latest risk metrics snapshot for a single ticker (volatility, hedge ratios, explained risk, hierarchical regression betas l1_mkt_beta/l2_sec_beta/l3_sub_beta, and combined factor returns / residual returns at L1/L2/L3)",
+    "description": "Latest risk metrics snapshot for a single ticker (volatility, hedge ratios, explained risk, hierarchical regression betas l1_mkt_beta/l2_sec_beta/l3_sub_beta, combined factor returns / residual returns at L1/L2/L3, and the Lstar-dispatched pair lstar_rr + lstar_level — 1/2/3 for the level Lstar picked, null when no recommendation — at the canonical 1% marginal-ER threshold)",
     "endpoint": "/api/metrics",
     "method": "GET",
     "parameters": {
@@ -572,6 +572,180 @@
       "sources": ["erm3_models", "security_history"]
     },
     "tags": ["risk", "decomposition", "l3"]
+  },
+  {
+    "id": "returns-decomposition",
+    "name": "Returns Decomposition",
+    "description": "Daily gross + L1/L2/L3 factor/combined/residual returns from ds_erm3_returns; optional Lstar dispatch",
+    "endpoint": "/api/returns-decomposition",
+    "method": "GET",
+    "parameters": {
+      "ticker": {
+        "type": "string",
+        "required": true,
+        "description": "Stock ticker symbol"
+      },
+      "market_factor_etf": {
+        "type": "string",
+        "required": false,
+        "description": "Market factor ETF",
+        "default": "SPY"
+      },
+      "years": {
+        "type": "integer",
+        "required": false,
+        "description": "Calendar years of daily history",
+        "default": 1
+      },
+      "include_lstar": {
+        "type": "boolean",
+        "required": false,
+        "description": "Include lstar and lstar_residual_return arrays",
+        "default": false
+      },
+      "threshold": {
+        "type": "number",
+        "required": false,
+        "description": "Marginal ER threshold for Lstar derivation",
+        "default": 0.01
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.02,
+      "currency": "USD",
+      "billing_code": "returns_decomposition_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 140,
+      "p95_latency_ms": 240,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "daily",
+      "sources": ["ds_erm3_returns", "security_history"]
+    },
+    "tags": ["returns", "decomposition", "lstar", "macro"]
+  },
+  {
+    "id": "industry-panel",
+    "name": "Industry Panel",
+    "description": "Industry peer β cross-section from ds_erm3_industry (beta_mean, beta_variance, n_companies by industry code and level)",
+    "endpoint": "/api/industry-panel",
+    "method": "GET",
+    "parameters": {
+      "market_factor_etf": {
+        "type": "string",
+        "required": false,
+        "description": "Market factor ETF",
+        "default": "SPY"
+      },
+      "teo": {
+        "type": "string",
+        "required": false,
+        "description": "Observation date YYYY-MM-DD (default latest teo)"
+      },
+      "level": {
+        "type": "string",
+        "required": false,
+        "description": "Optional cascade level filter",
+        "enum": ["market", "sector", "subsector"]
+      },
+      "min_peers": {
+        "type": "integer",
+        "required": false,
+        "description": "Minimum n_companies filter"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "cost_usd": 0.02,
+      "currency": "USD",
+      "billing_code": "industry_panel_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 120,
+      "p95_latency_ms": 200,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "daily",
+      "sources": ["ds_erm3_industry"]
+    },
+    "tags": ["industry", "macro", "cross-section", "stat-arb"]
+  },
+  {
+    "id": "rankings-screen",
+    "name": "Rankings Screen",
+    "description": "Full cross-section rank screen from ds_rankings zarr: server-side percentile, decile, and sector ETF filters over the entire universe at one teo (default latest). Returns up to 500 names sorted by rank_ordinal (1 = best). rank_percentile 100 = best.",
+    "endpoint": "/api/rankings/screen",
+    "method": "POST",
+    "parameters": {
+      "metric": {
+        "type": "string",
+        "required": true,
+        "description": "Metric: mkt_cap, gross_return, sector_residual, subsector_residual, er_l1, er_l2, er_l3"
+      },
+      "cohort": {
+        "type": "string",
+        "required": true,
+        "description": "Cohort: universe, sector, subsector"
+      },
+      "window": {
+        "type": "string",
+        "required": true,
+        "description": "Window: 1d, 21d, 63d, 252d"
+      },
+      "as_of": {
+        "type": "string",
+        "required": false,
+        "description": "Observation date YYYY-MM-DD (default latest teo)"
+      },
+      "min_percentile": {
+        "type": "number",
+        "required": false,
+        "description": "Minimum rank_percentile inclusive (100 = best)"
+      },
+      "decile": {
+        "type": "integer",
+        "required": false,
+        "description": "Decile bucket 1=best (top 10%), through 10"
+      },
+      "sector_filter": {
+        "type": "string",
+        "required": false,
+        "description": "Sector ETF ticker filter (e.g. XLK) on symbols.sector_etf"
+      },
+      "limit": {
+        "type": "integer",
+        "required": false,
+        "description": "Max rows after filter (1–500, default 100)",
+        "default": 100
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "tier": "premium",
+      "cost_usd": 0.05,
+      "currency": "USD",
+      "billing_code": "rankings_screen_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 180,
+      "p95_latency_ms": 350,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.98,
+      "update_frequency": "daily",
+      "sources": ["ds_rankings"]
+    },
+    "tags": ["rankings", "cross-sectional", "screen", "percentile"]
   },
   {
     "id": "portfolio-returns",

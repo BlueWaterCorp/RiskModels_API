@@ -86,7 +86,14 @@ _SDK_METHODS: list[dict[str, Any]] = [
         ],
         "returns": {
             "type": "pandas.DataFrame | dict",
-            "description": "Semantic metrics row; dict path omits DataFrame attrs.",
+            "description": (
+                "Semantic metrics row; dict path omits DataFrame attrs. "
+                "Includes V3 keys l1_*/l2_*/l3_* (HR, ER, betas, CFR, FR, RR) and "
+                "the Lstar-dispatched companion pair lstar_rr (residual return at the "
+                "level Lstar picked) + lstar_level (1=L1, 2=L2, 3=L3, null=no rec) at "
+                "the canonical 1% marginal-ER threshold. For a different threshold use "
+                "get_lstar(threshold=...). See OpenAPI MetricsV3 for the full field list."
+            ),
         },
     },
     {
@@ -450,12 +457,68 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "pandas.DataFrame | dict", "description": "Leaderboard table or raw JSON."},
     },
     {
+        "name": "screen_rankings",
+        "aliases": [],
+        "summary": "Full cross-section rank screen (POST /rankings/screen).",
+        "description": (
+            "Server-side percentile/decile/sector filters over the full ds_rankings cross-section "
+            "at one teo. Returns up to 500 rows (default 100)."
+        ),
+        "scopes": ["rankings-screen"],
+        "parameters": [
+            {
+                "name": "metric",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_METRICS,
+            },
+            {
+                "name": "cohort",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_COHORTS,
+            },
+            {
+                "name": "window",
+                "type": "string",
+                "required": True,
+                "enum": _RANKING_WINDOWS,
+            },
+            {
+                "name": "min_percentile",
+                "type": "number",
+                "required": False,
+                "description": "Minimum rank_percentile inclusive (100 = best).",
+            },
+            {
+                "name": "decile",
+                "type": "integer",
+                "required": False,
+                "description": "Decile bucket 1=best.",
+            },
+            {
+                "name": "sector_filter",
+                "type": "string",
+                "required": False,
+                "description": "Sector ETF ticker filter.",
+            },
+            {
+                "name": "limit",
+                "type": "integer",
+                "required": False,
+                "default": 100,
+                "description": "Max rows (1–500).",
+            },
+        ],
+        "returns": {"type": "pandas.DataFrame | dict", "description": "Filtered cross-section."},
+    },
+    {
         "name": "filter_universe_by_ranking",
         "aliases": ["filter_universe"],
-        "summary": "Top names by rank_percentile (client-side filter on get_top_rankings).",
+        "summary": "Top names by rank_percentile via POST /rankings/screen.",
         "description": (
-            "Fetches up to min(limit, 100) rows from get_top_rankings (API cap), then keeps rows with "
-            "rank_percentile >= min_percentile (default 90). attrs include riskmodels_filter_note."
+            "Calls screen_rankings with min_percentile (default 90) and limit up to 500. "
+            "attrs include riskmodels_filter_note."
         ),
         "scopes": ["rankings"],
         "parameters": [
@@ -492,7 +555,7 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "type": "integer",
                 "required": False,
                 "default": 500,
-                "description": "Desired fetch size; server returns at most 100 rows per call.",
+                "description": "Max rows returned (server cap 500).",
             },
         ],
         "returns": {"type": "pandas.DataFrame", "description": "Filtered leaderboard subset."},
@@ -562,6 +625,90 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {
             "type": "pandas.DataFrame",
             "description": "Columns date, lstar, market_hr, sector_hr, subsector_hr, total_er, residual_return, …",
+        },
+    },
+    {
+        "name": "get_returns_decomposition",
+        "aliases": [],
+        "summary": "Full returns decomposition (GET /returns-decomposition).",
+        "description": (
+            "Daily gross return plus L1/L2/L3 factor, combined-factor, and residual return "
+            "series. Optional include_lstar adds Lstar level and Lstar-dispatched residual return."
+        ),
+        "scopes": ["returns", "risk-decomposition"],
+        "parameters": [
+            {"name": "ticker", "type": "string", "required": True, "description": "Symbol."},
+            {
+                "name": "market_factor_etf",
+                "type": "string",
+                "required": False,
+                "description": "Optional market ETF override (e.g. SPY).",
+            },
+            {
+                "name": "years",
+                "type": "integer",
+                "required": False,
+                "description": "Calendar years of daily history (1–10).",
+            },
+            {
+                "name": "include_lstar",
+                "type": "boolean",
+                "required": False,
+                "default": False,
+                "description": "Include lstar and lstar_residual_return columns.",
+            },
+            {
+                "name": "threshold",
+                "type": "number",
+                "required": False,
+                "default": 0.01,
+                "description": "Marginal-ER threshold when deriving Lstar.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame",
+            "description": "Semantic gross/factor/combined/residual return columns by date.",
+        },
+    },
+    {
+        "name": "get_industry_panel",
+        "aliases": [],
+        "summary": "Industry peer β cross-section (GET /industry-panel).",
+        "description": (
+            "Cross-section of Vasicek industry peer β statistics: beta_mean, beta_variance, "
+            "n_companies, total_log_mcap_weight by industry code and cascade level."
+        ),
+        "scopes": ["industry", "macro", "stat-arb"],
+        "parameters": [
+            {
+                "name": "market_factor_etf",
+                "type": "string",
+                "required": False,
+                "description": "Market factor ETF (default SPY).",
+            },
+            {
+                "name": "teo",
+                "type": "string",
+                "required": False,
+                "description": "Observation date YYYY-MM-DD (default latest).",
+            },
+            {
+                "name": "level",
+                "type": "string",
+                "required": False,
+                "enum": ["market", "sector", "subsector"],
+                "description": "Optional cascade level filter.",
+            },
+            {
+                "name": "min_peers",
+                "type": "integer",
+                "required": False,
+                "description": "Minimum n_companies filter.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame",
+            "description": "Columns industry_code, level, beta_mean, beta_variance, n_companies, total_log_mcap_weight.",
         },
     },
     {

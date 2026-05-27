@@ -336,6 +336,10 @@ components:
             charts or for agent-side attribution ("what drove today's return at each level?").
           - `*_rr`  (residual return) is what's left after factors through that level —
             `gross_return ≈ l3_cfr + l3_rr`.
+        Keys `lstar_rr` and `lstar_level` carry the Lstar-dispatched residual return and
+        the level that was picked, per-(teo, symbol), at the canonical 1% threshold.
+        Use these when you want "the best residual" — the idiosyncratic leg at the same
+        hedge depth as production HR/ER. For a custom threshold, hit `GET /lstar`.
         None of these are ER fields and none come from hedge-weight explainability.
         Keys `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` are dimensionless hierarchical regression betas
         (one per level: 1 for L1, 2 for L2, 3 for L3 — though only the L*-introduced new factor is stored at each level).
@@ -486,6 +490,27 @@ components:
           format: float
           nullable: true
           description: Daily simple residual return at L3 (decimal). Distinct from l3_residual_er (ER).
+        lstar_rr:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Daily simple residual return at the Lstar-dispatched level — L1→market,
+            L2→sector, L3→subsector residual. Materialized as
+            `residual_return.sel(level='lstar')` in `ds_erm3_returns` at the canonical
+            1% marginal-ER threshold. For a configurable threshold use `GET /lstar`.
+        lstar_level:
+          type: integer
+          format: int32
+          nullable: true
+          enum: [1, 2, 3, null]
+          description: >
+            Which cascade level Lstar dispatched to per (teo, symbol) at the canonical
+            1% threshold: 1 = L1 (market only), 2 = L2 (sector), 3 = L3 (subsector).
+            `null` = no recommendation (both L2 and L3 ER are NaN — pre-IPO / delisted
+            / masked). Maps from the uint8 `lstar_level` companion var in
+            `ds_erm3_returns`, with 0 → null at the API boundary. For a custom
+            threshold use `GET /lstar` which returns the level as a string.
         l1_mkt_beta:
           type: number
           format: float
@@ -1352,6 +1377,163 @@ components:
         data_source:
           type: string
           example: security_history
+
+    ReturnsDecompositionResponse:
+      type: object
+      description: >
+        Daily gross return and L1/L2/L3 factor, combined-factor, and residual
+        return series from ds_erm3_returns (zarr SSOT). Optional Lstar dispatch
+        adds per-date recommended hedge level and Lstar residual return.
+      properties:
+        ticker:
+          type: string
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+        gross_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l1_factor_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l2_factor_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_factor_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l1_combined_factor_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l2_combined_factor_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_combined_factor_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l1_residual_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l2_residual_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        l3_residual_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        lstar:
+          type: array
+          items:
+            type: string
+            enum: [L1, L2, L3]
+            nullable: true
+          description: Present when include_lstar=true or dispatch=lstar.
+        lstar_residual_return:
+          type: array
+          items:
+            type: number
+            format: float
+            nullable: true
+        threshold_used:
+          type: number
+          format: float
+          description: Marginal ER threshold used for Lstar dispatch (default 0.01).
+        market_factor_etf:
+          type: string
+        universe:
+          type: string
+        data_source:
+          type: string
+          example: zarr
+
+    IndustryPanelRow:
+      type: object
+      required: [industry_code, level]
+      properties:
+        industry_code:
+          type: integer
+          description: EODHD 4-digit industry code (FactSet fs_industry_code).
+        level:
+          type: string
+          enum: [market, sector, subsector]
+        beta_mean:
+          type: number
+          format: float
+          nullable: true
+          description: Log-mcap-weighted typical factor β for the industry at this cascade level.
+        beta_variance:
+          type: number
+          format: float
+          nullable: true
+          description: Cross-sectional dispersion of peer βs (τ²).
+        n_companies:
+          type: integer
+          nullable: true
+          description: Peer count in the industry cohort.
+        total_log_mcap_weight:
+          type: number
+          format: float
+          nullable: true
+          description: Sum of log(mcap+1) across peers.
+
+    IndustryPanelResponse:
+      type: object
+      description: >
+        Cross-section of Vasicek industry peer β statistics from ds_erm3_industry
+        at one observation date (default latest teo).
+      properties:
+        teo:
+          type: string
+          format: date
+        industries:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndustryPanelRow"
+        level:
+          type: string
+          enum: [market, sector, subsector]
+          description: Present when the request filtered to a single cascade level.
+        min_peers:
+          type: integer
+          description: Minimum n_companies filter applied (from request or zarr min_peers attr).
+        market_factor_etf:
+          type: string
+        universe:
+          type: string
+        data_source:
+          type: string
+          example: zarr
 
     ResidualSignalReading:
       type: object
@@ -3728,6 +3910,275 @@ paths:
                   error: { type: string, example: gone }
                   message: { type: string }
                   replacement: { type: string, format: uri }
+
+  /returns-decomposition:
+    get:
+      summary: Full returns decomposition (L1/L2/L3 + optional Lstar)
+      description: |
+        One-call daily return decomposition: gross return plus L1/L2/L3 factor,
+        combined-factor, and residual return series from ds_erm3_returns zarr.
+        Set `include_lstar=true` or `dispatch=lstar` to append Lstar level and
+        Lstar-dispatched residual return per date (prefers materialized zarr
+        lstar_rr/lstar_level when present; otherwise derives from marginal ERs).
+      operationId: getReturnsDecomposition
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: returns-decomposition
+        tier: premium
+        model: per_request
+        cost_usd: 0.02
+        currency: USD
+        billing_code: returns_decomposition_v1
+      parameters:
+        - name: ticker
+          in: query
+          required: true
+          schema:
+            type: string
+          example: AAPL
+        - name: market_factor_etf
+          in: query
+          schema:
+            type: string
+            default: SPY
+        - name: years
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+            maximum: 10
+        - name: include_lstar
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include Lstar level and lstar_residual_return arrays.
+        - name: dispatch
+          in: query
+          schema:
+            type: string
+            enum: [lstar]
+          description: Sugar alias — `dispatch=lstar` sets include_lstar=true.
+        - name: threshold
+          in: query
+          schema:
+            type: number
+            format: float
+            default: 0.01
+            minimum: 0
+            maximum: 0.5
+          description: Marginal ER threshold when deriving Lstar (ignored when zarr has lstar_level).
+      responses:
+        "200":
+          description: Returns decomposition time series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnsDecompositionResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Ticker not found
+        "500":
+          description: Internal error
+
+  /industry-panel:
+    get:
+      summary: Industry peer β cross-section
+      description: |
+        Cross-section from `ds_erm3_industry` zarr: log-mcap-weighted typical factor β,
+        cross-sectional β dispersion, peer counts, and cohort weight mass by EODHD industry
+        code and cascade level (`market`, `sector`, `subsector`). Default observation date
+        is the latest `teo` in the store; pass `teo=YYYY-MM-DD` for a historical slice.
+      operationId: getIndustryPanel
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: industry-panel
+        tier: premium
+        model: per_request
+        cost_usd: 0.02
+        currency: USD
+        billing_code: industry_panel_v1
+      parameters:
+        - name: market_factor_etf
+          in: query
+          schema:
+            type: string
+            default: SPY
+        - name: teo
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Observation date (default latest teo in zarr).
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Alias for `teo`.
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [market, sector, subsector]
+          description: Optional filter to one cascade level.
+        - name: min_peers
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+          description: Minimum n_companies (default from zarr min_peers attr, usually 5).
+      responses:
+        "200":
+          description: Industry panel cross-section
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndustryPanelResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Industry panel unavailable
+        "500":
+          description: Internal error
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /rankings/screen:
+    post:
+      summary: Cross-sectional rankings screen
+      description: >
+        Full-universe rank screen from `ds_rankings` at one `teo` (default latest).
+        Applies server-side `min_percentile`, `decile` (1 = best decile), and optional
+        `sector_filter` (sector ETF on `symbols.sector_etf`), then returns up to 500
+        names sorted by ascending `rank_ordinal`. Same `rank_percentile` rule as GET
+        /rankings/top (100 = best).
+      operationId: postRankingsScreen
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: rankings-screen
+        tier: premium
+        model: per_request
+        cost_usd: 0.05
+        currency: USD
+        billing_code: rankings_screen_v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metric, cohort, window]
+              properties:
+                metric:
+                  type: string
+                  enum:
+                    - mkt_cap
+                    - gross_return
+                    - sector_residual
+                    - subsector_residual
+                    - er_l1
+                    - er_l2
+                    - er_l3
+                cohort:
+                  type: string
+                  enum: [universe, sector, subsector]
+                window:
+                  type: string
+                  enum: [1d, 21d, 63d, 252d]
+                as_of:
+                  type: string
+                  format: date
+                  description: Observation date (default latest teo in zarr).
+                min_percentile:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+                decile:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                sector_filter:
+                  type: string
+                  description: Sector ETF ticker (e.g. XLK).
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 500
+                  default: 100
+      responses:
+        "200":
+          description: Filtered cross-section rows and counts.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+            X-Data-Fetch-Latency-Ms:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teo:
+                    type: string
+                    format: date
+                  metric: { type: string }
+                  cohort: { type: string }
+                  window: { type: string }
+                  limit: { type: integer }
+                  min_percentile:
+                    type: number
+                    nullable: true
+                  decile:
+                    type: integer
+                    nullable: true
+                  sector_filter:
+                    type: string
+                    nullable: true
+                  universe_size: { type: integer }
+                  matched_count: { type: integer }
+                  universe: { type: string }
+                  data_source: { type: string }
+                  rankings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        symbol: { type: string }
+                        ticker: { type: string }
+                        rank_ordinal: { type: integer }
+                        cohort_size:
+                          type: integer
+                          nullable: true
+                        rank_percentile:
+                          type: number
+                          nullable: true
+                  _metadata:
+                    type: object
+                    additionalProperties: true
+                  _agent:
+                    $ref: "#/components/schemas/AgentMeta"
+        "400":
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Rankings data unavailable.
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
 
   /l3-decomposition:
     get:
