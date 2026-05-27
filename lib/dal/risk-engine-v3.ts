@@ -20,6 +20,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   readHistorySlice,
   readLatestRankSnapshot,
+  readRankingsCrossSection,
   readSymbolRankSnapshot,
 } from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
@@ -63,6 +64,8 @@ export type V3MetricKey =
   | "l3_cfr"
   | "l3_fr"
   | "l3_rr"
+  | "lstar_rr"
+  | "lstar_level"
   | "l1_mkt_beta"
   | "l2_sec_beta"
   | "l3_sub_beta";
@@ -150,6 +153,12 @@ export interface LatestSummaryRow {
   l3_cfr?: number | null;
   l3_fr?: number | null;
   l3_rr?: number | null;
+  // Lstar-dispatched residual + level pick (Supabase migration
+  // 20260527120000_security_history_latest_lstar.sql). lstar_level is stored
+  // as DOUBLE PRECISION in Supabase to match the table type; sync layer
+  // already maps the uint8 sentinel 0 → NULL so callers see 1/2/3 or null.
+  lstar_rr?: number | null;
+  lstar_level?: number | null;
   stock_var: number | null;
   // Hierarchical regression betas (one per level — see OPENAPI_SPEC.yaml MetricsV3)
   l1_mkt_beta?: number | null;
@@ -631,6 +640,8 @@ export async function fetchLatestSummary(
         l3_cfr: row.l3_cfr ?? null,
         l3_fr: row.l3_fr ?? null,
         l3_rr: row.l3_rr ?? null,
+        lstar_rr: row.lstar_rr ?? null,
+        lstar_level: row.lstar_level ?? null,
         stock_var: row.stock_var,
         l1_mkt_beta: row.l1_mkt_beta ?? null,
         l2_sec_beta: row.l2_sec_beta ?? null,
@@ -963,6 +974,158 @@ export async function fetchTopRankingsSnapshot(params: {
   } catch (error) {
     console.error("[V3 DAL] Error fetching top rankings:", error);
     return { teo: null, rows: [] };
+  }
+}
+
+/** Percentile bucket 1 = best decile (percentile >= 90). */
+export function rankDecileFromPercentile(rankPercentile: number): number {
+  return Math.min(10, Math.max(1, Math.ceil((100 - rankPercentile) / 10)));
+}
+
+function rankPercentileFromOrdinal(
+  rankOrdinal: number,
+  cohortSize: number | null,
+): number | null {
+  if (cohortSize == null || cohortSize <= 0) return null;
+  return (1 - (rankOrdinal - 1) / cohortSize) * 100;
+}
+
+async function resolveSectorSymbolSet(sectorEtf: string): Promise<Set<string>> {
+  const upper = sectorEtf.trim().toUpperCase();
+  if (!upper) return new Set();
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("symbols")
+      .select("symbol")
+      .eq("sector_etf", upper);
+    if (error) {
+      console.error(`[V3 DAL] Error fetching sector filter ${upper}:`, error);
+      return new Set();
+    }
+    return new Set(
+      (data ?? []).map((r) => (r as { symbol: string }).symbol).filter(Boolean),
+    );
+  } catch (error) {
+    console.error(`[V3 DAL] Error fetching sector filter ${upper}:`, error);
+    return new Set();
+  }
+}
+
+/**
+ * Full cross-section screen: read all ranked symbols at one teo, apply
+ * percentile/decile/sector filters server-side, then return top `limit` rows.
+ */
+export async function fetchRankingsScreen(params: {
+  metric: string;
+  cohort: string;
+  window: string;
+  as_of?: string;
+  min_percentile?: number;
+  decile?: number;
+  sector_filter?: string;
+  limit?: number;
+}): Promise<{
+  teo: string | null;
+  rows: TopRankingRow[];
+  universe_size: number;
+  matched_count: number;
+}> {
+  const {
+    metric,
+    cohort,
+    window,
+    as_of,
+    min_percentile,
+    decile,
+    sector_filter,
+    limit = 100,
+  } = params;
+  const cap = Math.min(500, Math.max(1, Math.floor(limit)));
+  const prefix = `${window}_${cohort}_${metric}`;
+
+  try {
+    const snapshot = await readRankingsCrossSection(prefix, { teo: as_of });
+    if (!snapshot.teo || snapshot.rows.length === 0) {
+      return {
+        teo: snapshot.teo,
+        rows: [],
+        universe_size: 0,
+        matched_count: 0,
+      };
+    }
+
+    const sectorSymbols = sector_filter
+      ? await resolveSectorSymbolSet(sector_filter)
+      : null;
+
+    const filtered: {
+      symbol: string;
+      rank_ordinal: number;
+      cohort_size: number | null;
+      rank_percentile: number | null;
+    }[] = [];
+
+    for (const r of snapshot.rows) {
+      if (sectorSymbols && !sectorSymbols.has(r.symbol)) continue;
+
+      const rankPercentile = rankPercentileFromOrdinal(
+        r.rank_ordinal,
+        r.cohort_size,
+      );
+      if (rankPercentile == null) continue;
+
+      if (min_percentile != null && rankPercentile < min_percentile) continue;
+
+      if (decile != null) {
+        const bucket = rankDecileFromPercentile(rankPercentile);
+        if (bucket !== decile) continue;
+      }
+
+      filtered.push({
+        symbol: r.symbol,
+        rank_ordinal: r.rank_ordinal,
+        cohort_size: r.cohort_size,
+        rank_percentile: rankPercentile,
+      });
+    }
+
+    filtered.sort((a, b) => a.rank_ordinal - b.rank_ordinal);
+    const limited = filtered.slice(0, cap);
+
+    const symbols = limited.map((r) => r.symbol);
+    const tickerBySymbol = new Map<string, string>();
+    if (symbols.length > 0) {
+      const admin = createAdminClient();
+      const { data: symRows } = await admin
+        .from("symbols")
+        .select("symbol, ticker")
+        .in("symbol", symbols);
+      for (const row of symRows ?? []) {
+        tickerBySymbol.set(
+          (row as { symbol: string; ticker: string }).symbol,
+          (row as { symbol: string; ticker: string }).ticker,
+        );
+      }
+    }
+
+    const rows: TopRankingRow[] = limited.map((r) => ({
+      symbol: r.symbol,
+      ticker: tickerBySymbol.get(r.symbol) ?? r.symbol,
+      rank_ordinal: r.rank_ordinal,
+      cohort_size: r.cohort_size,
+      rank_percentile: r.rank_percentile,
+    }));
+
+    return {
+      teo: snapshot.teo,
+      rows,
+      universe_size: snapshot.rows.length,
+      matched_count: filtered.length,
+    };
+  } catch (error) {
+    console.error("[V3 DAL] Error fetching rankings screen:", error);
+    return { teo: null, rows: [], universe_size: 0, matched_count: 0 };
   }
 }
 

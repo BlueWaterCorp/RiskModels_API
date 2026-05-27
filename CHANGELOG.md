@@ -2,6 +2,22 @@
 
 All notable changes to the RiskModels API surface and public assets.
 
+## [0.3.7] — 2026-05-27
+
+### Added
+
+- **V3 metric keys `lstar_rr` + `lstar_level`** — Direct access to the Lstar-dispatched residual return and the level Lstar picked, per (teo, symbol), at the canonical **1%** marginal-ER threshold. Reachable via `MetricsV3` (`GET /metrics/{ticker}`, `POST /batch/analyze`, V3 history fetches). `lstar_rr` reads `residual_return.sel(level='lstar')` from `ds_erm3_returns`; `lstar_level` reads the new uint8 `lstar_level` companion var with 0→null mapping at the API boundary (1/2/3 = L1/L2/L3, null = no recommendation). New `returnsFlat` zarr-spec role in [`lib/dal/zarr-metric-registry.ts`](lib/dal/zarr-metric-registry.ts); dispatch in [`lib/dal/zarr-reader.ts`](lib/dal/zarr-reader.ts); unit tests in [`tests/zarr-metric-registry.test.ts`](tests/zarr-metric-registry.test.ts). For a custom threshold continue to use `GET /lstar`.
+- **`ds_erm3_returns` schema_version 2** (ERM3-side) — Returns zarr now carries a 4th level `'lstar'` plus a flat `lstar_level (teo, symbol) uint8` companion var, materialized at write time alongside hedge-weights by `erm3.shared.output_manager.materialize_lstar_level_in_returns_zarr`. Threshold pinned on `attrs["Lstar_threshold"]`. Schema upgrade path on first run; subsequent runs use an in-place `region`-write that touches only the `lstar` slice + `lstar_level` array (no rewrite of the ~1.5GB level-indexed cubes). Documented in [`docs/MACRO_STAT_ARB_ZARR_GUIDE.md`](../ERM3/docs/MACRO_STAT_ARB_ZARR_GUIDE.md).
+- **Supabase `security_history_latest`: `lstar_rr` + `lstar_level` columns** — Migration `BWMACRO/supabase/migrations/20260527120000_security_history_latest_lstar.sql` adds the two columns; sync wired via `ERM3_RETURNS_DECOMP_SYNC_SPEC` + new `ERM3_RETURNS_FLAT_SYNC_SPEC` with sentinel-0 → null parity with the API mapping. (BWMACRO is the SSOT for Supabase migrations; the ERM3 `supabase/migrations/` dir holds only stale copies and should not be appended to.)
+- **`GET /api/returns-decomposition`** — One-call daily gross + L1/L2/L3 factor, combined-factor, and residual return series from `ds_erm3_returns`. Query `include_lstar=true` or `dispatch=lstar` appends `lstar` + `lstar_residual_return` (prefers materialized zarr keys when present; else live marginal-ER dispatch at `threshold`, default 1%). Capability `returns-decomposition` ($0.02/request); OpenAPI + MCP capabilities synced.
+- **`GET /api/industry-panel`** — Cross-section from `ds_erm3_industry` zarr: `beta_mean`, `beta_variance`, `n_companies`, and `total_log_mcap_weight` by EODHD industry code and cascade level. Capability `industry-panel` ($0.02/request); OpenAPI + MCP capabilities synced.
+- **Python SDK — `RiskModelsClient.get_returns_decomposition()`** — Wraps `GET /returns-decomposition`; semantic return columns + optional Lstar dispatch. **`get_industry_panel()`** wraps `GET /industry-panel`.
+
+### Removed
+
+- **`ds_erm3_hedge_weights` `Lstar` object var + `ER` cube** — The `Lstar (teo, symbol)` object var was 100% None in production (object-dtype writer round-trip bug); deleted from the writer. The `ER (teo, symbol, hedge_level, factor)` cube was a redundant reshape of the named scalar `L*_*_ER` vars — also deleted. vBase 1d stamper updated to drop both from the keccak'd CSV (named scalars still stamped, no information lost; on-chain `object_cid` will differ for the first post-deploy stamp). Incremental rebuilds drop the orphan vars from prior zarrs on read to keep schema clean.
+- **Hedge-shrinkage sidecar (`compute_shrinkage_dataset` / `compute_shrinkage` / `ds_erm3_hedge_shrinkage_*.zarr`)** — Architecture moved to in-pipeline adjusted-betas in PR #33 (commit 4916bcd); the sidecar shim was never deployed to GCS. `erm3/core/shrinkage.py` retains `compute_adjusted_betas_and_industry_dataset` (production), `_vasicek_shrinkage_factor` + vectorized variants. Sidecar tests + stale `output_subdir` / `gcs_staging_prefix` config keys removed.
+
 ## [0.3.6] — 2026-05-26
 
 ### Added

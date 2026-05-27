@@ -74,3 +74,12 @@ export function zarrResidualSignalBasename(factorSetId = getZarrFactorSetId()): 
 export function zarrLinkBetasBasename(marketFactorEtf = "SPY"): string {
   return `ds_erm3_link_betas_${marketFactorEtf}.zarr`;
 }
+
+/**
+ * Industry peer β panel — Vasicek stats at (teo × fs_industry_code × level).
+ * Basename uses the same factor-set suffix as returns/rankings
+ * (e.g. ds_erm3_industry_SPY_uni_mc_3000.zarr).
+ */
+export function zarrIndustryBasename(factorSetId = getZarrFactorSetId()): string {
+  return `ds_erm3_industry_${factorSetId}.zarr`;
+}
