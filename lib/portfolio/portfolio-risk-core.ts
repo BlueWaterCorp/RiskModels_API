@@ -43,13 +43,111 @@ const PORTFOLIO_HEDGE_LEVEL_KEYS: V3MetricKey[] = [
   "l3_res_er",
 ];
 
-const EXTRA_METRIC_KEYS: V3MetricKey[] = ["vol_23d", "price_close"];
+/** Lstar pair carried through every portfolio compute so the per-row payload
+ *  and the parallel `lstar_attribution` block both have what they need. The
+ *  per-row `lstar_rr` is the dispatched residual *return* (a scalar from
+ *  MetricsV3); the portfolio-level Lstar attribution dispatches L1/L2/L3 ERs
+ *  per name based on each name's `lstar_level`. */
+const LSTAR_KEYS: V3MetricKey[] = ["lstar_rr", "lstar_level"];
+
+const EXTRA_METRIC_KEYS: V3MetricKey[] = ["vol_23d", "price_close", ...LSTAR_KEYS];
 
 function metricKeys(includeHedgeRatios: boolean): V3MetricKey[] {
   if (includeHedgeRatios) {
     return [...PORTFOLIO_HEDGE_LEVEL_KEYS, ...EXTRA_METRIC_KEYS];
   }
   return [...L3_ER_KEYS, ...EXTRA_METRIC_KEYS];
+}
+
+/** Per-name dispatch table: for one name's `lstar_level`, return that
+ *  cascade depth's market/sector/subsector/residual ER (sourced from
+ *  L1_ / L2_ / L3_ keys in MetricsV3). null lstar → null (caller drops the
+ *  name from the Lstar aggregate; coverage block surfaces the drop). */
+function dispatchedERForLstar(
+  er: Record<string, number | null>,
+  lstarLevel: number | null,
+): {
+  market: number;
+  sector: number;
+  subsector: number;
+  residual: number;
+} | null {
+  if (lstarLevel == null) return null;
+  const lvl = Math.round(lstarLevel);
+  if (lvl === 1) {
+    return {
+      market: er.l1_mkt_er ?? 0,
+      sector: 0,
+      subsector: 0,
+      residual: er.l1_res_er ?? 0,
+    };
+  }
+  if (lvl === 2) {
+    return {
+      market: er.l2_mkt_er ?? 0,
+      sector: er.l2_sec_er ?? 0,
+      subsector: 0,
+      residual: er.l2_res_er ?? 0,
+    };
+  }
+  if (lvl === 3) {
+    return {
+      market: er.l3_mkt_er ?? 0,
+      sector: er.l3_sec_er ?? 0,
+      subsector: er.l3_sub_er ?? 0,
+      residual: er.l3_res_er ?? 0,
+    };
+  }
+  return null;
+}
+
+export interface PortfolioLstarAttribution {
+  market: number;
+  sector: number;
+  subsector: number;
+  residual: number;
+  /** Sum of weights for names that contributed to the Lstar aggregate (had a
+   *  non-null `lstar_level` AND `includeHedgeRatios` was true so L1/L2 ERs
+   *  were fetched). Compare against 1.0 to gauge how representative the
+   *  Lstar attribution is for the portfolio. */
+  weight_covered: number;
+  /** Count of names dropped from the Lstar aggregate due to null lstar_level. */
+  dropped_count: number;
+}
+
+export function computePortfolioLstarAttribution(
+  tickerMetrics: Map<string, Record<string, number | null>>,
+  weights: Map<string, number>,
+): PortfolioLstarAttribution {
+  let market = 0;
+  let sector = 0;
+  let subsector = 0;
+  let residual = 0;
+  let weightCovered = 0;
+  let droppedCount = 0;
+
+  for (const [ticker, w] of weights) {
+    const er = tickerMetrics.get(ticker);
+    if (!er) {
+      droppedCount += 1;
+      continue;
+    }
+    const dispatched = dispatchedERForLstar(
+      er,
+      (er.lstar_level as number | null) ?? null,
+    );
+    if (!dispatched) {
+      droppedCount += 1;
+      continue;
+    }
+    market += w * dispatched.market;
+    sector += w * dispatched.sector;
+    subsector += w * dispatched.subsector;
+    residual += w * dispatched.residual;
+    weightCovered += w;
+  }
+
+  return { market, sector, subsector, residual, weight_covered: weightCovered, dropped_count: droppedCount };
 }
 
 export function normalizeWeights(
@@ -108,6 +206,14 @@ export type PortfolioRiskComputationOk = {
   portfolioVol: number | null;
   /** Holdings-weighted mean HR/ER per L1/L2/L3 when `includeHedgeRatios` was true. */
   portfolio_hedge_levels?: HedgeLevelsBlock;
+  /** Parallel Lstar-dispatched attribution — for each name, picks the ER at
+   *  the cascade depth `lstar_level` chose, then weights across the book.
+   *  Populated only when `includeHedgeRatios` was true (otherwise L1/L2 ERs
+   *  weren't fetched). Names with null `lstar_level` are dropped; see
+   *  `weight_covered` and `dropped_count` for coverage. The existing
+   *  fixed-L3 `portfolioER` is unchanged — the Lstar attribution runs
+   *  alongside, not as a replacement. */
+  lstar_attribution?: PortfolioLstarAttribution;
   perTicker: Record<string, Record<string, unknown>>;
   summary: {
     total_positions: number;
@@ -205,6 +311,11 @@ export async function runPortfolioRiskComputation(
       l3_res_er: m?.l3_res_er ?? null,
       vol_23d: m?.vol_23d ?? null,
       price_close: m?.price_close ?? null,
+      // Lstar-dispatched residual return + level pick. Surfaced on every
+      // per-row payload (cheap — already in MetricsV3); the portfolio-level
+      // Lstar-aware attribution further down uses these to dispatch ERs.
+      lstar_rr: m?.lstar_rr ?? null,
+      lstar_level: m?.lstar_level ?? null,
     };
     if (options.includeHedgeRatios && m) {
       row.l1_mkt_hr = m.l1_mkt_hr ?? null;
@@ -282,6 +393,7 @@ export async function runPortfolioRiskComputation(
   const fetchLatencyMs = Math.round(performance.now() - fetchStart);
 
   let portfolio_hedge_levels: HedgeLevelsBlock | undefined;
+  let lstar_attribution: PortfolioLstarAttribution | undefined;
   if (options.includeHedgeRatios) {
     const weightsObj = Object.fromEntries(weightMap);
     const blocksByTicker: Record<string, HedgeLevelsBlock> = {};
@@ -290,6 +402,12 @@ export async function runPortfolioRiskComputation(
       if (hl) blocksByTicker[t] = hl;
     }
     portfolio_hedge_levels = aggregatePortfolioHedgeLevels(weightsObj, blocksByTicker);
+    // Lstar-aware variance attribution runs alongside the fixed-L3
+    // `portfolioER` — both are reported so callers can compare. Only
+    // populated when includeHedgeRatios=true because that's when the
+    // L1/L2 ERs (needed for dispatch on names where lstar_level < 3)
+    // are actually fetched.
+    lstar_attribution = computePortfolioLstarAttribution(tickerMetrics, weightMap);
   }
 
   return {
@@ -299,6 +417,7 @@ export async function runPortfolioRiskComputation(
     systematic,
     portfolioVol,
     portfolio_hedge_levels,
+    lstar_attribution,
     perTicker,
     summary: {
       total_positions: tickers.length,

@@ -33,6 +33,16 @@ export function zarrEtfBasename(): string {
   return "ds_etf.zarr";
 }
 
+/**
+ * Mask store — universe membership masks + per-day validity, dual-axis aligned
+ * with ds_daily. One zarr per pipeline (not per-factor-set). Backs the
+ * `/api/universe/{name}/members` endpoint and the upstream mask gates that
+ * keep ds_erm3_* zarrs clean.
+ */
+export function zarrMasksBasename(): string {
+  return "ds_masks.zarr";
+}
+
 export function zarrReturnsBasename(factorSetId = getZarrFactorSetId()): string {
   return `ds_erm3_returns_${factorSetId}.zarr`;
 }

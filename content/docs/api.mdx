@@ -410,6 +410,20 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().batch_lstar(["AAPL","MSFT","NVDA"], years=5)' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/universe/{'{name}'}/members</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Active members of a named universe (uni_mc_50/500/1000/3000 or uni_dv_*) at one teo. Active = monthly mask AND daily validity. Returns members + <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">counts</code> + <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">mask_as_of</code>. Foundational endpoint for any cross-sectional workflow.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.005/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_universe_members("uni_mc_3000")' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/signals/residual-reversion/basket</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket (≤500 tickers). Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Optional <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">signal_quality_min_quintile</code> gate (Phase B: Sharpe lifts from ~0.79 to ~1.28 at quintile 5).</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_residual_signal_basket(["AAPL","MSFT","NVDA"], signal_quality_min_quintile=4)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/tickers</td>
         <td className="py-3 px-3">GET</td>
         <td className="py-3 px-3">Ticker universe search, MAG7 shortcut</td>

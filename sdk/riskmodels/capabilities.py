@@ -726,6 +726,81 @@ _SDK_METHODS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_universe_members",
+        "aliases": [],
+        "summary": "Active members of a named universe (GET /universe/{name}/members).",
+        "description": (
+            "Active membership of a named universe at one trading day (latest by default). "
+            "Active = monthly universe_mask AND daily validity gate. Symbols failing either gate "
+            "are NOT in the response. Response carries members + a counts breakdown "
+            "(active / in_universe_mask / inactive_from_validity) + a mask_as_of month-end stamp "
+            "so callers can disambiguate mask-driven vs validity-driven membership changes. "
+            "Foundational endpoint for any cross-sectional workflow that needs to align on the "
+            "canonical universe without a local SDK cache."
+        ),
+        "scopes": ["universe-members"],
+        "parameters": [
+            {
+                "name": "name",
+                "type": "string",
+                "required": True,
+                "enum": [
+                    "uni_mc_50", "uni_mc_500", "uni_mc_1000", "uni_mc_3000",
+                    "uni_dv_50", "uni_dv_500", "uni_dv_1000", "uni_dv_3000",
+                ],
+                "description": "Universe label from the KNOWN_UNIVERSES registry.",
+            },
+            {
+                "name": "teo",
+                "type": "string",
+                "required": False,
+                "description": "Observation date YYYY-MM-DD; defaults to latest teo.",
+            },
+        ],
+        "returns": {
+            "type": "dict",
+            "description": "{universe, teo, mask_as_of, members[{symbol, ticker}], counts{active, in_universe_mask, inactive_from_validity}}.",
+        },
+    },
+    {
+        "name": "get_residual_signal_basket",
+        "aliases": [],
+        "summary": "Residual mean-reversion basket aggregate (POST /signals/residual-reversion/basket).",
+        "description": (
+            "User-defined basket aggregator over the Phase D L3 residual mean-reversion signal. "
+            "1–500 tickers in one call; equal-weight default; optional weights[] aligned to tickers; "
+            "optional signal_quality_min_quintile gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 "
+            "at quintile 5). Returns the weighted aggregate + decile and quality-quintile histograms + "
+            "per-member rows. Tickers absent from ds_erm3_residual_signal are silently dropped — see "
+            "coverage.missing_tickers on the response. Combo-input building block, NOT a standalone strategy."
+        ),
+        "scopes": ["residual-signal-basket"],
+        "parameters": [
+            {
+                "name": "tickers",
+                "type": "array",
+                "required": True,
+                "description": "1–500 symbols to aggregate.",
+            },
+            {
+                "name": "weights",
+                "type": "array",
+                "required": False,
+                "description": "Non-negative weights aligned 1:1 with tickers; equal-weight when omitted.",
+            },
+            {
+                "name": "signal_quality_min_quintile",
+                "type": "integer",
+                "required": False,
+                "description": "Optional 1–5 gate on signal_quality_quintile. Below this, members appear in members[] but don't contribute to the aggregate.",
+            },
+        ],
+        "returns": {
+            "type": "dict",
+            "description": "{as_of_date, aggregate, coverage, members, capacity_note, methodology_link}.",
+        },
+    },
+    {
         "name": "get_industry_panel",
         "aliases": [],
         "summary": "Industry peer β cross-section (GET /industry-panel).",

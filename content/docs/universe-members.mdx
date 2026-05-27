@@ -1,0 +1,141 @@
+---
+title: Universe members (mc / dv cohorts)
+description: GET /api/universe/{name}/members returns the active membership of a named universe at one teo. Active = monthly universe_mask AND daily validity gate. Includes counts breakdown + mask_as_of month-end stamp.
+---
+
+# Universe members (`GET /api/universe/{name}/members`)
+
+`GET /api/universe/{name}/members` returns the **active membership of a named universe** at one trading day (latest by default). It's the canonical answer to "what's in `uni_mc_3000` today?" — without requiring a local Python SDK or a stale cached list.
+
+This is the **foundational endpoint** for any cross-sectional workflow that needs to align on the universe the model was built for: rank screens, basket queries, attribution sleeves, panel histories. Trust the response; don't reinvent the membership check at the client edge.
+
+## Active = mask AND validity
+
+The membership the API serves is the **same dual-gate** the ERM3 pipeline applies to produce its output zarrs:
+
+| Gate | Cadence | What it means |
+| --- | --- | --- |
+| **Universe mask** (`uni_mc_3000`, `uni_dv_500`, …) | **Monthly** — stamped at month-end, applied to every teo in the following month | The cap-rank / dollar-volume cut you asked for |
+| **Validity** (`price_valid`) | **Daily** | Did the stock actually have a usable price that day |
+
+Symbols failing **either** gate are not in the response. The endpoint does NOT return a "would-be-in-the-universe-but-data-broken-today" list.
+
+## Why two cadences matter
+
+Because the gates run at different cadences, membership can change between two adjacent teos for two distinct reasons:
+
+- **New month** — the monthly mask gets restamped, names enter or leave based on the prior month's mcap / dollar-volume.
+- **Daily validity** — the same monthly mask, but a stock had a data hole today.
+
+The response carries a **`mask_as_of`** field (the month-end the mask was stamped at) so callers tracking turnover over time can disambiguate. If `mask_as_of` is the same on both teos, any membership change is validity-driven; if `mask_as_of` differs, it's a fresh monthly mask.
+
+## Request
+
+```
+GET /api/universe/uni_mc_3000/members          ← latest teo
+GET /api/universe/uni_mc_3000/members?teo=2026-05-15
+```
+
+| Parameter | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `name` *(path)* | enum | yes | One of the eight registered universe labels — see below. |
+| `teo` *(query)* | YYYY-MM-DD | no | Defaults to the latest teo in `ds_masks.zarr`. |
+
+**Registered universes** (from ERM3 `KNOWN_UNIVERSES`):
+
+| Cap-weighted | Dollar-volume |
+| --- | --- |
+| `uni_mc_50` | `uni_dv_50` |
+| `uni_mc_500` | `uni_dv_500` |
+| `uni_mc_1000` | `uni_dv_1000` |
+| `uni_mc_3000` | `uni_dv_3000` |
+
+Unknown labels return **400**; the API does NOT leak zarr-path semantics by accepting arbitrary strings.
+
+## Response shape
+
+```json
+{
+  "universe":    "uni_mc_3000",
+  "teo":         "2026-05-26",
+  "mask_as_of":  "2026-04-30",
+  "members": [
+    { "symbol": "BW-US0378331005", "ticker": "AAPL" },
+    { "symbol": "BW-US5949181045", "ticker": "MSFT" },
+    ...
+  ],
+  "counts": {
+    "active":                  2813,
+    "in_universe_mask":        2822,
+    "inactive_from_validity":  9
+  },
+  "_metadata": { "data_source": "zarr", ... }
+}
+```
+
+The `counts` block matches the breakdown the ERM3 1e Excel report's "Mask Profile" tab surfaces — same logic, exposed as JSON.
+
+## Examples
+
+### Bash — what's in uni_mc_3000 today
+
+```bash
+curl -sS "https://riskmodels.app/api/universe/uni_mc_3000/members" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  | jq '{teo, mask_as_of, counts, sample_tickers: [.members[:5][].ticker]}'
+```
+
+### Track turnover across a month rollover
+
+```bash
+prev=$(curl -sS -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  "https://riskmodels.app/api/universe/uni_mc_3000/members?teo=2026-04-30" | jq -r '.members[].ticker' | sort)
+curr=$(curl -sS -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  "https://riskmodels.app/api/universe/uni_mc_3000/members?teo=2026-05-30" | jq -r '.members[].ticker' | sort)
+
+# Added in the new monthly mask
+comm -13 <(echo "$prev") <(echo "$curr")
+
+# Dropped
+comm -23 <(echo "$prev") <(echo "$curr")
+```
+
+### Python — feed a rank-screen with universe-aligned tickers
+
+```python
+from riskmodels import RiskModelsClient
+client = RiskModelsClient.from_env()
+
+# 1. Get the active universe
+universe = client.get_universe_members("uni_mc_3000")
+tickers  = [m["ticker"] for m in universe["members"]]
+
+# 2. Pull a residual-reversion signal aggregate over the full universe
+basket = client.get_residual_signal_basket(
+    tickers=tickers,
+    signal_quality_min_quintile=4,
+)
+basket["aggregate"]["residual_z_5d"]
+```
+
+## Pricing
+
+**{'$'}0.005/request** (`billing_code: universe_members_v1`). Cheap by design — this is foundational; you'll hit it once per workflow to align on the universe and then issue more expensive calls against the result.
+
+## When to use
+
+- **Before any cross-sectional workflow** that needs universe alignment.
+- **Anytime your basket / portfolio query returns "fewer names than expected"** — diff your input against this endpoint's response to find what dropped and why.
+- **For turnover tracking** — compare across month boundaries (mask change) or within a month (validity change).
+
+## When NOT to use
+
+- For per-ticker risk metrics — use **`GET /api/metrics/{ticker}`**.
+- For ranked screens — use **`POST /api/rankings/screen`** (which already filters to the active universe internally).
+- For mask aggregates (how many names per sector, etc.) — coming in a future industry-membership endpoint; for now, derive client-side from the `members[]` rows joined to symbols metadata.
+
+## Related
+
+- **`POST /api/rankings/screen`** — cross-sectional rank filter (also masks to the active universe).
+- **`POST /api/signals/residual-reversion/basket`** — basket aggregator; pair with `/universe/{name}/members` to operate against the whole universe.
+- **OpenAPI** `UniverseMembersResponse` — full schema.

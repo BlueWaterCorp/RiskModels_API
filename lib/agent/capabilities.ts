@@ -1057,6 +1057,94 @@ export const CAPABILITIES: Capability[] = [
     tags: ["risk", "signal", "mean-reversion", "stat-arb", "factor"],
   },
   {
+    id: "residual-signal-basket",
+    name: "Residual Mean-Reversion Basket",
+    description:
+      "Aggregate the L3 residual mean-reversion signal across a user-defined basket of tickers (max 500). Returns the weighted aggregate of residual_z_5d / signal_strength / l3_subsector_er + decile and quality-quintile histograms + per-member rows. Equal-weight default; optional `weights[]` aligned to tickers; optional `signal_quality_min_quintile` gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Tickers absent from ds_erm3_residual_signal are silently dropped — see `coverage.missing_tickers`. Combo-input building block, NOT a standalone strategy.",
+    endpoint: "/api/signals/residual-reversion/basket",
+    method: "POST",
+    parameters: {
+      tickers: {
+        type: "array",
+        required: true,
+        description: "1–500 tickers to aggregate.",
+        items: { type: "string" },
+      },
+      weights: {
+        type: "array",
+        required: false,
+        description:
+          "Optional non-negative weights aligned 1:1 with tickers. Equal-weight when omitted.",
+        items: { type: "number" },
+      },
+      signal_quality_min_quintile: {
+        type: "integer",
+        required: false,
+        description:
+          "Optional 1–5 gate on signal_quality_quintile. Members below this still appear in the response but don't contribute to the aggregate.",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "residual_signal_basket_v1",
+    },
+    performance: {
+      avg_latency_ms: 180,
+      p95_latency_ms: 320,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["erm3_models"],
+    },
+    tags: ["risk", "signal", "mean-reversion", "stat-arb", "basket", "factor"],
+  },
+  {
+    id: "universe-members",
+    name: "Universe Members",
+    description:
+      "Active membership of a named universe (uni_mc_50/500/1000/3000 or uni_dv_*) at a given trading day (latest by default). Active = monthly universe_mask AND daily validity gate. Response carries the symbols + tickers, a counts block (active / in_universe_mask / inactive_from_validity), and a `mask_as_of` month-end stamp so callers can tell whether membership changed because of a new month's mask vs a daily validity failure. Foundational endpoint for any cross-sectional workflow that needs to align on the canonical universe without the SDK.",
+    endpoint: "/api/universe/{name}/members",
+    method: "GET",
+    parameters: {
+      name: {
+        type: "string",
+        required: true,
+        description:
+          "Universe label from the KNOWN_UNIVERSES registry: uni_mc_50 | uni_mc_500 | uni_mc_1000 | uni_mc_3000 | uni_dv_50 | uni_dv_500 | uni_dv_1000 | uni_dv_3000.",
+      },
+      teo: {
+        type: "string",
+        required: false,
+        description: "Observation date YYYY-MM-DD (default latest teo).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "universe_members_v1",
+    },
+    performance: {
+      avg_latency_ms: 90,
+      p95_latency_ms: 180,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["ds_masks"],
+    },
+    tags: ["universe", "membership", "foundational", "mask"],
+  },
+  {
     id: "portfolio-returns",
     name: "Portfolio Returns",
     description: "Batch fetch returns for multiple tickers (portfolio analytics)",

@@ -213,6 +213,76 @@ export type ResidualSignalLatestRequest = z.infer<
 >;
 
 /**
+ * Schema for POST /api/signals/residual-reversion/basket — user-supplied ticker
+ * list aggregated to a single residual-reversion signal. Equal-weight default;
+ * optional `weights` array aligned to `tickers`; optional signal-quality gate.
+ * Trust contract: tickers not in ds_erm3_residual_signal are silently dropped
+ * (the upstream mask is the source of truth for "good" rows). The response's
+ * `coverage` block carries the requested-vs-contributed count so callers see
+ * what landed in the aggregate.
+ */
+export const ResidualSignalBasketRequestSchema = z
+  .object({
+    tickers: z
+      .array(TickerSchema)
+      .min(1, "At least one ticker is required")
+      .max(500, "Maximum 500 tickers per basket"),
+    weights: z.array(z.number().nonnegative()).optional(),
+    signal_quality_min_quintile: z.coerce
+      .number()
+      .int()
+      .min(1, "signal_quality_min_quintile must be 1–5")
+      .max(5, "signal_quality_min_quintile must be 1–5")
+      .optional(),
+  })
+  .refine(
+    (val) => !val.weights || val.weights.length === val.tickers.length,
+    {
+      message:
+        "weights must align 1:1 with tickers (same length) or be omitted for equal weights",
+      path: ["weights"],
+    },
+  );
+
+export type ResidualSignalBasketRequest = z.infer<
+  typeof ResidualSignalBasketRequestSchema
+>;
+
+/**
+ * Known universe labels — mirror of ERM3 erm3.partitions.KNOWN_UNIVERSES.
+ * Keep in sync with the upstream tuple when new universes are added.
+ */
+const KNOWN_UNIVERSE_LABELS = [
+  "uni_mc_50",
+  "uni_mc_500",
+  "uni_mc_1000",
+  "uni_mc_3000",
+  "uni_dv_50",
+  "uni_dv_500",
+  "uni_dv_1000",
+  "uni_dv_3000",
+] as const;
+
+export const KNOWN_UNIVERSE_LABEL_SET = new Set<string>(KNOWN_UNIVERSE_LABELS);
+
+const UniverseLabelSchema = z.enum(KNOWN_UNIVERSE_LABELS);
+
+/**
+ * Schema for GET /api/universe/{name}/members — active universe membership at
+ * one teo. Default teo is "latest"; the path param is the universe label and
+ * must match the KNOWN_UNIVERSES registry.
+ */
+export const UniverseMembersRequestSchema = z.object({
+  name: UniverseLabelSchema,
+  teo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "teo must be YYYY-MM-DD")
+    .optional(),
+});
+
+export type UniverseMembersRequest = z.infer<typeof UniverseMembersRequestSchema>;
+
+/**
  * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
  * Returns market / sector / subsector / residual with each tradable layer's
  * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).
