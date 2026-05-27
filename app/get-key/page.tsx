@@ -405,19 +405,10 @@ function GetKeyPage() {
             <p className="text-zinc-400 mt-2 text-sm">
               Sign in with Google, GitHub, or email — no password needed.
             </p>
-            <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-950/40 px-3 py-2.5 text-left text-xs leading-relaxed text-emerald-100/90">
-              <strong className="text-emerald-200">AI agent trying the API first?</strong> You don&apos;t need this page for a one-off MAG7 answer.
-              Open{' '}
-              <a
-                href={`${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://riskmodels.app').replace(/\/$/, '')}/llms.txt`}
-                className="font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
-                target="_blank"
-                rel="noreferrer"
-              >
-                llms.txt
-              </a>{' '}
-              for a copy-paste <code className="rounded bg-black/35 px-0.5">RISKMODELS_API_KEY</code> when enabled.
-            </div>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              <span className="font-semibold text-zinc-100">$20 in free API credits</span> after card
+              verification — no charge at signup. Auto-refill is optional and off by default.
+            </p>
           </div>
 
           {emailSent ? (

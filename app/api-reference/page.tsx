@@ -243,7 +243,7 @@ export default function ApiReferencePage() {
                   key={group.name}
                   value={group.name}
                   trigger={<span>{group.name}</span>}
-                  defaultOpen={group.name === 'Risk Metrics'}
+                  defaultOpen={group.name === 'Core Concepts' || group.name === 'Risk Metrics'}
                 >
                   <ul className="space-y-0.5">
                     {group.endpoints.map((ep) => (
@@ -299,17 +299,129 @@ export default function ApiReferencePage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={methodVariant(selected.method)} className="text-base px-4 py-1">
-                {selected.method.toUpperCase()}
-              </Badge>
-              <code className="text-xl lg:text-2xl font-mono tabular-nums text-zinc-200">
-                {BASE_URL}
-                {selected.path}
-              </code>
-            </div>
+            {selectedId === 'coreConcepts' ? (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight mb-2">Core Outputs You Actually Care About</h2>
+                  <p className="text-zinc-400 max-w-3xl">
+                    The RiskModels API’s primary value is a clean, additive, hierarchical decomposition of risk and return.
+                  </p>
+                </div>
 
-            <p className="text-zinc-400 text-base leading-relaxed max-w-3xl">{selected.description}</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+                    <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Hedge Ratios (HR)</div>
+                    <p className="text-sm text-zinc-300 mb-3">
+                      Dollar-notional ratios. “How many dollars of SPY (or XLK, or SMH) do I need to trade to neutralize this layer?”
+                    </p>
+                    <code className="text-xs text-zinc-400">l3_mkt_hr, l3_sec_hr, l3_sub_hr</code>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+                    <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Explained Risk (ER)</div>
+                    <p className="text-sm text-zinc-300 mb-3">
+                      Variance fractions. How much of the stock’s risk is coming from each layer. They add to ~100%.
+                    </p>
+                    <code className="text-xs text-zinc-400">l3_mkt_er, l3_sec_er, l3_sub_er, l3_res_er</code>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+                  <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Residual Component</div>
+                  <p className="text-sm text-zinc-300">
+                    What remains after stripping market, sector, and subsector. This is the closest thing the model has to “stock-specific” or manager-driven return/risk.
+                    Look for <code className="text-zinc-400">l3_res_er</code> (explained) and residual returns in the time-series endpoints.
+                  </p>
+                </div>
+
+                <p className="text-sm text-zinc-500">
+                  Best endpoints for these outputs: <strong>/metrics/{'{ticker}'}</strong>, <strong>/ticker-returns</strong>, and <strong>/l3-decomposition</strong>.
+                </p>
+              </div>
+            ) : selectedId === 'agentOnboarding' ? (
+              <div className="space-y-8">
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight mb-3">Fastest way to get started with agents</h2>
+                  <p className="text-zinc-400 max-w-2xl">
+                    The RiskModels MCP server lets your agent directly call the decomposition engine. No manual endpoint hunting required.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Recommended first prompt (copy &amp; paste)</div>
+                    <div className="relative rounded-xl border border-zinc-800 bg-zinc-950 p-5 font-mono text-sm text-zinc-200 whitespace-pre-wrap">
+{`Load the RiskModels MCP server from riskmodels.app.
+
+Then analyze my situation and tell me the highest-leverage ways to use the RiskModels tools and API:
+
+[Describe your workflow or problem here — e.g. "I manage a 30-name long/short equity book with heavy tech and healthcare exposure. I want to measure residual vs factor risk on each name and generate ETF hedge suggestions."]`}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(`Load the RiskModels MCP server from riskmodels.app.
+
+Then analyze my situation and tell me the highest-leverage ways to use the RiskModels tools and API:
+
+[Describe your workflow or problem here — e.g. "I manage a 30-name long/short equity book with heavy tech and healthcare exposure. I want to measure residual vs factor risk on each name and generate ETF hedge suggestions."]`)}
+                      className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-900 transition-colors"
+                    >
+                      Copy agent prompt
+                    </button>
+                    <a
+                      href="https://riskmodels.app/installation"
+                      target="_blank"
+                      className="px-4 py-2 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors inline-flex items-center gap-2"
+                    >
+                      Install + MCP guide
+                    </a>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Example prompt starters</div>
+                  <div className="grid gap-2 text-sm">
+                    {[
+                      "I want to understand how much of my portfolio's risk is truly residual vs coming from sector and subsector bets.",
+                      "Help me generate dynamic ETF hedges for my top 20 long positions using L3 decomposition.",
+                      "I'm looking at several 13F filers — decompose their recent filings into market, thematic, and stock-specific risk.",
+                      "For my concentrated healthcare book, show me names where residual risk is high but the market is pricing in a lot of sector beta.",
+                    ].map((example, i) => (
+                      <button
+                        key={i}
+                        onClick={() => navigator.clipboard.writeText(`Load the RiskModels MCP server from riskmodels.app.
+
+Then analyze my situation and tell me the highest-leverage ways to use the RiskModels tools and API:
+
+${example}`)}
+                        className="text-left px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-400 hover:text-zinc-200 transition-all"
+                      >
+                        “{example}”
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-sm text-zinc-500 border-t border-zinc-800 pt-6">
+                  Common high-value agent use cases: portfolio residual analysis, dynamic hedging, 13F decomposition, manager skill attribution, and pre-trade risk screening.
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge variant={methodVariant(selected.method)} className="text-base px-4 py-1">
+                    {selected.method.toUpperCase()}
+                  </Badge>
+                  <code className="text-xl lg:text-2xl font-mono tabular-nums text-zinc-200">
+                    {BASE_URL}
+                    {selected.path}
+                  </code>
+                </div>
+
+                <p className="text-zinc-400 text-base leading-relaxed max-w-3xl">{selected.description}</p>
+              </>
+            )}
 
             {selected.params.length > 0 && (
               <section>
@@ -360,15 +472,48 @@ export default function ApiReferencePage() {
 
           {/* Right sticky panel */}
           <div className="col-span-1 xl:col-span-4 border-l border-zinc-800 bg-zinc-950/80 p-6 sticky top-16 h-fit xl:max-h-[calc(100vh-4rem)] overflow-y-auto">
-            <Tabs
-              tabs={[
-                {
-                  value: 'request',
-                  label: 'Request',
-                  content: (
-                    <div className="space-y-4 mt-2">
-                      <CodeBlock code={getRequestExample(selected)} language={getRequestLanguage(selected)} showCopy />
-                      {selectedId === 'estimateCost' && (
+            {(selectedId === 'coreConcepts' || selectedId === 'agentOnboarding') ? (
+              <div className="space-y-6 pt-2">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500 mb-3">Python SDK highlights</div>
+                  <div className="space-y-4 text-sm">
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                      <div className="font-mono text-[11px] text-emerald-400 mb-2">CLI — fastest for terminal/agents</div>
+                      <pre className="text-xs text-zinc-300 overflow-x-auto">riskmodels metrics NVDA
+riskmodels l3 NVDA
+riskmodels returns ticker NVDA --years 3</pre>
+                    </div>
+
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                      <div className="font-mono text-[11px] text-emerald-400 mb-2">Python SDK (nice names + DataFrames)</div>
+                      <pre className="text-xs text-zinc-300 overflow-x-auto">{`from riskmodels import RiskModelsClient
+client = RiskModelsClient.from_env()
+print(client.metrics("NVDA").l3_res_er)
+df = client.ticker_returns("NVDA", years=3)`}</pre>
+                    </div>
+
+                    <div className="text-[11px] text-zinc-500">
+                      CLI: <code>npx -y riskmodels@latest install</code> wires MCP + config. SDK renames fields (l3_mkt_hr → l3_market_hr) with semantic metadata.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-zinc-800">
+                  <a href="https://riskmodels.app/docs/python-sdk" target="_blank" className="text-sm text-blue-400 hover:text-blue-300">
+                    Full Python SDK docs →
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <Tabs
+                tabs={[
+                  {
+                    value: 'request',
+                    label: 'Request',
+                    content: (
+                      <div className="space-y-4 mt-2">
+                        <CodeBlock code={getRequestExample(selected)} language={getRequestLanguage(selected)} showCopy />
+                        {selectedId === 'estimateCost' && (
                         <div className="pt-4 border-t border-zinc-800 space-y-3">
                           <h4 className="text-sm font-semibold text-zinc-200">Try it out</h4>
                           <div>
@@ -427,6 +572,7 @@ export default function ApiReferencePage() {
               ]}
               defaultValue="request"
             />
+            )}
           </div>
         </main>
       </div>

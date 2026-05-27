@@ -35,15 +35,46 @@ export interface EndpointGroup {
 
 export const ENDPOINT_GROUPS: EndpointGroup[] = [
   {
+    name: 'Core Concepts',
+    description: 'Quick orientation to the data model. Start here if you want residual returns, betas, or hedge ratios.',
+    endpoints: [
+      {
+        path: '/concepts',
+        method: 'get',
+        sidebarLabel: 'Understanding the decomposition',
+        summary: 'Core outputs: Hedge Ratios, Explained Risk, and Residuals',
+        description:
+          'RiskModels decomposes every position into four additive layers: Market (L1), Sector (L2), Subsector (L3), and Residual. Each layer produces two key numbers you will use constantly:\n\n• Hedge Ratio (HR): Dollar amount of the layer’s ETF to trade per $1 of the stock to neutralize that exposure.\n• Explained Risk (ER): Fraction of the stock’s variance explained by that layer (adds to 1.0 across layers).\n\nResidual return is what remains after removing the three systematic layers — the part most closely associated with manager/stock-specific judgment.',
+        operationId: 'coreConcepts',
+        tag: 'Core Concepts',
+        params: [],
+        responses: [{ status: 200, description: 'Conceptual overview.' }],
+      },
+      {
+        path: '/agents',
+        method: 'get',
+        sidebarLabel: 'For AI Agents & MCP',
+        summary: 'Fastest way to get started with agents',
+        description:
+          'Use the RiskModels MCP server directly inside Claude, Cursor, Windsurf, or any MCP-capable agent. This is the lowest-friction path for technical users who work with agents.',
+        operationId: 'agentOnboarding',
+        tag: 'Core Concepts',
+        params: [],
+        responses: [{ status: 200, description: 'Agent guidance.' }],
+      },
+    ],
+  },
+  {
     name: 'Risk Metrics',
-    description: 'ERM3 factor hedge ratios, explained risk, and return decompositions.',
+    description:
+      'The core of the API: hierarchical (L1 market → L2 sector → L3 subsector) decomposition. Get hedge ratios (how many dollars of ETF to trade to neutralize a layer) and explained-risk fractions for any ticker or portfolio.',
     endpoints: [
       {
         path: '/metrics/{ticker}',
         method: 'get',
         summary: 'Latest risk metrics snapshot',
         description:
-          'Returns the latest V3 daily metrics for the ticker. Includes all 6 hedge ratios (HR), 7 explained-risk fractions (ER), volatility (vol_23d), sector codes, market cap, and close price. Cost: $0.005/request.',
+          'Latest snapshot: current L3 hedge ratios + explained risk (including residual), plus basic risk/price data. Fastest way to answer “what is this stock’s current market/sector/subsector/residual exposure right now?” Cost: $0.005/request.',
         operationId: 'getMetrics',
         tag: 'Risk Metrics',
         params: [
@@ -62,7 +93,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Daily returns time series with rolling hedge ratios',
         description:
-          'Returns a daily time series of gross stock returns (returns_gross), V3 rolling hedge ratios (l3_mkt_hr, l3_sec_hr, l3_sub_hr), and explained-risk fractions (l3_mkt_er, l3_sec_er, l3_sub_er, l3_res_er) going back up to 15 years. Wire keys use abbreviated names; the Python SDK renames them to semantic form (l3_market_hr, etc.) via TICKER_RETURNS_COLUMN_RENAME. Cost: $0.005/call.',
+          'The most common endpoint for time-series work. Returns daily gross returns + the full set of rolling L3 hedge ratios and explained-risk fractions (including the residual layer). Use this when you need historical residual returns, betas (via HR), or evolving hedge ratios. Cost: $0.005/call.',
         operationId: 'getTickerReturns',
         tag: 'Risk Metrics',
         params: [
@@ -99,7 +130,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'L3 explained-risk decomposition',
         description:
-          'Returns L3 variance decomposition (market, sector, subsector, residual) for a ticker over a date range. Cost: $0.005/call.',
+          'Point-in-time or range L3 decomposition. Returns the hedge ratios and explained risk broken into Market / Sector / Subsector / Residual for the requested window. Great when you want a clean snapshot of current betas and residual exposure without the full time series. Cost: $0.005/call.',
         operationId: 'getL3Decomposition',
         tag: 'Risk Metrics',
         params: [
