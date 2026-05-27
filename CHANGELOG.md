@@ -3,6 +3,17 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [0.3.9] — 2026-05-27
+
+### Added
+
+- **`POST /api/signals/residual-reversion/basket`** — User-defined ticker list aggregated to a single Phase D L3 residual-reversion signal. 1–500 tickers; equal-weight default + optional `weights[]` aligned to tickers + optional `signal_quality_min_quintile` (1–5) gate (Phase B: gross Sharpe lifts from ~0.79 universe-wide to ~1.28 within quintile 5). Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Trust contract: tickers absent from `ds_erm3_residual_signal` are silently dropped (upstream mask is SSOT); `coverage.missing_tickers` surfaces the gap. Capability `residual-signal-basket` ($0.02/request); OpenAPI + MCP capabilities synced.
+- **`GET /api/universe/{name}/members`** — Active membership of a named universe (`uni_mc_50/500/1000/3000` or `uni_dv_*`) at one teo (latest by default). Active = monthly `universe_mask` AND daily `validity` gate — same dual-gate the ERM3 pipeline applies to produce its output zarrs. Path label validated against the `KNOWN_UNIVERSES` registry (mirror of `erm3.partitions.KNOWN_UNIVERSES`); unknown labels return 400. Response carries `members[{symbol, ticker}]` + `counts {active, in_universe_mask, inactive_from_validity}` + a `mask_as_of` month-end stamp (so callers can disambiguate mask-driven vs validity-driven membership changes). Capability `universe-members` ($0.005/request).
+- **`POST /api/portfolio/risk-snapshot` — `lstar_variance_decomposition` block** — Parallel Lstar-aware attribution alongside the existing fixed-L3 `variance_decomposition`. For each holding, picks the ER at the cascade depth `lstar_level` dispatched to (L1 → market+residual; L2 → +sector; L3 → +subsector) and weights across the book. Names with `lstar_level=null` are dropped — `weight_covered` and `dropped_count` on the block surface the coverage gap. Per-row payloads now include `lstar_rr` + `lstar_level` columns. Same call shape; same billing; existing fixed-L3 block unchanged so existing callers don't break.
+- **Python SDK — `get_residual_signal_basket()`** — Wraps `POST /signals/residual-reversion/basket`; returns the aggregate + coverage + per-member rows. `get_universe_members()` wraps `GET /universe/{name}/members`.
+- **`SDK_VERSION` constant fix** — `sdk/riskmodels/capabilities.py` was stamping `0.3.0` in `client.discover()` output despite the package being at 0.3.7+ on disk. Now bumped to `0.3.9` to match `pyproject.toml`; future bumps should keep both in sync.
+
+
 ## [0.3.8] — 2026-05-27
 
 ### Added
