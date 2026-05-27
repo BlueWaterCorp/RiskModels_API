@@ -292,6 +292,34 @@ export const UniverseMembersRequestSchema = z.object({
 export type UniverseMembersRequest = z.infer<typeof UniverseMembersRequestSchema>;
 
 /**
+ * Schema for GET /api/etf/factor-returns — one-teo snapshot of close +
+ * trailing-window returns for the public-scope factor ETFs (SPY + 11 GICS
+ * sector SPDRs). Optional `sleeve` ("market" | "sector" | "all") narrows the
+ * panel; optional `tickers` further narrows to a subset within the scope.
+ * Unknown tickers fail validation here (never silently coerced) so callers
+ * can't probe for the existence of ETFs outside the public-scope registry.
+ */
+export const EtfFactorReturnsRequestSchema = z.object({
+  sleeve: z.enum(["market", "sector", "all"]).default("all"),
+  tickers: z
+    .string()
+    .optional()
+    .transform((s) => {
+      if (!s) return undefined;
+      return s
+        .split(",")
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean);
+    }),
+  teo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "teo must be YYYY-MM-DD")
+    .optional(),
+});
+
+export type EtfFactorReturnsRequest = z.infer<typeof EtfFactorReturnsRequestSchema>;
+
+/**
  * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
  * Returns market / sector / subsector / residual with each tradable layer's
  * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).

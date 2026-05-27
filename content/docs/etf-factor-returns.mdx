@@ -1,0 +1,108 @@
+---
+title: ETF factor returns (SPY + 11 GICS sectors)
+description: GET /api/etf/factor-returns returns close + 1d/21d/63d/252d trailing total returns for SPY + the 11 GICS sector SPDR ETFs in one call. Public-scope only.
+---
+
+# ETF factor returns (`GET /api/etf/factor-returns`)
+
+`GET /api/etf/factor-returns` returns a one-teo snapshot of **close** and **trailing total returns** (1d / 21d / 63d / 252d) for the public-scope factor ETF set:
+
+- **`SPY`** — the market anchor.
+- The **11 GICS sector SPDR ETFs**: `XLE`, `XLB`, `XLI`, `XLY`, `XLP`, `XLV`, `XLF`, `XLK`, `XLC`, `XLU`, `XLRE`.
+
+This is the daily *"what's happening at the market and sector index level"* read in one call — pair it with [`/industry-panel`](/docs/industry-panel) when you also want the **stock-level industry-β cross-section** alongside the **index-level moves**.
+
+## Scope is intentionally narrow
+
+The broader BWMACRO factor roster — subsector slates, style / factor ETFs, macro buckets (rates, commodities, FX), and the broad-market price-coverage tier — is **not exposed** through this endpoint by design. That classification represents proprietary curation IP that determines what BWMACRO treats as a tradable sector slice, which style ETFs feed the L-level regressions, and how macro factors are bucketed.
+
+What you can ask about here is exactly the GICS-public set: SPY and the 11 sector SPDRs. **Tickers outside this set return `400` with an explicit message** — the API never silently drops a ticker that's outside scope.
+
+## Request
+
+```
+GET /api/etf/factor-returns                                          ← all 12, latest teo
+GET /api/etf/factor-returns?sleeve=sector                            ← 11 GICS sectors only
+GET /api/etf/factor-returns?sleeve=market                            ← SPY only
+GET /api/etf/factor-returns?tickers=SPY,XLK,XLF
+GET /api/etf/factor-returns?sleeve=sector&teo=2026-04-30
+```
+
+| Parameter | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `sleeve` | `market` \| `sector` \| `all` | no | Default `all`. |
+| `tickers` | comma-separated | no | Intersected with the sleeve filter. Tickers outside the public scope return **400**. |
+| `teo` | `YYYY-MM-DD` | no | Defaults to the latest teo in `ds_etf.zarr`. |
+
+## Response shape
+
+```json
+{
+  "teo":     "2026-05-27",
+  "filter":  { "sleeve": "all", "tickers": null },
+  "windows": ["1d", "21d", "63d", "252d"],
+  "rows": [
+    {
+      "ticker": "SPY",
+      "sleeve": "market",
+      "name":   "SPDR S&P 500 ETF Trust",
+      "close":  558.21,
+      "returns": { "1d": 0.0042, "21d": 0.018, "63d": 0.045, "252d": 0.142 }
+    },
+    {
+      "ticker": "XLK",
+      "sleeve": "sector",
+      "name":   "Technology Select Sector SPDR",
+      "close":  250.31,
+      "returns": { "1d": 0.0083, "21d": 0.0245, "63d": 0.0612, "252d": 0.1830 }
+    }
+    // … 10 more sector rows
+  ],
+  "_metadata": {
+    "data_source":     "zarr",
+    "data_max_date":   "2026-05-27",
+    "model_version":   "...",
+    "range":           ["2026-05-27", "2026-05-27"]
+  }
+}
+```
+
+### Field meanings
+
+- **`close`** — Adjusted close price at the snapshot teo (split- and dividend-adjusted; native ETF currency).
+- **`returns.{1d, 21d, 63d, 252d}`** — Trailing simple total returns, computed as `close[t] / close[t-N] - 1`. Returns `null` when the lookback extends past the ETF's start of history.
+- **`sleeve`** — Always `"market"` for SPY, `"sector"` for the 11 SPDRs.
+
+## Python SDK
+
+```python
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()
+
+# All 12 (default)
+snap = client.get_etf_factor_returns()
+for row in snap["rows"]:
+    print(row["ticker"], row["returns"]["21d"])
+
+# Just the GICS sectors
+sectors = client.get_etf_factor_returns(sleeve="sector")
+
+# A specific shortlist
+tech_block = client.get_etf_factor_returns(tickers=["SPY", "XLK", "XLF"])
+```
+
+## Pairs with: industry-panel
+
+The natural companion is [`GET /industry-panel`](/docs/industry-panel):
+
+| Endpoint | Granularity | Lens |
+| --- | --- | --- |
+| `/etf/factor-returns` | Index-level (SPY + 11 sectors) | What did the **index price** do? |
+| `/industry-panel` | Stock-level (Vasicek peer-β by EODHD industry × cascade level) | What's the **β state** of stocks within each industry? |
+
+Together they give the day's macro/sector read on two axes: *what moved* (factor-returns) and *what shape is the cross-section in* (industry-panel).
+
+## Billing
+
+**$0.005 per request.** Single zarr lookup, no per-ticker scaling.

@@ -7,7 +7,7 @@ from typing import Any
 
 from .contributors import SDK_CONTRIBUTORS
 
-SDK_VERSION = "0.3.9"
+SDK_VERSION = "0.3.10"
 
 _RANKING_METRICS = [
     "mkt_cap",
@@ -798,6 +798,45 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {
             "type": "dict",
             "description": "{as_of_date, aggregate, coverage, members, capacity_note, methodology_link}.",
+        },
+    },
+    {
+        "name": "get_etf_factor_returns",
+        "aliases": [],
+        "summary": "ETF factor returns snapshot — SPY + 11 GICS sectors (GET /etf/factor-returns).",
+        "description": (
+            "One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for "
+            "the public-scope factor ETF set: SPY + the 11 GICS sector SPDR ETFs "
+            "(XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). The broader BWMACRO factor roster "
+            "(subsectors, style, macro, broad-market) is intentionally NOT exposed through this "
+            "endpoint — tickers outside the public scope return 400. Pairs with get_industry_panel "
+            "for the daily 'what's happening at the market and sector index level' read."
+        ),
+        "scopes": ["etf", "factor", "sector", "panel"],
+        "parameters": [
+            {
+                "name": "sleeve",
+                "type": "string",
+                "required": False,
+                "enum": ["market", "sector", "all"],
+                "description": "Filter to 'market' (SPY only), 'sector' (11 GICS sectors), or 'all' (default).",
+            },
+            {
+                "name": "tickers",
+                "type": "array",
+                "required": False,
+                "description": "Subset of in-scope tickers (intersected with sleeve filter).",
+            },
+            {
+                "name": "teo",
+                "type": "string",
+                "required": False,
+                "description": "Observation date YYYY-MM-DD (default latest teo in ds_etf).",
+            },
+        ],
+        "returns": {
+            "type": "dict",
+            "description": "{teo, filter, windows, rows[{ticker, sleeve, name, close, returns{1d,21d,63d,252d}}]}.",
         },
     },
     {

@@ -4990,6 +4990,126 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RateLimitExceeded" }
+  /etf/factor-returns:
+    get:
+      summary: ETF factor returns snapshot (public scope)
+      description: >
+        One-teo snapshot of close + trailing-window total returns (1d / 21d /
+        63d / 252d) for **SPY + the 11 GICS sector SPDR ETFs**
+        (XLE / XLB / XLI / XLY / XLP / XLV / XLF / XLK / XLC / XLU / XLRE).
+
+
+        The classification scope is intentionally narrow — GICS sector
+        membership is industry-public knowledge so exposing it carries no
+        leakage on top of what any prospectus already discloses. The fuller
+        BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT
+        exposed through this endpoint by design. Tickers requested outside the
+        public scope return **400**.
+
+
+        Pairs well with `/industry-panel` to read the day's market and sector
+        index moves alongside aggregate stock-level industry βs.
+
+
+        **Billing:** $0.005 per request.
+      operationId: getEtfFactorReturns
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: etf-factor-returns
+        tier: baseline
+        model: per_request
+        cost_usd: 0.005
+        currency: USD
+        billing_code: etf_factor_returns_v1
+      parameters:
+        - name: sleeve
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [market, sector, all]
+            default: all
+          description: Filter to market (SPY only), sector (11 GICS sectors), or all (default).
+        - name: tickers
+          in: query
+          required: false
+          schema: { type: string }
+          description: >
+            Comma-separated subset of in-scope tickers (intersected with
+            sleeve filter). Tickers outside SPY + 11 GICS sectors return 400.
+          example: "SPY,XLK,XLF"
+        - name: teo
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Observation date YYYY-MM-DD (default latest teo in ds_etf).
+      responses:
+        "200":
+          description: Snapshot with one row per in-scope ETF.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teo: { type: string, format: date }
+                  filter:
+                    type: object
+                    properties:
+                      sleeve: { type: string, enum: [market, sector, all] }
+                      tickers:
+                        type: array
+                        nullable: true
+                        items: { type: string }
+                  windows:
+                    type: array
+                    items: { type: string }
+                    description: Window labels covered by `returns` (1d, 21d, 63d, 252d).
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticker: { type: string }
+                        sleeve: { type: string, enum: [market, sector] }
+                        name: { type: string }
+                        close:
+                          type: number
+                          nullable: true
+                        returns:
+                          type: object
+                          properties:
+                            "1d": { type: number, nullable: true }
+                            "21d": { type: number, nullable: true }
+                            "63d": { type: number, nullable: true }
+                            "252d": { type: number, nullable: true }
+        "400":
+          description: Unknown ticker (outside public scope) or invalid teo format.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InsufficientBalance" }
+        "429":
+          description: Rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RateLimitExceeded" }
+        "503":
+          description: Upstream ETF zarr unavailable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /correlation:
     post:
       summary: Correlation vs macro factor returns

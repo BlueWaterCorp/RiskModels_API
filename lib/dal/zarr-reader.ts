@@ -1573,3 +1573,110 @@ export async function readUniverseMembers(
     },
   };
 }
+
+// ============================================================================
+// ETF factor returns (R.7 — GET /api/etf/factor-returns)
+// ============================================================================
+
+/** Trailing return windows surfaced by the factor-returns snapshot. */
+export const ETF_FACTOR_RETURN_WINDOWS = [1, 21, 63, 252] as const;
+export type EtfFactorReturnWindow = (typeof ETF_FACTOR_RETURN_WINDOWS)[number];
+
+export interface EtfFactorReturnRow {
+  ticker: string;
+  /** Close price at the snapshot teo (split-adjusted, native ETF currency). */
+  close: number | null;
+  /** Trailing total returns over each window, computed as close[t]/close[t-N]-1.
+   *  Null if the window extends past the start of the ETF's history. */
+  returns: Record<`${EtfFactorReturnWindow}d`, number | null>;
+}
+
+export interface EtfFactorReturnsSnapshot {
+  teo: string;
+  rows: EtfFactorReturnRow[];
+}
+
+/**
+ * One-teo snapshot of close + trailing-window returns for a list of ETF
+ * tickers from ds_etf.zarr. Tickers not in the store are silently skipped
+ * (the caller's classification registry is authoritative for what's a "factor
+ * ETF" but the zarr is authoritative for what actually has data).
+ */
+export async function readEtfFactorReturnsSnapshot(params: {
+  tickers: string[];
+  teo?: string;
+}): Promise<EtfFactorReturnsSnapshot | null> {
+  if (!params.tickers.length) return null;
+
+  const grp = await openZarrGroup(zarrEtfBasename());
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return null;
+
+  const symMap = await readSymbolIndexMap(grp);
+  if (!symMap?.size) return null;
+
+  // ds_etf's symbol axis uses internal bw_sym_ids; the human-readable ticker
+  // lives in the `ticker` coord. Build ticker → symbol-index lookup so the
+  // caller's request maps cleanly without leaking bw_sym_ids out of the DAL.
+  const tickerByIndex = await readTickerByIndex(grp);
+  const tickerToIdx = new Map<string, number>();
+  if (tickerByIndex) {
+    for (let i = 0; i < tickerByIndex.length; i++) {
+      const t = tickerByIndex[i];
+      if (t) tickerToIdx.set(t, i);
+    }
+  } else {
+    // Fall back to symbol axis if ticker coord is absent (shouldn't happen on
+    // production ds_etf but keeps the reader robust against legacy stores).
+    for (const [sym, idx] of symMap) tickerToIdx.set(sym, idx);
+  }
+
+  const teoIdx = resolveTeoIndex(teos, params.teo);
+  const teoStr = teos[teoIdx] ?? null;
+  if (!teoStr) return null;
+
+  // One window read per ETF covering the longest trailing window — close[t-252:t+1].
+  const maxWindow = Math.max(...ETF_FACTOR_RETURN_WINDOWS);
+  const t0 = Math.max(0, teoIdx - maxWindow);
+  const t1 = teoIdx + 1;
+
+  const rows: EtfFactorReturnRow[] = [];
+  for (const ticker of params.tickers) {
+    const symIdx = tickerToIdx.get(ticker);
+    if (symIdx === undefined) continue;
+
+    const closes = await readFloatSeriesTeoSymbol(grp, "close", t0, t1, symIdx);
+    if (!closes?.length) {
+      rows.push({
+        ticker,
+        close: null,
+        returns: { "1d": null, "21d": null, "63d": null, "252d": null },
+      });
+      continue;
+    }
+
+    const offsetT = teoIdx - t0;
+    const closeT = closes[offsetT] ?? null;
+
+    const ret = {} as Record<`${EtfFactorReturnWindow}d`, number | null>;
+    for (const w of ETF_FACTOR_RETURN_WINDOWS) {
+      const pastOffset = offsetT - w;
+      if (pastOffset < 0) {
+        ret[`${w}d`] = null;
+        continue;
+      }
+      const past = closes[pastOffset];
+      if (closeT == null || past == null || past === 0) {
+        ret[`${w}d`] = null;
+        continue;
+      }
+      ret[`${w}d`] = closeT / past - 1;
+    }
+
+    rows.push({ ticker, close: closeT, returns: ret });
+  }
+
+  return { teo: teoStr, rows };
+}

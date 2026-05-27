@@ -249,6 +249,27 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         ],
       },
       {
+        path: '/etf/factor-returns',
+        method: 'get',
+        summary: 'ETF factor returns (public scope: SPY + 11 GICS sectors)',
+        description:
+          'One-teo snapshot of close + trailing 1d / 21d / 63d / 252d total returns for SPY + the 11 GICS sector SPDR ETFs (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public-scope only — the broader BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed through this endpoint by design. Tickers outside the public scope return 400. Pairs with /industry-panel for the daily market + sector index read alongside stock-level industry βs. Cost: $0.005/call.',
+        operationId: 'getEtfFactorReturns',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'sleeve', in: 'query', type: 'string', required: false, description: 'Filter to market (SPY only), sector (11 GICS sectors), or all (default).', default: 'all' },
+          { name: 'tickers', in: 'query', type: 'string', required: false, description: 'Comma-separated subset of in-scope tickers (intersected with sleeve filter). Tickers outside the public scope return 400.' },
+          { name: 'teo', in: 'query', type: 'string', required: false, description: 'Observation date YYYY-MM-DD (default latest teo in ds_etf).' },
+        ],
+        responses: [
+          { status: 200, description: 'Snapshot: { teo, filter, windows, rows[{ticker, sleeve, name, close, returns{1d,21d,63d,252d}}] }.' },
+          { status: 400, description: 'Unknown ticker (outside public scope) or invalid teo format.' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+          { status: 503, description: 'Upstream ETF zarr unavailable.' },
+        ],
+      },
+      {
         path: '/batch/lstar',
         method: 'post',
         summary: 'Batch Lstar history (up to 100 tickers)',
