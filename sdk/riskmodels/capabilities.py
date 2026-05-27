@@ -471,18 +471,21 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "type": "string",
                 "required": True,
                 "enum": _RANKING_METRICS,
+                "description": "Ranking metric key.",
             },
             {
                 "name": "cohort",
                 "type": "string",
                 "required": True,
                 "enum": _RANKING_COHORTS,
+                "description": "Peer cohort: universe | sector | subsector.",
             },
             {
                 "name": "window",
                 "type": "string",
                 "required": True,
                 "enum": _RANKING_WINDOWS,
+                "description": "Lookback window for the rank computation.",
             },
             {
                 "name": "min_percentile",
