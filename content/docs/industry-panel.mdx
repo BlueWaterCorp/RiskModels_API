@@ -1,0 +1,94 @@
+---
+title: Industry peer-β panel (Vasicek cross-section)
+description: GET /api/industry-panel returns beta_mean, beta_variance, n_companies, and total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector) from ds_erm3_industry. The macro / sector-rotation surface.
+---
+
+# Industry peer-β panel (`/api/industry-panel`)
+
+`GET /api/industry-panel` returns the **industry × level** cross-section from the `ds_erm3_industry` zarr — Vasicek peer-β statistics at one trading day (latest by default). One row per **(EODHD 4-digit industry code, cascade level)** with:
+
+| Field | Meaning |
+| --- | --- |
+| `fs_industry_code` | EODHD 4-digit industry code (e.g. `2510` = software, `3210` = semiconductors). |
+| `level` | Cascade level: **`market`** / **`sector`** / **`subsector`**. |
+| `beta_mean` | Log-mcap-weighted typical factor β for this industry at this level. |
+| `beta_variance` | Cross-sectional variance of β within the industry — high values flag dispersion (idiosyncratic structure beneath the industry label). |
+| `n_companies` | How many tickers contributed to the aggregate at that teo (and cleared the universe gate). |
+| `total_log_mcap_weight` | Sum of `log(market_cap + 1)` weights — the Vasicek peer mean's denominator. |
+
+**Units:** β values are dimensionless regression coefficients (not hedge ratios). `n_companies` is an integer; weights are unitless log-mcap sums.
+
+## Why this endpoint exists
+
+For macro and sector-rotation work, the right question is rarely "what is one stock's β?" It is **"what is the typical β for this slice of the market, and how dispersed is it inside the slice?"** That's the Vasicek shrinkage prior turned inside out: instead of using the peer mean to *adjust* a single stock's β (which is what the engine does internally), we expose the peer mean and variance themselves as a data product.
+
+Use cases:
+
+- **Sector rotation** — rank subsector industries by month-over-month change in `beta_mean` at `level='subsector'` to surface industries quietly rotating beta.
+- **Dispersion screens** — high `beta_variance` at `level='subsector'` flags industries where the label hides real structural variation (idiosyncratic alpha hiding in plain sight).
+- **Macro hedge sizing** — for an allocator with sector exposure, the cap-weighted industry `beta_mean` is the right notional to assume per dollar of sector exposure when sizing macro overlays.
+- **Quality control** — `n_companies` per industry per teo is your sample-size guard. Industries with `n_companies < 5` should be treated as too thin to interpret.
+
+## Request
+
+`GET /api/industry-panel` accepts:
+
+| Param | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `market_factor_etf` | string | `SPY` | The primary market factor used in the cascade. |
+| `teo` (or `date`) | `YYYY-MM-DD` | latest teo | Observation date. |
+| `level` | string | all three | Restrict to `market` / `sector` / `subsector`. |
+| `min_peers` | integer | unset | Drop industries with `n_companies < min_peers`. |
+
+## Response shape
+
+```json
+{
+  "teo": "2026-05-26",
+  "market_factor_etf": "SPY",
+  "industries": [
+    {
+      "fs_industry_code": 3210,
+      "level": "subsector",
+      "beta_mean": 1.243,
+      "beta_variance": 0.187,
+      "n_companies": 32,
+      "total_log_mcap_weight": 712.4
+    },
+    ...
+  ],
+  "_metadata": { "data_source": "zarr", ... }
+}
+```
+
+## Example
+
+```bash
+# Top 5 most-dispersed industries at subsector level, today
+curl -sS "https://riskmodels.app/api/industry-panel?level=subsector&min_peers=20" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  | jq '.industries | sort_by(.beta_variance) | reverse | .[:5]'
+```
+
+```python
+from riskmodels import RiskModelsClient
+client = RiskModelsClient.from_env()
+
+df = client.get_industry_panel(level="subsector", min_peers=20, as_dataframe=True)
+df.nlargest(5, "beta_variance")[["fs_industry_code", "beta_mean", "beta_variance", "n_companies"]]
+```
+
+## Pricing & cadence
+
+**{'$'}0.02/request** (`billing_code: industry_panel_v1`). Updated daily by the ERM3 pipeline; latest-available `teo` lags the close by the same window as `ds_erm3_betas_adjusted`. Use **`_metadata.data_source`** + **`_metadata.range`** on the JSON envelope to confirm what you got — see [Response metadata](/docs/response-metadata).
+
+## Where it sits in the stack
+
+The industry panel is **derived** from the per-(stock, teo) Vasicek shrinkage that lives inside `ds_erm3_betas_adjusted`. The pipeline aggregates the per-stock β to the industry × level grid as a side product; this endpoint serves that aggregate. It does **not** expose per-stock β — for that use **`GET /metrics/{ticker}`** or **`GET /api/lstar`** (per-ticker hedge ratios) and **`POST /decompose`** (the four-bet breakdown).
+
+## Related
+
+- **[ERM3 Engine Design](/docs/erm3-engine)** — the broader cascade methodology.
+- **[Methodology](/docs/methodology)** — Huber–Vasicek estimation on riskmodels.org.
+- **`POST /api/rankings/screen`** — when you want a stock-level rank cross-section instead of an industry-level one.
+- **OpenAPI** `IndustryPanelResponse` — full schema.

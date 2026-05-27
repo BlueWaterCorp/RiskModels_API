@@ -1,0 +1,133 @@
+---
+title: Rankings screen — universe-wide cross-section filter
+description: POST /api/rankings/screen runs server-side percentile / decile / sector filters over the full ds_rankings cross-section in one call. The stat-arb cross-section without N per-ticker round-trips.
+---
+
+# Rankings screen (`POST /api/rankings/screen`)
+
+`POST /api/rankings/screen` runs **server-side filters over the full ranking cross-section** at one trading day (latest by default) and returns up to **500 rows** sorted by `rank_ordinal` (1 = best, `rank_percentile` 100 = best). This is the stat-arb cross-section in one call — replaces N per-ticker `/rankings` round-trips.
+
+## What it gives you
+
+For one **(metric, cohort, window)** triple at one **`as_of`** date, the endpoint returns the **ranked subset of the universe** that passes your filter — each row carrying the ticker, the rank position, the percentile, the cohort size at that teo, and the underlying metric value.
+
+This is how you ask questions like:
+
+- "Show me the top 5% of names by 21d subsector-residual return today."
+- "Which 50 stocks have the highest 252d-window market-cap rank inside the XLK cohort?"
+- "Give me decile 1 (best) by `er_l3` cross-sectionally, across the full universe."
+
+## Request
+
+```json
+POST /api/rankings/screen
+{
+  "metric":  "subsector_residual",   // mkt_cap | gross_return | sector_residual |
+                                     // subsector_residual | er_l1 | er_l2 | er_l3
+  "cohort":  "subsector",            // universe | sector | subsector
+  "window":  "21d",                  // 1d | 21d | 63d | 252d
+  "as_of":   "2026-05-26",           // optional (default: latest teo)
+  "min_percentile": 95,              // optional (0–100, 100 = best)
+  "decile":  1,                      // optional (1–10, 1 = best)
+  "sector_filter": "XLK",            // optional (sector ETF ticker)
+  "limit":   100                     // optional (1–500, default 100)
+}
+```
+
+Filters combine — `min_percentile` AND `decile` AND `sector_filter` all apply. `limit` caps the post-filter result set; rows are returned in `rank_ordinal` order.
+
+## Response shape
+
+```json
+{
+  "as_of": "2026-05-26",
+  "metric": "subsector_residual",
+  "cohort": "subsector",
+  "window": "21d",
+  "rows": [
+    {
+      "ticker": "NVDA",
+      "rank_ordinal": 1,
+      "rank_percentile": 100.0,
+      "cohort_size": 32,
+      "metric_value": 0.084
+    },
+    ...
+  ],
+  "count": 47,
+  "_metadata": { "data_source": "zarr", ... }
+}
+```
+
+## Use-case patterns
+
+### Top-decile residual screen (stat-arb)
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/rankings/screen" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metric":"subsector_residual",
+    "cohort":"subsector",
+    "window":"21d",
+    "decile":1,
+    "limit":50
+  }' \
+  | jq '{count, top: .rows[:5]}'
+```
+
+### Best-of-sector cap-rank screen
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/rankings/screen" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metric":"mkt_cap",
+    "cohort":"sector",
+    "window":"1d",
+    "sector_filter":"XLF",
+    "limit":20
+  }'
+```
+
+### Python
+
+```python
+from riskmodels import RiskModelsClient
+client = RiskModelsClient.from_env()
+
+df = client.screen_rankings(
+    metric="subsector_residual",
+    cohort="subsector",
+    window="21d",
+    min_percentile=95,
+    limit=100,
+    as_dataframe=True,
+)
+df[["ticker", "rank_percentile", "metric_value"]].head()
+```
+
+## Filter rules
+
+- **`metric`** must be one of: `mkt_cap`, `gross_return`, `sector_residual`, `subsector_residual`, `er_l1`, `er_l2`, `er_l3`. Other ranking metrics aren't queryable through this endpoint.
+- **`window`** must be `1d` / `21d` / `63d` / `252d`. For point-in-time (PIT) metrics like `mkt_cap` / `er_l1` / `er_l2` / `er_l3`, only `1d` is meaningful — the others return the same value.
+- **`cohort`** picks the peer set for the percentile: `universe` (cross-sectional across all in-mask names), `sector` (within bw_sector cohort), `subsector` (within subsector ETF cohort).
+- **`rank_percentile`** is the upper-tail percentile: **100 = best**, 0 = worst. `min_percentile: 95` → top 5%.
+- **`decile`** is 1 = best, 10 = worst. Mutually consistent with `min_percentile` (decile 1 ≡ `min_percentile >= 90`).
+
+## Pricing & limits
+
+**{'$'}0.02/request** (`billing_code: rankings_screen_v1`). Max 500 rows per call. For larger pulls or historical traversals, use the per-ticker [`/api/rankings`](/docs/api#rankings) endpoint or the daily zarr export.
+
+## Where it sits
+
+The rankings screen reads `ds_rankings_{etf}_{universe}.zarr` directly. That zarr is rebuilt daily by the ERM3 pipeline (1d step's `_compute_and_save_rankings`). 96 ranking variables exist; this endpoint serves the 7 most-requested metrics × 3 cohorts × 4 windows = 84 cells of the full grid.
+
+## Related
+
+- **`GET /api/rankings`** — per-ticker rank lookup (single ticker, all cohorts/windows).
+- **`GET /api/industry-panel`** — industry-level peer-β cross-section (complementary to stock-level rankings).
+- **`POST /api/batch/lstar`** — per-ticker Lstar history for a panel of tickers you've already selected via this screen.
+- **OpenAPI** `RankingsScreenResponse` — full schema.
