@@ -81,6 +81,9 @@ const HEDGE_RATIO_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
   "l3_sub_hr",
 ]);
 
+/** Lstar fields may be absent from `security_history_latest` until ERM3 sync backfill. */
+const LSTAR_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>(["lstar_rr", "lstar_level"]);
+
 export type V3Periodicity = "daily" | "monthly";
 
 // V3 Row shape from security_history
@@ -706,6 +709,8 @@ export async function fetchBatchLatestSummary(
           l3_cfr: row.l3_cfr ?? null,
           l3_fr: row.l3_fr ?? null,
           l3_rr: row.l3_rr ?? null,
+          lstar_rr: row.lstar_rr ?? null,
+          lstar_level: row.lstar_level ?? null,
           stock_var: row.stock_var,
           l1_mkt_beta: row.l1_mkt_beta ?? null,
           l2_sec_beta: row.l2_sec_beta ?? null,
@@ -778,17 +783,21 @@ export async function fetchLatestMetricsWithFallback(
 ): Promise<{ teo: string; metrics: Record<string, number | null> } | null> {
   const fromLatest = await fetchLatestSummary(symbol, periodicity);
 
-  const requestedOverlay = keys.some(
-    (k) => HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k),
-  );
+  const requestedHrOverlay = keys.some((k) => HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k));
+  const requestedLstarOverlay = keys.some((k) => LSTAR_ZARR_OVERLAY_KEYS.has(k));
   const needZarrOverlay =
     fromLatest != null &&
-    requestedOverlay &&
-    keys.some((k) => {
-      if (!HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k)) return false;
-      const v = fromLatest.metrics[k];
-      return v == null || v === 0;
-    });
+    ((requestedHrOverlay &&
+      keys.some((k) => {
+        if (!HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k)) return false;
+        const v = fromLatest.metrics[k];
+        return v == null || v === 0;
+      })) ||
+      (requestedLstarOverlay &&
+        keys.some((k) => {
+          if (!LSTAR_ZARR_OVERLAY_KEYS.has(k)) return false;
+          return fromLatest.metrics[k] == null;
+        })));
 
   let fromZarr: Awaited<ReturnType<typeof fetchLatestMetrics>> = null;
   if (fromLatest == null || needZarrOverlay) {
@@ -807,6 +816,8 @@ export async function fetchLatestMetricsWithFallback(
       } else {
         filtered[k] = z != null ? z : l ?? null;
       }
+    } else if (LSTAR_ZARR_OVERLAY_KEYS.has(k)) {
+      filtered[k] = l != null ? l : z ?? null;
     } else {
       filtered[k] = l ?? z ?? null;
     }

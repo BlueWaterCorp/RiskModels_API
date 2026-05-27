@@ -437,6 +437,8 @@ async function analyzeTicker(
           "l3_sec_er",
           "l3_sub_er",
           "l3_res_er",
+          "lstar_rr",
+          "lstar_level",
           // Hierarchical regression betas
           "l1_mkt_beta",
           "l2_sec_beta",
@@ -519,6 +521,8 @@ async function analyzeTicker(
           l3_sec_er: m?.l3_sec_er ?? null,
           l3_sub_er: m?.l3_sub_er ?? null,
           l3_res_er: m?.l3_res_er ?? null,
+          lstar_rr: m?.lstar_rr ?? null,
+          lstar_level: m?.lstar_level ?? null,
           // Hierarchical regression betas
           l1_mkt_beta: m?.l1_mkt_beta ?? null,
           l2_sec_beta: m?.l2_sec_beta ?? null,

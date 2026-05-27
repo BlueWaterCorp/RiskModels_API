@@ -183,6 +183,9 @@ export const GET = withBilling(
       "l3_res_er",
       "l3_cfr",
       "l3_rr",
+      // Lstar-dispatched residual (materialized in returns zarr + Supabase wide table)
+      "lstar_rr",
+      "lstar_level",
       // Hierarchical regression betas (one per level)
       "l1_mkt_beta",
       "l2_sec_beta",
@@ -278,6 +281,8 @@ export const GET = withBilling(
         l3_res_er: m.l3_res_er ?? null,
         l3_cfr: m.l3_cfr ?? null,
         l3_rr: m.l3_rr ?? null,
+        lstar_rr: m.lstar_rr ?? null,
+        lstar_level: m.lstar_level ?? null,
         // Hierarchical regression betas (one per level)
         l1_mkt_beta: m.l1_mkt_beta ?? null,
         l2_sec_beta: m.l2_sec_beta ?? null,
