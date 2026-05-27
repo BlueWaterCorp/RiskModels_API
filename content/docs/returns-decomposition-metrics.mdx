@@ -20,10 +20,22 @@ ERM3 can sync **nine optional daily metrics** (`l1_cfr` … `l3_rr`, including i
 | `l3_cfr` | Combined factor return through **L3** (subsector) |
 | `l3_fr` | Incremental **L3** (subsector) factor return on top of L1+L2 |
 | `l3_rr` | Residual return at **L3** |
+| **`lstar_rr`** | **Residual return at the L\* level the model dispatched to** — see "Which residual?" below |
+| **`lstar_level`** | Which level Lstar picked: **`1`** = L1, **`2`** = L2, **`3`** = L3; **`null`** = no recommendation (both L2 and L3 ER missing) |
 
 **Units:** daily **simple** returns as **decimals** (same convention as `returns_gross`), e.g. `0.01` ≈ 1%.
 
 **Naming:** `*_cfr` = **c**ombined **f**actor **r**eturn; `*_rr` = **r**esidual **r**eturn at that level.
+
+## Which residual should I use?
+
+`l3_rr` is the residual after market + sector + subsector — **fixed at L3 regardless** of whether the subsector layer is statistically warranted. `lstar_rr` is the residual at the level the cascade **actually picks** for that name: L3 when the subsector ETF adds material explanatory power (subsector marginal ER ≥ 1%), L2 when only the sector does, L1 otherwise.
+
+- **Stat-arb / panel queries** ("best residual per name"): use **`lstar_rr`** — you get a comparable signal across the universe, with `lstar_level` telling you which hedge depth was assumed.
+- **Fixed-depth attribution** ("show me what's left after subsector"): use **`l3_rr`**.
+- **Custom threshold**: hit **`GET /api/lstar?threshold=…`** — `lstar_rr` in MetricsV3 is materialized at the canonical **1%** threshold; SDK callers wanting a different θ should round-trip through `/api/lstar`.
+
+For names with weak subsector signal (`lstar_level` = 1 or 2), `l3_rr` overstates the cleanness of the residual because it subtracts a layer the model wouldn't have prescribed.
 
 ## Not the same as ER or hedge ratios
 

@@ -180,3 +180,55 @@ def test_get_lstar_returns_dataframe_with_residual_return():
     ]
     assert len(df) == 2
     assert df.iloc[0]["residual_return"] == 0.012
+
+
+def test_get_returns_decomposition_returns_semantic_columns():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "ticker": "AAPL",
+                "dates": ["2026-01-02"],
+                "gross_return": [0.01],
+                "l1_factor_return": [0.008],
+                "l2_factor_return": [0.002],
+                "l3_factor_return": [0.001],
+                "l1_combined_factor_return": [0.008],
+                "l2_combined_factor_return": [0.01],
+                "l3_combined_factor_return": [0.011],
+                "l1_residual_return": [0.002],
+                "l2_residual_return": [0.0015],
+                "l3_residual_return": [0.001],
+                "market_factor_etf": "SPY",
+                "universe": "SPY_uni_mc_3000",
+                "data_source": "zarr",
+            },
+            headers={"X-Risk-Model-Version": "ERM3-test"},
+        )
+
+    client = RiskModelsClient(
+        base_url="https://riskmodels.app/api",
+        api_key="test",
+        validate="off",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    df = client.get_returns_decomposition("AAPL", years=1)
+    assert "/returns-decomposition" in captured["url"]
+    assert "ticker=AAPL" in captured["url"]
+    assert list(df.columns) == [
+        "date",
+        "gross_return",
+        "l1_factor_return",
+        "l2_factor_return",
+        "l3_factor_return",
+        "l1_combined_factor_return",
+        "l2_combined_factor_return",
+        "l3_combined_factor_return",
+        "l1_residual_return",
+        "l2_residual_return",
+        "l3_residual_return",
+    ]
+    assert df.iloc[0]["gross_return"] == 0.01

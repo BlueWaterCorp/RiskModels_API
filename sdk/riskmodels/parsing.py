@@ -48,6 +48,35 @@ def lstar_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(cols)
 
 
+def returns_decomposition_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
+    n = len(body.get("dates") or [])
+    if n == 0:
+        return pd.DataFrame()
+    cols: dict[str, Any] = {
+        "date": body["dates"],
+        "gross_return": body.get("gross_return", [None] * n),
+        "l1_factor_return": body.get("l1_factor_return", [None] * n),
+        "l2_factor_return": body.get("l2_factor_return", [None] * n),
+        "l3_factor_return": body.get("l3_factor_return", [None] * n),
+        "l1_combined_factor_return": body.get("l1_combined_factor_return", [None] * n),
+        "l2_combined_factor_return": body.get("l2_combined_factor_return", [None] * n),
+        "l3_combined_factor_return": body.get("l3_combined_factor_return", [None] * n),
+        "l1_residual_return": body.get("l1_residual_return", [None] * n),
+        "l2_residual_return": body.get("l2_residual_return", [None] * n),
+        "l3_residual_return": body.get("l3_residual_return", [None] * n),
+    }
+    if "lstar" in body:
+        cols["lstar"] = body.get("lstar", [None] * n)
+    if "lstar_residual_return" in body:
+        cols["lstar_residual_return"] = body.get("lstar_residual_return", [None] * n)
+    return pd.DataFrame(cols)
+
+
+def industry_panel_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
+    rows = body.get("industries") or []
+    return pd.DataFrame(rows)
+
+
 def l3_decomposition_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
     n = len(body.get("dates") or [])
     if n == 0:

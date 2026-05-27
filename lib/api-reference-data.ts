@@ -74,7 +74,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Latest risk metrics snapshot',
         description:
-          'Latest snapshot: current L3 hedge ratios + explained risk (including residual), plus basic risk/price data. Fastest way to answer “what is this stock’s current market/sector/subsector/residual exposure right now?” Cost: $0.005/request.',
+          'Latest snapshot: current L3 hedge ratios + explained risk (including residual), plus basic risk/price data. Fastest way to answer "what is this stock’s current market/sector/subsector/residual exposure right now?" Includes lstar_rr (Lstar-dispatched residual return at the level the cascade picked) and lstar_level (1/2/3/null) at the canonical 1% threshold — prefer over l3_rr for "best residual" queries. Cost: $0.005/request.',
         operationId: 'getMetrics',
         tag: 'Risk Metrics',
         params: [
@@ -154,7 +154,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         tag: 'Risk Metrics',
         params: [
           { name: 'tickers', in: 'body', type: 'array', required: true, description: 'List of ticker symbols (max 100).' },
-          { name: 'metrics', in: 'body', type: 'array', required: true, description: 'Whitelist: returns, hedge_ratios (6 HR short keys), full_metrics (L1/L2/L3 ER/HR flat keys). See docs/ERM3_ZARR_API_PARITY.md for zarr L*_ER/L*_HR mapping.' },
+          { name: 'metrics', in: 'body', type: 'array', required: true, description: 'Whitelist: returns, hedge_ratios (6 HR short keys), full_metrics (L1/L2/L3 ER/HR flat keys + lstar_rr / lstar_level for the Lstar-dispatched residual + level pick). See docs/ERM3_ZARR_API_PARITY.md for zarr L*_ER/L*_HR mapping.' },
           { name: 'years', in: 'body', type: 'integer', required: false, description: 'Years of history.', default: '1' },
         ],
         requestBody: {

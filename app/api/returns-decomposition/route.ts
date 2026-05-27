@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import {
-  getL3DecompositionService,
-  toL3DecompositionPublicBody,
-} from "@/lib/risk/l3-decomposition-service";
+  getReturnsDecompositionService,
+  toReturnsDecompositionPublicBody,
+} from "@/lib/risk/returns-decomposition-service";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
   addMetadataHeaders,
@@ -11,17 +11,13 @@ import {
   buildMetadataBody,
   EMPTY_HISTORY_DATA_WARNING,
 } from "@/lib/dal/response-headers";
-import { L3DecompositionRequestSchema } from "@/lib/api/schemas";
+import { ReturnsDecompositionRequestSchema } from "@/lib/api/schemas";
 import { getCorsHeaders } from "@/lib/cors";
 import { parseFormat, formatResponse } from "@/lib/api/format-response";
 
 export const runtime = "nodejs";
 
-/**
- * Classify a thrown error into a stable telemetry class so 500s carry a
- * useful signal and can be triaged without log-diving.
- */
-function classifyL3Error(message: string): string {
+function classifyReturnsDecompositionError(message: string): string {
   const m = message.toLowerCase();
   if (m.includes("zarr") || m.includes("gcs")) return "zarr_read_failed";
   if (m.includes("registry") || m.includes("metric_key")) return "registry_resolve_failed";
@@ -36,10 +32,19 @@ export const GET = withBilling(
     const { searchParams } = new URL(request.url);
     const origin = request.headers.get("origin");
 
-    const validation = L3DecompositionRequestSchema.safeParse({
+    const includeLstarRaw = searchParams.get("include_lstar");
+    const dispatchRaw = searchParams.get("dispatch");
+    const includeLstar =
+      includeLstarRaw === "true" ||
+      includeLstarRaw === "1" ||
+      dispatchRaw === "lstar";
+
+    const validation = ReturnsDecompositionRequestSchema.safeParse({
       ticker: searchParams.get("ticker"),
       market_factor_etf: searchParams.get("market_factor_etf") || "SPY",
       years: searchParams.get("years") || "1",
+      include_lstar: includeLstar,
+      threshold: searchParams.get("threshold"),
     });
 
     if (!validation.success) {
@@ -52,33 +57,38 @@ export const GET = withBilling(
       );
     }
 
-    const { ticker, market_factor_etf, years } = validation.data;
+    const { ticker, market_factor_etf, years, threshold } = validation.data;
 
     try {
       const fetchStart = performance.now();
-      const service = getL3DecompositionService();
+      const service = getReturnsDecompositionService();
       const result = await service.getDecomposition(ticker, market_factor_etf, {
         years,
+        includeLstar,
+        threshold,
       });
 
       if (!result) {
-        return NextResponse.json({ error: "Not found" }, { status: 404 });
+        return NextResponse.json(
+          { error: "Not found" },
+          { status: 404, headers: getCorsHeaders(origin) },
+        );
       }
 
-      const publicBody = toL3DecompositionPublicBody(result);
-
+      const publicBody = toReturnsDecompositionPublicBody(result);
       const metadata = await getRiskMetadata();
       const fetchLatency = Math.round(performance.now() - fetchStart);
 
       const format = parseFormat(searchParams, request.headers.get("accept"));
       if (format !== "json") {
-        // Pivot parallel arrays into rows (semantic field names per OpenAPI)
         const resultAny = publicBody as unknown as Record<string, unknown>;
         const dates = resultAny.dates as string[];
         const csvRows = dates.map((date: string, i: number) => {
           const row: Record<string, unknown> = { ticker, date };
           for (const [key, val] of Object.entries(resultAny)) {
-            if (key === "ticker" || key === "dates") continue;
+            if (key === "ticker" || key === "dates" || key === "threshold_used") {
+              continue;
+            }
             if (Array.isArray(val)) row[key] = (val as unknown[])[i];
           }
           return row;
@@ -86,7 +96,7 @@ export const GET = withBilling(
         return formatResponse({
           rows: csvRows,
           format,
-          filename: `${ticker}_l3_decomposition.csv`,
+          filename: `${ticker}_returns_decomposition.csv`,
           extraHeaders: getCorsHeaders(origin) as Record<string, string>,
         });
       }
@@ -95,31 +105,34 @@ export const GET = withBilling(
       const histRange: [string, string] | undefined =
         d.length > 0 ? [d[0]!, d[d.length - 1]!] : undefined;
 
-      const response = NextResponse.json({
-        ...publicBody,
-        _metadata: buildMetadataBody(metadata, {
-          data_source: "zarr",
-          range: histRange,
-          history_row_count: d.length,
-          ...(d.length === 0 ? { data_warning: EMPTY_HISTORY_DATA_WARNING } : {}),
-        }),
-        _agent: buildAgentBody({
-          request_id: context.requestId,
-          cost_usd: context.costUsd,
-        }),
-      }, {
-        headers: {
-          ...getCorsHeaders(origin),
-          "X-Data-Fetch-Latency-Ms": String(fetchLatency),
-        }
-      });
+      const response = NextResponse.json(
+        {
+          ...publicBody,
+          _metadata: buildMetadataBody(metadata, {
+            data_source: "zarr",
+            range: histRange,
+            history_row_count: d.length,
+            ...(d.length === 0 ? { data_warning: EMPTY_HISTORY_DATA_WARNING } : {}),
+          }),
+          _agent: buildAgentBody({
+            request_id: context.requestId,
+            cost_usd: context.costUsd,
+          }),
+        },
+        {
+          headers: {
+            ...getCorsHeaders(origin),
+            "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+          },
+        },
+      );
       addMetadataHeaders(response, metadata);
       return response;
     } catch (e) {
       const errMessage = e instanceof Error ? e.message : String(e);
-      const errClass = classifyL3Error(errMessage);
+      const errClass = classifyReturnsDecompositionError(errMessage);
       console.error(
-        `[L3 Decomposition] ${errClass} for ticker=${ticker} years=${years}:`,
+        `[Returns Decomposition] ${errClass} for ticker=${ticker} years=${years}:`,
         errMessage,
       );
       return NextResponse.json(
@@ -133,5 +146,5 @@ export const GET = withBilling(
       );
     }
   },
-  { capabilityId: "l3-decomposition" },
+  { capabilityId: "returns-decomposition" },
 );

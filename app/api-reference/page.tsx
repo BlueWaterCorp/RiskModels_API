@@ -333,6 +333,17 @@ export default function ApiReferencePage() {
                   </p>
                 </div>
 
+                <div className="rounded-xl border border-amber-900/40 bg-amber-950/10 p-5">
+                  <div className="font-mono text-xs uppercase tracking-widest text-amber-400 mb-2">Best Residual — Lstar Dispatch</div>
+                  <p className="text-sm text-zinc-300 mb-2">
+                    Not every stock’s subsector ETF actually explains material variance. <strong>Lstar</strong> picks the deepest cascade level that clears a 1% marginal-ER bar — L3 only when subsector hedging adds real explanatory power, L2 when only sector does, L1 otherwise.
+                  </p>
+                  <p className="text-sm text-zinc-300">
+                    <code className="text-zinc-400">lstar_rr</code> returns the residual <em>at the level the model actually picked</em>;{' '}
+                    <code className="text-zinc-400">lstar_level</code> (1/2/3/null) tells you which level. Prefer these over a blind <code className="text-zinc-400">l3_rr</code> for panel queries — fixed-L3 overstates residual cleanness when subsector signal is weak.
+                  </p>
+                </div>
+
                 <p className="text-sm text-zinc-500">
                   Best endpoints for these outputs: <strong>/metrics/{'{ticker}'}</strong>, <strong>/ticker-returns</strong>, and <strong>/l3-decomposition</strong>.
                 </p>

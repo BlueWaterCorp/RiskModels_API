@@ -722,6 +722,186 @@ export const CAPABILITIES: Capability[] = [
     tags: ["risk", "decomposition", "l3"],
   },
   {
+    id: "returns-decomposition",
+    name: "Returns Decomposition",
+    description:
+      "Daily gross return plus L1/L2/L3 factor, combined-factor, and residual return series from ds_erm3_returns. Optional include_lstar adds Lstar level and Lstar-dispatched residual return per date.",
+    endpoint: "/api/returns-decomposition",
+    method: "GET",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: true,
+        description: "Stock ticker symbol",
+      },
+      market_factor_etf: {
+        type: "string",
+        required: false,
+        description: "Market factor ETF",
+        default: "SPY",
+      },
+      years: {
+        type: "integer",
+        required: false,
+        description: "Calendar years of daily history",
+        default: 1,
+      },
+      include_lstar: {
+        type: "boolean",
+        required: false,
+        description: "Include lstar and lstar_residual_return arrays",
+        default: false,
+      },
+      threshold: {
+        type: "number",
+        required: false,
+        description: "Marginal ER threshold when deriving Lstar (default 1%)",
+        default: 0.01,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "returns_decomposition_v1",
+    },
+    performance: {
+      avg_latency_ms: 140,
+      p95_latency_ms: 240,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["ds_erm3_returns", "security_history"],
+    },
+    tags: ["returns", "decomposition", "lstar", "macro"],
+  },
+  {
+    id: "industry-panel",
+    name: "Industry Panel",
+    description:
+      "Cross-section of Vasicek industry peer β statistics from ds_erm3_industry: beta_mean, beta_variance, n_companies, and total_log_mcap_weight by EODHD industry code and cascade level (market/sector/subsector).",
+    endpoint: "/api/industry-panel",
+    method: "GET",
+    parameters: {
+      market_factor_etf: {
+        type: "string",
+        required: false,
+        description: "Market factor ETF",
+        default: "SPY",
+      },
+      teo: {
+        type: "string",
+        required: false,
+        description: "Observation date YYYY-MM-DD (default latest teo)",
+      },
+      level: {
+        type: "string",
+        required: false,
+        description: "Optional cascade level filter",
+        enum: ["market", "sector", "subsector"],
+      },
+      min_peers: {
+        type: "integer",
+        required: false,
+        description: "Minimum n_companies (default from zarr min_peers attr)",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "industry_panel_v1",
+    },
+    performance: {
+      avg_latency_ms: 120,
+      p95_latency_ms: 200,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["ds_erm3_industry"],
+    },
+    tags: ["industry", "macro", "cross-section", "stat-arb"],
+  },
+  {
+    id: "rankings-screen",
+    name: "Rankings Screen",
+    description:
+      "Full cross-section rank screen from ds_rankings zarr: server-side percentile, decile, and sector ETF filters over the entire universe at one teo (default latest). Returns up to 500 names sorted by rank_ordinal (1 = best). rank_percentile 100 = best.",
+    endpoint: "/api/rankings/screen",
+    method: "POST",
+    parameters: {
+      metric: {
+        type: "string",
+        required: true,
+        description:
+          "Metric: mkt_cap, gross_return, sector_residual, subsector_residual, er_l1, er_l2, er_l3",
+      },
+      cohort: {
+        type: "string",
+        required: true,
+        description: "Cohort: universe, sector, subsector",
+      },
+      window: {
+        type: "string",
+        required: true,
+        description: "Window: 1d, 21d, 63d, 252d",
+      },
+      as_of: {
+        type: "string",
+        required: false,
+        description: "Observation date YYYY-MM-DD (default latest teo)",
+      },
+      min_percentile: {
+        type: "number",
+        required: false,
+        description: "Minimum rank_percentile inclusive (100 = best)",
+      },
+      decile: {
+        type: "integer",
+        required: false,
+        description: "Decile bucket 1=best (top 10%), through 10",
+      },
+      sector_filter: {
+        type: "string",
+        required: false,
+        description: "Sector ETF ticker filter (e.g. XLK) on symbols.sector_etf",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max rows after filter (1–500, default 100)",
+        default: 100,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.05,
+      currency: "USD",
+      billing_code: "rankings_screen_v1",
+    },
+    performance: {
+      avg_latency_ms: 180,
+      p95_latency_ms: 350,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["ds_rankings"],
+    },
+    tags: ["rankings", "cross-sectional", "screen", "percentile"],
+  },
+  {
     id: "lstar",
     name: "Lstar Recommended Hedge Level",
     description:
@@ -773,6 +953,67 @@ export const CAPABILITIES: Capability[] = [
       sources: ["erm3_models", "security_history"],
     },
     tags: ["risk", "decomposition", "lstar", "hedge"],
+  },
+  {
+    id: "batch-lstar",
+    name: "Batch Lstar Residual Returns",
+    description:
+      "Up to 100 tickers: per-date Lstar level (L1/L2/L3) with dispatched hedge ratios and Lstar-dispatched daily residual return. Same selection rule as GET /lstar; 25% cheaper per ticker than repeated single-ticker calls.",
+    endpoint: "/api/batch/lstar",
+    method: "POST",
+    parameters: {
+      tickers: {
+        type: "array",
+        required: true,
+        description: "Stock ticker symbols (max 100)",
+        items: { type: "string" },
+      },
+      market_factor_etf: {
+        type: "string",
+        required: false,
+        description: "Market factor ETF",
+        default: "SPY",
+      },
+      years: {
+        type: "integer",
+        required: false,
+        description: "Calendar years of daily history",
+        default: 1,
+      },
+      threshold: {
+        type: "number",
+        required: false,
+        description: "Marginal-ER threshold for Lstar selection (default 1%)",
+        default: 0.01,
+      },
+      format: {
+        type: "string",
+        required: false,
+        description: "json (default), parquet, or csv long table",
+        default: "json",
+        enum: ["json", "parquet", "csv"],
+      },
+    },
+    pricing: {
+      model: "per_position",
+      tier: "premium",
+      cost_usd: 0.005,
+      currency: "USD",
+      min_charge: 0.01,
+      billing_code: "batch_lstar_v1",
+    },
+    performance: {
+      avg_latency_ms: 350,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["erm3_models", "security_history"],
+    },
+    tags: ["risk", "decomposition", "lstar", "batch", "macro", "stat-arb"],
   },
   {
     id: "residual-signal",

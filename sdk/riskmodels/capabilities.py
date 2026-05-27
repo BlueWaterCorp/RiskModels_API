@@ -631,6 +631,58 @@ _SDK_METHODS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "batch_lstar",
+        "aliases": [],
+        "summary": "Batch Lstar residual returns (POST /batch/lstar).",
+        "description": (
+            "Up to 100 tickers: per-date Lstar level with dispatched hedge ratios and "
+            "Lstar-dispatched daily residual return. JSON returns a results map; parquet/csv "
+            "returns a long DataFrame. Use batch_lstar_to_dataframes() to split JSON into per-ticker frames."
+        ),
+        "scopes": ["batch-lstar"],
+        "parameters": [
+            {
+                "name": "tickers",
+                "type": "array",
+                "items": {"type": "string"},
+                "required": True,
+                "description": "Up to 100 symbols.",
+            },
+            {
+                "name": "market_factor_etf",
+                "type": "string",
+                "required": False,
+                "description": "Market factor ETF (default SPY).",
+            },
+            {
+                "name": "years",
+                "type": "integer",
+                "required": False,
+                "default": 1,
+                "description": "Calendar years of daily history (1–15).",
+            },
+            {
+                "name": "threshold",
+                "type": "number",
+                "required": False,
+                "default": 0.01,
+                "description": "Marginal-ER threshold for Lstar selection.",
+            },
+            {
+                "name": "format",
+                "type": "string",
+                "required": False,
+                "default": "json",
+                "enum": ["json", "parquet", "csv"],
+                "description": "json returns dict; tabular returns (DataFrame, lineage).",
+            },
+        ],
+        "returns": {
+            "type": "dict | tuple",
+            "description": "JSON BatchLstarResponse or (DataFrame, RiskLineage) for parquet/csv.",
+        },
+    },
+    {
         "name": "get_returns_decomposition",
         "aliases": [],
         "summary": "Full returns decomposition (GET /returns-decomposition).",

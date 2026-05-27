@@ -8,14 +8,21 @@ import {
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
-import { addMetadataHeaders, buildMetadataBody, buildEtag, maybe304 } from "@/lib/dal/response-headers";
+import {
+  addMetadataHeaders,
+  buildAgentBody,
+  buildMetadataBody,
+  buildEtag,
+  EMPTY_HISTORY_DATA_WARNING,
+  maybe304,
+} from "@/lib/dal/response-headers";
 import { formatResponse, parseFormat } from "@/lib/api/format-response";
 import { TickerReturnsRequestSchema } from "@/lib/api/schemas";
 
 export const runtime = "nodejs";
 
 export const GET = withBilling(
-  async (request: NextRequest, _context: BillingContext) => {
+  async (request: NextRequest, context: BillingContext) => {
     const { searchParams } = new URL(request.url);
     const origin = request.headers.get("origin");
 
@@ -188,6 +195,12 @@ export const GET = withBilling(
         _metadata: buildMetadataBody(metadata, {
           data_source: dataSource,
           range: histRange[0] && histRange[1] ? histRange : undefined,
+          history_row_count: data.length,
+          ...(data.length === 0 ? { data_warning: EMPTY_HISTORY_DATA_WARNING } : {}),
+        }),
+        _agent: buildAgentBody({
+          request_id: context.requestId,
+          cost_usd: context.costUsd,
         }),
       },
     });

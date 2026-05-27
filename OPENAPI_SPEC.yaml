@@ -1688,6 +1688,118 @@ components:
           type: string
           example: zarr
 
+    BatchLstarTickerResult:
+      type: object
+      description: One entry in `POST /batch/lstar` `results` map (keyed by upper-case ticker).
+      required:
+        - ticker
+        - status
+      properties:
+        ticker:
+          type: string
+        status:
+          type: string
+          enum: [success, error, not_found]
+        error:
+          type: string
+          description: Present when status is `error`.
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+        lstar:
+          type: array
+          items:
+            type: string
+            enum: [L1, L2, L3]
+            nullable: true
+        market_hr:
+          type: array
+          items:
+            type: number
+            nullable: true
+        sector_hr:
+          type: array
+          items:
+            type: number
+            nullable: true
+        subsector_hr:
+          type: array
+          items:
+            type: number
+            nullable: true
+        total_er:
+          type: array
+          items:
+            type: number
+            nullable: true
+        residual_return:
+          type: array
+          items:
+            type: number
+            nullable: true
+        l2_sector_er:
+          type: array
+          items:
+            type: number
+            nullable: true
+        l3_subsector_er:
+          type: array
+          items:
+            type: number
+            nullable: true
+        threshold_used:
+          type: number
+        market_factor_etf:
+          type: string
+        universe:
+          type: string
+        data_source:
+          type: string
+
+    BatchLstarResponse:
+      type: object
+      required:
+        - results
+        - summary
+        - years
+        - threshold_used
+        - market_factor_etf
+        - _agent
+      properties:
+        results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/BatchLstarTickerResult"
+        summary:
+          type: object
+          required: [total, success, errors, not_found]
+          properties:
+            total:
+              type: integer
+            success:
+              type: integer
+            errors:
+              type: integer
+            not_found:
+              type: integer
+        years:
+          type: integer
+        threshold_used:
+          type: number
+        market_factor_etf:
+          type: string
+        _agent:
+          type: object
+          properties:
+            cost_usd:
+              type: number
+            request_id:
+              type: string
+        _metadata:
+          $ref: "#/components/schemas/RiskMetadata"
+
     FactorCorrelationRequest:
       type: object
       required:
@@ -5280,6 +5392,101 @@ paths:
           headers:
             Retry-After:
               schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /batch/lstar:
+    post:
+      summary: Batch Lstar residual returns (up to 100 tickers)
+      description: >
+        Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3)
+        for up to 100 tickers in one call. Uses the same marginal-ER selection rule as
+        `GET /lstar` (default θ = 1%). Response is a `results` map keyed by upper-case ticker;
+        per-ticker failures use `status: error` or `not_found` without failing the whole batch.
+
+        **Billing:** $0.005/ticker, minimum $0.01/call.
+
+        **Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`,
+        `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with
+        non-empty histories are included.
+      operationId: batchLstar
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: batch-lstar
+        tier: premium
+        model: per_position
+        cost_usd: 0.005
+        min_charge: 0.01
+        currency: USD
+        billing_code: batch_lstar_v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tickers]
+              properties:
+                tickers:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  example: ["NVDA", "AAPL", "MSFT"]
+                market_factor_etf:
+                  type: string
+                  default: SPY
+                years:
+                  type: integer
+                  minimum: 1
+                  maximum: 15
+                  default: 1
+                threshold:
+                  type: number
+                  minimum: 0
+                  maximum: 0.5
+                  default: 0.01
+                format:
+                  type: string
+                  enum: [json, parquet, csv]
+                  default: json
+      responses:
+        "200":
+          description: Batch Lstar results as JSON or long-format Parquet/CSV.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchLstarResponse"
+            application/vnd.apache.parquet:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "429":
+          description: Rate limit exceeded.
           content:
             application/json:
               schema:

@@ -17,6 +17,11 @@ const SURFACES = [
     detail: 'Per-$1 ETF ratios from the same decomposition object.',
   },
   {
+    title: 'Lstar-dispatched residual',
+    detail:
+      'lstar_rr + lstar_level surface the residual at the cascade depth the model actually picks — not a blind L3. Best residual on every /metrics call.',
+  },
+  {
     title: 'Structured JSON',
     detail: 'API bodies carry _metadata — stable for agents and CI pipelines.',
   },

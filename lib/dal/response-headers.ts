@@ -57,6 +57,10 @@ export type HistoryMetadataExtras = {
   data_source?: "zarr" | "supabase";
   /** Inclusive ISO date bounds for the returned history window (when applicable). */
   range?: [string, string];
+  /** Number of history rows returned (0 when empty). */
+  history_row_count?: number;
+  /** Human-readable note when history is empty or partially missing. */
+  data_warning?: string;
   /**
    * Override the global factor universe with the factors actually used for
    * this response (e.g. for a single ticker the L3 factors are
@@ -64,6 +68,23 @@ export type HistoryMetadataExtras = {
    */
   factors?: readonly string[];
 };
+
+/** Standard copy for empty zarr history responses (support passback). */
+export const EMPTY_HISTORY_DATA_WARNING =
+  "No history rows returned for this ticker and date window. Retry once; if still empty, contact support with X-Request-ID (response header or _agent.request_id), request URL, and timestamp.";
+
+export type AgentBodyInput = {
+  request_id: string;
+  cost_usd?: number;
+};
+
+/** Build _agent block for JSON history endpoints (mirrors batch/analyze shape). */
+export function buildAgentBody(agent: AgentBodyInput): Record<string, unknown> {
+  return {
+    request_id: agent.request_id,
+    ...(agent.cost_usd !== undefined ? { cost_usd: agent.cost_usd } : {}),
+  };
+}
 
 /**
  * Build _metadata object for JSON response body.
@@ -85,6 +106,12 @@ export function buildMetadataBody(
   }
   if (extras?.range?.[0] && extras?.range?.[1]) {
     body.range = extras.range;
+  }
+  if (extras?.history_row_count !== undefined) {
+    body.history_row_count = extras.history_row_count;
+  }
+  if (extras?.data_warning) {
+    body.data_warning = extras.data_warning;
   }
   return body;
 }
