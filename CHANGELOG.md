@@ -2,6 +2,20 @@
 
 All notable changes to the RiskModels API surface and public assets.
 
+## [0.3.8] — 2026-05-27
+
+### Added
+
+- **`POST /api/rankings/screen`** — Cross-section filter on `ds_erm3_rankings_*` zarr: metric, cohort, window, optional `as_of`, percentile/decile/sector filters, and `limit`. Capability `rankings-screen` ($0.02/request); OpenAPI + MCP capabilities synced.
+- **`POST /api/batch/lstar`** — Batch Lstar time series for many tickers (JSON map or long parquet/CSV). Parallel `getLstar()` per ticker; capability `batch-lstar` ($0.005/ticker, min $0.01). Python SDK: `batch_lstar()`, `batch_lstar_to_dataframes()`.
+- **Python SDK — `screen_rankings()`** — Wraps `POST /rankings/screen`; normalizes ranking rows to semantic columns.
+
+### Fixed
+
+- **`GET /api/industry-panel`** — Response envelope now uses `buildMetadataBody(metadata, …)` + `_agent` (was passing three args to `buildMetadataBody`, breaking `next build`).
+- **`returns-decomposition-service`** — Coerce undefined ER inputs to `null` before `pickLstar()` (strict TS on Vercel build).
+- **`tsconfig.json`** — Exclude local `bwmacro-src` symlink from typecheck (render-svc Docker context only; not part of the portal build).
+
 ## [0.3.7] — 2026-05-27
 
 ### Added

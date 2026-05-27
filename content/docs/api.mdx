@@ -356,7 +356,7 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
       <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/lstar</td>
         <td className="py-3 px-3">GET</td>
-        <td className="py-3 px-3">Per-date Lstar level (L1/L2/L3) with dispatched hedge ratios, total ER, and daily <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">residual_return</code> at the chosen level (up to 15y)</td>
+        <td className="py-3 px-3">Per-ticker daily Lstar level (L1/L2/L3) with dispatched hedge ratios, total ER, and daily <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">residual_return</code> at the chosen level (up to 15y). For panel queries use <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">lstar_rr</code> + <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">lstar_level</code> in MetricsV3 instead.</td>
         <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_lstar("NFLX", years=5)' /></td>
       </tr>
@@ -482,6 +482,21 @@ Billing: **{'$'}0.02/call** (`billing_code: lstar_v1`). MCP capability id **`lst
 curl -sS "https://riskmodels.app/api/lstar?ticker=NFLX&years=5" \
   -H "Authorization: Bearer $RISKMODELS_API_KEY" \
   | jq '{ticker, threshold_used, last: {lstar: .lstar[-1], residual_return: .residual_return[-1]}}'
+```
+
+### Panel path — `lstar_rr` + `lstar_level` in MetricsV3
+
+For cross-sectional workflows ("best residual for the universe today", not "one ticker over time"), use the **MetricsV3** companion pair **`lstar_rr`** + **`lstar_level`** instead of the per-ticker `/api/lstar` endpoint. Both are materialized in the returns zarr at the canonical **1%** threshold and surfaced on **`GET /api/metrics/{ticker}`**, **`POST /api/batch/analyze`**, and the V3 history fetches — no per-ticker round-trips.
+
+- **`lstar_rr`** — the Lstar-dispatched residual return at the level the model picked (L1 → market, L2 → sector, L3 → subsector residual).
+- **`lstar_level`** — which level Lstar dispatched to: **`1`** = L1, **`2`** = L2, **`3`** = L3, **`null`** = no recommendation (both L2 and L3 ER missing).
+
+Prefer **`lstar_rr`** over **`l3_rr`** when you want "the residual" — `l3_rr` is fixed at L3 regardless of whether subsector hedging is statistically warranted, so it overstates cleanness for names where `lstar_level` is 1 or 2. For a non-default threshold, fall back to the per-ticker `/api/lstar?threshold=…` path above.
+
+```bash
+curl -sS "https://riskmodels.app/api/metrics/AAPL" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  | jq '.metrics | {lstar_rr, lstar_level}'
 ```
 
 ## 🤖 Agent-Native Helpers (Python SDK)

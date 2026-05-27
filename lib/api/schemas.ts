@@ -92,6 +92,96 @@ export const LstarRequestSchema = z.object({
 export type LstarRequest = z.infer<typeof LstarRequestSchema>;
 
 /**
+ * Schema for GET /api/returns-decomposition — full L1/L2/L3 return decomposition.
+ * `dispatch=lstar` is a sugar alias for `include_lstar=true`.
+ */
+export const ReturnsDecompositionRequestSchema = z.object({
+  ticker: TickerSchema,
+  market_factor_etf: z.string().default("SPY"),
+  years: YearsSchema,
+  include_lstar: z.coerce.boolean().default(false),
+  threshold: z.preprocess(
+    (val) => (val === null || val === "" || val === undefined ? undefined : val),
+    z.coerce
+      .number()
+      .min(0, "threshold must be >= 0")
+      .max(0.5, "threshold must be <= 0.5 (50%)")
+      .default(0.01),
+  ),
+});
+
+export type ReturnsDecompositionRequest = z.infer<
+  typeof ReturnsDecompositionRequestSchema
+>;
+
+/**
+ * Schema for GET /api/industry-panel — industry peer β cross-section.
+ */
+export const IndustryPanelRequestSchema = z.object({
+  market_factor_etf: z.string().default("SPY"),
+  teo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "teo must be YYYY-MM-DD")
+    .optional(),
+  level: z.enum(["market", "sector", "subsector"]).optional(),
+  min_peers: z.coerce
+    .number()
+    .int()
+    .min(1, "min_peers must be >= 1")
+    .max(500, "min_peers must be <= 500")
+    .optional(),
+});
+
+export type IndustryPanelRequest = z.infer<typeof IndustryPanelRequestSchema>;
+
+const RankingMetricSchema = z.enum([
+  "mkt_cap",
+  "gross_return",
+  "sector_residual",
+  "subsector_residual",
+  "er_l1",
+  "er_l2",
+  "er_l3",
+]);
+
+const RankingCohortSchema = z.enum(["universe", "sector", "subsector"]);
+
+const RankingWindowSchema = z.enum(["1d", "21d", "63d", "252d"]);
+
+/**
+ * Schema for POST /api/rankings/screen — full cross-section rank filter.
+ */
+export const RankingsScreenRequestSchema = z.object({
+  metric: RankingMetricSchema,
+  cohort: RankingCohortSchema,
+  window: RankingWindowSchema,
+  as_of: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of must be YYYY-MM-DD")
+    .optional(),
+  min_percentile: z.coerce
+    .number()
+    .min(0, "min_percentile must be >= 0")
+    .max(100, "min_percentile must be <= 100")
+    .optional(),
+  decile: z.coerce
+    .number()
+    .int()
+    .min(1, "decile must be between 1 and 10")
+    .max(10, "decile must be between 1 and 10")
+    .optional(),
+  sector_filter: z.string().min(1).optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, "limit must be >= 1")
+    .max(500, "limit must be <= 500")
+    .default(100),
+});
+
+export type RankingsScreenRequest = z.infer<typeof RankingsScreenRequestSchema>;
+
+/**
  * Schema for GET /api/residual-signal/[ticker] — Phase D residual
  * mean-reversion factor. `days` is a calendar-day lookback for the history
  * window.
@@ -151,6 +241,29 @@ export type MetricsRequest = z.infer<typeof MetricsRequestSchema>;
 export type TickerReturnsRequest = z.infer<typeof TickerReturnsRequestSchema>;
 export type L3DecompositionRequest = z.infer<typeof L3DecompositionRequestSchema>;
 export type BatchAnalyzeRequest = z.infer<typeof BatchAnalyzeRequestSchema>;
+
+/**
+ * Schema for POST /api/batch/lstar — batch Lstar-dispatched residual return + level.
+ */
+export const BatchLstarRequestSchema = z.object({
+  tickers: z
+    .array(TickerSchema)
+    .min(1, "At least one ticker is required")
+    .max(100, "Maximum 100 tickers per batch"),
+  market_factor_etf: z.string().default("SPY"),
+  years: YearsSchema,
+  threshold: z.preprocess(
+    (val) => (val === null || val === "" || val === undefined ? undefined : val),
+    z.coerce
+      .number()
+      .min(0, "threshold must be >= 0")
+      .max(0.5, "threshold must be <= 0.5 (50%)")
+      .default(0.01),
+  ),
+  format: ResponseFormatSchema,
+});
+
+export type BatchLstarRequest = z.infer<typeof BatchLstarRequestSchema>;
 
 /** Events users may subscribe to (outbound webhooks). */
 export const WEBHOOK_EVENT_IDS = ["batch.completed"] as const;

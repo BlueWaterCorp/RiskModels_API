@@ -748,6 +748,66 @@
     "tags": ["rankings", "cross-sectional", "screen", "percentile"]
   },
   {
+    "id": "batch-lstar",
+    "name": "Batch Lstar Residual Returns",
+    "description": "Up to 100 tickers: per-date Lstar level (L1/L2/L3) with dispatched hedge ratios and Lstar-dispatched daily residual return. Same selection rule as GET /lstar.",
+    "endpoint": "/api/batch/lstar",
+    "method": "POST",
+    "parameters": {
+      "tickers": {
+        "type": "array",
+        "required": true,
+        "description": "Stock ticker symbols (max 100)",
+        "items": { "type": "string" }
+      },
+      "market_factor_etf": {
+        "type": "string",
+        "required": false,
+        "description": "Market factor ETF",
+        "default": "SPY"
+      },
+      "years": {
+        "type": "integer",
+        "required": false,
+        "description": "Calendar years of daily history",
+        "default": 1
+      },
+      "threshold": {
+        "type": "number",
+        "required": false,
+        "description": "Marginal-ER threshold for Lstar selection (default 1%)",
+        "default": 0.01
+      },
+      "format": {
+        "type": "string",
+        "required": false,
+        "description": "json, parquet, or csv long table",
+        "default": "json",
+        "enum": ["json", "parquet", "csv"]
+      }
+    },
+    "pricing": {
+      "model": "per_position",
+      "tier": "premium",
+      "cost_usd": 0.005,
+      "currency": "USD",
+      "min_charge": 0.01,
+      "billing_code": "batch_lstar_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 350,
+      "p95_latency_ms": 800,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 20
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "daily",
+      "sources": ["erm3_models", "security_history"]
+    },
+    "tags": ["risk", "decomposition", "lstar", "batch", "macro", "stat-arb"]
+  },
+  {
     "id": "portfolio-returns",
     "name": "Portfolio Returns",
     "description": "Batch fetch returns for multiple tickers (portfolio analytics)",

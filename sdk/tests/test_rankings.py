@@ -163,6 +163,10 @@ def test_filter_universe_alias_matches_by_ranking():
 
 def test_filter_universe_by_ranking_mock():
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path.endswith("/rankings/screen")
+        body = json.loads(request.content.decode())
+        assert body["min_percentile"] == 90
         return httpx.Response(
             200,
             json={
@@ -171,6 +175,8 @@ def test_filter_universe_by_ranking_mock():
                 "cohort": "universe",
                 "window": "252d",
                 "limit": 100,
+                "matched_count": 1,
+                "universe_size": 3000,
                 "rankings": [
                     {
                         "symbol": "s1",
@@ -178,13 +184,6 @@ def test_filter_universe_by_ranking_mock():
                         "rank_ordinal": 1,
                         "cohort_size": 100,
                         "rank_percentile": 99.0,
-                    },
-                    {
-                        "symbol": "s2",
-                        "ticker": "LOW",
-                        "rank_ordinal": 50,
-                        "cohort_size": 100,
-                        "rank_percentile": 50.0,
                     },
                 ],
             },
@@ -199,7 +198,7 @@ def test_filter_universe_by_ranking_mock():
         limit=100,
     )
     assert list(out["ticker"]) == ["HIGH"]
-    assert "Filtered" in str(out.attrs.get("riskmodels_filter_note", ""))
+    assert "rankings/screen" in str(out.attrs.get("riskmodels_filter_note", ""))
 
 
 def test_to_llm_context_rankings_headline():

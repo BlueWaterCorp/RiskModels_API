@@ -819,6 +819,92 @@ class RiskModelsClient:
             df.attrs["riskmodels_warnings"] = warn
         return df
 
+    def screen_rankings(
+        self,
+        *,
+        metric: RankingMetric,
+        cohort: RankingCohort,
+        window: RankingWindow,
+        min_percentile: float | None = None,
+        decile: int | None = None,
+        sector_filter: str | None = None,
+        as_of: str | None = None,
+        limit: int = 100,
+        as_dataframe: bool = True,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Full cross-section rank screen with server-side filters (POST /rankings/screen).
+
+        Reads the entire ranked universe at one ``teo``, applies percentile/decile/sector
+        filters, and returns up to 500 names (default 100). Prefer this over
+        :meth:`filter_universe_by_ranking` when you need more than the top-100 cap of
+        GET ``/rankings/top``.
+        """
+        payload: dict[str, Any] = {
+            "metric": metric,
+            "cohort": cohort,
+            "window": window,
+            "limit": max(1, min(500, int(limit))),
+        }
+        if min_percentile is not None:
+            payload["min_percentile"] = float(min_percentile)
+        if decile is not None:
+            payload["decile"] = int(decile)
+        if sector_filter:
+            payload["sector_filter"] = str(sector_filter).strip().upper()
+        if as_of:
+            payload["as_of"] = as_of
+
+        body, hdr_lineage, _ = self._transport.request(
+            "POST",
+            "/rankings/screen",
+            json=payload,
+        )
+        if not as_dataframe:
+            return body
+        df = rankings_top_to_dataframe(body)
+        if not df.empty:
+            df = df.copy()
+            df["metric"] = metric
+            df["cohort"] = cohort
+            df["window"] = window
+            df["ranking_key"] = f"{window}_{cohort}_{metric}"
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(hdr_lineage, RiskLineage.from_metadata(meta))
+        cap = max(1, min(500, int(limit)))
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="rankings_screen",
+            legend=SHORT_RANKINGS_LEGEND,
+            include_cheatsheet=False,
+        )
+        df.attrs["riskmodels_rankings_query"] = json.dumps(
+            {
+                "teo": body.get("teo"),
+                "metric": metric,
+                "cohort": cohort,
+                "window": window,
+                "min_percentile": min_percentile,
+                "decile": decile,
+                "sector_filter": sector_filter,
+                "as_of": as_of,
+                "limit": cap,
+                "matched_count": body.get("matched_count"),
+            },
+        )
+        df.attrs["riskmodels_rankings_headline"] = rankings_leaderboard_headline(
+            teo=body.get("teo"),
+            metric=metric,
+            cohort=cohort,
+            window=window,
+            limit=cap,
+            row_count=len(df),
+        )
+        warn = build_rankings_small_cohort_warnings(df)
+        if warn:
+            df.attrs["riskmodels_warnings"] = warn
+        return df
+
     def filter_universe_by_ranking(
         self,
         *,
@@ -827,56 +913,33 @@ class RiskModelsClient:
         window: RankingWindow,
         min_percentile: float = 90.0,
         limit: int = 500,
+        decile: int | None = None,
+        sector_filter: str | None = None,
+        as_of: str | None = None,
     ) -> pd.DataFrame:
-        """Filter the leaderboard to stocks above a percentile threshold.
+        """Filter the universe to stocks above a percentile threshold.
 
-        Args:
-            metric: Ranking metric (e.g., ``"sector_residual"``).
-            cohort: Peer group (``"universe"``, ``"sector"``, ``"subsector"``).
-            window: Time window (``"1d"``, ``"21d"``, ``"63d"``, ``"252d"``).
-            min_percentile: Minimum percentile to include (default 90.0 = top decile).
-            limit: Max names to fetch before filtering (capped to 100 by API).
-
-        Returns:
-            DataFrame of tickers meeting the percentile threshold.
-
-        Example:
-            >>> client = RiskModelsClient.from_env()
-            >>> top_decile = client.filter_universe_by_ranking(
-            ...     metric="gross_return", cohort="universe", window="252d"
-            ... )
+        Uses POST ``/rankings/screen`` for a full cross-section read (up to 500 rows).
         """
-        cap = max(1, min(100, int(limit)))
-        df = self.get_top_rankings(
+        df = self.screen_rankings(
             metric=metric,
             cohort=cohort,
             window=window,
-            limit=cap,
+            min_percentile=min_percentile,
+            decile=decile,
+            sector_filter=sector_filter,
+            as_of=as_of,
+            limit=limit,
             as_dataframe=True,
         )
         assert isinstance(df, pd.DataFrame)
-        if "rank_percentile" not in df.columns:
-            return df.iloc[0:0].copy()
-        sub = df.dropna(subset=["rank_percentile"])
-        out = cast(
-            pd.DataFrame,
-            sub[sub["rank_percentile"] >= float(min_percentile)].copy(),
-        )
-        meta = df.attrs.get("riskmodels_lineage")
-        if meta:
-            out.attrs["riskmodels_lineage"] = meta
-        out.attrs["legend"] = df.attrs.get("legend", SHORT_RANKINGS_LEGEND)
-        out.attrs["riskmodels_kind"] = "rankings_filtered"
         note = (
-            f"Filtered rank_percentile>={min_percentile} from top {cap} "
-            f"({metric}/{cohort}/{window})."
+            f"Screen rank_percentile>={min_percentile} via POST /rankings/screen "
+            f"({metric}/{cohort}/{window}, limit={min(limit, 500)})."
         )
-        out.attrs["riskmodels_filter_note"] = note
-        if df.attrs.get("riskmodels_warnings"):
-            out.attrs["riskmodels_warnings"] = df.attrs["riskmodels_warnings"]
-        if df.attrs.get("riskmodels_rankings_headline"):
-            out.attrs["riskmodels_parent_headline"] = df.attrs["riskmodels_rankings_headline"]
-        return out
+        df.attrs["riskmodels_filter_note"] = note
+        df.attrs["riskmodels_kind"] = "rankings_filtered"
+        return df
 
     def filter_universe(
         self,
@@ -995,6 +1058,172 @@ class RiskModelsClient:
             df.attrs["threshold_used"] = threshold
         elif isinstance(body, dict) and body.get("threshold_used") is not None:
             df.attrs["threshold_used"] = body["threshold_used"]
+        return df
+
+    def get_returns_decomposition(
+        self,
+        ticker: str,
+        *,
+        market_factor_etf: str | None = None,
+        years: int | None = None,
+        include_lstar: bool = False,
+        threshold: float | None = None,
+    ) -> pd.DataFrame:
+        """Daily gross + L1/L2/L3 factor, combined-factor, and residual returns.
+
+        Calls ``GET /returns-decomposition``. Set ``include_lstar=True`` to append
+        per-date Lstar level and Lstar-dispatched residual return.
+
+        Args:
+            ticker: Stock ticker symbol (e.g. ``"AAPL"``).
+            market_factor_etf: Market factor ETF override (default SPY on server).
+            years: Calendar years of daily history (1–10; server default 1).
+            include_lstar: Include ``lstar`` and ``lstar_residual_return`` columns.
+            threshold: Marginal-ER threshold when deriving Lstar (default 0.01).
+
+        Returns:
+            DataFrame with ``date``, gross/L1/L2/L3 factor/combined/residual return
+            columns (semantic names). Optional ``lstar`` columns when requested.
+        """
+        from .parsing import returns_decomposition_json_to_dataframe
+
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"ticker": t}
+        if market_factor_etf:
+            params["market_factor_etf"] = market_factor_etf
+        if years is not None:
+            params["years"] = years
+        if include_lstar:
+            params["include_lstar"] = "true"
+        if threshold is not None:
+            params["threshold"] = threshold
+        body, lineage, _ = self._transport.request(
+            "GET", "/returns-decomposition", params=params
+        )
+        df = returns_decomposition_json_to_dataframe(body)
+        attach_sdk_metadata(df, lineage, kind="returns_decomposition")
+        if isinstance(body, dict) and body.get("threshold_used") is not None:
+            df.attrs["threshold_used"] = body["threshold_used"]
+        return df
+
+    def batch_lstar(
+        self,
+        tickers: list[str],
+        *,
+        market_factor_etf: str | None = None,
+        years: int = 1,
+        threshold: float | None = None,
+        format: FormatType = "json",
+        return_lineage: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], RiskLineage] | tuple[pd.DataFrame, RiskLineage]:
+        """Batch Lstar series for up to 100 tickers via POST /batch/lstar.
+
+        Returns per-ticker Lstar level and Lstar-dispatched residual return per date.
+        Cheaper per ticker than repeated ``get_lstar`` calls ($0.005/ticker, min $0.01).
+
+        Args:
+            tickers: List of ticker symbols (up to 100).
+            market_factor_etf: Market factor ETF (default SPY on server).
+            years: Calendar years of daily history (default 1).
+            threshold: Marginal-ER threshold (default 1% on server).
+            format: ``"json"`` (default), ``"parquet"``, or ``"csv"``.
+            return_lineage: If True and ``format="json"``, return ``(body, lineage)``.
+
+        Returns:
+            JSON dict with ``results`` map, or ``(DataFrame, lineage)`` for parquet/csv.
+        """
+        payload: dict[str, Any] = {
+            "tickers": [str(x).strip().upper() for x in tickers],
+            "years": years,
+            "format": format,
+        }
+        if market_factor_etf:
+            payload["market_factor_etf"] = market_factor_etf
+        if threshold is not None:
+            payload["threshold"] = threshold
+
+        if format == "json":
+            body, lineage, _ = self._transport.request(
+                "POST", "/batch/lstar", json=payload
+            )
+            meta = body.get("_metadata") if isinstance(body, dict) else None
+            lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+            if return_lineage:
+                return body, lineage
+            return body
+
+        content, lineage, _ = self._transport.request(
+            "POST", "/batch/lstar", json=payload, expect_json=False
+        )
+        df = parquet_bytes_to_dataframe(content) if format == "parquet" else csv_bytes_to_dataframe(content)
+        attach_sdk_metadata(
+            df,
+            lineage,
+            kind="batch_lstar_long",
+            legend=(
+                "Long-format Lstar batch: ticker, date, lstar (L1/L2/L3), "
+                "residual_return at chosen level, and dispatched hedge ratios."
+            ),
+        )
+        return df, lineage
+
+    def batch_lstar_to_dataframes(
+        self,
+        body: dict[str, Any],
+    ) -> dict[str, pd.DataFrame]:
+        """Convert ``batch_lstar`` JSON ``results`` map to per-ticker DataFrames."""
+        out: dict[str, pd.DataFrame] = {}
+        results = body.get("results") or {}
+        if not isinstance(results, dict):
+            return out
+        for ticker, entry in results.items():
+            if not isinstance(entry, dict) or entry.get("status") != "success":
+                continue
+            df = lstar_json_to_dataframe(entry)
+            if not df.empty:
+                df.attrs["ticker"] = ticker
+            out[str(ticker)] = df
+        return out
+
+    def get_industry_panel(
+        self,
+        *,
+        market_factor_etf: str | None = None,
+        teo: str | None = None,
+        level: str | None = None,
+        min_peers: int | None = None,
+    ) -> pd.DataFrame:
+        """Cross-section of industry peer beta statistics from ds_erm3_industry.
+
+        Args:
+            market_factor_etf: Market factor ETF (default SPY on server).
+            teo: Observation date YYYY-MM-DD (default latest in zarr).
+            level: Optional cascade leg filter: ``market``, ``sector``, or
+                ``subsector``. Omit for all three levels.
+            min_peers: Minimum ``n_companies`` filter (default from zarr attr).
+
+        Returns:
+            DataFrame with ``industry_code``, ``level``, ``beta_mean``,
+            ``beta_variance``, ``n_companies``, ``total_log_mcap_weight``.
+        """
+        from .parsing import industry_panel_json_to_dataframe
+
+        params: dict[str, Any] = {}
+        if market_factor_etf:
+            params["market_factor_etf"] = market_factor_etf
+        if teo:
+            params["teo"] = teo
+        if level:
+            params["level"] = level
+        if min_peers is not None:
+            params["min_peers"] = min_peers
+        body, lineage, _ = self._transport.request(
+            "GET", "/industry-panel", params=params or None
+        )
+        df = industry_panel_json_to_dataframe(body)
+        attach_sdk_metadata(df, lineage, kind="industry_panel")
+        if isinstance(body, dict) and body.get("teo") is not None:
+            df.attrs["teo"] = body["teo"]
         return df
 
     def residual_signal(

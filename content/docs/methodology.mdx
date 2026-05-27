@@ -25,4 +25,14 @@ The methodology page explains **why** the numbers are what they are. For **how t
 - **[API Reference](/api-reference)** — the live decomposition and metrics endpoints, with wire field names and response schemas.
 - **[API Docs](/docs/api)** — coverage, the endpoint map, pricing, and the main research workflow.
 
+### L\* selection in the API
+
+The L\* selection rule from the methodology page lands on three concrete API surfaces:
+
+- **`GET /api/lstar`** — per-ticker daily series of the dispatched level, hedge ratios, and residual return; supports a custom `?threshold=` override.
+- **`lstar_rr`** — the Lstar-dispatched residual return in MetricsV3 (`GET /api/metrics/{ticker}`, `POST /api/batch/analyze`, V3 history fetches), materialized at the canonical **1% marginal-ER threshold**.
+- **`lstar_level`** — the level the cascade picked: **`1`** (L1, market only) / **`2`** (L2, market + sector) / **`3`** (L3, market + sector + subsector) / **`null`** (no recommendation — both L2 and L3 ER missing).
+
+Prefer **`lstar_rr`** over a fixed-depth **`l3_rr`** for "best residual" queries — fixed-L3 subtracts a subsector layer even when the model would not have prescribed it, so it overstates residual cleanness on names where `lstar_level` is 1 or 2. The full derivation of the 1% threshold and the marginal-ER cascade rule is on the [methodology page](https://riskmodels.org/methodology).
+
 For the math behind the numbers those endpoints return, read the methodology on [riskmodels.org](https://riskmodels.org/methodology).

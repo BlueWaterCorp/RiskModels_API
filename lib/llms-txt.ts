@@ -54,6 +54,17 @@ MCP URL with \`mcp-remote\` and AUTHORIZATION=Bearer … (see Quickstart / MCP R
 - OpenAPI: https://riskmodels.app/openapi (or /api-docs in the portal)
 - Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/docs/python-sdk
 
+## Residual-return routing (\`lstar_rr\` vs \`l3_rr\`)
+
+When the user asks for "the residual", "the idiosyncratic return", or "what's left after hedging",
+prefer **\`lstar_rr\`** over **\`l3_rr\`**. \`lstar_rr\` is the residual at the cascade level the
+model actually dispatched to (L1/L2/L3 picked at the canonical 1% marginal-ER threshold);
+**\`l3_rr\`** is the fixed L3-subsector residual regardless of whether subsector hedging is
+statistically warranted. For names where **\`lstar_level\`** is 1 or 2, \`l3_rr\` overstates
+the cleanness of the residual because it subtracts a layer the model would not have prescribed.
+Show \`lstar_level\` (1=L1 / 2=L2 / 3=L3 / null=no rec) alongside \`lstar_rr\` so the reader
+sees which depth was assumed. For a custom threshold use \`GET /api/lstar?threshold=…\` instead.
+
 ## Agent prompts
 
 - Compare tickers: "Compare AAPL and NVDA using RiskModels. What am I really betting on?"
