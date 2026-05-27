@@ -382,6 +382,34 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().batch_analyze(["NVDA","AAPL"], ["returns","full_metrics"], years=2)' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/returns-decomposition</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">One-call daily L1/L2/L3 factor / combined-factor / residual return series. Replaces 6+ per-key round-trips. Add <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">?include_lstar=true</code> for Lstar dispatch.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_returns_decomposition("AAPL", years=5, include_lstar=True)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/industry-panel</td>
+        <td className="py-3 px-3">GET</td>
+        <td className="py-3 px-3">Vasicek industry peer-β cross-section: <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">beta_mean</code> / <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">beta_variance</code> / <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">n_companies</code> by EODHD industry × level. The macro/sector-rotation surface.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_industry_panel(level="subsector")' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/rankings/screen</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Server-side percentile / decile / sector filters over the full ds_rankings cross-section. Returns up to 500 rows sorted by <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">rank_ordinal</code>. Stat-arb cross-section, one call.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().screen_rankings(metric="subsector_residual", cohort="subsector", window="21d", min_percentile=95)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/batch/lstar</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Per-ticker daily Lstar history for up to 100 tickers in one call. Companion to <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">lstar_rr</code> in MetricsV3 (single-name snapshot); use this when you need history across a panel.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.005/ticker</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().batch_lstar(["AAPL","MSFT","NVDA"], years=5)' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/tickers</td>
         <td className="py-3 px-3">GET</td>
         <td className="py-3 px-3">Ticker universe search, MAG7 shortcut</td>
@@ -497,6 +525,62 @@ Prefer **`lstar_rr`** over **`l3_rr`** when you want "the residual" — `l3_rr` 
 curl -sS "https://riskmodels.app/api/metrics/AAPL" \
   -H "Authorization: Bearer $RISKMODELS_API_KEY" \
   | jq '.metrics | {lstar_rr, lstar_level}'
+```
+
+## GET /returns-decomposition — full daily decomposition in one call
+
+`GET /api/returns-decomposition` returns the daily gross return plus the **L1/L2/L3 factor return**, **combined-factor return**, and **residual return** series for one ticker — everything from the returns-decomposition zarr in a single response. Use this instead of pulling **`l1_cfr`**, **`l1_fr`**, **`l1_rr`**, **`l2_cfr`**, … one key at a time. Add **`?include_lstar=true`** (or **`?dispatch=lstar`**) to append the Lstar level per date and the Lstar-dispatched residual return.
+
+Billing: **{'$'}0.02/call** (`billing_code: returns_decomposition_v1`). Python SDK: **`client.get_returns_decomposition(ticker, years=5, include_lstar=True)`**.
+
+```bash
+curl -sS "https://riskmodels.app/api/returns-decomposition?ticker=AAPL&years=5&include_lstar=true" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  | jq '{ticker, last: {gross: .gross[-1], l3_rr: .l3_rr[-1], lstar: .lstar[-1], lstar_rr: .lstar_residual_return[-1]}}'
+```
+
+See **[returns-decomposition-metrics](/docs/returns-decomposition-metrics)** for the per-key cheatsheet and the "Which residual?" guidance.
+
+## GET /industry-panel — Vasicek peer-β cross-section
+
+`GET /api/industry-panel` returns the **industry × level** peer-β cross-section from the `ds_erm3_industry` zarr at one trading day (latest by default). Each row is one EODHD 4-digit industry at one cascade level (market / sector / subsector) with **`beta_mean`**, **`beta_variance`**, **`n_companies`**, and **`total_log_mcap_weight`**. This is the macro / sector-rotation surface — what the model thinks an industry's "typical" β is across its cap-weighted peer group.
+
+Filter with **`?level=`** (single level), **`?teo=YYYY-MM-DD`** (single day), or **`?min_peers=`** (drop thin industries). Billing: **{'$'}0.02/call** (`billing_code: industry_panel_v1`). Python SDK: **`client.get_industry_panel(level="subsector")`**.
+
+```bash
+curl -sS "https://riskmodels.app/api/industry-panel?level=subsector&min_peers=20" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  | jq '.industries | sort_by(.beta_variance) | reverse | .[:5]'
+```
+
+The full panel is small (~72 industries × 3 levels × 4 metrics) — a 1 KB response that answers "which industries dispersed the most in β this period?" without any per-ticker round-trips.
+
+## POST /rankings/screen — universe-wide rank filter
+
+`POST /api/rankings/screen` runs a **server-side filter over the full `ds_rankings` cross-section** at one teo (latest by default). Pick a `metric` (`mkt_cap` / `gross_return` / `sector_residual` / `subsector_residual` / `er_l1` / `er_l2` / `er_l3`), a `cohort` (`universe` / `sector` / `subsector`), and a `window` (`1d` / `21d` / `63d` / `252d`); then filter by **`min_percentile`**, **`decile`** (1 = best), or **`sector_filter`** (sector-ETF ticker). Returns up to **500** rows sorted by `rank_ordinal` (1 = best, `rank_percentile` 100 = best).
+
+The stat-arb cross-section in one call — replaces N per-ticker `/rankings` round-trips. Billing: **{'$'}0.02/call** (`billing_code: rankings_screen_v1`). Python SDK: **`client.screen_rankings(metric=..., cohort=..., window=..., min_percentile=95)`**.
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/rankings/screen" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"metric":"subsector_residual","cohort":"subsector","window":"21d","min_percentile":95,"limit":50}' \
+  | jq '{teo, count: (.rows | length), top3: .rows[:3]}'
+```
+
+## POST /batch/lstar — multi-ticker Lstar history
+
+`POST /api/batch/lstar` is the **panel-friendly** Lstar surface: up to **100 tickers in one call**, each returning the same daily series as **`GET /lstar`** (per-date `lstar` level, dispatched HRs, total ER, residual return). Pair with **`lstar_rr` / `lstar_level`** in MetricsV3 — that's the single-name latest snapshot; this is per-ticker history across a panel.
+
+JSON returns a results map keyed by ticker; parquet/csv returns one long DataFrame ready for cross-sectional analysis. **{'$'}0.005/ticker, min {'$'}0.01/call** (25% cheaper than repeated `GET /lstar`). Python SDK: **`client.batch_lstar(tickers, years=5)`** + **`batch_lstar_to_dataframes()`** to split into per-ticker frames.
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/batch/lstar" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tickers":["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"],"years":5}' \
+  | jq '.results | to_entries | map({ticker:.key, last_lstar: .value.lstar[-1], last_rr: .value.residual_return[-1]})'
 ```
 
 ## 🤖 Agent-Native Helpers (Python SDK)

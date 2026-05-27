@@ -173,6 +173,112 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         ],
       },
       {
+        path: '/returns-decomposition',
+        method: 'get',
+        summary: 'One-call L1/L2/L3 return decomposition',
+        description:
+          'Daily gross return + L1/L2/L3 factor / combined-factor / residual return series in a single call from ds_erm3_returns. Replaces 6+ field-by-field round-trips. Add ?include_lstar=true (or ?dispatch=lstar) to also return the Lstar-dispatched residual and per-date level pick. Cost: $0.02/call.',
+        operationId: 'getReturnsDecomposition',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'ticker', in: 'query', type: 'string', required: true, description: 'Ticker symbol.' },
+          { name: 'market_factor_etf', in: 'query', type: 'string', required: false, description: 'Market factor ETF (default SPY).', default: 'SPY' },
+          { name: 'years', in: 'query', type: 'integer', required: false, description: 'Years of history (1–15).', default: '1' },
+          { name: 'include_lstar', in: 'query', type: 'boolean', required: false, description: 'Append lstar + lstar_residual_return arrays. Equivalent to ?dispatch=lstar.', default: 'false' },
+          { name: 'threshold', in: 'query', type: 'number', required: false, description: 'Lstar marginal-ER threshold when deriving Lstar (ignored when zarr has lstar_level).', default: '0.01' },
+        ],
+        responses: [
+          { status: 200, description: 'Parallel daily arrays: dates, gross, l1_fr/l2_fr/l3_fr, l1_cfr/l2_cfr/l3_cfr, l1_rr/l2_rr/l3_rr (+ optional lstar/lstar_residual_return).' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 404, description: 'Ticker not found.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+        ],
+      },
+      {
+        path: '/industry-panel',
+        method: 'get',
+        summary: 'Industry peer β cross-section',
+        description:
+          'Vasicek peer-β cross-section from ds_erm3_industry zarr: beta_mean, beta_variance, n_companies, total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector). One teo per call (latest by default). The macro/sector-rotation surface. Cost: $0.02/call.',
+        operationId: 'getIndustryPanel',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'market_factor_etf', in: 'query', type: 'string', required: false, description: 'Market factor ETF (default SPY).', default: 'SPY' },
+          { name: 'teo', in: 'query', type: 'string', required: false, description: 'Observation date YYYY-MM-DD (default latest teo). Also accepts ?date=.' },
+          { name: 'level', in: 'query', type: 'string', required: false, description: 'Optional cascade level filter: market | sector | subsector.' },
+          { name: 'min_peers', in: 'query', type: 'integer', required: false, description: 'Minimum n_companies filter (industries with fewer peers are dropped).' },
+        ],
+        responses: [
+          { status: 200, description: 'Per-industry rows with beta_mean / beta_variance / n_companies / total_log_mcap_weight.' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 404, description: 'Industry panel data unavailable.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+        ],
+      },
+      {
+        path: '/rankings/screen',
+        method: 'post',
+        summary: 'Universe-wide rank screen',
+        description:
+          'Server-side percentile / decile / sector filters over the full ds_rankings cross-section at one teo (default latest). Replaces N per-ticker /rankings calls. Returns up to 500 rows sorted by rank_ordinal (1 = best, rank_percentile 100 = best). Cost: $0.02/call.',
+        operationId: 'postRankingsScreen',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'metric', in: 'body', type: 'string', required: true, description: 'Ranking metric key: mkt_cap | gross_return | sector_residual | subsector_residual | er_l1 | er_l2 | er_l3.' },
+          { name: 'cohort', in: 'body', type: 'string', required: true, description: 'Peer cohort: universe | sector | subsector.' },
+          { name: 'window', in: 'body', type: 'string', required: true, description: 'Lookback window: 1d | 21d | 63d | 252d.' },
+          { name: 'as_of', in: 'body', type: 'string', required: false, description: 'Observation date YYYY-MM-DD (default latest teo).' },
+          { name: 'min_percentile', in: 'body', type: 'number', required: false, description: 'Minimum rank_percentile inclusive (0–100, 100 = best).' },
+          { name: 'decile', in: 'body', type: 'integer', required: false, description: 'Decile bucket (1–10, 1 = best).' },
+          { name: 'sector_filter', in: 'body', type: 'string', required: false, description: 'Sector ETF ticker filter.' },
+          { name: 'limit', in: 'body', type: 'integer', required: false, description: 'Max rows (1–500).', default: '100' },
+        ],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify(
+            { metric: 'subsector_residual', cohort: 'subsector', window: '21d', min_percentile: 95, limit: 50 },
+            null,
+            2,
+          ),
+        },
+        responses: [
+          { status: 200, description: 'Filtered cross-section: rows of {ticker, rank_ordinal, rank_percentile, cohort_size, metric_value, ...}.' },
+          { status: 400, description: 'Invalid request body or filter combination.' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+        ],
+      },
+      {
+        path: '/batch/lstar',
+        method: 'post',
+        summary: 'Batch Lstar history (up to 100 tickers)',
+        description:
+          'Per-ticker daily Lstar level + dispatched hedge ratios + Lstar-dispatched residual return for up to 100 tickers in one call. Companion to lstar_rr / lstar_level in MetricsV3 (single-name latest snapshot); use batch/lstar when you need per-ticker history across a panel. 25% cheaper than repeated GET /lstar. Cost: $0.005/ticker, minimum $0.01/call.',
+        operationId: 'postBatchLstar',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'tickers', in: 'body', type: 'array', required: true, description: 'List of ticker symbols (max 100).' },
+          { name: 'market_factor_etf', in: 'body', type: 'string', required: false, description: 'Market factor ETF (default SPY).', default: 'SPY' },
+          { name: 'years', in: 'body', type: 'integer', required: false, description: 'Years of history (1–15).', default: '1' },
+          { name: 'threshold', in: 'body', type: 'number', required: false, description: 'Marginal-ER threshold for L1/L2/L3 selection.', default: '0.01' },
+          { name: 'format', in: 'body', type: 'string', required: false, description: 'json (default; results map keyed by ticker) | parquet | csv (long format).', default: 'json' },
+        ],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify(
+            { tickers: ['AAPL', 'MSFT', 'NVDA'], years: 5 },
+            null,
+            2,
+          ),
+        },
+        responses: [
+          { status: 200, description: 'JSON: results map keyed by ticker, each entry mirrors GET /lstar shape. Parquet/CSV: long rows {ticker, date, lstar, market_hr, sector_hr, subsector_hr, residual_return, ...}.' },
+          { status: 400, description: 'Invalid request or too many tickers.' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+        ],
+      },
+      {
         path: '/chat',
         method: 'post',
         summary: 'AI Risk Analyst',

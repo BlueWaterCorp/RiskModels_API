@@ -22,6 +22,16 @@ const SURFACES = [
       'lstar_rr + lstar_level surface the residual at the cascade depth the model actually picks — not a blind L3. Best residual on every /metrics call.',
   },
   {
+    title: 'Cross-section in one call',
+    detail:
+      'POST /rankings/screen filters the universe server-side (percentile / decile / sector); GET /industry-panel returns peer-β stats by EODHD industry × level. Stat-arb and macro cross-sections without N round-trips.',
+  },
+  {
+    title: 'Panel histories, batched',
+    detail:
+      'POST /batch/lstar pulls Lstar dispatch history for up to 100 tickers in one call (25% cheaper than looping). GET /returns-decomposition returns full L1/L2/L3 series per ticker in one shot.',
+  },
+  {
     title: 'Structured JSON',
     detail: 'API bodies carry _metadata — stable for agents and CI pipelines.',
   },

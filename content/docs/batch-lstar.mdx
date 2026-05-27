@@ -1,0 +1,128 @@
+---
+title: Batch Lstar — multi-ticker hedge-level history
+description: POST /api/batch/lstar returns the per-date Lstar level, dispatched hedge ratios, and Lstar-dispatched residual return for up to 100 tickers in one call. The panel companion to lstar_rr / lstar_level in MetricsV3.
+---
+
+# Batch Lstar (`POST /api/batch/lstar`)
+
+`POST /api/batch/lstar` returns the same daily series as **`GET /lstar`** — per-date Lstar level, dispatched hedge ratios (`market_hr` / `sector_hr` / `subsector_hr`), total ER, and Lstar-dispatched residual return — for **up to 100 tickers in one call**.
+
+This is the **panel companion** to the single-name surfaces:
+
+| Surface | What it gives | Best for |
+| --- | --- | --- |
+| **`lstar_rr`** / **`lstar_level`** in `MetricsV3` (on `GET /metrics/{ticker}`, `POST /batch/analyze`) | Single-name **latest snapshot** | "What is AAPL's residual right now, at the right depth?" |
+| **`GET /api/lstar`** | Single-name **historical series** | "Show me NVDA's Lstar dispatch history over 5y." |
+| **`POST /api/batch/lstar`** *(this endpoint)* | **Many-ticker historical series** | "Give me the Lstar history for my 60-name book in one call." |
+
+## Why a separate endpoint
+
+Looping `GET /lstar` per ticker works but costs **{'$'}0.02 × N** + N round-trips. `POST /batch/lstar` is **{'$'}0.005/ticker** with a **{'$'}0.01 minimum** — a 25% discount per name plus a single HTTP turnaround. For a 60-name book over 5 years that's **{'$'}0.30** vs **{'$'}1.20**, in one request instead of sixty.
+
+## Request
+
+```json
+POST /api/batch/lstar
+{
+  "tickers":           ["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"],
+  "market_factor_etf": "SPY",     // optional, default SPY
+  "years":             5,         // optional, 1–15, default 1
+  "threshold":         0.01,      // optional, 0–0.5, default 1%
+  "format":            "json"     // optional: json | parquet | csv
+}
+```
+
+- **`tickers`** — 1 to 100 symbols. Aliases are resolved (GOOGL → GOOG).
+- **`threshold`** — marginal-ER bar for the L1/L2/L3 pick. Default 1% (the canonical value materialized in the returns zarr).
+- **`format`** —
+  - **`json`** *(default)*: results map keyed by ticker; each entry mirrors the `GET /lstar` shape.
+  - **`parquet`** / **`csv`**: long format, one row per (ticker, date) — ready for pandas / DuckDB / cross-sectional regressions.
+
+## Response shapes
+
+### JSON (default)
+
+```json
+{
+  "results": {
+    "AAPL": {
+      "ticker": "AAPL",
+      "dates": ["2021-05-27", ..., "2026-05-26"],
+      "lstar": ["L3", "L3", ..., "L3"],
+      "market_hr": [...], "sector_hr": [...], "subsector_hr": [...],
+      "total_er": [...], "residual_return": [...],
+      "threshold_used": 0.01
+    },
+    "MSFT": { ... }
+  },
+  "threshold_used": 0.01,
+  "_metadata": { "data_source": "zarr", ... }
+}
+```
+
+### Parquet / CSV (long format)
+
+One row per (ticker, date) — the right shape for cross-sectional regressions:
+
+```
+ticker | date       | lstar | market_hr | sector_hr | subsector_hr | total_er | residual_return
+AAPL   | 2026-05-26 | L3    | -1.62     | 0.43      | -0.31        | 0.72     | -0.0041
+MSFT   | 2026-05-26 | L2    | -0.97     | 0.18      | null         | 0.58     |  0.0012
+...
+```
+
+## Examples
+
+### Bash — Mag 7 last-Lstar snapshot
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/batch/lstar" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tickers":["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"],"years":5}' \
+  | jq '.results | to_entries | map({ticker: .key, last_lstar: .value.lstar[-1], last_rr: .value.residual_return[-1]})'
+```
+
+### Python — split JSON into per-ticker DataFrames
+
+```python
+from riskmodels import RiskModelsClient
+client = RiskModelsClient.from_env()
+
+# Returns the raw JSON body
+body = client.batch_lstar(["AAPL","MSFT","NVDA"], years=5)
+
+# Convenience: split into one DataFrame per ticker (date-indexed)
+frames = client.batch_lstar_to_dataframes(body)
+frames["AAPL"][["lstar", "residual_return"]].tail()
+```
+
+### Python — long DataFrame for cross-sectional work
+
+```python
+df = client.batch_lstar(
+    ["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"],
+    years=5,
+    format="parquet",
+    as_dataframe=True,
+)
+# Average daily residual by Lstar level across the panel
+df.groupby("lstar")["residual_return"].mean()
+```
+
+## Pricing
+
+**{'$'}0.005/ticker, minimum {'$'}0.01/call** (`billing_code: batch_lstar_v1`). A 100-ticker 5y request bills **{'$'}0.50** vs **{'$'}2.00** for 100 individual `GET /lstar` calls.
+
+## When to use which Lstar surface
+
+- **One ticker, one number** (latest): use **`lstar_rr`** + **`lstar_level`** on `GET /metrics/{ticker}` — already in MetricsV3, no extra call.
+- **One ticker, full history**: use **`GET /api/lstar?ticker=...&years=...`**.
+- **Many tickers, full history**: use **`POST /api/batch/lstar`** *(this endpoint)*.
+- **Universe-wide latest snapshot of Lstar dispatch** for a screen: combine **`POST /api/rankings/screen`** (to pick the ticker set) with this endpoint (to pull histories).
+
+## Related
+
+- **[Returns decomposition metrics](/docs/returns-decomposition-metrics)** — the `lstar_rr` / `lstar_level` story in MetricsV3.
+- **[Methodology](/docs/methodology)** — the L\* selection rule and its 1% threshold.
+- **OpenAPI** `BatchLstarResponse` — full schema (JSON variant).

@@ -344,8 +344,38 @@ export default function ApiReferencePage() {
                   </p>
                 </div>
 
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+                    <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Industry peer β</div>
+                    <p className="text-sm text-zinc-300 mb-2">
+                      Vasicek peer-β cross-section by EODHD industry × cascade level — what the model thinks an industry&rsquo;s typical β is, plus how dispersed its members are.
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      <code className="text-zinc-400">GET /api/industry-panel</code> — the macro / sector-rotation surface.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+                    <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Universe rank screen</div>
+                    <p className="text-sm text-zinc-300 mb-2">
+                      Server-side percentile / decile / sector filters over the full ranking cross-section. The stat-arb cross-section in one call — not N per-ticker round-trips.
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      <code className="text-zinc-400">POST /api/rankings/screen</code> — up to 500 rows by <code className="text-zinc-400">rank_ordinal</code>.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+                    <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Panel Lstar history</div>
+                    <p className="text-sm text-zinc-300 mb-2">
+                      Per-ticker daily Lstar level + dispatched residual return for up to 100 tickers in one request. The history companion to <code className="text-zinc-400">lstar_rr</code> in MetricsV3.
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      <code className="text-zinc-400">POST /api/batch/lstar</code> — $0.005/ticker, 25% cheaper than looping.
+                    </p>
+                  </div>
+                </div>
+
                 <p className="text-sm text-zinc-500">
-                  Best endpoints for these outputs: <strong>/metrics/{'{ticker}'}</strong>, <strong>/ticker-returns</strong>, and <strong>/l3-decomposition</strong>.
+                  Best endpoints for these outputs: <strong>/metrics/{'{ticker}'}</strong>, <strong>/ticker-returns</strong>, <strong>/returns-decomposition</strong>, <strong>/industry-panel</strong>, <strong>/rankings/screen</strong>, and <strong>/batch/lstar</strong>.
                 </p>
               </div>
             ) : selectedId === 'agentOnboarding' ? (

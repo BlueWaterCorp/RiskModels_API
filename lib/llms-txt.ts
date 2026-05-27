@@ -54,6 +54,21 @@ MCP URL with \`mcp-remote\` and AUTHORIZATION=Bearer … (see Quickstart / MCP R
 - OpenAPI: https://riskmodels.app/openapi (or /api-docs in the portal)
 - Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/docs/python-sdk
 
+## Panel / batch endpoints — when one call beats many
+
+The decomposition routes that work across the universe (or many tickers) in a single call:
+
+- **\`GET /api/returns-decomposition?ticker=…&years=…&include_lstar=true\`** — daily gross + L1/L2/L3 factor / combined-factor / residual return series for one ticker, all in one response. Replaces six \`?metrics=l1_cfr,l1_rr,...\` round-trips. Add \`include_lstar=true\` for the Lstar-dispatched residual + level. **$0.02/call.**
+- **\`GET /api/industry-panel?level=subsector&min_peers=20\`** — Vasicek peer-β cross-section by EODHD industry × cascade level: \`beta_mean\`, \`beta_variance\`, \`n_companies\`, \`total_log_mcap_weight\`. The macro / sector-rotation surface. One teo per call (latest by default). **$0.02/call.**
+- **\`POST /api/rankings/screen\`** with \`{metric, cohort, window, min_percentile|decile|sector_filter, limit}\` — server-side rank filter over the full ds_rankings cross-section at one teo. Returns up to 500 rows sorted by \`rank_ordinal\` (1 = best). The stat-arb cross-section in one call — replaces N per-ticker \`/rankings\` calls. **$0.02/call.**
+- **\`POST /api/batch/lstar\`** with \`{tickers: [...], years}\` — per-ticker daily Lstar history for up to 100 tickers in one call. Companion to \`lstar_rr\` in MetricsV3 (single-name latest); use this when you need history across a panel. **$0.005/ticker, min $0.01/call** (25% cheaper than repeated \`GET /lstar\`).
+
+**Routing rules:**
+- "Show me the residual / decomposition for X" → \`get_returns_decomposition\` (or \`get_metrics\` if user just wants latest snapshot).
+- "Which industries are dispersed / rotating in β?" → \`get_industry_panel\`.
+- "Find me names where the residual is X / which stocks are in decile 1" → \`screen_rankings\`.
+- "Give me the Lstar history for these 30 tickers" → \`batch_lstar\` (not 30 separate \`get_lstar\` calls).
+
 ## Residual-return routing (\`lstar_rr\` vs \`l3_rr\`)
 
 When the user asks for "the residual", "the idiosyncratic return", or "what's left after hedging",
