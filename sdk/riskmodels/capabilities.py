@@ -7,7 +7,7 @@ from typing import Any
 
 from .contributors import SDK_CONTRIBUTORS
 
-SDK_VERSION = "0.3.0"
+SDK_VERSION = "0.3.9"
 
 _RANKING_METRICS = [
     "mkt_cap",
