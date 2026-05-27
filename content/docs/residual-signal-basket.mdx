@@ -1,0 +1,134 @@
+---
+title: Residual mean-reversion basket
+description: POST /api/signals/residual-reversion/basket aggregates the Phase D L3 residual-reversion signal across a user-supplied basket of tickers. Equal-weight default + optional weights + optional signal-quality gate.
+---
+
+# Residual mean-reversion basket (`POST /api/signals/residual-reversion/basket`)
+
+`POST /api/signals/residual-reversion/basket` aggregates the **Phase D L3 residual mean-reversion signal** across a user-supplied basket of up to **500 tickers**. Returns the weighted aggregate, decile and quality-quintile histograms, and per-member rows.
+
+This is the **basket / portfolio variant** of the residual-signal family — the answer to "what does the signal say about THESE 30 names together?" The per-ticker `/api/residual-signal/{ticker}`, the universe-wide `/api/residual-signal/latest`, and the single-bucket `/api/residual-signal/decile/{n}` are the other three surfaces.
+
+## Why this endpoint exists
+
+Per-ticker calls + client-side aggregation works, but:
+
+- **Costs scale with basket size** — 50 tickers = 50 round-trips at $0.02 each = $1.00. The basket endpoint is one $0.02 call.
+- **Aggregation isn't trivial** — weighted means must skip nulls, quality-gating across the basket has subtle interactions with the weight normalization, and decile distributions need histogram bookkeeping. Server-side aggregation does it once correctly.
+- **The signal-quality gate has real effect** — Phase B research shows gross Sharpe rises from ~0.79 (universe-wide decile L/S) to ~1.28 within signal_quality_quintile = 5 (the names that track their subsector tightly). The basket endpoint exposes that gate as a one-arg request param.
+
+## Request
+
+```json
+POST /api/signals/residual-reversion/basket
+{
+  "tickers": ["AAPL", "MSFT", "NVDA", "META", "GOOG", "AMZN", "TSLA"],
+  "weights": null,                          // optional; equal-weight when omitted
+  "signal_quality_min_quintile": 4          // optional 1–5 gate
+}
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `tickers` | string[] | yes | 1–500 symbols. Aliases (e.g. `GOOGL` → `GOOG`) resolved. |
+| `weights` | number[] | no | Non-negative, aligned 1:1 with `tickers`. Equal-weight when omitted. Sum need not be 1 — the aggregator normalizes. |
+| `signal_quality_min_quintile` | int 1–5 | no | Members below this quintile still appear in `members[]` (with `passed_quality_gate=false`) but don't contribute to `aggregate`. |
+
+## Response shape
+
+```json
+{
+  "as_of_date": "2026-05-26",
+  "aggregate": {
+    "residual_z_5d":         -0.42,   // weighted across contributing members
+    "signal_strength":        0.58,
+    "industry_percentile":    0.61,
+    "residual_autocorr_5d":  -0.043,
+    "l3_subsector_er":        0.71,
+    "decile_distribution": {
+      "1": 0, "2": 1, "3": 2, "4": 1, "5": 0,
+      "6": 0, "7": 1, "8": 1, "9": 1, "10": 0, "null": 0
+    },
+    "quality_quintile_distribution": {
+      "1": 0, "2": 0, "3": 1, "4": 3, "5": 3, "null": 0
+    }
+  },
+  "coverage": {
+    "requested":        7,
+    "in_zarr":          7,
+    "contributed":      6,                  // one dropped by the quintile gate
+    "weight_covered":   6,
+    "missing_tickers":  []
+  },
+  "members": [
+    { "ticker": "AAPL", "residual_z_5d": -0.91, "signal_strength": 0.91, "decile_rank": 2, "signal_quality_quintile": 5, "weight": 1, "in_zarr": true, "passed_quality_gate": true },
+    ...
+  ],
+  "capacity_note": "Informational factor for multi-signal alpha stacks; ...",
+  "methodology_link": "https://riskmodels.app/docs/methodology#residual-mean-reversion-signal"
+}
+```
+
+The **`coverage`** block is the trust contract: tickers absent from `ds_erm3_residual_signal` at this teo are silently dropped (the upstream mask is the source of truth for "good" rows). The block surfaces what was asked vs what landed in the aggregate, plus the missing tickers if any.
+
+## Examples
+
+### Bash — equal-weight Mag 7
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/signals/residual-reversion/basket" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tickers":["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"]}' \
+  | jq '{coverage, agg_z: .aggregate.residual_z_5d, top_decile_count: .aggregate.decile_distribution["1"]}'
+```
+
+### Quality-gated basket
+
+```bash
+curl -sS -X POST "https://riskmodels.app/api/signals/residual-reversion/basket" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tickers": ["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"],
+    "signal_quality_min_quintile": 5
+  }'
+```
+
+### Python — custom weights
+
+```python
+from riskmodels import RiskModelsClient
+client = RiskModelsClient.from_env()
+
+body = client.get_residual_signal_basket(
+    tickers=["AAPL", "MSFT", "NVDA"],
+    weights=[3.1, 2.9, 2.5],     # cap-style weighting
+    signal_quality_min_quintile=4,
+)
+body["aggregate"]["residual_z_5d"]      # → weighted average z
+body["coverage"]                         # → what landed in the aggregate
+```
+
+## When to use which residual-signal surface
+
+| Surface | Best for |
+| --- | --- |
+| **`GET /api/residual-signal/{ticker}`** | "What's the residual reversion signal on AAPL today?" — single-name snapshot + history. |
+| **`GET /api/residual-signal/latest`** | "Show me the full universe sorted by z" — paginated cross-section. |
+| **`GET /api/residual-signal/decile/{n}`** | "Just give me decile 1 (most oversold)." |
+| **`POST /api/signals/residual-reversion/basket`** *(this endpoint)* | "What does the signal say about THIS basket of names?" — user-supplied list, weighted aggregate. |
+
+## Pricing
+
+**{'$'}0.02/request** (`billing_code: residual_signal_basket_v1`). Same price as the per-ticker `/api/residual-signal/{ticker}` endpoint, but covers up to 500 names in one call.
+
+## Capacity disclosure
+
+Every response carries the same `capacity_note` as the per-ticker surfaces. Phase B finding (`BWMACRO/research/phase_b_minimum_experiment_results.md`): gross Sharpe ~0.79 on a decile long-short with 5-day horizon, rising to ~1.28 in signal_quality_quintile = 5. **Net** of Kissell-Glantz market impact, standalone deployment caps near ~$1M book size — designed as a **combo input**, not a standalone strategy.
+
+## Related
+
+- **[Methodology](/docs/methodology)** — the L3 orthogonal residual + 5-day window framing on riskmodels.org.
+- **`GET /api/lstar`** + **`lstar_rr`** in MetricsV3 — the L\*-dispatched residual return (different from the *signal* exposed here; the signal is a z-score of the cumulative residual, not the residual itself).
+- **OpenAPI** `ResidualSignalBasketResponse` — full schema.

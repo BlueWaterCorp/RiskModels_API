@@ -6728,6 +6728,433 @@
         }
       }
     },
+    "/signals/residual-reversion/basket": {
+      "post": {
+        "summary": "Residual mean-reversion factor — user-defined basket aggregate",
+        "description": "Aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket of up to **500 tickers**. Returns the weighted aggregate of `residual_z_5d`, `signal_strength`, `industry_percentile`, `residual_autocorr_5d`, and `l3_subsector_er`, plus decile and signal-quality-quintile histograms and per-member rows. Equal-weight default; supply `weights[]` aligned 1:1 with `tickers` for custom weighting. Optional `signal_quality_min_quintile` (1–5) gates members below that quintile out of the aggregate while keeping them visible in the `members[]` rows.\n\n**Trust contract:** tickers not present in `ds_erm3_residual_signal` at the latest teo are silently dropped — the upstream mask is the source of truth for \"good\" rows. The response's `coverage` block surfaces what was requested, what landed in the basket, and which tickers were missing.\n\nCompanion to:\n- `GET /residual-signal/{ticker}` — per-name snapshot + history.\n- `GET /residual-signal/latest` — full universe cross-section.\n- `GET /residual-signal/decile/{n}` — one decile bucket.\n\nCombo-input factor — see the per-ticker route for the framing and capacity disclosure that's repeated on every response.\n\n**Billing:** $0.02 per request.\n",
+        "operationId": "postResidualSignalBasket",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "residual-signal-basket",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.02,
+          "currency": "USD",
+          "billing_code": "residual_signal_basket_v1"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tickers"
+                ],
+                "properties": {
+                  "tickers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Symbols to aggregate (1–500). Aliases (e.g. GOOGL→GOOG) resolved."
+                  },
+                  "weights": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "description": "Optional non-negative weights aligned 1:1 with `tickers`. Equal-weight when omitted. Sum need not be 1 — the aggregator normalizes.\n"
+                  },
+                  "signal_quality_min_quintile": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "Optional gate on `signal_quality_quintile`. Phase B: gross Sharpe rises from ~0.79 (universe) to ~1.28 at quintile 5. Members below this still appear in `members[]` with `passed_quality_gate=false` but do NOT contribute to the aggregate.\n"
+                  }
+                }
+              },
+              "examples": {
+                "equalWeight": {
+                  "summary": "Equal-weight Mag 7 basket",
+                  "value": {
+                    "tickers": [
+                      "AAPL",
+                      "MSFT",
+                      "NVDA",
+                      "META",
+                      "GOOG",
+                      "AMZN",
+                      "TSLA"
+                    ]
+                  }
+                },
+                "qualityGated": {
+                  "summary": "Top-quality-quintile only",
+                  "value": {
+                    "tickers": [
+                      "AAPL",
+                      "MSFT",
+                      "NVDA",
+                      "META",
+                      "GOOG",
+                      "AMZN",
+                      "TSLA"
+                    ],
+                    "signal_quality_min_quintile": 5
+                  }
+                },
+                "customWeights": {
+                  "summary": "Custom weights (cap-style)",
+                  "value": {
+                    "tickers": [
+                      "AAPL",
+                      "MSFT",
+                      "NVDA"
+                    ],
+                    "weights": [
+                      3.1,
+                      2.9,
+                      2.5
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Basket aggregate, distributions, and per-member rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "as_of_date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "aggregate": {
+                      "type": "object",
+                      "properties": {
+                        "residual_z_5d": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "signal_strength": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "industry_percentile": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "residual_autocorr_5d": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "l3_subsector_er": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "decile_distribution": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer"
+                          },
+                          "description": "Count of members per decile bucket (keys \"1\"–\"10\" and \"null\"). Includes every in-zarr member regardless of the quality gate.\n"
+                        },
+                        "quality_quintile_distribution": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "integer"
+                          },
+                          "description": "Count of members per signal_quality_quintile bucket (keys \"1\"–\"5\" and \"null\").\n"
+                        }
+                      }
+                    },
+                    "coverage": {
+                      "type": "object",
+                      "properties": {
+                        "requested": {
+                          "type": "integer"
+                        },
+                        "in_zarr": {
+                          "type": "integer",
+                          "description": "Members present in ds_erm3_residual_signal at this teo."
+                        },
+                        "contributed": {
+                          "type": "integer",
+                          "description": "In-zarr members that also passed the optional quality gate."
+                        },
+                        "weight_covered": {
+                          "type": "number",
+                          "description": "Sum of input weights for contributing members."
+                        },
+                        "missing_tickers": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Tickers asked for but absent from the zarr."
+                        }
+                      }
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ResidualSignalRow"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "weight": {
+                                "type": "number"
+                              },
+                              "in_zarr": {
+                                "type": "boolean"
+                              },
+                              "passed_quality_gate": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "capacity_note": {
+                      "type": "string"
+                    },
+                    "methodology_link": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body (missing tickers, weights length mismatch, etc).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/universe/{name}/members": {
+      "get": {
+        "summary": "Active members of a named universe at a teo",
+        "description": "Active membership of a named universe (e.g. `uni_mc_3000`) at one trading day (latest by default). **Active = monthly universe_mask AND daily validity gate** — matches the same dual-gate the ERM3 pipeline applies to produce its output zarrs. Symbols failing either gate are NOT in the response.\n\nThe universe mask is stamped at month-end and applied to every teo in the following month; validity is per-day. The response includes a `mask_as_of` month-end stamp so callers can disambiguate \"membership changed because new month\" from \"membership changed because daily validity failed\" — useful when tracking turnover over time.\n\nFoundational endpoint for any cross-sectional workflow that needs to align on the canonical universe without the Python SDK.\n\n**Billing:** $0.005 per request.\n",
+        "operationId": "getUniverseMembers",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "universe-members",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0.005,
+          "currency": "USD",
+          "billing_code": "universe_members_v1"
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "uni_mc_50",
+                "uni_mc_500",
+                "uni_mc_1000",
+                "uni_mc_3000",
+                "uni_dv_50",
+                "uni_dv_500",
+                "uni_dv_1000",
+                "uni_dv_3000"
+              ]
+            },
+            "description": "Universe label from the KNOWN_UNIVERSES registry.",
+            "example": "uni_mc_3000"
+          },
+          {
+            "name": "teo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Observation date YYYY-MM-DD (default latest teo)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active members + counts breakdown + mask_as_of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "universe": {
+                      "type": "string"
+                    },
+                    "teo": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "mask_as_of": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "Month-end stamp the monthly universe mask was applied. Use to disambiguate mask-vs-validity-driven membership changes between two teos.\n"
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "symbol": {
+                            "type": "string"
+                          },
+                          "ticker": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "active": {
+                          "type": "integer",
+                          "description": "Universe mask AND validity at this teo (== members.length)."
+                        },
+                        "in_universe_mask": {
+                          "type": "integer",
+                          "description": "Members of the monthly universe mask BEFORE applying daily validity."
+                        },
+                        "inactive_from_validity": {
+                          "type": "integer",
+                          "description": "Symbols that pass the universe gate but fail the daily validity gate."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown universe label (not in KNOWN_UNIVERSES) or invalid teo format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Universe membership unavailable for the requested label / teo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExceeded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/correlation": {
       "post": {
         "summary": "Correlation vs macro factor returns",

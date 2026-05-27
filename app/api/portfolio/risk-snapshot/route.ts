@@ -97,6 +97,27 @@ async function buildSnapshotResponse(
     position_count: core.summary.resolved,
   };
 
+  // Parallel Lstar-dispatched attribution: same shape as the fixed-L3 block
+  // above, but with each name's ER pulled at the cascade depth Lstar
+  // dispatched to (L1/L2/L3 per `lstar_level`). Names where Lstar has no
+  // recommendation (`lstar_level == null`) are dropped — `weight_covered`
+  // and `dropped_count` surface coverage. Only populated when the upstream
+  // compute pulled L1/L2 ERs (i.e. include_hedge_ratios=true).
+  if (core.lstar_attribution) {
+    portfolioRiskIndex.lstar_variance_decomposition = {
+      market: core.lstar_attribution.market,
+      sector: core.lstar_attribution.sector,
+      subsector: core.lstar_attribution.subsector,
+      residual: core.lstar_attribution.residual,
+      systematic:
+        core.lstar_attribution.market +
+        core.lstar_attribution.sector +
+        core.lstar_attribution.subsector,
+      weight_covered: core.lstar_attribution.weight_covered,
+      dropped_count: core.lstar_attribution.dropped_count,
+    };
+  }
+
   if (validation.include_diversification) {
     const tickerMetrics = new Map<string, DiversificationTickerMetrics>();
     const sectorEtfSet = new Set<string>();

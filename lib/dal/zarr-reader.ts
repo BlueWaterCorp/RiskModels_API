@@ -27,6 +27,7 @@ import {
   zarrEtfBasename,
   zarrHedgeBasename,
   zarrLinkBetasBasename,
+  zarrMasksBasename,
   zarrRankingsBasename,
   zarrResidualSignalBasename,
   zarrReturnsBasename,
@@ -1414,4 +1415,161 @@ export async function readIndustryPanelSnapshot(params: {
   });
 
   return { teo: teoStr, rows, min_peers: minPeers };
+}
+
+// ============================================================================
+// Universe membership (R.8 — GET /api/universe/{name}/members)
+// ============================================================================
+
+/** Read one (teo, all-symbols) row from a bool-stored mask. Zarr v2 stores
+ *  bool as Uint8 (0/1); decode to true/false. */
+async function readBoolRowAtTeo(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nSymbol: number,
+): Promise<boolean[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [teoIdx, slice(0, nSymbol)]);
+    const d = ch?.data;
+    if (
+      d instanceof Uint8Array ||
+      d instanceof Int8Array ||
+      d instanceof Uint16Array ||
+      d instanceof Int16Array ||
+      d instanceof Int32Array
+    ) {
+      return Array.from(d, (v) => Boolean(v));
+    }
+    // Some encoders emit Float32 0/1 for bool dtype. Treat any nonzero as true.
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      return Array.from(d, (v) => Number.isFinite(v) && v !== 0);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface UniverseMember {
+  symbol: string;
+  ticker: string;
+}
+
+export interface UniverseMembersCounts {
+  /** Active set: mask AND validity at the requested teo. */
+  active: number;
+  /** Members of the monthly universe mask before applying daily validity. */
+  in_universe_mask: number;
+  /** Symbols that pass the universe gate but fail the daily validity gate. */
+  inactive_from_validity: number;
+}
+
+export interface UniverseMembersResult {
+  universe: string;
+  teo: string;
+  /** Month-end stamp the universe mask was applied — universe mask is monthly,
+   *  this surfaces "why did membership change?" disambiguation for callers. */
+  mask_as_of: string;
+  members: UniverseMember[];
+  counts: UniverseMembersCounts;
+}
+
+/**
+ * Active members of a named universe at a given teo (latest by default).
+ * Active = universe_mask AND validity. Universe mask is monthly (stamped at
+ * month-end and applied to every teo in the following month); validity is
+ * daily. Symbols failing either gate are NOT in the response.
+ *
+ * @param universe One of the KNOWN_UNIVERSES labels (uni_mc_50/500/1000/3000,
+ *                 uni_dv_50/500/1000/3000). Caller is responsible for label
+ *                 validation against the registry.
+ * @param teo Optional YYYY-MM-DD. Defaults to the latest teo in ds_masks.
+ */
+export async function readUniverseMembers(
+  universe: string,
+  teo?: string,
+): Promise<UniverseMembersResult | null> {
+  const grp = await openZarrGroup(zarrMasksBasename());
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos?.length) return null;
+
+  const symMap = await readSymbolIndexMap(grp);
+  if (!symMap?.size) return null;
+  const symByIndex: string[] = new Array(symMap.size);
+  for (const [sym, idx] of symMap) symByIndex[idx] = sym;
+  const nSymbol = symByIndex.length;
+
+  const tickerByIndex = (await readTickerByIndex(grp)) ?? symByIndex;
+
+  const teoIdx = resolveTeoIndex(teos, teo);
+  const teoStr = teos[teoIdx] ?? null;
+  if (!teoStr) return null;
+
+  const [maskRow, validityRow] = await Promise.all([
+    readBoolRowAtTeo(grp, universe, teoIdx, nSymbol),
+    readBoolRowAtTeo(grp, "validity", teoIdx, nSymbol),
+  ]);
+
+  if (!maskRow) return null;
+  // validityRow may be absent on legacy stores; degrade gracefully to mask-only
+  // (still report the missing gate via counts).
+  const validity = validityRow ?? new Array<boolean>(nSymbol).fill(true);
+
+  let active = 0;
+  let inUniverseMask = 0;
+  let inactiveFromValidity = 0;
+  const members: UniverseMember[] = [];
+  for (let i = 0; i < nSymbol; i++) {
+    const inUni = maskRow[i] ?? false;
+    if (!inUni) continue;
+    inUniverseMask++;
+    if (!validity[i]) {
+      inactiveFromValidity++;
+      continue;
+    }
+    active++;
+    const sym = symByIndex[i];
+    if (!sym) continue;
+    members.push({
+      symbol: sym,
+      ticker: tickerByIndex[i] ?? sym,
+    });
+  }
+
+  members.sort((a, b) => a.ticker.localeCompare(b.ticker));
+
+  // The universe mask is stamped at month-end and applied to every teo in the
+  // following month. Surface the most recent month-end <= the requested teo so
+  // callers can disambiguate "membership changed because new month" from
+  // "membership changed because daily validity failed."
+  const teoDate = new Date(`${teoStr}T00:00:00Z`);
+  const monthEnd = new Date(
+    Date.UTC(teoDate.getUTCFullYear(), teoDate.getUTCMonth() + 1, 0),
+  );
+  // If the queried teo is mid-month, the mask was stamped at the PRIOR month-end.
+  const maskAsOf =
+    teoDate.getTime() >= monthEnd.getTime()
+      ? monthEnd.toISOString().slice(0, 10)
+      : new Date(
+          Date.UTC(teoDate.getUTCFullYear(), teoDate.getUTCMonth(), 0),
+        )
+          .toISOString()
+          .slice(0, 10);
+
+  return {
+    universe,
+    teo: teoStr,
+    mask_as_of: maskAsOf,
+    members,
+    counts: {
+      active,
+      in_universe_mask: inUniverseMask,
+      inactive_from_validity: inactiveFromValidity,
+    },
+  };
 }

@@ -1167,6 +1167,105 @@ class RiskModelsClient:
         )
         return df, lineage
 
+    def get_universe_members(
+        self,
+        name: str,
+        *,
+        teo: str | None = None,
+        return_lineage: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], RiskLineage]:
+        """Active membership of a named universe at a teo (latest by default).
+
+        Calls ``GET /universe/{name}/members``. Active = monthly universe_mask
+        AND daily validity at the requested teo. ``mask_as_of`` on the response
+        is the month-end the universe mask was stamped — use it to disambiguate
+        membership changes driven by a new month's mask vs daily validity.
+
+        Foundational endpoint for any cross-sectional workflow that needs to
+        align on the canonical universe without depending on a local SDK cache.
+
+        Args:
+            name: Universe label from the KNOWN_UNIVERSES registry — one of
+                ``uni_mc_50`` / ``uni_mc_500`` / ``uni_mc_1000`` / ``uni_mc_3000``
+                / ``uni_dv_50`` / ``uni_dv_500`` / ``uni_dv_1000`` / ``uni_dv_3000``.
+            teo: Optional YYYY-MM-DD. Defaults to the latest teo in ds_masks.
+            return_lineage: If True, return ``(body, lineage)``.
+
+        Returns:
+            JSON dict with ``universe``, ``teo``, ``mask_as_of``, ``members``,
+            ``counts {active, in_universe_mask, inactive_from_validity}``.
+
+        Billing: $0.005/call.
+        """
+        if not name or not isinstance(name, str):
+            raise ValueError("name (universe label) is required")
+        params: dict[str, str] = {}
+        if teo:
+            params["teo"] = teo
+        body, lineage, _ = self._transport.request(
+            "GET", f"/universe/{name}/members", params=params
+        )
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+        if return_lineage:
+            return body, lineage
+        return body
+
+    def get_residual_signal_basket(
+        self,
+        tickers: list[str],
+        *,
+        weights: list[float] | None = None,
+        signal_quality_min_quintile: int | None = None,
+        return_lineage: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], RiskLineage]:
+        """Aggregate the Phase D residual mean-reversion signal across a basket.
+
+        Calls ``POST /signals/residual-reversion/basket``. Equal-weight default;
+        supply ``weights`` aligned 1:1 with ``tickers`` for custom weighting.
+        ``signal_quality_min_quintile`` (1–5) optionally gates low-quality members
+        out of the aggregate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at
+        quintile 5). Tickers absent from ds_erm3_residual_signal are silently
+        dropped — see ``coverage.missing_tickers`` on the response.
+
+        Companion to ``get_residual_signal``-style per-ticker calls. The basket
+        endpoint trusts the upstream mask: it does not coerce off-universe or
+        pre-IPO names into a fake signal.
+
+        Args:
+            tickers: 1–500 ticker symbols.
+            weights: Optional non-negative weights aligned 1:1 with ``tickers``.
+            signal_quality_min_quintile: Optional 1–5 gate on signal_quality_quintile.
+            return_lineage: If True, return ``(body, lineage)``.
+
+        Returns:
+            JSON dict with ``aggregate``, ``coverage``, ``members``, ``capacity_note``.
+
+        Billing: $0.02/call.
+        """
+        if not tickers:
+            raise ValueError("tickers must be a non-empty list")
+        payload: dict[str, Any] = {
+            "tickers": [str(t).strip().upper() for t in tickers],
+        }
+        if weights is not None:
+            if len(weights) != len(tickers):
+                raise ValueError(
+                    "weights must align 1:1 with tickers (same length)"
+                )
+            payload["weights"] = [float(w) for w in weights]
+        if signal_quality_min_quintile is not None:
+            payload["signal_quality_min_quintile"] = int(signal_quality_min_quintile)
+
+        body, lineage, _ = self._transport.request(
+            "POST", "/signals/residual-reversion/basket", json=payload
+        )
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+        if return_lineage:
+            return body, lineage
+        return body
+
     def batch_lstar_to_dataframes(
         self,
         body: dict[str, Any],
