@@ -9,8 +9,8 @@ interface LogoProps {
   subWord?: string;
 }
 
-/** Brand mark for the top nav. Scales from h-14 (mobile) to h-20 (lg+) to match the .net workspace masthead presence. */
-export default function Logo({ width = 520, height = 200, className = '', subWord }: LogoProps) {
+/** Brand mark for the top nav. The logo is the .net canonical (red EKG mark with "RiskModels" tucked underneath). Scaled to read as the brand anchor at every breakpoint. */
+export default function Logo({ width = 520, height = 305, className = '', subWord }: LogoProps) {
   return (
     <Link
       href="/"
@@ -23,7 +23,7 @@ export default function Logo({ width = 520, height = 200, className = '', subWor
         width={width}
         height={height}
         priority
-        className="h-14 sm:h-16 md:h-[4.5rem] lg:h-20 w-auto object-contain object-left"
+        className="h-16 sm:h-20 md:h-24 lg:h-[6.5rem] w-auto object-contain object-left"
         style={{ width: 'auto' }}
       />
       {subWord ? (
