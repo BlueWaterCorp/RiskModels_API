@@ -11,9 +11,9 @@ const CARDS = [
   },
   {
     eyebrow: 'For portfolio managers',
-    body: 'See what each position is really betting on — and what ETF trades hedge it.',
-    cta: 'See the Worked Example',
-    href: '#worked-example',
+    body: 'See what each position is really betting on — and what ETF trades hedge it. NVDA single-stock and AGTHX fund-fit snapshots, rendered from one API call.',
+    cta: 'See sample snapshots',
+    href: '/snapshots',
     external: false,
   },
   {

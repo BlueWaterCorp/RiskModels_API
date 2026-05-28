@@ -32,66 +32,64 @@ export default function WorkedExampleHero() {
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
-            One call, three tradable layers
+            Worked example — MSFT
           </p>
           <h2 className="mt-3 text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Per $1 long MSFT, ERM3 returns three hedge ratios you can trade.
           </h2>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-black/60 p-5 shadow-2xl shadow-black/30 sm:p-7">
-          <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-zinc-800 bg-black/70 px-2 py-6 shadow-2xl shadow-black/30 sm:px-4 sm:py-8">
+          <div className="grid grid-cols-1 divide-y divide-zinc-800 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {LAYERS.map((row) => (
-              <div
-                key={row.layer}
-                className={`rounded-xl border p-4 ${
-                  row.dominant
-                    ? 'border-emerald-500/50 bg-emerald-500/5'
-                    : 'border-zinc-800 bg-zinc-950/60'
-                }`}
-              >
-                <div className="flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.2em]">
-                  <span className={row.dominant ? 'text-emerald-400' : 'text-zinc-500'}>
-                    {row.layer}
-                  </span>
-                  <span className="text-zinc-500">{row.label}</span>
-                </div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-xs text-zinc-500">short</span>
-                  <span className="font-mono text-2xl font-semibold text-white">
-                    ${row.hr.toFixed(2)}
-                  </span>
-                  <span className="font-mono text-base font-semibold text-emerald-400">
-                    {row.etf}
-                  </span>
-                </div>
-                <p className="mt-2 font-mono text-[11px] text-zinc-500">
+              <div key={row.layer} className="px-5 py-4 sm:px-6 sm:py-2">
+                <p
+                  className={`font-mono text-[10px] uppercase tracking-[0.2em] ${
+                    row.dominant ? 'text-emerald-400' : 'text-zinc-500'
+                  }`}
+                >
+                  {row.layer} · {row.label}
+                </p>
+                <p className="mt-3 font-mono text-2xl font-semibold text-white sm:text-[1.75rem]">
+                  <span className="text-zinc-500">short</span>{' '}
+                  <span className="tabular-nums">${row.hr.toFixed(2)}</span>{' '}
+                  <span className="text-emerald-400">{row.etf}</span>
+                </p>
+                <p
+                  className={`mt-2 font-mono text-[11px] ${
+                    row.dominant ? 'text-emerald-300/80' : 'text-zinc-500'
+                  }`}
+                >
                   +{row.er}% explained risk
+                  {row.dominant ? ' · dominant' : ''}
                 </p>
               </div>
             ))}
           </div>
 
-          <div className="mt-5 flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 sm:flex-row sm:items-baseline sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
-                What&apos;s left — the bet
-              </p>
-              <p className="mt-1 text-sm text-zinc-300">
-                MSFT&apos;s stock-specific return, net of market, sector, and subsector exposure.
+          <div className="mx-5 mt-6 border-t border-zinc-800 pt-5 sm:mx-6">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-baseline sm:justify-between">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
+                  What&rsquo;s left — the bet
+                </p>
+                <p className="mt-1 text-sm leading-snug text-zinc-300">
+                  MSFT&rsquo;s stock-specific return. Not hedgeable with ETFs.
+                </p>
+              </div>
+              <p className="font-mono text-3xl font-semibold text-white tabular-nums sm:text-[2.25rem]">
+                {RESIDUAL_ER}%{' '}
+                <span className="text-sm font-normal text-zinc-500">residual</span>
               </p>
             </div>
-            <p className="font-mono text-2xl font-semibold text-white">
-              {RESIDUAL_ER}% <span className="text-sm font-normal text-zinc-500">residual</span>
-            </p>
           </div>
-
-          <p className="mt-5 text-center text-[11px] text-zinc-500">
-            Live decomposition from the ERM3 API · single call, no extrapolation · snapshot {SNAPSHOT_DATE}
-          </p>
         </div>
 
-        <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <p className="mt-5 text-center font-mono text-[11px] text-zinc-500">
+          Live decomposition from the ERM3 API · single call, no extrapolation · snapshot {SNAPSHOT_DATE}
+        </p>
+
+        <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
             href="/installation"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-6 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
