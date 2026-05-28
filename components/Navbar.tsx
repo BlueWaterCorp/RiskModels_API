@@ -61,7 +61,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3 lg:gap-4 h-16 min-w-0">
           <div className="flex-shrink-0">
-            <Logo />
+            <Logo subWord="API" />
           </div>
 
           <div className="hidden md:block flex-1 min-w-0 max-w-md lg:max-w-lg xl:max-w-xl">
