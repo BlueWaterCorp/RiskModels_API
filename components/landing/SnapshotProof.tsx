@@ -28,14 +28,15 @@ export default function SnapshotProof() {
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
-              What the API can generate
+              API output — institutional artifacts
             </p>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Production-grade snapshots, not toy charts.
+              From one API call to a research-desk one-pager.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
-              The same risk decomposition contract powers investable single-name analysis and fund-level
-              fit reports, ready to share as PNG/PDF artifacts.
+              Same decomposition engine, two output formats — JSON for code, printable PDF for
+              memos. Single-name due diligence (NVDA) and fund fit (AGTHX) below, both generated
+              from one call each.
             </p>
           </div>
           <Link

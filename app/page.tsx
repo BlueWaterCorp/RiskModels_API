@@ -1,5 +1,4 @@
 import HeroLanding from '@/components/landing/HeroLanding';
-import SnapshotProof from '@/components/landing/SnapshotProof';
 import WorkedExampleHero from '@/components/landing/WorkedExampleHero';
 import AudienceCards from '@/components/landing/AudienceCards';
 import TerminalShowcase from '@/components/TerminalShowcase';
@@ -24,7 +23,6 @@ export default function HomePage() {
   return (
     <div className="mx-auto min-h-screen w-full max-w-[90rem] overflow-x-hidden">
       <HeroLanding />
-      <SnapshotProof />
       <WorkedExampleHero />
       <AudienceCards />
       <TerminalShowcase />

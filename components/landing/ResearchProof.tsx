@@ -1,4 +1,5 @@
-import { ExternalLink } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, ExternalLink } from 'lucide-react';
 
 const UTM = 'utm_source=riskmodels-app&utm_medium=research-proof&utm_campaign=cross-site';
 
@@ -60,6 +61,16 @@ export default function ResearchProof() {
               </span>
             </a>
           ))}
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <Link
+            href="/snapshots"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-400 transition hover:text-emerald-300"
+          >
+            See full institutional snapshots — what ERM3 renders end-to-end
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
       </div>
     </section>
