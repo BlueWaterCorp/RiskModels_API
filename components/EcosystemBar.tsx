@@ -43,6 +43,8 @@ export function EcosystemBar({
           ) : (
             <a
               href={withUtm(s.href, current)}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-zinc-400 transition-colors hover:text-zinc-100"
             >
               {s.label}

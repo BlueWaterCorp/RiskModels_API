@@ -316,7 +316,7 @@ export default function PricingPage() {
             <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
               {[
                 "Full access to all ~3,000 US equities",
-                "41-factor ERM3 risk decompositions",
+                "41-factor ERM3 (Equity Risk Model v3) risk decompositions",
                 "Hedge ratios at L1 / L2 / L3",
                 "Historical data back to 2006",
                 "REST API + CLI access",

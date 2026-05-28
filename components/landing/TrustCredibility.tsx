@@ -57,12 +57,14 @@ export default function TrustCredibility() {
           >
             API reference
           </Link>
-          <Link
-            href="https://github.com/"
+          <a
+            href="https://github.com/BlueWaterCorp/RiskModels_API"
+            target="_blank"
+            rel="noopener noreferrer"
             className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-zinc-200 transition hover:bg-white/10"
           >
             Python SDK
-          </Link>
+          </a>
         </div>
       </div>
     </section>

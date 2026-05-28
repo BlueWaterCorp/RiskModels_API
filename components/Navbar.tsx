@@ -43,12 +43,17 @@ export default function Navbar() {
     router.refresh();
   }, [router]);
 
-  const navLinks = [
+  const navLinks: { href: string; label: string; external?: boolean }[] = [
     { href: '/installation', label: 'Installation' },
     { href: '/api-reference', label: 'API' },
-    { href: '/cli', label: 'CLI' },    
+    { href: '/cli', label: 'CLI' },
     { href: '/llms.txt', label: 'Agents' },
     { href: '/docs/api', label: 'Docs' },
+    {
+      href: 'https://riskmodels.org/research?utm_source=riskmodels-app&utm_medium=primary-nav&utm_campaign=cross-site',
+      label: 'Research',
+      external: true,
+    },
   ];
 
   return (
@@ -65,18 +70,28 @@ export default function Navbar() {
 
           <div className="hidden md:flex items-center gap-1 lg:gap-2 flex-shrink-0">
             {navLinks.map((link) => {
-              const active = navActive(pathname, link.href);
+              const active = !link.external && navActive(pathname, link.href);
+              const className = [
+                'rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors',
+                active
+                  ? 'bg-zinc-800/90 text-white ring-1 ring-zinc-700/80'
+                  : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100',
+              ].join(' ');
+              if (link.external) {
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={className}
+                  >
+                    {link.label}
+                  </a>
+                );
+              }
               return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={[
-                    'rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors',
-                    active
-                      ? 'bg-zinc-800/90 text-white ring-1 ring-zinc-700/80'
-                      : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100',
-                  ].join(' ')}
-                >
+                <Link key={link.href} href={link.href} className={className}>
                   {link.label}
                 </Link>
               );
@@ -133,15 +148,32 @@ export default function Navbar() {
             <PortalSearch />
             <div className="space-y-1 pt-1">
               {navLinks.map((link) => {
-                const active = navActive(pathname, link.href);
+                const active = !link.external && navActive(pathname, link.href);
+                const className = [
+                  'block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors',
+                  active
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100',
+                ].join(' ');
+                if (link.external) {
+                  return (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={className}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {link.label}
+                    </a>
+                  );
+                }
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className={[
-                      'block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors',
-                      active ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100',
-                    ].join(' ')}
+                    className={className}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {link.label}
