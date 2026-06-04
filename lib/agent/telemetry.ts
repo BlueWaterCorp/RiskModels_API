@@ -158,11 +158,16 @@ export async function getHealthStatus(): Promise<HealthStatus> {
     now.getTime() - 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: recentEvents, error: telemetryError } =
-    await createAdminClient()
+  // Only true request-telemetry rows (one per API call). applyTelemetryFilters
+  // excludes balance debit/credit rows (latency_ms null) that would otherwise
+  // pollute the success denominator. status_code lives in the metadata jsonb
+  // (see logTelemetry above), not a top-level column.
+  const { data: recentEvents, error: telemetryError } = await applyTelemetryFilters(
+    createAdminClient()
       .from("billing_events")
-      .select("capability_id, success, latency_ms")
-      .gte("created_at", twentyFourHoursAgo);
+      .select("capability_id, success, latency_ms, metadata")
+      .gte("created_at", twentyFourHoursAgo),
+  );
 
   const capabilities: HealthStatus["capabilities"] = {};
 
@@ -176,13 +181,40 @@ export async function getHealthStatus(): Promise<HealthStatus> {
       byCapability[event.capability_id].push(event);
     }
 
-    // Calculate metrics for each capability
+    // Calculate metrics for each capability.
+    //
+    // Health here means SERVICE reliability, not request-acceptance rate.
+    // Client errors (4xx — 401 no key, 402 payment required, 400 bad input,
+    // 429 rate-limited) are *expected* outcomes of a metered API, not service
+    // failures. Counting them as failures lets a few unauthenticated agent /
+    // directory-reviewer probes mark a perfectly healthy capability
+    // "unavailable" — which is self-defeating for the audience we publish to.
+    // So: exclude 4xx from the denominator, treat only 5xx (and thrown errors,
+    // logged as status 500) as failures, and require a minimum sample before
+    // flagging — a handful of events is noise, not a reliability signal.
+    const MIN_SAMPLE_FOR_FLAG = 20;
     for (const [capId, events] of Object.entries(byCapability)) {
-      const total = events.length;
-      const successful = events.filter(
-        (e: { success: boolean }) => e.success,
+      const statusCodeOf = (e: { metadata?: any }): number | undefined => {
+        const sc = e?.metadata?.status_code;
+        return typeof sc === "number" ? sc : undefined;
+      };
+      const isClientError = (e: { metadata?: any }) => {
+        const sc = statusCodeOf(e);
+        return sc !== undefined && sc >= 400 && sc < 500;
+      };
+
+      // Service-relevant events = everything except client (4xx) errors.
+      const serviceEvents = events.filter(
+        (e: { metadata?: any }) => !isClientError(e),
+      );
+      const serviceTotal = serviceEvents.length;
+      // Within service events, a failure is a non-success (5xx / thrown 500).
+      const serverFailures = serviceEvents.filter(
+        (e: { success: boolean }) => !e.success,
       ).length;
-      const successRate = total > 0 ? successful / total : 1;
+      const successRate =
+        serviceTotal > 0 ? (serviceTotal - serverFailures) / serviceTotal : 1;
+
       const latencies = events
         .map((e: { latency_ms: number }) => e.latency_ms)
         .sort((a: number, b: number) => a - b);
@@ -190,8 +222,10 @@ export async function getHealthStatus(): Promise<HealthStatus> {
         latencies.reduce((a: number, b: number) => a + b, 0) / latencies.length;
 
       let status: "available" | "degraded" | "unavailable" = "available";
-      if (successRate < 0.95) status = "degraded";
-      if (successRate < 0.9) status = "unavailable";
+      if (serviceTotal >= MIN_SAMPLE_FOR_FLAG) {
+        if (successRate < 0.95) status = "degraded";
+        if (successRate < 0.9) status = "unavailable";
+      }
 
       capabilities[capId] = {
         status,
