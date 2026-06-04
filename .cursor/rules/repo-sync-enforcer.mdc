@@ -1,13 +1,14 @@
 ---
-description: INTERNAL ONLY. Enforces cross-repo schema consistency for maintainers. Not for external agents using the API.
+description: Enforces cross-repo schema & consistency rules across BWMACRO, RiskModels_API, and Risk_Models
 globs:
-  - "**/mcp/data/schemas/*.json"
+  - "**/*.json"
   - "**/OPENAPI_SPEC.yaml"
   - "**/schema-paths.json"
   - "**/CHANGELOG.md"
   - "**/current_state.md"
+  - "**/MASTER_BACKLOG.md"
   - "**/next_steps.md"
-  - "**/mcp/data/**"
+  - "**/mcp-server/data/**"
 alwaysApply: false
 ---
 
@@ -19,40 +20,38 @@ This rule applies when editing schemas, OpenAPI specs, MCP data, or tracking doc
 
 | Repo | Role | Key Paths |
 |------|------|-----------|
-| **BWMACRO** | High-level docs, tracking | `docs/api_roadmap/current_state.md`, `docs/api_roadmap/next_steps.md` |
-| **RiskModels_API** | Canonical API surface | `OPENAPI_SPEC.yaml`, `mcp/data/schemas/*.json`, `schema-paths.json`, `examples/`, `CHANGELOG.md` |
-| **Risk_Models** | MCP consumer, API implementation | `riskmodels_com/mcp-server/data/schemas/`, `riskmodels_com/mcp-server/data/schema-paths.json` |
+| **BWMACRO** | AI instructions + operational backlog | `docs/ceo/MASTER_BACKLOG.md`, `docs/api_roadmap/current_state.md`, `docs/api_roadmap/next_steps.md` |
+| **RiskModels_API** | Canonical API surface | `OPENAPI_SPEC.yaml`, `mcp-server/data/schemas/*.json`, `schema-paths.json`, `examples/`, `CHANGELOG.md` |
+| **Risk_Models** | User portal & dashboard (riskmodels.net). MCP schema consumer. No longer the canonical public API. | `riskmodels_com/mcp-server/data/schemas/`, `riskmodels_com/mcp-server/data/schema-paths.json` |
 
 ## Core Rules (Always Enforce)
 
 1. **Schemas are canonical ONLY in RiskModels_API**  
-   New or updated JSON schemas (e.g. `estimate-v1.json`) must be created/edited in `RiskModels_API/mcp/data/schemas/`.
+   New or updated JSON schemas (e.g. `estimate-v1.json`) must be created/edited in `RiskModels_API/mcp-server/data/schemas/`.
 
 2. **Copy new schemas to Risk_Models**  
    After adding a schema in RiskModels_API, manually copy to Risk_Models:
    ```bash
-   cp RiskModels_API/mcp/data/schemas/NEW_SCHEMA.json Risk_Models/riskmodels_com/mcp-server/data/schemas/
+   cp RiskModels_API/mcp-server/data/schemas/NEW_SCHEMA.json Risk_Models/riskmodels_com/mcp-server/data/schemas/
    ```
 
 3. **Update schema-paths.json in BOTH repos**  
    Add the new schema path to `schema-paths.json` in:
-   - `RiskModels_API/mcp/data/schema-paths.json`
+   - `RiskModels_API/mcp-server/data/schema-paths.json`
    - `Risk_Models/riskmodels_com/mcp-server/data/schema-paths.json`
 
 4. **Changelog in RiskModels_API**  
    Add an entry to `RiskModels_API/CHANGELOG.md` for new endpoints, schemas, or format params.
 
-5. **Update current_state.md in BWMACRO**  
-   When adding formats (e.g. Parquet/CSV), new endpoints, or closing gaps, update `docs/api_roadmap/current_state.md`:
-   - Response Format section
-   - Data Endpoints table (Format column)
-   - Known Gaps (strikethrough completed items)
+5. **Roll up narrative status:** When adding endpoints, schemas, formats, or closing gaps:
+   - Add a terse row or update an existing lettered item in **`docs/ceo/MASTER_BACKLOG.md`** (engineering burn-down OSOT).
+   - Keep **`docs/api_roadmap/current_state.md`** aligned for **diagrams**, Data Endpoints table, and MCP-facing narrative — avoid duplicating long sprint prose in both places unless both need the same wording for different audiences.
 
 ## OpenAPI Additions
 
 When adding parameters (e.g. `format=parquet` on `/returns`, `/etf-returns`):
 - Edit `RiskModels_API/OPENAPI_SPEC.yaml`
-- Add response content types (`application/vnd.apache.parquet`, `text/csv`) where applicable
+- Add response content types (`application/x-parquet`, `text/csv`) where applicable
 - GitHub Actions sync builds `openapi.json` and pushes to Risk_Models
 
 ## Before Committing
@@ -63,6 +62,7 @@ When editing schemas, paths, or docs: **plan cross-repo impact first** and **lis
 Sync checklist:
 - [ ] RiskModels_API: schema added, schema-paths.json updated
 - [ ] Risk_Models: schema copied, schema-paths.json updated
-- [ ] BWMACRO: current_state.md updated (if format/gap changed)
+- [ ] BWMACRO: `MASTER_BACKLOG.md` row updated (if scope/gap changed)
+- [ ] BWMACRO: current_state.md updated (if format/gap narrative changed)
 - [ ] CHANGELOG.md entry added
 ```
