@@ -84,6 +84,10 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Google tag: last in <head>, just before </head> (see GoogleAdsTag) */}
+        <GoogleAdsTag />
+      </head>
       <body className={`${inter.className} ${jetbrainsMono.variable}`}>
         <div className="flex flex-col min-h-screen">
           <Navbar />
@@ -93,7 +97,6 @@ export default async function RootLayout({
           <Footer />
         </div>
         <ChatBubble />
-        <GoogleAdsTag />
         <UTMTracker />
       </body>
     </html>

@@ -1,23 +1,23 @@
-import Script from 'next/script';
-
-/** Google Ads tag (gtag.js) for riskmodels.app — conversion / remarketing base tag */
+/** Google Ads tag (gtag.js) for riskmodels.app — paste before closing </head> */
 const GOOGLE_ADS_GTAG_ID = 'AW-18161098219';
 
 export function GoogleAdsTag() {
   return (
     <>
-      <Script
+      <script
+        async
         src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_GTAG_ID}`}
-        strategy="afterInteractive"
       />
-      <Script id="google-ads-gtag-init" strategy="afterInteractive">
-        {`
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
           gtag('config', '${GOOGLE_ADS_GTAG_ID}');
-        `}
-      </Script>
+        `,
+        }}
+      />
     </>
   );
 }
