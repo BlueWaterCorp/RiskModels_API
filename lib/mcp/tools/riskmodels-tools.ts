@@ -2,19 +2,15 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { RiskModelsClient, type PositionInput, type WhitepaperExampleId } from "@riskmodels/sdk";
 import { z } from "zod";
-import {
-  renderArtifact,
-  WIRED_ARTIFACT_RENDER_MATRIX,
-} from "@/lib/artifacts/render-client";
 
 type McpContent = { type: "text"; text: string };
-type McpToolResult = { content: McpContent[] };
+export type McpToolResult = { content: McpContent[] };
 type McpPromptResult = {
   description?: string;
   messages: Array<{ role: "user" | "assistant"; content: McpContent }>;
 };
 
-type McpLikeServer = {
+export type McpLikeServer = {
   registerTool: (name: string, config: Record<string, unknown>, handler: (args: any) => Promise<McpToolResult>) => void;
   registerResource: (
     name: string,
@@ -65,7 +61,7 @@ const WHITEPAPER_RESOURCES = [
 const CHART_INSTRUCTION =
   "If chart_data is present, render the suggested_chart. Use grouped bars for comparisons and bars for single-stock decomposition. Always explain the result in plain English.";
 
-function textResult(payload: unknown): McpToolResult {
+export function textResult(payload: unknown): McpToolResult {
   return {
     content: [
       {
@@ -85,7 +81,7 @@ function textResult(payload: unknown): McpToolResult {
   };
 }
 
-function errorResult(error: unknown): McpToolResult {
+export function errorResult(error: unknown): McpToolResult {
   return textResult({
     error: error instanceof Error ? error.message : String(error),
   });
@@ -299,67 +295,6 @@ export function registerRiskModelsTools(
     async ({ positions }) => {
       try {
         return textResult(await sdk.portfolioDecompose(positions as PositionInput[]));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    "riskmodels_render_artifact",
-    {
-      title: "RiskModels Artifact Registry Render",
-      annotations: { readOnlyHint: true },
-      description:
-        "Render a deterministic registry artifact (fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Same contract as riskmodels.net workspace fetchArtifact.",
-      inputSchema: {
-        slug: z.string().min(1).describe("Artifact slug, e.g. top_holdings_erm_stacked"),
-        version: z.string().optional().describe("Version tag, default v1"),
-        subject_id: z
-          .string()
-          .min(1)
-          .describe("BW-FUND-…, BW-FILER-…, or BW-PORTFOLIO-…"),
-        as_of: z
-          .string()
-          .optional()
-          .describe("YYYY-MM-DD or latest; filers need explicit filing period end"),
-        format: z
-          .enum(["json", "png", "svg"])
-          .optional()
-          .describe("Output format, default json"),
-        subject_payload: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Required for BW-PORTFOLIO-*: { positions: [{ ticker, weight }] }"),
-      },
-    },
-    async ({ slug, version, subject_id, as_of, format, subject_payload }) => {
-      try {
-        const result = await renderArtifact({
-          slug,
-          version,
-          subject_id,
-          as_of,
-          format,
-          subject_payload: subject_payload ?? null,
-        });
-        if (!result.ok) {
-          return textResult({
-            error: result.error,
-            status: result.status,
-            detail: result.detail,
-            wired_slugs: WIRED_ARTIFACT_RENDER_MATRIX,
-          });
-        }
-        return textResult({
-          slug,
-          subject_id,
-          format: result.format,
-          resolved_as_of: result.resolved_as_of,
-          gcs_path: result.gcs_path,
-          receipt_id: result.receipt_id,
-          artifact: result.data,
-        });
       } catch (error) {
         return errorResult(error);
       }
