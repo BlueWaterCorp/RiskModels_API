@@ -787,8 +787,11 @@ def main() -> int:
         for r in bugs:
             print(f"- {r.method.upper()} {r.path} -> {r.status} {r.note} {r.snippet}".strip())
 
-    fails = [r for r in run.rows if not r.ok and not r.note.startswith("skip") and "SKIP_EXPENSIVE" not in r.note]
-    critical = [r for r in fails if not r.path.startswith("/.well-known/")]
+    # Exit code reflects genuine bugs only. is_bug() already filters expected
+    # failures (deprecated 410s, explicit data-unavailable JSON 404s, auth/quota
+    # noise), so the exit status matches the "Likely product bugs" summary above
+    # instead of failing on every non-2xx.
+    critical = [r for r in bugs if not r.path.startswith("/.well-known/")]
     return 1 if critical else 0
 
 
