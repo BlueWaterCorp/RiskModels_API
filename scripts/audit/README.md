@@ -17,9 +17,31 @@ Reports are written to `audit-reports/<timestamp>/` (gitignored).
 | `cli-openapi` | `scripts/cli-openapi-check.mjs` (CLI routes ⊆ spec) | no | yes |
 | `route-drift` | `scripts/audit/openapi_route_drift.py --strict` | no | yes (untracked) |
 | `docs-conformity` | `scripts/audit/docs_conformity.py --strict` | no | yes (untracked) |
+| `migration-drift` | `scripts/audit/migration_drift.py` | prod schema read | no (reports; SKIPs without creds) |
 | `schema-selftest` | `scripts/audit/live_schema_check.py --self-test` | no | yes |
 | `smoke-endpoints` | `sdk/scripts/smoke_v3_all_endpoints.py` | **yes** | yes (critical only) |
 | `schema-check` | `scripts/audit/live_schema_check.py` (consumes smoke report) | no | no (reports) |
+
+The orchestrator writes `audit-reports/<ts>/summary.json` (per-check PASS/FAIL/SKIP)
+for the email step.
+
+## Migration drift
+
+**`migration_drift.py`** — parses `BWMACRO/supabase/migrations` (`CREATE TABLE` /
+`ALTER … ADD COLUMN`) and diffs against the live prod schema (PostgREST OpenAPI).
+Catches the recurring "column declared in a migration but never applied to prod"
+failure (C.7 `tier`, C.9 `stripe_payment_method_id`). Reads `$AUDIT_MIGRATIONS_DIR`
+(default `../BWMACRO/supabase/migrations`) + `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`;
+SKIPs (exit 0, written to the report) if either is missing.
+
+## Weekly deployment + email
+
+`.github/workflows/weekly-audit.yml` runs the suite every **Saturday 13:00 UTC**
+(+ `workflow_dispatch` for manual runs) and emails the digest to
+**conrad@bwmacro.com** via Resend (`scripts/audit/send_audit_email.py`). The email
+reports each check as PASS / FAIL / **SKIPPED** so a green digest can't hide a
+check that didn't run. Email sends on failure too (`if: always()`); the run is
+marked red afterward. Required secrets are documented at the top of the workflow.
 
 ## The two new audits
 

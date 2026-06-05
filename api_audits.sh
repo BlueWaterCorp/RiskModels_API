@@ -60,6 +60,10 @@ step "route-drift" "$PY" scripts/audit/openapi_route_drift.py --strict --out-dir
 
 step "docs-conformity" "$PY" scripts/audit/docs_conformity.py --strict --out-dir "$OUT"
 
+# Migration drift skips internally (exit 0) if BWMACRO migrations or Supabase
+# creds aren't present — the email step reports it as SKIPPED, never false-green.
+step "migration-drift" "$PY" scripts/audit/migration_drift.py --out-dir "$OUT"
+
 step "schema-selftest" "$PY" scripts/audit/live_schema_check.py --self-test
 
 # ---- live audits (need an API key; cost money) ---------------------------
@@ -92,6 +96,7 @@ fi
 # ---- summary ------------------------------------------------------------
 echo; echo "════════ API AUDIT SUMMARY ($TS) ════════"
 fail=0
+steps_json=""
 for i in "${!NAMES[@]}"; do
   c="${CODES[$i]}"
   case "$c" in
@@ -100,7 +105,14 @@ for i in "${!NAMES[@]}"; do
     *)        s="FAIL"; fail=1 ;;
   esac
   printf "  %-18s %s\n" "${NAMES[$i]}" "$s"
+  steps_json="${steps_json}{\"name\":\"${NAMES[$i]}\",\"status\":\"$s\"},"
 done
+overall=$([ "$fail" = "0" ] && echo PASS || echo FAIL)
 echo "Reports: $OUT/"
-[ "$fail" = "0" ] && echo "Overall: PASS" || echo "Overall: FAIL"
+echo "Overall: $overall"
+
+# Machine-readable summary for the email/notification step.
+printf '{"timestamp":"%s","overall":"%s","reports_dir":"%s","steps":[%s]}\n' \
+  "$TS" "$overall" "$OUT" "${steps_json%,}" > "$OUT/summary.json"
+
 exit "$fail"
