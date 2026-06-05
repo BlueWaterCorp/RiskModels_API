@@ -302,6 +302,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "riskmodels_list_endpoints",
     {
       title: "List RiskModels API Endpoints",
+      annotations: { readOnlyHint: true },
       description: "List all public API capabilities (id, name, method, endpoint, short description)",
     },
     async () => {
@@ -324,6 +325,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "riskmodels_get_capability",
     {
       title: "Get RiskModels Capability Details",
+      annotations: { readOnlyHint: true },
       description: "Get full capability details (parameters, pricing, examples) by id",
       inputSchema: {
         id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
@@ -346,6 +348,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "riskmodels_get_schema",
     {
       title: "Get RiskModels Response Schema",
+      annotations: { readOnlyHint: true },
       description: "Get JSON schema for an API response by path (e.g. ticker-returns-v2.json)",
       inputSchema: {
         path: z.string().describe("Schema path or filename"),
@@ -369,6 +372,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "get_l3_decomposition",
     {
       title: "L3 Hierarchical Risk Decomposition",
+      annotations: { readOnlyHint: true },
       description:
         "Daily EOD hierarchical orthogonal decomposition for a single ticker: market → sector → subsector → residual. Returns parallel time-series arrays plus hedge ratios. Data freshness: daily after US market close.",
       inputSchema: {
@@ -395,6 +399,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "get_metrics",
     {
       title: "Latest Risk Metrics Snapshot",
+      annotations: { readOnlyHint: true },
       description:
         "Latest daily EOD risk metrics for a ticker: L1/L2/L3 hedge ratios (SPY, sector ETF, subsector ETF), explained-risk fractions, daily volatility, price close, market cap.",
       inputSchema: {
@@ -417,6 +422,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "get_portfolio_risk_snapshot",
     {
       title: "Portfolio Risk Snapshot",
+      annotations: { readOnlyHint: true },
       description:
         "Bundled portfolio risk report for up to 100 positions: variance decomposition, 23-day volatility, optional diversification analytics. Response is cached per-user per-portfolio for 1 hour.",
       inputSchema: {

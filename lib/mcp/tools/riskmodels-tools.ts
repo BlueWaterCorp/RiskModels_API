@@ -127,6 +127,7 @@ export function registerRiskModelsTools(
     "riskmodels_decompose",
     {
       title: "RiskModels Single-Stock Decomposition",
+      annotations: { readOnlyHint: true },
       description:
         "L3 four-bet view: decompose one stock into additive market, sector, subsector, and residual layers (same semantics as POST /decompose exposure/hedge). Returns chart_data and plain_english. To compare standalone L1 vs L2 vs L3 hedge solutions (HR/ER + ETF legs), call riskmodels_get_hedge_levels or read hedge_levels on the API response.",
       inputSchema: {
@@ -146,6 +147,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_hedge_levels",
     {
       title: "RiskModels L1/L2/L3 hedge_levels",
+      annotations: { readOnlyHint: true },
       description:
         "Canonical L1, L2, and L3 hedge snapshots (semantic HR/ER + hedge_etfs) from GET /metrics/{ticker}. Use this when you need to compare which cascade depth to trade, distinct from decompose four-bet exposure.",
       inputSchema: {
@@ -165,6 +167,7 @@ export function registerRiskModelsTools(
     "riskmodels_compare",
     {
       title: "RiskModels Multi-Ticker Comparison",
+      annotations: { readOnlyHint: true },
       description:
         "Compare tickers across market, sector, subsector, and residual risk layers. Prefer grouped bar charts when chart_data is present.",
       inputSchema: {
@@ -184,6 +187,7 @@ export function registerRiskModelsTools(
     "riskmodels_hedge_position",
     {
       title: "RiskModels Position Hedge",
+      annotations: { readOnlyHint: true },
       description:
         "Scale ETF hedge ratios for a ticker to a dollar position. Returns chart-ready hedge notionals.",
       inputSchema: {
@@ -204,6 +208,7 @@ export function registerRiskModelsTools(
     "riskmodels_analyze_portfolio",
     {
       title: "RiskModels Portfolio hedge_levels aggregate",
+      annotations: { readOnlyHint: true },
       description:
         "Holdings-weighted L1/L2/L3 hedge_levels across names via POST /batch/analyze (hedge_ratios). Returns normalized portfolio.portfolio_hedge_levels and per-ticker blocks when present.",
       inputSchema: {
@@ -234,6 +239,7 @@ export function registerRiskModelsTools(
     "riskmodels_hedge_portfolio",
     {
       title: "RiskModels Portfolio ETF hedge notionals",
+      annotations: { readOnlyHint: true },
       description:
         "Batch hedge_ratios at a chosen cascade level (L1/L2/L3), scale HRs by dollar notionals per ticker, and aggregate ETF USD hedge legs.",
       inputSchema: {
@@ -273,6 +279,7 @@ export function registerRiskModelsTools(
     "riskmodels_portfolio_decompose",
     {
       title: "RiskModels Portfolio Decomposition",
+      annotations: { readOnlyHint: true },
       description:
         "Decompose a weighted portfolio into market, sector, subsector, and residual risk layers.",
       inputSchema: {
@@ -302,6 +309,7 @@ export function registerRiskModelsTools(
     "riskmodels_render_artifact",
     {
       title: "RiskModels Artifact Registry Render",
+      annotations: { readOnlyHint: true },
       description:
         "Render a deterministic registry artifact (fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Same contract as riskmodels.net workspace fetchArtifact.",
       inputSchema: {
@@ -362,6 +370,7 @@ export function registerRiskModelsTools(
     "riskmodels_whitepaper_example",
     {
       title: "RiskModels Live White-Paper Example",
+      annotations: { readOnlyHint: true },
       description:
         "Run a live example from the RiskModels white paper. Returns chapter text plus SDK/API output with chart_data.",
       inputSchema: {
