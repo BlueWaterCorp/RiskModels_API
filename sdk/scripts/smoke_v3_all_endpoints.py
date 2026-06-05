@@ -45,6 +45,8 @@ STOCK_TICKER = os.environ.get("STOCK_TICKER", "AAPL").upper()
 FUND_SEARCH = os.environ.get("FUND_SEARCH", "AGTHX").upper()
 STYLE_SLUG = os.environ.get("STYLE_SLUG", "large-growth")
 UNIVERSE_NAME = os.environ.get("UNIVERSE_NAME", "uni_mc_3000")
+ETF_TICKER = os.environ.get("ETF_TICKER", "SPY").upper()  # /data/etf/{ticker} needs an ETF, not a stock
+FILER_SEARCH = os.environ.get("FILER_SEARCH", "Berkshire")  # resolves a real {bw_filer_id}
 BASE = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
 SITE = os.environ.get("RISKMODELS_SITE_ORIGIN", "https://riskmodels.app").rstrip("/")
 _JSON_BODY_MAX = int(os.environ.get("SMOKE_JSON_BODY_MAX", "32000"))
@@ -142,10 +144,12 @@ def classify_path(path: str) -> str:
     return "platform"
 
 
-def expand_path(path: str, *, stock: str, bw_fund_id: str, slug: str) -> str:
+def expand_path(path: str, *, stock: str, bw_fund_id: str, slug: str, bw_filer_id: str = "") -> str:
     out = path
-    out = out.replace("{ticker}", quote(stock, safe=""))
+    ticker = ETF_TICKER if "/data/etf/" in path else stock  # ETF endpoints need an ETF symbol
+    out = out.replace("{ticker}", quote(ticker, safe=""))
     out = out.replace("{bw_fund_id}", quote(bw_fund_id, safe=""))
+    out = out.replace("{bw_filer_id}", quote(bw_filer_id, safe=""))
     out = out.replace("{slug}", quote(slug, safe=""))
     out = out.replace("{cohort_type}", "fund")
     out = out.replace("{name}", quote(UNIVERSE_NAME, safe=""))  # /universe/{name}/members
@@ -194,6 +198,12 @@ def json_body(method: str, path: str, *, stock: str, bw_fund_id: str) -> dict[st
         return {"ticker": stock, "factors": ["vix_spot"], "years": 1}
     if path == "/batch/analyze":
         return {"tickers": [stock], "metrics": ["full_metrics"], "years": 1, "format": "json"}
+    if path == "/batch/lstar":
+        return {"tickers": [stock], "years": 1}
+    if path == "/rankings/screen":
+        return {"metric": "subsector_residual", "cohort": "subsector", "window": "21d", "min_percentile": 95, "limit": 5}
+    if path == "/signals/residual-reversion/basket":
+        return {"tickers": [stock, "MSFT", "NVDA"]}
     if path == "/portfolio/risk-index":
         return {"positions": [{"ticker": stock, "weight": 1.0}], "timeSeries": False}
     if path == "/portfolio/risk-snapshot":
@@ -226,6 +236,15 @@ def query_for(method: str, path: str, *, stock: str, bw_fund_id: str, slug: str)
     if path == "/l3-decomposition":
         q["ticker"] = stock
         q["years"] = "1"
+    if path == "/returns-decomposition":
+        q["ticker"] = stock
+        q["years"] = "1"
+    if path == "/lstar":
+        q["ticker"] = stock
+        q["years"] = "1"
+    if path == "/data/benchmark-fit":
+        q["subject"] = stock
+        q["benchmark"] = ETF_TICKER
     if path == "/macro-factors":
         q["years"] = "1"
     if path == "/rankings/top":
@@ -274,6 +293,24 @@ def resolve_fund_id() -> str:
         if fid:
             return str(fid)
     raise RuntimeError(f"No fund found for search {FUND_SEARCH!r}: {data}")
+
+
+def resolve_filer_id(headers: dict[str, str]) -> str:
+    """Resolve a real {bw_filer_id} via 13F filer search (needs Bearer)."""
+    env_id = os.environ.get("FILER_BW_FILER_ID", "").strip()
+    if env_id:
+        return env_id
+    r = httpx.get(
+        url_for_path("/13f/filers/search"),
+        params={"q": FILER_SEARCH, "limit": "10"},
+        headers=headers,
+        timeout=60.0,
+    )
+    r.raise_for_status()
+    results = (r.json() or {}).get("results") or []
+    if results and results[0].get("bw_filer_id"):
+        return str(results[0]["bw_filer_id"])
+    raise RuntimeError(f"No 13F filer found for search {FILER_SEARCH!r}")
 
 
 def _safe_filename(s: str) -> str:
@@ -560,6 +597,11 @@ def main() -> int:
         except Exception as exc:
             print(f"ERROR resolving fund {FUND_SEARCH}: {exc}", file=sys.stderr)
             return 3
+        try:
+            bw_filer_id = resolve_filer_id(headers)
+        except Exception as exc:
+            print(f"WARN resolving 13F filer {FILER_SEARCH}: {exc} (13f/{{bw_filer_id}} paths will fail)", file=sys.stderr)
+            bw_filer_id = "{bw_filer_id}"
 
         operations: list[tuple[str, str, str]] = []
         for path, entry in sorted(paths.items()):
@@ -606,7 +648,7 @@ def main() -> int:
                 )
                 continue
 
-            expanded = expand_path(path, stock=STOCK_TICKER, bw_fund_id=bw_fund_id, slug=STYLE_SLUG)
+            expanded = expand_path(path, stock=STOCK_TICKER, bw_fund_id=bw_fund_id, slug=STYLE_SLUG, bw_filer_id=bw_filer_id)
             url = url_for_path(expanded)
             params = query_for(method, path, stock=STOCK_TICKER, bw_fund_id=bw_fund_id, slug=STYLE_SLUG)
             if params:
