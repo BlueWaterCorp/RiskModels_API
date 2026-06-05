@@ -91,7 +91,7 @@ export default function DocsSidebar() {
 
       {/* Desktop: persistent rail */}
       <aside className="hidden lg:block w-60 shrink-0">
-        <div className="sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto pr-2 pb-10">
+        <div className="sticky top-40 max-h-[calc(100vh-11rem)] overflow-y-auto pr-2 pb-10">
           <NavList pathname={pathname} />
         </div>
       </aside>
