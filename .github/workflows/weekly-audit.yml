@@ -5,7 +5,7 @@
 # Emails the PASS/FAIL + findings to conrad@bwmacro.com every Saturday morning.
 #
 # Required GitHub repo secrets (Settings → Secrets and variables → Actions):
-#   TEST_API_SECRET            live RiskModels API key (for the endpoint smoke; reused from smoke-test.yml)
+#   RISKMODELS_API_KEY         live RiskModels API key (endpoint smoke; from Doppler erm3 — same name, syncs cleanly)
 #   SUPABASE_URL               prod Supabase URL (for migration-drift schema read)
 #   SUPABASE_SERVICE_ROLE_KEY  prod Supabase service-role key (read-only use here)
 #   RESEND_API_KEY             Resend key (sends the email)
@@ -36,7 +36,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RISKMODELS_API_KEY: ${{ secrets.TEST_API_SECRET }}
+      RISKMODELS_API_KEY: ${{ secrets.RISKMODELS_API_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
