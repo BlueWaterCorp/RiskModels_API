@@ -1,0 +1,101 @@
+# Weekly API audit → email digest to the audit recipient.
+#
+# Runs the full audit suite (api_audits.sh): OpenAPI/spec ↔ handlers, docs ↔ spec,
+# live response-schema validation, migration drift, and the live endpoint smoke.
+# Emails the PASS/FAIL + findings to conrad@bwmacro.com every Saturday morning.
+#
+# Required GitHub repo secrets (Settings → Secrets and variables → Actions):
+#   TEST_API_SECRET            live RiskModels API key (for the endpoint smoke; reused from smoke-test.yml)
+#   SUPABASE_URL               prod Supabase URL (for migration-drift schema read)
+#   SUPABASE_SERVICE_ROLE_KEY  prod Supabase service-role key (read-only use here)
+#   RESEND_API_KEY             Resend key (sends the email)
+#   BWMACRO_REPO_TOKEN         PAT with read access to BlueWaterCorp/BWMACRO (for supabase/migrations)
+# Optional:
+#   RESEND_FROM_EMAIL          verified sender (defaults to "RiskModels <service@riskmodels.app>")
+#   vars.AUDIT_EMAIL_TO        recipient override (defaults to conrad@bwmacro.com)
+#
+# If BWMACRO_REPO_TOKEN / Supabase secrets are absent, migration-drift SKIPs (the
+# email shows it as SKIPPED — never a false green). Email always sends, including
+# on failure; the job is marked failed afterward so the Actions run still goes red.
+
+name: Weekly API Audit
+
+on:
+  schedule:
+    - cron: '0 13 * * 6'   # Saturday 13:00 UTC (~9am ET, drifts with DST)
+  workflow_dispatch:        # manual run for testing
+
+concurrency:
+  group: weekly-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: API audit + email
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RISKMODELS_API_KEY: ${{ secrets.TEST_API_SECRET }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+      AUDIT_EMAIL_TO: ${{ vars.AUDIT_EMAIL_TO || 'conrad@bwmacro.com' }}
+      AUDIT_MIGRATIONS_DIR: BWMACRO/supabase/migrations
+      SKIP_EXPENSIVE: '1'     # don't bill snapshots/PDFs/batch in the weekly run
+      SMOKE_WRITE_PDF: '0'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Migrations live in BWMACRO; check them out for migration-drift. Non-fatal:
+      # if the token is missing, migration-drift skips and the email says so.
+      - name: Check out BWMACRO migrations
+        uses: actions/checkout@v6
+        continue-on-error: true
+        with:
+          repository: BlueWaterCorp/BWMACRO
+          token: ${{ secrets.BWMACRO_REPO_TOKEN }}
+          path: BWMACRO
+          sparse-checkout: supabase/migrations
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install audit deps
+        run: pip install --quiet httpx jsonschema pyyaml
+
+      - name: Run audit suite
+        run: |
+          chmod +x api_audits.sh
+          set +e
+          ./api_audits.sh
+          echo "AUDIT_EXIT=$?" >> "$GITHUB_ENV"
+          echo "REPORT_DIR=$(ls -dt audit-reports/* | head -1)" >> "$GITHUB_ENV"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-reports
+          path: audit-reports/
+          if-no-files-found: warn
+
+      - name: Email audit digest
+        if: always()
+        run: |
+          if [ -z "${REPORT_DIR:-}" ] || [ ! -d "$REPORT_DIR" ]; then
+            echo "No report dir — audit crashed before writing output; skipping email."
+            exit 0
+          fi
+          python3 scripts/audit/send_audit_email.py --report-dir "$REPORT_DIR"
+
+      - name: Reflect audit status in the run
+        if: always()
+        run: '[ "${AUDIT_EXIT:-1}" = "0" ] || { echo "Audit reported failures (see email/artifact)"; exit 1; }'
