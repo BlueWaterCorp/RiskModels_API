@@ -120,7 +120,8 @@ def _mag7_cap_weighted_positions(client) -> list[dict[str, Any]]:
 
 
 MACRO_KEYS = ("vix", "gold", "bitcoin")
-MACRO_LABELS = {"macro_corr_vix": "VIX", "macro_corr_gold": "Gold", "macro_corr_bitcoin": "BTC"}
+# API canonicalizes the "vix" factor to "vix_spot", so the SDK column is macro_corr_vix_spot.
+MACRO_LABELS = {"macro_corr_vix_spot": "VIX", "macro_corr_gold": "Gold", "macro_corr_bitcoin": "BTC"}
 
 
 def _write_mag7_risk_cascade_png(client, path: Path) -> None:
