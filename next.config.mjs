@@ -17,8 +17,7 @@ const nextConfig = {
       { source: '/quickstart', destination: '/installation', permanent: true },
       { source: '/examples', destination: '/installation', permanent: true },
       { source: '/api-docs', destination: '/api-docs.html', permanent: true },
-      { source: '/documentation', destination: '/docs/api', permanent: true },
-      { source: '/docs', destination: '/docs/api', permanent: true },
+      { source: '/documentation', destination: '/docs', permanent: true },
     ];
   },
   async rewrites() {

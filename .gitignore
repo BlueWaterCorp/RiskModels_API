@@ -116,3 +116,4 @@ bwmacro-src/
 # Supabase CLI local link cache (.temp/, project-ref, etc.). Canonical DDL +
 # migrations: BWMACRO/supabase/ (private). Do not commit SQL or CLI state here.
 supabase/
+.gstack/

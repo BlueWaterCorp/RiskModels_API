@@ -10,9 +10,15 @@ This document describes how to add new docs to the RiskModels API developer port
 |------|--------|
 | 1 | Create or update source markdown (e.g. `PLAID_HOLDINGS_UX.md`) |
 | 2 | Add `content/docs/{slug}.mdx` for the web portal |
-| 3 | Add link from `content/docs/api.mdx` (or other hub) if needed |
+| 3 | **Register the page in `lib/docs-nav.ts`** so it appears in the docs sidebar (required — the build fails if a page is unlisted) |
 | 4 | Optionally add to Navbar if it's a top-level doc |
 | 5 | Update `README.md` or `README_API.md` if it's a core doc |
+
+> **Docs IA:** `/docs` is the hub (`app/docs/page.tsx`) with a persistent sidebar
+> driven by `lib/docs-nav.ts`. Individual pages render at `/docs/{slug}` via
+> `app/docs/[slug]/page.tsx` inside `app/docs/layout.tsx`. `/docs` no longer
+> redirects to `/docs/api`. The hub asserts every `content/docs/*.mdx` slug is
+> listed in `DOCS_NAV` at build time, so a new page can't be silently orphaned.
 
 ---
 
@@ -61,23 +67,27 @@ description: Short description for SEO and nav
 
 ---
 
-## 3. Add to Docs Hub
+## 3. Register in the Docs Sidebar (required)
 
-If the new doc should appear on the main API docs page:
+Every `content/docs/{slug}.mdx` page **must** be listed in `lib/docs-nav.ts` —
+that is the single source of truth for the `/docs` hub sidebar. The hub asserts
+coverage at build time, so an unlisted page **fails `npm run build`** rather than
+silently disappearing.
 
-**File:** `content/docs/api.mdx`
+**File:** `lib/docs-nav.ts`
 
-Add a card to the grid (around line 10–75):
+Add the page to the appropriate group in `DOCS_NAV`:
 
-```mdx
-<a href="/docs/plaid-holdings" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 hover:bg-zinc-900 transition-all">
-  <div className="flex items-center gap-3">
-    <span className="text-xl">🏦</span>
-    <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Plaid Holdings</span>
-  </div>
-  <p className="text-xs text-zinc-500 leading-relaxed">How to connect brokerage accounts and fetch holdings via the API.</p>
-</a>
+```ts
+{
+  title: 'Account & data',
+  items: [{ href: '/docs/plaid-holdings', label: 'Plaid holdings' }],
+},
 ```
+
+Optionally also surface it as a card on the hub (`app/docs/page.tsx` → `CARDS`)
+or in a page's "Related" grid — but the sidebar registration above is what makes
+it reachable.
 
 ---
 

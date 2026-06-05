@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 
 function navActive(pathname: string, href: string): boolean {
-  if (href === '/docs/api') return pathname.startsWith('/docs');
+  if (href === '/docs') return pathname === '/docs' || pathname.startsWith('/docs/');
   if (href === '/api-reference') return pathname.startsWith('/api-reference');
   if (href === '/account/usage') return pathname.startsWith('/account');
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -44,11 +44,11 @@ export default function Navbar() {
   }, [router]);
 
   const navLinks: { href: string; label: string; external?: boolean }[] = [
+    { href: '/docs', label: 'Docs' },
     { href: '/installation', label: 'Installation' },
-    { href: '/api-reference', label: 'API' },
+    { href: '/api-reference', label: 'API Reference' },
     { href: '/cli', label: 'CLI' },
     { href: '/llms.txt', label: 'Agents' },
-    { href: '/docs/api', label: 'Docs' },
     {
       href: 'https://riskmodels.org/research?utm_source=riskmodels-app&utm_medium=primary-nav&utm_campaign=cross-site',
       label: 'Research',
