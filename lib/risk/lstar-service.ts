@@ -4,20 +4,15 @@
  * Per-(ticker, teo) hedge-level recommendation. The simplest level whose
  * marginal explained-return (ER) clears a threshold:
  *
- *   if L3_subsector_ER >= θ → L3 (3-ETF hedge: market + sector + subsector)
- *   elif L2_sector_ER  >= θ → L2 (2-ETF hedge: market + sector)
- *   else                   → L1 (1-ETF hedge: market only)
+ *   if L3 marginal ER >= θ → L3
+ *   elif L2 marginal ER >= θ → L2
+ *   else                   → L1
  *
- * Default θ = 1%. The chat-default route hardcodes this; SDK callers can pass
- * an override.
+ * Industry axis: L2_sector_ER / L3_subsector_ER (market → sector → subsector).
+ * Style axis:    L2_ff_smb_ER / L3_ff_hml_ER (market → SMB → HML).
  *
- * Lstar is materialized in the ERM3 hedge-weights zarr as a convenience for
- * direct zarr consumers, but the API computes live from the L2/L3 ER inputs
- * already exposed by the V3 DAL. Live derivation lets callers tune θ without
- * waiting for an ERM3 rebuild.
- *
- * Background: see RM_ORG/content/Medium/series/drafts/lstar_selection/article.md
- * for the side study that locked the 1% / 1m default.
+ * Default θ = 1%. Live derivation from V3 DAL (not the materialized
+ * `lstar_level` zarr column) so callers can tune θ without an ERM3 rebuild.
  */
 
 import {
@@ -33,25 +28,56 @@ export const LSTAR_DEFAULT_THRESHOLD = 0.01;
 
 export type LstarLevel = "L1" | "L2" | "L3";
 
+/** Which cascade the marginal ERs belong to (same L1/L2/L3 depth rule). */
+export type LstarAxis = "industry" | "style";
+
+/** Zarr / V3 metric names for the two marginal ER inputs, by axis. */
+export const LSTAR_MARGINAL_ER_KEYS: Record<
+  LstarAxis,
+  { l2: string; l3: string; description: string }
+> = {
+  industry: {
+    l2: "L2_sector_ER",
+    l3: "L3_subsector_ER",
+    description: "market → +sector → +subsector",
+  },
+  style: {
+    l2: "L2_ff_smb_ER",
+    l3: "L3_ff_hml_ER",
+    description: "market → +SMB → +HML",
+  },
+};
+
 export interface LstarResult {
   ticker: string;
+  /** `industry` (default) or `style` — determines marginal ER / HR semantics. */
+  axis: LstarAxis;
   dates: string[];
   /** Recommended level per date, null where source ERs are unavailable. */
   lstar: (LstarLevel | null)[];
   /** Hedge ratio for the market ETF, drawn from the chosen level's solver. */
   market_hr: (number | null)[];
-  /** Hedge ratio for the sector ETF; null when Lstar = L1. */
+  /**
+   * Second-leg hedge ratio. Industry: sector ETF. Style: SMB spread.
+   * Null when Lstar = L1.
+   */
   sector_hr: (number | null)[];
-  /** Hedge ratio for the subsector ETF; null when Lstar ∈ {L1, L2}. */
+  /**
+   * Third-leg hedge ratio. Industry: subsector ETF. Style: HML spread.
+   * Null when Lstar ∈ {L1, L2}.
+   */
   subsector_hr: (number | null)[];
-  /** Total explained-return at the chosen level (market + sector + subsector). */
+  /** Total explained-return at the chosen level. */
   total_er: (number | null)[];
   /**
-   * Daily simple residual return at the chosen Lstar level (`l1_rr` / `l2_rr` / `l3_rr`).
-   * Parallel to `dates`; null when Lstar or source return is unavailable.
+   * Daily simple residual return at the chosen Lstar level.
+   * Industry: `l1_rr` / `l2_rr` / `l3_rr`. Style: `l1_rr` / `l2_ff_smb_rr` / `l3_ff_smb_hml_rr`.
    */
   residual_return: (number | null)[];
-  /** Raw inputs to the selection rule, surfaced for audit / SDK override. */
+  /**
+   * Raw marginal ER inputs to the selection rule (audit / SDK override).
+   * Industry: sector / subsector. Style: SMB / HML.
+   */
   l2_sector_er: (number | null)[];
   l3_subsector_er: (number | null)[];
   threshold_used: number;
@@ -60,21 +86,69 @@ export interface LstarResult {
   data_source: string;
 }
 
+export interface GetLstarOptions {
+  years?: number;
+  threshold?: number;
+  axis?: LstarAxis;
+}
+
+const INDUSTRY_KEYS: V3MetricKey[] = [
+  "l1_mkt_hr",
+  "l2_mkt_hr",
+  "l2_sec_hr",
+  "l3_mkt_hr",
+  "l3_sec_hr",
+  "l3_sub_hr",
+  "l1_mkt_er",
+  "l2_mkt_er",
+  "l2_sec_er",
+  "l3_mkt_er",
+  "l3_sec_er",
+  "l3_sub_er",
+  "l1_rr",
+  "l2_rr",
+  "l3_rr",
+];
+
+const STYLE_KEYS: V3MetricKey[] = [
+  "l1_mkt_hr",
+  "l2_ff_mkt_hr",
+  "l2_ff_smb_hr",
+  "l3_ff_mkt_hr",
+  "l3_ff_smb_hr",
+  "l3_ff_hml_hr",
+  "l1_mkt_er",
+  "l2_ff_smb_er",
+  "l3_ff_smb_er",
+  "l3_ff_hml_er",
+  "l1_rr",
+  "l2_ff_smb_rr",
+  "l3_ff_smb_hml_rr",
+];
+
+/**
+ * Pick cascade depth from marginal explained-risk at L2 and L3.
+ *
+ * @param l2MarginalEr Industry: `L2_sector_ER`. Style: `L2_ff_smb_ER`.
+ * @param l3MarginalEr Industry: `L3_subsector_ER`. Style: `L3_ff_hml_ER`.
+ * @param threshold    Marginal ER bar (default 1%).
+ * @param axis         Documents input semantics; rule is identical (negative
+ *                     marginal ER fails the bar and steps down).
+ */
 export function pickLstar(
-  l2SecEr: number | null,
-  l3SubEr: number | null,
+  l2MarginalEr: number | null,
+  l3MarginalEr: number | null,
   threshold: number,
+  axis: LstarAxis = "industry",
 ): LstarLevel | null {
-  // Both inputs null → can't decide (pre-IPO, delisted, masked).
-  if (l2SecEr == null && l3SubEr == null) return null;
-  // The selection rule is order-sensitive — check L3 first (highest granularity
-  // that meets the bar), then L2, default L1. NaN-safe via null coalescing.
-  if (l3SubEr != null && l3SubEr >= threshold) return "L3";
-  if (l2SecEr != null && l2SecEr >= threshold) return "L2";
+  void axis;
+  if (l2MarginalEr == null && l3MarginalEr == null) return null;
+  if (l3MarginalEr != null && l3MarginalEr >= threshold) return "L3";
+  if (l2MarginalEr != null && l2MarginalEr >= threshold) return "L2";
   return "L1";
 }
 
-/** Residual return at the chosen Lstar level (same dispatch rule as hedge ratios). */
+/** Residual return at the chosen industry Lstar level. */
 export function dispatchLstarResidualReturn(
   chosen: LstarLevel | null,
   row: PivotedHistoryRow,
@@ -85,23 +159,172 @@ export function dispatchLstarResidualReturn(
   return null;
 }
 
+/** Residual return at the chosen style Lstar level. */
+export function dispatchStyleLstarResidualReturn(
+  chosen: LstarLevel | null,
+  row: PivotedHistoryRow,
+): number | null {
+  if (chosen === "L3") return extractMetric(row, "l3_ff_smb_hml_rr");
+  if (chosen === "L2") return extractMetric(row, "l2_ff_smb_rr");
+  if (chosen === "L1") return extractMetric(row, "l1_rr");
+  return null;
+}
+
+function processIndustryRow(
+  p: PivotedHistoryRow,
+  threshold: number,
+): {
+  chosen: LstarLevel | null;
+  l2Marginal: number | null;
+  l3Marginal: number | null;
+  market_hr: number | null;
+  sector_hr: number | null;
+  subsector_hr: number | null;
+  total_er: number | null;
+  residual_return: number | null;
+} {
+  const l2Marginal = (p.l2_sec_er as number | null) ?? null;
+  const l3Marginal = (p.l3_sub_er as number | null) ?? null;
+  const chosen = pickLstar(l2Marginal, l3Marginal, threshold, "industry");
+
+  if (chosen === "L3") {
+    const m = (p.l3_mkt_er as number | null) ?? 0;
+    const s = (p.l3_sec_er as number | null) ?? 0;
+    const ss = l3Marginal ?? 0;
+    return {
+      chosen,
+      l2Marginal,
+      l3Marginal,
+      market_hr: (p.l3_mkt_hr as number | null) ?? null,
+      sector_hr: (p.l3_sec_hr as number | null) ?? null,
+      subsector_hr: (p.l3_sub_hr as number | null) ?? null,
+      total_er: m + s + ss,
+      residual_return: dispatchLstarResidualReturn(chosen, p),
+    };
+  }
+  if (chosen === "L2") {
+    const m = (p.l2_mkt_er as number | null) ?? 0;
+    const s = l2Marginal ?? 0;
+    return {
+      chosen,
+      l2Marginal,
+      l3Marginal,
+      market_hr: (p.l2_mkt_hr as number | null) ?? null,
+      sector_hr: (p.l2_sec_hr as number | null) ?? null,
+      subsector_hr: null,
+      total_er: m + s,
+      residual_return: dispatchLstarResidualReturn(chosen, p),
+    };
+  }
+  if (chosen === "L1") {
+    return {
+      chosen,
+      l2Marginal,
+      l3Marginal,
+      market_hr: (p.l1_mkt_hr as number | null) ?? null,
+      sector_hr: null,
+      subsector_hr: null,
+      total_er: (p.l1_mkt_er as number | null) ?? null,
+      residual_return: dispatchLstarResidualReturn(chosen, p),
+    };
+  }
+  return {
+    chosen,
+    l2Marginal,
+    l3Marginal,
+    market_hr: null,
+    sector_hr: null,
+    subsector_hr: null,
+    total_er: null,
+    residual_return: null,
+  };
+}
+
+function processStyleRow(
+  p: PivotedHistoryRow,
+  threshold: number,
+): {
+  chosen: LstarLevel | null;
+  l2Marginal: number | null;
+  l3Marginal: number | null;
+  market_hr: number | null;
+  sector_hr: number | null;
+  subsector_hr: number | null;
+  total_er: number | null;
+  residual_return: number | null;
+} {
+  const l2Marginal = (p.l2_ff_smb_er as number | null) ?? null;
+  const l3Marginal = (p.l3_ff_hml_er as number | null) ?? null;
+  const chosen = pickLstar(l2Marginal, l3Marginal, threshold, "style");
+
+  if (chosen === "L3") {
+    const m = (p.l1_mkt_er as number | null) ?? 0;
+    const smb = (p.l3_ff_smb_er as number | null) ?? 0;
+    const hml = l3Marginal ?? 0;
+    return {
+      chosen,
+      l2Marginal,
+      l3Marginal,
+      market_hr: (p.l3_ff_mkt_hr as number | null) ?? null,
+      sector_hr: (p.l3_ff_smb_hr as number | null) ?? null,
+      subsector_hr: (p.l3_ff_hml_hr as number | null) ?? null,
+      total_er: m + smb + hml,
+      residual_return: dispatchStyleLstarResidualReturn(chosen, p),
+    };
+  }
+  if (chosen === "L2") {
+    const m = (p.l1_mkt_er as number | null) ?? 0;
+    const smb = l2Marginal ?? 0;
+    return {
+      chosen,
+      l2Marginal,
+      l3Marginal,
+      market_hr: (p.l2_ff_mkt_hr as number | null) ?? null,
+      sector_hr: (p.l2_ff_smb_hr as number | null) ?? null,
+      subsector_hr: null,
+      total_er: m + smb,
+      residual_return: dispatchStyleLstarResidualReturn(chosen, p),
+    };
+  }
+  if (chosen === "L1") {
+    return {
+      chosen,
+      l2Marginal,
+      l3Marginal,
+      market_hr: (p.l1_mkt_hr as number | null) ?? null,
+      sector_hr: null,
+      subsector_hr: null,
+      total_er: (p.l1_mkt_er as number | null) ?? null,
+      residual_return: dispatchStyleLstarResidualReturn(chosen, p),
+    };
+  }
+  return {
+    chosen,
+    l2Marginal,
+    l3Marginal,
+    market_hr: null,
+    sector_hr: null,
+    subsector_hr: null,
+    total_er: null,
+    residual_return: null,
+  };
+}
+
 export class LstarService {
   /**
    * Resolve Lstar + dispatched hedge ratios for a ticker across a daily window.
    *
-   * @param ticker          Stock ticker (e.g. "AAPL")
-   * @param marketFactorEtf Market factor ETF (default "SPY")
-   * @param options.years   Calendar years of history (default 1)
-   * @param options.threshold  Marginal-ER threshold; default 1%
+   * @param options.axis  `industry` (default) or `style` (Fama–French cascade).
    */
   async getLstar(
     ticker: string,
     marketFactorEtf: string = "SPY",
-    options?: { years?: number; threshold?: number },
+    options?: GetLstarOptions,
   ): Promise<LstarResult | null> {
     const upperTicker = ticker.toUpperCase();
     const years = options?.years ?? 1;
     const threshold = options?.threshold ?? LSTAR_DEFAULT_THRESHOLD;
+    const axis = options?.axis ?? "industry";
 
     const symbolRecord = await resolveSymbolByTicker(upperTicker);
     if (!symbolRecord) return null;
@@ -110,23 +333,7 @@ export class LstarService {
     startDate.setFullYear(startDate.getFullYear() - years);
     const startDateStr = startDate.toISOString().split("T")[0]!;
 
-    const keys: V3MetricKey[] = [
-      "l1_mkt_hr",
-      "l2_mkt_hr",
-      "l2_sec_hr",
-      "l3_mkt_hr",
-      "l3_sec_hr",
-      "l3_sub_hr",
-      "l1_mkt_er",
-      "l2_mkt_er",
-      "l2_sec_er",
-      "l3_mkt_er",
-      "l3_sec_er",
-      "l3_sub_er",
-      "l1_rr",
-      "l2_rr",
-      "l3_rr",
-    ];
+    const keys = axis === "style" ? STYLE_KEYS : INDUSTRY_KEYS;
 
     const rows = await fetchHistory(symbolRecord.symbol, keys, {
       periodicity: "daily",
@@ -135,12 +342,12 @@ export class LstarService {
     });
 
     if (rows.length === 0) {
-      return this.emptyResult(upperTicker, marketFactorEtf, threshold);
+      return this.emptyResult(upperTicker, marketFactorEtf, threshold, axis);
     }
 
     const pivoted = pivotHistory(rows);
     if (pivoted.length === 0) {
-      return this.emptyResult(upperTicker, marketFactorEtf, threshold);
+      return this.emptyResult(upperTicker, marketFactorEtf, threshold, axis);
     }
 
     const dates = pivoted.map((p) => p.teo);
@@ -153,50 +360,23 @@ export class LstarService {
     const l2_sector_er: (number | null)[] = [];
     const l3_subsector_er: (number | null)[] = [];
 
+    const processRow = axis === "style" ? processStyleRow : processIndustryRow;
+
     for (const p of pivoted) {
-      const l2s = (p.l2_sec_er as number | null) ?? null;
-      const l3ss = (p.l3_sub_er as number | null) ?? null;
-      const chosen = pickLstar(l2s, l3ss, threshold);
-      lstar.push(chosen);
-      l2_sector_er.push(l2s);
-      l3_subsector_er.push(l3ss);
-
-      // Dispatch hedges and total ER to the chosen level. Each L* is a
-      // self-contained hedge solution — we use its own market/sector/subsector
-      // HRs as emitted by the ERM3 solver, not a stitched-across-levels sum.
-      if (chosen === "L3") {
-        market_hr.push((p.l3_mkt_hr as number | null) ?? null);
-        sector_hr.push((p.l3_sec_hr as number | null) ?? null);
-        subsector_hr.push((p.l3_sub_hr as number | null) ?? null);
-        const m = (p.l3_mkt_er as number | null) ?? 0;
-        const s = (p.l3_sec_er as number | null) ?? 0;
-        const ss = l3ss ?? 0;
-        total_er.push(m + s + ss);
-      } else if (chosen === "L2") {
-        market_hr.push((p.l2_mkt_hr as number | null) ?? null);
-        sector_hr.push((p.l2_sec_hr as number | null) ?? null);
-        subsector_hr.push(null);
-        const m = (p.l2_mkt_er as number | null) ?? 0;
-        const s = l2s ?? 0;
-        total_er.push(m + s);
-      } else if (chosen === "L1") {
-        market_hr.push((p.l1_mkt_hr as number | null) ?? null);
-        sector_hr.push(null);
-        subsector_hr.push(null);
-        const m = (p.l1_mkt_er as number | null) ?? null;
-        total_er.push(m);
-      } else {
-        market_hr.push(null);
-        sector_hr.push(null);
-        subsector_hr.push(null);
-        total_er.push(null);
-      }
-
-      residual_return.push(dispatchLstarResidualReturn(chosen, p));
+      const row = processRow(p, threshold);
+      lstar.push(row.chosen);
+      l2_sector_er.push(row.l2Marginal);
+      l3_subsector_er.push(row.l3Marginal);
+      market_hr.push(row.market_hr);
+      sector_hr.push(row.sector_hr);
+      subsector_hr.push(row.subsector_hr);
+      total_er.push(row.total_er);
+      residual_return.push(row.residual_return);
     }
 
     return {
       ticker: upperTicker,
+      axis,
       dates,
       lstar,
       market_hr,
@@ -217,9 +397,11 @@ export class LstarService {
     ticker: string,
     marketFactorEtf: string,
     threshold: number,
+    axis: LstarAxis,
   ): LstarResult {
     return {
       ticker,
+      axis,
       dates: [],
       lstar: [],
       market_hr: [],

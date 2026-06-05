@@ -69,15 +69,21 @@ export const L3DecompositionRequestSchema = z.object({
   years: YearsSchema,
 });
 
+export const LstarAxisSchema = z.enum(["industry", "style"]).default("industry");
+
 /**
  * Schema for GET /api/lstar — per-(ticker, date) recommended hedge level.
  * `threshold` is accepted for SDK callers; chat / agentic surfaces should
  * leave it at the 1% default and treat the response as server-authoritative.
+ *
+ * `axis=style` uses Fama–French marginal ERs (SMB / HML); `sector_hr` /
+ * `subsector_hr` in the response carry SMB / HML hedge ratios.
  */
 export const LstarRequestSchema = z.object({
   ticker: TickerSchema,
   market_factor_etf: z.string().default("SPY"),
   years: YearsSchema,
+  axis: LstarAxisSchema,
   // z.coerce.number() turns null → 0; preprocess so omitted query params get .default(0.01).
   threshold: z.preprocess(
     (val) => (val === null || val === "" || val === undefined ? undefined : val),
@@ -322,6 +328,7 @@ export const BatchLstarRequestSchema = z.object({
     .max(100, "Maximum 100 tickers per batch"),
   market_factor_etf: z.string().default("SPY"),
   years: YearsSchema,
+  axis: LstarAxisSchema,
   threshold: z.preprocess(
     (val) => (val === null || val === "" || val === undefined ? undefined : val),
     z.coerce

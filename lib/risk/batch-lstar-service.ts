@@ -1,6 +1,7 @@
 import {
   getLstarService,
   type LstarResult,
+  type LstarAxis,
 } from "@/lib/risk/lstar-service";
 
 export type BatchLstarTickerStatus = "success" | "error" | "not_found";
@@ -9,6 +10,7 @@ export interface BatchLstarTickerResult {
   ticker: string;
   status: BatchLstarTickerStatus;
   error?: string;
+  axis?: LstarAxis;
   dates?: string[];
   lstar?: LstarResult["lstar"];
   market_hr?: LstarResult["market_hr"];
@@ -37,6 +39,7 @@ export interface BatchLstarResponseBody {
   years: number;
   threshold_used: number;
   market_factor_etf: string;
+  axis: LstarAxis;
 }
 
 export interface BatchLstarOptions {
@@ -44,12 +47,14 @@ export interface BatchLstarOptions {
   marketFactorEtf?: string;
   years?: number;
   threshold?: number;
+  axis?: LstarAxis;
 }
 
 function successPayload(result: LstarResult): BatchLstarTickerResult {
   return {
     ticker: result.ticker,
     status: "success",
+    axis: result.axis,
     dates: result.dates,
     lstar: result.lstar,
     market_hr: result.market_hr,
@@ -73,6 +78,7 @@ export async function fetchBatchLstar(
   const marketFactorEtf = options.marketFactorEtf ?? "SPY";
   const years = options.years ?? 1;
   const threshold = options.threshold;
+  const axis = options.axis ?? "industry";
 
   const settled = await Promise.all(
     options.tickers.map(async (rawTicker) => {
@@ -81,6 +87,7 @@ export async function fetchBatchLstar(
         const result = await service.getLstar(ticker, marketFactorEtf, {
           years,
           threshold,
+          axis,
         });
         if (!result) {
           return {
@@ -124,6 +131,7 @@ export async function fetchBatchLstar(
     years,
     threshold_used: thresholdUsed,
     market_factor_etf: marketFactorEtf,
+    axis,
   };
 }
 

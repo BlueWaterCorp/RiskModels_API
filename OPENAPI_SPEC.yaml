@@ -1591,9 +1591,11 @@ components:
         ratios and total explained-return. Arrays are parallel by date index. Each L\* is a standalone
         hedge solution (not stacked layers) — `market_hr`/`sector_hr`/`subsector_hr` come from the
         chosen level's solver and are `null` where the chosen level doesn't use that ETF
-        (sector_hr is null when L\*=L1; subsector_hr is null when L\*∈{L1,L2}).
+        (sector_hr is null when L\*=L1; subsector_hr is null when L\*∈{L1,L2}). When `axis=style`,
+        marginal ERs are SMB/HML and `sector_hr`/`subsector_hr` carry SMB/HML spread hedge ratios.
       required:
         - ticker
+        - axis
         - dates
         - lstar
         - market_hr
@@ -1610,6 +1612,11 @@ components:
       properties:
         ticker:
           type: string
+        axis:
+          type: string
+          enum: [industry, style]
+          default: industry
+          description: Cascade axis for marginal ER inputs and hedge-ratio semantics.
         dates:
           type: array
           items:
@@ -1663,14 +1670,16 @@ components:
             nullable: true
         l2_sector_er:
           type: array
-          description: Marginal sector ER at level L2 (input to the selection rule, exposed for audit).
+          description: >
+            Marginal L2 ER input (industry: sector; style: SMB). Exposed for audit / threshold override.
           items:
             type: number
             format: float
             nullable: true
         l3_subsector_er:
           type: array
-          description: Marginal subsector ER at level L3 (input to the selection rule, exposed for audit).
+          description: >
+            Marginal L3 ER input (industry: subsector; style: HML). Exposed for audit / threshold override.
           items:
             type: number
             format: float
@@ -1766,6 +1775,7 @@ components:
         - years
         - threshold_used
         - market_factor_etf
+        - axis
         - _agent
       properties:
         results:
@@ -1790,6 +1800,9 @@ components:
           type: number
         market_factor_etf:
           type: string
+        axis:
+          type: string
+          enum: [industry, style]
         _agent:
           type: object
           properties:
@@ -4430,6 +4443,17 @@ paths:
             Marginal-ER threshold for the L*/L1/L2/L3 selection rule. Default 0.01 (1%). Chat / agentic
             surfaces should leave at the default; SDK callers may tune. Backtests across 275 tickers ×
             11 sectors found no compelling reason for per-sector thresholds.
+        - name: axis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [industry, style]
+            default: industry
+          description: >
+            Cascade axis. `industry` (default): sector/subsector marginal ERs and ETF hedge ratios.
+            `style`: Fama–French SMB/HML marginal ERs; `sector_hr` / `subsector_hr` carry SMB / HML
+            spread hedge ratios.
       responses:
         "200":
           description: Per-date recommended level + dispatched hedge ratios.
@@ -5732,6 +5756,12 @@ paths:
                   minimum: 0
                   maximum: 0.5
                   default: 0.01
+                axis:
+                  type: string
+                  enum: [industry, style]
+                  default: industry
+                  description: >
+                    `industry` (default) or `style` (Fama–French SMB/HML cascade).
                 format:
                   type: string
                   enum: [json, parquet, csv]

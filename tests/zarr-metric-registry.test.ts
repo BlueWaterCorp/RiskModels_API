@@ -22,4 +22,25 @@ describe("zarr-metric-registry — Lstar metrics", () => {
       nullSentinel: 0,
     });
   });
+
+  it("style cascade metrics map to FF zarr variables", () => {
+    expect(getZarrSpec("l2_ff_smb_er")).toMatchObject({
+      role: "hedge",
+      zarrVar: "L2_ff_smb_ER",
+    });
+    expect(getZarrSpec("l3_ff_hml_er")).toMatchObject({
+      role: "hedge",
+      zarrVar: "L3_ff_hml_ER",
+    });
+    expect(getZarrSpec("l2_ff_smb_rr")).toMatchObject({
+      role: "returns",
+      zarrVar: "residual_return",
+      level: "l2_ff_smb",
+    });
+    expect(getZarrSpec("l3_ff_smb_hml_rr")).toMatchObject({
+      role: "returns",
+      zarrVar: "residual_return",
+      level: "l3_ff_smb_hml",
+    });
+  });
 });

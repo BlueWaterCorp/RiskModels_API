@@ -46,6 +46,7 @@ export const GET = withBilling(
       ticker: searchParams.get("ticker"),
       market_factor_etf: searchParams.get("market_factor_etf") || "SPY",
       years: searchParams.get("years") || "1",
+      axis: searchParams.get("axis") || "industry",
       threshold: searchParams.has("threshold")
         ? searchParams.get("threshold")
         : undefined,
@@ -61,7 +62,7 @@ export const GET = withBilling(
       );
     }
 
-    const { ticker, market_factor_etf, years, threshold } = validation.data;
+    const { ticker, market_factor_etf, years, threshold, axis } = validation.data;
 
     try {
       const fetchStart = performance.now();
@@ -69,6 +70,7 @@ export const GET = withBilling(
       const result = await service.getLstar(ticker, market_factor_etf, {
         years,
         threshold,
+        axis,
       });
 
       if (!result) {

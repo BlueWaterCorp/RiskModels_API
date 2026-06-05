@@ -59,6 +59,7 @@ export const POST = withBilling(
       market_factor_etf,
       years,
       threshold,
+      axis,
       format: reqFormat,
     } = validation.data;
 
@@ -68,6 +69,7 @@ export const POST = withBilling(
       marketFactorEtf: market_factor_etf,
       years,
       threshold,
+      axis,
     });
     const metadata = await getRiskMetadata();
     const fetchLatency = Math.round(performance.now() - fetchStart);

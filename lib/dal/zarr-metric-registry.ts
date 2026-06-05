@@ -15,7 +15,13 @@ export type ZarrMetricSpec =
   | {
       role: "returns";
       zarrVar: "combined_factor_return" | "factor_return" | "residual_return";
-      level: "market" | "sector" | "subsector" | "lstar";
+      level:
+        | "market"
+        | "sector"
+        | "subsector"
+        | "lstar"
+        | "l2_ff_smb"
+        | "l3_ff_smb_hml";
     }
   | {
       /**
@@ -102,6 +108,26 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // 3 = L3. We map 0 → null at the API boundary so callers see null (matches
   // the `lstar: null` semantics of GET /lstar) or 1/2/3.
   lstar_level: { role: "returnsFlat", zarrVar: "lstar_level", nullSentinel: 0 },
+
+  // Fama–French style cascade (parallel to industry; ds_erm3_hedge_weights + returns)
+  l2_ff_smb_er: { role: "hedge", zarrVar: "L2_ff_smb_ER" },
+  l3_ff_smb_er: { role: "hedge", zarrVar: "L3_ff_smb_ER" },
+  l3_ff_hml_er: { role: "hedge", zarrVar: "L3_ff_hml_ER" },
+  l2_ff_mkt_hr: { role: "hedge", zarrVar: "L2_ff_market_HR" },
+  l2_ff_smb_hr: { role: "hedge", zarrVar: "L2_ff_smb_HR" },
+  l3_ff_mkt_hr: { role: "hedge", zarrVar: "L3_ff_market_HR" },
+  l3_ff_smb_hr: { role: "hedge", zarrVar: "L3_ff_smb_HR" },
+  l3_ff_hml_hr: { role: "hedge", zarrVar: "L3_ff_hml_HR" },
+  l2_ff_smb_rr: {
+    role: "returns",
+    zarrVar: "residual_return",
+    level: "l2_ff_smb",
+  },
+  l3_ff_smb_hml_rr: {
+    role: "returns",
+    zarrVar: "residual_return",
+    level: "l3_ff_smb_hml",
+  },
 };
 
 export function getZarrSpec(key: V3MetricKey): ZarrMetricSpec | undefined {
