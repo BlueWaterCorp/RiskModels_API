@@ -32,14 +32,6 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
       <span className="text-[11px] text-zinc-500">Rank percentile (get_rankings)</span>
     </div>
   </div>
-  <div className="mt-4">
-    <img
-      src="/docs/readme/readme_inspiration.png"
-      alt="Combined RiskModels macro and ranking visualization"
-      className="w-full rounded-lg border border-zinc-800 bg-zinc-900"
-    />
-    <span className="text-[11px] text-zinc-500 mt-2 block">Combined — ranks &amp; macro (readme inspiration)</span>
-  </div>
 </div>
 
 <div className="not-prose my-10">
@@ -136,6 +128,42 @@ This repository is the **authoritative reference** for the **ERM3** hierarchical
         <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Plaid Holdings</span>
       </div>
       <span className="block text-xs text-zinc-500 leading-relaxed">Bridge real brokerage holdings into ERM3 batch and metrics workflows.</span>
+    </a>
+  </div>
+
+  <div className="flex items-baseline justify-between gap-3 mt-10 mb-3">
+    <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">The evidence — research on riskmodels.org</div>
+    <a href="https://riskmodels.org/?utm_source=riskmodels-app&utm_medium=docs-api&utm_campaign=cross-site" target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-primary hover:text-primary/80 whitespace-nowrap">riskmodels.org ↗</a>
+  </div>
+  <p className="text-xs text-zinc-500 leading-relaxed max-w-3xl mb-4">The API is the engine; <strong className="text-zinc-400">riskmodels.org</strong> is the published research and methodology behind it — the math, the worked examples, and the empirical proofs that justify hedging the residual.</p>
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <a href="https://riskmodels.org/methodology?utm_source=riskmodels-app&utm_medium=docs-api&utm_campaign=cross-site" target="_blank" rel="noopener noreferrer" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">📐</span>
+        <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Methodology ↗</span>
+      </div>
+      <span className="block text-xs text-zinc-500 leading-relaxed">The full regression cascade: orthogonalization, Huber-M betas, Vasicek shrinkage, variance decomposition, and how ERM3 compares to Barra / Axioma.</span>
+    </a>
+    <a href="https://riskmodels.org/primer?utm_source=riskmodels-app&utm_medium=docs-api&utm_campaign=cross-site" target="_blank" rel="noopener noreferrer" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">🎯</span>
+        <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Four-bets primer ↗</span>
+      </div>
+      <span className="block text-xs text-zinc-500 leading-relaxed">Plain-language intro to hierarchical decomposition — "every portfolio runs four bets, beta only shows one" — with a worked NVIDIA variance split.</span>
+    </a>
+    <a href="https://riskmodels.org/research?utm_source=riskmodels-app&utm_medium=docs-api&utm_campaign=cross-site" target="_blank" rel="noopener noreferrer" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">📚</span>
+        <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Research library ↗</span>
+      </div>
+      <span className="block text-xs text-zinc-500 leading-relaxed">The <em>One Position, Four Bets</em> series and working papers — hidden concentration, 13F risk structure, and the attribution standard.</span>
+    </a>
+    <a href="https://riskmodels.org/scanner?utm_source=riskmodels-app&utm_medium=docs-api&utm_campaign=cross-site" target="_blank" rel="noopener noreferrer" className="group flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-primary/50 transition-all">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">🔬</span>
+        <span className="font-semibold text-zinc-100 group-hover:text-primary transition-colors text-sm">Mandate scanner ↗</span>
+      </div>
+      <span className="block text-xs text-zinc-500 leading-relaxed">Interactive exhibit: compare a stated investment mandate against the variance ERM3 actually attributes to market, sector, subsector, and residual.</span>
     </a>
   </div>
 </div>
@@ -479,7 +507,7 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 `POST /decompose` is a semantic wrapper over the same L3 fields exposed by `GET /metrics/{'{ticker}'}`. It returns four additive layers — **market**, **sector**, **subsector**, and **residual** — each tradable layer carrying an `er` (explained-risk variance fraction), an `hr` (dollar-ratio hedge ratio), and a `hedge_etf`. A top-level `hedge` map flips the sign (negative of each layer `hr`) and sums across any duplicate ETFs, so you get ready-to-short notionals per instrument.
 
-Billing is identical to `GET /metrics/{'{ticker}'}` ({'$'}0.001/call, `billing_code: metrics_v3`). For the full L1/L2/L3 snapshot (all six HR names), keep using `GET /metrics/{'{ticker}'}`.
+Billing is identical to `GET /metrics/{'{ticker}'}` ({'$'}0.001/call, `billing_code: metrics_v3`). For the full L1/L2/L3 snapshot (all six HR names), keep using `GET /metrics/{'{ticker}'}`. For the plain-language intuition behind the four bets — and a worked NVIDIA example — see the [four-bets primer on riskmodels.org](https://riskmodels.org/primer?utm_source=riskmodels-app&utm_medium=docs-api-decompose&utm_campaign=cross-site).
 
 **Request**
 
