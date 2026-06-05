@@ -31,6 +31,63 @@ import {
   idempotencyFingerprint,
   setIdempotentResponse,
 } from "./idempotency-cache";
+import { METHODOLOGY_URL } from "@/lib/constants";
+
+/**
+ * Inject agent-facing meta into a JSON success body: the measured total
+ * `latency_ms` (only known here, after the handler returns), a `provenance`
+ * link, and `request_id` if the route didn't already set one.
+ *
+ * Header values (X-Response-Latency-Ms etc.) are also set, but many agent
+ * HTTP clients drop headers — the body is the durable carrier. No-ops for
+ * non-JSON (PDF/PNG/CSV/SSE), errors (status >= 400), and non-object bodies.
+ */
+export async function injectAgentMeta(
+  response: NextResponse,
+  opts: { latencyMs: number; requestId?: string },
+): Promise<NextResponse> {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json") || response.status >= 400) {
+    return response;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await response.clone().json();
+  } catch {
+    return response;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return response;
+  }
+
+  const body = parsed as Record<string, unknown>;
+  const existingAgent =
+    body._agent && typeof body._agent === "object" && !Array.isArray(body._agent)
+      ? (body._agent as Record<string, unknown>)
+      : {};
+
+  body._agent = {
+    ...existingAgent,
+    ...(existingAgent.request_id === undefined && opts.requestId
+      ? { request_id: opts.requestId }
+      : {}),
+    latency_ms: opts.latencyMs,
+    ...(existingAgent.provenance === undefined
+      ? { provenance: METHODOLOGY_URL }
+      : {}),
+  };
+
+  // Body length changed — let the platform recompute Content-Length.
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+
+  return new NextResponse(JSON.stringify(body), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 /**
  * Check if user has exceeded their monthly spend cap
@@ -763,16 +820,20 @@ export function withBilling(
         // Silently skip if we can't fetch spend cap data
       }
 
+      // Inject measured latency / provenance into the JSON body. Done before
+      // the idempotency store so replays return the identical enriched body.
+      const finalResponse = await injectAgentMeta(response, { latencyMs, requestId });
+
       if (
         idempotencyFingerprintVal &&
         userId &&
         req.method === "POST" &&
-        response.status < 500
+        finalResponse.status < 500
       ) {
         try {
-          const bodyText = await response.clone().text();
+          const bodyText = await finalResponse.clone().text();
           const headers: Record<string, string> = {};
-          response.headers.forEach((v, k) => {
+          finalResponse.headers.forEach((v, k) => {
             const kl = k.toLowerCase();
             if (
               kl.startsWith("x-") ||
@@ -783,7 +844,7 @@ export function withBilling(
             }
           });
           await setIdempotentResponse(userId, idempotencyFingerprintVal, {
-            status: response.status,
+            status: finalResponse.status,
             body: bodyText,
             headers,
           });
@@ -792,7 +853,7 @@ export function withBilling(
         }
       }
 
-      return response;
+      return finalResponse;
     } catch (error) {
       const latencyMs = Date.now() - startTime;
 
@@ -847,7 +908,7 @@ export function withBillingHeaders(
         response.headers.set("X-Pricing-Tier", capability.pricing.tier);
       }
 
-      return response;
+      return await injectAgentMeta(response, { latencyMs, requestId });
     } catch (error) {
       throw error;
     }
@@ -983,5 +1044,5 @@ export async function finalizeBilling(
     res.headers.set("X-Pricing-Tier", capMeta.pricing.tier);
   }
 
-  return res;
+  return await injectAgentMeta(res, { latencyMs, requestId: context.requestId });
 }

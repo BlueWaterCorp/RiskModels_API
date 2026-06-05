@@ -76,6 +76,14 @@ export const EMPTY_HISTORY_DATA_WARNING =
 export type AgentBodyInput = {
   request_id: string;
   cost_usd?: number;
+  /**
+   * Server-measured processing latency in ms. Usually left unset here: the
+   * billing middleware injects the authoritative total into `_agent.latency_ms`
+   * after the handler returns (see injectAgentMeta in billing-middleware.ts).
+   */
+  latency_ms?: number;
+  /** Methodology / provenance URL; middleware fills this when omitted. */
+  provenance?: string;
 };
 
 /** Build _agent block for JSON history endpoints (mirrors batch/analyze shape). */
@@ -83,6 +91,8 @@ export function buildAgentBody(agent: AgentBodyInput): Record<string, unknown> {
   return {
     request_id: agent.request_id,
     ...(agent.cost_usd !== undefined ? { cost_usd: agent.cost_usd } : {}),
+    ...(agent.latency_ms !== undefined ? { latency_ms: agent.latency_ms } : {}),
+    ...(agent.provenance !== undefined ? { provenance: agent.provenance } : {}),
   };
 }
 

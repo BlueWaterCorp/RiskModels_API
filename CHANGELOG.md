@@ -3,6 +3,29 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [0.4.0] — 2026-06-05
+
+### Added
+
+- **`GET /api/status`** — Public, aggregate, privacy-safe service reliability: measured latency percentiles (p50/p95/p99) and a 5xx-only success rate over a window (`?window_hours`, default 24, max 720), plus a per-capability breakdown. Aggregated from `billing_events` request telemetry (the same source `/api/health` uses); metered 4xx (auth/payment/rate-limit) are excluded from both latency and success_rate so a flood of fast 401s can't make the service look faster or less reliable than it is. No revenue or user fields exposed. Capability `status-metrics` (free). Distinct from `/api/metrics/{ticker}` (risk metrics) and `/api/health` (current up/degraded/down state).
+- **`POST /api/feedback`** — Trust-loop endpoint: an agent or human flags a result by its `_agent.request_id` with `rating` (up/down), `category`, and/or a ≤4000-char `comment`. Authenticated, free (no metering). Writes to `public.feedback_events` (service-role). Returns `503` until the BWMACRO migration is applied; `201` once live. Capability `feedback` (free).
+- **`/for-agents` page** — Human approval surface for risk/compliance teams evaluating the API for their agent fleets: discovery artifacts, onboarding/auth flow, pricing at a glance, and trust/compliance signals. Linked from the docs sidebar (Agents group).
+- **Response `_agent.latency_ms` + `_agent.provenance`** — The billing middleware now injects the measured total latency (previously header-only) and a methodology/provenance URL into every JSON success body (non-JSON, errors, and arrays untouched). Many agent HTTP clients drop headers; the body is the durable carrier.
+- **Enriched `/.well-known/agent-manifest.json`** — Added `reproducibility` (point-in-time from 2006, deterministic, live model_version/data_as_of/universe_size, methodology + validation-manifest URLs), `pricing` summary, `discovery` cross-links, `reliability` (→ `/api/status`), `onboarding`, and `feedback` blocks. Version stamped `3.0.0-agent`. `agentic-disclosure.json` gained `reproducibility` + `audit` blocks.
+- **Agent integration docs — "Compose & chain"** — Worked decompose → hedge → portfolio-snapshot → execution flow, with the schema/citeability/idempotency properties that make chaining safe.
+- **OpenAPI** — `/status` and `/feedback` added under the Utility tag (`x-pricing` cost 0); `public/openapi.json` + `mcp/data/openapi.json` regenerated.
+
+### Fixed
+
+- **Methodology/provenance URL** — `_metadata.wiki_uri` (and the new `_agent.provenance`) pointed at `riskmodels.net/docs/methodology` (404); corrected to `riskmodels.app/docs/methodology` (200). Single source of truth: `METHODOLOGY_URL` in `lib/constants.ts`.
+- **Landing latency badge** — Softened the unbacked "Sub-120 ms" hero claim to "Low-latency" (no asserted SLA without a measured production p95).
+
+### Cross-repo
+
+- **BWMACRO** — `supabase/migrations/20260605120000_feedback_events.sql` (mirrored to `Risk_Models/riskmodels_com/supabase/migrations/`). Must be applied to the Supabase project before `POST /api/feedback` returns 201.
+- **RM_ORG (riskmodels.org)** — `GET /.well-known/methodology.json` machine-readable methodology + validation manifest (verbatim published claims only); the API manifest's `reproducibility.validation_manifest_url` points at it.
+
+
 ## [0.3.9] — 2026-05-27
 
 ### Added
