@@ -229,9 +229,11 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_analyze_portfolio",
       "riskmodels_hedge_portfolio",
       "riskmodels_portfolio_decompose",
-      "riskmodels_render_artifact",
       "riskmodels_whitepaper_example",
     ]);
+    // riskmodels_render_artifact is hosted-only — registered separately via
+    // registerRiskModelsRenderTool (needs GCP Cloud Run auth), intentionally
+    // NOT in the shared/stdio tool set.
 
     const result = await tools.get("riskmodels_decompose")?.({ ticker: "NVDA" });
     const payload = JSON.parse(result?.content[0].text ?? "{}");

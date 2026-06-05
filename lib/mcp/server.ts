@@ -8,7 +8,10 @@
  *
  * SOURCE OF TRUTH REMINDER: if you change tool schemas or handler logic,
  * mirror the edit to `mcp/src/server.ts` so the stdio binary stays in sync.
- * The lists (9 SDK-backed tools from registerRiskModelsTools, 5 resources) must match exactly.
+ * The shared list is 8 SDK-backed tools from `registerRiskModelsTools` + 5
+ * resources. The hosted server ALSO registers `riskmodels_render_artifact` via
+ * `registerRiskModelsRenderTool` — that one is hosted-only (needs GCP Cloud Run
+ * auth) and is intentionally NOT in the stdio binary.
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -24,6 +27,7 @@ import {
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
 } from "@/lib/mcp/tools/riskmodels-tools";
+import { registerRiskModelsRenderTool } from "@/lib/mcp/render-tool";
 
 const DATA_DIR = join(process.cwd(), "mcp", "data");
 
@@ -297,6 +301,9 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   // --- Tools ---
 
   registerRiskModelsTools(sdk, server);
+  // Hosted-only: the render tool needs GCP Cloud Run auth, so it lives outside
+  // lib/mcp/tools/ and is not compiled into the public stdio package.
+  registerRiskModelsRenderTool(server);
 
   server.registerTool(
     "riskmodels_list_endpoints",
