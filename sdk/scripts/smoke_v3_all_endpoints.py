@@ -44,6 +44,7 @@ OPENAPI_PATH = REPO_ROOT / "mcp" / "data" / "openapi.json"
 STOCK_TICKER = os.environ.get("STOCK_TICKER", "AAPL").upper()
 FUND_SEARCH = os.environ.get("FUND_SEARCH", "AGTHX").upper()
 STYLE_SLUG = os.environ.get("STYLE_SLUG", "large-growth")
+UNIVERSE_NAME = os.environ.get("UNIVERSE_NAME", "uni_mc_3000")
 BASE = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
 SITE = os.environ.get("RISKMODELS_SITE_ORIGIN", "https://riskmodels.app").rstrip("/")
 _JSON_BODY_MAX = int(os.environ.get("SMOKE_JSON_BODY_MAX", "32000"))
@@ -147,6 +148,8 @@ def expand_path(path: str, *, stock: str, bw_fund_id: str, slug: str) -> str:
     out = out.replace("{bw_fund_id}", quote(bw_fund_id, safe=""))
     out = out.replace("{slug}", quote(slug, safe=""))
     out = out.replace("{cohort_type}", "fund")
+    out = out.replace("{name}", quote(UNIVERSE_NAME, safe=""))  # /universe/{name}/members
+    out = out.replace("{n}", "5")  # /residual-signal/decile/{n} — valid decile 1..10
     return out
 
 

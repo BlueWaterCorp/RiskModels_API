@@ -1,0 +1,10 @@
+{
+  "missing_ok": [],
+  "undocumented_ok": [],
+  "known_issues": [
+    "/auth/token"
+  ],
+  "_notes": {
+    "/auth/token": "DEFECT (tracked, backlog C): documented as 'Generate OAuth2 Access Token' on server https://riskmodels.app/api, and the SDK posts here (sdk/riskmodels/auth.py:66), but production returns HTTP 404 (no app/api/auth/token/route.ts; the catch-all returns JSON 404). OAuth2 client-credentials auth appears broken; only API-key auth works. Listed as known_issues so the strict gate flags NEW drift while this stays tracked. Remove once a handler ships or the spec is corrected."
+  }
+}
