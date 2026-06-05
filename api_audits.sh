@@ -58,6 +58,8 @@ fi
 
 step "route-drift" "$PY" scripts/audit/openapi_route_drift.py --strict --out-dir "$OUT"
 
+step "docs-conformity" "$PY" scripts/audit/docs_conformity.py --strict --out-dir "$OUT"
+
 step "schema-selftest" "$PY" scripts/audit/live_schema_check.py --self-test
 
 # ---- live audits (need an API key; cost money) ---------------------------

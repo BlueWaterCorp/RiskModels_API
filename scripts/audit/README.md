@@ -16,6 +16,7 @@ Reports are written to `audit-reports/<timestamp>/` (gitignored).
 | `openapi-yaml` | `OPENAPI_SPEC.yaml` parses | no | yes |
 | `cli-openapi` | `scripts/cli-openapi-check.mjs` (CLI routes ⊆ spec) | no | yes |
 | `route-drift` | `scripts/audit/openapi_route_drift.py --strict` | no | yes (untracked) |
+| `docs-conformity` | `scripts/audit/docs_conformity.py --strict` | no | yes (untracked) |
 | `schema-selftest` | `scripts/audit/live_schema_check.py --self-test` | no | yes |
 | `smoke-endpoints` | `sdk/scripts/smoke_v3_all_endpoints.py` | **yes** | yes (critical only) |
 | `schema-check` | `scripts/audit/live_schema_check.py` (consumes smoke report) | no | no (reports) |
@@ -38,6 +39,14 @@ smoke run against their OpenAPI response schemas (`$ref`s inlined, OpenAPI-3.0
 (validated / skipped) so a green run can't hide "checked nothing". Reporting by
 default; add `--strict` to enforce once spec and responses are reconciled.
 `--self-test` proves the validator flags a broken body.
+
+**`docs_conformity.py`** — static. Checks the hand-maintained MDX docs
+(`content/docs/*.mdx`) against the spec: every `/api/...` path mentioned in the
+docs must match an OpenAPI path template (concrete values like `/api/metrics/AAPL`
+match `/metrics/{ticker}`), and every internal `/docs/<slug>` link must resolve
+to an MDX file. Endpoint-table costs are compared to `x-pricing.cost_usd` and
+reported. Acceptable prose mentions and tracked defects live in
+`docs_conformity_allowlist.json` (`phantom_ok` / `known_issues`).
 
 ## Adding a new documented endpoint
 
