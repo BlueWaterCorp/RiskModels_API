@@ -186,6 +186,20 @@ describe("LstarRequestSchema", () => {
       expect(r.data.threshold).toBe(0);
     }
   });
+
+  it("defaults axis to industry and accepts style", () => {
+    const d = LstarRequestSchema.safeParse({ ticker: "NVDA", years: "1" });
+    expect(d.success).toBe(true);
+    if (d.success) expect(d.data.axis).toBe("industry");
+
+    const s = LstarRequestSchema.safeParse({
+      ticker: "NVDA",
+      years: "1",
+      axis: "style",
+    });
+    expect(s.success).toBe(true);
+    if (s.success) expect(s.data.axis).toBe("style");
+  });
 });
 
 describe("parseMacroFactorsSeriesQuery", () => {

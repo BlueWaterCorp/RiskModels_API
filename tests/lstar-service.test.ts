@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   dispatchLstarResidualReturn,
+  dispatchStyleLstarResidualReturn,
   pickLstar,
   LSTAR_DEFAULT_THRESHOLD,
 } from "@/lib/risk/lstar-service";
 
-describe("pickLstar", () => {
+describe("pickLstar (industry)", () => {
   it("defaults to L1 when marginal ERs are below threshold", () => {
     expect(pickLstar(0.005, 0.008, LSTAR_DEFAULT_THRESHOLD)).toBe("L1");
   });
@@ -21,6 +22,47 @@ describe("pickLstar", () => {
 
   it("returns null when both ER inputs are missing", () => {
     expect(pickLstar(null, null, LSTAR_DEFAULT_THRESHOLD)).toBeNull();
+  });
+
+  it("steps down when marginal ER is negative (subsector hurts)", () => {
+    expect(pickLstar(0.02, -0.03, LSTAR_DEFAULT_THRESHOLD)).toBe("L2");
+    expect(pickLstar(-0.06, 0.24, LSTAR_DEFAULT_THRESHOLD)).toBe("L3");
+  });
+});
+
+describe("pickLstar (style axis)", () => {
+  it("uses the same depth rule on SMB / HML marginal ERs", () => {
+    expect(
+      pickLstar(0.05, 0.16, LSTAR_DEFAULT_THRESHOLD, "style"),
+    ).toBe("L3");
+    expect(
+      pickLstar(0.05, 0.005, LSTAR_DEFAULT_THRESHOLD, "style"),
+    ).toBe("L2");
+    expect(
+      pickLstar(0.005, 0.005, LSTAR_DEFAULT_THRESHOLD, "style"),
+    ).toBe("L1");
+  });
+
+  it("negative SMB marginal still allows L3 when HML clears (hierarchical)", () => {
+    // BRK-B–like: smb −6%, hml +24% → style L3 under shared rule
+    expect(
+      pickLstar(-0.0625, 0.2445, LSTAR_DEFAULT_THRESHOLD, "style"),
+    ).toBe("L3");
+  });
+});
+
+describe("dispatchStyleLstarResidualReturn", () => {
+  const row = {
+    teo: "2026-01-01",
+    l1_rr: 0.01,
+    l2_ff_smb_rr: 0.02,
+    l3_ff_smb_hml_rr: 0.03,
+  };
+
+  it("routes to the matching style-level residual return", () => {
+    expect(dispatchStyleLstarResidualReturn("L1", row)).toBe(0.01);
+    expect(dispatchStyleLstarResidualReturn("L2", row)).toBe(0.02);
+    expect(dispatchStyleLstarResidualReturn("L3", row)).toBe(0.03);
   });
 });
 

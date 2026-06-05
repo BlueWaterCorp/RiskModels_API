@@ -206,5 +206,10 @@ Add an optional `style?: StyleCascadeSnapshot | null` to:
   align with `sdk/riskmodels/snapshots/zarr_context.py`.
 - **Naming** — `smb_er` vs `ff_smb_er` etc. in the public wire; pick one convention and
   reflect it in `SEMANTIC_ALIASES.md`.
-- **Recommended-level interplay** — does the Lstar/recommended-level logic stay
-  industry-only (likely yes; style is descriptive, not a hedge-level pick)?
+- **Recommended-level interplay** — **Shipped (2026-06-05):** `getLstar({ axis:
+  "style" })` and `GET /api/lstar?axis=style` / `POST /api/batch/lstar` with
+  `axis: "style"`. Style V3 keys in `zarr-metric-registry.ts`; marginal ERs
+  `L2_ff_smb_ER` / `L3_ff_hml_ER`; HR dispatch uses SMB/HML spread ratios in
+  `sector_hr` / `subsector_hr`. Residual returns: `l2_ff_smb_rr` /
+  `l3_ff_smb_hml_rr`. Hedge-recommendation product surface remains industry-only
+  unless extended separately.

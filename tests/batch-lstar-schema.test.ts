@@ -62,6 +62,7 @@ describe("batchLstarToLongRows", () => {
       years: 1,
       threshold_used: 0.01,
       market_factor_etf: "SPY",
+      axis: "industry",
     };
 
     const rows = batchLstarToLongRows(body);
