@@ -1,0 +1,12 @@
+{
+  "phantom_ok": [
+    "/api/rankings"
+  ],
+  "known_issues": [
+    "/api/plaid/webhook"
+  ],
+  "_notes": {
+    "/api/rankings": "Prose shorthand in rankings-screen.mdx ('replaces N per-ticker /rankings round-trips') referring to /rankings/{ticker} generically — not a literal endpoint claim.",
+    "/api/plaid/webhook": "DEFECT (tracked, backlog C): plaid-holdings.mdx:94 documents POST /api/plaid/webhook but there is no app/api/plaid/webhook/route.ts and it is not in the OpenAPI spec. Either implement the receiver, add it to the spec, or correct the doc if Plaid webhooks are handled outside app/api (e.g. a Supabase edge function)."
+  }
+}
