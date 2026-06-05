@@ -68,7 +68,7 @@ Use these when you want **Pearson** or **Spearman** correlation between a **stoc
 | `l2` | Residual vs market + sector ETFs |
 | `l3_residual` | Residual after L3 hedge replication (market + sector + subsector ETFs) — **recommended for style factors** |
 
-Correlations are **return correlations** in roughly **[-1, 1]** — they are **not** hedge notionals (**`l3_market_hr`**) or variance shares (**`l3_residual_er`**). See [SEMANTIC_ALIASES.md](https://github.com/Cerebellum-Archive/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) for full semantics and JSON Schema links.
+Correlations are **return correlations** in roughly **[-1, 1]** — they are **not** hedge notionals (**`l3_market_hr`**) or variance shares (**`l3_residual_er`**). See [SEMANTIC_ALIASES.md](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/SEMANTIC_ALIASES.md) for full semantics and JSON Schema links.
 
 The implementation requires **at least ~30** overlapping paired days per factor; otherwise that factor's entry is `null`. A `null` is not a sign error — it means insufficient overlap (including pre-launch windows for short-history MSCI style factors).
 
