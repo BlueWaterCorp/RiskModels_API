@@ -371,7 +371,7 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/metrics/{'{ticker}'}</td>
         <td className="py-3 px-3">GET</td>
         <td className="py-3 px-3">Latest snapshot: HR/ER fields (semantic columns in SDK), vol, Sharpe, sector, market cap</td>
-        <td className="py-3 px-3 text-zinc-500">{'$'}0.005/call</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.001/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_metrics("NVDA", as_dataframe=True)' /></td>
       </tr>
       <tr id="decompose" className="border-b border-zinc-800 align-top">
@@ -392,7 +392,7 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/l3-decomposition</td>
         <td className="py-3 px-3">GET</td>
         <td className="py-3 px-3">Monthly historical HR/ER time series</td>
-        <td className="py-3 px-3 text-zinc-500">$0.005/call</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_l3_decomposition("NVDA")' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
@@ -405,8 +405,8 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
       <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/batch/analyze</td>
         <td className="py-3 px-3">POST</td>
-        <td className="py-3 px-3">Multi-ticker batch up to 100, 25% cheaper per position</td>
-        <td className="py-3 px-3 text-zinc-500">$0.002/position</td>
+        <td className="py-3 px-3">Multi-ticker batch up to 100 (returns + full metrics per position)</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.005/position</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().batch_analyze(["NVDA","AAPL"], ["returns","full_metrics"], years=2)' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">
@@ -427,7 +427,7 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/rankings/screen</td>
         <td className="py-3 px-3">POST</td>
         <td className="py-3 px-3">Server-side percentile / decile / sector filters over the full ds_rankings cross-section. Returns up to 500 rows sorted by <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">rank_ordinal</code>. Stat-arb cross-section, one call.</td>
-        <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.05/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().screen_rankings(metric="subsector_residual", cohort="subsector", window="21d", min_percentile=95)' /></td>
       </tr>
       <tr className="border-b border-zinc-800 align-top">

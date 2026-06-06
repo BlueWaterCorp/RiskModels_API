@@ -220,7 +220,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'post',
         summary: 'Universe-wide rank screen',
         description:
-          'Server-side percentile / decile / sector filters over the full ds_rankings cross-section at one teo (default latest). Replaces N per-ticker /rankings calls. Returns up to 500 rows sorted by rank_ordinal (1 = best, rank_percentile 100 = best). Cost: $0.02/call.',
+          'Server-side percentile / decile / sector filters over the full ds_rankings cross-section at one teo (default latest). Replaces N per-ticker /rankings calls. Returns up to 500 rows sorted by rank_ordinal (1 = best, rank_percentile 100 = best). Cost: $0.05/call.',
         operationId: 'postRankingsScreen',
         tag: 'Risk Metrics',
         params: [

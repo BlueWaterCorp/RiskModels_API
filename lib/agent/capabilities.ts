@@ -491,7 +491,7 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0,
       currency: "USD",
       billing_code: "ticker_search_v2",
     },
