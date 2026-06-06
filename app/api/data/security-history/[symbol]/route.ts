@@ -8,6 +8,10 @@ import {
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
+import {
+  isGatewayAuthenticated,
+  requestsRawRestricted,
+} from "@/lib/data-license";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,6 +53,22 @@ export async function GET(
   }
 
   const keys = keysParam.split(",").map((k) => k.trim()).filter(Boolean);
+
+  // EODHD Exhibit B(e): raw fields (close price, market cap) may be served only
+  // within authenticated environments. Per-symbol here satisfies the per-call
+  // condition; gate on the service key. Derived keys stay public.
+  if (requestsRawRestricted(keys) && !isGatewayAuthenticated(request)) {
+    return NextResponse.json(
+      {
+        error:
+          "Raw fields (price_close, market_cap) require authentication. " +
+          "Use a billed endpoint (/api/metrics/:ticker, /api/ticker-returns) " +
+          "or omit these keys.",
+      },
+      { status: 403 },
+    );
+  }
+
   const periodicity = (sp.get("periodicity") ?? "daily") as V3Periodicity;
   const startDate = sp.get("start") ?? undefined;
   const endDate = sp.get("end") ?? undefined;
