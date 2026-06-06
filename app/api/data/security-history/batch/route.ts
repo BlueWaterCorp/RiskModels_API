@@ -8,6 +8,7 @@ import {
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
+import { requestsRawRestricted, stripRawRestricted } from "@/lib/data-license";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -83,10 +84,13 @@ export async function POST(request: NextRequest) {
       if (data) allRows.push(...data);
     }
 
-    // Key by symbol
+    // Key by symbol. EODHD Exhibit B(e)/(f): raw fields (close price, market
+    // cap) are permitted only per-symbol/per-call — never in a bulk batch — so
+    // strip them from every wide row here regardless of caller auth.
     const results: Record<string, unknown> = {};
     for (const row of allRows) {
-      results[(row as { symbol: string }).symbol] = row;
+      const r = row as Record<string, unknown> & { symbol: string };
+      results[r.symbol] = stripRawRestricted(r);
     }
 
     return NextResponse.json({ results });
@@ -100,6 +104,20 @@ export async function POST(request: NextRequest) {
         error: "keys array is required for history mode (or use latest: true)",
       },
       { status: 400 },
+    );
+  }
+
+  // EODHD Exhibit B(e)/(f): raw fields are permitted only per-symbol/per-call.
+  // A multi-symbol batch is bulk by definition, so raw keys are never allowed
+  // here — direct callers to the per-symbol endpoint. Derived keys are fine.
+  if (requestsRawRestricted(keys)) {
+    return NextResponse.json(
+      {
+        error:
+          "Raw fields (price_close, market_cap) are not available in batch " +
+          "requests. Fetch them per-symbol via GET /api/data/security-history/:symbol.",
+      },
+      { status: 403 },
     );
   }
 

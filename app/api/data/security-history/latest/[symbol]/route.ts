@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
+import { isGatewayAuthenticated, stripRawRestricted } from "@/lib/data-license";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,13 @@ export async function GET(
       { error: "No latest data found for symbol" },
       { status: 404 },
     );
+  }
+
+  // EODHD Exhibit B(e): raw fields (close price, market cap) only within
+  // authenticated environments. Per-symbol satisfies the per-call condition;
+  // unauthenticated callers get the derived columns with raw fields stripped.
+  if (!isGatewayAuthenticated(request)) {
+    return NextResponse.json(stripRawRestricted(data as Record<string, unknown>));
   }
 
   return NextResponse.json(data);
