@@ -9639,6 +9639,186 @@
         }
       }
     },
+    "/status": {
+      "get": {
+        "summary": "Aggregate service reliability metrics",
+        "description": "Measured latency percentiles (p50/p95/p99) and a 5xx-only success rate over a window, aggregated across all capabilities from request telemetry, plus a per-capability breakdown. Numbers are observed from real traffic, not asserted SLAs. Metered 4xx (auth/payment/rate-limit) are excluded from both latency and success_rate. Free, no auth required.\n",
+        "operationId": "getStatus",
+        "tags": [
+          "Utility"
+        ],
+        "parameters": [
+          {
+            "name": "window_hours",
+            "in": "query",
+            "required": false,
+            "description": "Lookback window in hours (default 24, max 720).",
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "minimum": 1,
+              "maximum": 720
+            }
+          }
+        ],
+        "x-pricing": {
+          "capability_id": "status-metrics",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0,
+          "currency": "USD",
+          "billing_code": "status_metrics"
+        },
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Reliability metrics for the window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "window_hours": {
+                      "type": "integer"
+                    },
+                    "measured_through": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "sample_size": {
+                      "type": "integer",
+                      "description": "Service-relevant events in window (4xx excluded)."
+                    },
+                    "latency_ms": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Server-measured processing latency (excludes network); null if no traffic.",
+                      "properties": {
+                        "p50": {
+                          "type": "number"
+                        },
+                        "p95": {
+                          "type": "number"
+                        },
+                        "p99": {
+                          "type": "number"
+                        },
+                        "avg": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "success_rate": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Fraction of service-relevant events that did not 5xx; null if no traffic."
+                    },
+                    "by_capability": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/feedback": {
+      "post": {
+        "summary": "Submit feedback on an API result",
+        "description": "Flag a specific result by its _agent.request_id with a rating / category / correction note. Trust-loop signal for offline data-quality and docs triage; no output changes at request time. Authenticated, free (no metering). Provide at least one of rating, category, or comment.\n",
+        "operationId": "postFeedback",
+        "tags": [
+          "Utility"
+        ],
+        "x-pricing": {
+          "capability_id": "feedback",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0,
+          "currency": "USD",
+          "billing_code": "feedback"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "description": "The _agent.request_id / X-Request-ID of the call being rated. Nullable for general feedback."
+                  },
+                  "capability_id": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "string",
+                    "enum": [
+                      "up",
+                      "down"
+                    ]
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "data_quality",
+                      "incorrect_result",
+                      "latency",
+                      "docs",
+                      "feature_request",
+                      "other"
+                    ]
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Feedback recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "feedback_id": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or empty feedback (no rating/category/comment, bad enum, or comment too long)."
+          },
+          "401": {
+            "description": "Missing or invalid API key."
+          },
+          "503": {
+            "description": "Feedback store temporarily unavailable (retry)."
+          }
+        }
+      }
+    },
     "/balance": {
       "get": {
         "summary": "Account balance and rate limits",

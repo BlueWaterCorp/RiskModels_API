@@ -113,6 +113,38 @@ Restart your editor after saving. See the [MCP server README](https://github.com
 
 ---
 
+## Compose & chain
+
+RiskModels is one specialized link in an agent's tool chain. Outputs are stable JSON designed to feed the next call — yours or another provider's.
+
+**A typical risk-then-act flow:**
+
+1. **Decompose** a position into its four factor layers and ETF hedge map.
+
+   ```bash
+   curl -X POST https://riskmodels.app/api/decompose \
+     -H "Authorization: Bearer $RISKMODELS_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"ticker":"NVDA"}'
+   ```
+
+   The response `hedge` object is `{ ETF: ratio }` — e.g. `{ "SPY": 0.85, "XLK": 0.15 }`. Those ETF tickers and ratios are the join key to the next step.
+
+2. **Scale to a dollar position.** Feed the same ticker + your notional to `riskmodels_hedge_position` (MCP) or `POST /api/hedge-basket/{ticker}` to turn ratios into share/dollar legs.
+
+3. **Roll up to a portfolio.** Pass a holdings list to `POST /api/portfolio/risk-snapshot` to get variance decomposition and diversification metrics across names — then hand the aggregated hedge legs to an **execution / brokerage API** to actually trade them.
+
+**Why this chains cleanly:**
+
+- **Stable schemas.** Every response shape is published at [`/openapi.json`](/openapi.json) and the per-response JSON schemas (`riskmodels_get_schema` / `riskmodels:///schemas/{path}`). Validate before wiring a downstream call.
+- **Citeable outputs.** `_metadata.model_version` + `data_as_of` and `_agent.request_id` travel with each result, so a downstream tool (or an auditor) can trace exactly which inputs produced an action.
+- **Idempotent steps.** Send an `Idempotency-Key` on POSTs so a retried chain step never double-charges or double-acts.
+- **Cost & latency in-band.** `_agent.cost_usd` and `_agent.latency_ms` let an orchestrating agent budget a multi-call plan before running it.
+
+Discover the full tool set in one fetch: [`/.well-known/agent-manifest.json`](/.well-known/agent-manifest.json). See [For agents](/for-agents) for the onboarding and trust overview.
+
+---
+
 ## Related
 
 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 not-prose">

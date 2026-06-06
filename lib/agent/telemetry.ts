@@ -396,6 +396,155 @@ export async function getTelemetryMetrics(
   };
 }
 
+/** Nearest-rank percentile of a pre-sorted array; clamps index to bounds. */
+function percentileOf(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
+  return sorted[idx];
+}
+
+export interface ServiceReliability {
+  window_hours: number;
+  /** ISO timestamp the window ends at (i.e. when this was computed). */
+  measured_through: string;
+  /** Service-relevant events in window (4xx client errors excluded). */
+  sample_size: number;
+  /** Server-measured processing latency (excludes network), or null if no traffic. */
+  latency_ms: { p50: number; p95: number; p99: number; avg: number } | null;
+  /** Fraction of service-relevant events that did not 5xx, or null if no traffic. */
+  success_rate: number | null;
+  by_capability: Record<
+    string,
+    { sample_size: number; p95_ms: number; success_rate: number }
+  >;
+  note: string;
+}
+
+/** A request-telemetry row from billing_events (latency_ms IS NOT NULL). */
+export type ReliabilityEvent = {
+  capability_id: string;
+  success: boolean;
+  latency_ms: number;
+  metadata?: { status_code?: number } | null;
+};
+
+const RELIABILITY_NOTE =
+  "Server-measured processing latency (excludes network round-trip). success_rate counts only 5xx/thrown errors as failures; metered 4xx (auth/payment/rate-limit) are expected and excluded.";
+
+/**
+ * Pure aggregation of telemetry rows into reliability metrics. Separated from
+ * the DB fetch so the percentile math and the 4xx-exclusion rule are unit-
+ * testable without mocking Supabase.
+ */
+export function aggregateReliability(
+  events: ReliabilityEvent[],
+  windowHours: number,
+  measuredThroughISO: string,
+): ServiceReliability {
+  if (events.length === 0) {
+    return {
+      window_hours: windowHours,
+      measured_through: measuredThroughISO,
+      sample_size: 0,
+      latency_ms: null,
+      success_rate: null,
+      by_capability: {},
+      note: "No measured traffic in window yet. " + RELIABILITY_NOTE,
+    };
+  }
+
+  const isClientError = (e: ReliabilityEvent): boolean => {
+    const sc = e?.metadata?.status_code;
+    return typeof sc === "number" && sc >= 400 && sc < 500;
+  };
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const sortedLatencies = (evs: ReliabilityEvent[]) =>
+    evs
+      .map((e) => e.latency_ms)
+      .filter((n: unknown): n is number => typeof n === "number")
+      .sort((a, b) => a - b);
+
+  // Latency is measured over service-relevant events only — same filter as
+  // success_rate. Including the fast 4xx (401/402/429) probes would deflate the
+  // percentiles and make real work look faster than it is.
+  const serviceEvents = events.filter((e) => !isClientError(e));
+  const allLatencies = sortedLatencies(serviceEvents);
+  const serverFailures = serviceEvents.filter((e) => !e.success).length;
+  const successRate =
+    serviceEvents.length > 0
+      ? round4((serviceEvents.length - serverFailures) / serviceEvents.length)
+      : null;
+
+  const groups: Record<string, ReliabilityEvent[]> = {};
+  for (const e of events) (groups[e.capability_id] ??= []).push(e);
+
+  const byCapability: ServiceReliability["by_capability"] = {};
+  for (const [cap, evs] of Object.entries(groups)) {
+    const svc = evs.filter((e) => !isClientError(e));
+    const lat = sortedLatencies(svc);
+    const fails = svc.filter((e) => !e.success).length;
+    byCapability[cap] = {
+      sample_size: svc.length,
+      p95_ms: percentileOf(lat, 95),
+      success_rate: svc.length ? round4((svc.length - fails) / svc.length) : 1,
+    };
+  }
+
+  return {
+    window_hours: windowHours,
+    measured_through: measuredThroughISO,
+    sample_size: serviceEvents.length,
+    latency_ms: allLatencies.length
+      ? {
+          p50: percentileOf(allLatencies, 50),
+          p95: percentileOf(allLatencies, 95),
+          p99: percentileOf(allLatencies, 99),
+          avg: Math.round(
+            allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length,
+          ),
+        }
+      : null,
+    success_rate: successRate,
+    by_capability: byCapability,
+    note: RELIABILITY_NOTE,
+  };
+}
+
+/**
+ * Aggregate, privacy-safe reliability metrics across ALL capabilities for the
+ * public /api/status endpoint. No revenue, no user identifiers — only measured
+ * latency percentiles and a 5xx-only success rate (metered 4xx are expected
+ * outcomes of a paid API, not failures; same reasoning as getHealthStatus).
+ *
+ * Reads request-telemetry rows from billing_events (latency_ms IS NOT NULL),
+ * the same source the health endpoint uses.
+ */
+export async function getServiceReliability(
+  windowHours = 24,
+): Promise<ServiceReliability> {
+  const measuredThrough = new Date();
+  const since = new Date(
+    measuredThrough.getTime() - windowHours * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { data: events, error } = await applyTelemetryFilters(
+    createAdminClient()
+      .from("billing_events")
+      .select("capability_id, success, latency_ms, metadata")
+      .gte("created_at", since),
+  );
+
+  if (error || !events) {
+    return aggregateReliability([], windowHours, measuredThrough.toISOString());
+  }
+
+  return aggregateReliability(
+    events as ReliabilityEvent[],
+    windowHours,
+    measuredThrough.toISOString(),
+  );
+}
+
 /**
  * Generate request ID for tracking
  */

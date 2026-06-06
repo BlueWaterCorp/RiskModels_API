@@ -31,6 +31,17 @@ export async function GET() {
         notes: "See site Terms and Privacy Policy for authoritative commitments.",
         frameworks_aspirational: ["GDPR-oriented practices", "SOC2 roadmap"],
       },
+      reproducibility: {
+        point_in_time_from: "2006-01-04",
+        deterministic: true,
+        notes:
+          "Decompositions are point-in-time and replayable; outputs carry model_version, data_as_of, and factor_set_id for citation in regulated workflows (13F, fund attribution).",
+      },
+      audit: {
+        request_correlation: "Every response carries _agent.request_id (also the X-Request-ID header).",
+        billing_trail: "Each metered call writes a billing event keyed by request_id.",
+        idempotency: "POST requests accept an Idempotency-Key header for safe, auditable retries.",
+      },
       security: {
         authentication: "API keys (rm_agent_* / rm_user_*) and OAuth for the portal",
         links: {

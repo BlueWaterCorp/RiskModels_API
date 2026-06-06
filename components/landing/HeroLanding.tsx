@@ -47,7 +47,7 @@ export default function HeroLanding() {
             ERM3 (Equity Risk Model v3)
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/60 px-2.5 py-1 font-mono uppercase tracking-[0.18em] text-zinc-400">
-            Sub-120 ms
+            Low-latency
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/60 px-2.5 py-1 font-mono uppercase tracking-[0.18em] text-zinc-400">
             Agent-callable

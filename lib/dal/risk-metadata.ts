@@ -7,7 +7,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { RISK_MODEL_VERSION } from "@/lib/constants";
+import { RISK_MODEL_VERSION, METHODOLOGY_URL } from "@/lib/constants";
 
 const L3_FACTORS = [
   "SPY", "XLK", "XLF", "XLV", "XLE", "XLI",
@@ -54,7 +54,7 @@ export async function getRiskMetadata(): Promise<RiskMetadata> {
     data_as_of: dataAsOf,
     factor_set_id: "SPY_uni_mc_3000",
     universe_size: universeCount ?? 0,
-    wiki_uri: "https://riskmodels.net/docs/methodology",
+    wiki_uri: METHODOLOGY_URL,
     factors: L3_FACTORS,
   };
 
