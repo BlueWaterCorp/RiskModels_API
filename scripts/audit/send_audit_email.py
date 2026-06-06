@@ -42,6 +42,7 @@ def build_body(report_dir: Path) -> tuple[str, str, str]:
     routes = _load(report_dir / "route_drift.json")
     docs = _load(report_dir / "docs_conformity.json")
     schema = _load(report_dir / "schema_check.json")
+    smoke = _load(report_dir / "smoke" / "smoke_report.json")
 
     overall = summary.get("overall", "UNKNOWN")
     ts = summary.get("timestamp", "?")
@@ -77,14 +78,38 @@ def build_body(report_dir: Path) -> tuple[str, str, str]:
     elif drift:
         findings.append(f"migration-drift: SKIPPED ({drift.get('summary', {}).get('reason', 'no creds')})")
 
+    # Actionable failure detail — name the specific endpoints so an agent can fix
+    # without re-running the audit. (Previously the email gave only counts, e.g.
+    # "smoke-endpoints FAIL", forcing a live re-run to find the offending call.)
+    detail: list[str] = []
+    for b in (smoke or {}).get("meta", {}).get("likely_bugs", []):
+        d = str(b.get("detail") or b.get("note") or "").strip().replace("\n", " ")
+        detail.append(
+            f"smoke  {b.get('method', '')} {b.get('path', '')} → {b.get('status')}"
+            + (f"  · {d[:180]}" if d else "")
+        )
+    if schema:
+        for f in schema.get("findings", [])[:12]:
+            errs = "; ".join(
+                f"{e.get('loc')}: {str(e.get('msg', ''))[:90]}" for e in (f.get("errors") or [])[:2]
+            )
+            detail.append(
+                f"schema {str(f.get('method', '')).upper()} {f.get('path', '')} "
+                f"({f.get('error_count', 0)} err)" + (f"  · {errs}" if errs else "")
+            )
+
     subject = f"[RiskModels API audit] {overall} — {ts}"
 
     status_lines = "\n".join(f"  {n:<18} {s}" for n, s in rows)
     finding_lines = "\n".join(f"  - {f}" for f in findings) or "  (no finding files)"
+    detail_block = ""
+    if detail:
+        detail_block = "Failure detail (specific endpoints):\n" + "\n".join(f"  • {d}" for d in detail) + "\n\n"
     text = (
         f"RiskModels API audit — {overall}  ({ts})\n\n"
         f"Checks:\n{status_lines}\n\n"
         f"Findings:\n{finding_lines}\n\n"
+        f"{detail_block}"
         f"Full reports: {summary.get('reports_dir', report_dir)} (CI artifact)\n"
     )
 
@@ -99,6 +124,17 @@ def build_body(report_dir: Path) -> tuple[str, str, str]:
         for n, s in rows
     )
     findings_html = "".join(f"<li style='margin:2px 0'>{f}</li>" for f in findings) or "<li>(no finding files)</li>"
+
+    def esc(s: str) -> str:
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    detail_html = ""
+    if detail:
+        items = "".join(f"<li style='margin:2px 0;font-family:monospace;font-size:13px'>{esc(d)}</li>" for d in detail)
+        detail_html = (
+            '<h3 style="margin:16px 0 4px">Failure detail</h3>'
+            f'<ul style="margin:0;padding-left:18px">{items}</ul>'
+        )
     html = (
         f'<div style="font-family:system-ui,sans-serif;max-width:640px">'
         f'<h2 style="margin:0 0 4px">RiskModels API audit — '
@@ -106,6 +142,7 @@ def build_body(report_dir: Path) -> tuple[str, str, str]:
         f'<p style="color:#71717a;margin:0 0 16px">{ts}</p>'
         f'<table style="border-collapse:collapse;margin-bottom:16px">{rows_html}</table>'
         f'<h3 style="margin:0 0 4px">Findings</h3><ul style="margin:0;padding-left:18px">{findings_html}</ul>'
+        f'{detail_html}'
         f'<p style="color:#71717a;font-size:12px;margin-top:16px">Full reports in the workflow run artifact.</p>'
         f"</div>"
     )

@@ -740,6 +740,10 @@ def main() -> int:
                     )
                 )
 
+    # Likely product bugs (same heuristic as the stdout summary below). Persisted
+    # into the report meta so the audit email can name the failing endpoints —
+    # otherwise a reader only sees "smoke-endpoints FAIL" with no actionable detail.
+    bugs = [r for r in run.rows if is_bug(r)]
     meta = {
         "title": "RiskModels API v3 smoke report",
         "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -753,6 +757,16 @@ def main() -> int:
         "openapi_path": str(OPENAPI_PATH),
         "stream_max_bytes": _STREAM_MAX_BYTES,
         "json_body_max_chars": _JSON_BODY_MAX,
+        "likely_bugs": [
+            {
+                "method": r.method.upper(),
+                "path": r.path,
+                "status": r.status,
+                "note": r.note,
+                "detail": (r.snippet or r.error or "")[:300] if hasattr(r, "snippet") else "",
+            }
+            for r in bugs
+        ],
     }
     if write_json:
         write_json_report(report_dir / "smoke_report.json", meta, records)
@@ -784,7 +798,6 @@ def main() -> int:
             extra += f" | {row.snippet}"
         print(f"{flag} {row.method.upper():6} {status!s:>4} {row.path}{extra}")
 
-    bugs = [r for r in run.rows if is_bug(r)]
     print("\n--- Likely product bugs (non-skip, unexpected 4xx/5xx or transport) ---")
     if not bugs:
         print("(none)")
