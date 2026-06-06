@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { checkDataGatewayRateLimit } from '@/lib/ratelimit/data-gateway-rate-limit';
 
 export async function middleware(request: NextRequest) {
   // Internal render route used by Playwright — skip Supabase session refresh.
@@ -8,6 +9,26 @@ export async function middleware(request: NextRequest) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-pathname', request.nextUrl.pathname);
     return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  // EODHD Exhibit B(g) safeguard: the soft-auth /api/data/* gateway has no
+  // per-key limiter (it does not use withBilling), so throttle it per-IP to
+  // prevent systematic scraping / dataset reconstruction. Service-key
+  // (first-party) callers are exempt; fails open if Upstash is unavailable.
+  if (request.nextUrl.pathname.startsWith('/api/data/')) {
+    const rl = await checkDataGatewayRateLimit(request.headers);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rl.retryAfterSec ?? 60),
+            'X-RateLimit-Limit': String(rl.limit ?? ''),
+          },
+        },
+      );
+    }
   }
 
   // Supabase magic link falls back to site root when /auth/callback isn't in the allowlist.
