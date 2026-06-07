@@ -27,9 +27,10 @@ You are an AI assistant reading this because someone pointed you at riskmodels.a
 - For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
 - Make one real call to confirm the connection, then tell the human what you can analyze and ask what they want to look at. **Do not tell a human to open a terminal for this case.**
 
-**2. "Help me set it up" / "add this to my Claude/Cursor"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps:
-- **No terminal (recommended):** in Claude Desktop or Cursor, open **Settings → Connectors → Add custom connector** and paste this URL: \`https://riskmodels.app/api/mcp/sse\`. For auth, use \`Authorization: Bearer <their key>\` (key from https://riskmodels.app/get-key). Send header \`Accept: application/json, text/event-stream\`.
-- **Developer (terminal):** \`npm install -g riskmodels@latest\` then \`riskmodels install\` — auto-wires Claude Desktop, Cursor, Codex, and VS Code and stores the key in ~/.config/riskmodels/config.json.
+**2. "Help me set it up" / "add this to my Claude/Cursor"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps. Persistent setup currently needs a one-time terminal step (the native connector-by-URL UI is not supported yet — see note):
+- **Simplest (one command):** \`npm install -g riskmodels@latest\` then \`riskmodels install\` — prompts for the key, auto-wires Claude Desktop, Cursor, Codex, and VS Code, and stores the key in ~/.config/riskmodels/config.json.
+- **Hosted, no local build:** add the \`mcp-remote\` proxy to the client's MCP config — \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with env \`AUTHORIZATION=Bearer <their key>\` (key from https://riskmodels.app/get-key).
+- **Note:** the native "Add custom connector by URL" flow in Claude Desktop / Cursor expects OAuth, which this server does not implement yet (it authenticates with Bearer API keys). Pasting the URL into that UI will fail to register. For a zero-setup experience today, use case 1 above instead.
 
 ## Magnificent 7 (MAG7)
 
