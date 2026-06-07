@@ -223,6 +223,11 @@ function GetKeyPage() {
   /** Append `?ref=CODE` onto the post-auth `next=` so the param survives the round-trip even if
    *  sessionStorage is unavailable (e.g. cross-domain OAuth in some browsers). Belt + suspenders. */
   const buildNextPath = () => {
+    // OAuth / connector flow: an upstream page (e.g. /oauth/authorize) sends the
+    // user here with ?next=<internal path> to return to after sign-in. Only honor
+    // internal, same-origin paths (must start with "/") to avoid open redirects.
+    const nextParam = searchParams.get('next');
+    if (nextParam && nextParam.startsWith('/')) return nextParam;
     const ref = readPersistedReferralCode(searchParams);
     return ref ? `/get-key?ref=${encodeURIComponent(ref)}` : '/get-key';
   };
