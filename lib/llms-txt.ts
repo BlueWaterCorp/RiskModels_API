@@ -18,6 +18,19 @@ ETF hedge ratios, metrics, portfolio snapshots, and a hosted MCP surface.
 
 **No sign-in yet?** If this host publishes a shared demo key, you will find it under **Public sample API key** below — use it as \`RISKMODELS_API_KEY\` / \`Authorization: Bearer …\` for MAG7 examples. That path is meant for browser agents that cannot run \`POST /api/auth/provision-free\`.
 
+## If a human asks you to set up RiskModels
+
+You are an AI assistant reading this because someone pointed you at riskmodels.app. There are two distinct requests — handle the one they made:
+
+**1. "Set it up for this chat" / "help me analyze …"** — set yourself up now, in this conversation, with no install:
+- Discovery is free and needs no key — read the endpoints and capabilities in this file.
+- For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
+- Make one real call to confirm the connection, then tell the human what you can analyze and ask what they want to look at. **Do not tell a human to open a terminal for this case.**
+
+**2. "Help me set it up" / "add this to my Claude/Cursor"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps:
+- **No terminal (recommended):** in Claude Desktop or Cursor, open **Settings → Connectors → Add custom connector** and paste this URL: \`https://riskmodels.app/api/mcp/sse\`. For auth, use \`Authorization: Bearer <their key>\` (key from https://riskmodels.app/get-key). Send header \`Accept: application/json, text/event-stream\`.
+- **Developer (terminal):** \`npm install -g riskmodels@latest\` then \`riskmodels install\` — auto-wires Claude Desktop, Cursor, Codex, and VS Code and stores the key in ~/.config/riskmodels/config.json.
+
 ## Magnificent 7 (MAG7)
 
 These seven US equities are the usual demo / smoke-test set (landing charts, optional public sample key, \`mag7=true\` on tickers):
@@ -26,7 +39,9 @@ ${mag7BulletList()}
 
 One-line form: **${mag7Csv}**. For Alphabet use **GOOG** in examples; **GOOGL** aliases to the same name in the API. The public JSON from \`GET /api/tickers?mag7=true\` may list **GOOGL**; both work with \`GET /api/metrics/{ticker}\` and related routes.
 
-## First-time setup (human runs once in a terminal)
+## Developer setup — CLI (human runs once in a terminal)
+
+This is the developer path for case 2 above; non-technical humans should prefer the no-terminal connector.
 
 - Install Node.js LTS (https://nodejs.org).
 - Get an API key: https://riskmodels.app/get-key

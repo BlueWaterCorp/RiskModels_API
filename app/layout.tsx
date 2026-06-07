@@ -85,6 +85,11 @@ export default async function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        {/* Agent discovery: a bare fetch of riskmodels.app self-routes an AI agent to the
+            machine-readable entry points, so a human only ever has to say "riskmodels.app"
+            (never a path). Humans get the same pointer as a visible link in the Footer. */}
+        <link rel="alternate" type="text/plain" href="/llms.txt" title="RiskModels for AI agents (llms.txt)" />
+        <link rel="alternate" type="application/json" href="/.well-known/agent-manifest.json" title="RiskModels agent manifest" />
         {/* Google tag: last in <head>, just before </head> (see GoogleAdsTag) */}
         <GoogleAdsTag />
       </head>
