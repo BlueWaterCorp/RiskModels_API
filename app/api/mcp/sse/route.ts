@@ -20,6 +20,7 @@ import {
 } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "@/lib/mcp/server";
 import { authenticateMcpRequest } from "@/lib/mcp/auth";
+import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,11 @@ export const dynamic = "force-dynamic";
 // Raise this only after confirming the deployment tier supports longer.
 export const maxDuration = 60;
 
-function errorResponse(status: number, message: string): Response {
+function errorResponse(
+  status: number,
+  message: string,
+  extraHeaders?: Record<string, string>,
+): Response {
   return new Response(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -39,14 +44,31 @@ function errorResponse(status: number, message: string): Response {
     }),
     {
       status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(extraHeaders ?? {}) },
     },
   );
 }
 
+// RFC 9728 challenge so MCP clients (Claude Desktop / Cursor) discover the
+// authorization server on a 401 and can run the OAuth connect flow instead of
+// failing at client registration. Tier-1 Bearer API keys still authenticate
+// and never reach this branch.
+function wwwAuthenticateHeader(): Record<string, string> {
+  const base = getAppUrl().replace(/\/$/, "");
+  return {
+    "WWW-Authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`,
+  };
+}
+
 async function handle(req: NextRequest): Promise<Response> {
   const auth = await authenticateMcpRequest(req);
-  if (!auth.ok) return errorResponse(auth.status, auth.error);
+  if (!auth.ok) {
+    return errorResponse(
+      auth.status,
+      auth.error,
+      auth.status === 401 ? wwwAuthenticateHeader() : undefined,
+    );
+  }
 
   // Tools call back into our own REST endpoints. Prefer the explicit API URL
   // envs — `NEXT_PUBLIC_APP_URL` points to the portal (.net), not the API (.app).
