@@ -396,7 +396,7 @@ export default function ApiReferencePage() {
                     <p className="text-xs text-zinc-500 mt-2">
                       Want it permanently in Claude or Cursor? Run{' '}
                       <code className="text-zinc-400">npx -y riskmodels@latest install</code> once (needs Node) — see the{' '}
-                      <a href="/docs/agent-integration" className="text-terminal hover:underline">agent integration guide</a>.
+                      <Link href="/docs/agent-integration" className="text-terminal hover:underline">agent integration guide</Link>.
                     </p>
                   </div>
 
