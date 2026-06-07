@@ -383,29 +383,26 @@ export default function ApiReferencePage() {
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight mb-3">Fastest way to get started with agents</h2>
                   <p className="text-zinc-400 max-w-2xl">
-                    The RiskModels MCP server lets your agent directly call the decomposition engine. No manual endpoint hunting required.
+                    Paste one line into any AI chat (Claude, ChatGPT, Cursor). The agent reads riskmodels.app, wires itself up for the conversation, and tells you what it can do — no install, no terminal.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Recommended first prompt (copy &amp; paste)</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Paste this into a fresh chat (copy &amp; paste)</div>
                     <div className="relative rounded-xl border border-zinc-800 bg-zinc-950 p-5 font-mono text-sm text-zinc-200 whitespace-pre-wrap">
-{`Load the RiskModels MCP server from riskmodels.app.
-
-Then analyze my situation and tell me the highest-leverage ways to use the RiskModels tools and API:
-
-[Describe your workflow or problem here — e.g. "I manage a 30-name long/short equity book with heavy tech and healthcare exposure. I want to measure residual vs factor risk on each name and generate ETF hedge suggestions."]`}
+{`Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.`}
                     </div>
+                    <p className="text-xs text-zinc-500 mt-2">
+                      Want it permanently? In Claude Desktop or Cursor, open Settings → Connectors → Add custom connector and paste{' '}
+                      <code className="text-zinc-400">https://riskmodels.app/api/mcp/sse</code> (authorize with your{' '}
+                      <a href="/get-key" className="text-terminal hover:underline">key</a>).
+                    </p>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
                     <button
-                      onClick={() => navigator.clipboard.writeText(`Load the RiskModels MCP server from riskmodels.app.
-
-Then analyze my situation and tell me the highest-leverage ways to use the RiskModels tools and API:
-
-[Describe your workflow or problem here — e.g. "I manage a 30-name long/short equity book with heavy tech and healthcare exposure. I want to measure residual vs factor risk on each name and generate ETF hedge suggestions."]`)}
+                      onClick={() => navigator.clipboard.writeText(`Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.`)}
                       className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-900 transition-colors"
                     >
                       Copy agent prompt
@@ -431,9 +428,7 @@ Then analyze my situation and tell me the highest-leverage ways to use the RiskM
                     ].map((example, i) => (
                       <button
                         key={i}
-                        onClick={() => navigator.clipboard.writeText(`Load the RiskModels MCP server from riskmodels.app.
-
-Then analyze my situation and tell me the highest-leverage ways to use the RiskModels tools and API:
+                        onClick={() => navigator.clipboard.writeText(`Visit riskmodels.app and set it up to use in this chat. Then help me with this:
 
 ${example}`)}
                         className="text-left px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-400 hover:text-zinc-200 transition-all"
