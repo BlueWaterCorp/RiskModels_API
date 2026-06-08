@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAppUrl } from "@/lib/app-url";
+import { appOrigin } from "@/lib/oauth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
  * PKCE + token) and C (Dynamic Client Registration). Tier-1 Bearer API keys
  * continue to work unchanged.
  */
-export function GET() {
-  const base = getAppUrl().replace(/\/$/, "");
+export async function GET() {
+  const base = await appOrigin();
   return NextResponse.json(
     {
       resource: `${base}/api/mcp/sse`,

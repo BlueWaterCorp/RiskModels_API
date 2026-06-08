@@ -20,7 +20,6 @@ import {
 } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "@/lib/mcp/server";
 import { authenticateMcpRequest } from "@/lib/mcp/auth";
-import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,8 +52,16 @@ function errorResponse(
 // authorization server on a 401 and can run the OAuth connect flow instead of
 // failing at client registration. Tier-1 Bearer API keys still authenticate
 // and never reach this branch.
-function wwwAuthenticateHeader(): Record<string, string> {
-  const base = getAppUrl().replace(/\/$/, "");
+//
+// Origin is derived from the REQUEST host (the .app origin the client used),
+// not NEXT_PUBLIC_APP_URL — that env points at the .net portal here, which has
+// no OAuth routes; advertising it sends clients to register against .net.
+function wwwAuthenticateHeader(req: NextRequest): Record<string, string> {
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const base = host
+    ? `${proto}://${host}`
+    : (process.env.RISKMODELS_API_URL || "https://riskmodels.app").replace(/\/$/, "");
   return {
     "WWW-Authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`,
   };
@@ -66,7 +73,7 @@ async function handle(req: NextRequest): Promise<Response> {
     return errorResponse(
       auth.status,
       auth.error,
-      auth.status === 401 ? wwwAuthenticateHeader() : undefined,
+      auth.status === 401 ? wwwAuthenticateHeader(req) : undefined,
     );
   }
 

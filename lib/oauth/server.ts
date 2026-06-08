@@ -7,7 +7,34 @@
  * client lookup, PKCE, and hashed single-use codes / refresh tokens.
  */
 import crypto from "crypto";
+import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+/**
+ * Origin to advertise in OAuth metadata + the WWW-Authenticate challenge.
+ *
+ * MUST be the origin the client actually fetched from (RFC 8414 issuer rule) —
+ * i.e. the `.app` host where the OAuth + MCP routes live. Derive it from the
+ * request host, NOT from `getAppUrl()`/`NEXT_PUBLIC_APP_URL`: in this deployment
+ * that env points at the `.net` portal, which has no OAuth routes — advertising
+ * it sends clients to register against `.net` and they fail with
+ * "couldn't register with the sign-in service".
+ */
+export async function appOrigin(): Promise<string> {
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    const proto = h.get("x-forwarded-proto") ?? "https";
+    if (host) return `${proto}://${host}`;
+  } catch {
+    // No request context (shouldn't happen in these routes) — fall through.
+  }
+  return (
+    process.env.RISKMODELS_API_URL ||
+    process.env.NEXT_PUBLIC_RISKMODELS_API_URL ||
+    "https://riskmodels.app"
+  ).replace(/\/$/, "");
+}
 
 /** OAuth scope advertised in the AS metadata (`scopes_supported`). */
 export const OAUTH_SCOPE = "mcp:read";
