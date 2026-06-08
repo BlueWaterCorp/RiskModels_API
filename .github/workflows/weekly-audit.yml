@@ -21,9 +21,14 @@
 name: Weekly API Audit
 
 on:
-  schedule:
-    - cron: '0 13 * * 6'   # Saturday 13:00 UTC (~9am ET, drifts with DST)
-  workflow_dispatch:        # manual run for testing
+  # The scheduled Saturday run was RETIRED 2026-06-08 — it now runs on the Mac
+  # mini ops box as a launchd job (BWMACRO scripts/ops/saturday_audit.sh), which
+  # additionally triages with claude -p and records results in gbrain +
+  # ops_services. This workflow is kept for manual runs only (CI fallback / when
+  # the mini is down). Re-add the `schedule:` block below to restore the cron.
+  #   schedule:
+  #     - cron: '0 13 * * 6'   # Saturday 13:00 UTC
+  workflow_dispatch:        # manual run for testing / CI fallback
 
 concurrency:
   group: weekly-audit
