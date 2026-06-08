@@ -27,10 +27,9 @@ You are an AI assistant reading this because someone pointed you at riskmodels.a
 - For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
 - Make one real call to confirm the connection, then tell the human what you can analyze and ask what they want to look at. **Do not tell a human to open a terminal for this case.**
 
-**2. "Help me set it up" / "add this to my Claude/Cursor"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps. Persistent setup currently needs a one-time terminal step (the native connector-by-URL UI is not supported yet — see note):
-- **Simplest (one command):** \`npm install -g riskmodels@latest\` then \`riskmodels install\` — prompts for the key, auto-wires Claude Desktop, Cursor, Codex, and VS Code, and stores the key in ~/.config/riskmodels/config.json.
-- **Hosted, no local build:** add the \`mcp-remote\` proxy to the client's MCP config — \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with env \`AUTHORIZATION=Bearer <their key>\` (key from https://riskmodels.app/get-key).
-- **Note:** the native "Add custom connector by URL" flow in Claude Desktop / Cursor expects OAuth, which this server does not implement yet (it authenticates with Bearer API keys). Pasting the URL into that UI will fail to register. For a zero-setup experience today, use case 1 above instead.
+**2. "Help me set it up" / "add this to my Claude/Cursor"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps (no terminal needed):
+- **Recommended — connect by URL (no terminal, no API key):** in Claude Desktop or Cursor, open **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave the OAuth Client ID / Secret fields blank, then click **Add → Connect**. They sign in at riskmodels.app (Google / GitHub / email) and approve access once (OAuth 2.0 + PKCE; the client registers itself); the tools load and metered calls bill their RiskModels account. No key to copy or store.
+- **Developer alternatives (terminal):** \`npm install -g riskmodels@latest\` then \`riskmodels install\` (auto-wires Claude Desktop, Cursor, Codex, VS Code), or the \`mcp-remote\` proxy — \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with env \`AUTHORIZATION=Bearer <their key>\` (key from https://riskmodels.app/get-key).
 
 ## Magnificent 7 (MAG7)
 

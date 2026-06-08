@@ -394,8 +394,8 @@ export default function ApiReferencePage() {
 {`Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.`}
                     </div>
                     <p className="text-xs text-zinc-500 mt-2">
-                      Want it permanently in Claude or Cursor? Run{' '}
-                      <code className="text-zinc-400">npx -y riskmodels@latest install</code> once (needs Node) — see the{' '}
+                      Want it permanently in Claude or Cursor? Settings → Connectors → Add custom connector → paste{' '}
+                      <code className="text-zinc-400">https://riskmodels.app/api/mcp/sse</code> and Connect — sign in, no key needed. Details in the{' '}
                       <Link href="/docs/agent-integration" className="text-terminal hover:underline">agent integration guide</Link>.
                     </p>
                   </div>
