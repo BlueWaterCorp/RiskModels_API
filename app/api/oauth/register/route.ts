@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +22,31 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
-// Absolute URI (https, or any scheme:// e.g. custom-app or http://localhost loopback).
+// Absolute redirect URI. Allow https and custom app schemes; for http require a
+// loopback host (RFC 8252) so an authorization code is never delivered over
+// cleartext to an arbitrary remote host.
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 function isAbsoluteUri(u: unknown): u is string {
-  return typeof u === "string" && /^[a-z][a-z0-9+.-]*:\/\/.+/i.test(u);
+  if (typeof u !== "string" || !/^[a-z][a-z0-9+.-]*:\/\/.+/i.test(u)) return false;
+  try {
+    const url = new URL(u);
+    if (url.protocol === "http:") return LOOPBACK_HOSTS.has(url.hostname);
+    return true; // https or a custom (native-app) scheme
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: NextRequest) {
+  // Anti-abuse: cap dynamic client registrations per IP (DCR is infrequent).
+  const rl = await rateLimit("register", clientIp(req), 30, 3600);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests", error_description: "Registration rate limit exceeded. Try again later." },
+      { status: 429, headers: { ...CORS, "Retry-After": String(rl.retryAfter) } },
+    );
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();

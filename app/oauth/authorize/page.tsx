@@ -114,6 +114,13 @@ export default async function AuthorizePage({
           <li>• Signed in as <span className="text-zinc-300">{user.email ?? user.id}</span></li>
         </ul>
 
+        <div className="mt-4 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">
+          <p className="text-xs text-amber-200/90">
+            Access will be sent to <code className="text-amber-100">{(() => { try { return new URL(redirectUri).host; } catch { return redirectUri; } })()}</code>.
+            Only approve if you recognize this destination.
+          </p>
+        </div>
+
         <form method="POST" action="/api/oauth/authorize/decision" className="mt-6 flex gap-3">
           <input type="hidden" name="client_id" value={clientId} />
           <input type="hidden" name="redirect_uri" value={redirectUri} />
