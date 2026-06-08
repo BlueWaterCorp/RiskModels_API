@@ -17,6 +17,39 @@ function getSupabase() {
   return supabase;
 }
 
+/**
+ * Record account-level "first API use" (activation) the first time any key is used.
+ * Stored as `first_api_use_at` inside agent_accounts.signup_attribution (jsonb) — no
+ * dedicated column (schema is governed in the private BWMACRO/supabase repo). Idempotent:
+ * only sets the timestamp when absent, so re-runs are no-ops and the time stays stable
+ * (Google Ads dedupes offline conversions by gclid + name + time). Powers the Phase-2
+ * scheduled offline-conversion upload (see app/api/internal/google-ads/offline-conversions).
+ * Best-effort and non-blocking; failures must never break API auth.
+ */
+async function recordActivationIfFirstUse(userId: string): Promise<void> {
+  const sb = getSupabase();
+  const { data: row, error: selErr } = await sb
+    .from("agent_accounts")
+    .select("id, signup_attribution")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (selErr || !row?.id) return;
+
+  const current = (row.signup_attribution ?? {}) as Record<string, unknown>;
+  if (current.first_api_use_at) return; // already activated — keep first time
+
+  await sb
+    .from("agent_accounts")
+    .update({
+      signup_attribution: { ...current, first_api_use_at: new Date().toISOString() },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id);
+}
+
 // API key format: rm_agent_{env}_{random}_{checksum}
 // Example: rm_agent_live_abc123xyz...
 
@@ -195,7 +228,7 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
 
     const { data: keyRecord, error } = await getSupabase()
       .from("user_generated_api_keys")
-      .select("user_id, scopes, rate_limit_per_minute, revoked_at, expires_at")
+      .select("user_id, scopes, rate_limit_per_minute, revoked_at, expires_at, last_used_at")
       .eq("key_hash", hashedKey)
       .single();
 
@@ -224,6 +257,11 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
         .eq("key_hash", hashedKey),
     ).catch(console.error);
 
+    // Activation tracking: first time this key is used → record account-level first API use.
+    if (!keyRecord.last_used_at) {
+      void recordActivationIfFirstUse(keyRecord.user_id).catch(console.error);
+    }
+
     return {
       valid: true,
       userId: keyRecord.user_id,
@@ -242,7 +280,7 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
   const { data: keyRecord, error } = await getSupabase()
     .from("agent_api_keys")
     .select(
-      "user_id, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd",
+      "user_id, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at",
     )
     .eq("key_hash", hashedKey)
     .single();
@@ -273,6 +311,11 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
       .update({ last_used_at: new Date().toISOString() })
       .eq("key_hash", hashedKey),
   ).catch(console.error);
+
+  // Activation tracking: first time this key is used → record account-level first API use.
+  if (!keyRecord.last_used_at) {
+    void recordActivationIfFirstUse(keyRecord.user_id).catch(console.error);
+  }
 
   const perKeyDailyCap =
     keyRecord.daily_spend_cap_usd != null

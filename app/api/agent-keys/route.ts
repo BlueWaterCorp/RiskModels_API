@@ -10,7 +10,47 @@ import {
   resolveRecipient,
 } from '@/lib/agent/notify-expiring-api-keys';
 import { API_TERMS_URL } from '@/emails/key-issued';
-import { parseValidatedSignupUtm, type UTMData } from '@/lib/utm';
+import { parseValidatedSignupUtm, sanitizeGclid, type UTMData } from '@/lib/utm';
+
+/**
+ * Merge the Google click id into agent_accounts.signup_attribution (jsonb) on first touch.
+ * Stored alongside UTM data (no dedicated column — schema is governed in the private
+ * BWMACRO/supabase repo). Powers Phase-2 offline activation upload. First-touch wins.
+ */
+async function persistGclidIfVacant(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  gclid: string,
+): Promise<void> {
+  const { data: row, error: selErr } = await admin
+    .from('agent_accounts')
+    .select('id, signup_attribution')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (selErr) {
+    console.warn('[agent-keys] gclid select failed:', selErr.message);
+    return;
+  }
+  if (!row?.id) return;
+
+  const current = (row.signup_attribution ?? {}) as Record<string, unknown>;
+  if (current.gclid) return; // first-touch wins — don't overwrite
+
+  const { error: upErr } = await admin
+    .from('agent_accounts')
+    .update({
+      signup_attribution: { ...current, gclid, gclid_at: new Date().toISOString() },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id);
+
+  if (upErr) {
+    console.warn('[agent-keys] gclid update failed:', upErr.message);
+  }
+}
 
 async function persistSignupAttributionIfVacant(
   admin: ReturnType<typeof createAdminClient>,
@@ -80,6 +120,7 @@ export async function POST(request: NextRequest) {
 
   const validatedSignupUtm =
     typeof body.utm !== 'undefined' ? parseValidatedSignupUtm(body.utm) : null;
+  const gclid = sanitizeGclid(body.gclid);
 
   try {
     await ensureStarterCredits(user.id);
@@ -160,6 +201,9 @@ export async function POST(request: NextRequest) {
 
   if (validatedSignupUtm) {
     await persistSignupAttributionIfVacant(admin, user.id, validatedSignupUtm);
+  }
+  if (gclid) {
+    await persistGclidIfVacant(admin, user.id, gclid);
   }
 
   const expiresAt = newKey.expires_at as string | null;

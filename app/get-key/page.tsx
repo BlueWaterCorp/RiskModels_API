@@ -8,7 +8,7 @@ import type { User } from '@supabase/supabase-js';
 import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 import { clearUTMData, getUTMData } from '@/lib/utm';
-import { captureGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
+import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
 
 interface ApiKey {
   id: string;
@@ -321,6 +321,8 @@ function GetKeyPage() {
     if (referralCode) payload.referral_code = referralCode;
     const signupUtm = getUTMData();
     if (signupUtm) payload.utm = signupUtm;
+    const gclid = getStoredGclid();
+    if (gclid) payload.gclid = gclid;
     const res = await fetch('/api/agent-keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

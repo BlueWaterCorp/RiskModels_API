@@ -148,3 +148,20 @@ export function clearUTMData(): void {
     /* ignore */
   }
 }
+
+/** Max length for a Google click id (gclid/wbraid/gbraid are short URL-safe tokens). */
+const MAX_GCLID_LEN = 512;
+
+/**
+ * Validate a client-supplied Google click id (gclid / wbraid / gbraid).
+ * These are URL-safe tokens; reject anything with unexpected characters or length.
+ * Returns null if absent or malformed. Used server-side for `POST /api/agent-keys`.
+ */
+export function sanitizeGclid(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > MAX_GCLID_LEN) return null;
+  // gclid/wbraid/gbraid use [A-Za-z0-9] plus URL-safe punctuation (_ - . and rarely =).
+  if (!/^[A-Za-z0-9._\-=]+$/.test(trimmed)) return null;
+  return trimmed;
+}

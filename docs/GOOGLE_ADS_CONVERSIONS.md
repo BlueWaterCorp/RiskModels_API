@@ -44,20 +44,59 @@ auto-created on first Google / GitHub / magic-link sign-in, so "first sign-in ==
 > `/get-key`; `/get-api-key` 301-redirects there), so it never fired. It's now demoted to
 > **Secondary** and superseded by the event-based Sign-up action above.
 
-## Phase 2 — Activation (first API key use) — planned
+## Phase 2 — Activation (first API key use) — shipped (code) + manual Ads setup
 
-Truer "activated customer" signal, but it happens **server-side** (an API call), so it needs
-**offline conversion import**, not a browser tag.
+Truer "activated customer" signal. It happens **server-side** (an API call, no browser), so it
+uses **offline conversion import via Google Ads scheduled upload**, keyed on the `gclid`
+captured at sign-up. Google dedupes offline conversions by (Google Click ID, Conversion Name,
+Conversion Time), so the endpoint emits a rolling window with a stable conversion time.
 
-Groundwork already in place: `captureGclid()` in `lib/google-ads-conversion.ts` persists the
-`gclid` / `wbraid` / `gbraid` to `localStorage` (`rm_gclid`) at landing.
+### Data flow (all in code)
 
-To build:
+1. **Capture** — `captureGclid()` persists `gclid`/`wbraid`/`gbraid` to `localStorage`
+   (`rm_gclid`) on the `/get-key` page ([`lib/google-ads-conversion.ts`](../lib/google-ads-conversion.ts)).
+2. **Persist** — on key creation, the client sends `gclid` in `POST /api/agent-keys`;
+   `persistGclidIfVacant()` stores it (first-touch) in `agent_accounts.signup_attribution`
+   jsonb under `gclid` / `gclid_at`. No schema change — `supabase/` is gitignored / governed
+   in the private BWMACRO repo.
+3. **Activate** — `validateApiKey()` ([`lib/agent/api-keys.ts`](../lib/agent/api-keys.ts))
+   detects the first use of a key (prior `last_used_at` was null) and idempotently sets
+   `signup_attribution.first_api_use_at` via `recordActivationIfFirstUse()`.
+4. **Export** — `GET /api/internal/google-ads/offline-conversions`
+   ([route](../app/api/internal/google-ads/offline-conversions/route.ts)) returns a Google Ads
+   scheduled-upload CSV (Google Click ID, Conversion Name, Conversion Time, Value, Currency)
+   for activated accounts in a rolling window (`?days=`, default 60). Conversion Name is
+   **`Activation - first API use`** (must match the Ads action exactly).
 
-1. Persist the captured `gclid` onto the account/user at sign-up (DB column).
-2. Detect first key use server-side — `api_keys.last_used_at` transitions from `null`
-   (already tracked).
-3. Create an **offline (import)** conversion action "Activation — first API use" in Google Ads.
-4. Upload conversions via the Google Ads API (or Enhanced Conversions for Leads by hashed
-   email), keyed on the stored `gclid`, within the conversion window.
-5. Optimize the campaign on Sign-up early (volume), shift toward Activation as volume allows.
+### Env
+
+Set a shared secret (Doppler → Vercel): **`GOOGLE_ADS_OFFLINE_UPLOAD_TOKEN`**.
+The endpoint accepts it as `Authorization: Bearer <token>`, HTTP Basic auth password, or
+`?token=<token>`. Verify after deploy:
+`curl -u x:$GOOGLE_ADS_OFFLINE_UPLOAD_TOKEN https://riskmodels.app/api/internal/google-ads/offline-conversions`
+
+### Manual Google Ads setup (requires account-owner action)
+
+These two steps need a legal compliance attestation only the account owner can make, so they
+are **not** automated:
+
+1. **Create the offline conversion action.** Goals → Conversions → Create conversion action →
+   **Conversions offline** → "Skip this step and set up a data source later" → check the
+   **Customer data** compliance box → name it exactly **`Activation - first API use`**,
+   category *Other* (or *Sign-up*), Count **One**, Value same-for-each **$1**, click-through
+   window **90 days**. Leave it **Secondary** initially (observe), promote to Primary once
+   activation volume builds.
+2. **Create the scheduled upload.** Tools → Data manager (or Goals → Uploads) → Schedule →
+   source **HTTPS**, URL = the endpoint above, auth = Basic (any username; password =
+   `GOOGLE_ADS_OFFLINE_UPLOAD_TOKEN`), frequency **daily**, format **Conversions**.
+
+### Verify
+
+Make a test account, generate a key, then call any API endpoint with it → DB row gets
+`signup_attribution.first_api_use_at`. The next scheduled upload (or a manual "Upload now")
+ingests the row; the Activation conversion appears in Google Ads within a few hours.
+
+### Bidding
+
+Optimize on **Sign-up** early (volume, fast signal); add/promote **Activation** as volume
+allows. Activation can lag days, so keep it Secondary until counts are meaningful.

@@ -36,3 +36,7 @@ LLMS_TXT_PUBLIC_AGENT_KEY
 # Anthropic Messages API key for the Phase 2A Claude tool loop (lib/chat/anthropic-agent.ts).
 # Server-only; never reaches the browser. Read by /api/chat when `model: "claude-*"`.
 ANTHROPIC_API_KEY
+
+# Shared secret for the Google Ads offline-conversion scheduled upload endpoint
+# (GET /api/internal/google-ads/offline-conversions). Used as Bearer / Basic password / ?token=.
+GOOGLE_ADS_OFFLINE_UPLOAD_TOKEN
