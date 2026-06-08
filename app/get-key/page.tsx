@@ -8,6 +8,7 @@ import type { User } from '@supabase/supabase-js';
 import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 import { clearUTMData, getUTMData } from '@/lib/utm';
+import { captureGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
 
 interface ApiKey {
   id: string;
@@ -147,11 +148,16 @@ function GetKeyPage() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      // Google Ads "Sign-up" conversion — fires once for newly-created accounts only.
+      reportSignupConversion(session?.user ?? null);
     });
 
     /** Capture ?ref=CODE before any router.replace clears it. Persisted to sessionStorage so it
      *  survives the OAuth / magic-link round-trip even if `next=` doesn't preserve it. */
     readPersistedReferralCode(searchParams);
+
+    /** Persist the Google click id (gclid/wbraid/gbraid) for phase-2 offline activation import. */
+    captureGclid(window.location.search);
 
     const code = searchParams.get('code');
     const stripe = searchParams.get('stripe');
@@ -181,6 +187,8 @@ function GetKeyPage() {
           });
         } else {
           setUser(data.session?.user ?? null);
+          // Fire the sign-up conversion on the OAuth / magic-link return (new accounts only).
+          reportSignupConversion(data.session?.user ?? null);
           setLoading(false);
         }
       });
