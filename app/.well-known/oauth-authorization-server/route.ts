@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAppUrl } from "@/lib/app-url";
+import { appOrigin } from "@/lib/oauth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +16,8 @@ export const dynamic = "force-dynamic";
  *   - Phase C: `/api/oauth/register` (Dynamic Client Registration, RFC 7591)
  * This is intentional — Phase A only proves the discovery handshake is well-formed.
  */
-export function GET() {
-  const base = getAppUrl().replace(/\/$/, "");
+export async function GET() {
+  const base = await appOrigin();
   return NextResponse.json(
     {
       issuer: base,
