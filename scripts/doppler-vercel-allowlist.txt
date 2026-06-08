@@ -15,6 +15,9 @@ RESEND_BCC_EMAIL
 # Vercel Cron: GET /api/cron/notify-expiring-keys (API key expiry emails)
 CRON_SECRET
 
+# BWMACRO /admin/post-builder → POST /api/admin/post-builder (shared bearer)
+RISKMODELS_ADMIN_TOKEN
+
 # Gateway service key for trusted server-to-server API access
 RISKMODELS_API_SERVICE_KEY
 # Pooled billing user for .net BFF when X-RiskModels-User-Authorization is absent (same Supabase project as API).
