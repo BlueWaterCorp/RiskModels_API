@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
+import ConnectorHeroCallout from '@/components/landing/ConnectorHeroCallout';
 
 export default function HeroLanding() {
   return (
@@ -38,6 +39,7 @@ export default function HeroLanding() {
             See the Worked Example
           </Link>
         </div>
+        <ConnectorHeroCallout />
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] text-zinc-500">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 font-mono uppercase tracking-[0.18em] text-emerald-300">
             <ShieldCheck className="size-3" aria-hidden />
