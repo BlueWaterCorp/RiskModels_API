@@ -24,6 +24,7 @@ import {
   REFRESH_TOKEN_TTL_MS,
   KEY_SCOPES,
 } from "@/lib/oauth/server";
+import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +105,15 @@ async function issueTokens(userId: string, clientId: string, clientName: string 
 }
 
 export async function POST(req: NextRequest) {
+  // Anti-abuse: cap token exchanges per IP (also blunts auth-code / refresh brute force).
+  const rl = await rateLimit("token", clientIp(req), 60, 60);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "too_many_requests", error_description: "Token rate limit exceeded." },
+      { status: 429, headers: { ...CORS, "Cache-Control": "no-store", "Retry-After": String(rl.retryAfter) } },
+    );
+  }
+
   const body = await parseBody(req);
   const grantType = body.grant_type;
   const admin = createAdminClient();
@@ -163,7 +173,23 @@ export async function POST(req: NextRequest) {
       .eq("token_hash", sha256(refreshToken))
       .maybeSingle();
 
-    if (!row || row.revoked_at) return tokenError("invalid_grant", "Refresh token invalid");
+    if (row?.revoked_at) {
+      // Replay of an already-rotated refresh token is a theft signal (RFC 6819
+      // §5.2.2.3): revoke the whole family for this user+client so neither party
+      // can keep refreshing.
+      try {
+        await admin
+          .from("oauth_refresh_tokens")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("user_id", row.user_id)
+          .eq("client_id", row.client_id)
+          .is("revoked_at", null);
+      } catch (e) {
+        console.error("[oauth/token] family revoke on replay failed:", e);
+      }
+      return tokenError("invalid_grant", "Refresh token invalid");
+    }
+    if (!row) return tokenError("invalid_grant", "Refresh token invalid");
     if (new Date(row.expires_at) < new Date()) return tokenError("invalid_grant", "Refresh token expired");
     if (row.client_id !== clientId) return tokenError("invalid_grant", "client_id mismatch");
 

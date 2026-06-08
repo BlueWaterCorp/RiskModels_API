@@ -28,6 +28,22 @@ function redirectTo(redirectUri: string, params: Record<string, string>): NextRe
 }
 
 export async function POST(req: NextRequest) {
+  // CSRF defense-in-depth: the consent form is same-origin. Reject cross-site
+  // POSTs (Supabase cookies are SameSite=Lax, but don't rely on that alone — a
+  // forged approve would mint a code for an attacker's client on the victim's
+  // session).
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (origin && host) {
+    try {
+      if (new URL(origin).host !== host) {
+        return new NextResponse("Cross-site request rejected", { status: 403 });
+      }
+    } catch {
+      return new NextResponse("Invalid origin", { status: 403 });
+    }
+  }
+
   const form = await req.formData();
   const clientId = String(form.get("client_id") ?? "");
   const redirectUri = String(form.get("redirect_uri") ?? "");

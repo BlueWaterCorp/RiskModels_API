@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { ensureStarterCredits } from '@/lib/agent/billing';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 
@@ -108,6 +109,15 @@ export async function DELETE(request: NextRequest) {
   const { id } = await request.json().catch(() => ({}));
   if (!id) return NextResponse.json({ error: 'Missing key id' }, { status: 400 });
 
+  // Look up the key's name first so we can cascade refresh-token revocation for
+  // OAuth-minted keys (named "MCP OAuth…").
+  const { data: keyRow } = await supabase
+    .from('user_generated_api_keys')
+    .select('name')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('user_generated_api_keys')
     .update({ revoked_at: new Date().toISOString() })
@@ -116,6 +126,22 @@ export async function DELETE(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: 'Failed to revoke key' }, { status: 500 });
+  }
+
+  // Disconnecting an MCP OAuth grant must also kill the refresh tokens, else the
+  // connector could silently mint a fresh access key. Conservative at this scale:
+  // revoke all of the user's OAuth refresh tokens (they re-consent to reconnect).
+  if (keyRow?.name?.startsWith('MCP OAuth')) {
+    try {
+      const admin = createAdminClient();
+      await admin
+        .from('oauth_refresh_tokens')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .is('revoked_at', null);
+    } catch (e) {
+      console.error('[keys] OAuth refresh-token revoke cascade failed:', e);
+    }
   }
 
   return NextResponse.json({ success: true });
