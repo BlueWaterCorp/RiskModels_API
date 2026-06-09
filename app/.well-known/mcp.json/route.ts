@@ -13,9 +13,10 @@ export async function GET() {
     mcpServers: {
       riskmodels: {
         name: "RiskModels API",
-        description: "US equity factor risk, hedge ratios, and portfolio snapshots.",
+        description:
+          "US equity factor risk, hedge ratios, and portfolio snapshots.",
         url: sseUrl,
-        transport: "sse",
+        transport: "streamable-http",
         auth: {
           type: "bearer",
           header: "Authorization",
