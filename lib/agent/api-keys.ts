@@ -257,9 +257,16 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
         .eq("key_hash", hashedKey),
     ).catch(console.error);
 
-    // Activation tracking: first time this key is used → record account-level first API use.
+    // Activation tracking: first time this key is used → record account-level first
+    // API use. Awaited (not fire-and-forget) so the write commits before the
+    // serverless function freezes — the void version silently lost ~7/8 real
+    // activations. Wrapped so a failure never breaks API auth.
     if (!keyRecord.last_used_at) {
-      void recordActivationIfFirstUse(keyRecord.user_id).catch(console.error);
+      try {
+        await recordActivationIfFirstUse(keyRecord.user_id);
+      } catch (e) {
+        console.error("recordActivationIfFirstUse failed", e);
+      }
     }
 
     return {
@@ -312,9 +319,16 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
       .eq("key_hash", hashedKey),
   ).catch(console.error);
 
-  // Activation tracking: first time this key is used → record account-level first API use.
+  // Activation tracking: first time this key is used → record account-level first
+  // API use. Awaited (not fire-and-forget) so the write commits before the
+  // serverless function freezes — the void version silently lost ~7/8 real
+  // activations. Wrapped so a failure never breaks API auth.
   if (!keyRecord.last_used_at) {
-    void recordActivationIfFirstUse(keyRecord.user_id).catch(console.error);
+    try {
+      await recordActivationIfFirstUse(keyRecord.user_id);
+    } catch (e) {
+      console.error("recordActivationIfFirstUse failed", e);
+    }
   }
 
   const perKeyDailyCap =
