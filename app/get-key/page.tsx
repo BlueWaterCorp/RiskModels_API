@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
-import { clearUTMData, getUTMData } from '@/lib/utm';
+import { captureUTMFromURL, clearUTMData, getUTMData } from '@/lib/utm';
 import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
 
 interface ApiKey {
@@ -158,6 +158,11 @@ function GetKeyPage() {
 
     /** Persist the Google click id (gclid/wbraid/gbraid) for phase-2 offline activation import. */
     captureGclid(window.location.search);
+
+    /** Persist UTM (utm_source/medium/campaign + referrer) so social/content signups
+     *  are attributable. getUTMData() reads this back at signup; the capture call was
+     *  previously missing, so utm-tagged inbound links recorded nothing. */
+    captureUTMFromURL(window.location.search);
 
     const code = searchParams.get('code');
     const stripe = searchParams.get('stripe');
