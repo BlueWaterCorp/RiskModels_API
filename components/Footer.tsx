@@ -34,6 +34,12 @@ export default function Footer() {
               Documentation
             </Link>
             <Link
+              href="/compare/barra-axioma"
+              className="hover:text-zinc-100 transition-colors"
+            >
+              vs Barra / Axioma
+            </Link>
+            <Link
               href="/llms.txt"
               className="hover:text-zinc-100 transition-colors"
               prefetch={false}

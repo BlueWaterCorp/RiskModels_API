@@ -96,7 +96,7 @@ export default async function RootLayout({
       <body className={`${inter.className} ${jetbrainsMono.variable}`}>
         <div className="flex flex-col min-h-screen">
           <Navbar />
-          <main className="flex-1 min-h-0 pt-16">
+          <main className="flex-1 min-h-0 pt-24 sm:pt-28 md:pt-32 lg:pt-36">
             {children}
           </main>
           <Footer />

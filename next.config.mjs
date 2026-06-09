@@ -18,6 +18,8 @@ const nextConfig = {
       { source: '/examples', destination: '/installation', permanent: true },
       { source: '/api-docs', destination: '/api-docs.html', permanent: true },
       { source: '/documentation', destination: '/docs', permanent: true },
+      // Only one comparison page today; bare /compare points at it so a trimmed URL doesn't 404.
+      { source: '/compare', destination: '/compare/barra-axioma', permanent: false },
     ];
   },
   async rewrites() {
