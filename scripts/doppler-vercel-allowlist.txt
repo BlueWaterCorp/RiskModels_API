@@ -1,6 +1,9 @@
 # Keys to copy from Doppler → Vercel for riskmodels-api (one name per line).
 # Lines starting with # are ignored.
 
+# API version reported on /api/health
+API_VERSION
+
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 NEXT_PUBLIC_APP_URL
