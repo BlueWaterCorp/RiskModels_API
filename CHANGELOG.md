@@ -3,6 +3,17 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [0.5.0] — 2026-06-09
+
+### Added
+
+- **`/compare/barra-axioma` page** — Positioning page for buyers evaluating RiskModels against enterprise risk platforms. Framed as a three-tier spectrum (DIY/Fama-French ↔ RiskModels ↔ enterprise Barra/Axioma) rather than a head-to-head: claims describe what RiskModels does (API-native, pay-per-call, agent-callable, executable ETF hedge ratios, additive four-layer decomposition, published methodology), names the mid-market buyer (RIAs, family offices, allocators, emerging managers), and is honest about when an enterprise platform is the right call. Targets "Barra/Axioma alternative" search intent via title, H1, meta description, and canonical. Linked from the footer ("vs Barra / Axioma") for crawlability.
+
+### Changed
+
+- **Landing audience card** — The third "Built for three workflows" card is now "For RIAs, family offices & allocators" (was "For allocators & diligence"), leading with the wedge "Holdings-level risk without an enterprise platform" and pointing to the new comparison page.
+
+
 ## [0.4.0] — 2026-06-05
 
 ### Added

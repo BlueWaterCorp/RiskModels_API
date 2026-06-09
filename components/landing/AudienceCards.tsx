@@ -17,11 +17,11 @@ const CARDS = [
     external: false,
   },
   {
-    eyebrow: 'For allocators & diligence',
-    body: 'Separate benchmark exposure from stock selection in disclosed 13F books.',
-    cta: 'Read 13F Research',
-    href: 'https://riskmodels.org/research/part-2-risk-structure-13f-filings?utm_source=riskmodels-app&utm_medium=audience-card&utm_campaign=cross-site',
-    external: true,
+    eyebrow: 'For RIAs, family offices & allocators',
+    body: 'Holdings-level risk without an enterprise platform. Separate benchmark exposure from stock selection across funds, managers, and disclosed 13F books.',
+    cta: 'How we compare to Barra & Axioma',
+    href: '/compare/barra-axioma',
+    external: false,
   },
 ] as const;
 
