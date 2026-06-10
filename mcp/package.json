@@ -1,6 +1,6 @@
 {
   "name": "@riskmodels/mcp",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "mcpName": "io.github.BlueWaterCorp/riskmodels",
   "description": "MCP server for RiskModels: clean dividend-adjusted US equity total returns, risk decomposition, factor/residual return attribution, and ETF hedge ratios",
   "type": "module",
