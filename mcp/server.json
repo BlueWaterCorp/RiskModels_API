@@ -13,6 +13,7 @@
     {
       "identifier": "@riskmodels/mcp",
       "registryType": "npm",
+      "version": "1.0.4",
       "transport": {
         "type": "stdio",
         "command": "npx",
