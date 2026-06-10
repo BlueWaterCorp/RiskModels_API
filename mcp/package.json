@@ -2,7 +2,7 @@
   "name": "@riskmodels/mcp",
   "version": "1.0.5",
   "mcpName": "io.github.BlueWaterCorp/riskmodels",
-  "description": "MCP server for RiskModels: decompose US equities into four-bet variance shares with ETF hedge ratios",
+  "description": "MCP server for RiskModels: clean dividend-adjusted US equity total returns, risk decomposition, factor/residual return attribution, and ETF hedge ratios",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
