@@ -8,6 +8,7 @@ RiskModels provides factor decompositions and ETF-executable hedge ratios for US
 [![Live Docs](https://img.shields.io/badge/Live%20Docs-riskmodels.net%2Fdocs%2Fapi-6366f1)](https://riskmodels.net/docs/api/erm3)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0.3-85ea2d)](OPENAPI_SPEC.yaml)
 [![PyPI](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
+[![smithery badge](https://smithery.ai/badge/service-c09f/riskmodels)](https://smithery.ai/servers/service-c09f/riskmodels)
 
 ![RiskModels — MAG7 macro correlations & cross-sectional rank snapshot](./assets/readme_inspiration.png)
 
