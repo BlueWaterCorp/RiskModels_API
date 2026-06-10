@@ -8,7 +8,12 @@ import {
   sharedRiskmodelsConfigExists,
 } from "../lib/config.js";
 import { detectClients, selectedClients } from "../lib/mcp-config-paths.js";
-import { buildInstallPlans, firstPrompt } from "../lib/mcp-install-plan.js";
+import {
+  buildInstallPlans,
+  firstPrompt,
+  looksLikeRiskmodelsKey,
+  type McpTransport,
+} from "../lib/mcp-install-plan.js";
 import { printResults } from "../lib/display.js";
 import {
   API_KEY_EMAIL_HINT,
@@ -17,7 +22,11 @@ import {
   printInstallSuccessHuman,
 } from "../lib/mcp-cli-human-output.js";
 import { redactSecret } from "../lib/redact.js";
-import { installMcpConfig, writeSharedApiKey } from "../lib/mcp-config-writer.js";
+import {
+  installClaudeCodeRemote,
+  installMcpConfig,
+  writeSharedApiKey,
+} from "../lib/mcp-config-writer.js";
 import { apiRootFromUserBase } from "../lib/api-url.js";
 import { apiFetchOptionalAuth } from "../lib/api-client.js";
 import { warnIfGlobalJsonBeforeSubcommand } from "../lib/global-json-hint.js";
@@ -29,6 +38,8 @@ type InstallOptions = {
   dryRun?: boolean;
   yes?: boolean;
   embedKey?: boolean;
+  remote?: boolean;
+  local?: boolean;
   json?: boolean;
 };
 
@@ -86,7 +97,9 @@ export function installCommand(): Command {
     .option("--api-key <key>", "RiskModels API key for one-shot setup")
     .option("--dry-run", "Show planned config changes without writing")
     .option("--yes", "Non-interactive mode")
-    .option("--embed-key", "Explicitly embed the API key in MCP config env (not recommended)")
+    .option("--remote", "Use the hosted endpoint via mcp-remote (default)")
+    .option("--local", "Use the local stdio server (npx @riskmodels/mcp) instead of the hosted endpoint")
+    .option("--embed-key", "Local stdio only: embed the API key in MCP config env (not recommended)")
     .option("--json", "Structured JSON instead of formatted text (matches historical output shape)")
     .action(async (opts: InstallOptions, cmd: Command) => {
       const json = opts.json || (cmd.optsWithGlobals() as { json?: boolean }).json || false;
@@ -100,20 +113,39 @@ export function installCommand(): Command {
       }
 
       const dryRun = opts.dryRun ?? false;
+      const transport: McpTransport = opts.local ? "local" : "remote";
       const { apiKey, source } = await resolveApiKey(opts);
+
+      if (apiKey && !looksLikeRiskmodelsKey(apiKey)) {
+        const msg =
+          'That does not look like a RiskModels API key (expected an "rm_…" value). ' +
+          "Get one at https://riskmodels.app/get-key";
+        if (json) {
+          warnIfGlobalJsonBeforeSubcommand("install");
+          printResults({ error: msg, apiKey: { source } }, json);
+        } else {
+          console.error(chalk.red(msg));
+        }
+        process.exitCode = 1;
+        return;
+      }
+
       const detections = await detectClients(clients);
-      const plans = buildInstallPlans(detections, { apiKey, embedKey: opts.embedKey });
+      const plans = buildInstallPlans(detections, { apiKey, embedKey: opts.embedKey, transport });
       const existingConfig = await loadConfig();
 
       const output = {
         dryRun,
+        transport,
         apiKey: {
           found: !!apiKey,
           source,
           value: redactSecret(apiKey),
           storage: configPath(),
           willStoreInSharedConfig: !!apiKey && source !== configPath() && !dryRun,
-          embeddedInMcpConfig: !!opts.embedKey,
+          // Remote always carries the key in the Authorization header; local only
+          // embeds it when --embed-key is passed.
+          embeddedInMcpConfig: transport === "remote" ? !!apiKey : !!opts.embedKey,
         },
         clients: plans,
         firstPrompt: firstPrompt(),
@@ -157,13 +189,19 @@ export function installCommand(): Command {
       const sharedBefore = await sharedRiskmodelsConfigExists();
       const sharedConfigWrite = await writeSharedApiKey(apiKey, existingConfig?.apiBaseUrl ?? DEFAULT_API_BASE);
       const writes = await Promise.all(
-        detections.map((detection) =>
-          installMcpConfig(detection, {
+        detections.map((detection) => {
+          // Claude Code reads its own config, not claude_desktop_config.json —
+          // register via its CLI over HTTP transport instead of writing Desktop JSON.
+          if (transport === "remote" && detection.client === "claude" && detection.commandAvailable) {
+            return Promise.resolve(installClaudeCodeRemote(detection, { apiKey }));
+          }
+          return installMcpConfig(detection, {
             apiKey,
             embedKey: opts.embedKey,
             apiBaseUrl: existingConfig?.apiBaseUrl,
-          }),
-        ),
+            transport,
+          });
+        }),
       );
       const test = await connectionTest(existingConfig?.apiBaseUrl);
       const result = {
@@ -184,7 +222,8 @@ export function installCommand(): Command {
           connectionTest: test,
           firstPrompt: firstPrompt(),
           hadErrors: writes.some((w) => w.action === "error") || !test.ok,
-          showClaudeCodeMcpTip: detections.some((d) => d.client === "claude" && d.commandAvailable),
+          showClaudeCodeMcpTip:
+            transport === "local" && detections.some((d) => d.client === "claude" && d.commandAvailable),
         });
       }
       if (writes.some((write) => write.action === "error") || !test.ok) {
