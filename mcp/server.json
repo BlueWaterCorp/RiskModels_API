@@ -8,7 +8,19 @@
     "url": "https://github.com/BlueWaterCorp/RiskModels_API",
     "source": "github"
   },
-  "version": "1.0.4",
+  "version": "1.0.5",
+  "packages": [
+    {
+      "identifier": "@riskmodels/mcp",
+      "registryType": "npm",
+      "version": "1.0.5",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@riskmodels/mcp"]
+      }
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
