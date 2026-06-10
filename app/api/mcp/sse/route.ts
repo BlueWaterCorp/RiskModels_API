@@ -53,6 +53,17 @@ function errorResponse(
 // failing at client registration. Tier-1 Bearer API keys still authenticate
 // and never reach this branch.
 //
+// GATED OFF BY DEFAULT (`MCP_ADVERTISE_OAUTH`). RiskModels is API-key-first:
+// the key is how Lisa's team already connects, how the Anthropic directory
+// connector authenticates, and the lowest-friction path for a cold user. The
+// authorization server this header points to (`lib/oauth/server.ts` +
+// `/.well-known/oauth-protected-resource`) is incomplete, so advertising it
+// made keyless discovery probes (Smithery's wizard, Claude's connector wizard)
+// follow the challenge into an OAuth flow that hangs. With the flag off, a
+// keyless request gets a plain 401 whose message tells the client to supply a
+// key — clients fall back to API-key config instead of the hang. Set
+// `MCP_ADVERTISE_OAUTH=true` to restore the challenge once OAuth is finished.
+//
 // Origin is derived from the REQUEST host (the .app origin the client used),
 // not NEXT_PUBLIC_APP_URL — that env points at the .net portal here, which has
 // no OAuth routes; advertising it sends clients to register against .net.
@@ -70,10 +81,14 @@ function wwwAuthenticateHeader(req: NextRequest): Record<string, string> {
 async function handle(req: NextRequest): Promise<Response> {
   const auth = await authenticateMcpRequest(req);
   if (!auth.ok) {
+    // Only advertise the OAuth challenge when explicitly enabled — see
+    // wwwAuthenticateHeader above. Default (flag unset) = key-first, no
+    // advertisement, so keyless wizards get a clean 401 instead of hanging.
+    const advertiseOAuth = process.env.MCP_ADVERTISE_OAUTH === "true";
     return errorResponse(
       auth.status,
       auth.error,
-      auth.status === 401 ? wwwAuthenticateHeader(req) : undefined,
+      auth.status === 401 && advertiseOAuth ? wwwAuthenticateHeader(req) : undefined,
     );
   }
 
