@@ -9,6 +9,12 @@
     "source": "github"
   },
   "version": "1.0.4",
+  "packages": [
+    {
+      "name": "@riskmodels/mcp",
+      "registry": "npm"
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",
