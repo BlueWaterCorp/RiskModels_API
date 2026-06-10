@@ -116,6 +116,8 @@ export function registerRiskModelsTools(
     | "hedgePortfolio"
     | "portfolioDecompose"
     | "whitepaperExample"
+    | "getReturns"
+    | "getReturnAttribution"
   >,
   server: McpLikeServer,
 ): void {
@@ -133,6 +135,75 @@ export function registerRiskModelsTools(
     async ({ ticker }) => {
       try {
         return textResult(await sdk.decompose(ticker));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_returns",
+    {
+      title: "RiskModels Stock Total Returns",
+      annotations: { readOnlyHint: true },
+      description:
+        "Daily dividend-adjusted total (gross) return series for any US stock or ETF (GET /ticker-returns), with per-day L3 market/sector/subsector hedge ratios and explained-risk fractions (sum to ~1.0). Up to 15 years of point-in-time, time-safe history. Use for performance tracking, backtests, or as the clean returns input to any risk or attribution work.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA or AAPL"),
+        years: z
+          .number()
+          .int()
+          .min(1)
+          .max(15)
+          .optional()
+          .describe("Years of daily history (default 1, max 15)"),
+      },
+    },
+    async ({ ticker, years }) => {
+      try {
+        return textResult(await sdk.getReturns(ticker, { years }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_return_attribution",
+    {
+      title: "RiskModels Return Attribution (factor vs residual)",
+      annotations: { readOnlyHint: true },
+      description:
+        "Daily return attribution (GET /returns-decomposition): decomposes each day's gross return into additive L1/L2/L3 factor (market/sector/subsector) and residual (stock-specific) return components from ds_erm3_returns. Isolates the residual return series — the stock-picking / alpha component — for manager-skill evaluation and stat-arb. Set include_lstar for the Lstar-dispatched residual series.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA or AAPL"),
+        years: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("Calendar years of daily history (default 1)"),
+        market_factor_etf: z.string().optional().describe("Market factor ETF (default SPY)"),
+        include_lstar: z
+          .boolean()
+          .optional()
+          .describe("Include lstar + lstar_residual_return arrays (default false)"),
+        threshold: z
+          .number()
+          .optional()
+          .describe("Marginal ER threshold for Lstar derivation (default 0.01)"),
+      },
+    },
+    async ({ ticker, years, market_factor_etf, include_lstar, threshold }) => {
+      try {
+        return textResult(
+          await sdk.getReturnAttribution(ticker, {
+            years,
+            marketFactorEtf: market_factor_etf,
+            includeLstar: include_lstar,
+            threshold,
+          }),
+        );
       } catch (error) {
         return errorResult(error);
       }
