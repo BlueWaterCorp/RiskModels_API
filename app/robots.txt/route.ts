@@ -1,4 +1,5 @@
 import { getAppUrl } from '@/lib/app-url';
+import { CANONICAL_SITE_URL } from '@/lib/constants';
 
 /**
  * Plain robots.txt with a comment pointing agents at /llms.txt (llmstxt.org-style bootstrap).
@@ -8,6 +9,8 @@ export async function GET() {
   const body = `# https://www.robotstxt.org/robotstxt.html
 User-agent: *
 Allow: /
+
+Sitemap: ${CANONICAL_SITE_URL}/sitemap.xml
 
 # Machine-readable agent bootstrap (MCP install, curl, optional public MAG7 demo Bearer when enabled):
 # ${base}/llms.txt
