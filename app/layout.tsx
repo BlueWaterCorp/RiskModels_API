@@ -8,6 +8,7 @@ import Footer from '@/components/Footer';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
 import { UTMTracker } from '@/components/UTMTracker';
+import { CANONICAL_SITE_URL } from '@/lib/constants';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -18,6 +19,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Resolve relative metadata URLs (canonical, og) against the canonical .app domain,
+  // not the request host — the app also answers on .net, and a per-host canonical would
+  // split SEO signal. See CANONICAL_SITE_URL in lib/constants.
+  metadataBase: new URL(CANONICAL_SITE_URL),
   title: {
     default: 'RiskModels API — Precision Equity Risk Intelligence',
     template: '%s | RiskModels API',

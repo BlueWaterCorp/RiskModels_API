@@ -3,6 +3,7 @@ import WorkedExampleHero from '@/components/landing/WorkedExampleHero';
 import AudienceCards from '@/components/landing/AudienceCards';
 import TerminalShowcase from '@/components/TerminalShowcase';
 import ResearchProof from '@/components/landing/ResearchProof';
+import CompareCallout from '@/components/landing/CompareCallout';
 import FailureContrast from '@/components/landing/FailureContrast';
 import RiskWalkthroughWithToggle from '@/components/landing/RiskWalkthroughWithToggle';
 import BridgeSection from '@/components/landing/BridgeSection';
@@ -27,6 +28,7 @@ export default function HomePage() {
       <AudienceCards />
       <TerminalShowcase />
       <ResearchProof />
+      <CompareCallout />
       {SHOW_LEGACY_SECTIONS && (
         <>
           <FailureContrast />

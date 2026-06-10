@@ -3,6 +3,18 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [0.6.0] — 2026-06-09
+
+### Added
+
+- **`/sitemap.xml`** — Generated sitemap covering the public marketing + docs surface (10 static routes + every `content/docs` MDX page, enumerated automatically). Auth/account/oauth, the print render-snapshot routes, and per-ticker dynamic pages are excluded. `robots.txt` now advertises it via a `Sitemap:` directive.
+- **Landing "Compare" callout** — A buyer-facing band below the research-proof block linking to `/compare/barra-axioma` ("Evaluating against Barra or Axioma?"), giving the comparison page a higher-visibility entry point than the footer/audience-card links alone.
+
+### Fixed
+
+- **Canonical URLs resolve to the public `.app` domain** — Added `metadataBase` (and a shared `CANONICAL_SITE_URL` constant) so relative canonical/OG URLs resolve to `https://riskmodels.app` instead of the request host. The app also answers on `.net` (legacy/terms), and a per-host canonical split SEO signal. The sitemap and `robots.txt` `Sitemap:` directive use the same canonical, not `NEXT_PUBLIC_APP_URL` (which is `.net` in some envs).
+
+
 ## [0.5.0] — 2026-06-09
 
 ### Added
