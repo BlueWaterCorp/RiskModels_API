@@ -105,6 +105,57 @@ export function createRiskModelsSdk(opts: { apiKey?: string | null; apiBase?: st
   });
 }
 
+/** Capabilities/paths the generic passthrough must never reach (SQL, Plaid, chat). */
+const PASSTHROUGH_BLOCKED = [/^\/cli(\/|$)/i, /^\/plaid(\/|$)/i, /^\/chat(\/|$)/i];
+
+/**
+ * Normalize a passthrough path BEFORE any allow/deny decision: decode, drop a
+ * query string, strip a leading `/api`, and resolve `.`/`..` segments. Resolving
+ * traversal here is what stops `/x/../cli/query` from reaching a blocked endpoint
+ * after URL normalization downstream.
+ */
+export function normalizeApiPath(raw: string): string {
+  let p = (raw ?? "").trim();
+  try {
+    p = decodeURIComponent(p);
+  } catch {
+    /* keep undecoded */
+  }
+  const qi = p.indexOf("?");
+  if (qi >= 0) p = p.slice(0, qi);
+  if (!p.startsWith("/")) p = `/${p}`;
+  p = p.replace(/^\/api(?=\/|$)/, "");
+  const out: string[] = [];
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return `/${out.join("/")}`;
+}
+
+function endpointToMatcher(method: string, endpoint: string): { method: string; re: RegExp } {
+  const path = endpoint.replace(/^\/api(?=\/|$)/, "");
+  const parts = path
+    .split("/")
+    .map((seg) => (/^\{.+\}$/.test(seg) ? "[^/]+" : seg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  return { method: method.toUpperCase(), re: new RegExp(`^${parts.join("/")}$`) };
+}
+
+/** Allowlist of {method, path-pattern} the passthrough may dispatch — registered, non-blocked capabilities only. */
+export function buildPassthroughAllowlist(
+  capabilities: Array<{ method?: string; endpoint?: string }>,
+): Array<{ method: string; re: RegExp }> {
+  return capabilities
+    .filter((c) => typeof c.method === "string" && typeof c.endpoint === "string")
+    .map((c) => ({ method: c.method as string, path: (c.endpoint as string).replace(/^\/api(?=\/|$)/, "") }))
+    .filter((c) => !PASSTHROUGH_BLOCKED.some((re) => re.test(c.path)))
+    .map((c) => endpointToMatcher(c.method, c.path));
+}
+
 export function registerRiskModelsTools(
   sdk: Pick<
     RiskModelsClient,
@@ -121,7 +172,10 @@ export function registerRiskModelsTools(
     | "call"
   >,
   server: McpLikeServer,
+  opts: { capabilities?: Array<{ method?: string; endpoint?: string; [k: string]: unknown }> } = {},
 ): void {
+  const passthroughAllowlist = buildPassthroughAllowlist(opts.capabilities ?? []);
+
   server.registerTool(
     "riskmodels_decompose",
     {
@@ -717,16 +771,21 @@ export function registerRiskModelsTools(
     },
     async ({ method, path, query, body }) => {
       try {
-        let p = path.trim();
-        if (!p.startsWith("/")) p = `/${p}`;
-        p = p.replace(/^\/api(?=\/)/, ""); // list_endpoints shows "/api/..."; baseUrl already includes /api
-        const blocked = [/^\/cli\/query/i, /^\/plaid/i, /^\/chat\b/i];
-        if (blocked.some((re) => re.test(p))) {
+        // Normalize FIRST (resolves ./.. and strips /api), then allowlist-match the
+        // normalized path against registered, non-blocked capabilities. This is
+        // traversal-safe: "/x/../cli/query" normalizes to "/cli/query", which is
+        // not in the allowlist, so it is rejected — a prefix denylist on the raw
+        // path would have let it through after URL normalization.
+        const norm = normalizeApiPath(path);
+        const allowed = passthroughAllowlist.some((a) => a.method === method && a.re.test(norm));
+        if (!allowed) {
           return errorResult(
-            new Error(`Path ${p} is not available via the passthrough (SQL/Plaid/chat). Use the REST API directly.`),
+            new Error(
+              `Path ${norm} (${method}) is not an invocable capability. Run riskmodels_list_endpoints for the allowed set; SQL/Plaid/chat are not exposed via the passthrough.`,
+            ),
           );
         }
-        return textResult(await sdk.call(method, p, { query, body }));
+        return textResult(await sdk.call(method, norm, { query, body }));
       } catch (error) {
         return errorResult(error);
       }

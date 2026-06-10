@@ -256,4 +256,49 @@ describe("RiskModels MCP live-paper tools", () => {
     expect(payload.chart_instruction).toContain("grouped bars for comparisons");
     expect(payload.chart_data).toHaveLength(1);
   });
+
+  it("passthrough allowlists registered capabilities and is traversal-safe", async () => {
+    const tools = new Map<string, (args: any) => Promise<{ content: Array<{ type: "text"; text: string }> }>>();
+    const server = {
+      registerTool: (name: string, _c: any, h: any) => tools.set(name, h),
+      registerResource: () => undefined,
+    };
+    const calls: Array<{ method: string; path: string }> = [];
+    const sdk = {
+      decompose: async () => ({}),
+      getHedgeLevels: async () => ({}),
+      compare: async () => ({}),
+      hedgePosition: async () => ({}),
+      analyzePortfolio: async () => ({}),
+      hedgePortfolio: async () => ({}),
+      portfolioDecompose: async () => ({}),
+      whitepaperExample: async () => ({}),
+      getReturns: async () => ({}),
+      getReturnAttribution: async () => ({}),
+      call: async (method: string, path: string) => {
+        calls.push({ method, path });
+        return { ok: true };
+      },
+    };
+    registerRiskModelsTools(sdk as any, server as any, {
+      capabilities: [
+        { id: "rankings", method: "GET", endpoint: "/api/rankings/{ticker}" },
+        { id: "cli-query", method: "POST", endpoint: "/api/cli/query" }, // blocked → excluded from allowlist
+      ],
+    });
+    const passthrough = tools.get("riskmodels_call_endpoint")!;
+
+    // Allowed registered capability dispatches with the normalized path.
+    await passthrough({ method: "GET", path: "/api/rankings/NVDA" });
+    expect(calls).toEqual([{ method: "GET", path: "/rankings/NVDA" }]);
+
+    // Blocked capability rejected — even via path traversal that would normalize
+    // to it downstream (the bug this guards against).
+    for (const p of ["/cli/query", "/x/../cli/query", "/api/x/%2e%2e/cli/query", "/internal/secret"]) {
+      const r = await passthrough({ method: "POST", path: p, body: { sql: "select 1" } });
+      expect(r.content[0].text).toContain("not an invocable capability");
+    }
+    // Only the single allowed call ever dispatched.
+    expect(calls).toHaveLength(1);
+  });
 });
