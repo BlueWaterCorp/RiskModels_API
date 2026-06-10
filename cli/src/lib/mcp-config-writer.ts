@@ -1,8 +1,13 @@
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { configPath, DEFAULT_API_BASE, loadConfig, type RiskmodelsConfig } from "./config.js";
 import type { ClientDetection } from "./mcp-config-paths.js";
-import { defaultMcpServerConfig } from "./mcp-install-plan.js";
+import {
+  claudeCodeRemoteAddArgs,
+  mcpServerConfigFor,
+  type McpTransport,
+} from "./mcp-install-plan.js";
 
 export interface ConfigWriteResult {
   client: string;
@@ -17,6 +22,7 @@ export interface SafeWriteOptions {
   apiKey?: string;
   embedKey?: boolean;
   apiBaseUrl?: string;
+  transport?: McpTransport;
   now?: Date;
 }
 
@@ -214,7 +220,7 @@ export async function installMcpConfig(
 
   try {
     const { exists, text } = await readIfExists(detection.configPath);
-    const mcpServer = defaultMcpServerConfig(opts.apiKey, !!opts.embedKey);
+    const mcpServer = mcpServerConfigFor(opts.transport ?? "remote", opts.apiKey, !!opts.embedKey);
     const nextText =
       detection.client === "codex"
         ? mergeCodexTomlConfig(text, mcpServer)
@@ -237,6 +243,47 @@ export async function installMcpConfig(
       message: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Register the hosted endpoint with Claude Code via its own CLI
+ * (`claude mcp add --transport http …`) instead of writing Desktop JSON —
+ * Claude Code reads its own config, not claude_desktop_config.json. Idempotent:
+ * removes any existing `riskmodels` entry first so re-running doesn't error on
+ * "already exists". Used for the remote transport when the `claude` CLI is present.
+ */
+export function installClaudeCodeRemote(
+  detection: ClientDetection,
+  opts: { apiKey?: string } = {},
+): ConfigWriteResult {
+  const base = {
+    client: detection.client,
+    label: detection.label,
+    configPath: detection.configPath,
+  };
+  // Best-effort removal of a prior entry — ignore failure (none registered yet).
+  spawnSync("claude", ["mcp", "remove", "--scope", "user", "riskmodels"], { stdio: "ignore" });
+
+  const res = spawnSync("claude", claudeCodeRemoteAddArgs(opts.apiKey), {
+    stdio: "pipe",
+    encoding: "utf8",
+  });
+  if (res.error) {
+    return { ...base, action: "error", message: `Failed to run \`claude\`: ${res.error.message}` };
+  }
+  if (res.status === 0) {
+    return {
+      ...base,
+      action: "written",
+      message: "Registered with Claude Code via `claude mcp add --transport http` (user scope).",
+    };
+  }
+  const detail = (res.stderr || res.stdout || "").trim();
+  return {
+    ...base,
+    action: "error",
+    message: detail || `\`claude mcp add\` exited with status ${res.status ?? "unknown"}.`,
+  };
 }
 
 export function removeJsonMcpConfig(existingText: string): { text: string; removed: boolean } {
