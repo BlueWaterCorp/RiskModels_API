@@ -125,6 +125,7 @@ describe("RiskModels CLI installer planning", () => {
     const plans = buildInstallPlans(detections, {
       apiKey: "rm_agent_live_abcdefghijklmnopqrstuvwxyz",
       embedKey: true,
+      transport: "local",
     });
 
     expect(plans[0].mcpServer).toEqual({
@@ -223,6 +224,8 @@ describe("RiskModels MCP live-paper tools", () => {
 
     expect([...tools.keys()]).toEqual([
       "riskmodels_decompose",
+      "riskmodels_get_returns",
+      "riskmodels_get_return_attribution",
       "riskmodels_get_hedge_levels",
       "riskmodels_compare",
       "riskmodels_hedge_position",

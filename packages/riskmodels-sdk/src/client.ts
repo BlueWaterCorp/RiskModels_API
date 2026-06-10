@@ -65,6 +65,15 @@ function redactedCurl(apiCall: Omit<ApiCallMetadata, "curl">): string {
   return parts.join(" ");
 }
 
+/** Wrap a raw GET payload with the request metadata, without a bespoke normalizer. */
+function attachApiCall(raw: unknown, apiCall: ApiCallMetadata): Record<string, unknown> {
+  const payload =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : { data: raw };
+  return { ...payload, api_call: apiCall };
+}
+
 function positionWeight(position: PositionInput): number {
   const value = position.weight ?? position.dollars;
   if (value === undefined || !Number.isFinite(value) || value <= 0) {
@@ -213,6 +222,49 @@ export class RiskModelsClient {
 
   async whitepaperExample(exampleId: Parameters<typeof runWhitepaperExample>[1]) {
     return runWhitepaperExample(this, exampleId);
+  }
+
+  /**
+   * GET /ticker-returns — daily dividend-adjusted total (gross) return series for a
+   * single name, with per-day L3 market/sector/subsector hedge ratios and
+   * explained-risk fractions. Up to 15 years of point-in-time history.
+   */
+  async getReturns(
+    ticker: string,
+    options: { years?: number; array?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const query: Record<string, string | number | boolean> = {
+      ticker: ticker.trim().toUpperCase(),
+    };
+    if (options.years !== undefined) query.years = options.years;
+    if (options.array !== undefined) query.array = options.array;
+    const { raw, apiCall } = await this.request("GET", "/ticker-returns", { query });
+    return attachApiCall(raw, apiCall);
+  }
+
+  /**
+   * GET /returns-decomposition — daily gross return decomposed into additive
+   * L1/L2/L3 factor (market/sector/subsector) and residual return components,
+   * isolating residual (stock-specific) return. Optional Lstar dispatch.
+   */
+  async getReturnAttribution(
+    ticker: string,
+    options: {
+      years?: number;
+      marketFactorEtf?: string;
+      includeLstar?: boolean;
+      threshold?: number;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const query: Record<string, string | number | boolean> = {
+      ticker: ticker.trim().toUpperCase(),
+    };
+    if (options.years !== undefined) query.years = options.years;
+    if (options.marketFactorEtf !== undefined) query.market_factor_etf = options.marketFactorEtf;
+    if (options.includeLstar !== undefined) query.include_lstar = options.includeLstar;
+    if (options.threshold !== undefined) query.threshold = options.threshold;
+    const { raw, apiCall } = await this.request("GET", "/returns-decomposition", { query });
+    return attachApiCall(raw, apiCall);
   }
 
   private async request(
