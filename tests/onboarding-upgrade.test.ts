@@ -233,6 +233,18 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_hedge_portfolio",
       "riskmodels_portfolio_decompose",
       "riskmodels_whitepaper_example",
+      "riskmodels_search_tickers",
+      "riskmodels_search_filers",
+      "riskmodels_search_etfs",
+      "riskmodels_get_rankings",
+      "riskmodels_screen_rankings",
+      "riskmodels_get_macro_correlation",
+      "riskmodels_get_residual_signal",
+      "riskmodels_get_filer_snapshot",
+      "riskmodels_get_filer_holdings",
+      "riskmodels_get_etf",
+      "riskmodels_get_etf_holdings",
+      "riskmodels_call_endpoint",
     ]);
     // riskmodels_render_artifact is hosted-only — registered separately via
     // registerRiskModelsRenderTool (needs GCP Cloud Run auth), intentionally

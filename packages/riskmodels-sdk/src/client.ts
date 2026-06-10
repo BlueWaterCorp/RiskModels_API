@@ -267,6 +267,21 @@ export class RiskModelsClient {
     return attachApiCall(raw, apiCall);
   }
 
+  /**
+   * Generic dispatch to any RiskModels capability by method + path — backs the
+   * typed Tier-A tool wrappers and the MCP passthrough. Constrained to this
+   * client's baseUrl host; `path` is relative to the `/api` base
+   * (e.g. "/rankings/NVDA", "/13f/filers/search").
+   */
+  async call(
+    method: "GET" | "POST",
+    path: string,
+    options: { query?: Record<string, string | number | boolean>; body?: unknown } = {},
+  ): Promise<Record<string, unknown>> {
+    const { raw, apiCall } = await this.request(method, path, options);
+    return attachApiCall(raw, apiCall);
+  }
+
   private async request(
     method: "GET" | "POST",
     path: string,

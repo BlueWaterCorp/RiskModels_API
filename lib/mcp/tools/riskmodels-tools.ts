@@ -118,6 +118,7 @@ export function registerRiskModelsTools(
     | "whitepaperExample"
     | "getReturns"
     | "getReturnAttribution"
+    | "call"
   >,
   server: McpLikeServer,
 ): void {
@@ -388,6 +389,344 @@ export function registerRiskModelsTools(
     async ({ exampleId }) => {
       try {
         return textResult(await sdk.whitepaperExample(exampleId as WhitepaperExampleId));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // --- Entity resolution (free discovery) ---
+
+  server.registerTool(
+    "riskmodels_search_tickers",
+    {
+      title: "RiskModels Ticker Search",
+      annotations: { readOnlyHint: true },
+      description:
+        'Resolve a symbol or company name to RiskModels tickers (GET /tickers). Free — use this first to turn a name like "Nvidia" into a ticker before any analysis tool. mag7=true returns the Magnificent Seven.',
+      inputSchema: {
+        search: z.string().optional().describe('Symbol or company-name fragment, e.g. "nvidia" or "NVDA"'),
+        mag7: z.boolean().optional().describe("Return the MAG7 set"),
+        include_metadata: z.boolean().optional().describe("Include extra metadata per match"),
+      },
+    },
+    async ({ search, mag7, include_metadata }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (search !== undefined) query.search = search;
+        if (mag7 !== undefined) query.mag7 = mag7;
+        if (include_metadata !== undefined) query.include_metadata = include_metadata;
+        return textResult(await sdk.call("GET", "/tickers", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_search_filers",
+    {
+      title: "RiskModels 13F Filer Search",
+      annotations: { readOnlyHint: true },
+      description:
+        "Find 13F filers by name (GET /13f/filers/search). Free — resolve a manager like \"Berkshire\" to a bw_filer_id before pulling its snapshot, holdings, or concentration.",
+      inputSchema: {
+        q: z.string().min(1).describe("Filer name fragment, e.g. \"berkshire\""),
+        limit: z.number().int().min(1).max(100).optional().describe("Max results (default 25)"),
+      },
+    },
+    async ({ q, limit }) => {
+      try {
+        const query: Record<string, string | number | boolean> = { q };
+        if (limit !== undefined) query.limit = limit;
+        return textResult(await sdk.call("GET", "/13f/filers/search", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_search_etfs",
+    {
+      title: "RiskModels ETF Search",
+      annotations: { readOnlyHint: true },
+      description:
+        "Find ETFs in the canonical universe by symbol or name (GET /data/etf/search). Free — resolve a hedge/benchmark ETF before pulling its metrics or holdings.",
+      inputSchema: {
+        q: z.string().optional().describe("Symbol or name fragment, e.g. \"semiconductor\" or \"SMH\""),
+        limit: z.number().int().min(1).max(100).optional().describe("Max results (default 25)"),
+      },
+    },
+    async ({ q, limit }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (q !== undefined) query.q = q;
+        if (limit !== undefined) query.limit = limit;
+        return textResult(await sdk.call("GET", "/data/etf/search", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // --- Cross-sectional / peer analytics ---
+
+  server.registerTool(
+    "riskmodels_get_rankings",
+    {
+      title: "RiskModels Cross-Sectional Rankings",
+      annotations: { readOnlyHint: true },
+      description:
+        "Where a stock sits in its sector/universe percentile for a given metric (GET /rankings/{ticker}) — peer analytics / manager-skill context.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA"),
+        metric: z.string().optional().describe("Ranking metric (see riskmodels_get_capability id=rankings)"),
+        cohort: z.string().optional().describe("Peer cohort, e.g. sector or universe"),
+        window: z.string().optional().describe("Lookback window"),
+      },
+    },
+    async ({ ticker, metric, cohort, window }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (metric !== undefined) query.metric = metric;
+        if (cohort !== undefined) query.cohort = cohort;
+        if (window !== undefined) query.window = window;
+        return textResult(
+          await sdk.call("GET", `/rankings/${encodeURIComponent(ticker.trim().toUpperCase())}`, { query }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_screen_rankings",
+    {
+      title: "RiskModels Rankings Screen",
+      annotations: { readOnlyHint: true },
+      description:
+        "Full cross-section rank screen (POST /rankings/screen): server-side percentile/decile filtering across the universe for a metric. Use to build screens, not single-ticker lookups.",
+      inputSchema: {
+        metric: z.string().min(1).describe("Ranking metric"),
+        cohort: z.string().min(1).describe("Peer cohort"),
+        window: z.string().min(1).describe("Lookback window"),
+        as_of: z.string().optional().describe("As-of date (YYYY-MM-DD)"),
+        min_percentile: z.number().optional().describe("Minimum percentile filter"),
+        decile: z.number().int().optional().describe("Restrict to a decile (1-10)"),
+        sector_filter: z.string().optional().describe("Restrict to a sector"),
+        limit: z.number().int().optional().describe("Max rows (default 100)"),
+      },
+    },
+    async ({ metric, cohort, window, as_of, min_percentile, decile, sector_filter, limit }) => {
+      try {
+        const body: Record<string, unknown> = { metric, cohort, window };
+        if (as_of !== undefined) body.as_of = as_of;
+        if (min_percentile !== undefined) body.min_percentile = min_percentile;
+        if (decile !== undefined) body.decile = decile;
+        if (sector_filter !== undefined) body.sector_filter = sector_filter;
+        if (limit !== undefined) body.limit = limit;
+        return textResult(await sdk.call("POST", "/rankings/screen", { body }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_macro_correlation",
+    {
+      title: "RiskModels Macro Factor Correlation",
+      annotations: { readOnlyHint: true },
+      description:
+        "Exposure of a stock's returns to macro drivers like rates and volatility (POST /correlation). Defaults to the L3 residual return so it isolates idiosyncratic macro sensitivity.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA"),
+        factors: z.array(z.string()).optional().describe("Macro factor ids to test (default: standard set)"),
+        return_type: z.string().optional().describe('Return series to correlate (default "l3_residual")'),
+        window_days: z.number().int().optional().describe("Rolling window in days (default 252)"),
+        method: z.string().optional().describe('"pearson" (default) or "spearman"'),
+      },
+    },
+    async ({ ticker, factors, return_type, window_days, method }) => {
+      try {
+        const body: Record<string, unknown> = { ticker: ticker.trim().toUpperCase() };
+        if (factors !== undefined) body.factors = factors;
+        if (return_type !== undefined) body.return_type = return_type;
+        if (window_days !== undefined) body.window_days = window_days;
+        if (method !== undefined) body.method = method;
+        return textResult(await sdk.call("POST", "/correlation", { body }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_residual_signal",
+    {
+      title: "RiskModels Residual Mean-Reversion Signal",
+      annotations: { readOnlyHint: true },
+      description:
+        "Aggregate the L3 residual mean-reversion (stat-arb) signal across a basket (POST /signals/residual-reversion/basket). Optional weights and a minimum signal-quality quintile filter.",
+      inputSchema: {
+        tickers: z.array(z.string().min(1)).min(1).max(100).describe("Basket tickers"),
+        weights: z.array(z.number()).optional().describe("Optional weights, aligned to tickers"),
+        signal_quality_min_quintile: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Drop names below this signal-quality quintile (1-5)"),
+      },
+    },
+    async ({ tickers, weights, signal_quality_min_quintile }) => {
+      try {
+        const body: Record<string, unknown> = {
+          tickers: tickers.map((t: string) => t.trim().toUpperCase()),
+        };
+        if (weights !== undefined) body.weights = weights;
+        if (signal_quality_min_quintile !== undefined) body.signal_quality_min_quintile = signal_quality_min_quintile;
+        return textResult(await sdk.call("POST", "/signals/residual-reversion/basket", { body }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // --- 13F filer detail ---
+
+  server.registerTool(
+    "riskmodels_get_filer_snapshot",
+    {
+      title: "RiskModels 13F Filer Snapshot",
+      annotations: { readOnlyHint: true },
+      description:
+        "Composed JSON snapshot for one 13F filer (GET /13f/filers/{bw_filer_id}/snapshot): registry + latest metrics + concentration. Resolve bw_filer_id via riskmodels_search_filers first.",
+      inputSchema: {
+        bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers"),
+      },
+    },
+    async ({ bw_filer_id }) => {
+      try {
+        return textResult(
+          await sdk.call("GET", `/13f/filers/${encodeURIComponent(bw_filer_id.trim())}/snapshot`),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_filer_holdings",
+    {
+      title: "RiskModels 13F Filer Holdings",
+      annotations: { readOnlyHint: true },
+      description:
+        "Top-N current holdings of a 13F filer (GET /13f/filers/{bw_filer_id}/holdings). Resolve bw_filer_id via riskmodels_search_filers first.",
+      inputSchema: {
+        bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers"),
+        top: z.number().int().min(1).max(200).optional().describe("Number of holdings (default 25)"),
+      },
+    },
+    async ({ bw_filer_id, top }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (top !== undefined) query.top = top;
+        return textResult(
+          await sdk.call("GET", `/13f/filers/${encodeURIComponent(bw_filer_id.trim())}/holdings`, { query }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // --- ETF detail ---
+
+  server.registerTool(
+    "riskmodels_get_etf",
+    {
+      title: "RiskModels ETF Metrics",
+      annotations: { readOnlyHint: true },
+      description:
+        "Latest canonical metrics for one ETF (GET /data/etf/{ticker}): registry metadata + portfolio surface. Resolve the ticker via riskmodels_search_etfs if unsure.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("ETF ticker, e.g. SMH"),
+      },
+    },
+    async ({ ticker }) => {
+      try {
+        return textResult(
+          await sdk.call("GET", `/data/etf/${encodeURIComponent(ticker.trim().toUpperCase())}`),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_etf_holdings",
+    {
+      title: "RiskModels ETF Holdings",
+      annotations: { readOnlyHint: true },
+      description: "Top-N current holdings of an ETF (GET /data/etf/{ticker}/holdings).",
+      inputSchema: {
+        ticker: z.string().min(1).describe("ETF ticker, e.g. SMH"),
+        top: z.number().int().min(1).max(200).optional().describe("Number of holdings (default 25)"),
+      },
+    },
+    async ({ ticker, top }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (top !== undefined) query.top = top;
+        return textResult(
+          await sdk.call("GET", `/data/etf/${encodeURIComponent(ticker.trim().toUpperCase())}/holdings`, { query }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // --- Generic passthrough: invoke any capability not covered by a typed tool ---
+
+  server.registerTool(
+    "riskmodels_call_endpoint",
+    {
+      title: "RiskModels Generic Capability Call",
+      annotations: { readOnlyHint: true },
+      description:
+        'Escape hatch for any capability without a dedicated tool. Run riskmodels_list_endpoints (and riskmodels_get_capability for params), then call with that capability\'s method + endpoint path. Path is relative to the API root (a leading "/api" is stripped). Blocked: SQL (/cli/query), Plaid, and chat endpoints — use the REST API directly for those.',
+      inputSchema: {
+        method: z.enum(["GET", "POST"]).describe("HTTP method from list_endpoints"),
+        path: z
+          .string()
+          .min(1)
+          .describe('Endpoint path from list_endpoints, e.g. "/industry-panel" or "/data/benchmark/SPY"'),
+        query: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .optional()
+          .describe("Query parameters"),
+        body: z.record(z.string(), z.unknown()).optional().describe("JSON body (POST)"),
+      },
+    },
+    async ({ method, path, query, body }) => {
+      try {
+        let p = path.trim();
+        if (!p.startsWith("/")) p = `/${p}`;
+        p = p.replace(/^\/api(?=\/)/, ""); // list_endpoints shows "/api/..."; baseUrl already includes /api
+        const blocked = [/^\/cli\/query/i, /^\/plaid/i, /^\/chat\b/i];
+        if (blocked.some((re) => re.test(p))) {
+          return errorResult(
+            new Error(`Path ${p} is not available via the passthrough (SQL/Plaid/chat). Use the REST API directly.`),
+          );
+        }
+        return textResult(await sdk.call(method, p, { query, body }));
       } catch (error) {
         return errorResult(error);
       }
