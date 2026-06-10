@@ -12,7 +12,12 @@
   "packages": [
     {
       "identifier": "@riskmodels/mcp",
-      "registryType": "npm"
+      "registryType": "npm",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@riskmodels/mcp"]
+      }
     }
   ],
   "remotes": [
