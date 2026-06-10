@@ -11,8 +11,8 @@
   "version": "1.0.4",
   "packages": [
     {
-      "name": "@riskmodels/mcp",
-      "registry": "npm"
+      "identifier": "@riskmodels/mcp",
+      "registryType": "npm"
     }
   ],
   "remotes": [
