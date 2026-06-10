@@ -14,7 +14,7 @@ export async function GET() {
       riskmodels: {
         name: "RiskModels API",
         description:
-          "US equity factor risk, hedge ratios, and portfolio snapshots.",
+          "Clean dividend-adjusted US equity total returns, factor risk decomposition, return attribution, and ETF hedge ratios.",
         url: sseUrl,
         transport: "streamable-http",
         auth: {
