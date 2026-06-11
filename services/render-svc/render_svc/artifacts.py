@@ -249,18 +249,27 @@ def _resolve_client_portfolio(
     return positions, resolved_subject_id, resolved_as_of
 
 
-def _resolve_filer_subject(req: "ArtifactRenderRequest") -> tuple[None, str, str]:
-    """Validate + resolve a filer_13f request.
+# Subject kinds with no SDK loader inside render-svc. Pre-rendered artifacts
+# (explicit as_of, bytes already in GCS) serve via the cache-hit path; cache
+# miss raises 501. filer_13f data lives behind the private BWMACRO surface;
+# cohort/stock cover the research artifact registry (BW-COHORT-RES-*,
+# BW-STOCK-* — published by BWMACRO research/papers/build_artifacts.py).
+_PRERENDERED_SUBJECT_KINDS: tuple[str, ...] = ("filer_13f", "cohort", "stock")
+
+
+def _resolve_prerendered_subject(
+    req: "ArtifactRenderRequest", subject_kind: str
+) -> tuple[None, str, str]:
+    """Validate + resolve a request for a loaderless subject kind.
 
     Returns ``(subject_data=None, resolved_subject_id, resolved_as_of)``.
 
-    Filer subjects (Berkshire 13F, etc.) have **no SDK loader inside
-    render-svc** — the filer data lives behind `bwmacro.snapshots.filers.
-    _data.get_data_for_f1_filer` which reads from local zarrs and is part
-    of the private BWMACRO surface. The cache-hit path doesn't need
-    subject data (it returns bytes directly from GCS), so pre-rendered
-    filer artifacts work end-to-end. Cache miss for filer subjects
-    raises 501 — live-render requires the filer loader landing in
+    These subjects have **no SDK loader inside render-svc** — e.g. filer
+    data lives behind `bwmacro.snapshots.filers._data.get_data_for_f1_filer`
+    which reads from local zarrs and is part of the private BWMACRO surface.
+    The cache-hit path doesn't need subject data (it returns bytes directly
+    from GCS), so pre-rendered artifacts work end-to-end. Cache miss raises
+    501 — live-render requires the corresponding loader landing in
     render-svc (Phase 2 follow-on).
 
     For LANDING's Berkshire anonymous preload: the daily refresh job
@@ -274,9 +283,9 @@ def _resolve_filer_subject(req: "ArtifactRenderRequest") -> tuple[None, str, str
         raise HTTPException(
             status_code=400,
             detail=(
-                "as_of='latest' not supported for subject_kind='filer_13f' "
+                f"as_of='latest' not supported for subject_kind={subject_kind!r} "
                 "(no SDK loader inside render-svc to resolve the latest "
-                "filing date). Pass an explicit ISO date matching a "
+                "data date). Pass an explicit ISO date matching a "
                 "pre-rendered artifact."
             ),
         )
@@ -389,12 +398,14 @@ def render_artifact(
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
-    elif subject_kind == "filer_13f":
+    elif subject_kind in _PRERENDERED_SUBJECT_KINDS:
         # No SDK loader in render-svc — cache-hit path works for pre-rendered
         # artifacts; cache miss raises 501 (live-render is Phase 2 follow-on).
-        subject_data, resolved_subject_id, resolved_as_of = _resolve_filer_subject(req)
+        subject_data, resolved_subject_id, resolved_as_of = _resolve_prerendered_subject(
+            req, subject_kind
+        )
     else:
-        # Loader-resolved path (fund today; etf / cohort to follow).
+        # Loader-resolved path (fund today; etf to follow).
         subject_data, resolved_as_of = _load_subject_data(
             req.subject_id, subject_kind, req.as_of
         )
@@ -417,19 +428,21 @@ def render_artifact(
         )
 
     # Cache miss → live render.
-    if subject_kind == "filer_13f":
-        # No SDK loader inside render-svc means the adapter has no FilerData
-        # to consume. Pre-render the artifact via the LANDING daily refresh
-        # job (writes directly to gs://rm_api_public/.../artifacts/...) so
-        # subsequent requests hit the cache.
+    if subject_kind in _PRERENDERED_SUBJECT_KINDS:
+        # No SDK loader inside render-svc means the adapter has no subject
+        # data to consume. Pre-render the artifact (LANDING daily refresh for
+        # filers; BWMACRO research/papers/build_artifacts.py --publish for
+        # research cohort/stock artifacts) so subsequent requests cache-hit.
         raise HTTPException(
             status_code=501,
             detail=(
-                f"Live render not supported for subject_kind='filer_13f'. "
+                f"Live render not supported for subject_kind={subject_kind!r}. "
                 f"Pre-render the artifact to GCS at "
-                f"{gcs_path!r} via the daily refresh job; "
+                f"{gcs_path!r} via the daily refresh job (filers) or "
+                f"BWMACRO research/papers/build_artifacts.py --publish "
+                f"(research cohort/stock artifacts); "
                 f"subsequent requests will cache-hit. "
-                f"(Filer SDK loader inside render-svc is a Phase 2 follow-on.)"
+                f"(SDK loader inside render-svc is a Phase 2 follow-on.)"
             ),
         )
 
