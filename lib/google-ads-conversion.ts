@@ -19,8 +19,21 @@ import type { User } from '@supabase/supabase-js';
 /** Sign-up conversion action — Google Ads → Goals → "Sign-up" (count: One, value: $1). */
 const SIGNUP_SEND_TO = 'AW-18161098219/Qn__CI297LocEOu78dND';
 
-/** sessionStorage guard so the conversion fires at most once per browser session. */
-const SIGNUP_FIRED_KEY = 'rm_signup_conversion_fired';
+/**
+ * localStorage guard prefix so the conversion fires at most once per *account*
+ * (keyed on user id), and survives the OAuth / magic-link redirect + tab close —
+ * unlike the previous sessionStorage guard, which could miss or re-fire.
+ */
+const SIGNUP_FIRED_KEY_PREFIX = 'rm_signup_conv_fired:';
+
+/**
+ * How recently an account must have been created to still count as a "sign-up"
+ * worth reporting. Wide enough to cover the real gap between when an account row
+ * is created and when the user actually returns via an email magic-link (which
+ * can be many minutes — the old 2-minute delta silently dropped those), but
+ * short enough that a returning user signing in days later does not re-fire.
+ */
+const NEW_ACCOUNT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 
 /** localStorage key for the Google click id (phase-2 offline activation import). */
 export const RM_GCLID_STORAGE_KEY = 'rm_gclid';
@@ -68,36 +81,51 @@ export function getStoredGclid(): string | null {
 }
 
 /**
- * A freshly-created account: created_at within ~2 min of last_sign_in_at (the first
- * sign-in == account creation here, since accounts are auto-created on sign-in).
+ * A freshly-created account: created_at within NEW_ACCOUNT_WINDOW_MS of now.
+ *
+ * Accounts are auto-created on first sign-in here, so created_at marks the sign-up.
+ * We deliberately do NOT require created_at ≈ last_sign_in_at: for email magic-link
+ * sign-ups the row is created when the link is requested and last_sign_in_at is set
+ * when it's clicked, a gap that routinely exceeds a couple of minutes and used to
+ * suppress the conversion entirely. Per-account dedupe (below) prevents re-firing,
+ * so a generous window is safe.
  */
 function isNewAccount(user: User): boolean {
   const created = user.created_at ? Date.parse(user.created_at) : NaN;
-  const lastSignIn = user.last_sign_in_at ? Date.parse(user.last_sign_in_at) : NaN;
   if (Number.isNaN(created)) return false;
-  if (!Number.isNaN(lastSignIn)) {
-    return Math.abs(lastSignIn - created) < 2 * 60 * 1000;
+  return Date.now() - created < NEW_ACCOUNT_WINDOW_MS;
+}
+
+/** Per-account guard: has this browser already reported the sign-up for this user id? */
+function signupAlreadyFired(userId: string): boolean {
+  try {
+    return localStorage.getItem(SIGNUP_FIRED_KEY_PREFIX + userId) === '1';
+  } catch {
+    return false;
   }
-  // Fallback when last_sign_in_at is unavailable: created within the last 5 minutes.
-  return Date.now() - created < 5 * 60 * 1000;
+}
+
+function markSignupFired(userId: string): void {
+  try {
+    localStorage.setItem(SIGNUP_FIRED_KEY_PREFIX + userId, '1');
+  } catch {
+    /* private mode / quota — at worst we rely on Google's count:One server dedupe */
+  }
 }
 
 /**
  * Fire the Google Ads "Sign-up" conversion for a newly-created account.
  *
- * Safe to call on every auth-state change: it self-dedupes (sessionStorage) and only
- * fires for new accounts, so returning sign-ins and token refreshes are ignored.
+ * Safe to call on every auth-state change and on the OAuth / magic-link return:
+ * it self-dedupes per account (localStorage, keyed on user id) and only fires for
+ * recently-created accounts, so returning sign-ins and token refreshes are ignored.
+ * Google's own count:One setting is the final backstop against duplicates.
  */
 export function reportSignupConversion(user: User | null | undefined): void {
   if (!user) return;
   if (typeof window === 'undefined') return;
   if (!isNewAccount(user)) return;
-
-  try {
-    if (sessionStorage.getItem(SIGNUP_FIRED_KEY)) return;
-  } catch {
-    /* ignore */
-  }
+  if (signupAlreadyFired(user.id)) return;
 
   const gtag = getGtag();
   if (!gtag) return;
@@ -115,9 +143,7 @@ export function reportSignupConversion(user: User | null | undefined): void {
     currency: 'USD',
   });
 
-  try {
-    sessionStorage.setItem(SIGNUP_FIRED_KEY, '1');
-  } catch {
-    /* ignore */
-  }
+  // Mark only after we've actually handed the event to gtag, so a missing-gtag
+  // early-return can still fire on a later call within the window.
+  markSignupFired(user.id);
 }

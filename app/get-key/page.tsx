@@ -339,6 +339,12 @@ function GetKeyPage() {
     } else {
       setRevealedKey({ plainKey: data.key.plainKey, name: data.key.name });
       setNewKeyName('');
+      /** Backstop the Sign-up conversion: if the auth-state / code-exchange fire was
+       *  missed (e.g. gtag not ready on the redirect return), creating the first key
+       *  for a freshly-created account is a reliable second chance. reportSignupConversion
+       *  dedupes per account and only fires within the new-account window, so this is a
+       *  no-op for returning users and never double-counts. */
+      reportSignupConversion(user);
       /** Clear the stored ref so a second key issued in the same session isn't double-attributed. */
       clearPersistedReferralCode();
       clearUTMData();
