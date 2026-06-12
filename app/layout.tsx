@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
+import { GoogleTagManager, GoogleTagManagerNoScript } from '@/components/GoogleTagManager';
 import { UTMTracker } from '@/components/UTMTracker';
 import { CANONICAL_SITE_URL } from '@/lib/constants';
 
@@ -90,6 +91,8 @@ export default async function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        {/* Google Tag Manager: as high in <head> as possible per GTM install guidance */}
+        <GoogleTagManager />
         {/* Agent discovery: a bare fetch of riskmodels.app self-routes an AI agent to the
             machine-readable entry points, so a human only ever has to say "riskmodels.app"
             (never a path). Humans get the same pointer as a visible link in the Footer. */}
@@ -99,6 +102,7 @@ export default async function RootLayout({
         <GoogleAdsTag />
       </head>
       <body className={`${inter.className} ${jetbrainsMono.variable}`}>
+        <GoogleTagManagerNoScript />
         <div className="flex flex-col min-h-screen">
           <Navbar />
           <main className="flex-1 min-h-0 pt-24 sm:pt-28 md:pt-32 lg:pt-36">
