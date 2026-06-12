@@ -32,6 +32,7 @@ import {
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 import { getL3DecompositionService } from "@/lib/risk/l3-decomposition-service";
 import { getResidualSignalForTicker } from "@/lib/risk/residual-signal-service";
+import { getRiskCalendar } from "@/lib/risk/risk-calendar-service";
 import {
   computeFactorCorrelation,
   DEFAULT_MACRO_FACTORS,
@@ -77,6 +78,11 @@ const getRiskMetricsArgs = z.object({
 
 const getResidualSignalArgs = z.object({
   ticker: TickerSchema,
+});
+
+const getRiskCalendarArgs = z.object({
+  tickers: z.array(z.string()).max(50).optional(),
+  days_ahead: z.number().int().min(1).max(120).default(14),
 });
 
 const getHedgeBasketArgs = z.object({
@@ -686,6 +692,35 @@ async function execGetResidualSignal(
   return { ...snapshot, history_points: history.length };
 }
 
+/**
+ * Risk Calendar (T.6): upcoming portfolio-relevant events. Each event is a
+ * conversation starter — earnings rows carry the realized median |1-day|
+ * earnings-day move (`hist_move_pct` over `hist_move_n` past reports; a
+ * realized stat, NOT an implied/expected move) plus the consensus EPS
+ * estimate; macro rows carry the impacted factor keys in `risk_layers`.
+ * Uncovered holdings are listed in `coverage.uncovered` — say so rather
+ * than implying they have no events.
+ */
+async function execGetRiskCalendar(
+  args: z.infer<typeof getRiskCalendarArgs>,
+) {
+  const { tickers, days_ahead } = args;
+  const to = new Date(Date.now() + days_ahead * 24 * 3600 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const result = await getRiskCalendar({ to, tickers });
+  const MAX_EVENTS = 60;
+  if (result.events.length > MAX_EVENTS) {
+    const dropped = result.events.length - MAX_EVENTS;
+    return {
+      ...result,
+      events: result.events.slice(0, MAX_EVENTS),
+      truncation_note: `${dropped} later events dropped — narrow the window or pass tickers to scope to the portfolio.`,
+    };
+  }
+  return result;
+}
+
 export interface ChatToolDef {
   /** Stable tool name (OpenAI function name) */
   name: string;
@@ -698,6 +733,29 @@ export interface ChatToolDef {
 }
 
 export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
+  {
+    name: "get_risk_calendar",
+    openaiTool: fnTool(
+      "get_risk_calendar",
+      "Upcoming portfolio-relevant events: earnings dates (with consensus EPS estimate and the REALIZED median 1-day earnings move over recent reports — quote it as historical, never as an expected/implied move), ex-dividend dates, macro releases (CPI / FOMC / payrolls, with impacted factor keys in risk_layers), and SEC filing deadlines. Pass the user's tickers to scope ticker events to their portfolio; macro and filing events always apply. Use each event as a risk conversation starter — e.g. pair an upcoming earnings date with get_risk_metrics to discuss the holder's residual exposure into the print. If coverage.uncovered is non-empty, state that those holdings are outside the published calendar universe.",
+      {
+        tickers: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "US stock tickers to scope ticker events to (e.g. the user's holdings). Omit for the full market calendar.",
+        },
+        days_ahead: {
+          type: "number",
+          description: "Days ahead to include (default 14, max 120).",
+        },
+      },
+      [],
+    ),
+    capabilityId: null,
+    argSchema: getRiskCalendarArgs,
+    executor: async (a) => execGetRiskCalendar(getRiskCalendarArgs.parse(a)),
+  },
   {
     name: "get_risk_metrics",
     openaiTool: fnTool(
