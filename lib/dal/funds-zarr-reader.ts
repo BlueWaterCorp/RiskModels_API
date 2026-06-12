@@ -958,6 +958,8 @@ export interface FilerHolding {
   weight: number | null;
   /** Display ticker when enriched from Supabase `symbols` / registry (optional). */
   ticker?: string | null;
+  /** Company name when enriched from Supabase `symbols` / registry (optional). */
+  name?: string | null;
   /** Latest daily L3 explained-risk shares from `security_history_latest` (optional). */
   l3_market_er?: number | null;
   l3_sector_er?: number | null;

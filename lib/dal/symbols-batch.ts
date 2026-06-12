@@ -120,3 +120,50 @@ export async function applyScrubToFilerHoldings<
     return { ...h, security_id: scrubBwSymId(h.security_id, r) };
   });
 }
+
+/**
+ * Batch-resolve security ids to display labels from `public.symbols`
+ * (`symbol` column is the same bw_sym_id namespace the filer/fund zarrs
+ * carry post-D.8.1). Tickers and company names are public identifiers —
+ * no licensing concern (unlike the ISIN scrub above).
+ *
+ * Never throws: a Supabase failure returns whatever resolved (possibly
+ * empty) so label enrichment can't take down a holdings response.
+ */
+export interface SymbolDisplayLabel {
+  ticker: string | null;
+  name: string | null;
+}
+
+export async function resolveDisplayLabels(
+  securityIds: readonly string[],
+): Promise<Map<string, SymbolDisplayLabel>> {
+  const out = new Map<string, SymbolDisplayLabel>();
+  const unique = Array.from(new Set(securityIds.filter((s) => !!s)));
+  if (unique.length === 0) return out;
+
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("symbols")
+      .select("symbol, ticker, name")
+      .in("symbol", unique);
+
+    if (error) {
+      console.error("[symbols-batch] display-label resolve error:", error);
+      return out;
+    }
+
+    for (const row of data ?? []) {
+      const r = row as { symbol?: string; ticker?: string | null; name?: string | null };
+      if (!r.symbol) continue;
+      out.set(r.symbol, {
+        ticker: r.ticker?.trim() || null,
+        name: r.name?.trim() || null,
+      });
+    }
+  } catch (e) {
+    console.error("[symbols-batch] display-label resolve exception:", e);
+  }
+  return out;
+}

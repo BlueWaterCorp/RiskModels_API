@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { fetchFiler } from "@/lib/dal/filers-engine";
 import { readFilerHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
+import { enrichFilerHoldingsWithL3 } from "@/lib/13f/enrich-filer-holdings";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,9 @@ const MAX_TOP_N = 1000;
  * Top-N current holdings at the filer's latest teo. Reads per-filer
  * ds_ph.zarr from GCS. Each holding carries `security_id` (post-D.8.1 =
  * bw_sym_id; pre-migration = a raw 9-char security identifier), `adj_mv`,
- * and `weight` (fraction of total in-portfolio AUM).
+ * `weight` (fraction of total in-portfolio AUM), and — when resolvable
+ * from the registry — display labels (`ticker`, `name`) plus latest L3
+ * explained-risk shares (same enrichment as the snapshot endpoint).
  *
  * Default `limit = 25`; caller can request up to 1000.
  */
@@ -47,7 +50,9 @@ export const GET = withBilling(
       return NextResponse.json({ error: "Filer not found" }, { status: 404 });
     }
 
-    const snapshot = await readFilerHoldingsTopN(bwFilerId, limit);
+    const snapshot = await enrichFilerHoldingsWithL3(
+      await readFilerHoldingsTopN(bwFilerId, limit),
+    );
     if (!snapshot) {
       return NextResponse.json(
         {
