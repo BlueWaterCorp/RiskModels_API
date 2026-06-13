@@ -133,6 +133,9 @@ function GetKeyPage() {
   // Stripe flow — matches redirect query params from /api/stripe/setup-success
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeSetupError, setStripeSetupError] = useState('');
+  // Prepay selection on the activation CTA. 0 = free start ($0 charged, $20 free).
+  // Allowed amounts mirror ALLOWED_PREPAY_USD in /api/stripe/setup-session.
+  const [prepayUsd, setPrepayUsd] = useState(0);
   const [stripeStatus, setStripeStatus] = useState<
     | 'success'
     | 'cancelled'
@@ -294,7 +297,11 @@ function GetKeyPage() {
   const startStripeSetup = async () => {
     setStripeLoading(true);
     setStripeSetupError('');
-    const res = await fetch('/api/stripe/setup-session', { method: 'POST' });
+    const res = await fetch('/api/stripe/setup-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prepayUsd }),
+    });
     if (res.ok) {
       const { url } = await res.json();
       window.location.href = url;
@@ -557,8 +564,10 @@ function GetKeyPage() {
           <div className="mb-6 rounded-xl border border-green-700/40 bg-green-950/20 p-4 flex items-start gap-3">
             <Check size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-green-300 font-semibold text-sm">Card verified — $20 free credits added</p>
-              <p className="text-zinc-400 text-xs mt-0.5">Your API key is active below. You won&apos;t be charged until you add more credits.</p>
+              <p className="text-green-300 font-semibold text-sm">
+                Card verified — credits added{account ? ` (balance ${formatBalance(account.balance_usd)})` : ''}
+              </p>
+              <p className="text-zinc-400 text-xs mt-0.5">Your API key is active below. Includes your $20 free credit; auto-refill stays off until you enable it.</p>
             </div>
           </div>
         )}
@@ -624,11 +633,39 @@ function GetKeyPage() {
               </div>
               <div className="flex-1">
                 <h2 className="text-zinc-100 font-semibold text-base mb-1">
-                  Get $20 in free API credits
+                  Activate your API access
                 </h2>
                 <p className="text-zinc-400 text-sm mb-4 leading-relaxed">
-                  Add a card for identity verification. <strong className="text-zinc-200">You won&apos;t be charged</strong> — the $20 credit is yours to use immediately. Auto-refill kicks in only when you choose to top up.
+                  Add a card to activate. <strong className="text-zinc-200">$20 in free credits</strong> is always included. Prepay now for convenience, or start free — auto-refill stays off until you turn it on.
                 </p>
+
+                {/* Prepay tier selector — $0 free start, then $25 / $50 / $100. */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                  {[0, 25, 50, 100].map((amount) => {
+                    const selected = prepayUsd === amount;
+                    return (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => setPrepayUsd(amount)}
+                        aria-pressed={selected}
+                        className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                          selected
+                            ? 'border-blue-500 bg-blue-950/40 ring-1 ring-blue-500/40'
+                            : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-600'
+                        }`}
+                      >
+                        <div className="text-sm font-semibold text-zinc-100">
+                          {amount === 0 ? 'Free start' : `$${amount}`}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 mt-0.5">
+                          {amount === 0 ? '$20 credits' : `$${amount + 20} credits`}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {stripeSetupError && (
                   <p className="text-red-400 text-xs mb-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
                     {stripeSetupError}
@@ -637,10 +674,16 @@ function GetKeyPage() {
                 <button onClick={startStripeSetup} disabled={stripeLoading}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors">
                   <CreditCard size={15} />
-                  {stripeLoading ? 'Redirecting to Stripe…' : 'Add card & activate $20 credits'}
+                  {stripeLoading
+                    ? 'Redirecting to Stripe…'
+                    : prepayUsd > 0
+                    ? `Pay $${prepayUsd} & activate $${prepayUsd + 20} credits`
+                    : 'Add card & activate $20 credits'}
                 </button>
                 <p className="text-xs text-zinc-500 mt-3">
-                  Secured by Stripe. We never store raw card details.
+                  {prepayUsd > 0
+                    ? `You'll be charged $${prepayUsd} now. Secured by Stripe — we never store raw card details.`
+                    : 'You won’t be charged now. Secured by Stripe — we never store raw card details.'}
                 </p>
               </div>
             </div>
