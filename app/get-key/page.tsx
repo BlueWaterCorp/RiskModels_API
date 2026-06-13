@@ -136,6 +136,8 @@ function GetKeyPage() {
   // Prepay selection on the activation CTA. 0 = free start ($0 charged, $20 free).
   // Allowed amounts mirror ALLOWED_PREPAY_USD in /api/stripe/setup-session.
   const [prepayUsd, setPrepayUsd] = useState(0);
+  // Top-up selection for already-activated users (dashboard "Add credits" card).
+  const [topUpUsd, setTopUpUsd] = useState(25);
   const [stripeStatus, setStripeStatus] = useState<
     | 'success'
     | 'cancelled'
@@ -294,13 +296,15 @@ function GetKeyPage() {
     setStripeStatus(null);
   };
 
-  const startStripeSetup = async () => {
+  /** Start a Stripe Checkout. `amount` 0 → setup mode (free $20); >0 → payment mode
+   *  (charge + save card). Used by both the activation CTA and the dashboard top-up. */
+  const startStripeSetup = async (amount: number) => {
     setStripeLoading(true);
     setStripeSetupError('');
     const res = await fetch('/api/stripe/setup-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prepayUsd }),
+      body: JSON.stringify({ prepayUsd: amount }),
     });
     if (res.ok) {
       const { url } = await res.json();
@@ -671,7 +675,7 @@ function GetKeyPage() {
                     {stripeSetupError}
                   </p>
                 )}
-                <button onClick={startStripeSetup} disabled={stripeLoading}
+                <button onClick={() => startStripeSetup(prepayUsd)} disabled={stripeLoading}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors">
                   <CreditCard size={15} />
                   {stripeLoading
@@ -708,6 +712,53 @@ function GetKeyPage() {
               </code>
               <CopyButton text={revealedKey.plainKey} />
             </div>
+          </div>
+        )}
+
+        {/* Add credits — top up an already-activated account against the saved card */}
+        {hasCard && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
+            <h2 className="text-sm font-semibold text-zinc-200 mb-1 flex items-center gap-2">
+              <CreditCard size={14} /> Add credits
+            </h2>
+            <p className="text-xs text-zinc-500 mb-3">
+              Prepay to top up your balance. Charged to your card on file via Stripe.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex gap-2">
+                {[25, 50, 100].map((amount) => {
+                  const selected = topUpUsd === amount;
+                  return (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => setTopUpUsd(amount)}
+                      aria-pressed={selected}
+                      className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
+                        selected
+                          ? 'border-blue-500 bg-blue-950/40 text-zinc-100 ring-1 ring-blue-500/40'
+                          : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-zinc-600'
+                      }`}
+                    >
+                      ${amount}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => startStripeSetup(topUpUsd)}
+                disabled={stripeLoading}
+                className="ml-auto inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors whitespace-nowrap"
+              >
+                <CreditCard size={14} />
+                {stripeLoading ? 'Redirecting…' : `Add $${topUpUsd} credits`}
+              </button>
+            </div>
+            {stripeSetupError && (
+              <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
+                {stripeSetupError}
+              </p>
+            )}
           </div>
         )}
 
