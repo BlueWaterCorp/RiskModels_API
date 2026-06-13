@@ -266,6 +266,92 @@ export function registerRiskModelsTools(
   );
 
   server.registerTool(
+    "riskmodels_get_lstar",
+    {
+      title: "RiskModels Lstar Recommended Hedge Level",
+      annotations: { readOnlyHint: true },
+      description:
+        "Per-(ticker, date) Lstar dispatch (GET /lstar): picks the simplest cascade level (L1/L2/L3) whose marginal explained-return clears the threshold (default 1%), then returns the chosen level's dispatched hedge ratios and daily residual_return[] aligned with dates[]. Use for stat-arb / manager-skill work on the idiosyncratic leg at the recommended hedge depth. Billing: $0.02/request.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA or AAPL"),
+        years: z
+          .number()
+          .int()
+          .min(1)
+          .max(15)
+          .optional()
+          .describe("Calendar years of daily history (default 1, max 15)"),
+        market_factor_etf: z.string().optional().describe("Market factor ETF (default SPY)"),
+        axis: z
+          .enum(["industry", "style"])
+          .optional()
+          .describe("Cascade axis: industry (default) or style (SMB/HML spreads)"),
+        threshold: z
+          .number()
+          .optional()
+          .describe("Marginal ER threshold for level selection (default 0.01)"),
+      },
+    },
+    async ({ ticker, years, market_factor_etf, axis, threshold }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {
+          ticker: ticker.trim().toUpperCase(),
+        };
+        if (years !== undefined) query.years = years;
+        if (market_factor_etf !== undefined) query.market_factor_etf = market_factor_etf;
+        if (axis !== undefined) query.axis = axis;
+        if (threshold !== undefined) query.threshold = threshold;
+        return textResult(await sdk.call("GET", "/lstar", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_batch_lstar",
+    {
+      title: "RiskModels Batch Lstar Residual Returns",
+      annotations: { readOnlyHint: true },
+      description:
+        "Batch Lstar-dispatched residual returns for up to 100 tickers (POST /batch/lstar). Same marginal-ER selection rule as GET /lstar. Returns per-ticker dates, lstar level, residual_return[], and dispatched HRs. Billing: $0.005/ticker, minimum $0.01/call.",
+      inputSchema: {
+        tickers: z.array(z.string().min(1)).min(1).max(100).describe("Ticker symbols (1-100)"),
+        years: z
+          .number()
+          .int()
+          .min(1)
+          .max(15)
+          .optional()
+          .describe("Calendar years of daily history (default 1)"),
+        market_factor_etf: z.string().optional().describe("Market factor ETF (default SPY)"),
+        threshold: z
+          .number()
+          .optional()
+          .describe("Marginal ER threshold for Lstar selection (default 0.01)"),
+        format: z
+          .enum(["json", "parquet", "csv"])
+          .optional()
+          .describe("Response format (default json)"),
+      },
+    },
+    async ({ tickers, years, market_factor_etf, threshold, format }) => {
+      try {
+        const body: Record<string, unknown> = {
+          tickers: tickers.map((t: string) => t.trim().toUpperCase()),
+        };
+        if (years !== undefined) body.years = years;
+        if (market_factor_etf !== undefined) body.market_factor_etf = market_factor_etf;
+        if (threshold !== undefined) body.threshold = threshold;
+        if (format !== undefined) body.format = format;
+        return textResult(await sdk.call("POST", "/batch/lstar", { body }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "riskmodels_get_hedge_levels",
     {
       title: "RiskModels L1/L2/L3 hedge_levels",

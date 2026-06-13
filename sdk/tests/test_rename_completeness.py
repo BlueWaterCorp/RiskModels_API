@@ -14,6 +14,10 @@ def test_metrics_v3_to_semantic_is_injective_on_targets():
     assert len(targets) == len(set(targets)), "duplicate semantic targets"
 
 
+def test_metrics_v3_to_semantic_maps_lstar_rr():
+    assert METRICS_V3_TO_SEMANTIC["lstar_rr"] == "lstar_residual_return"
+
+
 def test_ticker_returns_column_rename_maps_all_wire_keys():
     expected = {
         "l1_cfr": "l1_combined_factor_return",

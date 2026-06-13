@@ -34,6 +34,7 @@ METRICS_V3_TO_SEMANTIC: dict[str, str] = {
     "l2_rr": "l2_residual_return",
     "l3_cfr": "l3_combined_factor_return",
     "l3_rr": "l3_residual_return",
+    "lstar_rr": "lstar_residual_return",
     # Hierarchical regression betas (one per level — see OPENAPI_SPEC.yaml MetricsV3)
     "l1_mkt_beta": "l1_market_beta",
     "l2_sec_beta": "l2_sector_beta",
@@ -97,6 +98,8 @@ COLUMN_AGENT_HINTS: dict[str, str] = {
     "l2_residual_return": "Daily simple residual return at L2; decimal — not l2_residual_er.",
     "l3_combined_factor_return": "Daily simple combined factor return through L3 (subsector); decimal — not ER.",
     "l3_residual_return": "Daily simple residual return at L3; decimal — not l3_residual_er (idiosyncratic variance share).",
+    "lstar_residual_return": "Daily simple residual at the Lstar-dispatched level; decimal, not a variance fraction.",
+    "lstar_level": "Dispatched cascade depth per (ticker,date): 1=L1 market, 2=L2 sector, 3=L3 subsector, 0/null=no recommendation.",
     "l1_market_beta": "Hierarchical regression beta to SPY at L1 (always SPY). Dimensionless coefficient — NOT a hedge ratio.",
     "l2_sector_beta": "Hierarchical regression beta to the symbol's sector ETF at L2 (e.g. XLK for AAPL). Dimensionless — NOT a hedge ratio.",
     "l3_subsector_beta": "Hierarchical regression beta to the symbol's subsector ETF at L3 (e.g. RSPT for AAPL). Dimensionless — NOT a hedge ratio.",
