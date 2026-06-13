@@ -1,7 +1,12 @@
 /**
  * GET /api/stripe/setup-success?session_id=...
- * Called by Stripe after Setup Mode checkout completes.
- * Provisions agent_accounts with $20 free credits and generates a user API key (rm_user_*).
+ * Called by Stripe after Checkout completes (Setup or Payment mode).
+ *
+ * Provisions agent_accounts and credits the balance:
+ *  - $20 free, granted at most once per account.
+ *  - For Payment-mode sessions, the prepaid amount on top, credited at most
+ *    once per PaymentIntent (idempotent on page refresh / handler re-run).
+ * Also generates a user API key (rm_user_*) on first activation.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
@@ -21,10 +26,21 @@ function setupIntentFromSession(session: Stripe.Checkout.Session): Stripe.SetupI
   return si as Stripe.SetupIntent;
 }
 
-/** After Link / phone verification, Checkout can still be `open` briefly while SetupIntent is already `succeeded`. */
-function isCheckoutSetupFinished(session: Stripe.Checkout.Session, setupIntent: Stripe.SetupIntent | null): boolean {
+function paymentIntentFromSession(session: Stripe.Checkout.Session): Stripe.PaymentIntent | null {
+  const pi = session.payment_intent;
+  if (!pi || typeof pi === 'string') return null;
+  return pi as Stripe.PaymentIntent;
+}
+
+/** After Link / phone verification, Checkout can still be `open` briefly while the intent is already done. */
+function isCheckoutFinished(
+  session: Stripe.Checkout.Session,
+  setupIntent: Stripe.SetupIntent | null,
+  paymentIntent: Stripe.PaymentIntent | null,
+): boolean {
   if (session.status === 'complete') return true;
   if (setupIntent?.status === 'succeeded') return true;
+  if (paymentIntent?.status === 'succeeded') return true;
   return false;
 }
 
@@ -40,32 +56,42 @@ export async function GET(req: NextRequest) {
     const admin = createAdminClient();
 
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['setup_intent'],
+      expand: ['setup_intent', 'payment_intent'],
     });
+
+    const isPaymentMode = session.mode === 'payment';
 
     let setupIntent = setupIntentFromSession(session);
     if (!setupIntent && session.setup_intent && typeof session.setup_intent === 'string') {
       setupIntent = await stripe.setupIntents.retrieve(session.setup_intent);
     }
 
+    let paymentIntent = paymentIntentFromSession(session);
+    if (!paymentIntent && session.payment_intent && typeof session.payment_intent === 'string') {
+      paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+    }
+
+    // Pending states — let the page poll/refresh rather than crediting early.
+    const pendingStatuses = new Set(['processing', 'requires_action', 'requires_confirmation']);
     if (
-      setupIntent?.status === 'processing' ||
-      setupIntent?.status === 'requires_action' ||
-      setupIntent?.status === 'requires_confirmation'
+      (setupIntent && pendingStatuses.has(setupIntent.status)) ||
+      (paymentIntent && pendingStatuses.has(paymentIntent.status))
     ) {
-      console.warn('[setup-success] setup_intent still pending', {
+      console.warn('[setup-success] intent still pending', {
         sessionId,
         sessionStatus: session.status,
-        setupIntentStatus: setupIntent.status,
+        setupIntentStatus: setupIntent?.status ?? null,
+        paymentIntentStatus: paymentIntent?.status ?? null,
       });
       return NextResponse.redirect(`${appUrl}/get-key?stripe=processing`);
     }
 
-    if (!isCheckoutSetupFinished(session, setupIntent)) {
+    if (!isCheckoutFinished(session, setupIntent, paymentIntent)) {
       console.warn('[setup-success] session not ready', {
         sessionId,
         sessionStatus: session.status,
         setupIntentStatus: setupIntent?.status ?? null,
+        paymentIntentStatus: paymentIntent?.status ?? null,
       });
       return NextResponse.redirect(`${appUrl}/get-key?stripe=incomplete`);
     }
@@ -76,8 +102,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/get-key?stripe=error`);
     }
 
+    // Card was saved by either a SetupIntent ($0 path) or the PaymentIntent (setup_future_usage).
     const paymentMethodId =
-      (setupIntent?.payment_method as string | undefined) ?? undefined;
+      (setupIntent?.payment_method as string | undefined) ??
+      (paymentIntent?.payment_method as string | undefined) ??
+      undefined;
+
+    // Amount actually paid (cents → USD). Source of truth is the PaymentIntent; fall back to metadata.
+    const prepaidUsd = isPaymentMode
+      ? (paymentIntent?.amount_received ?? session.amount_total ?? 0) / 100
+      : 0;
+    const paymentIntentId = paymentIntent?.id ?? null;
 
     const { data: { user } } = await admin.auth.admin.getUserById(userId);
     const email = user?.email || '';
@@ -94,8 +129,42 @@ export async function GET(req: NextRequest) {
       console.error('[setup-success] agent_accounts select error:', accountSelectErr);
     }
 
+    const currentBalance = existingAccount
+      ? parseFloat(String(existingAccount.balance_usd ?? 0))
+      : 0;
+
+    // ── Decide what to credit (each guard is independent and idempotent) ──────────
+
+    // $20 free: at most once per account. Skip if a prior free/starter credit was
+    // recorded, or if the account already carries at least the free amount (covers
+    // legacy accounts provisioned before we logged a free_credit event).
+    const { data: priorFree } = await admin
+      .from('billing_events')
+      .select('id')
+      .eq('user_id', userId)
+      .in('capability_id', ['free_credit', 'starter_credit'])
+      .limit(1)
+      .maybeSingle();
+    const grantFree = !priorFree && currentBalance < FREE_CREDIT_USD;
+
+    // Prepaid amount: at most once per PaymentIntent.
+    let grantPrepaid = 0;
+    if (isPaymentMode && paymentIntentId && prepaidUsd > 0) {
+      const { data: priorTopUp } = await admin
+        .from('balance_top_ups')
+        .select('id, status')
+        .eq('stripe_payment_intent_id', paymentIntentId)
+        .maybeSingle();
+      if (!priorTopUp || priorTopUp.status !== 'completed') {
+        grantPrepaid = prepaidUsd;
+      }
+    }
+
+    const creditTotal = (grantFree ? FREE_CREDIT_USD : 0) + grantPrepaid;
+    const newBalance = currentBalance + creditTotal;
+
+    // ── Upsert the account ────────────────────────────────────────────────────────
     if (existingAccount) {
-      const current = parseFloat(String(existingAccount.balance_usd ?? 0));
       const updates: Record<string, unknown> = {
         stripe_customer_id: session.customer as string,
         stripe_payment_method_id: paymentMethodId ?? null,
@@ -105,8 +174,8 @@ export async function GET(req: NextRequest) {
         auto_top_up_amount: DEFAULT_REFILL_AMOUNT,
         updated_at: new Date().toISOString(),
       };
-      if (current < FREE_CREDIT_USD) {
-        updates.balance_usd = FREE_CREDIT_USD;
+      if (creditTotal > 0) {
+        updates.balance_usd = newBalance;
       }
       const { error: updateErr } = await admin
         .from('agent_accounts')
@@ -122,7 +191,7 @@ export async function GET(req: NextRequest) {
         agent_id: `api_${Date.now()}`,
         agent_name: email || 'API User',
         contact_email: email || session.customer_details?.email || 'pending@riskmodels.app',
-        balance_usd: FREE_CREDIT_USD,
+        balance_usd: creditTotal,
         stripe_customer_id: session.customer as string,
         stripe_payment_method_id: paymentMethodId ?? null,
         auto_top_up: false,
@@ -136,6 +205,49 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ── Record ledger entries (best-effort; never block activation) ────────────────
+    if (grantFree) {
+      const { error: freeEvtErr } = await admin.from('billing_events').insert({
+        user_id: userId,
+        request_id: `free_${session.id}`,
+        capability_id: 'free_credit',
+        cost_usd: -FREE_CREDIT_USD,
+        balance_after_usd: newBalance,
+        type: 'credit',
+        description: 'One-time $20 free API credit',
+        metadata: { source: 'setup_success', session_id: session.id },
+        created_at: new Date().toISOString(),
+      });
+      if (freeEvtErr) console.error('[setup-success] free_credit event error:', freeEvtErr);
+    }
+
+    if (grantPrepaid > 0 && paymentIntentId) {
+      // Idempotency anchor for the prepaid charge.
+      const { error: topUpErr } = await admin.from('balance_top_ups').insert({
+        user_id: userId,
+        stripe_payment_intent_id: paymentIntentId,
+        amount_usd: grantPrepaid,
+        status: 'completed',
+        metadata: { source: 'setup_success', session_id: session.id },
+        created_at: new Date().toISOString(),
+      });
+      if (topUpErr) console.error('[setup-success] balance_top_ups insert error:', topUpErr);
+
+      const { error: paidEvtErr } = await admin.from('billing_events').insert({
+        user_id: userId,
+        request_id: `prepay_${paymentIntentId}`,
+        capability_id: 'prepaid_topup',
+        cost_usd: -grantPrepaid,
+        balance_after_usd: newBalance,
+        type: 'credit',
+        description: `Prepaid API credits ($${grantPrepaid})`,
+        metadata: { source: 'setup_success', session_id: session.id, payment_intent_id: paymentIntentId },
+        created_at: new Date().toISOString(),
+      });
+      if (paidEvtErr) console.error('[setup-success] prepaid_topup event error:', paidEvtErr);
+    }
+
+    // ── Ensure the user has a key ──────────────────────────────────────────────────
     const { data: existingUserKey, error: keySelectErr } = await admin
       .from('user_generated_api_keys')
       .select('id')

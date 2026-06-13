@@ -107,7 +107,9 @@ export async function GET(request: Request) {
           : Math.floor(50 / TOKEN_PRICE_USD),
       },
       _links: {
-        top_up: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/top-up`,
+        // Top-ups are completed via Stripe Checkout on the account page (prepay
+        // tiers or the activation flow); there is no programmatic top-up endpoint.
+        top_up: `${process.env.NEXT_PUBLIC_APP_URL}/get-key`,
         invoices: `${process.env.NEXT_PUBLIC_APP_URL}/api/invoices`,
         usage: `${process.env.NEXT_PUBLIC_APP_URL}/api/usage`,
       },
