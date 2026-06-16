@@ -11,8 +11,13 @@
  * Industry axis: L2_sector_ER / L3_subsector_ER (market → sector → subsector).
  * Style axis:    L2_ff_smb_ER / L3_ff_hml_ER (market → SMB → HML).
  *
- * Default θ = 1%. Live derivation from V3 DAL (not the materialized
- * `lstar_level` zarr column) so callers can tune θ without an ERM3 rebuild.
+ * Selection source. For the **industry axis at the canonical threshold** (no
+ * caller-supplied θ), the materialized `lstar_level` column is the source of
+ * truth — it carries whatever selector ERM3 shipped (the cost-aware GBM once
+ * enabled; the 1% rule before that), so the API never re-derives the canonical
+ * pick in TS. Live derivation (pickLstar over marginal ERs) is used only when
+ * the materialized column is absent, or for the **style axis** / an **explicit
+ * custom θ**, where the materialized column does not apply. Default θ = 1%.
  */
 
 import {
@@ -108,6 +113,10 @@ const INDUSTRY_KEYS: V3MetricKey[] = [
   "l1_rr",
   "l2_rr",
   "l3_rr",
+  // Materialized canonical pick (SSOT for industry @ default θ): the level ERM3
+  // shipped (GBM once enabled) + its dispatched residual return.
+  "lstar_level",
+  "lstar_rr",
 ];
 
 const STYLE_KEYS: V3MetricKey[] = [
@@ -170,9 +179,19 @@ export function dispatchStyleLstarResidualReturn(
   return null;
 }
 
+/** Map the materialized `lstar_level` uint (1/2/3, 0/null = no rec) to LstarLevel. */
+export function materializedLevelToLstar(
+  lvl: number | null | undefined,
+): LstarLevel | null {
+  if (lvl == null) return null;
+  const r = Math.round(lvl);
+  return r >= 1 && r <= 3 ? (`L${r}` as LstarLevel) : null;
+}
+
 function processIndustryRow(
   p: PivotedHistoryRow,
   threshold: number,
+  useMaterialized: boolean = true,
 ): {
   chosen: LstarLevel | null;
   l2Marginal: number | null;
@@ -185,7 +204,17 @@ function processIndustryRow(
 } {
   const l2Marginal = (p.l2_sec_er as number | null) ?? null;
   const l3Marginal = (p.l3_sub_er as number | null) ?? null;
-  const chosen = pickLstar(l2Marginal, l3Marginal, threshold, "industry");
+  // SSOT: when the materialized canonical level is present, it wins (carries the
+  // shipped selector — GBM or 1%). Fall back to the live θ rule otherwise.
+  const lvlRaw = p.lstar_level as number | null | undefined;
+  const fromMaterialized = useMaterialized && lvlRaw !== null && lvlRaw !== undefined;
+  const chosen = fromMaterialized
+    ? materializedLevelToLstar(lvlRaw)
+    : pickLstar(l2Marginal, l3Marginal, threshold, "industry");
+  // Materialized residual return is the dispatched lstar_rr (== l{level}_rr).
+  const residualReturn = fromMaterialized
+    ? ((p.lstar_rr as number | null) ?? dispatchLstarResidualReturn(chosen, p))
+    : dispatchLstarResidualReturn(chosen, p);
 
   if (chosen === "L3") {
     const m = (p.l3_mkt_er as number | null) ?? 0;
@@ -199,7 +228,7 @@ function processIndustryRow(
       sector_hr: (p.l3_sec_hr as number | null) ?? null,
       subsector_hr: (p.l3_sub_hr as number | null) ?? null,
       total_er: m + s + ss,
-      residual_return: dispatchLstarResidualReturn(chosen, p),
+      residual_return: residualReturn,
     };
   }
   if (chosen === "L2") {
@@ -213,7 +242,7 @@ function processIndustryRow(
       sector_hr: (p.l2_sec_hr as number | null) ?? null,
       subsector_hr: null,
       total_er: m + s,
-      residual_return: dispatchLstarResidualReturn(chosen, p),
+      residual_return: residualReturn,
     };
   }
   if (chosen === "L1") {
@@ -225,7 +254,7 @@ function processIndustryRow(
       sector_hr: null,
       subsector_hr: null,
       total_er: (p.l1_mkt_er as number | null) ?? null,
-      residual_return: dispatchLstarResidualReturn(chosen, p),
+      residual_return: residualReturn,
     };
   }
   return {
@@ -360,10 +389,15 @@ export class LstarService {
     const l2_sector_er: (number | null)[] = [];
     const l3_subsector_er: (number | null)[] = [];
 
-    const processRow = axis === "style" ? processStyleRow : processIndustryRow;
+    // Prefer the materialized canonical level only for industry @ default θ.
+    // An explicit caller θ (or the style axis) keeps live derivation.
+    const useMaterialized = axis !== "style" && options?.threshold === undefined;
 
     for (const p of pivoted) {
-      const row = processRow(p, threshold);
+      const row =
+        axis === "style"
+          ? processStyleRow(p, threshold)
+          : processIndustryRow(p, threshold, useMaterialized);
       lstar.push(row.chosen);
       l2_sector_er.push(row.l2Marginal);
       l3_subsector_er.push(row.l3Marginal);
