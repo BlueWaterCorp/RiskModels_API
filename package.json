@@ -73,6 +73,7 @@
     "parquetjs-lite": "^0.8.7",
     "pdf-lib": "^1.17.1",
     "plaid": "^41.4.0",
+    "posthog-js": "^1.387.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
