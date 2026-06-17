@@ -6,14 +6,22 @@ Fixtures are real GET /metrics bodies for INTC and AMD (engine, 2026-05-26),
 trimmed to the fields pair_trade consumes.
 """
 
+import os
+from collections import namedtuple
+
 import pytest
 
 from riskmodels.pair_trade import (
     PairTradeNeutralization,
+    _fetch_metrics_body,
     compute_pair_neutralization,
 )
 
 D = 10_000.0
+
+# Review A live tests hit the real engine; skip them when no key is present.
+_HAS_LIVE_ENGINE = bool(os.environ.get("RISKMODELS_API_KEY"))
+_LIVE_REASON = "requires live RiskModels engine (set RISKMODELS_API_KEY)"
 
 _INTC_BODY = {
     "ticker": "INTC",
@@ -246,6 +254,174 @@ def test_from_tickers_fetches_both_legs():
     assert client.calls == ["INTC", "AMD"]
     assert res.recommended_level == "L2"
     assert res.long_ticker == "INTC" and res.short_ticker == "AMD"
+
+
+# --------------------------------------------------------------------------
+# Review B — leg TEO staleness
+# --------------------------------------------------------------------------
+
+def test_pair_trade_raises_on_mismatched_leg_teo():
+    long_body = {**_INTC_BODY, "teo": "2026-05-26"}
+    short_body = {**_AMD_BODY, "teo": "2026-05-20"}  # stale short leg
+    with pytest.raises(ValueError, match="mismatched TEO"):
+        compute_pair_neutralization(long_body, short_body, D)
+
+
+def test_pair_trade_accepts_matched_leg_teo():
+    long_body = {**_INTC_BODY, "teo": "2026-05-26"}
+    short_body = {**_AMD_BODY, "teo": "2026-05-26"}
+    res = compute_pair_neutralization(long_body, short_body, D)
+    assert res.as_of == "2026-05-26"
+
+
+# --------------------------------------------------------------------------
+# Review C — cap_basis (overlay vs. total gross)
+# --------------------------------------------------------------------------
+
+def test_cap_basis_overlay_is_default():
+    res = _pair()  # no cap_basis kwarg
+    assert res.cap_basis == "overlay"
+    # Top-level scalars mirror the recommended level; under the overlay basis
+    # the binding leverage is the hedge-overlay gross over notional (equal up
+    # to the fields' independent 4-dp / 2-dp rounding).
+    assert res.binding_leverage == pytest.approx(res.overlay_gross / D, abs=1e-3)
+
+
+def test_cap_basis_total_more_restrictive():
+    order = {"naive": 0, "L1": 1, "L2": 2, "L3": 3}
+    overlay = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, cap_basis="overlay")
+    total = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, cap_basis="total")
+    # Capping the larger (total) gross binds sooner -> recommend no deeper.
+    assert order[total.recommended_level] <= order[overlay.recommended_level]
+
+
+def test_both_gross_figures_always_reported():
+    base_gross = 2 * D  # dollar-neutral pair: |long| + |short|
+    for basis in ("overlay", "total"):
+        # leverage_cap high enough that the recommended level carries hedges
+        # under both bases, so overlay_gross is strictly positive.
+        res = compute_pair_neutralization(
+            _INTC_BODY, _AMD_BODY, D, leverage_cap=10.0, cap_basis=basis
+        )
+        assert res.overlay_gross > 0
+        assert res.total_gross > 0
+        assert res.total_gross >= res.overlay_gross + base_gross - 1e-6
+
+
+def test_cap_basis_invalid_value_raises():
+    with pytest.raises(ValueError, match="cap_basis"):
+        compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, cap_basis="garbage")
+
+
+# --------------------------------------------------------------------------
+# Review A — orthogonalization verification
+#
+# The two live tests are the REAL check: they look up each leg's realized
+# factor beta from the engine and assert the notional-weighted net beta is
+# negligible. The offline test below is a STRUCTURAL DEMO only — see its
+# docstring. Both share _realized_net_beta() so they exercise the same
+# summation logic.
+# --------------------------------------------------------------------------
+
+def _realized_net_beta(legs, beta_of):
+    """Sum signed_notional * factor_beta across legs — the net-beta
+    computation under test. Shared by the live orthogonalization checks and
+    the offline structural demo so both exercise identical summation logic.
+    """
+    return sum(leg.dollars * beta_of(leg.ticker) for leg in legs)
+
+
+def _market_beta_from_metrics(body):
+    """Market beta of a name ~= -(L1 market hedge ratio).
+
+    The L1 market HR is the SPY hedge that zeros market exposure, i.e.
+    -beta_market. Holds for stocks and ETFs alike (SPY's L1 market_hr ~= -1
+    -> beta 1). Used because get_l3_decomposition exposes HRs/ERs, not betas.
+    """
+    hl = (body or {}).get("hedge_levels") or {}
+    l1 = hl.get("L1") or {}
+    return -float(l1.get("market_hr") or 0.0)
+
+
+def _sector_beta_from_metrics(body):
+    """Sector-factor beta of a name ~= -(L2 sector hedge ratio).
+
+    Under an orthogonalized cascade the market hedge (SPY) loads ~0 on the
+    sector factor, so it drops out of the L2 net-sector sum by construction.
+    """
+    hl = (body or {}).get("hedge_levels") or {}
+    l2 = hl.get("L2") or {}
+    return -float(l2.get("sector_hr") or 0.0)
+
+
+@pytest.mark.skipif(not _HAS_LIVE_ENGINE, reason=_LIVE_REASON)
+def test_realized_net_market_beta_is_zero_under_orthogonalization():
+    """LIVE cascade verification (Review A): the real test of orthogonality.
+
+    Builds an L3 INTC/AMD pair from the engine, collects signed notionals
+    across both underlyings and every hedge ETF leg, looks up each name's
+    realized market beta, and asserts the notional-weighted net market beta is
+    < 1% of gross. Contrast test_orthogonalization_structural_demo_offline,
+    which only checks summation logic on rigged fixtures.
+    """
+    from riskmodels import RiskModelsClient
+
+    with RiskModelsClient.from_env() as client:
+        res = client.pair_trade_neutralization("INTC", "AMD", 100_000)
+        l3 = res.level("L3")
+        betas = {
+            leg.ticker: _market_beta_from_metrics(_fetch_metrics_body(client, leg.ticker))
+            for leg in l3.legs
+        }
+        net = _realized_net_beta(l3.legs, lambda t: betas[t])
+        gross = sum(abs(leg.dollars) for leg in l3.legs)
+        assert abs(net) < 0.01 * gross, (
+            f"realized net market beta {net:,.0f} is >= 1% of gross {gross:,.0f} "
+            f"— cascade is NOT orthogonal; net_market_beta=0 is unreliable"
+        )
+
+
+@pytest.mark.skipif(not _HAS_LIVE_ENGINE, reason=_LIVE_REASON)
+def test_realized_net_sector_beta_is_zero_at_L2():
+    """LIVE cascade verification (Review A): same pattern at L2 vs sector beta."""
+    from riskmodels import RiskModelsClient
+
+    with RiskModelsClient.from_env() as client:
+        res = client.pair_trade_neutralization("INTC", "AMD", 100_000)
+        l2 = res.level("L2")
+        betas = {
+            leg.ticker: _sector_beta_from_metrics(_fetch_metrics_body(client, leg.ticker))
+            for leg in l2.legs
+        }
+        net = _realized_net_beta(l2.legs, lambda t: betas[t])
+        gross = sum(abs(leg.dollars) for leg in l2.legs)
+        assert abs(net) < 0.01 * gross, (
+            f"realized net sector beta {net:,.0f} is >= 1% of gross {gross:,.0f}"
+        )
+
+
+def test_orthogonalization_structural_demo_offline():
+    """Structural/illustrative test using fixture-authored betas RIGGED to net
+    to ~0 by construction. Verifies the SUMMATION LOGIC of the net-beta
+    computation, NOT cascade orthogonality. Actual cascade verification is
+    test_realized_net_market_beta_is_zero_under_orthogonalization (live
+    integration, requires API key). A pass here is NOT evidence the ERM3
+    cascade is orthogonal.
+    """
+    DemoLeg = namedtuple("DemoLeg", "ticker dollars")
+    # Stylized signed-notional L3 book. The XLK hedge carries market beta 1.25
+    # (an ETF leg with its own market beta — exactly Conrad's concern). Betas
+    # are hand-picked so the weighted sum is *exactly* zero:
+    #   100_000*1.30 + (-100_000)*1.10 + (-16_000)*1.25 = 0
+    legs = [
+        DemoLeg("LONG", +100_000.0),
+        DemoLeg("SHORT", -100_000.0),
+        DemoLeg("XLK", -16_000.0),
+    ]
+    betas = {"LONG": 1.30, "SHORT": 1.10, "XLK": 1.25}
+    gross = sum(abs(leg.dollars) for leg in legs)
+    net = _realized_net_beta(legs, lambda t: betas[t])
+    assert abs(net) < 0.01 * gross
 
 
 if __name__ == "__main__":

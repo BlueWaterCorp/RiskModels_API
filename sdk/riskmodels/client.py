@@ -1692,6 +1692,7 @@ class RiskModelsClient:
         dollars: float,
         *,
         leverage_cap: float | None = None,
+        cap_basis: Literal["overlay", "total"] = "overlay",
     ) -> PairTradeNeutralization:
         """Neutralize a long/short pair's factor risk across four ERM3 levels.
 
@@ -1703,10 +1704,12 @@ class RiskModelsClient:
             long_ticker: Symbol held long (e.g. ``"INTC"``).
             short_ticker: Symbol sold short (e.g. ``"AMD"``).
             dollars: Per-leg notional in dollars (> 0); both legs sized equally.
-            leverage_cap: Override the hedge-overlay gross cap. Defaults to the
-                ticker's ``leverage_cap_applied`` (else 2.0x). The cap is applied
-                to hedge-overlay gross only — a long/short pair is ~2.0x gross
-                before any hedge.
+            leverage_cap: Override the leverage cap. Defaults to the ticker's
+                ``leverage_cap_applied`` (else 2.0x). A long/short pair is
+                ~2.0x gross before any hedge.
+            cap_basis: Which gross the cap binds on — ``"overlay"`` (default,
+                hedge legs only; v1 behavior) or ``"total"`` (pair + hedge
+                legs). ``"total"`` is stricter and recommends a shallower hedge.
 
         Returns:
             :class:`PairTradeNeutralization` with ``levels`` (one per
@@ -1719,7 +1722,8 @@ class RiskModelsClient:
             'L2'
         """
         return PairTradeNeutralization.from_tickers(
-            self, long_ticker, short_ticker, dollars, leverage_cap=leverage_cap
+            self, long_ticker, short_ticker, dollars,
+            leverage_cap=leverage_cap, cap_basis=cap_basis,
         )
 
     def get_metrics_snapshot_pdf(self, ticker: str) -> tuple[bytes, RiskLineage]:

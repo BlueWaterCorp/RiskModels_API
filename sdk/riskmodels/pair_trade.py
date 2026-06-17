@@ -124,7 +124,12 @@ class PairNeutralizationLevel:
     net_subsector_beta: float
     gross_leverage: float        # sum(|leg $|) / per-leg notional
     hedge_overlay_gross: float   # sum(|hedge leg $|) / per-leg notional
-    within_leverage_cap: bool
+    # Cap-basis figures (Review C). overlay_gross / total_gross are dollar
+    # amounts; binding_leverage is the basis-aware leverage the cap binds on.
+    overlay_gross: float         # sum(|hedge leg $|), in dollars
+    total_gross: float           # base (pair legs) + overlay, in dollars
+    binding_leverage: float      # (overlay or total) / per-leg notional
+    within_leverage_cap: bool    # binding_leverage <= leverage_cap
 
 
 @dataclass
@@ -141,8 +146,15 @@ class PairTradeNeutralization:
     as_of: str
     same_sector: bool
     leverage_cap: float
+    cap_basis: str
     recommended_level: LevelName
     levels: list[PairNeutralizationLevel]
+    # Convenience scalars DERIVED FROM ``recommended_level`` — they mirror the
+    # recommended level's gross figures (not aggregates across levels) so a
+    # margin/risk-desk caller need not traverse ``levels``.
+    overlay_gross: float          # recommended level's hedge-overlay gross ($)
+    total_gross: float            # recommended level's total gross ($)
+    binding_leverage: float       # recommended level's binding leverage
     notes: list[str] = field(default_factory=list)
     lineage: RiskLineage = field(default_factory=RiskLineage)
     legend: str = SHORT_ERM3_LEGEND
@@ -158,7 +170,10 @@ class PairTradeNeutralization:
 
     @property
     def recommended(self) -> PairNeutralizationLevel:
-        """The deepest level whose hedge overlay fits under the cap."""
+        """The deepest level whose binding gross fits under the cap.
+
+        Which gross binds (hedge-overlay vs. total) depends on ``cap_basis``.
+        """
         return self.level(self.recommended_level)
 
     # -- serialization -----------------------------------------------------
@@ -173,9 +188,13 @@ class PairTradeNeutralization:
             "as_of": self.as_of,
             "same_sector": self.same_sector,
             "leverage_cap": self.leverage_cap,
+            "cap_basis": self.cap_basis,
             "recommended_level": self.recommended_level,
             "recommended_gross_leverage": rec.gross_leverage,
             "recommended_hedge_overlay_gross": rec.hedge_overlay_gross,
+            "overlay_gross": self.overlay_gross,
+            "total_gross": self.total_gross,
+            "binding_leverage": self.binding_leverage,
         }
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -191,6 +210,9 @@ class PairTradeNeutralization:
                 "net_subsector_beta": lvl.net_subsector_beta,
                 "gross_leverage": lvl.gross_leverage,
                 "hedge_overlay_gross": lvl.hedge_overlay_gross,
+                "overlay_gross": lvl.overlay_gross,
+                "total_gross": lvl.total_gross,
+                "binding_leverage": lvl.binding_leverage,
                 "within_leverage_cap": lvl.within_leverage_cap,
                 "recommended": lvl.level == self.recommended_level,
             }
@@ -233,6 +255,7 @@ class PairTradeNeutralization:
         dollars: float,
         *,
         leverage_cap: float | None = None,
+        cap_basis: Literal["overlay", "total"] = "overlay",
     ) -> "PairTradeNeutralization":
         """Fetch metrics for both legs via the client, then compute.
 
@@ -242,7 +265,8 @@ class PairTradeNeutralization:
         long_body = _fetch_metrics_body(client, long_ticker)
         short_body = _fetch_metrics_body(client, short_ticker)
         return compute_pair_neutralization(
-            long_body, short_body, dollars, leverage_cap=leverage_cap
+            long_body, short_body, dollars,
+            leverage_cap=leverage_cap, cap_basis=cap_basis,
         )
 
 
@@ -311,12 +335,36 @@ def compute_pair_neutralization(
     dollars: float,
     *,
     leverage_cap: float | None = None,
+    cap_basis: Literal["overlay", "total"] = "overlay",
 ) -> PairTradeNeutralization:
     """Compute the four neutralization levels from two GET /metrics bodies.
 
     Pure function — no I/O. ``long_body`` / ``short_body`` are the JSON
     bodies returned by GET /metrics (each must carry a ``hedge_levels``
     block, ``ticker``, and ideally ``teo`` / ``_metadata``).
+
+    ``cap_basis`` selects which gross the leverage cap binds on:
+    ``"overlay"`` (default, the v1 behavior) caps hedge-overlay gross only;
+    ``"total"`` caps pair + hedge gross. The basis is the deciding input to
+    ``recommended_level`` — a stricter basis recommends a shallower hedge.
+
+    Notes — Orthogonalization assumption
+    ------------------------------------
+    The reported ``net_market_beta`` / ``net_sector_beta`` /
+    ``net_subsector_beta`` are set to 0 *by construction* once their layer is
+    neutralized. This assumes the ERM3 cascade is **orthogonalized**: the
+    marginal hedge ratio at each level (market, then +sector, then
+    +subsector) is independent of the others under that assumption. That only
+    holds if the cascade is genuinely orthogonal — stacked sector/subsector
+    ETF legs carry their own market beta, which a naive stack can leak past
+    these by-construction zeros.
+
+    The empirical verification lives in
+    ``test_realized_net_market_beta_is_zero_under_orthogonalization`` (live
+    integration): it sums signed_notional × realized factor beta across all
+    legs and asserts the residual is < 1% of gross. **If that test fails, do
+    NOT trust ``net_market_beta == 0``** — the assumption is violated for that
+    pair and the by-construction zero is masking real residual exposure.
     """
     long_ticker = str(long_body.get("ticker") or "").upper()
     short_ticker = str(short_body.get("ticker") or "").upper()
@@ -326,6 +374,10 @@ def compute_pair_neutralization(
         raise ValueError("long and short tickers must differ")
     if dollars <= 0:
         raise ValueError("dollars (per-leg notional) must be positive")
+    if cap_basis not in ("overlay", "total"):
+        raise ValueError(
+            f"cap_basis must be 'overlay' or 'total', got {cap_basis!r}"
+        )
 
     hl_long = extract_hedge_levels(long_body)
     hl_short = extract_hedge_levels(short_body)
@@ -336,7 +388,13 @@ def compute_pair_neutralization(
 
     D = float(dollars)
     cap = leverage_cap if leverage_cap is not None else _leverage_cap_from(long_body)
-    as_of = str(long_body.get("teo") or short_body.get("teo") or "")
+    if long_body.get("teo") != short_body.get("teo"):
+        raise ValueError(
+            f"Pair legs have mismatched TEO timestamps "
+            f"(long={long_body.get('teo')!r}, short={short_body.get('teo')!r}). "
+            f"This usually means one leg is stale; refresh and retry."
+        )
+    as_of = str(long_body.get("teo") or "")
     lineage = RiskLineage.merge(
         RiskLineage.from_metadata(long_body.get("_metadata")),
         RiskLineage.from_metadata(short_body.get("_metadata")),
@@ -388,8 +446,14 @@ def compute_pair_neutralization(
         net_sec = 0.0 if "sector" in neutralized else naive_sec
         net_sub = 0.0 if "subsector" in neutralized else naive_sub
 
-        gross = sum(abs(l.dollars) for l in legs) / D
-        overlay = sum(abs(l.dollars) for l in legs if l.role == "hedge") / D
+        # Dollar grosses (Review C). overlay = hedge legs only; total = the
+        # whole book (pair legs + hedge legs). base_gross is ~2*D for a
+        # dollar-neutral pair but is summed from the legs to stay exact.
+        overlay_gross = sum(abs(l.dollars) for l in legs if l.role == "hedge")
+        base_gross = sum(abs(l.dollars) for l in legs if l.role == "pair")
+        total_gross = base_gross + overlay_gross
+        binding_gross = overlay_gross if cap_basis == "overlay" else total_gross
+        binding_leverage = binding_gross / D
 
         levels.append(PairNeutralizationLevel(
             level=level,
@@ -399,22 +463,27 @@ def compute_pair_neutralization(
             net_market_beta=net_mkt,
             net_sector_beta=net_sec,
             net_subsector_beta=net_sub,
-            gross_leverage=round(gross, 4),
-            hedge_overlay_gross=round(overlay, 4),
-            within_leverage_cap=overlay <= cap,
+            gross_leverage=round(total_gross / D, 4),
+            hedge_overlay_gross=round(overlay_gross / D, 4),
+            overlay_gross=round(overlay_gross, 2),
+            total_gross=round(total_gross, 2),
+            binding_leverage=round(binding_leverage, 4),
+            within_leverage_cap=binding_leverage <= cap,
         ))
 
-    # Pair Lstar: deepest level whose hedge overlay fits under the cap.
+    # Pair Lstar: deepest level whose binding gross fits under the cap.
     recommended: LevelName = "naive"
     for lvl in levels:
         if lvl.within_leverage_cap:
             recommended = lvl.level
+    rec_level = next(l for l in levels if l.level == recommended)
 
+    _basis_legs = "hedge legs only" if cap_basis == "overlay" else "pair + hedge legs"
     notes = [
         "Hedge ratios are orthogonalized ERM3 factor-model outputs, not "
         "trade recommendations.",
-        f"Leverage cap {cap:.2f}x is applied to the hedge-overlay gross "
-        "(hedge legs only) — a long/short pair is ~2.0x gross before any "
+        f"Leverage cap {cap:.2f}x is applied to the {cap_basis}-basis gross "
+        f"({_basis_legs}) — a long/short pair is ~2.0x gross before any "
         "hedge. Cap semantics for a pair are pending review.",
     ]
     if not same_sector:
@@ -430,8 +499,12 @@ def compute_pair_neutralization(
         as_of=as_of,
         same_sector=same_sector,
         leverage_cap=cap,
+        cap_basis=cap_basis,
         recommended_level=recommended,
         levels=levels,
+        overlay_gross=rec_level.overlay_gross,
+        total_gross=rec_level.total_gross,
+        binding_leverage=rec_level.binding_leverage,
         notes=notes,
         lineage=lineage,
     )
