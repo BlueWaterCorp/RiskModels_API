@@ -1,7 +1,13 @@
 {
   "schema_version": "etf-master/1.0",
-  "n_entries": 37,
+  "n_entries": 43,
   "aliases": {
+    "arkf": "BW-ETF-ARKF",
+    "arkg": "BW-ETF-ARKG",
+    "arkk": "BW-ETF-ARKK",
+    "arkq": "BW-ETF-ARKQ",
+    "arkw": "BW-ETF-ARKW",
+    "arkx": "BW-ETF-ARKX",
     "dia": "BW-ETF-DIA",
     "ijh": "BW-ETF-IJH",
     "ijr": "BW-ETF-IJR",
@@ -41,6 +47,48 @@
     "xly": "BW-ETF-XLY"
   },
   "entries": {
+    "BW-ETF-ARKF": {
+      "bw_etf_id": "BW-ETF-ARKF",
+      "ticker": "ARKF",
+      "sponsor": "ark",
+      "name": "ARK Fintech Innovation ETF",
+      "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_FINTECH_INNOVATION_ETF_ARKF_HOLDINGS.csv"
+    },
+    "BW-ETF-ARKG": {
+      "bw_etf_id": "BW-ETF-ARKG",
+      "ticker": "ARKG",
+      "sponsor": "ark",
+      "name": "ARK Genomic Revolution ETF",
+      "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_GENOMIC_REVOLUTION_ETF_ARKG_HOLDINGS.csv"
+    },
+    "BW-ETF-ARKK": {
+      "bw_etf_id": "BW-ETF-ARKK",
+      "ticker": "ARKK",
+      "sponsor": "ark",
+      "name": "ARK Innovation ETF",
+      "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv"
+    },
+    "BW-ETF-ARKQ": {
+      "bw_etf_id": "BW-ETF-ARKQ",
+      "ticker": "ARKQ",
+      "sponsor": "ark",
+      "name": "ARK Autonomous Technology & Robotics ETF",
+      "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_AUTONOMOUS_TECH._&_ROBOTICS_ETF_ARKQ_HOLDINGS.csv"
+    },
+    "BW-ETF-ARKW": {
+      "bw_etf_id": "BW-ETF-ARKW",
+      "ticker": "ARKW",
+      "sponsor": "ark",
+      "name": "ARK Next Generation Internet ETF",
+      "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_NEXT_GENERATION_INTERNET_ETF_ARKW_HOLDINGS.csv"
+    },
+    "BW-ETF-ARKX": {
+      "bw_etf_id": "BW-ETF-ARKX",
+      "ticker": "ARKX",
+      "sponsor": "ark",
+      "name": "ARK Space Exploration & Innovation ETF",
+      "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_SPACE_EXPLORATION_&_INNOVATION_ETF_ARKX_HOLDINGS.csv"
+    },
     "BW-ETF-DIA": {
       "bw_etf_id": "BW-ETF-DIA",
       "ticker": "DIA",
