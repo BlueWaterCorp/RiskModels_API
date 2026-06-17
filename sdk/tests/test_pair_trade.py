@@ -95,6 +95,15 @@ def _leg(level, ticker):
     return matches[0] if matches else None
 
 
+def _with_lstar(body, lstar):
+    """Copy a metrics body, overriding hedge_levels.statistical_lstar."""
+    return {**body, "hedge_levels": {**body["hedge_levels"], "statistical_lstar": lstar}}
+
+
+def _rec_hedge_tickers(res):
+    return {l.ticker for l in res.recommended.legs if l.role == "hedge"}
+
+
 # --------------------------------------------------------------------------
 # Structure
 # --------------------------------------------------------------------------
@@ -162,18 +171,26 @@ def test_hedge_leg_amounts_match_netted_difference():
 # Leverage cap / recommended level
 # --------------------------------------------------------------------------
 
-def test_recommended_level_respects_cap():
+def test_level_cap_flags_and_netted_capped():
     res = _pair()
-    # L3 hedge overlay ~2.31x exceeds the 2.0x cap -> recommend L2.
-    assert res.recommended_level == "L2"
+    # L3 overlay ~2.31x busts the 2.0x cap; L2 ~1.8x fits. The flag is a
+    # leverage signal, NOT a recommendation (recommendation is per-leg Lstar).
+    assert res.level("L3").capped_by_leverage is True
     assert res.level("L3").within_leverage_cap is False
+    assert res.level("L2").capped_by_leverage is False
     assert res.level("L2").within_leverage_cap is True
-    assert res.recommended.level == "L2"
-
-
-def test_higher_cap_allows_l3():
-    res = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, leverage_cap=5.0)
+    # Both legs warrant L3, so the netted recommendation also busts the cap —
+    # flagged, not stepped down.
     assert res.recommended_level == "L3"
+    assert res.recommended.capped_by_leverage is True
+
+
+def test_higher_cap_clears_capped_flag():
+    res = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, leverage_cap=5.0)
+    # Same Lstar-driven trade; the higher cap just clears the leverage flag.
+    assert res.recommended_level == "L3"
+    assert res.recommended.capped_by_leverage is False
+    assert res.level("L3").capped_by_leverage is False
 
 
 def test_gross_leverage_monotone_and_naive_is_two():
@@ -197,6 +214,7 @@ def test_cross_sector_keeps_separate_etf_legs():
                    "hedge_etfs": {"market": "SPY", "sector": "XLF", "subsector": None}},
             "L3": {"market_hr": -1.1, "sector_hr": -0.8, "subsector_hr": -0.7,
                    "hedge_etfs": {"market": "SPY", "sector": "XLF", "subsector": "KBE"}},
+            "statistical_lstar": "L3",
         },
     }
     res = compute_pair_neutralization(_INTC_BODY, fake_fin, D)
@@ -212,8 +230,12 @@ def test_cross_sector_keeps_separate_etf_legs():
 def test_to_dataframe_one_row_per_level():
     df = _pair().to_dataframe()
     assert list(df["level"]) == ["naive", "L1", "L2", "L3"]
-    recommended_rows = df.loc[df["recommended"], "level"].tolist()
-    assert recommended_rows == ["L2"]
+    # Comparison table carries the per-level cap flag (no single 'recommended'
+    # row — the recommendation is the netted per-leg-Lstar trade).
+    assert "capped_by_leverage" in df.columns
+    by_level = df.set_index("level")["capped_by_leverage"]
+    assert bool(by_level["L3"]) is True
+    assert bool(by_level["L2"]) is False
 
 
 def test_legs_dataframe_matches_leg_counts():
@@ -231,7 +253,9 @@ def test_summary_dict_headline_fields():
     s = _pair().summary_dict()
     assert s["long_ticker"] == "INTC"
     assert s["short_ticker"] == "AMD"
-    assert s["recommended_level"] == "L2"
+    # Both legs' statistical_lstar is L3 -> label "L3".
+    assert s["recommended_level"] == "L3"
+    assert s["long_lstar"] == "L3" and s["short_lstar"] == "L3"
 
 
 # --------------------------------------------------------------------------
@@ -262,7 +286,7 @@ def test_from_tickers_fetches_both_legs():
     client = _StubClient({"INTC": _INTC_BODY, "AMD": _AMD_BODY})
     res = PairTradeNeutralization.from_tickers(client, "INTC", "AMD", D)
     assert client.calls == ["INTC", "AMD"]
-    assert res.recommended_level == "L2"
+    assert res.recommended_level == "L3"
     assert res.long_ticker == "INTC" and res.short_ticker == "AMD"
 
 
@@ -297,12 +321,15 @@ def test_cap_basis_overlay_is_default():
     assert res.binding_leverage == pytest.approx(res.overlay_gross / D, abs=1e-3)
 
 
-def test_cap_basis_total_more_restrictive():
-    order = {"naive": 0, "L1": 1, "L2": 2, "L3": 3}
+def test_cap_basis_total_binds_harder():
     overlay = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, cap_basis="overlay")
     total = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, cap_basis="total")
-    # Capping the larger (total) gross binds sooner -> recommend no deeper.
-    assert order[total.recommended_level] <= order[overlay.recommended_level]
+    # The netted trade is identical either way (Lstar-driven); 'total' just
+    # measures a larger gross, so its binding leverage is higher and it is no
+    # less likely to trip capped_by_leverage.
+    assert total.recommended_level == overlay.recommended_level
+    assert total.binding_leverage >= overlay.binding_leverage
+    assert int(total.recommended.capped_by_leverage) >= int(overlay.recommended.capped_by_leverage)
 
 
 def test_both_gross_figures_always_reported():
@@ -321,6 +348,90 @@ def test_both_gross_figures_always_reported():
 def test_cap_basis_invalid_value_raises():
     with pytest.raises(ValueError, match="cap_basis"):
         compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, cap_basis="garbage")
+
+
+# --------------------------------------------------------------------------
+# Netted per-leg-Lstar recommendation
+# --------------------------------------------------------------------------
+
+def test_netted_recommendation_uses_per_leg_statistical_lstar():
+    # Each leg's own statistical_lstar drives its hedge, read independently.
+    res = compute_pair_neutralization(
+        _with_lstar(_INTC_BODY, "L2"), _with_lstar(_AMD_BODY, "L3"), D
+    )
+    assert res.recommended.long_lstar == "L2"
+    assert res.recommended.short_lstar == "L3"
+
+
+def test_netted_recommendation_supports_mixed_levels():
+    # long L3 (market+sector+subsector), short L1 (market only).
+    res = compute_pair_neutralization(
+        _with_lstar(_INTC_BODY, "L3"), _with_lstar(_AMD_BODY, "L1"), D
+    )
+    assert res.recommended.long_lstar == "L3"
+    assert res.recommended.short_lstar == "L1"
+    assert res.recommended_level == "L3/L1"
+    # SPY is netted across both legs; XLK/SMH come from the long leg only
+    # (the short leg's L1 warrants no sector/subsector hedge).
+    assert _rec_hedge_tickers(res) == {"SPY", "XLK", "SMH"}
+    spy = [l for l in res.recommended.legs if l.ticker == "SPY"][0]
+    exp_spy = D * 0.217164278030396 - D * (-2.1542067527771)  # long L3 mkt + short L1 mkt
+    assert spy.dollars == pytest.approx(exp_spy, abs=0.01)
+
+
+def test_netted_etfs_shared_factor_collapses_to_one_leg():
+    # Same-sector pair (both XLK) at L2 -> one netted sector leg.
+    res = compute_pair_neutralization(
+        _with_lstar(_INTC_BODY, "L2"), _with_lstar(_AMD_BODY, "L2"), D
+    )
+    assert _rec_hedge_tickers(res) == {"SPY", "XLK"}
+    xlk = [l for l in res.recommended.legs if l.ticker == "XLK"]
+    assert len(xlk) == 1
+    exp_xlk = D * (-1.54688668251038) - D * (-2.2766101360321)  # D*(hr_long - hr_short)
+    assert xlk[0].dollars == pytest.approx(exp_xlk, abs=0.01)
+
+
+def test_netted_etfs_cross_sector_factor_stays_separate():
+    short_xlf = {
+        "ticker": "FAKEFIN", "teo": "2026-05-26",
+        "metrics": {"leverage_cap_applied": 2},
+        "hedge_levels": {
+            "L1": {"market_hr": -1.5, "sector_hr": None, "subsector_hr": None,
+                   "hedge_etfs": {"market": "SPY", "sector": None, "subsector": None}},
+            "L2": {"market_hr": -1.2, "sector_hr": -0.9, "subsector_hr": None,
+                   "hedge_etfs": {"market": "SPY", "sector": "XLF", "subsector": None}},
+            "L3": {"market_hr": -1.1, "sector_hr": -0.8, "subsector_hr": -0.7,
+                   "hedge_etfs": {"market": "SPY", "sector": "XLF", "subsector": "KBE"}},
+            "statistical_lstar": "L2",
+        },
+    }
+    res = compute_pair_neutralization(_with_lstar(_INTC_BODY, "L2"), short_xlf, D)
+    # long sector ETF (XLK) and short sector ETF (XLF) stay as separate legs.
+    tickers = _rec_hedge_tickers(res)
+    assert {"XLK", "XLF"}.issubset(tickers)
+
+
+def test_naive_leg_skipped_in_netting():
+    # Short leg's Lstar is naive -> it contributes no hedge legs to the net.
+    res = compute_pair_neutralization(
+        _INTC_BODY, _with_lstar(_AMD_BODY, "naive"), D
+    )
+    assert res.recommended.short_lstar == "naive"
+    # All hedges come from the long (L3) leg; SPY carries no short offset.
+    spy = [l for l in res.recommended.legs if l.ticker == "SPY"][0]
+    assert spy.dollars == pytest.approx(D * 0.217164278030396, abs=0.01)
+    assert _rec_hedge_tickers(res) == {"SPY", "XLK", "SMH"}
+
+
+def test_capped_by_leverage_flag_set_when_over_cap():
+    res = _pair()  # both L3, cap 2.0, netted overlay ~2.31x
+    assert res.recommended.capped_by_leverage is True
+    assert res.level("L3").capped_by_leverage is True
+
+
+def test_capped_by_leverage_flag_false_under_cap():
+    res = compute_pair_neutralization(_INTC_BODY, _AMD_BODY, D, leverage_cap=5.0)
+    assert res.recommended.capped_by_leverage is False
 
 
 # --------------------------------------------------------------------------

@@ -1694,32 +1694,38 @@ class RiskModelsClient:
         leverage_cap: float | None = None,
         cap_basis: Literal["overlay", "total"] = "overlay",
     ) -> PairTradeNeutralization:
-        """Neutralize a long/short pair's factor risk across four ERM3 levels.
+        """Neutralize a long/short pair's factor risk via a netted ETF overlay.
 
-        Fetches metrics for both legs, nets their factor exposures, and returns
-        the hedge trades at naive / L1 / L2 / L3 (market, +sector, +subsector).
-        Fetch-then-compute, no rendering — mirrors :meth:`analyze_portfolio`.
+        Builds a DOLLAR-NEUTRAL pair (equal ``dollars`` per leg, opposite
+        signs) and hedges each leg to its OWN ``statistical_lstar``, netting
+        the ETF legs into the headline ``recommended`` trade (may be a mixed
+        level, e.g. long L3 / short L1). The naive/L1/L2/L3 ``levels`` table is
+        returned as a comparison artifact. Fetch-then-compute, no rendering —
+        mirrors :meth:`analyze_portfolio`.
 
         Args:
             long_ticker: Symbol held long (e.g. ``"INTC"``).
             short_ticker: Symbol sold short (e.g. ``"AMD"``).
-            dollars: Per-leg notional in dollars (> 0); both legs sized equally.
+            dollars: Per-leg notional in dollars (> 0); both legs sized equally
+                (asymmetric long $X / short $Y is out of scope for v1).
             leverage_cap: Override the leverage cap. Defaults to the ticker's
                 ``leverage_cap_applied`` (else 2.0x). A long/short pair is
                 ~2.0x gross before any hedge.
-            cap_basis: Which gross the cap binds on — ``"overlay"`` (default,
-                hedge legs only; v1 behavior) or ``"total"`` (pair + hedge
-                legs). ``"total"`` is stricter and recommends a shallower hedge.
+            cap_basis: Which gross the cap FLAG binds on — ``"overlay"``
+                (default, hedge legs only) or ``"total"`` (pair + hedge legs).
+                It sets ``capped_by_leverage``; it does not change which trade
+                is recommended (that is Lstar-driven).
 
         Returns:
-            :class:`PairTradeNeutralization` with ``levels`` (one per
-            naive/L1/L2/L3), ``recommended_level``, and ``to_dataframe()`` /
-            ``summary_dict()`` serializers.
+            :class:`PairTradeNeutralization` — ``recommended`` (the netted
+            per-leg-Lstar trade), ``recommended_level`` (label like ``"L3"`` or
+            ``"L3/L1"``), the ``levels`` comparison table, and
+            ``summary_dict()`` / ``recommended_trade_dataframe()`` serializers.
 
         Example:
             >>> pn = client.pair_trade_neutralization("INTC", "AMD", 10_000)
             >>> pn.recommended_level
-            'L2'
+            'L3'
         """
         return PairTradeNeutralization.from_tickers(
             self, long_ticker, short_ticker, dollars,
