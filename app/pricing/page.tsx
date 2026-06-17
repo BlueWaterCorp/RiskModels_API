@@ -137,6 +137,44 @@ const refillTiers = [
   },
 ];
 
+const researchDeskIncludes = [
+  "Higher API limits than standard pay-as-you-go",
+  "Priority support for production workflows",
+  "Onboarding help for portfolio, fund, or 13F workflows",
+  "Access to expanded fund / manager analytics where available",
+  "Limited model interpretation and implementation support",
+];
+
+const institutionalScope = [
+  "Public-data proof-of-concepts",
+  "Holdings-based manager skill decomposition",
+  "Style, sector, subsector, and residual return attribution",
+  "Custom manager cohorts",
+  "Internal vs. external manager comparisons",
+  "Recurring monitoring dashboards",
+  "API access for internal research systems",
+  "Model interpretation and implementation support",
+];
+
+const institutionalPaths = [
+  {
+    engagement: "Public-data proof-of-concept",
+    structure: "Starting at $15k–$25k",
+  },
+  {
+    engagement: "Historical manager skill review",
+    structure: "Custom project, typically starting at $50k",
+  },
+  {
+    engagement: "Institutional license",
+    structure: "Annual subscription, typically starting at $75k / year",
+  },
+  {
+    engagement: "Ongoing model interpretation & implementation support",
+    structure: "Included or scoped separately",
+  },
+];
+
 const faqs: PricingFaqItem[] = [
   {
     q: "What is the difference between Baseline and Premium?",
@@ -218,7 +256,9 @@ export default function PricingPage() {
         </p>
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
           Start free with <span className="text-white font-semibold">$20 in credits</span> — then pay
-          per successful call by tier. No subscription, no seat fees.
+          per successful call by tier. No subscription, no seat fees on self-serve API access. Teams
+          and allocators can also choose a flat-rate Research Desk plan or an institutional engagement
+          (below).
         </p>
       </section>
 
@@ -634,6 +674,174 @@ export default function PricingPage() {
               </a>
             </div>
           </div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ── Research Desk (flat team tier) ── */}
+      <section className="mx-auto max-w-4xl px-6 py-10">
+        <div className="rounded-xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md p-5 shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1">
+              <SectionLabel>Research Desk</SectionLabel>
+              <div className="flex flex-wrap items-baseline gap-2 mb-1">
+                <h2 className="text-xl font-bold text-white">Research Desk</h2>
+                <span className="text-2xl font-bold text-white tabular-nums">From $1,500</span>
+                <span className="text-zinc-500 text-sm">/ month</span>
+              </div>
+              <p className="text-sm text-zinc-400 mb-3 leading-snug">
+                For teams needing higher limits, priority support, expanded coverage, and workflow
+                support — a flat-rate alternative to managing pay-as-you-go balances at scale.
+              </p>
+              <ul className="space-y-1.5 mb-3">
+                {researchDeskIncludes.map((item) => (
+                  <li key={item} className="flex items-start gap-1.5 text-sm text-zinc-300 leading-snug">
+                    <svg
+                      className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-zinc-500 max-w-2xl leading-snug">
+                Research Desk does not include custom manager scorecards, private-data onboarding,
+                bespoke research projects, or investment recommendations. Those are scoped separately
+                under{" "}
+                <span className="text-zinc-300 font-medium">Institutional / Allocator Solutions</span>{" "}
+                below.
+              </p>
+            </div>
+            <div className="sm:shrink-0">
+              <a
+                href="mailto:service@riskmodels.app?subject=Research%20Desk"
+                className="inline-flex items-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
+              >
+                Talk to us
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ── Institutional / Allocator Solutions ── */}
+      <section className="mx-auto max-w-4xl px-6 py-10">
+        <SectionLabel>Institutional / Allocator Solutions</SectionLabel>
+        <h2 className="text-xl font-bold text-white mb-1">Apply RiskModels to manager research</h2>
+        <p className="text-sm text-zinc-400 mb-4 max-w-3xl leading-snug">
+          For pensions, endowments, consultants, OCIOs, asset owners, and institutional research
+          teams evaluating active equity managers. Institutional engagements are scoped separately
+          from self-serve API access.
+        </p>
+
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
+          Institutional work may include
+        </p>
+        <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-5">
+          {institutionalScope.map((item) => (
+            <li key={item} className="flex items-start gap-1.5 text-sm text-zinc-300 leading-snug">
+              <svg
+                className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              {item}
+            </li>
+          ))}
+        </ul>
+
+        {/* Analytics-not-advice disclaimer */}
+        <div className="mb-5 rounded-lg border border-zinc-700/70 bg-zinc-900/40 px-4 py-3">
+          <p className="text-xs text-zinc-300 leading-snug">
+            RiskModels provides analytics and research tooling, not investment advice or manager
+            recommendations.
+          </p>
+        </div>
+
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
+          Typical institutional paths
+        </p>
+        <div className="max-w-4xl mx-auto rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-900/30 backdrop-blur-md">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-zinc-900/80 border-b border-zinc-800/80">
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Engagement
+                </th>
+                <th className="text-left px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Typical structure
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/60">
+              {institutionalPaths.map((row) => (
+                <tr key={row.engagement} className="hover:bg-zinc-800/25 transition-colors align-top">
+                  <td className="px-4 py-3 font-medium text-zinc-200 text-xs sm:text-sm leading-snug">
+                    {row.engagement}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-400 text-xs sm:text-sm leading-snug">
+                    {row.structure}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="mt-3 text-xs text-zinc-500 max-w-3xl leading-snug">
+          Institutional pricing depends on universe size, data availability, update frequency,
+          support needs, and whether custom research deliverables are required.
+        </p>
+
+        <div className="mt-5">
+          <a
+            href="mailto:service@riskmodels.app?subject=Institutional%20engagement"
+            className="inline-flex items-center gap-2 rounded-md border border-zinc-600 hover:border-zinc-400 text-zinc-200 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
+          >
+            Contact us to scope an institutional engagement
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
+            </svg>
+          </a>
         </div>
       </section>
 
