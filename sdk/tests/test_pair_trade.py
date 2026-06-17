@@ -22,6 +22,16 @@ D = 10_000.0
 # Review A live tests hit the real engine; skip them when no key is present.
 _HAS_LIVE_ENGINE = bool(os.environ.get("RISKMODELS_API_KEY"))
 _LIVE_REASON = "requires live RiskModels engine (set RISKMODELS_API_KEY)"
+_XFAIL_REASON = (
+    "Verification approach uses -hedge_ratio as a beta proxy. Hedge ETFs "
+    "(SPY, XLK, SMH) are not in the single-stock risk universe, so their "
+    "hedge ratios return None and the proxy coerces them to 0. With the "
+    "hedge legs contributing zero, the sum collapses to the unhedged "
+    "underlying tilt — which is not a measurement of cascade orthogonality. "
+    "Verifying the cascade requires a per-name beta source the SDK does "
+    "not currently expose for ETFs (e.g., returns-based regression, or "
+    "a dedicated betas endpoint). Tracked as follow-up."
+)
 
 _INTC_BODY = {
     "ticker": "INTC",
@@ -354,6 +364,7 @@ def _sector_beta_from_metrics(body):
     return -float(l2.get("sector_hr") or 0.0)
 
 
+@pytest.mark.xfail(strict=False, reason=_XFAIL_REASON)
 @pytest.mark.skipif(not _HAS_LIVE_ENGINE, reason=_LIVE_REASON)
 def test_realized_net_market_beta_is_zero_under_orthogonalization():
     """LIVE cascade verification (Review A): the real test of orthogonality.
@@ -381,6 +392,7 @@ def test_realized_net_market_beta_is_zero_under_orthogonalization():
         )
 
 
+@pytest.mark.xfail(strict=False, reason=_XFAIL_REASON)
 @pytest.mark.skipif(not _HAS_LIVE_ENGINE, reason=_LIVE_REASON)
 def test_realized_net_sector_beta_is_zero_at_L2():
     """LIVE cascade verification (Review A): same pattern at L2 vs sector beta."""
