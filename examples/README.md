@@ -9,6 +9,7 @@ Runnable scripts for the RiskModels API and Python SDK. Install the SDK from the
 | [python/quickstart.py](python/quickstart.py) | Python | Minimal `RiskModelsClient` usage |
 | [python/factor_risk_table.py](python/factor_risk_table.py) | Python | Factor / risk table output |
 | [python/hedge_portfolio.py](python/hedge_portfolio.py) | Python | Portfolio hedge workflow |
+| [python/pair_trade_neutralization.py](python/pair_trade_neutralization.py) | Python | Long/short pair factor neutralization (naive/L1/L2/L3) |
 | [python/portfolio_risk_metrics.py](python/portfolio_risk_metrics.py) | Python | Portfolio risk metrics (TE, MCR, factor budget, HHI) — optional Markowitz on L3 residuals |
 | [python/precision_hedge_chart.py](python/precision_hedge_chart.py) | Python | Plotting / precision hedge chart |
 | [python/ai_risk_analyst.py](python/ai_risk_analyst.py) | Python | Agent-style analyst script |

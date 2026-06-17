@@ -78,6 +78,7 @@ from .portfolio_math import (
     metrics_body_to_row,
     positions_to_weights,
 )
+from .pair_trade import PairTradeNeutralization
 from .ticker_resolve import resolve_ticker
 from .transport import Transport
 from .validation import ValidateMode, run_validation
@@ -1683,6 +1684,43 @@ class RiskModelsClient:
         return pa
 
     analyze = analyze_portfolio
+
+    def pair_trade_neutralization(
+        self,
+        long_ticker: str,
+        short_ticker: str,
+        dollars: float,
+        *,
+        leverage_cap: float | None = None,
+    ) -> PairTradeNeutralization:
+        """Neutralize a long/short pair's factor risk across four ERM3 levels.
+
+        Fetches metrics for both legs, nets their factor exposures, and returns
+        the hedge trades at naive / L1 / L2 / L3 (market, +sector, +subsector).
+        Fetch-then-compute, no rendering — mirrors :meth:`analyze_portfolio`.
+
+        Args:
+            long_ticker: Symbol held long (e.g. ``"INTC"``).
+            short_ticker: Symbol sold short (e.g. ``"AMD"``).
+            dollars: Per-leg notional in dollars (> 0); both legs sized equally.
+            leverage_cap: Override the hedge-overlay gross cap. Defaults to the
+                ticker's ``leverage_cap_applied`` (else 2.0x). The cap is applied
+                to hedge-overlay gross only — a long/short pair is ~2.0x gross
+                before any hedge.
+
+        Returns:
+            :class:`PairTradeNeutralization` with ``levels`` (one per
+            naive/L1/L2/L3), ``recommended_level``, and ``to_dataframe()`` /
+            ``summary_dict()`` serializers.
+
+        Example:
+            >>> pn = client.pair_trade_neutralization("INTC", "AMD", 10_000)
+            >>> pn.recommended_level
+            'L2'
+        """
+        return PairTradeNeutralization.from_tickers(
+            self, long_ticker, short_ticker, dollars, leverage_cap=leverage_cap
+        )
 
     def get_metrics_snapshot_pdf(self, ticker: str) -> tuple[bytes, RiskLineage]:
         """Download a single-name risk snapshot as a PDF report.

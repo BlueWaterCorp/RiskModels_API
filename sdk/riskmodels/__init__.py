@@ -35,6 +35,7 @@ from .metadata_attach import (
 )
 from .notebook import GET_KEY_URL, ensure_riskmodels_api_key, load_notebook_dotenv, quickstart_connect
 from .metrics_snapshot import format_metrics_snapshot
+from .pair_trade import PairTradeNeutralization, compute_pair_neutralization
 from .peer_group import PeerComparison, PeerGroupProxy
 from .performance.base import PerformanceResult
 from .portfolio_math import PortfolioAnalysis, PositionsInput, positions_to_weights
@@ -95,6 +96,8 @@ __all__ = [
     "MatPlotAgent",
     "OutputKind",
     "OutputLiteral",
+    "PairTradeNeutralization",
+    "compute_pair_neutralization",
     "PeerComparison",
     "PeerGroupProxy",
     "PerformanceResult",
