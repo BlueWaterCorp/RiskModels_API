@@ -5,9 +5,11 @@ import 'katex/dist/katex.min.css';
 import '@/styles/globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { Suspense } from 'react';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
 import { GoogleTagManager, GoogleTagManagerNoScript } from '@/components/GoogleTagManager';
+import { PostHogProvider } from '@/components/posthog-provider';
 import { UTMTracker } from '@/components/UTMTracker';
 import { CANONICAL_SITE_URL } from '@/lib/constants';
 
@@ -103,15 +105,19 @@ export default async function RootLayout({
       </head>
       <body className={`${inter.className} ${jetbrainsMono.variable}`}>
         <GoogleTagManagerNoScript />
-        <div className="flex flex-col min-h-screen">
-          <Navbar />
-          <main className="flex-1 min-h-0 pt-24 sm:pt-28 md:pt-32 lg:pt-36">
-            {children}
-          </main>
-          <Footer />
-        </div>
-        <ChatBubble />
-        <UTMTracker />
+        <Suspense fallback={null}>
+          <PostHogProvider>
+            <div className="flex flex-col min-h-screen">
+              <Navbar />
+              <main className="flex-1 min-h-0 pt-24 sm:pt-28 md:pt-32 lg:pt-36">
+                {children}
+              </main>
+              <Footer />
+            </div>
+            <ChatBubble />
+            <UTMTracker />
+          </PostHogProvider>
+        </Suspense>
       </body>
     </html>
   );
