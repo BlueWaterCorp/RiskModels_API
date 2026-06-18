@@ -1100,6 +1100,28 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "PortfolioAnalysis", "description": "Dataclass with to_llm_context()."},
     },
     {
+        "name": "pair_trade_neutralization",
+        "aliases": ["pair_trade"],
+        "summary": "Long/short pair factor neutralization across naive/L1/L2/L3.",
+        "description": (
+            "Fetches metrics for both legs, nets their ERM3 factor exposures, and returns "
+            "the hedge trades at four levels (naive, +market, +sector, +subsector) with a "
+            "leverage-cap-aware recommended level. Client-side composition over get_metrics "
+            "— same billing as two get_metrics calls."
+        ),
+        "scopes": ["ticker-returns (OAuth)"],
+        "parameters": [
+            {"name": "long_ticker", "type": "string", "required": True, "description": "Symbol held long (e.g. INTC)."},
+            {"name": "short_ticker", "type": "string", "required": True, "description": "Symbol sold short (e.g. AMD)."},
+            {"name": "dollars", "type": "number", "required": True, "description": "Per-leg notional in dollars (> 0); legs sized equally."},
+            {"name": "leverage_cap", "type": "number", "required": False, "description": "Override hedge-overlay gross cap (default: ticker's leverage_cap_applied, else 2.0)."},
+        ],
+        "returns": {
+            "type": "PairTradeNeutralization",
+            "description": "Dataclass with levels (naive/L1/L2/L3), recommended_level, to_dataframe().",
+        },
+    },
+    {
         "name": "get_dataset",
         "aliases": ["get_cube", "get_panel"],
         "summary": "xarray Dataset (ticker × date); requires [xarray] extra.",
@@ -1265,6 +1287,7 @@ DISCOVER_SPEC: dict[str, Any] = {
             "scripts/generate_readme_assets.py  # writes assets/*.png from get_rankings + MAG7 POST /correlation"
         ),
         "portfolio": "client.analyze_portfolio({'NVDA': 0.4, 'AAPL': 0.6})",
+        "pair_trade": "client.pair_trade_neutralization('INTC', 'AMD', 10_000)  # -> recommended_level, levels[]",
         "xarray": "ds = client.get_dataset(['AAPL','MSFT'], years=5)  # pip install riskmodels-py[xarray]",
         "discover_json": 'spec = client.discover(format="json", to_stdout=False)',
     },
