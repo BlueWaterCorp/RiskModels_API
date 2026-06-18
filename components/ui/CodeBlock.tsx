@@ -11,6 +11,7 @@ interface CodeBlockProps {
   language?: BundledLanguage;
   className?: string;
   showCopy?: boolean;
+  onCopy?: () => void;
 }
 
 let highlighterPromise: Promise<Highlighter> | null = null;
@@ -44,7 +45,7 @@ function emphasizeAgentKeyInJsonHtml(html: string): string {
   );
 }
 
-export function CodeBlock({ code, language, className, showCopy = true }: CodeBlockProps) {
+export function CodeBlock({ code, language, className, showCopy = true, onCopy }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
 
@@ -71,6 +72,7 @@ export function CodeBlock({ code, language, className, showCopy = true }: CodeBl
   const handleCopy = () => {
     void copyTextToClipboard(code).then((ok) => {
       if (ok) {
+        onCopy?.();
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }

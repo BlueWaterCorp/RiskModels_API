@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import ConnectorHeroCallout from '@/components/landing/ConnectorHeroCallout';
+import { gtmAnalytics } from '@/lib/posthog-client';
 
 export default function HeroLanding() {
   return (
@@ -22,18 +25,21 @@ export default function HeroLanding() {
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
             href="/get-key"
+            onClick={() => gtmAnalytics.ctaClicked('Get API Key', 'hero')}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-7 py-[16px] text-base font-semibold text-zinc-950 shadow-[0_0_0_1px_rgba(16,185,129,0.4),0_10px_28px_-8px_rgba(16,185,129,0.6)] transition hover:bg-emerald-400"
           >
             Get API Key <ArrowRight size={18} />
           </Link>
           <Link
             href="/api-reference"
+            onClick={() => gtmAnalytics.ctaClicked('View Docs', 'hero')}
             className="inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 px-7 py-[16px] text-base font-semibold text-white transition hover:border-zinc-600 hover:bg-zinc-800"
           >
             View Docs
           </Link>
           <Link
             href="#worked-example"
+            onClick={() => gtmAnalytics.ctaClicked('See the Worked Example', 'hero')}
             className="inline-flex items-center justify-center rounded-lg border border-zinc-800 bg-transparent px-7 py-[16px] text-base font-semibold text-zinc-300 transition hover:border-zinc-700 hover:text-white"
           >
             See the Worked Example

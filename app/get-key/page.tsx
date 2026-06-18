@@ -9,6 +9,7 @@ import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Z
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 import { captureUTMFromURL, clearUTMData, getUTMData } from '@/lib/utm';
 import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
+import { gtmAnalytics } from '@/lib/posthog-client';
 
 interface ApiKey {
   id: string;
@@ -52,12 +53,13 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, onCopied }: { text: string; onCopied?: () => void }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     void copyTextToClipboard(text).then((ok) => {
       if (ok) {
         setCopied(true);
+        onCopied?.();
         setTimeout(() => setCopied(false), 2000);
       }
     });
@@ -233,6 +235,12 @@ function GetKeyPage() {
   }, [user, fetchAccountData]);
 
   useEffect(() => {
+    if (!loading && !user) {
+      gtmAnalytics.signupFormViewed('get_key_page');
+    }
+  }, [loading, user]);
+
+  useEffect(() => {
     if (user && stripeStatus === 'success') {
       void fetchAccountData();
     }
@@ -254,6 +262,7 @@ function GetKeyPage() {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
+    gtmAnalytics.signupFormSubmitted(email);
     const next = buildNextPath();
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -261,8 +270,13 @@ function GetKeyPage() {
         emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
-    if (error) setAuthError(error.message);
-    else setEmailSent(true);
+    if (error) {
+      setAuthError(error.message);
+      gtmAnalytics.signupError(error.message);
+    } else {
+      setEmailSent(true);
+      gtmAnalytics.signupSuccess('magic_link');
+    }
     setAuthLoading(false);
   };
 
@@ -347,7 +361,9 @@ function GetKeyPage() {
     const data = await res.json();
     if (!res.ok) {
       setGenError(data.error ?? 'Failed to generate key');
+      gtmAnalytics.signupError(data.error ?? 'Failed to generate key');
     } else {
+      gtmAnalytics.apiKeyCreated();
       setRevealedKey({ plainKey: data.key.plainKey, name: data.key.name });
       setNewKeyName('');
       /** Backstop the Sign-up conversion: if the auth-state / code-exchange fire was
@@ -366,6 +382,7 @@ function GetKeyPage() {
 
   const revokeKey = async (id: string) => {
     if (!confirm('Revoke this key? Any apps using it will stop working immediately.')) return;
+    gtmAnalytics.apiKeyRevoked();
     await fetch('/api/agent-keys', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -710,7 +727,10 @@ function GetKeyPage() {
               <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all">
                 {revealedKey.plainKey}
               </code>
-              <CopyButton text={revealedKey.plainKey} />
+              <CopyButton
+                text={revealedKey.plainKey}
+                onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
+              />
             </div>
           </div>
         )}

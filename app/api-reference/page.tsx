@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { gtmAnalytics } from '@/lib/posthog-client';
 import Link from 'next/link';
 import { Search, ExternalLink, Play } from 'lucide-react';
 import { AccordionItem } from '@/components/ui/Accordion';
@@ -177,7 +178,20 @@ export default function ApiReferencePage() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const selected = getEndpointById(selectedId) ?? ENDPOINT_GROUPS[0]?.endpoints[0];
 
+  useEffect(() => {
+    gtmAnalytics.apiDocsPageViewed('api-reference');
+  }, []);
+
+  useEffect(() => {
+    if (selectedId === 'coreConcepts') return;
+    const endpoint = getEndpointById(selectedId);
+    if (endpoint) {
+      gtmAnalytics.apiEndpointExpanded(endpoint.path, endpoint.method);
+    }
+  }, [selectedId]);
+
   async function handleRunEstimate() {
+    gtmAnalytics.tryApiClicked('/estimate');
     setEstimateLoading(true);
     setEstimateError(null);
     setEstimateResponse(null);
@@ -280,6 +294,7 @@ export default function ApiReferencePage() {
             <div className="pt-6 border-t border-zinc-800">
               <a
                 href="/get-key"
+                onClick={() => gtmAnalytics.ctaClicked('Get API Key', 'api_reference_sidebar')}
                 className="flex items-center gap-2 text-sm text-zinc-400 hover:text-blue-400 transition-colors"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -548,7 +563,12 @@ df = client.ticker_returns("NVDA", years=3)`}</pre>
                     label: 'Request',
                     content: (
                       <div className="space-y-4 mt-2">
-                        <CodeBlock code={getRequestExample(selected)} language={getRequestLanguage(selected)} showCopy />
+                        <CodeBlock
+                          code={getRequestExample(selected)}
+                          language={getRequestLanguage(selected)}
+                          showCopy
+                          onCopy={() => gtmAnalytics.apiExampleCopied(selected.path)}
+                        />
                         {selectedId === 'estimateCost' && (
                         <div className="pt-4 border-t border-zinc-800 space-y-3">
                           <h4 className="text-sm font-semibold text-zinc-200">Try it out</h4>
@@ -601,7 +621,12 @@ df = client.ticker_returns("NVDA", years=3)`}</pre>
                         <StatusBadge status={200} />
                         <span className="text-xs text-zinc-400">Success</span>
                       </div>
-                      <CodeBlock code={getResponseExample(selected)} language="json" showCopy />
+                      <CodeBlock
+                        code={getResponseExample(selected)}
+                        language="json"
+                        showCopy
+                        onCopy={() => gtmAnalytics.apiExampleCopied(`${selected.path} (response)`)}
+                      />
                     </div>
                   ),
                 },
