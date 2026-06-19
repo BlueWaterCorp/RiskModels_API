@@ -1,6 +1,6 @@
 {
   "schema_version": "etf-master/1.0",
-  "n_entries": 43,
+  "n_entries": 68,
   "aliases": {
     "arkf": "BW-ETF-ARKF",
     "arkg": "BW-ETF-ARKG",
@@ -8,6 +8,31 @@
     "arkq": "BW-ETF-ARKQ",
     "arkw": "BW-ETF-ARKW",
     "arkx": "BW-ETF-ARKX",
+    "cgbl": "BW-ETF-CGBL",
+    "cgcb": "BW-ETF-CGCB",
+    "cgcp": "BW-ETF-CGCP",
+    "cgcv": "BW-ETF-CGCV",
+    "cgdg": "BW-ETF-CGDG",
+    "cgdv": "BW-ETF-CGDV",
+    "cgge": "BW-ETF-CGGE",
+    "cggg": "BW-ETF-CGGG",
+    "cggo": "BW-ETF-CGGO",
+    "cggr": "BW-ETF-CGGR",
+    "cghm": "BW-ETF-CGHM",
+    "cghy": "BW-ETF-CGHY",
+    "cgib": "BW-ETF-CGIB",
+    "cgic": "BW-ETF-CGIC",
+    "cgie": "BW-ETF-CGIE",
+    "cgmm": "BW-ETF-CGMM",
+    "cgms": "BW-ETF-CGMS",
+    "cgmu": "BW-ETF-CGMU",
+    "cgng": "BW-ETF-CGNG",
+    "cgsd": "BW-ETF-CGSD",
+    "cgsm": "BW-ETF-CGSM",
+    "cgui": "BW-ETF-CGUI",
+    "cgus": "BW-ETF-CGUS",
+    "cgvv": "BW-ETF-CGVV",
+    "cgxu": "BW-ETF-CGXU",
     "dia": "BW-ETF-DIA",
     "ijh": "BW-ETF-IJH",
     "ijr": "BW-ETF-IJR",
@@ -88,6 +113,181 @@
       "sponsor": "ark",
       "name": "ARK Space Exploration & Innovation ETF",
       "product_url": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/ARK_SPACE_EXPLORATION_&_INNOVATION_ETF_ARKX_HOLDINGS.csv"
+    },
+    "BW-ETF-CGBL": {
+      "bw_etf_id": "BW-ETF-CGBL",
+      "ticker": "CGBL",
+      "sponsor": "capgroup",
+      "name": "Capital Group Core Balanced ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGCB": {
+      "bw_etf_id": "BW-ETF-CGCB",
+      "ticker": "CGCB",
+      "sponsor": "capgroup",
+      "name": "Capital Group Core Bond ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGCP": {
+      "bw_etf_id": "BW-ETF-CGCP",
+      "ticker": "CGCP",
+      "sponsor": "capgroup",
+      "name": "Capital Group Core Plus Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGCV": {
+      "bw_etf_id": "BW-ETF-CGCV",
+      "ticker": "CGCV",
+      "sponsor": "capgroup",
+      "name": "Capital Group Conservative Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGDG": {
+      "bw_etf_id": "BW-ETF-CGDG",
+      "ticker": "CGDG",
+      "sponsor": "capgroup",
+      "name": "Capital Group Dividend Growers ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGDV": {
+      "bw_etf_id": "BW-ETF-CGDV",
+      "ticker": "CGDV",
+      "sponsor": "capgroup",
+      "name": "Capital Group Dividend Value ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGGE": {
+      "bw_etf_id": "BW-ETF-CGGE",
+      "ticker": "CGGE",
+      "sponsor": "capgroup",
+      "name": "Capital Group Global Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGGG": {
+      "bw_etf_id": "BW-ETF-CGGG",
+      "ticker": "CGGG",
+      "sponsor": "capgroup",
+      "name": "Capital Group U.S. Large Growth ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGGO": {
+      "bw_etf_id": "BW-ETF-CGGO",
+      "ticker": "CGGO",
+      "sponsor": "capgroup",
+      "name": "Capital Group Global Growth Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGGR": {
+      "bw_etf_id": "BW-ETF-CGGR",
+      "ticker": "CGGR",
+      "sponsor": "capgroup",
+      "name": "Capital Group Growth ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGHM": {
+      "bw_etf_id": "BW-ETF-CGHM",
+      "ticker": "CGHM",
+      "sponsor": "capgroup",
+      "name": "Capital Group Municipal High-Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGHY": {
+      "bw_etf_id": "BW-ETF-CGHY",
+      "ticker": "CGHY",
+      "sponsor": "capgroup",
+      "name": "Capital Group High Yield Bond ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGIB": {
+      "bw_etf_id": "BW-ETF-CGIB",
+      "ticker": "CGIB",
+      "sponsor": "capgroup",
+      "name": "Capital Group International Bond ETF (USD-Hedged)",
+      "product_url": null
+    },
+    "BW-ETF-CGIC": {
+      "bw_etf_id": "BW-ETF-CGIC",
+      "ticker": "CGIC",
+      "sponsor": "capgroup",
+      "name": "Capital Group International Core Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGIE": {
+      "bw_etf_id": "BW-ETF-CGIE",
+      "ticker": "CGIE",
+      "sponsor": "capgroup",
+      "name": "Capital Group International Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGMM": {
+      "bw_etf_id": "BW-ETF-CGMM",
+      "ticker": "CGMM",
+      "sponsor": "capgroup",
+      "name": "Capital Group U.S. Small and Mid Cap ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGMS": {
+      "bw_etf_id": "BW-ETF-CGMS",
+      "ticker": "CGMS",
+      "sponsor": "capgroup",
+      "name": "Capital Group U.S. Multi-Sector Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGMU": {
+      "bw_etf_id": "BW-ETF-CGMU",
+      "ticker": "CGMU",
+      "sponsor": "capgroup",
+      "name": "Capital Group Municipal Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGNG": {
+      "bw_etf_id": "BW-ETF-CGNG",
+      "ticker": "CGNG",
+      "sponsor": "capgroup",
+      "name": "Capital Group New Geography Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGSD": {
+      "bw_etf_id": "BW-ETF-CGSD",
+      "ticker": "CGSD",
+      "sponsor": "capgroup",
+      "name": "Capital Group Short Duration Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGSM": {
+      "bw_etf_id": "BW-ETF-CGSM",
+      "ticker": "CGSM",
+      "sponsor": "capgroup",
+      "name": "Capital Group Short Duration Municipal Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGUI": {
+      "bw_etf_id": "BW-ETF-CGUI",
+      "ticker": "CGUI",
+      "sponsor": "capgroup",
+      "name": "Capital Group Ultra Short Income ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGUS": {
+      "bw_etf_id": "BW-ETF-CGUS",
+      "ticker": "CGUS",
+      "sponsor": "capgroup",
+      "name": "Capital Group Core Equity ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGVV": {
+      "bw_etf_id": "BW-ETF-CGVV",
+      "ticker": "CGVV",
+      "sponsor": "capgroup",
+      "name": "Capital Group U.S. Large Value ETF",
+      "product_url": null
+    },
+    "BW-ETF-CGXU": {
+      "bw_etf_id": "BW-ETF-CGXU",
+      "ticker": "CGXU",
+      "sponsor": "capgroup",
+      "name": "Capital Group International Focus Equity ETF",
+      "product_url": null
     },
     "BW-ETF-DIA": {
       "bw_etf_id": "BW-ETF-DIA",
