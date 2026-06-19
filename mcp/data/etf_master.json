@@ -1,7 +1,11 @@
 {
   "schema_version": "etf-master/1.0",
-  "n_entries": 68,
+  "n_entries": 72,
   "aliases": {
+    "aflg": "BW-ETF-AFLG",
+    "afmc": "BW-ETF-AFMC",
+    "afsm": "BW-ETF-AFSM",
+    "agqi": "BW-ETF-AGQI",
     "arkf": "BW-ETF-ARKF",
     "arkg": "BW-ETF-ARKG",
     "arkk": "BW-ETF-ARKK",
@@ -72,6 +76,34 @@
     "xly": "BW-ETF-XLY"
   },
   "entries": {
+    "BW-ETF-AFLG": {
+      "bw_etf_id": "BW-ETF-AFLG",
+      "ticker": "AFLG",
+      "sponsor": "first_trust",
+      "name": "First Trust Active Factor Large Cap ETF",
+      "product_url": null
+    },
+    "BW-ETF-AFMC": {
+      "bw_etf_id": "BW-ETF-AFMC",
+      "ticker": "AFMC",
+      "sponsor": "first_trust",
+      "name": "First Trust Active Factor Mid Cap ETF",
+      "product_url": null
+    },
+    "BW-ETF-AFSM": {
+      "bw_etf_id": "BW-ETF-AFSM",
+      "ticker": "AFSM",
+      "sponsor": "first_trust",
+      "name": "First Trust Active Factor Small Cap ETF",
+      "product_url": null
+    },
+    "BW-ETF-AGQI": {
+      "bw_etf_id": "BW-ETF-AGQI",
+      "ticker": "AGQI",
+      "sponsor": "first_trust",
+      "name": "First Trust Active Global Quality Income ETF",
+      "product_url": null
+    },
     "BW-ETF-ARKF": {
       "bw_etf_id": "BW-ETF-ARKF",
       "ticker": "ARKF",
