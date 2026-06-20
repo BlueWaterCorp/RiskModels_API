@@ -19,9 +19,7 @@ import { join } from "path";
 export interface EtfEntryRecord {
   bw_etf_id: string;
   ticker: string;
-  sponsor: string;
   name: string;
-  product_url: string | null;
 }
 
 interface EtfCatalog {
@@ -34,7 +32,7 @@ interface EtfCatalog {
 }
 
 const EMPTY: EtfCatalog = {
-  schema_version: "etf-master/1.0",
+  schema_version: "etf-master/2.0",
   n_entries: 0,
   aliases: {},
   entries: {},
@@ -98,7 +96,7 @@ export interface EtfSearchHit extends EtfEntryRecord {
 }
 
 /**
- * Substring + prefix search over ticker / name / sponsor.
+ * Substring + prefix search over ticker / name.
  *
  * Ranking (higher = better):
  *   100  exact ticker match
@@ -106,7 +104,6 @@ export interface EtfSearchHit extends EtfEntryRecord {
  *    50  ticker substring
  *    40  name word-boundary prefix
  *    30  name substring
- *    20  sponsor exact / substring
  *
  * Empty query returns all entries (ordered by ticker, capped at `limit`).
  * `limit` is clamped to [1, 100]; default 25.
@@ -128,7 +125,6 @@ export function searchEtfs(query: string, limit = 25): EtfSearchHit[] {
   for (const e of all) {
     const ticker = e.ticker.toLowerCase();
     const name = e.name.toLowerCase();
-    const sponsor = e.sponsor.toLowerCase();
 
     let score = 0;
     if (ticker === q) score = 100;
@@ -141,7 +137,6 @@ export function searchEtfs(query: string, limit = 25): EtfSearchHit[] {
     )
       score = 40;
     else if (name.includes(q)) score = 30;
-    else if (sponsor === q || sponsor.includes(q)) score = 20;
 
     if (score > 0) hits.push({ ...e, score });
   }

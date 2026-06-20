@@ -7575,15 +7575,14 @@ paths:
       summary: ETF search & discovery (free)
       description: >
         Free discovery endpoint for ETFs in the canonical universe. Substring +
-        prefix search over ticker / name / sponsor in the committed cross-repo
-        catalog (mirror of `Funds_DAG/configs/etf_universe.yaml` at
-        `mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and
+        prefix search over ticker / name in the committed catalog
+        (`mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and
         `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).
 
 
         Ranking (higher = better): 100 exact ticker; 70 ticker prefix;
-        50 ticker substring; 40 name word-boundary prefix; 30 name substring;
-        20 sponsor exact / substring. Public read; soft gateway auth.
+        50 ticker substring; 40 name word-boundary prefix; 30 name substring.
+        Public read; soft gateway auth.
       operationId: searchEtfs
       tags: [Funds Data Plane]
       security:
@@ -7595,7 +7594,7 @@ paths:
           required: false
           schema: { type: string }
           example: SPY
-          description: Search query — ticker, partial name, or sponsor. Case-insensitive.
+          description: Search query — ticker or partial name. Case-insensitive.
         - name: limit
           in: query
           required: false
@@ -7611,7 +7610,7 @@ paths:
                   query: { type: string }
                   n_results: { type: integer }
                   n_universe: { type: integer, description: Total ETFs in the catalog. }
-                  schema_version: { type: string, example: etf-master/1.0 }
+                  schema_version: { type: string, example: etf-master/2.0 }
                   results:
                     type: array
                     items:
@@ -7619,9 +7618,7 @@ paths:
                       properties:
                         bw_etf_id: { type: string, example: BW-ETF-IVV }
                         ticker: { type: string, example: IVV }
-                        sponsor: { type: string, example: ishares }
                         name: { type: string }
-                        product_url: { type: string, nullable: true }
                         score: { type: integer, description: Match score (higher = better). }
 
   /data/etf/{ticker}:

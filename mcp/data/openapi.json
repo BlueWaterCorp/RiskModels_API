@@ -11234,7 +11234,7 @@
     "/data/etf/search": {
       "get": {
         "summary": "ETF search & discovery (free)",
-        "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name / sponsor in the committed cross-repo catalog (mirror of `Funds_DAG/configs/etf_universe.yaml` at `mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).\n\nRanking (higher = better): 100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-boundary prefix; 30 name substring; 20 sponsor exact / substring. Public read; soft gateway auth.\n",
+        "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name in the committed catalog (`mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).\n\nRanking (higher = better): 100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-boundary prefix; 30 name substring. Public read; soft gateway auth.\n",
         "operationId": "searchEtfs",
         "tags": [
           "Funds Data Plane"
@@ -11254,7 +11254,7 @@
               "type": "string"
             },
             "example": "SPY",
-            "description": "Search query — ticker, partial name, or sponsor. Case-insensitive."
+            "description": "Search query — ticker or partial name. Case-insensitive."
           },
           {
             "name": "limit",
@@ -11288,7 +11288,7 @@
                     },
                     "schema_version": {
                       "type": "string",
-                      "example": "etf-master/1.0"
+                      "example": "etf-master/2.0"
                     },
                     "results": {
                       "type": "array",
@@ -11303,16 +11303,8 @@
                             "type": "string",
                             "example": "IVV"
                           },
-                          "sponsor": {
-                            "type": "string",
-                            "example": "ishares"
-                          },
                           "name": {
                             "type": "string"
-                          },
-                          "product_url": {
-                            "type": "string",
-                            "nullable": true
                           },
                           "score": {
                             "type": "integer",

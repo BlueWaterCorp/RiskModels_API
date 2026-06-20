@@ -24,7 +24,7 @@ beforeAll(() => _reloadEtfCatalog());
 describe("etf-catalog (committed mirror)", () => {
   it("loads the committed mcp/data/etf_master.json with a stable schema", () => {
     const meta = etfCatalogMetadata();
-    expect(meta.schema_version).toBe("etf-master/1.0");
+    expect(meta.schema_version).toBe("etf-master/2.0");
     expect(meta.n_entries).toBeGreaterThanOrEqual(3);
     expect(meta.path).toMatch(/mcp\/data\/etf_master\.json$/);
   });
@@ -41,7 +41,6 @@ describe("etf-catalog (committed mirror)", () => {
     const ivv = getEtfEntry("BW-ETF-IVV");
     expect(ivv).not.toBeNull();
     expect(ivv!.ticker).toBe("IVV");
-    expect(ivv!.sponsor).toBe("ishares");
     expect(ivv!.name).toMatch(/iShares/);
     expect(getEtfEntry("BW-ETF-NOPE")).toBeNull();
   });
@@ -75,19 +74,17 @@ describe("searchEtfs ranking", () => {
 
   it("matches name word-boundary prefix", () => {
     const hits = searchEtfs("ishares");
-    // every iShares row should appear; first hit's sponsor or name carries iShares
+    // every iShares row should appear; matched via the fund name (the public
+    // catalog carries no sponsor field — that's scraping-provenance, kept private).
     expect(hits.length).toBeGreaterThan(0);
-    const first = hits[0]!;
-    const matched =
-      first.name.toLowerCase().includes("ishares") || first.sponsor === "ishares";
-    expect(matched).toBe(true);
+    expect(hits[0]!.name.toLowerCase().includes("ishares")).toBe(true);
   });
 
-  it("matches sponsor", () => {
+  it("matches an issuer name carried in the fund name", () => {
     const hits = searchEtfs("vanguard");
-    // Catalog includes Vanguard ETFs; sponsor match scores 20 minimum.
+    // Catalog includes Vanguard ETFs whose names contain "Vanguard"; name match.
     if (hits.length > 0) {
-      expect(hits[0]!.sponsor === "vanguard" || hits[0]!.name.toLowerCase().includes("vanguard")).toBe(true);
+      expect(hits[0]!.name.toLowerCase().includes("vanguard")).toBe(true);
     }
   });
 

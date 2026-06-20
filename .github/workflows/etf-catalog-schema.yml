@@ -1,0 +1,24 @@
+name: ETF Catalog Schema
+
+# Enforces that the public ETF catalog (mcp/data/etf_master.json) stays a
+# minimal ticker -> name index: entries carry only the allowlisted keys
+# (bw_etf_id, ticker, name) and no embedded URLs.
+# See scripts/check-etf-catalog-schema.sh.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  etf-catalog-schema:
+    name: ETF catalog schema check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check ETF catalog schema
+        run: bash scripts/check-etf-catalog-schema.sh
