@@ -1,11 +1,9 @@
 
-import os
+import numpy as np
 import pandas as pd
 from numpy.linalg import lstsq
 from sklearn.preprocessing import StandardScaler
 from hmmlearn.hmm import GaussianHMM
-import numpy as np
-import pandas as pd
 
 
 
@@ -50,6 +48,11 @@ def get_data(client, tickers):
         except Exception as e:
             print(f"[get_data] {t}: failed ({e!r}), skipped")
             continue
+    if not all_returns:
+        raise ValueError(
+            "get_data: no tickers succeeded — every decompose/price fetch failed. "
+            "Check the universe, API credentials, and that the tickers are valid."
+        )
     prices_df = pd.concat(all_returns).reset_index(drop=True)
     return prices_df
 
@@ -89,6 +92,19 @@ def get_market_cap(client, resampled, tickers):
         except Exception as e:
             print(f"[get_market_cap] {t}: failed ({e!r}), skipped")
             continue
+    
+    # NaN guard: a failed cap fetch leaves market_cap NaN for that ticker, which would
+    # silently propagate into the cap-weight matrix S and yield garbage optimizer weights
+    # with no error. Drop those names loudly; hard-fail if nothing came back at all.
+    if 'market_cap' not in resampled.columns:
+        raise ValueError(
+            "get_market_cap: no market cap fetched for ANY ticker — cannot cap-weight. "
+            "Check API credentials / universe."
+        )
+    bad = resampled.loc[resampled['market_cap'].isna(), 'ticker'].unique().tolist()
+    if bad:
+        print(f"[get_market_cap] dropping {len(bad)} ticker(s) with no market cap: {bad}")
+        resampled = resampled[~resampled['market_cap'].isna()].reset_index(drop=True)
     return resampled
 
 def fit_regime_model(stock_df_input,regimes):
@@ -231,9 +247,9 @@ def compute_forward_beta(all_thetas, group_hmms, group_map, h=4, kill_pi=None):
         gamma_last = G_g[-1].reshape(1, -1)
         Pi_h       = np.linalg.matrix_power(Pi_g, h)
 
+        group_members = set(group_map[group_name]) 
         for t, Theta_t in all_thetas.items():
-            if t not in [tk for gn, tks in group_map.items()
-                         for tk in tks if gn == group_name]:
+            if t not in group_members:
                 continue
 
             theta_fwd  = gamma_last @ Pi_h @ Theta_t.T

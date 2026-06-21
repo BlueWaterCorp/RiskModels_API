@@ -1,17 +1,17 @@
 
-import pandas as pd
-from Forward_beta import fit_regime_model
 import numpy as np
+import pandas as pd
 from scipy.optimize import minimize
-from Forward_beta import fit_regime_model, compute_forward_beta
+import matplotlib.pyplot as plt
+from .forward_beta import fit_regime_model, compute_forward_beta
 
-# Certain points for the code : 
-# User can't take less than 2 stock per ETF
-# Market cap used for backtest is current market cap so there is a survivership bias in the model bactest
-# Regime model require large amount of data to identify the Regimes properly so keeping the training period atleast till 2020 is required
+# Notes on the code:
+# - User can't use fewer than 2 stocks per ETF group
+# - Market cap used for the backtest is the current snapshot, so there is a survivorship bias in the backtest
+# - The regime model needs a large amount of data to identify regimes properly, so keep the training period through at least 2020
 
 def plot_growth(bt):
-    import matplotlib.pyplot as plt
+    
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9), height_ratios=[2, 1])
 
     # --- top: cumulative growth, all series ---
@@ -35,7 +35,7 @@ def plot_growth(bt):
 
 def plot_pi_comparison(bt_on, bt_off):
     """Test 2: does the transition matrix matter? Overlays real-Pi vs neutered-Pi growth."""
-    import matplotlib.pyplot as plt
+    
     plt.figure(figsize=(11, 5))
     plt.plot(bt_on['date'],  bt_on['port_growth'],  label='Π ON (real dynamics)', linewidth=2)
     plt.plot(bt_off['date'], bt_off['port_growth'], label='Π OFF (identity)', linewidth=1.5, linestyle='--')
@@ -146,9 +146,9 @@ def build_S_alpha_weights(group_results, market_caps, sigma_bar_sq):
     tickers, groups, psi_parts, nonmkt_blocks, betam_parts = [], [], [], [], []
     big_name, big_n = None, -1
     for g in group_names:
-        res = group_results[g]  # Get the data grom group_results 
-        tickers      += list(res['tickers'])   # Get ticker from each sector subsector combination, add to tikcers and form a long list of tickers 
-        groups       += [g] * len(res['tickers'])   # Repeast the group name numbre of times as the number of ticker count in the group_results
+        res = group_results[g]  # get the data from group_results
+        tickers      += list(res['tickers'])   # add this group's tickers to the flat universe list 
+        groups       += [g] * len(res['tickers'])    # repeat the group name once per ticker, parallel to `tickers`
         psi_parts    .append(np.asarray(res['psi']).ravel())
         nonmkt_blocks.append(np.asarray(res['Omega_nonmkt']))
         betam_parts  .append(np.asarray(res['beta_mkt']).ravel())

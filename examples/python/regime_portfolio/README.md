@@ -25,31 +25,32 @@ by the SDK's data model:
 
 ## Files
 
-- `Forward_beta.py` — data pull, weekly/daily/monthly returns, per-group HMM
+- `forward_beta.py` — data pull, weekly/daily/monthly returns, per-group HMM
   fit, RWLS factor loadings, forward betas (`get_forward_beta` is the
   end-to-end entry point).
-- `Portfolio_FB.py` — `ψ`/`Ω` construction, the S/α optimizer
+- `portfolio_fb.py` — `ψ`/`Ω` construction, the S/α optimizer
   (`build_S_alpha_weights`), the walk-forward backtest
   (`backtest_result_HMM`), plotting, and three diagnostic ablations.
-- `Live_HMM_Holdings.py` — `live_allocation`, the next-period target weights
+- `live_hmm_holdings.py` — `live_allocation`, the next-period target weights
   for live use (no train/test split, no scoring).
 
 ## Install
 
 Requires the `riskmodels` SDK (configured via `RiskModelsClient.from_env()`,
 no key in code), plus `numpy`, `pandas`, `scipy`, `scikit-learn`, `hmmlearn`,
-`matplotlib`. The diagnostics in the notebook additionally use `xgboost`,
-`arch`, and `yfinance`; the three library files do not.
+`matplotlib`.
 
 ## Run sequence
+
+Run from the `examples/python/` directory (the level above `regime_portfolio/`)
+so the `regime_portfolio` package is importable.
 
 Pull the data once (this is the expensive, API-credit-consuming step — cache
 it), then fit and backtest off the cached frame.
 
 ```python
 from riskmodels import RiskModelsClient
-from Forward_beta import get_forward_beta
-from Portfolio_FB import backtest_result_HMM
+from regime_portfolio import get_forward_beta, backtest_result_HMM
 
 client = RiskModelsClient.from_env()
 
@@ -73,7 +74,7 @@ cumulative-growth + drawdown chart. To avoid re-pulling, save `data` once
 For live next-period weights:
 
 ```python
-from Live_HMM_Holdings import live_allocation
+from regime_portfolio import live_allocation
 stock_w, group_w = live_allocation(client, tickers, horizon='W', h=1, regimes=2)
 # group_w = sector/subsector (ETF) allocation; stock_w = per-stock weights
 ```

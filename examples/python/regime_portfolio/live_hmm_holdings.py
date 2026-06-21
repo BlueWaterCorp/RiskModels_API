@@ -1,8 +1,8 @@
-# live_allocation.py
+# live_hmm_holdings.py — next-period target weights for live trading (no train/test split, no scoring)
 import pandas as pd
-from Forward_beta import (get_data, create_returns, get_market_cap,
+from .forward_beta import (get_data, create_returns, get_market_cap,
                           fit_regime_model, compute_forward_beta)
-from Portfolio_FB import compute_portfolio_weights, build_S_alpha_weights
+from .portfolio_fb import compute_portfolio_weights, build_S_alpha_weights
 
 
 def live_allocation(client, tickers, horizon='W', h=1, regimes=2):
