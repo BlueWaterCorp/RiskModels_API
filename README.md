@@ -159,7 +159,7 @@ Charts below are **generated from live API data** (MAG7 batch correlation + `get
 RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, enabling AI agents to directly query risk data and perform factor analysis.
 
 **MCP Connection (hosted API):**
-- **SSE Endpoint:** `https://riskmodels.app/api/mcp/sse`
+- **Endpoint (Streamable HTTP, POST):** `https://riskmodels.app/api/mcp/sse`
 - **Authentication:** Bearer token (API key or OAuth2 JWT)
 - **Discovery:** `https://riskmodels.app/.well-known/mcp.json` (see [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml))
 
