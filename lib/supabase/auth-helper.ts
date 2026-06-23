@@ -173,7 +173,7 @@ export async function authenticateOrRespond(
           message: 'Valid API key or authentication required',
           _agent: hadBearer
             ? { action: 'check_key', help_url: 'https://riskmodels.app/get-key' }
-            : { action: 'authenticate', authenticate_url: '/api/auth/provision' },
+            : { action: 'authenticate', authenticate_url: '/api/auth/provision-free' },
         },
         { status: 401, headers },
       ),

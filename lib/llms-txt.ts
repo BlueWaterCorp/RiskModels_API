@@ -23,7 +23,7 @@ ETF hedge ratios, metrics, portfolio snapshots, and a hosted MCP surface.
 You are an AI assistant reading this because someone pointed you at riskmodels.app. There are two distinct requests — handle the one they made:
 
 **1. "Set it up for this chat" / "help me analyze …"** — set yourself up now, in this conversation, with no install:
-- Discovery is free and needs no key — read the endpoints and capabilities in this file.
+- Discovery docs (this file, the OpenAPI spec, and /.well-known/mcp.json) are free and need no key.
 - For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
 - Make one real call to confirm the connection, then tell the human what you can analyze and ask what they want to look at. **Do not tell a human to open a terminal for this case.**
 
@@ -65,7 +65,7 @@ MCP URL with \`mcp-remote\` and AUTHORIZATION=Bearer … (see Quickstart / MCP R
 ## Where to integrate without a local install
 
 - Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — use with an MCP client and
-  Bearer token; discovery tools need no key; data tools bill per underlying REST route.
+  Bearer token (or the no-key OAuth connector flow). The MCP endpoint authenticates every call (including initialize), so discovery tools cost nothing but still require a key or OAuth; data tools additionally bill per underlying REST route.
 - OpenAPI: https://riskmodels.app/openapi (or /api-docs in the portal)
 - Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/docs/python-sdk
 

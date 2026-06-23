@@ -160,7 +160,7 @@ export function createAgentErrorResponse(
       action,
       ...(action === "retry" && { retry_after_seconds: 60 }),
       ...(action === "authenticate" && {
-        authenticate_url: "/api/auth/provision",
+        authenticate_url: "/api/auth/provision-free",
       }),
       ...(action === "top_up" && { top_up_url: "/api/billing/top-up" }),
       ...(action === "upgrade" && { upgrade_url: "/pricing" }),
@@ -245,7 +245,7 @@ export function createAuthErrorResponse(
     message,
     "authenticate",
     {
-      auth_url: "/api/auth/provision",
+      auth_url: "/api/auth/provision-free",
       docs_url: "/docs/api/authentication",
     },
   );
