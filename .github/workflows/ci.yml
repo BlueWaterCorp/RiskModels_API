@@ -54,6 +54,24 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Guard — no inert inline DOM handlers in MDX
+        run: |
+          # React strips lowercase on* attributes when rendering MDX, so inline
+          # `onclick="..."` etc. silently do nothing (PR #177: the docs Copy buttons
+          # were dead and copied nothing). Use a client component with a real
+          # React onClick handler instead. Scoped to content/*.mdx where hand-written
+          # HTML sneaks in; .tsx uses camelCase onClick via tooling.
+          HITS=$(grep -rnE '\son(click|load|change|submit|input|mouseover|mouseout|keydown|keyup|focus|blur|error)=' \
+            content --include='*.mdx' 2>/dev/null || true)
+          if [ -n "$HITS" ]; then
+            echo "❌ Inert inline DOM event handler(s) in MDX — React strips these, the control does nothing:"
+            echo "$HITS"
+            echo ""
+            echo "Fix: render a client component (e.g. components/docs/CopyInline.tsx) with a real onClick."
+            exit 1
+          fi
+          echo "✅ No inert inline DOM handlers in MDX"
+
       - name: Unit tests (Vitest)
         run: npm test
 

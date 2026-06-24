@@ -29,6 +29,10 @@ jobs:
     # See: https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsif
     env:
       TEST_API_SECRET: ${{ secrets.TEST_API_SECRET }}
+      # Optional: a Supabase personal access token (sbp_…) with read access to the
+      # project's auth config. If empty, the "Login lands on riskmodels.app" check
+      # is skipped. Add via GitHub → Settings → Secrets → SUPABASE_MGMT_PAT.
+      SUPABASE_MGMT_PAT: ${{ secrets.SUPABASE_MGMT_PAT }}
 
     steps:
       - uses: actions/checkout@v6
@@ -71,6 +75,52 @@ jobs:
             fi
             echo "✅ ${ENDPOINT} → $STATUS (auth enforced)"
           done
+
+      - name: MCP connector advertises OAuth (keyless 401 → WWW-Authenticate)
+        run: |
+          # Regression guard for MCP_ADVERTISE_OAUTH. When unset, keyless /api/mcp/sse
+          # returns a bare 401 with no challenge and Claude's web connector hangs at
+          # "Connect" (reported by Garrett, 2026-06-23). Bearer-key clients never hit
+          # this branch, so this is the only automated signal that the connector is wired.
+          HDRS=$(curl -s -D - -o /dev/null -X POST https://riskmodels.app/api/mcp/sse \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","method":"initialize","id":1}')
+          if ! printf '%s' "$HDRS" | grep -qi '^www-authenticate:.*oauth-protected-resource'; then
+            echo "❌ Keyless /api/mcp/sse is missing the WWW-Authenticate OAuth challenge — the connector will hang."
+            echo "   (Check MCP_ADVERTISE_OAUTH=true in Vercel prod env.)"
+            printf '%s' "$HDRS" | head -20
+            exit 1
+          fi
+          echo "✅ /api/mcp/sse advertises the OAuth challenge"
+
+      - name: OAuth discovery chain reachable
+        run: |
+          for P in "/.well-known/oauth-protected-resource" "/.well-known/oauth-authorization-server"; do
+            S=$(curl -s -o /dev/null -w "%{http_code}" "https://riskmodels.app${P}")
+            if [ "$S" != "200" ]; then echo "❌ ${P} → $S"; exit 1; fi
+            echo "✅ ${P} → 200"
+          done
+
+      - name: Login lands on riskmodels.app (Supabase auth config)
+        if: ${{ env.SUPABASE_MGMT_PAT != '' }}
+        run: |
+          # Catches the .net/.app regression (2026-06-23): if site_url is the dead
+          # .net stub, or the allowlist lacks the riskmodels.app/** wildcard, magic-link
+          # and Google sign-in fall back to a domain with no /auth/callback and login dies.
+          REF=plurbatnjhpullghyhol
+          CFG=$(curl -s "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_MGMT_PAT")
+          printf '%s' "$CFG" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          if set(d) == {'message'}:
+              raise SystemExit('❌ management API error: ' + str(d))
+          su = d.get('site_url', '')
+          al = d.get('uri_allow_list', '')
+          assert su.startswith('https://riskmodels.app'), f'site_url is {su!r} — must be riskmodels.app, not the .net stub'
+          assert 'https://riskmodels.app/**' in al, 'allowlist missing https://riskmodels.app/** — the ?next= callback will fall back to site_url'
+          print('✅ Supabase site_url + allowlist point at riskmodels.app')
+          "
 
       # Smoke runs on push immediately; Vercel often has not finished deploying the same commit yet.
       - name: Wait for Vercel deploy (push to main only)
