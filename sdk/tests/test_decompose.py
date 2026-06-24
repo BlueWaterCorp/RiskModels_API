@@ -66,6 +66,35 @@ def test_decompose_as_dataframe_returns_four_rows_with_attrs():
     assert df.attrs.get("riskmodels_kind") == "decompose_position"
 
 
+DECOMPOSE_RESPONSE_V4 = {
+    **DECOMPOSE_RESPONSE,
+    "stock_specific": {"explained_variance": 0.66, "hedgeable": False},
+    "style": {"explained_variance": 0.03, "hedgeable": False, "role": "diagnostic"},
+}
+
+
+def test_decompose_as_dataframe_includes_v4_blocks():
+    pd = pytest.importorskip("pandas")
+    captured: dict = {}
+    client = _mock_client(DECOMPOSE_RESPONSE_V4, captured)
+    df = client.decompose("NVDA", as_dataframe=True)
+    assert list(df["layer"]) == [
+        "market",
+        "sector",
+        "subsector",
+        "residual",
+        "style",
+        "stock_specific",
+    ]
+    ss = df.loc[df["layer"] == "stock_specific"].iloc[0]
+    assert ss["er"] == 0.66
+    assert ss["hr"] is None or pd.isna(ss["hr"])
+    # industry layers stay hedgeable; residual + style + stock_specific are not
+    assert bool(df.loc[df["layer"] == "market", "hedgeable"].iloc[0]) is True
+    assert bool(df.loc[df["layer"] == "style", "hedgeable"].iloc[0]) is False
+    assert bool(df.loc[df["layer"] == "stock_specific", "hedgeable"].iloc[0]) is False
+
+
 def test_decompose_hedge_map_matches_sign_convention():
     """hedge[etf] must equal -exposure[layer].hr for each tradable layer."""
     captured: dict = {}

@@ -397,13 +397,20 @@ class RiskModelsClient:
 
         Args:
             ticker: Stock ticker symbol (e.g., ``"NVDA"``).
-            as_dataframe: If True, return a 4-row DataFrame (one per layer) with
+            as_dataframe: If True, return a DataFrame (one row per layer) with
                 SDK metadata in ``df.attrs``. If False (default), return raw JSON.
 
         Returns:
             Dict or DataFrame with columns: ``ticker``, ``layer``, ``er``
-            (explained risk fraction), ``hr`` (hedge ratio), ``hedge_etf``
-            (which ETF to trade), ``data_as_of``.
+            (explained-variance fraction), ``hr`` (hedge ratio), ``hedge_etf``
+            (which ETF to trade), ``hedgeable``, ``data_as_of``.
+
+            The DataFrame carries the industry layers (``market``, ``sector``,
+            ``subsector``, ``residual``) plus the v4 named blocks ``style`` and
+            ``stock_specific`` when the API returns them (``hedgeable=False``; their
+            ``er`` is the explained-variance share, ``hr``/``hedge_etf`` null).
+            ``stock_specific`` is the doubly-cleaned skill residual (the headline
+            idiosyncratic-alpha number); ``style`` is the size+value diagnostic.
 
             Raw JSON dict also includes ``hedge_levels`` (L1/L2/L3) when the route adds it —
             compare levels with :meth:`get_hedge_levels` which reads from ``GET /metrics``.
@@ -439,9 +446,26 @@ class RiskModelsClient:
                     "er": layer.get("er"),
                     "hr": layer.get("hr"),
                     "hedge_etf": layer.get("hedge_etf"),
+                    "hedgeable": layer_name != "residual",
                     "data_as_of": body.get("data_as_of"),
                 }
             )
+        # v4 named blocks (top-level, additive — present once the API ships them).
+        # `er` is their explained-variance share; they carry no tradable hedge.
+        for block_name in ("style", "stock_specific"):
+            block = body.get(block_name) if isinstance(body, dict) else None
+            if isinstance(block, dict):
+                rows.append(
+                    {
+                        "ticker": body.get("ticker"),
+                        "layer": block_name,
+                        "er": block.get("explained_variance"),
+                        "hr": None,
+                        "hedge_etf": None,
+                        "hedgeable": bool(block.get("hedgeable", False)),
+                        "data_as_of": body.get("data_as_of"),
+                    }
+                )
         df = pd.DataFrame(rows)
         attach_sdk_metadata(df, lineage, kind="decompose_position")
         return df
