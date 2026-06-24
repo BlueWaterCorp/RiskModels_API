@@ -72,9 +72,12 @@ export type V3MetricKey =
   | "stock_specific_er"
   | "style_er_l3"
   | "stock_specific_er_l3"
+  | "stock_specific_sharpe_36m"
   | "l1_mkt_beta"
   | "l2_sec_beta"
   | "l3_sub_beta"
+  | "size_beta"
+  | "value_beta"
   | "l2_ff_smb_er"
   | "l3_ff_smb_er"
   | "l3_ff_hml_er"
@@ -97,6 +100,15 @@ const HEDGE_RATIO_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
 
 /** Lstar fields may be absent from `security_history_latest` until ERM3 sync backfill. */
 const LSTAR_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>(["lstar_rr", "lstar_level"]);
+
+/**
+ * stock_specific skill scalars served straight from the hedge zarr (no Supabase column).
+ * Without an overlay these would only populate when another overlay key happens to force a
+ * zarr read; listing them here makes the zarr read fire whenever the latest row lacks them.
+ */
+const STOCK_SPECIFIC_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
+  "stock_specific_sharpe_36m",
+]);
 
 export type V3Periodicity = "daily" | "monthly";
 
@@ -181,6 +193,10 @@ export interface LatestSummaryRow {
   l1_mkt_beta?: number | null;
   l2_sec_beta?: number | null;
   l3_sub_beta?: number | null;
+  // Per-stock style loadings from the end-of-cascade stock_specific strip (lstar basis):
+  // SMB (size_beta) / HML (value_beta) → v4 style.exposures.{size,value}.beta.
+  size_beta?: number | null;
+  value_beta?: number | null;
   updated_at: string | null;
 }
 
@@ -204,6 +220,9 @@ export const RANKING_METRICS = [
   "er_l1",
   "er_l2",
   "er_l3",
+  // 36m Sharpe of the stock_specific (L*) skill residual → v4 stock_specific.rank_percentile.
+  // Ranked under the universe cohort, window-independent (canonical '1d' only) in ERM3.
+  "stock_specific_lstar",
 ] as const;
 
 /**
@@ -663,6 +682,8 @@ export async function fetchLatestSummary(
         l1_mkt_beta: row.l1_mkt_beta ?? null,
         l2_sec_beta: row.l2_sec_beta ?? null,
         l3_sub_beta: row.l3_sub_beta ?? null,
+        size_beta: row.size_beta ?? null,
+        value_beta: row.value_beta ?? null,
       },
     };
   } catch (error) {
@@ -799,6 +820,9 @@ export async function fetchLatestMetricsWithFallback(
 
   const requestedHrOverlay = keys.some((k) => HEDGE_RATIO_ZARR_OVERLAY_KEYS.has(k));
   const requestedLstarOverlay = keys.some((k) => LSTAR_ZARR_OVERLAY_KEYS.has(k));
+  const requestedStockSpecificOverlay = keys.some((k) =>
+    STOCK_SPECIFIC_ZARR_OVERLAY_KEYS.has(k),
+  );
   const needZarrOverlay =
     fromLatest != null &&
     ((requestedHrOverlay &&
@@ -810,6 +834,11 @@ export async function fetchLatestMetricsWithFallback(
       (requestedLstarOverlay &&
         keys.some((k) => {
           if (!LSTAR_ZARR_OVERLAY_KEYS.has(k)) return false;
+          return fromLatest.metrics[k] == null;
+        })) ||
+      (requestedStockSpecificOverlay &&
+        keys.some((k) => {
+          if (!STOCK_SPECIFIC_ZARR_OVERLAY_KEYS.has(k)) return false;
           return fromLatest.metrics[k] == null;
         })));
 
@@ -831,6 +860,8 @@ export async function fetchLatestMetricsWithFallback(
         filtered[k] = z != null ? z : l ?? null;
       }
     } else if (LSTAR_ZARR_OVERLAY_KEYS.has(k)) {
+      filtered[k] = l != null ? l : z ?? null;
+    } else if (STOCK_SPECIFIC_ZARR_OVERLAY_KEYS.has(k)) {
       filtered[k] = l != null ? l : z ?? null;
     } else {
       filtered[k] = l ?? z ?? null;

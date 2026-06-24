@@ -137,6 +137,10 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // cleanly to ~1 (l3_res_er ≈ Style_ER_l3 + StockSpecific_ER_l3).
   style_er_l3: { role: "hedge", zarrVar: "Style_ER_l3" },
   stock_specific_er_l3: { role: "hedge", zarrVar: "StockSpecific_ER_l3" },
+  // 36-month annualized Sharpe of the stock_specific (L*) skill residual → v4
+  // stock_specific.sharpe_36m. Served straight from the hedge zarr (no Supabase
+  // column); reliably populated via STOCK_SPECIFIC_ZARR_OVERLAY_KEYS.
+  stock_specific_sharpe_36m: { role: "hedge", zarrVar: "StockSpecific_Sharpe36m_lstar" },
 
   // Fama–French style cascade — HEDGE vars only (ds_erm3_hedge_weights). The v4
   // producer (e4cab09) retired the FF *returns* levels (l2_ff_smb / l3_ff_smb_hml)

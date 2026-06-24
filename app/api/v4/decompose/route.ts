@@ -4,6 +4,7 @@ import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import {
   resolveSymbolByTicker,
   fetchLatestMetricsWithFallback,
+  fetchRankingsFromSecurityHistory,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
@@ -115,6 +116,11 @@ export const POST = withBilling(
           "stock_specific_er",
           "style_er_l3",
           "stock_specific_er_l3",
+          // per-stock SMB/HML loadings (Supabase columns) → style.exposures.*.beta
+          "size_beta",
+          "value_beta",
+          // 36m skill Sharpe (hedge zarr, overlay-served) → stock_specific.sharpe_36m
+          "stock_specific_sharpe_36m",
         ],
         "daily",
       );
@@ -131,6 +137,29 @@ export const POST = withBilling(
 
       const metadata = await getRiskMetadata();
       const m = latestData.metrics;
+
+      // stock_specific skill rank: cross-sectional percentile of the 36m Sharpe within the
+      // universe cohort (rankings zarr). Best-effort — a rankings miss leaves it null rather
+      // than failing the decomposition.
+      let stockSpecificRankPct: number | null = null;
+      try {
+        const { rankings } = await fetchRankingsFromSecurityHistory(
+          symbolRecord.symbol,
+          { metric: "stock_specific_lstar", cohort: "universe", window: "1d" },
+        );
+        const row = rankings.find(
+          (r) =>
+            r.metric === "stock_specific_lstar" &&
+            r.cohort === "universe" &&
+            r.window === "1d",
+        );
+        stockSpecificRankPct = row?.rank_percentile ?? null;
+      } catch (err) {
+        console.warn(
+          `[v4/decompose] stock_specific rankings lookup failed for ${ticker}:`,
+          err,
+        );
+      }
 
       const sectorEtf = symbolRecord.sector_etf ?? null;
       const subsectorEtf =
@@ -178,17 +207,18 @@ export const POST = withBilling(
           explained_variance: styleEv,
           hedgeable: false,
           role: "diagnostic",
-          // Per-stock size/value betas land from ERM3; null until then.
+          // Per-stock size/value loadings from the stock_specific strip (lstar basis).
           exposures: {
-            size: { factor: SIZE_FACTOR, beta: null as number | null },
-            value: { factor: VALUE_FACTOR, beta: null as number | null },
+            size: { factor: SIZE_FACTOR, beta: num(m.size_beta) },
+            value: { factor: VALUE_FACTOR, beta: num(m.value_beta) },
           },
         },
         stock_specific: {
           explained_variance: stockSpecificEv,
-          // Tier-2 skill metrics (computed on L*); null until the rankings land.
-          sharpe_36m: null as number | null,
-          rank_percentile: null as number | null,
+          // Tier-2 skill metrics (computed on L*): 36m Sharpe of the skill residual and its
+          // cross-sectional rank percentile within the universe cohort.
+          sharpe_36m: num(m.stock_specific_sharpe_36m),
+          rank_percentile: stockSpecificRankPct,
         },
       };
 
