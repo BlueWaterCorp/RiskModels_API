@@ -20,6 +20,12 @@ export type ZarrMetricSpec =
         | "sector"
         | "subsector"
         | "lstar"
+        | "stock_specific_l3"
+        | "stock_specific_lstar"
+        // Retired by the v4 producer (e4cab09): ds_erm3_returns no longer carries
+        // these style-cascade levels. Kept here only until the axis=style residual
+        // dispatch in lstar-service.ts is repointed/retired post-rebuild. See
+        // docs/ERM3_STOCK_SPECIFIC_DEEP_PANEL_UPDATE.md §1.
         | "l2_ff_smb"
         | "l3_ff_smb_hml";
     }
@@ -102,6 +108,23 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // erm3.shared.output_manager.materialize_lstar_level_in_returns_zarr. SDK
   // callers wanting a non-default threshold still hit GET /lstar.
   lstar_rr: { role: "returns", zarrVar: "residual_return", level: "lstar" },
+
+  // v4 stock-specific (doubly-cleaned) residual returns. The producer
+  // (erm3 output_manager.materialize, e4cab09) writes two new levels in
+  // ds_erm3_returns: stock_specific_l3 (OLS ff3 strip off the fixed L3 subsector
+  // residual) and stock_specific_lstar (off the adaptive lstar residual = the
+  // skill feature). factor_return / combined_factor_return are NaN at these
+  // levels — only residual_return is meaningful, mirroring lstar_rr above.
+  stock_specific_rr_l3: {
+    role: "returns",
+    zarrVar: "residual_return",
+    level: "stock_specific_l3",
+  },
+  stock_specific_rr_lstar: {
+    role: "returns",
+    zarrVar: "residual_return",
+    level: "stock_specific_lstar",
+  },
 
   // Companion uint8 var: per (teo, symbol) which level Lstar dispatched to.
   // Raw encoding 0 = no recommendation (both L2 and L3 ER NaN), 1 = L1, 2 = L2,

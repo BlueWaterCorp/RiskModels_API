@@ -23,6 +23,19 @@ describe("zarr-metric-registry — Lstar metrics", () => {
     });
   });
 
+  it("v4 stock_specific residual returns map to the new ds_erm3_returns levels", () => {
+    expect(getZarrSpec("stock_specific_rr_l3")).toMatchObject({
+      role: "returns",
+      zarrVar: "residual_return",
+      level: "stock_specific_l3",
+    });
+    expect(getZarrSpec("stock_specific_rr_lstar")).toMatchObject({
+      role: "returns",
+      zarrVar: "residual_return",
+      level: "stock_specific_lstar",
+    });
+  });
+
   it("style cascade metrics map to FF zarr variables", () => {
     expect(getZarrSpec("l2_ff_smb_er")).toMatchObject({
       role: "hedge",
