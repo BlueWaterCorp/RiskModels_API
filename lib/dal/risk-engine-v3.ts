@@ -70,6 +70,8 @@ export type V3MetricKey =
   | "stock_specific_rr_lstar"
   | "style_er"
   | "stock_specific_er"
+  | "style_er_l3"
+  | "stock_specific_er_l3"
   | "l1_mkt_beta"
   | "l2_sec_beta"
   | "l3_sub_beta"
