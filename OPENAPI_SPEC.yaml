@@ -5,7 +5,7 @@ info:
   description: >
     POST /decompose returns variance shares and ETF hedge ratios for any US equity,
     separating factor exposure from the residual bet so you can hedge what you don't want.
-    Daily history to 2006 across ~3,000 US equities.
+    Daily history to 2000 across ~3,000 US equities.
 
     Precision equity risk intelligence platform with AI agent integration.
 
@@ -24,7 +24,8 @@ info:
 
 
     **Data**: Universe `uni_mc_3000` (top ~3,000 US stocks by market cap), date range
-    2006-01-04 to present, updated daily end-of-day. Model outputs are computed by the ERM3
+    2000 to present (deep panel; stock-specific skill series from ~2001 after warmup),
+    updated daily end-of-day. Model outputs are computed by the ERM3
     regression system (Huber/Ridge), with Zarr v2 archives on Google Cloud Storage for research
     pipelines. The live API reads primarily from Supabase **V3** tables: long-form
     `security_history` (returns, volatility, L1/L2/L3 hedge ratios and explained-risk metrics),

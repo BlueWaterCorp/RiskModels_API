@@ -21,13 +21,7 @@ export type ZarrMetricSpec =
         | "subsector"
         | "lstar"
         | "stock_specific_l3"
-        | "stock_specific_lstar"
-        // Retired by the v4 producer (e4cab09): ds_erm3_returns no longer carries
-        // these style-cascade levels. Kept here only until the axis=style residual
-        // dispatch in lstar-service.ts is repointed/retired post-rebuild. See
-        // docs/ERM3_STOCK_SPECIFIC_DEEP_PANEL_UPDATE.md §1.
-        | "l2_ff_smb"
-        | "l3_ff_smb_hml";
+        | "stock_specific_lstar";
     }
   | {
       /**
@@ -132,7 +126,17 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // the `lstar: null` semantics of GET /lstar) or 1/2/3.
   lstar_level: { role: "returnsFlat", zarrVar: "lstar_level", nullSentinel: 0 },
 
-  // Fama–French style cascade (parallel to industry; ds_erm3_hedge_weights + returns)
+  // v4 Tier-1 explained-variance scalars (ds_erm3_hedge_weights, L* skill basis —
+  // see BWMACRO ff_block_architecture_decision.md). style_er = incremental size+value
+  // share; stock_specific_er = final idiosyncratic share. style_er + stock_specific_er
+  // ≈ the L* residual share; style is diagnostic (no hedge notional).
+  style_er: { role: "hedge", zarrVar: "Style_ER_lstar" },
+  stock_specific_er: { role: "hedge", zarrVar: "StockSpecific_ER_lstar" },
+
+  // Fama–French style cascade — HEDGE vars only (ds_erm3_hedge_weights). The v4
+  // producer (e4cab09) retired the FF *returns* levels (l2_ff_smb / l3_ff_smb_hml)
+  // from ds_erm3_returns, so the style-axis residual-return series is gone; style
+  // is now a diagnostic ER/HR block. See docs/ERM3_STOCK_SPECIFIC_DEEP_PANEL_UPDATE.md §1.
   l2_ff_smb_er: { role: "hedge", zarrVar: "L2_ff_smb_ER" },
   l3_ff_smb_er: { role: "hedge", zarrVar: "L3_ff_smb_ER" },
   l3_ff_hml_er: { role: "hedge", zarrVar: "L3_ff_hml_ER" },
@@ -141,16 +145,6 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   l3_ff_mkt_hr: { role: "hedge", zarrVar: "L3_ff_market_HR" },
   l3_ff_smb_hr: { role: "hedge", zarrVar: "L3_ff_smb_HR" },
   l3_ff_hml_hr: { role: "hedge", zarrVar: "L3_ff_hml_HR" },
-  l2_ff_smb_rr: {
-    role: "returns",
-    zarrVar: "residual_return",
-    level: "l2_ff_smb",
-  },
-  l3_ff_smb_hml_rr: {
-    role: "returns",
-    zarrVar: "residual_return",
-    level: "l3_ff_smb_hml",
-  },
 };
 
 export function getZarrSpec(key: V3MetricKey): ZarrMetricSpec | undefined {

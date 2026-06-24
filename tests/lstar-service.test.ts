@@ -52,17 +52,15 @@ describe("pickLstar (style axis)", () => {
 });
 
 describe("dispatchStyleLstarResidualReturn", () => {
-  const row = {
-    teo: "2026-01-01",
-    l1_rr: 0.01,
-    l2_ff_smb_rr: 0.02,
-    l3_ff_smb_hml_rr: 0.03,
-  };
+  // v4 (stock_specific reset): the style-axis residual-return series was retired —
+  // ds_erm3_returns no longer carries l2_ff_smb / l3_ff_smb_hml. Only L1 (market
+  // residual) survives; L2/L3 return null (style is now a diagnostic ER/HR block).
+  const row = { teo: "2026-01-01", l1_rr: 0.01 };
 
-  it("routes to the matching style-level residual return", () => {
+  it("returns the market residual at L1 and null at L2/L3 (style rr retired)", () => {
     expect(dispatchStyleLstarResidualReturn("L1", row)).toBe(0.01);
-    expect(dispatchStyleLstarResidualReturn("L2", row)).toBe(0.02);
-    expect(dispatchStyleLstarResidualReturn("L3", row)).toBe(0.03);
+    expect(dispatchStyleLstarResidualReturn("L2", row)).toBeNull();
+    expect(dispatchStyleLstarResidualReturn("L3", row)).toBeNull();
   });
 });
 

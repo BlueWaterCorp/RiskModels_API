@@ -108,6 +108,10 @@ export const POST = withBilling(
           "l3_sec_er",
           "l3_sub_er",
           "l3_res_er",
+          // v4 Tier-1 explained-variance scalars (L* skill basis): style = incremental
+          // size+value share (diagnostic); stock_specific = final idiosyncratic share.
+          "style_er",
+          "stock_specific_er",
         ],
         "daily",
       );
@@ -226,6 +230,19 @@ export const POST = withBilling(
         data_as_of: metadata.data_as_of,
         teo: latestData.teo,
         exposure: layers,
+        // v4 named blocks (additive — legacy `exposure.residual` retained for
+        // back-compat / decompose_legacy consumers). stock_specific = doubly-cleaned
+        // skill residual share (the headline noun); style = incremental size+value
+        // share (diagnostic only — not a tradeable hedge, hence hedgeable:false).
+        stock_specific: {
+          explained_variance: num(m.stock_specific_er),
+          hedgeable: false,
+        },
+        style: {
+          explained_variance: num(m.style_er),
+          hedgeable: false,
+          role: "diagnostic",
+        },
         hedge,
         hedge_levels,
         _metadata: buildMetadataBody(metadata, { factors: tickerFactors }),
