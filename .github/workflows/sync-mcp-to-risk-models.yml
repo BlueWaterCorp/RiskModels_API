@@ -3,7 +3,7 @@
 # =============================================================================
 #
 # Canonical: RiskModels_API (OPENAPI_SPEC.yaml, mcp/data/*).
-# Mirror: Risk_Models/riskmodels_com/mcp-server/data/ (portal + bundled MCP).
+# Mirror: Risk_Models/riskmodels_net/mcp-server/data/ (portal + bundled MCP).
 #
 # TRIGGERS:
 #   - push to main when spec or MCP data changes
@@ -71,7 +71,7 @@ jobs:
       - name: Copy MCP artifacts
         run: |
           set -e
-          DST="risk_models/riskmodels_com/mcp-server/data"
+          DST="risk_models/riskmodels_net/mcp-server/data"
           if [ ! -d "$DST" ]; then
             echo "Expected directory missing: $DST"
             exit 1
@@ -96,11 +96,11 @@ jobs:
           cd risk_models
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add riskmodels_com/mcp-server/data/schema-paths.json \
-                  riskmodels_com/mcp-server/data/openapi.json \
-                  riskmodels_com/mcp-server/data/schemas/
-          if [ -f riskmodels_com/mcp-server/data/capabilities.json ]; then
-            git add riskmodels_com/mcp-server/data/capabilities.json
+          git add riskmodels_net/mcp-server/data/schema-paths.json \
+                  riskmodels_net/mcp-server/data/openapi.json \
+                  riskmodels_net/mcp-server/data/schemas/
+          if [ -f riskmodels_net/mcp-server/data/capabilities.json ]; then
+            git add riskmodels_net/mcp-server/data/capabilities.json
           fi
           if git diff --staged --quiet; then
             echo "No changes; Risk_Models mirror already matches."
