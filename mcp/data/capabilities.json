@@ -1196,7 +1196,7 @@
   {
     "id": "decompose-position",
     "name": "Decompose Position",
-    "description": "Decompose a single ticker into four additive ERM3 layers (market, sector, subsector, residual) with tradable hedge ETFs and a consolidated hedge map. Thin semantic wrapper over the metrics DAL; same billing profile as GET /metrics/{ticker}.",
+    "description": "Decompose a single ticker into additive ERM3 layers (market, sector, subsector, residual) with tradable hedge ETFs and a consolidated hedge map, plus v4 named blocks: `stock_specific` (the doubly-cleaned skill residual — explained-variance share, the headline idiosyncratic-alpha number) and `style` (size+value diagnostic block — explained-variance share, hedgeable:false). Thin semantic wrapper over the metrics DAL; same billing profile as GET /metrics/{ticker}.",
     "endpoint": "/api/decompose",
     "method": "POST",
     "parameters": {
