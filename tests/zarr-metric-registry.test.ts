@@ -23,7 +23,21 @@ describe("zarr-metric-registry — Lstar metrics", () => {
     });
   });
 
-  it("style cascade metrics map to FF zarr variables", () => {
+  it("v4 stock_specific residual returns map to the new ds_erm3_returns levels", () => {
+    expect(getZarrSpec("stock_specific_rr_l3")).toMatchObject({
+      role: "returns",
+      zarrVar: "residual_return",
+      level: "stock_specific_l3",
+    });
+    expect(getZarrSpec("stock_specific_rr_lstar")).toMatchObject({
+      role: "returns",
+      zarrVar: "residual_return",
+      level: "stock_specific_lstar",
+    });
+  });
+
+  it("style cascade exposes FF HEDGE vars only (returns levels retired in v4)", () => {
+    // ER/HR cascade survives (ds_erm3_hedge_weights still carries the FF hedge vars)…
     expect(getZarrSpec("l2_ff_smb_er")).toMatchObject({
       role: "hedge",
       zarrVar: "L2_ff_smb_ER",
@@ -32,15 +46,9 @@ describe("zarr-metric-registry — Lstar metrics", () => {
       role: "hedge",
       zarrVar: "L3_ff_hml_ER",
     });
-    expect(getZarrSpec("l2_ff_smb_rr")).toMatchObject({
-      role: "returns",
-      zarrVar: "residual_return",
-      level: "l2_ff_smb",
-    });
-    expect(getZarrSpec("l3_ff_smb_hml_rr")).toMatchObject({
-      role: "returns",
-      zarrVar: "residual_return",
-      level: "l3_ff_smb_hml",
-    });
+    // …but the FF *returns* levels (l2_ff_smb / l3_ff_smb_hml) were retired by the
+    // v4 producer, so the style-axis residual-return series is no longer registered.
+    expect(getZarrSpec("l2_ff_smb_rr" as never)).toBeUndefined();
+    expect(getZarrSpec("l3_ff_smb_hml_rr" as never)).toBeUndefined();
   });
 });

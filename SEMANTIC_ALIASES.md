@@ -230,7 +230,7 @@ Batch responses use **`full_metrics`** (long keys like `l3_market_hr`) and **`he
 ## Dataset Coverage
 
 - **Universe**: ~3,000 US equities (`uni_mc_3000` — top market cap)
-- **Date range**: 2006-01-04 to present
+- **Date range**: 2000 to present (deep panel; stock-specific skill series from ~2001 after warmup)
 - **Update frequency**: Daily (end-of-day)
 - **Backend**: Zarr v2 on Google Cloud Storage (`gs://rm_api_data/`) — three datasets: Returns, Betas, Hedge Weights
 - **Regression method**: Huber/Ridge regression via the ERM3 computation engine

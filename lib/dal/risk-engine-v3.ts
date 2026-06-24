@@ -66,6 +66,10 @@ export type V3MetricKey =
   | "l3_rr"
   | "lstar_rr"
   | "lstar_level"
+  | "stock_specific_rr_l3"
+  | "stock_specific_rr_lstar"
+  | "style_er"
+  | "stock_specific_er"
   | "l1_mkt_beta"
   | "l2_sec_beta"
   | "l3_sub_beta"
@@ -76,9 +80,7 @@ export type V3MetricKey =
   | "l2_ff_smb_hr"
   | "l3_ff_mkt_hr"
   | "l3_ff_smb_hr"
-  | "l3_ff_hml_hr"
-  | "l2_ff_smb_rr"
-  | "l3_ff_smb_hml_rr";
+  | "l3_ff_hml_hr";
 
 /**
  * Sector/subsector HR in `security_history_latest` may be 0 or null while Zarr (ERM3 SSOT)

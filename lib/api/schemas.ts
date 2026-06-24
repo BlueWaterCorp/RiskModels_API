@@ -13,13 +13,16 @@ export const TickerSchema = z
 
 /**
  * Common schema for history years.
- * Minimum 1 year, maximum 15 years as per OPENAPI_SPEC.yaml.
+ * Minimum 1 year, maximum 27 years — the v4 deep panel pushes the history floor
+ * back to ~2000 (stock_specific from ~2001 after the 252d style-ETF warmup), so a
+ * 15y cap from "today" would clip ~11 years of available depth. See OPENAPI_SPEC.yaml
+ * and docs/ERM3_STOCK_SPECIFIC_DEEP_PANEL_UPDATE.md §3.
  */
 export const YearsSchema = z.coerce
   .number()
   .int()
   .min(1, "Minimum history is 1 year")
-  .max(15, "Maximum history is 15 years")
+  .max(27, "Maximum history is 27 years")
   .default(1);
 
 /**

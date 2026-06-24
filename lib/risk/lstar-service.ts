@@ -76,7 +76,8 @@ export interface LstarResult {
   total_er: (number | null)[];
   /**
    * Daily simple residual return at the chosen Lstar level.
-   * Industry: `l1_rr` / `l2_rr` / `l3_rr`. Style: `l1_rr` / `l2_ff_smb_rr` / `l3_ff_smb_hml_rr`.
+   * Industry: `l1_rr` / `l2_rr` / `l3_rr`. Style: `l1_rr` at L1 only — the L2/L3
+   * style residual-return series was retired in v4 (style is a diagnostic block).
    */
   residual_return: (number | null)[];
   /**
@@ -131,8 +132,6 @@ const STYLE_KEYS: V3MetricKey[] = [
   "l3_ff_smb_er",
   "l3_ff_hml_er",
   "l1_rr",
-  "l2_ff_smb_rr",
-  "l3_ff_smb_hml_rr",
 ];
 
 /**
@@ -168,13 +167,19 @@ export function dispatchLstarResidualReturn(
   return null;
 }
 
-/** Residual return at the chosen style Lstar level. */
+/**
+ * Residual return at the chosen style Lstar level.
+ *
+ * v4 (ERM3 stock_specific reset, e4cab09): the style-axis residual-return series
+ * was retired — ds_erm3_returns no longer carries the l2_ff_smb / l3_ff_smb_hml
+ * levels. Style is now a diagnostic block (ER/HR only), so L2/L3 return null; L1
+ * is the market residual (l1_rr), unchanged. The skill residual now lives on its
+ * own basis via stock_specific_rr_lstar, not the style cascade.
+ */
 export function dispatchStyleLstarResidualReturn(
   chosen: LstarLevel | null,
   row: PivotedHistoryRow,
 ): number | null {
-  if (chosen === "L3") return extractMetric(row, "l3_ff_smb_hml_rr");
-  if (chosen === "L2") return extractMetric(row, "l2_ff_smb_rr");
   if (chosen === "L1") return extractMetric(row, "l1_rr");
   return null;
 }

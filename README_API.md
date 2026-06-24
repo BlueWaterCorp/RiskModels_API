@@ -16,10 +16,10 @@ The RiskModels API provides institutional-grade equity risk analysis for AI agen
 
 - **Daily factor decompositions** — market, sector, and subsector explained-risk fractions for ~3,000 US equities
 - **Hedge ratios** — dollar-denominated ETF hedge amounts at three precision levels (L1 market-only, L2 market+sector, L3 full three-ETF)
-- **Historical time series** — split- and dividend-adjusted daily returns plus rolling hedge ratios going back to 2006
+- **Historical time series** — split- and dividend-adjusted daily returns plus rolling hedge ratios going back to 2000
 - **AI-agent ready** — machine-readable manifest at `/.well-known/agent-manifest`, per-request billing via prepaid balance
 
-**Data coverage:** Universe `uni_mc_3000` (~3,000 top US stocks), date range 2006-01-04 to present, updated daily.
+**Data coverage:** Universe `uni_mc_3000` (~3,000 top US stocks), date range 2000 to present (deep panel; stock-specific skill series from ~2001), updated daily.
 
 ---
 
