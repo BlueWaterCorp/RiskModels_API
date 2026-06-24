@@ -303,6 +303,20 @@ export const DecomposeRequestSchema = z.object({
 export type DecomposeRequest = z.infer<typeof DecomposeRequestSchema>;
 
 /**
+ * POST /api/v4/decompose — canonical named-block decomposition.
+ * `basis` selects the explained-variance basis for the style / stock_specific
+ * blocks: `L3` (tradeable-hedge basis, default — gives the clean
+ * market+industry+style+stock_specific≈1 partition) or `lstar` (adaptive skill
+ * basis). Industry hedge layers are always L3; skill metrics are always L*.
+ */
+export const DecomposeV4RequestSchema = z.object({
+  ticker: TickerSchema,
+  basis: z.enum(["L3", "lstar"]).default("L3"),
+});
+
+export type DecomposeV4Request = z.infer<typeof DecomposeV4RequestSchema>;
+
+/**
  * Schema for POST /api/batch/analyze
  */
 export const BatchAnalyzeRequestSchema = z.object({

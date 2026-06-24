@@ -49,13 +49,13 @@ STEPS = [
     ("Gross return",   "stock total return (the input)",          INK,    "input",
      "—",                                "returns_gross"),
     ("Market",         "broad-market beta · SPY",                 NAVY,   "ETF-hedgeable",
-     "decomposition.market",             "l1_mkt_er"),
+     "decomposition.market",                    "l3_mkt_er"),
     ("Sector",         "industry block · L2",                     TEAL,   "ETF-hedgeable",
-     "blocks.industry.layers.sector",    "l3_sec_er"),
+     "decomposition.industry.layers.sector",    "l3_sec_er"),
     ("Subsector",      "industry block · L3",                     VIOLET, "ETF-hedgeable",
-     "blocks.industry.layers.subsector", "l3_sub_er"),
+     "decomposition.industry.layers.subsector", "l3_sub_er"),
     ("Style",          "size + value spreads · SMB, HML",         ORANGE, "diagnostic",
-     "blocks.style",                     "style_er"),
+     "decomposition.style",                     "style_er"),
     ("Stock-specific", "the one residual — the bet",              GREEN,  "residual",
      "decomposition.stock_specific",     "stock_specific_er"),
 ]
@@ -103,7 +103,7 @@ def main() -> None:
             color=BORDER, lw=1.4, zorder=1)
     ax.text(X_ENDPOINT_TXT, y_first + 0.62, "v4 API surface",
             fontsize=10.5, fontweight="bold", color=NAVY, va="center")
-    ax.text(X_ENDPOINT_TXT, y_first + 0.36, "POST /api/decompose",
+    ax.text(X_ENDPOINT_TXT, y_first + 0.36, "POST /api/v4/decompose",
             fontsize=9.5, color=TEAL, va="center", family=MONO)
 
     # ── Cascade staircase ────────────────────────────────────────────────────

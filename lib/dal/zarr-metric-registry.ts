@@ -132,6 +132,11 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // ≈ the L* residual share; style is diagnostic (no hedge notional).
   style_er: { role: "hedge", zarrVar: "Style_ER_lstar" },
   stock_specific_er: { role: "hedge", zarrVar: "StockSpecific_ER_lstar" },
+  // L3 (tradeable-hedge basis) variants — used by /api/v4/decompose basis="L3"
+  // (default) so the market+industry+style+stock_specific variance partition sums
+  // cleanly to ~1 (l3_res_er ≈ Style_ER_l3 + StockSpecific_ER_l3).
+  style_er_l3: { role: "hedge", zarrVar: "Style_ER_l3" },
+  stock_specific_er_l3: { role: "hedge", zarrVar: "StockSpecific_ER_l3" },
 
   // Fama–French style cascade — HEDGE vars only (ds_erm3_hedge_weights). The v4
   // producer (e4cab09) retired the FF *returns* levels (l2_ff_smb / l3_ff_smb_hml)

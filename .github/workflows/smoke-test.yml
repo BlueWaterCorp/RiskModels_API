@@ -196,6 +196,31 @@ jobs:
           fi
           echo "✅ /api/auth/free-tier-status → $STATUS"
 
+      - name: v4 decompose canonical shape (with TEST_API_SECRET)
+        if: ${{ env.TEST_API_SECRET != '' }}
+        run: |
+          # The named-block schema must hold its shape. The two not-ready leaf
+          # fields (style betas, stock_specific skill metrics) are null until ERM3
+          # Tier-2 lands — so we assert presence + nullability, not values.
+          RESP=$(curl -sS -X POST https://riskmodels.app/api/v4/decompose \
+            -H "Authorization: Bearer $TEST_API_SECRET" \
+            -H "Content-Type: application/json" -d '{"ticker":"NVDA"}')
+          echo "$RESP" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          dec = d['decomposition']
+          assert d.get('basis') == 'L3', d.get('basis')
+          for k in ('market', 'industry', 'style', 'stock_specific'):
+              assert k in dec, f'missing decomposition.{k}'
+          assert dec['market']['hedgeable'] is True
+          assert dec['style']['hedgeable'] is False and dec['style']['role'] == 'diagnostic'
+          assert 'size' in dec['style']['exposures'] and 'value' in dec['style']['exposures']
+          assert 'sharpe_36m' in dec['stock_specific'] and 'rank_percentile' in dec['stock_specific']
+          ev = dec['stock_specific']['explained_variance']
+          assert ev is None or (0 <= ev <= 1.0001), ev
+          print('✅ /api/v4/decompose NVDA → canonical named-block shape')
+          "
+
       - name: Notify on failure
         if: failure() && github.event_name == 'schedule'
         uses: actions/github-script@v7
