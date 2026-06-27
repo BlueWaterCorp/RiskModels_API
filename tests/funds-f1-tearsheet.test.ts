@@ -53,6 +53,7 @@ function makePortfolio(months = 12): FundPortfolioRow[] {
       portfolio_market_return: 0.008 + (i % 3) * 0.001,
       portfolio_sector_return: 0.002,
       portfolio_subsector_return: 0.001,
+      portfolio_style_return: 0.0005,
       portfolio_idiosyncratic_return: 0.001,
       identity_residual: 0,
       weight_sum: 0.99,
@@ -119,8 +120,8 @@ describe("F1FundTearsheet — server render (composed snapshot, real fixtures)",
     const html = renderHtml(snap);
     // Legend chip + endpoint markers both render the literal "NAV"
     expect(html).toContain("NAV");
-    // The geometric attribution waterfall shows "Residual α" as a category label
-    expect(html).toContain("Residual");
+    // The geometric attribution waterfall shows "Stock-specific α" (v4: residual net of style)
+    expect(html).toContain("Stock-specific");
   });
 
   it("falls back gracefully when nav_history is null (no NAV overlay rendered)", () => {

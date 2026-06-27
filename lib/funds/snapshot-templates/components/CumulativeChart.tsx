@@ -99,6 +99,7 @@ function LinePanel({ series, x, y, width, height, yMin, yMax }: LinePanelProps) 
     { key: "l1_market", data: series.l1_market, color: LAYER_COLORS.l1_market, width: 1.5, dasharray: "4 3" },
     { key: "l2_sector", data: series.l2_sector, color: LAYER_COLORS.l2_sector, width: 1.5, dasharray: "4 3" },
     { key: "l3_subsector", data: series.l3_subsector, color: LAYER_COLORS.l3_subsector, width: 1.5, dasharray: "4 3" },
+    { key: "l3_style", data: series.l3_style, color: LAYER_COLORS.style, width: 1.5, dasharray: "4 3" },
     { key: "residual", data: series.residual, color: LAYER_COLORS.residual, width: 1.5 },
     { key: "gross", data: series.gross, color: LAYER_COLORS.gross, width: 2.4 },
   ];
@@ -203,7 +204,8 @@ function WaterfallPanel({ waterfall, x, y, width, height, yMin, yMax }: Waterfal
     { label: "L1 Market", value: waterfall.l1_market, color: LAYER_COLORS.l1_market, hatched: false },
     { label: "L2 Sector", value: waterfall.l2_sector, color: LAYER_COLORS.l2_sector, hatched: false },
     { label: "L3 Subsector", value: waterfall.l3_subsector, color: LAYER_COLORS.l3_subsector, hatched: false },
-    { label: "Residual α", value: waterfall.residual, color: LAYER_COLORS.residual, hatched: true },
+    { label: "Style", value: waterfall.style, color: LAYER_COLORS.style, hatched: false },
+    { label: "Stock-specific α", value: waterfall.residual, color: LAYER_COLORS.residual, hatched: true },
   ];
 
   const nBars = bars.length;

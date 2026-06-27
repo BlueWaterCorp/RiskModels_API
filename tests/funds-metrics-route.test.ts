@@ -53,6 +53,7 @@ const LATEST = {
   portfolio_market_return: 0.04,
   portfolio_sector_return: 0.005,
   portfolio_subsector_return: 0.003,
+  portfolio_style_return: 0.001,
   portfolio_idiosyncratic_return: 0.002,
   identity_residual: null,
   weight_sum: 1,

@@ -251,6 +251,9 @@ export interface FundPortfolioRow {
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  /** v4 cascade (D.8.38): size+value style increment, diagnostic. */
+  portfolio_style_return: number | null;
+  /** v4 cascade (D.8.38): stock-specific residual, net of style. */
   portfolio_idiosyncratic_return: number | null;
   identity_residual: number | null;
   weight_sum: number | null;
@@ -271,6 +274,7 @@ const PORTFOLIO_VARS = [
   "portfolio_market_return",
   "portfolio_sector_return",
   "portfolio_subsector_return",
+  "portfolio_style_return",
   "portfolio_idiosyncratic_return",
   "identity_residual",
   "weight_sum",
@@ -1214,16 +1218,20 @@ const FILER_RETURNS_VARS = [
   "portfolio_market_return",
   "portfolio_sector_return",
   "portfolio_subsector_return",
+  "portfolio_style_return",
   "portfolio_idiosyncratic_return",
 ] as const;
 
-/** One monthly row from filer ``ds_returns_monthly.zarr`` (D.8.22). */
+/** One monthly row from filer ``ds_returns_monthly.zarr`` (D.8.22, v4 cascade D.8.38). */
 export interface FilerMonthlyReturnRow {
   teo: string;
   portfolio_gross_return: number | null;
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  /** v4 cascade (D.8.38): size+value style increment, diagnostic. */
+  portfolio_style_return: number | null;
+  /** v4 cascade (D.8.38): stock-specific residual, net of style. */
   portfolio_idiosyncratic_return: number | null;
 }
 
@@ -1231,6 +1239,8 @@ export interface FilerVarianceSharesBlock {
   market: number | null;
   sector: number | null;
   subsector: number | null;
+  /** v4 cascade (D.8.38): size+value style variance share. */
+  style: number | null;
   residual: number | null;
 }
 
@@ -1245,6 +1255,7 @@ export interface FilerReturnsDecomposition {
       | "portfolio_market_return"
       | "portfolio_sector_return"
       | "portfolio_subsector_return"
+      | "portfolio_style_return"
       | "portfolio_idiosyncratic_return",
       number
     >
@@ -1263,16 +1274,19 @@ function filerVarianceSharesFromAttrs(attrs: Record<string, unknown>): {
     market: num("adjusted_l1_market_er"),
     sector: num("adjusted_l2_sector_er"),
     subsector: num("adjusted_l3_subsector_er"),
+    style: num("adjusted_style_er"),
     residual: num("adjusted_l3_residual_er"),
   };
   const recent: FilerVarianceSharesBlock = {
     market: num("adjusted_recent_l1_market_er"),
     sector: num("adjusted_recent_l2_sector_er"),
     subsector: num("adjusted_recent_l3_subsector_er"),
+    style: num("adjusted_recent_style_er"),
     residual: num("adjusted_recent_l3_residual_er"),
   };
   const hasAny = (v: FilerVarianceSharesBlock) =>
-    v.market != null || v.sector != null || v.subsector != null || v.residual != null;
+    v.market != null || v.sector != null || v.subsector != null ||
+    v.style != null || v.residual != null;
   return {
     full: hasAny(full) ? full : null,
     recent: hasAny(recent) ? recent : null,
@@ -1299,6 +1313,7 @@ function waterfallLatestFromSlices(
     "portfolio_market_return",
     "portfolio_sector_return",
     "portfolio_subsector_return",
+    "portfolio_style_return",
     "portfolio_idiosyncratic_return",
   ] as const;
   const out: Partial<
@@ -1347,6 +1362,7 @@ export async function readFilerReturnsDecomposition(
     portfolio_market_return: null,
     portfolio_sector_return: null,
     portfolio_subsector_return: null,
+    portfolio_style_return: null,
     portfolio_idiosyncratic_return: null,
   };
   for (const s of series) {
@@ -1364,6 +1380,7 @@ export async function readFilerReturnsDecomposition(
       portfolio_market_return: slices.portfolio_market_return?.[i] ?? null,
       portfolio_sector_return: slices.portfolio_sector_return?.[i] ?? null,
       portfolio_subsector_return: slices.portfolio_subsector_return?.[i] ?? null,
+      portfolio_style_return: slices.portfolio_style_return?.[i] ?? null,
       portfolio_idiosyncratic_return: slices.portfolio_idiosyncratic_return?.[i] ?? null,
     });
   }

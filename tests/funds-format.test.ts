@@ -31,6 +31,7 @@ const LATEST: FundLatestRow = {
   portfolio_market_return: 0.099,
   portfolio_sector_return: -0.01,
   portfolio_subsector_return: -0.01,
+  portfolio_style_return: 0,
   portfolio_idiosyncratic_return: -0.005,
   identity_residual: -0.003,
   weight_sum: 0.99,

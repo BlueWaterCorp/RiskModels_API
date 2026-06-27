@@ -24,6 +24,8 @@ export interface FundMetricsResponse {
     market: number | null;
     sector: number | null;
     subsector: number | null;
+    /** v4 cascade (D.8.38): size+value style increment, diagnostic. */
+    style: number | null;
     idiosyncratic: number | null;
     identity_residual: number | null;
   };
@@ -65,6 +67,7 @@ export function formatFundMetrics(
       market: latest.portfolio_market_return,
       sector: latest.portfolio_sector_return,
       subsector: latest.portfolio_subsector_return,
+      style: latest.portfolio_style_return,
       idiosyncratic: latest.portfolio_idiosyncratic_return,
       identity_residual: latest.identity_residual,
     },

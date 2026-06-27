@@ -214,7 +214,12 @@ function IdentityRail({ snap }: { snap: CohortSnapshot }) {
         mvVal={mv.portfolio_subsector_return as number | null}
       />
       <Row
-        label="Idiosyncratic"
+        label="Style (size+value)"
+        ewVal={ew.portfolio_style_return as number | null}
+        mvVal={mv.portfolio_style_return as number | null}
+      />
+      <Row
+        label="Stock-specific α"
         ewVal={ew.portfolio_idiosyncratic_return as number | null}
         mvVal={mv.portfolio_idiosyncratic_return as number | null}
       />
