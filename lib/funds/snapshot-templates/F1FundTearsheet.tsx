@@ -69,9 +69,12 @@ function buildAiSummary(snap: FundSnapshot, navEndpoint: number | null, grossEnd
     market: Math.abs(m.market ?? 0),
     sector: Math.abs(m.sector ?? 0),
     subsector: Math.abs(m.subsector ?? 0),
+    style: Math.abs(m.style ?? 0),
     residual: Math.abs(m.idiosyncratic ?? 0),
   };
-  const total = factors.market + factors.sector + factors.subsector + factors.residual || 1e-9;
+  const total =
+    factors.market + factors.sector + factors.subsector + factors.style + factors.residual ||
+    1e-9;
   const dominant = (Object.entries(factors).sort(([, a], [, b]) => b - a)[0] ?? ["market", 0])[0];
   const dominantPct = (factors[dominant as keyof typeof factors] / total) * 100;
 
@@ -162,7 +165,8 @@ function IdentityRail({ snap }: { snap: FundSnapshot }) {
       <Row label="Market (L1)" value={fmtPct(m.returns.market)} valueColor={pctColor(m.returns.market)} />
       <Row label="Sector (L2)" value={fmtPct(m.returns.sector)} valueColor={pctColor(m.returns.sector)} />
       <Row label="Subsector (L3)" value={fmtPct(m.returns.subsector)} valueColor={pctColor(m.returns.subsector)} />
-      <Row label="Residual α" value={fmtPct(m.returns.idiosyncratic)} valueColor={pctColor(m.returns.idiosyncratic)} />
+      <Row label="Style (size+value)" value={fmtPct(m.returns.style)} valueColor={pctColor(m.returns.style)} />
+      <Row label="Stock-specific α" value={fmtPct(m.returns.idiosyncratic)} valueColor={pctColor(m.returns.idiosyncratic)} />
 
       <SectionHead>CONCENTRATION</SectionHead>
       <Row label="Top-10 weight" value={fmtPct(m.diagnostics.top10_weight_sum, 1, false)} />
@@ -475,7 +479,8 @@ export function F1FundTearsheet({ snap }: { snap: FundSnapshot }) {
           { color: LAYER_COLORS.l1_market, label: "L1 Mkt", dashed: true },
           { color: LAYER_COLORS.l2_sector, label: "L2 Sec", dashed: true },
           { color: LAYER_COLORS.l3_subsector, label: "L3 Sub", dashed: true },
-          { color: LAYER_COLORS.residual, label: "Residual" },
+          { color: LAYER_COLORS.style, label: "Style", dashed: true },
+          { color: LAYER_COLORS.residual, label: "Stock-spec α" },
           { color: LAYER_COLORS.gross, label: "Gross (13F)" },
           { color: LAYER_COLORS.nav, label: "NAV" },
         ].map((l) => (

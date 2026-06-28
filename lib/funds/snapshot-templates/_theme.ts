@@ -16,6 +16,7 @@ export const PALETTE = {
   slate: "#2a7fbf",
   green: "#00aa00",
   orange: "#e07000",
+  gold: "#b8860b",
   red: "#c0392b",
 
   textDark: "#111827",
@@ -34,6 +35,7 @@ export const LAYER_COLORS = {
   l1_market: PALETTE.navy,
   l2_sector: PALETTE.teal,
   l3_subsector: PALETTE.slate,
+  style: PALETTE.gold,
   residual: PALETTE.orange,
   gross: PALETTE.navy,
   nav: PALETTE.green,
@@ -43,7 +45,8 @@ export const LAYER_LABELS = {
   l1_market: "L1 Market (SPY)",
   l2_sector: "L2 Sector",
   l3_subsector: "L3 Subsector",
-  residual: "L3 Residual (α)",
+  style: "Style (size+value)",
+  residual: "Stock-specific (α)",
   gross: "Gross (13F)",
   nav: "Realized NAV",
 } as const;

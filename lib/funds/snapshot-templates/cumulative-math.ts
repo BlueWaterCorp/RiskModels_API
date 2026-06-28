@@ -19,7 +19,9 @@ export interface CumulativeSeries {
   l2_sector: number[];
   /** L3 (market + sector + subsector) cumulative path. */
   l3_subsector: number[];
-  /** Idiosyncratic-only cumulative path (stand-alone residual line). */
+  /** v4 cascade (D.8.38): market + sector + subsector + style cumulative path. */
+  l3_style: number[];
+  /** Stock-specific-only cumulative path (stand-alone residual line, net of style). */
   residual: number[];
   /** Gross-fund cumulative path from the actual 13F-derived holdings return. */
   gross: number[];
@@ -55,6 +57,7 @@ export function computeCumulativeSeries(
     l1_market: [],
     l2_sector: [],
     l3_subsector: [],
+    l3_style: [],
     residual: [],
     gross: [],
     nav: [],
@@ -72,6 +75,7 @@ export function computeCumulativeSeries(
   const l1_step: number[] = [];
   const l2_step: number[] = [];
   const l3_step: number[] = [];
+  const l3_style_step: number[] = [];
   const res_step: number[] = [];
   const gross_step: number[] = [];
   const nav_step: number[] = [];
@@ -83,6 +87,7 @@ export function computeCumulativeSeries(
     const r_mkt = row.portfolio_market_return ?? 0;
     const r_sec = row.portfolio_sector_return ?? 0;
     const r_sub = row.portfolio_subsector_return ?? 0;
+    const r_sty = row.portfolio_style_return ?? 0;
     const r_idio = row.portfolio_idiosyncratic_return ?? 0;
     const r_gross = row.portfolio_gross_return ?? 0;
 
@@ -90,6 +95,7 @@ export function computeCumulativeSeries(
     l1_step.push(r_mkt);
     l2_step.push(r_mkt + r_sec);
     l3_step.push(r_mkt + r_sec + r_sub);
+    l3_style_step.push(r_mkt + r_sec + r_sub + r_sty);
     res_step.push(r_idio);
     gross_step.push(r_gross);
     if (hasNav) nav_step.push(navByTeo.get(row.teo) ?? 0);
@@ -102,6 +108,7 @@ export function computeCumulativeSeries(
     l1_market: compoundCumulative(l1_step),
     l2_sector: compoundCumulative(l2_step),
     l3_subsector: compoundCumulative(l3_step),
+    l3_style: compoundCumulative(l3_style_step),
     residual: compoundCumulative(res_step),
     gross: compoundCumulative(gross_step),
     nav: hasNav ? compoundCumulative(nav_step) : [],
@@ -129,7 +136,9 @@ export interface AttributionWaterfall {
   l2_sector: number;
   /** L3 incremental contribution = L3_endpoint − L2_endpoint. */
   l3_subsector: number;
-  /** Residual contribution = gross_endpoint − L3_endpoint (the alpha sliver). */
+  /** v4 cascade (D.8.38): style contribution = L3+style_endpoint − L3_endpoint. */
+  style: number;
+  /** Stock-specific contribution = gross_endpoint − (L3+style)_endpoint (the α sliver, net of style). */
   residual: number;
   /** Sum of the four layer contributions. */
   gross: number;
@@ -144,9 +153,11 @@ export interface AttributionWaterfall {
 /**
  * Build the right-panel waterfall endpoints from a cumulative series. Each
  * incremental contribution is the geometric-attribution delta of one layer
- * over the prior. With the L3 identity:
- *   gross = L1 + (L2 − L1) + (L3 − L2) + (gross − L3)
- *         = market + sector_tilt + subsector_tilt + residual.
+ * over the prior. With the v4 cascade identity:
+ *   gross = L1 + (L2 − L1) + (L3 − L2) + (L3style − L3) + (gross − L3style)
+ *         = market + sector_tilt + subsector_tilt + style + stock_specific.
+ * Pre-rebuild the style step is 0 (L3style ≡ L3), so this reduces to the
+ * prior 4-segment shape with residual = gross − L3.
  */
 export function buildWaterfall(series: CumulativeSeries): AttributionWaterfall {
   if (series.teos.length === 0) {
@@ -154,6 +165,7 @@ export function buildWaterfall(series: CumulativeSeries): AttributionWaterfall {
       l1_market: 0,
       l2_sector: 0,
       l3_subsector: 0,
+      style: 0,
       residual: 0,
       gross: 0,
       nav: null,
@@ -163,13 +175,15 @@ export function buildWaterfall(series: CumulativeSeries): AttributionWaterfall {
   const l1 = series.l1_market[last]!;
   const l2 = series.l2_sector[last]!;
   const l3 = series.l3_subsector[last]!;
+  const l3style = series.l3_style[last]!;
   const gross = series.gross[last]!;
   const nav = series.nav.length > 0 ? series.nav[last]! : null;
   return {
     l1_market: l1,
     l2_sector: l2 - l1,
     l3_subsector: l3 - l2,
-    residual: gross - l3,
+    style: l3style - l3,
+    residual: gross - l3style,
     gross,
     nav,
   };

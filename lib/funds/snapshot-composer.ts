@@ -253,6 +253,7 @@ export function composeCohortSnapshot(
       portfolio_market_return: m.portfolio_market_return,
       portfolio_sector_return: m.portfolio_sector_return,
       portfolio_subsector_return: m.portfolio_subsector_return,
+      portfolio_style_return: m.portfolio_style_return,
       portfolio_idiosyncratic_return: m.portfolio_idiosyncratic_return,
       identity_residual: m.identity_residual,
       weight_sum: m.weight_sum,

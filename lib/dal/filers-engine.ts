@@ -49,6 +49,9 @@ export interface FilerPortfolioLatestRow {
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  /** v4 cascade (D.8.38): size+value style increment, diagnostic. */
+  portfolio_style_return: number | null;
+  /** v4 cascade (D.8.38): stock-specific residual, net of style. */
   portfolio_idiosyncratic_return: number | null;
   identity_residual: number | null;
   // Diagnostics
@@ -95,7 +98,7 @@ const FILER_COLUMNS =
   "bw_filer_id, cik, lei, name, filer_type, filer_subtype, country, status, style_label, factset_entity_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_aum_usd, aum_tier, latest_n_holdings, last_in_eligible_universe_at, n_funds_managed, metadata"; // licensed-id-ok: AUDIT-PENDING — column-select string; see the FilerRow.factset_entity_id note above
 
 const FILER_LATEST_COLUMNS =
-  "bw_filer_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_aum_usd, filer_type, aum_tier, portfolio_9box_distribution, dominant_9box, portfolio_style_hhi, effective_n_styles, coverage_in_erm3, aum_in_erm3, n_holdings_in_erm3, effective_n_in_erm3, is_modelable, model_version, factor_set_id, last_synced_at, metadata";
+  "bw_filer_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_aum_usd, filer_type, aum_tier, portfolio_9box_distribution, dominant_9box, portfolio_style_hhi, effective_n_styles, coverage_in_erm3, aum_in_erm3, n_holdings_in_erm3, effective_n_in_erm3, is_modelable, model_version, factor_set_id, last_synced_at, metadata";
 
 export async function fetchFiler(bwFilerId: string): Promise<FilerRow | null> {
   try {
@@ -287,6 +290,46 @@ const FILER_RANKING_COLUMNS =
   "partition_type, partition_value, bw_filer_id, metric, period_window, report_date, filing_date_max, rank, value, cohort_size";
 
 /**
+ * `filer_rankings_top.report_date` is a per-sync run-date stamp, not a
+ * quarter-end — every `run_filers_d8_sync` run appends a fresh vintage rather
+ * than replacing the prior one. The cohort queries below DON'T key on
+ * report_date, so without this guard every historical vintage would pile into
+ * the same top-N (duplicate/stale filers). Pin reads to the latest vintage.
+ *
+ * Cached in-process (short TTL) so the high-traffic ranking endpoints don't pay
+ * an extra round-trip per call. Returns null on error/empty, in which case
+ * callers fall back to the unfiltered query (degrade, don't break).
+ */
+const RANKINGS_DATE_TTL_MS = 5 * 60 * 1000;
+let cachedRankingsDate: { value: string | null; at: number } | null = null;
+
+async function latestRankingsReportDate(
+  admin: ReturnType<typeof createAdminClient>,
+  now: number = Date.now(),
+): Promise<string | null> {
+  if (cachedRankingsDate && now - cachedRankingsDate.at < RANKINGS_DATE_TTL_MS) {
+    return cachedRankingsDate.value;
+  }
+  try {
+    const { data, error } = await admin
+      .from("filer_rankings_top")
+      .select("report_date")
+      .order("report_date", { ascending: false })
+      .limit(1);
+    if (error) {
+      console.error("[Filers DAL] latestRankingsReportDate error:", error);
+      return cachedRankingsDate?.value ?? null;
+    }
+    const value = (data?.[0]?.report_date as string | undefined) ?? null;
+    cachedRankingsDate = { value, at: now };
+    return value;
+  } catch (error) {
+    console.error("[Filers DAL] latestRankingsReportDate error:", error);
+    return cachedRankingsDate?.value ?? null;
+  }
+}
+
+/**
  * All rank entries for one filer across its cohort partitions
  * (filer_type and/or aum_tier). One row per (partition × metric ×
  * period_window). Returns [] if the filer has no rank coverage yet.
@@ -296,10 +339,13 @@ export async function fetchFilerRanks(
 ): Promise<FilerRankingRow[]> {
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin
+    const latest = await latestRankingsReportDate(admin);
+    let query = admin
       .from("filer_rankings_top")
       .select(FILER_RANKING_COLUMNS)
-      .eq("bw_filer_id", bwFilerId)
+      .eq("bw_filer_id", bwFilerId);
+    if (latest) query = query.eq("report_date", latest);
+    const { data, error } = await query
       .order("partition_type", { ascending: true })
       .order("metric", { ascending: true })
       .order("period_window", { ascending: true });
@@ -335,13 +381,16 @@ export async function fetchFilerRankings(
 
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin
+    const latest = await latestRankingsReportDate(admin);
+    let query = admin
       .from("filer_rankings_top")
       .select(FILER_RANKING_COLUMNS)
       .eq("partition_type", partitionType)
       .eq("partition_value", partitionValue)
       .eq("metric", metric)
-      .eq("period_window", periodWindow)
+      .eq("period_window", periodWindow);
+    if (latest) query = query.eq("report_date", latest);
+    const { data, error } = await query
       .order("rank", { ascending: true })
       .limit(safeLimit);
     if (error) {

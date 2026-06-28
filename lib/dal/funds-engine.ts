@@ -45,6 +45,9 @@ export interface FundLatestRow {
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  /** v4 cascade (D.8.38): size+value style increment, diagnostic. */
+  portfolio_style_return: number | null;
+  /** v4 cascade (D.8.38): stock-specific residual, net of style. */
   portfolio_idiosyncratic_return: number | null;
   identity_residual: number | null;
   weight_sum: number | null;
@@ -76,7 +79,7 @@ const FUND_COLUMNS =
   "bw_fund_id, series_id, ticker, cik, fund_name, morningstar_category, equity_style_9box, style_link_method, primary_bw_fund_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_total_adj_mv, latest_n_holdings, latest_effective_n, last_in_eligible_universe_at, metadata";
 
 const FUND_LATEST_COLUMNS =
-  "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata";
+  "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata";
 
 /**
  * True when `public.funds.latest_total_adj_mv` is missing or non-finite or exactly 0.
@@ -311,6 +314,9 @@ export interface StylePortfolioRow {
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  /** v4 cascade (D.8.38): size+value style increment, diagnostic. */
+  portfolio_style_return: number | null;
+  /** v4 cascade (D.8.38): stock-specific residual, net of style. */
   portfolio_idiosyncratic_return: number | null;
   identity_residual: number | null;
   weight_sum: number | null;
@@ -324,7 +330,7 @@ export interface StylePortfolioRow {
 }
 
 const STYLE_PORTFOLIO_COLUMNS =
-  "equity_style_9box, weighting, report_date, filing_date_max, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, n_funds_in_cell, model_version, last_synced_at, metadata";
+  "equity_style_9box, weighting, report_date, filing_date_max, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, n_funds_in_cell, model_version, last_synced_at, metadata";
 
 /**
  * Latest cohort metrics for a 9-box cell. Returns both EW + MV rows when
