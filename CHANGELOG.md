@@ -3,7 +3,7 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
-## [0.6.1] — 2026-06-13
+## [0.6.1] — 2026-06-30
 
 ### Added
 
