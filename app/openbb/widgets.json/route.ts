@@ -19,6 +19,7 @@ const WIDGETS = {
       "L1/L2/L3 hedge ratios and betas, annualised volatility, Lstar residual level, and recommended hedge level for one ticker.",
     category: "Risk",
     type: "table",
+    source: ["RiskModels API"],
     endpoint: "widgets/metrics",
     gridData: { w: 20, h: 12 },
     params: [
@@ -46,6 +47,8 @@ const WIDGETS = {
       "Institutional one-page risk tearsheet (PDF): L3 explained-risk decomposition, portfolio volatility, and position-level hedge ratios for one ticker.",
     category: "Risk",
     type: "pdf",
+    source: ["RiskModels API"],
+    runButton: true,
     endpoint: "widgets/snapshot",
     gridData: { w: 20, h: 20 },
     params: [

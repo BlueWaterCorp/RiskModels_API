@@ -44,6 +44,8 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb` | Backend info | ✅ |
 | `GET /openbb/widgets.json` | Widget defs | ✅ |
 | `GET /openbb/apps.json` | App defs | ✅ |
+| `GET /openbb/agents.json` | Agent defs (empty stub until MCP wired) | ✅ |
+| `GET /openbb/prompts.json` | Prompt defs (empty stub) | ✅ |
 | `GET /openbb/widgets/metrics?ticker=` | Single-name risk table | ✅ live |
 | `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot tearsheet (`pdf` widget) | ✅ live |
 

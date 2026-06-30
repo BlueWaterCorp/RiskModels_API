@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
       version: "0.1.0",
       widgets: "/openbb/widgets.json",
       apps: "/openbb/apps.json",
+      agents: "/openbb/agents.json",
+      prompts: "/openbb/prompts.json",
       docs: "https://riskmodels.app/docs",
     },
     { headers: openbbCors(req.headers.get("origin")) },

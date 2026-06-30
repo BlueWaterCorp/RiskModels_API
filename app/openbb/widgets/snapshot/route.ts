@@ -9,6 +9,7 @@
  * No synthetic content — whatever the API renders is what shows.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { snapshotConnectProbe } from "../../_lib/connect-probe";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest, upstreamGetBytes } from "../../_lib/upstream";
 
@@ -24,10 +25,7 @@ export async function GET(req: NextRequest) {
 
   const key = bearerFromRequest(req);
   if (!key) {
-    return NextResponse.json(
-      { error: "Missing API key. Add an X-API-KEY header with your rm_agent_live_* key." },
-      { status: 401, headers: cors },
-    );
+    return NextResponse.json(snapshotConnectProbe(ticker), { headers: cors });
   }
 
   const { status, bytes, error } = await upstreamGetBytes(

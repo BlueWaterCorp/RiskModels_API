@@ -7,6 +7,7 @@
  * synthetic values; missing fields render as "—".
  */
 import { NextRequest, NextResponse } from "next/server";
+import { metricsConnectProbe } from "../../_lib/connect-probe";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest, upstreamGet } from "../../_lib/upstream";
 
@@ -40,10 +41,8 @@ export async function GET(req: NextRequest) {
 
   const key = bearerFromRequest(req);
   if (!key) {
-    return NextResponse.json(
-      { error: "Missing API key. Add an X-API-KEY header with your rm_agent_live_* key." },
-      { status: 401, headers: cors },
-    );
+    // OpenBB connect-test probes widget routes without forwarding auth; 401 → their 500.
+    return NextResponse.json(metricsConnectProbe(), { headers: cors });
   }
 
   const { status, body } = await upstreamGet(
