@@ -226,6 +226,8 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_decompose",
       "riskmodels_get_returns",
       "riskmodels_get_return_attribution",
+      "riskmodels_get_lstar",
+      "riskmodels_batch_lstar",
       "riskmodels_get_hedge_levels",
       "riskmodels_compare",
       "riskmodels_hedge_position",

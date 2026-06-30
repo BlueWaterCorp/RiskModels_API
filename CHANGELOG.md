@@ -3,6 +3,18 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [0.6.1] — 2026-06-30
+
+### Added
+
+- **MCP `riskmodels_get_lstar` + `riskmodels_batch_lstar`** — Dedicated SDK-backed tools for `GET /lstar` and `POST /batch/lstar` (marginal-ER dispatch rule, dispatched HRs + residual return series). Unblocks agent discovery without routing through `returns-decomposition` or generic passthrough.
+- **`capabilities.json` `lstar` entry** — Standalone capability mirroring `lib/agent/capabilities.ts` ($0.02/request, `lstar_v1`). Also fixes MCP passthrough allowlist for `/lstar`.
+
+### Changed
+
+- **Python SDK semantic map** — `lstar_rr` normalizes to `lstar_residual_return`; `COLUMN_AGENT_HINTS` documents `lstar_residual_return` and `lstar_level`.
+
+
 ## [0.6.0] — 2026-06-09
 
 ### Added
