@@ -45,7 +45,13 @@ const APPS = [
     groups: [
       // Wire the ticker param across widgets once >1 widget is live, so changing
       // the ticker in one updates the whole tab.
-      { name: "ticker", type: "param", paramName: "ticker", defaultValue: "AAPL" },
+      {
+        name: "ticker",
+        type: "param",
+        paramName: "ticker",
+        defaultValue: "AAPL",
+        widgetIds: ["rm_single_name_metrics", "rm_single_name_snapshot"],
+      },
     ],
   },
 ];

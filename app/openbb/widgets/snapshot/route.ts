@@ -16,14 +16,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const cors = openbbCors(req.headers.get("origin"));
-  const ticker = (req.nextUrl.searchParams.get("ticker") || "").trim().toUpperCase();
-
-  if (!ticker) {
-    return NextResponse.json(
-      { error: "Missing required `ticker` parameter." },
-      { status: 400, headers: cors },
-    );
-  }
+  // OpenBB widget validation probes endpoints without query params; default to
+  // the same ticker declared in widgets.json params[].value.
+  const ticker = (req.nextUrl.searchParams.get("ticker") || "AAPL")
+    .trim()
+    .toUpperCase();
 
   const key = bearerFromRequest(req);
   if (!key) {

@@ -24,6 +24,8 @@ It serves `widgets.json` + `apps.json` and per-widget endpoints that reshape
 1. `pro.openbb.co` → right-click a dashboard → **Add data** → **Custom backend**.
 2. Base URL: `https://riskmodels.app/openbb`
    (subdomain `openbb.riskmodels.app` maps here via a Vercel domain rewrite).
+   Widget `endpoint` paths in `widgets.json` are **relative to this base** (e.g.
+   `widgets/metrics`, not `openbb/widgets/metrics`).
 3. Add header `X-API-KEY` = your `rm_agent_live_*` key.
 
 ## Local test
