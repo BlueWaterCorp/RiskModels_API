@@ -26,13 +26,13 @@ export async function GET(req: NextRequest) {
       prompts: "/openbb/prompts.json",
       docs: "https://riskmodels.app/docs",
     },
-    { headers: openbbCors(req.headers.get("origin")) },
+    { headers: openbbCors(req) },
   );
 }
 
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: openbbCors(req.headers.get("origin")),
+    headers: openbbCors(req),
   });
 }

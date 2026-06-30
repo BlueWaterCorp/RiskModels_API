@@ -12,13 +12,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   return NextResponse.json(APPS, {
-    headers: openbbCors(req.headers.get("origin")),
+    headers: openbbCors(req),
   });
 }
 
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: openbbCors(req.headers.get("origin")),
+    headers: openbbCors(req),
   });
 }

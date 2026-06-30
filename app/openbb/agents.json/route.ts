@@ -11,12 +11,12 @@ import { openbbCors } from "../_lib/cors";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  return NextResponse.json({}, { headers: openbbCors(req.headers.get("origin")) });
+  return NextResponse.json({}, { headers: openbbCors(req) });
 }
 
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: openbbCors(req.headers.get("origin")),
+    headers: openbbCors(req),
   });
 }
