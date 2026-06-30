@@ -1291,6 +1291,58 @@ class RiskModelsClient:
             return body, lineage
         return body
 
+    def get_etf_factor_returns(
+        self,
+        *,
+        sleeve: str | None = None,
+        tickers: list[str] | None = None,
+        teo: str | None = None,
+        return_lineage: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], RiskLineage]:
+        """One-teo snapshot of close + trailing-window returns for factor ETFs.
+
+        Calls ``GET /etf/factor-returns``. Public-scope only: SPY + the 11 GICS
+        sector SPDR ETFs (XLE / XLB / XLI / XLY / XLP / XLV / XLF / XLK / XLC
+        / XLU / XLRE). The broader BWMACRO factor roster (subsectors, style,
+        macro, broad-market) is NOT exposed through this endpoint by design;
+        tickers outside the public scope return 400.
+
+        Pairs with :meth:`get_industry_panel` for the daily "what's happening
+        at the market and sector index level" read.
+
+        Args:
+            sleeve: One of ``"market"`` (SPY only), ``"sector"`` (11 GICS
+                sectors), or ``"all"`` (default).
+            tickers: Optional list of in-scope tickers to narrow further;
+                intersected with the sleeve filter.
+            teo: Optional YYYY-MM-DD. Defaults to the latest teo in ds_etf.
+            return_lineage: If True, return ``(body, lineage)``.
+
+        Returns:
+            JSON dict with ``teo``, ``filter``, ``windows`` (``["1d","21d",
+            "63d","252d"]``), and ``rows`` (one per in-scope ETF with
+            ``ticker``, ``sleeve``, ``name``, ``close``, ``returns``).
+
+        Billing: $0.005/call.
+        """
+        params: dict[str, str] = {}
+        if sleeve is not None:
+            params["sleeve"] = str(sleeve).strip().lower()
+        if tickers:
+            params["tickers"] = ",".join(
+                str(t).strip().upper() for t in tickers if str(t).strip()
+            )
+        if teo:
+            params["teo"] = teo
+        body, lineage, _ = self._transport.request(
+            "GET", "/etf/factor-returns", params=params
+        )
+        meta = body.get("_metadata") if isinstance(body, dict) else None
+        lineage = RiskLineage.merge(lineage, RiskLineage.from_metadata(meta))
+        if return_lineage:
+            return body, lineage
+        return body
+
     def batch_lstar_to_dataframes(
         self,
         body: dict[str, Any],

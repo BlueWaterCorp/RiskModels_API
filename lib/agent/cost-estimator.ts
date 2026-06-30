@@ -54,6 +54,8 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "residual-signal-basket": "residual-signal-basket",
   "signals/residual-reversion/basket": "residual-signal-basket",
   "universe-members": "universe-members",
+  "etf-factor-returns": "etf-factor-returns",
+  "etf/factor-returns": "etf-factor-returns",
   "portfolio-returns": "portfolio-returns",
   "portfolio-risk-index": "portfolio-risk-index",
   "macro-factors": "macro-factor-series",

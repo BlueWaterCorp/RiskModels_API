@@ -3,6 +3,13 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [0.6.2] — 2026-06-30
+
+### Added
+
+- **`GET /api/etf/factor-returns`** — One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for the **public-scope** factor ETF set: **SPY + the 11 GICS sector SPDR ETFs** (XLE / XLB / XLI / XLY / XLP / XLV / XLF / XLK / XLC / XLU / XLRE). The broader BWMACRO factor roster (subsector slates, style picks, macro buckets, broad-market coverage tier) is **intentionally not exposed** through this endpoint — that classification is proprietary curation IP. Tickers outside the public scope return 400 (never silently dropped). Pairs with `/industry-panel` for the daily "what's happening at the market and sector index level" read. Capability `etf-factor-returns` ($0.005/request); OpenAPI + MCP capabilities synced. Reader: `readEtfFactorReturnsSnapshot` in [`lib/dal/zarr-reader.ts`](lib/dal/zarr-reader.ts); classification mirror at [`lib/risk/etf-factor-classification.ts`](lib/risk/etf-factor-classification.ts) (single source = ERM3 `erm3/shared/etf_register.py`).
+- **Python SDK — `get_etf_factor_returns()`** — Wraps `GET /etf/factor-returns`; returns the snapshot dict directly. Registered in `client.discover()` output.
+
 ## [0.6.1] — 2026-06-30
 
 ### Added
@@ -13,7 +20,6 @@ All notable changes to the RiskModels API surface and public assets.
 ### Changed
 
 - **Python SDK semantic map** — `lstar_rr` normalizes to `lstar_residual_return`; `COLUMN_AGENT_HINTS` documents `lstar_residual_return` and `lstar_level`.
-
 
 ## [0.6.0] — 2026-06-09
 

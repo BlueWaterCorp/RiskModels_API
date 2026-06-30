@@ -79,10 +79,12 @@ The decomposition routes that work across the universe (or many tickers) in a si
 - **\`POST /api/batch/lstar\`** with \`{tickers: [...], years}\` — per-ticker daily Lstar history for up to 100 tickers in one call. Companion to \`lstar_rr\` in MetricsV3 (single-name latest); use this when you need history across a panel. **$0.005/ticker, min $0.01/call** (25% cheaper than repeated \`GET /lstar\`).
 - **\`POST /api/signals/residual-reversion/basket\`** with \`{tickers: [...], weights?, signal_quality_min_quintile?}\` — aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket of up to 500 tickers. Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Equal-weight default; optional quality gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Trust the zarr — tickers not in \`ds_erm3_residual_signal\` are silently dropped and surfaced via \`coverage.missing_tickers\`. **$0.02/call.**
 - **\`GET /api/universe/{name}/members\`** — active membership of a named universe (\`uni_mc_3000\` etc.) at one teo (latest by default). Active = monthly universe_mask AND daily validity gate. Use this to align your screen / panel / book against the canonical universe without a local SDK cache. Response carries members + counts breakdown + a \`mask_as_of\` month-end stamp. **$0.005/call.**
+- **\`GET /api/etf/factor-returns\`** — one-teo snapshot of close + trailing 1d / 21d / 63d / 252d total returns for **SPY + the 11 GICS sector SPDR ETFs** (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public-scope only; tickers outside that set return 400. Pairs with \`industry-panel\` for the daily market + sector index read alongside aggregate stock-level industry βs. **$0.005/call.**
 
 **Routing rules:**
 - "Show me the residual / decomposition for X" → \`get_returns_decomposition\` (or \`get_metrics\` if user just wants latest snapshot).
 - "Which industries are dispersed / rotating in β?" → \`get_industry_panel\`.
+- "What did the market / sectors do today / this month / YTD?" → \`get_etf_factor_returns\` (SPY + 11 GICS sectors). Pair with \`get_industry_panel\` when you want index-level moves plus stock-level industry β state.
 - "Find me names where the residual is X / which stocks are in decile 1" → \`screen_rankings\`.
 - "Give me the Lstar history for these 30 tickers" → \`batch_lstar\` (not 30 separate \`get_lstar\` calls).
 

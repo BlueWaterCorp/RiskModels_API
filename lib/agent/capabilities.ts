@@ -1145,6 +1145,52 @@ export const CAPABILITIES: Capability[] = [
     tags: ["universe", "membership", "foundational", "mask"],
   },
   {
+    id: "etf-factor-returns",
+    name: "ETF Factor Returns (Public Scope)",
+    description:
+      "One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for SPY + the 11 GICS sector SPDR ETFs (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public scope only — the broader BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed here by design. Use this to pair with /industry-panel for the daily 'what's happening at the market and sector index level' read. Tickers outside the public scope return 400.",
+    endpoint: "/api/etf/factor-returns",
+    method: "GET",
+    parameters: {
+      sleeve: {
+        type: "string",
+        required: false,
+        description:
+          "Filter to 'market' (SPY only), 'sector' (11 GICS sectors), or 'all' (default).",
+      },
+      tickers: {
+        type: "string",
+        required: false,
+        description:
+          "Comma-separated subset of in-scope tickers (intersected with sleeve filter).",
+      },
+      teo: {
+        type: "string",
+        required: false,
+        description: "Observation date YYYY-MM-DD (default latest teo in ds_etf).",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "etf_factor_returns_v1",
+    },
+    performance: {
+      avg_latency_ms: 110,
+      p95_latency_ms: 240,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["ds_etf"],
+    },
+    tags: ["etf", "factor", "sector", "returns", "panel", "foundational"],
+  },
+  {
     id: "portfolio-returns",
     name: "Portfolio Returns",
     description: "Batch fetch returns for multiple tickers (portfolio analytics)",
