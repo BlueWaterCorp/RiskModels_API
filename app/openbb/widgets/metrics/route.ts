@@ -32,7 +32,7 @@ function money(v: unknown): string {
 }
 
 export async function GET(req: NextRequest) {
-  const cors = openbbCors(req.headers.get("origin"));
+  const cors = openbbCors(req);
   // OpenBB widget validation probes endpoints without query params; default to
   // the same ticker declared in widgets.json params[].value.
   const ticker = (req.nextUrl.searchParams.get("ticker") || "AAPL")
@@ -92,6 +92,6 @@ export async function GET(req: NextRequest) {
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: openbbCors(req.headers.get("origin")),
+    headers: openbbCors(req),
   });
 }
