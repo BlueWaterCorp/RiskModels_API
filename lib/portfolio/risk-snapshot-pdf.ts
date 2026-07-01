@@ -10,64 +10,230 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PortfolioRiskComputationOk } from "@/lib/portfolio/portfolio-risk-core";
 import type { SnapshotReportData, SnapshotTickerRow } from "./snapshot-report-types";
 
-function pct(x: number): string {
-  return `${(x * 100).toFixed(1)}%`;
-}
+// Artifact-Light palette + LOCKED factor legend (see BWMACRO/DESIGN.md §Color).
+const hex = (h: string) => {
+  const n = parseInt(h.replace("#", ""), 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+};
+const COL = {
+  market: hex("#002a5e"),
+  sector: hex("#006f8e"),
+  subsector: hex("#6d28d9"),
+  residual: hex("#00AA00"),
+  ink: hex("#1a1a2e"),
+  inkMuted: hex("#475569"),
+  inkFaint: hex("#94a3b8"),
+  border: hex("#cbd5e1"),
+  fig: hex("#f5f7fb"),
+  white: hex("#ffffff"),
+};
 
+const num = (x: unknown, d = 3): string =>
+  x == null || Number.isNaN(Number(x)) ? "—" : Number(x).toFixed(d);
+const pctOrDash = (x: unknown): string =>
+  x == null || Number.isNaN(Number(x)) ? "—" : `${(Number(x) * 100).toFixed(1)}%`;
+const usd = (x: unknown): string =>
+  x == null || Number.isNaN(Number(x))
+    ? "—"
+    : `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * One-page Artifact-Light risk snapshot (pdf-lib, serverless-safe).
+ *
+ * Hero is the L3 variance decomposition (stacked bar + legend) in the locked
+ * factor colors; followed by hedge layering (single-name) and a positions
+ * table (fills for portfolios). Standard PDF fonts proxy the design stack:
+ * Times≈Newsreader (titles), Helvetica≈Inter (body), Courier≈IBM Plex Mono
+ * (numbers). Every nullable field guards to "—" — no fabricated values.
+ */
 export async function buildRiskSnapshotPdfBytes(params: {
   title: string;
   asOfLabel: string;
   data: PortfolioRiskComputationOk;
 }): Promise<Uint8Array> {
-  const { title, asOfLabel, data } = params;
+  const { asOfLabel, data } = params;
   const doc = await PDFDocument.create();
-  const page = doc.addPage([612, 792]);
-  const { width, height } = page.getSize();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const margin = 48;
-  let y = height - margin;
+  const M = 48;
 
-  const draw = (text: string, size: number, bold = false, color = rgb(0.1, 0.1, 0.12)) => {
-    page.drawText(text, {
-      x: margin,
-      y,
-      size,
-      font: bold ? fontBold : font,
-      color,
-      maxWidth: width - margin * 2,
-    });
-    y -= size + 6;
-  };
+  const tickers = Object.keys(data.perTicker).sort();
+  const isSingle = tickers.length === 1;
+  const headLabel = isSingle ? tickers[0] : "Portfolio";
+  const headRow = (isSingle ? data.perTicker[tickers[0]] : {}) as Record<string, unknown>;
 
-  draw("RiskModels — Portfolio risk snapshot", 10, false, rgb(0.35, 0.4, 0.45));
-  draw(title, 18, true);
-  draw(`As of: ${asOfLabel}`, 11);
-  y -= 8;
+  // Size the page to the content so it fills the widget instead of leaving a
+  // half-empty letter sheet. Header + hero ≈ 300, hedge block (single) ≈ 116,
+  // one row ≈ 16 (capped), footer zone ≈ 96.
+  const nRows = Math.min(tickers.length, 20);
+  const height = 300 + (isSingle ? 116 : 0) + nRows * 16 + 96;
+  const width = 612;
+  const page = doc.addPage([width, height]);
+  const CW = width - M * 2;
 
+  const serifBold = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const sans = await doc.embedFont(StandardFonts.Helvetica);
+  const mono = await doc.embedFont(StandardFonts.Courier);
+  const monoBold = await doc.embedFont(StandardFonts.CourierBold);
+
+  type Font = typeof sans;
+  const wOf = (s: string, size: number, font: Font) => font.widthOfTextAtSize(s, size);
+  const text = (s: string, x: number, y: number, size: number, font: Font, color = COL.ink) =>
+    page.drawText(s, { x, y, size, font, color });
+  const right = (s: string, xr: number, y: number, size: number, font: Font, color = COL.ink) =>
+    text(s, xr - wOf(s, size, font), y, size, font, color);
+  const rule = (y: number, color = COL.border) =>
+    page.drawLine({ start: { x: M, y }, end: { x: width - M, y }, thickness: 0.75, color });
+
+  // ---- Header --------------------------------------------------------------
+  let y = height - M - 4;
+  text("RISKMODELS  ·  RISK SNAPSHOT", M, y, 8, mono, COL.inkFaint);
+  right(`As of ${asOfLabel}`, width - M, y, 9, sans, COL.inkMuted);
+  y -= 30;
+  text(headLabel, M, y, 28, serifBold, COL.ink);
+  if (isSingle) {
+    right(usd(headRow.price_close), width - M, y + 6, 15, monoBold, COL.ink);
+    right("last close", width - M, y - 6, 8, sans, COL.inkFaint);
+  }
+  y -= 16;
+  text(
+    isSingle
+      ? "Single-name risk snapshot · ERM3 L3 decomposition"
+      : `Portfolio risk snapshot · ${tickers.length} positions · ERM3 L3 decomposition`,
+    M,
+    y,
+    10,
+    sans,
+    COL.inkMuted,
+  );
+  y -= 14;
+  rule(y);
+  y -= 26;
+
+  // ---- L3 explained risk (hero) -------------------------------------------
   const vd = data.portfolioER;
-  draw("L3 explained risk (variance fractions, portfolio-weighted)", 12, true);
-  draw(`Market: ${pct(vd.market)}  |  Sector: ${pct(vd.sector)}  |  Subsector: ${pct(vd.subsector)}  |  Residual: ${pct(vd.residual)}`, 10);
-  draw(`Systematic (mkt+sec+sub): ${pct(data.systematic)}`, 10);
-  if (data.portfolioVol != null) {
-    draw(`Portfolio vol (23d, weighted avg): ${(data.portfolioVol * 100).toFixed(2)}%`, 10);
-  }
-  y -= 6;
+  text("L3 explained risk", M, y, 14, serifBold, COL.ink);
+  text(
+    "variance fractions" + (isSingle ? "" : ", portfolio-weighted"),
+    M + wOf("L3 explained risk", 14, serifBold) + 8,
+    y,
+    9,
+    sans,
+    COL.inkFaint,
+  );
+  y -= 16;
 
-  draw("Positions", 12, true);
-  for (const t of Object.keys(data.perTicker).sort()) {
-    const row = data.perTicker[t] as Record<string, unknown>;
-    const w = row.weight != null ? Number(row.weight).toFixed(4) : "?";
-    const mhr = row.l3_mkt_hr != null ? Number(row.l3_mkt_hr).toFixed(3) : "—";
-    const shr = row.l3_sec_hr != null ? Number(row.l3_sec_hr).toFixed(3) : "—";
-    const uhr = row.l3_sub_hr != null ? Number(row.l3_sub_hr).toFixed(3) : "—";
-    draw(`${t}  weight=${w}  |  L3 HR (mkt/sec/sub): ${mhr} / ${shr} / ${uhr}`, 9);
-    if (y < 120) break;
+  const segs = [
+    { label: "Market", frac: vd.market, color: COL.market },
+    { label: "Sector", frac: vd.sector, color: COL.sector },
+    { label: "Subsector", frac: vd.subsector, color: COL.subsector },
+    { label: "Residual", frac: vd.residual, color: COL.residual },
+  ];
+  const barH = 30;
+  const barY = y - barH;
+  const widths = segs.map((s) => Math.max(0, s.frac)); // clamp negatives for width
+  const wsum = widths.reduce((a, b) => a + b, 0) || 1;
+  let cx = M;
+  segs.forEach((s, i) => {
+    const w = (widths[i] / wsum) * CW;
+    if (w > 0.5) {
+      page.drawRectangle({ x: cx, y: barY, width: w, height: barH, color: s.color });
+      const lbl = `${(s.frac * 100).toFixed(0)}%`;
+      if (w > wOf(lbl, 9, monoBold) + 8) {
+        text(lbl, cx + w / 2 - wOf(lbl, 9, monoBold) / 2, barY + barH / 2 - 4, 9, monoBold, COL.white);
+      }
+    }
+    cx += w;
+  });
+  page.drawRectangle({ x: M, y: barY, width: CW, height: barH, borderColor: COL.border, borderWidth: 0.5 });
+  y = barY - 20;
+
+  // Legend (true signed %, even where the bar clamped a negative to zero width)
+  let lx = M;
+  segs.forEach((s) => {
+    page.drawRectangle({ x: lx, y: y, width: 9, height: 9, color: s.color });
+    const t = `${s.label}  ${pctOrDash(s.frac)}`;
+    text(t, lx + 13, y + 1, 9, sans, COL.inkMuted);
+    lx += 13 + wOf(t, 9, sans) + 20;
+  });
+  y -= 18;
+  text(`Systematic (market + sector + subsector): ${pctOrDash(data.systematic)}`, M, y, 10, sans, COL.ink);
+  y -= 28;
+
+  // ---- Hedge layering (single-name) ---------------------------------------
+  if (isSingle) {
+    text("Recommended hedge ratios — L3", M, y, 12, serifBold, COL.ink);
+    y -= 18;
+    const legs = [
+      { label: "Market leg", val: headRow.l3_mkt_hr, color: COL.market },
+      { label: "Sector leg", val: headRow.l3_sec_hr, color: COL.sector },
+      { label: "Subsector leg", val: headRow.l3_sub_hr, color: COL.subsector },
+    ];
+    const colW = CW / 3;
+    legs.forEach((leg, i) => {
+      const bx = M + i * colW;
+      page.drawRectangle({ x: bx, y: y - 34, width: colW - 12, height: 40, color: COL.fig });
+      page.drawRectangle({ x: bx, y: y - 34, width: 3, height: 40, color: leg.color });
+      text(leg.label, bx + 12, y - 6, 9, sans, COL.inkMuted);
+      text(num(leg.val), bx + 12, y - 26, 16, monoBold, COL.ink);
+    });
+    y -= 48;
+    text("Holdings-weighted L3 hedge ratios. Negative = short the factor leg to neutralise it.", M, y, 8, sans, COL.inkFaint);
+    y -= 26;
   }
 
-  y = Math.min(y, 140);
-  draw("Methodology: https://riskmodels.app/docs/methodology", 8, false, rgb(0.4, 0.42, 0.45));
-  draw("Powered by RiskModels — data from ERM3 V3 security_history", 8, false, rgb(0.4, 0.42, 0.45));
+  // ---- Positions table -----------------------------------------------------
+  text(`Positions (${tickers.length})`, M, y, 12, serifBold, COL.ink);
+  y -= 16;
+  const cols = [
+    { h: "Ticker", x: M, w: 70, align: "l" as const },
+    { h: "Weight", x: M + 90, w: 60, align: "r" as const },
+    { h: "Last", x: M + 170, w: 70, align: "r" as const },
+    { h: "Vol 23d", x: M + 250, w: 60, align: "r" as const },
+    { h: "Mkt HR", x: M + 330, w: 55, align: "r" as const },
+    { h: "Sec HR", x: M + 405, w: 55, align: "r" as const },
+    { h: "Sub HR", x: M + 461, w: 55, align: "r" as const },
+  ];
+  page.drawRectangle({ x: M, y: y - 4, width: CW, height: 16, color: COL.fig });
+  cols.forEach((c) => {
+    if (c.align === "r") right(c.h, c.x + c.w, y, 8, sans, COL.inkMuted);
+    else text(c.h, c.x, y, 8, sans, COL.inkMuted);
+  });
+  y -= 18;
+  for (const t of tickers) {
+    if (y < 96) {
+      text(`… ${tickers.length - tickers.indexOf(t)} more positions`, M, y, 8, sans, COL.inkFaint);
+      break;
+    }
+    const r = data.perTicker[t] as Record<string, unknown>;
+    const cells: [string, (typeof cols)[number], boolean][] = [
+      [t, cols[0], false],
+      [pctOrDash(r.weight), cols[1], true],
+      [usd(r.price_close), cols[2], true],
+      [pctOrDash(r.vol_23d), cols[3], true],
+      [num(r.l3_mkt_hr), cols[4], true],
+      [num(r.l3_sec_hr), cols[5], true],
+      [num(r.l3_sub_hr), cols[6], true],
+    ];
+    cells.forEach(([v, c, isNum]) => {
+      const font = isNum ? mono : sans;
+      if (c.align === "r") right(v, c.x + c.w, y, 9, font, COL.ink);
+      else text(v, c.x, y, 9, font, COL.ink);
+    });
+    page.drawLine({ start: { x: M, y: y - 5 }, end: { x: width - M, y: y - 5 }, thickness: 0.4, color: COL.fig });
+    y -= 16;
+  }
+
+  // ---- Footer --------------------------------------------------------------
+  rule(64);
+  text("Methodology · riskmodels.app/docs/methodology", M, 52, 8, sans, COL.inkFaint);
+  right("Powered by RiskModels", width - M, 52, 8, sans, COL.inkFaint);
+  text(
+    "Data: ERM3 V3 security_history · residual is stock-specific risk after market/sector/subsector.",
+    M,
+    40,
+    7,
+    sans,
+    COL.inkFaint,
+  );
 
   return doc.save();
 }

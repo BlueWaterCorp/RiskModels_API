@@ -24,7 +24,9 @@ function singleTickerPdfKey(userId: string, ticker: string) {
   const h = createHash("sha256")
     .update(JSON.stringify({ userId, ticker: ticker.toUpperCase() }))
     .digest("hex");
-  return generateCacheKey("risk_snapshot_pdf_ticker", h);
+  // _v2: Artifact-Light renderer (2026-06-30). Bumping the namespace invalidates
+  // the old minimal-text PDFs cached under the previous key.
+  return generateCacheKey("risk_snapshot_pdf_ticker_v2", h);
 }
 
 async function buildSingleTickerPdf(
