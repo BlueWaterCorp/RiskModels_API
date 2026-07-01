@@ -42,15 +42,14 @@ const WIDGETS = {
     },
   },
   rm_single_name_snapshot: {
-    name: "RiskModels — Risk Snapshot Tearsheet",
+    name: "RiskModels — Risk Snapshot",
     description:
-      "Institutional one-page risk tearsheet (PDF): L3 explained-risk decomposition, portfolio volatility, and position-level hedge ratios for one ticker.",
+      "Single-name risk snapshot: L3 explained-risk decomposition (Market/Sector/Subsector/Residual), systematic share, volatility, recommended hedge level, and L3 hedge ratios.",
     category: "Risk",
-    type: "pdf",
+    type: "table",
     source: ["RiskModels API"],
-    runButton: true,
-    endpoint: "widgets/snapshot",
-    gridData: { w: 20, h: 20 },
+    endpoint: "widgets/snapshot-table",
+    gridData: { w: 20, h: 14 },
     params: [
       {
         paramName: "ticker",
@@ -60,6 +59,15 @@ const WIDGETS = {
         description: "US equity ticker (e.g. AAPL, NVDA, BRK.B).",
       },
     ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "metric", headerName: "Metric", cellDataType: "text" },
+          { field: "value", headerName: "Value", cellDataType: "text" },
+        ],
+      },
+    },
   },
   rm_cumulative_return: {
     name: "RiskModels — Cumulative Total Return",
