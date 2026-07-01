@@ -149,7 +149,7 @@ const WIDGETS = {
   rm_rankings_top: {
     name: "RiskModels — Top Rankings",
     description:
-      "Top-ranked names by a chosen metric, cohort, and window (cross-sectional percentile ranks).",
+      "Top-ranked names by a chosen metric, cohort, and window (cross-sectional percentile ranks). Point-in-time metrics (market cap, explained risk L1/L2/L3, stock-specific) rank at the 1-day window; return and residual metrics use the longer windows.",
     category: "Risk",
     type: "table",
     source: ["RiskModels API"],
@@ -158,7 +158,7 @@ const WIDGETS = {
     params: [
       {
         paramName: "metric",
-        value: "gross_return",
+        value: "mkt_cap",
         label: "Metric",
         type: "text",
         description: "Ranking metric.",
@@ -187,10 +187,10 @@ const WIDGETS = {
       },
       {
         paramName: "window",
-        value: "252d",
+        value: "1d",
         label: "Window",
         type: "text",
-        description: "Look-back window.",
+        description: "Look-back window. Use 1d for point-in-time metrics.",
         options: [
           { value: "1d", label: "1 day" },
           { value: "21d", label: "21 days" },
