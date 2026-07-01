@@ -263,6 +263,8 @@ export interface BillingContext {
   apiKey?: string;
   tier?: "free" | "paid" | "enterprise";
   freeTierStatus?: any;
+  /** First-party gateway traffic — unlimited internal allowance (no 402/deduct). */
+  internalUnlimited?: boolean;
 }
 
 /**
@@ -421,6 +423,17 @@ export function withBilling(
           { status: 503 },
         );
       }
+
+      // First-party gateway traffic (our own portal via the service key) gets an
+      // UNLIMITED internal allowance — it must never 402 or route through Stripe.
+      // Applies when the trusted service key bills the anonymous gateway fallback
+      // user, or whenever RISKMODELS_GATEWAY_UNLIMITED=true (blanket exemption).
+      const gatewayBillingUid =
+        process.env.RISKMODELS_GATEWAY_BILLING_USER_ID?.trim();
+      const internalUnlimited =
+        isTrustedServiceGateway &&
+        (process.env.RISKMODELS_GATEWAY_UNLIMITED === "true" ||
+          (!!gatewayBillingUid && userId === gatewayBillingUid));
 
       if (!userId && extractedKey && !isTrustedServiceGateway) {
         const validation = await validateApiKey(extractedKey);
@@ -609,7 +622,7 @@ export function withBilling(
       // Early balance check — cheap read to give a fast 402 before running
       // the handler. The definitive atomic check happens at deduction time
       // below, so this is a best-effort short-circuit only.
-      if (costUsd > 0 && freeTierCheck?.tier !== "free") {
+      if (costUsd > 0 && freeTierCheck?.tier !== "free" && !internalUnlimited) {
         const currentBalance = await getUserBalance(userId);
         // Block if balance is negative (user is in debt) or insufficient
         if (currentBalance < 0 || currentBalance < costUsd) {
@@ -686,6 +699,7 @@ export function withBilling(
         apiKey,
         tier: freeTierCheck?.tier,
         freeTierStatus: freeTierCheck,
+        internalUnlimited,
       };
 
       // 5. Process the request
@@ -698,7 +712,7 @@ export function withBilling(
 
       // 6. Atomically deduct balance on success (only if cost > 0).
       //    The deduct_balance RPC uses FOR UPDATE — immune to race conditions.
-      if (costUsd > 0 && success) {
+      if (costUsd > 0 && success && !internalUnlimited) {
         try {
           await deductBalance(
             userId,
@@ -1005,8 +1019,8 @@ export async function finalizeBilling(
   const costUsd = actualCostUsd ?? context.costUsd;
   const success = res.status < 400;
 
-  // Deduct balance on success
-  if (costUsd > 0 && success) {
+  // Deduct balance on success (skip for first-party unlimited internal traffic)
+  if (costUsd > 0 && success && !context.internalUnlimited) {
     try {
       await deductBalance(
         context.userId,
