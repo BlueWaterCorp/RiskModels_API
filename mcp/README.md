@@ -128,6 +128,36 @@ claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/m
 
 Restart **`claude`**, then run **`claude mcp list`** — `riskmodels` should show as connected. If it does not, use the **hosted** `mcp-remote` transport with `AUTHORIZATION=Bearer <key>` (same JSON pattern as in the “Hosted endpoint” section below).
 
+### ChatGPT (Developer Mode)
+
+ChatGPT supports custom remote MCP servers on **Plus / Pro / Business / Enterprise / Edu** (web). The UI is hidden until Developer mode is enabled:
+
+1. **Settings → Apps & Connectors → Advanced settings** → turn on **Developer mode**.
+2. **Apps & Connectors → Create**.
+3. **Connector URL:** `https://riskmodels.app/api/mcp/sse`
+4. Choose **OAuth** and complete sign-in at riskmodels.app when prompted.
+
+**Not the Finances connector.** ChatGPT’s Schwab / Finances integration only exposes brokerage holdings. RiskModels is a separate MCP app for factor decomposition and hedge ratios. To analyze a Schwab book without MCP, keep Finances for positions and paste tickers into a chat with `https://riskmodels.app/llms.txt` (REST for one session).
+
+Discovery manifest: `https://riskmodels.app/.well-known/mcp.json` · full guide: [Agent integration](https://riskmodels.app/docs/agent-integration#chatgpt-mcp).
+
+### Grok (Connectors)
+
+Grok supports custom MCP without a Developer Mode toggle:
+
+1. Open [grok.com/connectors](https://grok.com/connectors).
+2. **New Connector → Custom**.
+3. **MCP server URL:** `https://riskmodels.app/api/mcp/sse`
+4. Complete OAuth sign-in at riskmodels.app.
+
+Guide: [Agent integration — Grok](https://riskmodels.app/docs/agent-integration#grok-mcp) · xAI: [Connectors](https://docs.x.ai/grok/connectors).
+
+### Gemini
+
+- **Consumer web (`gemini.google.com`):** no custom MCP connector UI — use `https://riskmodels.app/llms.txt` in chat or REST with a key.
+- **Gemini CLI / Antigravity:** `gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse`, then `/mcp auth riskmodels`.
+- **Gemini Enterprise:** admin registers a Custom MCP Server data store in Google Cloud (Streamable HTTP + OAuth). See [Agent integration — Gemini](https://riskmodels.app/docs/agent-integration#gemini).
+
 `@riskmodels/sdk` powers in-tool SDK calls inside `@riskmodels/mcp`; published builds use Node ESM with `.js` import specifiers so `npx -y @riskmodels/mcp` loads under Node 18+.
 
 ### Hosted endpoint (`https://riskmodels.app/api/mcp/sse`)

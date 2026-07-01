@@ -41,7 +41,7 @@ const DISCOVERY: LinkCard[] = [
   {
     title: 'MCP server',
     href: '/.well-known/mcp.json',
-    desc: 'Streamable-HTTP MCP endpoint with discovery + live-data tools.',
+    desc: 'Streamable-HTTP MCP manifest — Claude/Cursor/Grok/ChatGPT connectors, or Gemini Enterprise admin setup.',
     icon: Plug,
   },
   {

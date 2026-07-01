@@ -27,9 +27,13 @@ You are an AI assistant reading this because someone pointed you at riskmodels.a
 - For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
 - Make one real call to confirm the connection, then tell the human what you can analyze and ask what they want to look at. **Do not tell a human to open a terminal for this case.**
 
-**2. "Help me set it up" / "add this to my Claude/Cursor"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps (no terminal needed):
-- **Recommended — connect by URL (no terminal, no API key):** in Claude Desktop or Cursor, open **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave the OAuth Client ID / Secret fields blank, then click **Add → Connect**. They sign in at riskmodels.app (Google / GitHub / email) and approve access once (OAuth 2.0 + PKCE; the client registers itself); the tools load and metered calls bill their RiskModels account. No key to copy or store.
-- **Developer alternatives (terminal):** \`npm install -g riskmodels@latest\` then \`riskmodels install\` (auto-wires Claude Desktop, Cursor, Codex, VS Code), or the \`mcp-remote\` proxy — \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with env \`AUTHORIZATION=Bearer <their key>\` (key from https://riskmodels.app/get-key).
+**2. "Help me set it up" / "add this to my Claude/Cursor/ChatGPT/Grok/Gemini"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps:
+- **Claude Desktop / Cursor (recommended — no terminal, no API key):** **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave OAuth Client ID / Secret blank, **Add → Connect**. They sign in at riskmodels.app once (OAuth 2.0 + PKCE).
+- **ChatGPT (Plus+ on web — Developer Mode):** **Settings → Apps & Connectors → Advanced settings → enable Developer mode**, then **Apps & Connectors → Create**, paste \`https://riskmodels.app/api/mcp/sse\`, choose **OAuth**, sign in at riskmodels.app. This is **not** the built-in Finances / Schwab connector. Guide: \`https://riskmodels.app/docs/agent-integration#chatgpt-mcp\`.
+- **Grok (web / iOS / Android):** **grok.com/connectors → New Connector → Custom**, paste \`https://riskmodels.app/api/mcp/sse\`, OAuth sign-in at riskmodels.app. No Developer Mode. Guide: \`https://riskmodels.app/docs/agent-integration#grok-mcp\`.
+- **Gemini consumer web (gemini.google.com):** no custom MCP UI — use case 1 (\`/llms.txt\` + REST in this chat). **Gemini CLI / Antigravity:** \`gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse\` then \`/mcp auth riskmodels\`. **Gemini Enterprise:** admin registers Custom MCP data store in Google Cloud (Streamable HTTP + OAuth; may need pre-registered Client ID/Secret). Guide: \`https://riskmodels.app/docs/agent-integration#gemini\`.
+- **ChatGPT + Schwab holdings without MCP:** If they already connected Finances, keep that for positions; paste tickers here and use case 1 (REST via this file) or \`POST /api/portfolio/risk-snapshot\` with weights.
+- **Developer alternatives (terminal):** \`npm install -g riskmodels@latest\` then \`riskmodels install\`, or \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with \`AUTHORIZATION=Bearer <key>\`.
 
 ## Magnificent 7 (MAG7)
 
@@ -64,8 +68,9 @@ MCP URL with \`mcp-remote\` and AUTHORIZATION=Bearer … (see Quickstart / MCP R
 
 ## Where to integrate without a local install
 
-- Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — use with an MCP client and
-  Bearer token (or the no-key OAuth connector flow). The MCP endpoint authenticates every call (including initialize), so discovery tools cost nothing but still require a key or OAuth; data tools additionally bill per underlying REST route.
+- **MCP discovery manifest:** https://riskmodels.app/.well-known/mcp.json (public JSON — paste URL into Claude/Cursor/Grok/ChatGPT connectors, or Gemini Enterprise admin console)
+- **Agent integration guide:** https://riskmodels.app/docs/agent-integration (ChatGPT Developer Mode, Grok Connectors, Gemini CLI/Enterprise, Finances + holdings workflow)
+- Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — Bearer token, OAuth connector (Claude/Cursor/ChatGPT), or \`mcp-remote\` proxy. The MCP endpoint authenticates every call (including initialize); data tools bill per underlying REST route.
 - OpenAPI: https://riskmodels.app/openapi (or /api-docs in the portal)
 - Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/docs/python-sdk
 
