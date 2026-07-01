@@ -1,6 +1,6 @@
 ---
 title: Agent Integration
-description: Use RiskModels with Cursor, Claude Desktop, and other AI agents
+description: Use RiskModels with Cursor, Claude, ChatGPT, Grok, Gemini, and other AI agents
 ---
 
 # Agent Integration
@@ -14,21 +14,58 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
       <span className="text-xs font-semibold text-primary uppercase tracking-widest">Fastest — no terminal, use it in your AI chat</span>
     </div>
     <div className="px-5 pt-4 pb-2">
-      <span className="text-sm font-semibold text-zinc-100">Try it now (any chat: Claude, ChatGPT, Cursor)</span>
-      <p className="text-xs text-zinc-400 mt-1">Paste this into a fresh chat. The agent reads riskmodels.app, sets itself up for the conversation, and tells you what it can analyze. Nothing to install.</p>
+      <span className="text-sm font-semibold text-zinc-100">Try it now (this chat — no install)</span>
+      <p className="text-xs text-zinc-400 mt-1">Works in <strong className="font-normal text-zinc-300">ChatGPT, Claude, Cursor, Grok, Gemini (web)</strong>, or any model that can fetch URLs. The agent reads <code className="text-zinc-500">/llms.txt</code> and calls the REST API for this conversation only — not a persistent MCP connector.</p>
       <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
         <span>Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.</span>
         <CopyInline value="Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze." />
       </div>
     </div>
     <div className="px-5 pb-4 pt-2">
-      <span className="text-sm font-semibold text-zinc-100">Keep it (Claude Desktop / Cursor, persistent — no terminal)</span>
+      <span className="text-sm font-semibold text-zinc-100">Keep it (Claude Desktop / Cursor — persistent MCP)</span>
       <p className="text-xs text-zinc-400 mt-1">Settings → Connectors → Add custom connector, paste the URL (leave OAuth fields blank), then Connect. You sign in at riskmodels.app and approve once — no API key to handle, billing on your account.</p>
       <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
         <span>https://riskmodels.app/api/mcp/sse</span>
         <CopyInline value="https://riskmodels.app/api/mcp/sse" />
       </div>
       <p className="text-xs text-zinc-600 mt-2">Prefer a terminal, or need Codex / VS Code? <code className="text-zinc-500">npx -y riskmodels@latest install</code> wires every client in one command.</p>
+    </div>
+    <div className="px-5 pb-4 pt-2 border-t border-primary/20">
+      <span className="text-sm font-semibold text-zinc-100">ChatGPT — persistent MCP (Developer Mode)</span>
+      <p className="text-xs text-zinc-400 mt-1">
+        ChatGPT does <strong className="font-normal text-zinc-300">not</strong> expose RiskModels through the built-in Finances / Schwab connector — that is a separate data source.
+        To add RiskModels as its own MCP app: <strong className="font-normal text-zinc-300">Settings → Apps &amp; Connectors → Advanced settings → enable Developer mode</strong>,
+        then <strong className="font-normal text-zinc-300">Apps &amp; Connectors → Create</strong>, paste the URL below, choose <strong className="font-normal text-zinc-300">OAuth</strong>, and sign in at riskmodels.app when prompted.
+        Requires ChatGPT Plus or above (web). Discovery manifest: <a href="/.well-known/mcp.json" className="text-primary hover:underline">/.well-known/mcp.json</a>.
+      </p>
+      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
+        <span>https://riskmodels.app/api/mcp/sse</span>
+        <CopyInline value="https://riskmodels.app/api/mcp/sse" />
+      </div>
+      <p className="text-xs text-zinc-600 mt-2">
+        <strong className="font-normal text-zinc-500">Portfolio + Schwab in one chat?</strong> Keep Finances for holdings, then paste tickers/weights here and ask ChatGPT to call RiskModels REST (or use the in-chat prompt above). See <a href="#chatgpt-portfolio" className="text-primary hover:underline">ChatGPT + holdings ↓</a>.
+      </p>
+    </div>
+    <div className="px-5 pb-4 pt-2 border-t border-primary/20">
+      <span className="text-sm font-semibold text-zinc-100">Grok — persistent MCP (Connectors)</span>
+      <p className="text-xs text-zinc-400 mt-1">
+        Open <a href="https://grok.com/connectors" className="text-primary hover:underline">grok.com/connectors</a> → <strong className="font-normal text-zinc-300">New Connector → Custom</strong>, paste the URL below, and complete OAuth sign-in at riskmodels.app.
+        Grok discovers tools from the server automatically (Streamable HTTP). No Developer Mode toggle — the connector UI is public on Grok web, iOS, and Android.
+      </p>
+      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
+        <span>https://riskmodels.app/api/mcp/sse</span>
+        <CopyInline value="https://riskmodels.app/api/mcp/sse" />
+      </div>
+      <p className="text-xs text-zinc-600 mt-2">Details: <a href="#grok-mcp" className="text-primary hover:underline">Grok setup ↓</a> · xAI docs: <a href="https://docs.x.ai/grok/connectors" className="text-primary hover:underline">Connectors</a></p>
+    </div>
+    <div className="px-5 pb-4 pt-2 border-t border-primary/20">
+      <span className="text-sm font-semibold text-zinc-100">Gemini — depends on surface</span>
+      <p className="text-xs text-zinc-400 mt-1">
+        <strong className="font-normal text-zinc-300">gemini.google.com (consumer chat):</strong> no custom MCP UI — use the in-chat prompt above (<code className="text-zinc-500">/llms.txt</code> + REST).
+        <strong className="font-normal text-zinc-300"> Gemini CLI / Antigravity:</strong> terminal MCP with OAuth (<code className="text-zinc-500">gemini mcp add …</code>).
+        <strong className="font-normal text-zinc-300"> Gemini Enterprise:</strong> admin registers this server as a Custom MCP data store in Google Cloud (Streamable HTTP + OAuth).
+      </p>
+      <p className="text-xs text-zinc-600 mt-2">Details: <a href="#gemini" className="text-primary hover:underline">Gemini setup ↓</a></p>
     </div>
   </div>
 
@@ -82,6 +119,20 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
           <p className="text-xs text-zinc-500 mt-0.5">Add the MCP server to your Zed assistant config. Zed auto-discovers available tools so you can query live risk data inline as you code. <a href="#mcp-setup" className="text-primary hover:underline">See MCP setup ↓</a></p>
         </div>
       </div>
+      <div className="flex items-center gap-4 px-5 py-4">
+        <img src="https://www.google.com/s2/favicons?domain=x.ai&sz=64" alt="Grok" width="28" height="28" className="rounded flex-shrink-0" />
+        <div>
+          <span className="text-sm font-semibold text-zinc-100">Grok</span>
+          <p className="text-xs text-zinc-500 mt-0.5">Add a custom MCP connector at grok.com/connectors — OAuth sign-in, no Developer Mode. <a href="#grok-mcp" className="text-primary hover:underline">See Grok setup ↓</a></p>
+        </div>
+      </div>
+      <div className="flex items-center gap-4 px-5 py-4">
+        <img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="Gemini" width="28" height="28" className="rounded flex-shrink-0" />
+        <div>
+          <span className="text-sm font-semibold text-zinc-100">Gemini</span>
+          <p className="text-xs text-zinc-500 mt-0.5">Consumer web chat: use <code className="text-zinc-400">/llms.txt</code> in-session. Persistent MCP: Gemini CLI or Gemini Enterprise admin setup. <a href="#gemini" className="text-primary hover:underline">See Gemini setup ↓</a></p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -121,6 +172,66 @@ https://riskmodels.app/api/mcp/sse
 ```
 
 Leave the OAuth Client ID / Secret fields blank, click **Add**, then **Connect**. You'll sign in at riskmodels.app and approve access once (OAuth 2.0 + PKCE — the client registers itself); the tools then load and metered calls bill your account. Nothing to install, and no API key to copy or store.
+
+<h3 id="chatgpt-mcp">ChatGPT (Developer Mode)</h3>
+
+ChatGPT supports custom remote MCP servers, but the UI is hidden until **Developer mode** is on:
+
+1. **Settings → Apps & Connectors → Advanced settings** → enable **Developer mode** (Plus / Pro / Business / Enterprise / Edu; web only).
+2. **Apps & Connectors → Create** (button appears after step 1).
+3. **Connector URL:** `https://riskmodels.app/api/mcp/sse`
+4. Choose **OAuth** (not a static API key). Complete sign-in at riskmodels.app when prompted.
+5. Enable the tools you want (e.g. `riskmodels_decompose`, `riskmodels_get_lstar`, `riskmodels_analyze_portfolio`).
+
+Machine-readable discovery: [`/.well-known/mcp.json`](/.well-known/mcp.json) · OAuth metadata: [`/.well-known/oauth-protected-resource`](/.well-known/oauth-protected-resource).
+
+**Not the same as ChatGPT Finances.** The Schwab / Finances connector only sees brokerage holdings. RiskModels is a separate MCP app for factor decomposition and hedge ratios.
+
+<h3 id="chatgpt-portfolio">ChatGPT + brokerage holdings (Finances + RiskModels)</h3>
+
+When ChatGPT already has your Schwab book via **Finances**, you do not need RiskModels MCP in the same turn — combine sources in one chat:
+
+1. Ask ChatGPT to list your holdings (tickers + weights or dollar notionals from Finances).
+2. Paste: *"Use https://riskmodels.app/llms.txt to set up RiskModels REST for this chat, then analyze factor exposure and concentration for these holdings: …"*
+3. For a full ~3k-name book, get a personal key at [/get-key](/get-key) and paste it once (or use Developer Mode MCP above for persistent tools).
+
+Example tickers ChatGPT may already see: `VTI`, `GOOG`, `MS`, `AMZN`, `IEMG`, `NFLX`. RiskModels returns L1/L2/L3 explained risk and ETF hedge ratios per name; aggregate with `POST /api/portfolio/risk-snapshot` when you have weights.
+
+<h3 id="grok-mcp">Grok (Connectors)</h3>
+
+Grok ships a first-class **Bring Your Own MCP** flow — no hidden Developer Mode:
+
+1. Open [grok.com/connectors](https://grok.com/connectors).
+2. Click **New Connector → Custom**.
+3. **MCP server URL:** `https://riskmodels.app/api/mcp/sse`
+4. Complete OAuth sign-in at riskmodels.app when prompted.
+
+Grok discovers tools from the server and exposes them in chat alongside built-in connectors (Gmail, Drive, GitHub, etc.). The server must be reachable on the public internet (RiskModels hosted endpoint satisfies this). xAI docs: [Connectors](https://docs.x.ai/grok/connectors) · [Remote MCP tools](https://docs.x.ai/developers/tools/remote-mcp) (API/SDK path for developers).
+
+<h3 id="gemini">Gemini</h3>
+
+Google exposes **three different surfaces** — pick the one you actually use:
+
+**Consumer chat (`gemini.google.com`)** — no Settings → Connectors flow for custom MCP today. Use the in-chat prompt at the top of this page (`/llms.txt` + REST) for one-session analysis, or paste holdings and ask Gemini to call the API with a key from [/get-key](/get-key).
+
+**Gemini CLI / Antigravity (terminal)** — MCP lives in the CLI, not the consumer web app:
+
+```bash
+gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse
+```
+
+Start a session and run `/mcp auth riskmodels` to complete OAuth in the browser. Alternatively add to `~/.gemini/settings.json` under `mcpServers` with `httpUrl` pointing at the URL above. Google is migrating free-tier CLI users toward **Antigravity** — the same Streamable HTTP URL and OAuth pattern apply there.
+
+**Gemini Enterprise (Google Cloud admin)** — register RiskModels as a **Custom MCP Server** data store in the Google Cloud console ([setup guide](https://cloud.google.com/gemini/enterprise/docs/connectors/custom-mcp-server/set-up-custom-mcp-server)). Requirements:
+
+| Field | RiskModels value |
+| --- | --- |
+| MCP Server URL | `https://riskmodels.app/api/mcp/sse` |
+| Authorization URL | `https://riskmodels.app/oauth/authorize` |
+| Token URL | `https://riskmodels.app/api/oauth/token` |
+| Scopes | `mcp:read` |
+
+Gemini Enterprise preview supports **Streamable HTTP only** (matches our endpoint). Unlike Claude/Cursor/Grok, Enterprise typically expects a **pre-registered OAuth client** (Client ID + Secret) rather than dynamic registration — register a client via `POST /api/oauth/register` or contact [support](/get-key) for a team OAuth app, then paste the credentials into the Cloud console. End users authorize the connector from the Gemini Enterprise chat UI after an admin attaches the data store.
 
 ### Hosted via the mcp-remote proxy (Bearer key)
 

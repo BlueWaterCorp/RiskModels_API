@@ -398,7 +398,7 @@ export default function ApiReferencePage() {
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight mb-3">Fastest way to get started with agents</h2>
                   <p className="text-zinc-400 max-w-2xl">
-                    Paste one line into any AI chat (Claude, ChatGPT, Cursor). The agent reads riskmodels.app, wires itself up for the conversation, and tells you what it can do — no install, no terminal.
+                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, wires itself up for the conversation, and tells you what it can do — no install, no terminal.
                   </p>
                 </div>
 
@@ -410,7 +410,8 @@ export default function ApiReferencePage() {
                     </div>
                     <p className="text-xs text-zinc-500 mt-2">
                       Want it permanently in Claude or Cursor? Settings → Connectors → Add custom connector → paste{' '}
-                      <code className="text-zinc-400">https://riskmodels.app/api/mcp/sse</code> and Connect — sign in, no key needed. Details in the{' '}
+                      <code className="text-zinc-400">https://riskmodels.app/api/mcp/sse</code> and Connect — sign in, no key needed. ChatGPT Plus: Developer mode under Apps &amp; Connectors. Grok:{' '}
+                      <code className="text-zinc-400">grok.com/connectors</code> → Custom. Gemini: CLI or Enterprise (consumer web uses REST only). Details in the{' '}
                       <Link href="/docs/agent-integration" className="text-terminal hover:underline">agent integration guide</Link>.
                     </p>
                   </div>
