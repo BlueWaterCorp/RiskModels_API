@@ -47,7 +47,8 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/agents.json` | Agent defs (empty stub until MCP wired) | ✅ |
 | `GET /openbb/prompts.json` | Prompt defs (empty stub) | ✅ |
 | `GET /openbb/widgets/metrics?ticker=` | Single-name risk table | ✅ live |
-| `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot tearsheet (`pdf` widget) | ✅ live |
+| `GET /openbb/widgets/snapshot-table?ticker=` | Risk snapshot as a table (L3 decomposition + hedge ratios) | ✅ live |
+| `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot PDF (kept for API; **not** a widget — OpenBB's pdf.js viewer wouldn't render it) | ⚠️ deprecated as widget |
 | `GET /openbb/widgets/returns-chart?ticker=&years=` | Cumulative total-return line chart | ✅ live |
 | `GET /openbb/widgets/risk-composition?ticker=&years=` | L3 explained-risk over time (line chart) | ✅ live |
 | `GET /openbb/widgets/rankings-top?metric=&cohort=&window=&limit=` | Top-ranked names table | ✅ live |
