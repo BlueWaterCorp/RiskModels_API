@@ -41,19 +41,77 @@ export const APPS = [
             h: 20,
             state: { params: { ticker: "AAPL" } },
           },
+          {
+            i: "rm_cumulative_return",
+            x: 0,
+            y: 20,
+            w: 40,
+            h: 12,
+            state: { params: { ticker: "AAPL", years: "1" } },
+          },
+          {
+            i: "rm_risk_composition",
+            x: 0,
+            y: 32,
+            w: 40,
+            h: 12,
+            state: { params: { ticker: "AAPL", years: "1" } },
+          },
+          {
+            i: "rm_rankings_single",
+            x: 0,
+            y: 44,
+            w: 24,
+            h: 14,
+            state: { params: { ticker: "AAPL" } },
+          },
         ],
       },
     },
     groups: [
-      // Wire the ticker param across widgets once >1 widget is live, so changing
-      // the ticker in one updates the whole tab.
+      // Change the ticker in one widget → the whole tab follows.
       {
         name: "ticker",
         type: "param",
         paramName: "ticker",
         defaultValue: "AAPL",
-        widgetIds: ["rm_single_name_metrics", "rm_single_name_snapshot"],
+        widgetIds: [
+          "rm_single_name_metrics",
+          "rm_single_name_snapshot",
+          "rm_cumulative_return",
+          "rm_risk_composition",
+          "rm_rankings_single",
+        ],
       },
     ],
+  },
+  {
+    name: "RiskModels — Screener",
+    description:
+      "Cross-sectional rankings — top names by explained-risk, residual, return, and market cap across universe/sector/subsector cohorts.",
+    allowCustomization: true,
+    tabs: {
+      screen: {
+        id: "screen",
+        name: "Screener",
+        layout: [
+          {
+            i: "rm_rankings_top",
+            x: 0,
+            y: 0,
+            w: 24,
+            h: 16,
+            state: {
+              params: {
+                metric: "gross_return",
+                cohort: "universe",
+                window: "252d",
+                limit: "10",
+              },
+            },
+          },
+        ],
+      },
+    },
   },
 ];

@@ -48,13 +48,22 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/prompts.json` | Prompt defs (empty stub) | ✅ |
 | `GET /openbb/widgets/metrics?ticker=` | Single-name risk table | ✅ live |
 | `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot tearsheet (`pdf` widget) | ✅ live |
+| `GET /openbb/widgets/returns-chart?ticker=&years=` | Cumulative total-return line chart | ✅ live |
+| `GET /openbb/widgets/risk-composition?ticker=&years=` | L3 explained-risk over time (line chart) | ✅ live |
+| `GET /openbb/widgets/rankings-top?metric=&cohort=&window=&limit=` | Top-ranked names table | ✅ live |
+| `GET /openbb/widgets/rankings?ticker=` | Single-name rankings table | ✅ live |
+
+Chart widgets use OpenBB's built-in table `chartView` (`data.table.chartView`,
+`chartType: "line"`) — the endpoint returns plain row arrays, so they render as
+a line chart and degrade to a readable table. `rankings/screen` is intentionally
+skipped (POST-only upstream; OpenBB widgets fetch via GET).
 
 ## Widget roadmap (add one route per item, then list it in `widgets.json`)
 
-- **Charts** → `/ticker-returns`, `/returns`, `/correlation`, `/macro-factors`,
-  `/l3-decomposition`, `/returns-decomposition`
-- **Tables** → `/rankings/screen`, `/rankings/top`, `/universe/{name}/members`,
-  `/etf-holdings`, `/filer-holdings`
+- **Charts** → `/correlation`, `/macro-factors`, `/returns-decomposition`
+  (`/ticker-returns` + `/l3-decomposition` covered by returns-chart /
+  risk-composition)
+- **Tables** → `/universe/{name}/members`, `/etf-holdings`, `/filer-holdings`
 - **HTML / image** → `/snapshot` (multi-position portfolio tearsheet), MCP
   `render_artifact` PNGs. (Single-name `snapshot.pdf` is already live above as
   the `pdf` widget. `snapshot.png` needs `PLAYWRIGHT_PDF_ENABLED=true` upstream
