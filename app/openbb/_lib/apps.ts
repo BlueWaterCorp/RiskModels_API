@@ -103,9 +103,9 @@ export const APPS = [
             h: 16,
             state: {
               params: {
-                metric: "gross_return",
+                metric: "mkt_cap",
                 cohort: "universe",
-                window: "252d",
+                window: "1d",
                 limit: "10",
               },
             },
