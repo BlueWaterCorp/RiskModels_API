@@ -31,3 +31,14 @@ export function snapshotConnectProbe(ticker: string) {
     content: MINIMAL_PDF_BASE64,
   };
 }
+
+/**
+ * Generic no-key placeholder for table/chart widget endpoints. One explicit
+ * "wire your key" row (not market data) so OpenBB's connect-test gets a valid
+ * array instead of a 401 → 500.
+ */
+export function noKeyRows(): Array<{ status: string }> {
+  return [
+    { status: "Add X-API-KEY (rm_agent_live_*) in OpenBB Connections to load data" },
+  ];
+}
