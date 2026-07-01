@@ -40,14 +40,15 @@ export interface SnapshotReportData {
 }
 
 /**
- * Publication palette — aligned with sdk/riskmodels/visuals/styles.py L3_LAYER_COLORS.
- * Market: Blue, Sector: Cyan, Subsector: Orange, Residual: Slate.
+ * LOCKED factor legend — see BWMACRO/DESIGN.md §Color (shared across all repos).
+ * Market: deep navy, Sector: teal, Subsector: institutional violet,
+ * Residual / stock-specific: green.
  */
 export const FACTOR_COLORS = {
-  market: "#3b82f6",
-  sector: "#06b6d4",
-  subsector: "#f97316",
-  residual: "#94a3b8",
+  market: "#002a5e",
+  sector: "#006f8e",
+  subsector: "#6d28d9",
+  residual: "#00AA00",
 } as const;
 
 declare global {
