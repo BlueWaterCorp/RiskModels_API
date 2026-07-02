@@ -43,6 +43,13 @@ LLMS_TXT_PUBLIC_AGENT_KEY
 # Server-only; never reaches the browser. Read by /api/chat when `model: "claude-*"`.
 ANTHROPIC_API_KEY
 
+# Moonshot (Kimi) — OpenAI-compatible chat backend (cheaper). When MOONSHOT_API_KEY
+# is set, resolveAgentBackend() points BOTH /api/chat and /api/landing/chat at it.
+# Server-only. MOONSHOT_MODEL defaults to kimi-k2-0711-preview; BASE_URL optional.
+MOONSHOT_API_KEY
+MOONSHOT_MODEL
+MOONSHOT_BASE_URL
+
 # Shared secret for the Google Ads offline-conversion scheduled upload endpoint
 # (GET /api/internal/google-ads/offline-conversions). Used as Bearer / Basic password / ?token=.
 GOOGLE_ADS_OFFLINE_UPLOAD_TOKEN
