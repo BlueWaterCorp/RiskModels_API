@@ -44,7 +44,8 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb` | Backend info | ✅ |
 | `GET /openbb/widgets.json` | Widget defs | ✅ |
 | `GET /openbb/apps.json` | App defs | ✅ |
-| `GET /openbb/agents.json` | Agent defs (empty stub until MCP wired) | ✅ |
+| `GET /openbb/agents.json` | AI agent discovery — registers **RiskModels Analyst** | ✅ live |
+| `POST /openbb/query` | AI agent endpoint (SSE) — proxies to `/api/chat` (Claude + risk tools) | ✅ live |
 | `GET /openbb/prompts.json` | Prompt defs (empty stub) | ✅ |
 | `GET /openbb/widgets/metrics?ticker=` | Single-name risk table | ✅ live |
 | `GET /openbb/widgets/snapshot-table?ticker=` | Risk snapshot as a table (L3 decomposition + hedge ratios) | ✅ live |
@@ -73,4 +74,19 @@ skipped (POST-only upstream; OpenBB widgets fetch via GET).
 - **Apps** → fill out the three-app set in `apps.json`
   (Single-Name Risk · Portfolio Risk & Hedge · Screener)
 
-Then register the published npm `riskmodels` MCP server as a Workspace AI agent.
+## AI agent (RiskModels Analyst)
+
+`agents.json` registers one agent; `POST /openbb/query` is its endpoint. It's a
+thin adapter — it maps OpenBB's `QueryRequest` messages to our chat format and
+proxies to `POST /api/chat` (Claude + the RiskModels tool suite), forwarding the
+OpenBB user's `X-API-KEY` as a Bearer token, then streams the answer as
+`copilotMessageChunk` SSE. Auth, billing, entitlements, and the analyst doctrine
+are reused from `/api/chat` unchanged.
+
+**Add it in OpenBB:** copilot icon → **+** → base URL `https://riskmodels.app/openbb`
+(Workspace fetches `agents.json`, uses `/openbb/query` for chat).
+
+Follow-ups: token-level streaming (today it streams the final answer after the
+tool loop, with status heartbeats to hold the SSE open); surface tool calls as
+`copilotStatusUpdate` / citations; use `widgets`/`context` from the request so
+the agent can read the current dashboard.
