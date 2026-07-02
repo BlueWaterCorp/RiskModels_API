@@ -1,5 +1,13 @@
 # Keys to copy from Doppler → Vercel for riskmodels-api (one name per line).
 # Lines starting with # are ignored.
+#
+# ⚠️ SUPERSEDED for production (2026-07-02): riskmodels-api Production now pulls
+# from erm3/prd via the NATIVE Doppler→Vercel sync (Doppler dashboard → erm3 →
+# Syncs). Adding a secret to erm3/prd auto-propagates — no allowlist edit, no
+# `npm run vercel:sync-env:doppler`, no manual redeploy needed for the value to
+# land (redeploy still applies it to running functions).
+# This file + script remain ONLY for the scoped preview variants
+# (…:email, …:preview-llms) and emergency manual pushes.
 
 # API version reported on /api/health
 API_VERSION
