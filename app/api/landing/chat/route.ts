@@ -42,7 +42,9 @@ const ALLOWED_TOOLS = [
   "get_rankings",
 ] as const;
 
-const LANDING_MODEL = "gpt-4o-mini";
+// Claude, not gpt-4o-mini: the OpenAI account is out of quota, and Claude is a
+// quality upgrade for the demo. runChatAgent dispatches claude-* → Anthropic.
+const LANDING_MODEL = "claude-sonnet-4-6";
 const LANDING_MAX_ROUNDS = 2;
 const LANDING_MAX_TOKENS = 700;
 const MAX_MSGS_PER_HOUR = 10;
@@ -108,11 +110,11 @@ export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
       {
         error: "Service unavailable",
-        message: "AI chat demo is not configured (missing OPENAI_API_KEY).",
+        message: "AI chat demo is not configured (missing ANTHROPIC_API_KEY).",
       },
       { status: 503, headers: corsHeaders },
     );
