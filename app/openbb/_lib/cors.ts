@@ -50,7 +50,7 @@ export function openbbCors(
 
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": requestedHeaders || DEFAULT_ALLOW_HEADERS,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
