@@ -42,6 +42,7 @@ import {
   applyScrubToFilerHoldings,
   applyScrubToHoldings,
 } from "@/lib/dal/symbols-batch";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 let _storage: Storage | null = null;
 
@@ -465,6 +466,14 @@ export interface FundHolding {
   adj_mv: number;
   /** Fraction of `aum_erm3` (post-universe-filter denominator). Null when AUM is null/0. */
   weight: number | null;
+  // Read-time enrichment (enrich-fund-holdings.ts) — best-effort joins from
+  // security_history_latest (L3 ER) + symbols (display labels). Absent on a miss.
+  ticker?: string | null;
+  name?: string | null;
+  l3_market_er?: number | null;
+  l3_sector_er?: number | null;
+  l3_subsector_er?: number | null;
+  l3_residual_er?: number | null;
 }
 
 export interface FundHoldingsSnapshot {
@@ -484,50 +493,40 @@ export async function readFundHoldingsTopN(
   bwFundId: string,
   n = 25,
 ): Promise<FundHoldingsSnapshot | null> {
-  const grp = await openFundZarrGroup(bwFundId, "ds_ph.zarr");
-  if (!grp) return null;
-
-  const teos = await readTeoStrings(grp);
-  if (!teos || teos.length === 0) return null;
-
-  const symbols = await readSymbolStrings(grp);
-  if (!symbols || symbols.length === 0) return null;
-
-  const teoIdx = teos.length - 1;
-  const teo = teos[teoIdx]!;
-
-  const [adjMv, aumReported, aumErm3] = await Promise.all([
-    readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
-    readScalarAtTeo(grp, "aum_reported", teoIdx),
-    readScalarAtTeo(grp, "aum_erm3", teoIdx),
-  ]);
-  if (!adjMv) return null;
-
-  const holdings: FundHolding[] = [];
-  for (let i = 0; i < adjMv.length; i++) {
-    const v = adjMv[i];
-    if (v != null && v > 0) {
-      holdings.push({
-        bw_sym_id: symbols[i]!,
-        adj_mv: v,
-        weight:
-          aumErm3 != null && aumErm3 > 0 ? v / aumErm3 : null,
-      });
-    }
-  }
-  if (holdings.length === 0) return null;
-
-  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  // Source: the pre-computed `fund_holdings_top` Supabase table (top-25/fund,
+  // `weight` = adj_mv/aum_erm3 already computed, ordered by `rank`). No zarr
+  // read / no request-time compute. l3_*_er + ticker are joined separately at
+  // read-time by enrich-fund-holdings.ts (l3 refreshes daily, holdings quarterly).
   const safeN = Math.min(Math.max(n, 1), 1000);
-  const top = holdings.slice(0, safeN);
+  const admin = createAdminClient();
+  const { data: rows, error } = await admin
+    .from("fund_holdings_top")
+    .select(
+      "symbol, rank, weight, market_value_usd, n_holdings_total, report_date",
+    )
+    .eq("bw_fund_id", bwFundId)
+    .order("rank", { ascending: true })
+    .limit(safeN);
+  if (error || !rows || rows.length === 0) return null;
+
+  const first = rows[0]!;
+  const teo = String(first.report_date);
+  const nTotal = Number(first.n_holdings_total ?? rows.length);
+  const holdings: FundHolding[] = rows.map((r) => ({
+    bw_sym_id: String(r.symbol),
+    adj_mv: Number(r.market_value_usd) || 0,
+    weight: r.weight != null ? Number(r.weight) : null,
+  }));
 
   return {
     teo,
-    aum_reported: aumReported,
-    aum_erm3: aumErm3,
-    n_holdings_returned: Math.min(safeN, holdings.length),
-    n_total_holdings: holdings.length,
-    holdings: await applyScrubToHoldings(top),
+    // aum lives on funds_latest (used for metrics); holdings weights are
+    // pre-computed, so the snapshot doesn't need aum echoed here.
+    aum_reported: null,
+    aum_erm3: null,
+    n_holdings_returned: holdings.length,
+    n_total_holdings: nTotal,
+    holdings: await applyScrubToHoldings(holdings),
   };
 }
 

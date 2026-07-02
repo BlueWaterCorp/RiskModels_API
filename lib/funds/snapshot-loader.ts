@@ -20,6 +20,7 @@ import {
   composeFundSnapshot,
   type FundSnapshot,
 } from "@/lib/funds/snapshot-composer";
+import { enrichFundHoldingsWithL3 } from "@/lib/funds/enrich-fund-holdings";
 
 const HOLDINGS_TOP_N = 25;
 const FUND_LOOKBACK_MONTHS = 12;
@@ -68,7 +69,9 @@ export async function loadFundSnapshot(
 
   const [holdings, hedge, portfolioHistory, navHistory, cohortRanks, cohortMetrics] =
     await Promise.all([
-      readFundHoldingsTopN(bwFundId, HOLDINGS_TOP_N),
+      readFundHoldingsTopN(bwFundId, HOLDINGS_TOP_N).then(
+        enrichFundHoldingsWithL3,
+      ),
       readFundHedgeLatest(bwFundId),
       readFundPortfolioSeries(bwFundId, {
         startDate,

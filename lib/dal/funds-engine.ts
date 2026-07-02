@@ -61,6 +61,30 @@ export interface FundLatestRow {
   factor_set_id: string | null;
   last_synced_at: string;
   metadata: Record<string, unknown> | null;
+  // ERM3 risk decomposition + NAV/CAPM fit (D.8.x funds_supabase_sync).
+  // Optional so pre-existing test fixtures / callers compile; the live
+  // funds_latest row always carries them (selected in FUND_LATEST_COLUMNS).
+  aum_erm3?: number | null;
+  coverage_in_erm3?: number | null;
+  variance_shares_full?: FundVarianceShares | null;
+  variance_shares_recent?: FundVarianceShares | null;
+  fit_beta_to_spy?: number | null;
+  fit_capm_r2?: number | null;
+  fit_nav_correlation?: number | null;
+  fit_residual_vol?: number | null;
+  fit_nav_vol_ann?: number | null;
+  fit_alpha_ann?: number | null;
+  fit_erm3_multifactor_r2?: number | null;
+  fit_n_months?: number | null;
+}
+
+/** v4 cascade variance shares (fractions ~sum to 1; `style` present for v4). */
+export interface FundVarianceShares {
+  market: number | null;
+  sector: number | null;
+  subsector: number | null;
+  style?: number | null;
+  residual: number | null;
 }
 
 export interface FundWithLatest {
@@ -79,7 +103,7 @@ const FUND_COLUMNS =
   "bw_fund_id, series_id, ticker, cik, fund_name, morningstar_category, equity_style_9box, style_link_method, primary_bw_fund_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_total_adj_mv, latest_n_holdings, latest_effective_n, last_in_eligible_universe_at, metadata";
 
 const FUND_LATEST_COLUMNS =
-  "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata";
+  "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata, aum_erm3, coverage_in_erm3, variance_shares_full, variance_shares_recent, fit_beta_to_spy, fit_capm_r2, fit_nav_correlation, fit_residual_vol, fit_nav_vol_ann, fit_alpha_ann, fit_erm3_multifactor_r2, fit_n_months";
 
 /**
  * True when `public.funds.latest_total_adj_mv` is missing or non-finite or exactly 0.

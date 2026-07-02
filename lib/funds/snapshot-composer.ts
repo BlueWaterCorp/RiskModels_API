@@ -16,6 +16,7 @@
 import type {
   FundLatestRow,
   FundRow,
+  FundVarianceShares,
   StylePortfolioRow,
   StyleRankingRow,
 } from "@/lib/dal/funds-engine";
@@ -97,6 +98,23 @@ export interface FundSnapshot {
     n_funds_in_cell: number | null;
     ranks: FundCohortRankEntry[];
   } | null;
+  /** ERM3 risk decomposition (variance shares), parallel to the filer snapshot. */
+  erm3_decomposition: {
+    variance_shares_full: FundVarianceShares | null;
+    variance_shares_recent: FundVarianceShares | null;
+  } | null;
+  /** NAV/CAPM/ERM3 fit block — powers the Summary Risk Profile narrative. */
+  fund_fit: {
+    beta_to_spy: number | null;
+    capm_r2: number | null;
+    nav_correlation: number | null;
+    coverage_in_erm3: number | null;
+    residual_vol: number | null;
+    n_months: number | null;
+    nav_vol_ann: number | null;
+    alpha_ann: number | null;
+    erm3_multifactor_r2: number | null;
+  } | null;
   _metadata: {
     model_version: string | null;
     factor_set_id: string | null;
@@ -165,6 +183,27 @@ export function composeFundSnapshot(p: FundSnapshotPrimitives): FundSnapshot {
           ranks,
         }
       : null,
+    erm3_decomposition:
+      latest.variance_shares_full || latest.variance_shares_recent
+        ? {
+            variance_shares_full: latest.variance_shares_full ?? null,
+            variance_shares_recent: latest.variance_shares_recent ?? null,
+          }
+        : null,
+    fund_fit:
+      latest.fit_beta_to_spy != null || latest.fit_capm_r2 != null
+        ? {
+            beta_to_spy: latest.fit_beta_to_spy ?? null,
+            capm_r2: latest.fit_capm_r2 ?? null,
+            nav_correlation: latest.fit_nav_correlation ?? null,
+            coverage_in_erm3: latest.coverage_in_erm3 ?? null,
+            residual_vol: latest.fit_residual_vol ?? null,
+            n_months: latest.fit_n_months ?? null,
+            nav_vol_ann: latest.fit_nav_vol_ann ?? null,
+            alpha_ann: latest.fit_alpha_ann ?? null,
+            erm3_multifactor_r2: latest.fit_erm3_multifactor_r2 ?? null,
+          }
+        : null,
     _metadata: {
       model_version: latest.model_version,
       factor_set_id: latest.factor_set_id,
