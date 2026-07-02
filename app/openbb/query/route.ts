@@ -19,10 +19,6 @@ export const dynamic = "force-dynamic";
 // Claude + a few tool rounds can run 10–40s; keep the function alive.
 export const maxDuration = 120;
 
-// Analyst model. /api/chat defaults to gpt-4o-mini unless AGENT_BACKEND=claude,
-// so we pass Claude explicitly (ANTHROPIC_API_KEY is configured).
-const ANALYST_MODEL = "claude-sonnet-4-6";
-
 // Friendly labels for the tools the analyst actually called (from
 // tool_calls_summary) — surfaced to the user as a "Consulted:" status.
 const TOOL_LABELS: Record<string, string> = {
@@ -129,9 +125,9 @@ export async function POST(req: NextRequest) {
               "Content-Type": "application/json",
               ...(isDemo ? {} : { Authorization: `Bearer ${key}` }),
             },
-            body: JSON.stringify(
-              isDemo ? { messages } : { messages, model: ANALYST_MODEL },
-            ),
+            // No model override — /api/chat and /api/landing/chat resolve the
+            // backend themselves (Moonshot/Kimi when configured).
+            body: JSON.stringify({ messages }),
           },
         );
         clearInterval(heartbeat);

@@ -4,26 +4,16 @@ import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { getCorsHeaders } from "@/lib/cors";
 import { ChatPostSchema } from "@/lib/api/schemas";
 import { runChatAgent, AgentUpstreamError } from "@/lib/chat/agent-runner";
+import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import type { ToolCallResult } from "@/lib/chat/tool-executor";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Default model when the request omits `model`. Flips with the AGENT_BACKEND
- * env flag (Doppler): `claude` → `claude-sonnet-4-6`; anything else (incl.
- * unset) → `gpt-4o-mini`, today's behavior. A request-supplied `model:`
- * always wins over this default (see `const model = modelOpt?.trim() || ...`).
- *
- * Phase 2A note: the trial surface on `.net` /activation passes
- * `model: "claude-sonnet-4-6"` explicitly, so it doesn't depend on this flag.
- * Flip AGENT_BACKEND only when you want *all* default chat traffic on Claude.
- */
-const DEFAULT_MODEL =
-  process.env.AGENT_BACKEND?.toLowerCase() === "claude"
-    ? "claude-sonnet-4-6"
-    : "gpt-4o-mini";
+// Backend (model + client) is resolved per-request by resolveAgentBackend():
+// Moonshot/Kimi when MOONSHOT_API_KEY is set, else Claude (AGENT_BACKEND=claude)
+// or OpenAI. A request-supplied claude-* `model:` always forces Anthropic.
 const MAX_TOOL_ROUNDS = 5;
 
 /** A rendered artifact surfaced to the chat UI for inline display. */
@@ -106,12 +96,12 @@ export const POST = withBilling(
     // At least one backend must be configured. The runner picks per-request
     // based on the resolved model (claude-* → Anthropic, else OpenAI), so we
     // only hard-fail here if neither key is present.
-    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+    if (!hasChatBackend()) {
       return NextResponse.json(
         {
           error: "Service unavailable",
           message:
-            "AI chat is not configured (need OPENAI_API_KEY or ANTHROPIC_API_KEY)",
+            "AI chat is not configured (need MOONSHOT_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)",
         },
         { status: 503, headers: getCorsHeaders(origin) },
       );
@@ -144,7 +134,7 @@ export const POST = withBilling(
       parallel_tool_calls: bodyParallelToolCalls,
       execute_tools_sequentially: bodyExecSequential,
     } = validation.data;
-    const model = modelOpt?.trim() || DEFAULT_MODEL;
+    const backend = resolveAgentBackend(modelOpt);
 
     const llmEst = calculateRequestCost(
       "chat-risk-analyst",
@@ -168,11 +158,13 @@ export const POST = withBilling(
     try {
       runResult = await runChatAgent({
         userMessages,
-        model,
+        model: backend.model,
+        openai: backend.openai,
         userId: context.userId,
         requestId: context.requestId,
         maxToolRounds: MAX_TOOL_ROUNDS,
-        allowParallelOpenAI: bodyParallelToolCalls !== false,
+        allowParallelOpenAI: backend.allowParallel && bodyParallelToolCalls !== false,
+        omitParallelToolCalls: backend.omitParallelToolCalls,
         execParallel: !bodyExecSequential,
       });
     } catch (e) {
