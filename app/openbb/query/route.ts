@@ -23,6 +23,23 @@ export const maxDuration = 120;
 // so we pass Claude explicitly (ANTHROPIC_API_KEY is configured).
 const ANALYST_MODEL = "claude-sonnet-4-6";
 
+// Friendly labels for the tools the analyst actually called (from
+// tool_calls_summary) — surfaced to the user as a "Consulted:" status.
+const TOOL_LABELS: Record<string, string> = {
+  search_tickers: "ticker search",
+  get_risk_metrics: "risk metrics",
+  get_correlation: "correlation",
+  get_rankings: "rankings",
+  get_l3_decomposition: "L3 decomposition",
+  get_residual_signal: "residual signal",
+  hedge_basket: "hedge basket",
+  get_fund_holdings: "fund holdings",
+  get_filer_holdings: "13F filer holdings",
+  factor_correlation: "factor correlation",
+  macro_factors: "macro factors",
+  render_artifact: "chart render",
+};
+
 type InboundMessage = { role?: string; content?: unknown };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -119,7 +136,7 @@ export async function POST(req: NextRequest) {
         const json = (await res.json().catch(() => ({}))) as {
           message?: { content?: string };
           error?: string;
-          message_text?: string;
+          tool_calls_summary?: Array<{ tool?: string }> | null;
         };
         if (!res.ok) {
           const err =
@@ -129,6 +146,26 @@ export async function POST(req: NextRequest) {
           say(typeof err === "string" ? err : "Sorry — the analyst is unavailable.");
           controller.close();
           return;
+        }
+
+        // Surface the real tools the analyst consulted (honest, from the run).
+        const tools = json?.tool_calls_summary;
+        if (Array.isArray(tools) && tools.length) {
+          const labels = [
+            ...new Set(
+              tools
+                .map((t) => (t?.tool ? TOOL_LABELS[t.tool] ?? t.tool : null))
+                .filter((x): x is string => !!x),
+            ),
+          ];
+          if (labels.length) {
+            send("copilotStatusUpdate", {
+              eventType: "INFO",
+              message: `Consulted: ${labels.join(", ")}`,
+              group: "reasoning",
+              hidden: false,
+            });
+          }
         }
 
         const content = json?.message?.content;

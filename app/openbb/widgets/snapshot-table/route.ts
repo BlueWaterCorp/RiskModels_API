@@ -67,16 +67,19 @@ export async function GET(req: NextRequest) {
       ? null
       : Number(m.l3_mkt_er ?? 0) + Number(m.l3_sec_er ?? 0) + Number(m.l3_sub_er ?? 0);
 
+  // Units live in the metric label — OpenBB's grid strips trailing %/$ from
+  // numeric-looking values, so "24.1%" renders as "24.1". Labelling the unit
+  // keeps it unambiguous regardless.
   const rows: Row[] = [
     { metric: "Ticker", value: d.ticker ?? ticker },
     { metric: "As of", value: d._data_health?.data_as_of ?? d.teo ?? "—" },
-    { metric: "Price (close)", value: money(m.price_close) },
-    { metric: "L3 explained risk — Market", value: pct1(m.l3_mkt_er) },
-    { metric: "L3 explained risk — Sector", value: pct1(m.l3_sec_er) },
-    { metric: "L3 explained risk — Subsector", value: pct1(m.l3_sub_er) },
-    { metric: "L3 explained risk — Residual (stock-specific)", value: pct1(m.l3_res_er) },
-    { metric: "Systematic (market + sector + subsector)", value: pct1(systematic) },
-    { metric: "Volatility — 252d (annualised)", value: num(m.vol_252d_ann) },
+    { metric: "Price — last close (USD)", value: money(m.price_close) },
+    { metric: "L3 explained risk — Market (%)", value: pct1(m.l3_mkt_er) },
+    { metric: "L3 explained risk — Sector (%)", value: pct1(m.l3_sec_er) },
+    { metric: "L3 explained risk — Subsector (%)", value: pct1(m.l3_sub_er) },
+    { metric: "L3 explained risk — Residual / stock-specific (%)", value: pct1(m.l3_res_er) },
+    { metric: "Systematic — market+sector+subsector (%)", value: pct1(systematic) },
+    { metric: "Volatility — 252d annualised (%)", value: pct1(m.vol_252d_ann) },
     { metric: "Recommended hedge level", value: String(m.recommended_hedge_level ?? "—") },
     { metric: "Lstar residual level", value: String(m.lstar_level ?? "—") },
     { metric: "L3 hedge ratio — Market", value: num(m.l3_mkt_hr) },
