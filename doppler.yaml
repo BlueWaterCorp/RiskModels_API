@@ -2,18 +2,25 @@
 # Run `doppler setup` to initialize, or use `doppler setup --no-interactive` for CI
 #
 # Available configs in erm3 project:
-#   - dev    (local development)
-#   - stg    (staging/preview deployments)
-#   - prd    (production - riskmodels.app)
+#   - dev        (local development)
+#   - stg        (staging/preview deployments)
+#   - prd        (production - riskmodels.app; NATIVE Doppler→Vercel sync → riskmodels-api)
+#   - prd_admin  (branch of prd, inherits it; MAINTAINER-ONLY, NOT synced to Vercel —
+#                 holds secrets that must never reach the web runtime: TWINE_PASSWORD,
+#                 SUPABASE_MANAGEMENT_ACCESS_TOKEN. Use for the maintainer commands below.)
 #
 # Common commands:
 #   doppler secrets                    # List all secrets
 #   doppler secrets get STRIPE_SECRET_KEY   # Get a specific secret
 #   npm run doppler:env                # Export to .env.local (for curl testing)
-#   npm run vercel:sync-env:doppler    # Push prd secrets to Vercel production
+# Production env now reaches Vercel via the NATIVE Doppler→Vercel sync on erm3/prd
+# (Doppler dashboard → erm3 → Syncs) — no manual push needed. The old
+# `npm run vercel:sync-env:doppler` (allowlist) remains only for the scoped
+# preview variants (…:email, …:preview-llms) and emergencies.
 #
-# Maintainer-only PyPI uploads (riskmodels-py): store TWINE_PASSWORD (pypi-… token) in Doppler; then:
-#   doppler run -p erm3 -c prd -- bash sdk/scripts/publish_pypi.sh
+# Maintainer-only PyPI uploads (riskmodels-py): store TWINE_PASSWORD (pypi-… token) in
+# the prd_admin config (NOT prd — prd syncs to the web runtime); then:
+#   doppler run -p erm3 -c prd_admin -- bash sdk/scripts/publish_pypi.sh
 # Optional --build rebuilds sdk/dist first. See sdk/scripts/publish_pypi.sh.
 #
 # Optional: LLMS_TXT_PUBLIC_AGENT_KEY — plaintext rm_agent_* / rm_user_* appended to /llms.txt for LLM crawlers (MAG7).
@@ -23,10 +30,11 @@
 # Production-only key update (both envs on Vercel, same Doppler prd value):
 #   npm run vercel:sync-env:doppler:prod+preview-llms
 #
-# Maintainer-only (not synced to Vercel): store SUPABASE_MANAGEMENT_ACCESS_TOKEN in Doppler
-# (Supabase Dashboard, Account, Access tokens), then:
-#   DOPPLER_CONFIG=prd npm run supabase:auth-smtp:resend:doppler
+# Maintainer-only (NOT synced to Vercel): SUPABASE_MANAGEMENT_ACCESS_TOKEN lives in the
+# prd_admin config (Supabase Dashboard, Account, Access tokens), then:
+#   DOPPLER_CONFIG=prd_admin npm run supabase:auth-smtp:resend:doppler
 # (Uses -p erm3 -c $DOPPLER_CONFIG via scripts/supabase-auth-smtp-doppler.sh; override DOPPLER_PROJECT if needed.)
+# prd_admin inherits prd, so RESEND_API_KEY / NEXT_PUBLIC_SUPABASE_URL resolve too.
 # Uses RESEND_API_KEY and NEXT_PUBLIC_SUPABASE_URL from that config unless you set SUPABASE_PROJECT_REF.
 
 setup:
