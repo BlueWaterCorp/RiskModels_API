@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     "riskmodels-analyst": {
       name: "RiskModels Analyst",
       description:
-        "Institutional risk analyst — hedge layering, L1/L2/L3 factor decomposition, cross-sectional rankings, residual signal, and portfolio hedging across US equities and ETFs. Answers with real RiskModels data and shows the tools it used.",
+        "Free demo of the RiskModels institutional analyst — L1/L2/L3 factor decomposition, hedge layering, and residual signal for the Magnificent 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA), with real RiskModels data. Get a key at riskmodels.app for the full US universe + portfolio hedging.",
       image: `${u.protocol}//${u.host}/logo.png`,
       endpoints: { query: queryUrl },
       features: { streaming: true },
