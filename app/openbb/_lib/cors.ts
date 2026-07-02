@@ -19,7 +19,23 @@
  * business being allowed on the rest of the API.
  */
 
-const OPENBB_ORIGINS = ["https://pro.openbb.co", "https://my.openbb.co"];
+const DEFAULT_ORIGIN = "https://pro.openbb.co";
+
+/**
+ * OpenBB Workspace serves widgets AND the copilot from several origins —
+ * `pro.openbb.co`, `my.openbb.co`, `excel.openbb.co`, the `.dev` staging
+ * variants, and `localhost:1420` in local dev. A fixed 2-origin allowlist made
+ * the copilot fail CORS ("allow CORS from this app origin") when it ran from a
+ * different `*.openbb.co` subdomain than the widgets. Echo any OpenBB origin
+ * instead. Endpoints still require the user's API key, so this only widens the
+ * credentialed-CORS handshake, not access.
+ */
+function isOpenBBOrigin(o: string): boolean {
+  return (
+    /^https:\/\/([a-z0-9-]+\.)?openbb\.(co|dev)$/.test(o) ||
+    /^http:\/\/localhost(:\d+)?$/.test(o)
+  );
+}
 
 // Fallback for non-preflight requests (which carry no Access-Control-Request-
 // Headers). Lists the headers OpenBB is known to send.
@@ -41,12 +57,8 @@ export function openbbCors(
     requestedHeaders = req.headers.get("access-control-request-headers");
   }
 
-  const isDev = process.env.NODE_ENV === "development";
-  const allowed = [...OPENBB_ORIGINS];
-  if (isDev) allowed.push("http://localhost:1420", "http://localhost:5050");
-
   const origin =
-    requestOrigin && allowed.includes(requestOrigin) ? requestOrigin : allowed[0];
+    requestOrigin && isOpenBBOrigin(requestOrigin) ? requestOrigin : DEFAULT_ORIGIN;
 
   return {
     "Access-Control-Allow-Origin": origin,
