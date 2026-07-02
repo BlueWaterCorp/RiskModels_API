@@ -19,7 +19,7 @@ import OpenAI from "openai";
  *
  * Env (Doppler):
  *   MOONSHOT_API_KEY   — the Moonshot key (enables this backend when set)
- *   MOONSHOT_MODEL     — Kimi model id (default kimi-k2-0711-preview)
+ *   MOONSHOT_MODEL     — Kimi model id (default kimi-k2.5)
  *   MOONSHOT_BASE_URL  — override (default https://api.moonshot.ai/v1)
  */
 export interface AgentBackend {
@@ -65,7 +65,7 @@ export function resolveAgentBackend(requestedModel?: string): AgentBackend {
   //   else OpenAI.
   if (moonshotClient) {
     return {
-      model: process.env.MOONSHOT_MODEL?.trim() || "kimi-k2-0711-preview",
+      model: process.env.MOONSHOT_MODEL?.trim() || "kimi-k2.5",
       openai: moonshotClient,
       allowParallel: false,
       omitParallelToolCalls: true,
