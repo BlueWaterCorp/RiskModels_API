@@ -97,13 +97,11 @@ export async function POST(req: NextRequest) {
         controller.close();
         return;
       }
-      if (!key) {
-        say(
-          "To use the RiskModels analyst, add your API key in **OpenBB → Connections → RiskModels** as header `X-API-KEY: rm_agent_live_…` (get a free key at riskmodels.app).",
-        );
-        controller.close();
-        return;
-      }
+      // OpenBB never forwards the user's key to the copilot agent (its
+      // QueryRequest.api_keys is OpenAI-only), so the agent runs as a free MAG7
+      // demo (keyless, rate-limited) via /api/landing/chat. A key — only present
+      // for direct API callers — unlocks the full universe via /api/chat.
+      const isDemo = !key;
 
       // Flush an early status so OpenBB starts the stream, then heartbeat while
       // the (blocking) tool-calling agent runs so the SSE doesn't idle-timeout.
@@ -123,14 +121,19 @@ export async function POST(req: NextRequest) {
       }, 5000);
 
       try {
-        const res = await fetch(`${upstreamBase()}/chat`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${key}`,
-            "Content-Type": "application/json",
+        const res = await fetch(
+          `${upstreamBase()}${isDemo ? "/landing/chat" : "/chat"}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(isDemo ? {} : { Authorization: `Bearer ${key}` }),
+            },
+            body: JSON.stringify(
+              isDemo ? { messages } : { messages, model: ANALYST_MODEL },
+            ),
           },
-          body: JSON.stringify({ messages, model: ANALYST_MODEL }),
-        });
+        );
         clearInterval(heartbeat);
 
         const json = (await res.json().catch(() => ({}))) as {
@@ -171,8 +174,17 @@ export async function POST(req: NextRequest) {
         const content = json?.message?.content;
         if (typeof content === "string" && content.trim()) {
           for (const c of chunkText(content)) say(c);
+          if (isDemo) {
+            say(
+              "\n\n— *Free demo · Magnificent 7 only. Get a key at riskmodels.app for the full US universe + portfolio hedging.*",
+            );
+          }
         } else {
-          say("I couldn't find an answer for that. Try naming a specific US ticker.");
+          say(
+            isDemo
+              ? "This free demo covers the Magnificent 7 — AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA. For any US ticker plus portfolio hedging, get a key at riskmodels.app."
+              : "I couldn't find an answer for that. Try naming a specific US ticker.",
+          );
         }
       } catch {
         clearInterval(heartbeat);
