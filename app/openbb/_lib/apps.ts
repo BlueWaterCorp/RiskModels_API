@@ -114,4 +114,44 @@ export const APPS = [
       },
     },
   },
+  {
+    name: "RiskModels — Portfolio Risk & Hedge",
+    description:
+      "Multi-position portfolio: L3 explained-risk decomposition, L1/L2/L3 hedge layering, and a per-position breakdown, powered by the RiskModels API.",
+    allowCustomization: true,
+    tabs: {
+      portfolio: {
+        id: "portfolio",
+        name: "Portfolio",
+        layout: [
+          {
+            i: "rm_portfolio_risk",
+            x: 0,
+            y: 0,
+            w: 20,
+            h: 16,
+            state: { params: { positions: "AAPL:0.4, MSFT:0.35, NVDA:0.25" } },
+          },
+          {
+            i: "rm_portfolio_positions",
+            x: 20,
+            y: 0,
+            w: 20,
+            h: 16,
+            state: { params: { positions: "AAPL:0.4, MSFT:0.35, NVDA:0.25" } },
+          },
+        ],
+      },
+    },
+    groups: [
+      // One positions box drives both widgets on the tab.
+      {
+        name: "positions",
+        type: "param",
+        paramName: "positions",
+        defaultValue: "AAPL:0.4, MSFT:0.35, NVDA:0.25",
+        widgetIds: ["rm_portfolio_risk", "rm_portfolio_positions"],
+      },
+    ],
+  },
 ];

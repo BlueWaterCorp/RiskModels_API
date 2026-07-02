@@ -264,6 +264,68 @@ const WIDGETS = {
       },
     },
   },
+  rm_portfolio_risk: {
+    name: "RiskModels — Portfolio Risk & Hedge",
+    description:
+      "Portfolio-level L3 explained-risk decomposition, volatility, and the L1/L2/L3 hedge-layering ladder for a list of positions.",
+    category: "Risk",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/portfolio",
+    gridData: { w: 24, h: 16 },
+    params: [
+      {
+        paramName: "positions",
+        value: "AAPL:0.4, MSFT:0.35, NVDA:0.25",
+        label: "Positions",
+        type: "text",
+        description:
+          "Comma-separated ticker:weight (e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25). Weights auto-normalise; bare tickers = equal weight.",
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "metric", headerName: "Metric", cellDataType: "text" },
+          { field: "value", headerName: "Value", cellDataType: "text" },
+        ],
+      },
+    },
+  },
+  rm_portfolio_positions: {
+    name: "RiskModels — Portfolio Positions",
+    description:
+      "Per-position breakdown for the same portfolio: weight, L3 explained-risk split, and L3 hedge ratios.",
+    category: "Risk",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/portfolio-positions",
+    gridData: { w: 24, h: 14 },
+    params: [
+      {
+        paramName: "positions",
+        value: "AAPL:0.4, MSFT:0.35, NVDA:0.25",
+        label: "Positions",
+        type: "text",
+        description: "Comma-separated ticker:weight.",
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "ticker", headerName: "Ticker" },
+          { field: "weight", headerName: "Weight" },
+          { field: "market_er", headerName: "Market ER" },
+          { field: "residual_er", headerName: "Residual ER" },
+          { field: "mkt_hr", headerName: "Mkt HR" },
+          { field: "sec_hr", headerName: "Sec HR" },
+          { field: "sub_hr", headerName: "Sub HR" },
+        ],
+      },
+    },
+  },
 } as const;
 
 export async function GET(req: NextRequest) {
