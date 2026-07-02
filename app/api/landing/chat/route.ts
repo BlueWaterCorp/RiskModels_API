@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
 import { ChatPostSchema } from "@/lib/api/schemas";
 import { runChatAgent, AgentUpstreamError } from "@/lib/chat/agent-runner";
+import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
 
 /**
  * POST /api/landing/chat — unauthenticated MAG7-only preview of the
@@ -42,9 +43,8 @@ const ALLOWED_TOOLS = [
   "get_rankings",
 ] as const;
 
-// Claude, not gpt-4o-mini: the OpenAI account is out of quota, and Claude is a
-// quality upgrade for the demo. runChatAgent dispatches claude-* → Anthropic.
-const LANDING_MODEL = "claude-sonnet-4-6";
+// Model + client come from resolveAgentBackend() (Moonshot/Kimi when
+// MOONSHOT_API_KEY is set, else Claude/OpenAI) — shared with /api/chat.
 const LANDING_MAX_ROUNDS = 2;
 const LANDING_MAX_TOKENS = 700;
 const MAX_MSGS_PER_HOUR = 10;
@@ -110,11 +110,12 @@ export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!hasChatBackend()) {
     return NextResponse.json(
       {
         error: "Service unavailable",
-        message: "AI chat demo is not configured (missing ANTHROPIC_API_KEY).",
+        message:
+          "AI chat demo is not configured (need MOONSHOT_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY).",
       },
       { status: 503, headers: corsHeaders },
     );
@@ -167,11 +168,14 @@ export async function POST(request: NextRequest) {
   const fetchStart = performance.now();
   const requestId = `landing_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
+  const backend = resolveAgentBackend();
+
   let runResult;
   try {
     runResult = await runChatAgent({
       userMessages,
-      model: LANDING_MODEL,
+      model: backend.model,
+      openai: backend.openai,
       userId: "landing-demo",
       requestId,
       maxToolRounds: LANDING_MAX_ROUNDS,
@@ -180,6 +184,8 @@ export async function POST(request: NextRequest) {
       skipBilling: true,
       preFlightGuard: mag7Guard,
       execParallel: true,
+      allowParallelOpenAI: backend.allowParallel,
+      omitParallelToolCalls: backend.omitParallelToolCalls,
     });
   } catch (e) {
     if (e instanceof AgentUpstreamError) {

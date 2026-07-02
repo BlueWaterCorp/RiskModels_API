@@ -22,6 +22,8 @@ export interface RunChatAgentOptions {
   allowedToolNames?: readonly string[];
   execParallel?: boolean;
   allowParallelOpenAI?: boolean;
+  /** Omit the `parallel_tool_calls` param entirely (OpenAI-compatible providers like Moonshot that don't accept it). */
+  omitParallelToolCalls?: boolean;
   openai?: OpenAI;
   /** Skip per-tool deductBalance (keyless demo). */
   skipBilling?: boolean;
@@ -83,6 +85,7 @@ export async function runChatAgent(
     allowedToolNames,
     execParallel = true,
     allowParallelOpenAI = true,
+    omitParallelToolCalls = false,
     skipBilling = false,
     preFlightGuard,
   } = opts;
@@ -122,9 +125,11 @@ export async function runChatAgent(
         messages,
         tools,
         tool_choice: "auto",
-        ...(parallelOpenAI
-          ? { parallel_tool_calls: true }
-          : { parallel_tool_calls: false }),
+        ...(omitParallelToolCalls
+          ? {}
+          : parallelOpenAI
+            ? { parallel_tool_calls: true }
+            : { parallel_tool_calls: false }),
         ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
       });
     } catch (e) {
