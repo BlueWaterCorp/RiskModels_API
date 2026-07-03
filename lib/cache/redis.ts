@@ -82,7 +82,11 @@ export async function getCache<T>(key: string): Promise<T | null> {
   // Fallback to memory cache
   const cached = memoryCache.get(key);
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.value as T;
+    // Fresh object per caller — callers must never share a mutable reference
+    // with the cache (mirrors the JSON round-trip Upstash values get).
+    return cached.value === undefined
+      ? (cached.value as T)
+      : (JSON.parse(JSON.stringify(cached.value)) as T);
   }
 
   // Clean up expired entry
@@ -101,19 +105,24 @@ export async function setCache<T>(
   value: T,
   ttlSeconds: number = CACHE_TTL.DAILY,
 ): Promise<void> {
-  // Try Redis first
+  // When Redis is configured it is the only store: a rejected write
+  // (oversized value vs Upstash request limits, transient network error) is
+  // logged and dropped. Falling through to the in-process Map here would park
+  // exactly the payloads Redis refused in server memory for the full TTL.
   if (redis) {
     try {
       await redis.setex(key, ttlSeconds, value);
-      return;
     } catch (error) {
-      console.error("[Cache] Redis set error:", error);
+      console.error("[Cache] Redis set error (value dropped):", error);
     }
+    return;
   }
 
-  // Fallback to memory cache
+  // In-memory fallback (Redis unconfigured only). Clone through JSON so
+  // dev/CI matches Upstash serialization semantics (e.g. a Map degrades to
+  // `{}` here too) and the cache never holds a caller-mutable reference.
   memoryCache.set(key, {
-    value,
+    value: value === undefined ? value : JSON.parse(JSON.stringify(value)),
     expiresAt: Date.now() + ttlSeconds * 1000,
   });
 

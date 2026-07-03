@@ -28,6 +28,8 @@
 import { Storage, type Bucket } from "@google-cloud/storage";
 import {
   get,
+  KeyError,
+  NodeNotFoundError,
   open,
   root,
   slice,
@@ -43,6 +45,74 @@ import {
   applyScrubToHoldings,
 } from "@/lib/dal/symbols-batch";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getCache,
+  setCache,
+  CACHE_TTL,
+  generateCacheKey,
+  isSkippableCacheWarmPayload,
+} from "@/lib/cache/redis";
+
+// Fund/filer zarr + Supabase reads refresh weekly at most (13F filings
+// quarterly, fund portfolios/NAV weekly, holdings-top quarterly) — see
+// ARCHITECTURE_FUNDS_API.md. CACHE_TTL.HISTORICAL (24h) mirrors the TTL the
+// funds/filer PDF snapshot routes already use for the same underlying data
+// (`app/api/funds/snapshot.pdf/[bw_fund_id]/route.ts` et al.), so a cold cache
+// self-heals within a day of any upstream backfill/correction instead of
+// freezing stale data for the full refresh cadence.
+const FUNDS_ZARR_CACHE_TTL = CACHE_TTL.HISTORICAL;
+
+// ETF holdings and benchmark surfaces land daily (teo_frequency: "daily" —
+// see the ETF/benchmark sections below), so the 24h TTL above would serve
+// yesterday's snapshot all day. 1h keeps today's sponsor file visible within
+// the hour.
+const FUNDS_ZARR_DAILY_SURFACE_TTL = CACHE_TTL.DAILY;
+
+// Empty results (missing zarr, unknown id, out-of-range window) are
+// negative-cached briefly so repeat requests don't re-run GCS opens, while a
+// fund's first-ever sync still appears within minutes — never reuse the full
+// TTL for negatives.
+const FUNDS_ZARR_NEGATIVE_TTL = CACHE_TTL.FREQUENT;
+
+/** Sentinel stored for empty results — see `withZarrCache`. */
+const EMPTY_SENTINEL = { __empty: true } as const;
+
+/**
+ * Shared get → compute → set wrapper for every cached reader in this file.
+ *
+ * - A `compute()` throw propagates and caches nothing, so transient
+ *   GCS/Supabase failures are never pinned (see `readFloatSlice1d`'s error
+ *   discrimination).
+ * - Empty payloads (`null`, `[]` — per `isSkippableCacheWarmPayload`) are
+ *   stored as a short-TTL sentinel and mapped back to `emptyValue` on read.
+ * - `cacheable` lets a reader veto the write for a response it knows is
+ *   suspect (e.g. a torn mid-sync Supabase read) while still returning it.
+ * - Writes are fire-and-forget: the response never waits on Upstash.
+ */
+async function withZarrCache<T>(
+  ck: string,
+  compute: () => Promise<T>,
+  opts: {
+    /** Returned on a sentinel hit; the value shape `compute` uses for "nothing". */
+    emptyValue: T;
+    ttl?: number;
+    cacheable?: (value: T) => boolean;
+  },
+): Promise<T> {
+  const hit = await getCache<T | typeof EMPTY_SENTINEL>(ck);
+  if (hit !== null && hit !== undefined) {
+    return (hit as { __empty?: boolean }).__empty === true
+      ? opts.emptyValue
+      : (hit as T);
+  }
+  const value = await compute();
+  if (isSkippableCacheWarmPayload(value)) {
+    setCache(ck, EMPTY_SENTINEL, FUNDS_ZARR_NEGATIVE_TTL).catch(console.error);
+  } else if (!opts.cacheable || opts.cacheable(value)) {
+    setCache(ck, value, opts.ttl ?? FUNDS_ZARR_CACHE_TTL).catch(console.error);
+  }
+  return value;
+}
 
 let _storage: Storage | null = null;
 
@@ -236,8 +306,15 @@ async function readFloatSlice1d(
       return Array.from(d, (v) => Number(v));
     }
     return null;
-  } catch {
-    return null;
+  } catch (err) {
+    // A variable genuinely absent from this store (older writer versions)
+    // reads as null and its column stays null. Anything else is a transport
+    // failure — rethrow so the request fails instead of building (and
+    // caching) a null-filled series; withZarrCache caches nothing on throw.
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -288,10 +365,35 @@ const PORTFOLIO_VARS = [
  * Read the per-fund portfolio time series from GCS.
  * Returns [] when the fund has no zarr or no overlap with the date window.
  */
+function cacheKeyForFundPortfolioSeries(
+  bwFundId: string,
+  options: FundPortfolioOptions,
+  dataset: string,
+): string {
+  return generateCacheKey("funds_zarr", `fund_portfolio:${dataset}`, {
+    fund: bwFundId,
+    start: options.startDate ?? "",
+    end: options.endDate ?? "",
+  });
+}
+
 export async function readFundPortfolioSeries(
   bwFundId: string,
   options: FundPortfolioOptions = {},
   dataset = "ds_portfolio.zarr",
+): Promise<FundPortfolioRow[]> {
+  const ck = cacheKeyForFundPortfolioSeries(bwFundId, options, dataset);
+  return withZarrCache(
+    ck,
+    () => computeFundPortfolioSeries(bwFundId, options, dataset),
+    { emptyValue: [] },
+  );
+}
+
+async function computeFundPortfolioSeries(
+  bwFundId: string,
+  options: FundPortfolioOptions,
+  dataset: string,
 ): Promise<FundPortfolioRow[]> {
   const grp = await openFundZarrGroup(bwFundId, dataset);
   if (!grp) return [];
@@ -336,6 +438,10 @@ export async function readFundPortfolioSeries(
  * cumulative strip at a smooth resolution; kept separate from the monthly
  * `portfolio_history` so the period-window attribution (which counts rows)
  * stays month-based.
+ *
+ * Thin pass-through — `readFundPortfolioSeries` already caches per-`dataset`,
+ * so this dataset variant is covered by that same cache without a second
+ * caching layer here.
  */
 export function readFundPortfolioDailySeries(
   bwFundId: string,
@@ -369,6 +475,20 @@ const NAV_VARS = ["nav_close", "nav_return_monthly"] as const;
 export async function readFundNavSeries(
   bwFundId: string,
   options: FundPortfolioOptions = {},
+): Promise<FundNavRow[]> {
+  const ck = generateCacheKey("funds_zarr", "fund_nav", {
+    fund: bwFundId,
+    start: options.startDate ?? "",
+    end: options.endDate ?? "",
+  });
+  return withZarrCache(ck, () => computeFundNavSeries(bwFundId, options), {
+    emptyValue: [],
+  });
+}
+
+async function computeFundNavSeries(
+  bwFundId: string,
+  options: FundPortfolioOptions,
 ): Promise<FundNavRow[]> {
   const grp = await openFundZarrGroup(bwFundId, "ds_nav.zarr");
   if (!grp) return [];
@@ -513,35 +633,62 @@ export async function readFundHoldingsTopN(
   // read / no request-time compute. l3_*_er + ticker are joined separately at
   // read-time by enrich-fund-holdings.ts (l3 refreshes daily, holdings quarterly).
   const safeN = Math.min(Math.max(n, 1), 1000);
-  const admin = createAdminClient();
-  const { data: rows, error } = await admin
-    .from("fund_holdings_top")
-    .select(
-      "symbol, rank, weight, market_value_usd, n_holdings_total, report_date",
-    )
-    .eq("bw_fund_id", bwFundId)
-    .order("rank", { ascending: true })
-    .limit(safeN);
-  if (error || !rows || rows.length === 0) return null;
+  const ck = generateCacheKey("funds_zarr", "fund_holdings_top", {
+    fund: bwFundId,
+    n: safeN,
+  });
+  // The Funds_DAG sync writer bursts upserts over ~25s; a request landing
+  // mid-burst can see rows mixing report periods. Serve only the rank-1
+  // period's rows and veto the cache write so the next request re-reads a
+  // settled table instead of pinning the torn snapshot for the full TTL.
+  let torn = false;
+  const snapshot = await withZarrCache<FundHoldingsSnapshot | null>(
+    ck,
+    async () => {
+      const admin = createAdminClient();
+      const { data: rows, error } = await admin
+        .from("fund_holdings_top")
+        .select(
+          "symbol, rank, weight, market_value_usd, n_holdings_total, report_date",
+        )
+        .eq("bw_fund_id", bwFundId)
+        .order("rank", { ascending: true })
+        .limit(safeN);
+      if (error || !rows || rows.length === 0) return null;
 
-  const first = rows[0]!;
-  const teo = String(first.report_date);
-  const nTotal = Number(first.n_holdings_total ?? rows.length);
-  const holdings: FundHolding[] = rows.map((r) => ({
-    bw_sym_id: String(r.symbol),
-    adj_mv: Number(r.market_value_usd) || 0,
-    weight: r.weight != null ? Number(r.weight) : null,
-  }));
+      const first = rows[0]!;
+      const teo = String(first.report_date);
+      torn = rows.some((r) => String(r.report_date) !== teo);
+      const coherent = torn
+        ? rows.filter((r) => String(r.report_date) === teo)
+        : rows;
+      const nTotal = Number(first.n_holdings_total ?? coherent.length);
+      const holdings: FundHolding[] = coherent.map((r) => ({
+        bw_sym_id: String(r.symbol),
+        adj_mv: Number(r.market_value_usd) || 0,
+        weight: r.weight != null ? Number(r.weight) : null,
+      }));
 
+      return {
+        teo,
+        // aum lives on funds_latest (used for metrics); holdings weights are
+        // pre-computed, so the snapshot doesn't need aum echoed here.
+        aum_reported: null,
+        aum_erm3: null,
+        n_holdings_returned: holdings.length,
+        n_total_holdings: nTotal,
+        holdings,
+      };
+    },
+    { emptyValue: null, cacheable: () => !torn },
+  );
+  if (!snapshot) return null;
+  // Scrub outside the cache boundary: a transiently degraded scrub (Supabase
+  // blip → BW-RESTRICTED fallback) then affects one response, not the cached
+  // copy, and newly resolved ids propagate on the next request.
   return {
-    teo,
-    // aum lives on funds_latest (used for metrics); holdings weights are
-    // pre-computed, so the snapshot doesn't need aum echoed here.
-    aum_reported: null,
-    aum_erm3: null,
-    n_holdings_returned: holdings.length,
-    n_total_holdings: nTotal,
-    holdings: await applyScrubToHoldings(holdings),
+    ...snapshot,
+    holdings: await applyScrubToHoldings(snapshot.holdings),
   };
 }
 
@@ -570,8 +717,13 @@ async function readFloatRowAtTeo(
       return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
     }
     return null;
-  } catch {
-    return null;
+  } catch (err) {
+    // Missing hedge-level var → empty leg (expected for sparse ds_hr);
+    // transport failure → rethrow so a truncated snapshot is never cached.
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -592,6 +744,15 @@ export interface FundHedgeSnapshot {
  * `ds_hr.zarr` is missing or empty.
  */
 export async function readFundHedgeLatest(
+  bwFundId: string,
+): Promise<FundHedgeSnapshot | null> {
+  const ck = generateCacheKey("funds_zarr", "fund_hedge_latest", { fund: bwFundId });
+  return withZarrCache(ck, () => computeFundHedgeLatest(bwFundId), {
+    emptyValue: null,
+  });
+}
+
+async function computeFundHedgeLatest(
   bwFundId: string,
 ): Promise<FundHedgeSnapshot | null> {
   const grp = await openFundZarrGroup(bwFundId, "ds_hr.zarr");
@@ -738,6 +899,22 @@ export async function readStyleCohortPortfolioSeries(
   pathComponent: string,
   options: CohortPortfolioOptions = {},
 ): Promise<CohortPortfolioRow[]> {
+  const ck = generateCacheKey("funds_zarr", "style_cohort_portfolio", {
+    cell: pathComponent,
+    start: options.startDate ?? "",
+    end: options.endDate ?? "",
+  });
+  return withZarrCache(
+    ck,
+    () => computeStyleCohortPortfolioSeries(pathComponent, options),
+    { emptyValue: [] },
+  );
+}
+
+async function computeStyleCohortPortfolioSeries(
+  pathComponent: string,
+  options: CohortPortfolioOptions,
+): Promise<CohortPortfolioRow[]> {
   const grp = await openCohortZarrGroup(
     "portfolio_style",
     pathComponent,
@@ -879,6 +1056,29 @@ export async function readStyleCohortHoldingsTopN(
   const n = options.n ?? 25;
   const safeN = Math.min(Math.max(n, 1), 100);
 
+  const ck = generateCacheKey("funds_zarr", "style_cohort_holdings_top", {
+    cell: pathComponent,
+    weighting: requestedWeighting,
+    n: safeN,
+  });
+  const snapshot = await withZarrCache(
+    ck,
+    () => computeStyleCohortHoldingsTopN(pathComponent, requestedWeighting, safeN),
+    { emptyValue: null },
+  );
+  if (!snapshot) return null;
+  // Scrub outside the cache boundary — see readFundHoldingsTopN.
+  return {
+    ...snapshot,
+    holdings: await applyScrubToHoldings(snapshot.holdings),
+  };
+}
+
+async function computeStyleCohortHoldingsTopN(
+  pathComponent: string,
+  requestedWeighting: "ew" | "mv",
+  safeN: number,
+): Promise<CohortHoldingsSnapshot | null> {
   const grp = await openCohortZarrGroup(
     "equity_style_9box",
     pathComponent,
@@ -943,7 +1143,7 @@ export async function readStyleCohortHoldingsTopN(
     weighting: requestedWeighting,
     n_returned: Math.min(safeN, all.length),
     n_total_holdings: all.length,
-    holdings: await applyScrubToHoldings(top),
+    holdings: top,
   };
 }
 
@@ -1007,6 +1207,28 @@ export async function readFilerHoldingsTopN(
   bwFilerId: string,
   n = 25,
 ): Promise<FilerHoldingsSnapshot | null> {
+  const safeN = Math.min(Math.max(n, 1), 1000);
+  const ck = generateCacheKey("funds_zarr", "filer_holdings_top", {
+    filer: bwFilerId,
+    n: safeN,
+  });
+  const snapshot = await withZarrCache(
+    ck,
+    () => computeFilerHoldingsTopN(bwFilerId, safeN),
+    { emptyValue: null },
+  );
+  if (!snapshot) return null;
+  // Scrub outside the cache boundary — see readFundHoldingsTopN.
+  return {
+    ...snapshot,
+    holdings: await applyScrubToFilerHoldings(snapshot.holdings),
+  };
+}
+
+async function computeFilerHoldingsTopN(
+  bwFilerId: string,
+  safeN: number,
+): Promise<FilerHoldingsSnapshot | null> {
   const grp = await openFilerZarrGroup(bwFilerId, "ds_ph.zarr");
   if (!grp) return null;
 
@@ -1049,7 +1271,6 @@ export async function readFilerHoldingsTopN(
   if (holdings.length === 0) return null;
 
   holdings.sort((a, b) => b.adj_mv - a.adj_mv);
-  const safeN = Math.min(Math.max(n, 1), 1000);
   const top = holdings.slice(0, safeN);
 
   return {
@@ -1058,7 +1279,7 @@ export async function readFilerHoldingsTopN(
     aum_in_erm3: aumInErm3,
     n_holdings_returned: Math.min(safeN, holdings.length),
     n_total_holdings: holdings.length,
-    holdings: await applyScrubToFilerHoldings(top),
+    holdings: top,
   };
 }
 
@@ -1126,6 +1347,20 @@ const FILER_PORTFOLIO_VARS = [
 export async function readFilerPortfolioSeries(
   bwFilerId: string,
   options: FundPortfolioOptions = {},
+): Promise<FilerPortfolioRow[]> {
+  const ck = generateCacheKey("funds_zarr", "filer_portfolio", {
+    filer: bwFilerId,
+    start: options.startDate ?? "",
+    end: options.endDate ?? "",
+  });
+  return withZarrCache(ck, () => computeFilerPortfolioSeries(bwFilerId, options), {
+    emptyValue: [],
+  });
+}
+
+async function computeFilerPortfolioSeries(
+  bwFilerId: string,
+  options: FundPortfolioOptions,
 ): Promise<FilerPortfolioRow[]> {
   const grp = await openFilerZarrGroup(bwFilerId, "ds_portfolio.zarr");
   if (!grp) return [];
@@ -1197,6 +1432,11 @@ export interface FilerConcentrationSummary {
 /**
  * Median + latest quarter-end concentration from ``ds_portfolio.zarr``.
  * Null when the filer has no portfolio panel in the date window.
+ *
+ * Not independently cached: it's a cheap in-memory median/reduce over
+ * `readFilerPortfolioSeries`, which is already Redis-cached — a second
+ * cache layer here would just add a redundant Redis round-trip for no
+ * additional GCS savings.
  */
 export async function readFilerConcentrationSummary(
   bwFilerId: string,
@@ -1348,6 +1588,22 @@ export async function readFilerReturnsDecomposition(
   bwFilerId: string,
   options: FundPortfolioOptions = {},
 ): Promise<FilerReturnsDecomposition | null> {
+  const ck = generateCacheKey("funds_zarr", "filer_returns_decomposition", {
+    filer: bwFilerId,
+    start: options.startDate ?? "",
+    end: options.endDate ?? "",
+  });
+  return withZarrCache(
+    ck,
+    () => computeFilerReturnsDecomposition(bwFilerId, options),
+    { emptyValue: null },
+  );
+}
+
+async function computeFilerReturnsDecomposition(
+  bwFilerId: string,
+  options: FundPortfolioOptions,
+): Promise<FilerReturnsDecomposition | null> {
   const grp = await openFilerZarrGroup(bwFilerId, "ds_returns_monthly.zarr");
   if (!grp) return null;
 
@@ -1415,6 +1671,15 @@ export async function readFilerReturnsDecomposition(
  * Latest hedge sleeve for a filer from ``ds_hr.zarr`` (same schema as funds).
  */
 export async function readFilerHedgeLatest(
+  bwFilerId: string,
+): Promise<FundHedgeSnapshot | null> {
+  const ck = generateCacheKey("funds_zarr", "filer_hedge_latest", { filer: bwFilerId });
+  return withZarrCache(ck, () => computeFilerHedgeLatest(bwFilerId), {
+    emptyValue: null,
+  });
+}
+
+async function computeFilerHedgeLatest(
   bwFilerId: string,
 ): Promise<FundHedgeSnapshot | null> {
   const grp = await openFilerZarrGroup(bwFilerId, "ds_hr.zarr");
@@ -1523,6 +1788,29 @@ export async function readEtfHoldingsTopN(
   n = 25,
 ): Promise<EtfHoldingsSnapshot | null> {
   const bwEtfId = tickerToBwEtfId(ticker);
+  const safeN = Math.min(Math.max(n, 1), 1000);
+  const ck = generateCacheKey("funds_zarr", "etf_holdings_top", {
+    etf: bwEtfId,
+    n: safeN,
+  });
+  const snapshot = await withZarrCache(
+    ck,
+    () => computeEtfHoldingsTopN(ticker, bwEtfId, safeN),
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
+  );
+  if (!snapshot) return null;
+  // Scrub outside the cache boundary — see readFundHoldingsTopN.
+  return {
+    ...snapshot,
+    holdings: await applyScrubToHoldings(snapshot.holdings),
+  };
+}
+
+async function computeEtfHoldingsTopN(
+  ticker: string,
+  bwEtfId: string,
+  safeN: number,
+): Promise<EtfHoldingsSnapshot | null> {
   const grp = await openEtfZarrGroup(bwEtfId, "ds_ph.zarr");
   if (!grp) return null;
 
@@ -1558,7 +1846,6 @@ export async function readEtfHoldingsTopN(
   }
   if (holdings.length === 0) return null;
   holdings.sort((a, b) => b.adj_mv - a.adj_mv);
-  const safeN = Math.min(Math.max(n, 1), 1000);
 
   const availability_date =
     availStrings && availStrings[teoIdx] ? availStrings[teoIdx]! : null;
@@ -1581,7 +1868,7 @@ export async function readEtfHoldingsTopN(
     coverage_pct,
     n_holdings_returned: Math.min(safeN, holdings.length),
     n_total_holdings: holdings.length,
-    holdings: await applyScrubToHoldings(top),
+    holdings: top,
   };
 }
 
@@ -1670,6 +1957,13 @@ interface SurfaceWeightVector {
  * Read a portfolio surface's normalized weight vector at the latest teo
  * (or the latest teo ≤ `asOfTeo`). Works for fund / 13F filer / ETF / benchmark
  * ids. Returns null when the surface is missing or has no usable teo.
+ *
+ * Deliberately NOT Redis-cached here: `weights` is a `Map`, which does not
+ * round-trip through JSON (Upstash/`JSON.stringify` serializes a Map to
+ * `"{}"`), and this function is only called internally (twice per
+ * `computeBenchmarkFit` call — subject + benchmark), never directly by an
+ * API route. `computeBenchmarkFit` caches its fully plain-JSON result
+ * instead, which covers the same GCS round-trips for repeat requests.
  */
 export async function readSurfaceWeightVector(
   portfolioId: string,
@@ -1731,6 +2025,22 @@ export async function readBenchmarkSurface(
 ): Promise<BenchmarkSnapshot | null> {
   const bwBenchId = resolveBenchmarkId(idOrAlias);
   if (!bwBenchId) return null;
+
+  const safeN = Math.min(Math.max(n, 1), 1000);
+  const ck = generateCacheKey("funds_zarr", "benchmark_surface", {
+    bench: bwBenchId,
+    n: safeN,
+  });
+  return withZarrCache(ck, () => computeBenchmarkSurface(bwBenchId, safeN), {
+    emptyValue: null,
+    ttl: FUNDS_ZARR_DAILY_SURFACE_TTL,
+  });
+}
+
+async function computeBenchmarkSurface(
+  bwBenchId: string,
+  safeN: number,
+): Promise<BenchmarkSnapshot | null> {
   const grp = await openBenchmarkZarrGroup(bwBenchId, "ds_ph.zarr");
   if (!grp) return null;
   const teos = await readTeoStrings(grp);
@@ -1758,7 +2068,6 @@ export async function readBenchmarkSurface(
     if (v != null && v > 0) cons.push({ bw_sym_id: symbols[i]!, weight: total > 0 ? v / total : v });
   }
   cons.sort((a, b) => b.weight - a.weight);
-  const safeN = Math.min(Math.max(n, 1), 1000);
 
   return {
     benchmark_context_id: bwBenchId,
@@ -1811,7 +2120,34 @@ export async function computeBenchmarkFit(
   const bwBenchId = resolveBenchmarkId(benchmarkIdOrAlias);
   if (!bwBenchId) return null;
   const resolvedSubject = resolveSubjectId(subjectId);
+  const topN = Math.min(Math.max(opts.topN ?? 10, 1), 100);
 
+  // `readSurfaceWeightVector`'s Map-valued result isn't JSON-cacheable, so we
+  // cache at this (already plain-JSON) boundary instead — see the "not
+  // cached" note on `readSurfaceWeightVector` below. The cached payload
+  // embeds the deploy-time schema-version constant, so the key must carry it
+  // too: a version bump then cold-starts its own keyspace instead of serving
+  // mixed shapes until the old entries expire.
+  const ck = generateCacheKey("funds_zarr", "benchmark_fit", {
+    subject: resolvedSubject,
+    bench: bwBenchId,
+    asOf: opts.asOf ?? "",
+    topN,
+    v: BENCHMARK_FIT_SCHEMA_VERSION,
+  });
+  return withZarrCache(
+    ck,
+    () => computeBenchmarkFitUncached(resolvedSubject, bwBenchId, topN, opts),
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
+  );
+}
+
+async function computeBenchmarkFitUncached(
+  resolvedSubject: string,
+  bwBenchId: string,
+  topN: number,
+  opts: { asOf?: string },
+): Promise<BenchmarkFitResult | null> {
   const subj = await readSurfaceWeightVector(resolvedSubject, { asOfTeo: opts.asOf });
   if (!subj) return null;
   // benchmark at its latest teo ≤ the subject's teo (never peek ahead)
@@ -1822,8 +2158,6 @@ export async function computeBenchmarkFit(
     const g = await openBenchmarkZarrGroup(bwBenchId, "ds_ph.zarr");
     return g ? ((g.attrs ?? {}) as Record<string, unknown>) : {};
   })();
-
-  const topN = Math.min(Math.max(opts.topN ?? 10, 1), 100);
   const allSyms = new Set<string>([...subj.weights.keys(), ...bench.weights.keys()]);
   let activeAbs = 0, activeSq = 0, weightInBench = 0, benchCoverage = 0, nOverlap = 0;
   const active: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[] = [];
@@ -1910,6 +2244,22 @@ export interface SurfacePortfolioSeries {
 export async function readSurfacePortfolioSeries(
   portfolioId: string,
   options: FundPortfolioOptions = {},
+): Promise<SurfacePortfolioSeries | null> {
+  const ck = generateCacheKey("funds_zarr", "surface_portfolio", {
+    portfolio: portfolioId.toUpperCase(),
+    start: options.startDate ?? "",
+    end: options.endDate ?? "",
+  });
+  return withZarrCache(
+    ck,
+    () => computeSurfacePortfolioSeries(portfolioId, options),
+    { emptyValue: null },
+  );
+}
+
+async function computeSurfacePortfolioSeries(
+  portfolioId: string,
+  options: FundPortfolioOptions,
 ): Promise<SurfacePortfolioSeries | null> {
   const grp = await openSurfaceGroup(portfolioId, "ds_portfolio.zarr");
   if (!grp) return null;
