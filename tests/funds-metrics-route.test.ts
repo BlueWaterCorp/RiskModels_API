@@ -33,6 +33,8 @@ const FUND = {
   morningstar_category: "Large Blend",
   equity_style_9box: "Large Blend",
   style_link_method: "ticker_match",
+  net_expense_ratio: null,
+  net_expense_ratio_asof: null,
   primary_bw_fund_id: null,
   latest_report_date: "2026-04-30",
   latest_filing_date: "2026-07-14",

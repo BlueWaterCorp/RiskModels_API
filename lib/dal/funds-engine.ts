@@ -25,6 +25,13 @@ export interface FundRow {
   morningstar_category: string | null;
   equity_style_9box: string | null;
   style_link_method: string | null;
+  /** Net expense ratio of the representative (ticker_primary) share class, as a
+   *  PERCENT per year (0.59 = 0.59%/yr, NOT 0.0059). Source: EODHD via Funds_DAG.
+   *  Feeds the fee-justification analytic (active_fee = fund_ER − index_ER). */
+  net_expense_ratio: number | null;
+  /** As-of date of net_expense_ratio (EODHD expense_ratio_date); can trail by
+   *  years — a staleness signal, not a current-fee guarantee. */
+  net_expense_ratio_asof: string | null;
   primary_bw_fund_id: string | null;
   latest_report_date: string | null;
   latest_filing_date: string | null;
@@ -100,7 +107,7 @@ export interface SearchFundsOptions {
 }
 
 const FUND_COLUMNS =
-  "bw_fund_id, series_id, ticker, cik, fund_name, morningstar_category, equity_style_9box, style_link_method, primary_bw_fund_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_total_adj_mv, latest_n_holdings, latest_effective_n, last_in_eligible_universe_at, metadata";
+  "bw_fund_id, series_id, ticker, cik, fund_name, morningstar_category, equity_style_9box, style_link_method, net_expense_ratio, net_expense_ratio_asof, primary_bw_fund_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_total_adj_mv, latest_n_holdings, latest_effective_n, last_in_eligible_universe_at, metadata";
 
 const FUND_LATEST_COLUMNS =
   "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata, aum_erm3, coverage_in_erm3, variance_shares_full, variance_shares_recent, fit_beta_to_spy, fit_capm_r2, fit_nav_correlation, fit_residual_vol, fit_nav_vol_ann, fit_alpha_ann, fit_erm3_multifactor_r2, fit_n_months";
