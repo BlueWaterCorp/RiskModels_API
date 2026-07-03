@@ -18,6 +18,7 @@ vi.mock("@/lib/dal/funds-zarr-reader", () => ({
   readFundHoldingsTopN: vi.fn(),
   readFundHedgeLatest: vi.fn(),
   readFundPortfolioSeries: vi.fn(),
+  readFundPortfolioDailySeries: vi.fn(),
   readFundNavSeries: vi.fn(),
   readStyleCohortHoldingsTopN: vi.fn(),
   readStyleCohortPortfolioSeries: vi.fn(),
