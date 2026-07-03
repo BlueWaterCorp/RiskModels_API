@@ -14,6 +14,8 @@
     "filing_date_source": "placeholder_lag_75d"
   },
   "morningstar_category": "Large Blend",
+  "net_expense_ratio": 0.45,
+  "net_expense_ratio_asof": "2025-10-31",
   "primary_bw_fund_id": null,
   "series_id": "S000001243",
   "style_link_method": "ticker_match",

@@ -48,6 +48,9 @@ describe("composeFundSnapshot (real fixtures: NOLCX / Northern Large Cap Core)",
     expect(snap.bw_fund_id).toBe("BW-FUND-S000001243");
     expect(snap.ticker).toBe("NOLCX");
     expect(snap.equity_style_9box).toBe("Large Blend");
+    // Fee-justification: net expense ratio flows through as PERCENT/yr + asof.
+    expect(snap.net_expense_ratio).toBe(0.45);
+    expect(snap.net_expense_ratio_asof).toBe("2025-10-31");
     expect(snap.report_date).toBe(LATEST.report_date);
     expect(snap.filing_date).toBe(LATEST.filing_date);
   });
