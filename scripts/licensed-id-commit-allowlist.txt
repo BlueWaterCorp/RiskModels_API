@@ -1,0 +1,6 @@
+# Sha allowlist for check-licensed-identifiers-git.sh (commit-message scan).
+# One entry per line: <full-sha> <reason>. Only for commits already merged to
+# a shared branch, where adding the in-message `licensed-id-ok:` marker would
+# require a history rewrite. Reserve for prose mentions of an identifier
+# scheme — never for an actual leaked identifier value.
+d71a600659e96fa304dd17a9d48b16c1d8987fa3 identifier-scheme acronym used in prose describing the holdings scrub; no identifier value present (squash merge of PR #211 reused the pre-amend branch commit message)

@@ -18,10 +18,18 @@
 #                                  on a line near the offending token.
 # Use AUDIT-PENDING in the reason to surface the commit as a warning
 # (does not fail the check).
+#
+# Sha allowlist (scripts/licensed-id-commit-allowlist.txt):
+#   For messages ALREADY on a shared branch, where the in-message marker
+#   would require a history rewrite. One entry per line: <full-sha> <reason>.
+#   Reserve it for prose mentions of an identifier scheme — never for an
+#   actual leaked identifier value (those require the history rewrite).
 
 set -uo pipefail
 
 PATTERN='cusip|fsym_id|factset_fund_id|factset_entity_id|isin'
+
+SHA_ALLOWLIST_FILE="$(dirname "$0")/licensed-id-commit-allowlist.txt"
 
 # Resolve the git log range.
 if [[ -n "${GIT_LOG_RANGE:-}" ]]; then
@@ -50,6 +58,12 @@ audit_pending=""
 
 while IFS= read -r sha; do
     [[ -z "$sha" ]] && continue
+
+    # Sha allowlist: already-merged commits vetted as prose-only mentions.
+    if [[ -f "$SHA_ALLOWLIST_FILE" ]] && grep -q "^$sha" "$SHA_ALLOWLIST_FILE"; then
+        continue
+    fi
+
     # Full message: subject + body. %B includes both with a blank line.
     msg=$(git show --no-patch --format=%B "$sha" 2>/dev/null || true)
     [[ -z "$msg" ]] && continue
