@@ -291,8 +291,9 @@ const PORTFOLIO_VARS = [
 export async function readFundPortfolioSeries(
   bwFundId: string,
   options: FundPortfolioOptions = {},
+  dataset = "ds_portfolio.zarr",
 ): Promise<FundPortfolioRow[]> {
-  const grp = await openFundZarrGroup(bwFundId, "ds_portfolio.zarr");
+  const grp = await openFundZarrGroup(bwFundId, dataset);
   if (!grp) return [];
 
   const teos = await readTeoStrings(grp);
@@ -327,6 +328,20 @@ export async function readFundPortfolioSeries(
     rows.push(row as unknown as FundPortfolioRow);
   }
   return rows;
+}
+
+/**
+ * Daily-resolution portfolio decomposition — same layout/vars as the monthly
+ * series but from `ds_portfolio_daily.zarr` (Funds_DAG). Powers the native
+ * cumulative strip at a smooth resolution; kept separate from the monthly
+ * `portfolio_history` so the period-window attribution (which counts rows)
+ * stays month-based.
+ */
+export function readFundPortfolioDailySeries(
+  bwFundId: string,
+  options: FundPortfolioOptions = {},
+): Promise<FundPortfolioRow[]> {
+  return readFundPortfolioSeries(bwFundId, options, "ds_portfolio_daily.zarr");
 }
 
 // ---------------------------------------------------------------------------

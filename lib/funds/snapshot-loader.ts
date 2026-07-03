@@ -15,6 +15,7 @@ import {
   readFundHoldingsTopN,
   readFundNavSeries,
   readFundPortfolioSeries,
+  readFundPortfolioDailySeries,
 } from "@/lib/dal/funds-zarr-reader";
 import {
   composeFundSnapshot,
@@ -67,23 +68,32 @@ export async function loadFundSnapshot(
     ? fetchStyleCohortLatest(fund.equity_style_9box)
     : Promise.resolve([]);
 
-  const [holdings, hedge, portfolioHistory, navHistory, cohortRanks, cohortMetrics] =
-    await Promise.all([
-      readFundHoldingsTopN(bwFundId, HOLDINGS_TOP_N).then(
-        enrichFundHoldingsWithL3,
-      ),
-      readFundHedgeLatest(bwFundId),
-      readFundPortfolioSeries(bwFundId, {
-        startDate,
-        endDate: latest.report_date,
-      }),
-      readFundNavSeries(bwFundId, {
-        startDate,
-        endDate: latest.report_date,
-      }),
-      fetchFundCohortRanks(bwFundId),
-      cohortMetricsP,
-    ]);
+  const [
+    holdings,
+    hedge,
+    portfolioHistory,
+    portfolioDaily,
+    navHistory,
+    cohortRanks,
+    cohortMetrics,
+  ] = await Promise.all([
+    readFundHoldingsTopN(bwFundId, HOLDINGS_TOP_N).then(enrichFundHoldingsWithL3),
+    readFundHedgeLatest(bwFundId),
+    readFundPortfolioSeries(bwFundId, {
+      startDate,
+      endDate: latest.report_date,
+    }),
+    readFundPortfolioDailySeries(bwFundId, {
+      startDate,
+      endDate: latest.report_date,
+    }),
+    readFundNavSeries(bwFundId, {
+      startDate,
+      endDate: latest.report_date,
+    }),
+    fetchFundCohortRanks(bwFundId),
+    cohortMetricsP,
+  ]);
 
   const snapshot = composeFundSnapshot({
     fund,
@@ -91,6 +101,7 @@ export async function loadFundSnapshot(
     holdings,
     hedge,
     portfolioHistory,
+    portfolioDaily,
     navHistory,
     cohortRanks,
     cohortMetrics,

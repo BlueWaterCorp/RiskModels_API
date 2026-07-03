@@ -43,6 +43,10 @@ export interface FundSnapshotPrimitives {
   holdings: FundHoldingsSnapshot | null;
   hedge: FundHedgeSnapshot | null;
   portfolioHistory: FundPortfolioRow[];
+  /** Daily-resolution portfolio decomposition (ds_portfolio_daily.zarr) for the
+   * smooth cumulative strip; separate from the month-based portfolioHistory.
+   * Optional so existing callers/fixtures compile; the loader always passes it. */
+  portfolioDaily?: FundPortfolioRow[];
   /**
    * yfinance NAV history for this fund (Funds_DAG fund_nav_zarr asset).
    * Optional — funds without a yfinance-resolvable ticker won't have a
@@ -81,6 +85,12 @@ export interface FundSnapshot {
     n_periods: number;
     rows: FundPortfolioRow[];
   };
+  /** Daily-resolution decomposition over the same window — for the cumulative
+   * strip. Null when the fund has no ds_portfolio_daily.zarr. */
+  portfolio_daily: {
+    n_periods: number;
+    rows: FundPortfolioRow[];
+  } | null;
   /**
    * Actual fund NAV (yfinance) over the same lookback window as
    * portfolio_history. Pairs with portfolio_history so consumers can
@@ -124,7 +134,7 @@ export interface FundSnapshot {
 }
 
 export function composeFundSnapshot(p: FundSnapshotPrimitives): FundSnapshot {
-  const { fund, latest, holdings, hedge, portfolioHistory, navHistory, cohortRanks } = p;
+  const { fund, latest, holdings, hedge, portfolioHistory, portfolioDaily = [], navHistory, cohortRanks } = p;
 
   const trimmed = trimToLookbackMonths(portfolioHistory, FUND_LOOKBACK_MONTHS);
   const navTrimmed = trimNavToLookbackMonths(navHistory, FUND_LOOKBACK_MONTHS);
@@ -169,6 +179,10 @@ export function composeFundSnapshot(p: FundSnapshotPrimitives): FundSnapshot {
       n_periods: trimmed.length,
       rows: trimmed,
     },
+    portfolio_daily:
+      portfolioDaily.length > 0
+        ? { n_periods: portfolioDaily.length, rows: portfolioDaily }
+        : null,
     nav_history: navTrimmed.length > 0
       ? {
           lookback_months: FUND_LOOKBACK_MONTHS,
