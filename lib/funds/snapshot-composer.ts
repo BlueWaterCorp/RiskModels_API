@@ -71,6 +71,13 @@ export interface FundSnapshot {
   ticker: string | null;
   fund_name: string | null;
   equity_style_9box: string | null;
+  /** Net expense ratio of the representative (ticker_primary) share class, as a
+   *  PERCENT per year (0.59 = 0.59%/yr, NOT 0.0059). Powers the fee-justification
+   *  analytic (active_fee = fund_ER − index_ER). Null when unavailable. */
+  net_expense_ratio: number | null;
+  /** As-of date of net_expense_ratio (EODHD expense_ratio_date); can trail by
+   *  years — a staleness signal, not a current-fee guarantee. */
+  net_expense_ratio_asof: string | null;
   report_date: string;
   filing_date: string;
   metrics: FundMetricsResponse;
@@ -163,6 +170,8 @@ export function composeFundSnapshot(p: FundSnapshotPrimitives): FundSnapshot {
     ticker: fund.ticker,
     fund_name: fund.fund_name,
     equity_style_9box: fund.equity_style_9box ?? latest.equity_style_9box,
+    net_expense_ratio: fund.net_expense_ratio,
+    net_expense_ratio_asof: fund.net_expense_ratio_asof,
     report_date: latest.report_date,
     filing_date: latest.filing_date,
     metrics: formatFundMetrics(fund, latest),
