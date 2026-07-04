@@ -153,9 +153,12 @@ export async function deleteCache(key: string): Promise<void> {
 }
 
 /**
- * Delete multiple keys by pattern (Redis only)
+ * Delete multiple keys by pattern. Returns the number of keys deleted
+ * (Redis + memory fallback combined) for observability.
  */
-export async function deleteCachePattern(pattern: string): Promise<void> {
+export async function deleteCachePattern(pattern: string): Promise<number> {
+  let deleted = 0;
+
   if (redis) {
     try {
       // Upstash Redis doesn't support KEYS, use scan instead
@@ -173,6 +176,7 @@ export async function deleteCachePattern(pattern: string): Promise<void> {
 
       if (keysToDelete.length > 0) {
         await redis.del(...keysToDelete);
+        deleted += keysToDelete.length;
       }
     } catch (error) {
       console.error("[Cache] Redis pattern delete error:", error);
@@ -184,8 +188,11 @@ export async function deleteCachePattern(pattern: string): Promise<void> {
   for (const key of memoryCache.keys()) {
     if (regex.test(key)) {
       memoryCache.delete(key);
+      deleted++;
     }
   }
+
+  return deleted;
 }
 
 /**
