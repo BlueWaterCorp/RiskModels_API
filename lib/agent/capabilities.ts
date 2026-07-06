@@ -282,7 +282,7 @@ export const CAPABILITIES: Capability[] = [
         type: "string",
         required: false,
         description: "AI model to use",
-        default: "gpt-4o-mini",
+        default: "kimi-k2.5",
       },
       response_mode: {
         type: "string",
