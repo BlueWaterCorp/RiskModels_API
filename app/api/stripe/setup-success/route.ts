@@ -281,11 +281,11 @@ export async function GET(req: NextRequest) {
       }
 
       return NextResponse.redirect(
-        `${appUrl}/get-key?stripe=success&kp=${encodeURIComponent(keyMaterial.prefix)}`,
+        `${appUrl}/get-key?stripe=success&free=${grantFree ? '1' : '0'}&kp=${encodeURIComponent(keyMaterial.prefix)}`,
       );
     }
 
-    return NextResponse.redirect(`${appUrl}/get-key?stripe=success`);
+    return NextResponse.redirect(`${appUrl}/get-key?stripe=success&free=${grantFree ? '1' : '0'}`);
   } catch (err) {
     console.error('[setup-success]', err);
     return NextResponse.redirect(`${appUrl}/get-key?stripe=error`);

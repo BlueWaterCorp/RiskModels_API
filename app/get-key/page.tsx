@@ -150,6 +150,9 @@ function GetKeyPage() {
     | 'processing'
     | null
   >(null);
+  // Whether the just-completed checkout included the once-per-account $20 free
+  // credit (from setup-success's `free` param) — drives the success-banner copy.
+  const [freeCreditIncluded, setFreeCreditIncluded] = useState(false);
 
   // Handle code exchange and stripe query params on mount
   useEffect(() => {
@@ -175,6 +178,7 @@ function GetKeyPage() {
     const stripe = searchParams.get('stripe');
 
     if (stripe) {
+      setFreeCreditIncluded(searchParams.get('free') === '1');
       const allowed = new Set([
         'success',
         'cancelled',
@@ -588,7 +592,11 @@ function GetKeyPage() {
               <p className="text-green-300 font-semibold text-sm">
                 Card verified — credits added{account ? ` (balance ${formatBalance(account.balance_usd)})` : ''}
               </p>
-              <p className="text-zinc-400 text-xs mt-0.5">Your API key is active below. Includes your $20 free credit; auto-refill stays off until you enable it.</p>
+              <p className="text-zinc-400 text-xs mt-0.5">
+                {freeCreditIncluded
+                  ? 'Your API key is active below. Includes your $20 free credit; auto-refill stays off until you enable it.'
+                  : 'Your API key is active below. Auto-refill stays off until you enable it.'}
+              </p>
             </div>
           </div>
         )}

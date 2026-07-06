@@ -38,9 +38,21 @@ export async function POST(request: Request) {
     // Find or create Stripe customer
     const { data: account } = await admin
       .from('agent_accounts')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, balance_usd')
       .eq('user_id', user.id)
       .maybeSingle();
+
+    // Will the once-per-account $20 free credit apply? Mirrors setup-success's
+    // guard so the checkout message promises exactly what will be credited.
+    const { data: priorFree } = await admin
+      .from('billing_events')
+      .select('id')
+      .eq('user_id', user.id)
+      .in('capability_id', ['free_credit', 'starter_credit'])
+      .limit(1)
+      .maybeSingle();
+    const currentBalance = parseFloat(String(account?.balance_usd ?? 0));
+    const freeUsd = !priorFree && currentBalance < 20 ? 20 : 0;
 
     let customerId: string;
     if (account?.stripe_customer_id) {
@@ -86,7 +98,10 @@ export async function POST(request: Request) {
             },
             custom_text: {
               submit: {
-                message: `You'll be charged $${prepayUsd} now and receive $${prepayUsd + 20} in credits ($20 free included). Your card is saved for future billing.`,
+                message:
+                  freeUsd > 0
+                    ? `You'll be charged $${prepayUsd} now and receive $${prepayUsd + freeUsd} in credits ($${freeUsd} free included). Your card is saved for future billing.`
+                    : `You'll be charged $${prepayUsd} now and $${prepayUsd} in API credits will be added to your balance. Your card is saved for future billing.`,
               },
             },
           }
