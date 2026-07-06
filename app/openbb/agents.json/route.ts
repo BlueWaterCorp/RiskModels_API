@@ -21,8 +21,13 @@ export async function GET(req: NextRequest) {
   const agents = {
     "riskmodels-analyst": {
       name: "RiskModels Analyst",
+      // NOTE: in OpenBB multi-orchestrator mode the main Copilot uses this
+      // description to decide when to route a query here, and it renders as the
+      // welcome message in empty chats — so it leads with capabilities + use
+      // cases (not "free demo"), which is what makes non-MAG7 questions route to
+      // this agent instead of falling through to the default OpenBB Copilot.
       description:
-        "Free demo of the RiskModels institutional analyst — L1/L2/L3 factor decomposition, hedge layering, and residual signal for the Magnificent 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA), with real RiskModels data. Get a key at riskmodels.app for the full US universe + portfolio hedging.",
+        "RiskModels institutional equity risk analyst. Decomposes any US stock or portfolio into market, sector, subsector, and stock-specific (residual/idiosyncratic) risk — position-up L1/L2/L3 factor decomposition with tradeable hedge ratios, residual (Lstar) signal, and cross-sectional rankings. Use it to answer what is driving a name's or portfolio's risk, how to hedge a specific exposure, how idiosyncratic a position is, or how a stock ranks on factor and residual risk. Free for the Magnificent 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA); add your riskmodels.app API key as X-API-KEY for the full US universe and multi-position portfolio hedging.",
       image: `${u.protocol}//${u.host}/logo.png`,
       endpoints: { query: queryUrl },
       features: { streaming: true },
