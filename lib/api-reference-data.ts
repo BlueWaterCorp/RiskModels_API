@@ -310,7 +310,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         requestBody: {
           contentType: 'application/json',
           example: JSON.stringify(
-            { messages: [{ role: 'user', content: 'What is NVDA exposure to tech sector?' }], model: 'gpt-4o-mini' },
+            { messages: [{ role: 'user', content: 'What is NVDA exposure to tech sector?' }], model: 'kimi-k2.5' },
             null,
             2
           ),
