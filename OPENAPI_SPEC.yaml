@@ -7476,7 +7476,7 @@ paths:
         "502":
           description: Upstream AI provider error.
         "503":
-          description: Chat not configured (e.g. missing OPENAI_API_KEY).
+          description: Chat not configured (e.g. missing MOONSHOT_API_KEY).
 
   /pricing:
     get:

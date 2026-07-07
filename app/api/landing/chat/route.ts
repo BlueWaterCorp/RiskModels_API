@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       {
         error: "Service unavailable",
         message:
-          "AI chat demo is not configured (need MOONSHOT_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY).",
+          "AI chat demo is not configured (need MOONSHOT_API_KEY or ANTHROPIC_API_KEY).",
       },
       { status: 503, headers: corsHeaders },
     );
