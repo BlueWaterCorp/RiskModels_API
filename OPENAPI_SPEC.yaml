@@ -1592,8 +1592,9 @@ components:
         ratios and total explained-return. Arrays are parallel by date index. Each L\* is a standalone
         hedge solution (not stacked layers) — `market_hr`/`sector_hr`/`subsector_hr` come from the
         chosen level's solver and are `null` where the chosen level doesn't use that ETF
-        (sector_hr is null when L\*=L1; subsector_hr is null when L\*∈{L1,L2}). When `axis=style`,
-        marginal ERs are SMB/HML and `sector_hr`/`subsector_hr` carry SMB/HML spread hedge ratios.
+        (sector_hr is null when L\*=L1; subsector_hr is null when L\*∈{L1,L2}). `axis` is always
+        `industry` — the style axis was removed in v4 (style is a diagnostic block; see
+        `POST /v4/decompose`).
       required:
         - ticker
         - axis
@@ -1615,9 +1616,11 @@ components:
           type: string
         axis:
           type: string
-          enum: [industry, style]
+          enum: [industry]
           default: industry
-          description: Cascade axis for marginal ER inputs and hedge-ratio semantics.
+          description: >
+            Cascade axis — always `industry`. `style` was removed in v4 (style is served as a
+            diagnostic block by `POST /v4/decompose`).
         dates:
           type: array
           items:
@@ -1672,7 +1675,7 @@ components:
         l2_sector_er:
           type: array
           description: >
-            Marginal L2 ER input (industry: sector; style: SMB). Exposed for audit / threshold override.
+            Marginal L2 (sector) ER input. Exposed for audit / threshold override.
           items:
             type: number
             format: float
@@ -1680,7 +1683,7 @@ components:
         l3_subsector_er:
           type: array
           description: >
-            Marginal L3 ER input (industry: subsector; style: HML). Exposed for audit / threshold override.
+            Marginal L3 (subsector) ER input. Exposed for audit / threshold override.
           items:
             type: number
             format: float
@@ -1803,7 +1806,8 @@ components:
           type: string
         axis:
           type: string
-          enum: [industry, style]
+          enum: [industry]
+          description: Always `industry` — the style axis was removed in v4.
         _agent:
           type: object
           properties:
@@ -4449,12 +4453,12 @@ paths:
           required: false
           schema:
             type: string
-            enum: [industry, style]
+            enum: [industry]
             default: industry
           description: >
             Cascade axis. `industry` (default): sector/subsector marginal ERs and ETF hedge ratios.
-            `style`: Fama–French SMB/HML marginal ERs; `sector_hr` / `subsector_hr` carry SMB / HML
-            spread hedge ratios.
+            DEPRECATED value `style` was removed in v4 and now returns 400 — style is a diagnostic
+            block served by `POST /v4/decompose`; the industry cascade is the only hedge axis.
       responses:
         "200":
           description: Per-date recommended level + dispatched hedge ratios.
@@ -5879,10 +5883,12 @@ paths:
                   default: 0.01
                 axis:
                   type: string
-                  enum: [industry, style]
+                  enum: [industry]
                   default: industry
                   description: >
-                    `industry` (default) or `style` (Fama–French SMB/HML cascade).
+                    Cascade axis — `industry` only. DEPRECATED value `style` was removed in v4 and
+                    now returns 400 — style is a diagnostic block served by `POST /v4/decompose`;
+                    the industry cascade is the only hedge axis.
                 format:
                   type: string
                   enum: [json, parquet, csv]

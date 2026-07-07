@@ -72,15 +72,30 @@ export const L3DecompositionRequestSchema = z.object({
   years: YearsSchema,
 });
 
-export const LstarAxisSchema = z.enum(["industry", "style"]).default("industry");
+/**
+ * H.92 (2026-07-06 CEO deprecation): the style axis read `L*_ff_*` zarr vars the
+ * H.81 v4 cutover retired, so it had served all-null since 2026-06-24. Style is a
+ * diagnostic block in v4, not a hedge axis. Rejecting (not silently defaulting)
+ * keeps the breaking param loud.
+ */
+export const LSTAR_STYLE_AXIS_REMOVED_MESSAGE =
+  "axis=style was removed in v4 — style is a diagnostic block (see POST /v4/decompose); the industry cascade is the only hedge axis";
+
+/**
+ * Axis for the L* endpoints. `industry` is the only hedge axis; `style` is
+ * still recognized by the enum so it can be rejected with the v4 removal
+ * message instead of a generic enum error.
+ */
+export const LstarAxisSchema = z
+  .enum(["industry", "style"])
+  .default("industry")
+  .refine((v) => v !== "style", { message: LSTAR_STYLE_AXIS_REMOVED_MESSAGE })
+  .transform((v) => v as "industry");
 
 /**
  * Schema for GET /api/lstar — per-(ticker, date) recommended hedge level.
  * `threshold` is accepted for SDK callers; chat / agentic surfaces should
  * leave it at the 1% default and treat the response as server-authoritative.
- *
- * `axis=style` uses Fama–French marginal ERs (SMB / HML); `sector_hr` /
- * `subsector_hr` in the response carry SMB / HML hedge ratios.
  */
 export const LstarRequestSchema = z.object({
   ticker: TickerSchema,
