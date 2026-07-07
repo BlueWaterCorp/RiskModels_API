@@ -11,7 +11,7 @@
 #   PYTHON=/path/to/venv/bin/python  (defaults: ../BWMACRO/.venv, then RiskModels_API/.venv, ERM3/.venv, else python3)
 #   BWMACRO_ROOT=...  (default: sibling ../BWMACRO from this repo)
 #   LIMIT=1000  UNIVERSE=uni_mc_3000  UPLOAD_GCS=1  RESUME=1  FORCE=0  API_PEERS=0
-#   SEC_PROFILE_JSON_ROOT=...  BULK_SNAPSHOT_DIR=...  ERM3_ZARR_ROOT=...
+#   BULK_SNAPSHOT_DIR=...  ERM3_ZARR_ROOT=...
 #   RUN_IN_BACKGROUND=1 — nohup; on macOS wraps with caffeinate -i (disable with CAFFEINATE=0).
 
 set -euo pipefail
@@ -46,16 +46,6 @@ if [[ -z "${PYTHON}" ]]; then
   fi
 fi
 
-# Company profile JSON root (must contain json/). Prefer ext drive from gcs.company_profiles if mounted.
-: "${SEC_PROFILE_JSON_ROOT:=}"
-if [[ -z "${SEC_PROFILE_JSON_ROOT}" ]]; then
-  if [[ -d "/Volumes/ext_2t/Company_Profiles/v1/json" ]]; then
-    SEC_PROFILE_JSON_ROOT="/Volumes/ext_2t/Company_Profiles/v1"
-  else
-    SEC_PROFILE_JSON_ROOT="${ERM3_ROOT}/data/stock_data/company_profiles/v1"
-  fi
-fi
-
 # Output tree: default external drive if present, else under repo
 if [[ -z "${BULK_SNAPSHOT_DIR:-}" ]]; then
   if [[ -d "/Volumes/ext_2t" ]]; then
@@ -86,7 +76,6 @@ export ERM3_ROOT
 export ERM3_ZARR_ROOT
 export BWMACRO_ROOT
 export BULK_SNAPSHOT_DIR
-export BULK_DD_SEC_PROFILE_ROOT="${SEC_PROFILE_JSON_ROOT}"
 export PYTHONPATH="${SDK}:${ERM3_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 export LOG_FILE
 export PYTHON
@@ -122,7 +111,6 @@ _log "RISKMODELS_ROOT=${RISKMODELS_ROOT}"
 _log "BWMACRO_ROOT=${BWMACRO_ROOT}"
 _log "ERM3_ROOT=${ERM3_ROOT}"
 _log "ERM3_ZARR_ROOT=${ERM3_ZARR_ROOT}"
-_log "SEC_PROFILE_JSON_ROOT=${SEC_PROFILE_JSON_ROOT}"
 _log "BULK_SNAPSHOT_DIR=${BULK_SNAPSHOT_DIR}"
 _log "LIMIT=${LIMIT} UNIVERSE=${UNIVERSE} UPLOAD_GCS=${UPLOAD_GCS} RESUME=${RESUME} FORCE=${FORCE}"
 _log "PYTHON=${PYTHON}"
@@ -146,9 +134,6 @@ if [[ "${UPLOAD_GCS}" == "1" ]] && ! command -v gcloud &>/dev/null; then
   _log "ERROR: gcloud not found but UPLOAD_GCS=1. Install Google Cloud SDK or set UPLOAD_GCS=0."
   exit 1
 fi
-if [[ ! -d "${SEC_PROFILE_JSON_ROOT}/json" ]]; then
-  _log "WARN: No json/ under SEC_PROFILE_JSON_ROOT=${SEC_PROFILE_JSON_ROOT} — blurbs will be empty for many names."
-fi
 
 mkdir -p "${BULK_SNAPSHOT_DIR}"
 
@@ -157,7 +142,6 @@ CMD=("${PYTHON}" -u "${RISKMODELS_ROOT}/sdk/scripts/bulk_dd_render.py"
   --out-dir "${BULK_SNAPSHOT_DIR}"
   --universe "${UNIVERSE}"
   --limit "${LIMIT}"
-  --sec-profile-json-root "${SEC_PROFILE_JSON_ROOT}"
 )
 [[ "${RESUME}" == "1" ]] && CMD+=(--resume)
 [[ "${FORCE}" == "1" ]] && CMD+=(--force)
