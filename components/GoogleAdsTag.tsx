@@ -1,12 +1,12 @@
-/** Google Ads tag (gtag.js) for riskmodels.app — paste before closing </head> */
-const GOOGLE_ADS_GTAG_ID = 'AW-18161098219';
+import { GA4_MEASUREMENT_ID, GOOGLE_ADS_GTAG_ID } from '@/lib/google-tags';
 
+/** Google tag (gtag.js): GA4 + Ads on riskmodels.app — last in <head> before </head>. */
 export function GoogleAdsTag() {
   return (
     <>
       <script
         async
-        src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_GTAG_ID}`}
+        src={`https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}`}
       />
       <script
         dangerouslySetInnerHTML={{
@@ -14,6 +14,7 @@ export function GoogleAdsTag() {
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
+          gtag('config', '${GA4_MEASUREMENT_ID}');
           gtag('config', '${GOOGLE_ADS_GTAG_ID}');
         `,
         }}

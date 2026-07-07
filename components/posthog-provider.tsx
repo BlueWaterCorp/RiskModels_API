@@ -2,6 +2,7 @@
 
 import { useEffect, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { trackGaPageView } from '@/lib/google-ads-conversion';
 import { initPostHog, trackPageView, resetUser } from '@/lib/posthog-client';
 
 function PostHogProviderInner({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ function PostHogProviderInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (pathname) {
       trackPageView(pathname);
+      trackGaPageView(pathname);
     }
   }, [pathname, searchParams]);
 
