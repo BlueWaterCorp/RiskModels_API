@@ -38,6 +38,24 @@ In **RiskModels_API**, see `.cursorrules` for “Email Templates & SVG Editing�
 
 Plan cross-repo impact first and **list manual sync steps** when changing contracts.
 
+### 0. House PIT convention for point-in-time reads (`?as_of=`)
+
+Any endpoint offering knowledge-time reads uses the D.8.39 shape (first shipped on
+`/13f/filers/{id}/holdings` + `/portfolio`, 2026-07-06):
+
+- Query param `as_of=YYYY-MM-DD` — "serve only what was public on or before this date".
+- Selection runs on the knowledge axis (`filing_date`/`availability_date`), **never** on
+  `report_date` silently. If the panel lacks knowledge stamps, fall back to report_date
+  **and say so** via an `as_of_basis: "filing_date" | "report_date"` echo in the body.
+- Nothing known by `as_of` → **404 with an as_of-specific message**, never an empty-but-200
+  or the latest row.
+- Bi-temporal stamps (`report_date`, `filing_date`) are **body fields** (headers optional
+  mirrors) — SDK/MCP consumers never see headers.
+- Never collapse `report_date` (economic truth) and availability (knowledge truth) — L-arc
+  invariant, `docs/architecture/CANONICAL_INTELLIGENCE_OBJECTS.md`.
+
+Applies to upcoming PIT surfaces: R.8 universe members, H.89.5 fundamentals, E.7 judgment.
+
 ### 1. Canonical schemas in RiskModels_API
 
 JSON schemas (e.g. `estimate-v1.json`) are canonical **only** in `RiskModels_API/mcp/data/schemas/`. Create and edit them there.
