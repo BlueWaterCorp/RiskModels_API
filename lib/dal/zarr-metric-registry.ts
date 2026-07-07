@@ -142,18 +142,11 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // column); reliably populated via STOCK_SPECIFIC_ZARR_OVERLAY_KEYS.
   stock_specific_sharpe_36m: { role: "hedge", zarrVar: "StockSpecific_Sharpe36m_lstar" },
 
-  // Fama–French style cascade — HEDGE vars only (ds_erm3_hedge_weights). The v4
-  // producer (e4cab09) retired the FF *returns* levels (l2_ff_smb / l3_ff_smb_hml)
-  // from ds_erm3_returns, so the style-axis residual-return series is gone; style
-  // is now a diagnostic ER/HR block. See docs/ERM3_STOCK_SPECIFIC_DEEP_PANEL_UPDATE.md §1.
-  l2_ff_smb_er: { role: "hedge", zarrVar: "L2_ff_smb_ER" },
-  l3_ff_smb_er: { role: "hedge", zarrVar: "L3_ff_smb_ER" },
-  l3_ff_hml_er: { role: "hedge", zarrVar: "L3_ff_hml_ER" },
-  l2_ff_mkt_hr: { role: "hedge", zarrVar: "L2_ff_market_HR" },
-  l2_ff_smb_hr: { role: "hedge", zarrVar: "L2_ff_smb_HR" },
-  l3_ff_mkt_hr: { role: "hedge", zarrVar: "L3_ff_market_HR" },
-  l3_ff_smb_hr: { role: "hedge", zarrVar: "L3_ff_smb_HR" },
-  l3_ff_hml_hr: { role: "hedge", zarrVar: "L3_ff_hml_HR" },
+  // Fama–French style cascade (l*_ff_* ER/HR): RETIRED. The H.81 v4 cutover
+  // removed the L*_ff_* vars from every store (local + GCS) — they had served
+  // all-null since 2026-06-24 — and H.92 (2026-07-06) deprecated the axis=style
+  // L* surface that read them. Style exposure is a diagnostic block served by
+  // POST /api/v4/decompose (style_er / style_er_l3 above).
 };
 
 export function getZarrSpec(key: V3MetricKey): ZarrMetricSpec | undefined {

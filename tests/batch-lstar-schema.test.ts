@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { BatchLstarRequestSchema } from "@/lib/api/schemas";
+import {
+  BatchLstarRequestSchema,
+  LSTAR_STYLE_AXIS_REMOVED_MESSAGE,
+} from "@/lib/api/schemas";
 import {
   batchLstarToLongRows,
   type BatchLstarResponseBody,
@@ -29,6 +32,19 @@ describe("BatchLstarRequestSchema", () => {
     const tickers = Array.from({ length: 101 }, (_, i) => `T${i}`);
     const result = BatchLstarRequestSchema.safeParse({ tickers });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects the retired axis=style with the v4 removal message (H.92)", () => {
+    const result = BatchLstarRequestSchema.safeParse({
+      tickers: ["NVDA"],
+      axis: "style",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]!.message).toBe(
+        LSTAR_STYLE_AXIS_REMOVED_MESSAGE,
+      );
+    }
   });
 });
 

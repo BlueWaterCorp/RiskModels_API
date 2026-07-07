@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FactorCorrelationRequestSchema,
+  LSTAR_STYLE_AXIS_REMOVED_MESSAGE,
   LstarRequestSchema,
   PortfolioRiskSnapshotRequestSchema,
   SnapshotRequestSchema,
@@ -187,18 +188,30 @@ describe("LstarRequestSchema", () => {
     }
   });
 
-  it("defaults axis to industry and accepts style", () => {
+  it("defaults axis to industry and accepts an explicit industry", () => {
     const d = LstarRequestSchema.safeParse({ ticker: "NVDA", years: "1" });
     expect(d.success).toBe(true);
     if (d.success) expect(d.data.axis).toBe("industry");
 
+    const e = LstarRequestSchema.safeParse({
+      ticker: "NVDA",
+      years: "1",
+      axis: "industry",
+    });
+    expect(e.success).toBe(true);
+    if (e.success) expect(e.data.axis).toBe("industry");
+  });
+
+  it("rejects the retired axis=style with the v4 removal message (H.92)", () => {
     const s = LstarRequestSchema.safeParse({
       ticker: "NVDA",
       years: "1",
       axis: "style",
     });
-    expect(s.success).toBe(true);
-    if (s.success) expect(s.data.axis).toBe("style");
+    expect(s.success).toBe(false);
+    if (!s.success) {
+      expect(s.error.issues[0]!.message).toBe(LSTAR_STYLE_AXIS_REMOVED_MESSAGE);
+    }
   });
 });
 

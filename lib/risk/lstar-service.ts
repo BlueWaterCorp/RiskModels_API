@@ -9,15 +9,21 @@
  *   else                   → L1
  *
  * Industry axis: L2_sector_ER / L3_subsector_ER (market → sector → subsector).
- * Style axis:    L2_ff_smb_ER / L3_ff_hml_ER (market → SMB → HML).
  *
- * Selection source. For the **industry axis at the canonical threshold** (no
- * caller-supplied θ), the materialized `lstar_level` column is the source of
- * truth — it carries whatever selector ERM3 shipped (the cost-aware GBM once
- * enabled; the 1% rule before that), so the API never re-derives the canonical
- * pick in TS. Live derivation (pickLstar over marginal ERs) is used only when
- * the materialized column is absent, or for the **style axis** / an **explicit
- * custom θ**, where the materialized column does not apply. Default θ = 1%.
+ * H.92 (2026-07-06 CEO deprecation): `axis=style` was REMOVED. The style axis
+ * read `L2_ff_smb_ER` / `L3_ff_hml_ER` / `L*_ff_*_HR` zarr vars that the H.81 v4
+ * cutover retired (present in no store, local or GCS), so it had served all-null
+ * since 2026-06-24 — and it contradicted the v4 ruling that style is diagnostic
+ * (hedgeable: false). Style exposure is served by POST /api/v4/decompose.
+ * Callers passing axis=style get a loud 400, never a silent industry default.
+ *
+ * Selection source. At the canonical threshold (no caller-supplied θ), the
+ * materialized `lstar_level` column is the source of truth — it carries whatever
+ * selector ERM3 shipped (the cost-aware GBM once enabled; the 1% rule before
+ * that), so the API never re-derives the canonical pick in TS. Live derivation
+ * (pickLstar over marginal ERs) is used only when the materialized column is
+ * absent, or for an **explicit custom θ**, where the materialized column does
+ * not apply. Default θ = 1%.
  */
 
 import {
@@ -28,13 +34,21 @@ import {
   type PivotedHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { LSTAR_STYLE_AXIS_REMOVED_MESSAGE } from "@/lib/api/schemas";
 
 export const LSTAR_DEFAULT_THRESHOLD = 0.01;
 
 export type LstarLevel = "L1" | "L2" | "L3";
 
-/** Which cascade the marginal ERs belong to (same L1/L2/L3 depth rule). */
-export type LstarAxis = "industry" | "style";
+/**
+ * The only cascade the L* endpoints serve. `style` was removed in v4 (H.92) —
+ * requests carrying `axis=style` must be rejected with
+ * {@link LSTAR_STYLE_AXIS_REMOVED_MESSAGE}, never silently defaulted.
+ */
+export type LstarAxis = "industry";
+
+/** Canonical 400 message when a caller passes the retired `axis=style`. */
+export { LSTAR_STYLE_AXIS_REMOVED_MESSAGE } from "@/lib/api/schemas";
 
 /** Zarr / V3 metric names for the two marginal ER inputs, by axis. */
 export const LSTAR_MARGINAL_ER_KEYS: Record<
@@ -46,43 +60,31 @@ export const LSTAR_MARGINAL_ER_KEYS: Record<
     l3: "L3_subsector_ER",
     description: "market → +sector → +subsector",
   },
-  style: {
-    l2: "L2_ff_smb_ER",
-    l3: "L3_ff_hml_ER",
-    description: "market → +SMB → +HML",
-  },
 };
 
 export interface LstarResult {
   ticker: string;
-  /** `industry` (default) or `style` — determines marginal ER / HR semantics. */
+  /** Always `industry` — the only hedge axis (style removed in v4, H.92). */
   axis: LstarAxis;
   dates: string[];
   /** Recommended level per date, null where source ERs are unavailable. */
   lstar: (LstarLevel | null)[];
   /** Hedge ratio for the market ETF, drawn from the chosen level's solver. */
   market_hr: (number | null)[];
-  /**
-   * Second-leg hedge ratio. Industry: sector ETF. Style: SMB spread.
-   * Null when Lstar = L1.
-   */
+  /** Sector-ETF hedge ratio. Null when Lstar = L1. */
   sector_hr: (number | null)[];
-  /**
-   * Third-leg hedge ratio. Industry: subsector ETF. Style: HML spread.
-   * Null when Lstar ∈ {L1, L2}.
-   */
+  /** Subsector-ETF hedge ratio. Null when Lstar ∈ {L1, L2}. */
   subsector_hr: (number | null)[];
   /** Total explained-return at the chosen level. */
   total_er: (number | null)[];
   /**
-   * Daily simple residual return at the chosen Lstar level.
-   * Industry: `l1_rr` / `l2_rr` / `l3_rr`. Style: `l1_rr` at L1 only — the L2/L3
-   * style residual-return series was retired in v4 (style is a diagnostic block).
+   * Daily simple residual return at the chosen Lstar level
+   * (`l1_rr` / `l2_rr` / `l3_rr`).
    */
   residual_return: (number | null)[];
   /**
-   * Raw marginal ER inputs to the selection rule (audit / SDK override).
-   * Industry: sector / subsector. Style: SMB / HML.
+   * Raw marginal ER inputs to the selection rule (audit / SDK override):
+   * sector / subsector.
    */
   l2_sector_er: (number | null)[];
   l3_subsector_er: (number | null)[];
@@ -120,36 +122,19 @@ const INDUSTRY_KEYS: V3MetricKey[] = [
   "lstar_rr",
 ];
 
-const STYLE_KEYS: V3MetricKey[] = [
-  "l1_mkt_hr",
-  "l2_ff_mkt_hr",
-  "l2_ff_smb_hr",
-  "l3_ff_mkt_hr",
-  "l3_ff_smb_hr",
-  "l3_ff_hml_hr",
-  "l1_mkt_er",
-  "l2_ff_smb_er",
-  "l3_ff_smb_er",
-  "l3_ff_hml_er",
-  "l1_rr",
-];
-
 /**
  * Pick cascade depth from marginal explained-risk at L2 and L3.
  *
- * @param l2MarginalEr Industry: `L2_sector_ER`. Style: `L2_ff_smb_ER`.
- * @param l3MarginalEr Industry: `L3_subsector_ER`. Style: `L3_ff_hml_ER`.
- * @param threshold    Marginal ER bar (default 1%).
- * @param axis         Documents input semantics; rule is identical (negative
- *                     marginal ER fails the bar and steps down).
+ * @param l2MarginalEr `L2_sector_ER`.
+ * @param l3MarginalEr `L3_subsector_ER`.
+ * @param threshold    Marginal ER bar (default 1%). Negative marginal ER fails
+ *                     the bar and steps down.
  */
 export function pickLstar(
   l2MarginalEr: number | null,
   l3MarginalEr: number | null,
   threshold: number,
-  axis: LstarAxis = "industry",
 ): LstarLevel | null {
-  void axis;
   if (l2MarginalEr == null && l3MarginalEr == null) return null;
   if (l3MarginalEr != null && l3MarginalEr >= threshold) return "L3";
   if (l2MarginalEr != null && l2MarginalEr >= threshold) return "L2";
@@ -163,23 +148,6 @@ export function dispatchLstarResidualReturn(
 ): number | null {
   if (chosen === "L3") return extractMetric(row, "l3_rr");
   if (chosen === "L2") return extractMetric(row, "l2_rr");
-  if (chosen === "L1") return extractMetric(row, "l1_rr");
-  return null;
-}
-
-/**
- * Residual return at the chosen style Lstar level.
- *
- * v4 (ERM3 stock_specific reset, e4cab09): the style-axis residual-return series
- * was retired — ds_erm3_returns no longer carries the l2_ff_smb / l3_ff_smb_hml
- * levels. Style is now a diagnostic block (ER/HR only), so L2/L3 return null; L1
- * is the market residual (l1_rr), unchanged. The skill residual now lives on its
- * own basis via stock_specific_rr_lstar, not the style cascade.
- */
-export function dispatchStyleLstarResidualReturn(
-  chosen: LstarLevel | null,
-  row: PivotedHistoryRow,
-): number | null {
   if (chosen === "L1") return extractMetric(row, "l1_rr");
   return null;
 }
@@ -215,7 +183,7 @@ function processIndustryRow(
   const fromMaterialized = useMaterialized && lvlRaw !== null && lvlRaw !== undefined;
   const chosen = fromMaterialized
     ? materializedLevelToLstar(lvlRaw)
-    : pickLstar(l2Marginal, l3Marginal, threshold, "industry");
+    : pickLstar(l2Marginal, l3Marginal, threshold);
   // Materialized residual return is the dispatched lstar_rr (== l{level}_rr).
   const residualReturn = fromMaterialized
     ? ((p.lstar_rr as number | null) ?? dispatchLstarResidualReturn(chosen, p))
@@ -274,91 +242,27 @@ function processIndustryRow(
   };
 }
 
-function processStyleRow(
-  p: PivotedHistoryRow,
-  threshold: number,
-): {
-  chosen: LstarLevel | null;
-  l2Marginal: number | null;
-  l3Marginal: number | null;
-  market_hr: number | null;
-  sector_hr: number | null;
-  subsector_hr: number | null;
-  total_er: number | null;
-  residual_return: number | null;
-} {
-  const l2Marginal = (p.l2_ff_smb_er as number | null) ?? null;
-  const l3Marginal = (p.l3_ff_hml_er as number | null) ?? null;
-  const chosen = pickLstar(l2Marginal, l3Marginal, threshold, "style");
-
-  if (chosen === "L3") {
-    const m = (p.l1_mkt_er as number | null) ?? 0;
-    const smb = (p.l3_ff_smb_er as number | null) ?? 0;
-    const hml = l3Marginal ?? 0;
-    return {
-      chosen,
-      l2Marginal,
-      l3Marginal,
-      market_hr: (p.l3_ff_mkt_hr as number | null) ?? null,
-      sector_hr: (p.l3_ff_smb_hr as number | null) ?? null,
-      subsector_hr: (p.l3_ff_hml_hr as number | null) ?? null,
-      total_er: m + smb + hml,
-      residual_return: dispatchStyleLstarResidualReturn(chosen, p),
-    };
-  }
-  if (chosen === "L2") {
-    const m = (p.l1_mkt_er as number | null) ?? 0;
-    const smb = l2Marginal ?? 0;
-    return {
-      chosen,
-      l2Marginal,
-      l3Marginal,
-      market_hr: (p.l2_ff_mkt_hr as number | null) ?? null,
-      sector_hr: (p.l2_ff_smb_hr as number | null) ?? null,
-      subsector_hr: null,
-      total_er: m + smb,
-      residual_return: dispatchStyleLstarResidualReturn(chosen, p),
-    };
-  }
-  if (chosen === "L1") {
-    return {
-      chosen,
-      l2Marginal,
-      l3Marginal,
-      market_hr: (p.l1_mkt_hr as number | null) ?? null,
-      sector_hr: null,
-      subsector_hr: null,
-      total_er: (p.l1_mkt_er as number | null) ?? null,
-      residual_return: dispatchStyleLstarResidualReturn(chosen, p),
-    };
-  }
-  return {
-    chosen,
-    l2Marginal,
-    l3Marginal,
-    market_hr: null,
-    sector_hr: null,
-    subsector_hr: null,
-    total_er: null,
-    residual_return: null,
-  };
-}
-
 export class LstarService {
   /**
    * Resolve Lstar + dispatched hedge ratios for a ticker across a daily window.
    *
-   * @param options.axis  `industry` (default) or `style` (Fama–French cascade).
+   * @param options.axis  `industry` only. The retired `style` axis throws
+   *                      {@link LSTAR_STYLE_AXIS_REMOVED_MESSAGE} (routes reject
+   *                      it with 400 before reaching here; this is defense in
+   *                      depth for direct service callers).
    */
   async getLstar(
     ticker: string,
     marketFactorEtf: string = "SPY",
     options?: GetLstarOptions,
   ): Promise<LstarResult | null> {
+    if ((options?.axis as string | undefined) === "style") {
+      throw new Error(LSTAR_STYLE_AXIS_REMOVED_MESSAGE);
+    }
     const upperTicker = ticker.toUpperCase();
     const years = options?.years ?? 1;
     const threshold = options?.threshold ?? LSTAR_DEFAULT_THRESHOLD;
-    const axis = options?.axis ?? "industry";
+    const axis: LstarAxis = options?.axis ?? "industry";
 
     const symbolRecord = await resolveSymbolByTicker(upperTicker);
     if (!symbolRecord) return null;
@@ -367,9 +271,7 @@ export class LstarService {
     startDate.setFullYear(startDate.getFullYear() - years);
     const startDateStr = startDate.toISOString().split("T")[0]!;
 
-    const keys = axis === "style" ? STYLE_KEYS : INDUSTRY_KEYS;
-
-    const rows = await fetchHistory(symbolRecord.symbol, keys, {
+    const rows = await fetchHistory(symbolRecord.symbol, INDUSTRY_KEYS, {
       periodicity: "daily",
       startDate: startDateStr,
       orderBy: "asc",
@@ -394,15 +296,12 @@ export class LstarService {
     const l2_sector_er: (number | null)[] = [];
     const l3_subsector_er: (number | null)[] = [];
 
-    // Prefer the materialized canonical level only for industry @ default θ.
-    // An explicit caller θ (or the style axis) keeps live derivation.
-    const useMaterialized = axis !== "style" && options?.threshold === undefined;
+    // Prefer the materialized canonical level at the default θ; an explicit
+    // caller θ keeps live derivation.
+    const useMaterialized = options?.threshold === undefined;
 
     for (const p of pivoted) {
-      const row =
-        axis === "style"
-          ? processStyleRow(p, threshold)
-          : processIndustryRow(p, threshold, useMaterialized);
+      const row = processIndustryRow(p, threshold, useMaterialized);
       lstar.push(row.chosen);
       l2_sector_er.push(row.l2Marginal);
       l3_subsector_er.push(row.l3Marginal);
