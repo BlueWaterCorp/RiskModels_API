@@ -9159,11 +9159,18 @@ paths:
     get:
       summary: 13F filer top holdings
       description: >
-        Top-N current holdings at the filer's latest teo. Reads per-filer
-        ds_ph.zarr from GCS. Each holding carries `security_id` (post-
-        D.8.1 = bw_sym_id; pre-migration = a raw 9-char security
-        identifier), `adj_mv`, and `weight` (fraction of total
-        in-portfolio AUM).
+        Top-N holdings at the filer's latest teo — or, with `as_of`, at the
+        latest quarter *known* by that date (knowledge mode: selection on
+        `filing_date <= as_of`; falls back to `report_date <= as_of` on
+        panels without per-quarter filing dates, with the basis echoed as
+        `as_of_basis`). Reads per-filer ds_ph.zarr from GCS. Each holding
+        carries `security_id` (post-D.8.1 = bw_sym_id; pre-migration = a
+        raw 9-char security identifier), `adj_mv`, and `weight` (fraction
+        of total in-portfolio AUM). Bi-temporal stamps are body fields —
+        `report_date` (valid time, = teo) and `filing_date` (knowledge
+        time, EDGAR date_filed of the surviving submission; null until the
+        per-quarter data fill lands) — mirrored on the X-Data-As-Of /
+        X-Data-Filing-Date headers.
       operationId: getFilerHoldings
       tags:
         - 13F Filers
@@ -9185,9 +9192,20 @@ paths:
             type: integer
             default: 25
             maximum: 1000
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: >
+            Knowledge-mode date: serve the latest quarter whose filing was
+            public on or before this date. 404 when nothing was known yet.
       responses:
         "200":
-          description: Top-N holdings at the latest teo.
+          description: >
+            Top-N holdings at the selected teo, with `report_date`,
+            `filing_date`, and (under `as_of`) `as_of_basis`.
           content:
             application/json:
               schema:
@@ -9215,6 +9233,11 @@ paths:
         One row per teo (quarter-end) with diagnostics, AUM, ERM3 coverage,
         and portfolio style attribution. Return components are NULL until
         D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).
+        Each row carries its `filing_date` (knowledge-time stamp; null
+        until the per-quarter data fill lands). `as_of` filters to rows
+        known by that date (`filing_date <= as_of`, falling back to
+        `teo <= as_of` on panels without filing dates; basis echoed as
+        `as_of_basis`).
       operationId: getFilerPortfolioHistory
       tags:
         - 13F Filers
@@ -9241,9 +9264,18 @@ paths:
           schema:
             type: string
             format: date
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: >
+            Knowledge-mode date: keep only quarters whose filings were
+            public on or before this date. 404 when nothing was known yet.
       responses:
         "200":
-          description: Portfolio history rows.
+          description: Portfolio history rows (each with `filing_date`).
           content:
             application/json:
               schema:

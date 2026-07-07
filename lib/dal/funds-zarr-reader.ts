@@ -1187,6 +1187,21 @@ export interface FilerHolding {
 
 export interface FilerHoldingsSnapshot {
   teo: string;
+  /** Valid-time stamp (D.8.39): the 13F reporting period end. Equal to `teo`. */
+  report_date: string;
+  /**
+   * Knowledge-time stamp (D.8.39): EDGAR date_filed of the surviving
+   * (latest-filed) submission for this report_date. Null on pre-1.4-schema
+   * zarrs that don't carry the `filing_date` var yet.
+   */
+  filing_date: string | null;
+  /**
+   * Which time axis resolved an `as_of` selection: `filing_date` (knowledge
+   * mode — what was public by that date) or `report_date` (fallback when the
+   * zarr has no filing_date var; overstates what was knowable by up to the
+   * statutory 13F lag).
+   */
+  as_of_basis: "filing_date" | "report_date";
   total_aum_usd: number | null;
   /** Sum of `adj_mv` over the in-ERM3 mapped subset; null pre-D.8.1. */
   aum_in_erm3: number | null;
@@ -1196,8 +1211,11 @@ export interface FilerHoldingsSnapshot {
 }
 
 /**
- * Top-N current holdings at the latest teo for a 13F filer. Default n=25.
- * Returns null when the filer has no zarr or no positive holdings.
+ * Top-N holdings for a 13F filer. Default n=25 at the latest teo. With
+ * `asOf`, selects the latest quarter *known* by that date — filing_date <=
+ * asOf when the zarr carries per-teo filing dates, else report_date <= asOf
+ * (the basis used is surfaced on the snapshot). Returns null when the filer
+ * has no zarr, no positive holdings, or nothing was known by `asOf`.
  *
  * Symmetric to `readFundHoldingsTopN` but reads `bw_filer_id/...` and
  * surfaces the security id under `security_id` (since pre-D.8.1 it may be
@@ -1206,15 +1224,18 @@ export interface FilerHoldingsSnapshot {
 export async function readFilerHoldingsTopN(
   bwFilerId: string,
   n = 25,
+  asOf?: string,
 ): Promise<FilerHoldingsSnapshot | null> {
   const safeN = Math.min(Math.max(n, 1), 1000);
   const ck = generateCacheKey("funds_zarr", "filer_holdings_top", {
     filer: bwFilerId,
     n: safeN,
+    as_of: asOf ?? "",
+    v: 2, // D.8.39 snapshot shape (report_date/filing_date/as_of_basis)
   });
   const snapshot = await withZarrCache(
     ck,
-    () => computeFilerHoldingsTopN(bwFilerId, safeN),
+    () => computeFilerHoldingsTopN(bwFilerId, safeN, asOf),
     { emptyValue: null },
   );
   if (!snapshot) return null;
@@ -1228,6 +1249,7 @@ export async function readFilerHoldingsTopN(
 async function computeFilerHoldingsTopN(
   bwFilerId: string,
   safeN: number,
+  asOf?: string,
 ): Promise<FilerHoldingsSnapshot | null> {
   const grp = await openFilerZarrGroup(bwFilerId, "ds_ph.zarr");
   if (!grp) return null;
@@ -1238,7 +1260,27 @@ async function computeFilerHoldingsTopN(
   const symbols = await readSymbolStrings(grp);
   if (!symbols || symbols.length === 0) return null;
 
-  const teoIdx = teos.length - 1;
+  // D.8.39: per-teo knowledge-time stamps. Absent on pre-1.4-schema zarrs.
+  const filingDates = await readDatetimeVarStrings(grp, "filing_date");
+  const asOfBasis: FilerHoldingsSnapshot["as_of_basis"] = filingDates
+    ? "filing_date"
+    : "report_date";
+
+  let teoIdx = teos.length - 1;
+  if (asOf) {
+    // Latest quarter known by `asOf`: walk back from the newest teo so an
+    // out-of-order amendment date on an older quarter can't shadow a
+    // regularly-filed newer one.
+    teoIdx = -1;
+    for (let i = teos.length - 1; i >= 0; i--) {
+      const known = filingDates ? filingDates[i] : teos[i];
+      if (known != null && known <= asOf) {
+        teoIdx = i;
+        break;
+      }
+    }
+    if (teoIdx < 0) return null;
+  }
   const teo = teos[teoIdx]!;
 
   // total_aum_usd may not exist on filer ds_ph — readScalarAtTeo returns null on missing var.
@@ -1275,6 +1317,9 @@ async function computeFilerHoldingsTopN(
 
   return {
     teo,
+    report_date: teo,
+    filing_date: filingDates?.[teoIdx] ?? null,
+    as_of_basis: asOfBasis,
     total_aum_usd: totalAumUsd,
     aum_in_erm3: aumInErm3,
     n_holdings_returned: Math.min(safeN, holdings.length),
@@ -1290,6 +1335,11 @@ async function computeFilerHoldingsTopN(
  */
 export interface FilerPortfolioRow {
   teo: string;
+  /**
+   * Knowledge-time stamp (D.8.39): EDGAR date_filed of the surviving
+   * submission for this quarter. Null on pre-1.4-schema zarrs.
+   */
+  filing_date: string | null;
   // Diagnostics (parallel to fund-side)
   weight_sum: number | null;
   n_holdings_active: number | null;
@@ -1352,6 +1402,7 @@ export async function readFilerPortfolioSeries(
     filer: bwFilerId,
     start: options.startDate ?? "",
     end: options.endDate ?? "",
+    v: 2, // D.8.39 row shape (filing_date)
   });
   return withZarrCache(ck, () => computeFilerPortfolioSeries(bwFilerId, options), {
     emptyValue: [],
@@ -1378,16 +1429,23 @@ async function computeFilerPortfolioSeries(
   }
   if (t0 >= t1) return [];
 
-  const series = await Promise.all(
-    FILER_PORTFOLIO_VARS.map(async (varName) => ({
-      name: varName,
-      data: await readFloatSlice1d(grp, varName, t0, t1),
-    })),
-  );
+  const [series, filingDates] = await Promise.all([
+    Promise.all(
+      FILER_PORTFOLIO_VARS.map(async (varName) => ({
+        name: varName,
+        data: await readFloatSlice1d(grp, varName, t0, t1),
+      })),
+    ),
+    // D.8.39: per-teo knowledge-time stamps. Absent on pre-1.4-schema zarrs.
+    readDatetimeVarStrings(grp, "filing_date"),
+  ]);
 
   const rows: FilerPortfolioRow[] = [];
   for (let i = 0; i < t1 - t0; i++) {
-    const row: Record<string, unknown> = { teo: teos[t0 + i]! };
+    const row: Record<string, unknown> = {
+      teo: teos[t0 + i]!,
+      filing_date: filingDates?.[t0 + i] ?? null,
+    };
     for (const s of series) {
       row[s.name] = s.data?.[i] ?? null;
     }
