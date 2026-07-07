@@ -8,7 +8,14 @@ import {
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
-import { requestsRawRestricted, stripRawRestricted } from "@/lib/data-license";
+import {
+  isRestrictedSourceSymbol,
+  RAW_SERIES_KEYS,
+  requestsRawRestricted,
+  RESTRICTED_SOURCE_NOTE,
+  stripRawRestricted,
+  stripRawSeries,
+} from "@/lib/data-license";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -90,7 +97,11 @@ export async function POST(request: NextRequest) {
     const results: Record<string, unknown> = {};
     for (const row of allRows) {
       const r = row as Record<string, unknown> & { symbol: string };
-      results[r.symbol] = stripRawRestricted(r);
+      // GATE 2: CRSP derived-only symbols also lose returns_gross, not just
+      // the Exhibit-B fields.
+      results[r.symbol] = isRestrictedSourceSymbol(r.symbol)
+        ? stripRawSeries(r)
+        : stripRawRestricted(r);
     }
 
     return NextResponse.json({ results });
@@ -125,12 +136,25 @@ export async function POST(request: NextRequest) {
   const per = periodicity as V3Periodicity;
 
   try {
-    const data = await fetchBatchHistory(symbols, metricKeys, {
+    const rows = await fetchBatchHistory(symbols, metricKeys, {
       periodicity: per,
       startDate: body.start,
       endDate: body.end,
       orderBy: "asc",
     });
+
+    // GATE 2: raw-series rows (returns_gross included — it is not in the
+    // Exhibit-B batch 403 above) are dropped for CRSP derived-only symbols.
+    const restrictedInBatch = symbols.filter(isRestrictedSourceSymbol);
+    const data = restrictedInBatch.length
+      ? rows.filter(
+          (r) =>
+            !(
+              RAW_SERIES_KEYS.has(r.metric_key) &&
+              isRestrictedSourceSymbol(r.symbol)
+            ),
+        )
+      : rows;
 
     const teos = [...new Set(data.map((r) => r.teo))].sort();
     const histRange: [string, string] =
@@ -144,6 +168,9 @@ export async function POST(request: NextRequest) {
         data_source: "zarr",
         range:
           histRange[0] && histRange[1] ? histRange : undefined,
+        ...(restrictedInBatch.length
+          ? { ...RESTRICTED_SOURCE_NOTE, restricted_symbols: restrictedInBatch }
+          : {}),
       }),
     });
   } catch {

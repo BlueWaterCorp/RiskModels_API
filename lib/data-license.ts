@@ -1,4 +1,11 @@
 /**
+ * Data-license gates. TWO independent gates plus a global mode:
+ *
+ *   GATE 1 (EODHD, field-level)  — raw close/mktcap, Exhibit B conditions.
+ *   GATE 2 (CRSP, symbol-level)  — derived-only symbols, unconditional.
+ *   DATA_LICENSE_MODE=license_free — escalates Gate 1 to unconditional so the
+ *     whole API serves derived IP only (no vendor-licensed raw data at all).
+ *
  * EODHD data-license policy — Exhibit B of the Data Services Agreement.
  * (RiskModels_IP/docs/licensing/EODHD_Agreement_v3_Complete_DocuSign.pdf)
  *
@@ -24,8 +31,27 @@
 
 import { type NextRequest } from "next/server";
 
+/* ------------------------------------------------------------------------- *
+ * GATE 1 — EODHD (field-level, Exhibit B).
+ *
+ * In "standard" mode raw close/mktcap serve in authenticated per-symbol
+ * contexts as Exhibit B(e)/(f) permit. In "license_free" mode the gate is
+ * unconditional: raw EODHD fields are withheld from every caller, so the
+ * entire API surface is derived IP with no vendor-licensed raw data.
+ * ------------------------------------------------------------------------- */
+
 /** Raw EODHD fields restricted by Exhibit B(e). Everything else is Derived Data. */
 export const RAW_RESTRICTED_KEYS = new Set<string>(["price_close", "market_cap"]);
+
+export type DataLicenseMode = "standard" | "license_free";
+
+/** DATA_LICENSE_MODE env: "license_free" withholds ALL vendor raw fields
+ *  unconditionally (derived-only API). Anything else = "standard". */
+export function getDataLicenseMode(): DataLicenseMode {
+  return process.env.DATA_LICENSE_MODE === "license_free"
+    ? "license_free"
+    : "standard";
+}
 
 /** True if any requested metric key is a raw, license-restricted field. */
 export function requestsRawRestricted(keys: readonly string[]): boolean {
@@ -50,6 +76,18 @@ export function isGatewayAuthenticated(request: NextRequest): boolean {
 }
 
 /**
+ * GATE 1 decision: may raw EODHD fields (close/mktcap) be served on THIS
+ * request? Standard mode: yes when gateway-authenticated (Exhibit B(e)
+ * condition 1). License-free mode: never, for anyone — use this instead of
+ * isGatewayAuthenticated at every raw-field call site so the mode flip
+ * covers the whole surface.
+ */
+export function rawEodhdPermitted(request: NextRequest): boolean {
+  if (getDataLicenseMode() === "license_free") return false;
+  return isGatewayAuthenticated(request);
+}
+
+/**
  * Drop raw, license-restricted columns from a wide `security_history_latest`
  * row. Used when serving the wide row to an unauthenticated caller, or in any
  * bulk (multi-symbol) context where raw fields are not permitted at all.
@@ -59,3 +97,63 @@ export function stripRawRestricted<T extends Record<string, unknown>>(row: T): T
   for (const k of RAW_RESTRICTED_KEYS) delete (out as Record<string, unknown>)[k];
   return out;
 }
+
+/* ------------------------------------------------------------------------- *
+ * GATE 2 — CRSP-sourced symbols (symbol-level, unconditional in BOTH modes).
+ *
+ * Delisted-survivorship recovery seeds some price histories from CRSP (via
+ * WRDS). Unlike the EODHD Exhibit-B field gate above — which permits raw
+ * close/mktcap in authenticated, per-symbol contexts — the CRSP posture is
+ * derived-only, period: raw SERIES fields (daily returns, close, market cap)
+ * for these bw_sym_ids are never served, to any caller, in any format.
+ * Derived outputs (L*, decompositions, attribution, hedges, rankings) are
+ * unrestricted.
+ *
+ * The symbol list is a generated artifact (lib/restricted-source-symbols.json,
+ * built by ERM3 gen_restricted_source_symbols.py from the CRSP seed CSVs).
+ * Match on the RESOLVED canonical bw_sym_id, never on the ticker string.
+ * ------------------------------------------------------------------------- */
+
+import restrictedSourceConfig from "./restricted-source-symbols.json";
+
+/** bw_sym_ids whose price history is CRSP-sourced (derived-only). */
+export const RESTRICTED_SOURCE_SYMBOLS: ReadonlySet<string> = new Set(
+  restrictedSourceConfig.symbols,
+);
+
+/**
+ * Raw per-symbol SERIES fields blocked for restricted-source symbols. A
+ * superset of RAW_RESTRICTED_KEYS: daily gross returns reconstruct the CRSP
+ * price path (a cumulative product is "fake-derived", cf. Exhibit B(i)), so
+ * they are raw here even though they are Derived Data under the EODHD terms.
+ */
+export const RAW_SERIES_KEYS = new Set<string>([
+  "returns_gross",
+  "price_close",
+  "market_cap",
+]);
+
+/** True if this (resolved) bw_sym_id is served derived-only. */
+export function isRestrictedSourceSymbol(bwSymId: string): boolean {
+  return RESTRICTED_SOURCE_SYMBOLS.has(bwSymId);
+}
+
+/** Requested metric keys minus the raw-series set (for restricted symbols). */
+export function dropRawSeriesKeys(keys: readonly string[]): string[] {
+  return keys.filter((k) => !RAW_SERIES_KEYS.has(k.trim()));
+}
+
+/** Drop raw-series columns from a wide row (restricted-source symbols). */
+export function stripRawSeries<T extends Record<string, unknown>>(row: T): T {
+  const out = { ...row };
+  for (const k of RAW_SERIES_KEYS) delete (out as Record<string, unknown>)[k];
+  return out;
+}
+
+/** Machine-readable marker attached to responses that had raw fields withheld. */
+export const RESTRICTED_SOURCE_NOTE = {
+  data_license: "derived_only",
+  reason:
+    "Price history for this symbol is sourced from licensed survivorship data; " +
+    "raw price/return series are not redistributable. Derived metrics are unrestricted.",
+} as const;

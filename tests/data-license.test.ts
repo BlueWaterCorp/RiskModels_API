@@ -2,9 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { NextRequest } from "next/server";
 import {
   RAW_RESTRICTED_KEYS,
+  RAW_SERIES_KEYS,
+  RESTRICTED_SOURCE_SYMBOLS,
+  dropRawSeriesKeys,
+  getDataLicenseMode,
   isGatewayAuthenticated,
+  isRestrictedSourceSymbol,
+  rawEodhdPermitted,
   requestsRawRestricted,
   stripRawRestricted,
+  stripRawSeries,
 } from "@/lib/data-license";
 
 /**
@@ -63,5 +70,70 @@ describe("EODHD data-license policy", () => {
       delete process.env.RISKMODELS_API_SERVICE_KEY;
       expect(isGatewayAuthenticated(reqWithAuth(null))).toBe(true);
     });
+  });
+});
+
+describe("CRSP derived-only symbol gate (GATE 2)", () => {
+  it("loads a non-empty generated denylist of BW ids", () => {
+    expect(RESTRICTED_SOURCE_SYMBOLS.size).toBeGreaterThan(0);
+    for (const s of RESTRICTED_SOURCE_SYMBOLS) expect(s).toMatch(/^BW-/);
+  });
+
+  it("matches known CRSP-seeded symbols and nothing else", () => {
+    expect(isRestrictedSourceSymbol("BW-BR_OLD")).toBe(true);
+    expect(isRestrictedSourceSymbol("BW-CFC_OLD")).toBe(true);
+    expect(isRestrictedSourceSymbol("BW-BBG000B9XRY4")).toBe(false); // AAPL
+    expect(isRestrictedSourceSymbol("BR_OLD")).toBe(false); // ticker, not bw id
+  });
+
+  it("raw-series set is a superset of the EODHD raw fields plus returns", () => {
+    for (const k of RAW_RESTRICTED_KEYS) expect(RAW_SERIES_KEYS.has(k)).toBe(true);
+    expect(RAW_SERIES_KEYS.has("returns_gross")).toBe(true);
+  });
+
+  it("drops raw-series keys, keeps derived", () => {
+    expect(
+      dropRawSeriesKeys(["returns_gross", "l1_cfr", "price_close", "l3_res_er"]),
+    ).toEqual(["l1_cfr", "l3_res_er"]);
+  });
+
+  it("strips raw-series columns from wide rows, keeps derived", () => {
+    const row = {
+      symbol: "BW-BR_OLD",
+      returns_gross: 0.01,
+      price_close: 45.2,
+      market_cap: 3.4e10,
+      l1_mkt_hr: 0.8,
+    };
+    expect(stripRawSeries(row)).toEqual({ symbol: "BW-BR_OLD", l1_mkt_hr: 0.8 });
+  });
+});
+
+describe("license_free mode (GATE 1 escalation)", () => {
+  const ORIG_MODE = process.env.DATA_LICENSE_MODE;
+  const ORIG_KEY = process.env.RISKMODELS_API_SERVICE_KEY;
+  afterEach(() => {
+    if (ORIG_MODE === undefined) delete process.env.DATA_LICENSE_MODE;
+    else process.env.DATA_LICENSE_MODE = ORIG_MODE;
+    if (ORIG_KEY === undefined) delete process.env.RISKMODELS_API_SERVICE_KEY;
+    else process.env.RISKMODELS_API_SERVICE_KEY = ORIG_KEY;
+  });
+
+  it("defaults to standard mode", () => {
+    delete process.env.DATA_LICENSE_MODE;
+    expect(getDataLicenseMode()).toBe("standard");
+  });
+
+  it("standard mode: raw EODHD fields follow gateway auth", () => {
+    delete process.env.DATA_LICENSE_MODE;
+    process.env.RISKMODELS_API_SERVICE_KEY = "svc-secret";
+    expect(rawEodhdPermitted(reqWithAuth("Bearer svc-secret"))).toBe(true);
+    expect(rawEodhdPermitted(reqWithAuth(null))).toBe(false);
+  });
+
+  it("license_free mode: raw EODHD fields denied even to the service key", () => {
+    process.env.DATA_LICENSE_MODE = "license_free";
+    process.env.RISKMODELS_API_SERVICE_KEY = "svc-secret";
+    expect(rawEodhdPermitted(reqWithAuth("Bearer svc-secret"))).toBe(false);
   });
 });
