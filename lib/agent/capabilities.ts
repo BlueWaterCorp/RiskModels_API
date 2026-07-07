@@ -645,6 +645,67 @@ export const CAPABILITIES: Capability[] = [
     tags: ["metrics", "snapshot", "risk"],
   },
   {
+    id: "fundamentals",
+    name: "Quarterly Fundamentals (Derived)",
+    description:
+      "Point-in-time quarterly fundamentals for a single ticker — derived analytics only: TTM profitability ratios (ROE, ROA, FCF margin), leverage, ERM3 cascade betas with provenance, and the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit). Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields, no raw vendor line items. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
+    endpoint: "/api/fundamentals",
+    method: "GET",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: true,
+        description: "Stock ticker symbol",
+      },
+      as_of: {
+        type: "string",
+        required: false,
+        description:
+          "PIT date (YYYY-MM-DD). Rows are visible iff filed_date <= as_of. Default: today.",
+      },
+      periods: {
+        type: "integer",
+        required: false,
+        description: "Quarterly rows returned (most recent last).",
+        default: 8,
+        min: 1,
+        max: 40,
+      },
+      erp: {
+        type: "number",
+        required: false,
+        description:
+          "Equity risk premium for the cost-of-capital layer. Always caller-supplied; no ERP opinion is stored.",
+        default: 0.05,
+      },
+      tax_rate: {
+        type: "number",
+        required: false,
+        description: "Tax rate applied to the WACC debt shield.",
+        default: 0.21,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "fundamentals_v1",
+    },
+    performance: {
+      avg_latency_ms: 250,
+      p95_latency_ms: 900,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["fundamentals_panel_v1"],
+    },
+    tags: ["fundamentals", "cost-of-capital", "pit", "derived"],
+  },
+  {
     id: "hedge-basket",
     name: "Hedge Basket",
     description: "Structured 4-leg hedge basket (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution, net market β subtotal, marginal ERs, recommended_hedge_level, and a human-readable decision_trace narration. Replaces the easy-to-misread single 'Market HR (L3)' row in chat/SDK surfaces.",

@@ -499,6 +499,64 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   );
 
   server.registerTool(
+    "get_fundamentals",
+    {
+      title: "PIT Quarterly Fundamentals (Derived)",
+      description:
+        "Point-in-time quarterly fundamentals for a ticker — derived analytics only: TTM ROE/ROA/FCF margin, leverage, ERM3 cascade betas with provenance, and the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit). Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only: no forecasts, no analyst fields, no raw vendor line items. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names. Per-symbol per-call only — no batch.",
+      inputSchema: z.object({
+        ticker: z.string().describe("Stock ticker symbol, e.g. AAPL, NVDA"),
+        as_of: z
+          .string()
+          .optional()
+          .describe("PIT date YYYY-MM-DD; rows visible iff filed_date <= as_of. Default: today."),
+        periods: z
+          .number()
+          .int()
+          .min(1)
+          .max(40)
+          .optional()
+          .describe("Quarterly rows returned (default 8, max 40)."),
+        erp: z
+          .number()
+          .optional()
+          .describe("Equity risk premium for the cost-of-capital layer (default 0.05, caller-supplied)."),
+        tax_rate: z
+          .number()
+          .optional()
+          .describe("Tax rate for the WACC debt shield (default 0.21)."),
+        rf_tenor: z
+          .enum(["3m", "1y", "2y", "5y", "10y", "30y"])
+          .optional()
+          .describe(
+            "Treasury constant-maturity tenor backing rf_rate (default 10y — the valuation convention). Pair a short tenor with a bill-basis ERP or cost of capital is understated.",
+          ),
+      }),
+    },
+    async ({ ticker, as_of, periods, erp, tax_rate, rf_tenor }) => {
+      const query: Record<string, string> = {};
+      if (as_of) query.as_of = as_of;
+      if (periods !== undefined) query.periods = String(periods);
+      if (erp !== undefined) query.erp = String(erp);
+      if (tax_rate !== undefined) query.tax_rate = String(tax_rate);
+      if (rf_tenor !== undefined) query.rf_tenor = rf_tenor;
+      const { status, data, meter, error } = await apiCall(
+        opts,
+        "GET",
+        `/fundamentals/${encodeURIComponent(ticker.toUpperCase())}`,
+        { query },
+      );
+      if (error) {
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+      }
+      if (status >= 400) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+      }
+      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
+    },
+  );
+
+  server.registerTool(
     "get_portfolio_risk_snapshot",
     {
       title: "Portfolio Risk Snapshot",
