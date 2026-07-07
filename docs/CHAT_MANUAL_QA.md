@@ -6,7 +6,7 @@ For authentication patterns, see [AUTHENTICATION_GUIDE.md](../AUTHENTICATION_GUI
 
 ## Prerequisites
 
-1. **Server-side:** `OPENAI_API_KEY` must be set wherever the Next app runs (local `.env.local`, Vercel, etc.). If missing, chat returns **503** with a configuration message.
+1. **Server-side:** `MOONSHOT_API_KEY` (or `ANTHROPIC_API_KEY`) must be set wherever the Next app runs (local `.env.local`, Vercel, etc.). If missing, chat returns **503** with a configuration message.
 2. **Client-side:** A valid RiskModels **API key** or session JWT (`Authorization: Bearer …`). Keys are created after login at [riskmodels.app](https://riskmodels.app) (Account → Usage / API).
 3. **Balance:** Enough credits for at least one chat turn (LLM estimate + 1–2 tools). Typical NVDA smoke test: roughly a few thousandths of a dollar LLM + **metrics-snapshot** + **ticker-returns** (see preflight below).
 4. **Tier:** Chat uses capability `chat-risk-analyst` (premium per-token). Free-tier-only accounts may get **402** or tier limits from `withBilling`; that is expected until upgraded.
@@ -103,14 +103,14 @@ Run the same `curl` pattern; swap the user `content`:
 | **401** | Missing/invalid Bearer token. |
 | **402** | Insufficient balance (or payment required) on the **chat** pre-charge. |
 | **429** | Rate limit / free-tier limit (if applicable). |
-| **502** | OpenAI upstream error (bad key, outage, or bad model name). |
-| **503** | `OPENAI_API_KEY` not configured on the server. |
+| **502** | Upstream LLM error — Moonshot/Anthropic (bad key, outage, or bad model name). |
+| **503** | `MOONSHOT_API_KEY` (or `ANTHROPIC_API_KEY`) not configured on the server. |
 
 ## 6. Local dev quick check
 
 ```bash
 cd /path/to/RiskModels_API
-# Ensure OPENAI_API_KEY and Supabase/env match a working deployment
+# Ensure MOONSHOT_API_KEY and Supabase/env match a working deployment
 npm run dev
 ```
 

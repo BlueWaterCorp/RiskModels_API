@@ -94,14 +94,14 @@ export const POST = withBilling(
     const origin = request.headers.get("origin");
 
     // At least one backend must be configured. The runner picks per-request
-    // based on the resolved model (claude-* → Anthropic, else OpenAI), so we
+    // based on the resolved model (claude-* → Anthropic, else Moonshot), so we
     // only hard-fail here if neither key is present.
     if (!hasChatBackend()) {
       return NextResponse.json(
         {
           error: "Service unavailable",
           message:
-            "AI chat is not configured (need MOONSHOT_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)",
+            "AI chat is not configured (need MOONSHOT_API_KEY or ANTHROPIC_API_KEY)",
         },
         { status: 503, headers: getCorsHeaders(origin) },
       );
