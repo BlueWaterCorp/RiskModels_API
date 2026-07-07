@@ -19,7 +19,7 @@ Requires in `.env.local`:
 
 - `RISKMODELS_API_URL` (default `https://riskmodels.app`)
 - `RISKMODELS_API_SERVICE_KEY`
-- Optional: `RISKMODELS_API_KEY` or `RM_API_KEY` for `riskmodels.net` CLI query test
+- Optional: `RISKMODELS_API_KEY` for `riskmodels.net` CLI query test
 - Optional: `NEXT_PUBLIC_APP_URL` (default `https://riskmodels.net`)
 
 ---
