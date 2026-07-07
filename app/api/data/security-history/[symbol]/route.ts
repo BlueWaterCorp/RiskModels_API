@@ -9,8 +9,11 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
 import {
-  isGatewayAuthenticated,
+  dropRawSeriesKeys,
+  isRestrictedSourceSymbol,
+  rawEodhdPermitted,
   requestsRawRestricted,
+  RESTRICTED_SOURCE_NOTE,
 } from "@/lib/data-license";
 
 export const dynamic = "force-dynamic";
@@ -52,12 +55,13 @@ export async function GET(
     );
   }
 
-  const keys = keysParam.split(",").map((k) => k.trim()).filter(Boolean);
+  let keys = keysParam.split(",").map((k) => k.trim()).filter(Boolean);
 
-  // EODHD Exhibit B(e): raw fields (close price, market cap) may be served only
-  // within authenticated environments. Per-symbol here satisfies the per-call
-  // condition; gate on the service key. Derived keys stay public.
-  if (requestsRawRestricted(keys) && !isGatewayAuthenticated(request)) {
+  // GATE 1 (EODHD Exhibit B(e)): raw fields (close price, market cap) may be
+  // served only within authenticated environments — and never in license_free
+  // mode. Per-symbol here satisfies the per-call condition. Derived keys stay
+  // public.
+  if (requestsRawRestricted(keys) && !rawEodhdPermitted(request)) {
     return NextResponse.json(
       {
         error:
@@ -67,6 +71,26 @@ export async function GET(
       },
       { status: 403 },
     );
+  }
+
+  // GATE 2 (CRSP derived-only symbols): raw SERIES keys — returns included —
+  // are never served for these, regardless of auth or mode. Drop them and say
+  // so; error only when nothing servable remains.
+  const restrictedSource = isRestrictedSourceSymbol(symbol);
+  if (restrictedSource) {
+    keys = dropRawSeriesKeys(keys);
+    if (keys.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This symbol is served derived-only (licensed source data). " +
+            "Raw series keys (returns_gross, price_close, market_cap) are not " +
+            "available; request derived keys instead.",
+          ...RESTRICTED_SOURCE_NOTE,
+        },
+        { status: 403 },
+      );
+    }
   }
 
   const periodicity = (sp.get("periodicity") ?? "daily") as V3Periodicity;
@@ -107,6 +131,7 @@ export async function GET(
         data_source: fromZarr ? "zarr" : "supabase",
         range:
           histRange[0] && histRange[1] ? histRange : undefined,
+        ...(restrictedSource ? RESTRICTED_SOURCE_NOTE : {}),
       }),
     });
   } catch {

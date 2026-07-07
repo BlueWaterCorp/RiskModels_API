@@ -18,6 +18,11 @@ import {
 } from "@/lib/dal/response-headers";
 import { formatResponse, parseFormat } from "@/lib/api/format-response";
 import { TickerReturnsRequestSchema } from "@/lib/api/schemas";
+import {
+  getDataLicenseMode,
+  isRestrictedSourceSymbol,
+  RESTRICTED_SOURCE_NOTE,
+} from "@/lib/data-license";
 
 export const runtime = "nodejs";
 
@@ -62,15 +67,27 @@ export const GET = withBilling(
     startDate.setFullYear(startDate.getFullYear() - years);
     const startDateStr = startDate.toISOString().split("T")[0];
 
+    // GATE 2 (data-license): CRSP-sourced symbols are derived-only — no raw
+    // return/price series for any caller. GATE 1 license_free mode withholds
+    // raw EODHD close for everyone; returns_gross stays (Derived Data under
+    // Exhibit B) except for CRSP symbols, where the return path IS the
+    // licensed series.
+    const restrictedSource = isRestrictedSourceSymbol(symbolRecord.symbol);
+    const serveReturns = !restrictedSource;
+    const servePrice = !restrictedSource && getDataLicenseMode() !== "license_free";
+
     // ETFs live in ds_etf.zarr and have no L1/L2/L3 decomposition. Only request
     // daily-role keys for them — the hedge/returns zarr stores don't carry ETF
     // rows and asking skips a pointless open. Stocks still get the full pull.
     const isEtf = symbolRecord.asset_type === "etf";
+    const rawKeys: V3MetricKey[] = [
+      ...(serveReturns ? (["returns_gross"] as V3MetricKey[]) : []),
+      ...(servePrice ? (["price_close"] as V3MetricKey[]) : []),
+    ];
     const keys: V3MetricKey[] = isEtf
-      ? ["returns_gross", "price_close"]
+      ? rawKeys
       : [
-          "returns_gross",
-          "price_close",
+          ...rawKeys,
           "l1_cfr",
           "l2_cfr",
           "l3_cfr",
@@ -133,11 +150,11 @@ export const GET = withBilling(
     // dropped from the parquet/csv schema, and turn into absent columns
     // in the SDK DataFrame — no more all-None L* noise for SPY et al.
     const data = pivoted.map((row) => {
-      const base: Record<string, string | number | null> = {
-        date: row.teo,
-        returns_gross: row.returns_gross ?? null,
-        price_close: row.price_close ?? null,
-      };
+      const base: Record<string, string | number | null> = { date: row.teo };
+      // Withheld raw fields are omitted entirely (not nulled) so they also
+      // drop out of the CSV/parquet schema and SDK DataFrames.
+      if (serveReturns) base.returns_gross = row.returns_gross ?? null;
+      if (servePrice) base.price_close = row.price_close ?? null;
       if (isEtf) return base;
       base.l1_cfr = row.l1_cfr ?? null;
       base.l2_cfr = row.l2_cfr ?? null;
@@ -197,6 +214,7 @@ export const GET = withBilling(
           range: histRange[0] && histRange[1] ? histRange : undefined,
           history_row_count: data.length,
           ...(data.length === 0 ? { data_warning: EMPTY_HISTORY_DATA_WARNING } : {}),
+          ...(restrictedSource ? RESTRICTED_SOURCE_NOTE : {}),
         }),
         _agent: buildAgentBody({
           request_id: context.requestId,

@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
-import { isGatewayAuthenticated, stripRawRestricted } from "@/lib/data-license";
+import {
+  isRestrictedSourceSymbol,
+  rawEodhdPermitted,
+  stripRawRestricted,
+  stripRawSeries,
+} from "@/lib/data-license";
 
 export const dynamic = "force-dynamic";
 
@@ -55,10 +60,16 @@ export async function GET(
     );
   }
 
-  // EODHD Exhibit B(e): raw fields (close price, market cap) only within
-  // authenticated environments. Per-symbol satisfies the per-call condition;
-  // unauthenticated callers get the derived columns with raw fields stripped.
-  if (!isGatewayAuthenticated(request)) {
+  // GATE 2: CRSP derived-only symbols never expose raw series fields
+  // (returns_gross included), regardless of auth or mode.
+  if (isRestrictedSourceSymbol(symbol)) {
+    return NextResponse.json(stripRawSeries(data as Record<string, unknown>));
+  }
+
+  // GATE 1 (EODHD Exhibit B(e)): raw fields (close price, market cap) only
+  // within authenticated environments — and never in license_free mode.
+  // Others get the derived columns with raw fields stripped.
+  if (!rawEodhdPermitted(request)) {
     return NextResponse.json(stripRawRestricted(data as Record<string, unknown>));
   }
 

@@ -10,6 +10,11 @@ import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
 import {
+  getDataLicenseMode,
+  isRestrictedSourceSymbol,
+  RESTRICTED_SOURCE_NOTE,
+} from "@/lib/data-license";
+import {
   computeHedgeRecommendationSnapshot,
   isValidUserSegment,
 } from "@/lib/risk/hedge-recommendation-service";
@@ -245,17 +250,27 @@ export const GET = withBilling(
       },
     );
 
+    // GATE 2 (CRSP derived-only symbol) / GATE 1 license_free mode: the raw
+    // latest-day close and market cap scalars are withheld (nulled); every
+    // derived metric below is unaffected.
+    const rawScalarsPermitted =
+      !isRestrictedSourceSymbol(symbolRecord.symbol) &&
+      getDataLicenseMode() !== "license_free";
+
     const formattedData = {
       symbol: symbolRecord.symbol,
       ticker: symbolRecord.ticker,
       teo: latestData.teo,
       periodicity: "daily",
+      ...(isRestrictedSourceSymbol(symbolRecord.symbol)
+        ? RESTRICTED_SOURCE_NOTE
+        : {}),
       metrics: {
         // Core
         vol_23d: m.vol_23d ?? null,
         vol_252d_ann: vol252dAnn,
-        price_close: m.price_close ?? null,
-        market_cap: m.market_cap ?? null,
+        price_close: rawScalarsPermitted ? (m.price_close ?? null) : null,
+        market_cap: rawScalarsPermitted ? (m.market_cap ?? null) : null,
         stock_var: m.stock_var ?? null,
         // L1
         l1_mkt_hr: m.l1_mkt_hr ?? null,

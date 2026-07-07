@@ -8,6 +8,7 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
+import { isRestrictedSourceSymbol } from "@/lib/data-license";
 import {
   WALKTHROUGH_MAG7_SET,
   LANDING_SNAPSHOT_METRIC_KEYS,
@@ -57,6 +58,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: "Unknown ticker", ticker },
         { status: 404, headers: corsHeaders },
+      );
+    }
+
+    // GATE 2 (data-license): this endpoint emits a cumulative returns_gross
+    // series — a raw price path in disguise. CRSP derived-only symbols are
+    // not served here at all.
+    if (isRestrictedSourceSymbol(sym.symbol)) {
+      return NextResponse.json(
+        {
+          error:
+            "This ticker's price history is served derived-only and is not " +
+            "available on this endpoint.",
+          ticker,
+        },
+        { status: 403, headers: corsHeaders },
       );
     }
 
