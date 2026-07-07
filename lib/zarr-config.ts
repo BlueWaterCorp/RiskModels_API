@@ -86,6 +86,16 @@ export function zarrLinkBetasBasename(marketFactorEtf = "SPY"): string {
 }
 
 /**
+ * Quarterly fundamentals panel — (symbol, period_end_date) with a separate
+ * filed_date PIT stamp. INTERNAL store (EODHD-primary line items): the API
+ * serves DERIVED analytics only; raw planes never leave the DAL. See
+ * lib/api/fundamentals-contract.ts for the response allowlist.
+ */
+export function zarrFundamentalsBasename(): string {
+  return "ds_fundamentals.zarr";
+}
+
+/**
  * Industry peer β panel — Vasicek stats at (teo × fs_industry_code × level).
  * Basename uses the same factor-set suffix as returns/rankings
  * (e.g. ds_erm3_industry_SPY_uni_mc_3000.zarr).

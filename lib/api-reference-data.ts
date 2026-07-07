@@ -324,6 +324,38 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
     ],
   },
   {
+    name: 'Fundamentals',
+    description:
+      'Point-in-time quarterly fundamentals — derived analytics only (TTM profitability ratios, leverage, cascade betas, cost-of-capital layer). Realized historical data; no forecasts, no analyst fields, no raw vendor line items.',
+    endpoints: [
+      {
+        path: '/fundamentals/{ticker}',
+        method: 'get',
+        summary: 'Point-in-time quarterly fundamentals (derived)',
+        description:
+          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, leverage, ERM3 cascade betas with provenance, and the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit). Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names — a property of the beta, not an error. Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are not redistributable and never included. Per-symbol per-call only; JSON only. Cost: $0.005/request.',
+        operationId: 'getFundamentals',
+        tag: 'Fundamentals',
+        params: [
+          { name: 'ticker', in: 'path', type: 'string', required: true, description: 'Ticker symbol (case-insensitive, max 12 chars).' },
+          { name: 'as_of', in: 'query', type: 'string', required: false, description: 'PIT date (YYYY-MM-DD). Rows visible iff filed_date <= as_of.', default: 'today' },
+          { name: 'periods', in: 'query', type: 'integer', required: false, description: 'Quarterly rows returned (1–40).', default: '8' },
+          { name: 'erp', in: 'query', type: 'number', required: false, description: 'Equity risk premium for the cost-of-capital layer (caller-supplied; never stored).', default: '0.05' },
+          { name: 'tax_rate', in: 'query', type: 'number', required: false, description: 'Tax rate applied to the WACC debt shield.', default: '0.21' },
+          { name: 'rf_tenor', in: 'query', type: 'string', required: false, description: 'Treasury CMT tenor backing rf_rate (3m|1y|2y|5y|10y|30y). Default 10y, the valuation convention; pair a short tenor with a bill-basis ERP.', default: '10y' },
+        ],
+        responses: [
+          { status: 200, description: 'PIT quarterly rows + disclosures block.' },
+          { status: 400, description: 'Malformed ticker or query parameter.' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 402, description: 'Insufficient balance.' },
+          { status: 404, description: 'Ticker not present in the fundamentals panel.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+        ],
+      },
+    ],
+  },
+  {
     name: 'Utility',
     description: 'Ticker search, health, and service discovery.',
     endpoints: [

@@ -150,6 +150,38 @@ function getResponseExample(endpoint: Endpoint): string {
       2
     );
   }
+  if (endpoint.operationId === 'getFundamentals') {
+    return JSON.stringify(
+      {
+        ticker: 'AAPL',
+        as_of: '2026-07-03',
+        periods_returned: 1,
+        rows: [
+          {
+            period_end_date: '2025-12-31',
+            filed_date: '2026-01-30',
+            filed_date_source: 'exact',
+            roe_ttm: 1.599,
+            roa_ttm: 0.336,
+            leverage_ratio: 1.026,
+            fcf_margin: 0.283,
+            beta_market: 1.064,
+            beta_source: 'in-universe',
+            cost_of_equity: null,
+            wacc: null,
+          },
+        ],
+        market_cap: { value: 3500000000000, basis: 'current_snapshot' },
+        disclosures: {
+          realized_historical_only:
+            'This endpoint surfaces only realized historical data. No forecasts, no analyst targets, no buy/sell signals.',
+          parameters: { as_of: '2026-07-03', erp: 0.05, tax_rate: 0.21 },
+        },
+      },
+      null,
+      2
+    );
+  }
   if (endpoint.operationId === 'estimateCost') {
     return JSON.stringify(
       {

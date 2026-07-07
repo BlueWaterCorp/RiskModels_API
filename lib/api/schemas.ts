@@ -40,6 +40,43 @@ export const MetricsRequestSchema = z.object({
 });
 
 /**
+ * Schema for GET /api/fundamentals/[ticker]
+ *
+ * as_of: PIT date — rows are visible iff filed_date <= as_of (default: today).
+ * periods: quarterly rows returned, hard-capped at 40 (anti-scrape: this is a
+ *   per-symbol, per-call surface — no batch, no bulk export).
+ * erp / tax_rate: caller-supplied cost-of-capital parameters; the defaults
+ *   (0.05 / 0.21) live only here and in the docs, never in the data.
+ */
+export const FundamentalsRequestSchema = z.object({
+  ticker: TickerSchema,
+  as_of: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of must be YYYY-MM-DD")
+    .optional(),
+  periods: z.coerce
+    .number()
+    .int()
+    .min(1, "Minimum 1 period")
+    .max(40, "Maximum 40 periods")
+    .default(8),
+  erp: z.coerce
+    .number()
+    .min(0, "erp must be >= 0")
+    .max(0.5, "erp must be <= 0.5")
+    .default(0.05),
+  tax_rate: z.coerce
+    .number()
+    .min(0, "tax_rate must be >= 0")
+    .max(1, "tax_rate must be <= 1")
+    .default(0.21),
+  // Treasury CMT tenor backing rf_rate (the store carries a six-tenor strip,
+  // rf_3m..rf_30y). Default 10y = the valuation convention; a caller selecting
+  // a short tenor should pair a bill-basis ERP or cost of capital is understated.
+  rf_tenor: z.enum(["3m", "1y", "2y", "5y", "10y", "30y"]).default("10y"),
+});
+
+/**
  * Schema for GET /api/hedge-basket/[ticker]
  *
  * user_segment drives the leverage cap applied to the recommendation. The four
