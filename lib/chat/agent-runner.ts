@@ -90,10 +90,18 @@ export async function runChatAgent(
     preFlightGuard,
   } = opts;
 
-  if (!opts.openai && !process.env.OPENAI_API_KEY) {
-    throw new AgentUpstreamError("OPENAI_API_KEY is not configured");
+  // Moonshot (Kimi) is the only OpenAI-compatible backend; callers normally
+  // pass the client from resolveAgentBackend(), this is the direct-call fallback.
+  const moonshotKey = process.env.MOONSHOT_API_KEY?.trim();
+  if (!opts.openai && !moonshotKey) {
+    throw new AgentUpstreamError("MOONSHOT_API_KEY is not configured");
   }
-  const openai = opts.openai ?? new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai =
+    opts.openai ??
+    new OpenAI({
+      apiKey: moonshotKey,
+      baseURL: process.env.MOONSHOT_BASE_URL?.trim() || "https://api.moonshot.ai/v1",
+    });
 
   const tools: ChatCompletionTool[] = allowedToolNames
     ? CHAT_TOOLS.filter(

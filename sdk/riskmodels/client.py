@@ -45,6 +45,7 @@ def _warn_if_supabase_creds_missing() -> None:
             "and FundData enrichment will silently skip the Supabase round-trip. "
             "Set the env vars to silence this warning."
         )
+from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
@@ -2180,20 +2181,32 @@ class RiskModelsClient:
     # ``get_fund`` / ``get_style`` / the snapshot methods above.
 
     # -------------------------------------------------------------------
-    # 13F Filers API (D.8 Phase 1)
+    # 13F Filers API (D.8 Phase 1; D.8.39 bi-temporal params)
     #
     # Surface mirror of the funds API but partitioned by filer_type ×
     # aum_tier rather than equity_style_9box. NAV is permanently absent
     # by design (filers have no NAV time series). Hedge ratios are
     # Phase 3 (D.8.10).
     #
+    # Bi-temporal convention (house rule — never collapse the two axes):
+    #   * ``report_date`` = VALID time: the quarter-end the holdings
+    #     describe (the 13F ``teo``).
+    #   * ``filing_date`` = KNOWLEDGE time: when the surviving submission
+    #     for that quarter hit EDGAR (typically report_date + ~45 days).
+    #   * ``as_of`` selects on knowledge time and never silently falls
+    #     back: the response's ``as_of_basis`` states which axis actually
+    #     resolved the selection — ``"filing_date"`` (true knowledge
+    #     mode) or ``"report_date"`` (labeled fallback on pre-1.4-schema
+    #     zarrs without per-quarter filing dates, which overstates what
+    #     was knowable by up to the filing lag).
+    #
     # Plan: BWMACRO/docs/13f_pipeline_plan.md
     # -------------------------------------------------------------------
 
     def search_filers(
         self,
-        *,
         q: str | None = None,
+        *,
         filer_type: str | None = None,
         aum_tier: str | None = None,
         modelable_only: bool = False,
@@ -2211,6 +2224,11 @@ class RiskModelsClient:
 
         Returns:
             ``{"results": [FilerRow, ...]}``
+
+        Example:
+            >>> hits = client.search_filers("Berkshire", limit=10)
+            >>> hits["results"][0]["bw_filer_id"]
+            'BW-FILER-CIK0001067983'
         """
         params: dict[str, str] = {"limit": str(min(max(int(limit), 1), 500))}
         if q is not None:
@@ -2232,6 +2250,20 @@ class RiskModelsClient:
         Returns diagnostics, AUM (total + in-ERM3), portfolio-derived
         9-box style attribution, and modelability flag. Return components
         are NULL until D.8 Phase 2.
+
+        Bi-temporal lineage rides in the body: the latest metrics row
+        carries ``report_date`` (valid time — the quarter-end the
+        holdings describe), ``filing_date`` (knowledge time — when the
+        13F hit EDGAR), and ``extracted_at`` (when we ingested it).
+        The same stamps are mirrored on the ``X-Data-As-Of`` /
+        ``X-Data-Filing-Date`` response headers.
+
+        Args:
+            bw_filer_id: Canonical filer id (e.g.
+                ``"BW-FILER-CIK0001067983"``).
+
+        Raises:
+            APIError: ``status_code=404`` when the filer id is unknown.
         """
         data, _lineage, _r = self._transport.request(
             "GET", f"/13f/filers/{quote(bw_filer_id, safe='')}"
@@ -2239,19 +2271,55 @@ class RiskModelsClient:
         return data
 
     def get_filer_holdings(
-        self, bw_filer_id: str, *, limit: int | None = None
+        self,
+        bw_filer_id: str,
+        *,
+        limit: int | None = None,
+        as_of: str | None = None,
     ) -> dict[str, Any]:
         """Top-N filer holdings at the latest teo (``$0.005``).
 
         Each holding carries ``security_id`` (post-D.8.1 = bw_sym_id;
         pre-migration = a raw 9-char security identifier), ``adj_mv``,
         and ``weight``.
+
+        Bi-temporal stamps are body fields (D.8.39): ``report_date``
+        (valid time — the quarter-end the holdings describe),
+        ``filing_date`` (knowledge time — when that quarter's surviving
+        13F submission hit EDGAR; null on pre-1.4-schema zarrs), and
+        ``as_of_basis`` — which axis resolved the quarter selection.
+
+        Knowledge mode: with ``as_of``, the server returns the latest
+        quarter *FILED* by that date (``filing_date <= as_of``), i.e.
+        what an investor could actually have known — not the latest
+        quarter-end on or before it. ``as_of`` never silently falls
+        back: on zarrs without per-quarter filing dates the server
+        selects on ``report_date <= as_of`` and labels the response
+        ``as_of_basis="report_date"`` (which overstates what was
+        knowable by up to the ~45-day filing lag);
+        ``as_of_basis="filing_date"`` marks true knowledge mode.
+
+        Args:
+            bw_filer_id: Canonical filer id (e.g.
+                ``"BW-FILER-CIK0001067983"``).
+            limit: Top-N holdings (server default 25, capped 1000).
+            as_of: Optional knowledge-mode date, ``YYYY-MM-DD``.
+
+        Raises:
+            APIError: ``status_code=404`` when the filer is unknown, has
+                no holdings panel, or — with ``as_of`` — no holdings
+                were known by the requested date (the server's
+                as_of-specific message is preserved).
         """
-        params = {"limit": str(limit)} if limit is not None else None
+        params: dict[str, str] = {}
+        if limit is not None:
+            params["limit"] = str(limit)
+        if as_of is not None:
+            params["as_of"] = as_of
         data, _lineage, _r = self._transport.request(
             "GET",
             f"/13f/filers/{quote(bw_filer_id, safe='')}/holdings",
-            params=params,
+            params=params or None,
         )
         return data
 
@@ -2261,11 +2329,80 @@ class RiskModelsClient:
         *,
         start_date: str | None = None,
         end_date: str | None = None,
+        as_of: str | None = None,
     ) -> dict[str, Any]:
         """Per-filer portfolio time series (``$0.005``).
 
         Diagnostics + AUM + ERM3 coverage + portfolio style attribution
         per quarter-end teo. Return components NULL until Phase 2.
+
+        Each row carries its own per-quarter ``filing_date`` (knowledge
+        time — when that quarter's surviving 13F submission hit EDGAR;
+        null on pre-1.4-schema zarrs) alongside ``teo`` (valid time,
+        the report_date quarter-end), so an API-only consumer can build
+        an availability-date-correct point-in-time panel (D.8.39).
+
+        Knowledge mode: with ``as_of``, rows are filtered to quarters
+        *FILED* by that date (``filing_date <= as_of``). ``as_of`` never
+        silently falls back: the response echoes ``as_of`` and
+        ``as_of_basis`` — ``"filing_date"`` for true knowledge mode, or
+        ``"report_date"`` when the zarr has no per-quarter filing dates
+        and the server selected on ``teo <= as_of`` instead (labeled
+        fallback; overstates what was knowable by up to the ~45-day
+        filing lag).
+
+        Args:
+            bw_filer_id: Canonical filer id (e.g.
+                ``"BW-FILER-CIK0001067983"``).
+            start_date: Inclusive valid-time window start, ``YYYY-MM-DD``.
+            end_date: Inclusive valid-time window end, ``YYYY-MM-DD``.
+            as_of: Optional knowledge-mode date, ``YYYY-MM-DD``.
+
+        Raises:
+            APIError: ``status_code=404`` when the filer is unknown, has
+                no portfolio history, or — with ``as_of`` — no history
+                was known by the requested date (the server's
+                as_of-specific message is preserved).
+        """
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        if as_of is not None:
+            params["as_of"] = as_of
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_filer_concentration(
+        self,
+        bw_filer_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Quarter-end concentration summary for a 13F filer (``$0.005``).
+
+        Median and latest effective N, top-5 / top-10 weight share, and
+        weight HHI over the optional valid-time window — the same
+        underlying series as :meth:`get_filer_portfolio`, summarized for
+        diligence. The window bounds (``start_teo`` / ``end_teo``) are
+        report_date quarter-ends (valid time); the latest filing_date is
+        mirrored on the ``X-Data-Filing-Date`` response header.
+
+        Args:
+            bw_filer_id: Canonical filer id (e.g.
+                ``"BW-FILER-CIK0001067983"``).
+            start_date: Inclusive valid-time window start, ``YYYY-MM-DD``.
+            end_date: Inclusive valid-time window end, ``YYYY-MM-DD``.
+
+        Raises:
+            APIError: ``status_code=404`` when the filer is unknown or
+                has no concentration panel.
         """
         params: dict[str, str] = {}
         if start_date is not None:
@@ -2274,7 +2411,7 @@ class RiskModelsClient:
             params["end_date"] = end_date
         data, _lineage, _r = self._transport.request(
             "GET",
-            f"/13f/filers/{quote(bw_filer_id, safe='')}/portfolio",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/concentration",
             params=params or None,
         )
         return data
@@ -2295,12 +2432,28 @@ class RiskModelsClient:
         )
         return data
 
-    def get_filer_snapshot_pdf(self, bw_filer_id: str) -> bytes:
+    def get_filer_snapshot_pdf(
+        self, bw_filer_id: str, *, path: str | Path | None = None
+    ) -> bytes:
         """Rendered F1 13F filer tearsheet PDF bytes (``$0.05``).
 
         Same content as :meth:`get_filer_snapshot` rendered through the
         F1 print template (Letter landscape). Server requires
         ``PLAYWRIGHT_PDF_ENABLED=true`` on the API runtime.
+
+        Args:
+            bw_filer_id: Canonical filer id (e.g.
+                ``"BW-FILER-CIK0001067983"``).
+            path: Optional file path; when given, the PDF bytes are also
+                written there.
+
+        Returns:
+            The raw PDF bytes (always, whether or not ``path`` is given).
+
+        Example:
+            >>> pdf = client.get_filer_snapshot_pdf(
+            ...     "BW-FILER-CIK0001067983", path="berkshire_f1.pdf"
+            ... )
         """
         data, _lineage, _r = self._transport.request(
             "GET",
@@ -2313,7 +2466,10 @@ class RiskModelsClient:
                 f"Expected PDF bytes from /13f/filers/{bw_filer_id}/snapshot.pdf; "
                 f"got {type(data).__name__}"
             )
-        return bytes(data)
+        pdf = bytes(data)
+        if path is not None:
+            Path(path).write_bytes(pdf)
+        return pdf
 
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int

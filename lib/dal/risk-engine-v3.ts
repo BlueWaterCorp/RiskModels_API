@@ -77,15 +77,7 @@ export type V3MetricKey =
   | "l2_sec_beta"
   | "l3_sub_beta"
   | "size_beta"
-  | "value_beta"
-  | "l2_ff_smb_er"
-  | "l3_ff_smb_er"
-  | "l3_ff_hml_er"
-  | "l2_ff_mkt_hr"
-  | "l2_ff_smb_hr"
-  | "l3_ff_mkt_hr"
-  | "l3_ff_smb_hr"
-  | "l3_ff_hml_hr";
+  | "value_beta";
 
 /**
  * Sector/subsector HR in `security_history_latest` may be 0 or null while Zarr (ERM3 SSOT)
@@ -105,9 +97,16 @@ const LSTAR_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>(["lstar_rr", "lstar_level"]
  * stock_specific skill scalars served straight from the hedge zarr (no Supabase column).
  * Without an overlay these would only populate when another overlay key happens to force a
  * zarr read; listing them here makes the zarr read fire whenever the latest row lacks them.
+ * The v4 style/stock_specific explained-variance scalars belong here for the same reason —
+ * omitting them left legacy /decompose (whose key list has no other overlay key) serving
+ * them permanently null even after the hedge zarr landed on GCS.
  */
 const STOCK_SPECIFIC_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
   "stock_specific_sharpe_36m",
+  "style_er",
+  "stock_specific_er",
+  "style_er_l3",
+  "stock_specific_er_l3",
 ]);
 
 export type V3Periodicity = "daily" | "monthly";

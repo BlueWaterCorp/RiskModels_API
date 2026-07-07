@@ -1957,7 +1957,7 @@
       },
       "LstarResponse": {
         "type": "object",
-        "description": "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios and total explained-return. Arrays are parallel by date index. Each L\\* is a standalone hedge solution (not stacked layers) — `market_hr`/`sector_hr`/`subsector_hr` come from the chosen level's solver and are `null` where the chosen level doesn't use that ETF (sector_hr is null when L\\*=L1; subsector_hr is null when L\\*∈{L1,L2}). When `axis=style`, marginal ERs are SMB/HML and `sector_hr`/`subsector_hr` carry SMB/HML spread hedge ratios.\n",
+        "description": "Per-(ticker, date) recommended hedge level (L1/L2/L3) with the chosen level's dispatched hedge ratios and total explained-return. Arrays are parallel by date index. Each L\\* is a standalone hedge solution (not stacked layers) — `market_hr`/`sector_hr`/`subsector_hr` come from the chosen level's solver and are `null` where the chosen level doesn't use that ETF (sector_hr is null when L\\*=L1; subsector_hr is null when L\\*∈{L1,L2}). `axis` is always `industry` — the style axis was removed in v4 (style is a diagnostic block; see `POST /v4/decompose`).\n",
         "required": [
           "ticker",
           "axis",
@@ -1982,11 +1982,10 @@
           "axis": {
             "type": "string",
             "enum": [
-              "industry",
-              "style"
+              "industry"
             ],
             "default": "industry",
-            "description": "Cascade axis for marginal ER inputs and hedge-ratio semantics."
+            "description": "Cascade axis — always `industry`. `style` was removed in v4 (style is served as a diagnostic block by `POST /v4/decompose`).\n"
           },
           "dates": {
             "type": "array",
@@ -2054,7 +2053,7 @@
           },
           "l2_sector_er": {
             "type": "array",
-            "description": "Marginal L2 ER input (industry: sector; style: SMB). Exposed for audit / threshold override.\n",
+            "description": "Marginal L2 (sector) ER input. Exposed for audit / threshold override.\n",
             "items": {
               "type": "number",
               "format": "float",
@@ -2063,7 +2062,7 @@
           },
           "l3_subsector_er": {
             "type": "array",
-            "description": "Marginal L3 ER input (industry: subsector; style: HML). Exposed for audit / threshold override.\n",
+            "description": "Marginal L3 (subsector) ER input. Exposed for audit / threshold override.\n",
             "items": {
               "type": "number",
               "format": "float",
@@ -2246,9 +2245,9 @@
           "axis": {
             "type": "string",
             "enum": [
-              "industry",
-              "style"
-            ]
+              "industry"
+            ],
+            "description": "Always `industry` — the style axis was removed in v4."
           },
           "_agent": {
             "type": "object",
@@ -6684,12 +6683,11 @@
             "schema": {
               "type": "string",
               "enum": [
-                "industry",
-                "style"
+                "industry"
               ],
               "default": "industry"
             },
-            "description": "Cascade axis. `industry` (default): sector/subsector marginal ERs and ETF hedge ratios. `style`: Fama–French SMB/HML marginal ERs; `sector_hr` / `subsector_hr` carry SMB / HML spread hedge ratios.\n"
+            "description": "Cascade axis. `industry` (default): sector/subsector marginal ERs and ETF hedge ratios. DEPRECATED value `style` was removed in v4 and now returns 400 — style is a diagnostic block served by `POST /v4/decompose`; the industry cascade is the only hedge axis.\n"
           }
         ],
         "responses": {
@@ -8898,11 +8896,10 @@
                   "axis": {
                     "type": "string",
                     "enum": [
-                      "industry",
-                      "style"
+                      "industry"
                     ],
                     "default": "industry",
-                    "description": "`industry` (default) or `style` (Fama–French SMB/HML cascade).\n"
+                    "description": "Cascade axis — `industry` only. DEPRECATED value `style` was removed in v4 and now returns 400 — style is a diagnostic block served by `POST /v4/decompose`; the industry cascade is the only hedge axis.\n"
                   },
                   "format": {
                     "type": "string",
@@ -14259,7 +14256,7 @@
     "/13f/filers/{bw_filer_id}/holdings": {
       "get": {
         "summary": "13F filer top holdings",
-        "description": "Top-N current holdings at the filer's latest teo. Reads per-filer ds_ph.zarr from GCS. Each holding carries `security_id` (post- D.8.1 = bw_sym_id; pre-migration = a raw 9-char security identifier), `adj_mv`, and `weight` (fraction of total in-portfolio AUM).\n",
+        "description": "Top-N holdings at the filer's latest teo — or, with `as_of`, at the latest quarter *known* by that date (knowledge mode: selection on `filing_date <= as_of`; falls back to `report_date <= as_of` on panels without per-quarter filing dates, with the basis echoed as `as_of_basis`). Reads per-filer ds_ph.zarr from GCS. Each holding carries `security_id` (post-D.8.1 = bw_sym_id; pre-migration = a raw 9-char security identifier), `adj_mv`, and `weight` (fraction of total in-portfolio AUM). Bi-temporal stamps are body fields — `report_date` (valid time, = teo) and `filing_date` (knowledge time, EDGAR date_filed of the surviving submission; null until the per-quarter data fill lands) — mirrored on the X-Data-As-Of / X-Data-Filing-Date headers.\n",
         "operationId": "getFilerHoldings",
         "tags": [
           "13F Filers"
@@ -14288,11 +14285,21 @@
               "default": 25,
               "maximum": 1000
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Knowledge-mode date: serve the latest quarter whose filing was public on or before this date. 404 when nothing was known yet.\n"
           }
         ],
         "responses": {
           "200": {
-            "description": "Top-N holdings at the latest teo.",
+            "description": "Top-N holdings at the selected teo, with `report_date`, `filing_date`, and (under `as_of`) `as_of_basis`.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -14330,7 +14337,7 @@
     "/13f/filers/{bw_filer_id}/portfolio": {
       "get": {
         "summary": "13F filer portfolio history",
-        "description": "Per-filer portfolio time series from per-filer ds_portfolio.zarr. One row per teo (quarter-end) with diagnostics, AUM, ERM3 coverage, and portfolio style attribution. Return components are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).\n",
+        "description": "Per-filer portfolio time series from per-filer ds_portfolio.zarr. One row per teo (quarter-end) with diagnostics, AUM, ERM3 coverage, and portfolio style attribution. Return components are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge). Each row carries its `filing_date` (knowledge-time stamp; null until the per-quarter data fill lands). `as_of` filters to rows known by that date (`filing_date <= as_of`, falling back to `teo <= as_of` on panels without filing dates; basis echoed as `as_of_basis`).\n",
         "operationId": "getFilerPortfolioHistory",
         "tags": [
           "13F Filers"
@@ -14367,11 +14374,21 @@
               "type": "string",
               "format": "date"
             }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Knowledge-mode date: keep only quarters whose filings were public on or before this date. 404 when nothing was known yet.\n"
           }
         ],
         "responses": {
           "200": {
-            "description": "Portfolio history rows.",
+            "description": "Portfolio history rows (each with `filing_date`).",
             "content": {
               "application/json": {
                 "schema": {

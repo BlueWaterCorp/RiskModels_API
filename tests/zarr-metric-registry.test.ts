@@ -36,19 +36,28 @@ describe("zarr-metric-registry — Lstar metrics", () => {
     });
   });
 
-  it("style cascade exposes FF HEDGE vars only (returns levels retired in v4)", () => {
-    // ER/HR cascade survives (ds_erm3_hedge_weights still carries the FF hedge vars)…
-    expect(getZarrSpec("l2_ff_smb_er")).toMatchObject({
-      role: "hedge",
-      zarrVar: "L2_ff_smb_ER",
-    });
-    expect(getZarrSpec("l3_ff_hml_er")).toMatchObject({
-      role: "hedge",
-      zarrVar: "L3_ff_hml_ER",
-    });
-    // …but the FF *returns* levels (l2_ff_smb / l3_ff_smb_hml) were retired by the
-    // v4 producer, so the style-axis residual-return series is no longer registered.
+  it("FF style cascade (l*_ff_*) is fully retired (H.81 v4 cutover + H.92 axis removal)", () => {
+    // The H.81 v4 cutover removed the L*_ff_* vars from every zarr store and H.92
+    // deprecated the axis=style L* surface, so no l*_ff_* key is registered —
+    // neither the ER/HR cascade nor the returns levels.
+    expect(getZarrSpec("l2_ff_smb_er" as never)).toBeUndefined();
+    expect(getZarrSpec("l3_ff_smb_er" as never)).toBeUndefined();
+    expect(getZarrSpec("l3_ff_hml_er" as never)).toBeUndefined();
+    expect(getZarrSpec("l2_ff_mkt_hr" as never)).toBeUndefined();
+    expect(getZarrSpec("l2_ff_smb_hr" as never)).toBeUndefined();
+    expect(getZarrSpec("l3_ff_mkt_hr" as never)).toBeUndefined();
+    expect(getZarrSpec("l3_ff_smb_hr" as never)).toBeUndefined();
+    expect(getZarrSpec("l3_ff_hml_hr" as never)).toBeUndefined();
     expect(getZarrSpec("l2_ff_smb_rr" as never)).toBeUndefined();
     expect(getZarrSpec("l3_ff_smb_hml_rr" as never)).toBeUndefined();
+    // Style exposure is still served — as the v4 diagnostic block.
+    expect(getZarrSpec("style_er")).toMatchObject({
+      role: "hedge",
+      zarrVar: "Style_ER_lstar",
+    });
+    expect(getZarrSpec("style_er_l3")).toMatchObject({
+      role: "hedge",
+      zarrVar: "Style_ER_l3",
+    });
   });
 });

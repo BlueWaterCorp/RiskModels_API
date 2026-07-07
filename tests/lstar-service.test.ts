@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   dispatchLstarResidualReturn,
-  dispatchStyleLstarResidualReturn,
   pickLstar,
+  LstarService,
   LSTAR_DEFAULT_THRESHOLD,
+  LSTAR_STYLE_AXIS_REMOVED_MESSAGE,
 } from "@/lib/risk/lstar-service";
 
 describe("pickLstar (industry)", () => {
@@ -30,37 +31,12 @@ describe("pickLstar (industry)", () => {
   });
 });
 
-describe("pickLstar (style axis)", () => {
-  it("uses the same depth rule on SMB / HML marginal ERs", () => {
-    expect(
-      pickLstar(0.05, 0.16, LSTAR_DEFAULT_THRESHOLD, "style"),
-    ).toBe("L3");
-    expect(
-      pickLstar(0.05, 0.005, LSTAR_DEFAULT_THRESHOLD, "style"),
-    ).toBe("L2");
-    expect(
-      pickLstar(0.005, 0.005, LSTAR_DEFAULT_THRESHOLD, "style"),
-    ).toBe("L1");
-  });
-
-  it("negative SMB marginal still allows L3 when HML clears (hierarchical)", () => {
-    // BRK-B–like: smb −6%, hml +24% → style L3 under shared rule
-    expect(
-      pickLstar(-0.0625, 0.2445, LSTAR_DEFAULT_THRESHOLD, "style"),
-    ).toBe("L3");
-  });
-});
-
-describe("dispatchStyleLstarResidualReturn", () => {
-  // v4 (stock_specific reset): the style-axis residual-return series was retired —
-  // ds_erm3_returns no longer carries l2_ff_smb / l3_ff_smb_hml. Only L1 (market
-  // residual) survives; L2/L3 return null (style is now a diagnostic ER/HR block).
-  const row = { teo: "2026-01-01", l1_rr: 0.01 };
-
-  it("returns the market residual at L1 and null at L2/L3 (style rr retired)", () => {
-    expect(dispatchStyleLstarResidualReturn("L1", row)).toBe(0.01);
-    expect(dispatchStyleLstarResidualReturn("L2", row)).toBeNull();
-    expect(dispatchStyleLstarResidualReturn("L3", row)).toBeNull();
+describe("getLstar axis=style rejection (H.92)", () => {
+  it("throws the v4 removal message before any data access", async () => {
+    const service = new LstarService();
+    await expect(
+      service.getLstar("NVDA", "SPY", { axis: "style" as never }),
+    ).rejects.toThrow(LSTAR_STYLE_AXIS_REMOVED_MESSAGE);
   });
 });
 

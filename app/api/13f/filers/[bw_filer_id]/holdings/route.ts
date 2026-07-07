@@ -8,16 +8,25 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_TOP_N = 25;
 const MAX_TOP_N = 1000;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * GET /api/13f/filers/{bw_filer_id}/holdings?limit=25
+ * GET /api/13f/filers/{bw_filer_id}/holdings?limit=25&as_of=YYYY-MM-DD
  *
- * Top-N current holdings at the filer's latest teo. Reads per-filer
- * ds_ph.zarr from GCS. Each holding carries `security_id` (post-D.8.1 =
- * bw_sym_id; pre-migration = a raw 9-char security identifier), `adj_mv`,
- * `weight` (fraction of total in-portfolio AUM), and — when resolvable
- * from the registry — display labels (`ticker`, `name`) plus latest L3
- * explained-risk shares (same enrichment as the snapshot endpoint).
+ * Top-N holdings at the filer's latest teo — or, with `as_of`, at the
+ * latest quarter *known* by that date (D.8.39 knowledge mode: selection on
+ * `filing_date <= as_of`; falls back to `report_date <= as_of` on zarrs
+ * without per-teo filing dates, with the basis echoed as `as_of_basis`).
+ * Reads per-filer ds_ph.zarr from GCS. Each holding carries `security_id`
+ * (post-D.8.1 = bw_sym_id; pre-migration = a raw 9-char security
+ * identifier), `adj_mv`, `weight` (fraction of total in-portfolio AUM),
+ * and — when resolvable from the registry — display labels (`ticker`,
+ * `name`) plus latest L3 explained-risk shares (same enrichment as the
+ * snapshot endpoint).
+ *
+ * Bi-temporal stamps are body fields (`report_date`, `filing_date`) so
+ * SDK/MCP consumers see them, mirrored on the X-Data-As-Of /
+ * X-Data-Filing-Date headers.
  *
  * Default `limit = 25`; caller can request up to 1000.
  */
@@ -45,26 +54,39 @@ export const GET = withBilling(
       limit = Math.min(Math.floor(parsed), MAX_TOP_N);
     }
 
+    const asOf = request.nextUrl.searchParams.get("as_of") ?? undefined;
+    if (asOf && !ISO_DATE.test(asOf)) {
+      return NextResponse.json(
+        { error: "as_of must be YYYY-MM-DD" },
+        { status: 400 },
+      );
+    }
+
     const filer = await fetchFiler(bwFilerId);
     if (!filer) {
       return NextResponse.json({ error: "Filer not found" }, { status: 404 });
     }
 
     const snapshot = await enrichFilerHoldingsWithL3(
-      await readFilerHoldingsTopN(bwFilerId, limit),
+      await readFilerHoldingsTopN(bwFilerId, limit, asOf),
     );
     if (!snapshot) {
       return NextResponse.json(
         {
-          error: "No holdings panel available for this filer",
+          error: asOf
+            ? "No holdings were known for this filer as of the requested date"
+            : "No holdings panel available for this filer",
           bw_filer_id: bwFilerId,
+          ...(asOf ? { as_of: asOf } : {}),
         },
         { status: 404 },
       );
     }
 
     const headers = new Headers({ "X-Data-As-Of": snapshot.teo });
-    if (filer.latest_filing_date) {
+    if (snapshot.filing_date) {
+      headers.set("X-Data-Filing-Date", snapshot.filing_date);
+    } else if (filer.latest_filing_date) {
       headers.set("X-Data-Filing-Date", filer.latest_filing_date);
     }
 
@@ -75,6 +97,7 @@ export const GET = withBilling(
         name: filer.name,
         filer_type: filer.filer_type,
         aum_tier: filer.aum_tier,
+        ...(asOf ? { as_of: asOf } : {}),
         ...snapshot,
       },
       { headers },

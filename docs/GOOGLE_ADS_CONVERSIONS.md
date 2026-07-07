@@ -1,7 +1,11 @@
 # Google Ads conversion tracking
 
 Account: **RiskModels.app** (Google Ads `849-116-0672`) · Google tag **`AW-18161098219`**
-(loaded site-wide by [`components/GoogleAdsTag.tsx`](../components/GoogleAdsTag.tsx)).
+· GA4 **`G-3Q4LR1QFWP`** (stream `RiskModels.app`) — both loaded site-wide by
+[`components/GoogleAdsTag.tsx`](../components/GoogleAdsTag.tsx) (IDs in
+[`lib/google-tags.ts`](../lib/google-tags.ts)). Client-side route changes send GA4
+`page_view` via [`trackGaPageView()`](../lib/google-ads-conversion.ts) in
+[`components/posthog-provider.tsx`](../components/posthog-provider.tsx).
 
 ## Phase 1 — Sign-up conversion (live)
 

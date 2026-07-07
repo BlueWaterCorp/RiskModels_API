@@ -283,9 +283,11 @@ export function registerRiskModelsTools(
           .describe("Calendar years of daily history (default 1, max 15)"),
         market_factor_etf: z.string().optional().describe("Market factor ETF (default SPY)"),
         axis: z
-          .enum(["industry", "style"])
+          .enum(["industry"])
           .optional()
-          .describe("Cascade axis: industry (default) or style (SMB/HML spreads)"),
+          .describe(
+            "Cascade axis — industry only. style was removed in v4 (returns 400): style is a diagnostic block served by riskmodels_decompose / POST /v4/decompose; the industry cascade is the only hedge axis",
+          ),
         threshold: z
           .number()
           .optional()
