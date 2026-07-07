@@ -15,6 +15,7 @@
  */
 
 import type { User } from '@supabase/supabase-js';
+import { GA4_MEASUREMENT_ID } from '@/lib/google-tags';
 
 /** Sign-up conversion action — Google Ads → Goals → "Sign-up" (count: One, value: $1). */
 const SIGNUP_SEND_TO = 'AW-18161098219/Qn__CI297LocEOu78dND';
@@ -146,4 +147,11 @@ export function reportSignupConversion(user: User | null | undefined): void {
   // Mark only after we've actually handed the event to gtag, so a missing-gtag
   // early-return can still fire on a later call within the window.
   markSignupFired(user.id);
+}
+
+/** SPA route changes — GA4 enhanced measurement only covers the first load. */
+export function trackGaPageView(pagePath: string): void {
+  const gtag = getGtag();
+  if (!gtag) return;
+  gtag('config', GA4_MEASUREMENT_ID, { page_path: pagePath });
 }
