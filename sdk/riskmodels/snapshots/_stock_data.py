@@ -112,6 +112,13 @@ class P1Data:
     sector_name: str | None = None
     subsector_name: str | None = None
 
+    # PIT-gated fundamentals block (H.89.8) — populated by build_p1_from_zarr via
+    # riskmodels.snapshots._fundamentals_zarr.build_fundamentals_pit(); a plain dict
+    # (dataclasses.asdict of FundamentalsPIT) so it round-trips through to_json/from_json
+    # with no _json_io.py changes. None when unavailable (older cached JSON, ticker not
+    # in ds_fundamentals.zarr, etc.) — renderers must treat this as optional.
+    fundamentals: dict[str, Any] | None = None
+
     @property
     def subsector_label(self) -> str:
         return self.subsector_etf or self.sector_etf or "—"
@@ -169,6 +176,7 @@ class P1Data:
             l3_er_series=_load_er_series(d.get("l3_er_series")),
             cumulative_bench_lines_use_cfr=bool(d.get("cumulative_bench_lines_use_cfr", False)),
             sdk_version=d.get("sdk_version", "0.3.0"),
+            fundamentals=d.get("fundamentals"),
         )
 
 

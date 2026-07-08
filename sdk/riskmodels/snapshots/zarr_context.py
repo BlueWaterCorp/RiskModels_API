@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -773,4 +774,21 @@ def build_p1_from_zarr(
     p1.sector_name = _sector_name_from_etf(p1.sector_etf)
     erm3 = Path(erm3_root) if erm3_root is not None else _DEFAULT_ERM3
     p1.subsector_name = _subsector_name(p1.subsector_etf, erm3)
+
+    # PIT-gated fundamentals block (H.89.8) — soft-fail like the rankings/macro-correlation
+    # fallbacks above: a missing/stale ds_fundamentals.zarr must never break the P1 render.
+    try:
+        from dataclasses import asdict
+
+        from ._fundamentals_zarr import build_fundamentals_pit
+
+        root = Path(zarr_root) if zarr_root is not None else _default_zarr_root()
+        fund_pit = build_fundamentals_pit(ticker, root, teo=p1.teo, erm3_root=erm3)
+        p1.fundamentals = asdict(fund_pit) if fund_pit is not None else None
+    except Exception as exc:
+        warnings.warn(
+            f"fundamentals block unavailable for {ticker}: {type(exc).__name__}: {exc}",
+            UserWarning, stacklevel=2,
+        )
+        p1.fundamentals = None
     return p1
