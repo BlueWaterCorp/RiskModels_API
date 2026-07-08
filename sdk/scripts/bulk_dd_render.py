@@ -88,7 +88,7 @@ import threading
 import time
 import traceback
 import warnings
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -592,7 +592,6 @@ def main() -> int:
     print(f"  renderer     : {args.renderer}")
     print()
 
-    log_lock = threading.Lock()
     total = len(tickers)
     per_ticker_upload = (upload_mode == "per-ticker")
 
@@ -615,56 +614,75 @@ def main() -> int:
         else None
     )
 
-    def _dispatch(i: int, ticker: str, logf) -> dict:
-        row = _render_one(
-            ticker,
-            args.out_dir,
-            args.zarr_root,
-            upload_gcs=per_ticker_upload,
-            gcs_bucket=args.gcs_bucket,
-            resume=args.resume,
-            force=args.force,
-            renderer=args.renderer,
-        )
+    def _log_result(row: dict, i: int, logf) -> None:
+        """Record one ticker's result — counts, jsonl row, progress bar.
+
+        Always called from the main process only (workers, whether threads or
+        processes, never touch logf/counts/pbar directly) — so no lock is needed.
+        """
         row["i"] = i
         row["ts"] = datetime.now(timezone.utc).isoformat()
-        with log_lock:
-            counts[row["status"]] = counts.get(row["status"], 0) + 1
-            logf.write(json.dumps(row) + "\n")
-            logf.flush()
-            if pbar is not None:
-                pbar.update(1)
-                pbar.set_postfix(
-                    ok=counts["ok"],
-                    skip=counts["skipped_resume"],
-                    err=counts["error"],
-                    last=ticker,
-                    refresh=False,
-                )
-                # Surface errors inline above the bar (kept visible in the log).
-                if row["status"] == "error":
-                    err_msg = (row.get("error") or "")[:120]
-                    pbar.write(f"  ✗ {ticker}: {err_msg}")
-            else:
-                tag = {"ok": "✓", "skipped_resume": "⤳", "error": "✗",
-                       "uploaded_partial": "⚠"}.get(row["status"], "?")
-                extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
-                err = f" — {row.get('error','')}" if row["status"] == "error" else ""
-                print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
-        return row
+        ticker = row.get("ticker", "?")
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+        logf.write(json.dumps(row) + "\n")
+        logf.flush()
+        if pbar is not None:
+            pbar.update(1)
+            pbar.set_postfix(
+                ok=counts["ok"], skip=counts["skipped_resume"], err=counts["error"],
+                last=ticker, refresh=False,
+            )
+            if row["status"] == "error":
+                pbar.write(f"  ✗ {ticker}: {(row.get('error') or '')[:120]}")
+        else:
+            tag = {"ok": "✓", "skipped_resume": "⤳", "error": "✗",
+                   "uploaded_partial": "⚠"}.get(row["status"], "?")
+            extra = f" ({row['duration_s']}s)" if row.get("duration_s") else ""
+            err = f" — {row.get('error','')}" if row["status"] == "error" else ""
+            print(f"  [{i:>4}/{total}] {tag} {ticker}{extra}{err}", flush=True)
 
     with log_path.open("w") as logf:
         if workers <= 1:
             for i, ticker in enumerate(tickers, start=1):
-                _dispatch(i, ticker, logf)
+                row = _render_one(
+                    ticker, args.out_dir, args.zarr_root,
+                    upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
+                    resume=args.resume, force=args.force, renderer=args.renderer,
+                )
+                _log_result(row, i, logf)
         else:
-            with ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = [
-                    ex.submit(_dispatch, i, t, logf)
+            # ProcessPoolExecutor, not threads: rendering is CPU-bound (matplotlib/
+            # Pillow compositing), so threads mostly contend for the GIL instead of
+            # using multiple cores — measured ~1.25x effective speedup at workers=8
+            # with threads vs. genuine ~Nx with processes. Workers here own no
+            # shared state (logf/counts/pbar are main-process-only, updated as each
+            # future completes below), so there's nothing to pickle across the
+            # process boundary except _render_one's plain str/Path/bool arguments.
+            with ProcessPoolExecutor(max_workers=workers) as ex:
+                futs = {
+                    ex.submit(
+                        _render_one, t, args.out_dir, args.zarr_root,
+                        upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
+                        resume=args.resume, force=args.force, renderer=args.renderer,
+                    ): (i, t)
                     for i, t in enumerate(tickers, start=1)
-                ]
-                for _ in as_completed(futs):
-                    pass
+                }
+                # _render_one already catches everything it can raise internally,
+                # but a worker-process crash (e.g. killed for OOM) must never vanish
+                # silently — .result() forces that to surface as an error row
+                # instead of a ticker just disappearing from the counts.
+                for fut in as_completed(futs):
+                    i, ticker = futs[fut]
+                    try:
+                        row = fut.result()
+                    except Exception as exc:
+                        row = {
+                            "ticker": ticker,
+                            "status": "error",
+                            "error": f"{type(exc).__name__}: {exc}",
+                            "traceback": traceback.format_exc().splitlines()[-5:],
+                        }
+                    _log_result(row, i, logf)
 
     if pbar is not None:
         pbar.close()
