@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { getFundamentalsForTicker } from "@/lib/dal/fundamentals-zarr-reader";
+import {
+  getFundamentalsForTicker,
+  getFundamentalsSensitivityGrid,
+  DEFAULT_ERP_GRID,
+  RF_TENORS,
+} from "@/lib/dal/fundamentals-zarr-reader";
 import {
   buildFundamentalsDisclosures,
   sanitizeFundamentalsRow,
@@ -61,6 +66,9 @@ export const GET = withBilling(
       erp: sp.get("erp") ?? undefined,
       tax_rate: sp.get("tax_rate") ?? undefined,
       rf_tenor: sp.get("rf_tenor") ?? undefined,
+      grid: sp.get("grid") ?? undefined,
+      erp_grid: sp.get("erp_grid") ?? undefined,
+      rf_tenor_grid: sp.get("rf_tenor_grid") ?? undefined,
     });
     if (!validation.success) {
       return NextResponse.json(
@@ -72,18 +80,29 @@ export const GET = withBilling(
       );
     }
 
-    const { ticker, periods, erp, tax_rate, rf_tenor } = validation.data;
+    const { ticker, periods, erp, tax_rate, rf_tenor, grid, erp_grid, rf_tenor_grid } =
+      validation.data;
     const asOf = validation.data.as_of ?? new Date().toISOString().slice(0, 10);
 
     try {
       const fetchStart = performance.now();
-      const result = await getFundamentalsForTicker(ticker, {
-        asOf,
-        periods,
-        erp,
-        taxRate: tax_rate,
-        rfTenor: rf_tenor,
-      });
+      const [result, sensitivityGrid] = await Promise.all([
+        getFundamentalsForTicker(ticker, {
+          asOf,
+          periods,
+          erp,
+          taxRate: tax_rate,
+          rfTenor: rf_tenor,
+        }),
+        grid
+          ? getFundamentalsSensitivityGrid(ticker, {
+              asOf,
+              erpGrid: erp_grid ?? DEFAULT_ERP_GRID,
+              rfTenorGrid: rf_tenor_grid ?? RF_TENORS,
+              taxRate: tax_rate,
+            })
+          : Promise.resolve(null),
+      ]);
 
       if (!result) {
         const metadata = await getRiskMetadata();
@@ -115,6 +134,7 @@ export const GET = withBilling(
           basis: "current_snapshot",
           note: "Current market cap, not point-in-time per quarter.",
         },
+        ...(grid ? { sensitivity_grid: sensitivityGrid } : {}),
         disclosures: buildFundamentalsDisclosures({ erp, tax_rate, as_of: asOf, rf_tenor }),
         _metadata: buildMetadataBody(metadata),
       };

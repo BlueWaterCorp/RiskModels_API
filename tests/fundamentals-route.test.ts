@@ -6,9 +6,13 @@ vi.mock("@/lib/agent/billing-middleware", () => ({
 }));
 
 vi.mock("@/lib/dal/fundamentals-zarr-reader", async (importOriginal) => {
-  // Keep the real pure exports (accessors, types); mock only the GCS entry point.
+  // Keep the real pure exports (accessors, types); mock only the GCS entry points.
   const actual = await importOriginal<typeof import("@/lib/dal/fundamentals-zarr-reader")>();
-  return { ...actual, getFundamentalsForTicker: vi.fn() };
+  return {
+    ...actual,
+    getFundamentalsForTicker: vi.fn(),
+    getFundamentalsSensitivityGrid: vi.fn(),
+  };
 });
 
 vi.mock("@/lib/dal/risk-engine-v3", () => ({
@@ -20,7 +24,10 @@ vi.mock("@/lib/dal/risk-metadata", () => ({
   getRiskMetadata: vi.fn(),
 }));
 
-import { getFundamentalsForTicker } from "@/lib/dal/fundamentals-zarr-reader";
+import {
+  getFundamentalsForTicker,
+  getFundamentalsSensitivityGrid,
+} from "@/lib/dal/fundamentals-zarr-reader";
 import {
   fetchLatestMetricsWithFallback,
   resolveSymbolByTicker,
@@ -82,6 +89,7 @@ const CLEAN_ROW = {
 
 beforeEach(() => {
   vi.mocked(getFundamentalsForTicker).mockReset();
+  vi.mocked(getFundamentalsSensitivityGrid).mockReset();
   vi.mocked(resolveSymbolByTicker).mockReset();
   vi.mocked(fetchLatestMetricsWithFallback).mockReset();
   vi.mocked(getRiskMetadata).mockReset();
@@ -224,6 +232,37 @@ describe("GET /api/fundamentals/[ticker]", () => {
     expect(degraded.status).toBe(200);
     const degradedBody = await degraded.json();
     expect(degradedBody.market_cap.value).toBeNull();
+  });
+
+  it("sensitivity_grid is omitted by default and included only when grid=true", async () => {
+    vi.mocked(getFundamentalsForTicker).mockResolvedValue({ ticker: "AAPL", rows: [CLEAN_ROW] });
+
+    const withoutGrid = await fundamentalsGET(req("/api/fundamentals/AAPL"), fakeContext);
+    const withoutGridBody = await withoutGrid.json();
+    expect(withoutGridBody).not.toHaveProperty("sensitivity_grid");
+    expect(getFundamentalsSensitivityGrid).not.toHaveBeenCalled();
+
+    vi.mocked(getFundamentalsSensitivityGrid).mockResolvedValue({
+      period_end_date: "2025-09-30",
+      filed_date: "2025-10-31",
+      erp_values: [0.03, 0.04, 0.05, 0.06, 0.07],
+      rf_tenor_values: ["3m", "1y", "2y", "5y", "10y", "30y"],
+      tax_rate: 0.21,
+      cells: [],
+    });
+    const withGrid = await fundamentalsGET(
+      req("/api/fundamentals/AAPL?grid=true&erp_grid=0.04,0.06&rf_tenor_grid=1y,10y"),
+      fakeContext,
+    );
+    expect(withGrid.status).toBe(200);
+    const withGridBody = await withGrid.json();
+    expect(withGridBody.sensitivity_grid.period_end_date).toBe("2025-09-30");
+    expect(getFundamentalsSensitivityGrid).toHaveBeenCalledWith("AAPL", {
+      asOf: expect.any(String),
+      erpGrid: [0.04, 0.06],
+      rfTenorGrid: ["1y", "10y"],
+      taxRate: 0.21,
+    });
   });
 
   it("serves JSON only — no CSV/bulk export even when a format param is passed", async () => {

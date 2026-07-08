@@ -3,6 +3,7 @@
 from .builder import (
     analyze,
     comparison,
+    fundamentals,
     hedge_action,
     portfolio_id,
     portfolio_inline,
@@ -24,6 +25,7 @@ __all__ = [
     "execute_plan",
     "normalize_execution_plan",
     "serialize_plan",
+    "fundamentals",
     "hedge_action",
     "portfolio_id",
     "portfolio_inline",

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   costOfEquity,
+  DEFAULT_ERP_GRID,
   getFundamentalsForTicker,
+  getFundamentalsSensitivityGrid,
+  RF_TENORS,
 } from "@/lib/dal/fundamentals-zarr-reader";
 
 /**
@@ -104,6 +107,49 @@ describe.skipIf(!LIVE)("live GCS fundamentals panel — AAPL", () => {
     async () => {
       const result = await getFundamentalsForTicker("ZZZZNOTREAL", OPTS);
       expect(result).toBeNull();
+    },
+  );
+
+  it(
+    "H.89.6: sensitivity grid — real rf strip x real beta_market, monotonic in erp and tenor",
+    { timeout: 300_000 },
+    async () => {
+      const grid = await getFundamentalsSensitivityGrid("AAPL", {
+        asOf: "2026-07-03",
+        erpGrid: DEFAULT_ERP_GRID,
+        rfTenorGrid: RF_TENORS,
+        taxRate: 0.21,
+      });
+      expect(grid).not.toBeNull();
+      expect(grid!.erp_values).toEqual([...DEFAULT_ERP_GRID]);
+      expect(grid!.rf_tenor_values).toEqual([...RF_TENORS]);
+      expect(grid!.cells).toHaveLength(DEFAULT_ERP_GRID.length);
+
+      // Anchored on the same latest PIT-visible period as getFundamentalsForTicker.
+      const rows = (await getFundamentalsForTicker("AAPL", { ...OPTS, periods: 1 }))!.rows;
+      expect(grid!.period_end_date).toBe(rows[rows.length - 1]!.period_end_date);
+
+      // Monotonic in erp at a fixed tenor (10y column): higher erp -> higher cost_of_equity
+      // (beta_market is positive for AAPL, per the plausibility assertions above).
+      const tenIdx = grid!.rf_tenor_values.indexOf("10y");
+      const coeAcrossErp = grid!.cells.map((row) => row[tenIdx]!.cost_of_equity!);
+      for (let i = 1; i < coeAcrossErp.length; i++) {
+        expect(coeAcrossErp[i]).toBeGreaterThan(coeAcrossErp[i - 1]!);
+      }
+
+      // Every populated tenor strip is real (non-null) since the 2026-07-06 rebuild.
+      const erpIdx = grid!.erp_values.indexOf(0.05);
+      for (const cell of grid!.cells[erpIdx]!) {
+        expect(cell.cost_of_equity).not.toBeNull();
+        expect(cell.wacc).not.toBeNull();
+      }
+
+      // Cross-check the 0.05/10y cell against the scalar endpoint for the same as_of.
+      const scalar = rows[rows.length - 1]!;
+      expect(grid!.cells[erpIdx]![tenIdx]!.cost_of_equity).toBeCloseTo(
+        scalar.cost_of_equity!,
+        10,
+      );
     },
   );
 });

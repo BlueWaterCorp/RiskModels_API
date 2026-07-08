@@ -94,7 +94,24 @@ class ChainStageHedge(TypedDict, total=False):
     depends_on: Literal["previous"] | str
 
 
-ChainStage = ChainStageAnalyze | ChainStageHedge
+class ChainStageFundamentals(TypedDict, total=False):
+    """``.with_fundamentals()`` — PIT quarterly fundamentals context (H.89.6).
+
+    Compiles to a ``RestFetchStep`` calling ``client.get_fundamentals(...,
+    as_dataframe=True)``; the resulting DataFrame carries SDK lineage/legend
+    attrs and rides ``riskmodels.llm.to_llm_context()`` like any other SDK
+    DataFrame output. Stock subjects only (same restriction as ``analyze`` /
+    ``hedge_action`` chain stages).
+    """
+
+    kind: Literal["fundamentals"]
+    erp: float
+    tax_rate: float
+    rf_tenor: str
+    periods: int
+
+
+ChainStage = ChainStageAnalyze | ChainStageHedge | ChainStageFundamentals
 
 
 class AOMSingleRequest(TypedDict, total=False):

@@ -74,6 +74,25 @@ export const FundamentalsRequestSchema = z.object({
   // rf_3m..rf_30y). Default 10y = the valuation convention; a caller selecting
   // a short tenor should pair a bill-basis ERP or cost of capital is understated.
   rf_tenor: z.enum(["3m", "1y", "2y", "5y", "10y", "30y"]).default("10y"),
+  // Sensitivity-grid variant (H.89.6): when true, the response also carries
+  // `sensitivity_grid` — cost_of_equity/wacc/economic_profit across
+  // erp_grid x rf_tenor_grid for the latest PIT-visible period only. Cheap:
+  // the six-tenor rf strip is already read into the pack for the single-row
+  // `rf_tenor` lookup, so the grid is pure computation, no extra I/O.
+  grid: z.coerce.boolean().default(false),
+  erp_grid: z
+    .string()
+    .transform((s) => s.split(",").map((v) => Number(v.trim())))
+    .refine(
+      (arr) => arr.length >= 1 && arr.length <= 10 && arr.every((v) => Number.isFinite(v) && v >= 0 && v <= 0.5),
+      "erp_grid must be 1-10 comma-separated numbers in [0, 0.5]",
+    )
+    .optional(),
+  rf_tenor_grid: z
+    .string()
+    .transform((s) => s.split(",").map((v) => v.trim()))
+    .pipe(z.array(z.enum(["3m", "1y", "2y", "5y", "10y", "30y"])).min(1).max(6))
+    .optional(),
 });
 
 /**

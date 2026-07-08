@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFundamentalsRows,
+  buildSensitivityGrid,
   costOfDebt,
   costOfEquity,
+  DEFAULT_ERP_GRID,
   economicProfit,
   latestFinite,
   roeTtm,
@@ -230,5 +232,51 @@ describe("rf tenor strip (2026-07-06 store revision)", () => {
     // non-rf fields unaffected
     expect(last.beta_market).not.toBeNull();
     expect(last.roe_ttm).not.toBeNull();
+  });
+});
+
+describe("sensitivity grid (H.89.6) — erp x rf_tenor cost-of-capital grid", () => {
+  const GRID_OPTS = {
+    asOf: "2026-01-15",
+    erpGrid: DEFAULT_ERP_GRID,
+    rfTenorGrid: ["3m", "10y"] as const,
+    taxRate: 0.21,
+  };
+
+  it("anchors on the same latest PIT-visible period as buildFundamentalsRows", () => {
+    const grid = buildSensitivityGrid(syntheticPack(), GRID_OPTS)!;
+    expect(grid.period_end_date).toBe("2025-09-30");
+    expect(grid.filed_date).toBe("2025-10-31");
+  });
+
+  it("cells is row-major [erp][tenor] and matches costOfEquity for each combination", () => {
+    const grid = buildSensitivityGrid(syntheticPack(), GRID_OPTS)!;
+    expect(grid.erp_values).toEqual([...DEFAULT_ERP_GRID]);
+    expect(grid.rf_tenor_values).toEqual(["3m", "10y"]);
+    expect(grid.cells).toHaveLength(DEFAULT_ERP_GRID.length);
+    // anchor beta_market at 2025-09-30 = 1.2 (same anchor as the rf-tenor describe block above)
+    DEFAULT_ERP_GRID.forEach((erp, i) => {
+      expect(grid.cells[i]).toHaveLength(2);
+      expect(grid.cells[i]![0]!.cost_of_equity).toBeCloseTo(costOfEquity(0.03, 1.2, erp), 10);
+      expect(grid.cells[i]![1]!.cost_of_equity).toBeCloseTo(costOfEquity(0.04, 1.2, erp), 10);
+    });
+  });
+
+  it("a tenor absent from the store yields null cells for that column only", () => {
+    const grid = buildSensitivityGrid(syntheticPack(), {
+      ...GRID_OPTS,
+      rfTenorGrid: ["3m", "30y"] as const,
+    })!;
+    grid.cells.forEach((row) => {
+      expect(row[0]!.cost_of_equity).not.toBeNull();
+      expect(row[1]!.cost_of_equity).toBeNull();
+      expect(row[1]!.wacc).toBeNull();
+      expect(row[1]!.economic_profit).toBeNull();
+    });
+  });
+
+  it("returns null when no PIT-visible period exists at as_of", () => {
+    const grid = buildSensitivityGrid(syntheticPack(), { ...GRID_OPTS, asOf: "2024-01-01" });
+    expect(grid).toBeNull();
   });
 });

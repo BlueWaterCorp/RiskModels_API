@@ -644,6 +644,51 @@ export function registerRiskModelsTools(
   );
 
   server.registerTool(
+    "riskmodels_get_fundamentals",
+    {
+      title: "RiskModels PIT Quarterly Fundamentals",
+      annotations: { readOnlyHint: true },
+      description:
+        "PIT quarterly fundamentals, derived analytics only (GET /fundamentals/{ticker}): TTM profitability ratios (roe_ttm, roa_ttm, fcf_margin), leverage_ratio, ERM3 cascade betas, and the cost-of-capital layer (cost_of_equity, wacc, economic_profit). Rows are visible iff filed_date <= as_of — never \"latest\". Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are never included (derived-only licensing). Set grid=true for a cost-of-capital sensitivity table across erp_grid x rf_tenor_grid instead of a scalar wacc/cost_of_equity.",
+      inputSchema: {
+        ticker: z.string().min(1).describe("Ticker symbol, e.g. AAPL"),
+        as_of: z.string().optional().describe("Point-in-time date YYYY-MM-DD (default: today)"),
+        periods: z.number().int().min(1).max(40).optional().describe("Quarterly rows returned, most recent last (default 8, max 40)"),
+        erp: z.number().min(0).max(0.5).optional().describe("Equity risk premium for cost-of-capital (default 0.05)"),
+        tax_rate: z.number().min(0).max(1).optional().describe("Tax rate applied to the WACC debt shield (default 0.21)"),
+        rf_tenor: z
+          .enum(["3m", "1y", "2y", "5y", "10y", "30y"])
+          .optional()
+          .describe("Treasury CMT tenor backing rf_rate (default 10y — pair a short tenor with a bill-basis ERP)"),
+        grid: z
+          .boolean()
+          .optional()
+          .describe("If true, response also carries sensitivity_grid: cost_of_equity/wacc/economic_profit across erp_grid x rf_tenor_grid for the latest PIT-visible period only"),
+        erp_grid: z.string().optional().describe('Comma-separated ERP values for the grid, e.g. "0.03,0.04,0.05,0.06,0.07". Only used when grid=true'),
+        rf_tenor_grid: z.string().optional().describe('Comma-separated tenor subset for the grid, e.g. "1y,10y,30y". Only used when grid=true'),
+      },
+    },
+    async ({ ticker, as_of, periods, erp, tax_rate, rf_tenor, grid, erp_grid, rf_tenor_grid }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (as_of !== undefined) query.as_of = as_of;
+        if (periods !== undefined) query.periods = periods;
+        if (erp !== undefined) query.erp = erp;
+        if (tax_rate !== undefined) query.tax_rate = tax_rate;
+        if (rf_tenor !== undefined) query.rf_tenor = rf_tenor;
+        if (grid !== undefined) query.grid = grid;
+        if (erp_grid !== undefined) query.erp_grid = erp_grid;
+        if (rf_tenor_grid !== undefined) query.rf_tenor_grid = rf_tenor_grid;
+        return textResult(
+          await sdk.call("GET", `/fundamentals/${encodeURIComponent(ticker.trim().toUpperCase())}`, { query }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "riskmodels_screen_rankings",
     {
       title: "RiskModels Rankings Screen",

@@ -239,6 +239,7 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_search_filers",
       "riskmodels_search_etfs",
       "riskmodels_get_rankings",
+      "riskmodels_get_fundamentals",
       "riskmodels_screen_rankings",
       "riskmodels_get_macro_correlation",
       "riskmodels_get_residual_signal",

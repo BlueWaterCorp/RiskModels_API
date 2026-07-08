@@ -72,6 +72,24 @@ class _ScopedBuilder:
     def chain(self, *stages: ChainStage) -> _ChainBuilder:
         return _ChainBuilder(self._subject, dict(self._scope), list(stages))
 
+    def with_fundamentals(
+        self,
+        *,
+        erp: float | None = None,
+        tax_rate: float | None = None,
+        rf_tenor: str | None = None,
+        periods: int | None = None,
+    ) -> _ChainBuilder:
+        """Start a chain with PIT quarterly fundamentals context (H.89.6).
+
+        Shorthand for ``.chain(fundamentals(...))``. Compiles to
+        ``client.get_fundamentals(..., as_dataframe=True)``; the result rides
+        :func:`riskmodels.llm.to_llm_context` like any other SDK DataFrame.
+        """
+        return self.chain(
+            fundamentals(erp=erp, tax_rate=tax_rate, rf_tenor=rf_tenor, periods=periods)
+        )
+
     def return_attribution(
         self,
         *,
@@ -159,6 +177,24 @@ class _ChainBuilder:
         self._intent_val = value
         return self
 
+    def with_fundamentals(
+        self,
+        *,
+        erp: float | None = None,
+        tax_rate: float | None = None,
+        rf_tenor: str | None = None,
+        periods: int | None = None,
+    ) -> _ChainBuilder:
+        """Append PIT quarterly fundamentals context onto an existing chain (H.89.6).
+
+        E.g. ``.chain(analyze(lens="exposure", ...)).with_fundamentals()`` fetches
+        both the exposure snapshot and fundamentals in one compiled plan.
+        """
+        self._stages.append(
+            fundamentals(erp=erp, tax_rate=tax_rate, rf_tenor=rf_tenor, periods=periods)
+        )
+        return self
+
     def _finalize(self, mode: OutputMode) -> AOMChainRequest:
         req: AOMChainRequest = {
             "subject": self._subject,
@@ -224,4 +260,24 @@ def hedge_action(*, depends_on: str | None = "previous") -> ChainStage:
     out: dict[str, Any] = {"kind": "hedge_action"}
     if depends_on is not None:
         out["depends_on"] = depends_on  # type: ignore[assignment]
+    return out  # type: ignore[return-value]
+
+
+def fundamentals(
+    *,
+    erp: float | None = None,
+    tax_rate: float | None = None,
+    rf_tenor: str | None = None,
+    periods: int | None = None,
+) -> ChainStage:
+    """Chain-stage factory backing ``.with_fundamentals()`` (H.89.6)."""
+    out: dict[str, Any] = {"kind": "fundamentals"}
+    if erp is not None:
+        out["erp"] = erp
+    if tax_rate is not None:
+        out["tax_rate"] = tax_rate
+    if rf_tenor is not None:
+        out["rf_tenor"] = rf_tenor
+    if periods is not None:
+        out["periods"] = periods
     return out  # type: ignore[return-value]

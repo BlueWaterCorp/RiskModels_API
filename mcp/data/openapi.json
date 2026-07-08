@@ -1030,6 +1030,11 @@
               }
             }
           },
+          "sensitivity_grid": {
+            "$ref": "#/components/schemas/FundamentalsSensitivityGrid",
+            "nullable": true,
+            "description": "Present only when the request set `grid=true`. Null (with a `note`) when no PIT-visible period exists at `as_of`.\n"
+          },
           "disclosures": {
             "type": "object",
             "additionalProperties": true,
@@ -1038,6 +1043,75 @@
           "_metadata": {
             "type": "object",
             "additionalProperties": true
+          }
+        }
+      },
+      "FundamentalsSensitivityGrid": {
+        "type": "object",
+        "description": "Cost-of-capital sensitivity grid for the latest PIT-visible period only — `cost_of_equity` / `wacc` / `economic_profit` recomputed across every combination of `erp_values` x `rf_tenor_values`. Pure derived analytics (same fields as `FundamentalsRow`'s cost-of-capital layer), just parameterized instead of single-valued. `cells` is row-major: `cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]`.\n",
+        "required": [
+          "period_end_date",
+          "erp_values",
+          "rf_tenor_values",
+          "tax_rate",
+          "cells"
+        ],
+        "properties": {
+          "period_end_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "filed_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "erp_values": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "rf_tenor_values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "3m",
+                "1y",
+                "2y",
+                "5y",
+                "10y",
+                "30y"
+              ]
+            }
+          },
+          "tax_rate": {
+            "type": "number"
+          },
+          "cells": {
+            "type": "array",
+            "description": "Row-major [erp_values.length][rf_tenor_values.length].",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "cost_of_equity": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "wacc": {
+                    "type": "number",
+                    "nullable": true
+                  },
+                  "economic_profit": {
+                    "type": "number",
+                    "nullable": true
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -5480,7 +5554,7 @@
     "/fundamentals/{ticker}": {
       "get": {
         "summary": "Point-in-time quarterly fundamentals (derived analytics only)",
-        "description": "Quarterly fundamentals for a single ticker, point-in-time filtered: a row is visible if and only if its `filed_date` is on or before `as_of` (never \"latest\"). `filed_date_source` is `exact` (vendor filing date) or `approx` (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).\n\n**Derived analytics only.** Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are not redistributable and are never included. Rows carry TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), `leverage_ratio`, ERM3 cascade betas with provenance (`beta_market` / `beta_sector` / `beta_subsector` / `beta_source`), and the cost-of-capital layer (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`). `gross_margin` and `operating_margin` are currently always null (inputs not yet in the store). `market_cap` is a current snapshot, not point-in-time per quarter.\n\n**Disclosures (also returned in every response body):**\n- Realized historical data only. No forecasts, no analyst targets, no buy/sell\n  signals.\n\n- Coverage starts ~2009 for most filers; pre-2009 and small-cap or\n  recently-IPO'd names are thin. Missing fields are null.\n\n- `beta_market` is a short-half-life conditional market beta, not a textbook\n  long-run CAPM beta; for defensive names `cost_of_equity` can fall below the\n  risk-free rate. That is a property of the conditional beta, not an error.\n\n- WACC uses BOOK-value weights. Market-value weights are the textbook\n  convention; compute them yourself if you have market-cap access.\n\n- TTM sums flows over the trailing 4 reported quarters; stock quantities are\n  point-in-time (ROE denominator uses trailing-4-quarter average equity).\n  Ratios need 4 finite quarters or they are null.\n\n- `erp` (default 0.05) and `tax_rate` (default 0.21) are always\n  caller-supplied parameters, echoed in the response; no equity-risk-premium\n  opinion is stored.\n\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n\nPer-symbol, per-call only: no batch variant, no CSV/bulk export (JSON only).\n",
+        "description": "Quarterly fundamentals for a single ticker, point-in-time filtered: a row is visible if and only if its `filed_date` is on or before `as_of` (never \"latest\"). `filed_date_source` is `exact` (vendor filing date) or `approx` (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).\n\n**Derived analytics only.** Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are not redistributable and are never included. Rows carry TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), `leverage_ratio`, ERM3 cascade betas with provenance (`beta_market` / `beta_sector` / `beta_subsector` / `beta_source`), and the cost-of-capital layer (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`). `gross_margin` and `operating_margin` are currently always null (inputs not yet in the store). `market_cap` is a current snapshot, not point-in-time per quarter.\n\n**Disclosures (also returned in every response body):**\n- Realized historical data only. No forecasts, no analyst targets, no buy/sell\n  signals.\n\n- Coverage starts ~2009 for most filers; pre-2009 and small-cap or\n  recently-IPO'd names are thin. Missing fields are null.\n\n- `beta_market` is a short-half-life conditional market beta, not a textbook\n  long-run CAPM beta; for defensive names `cost_of_equity` can fall below the\n  risk-free rate. That is a property of the conditional beta, not an error.\n\n- WACC uses BOOK-value weights. Market-value weights are the textbook\n  convention; compute them yourself if you have market-cap access.\n\n- TTM sums flows over the trailing 4 reported quarters; stock quantities are\n  point-in-time (ROE denominator uses trailing-4-quarter average equity).\n  Ratios need 4 finite quarters or they are null.\n\n- `erp` (default 0.05) and `tax_rate` (default 0.21) are always\n  caller-supplied parameters, echoed in the response; no equity-risk-premium\n  opinion is stored.\n\n- `rf_rate` is the Treasury constant-maturity yield at the selected\n  `rf_tenor` (3m|1y|2y|5y|10y|30y, default 10y — the valuation convention),\n  sampled at the last observation on or before each quarter's period end.\n  A short tenor should be paired with a bill-basis ERP or cost of capital\n  is understated.\n\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n\nPer-symbol, per-call only: no batch variant, no CSV/bulk export (JSON only).\n",
         "operationId": "getFundamentals",
         "tags": [
           "Fundamentals"
@@ -5567,10 +5641,47 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["3m", "1y", "2y", "5y", "10y", "30y"],
+              "enum": [
+                "3m",
+                "1y",
+                "2y",
+                "5y",
+                "10y",
+                "30y"
+              ],
               "default": "10y"
             },
             "description": "Treasury constant-maturity tenor backing rf_rate. Default 10y (valuation convention). Pair a short tenor with a bill-basis ERP or cost of capital is understated."
+          },
+          {
+            "name": "grid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, the response also carries `sensitivity_grid` — `cost_of_equity` / `wacc` / `economic_profit` across `erp_grid` x `rf_tenor_grid` for the latest PIT-visible period only (not a time series — a \"what if my assumptions were different today\" table). Same billing as the base call; no extra cost."
+          },
+          {
+            "name": "erp_grid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated ERP values for the sensitivity grid (1-10 values, each in [0, 0.5]), e.g. `0.03,0.04,0.05,0.06,0.07`. Ignored unless `grid=true`. Default: `0.03,0.04,0.05,0.06,0.07`.",
+            "example": "0.03,0.04,0.05,0.06,0.07"
+          },
+          {
+            "name": "rf_tenor_grid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated subset of `3m,1y,2y,5y,10y,30y` for the sensitivity grid. Ignored unless `grid=true`. Default: all six tenors.",
+            "example": "1y,10y,30y"
           }
         ],
         "responses": {
@@ -11434,7 +11545,7 @@
             "description": "Upstream AI provider error."
           },
           "503": {
-            "description": "Chat not configured (e.g. missing OPENAI_API_KEY)."
+            "description": "Chat not configured (e.g. missing MOONSHOT_API_KEY)."
           }
         }
       }
