@@ -15,6 +15,19 @@ export function upstreamBase(): string {
 }
 
 /**
+ * Portal base, e.g. https://riskmodels.net. No trailing slash. Used only by
+ * the key->portfolio bridge (GET /api/positions) — the one cross-service call
+ * this adapter makes outside the public RiskModels API, since ConnectTrade/
+ * Plaid-synced positions live in the portal's Supabase, not here.
+ */
+export function portalBase(): string {
+  return (process.env.RISKMODELS_NET_URL || "https://riskmodels.net").replace(
+    /\/+$/,
+    "",
+  );
+}
+
+/**
  * The OpenBB user pastes their `rm_agent_live_*` key into the Workspace
  * "Add data" auth UI as an `X-API-KEY` header. We forward it as a standard
  * Bearer token. Returns null when absent so callers can 401 cleanly.

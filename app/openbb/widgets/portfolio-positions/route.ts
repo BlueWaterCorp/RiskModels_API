@@ -2,14 +2,19 @@
  * Live widget: per-position portfolio breakdown → OpenBB table.
  *
  * GET /openbb/widgets/portfolio-positions?positions=AAPL:0.4,MSFT:0.35,NVDA:0.25
- * Same positions string as the portfolio widget; one row per name with its
- * weight, L3 explained-risk split, and L3 hedge ratios.
+ * GET /openbb/widgets/portfolio-positions?source=synced
+ * Same `positions`/`source` contract as the portfolio widget (E.23 B.6); one
+ * row per name with its weight, L3 explained-risk split, and L3 hedge ratios.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { noKeyRows } from "../../_lib/connect-probe";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest } from "../../_lib/upstream";
-import { parsePositions, fetchPortfolioSnapshot } from "../../_lib/portfolio";
+import {
+  parsePositions,
+  fetchPortfolioSnapshot,
+  fetchSyncedPositions,
+} from "../../_lib/portfolio";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,12 +26,34 @@ const num = (x: unknown): string =>
 
 export async function GET(req: NextRequest) {
   const cors = openbbCors(req);
-  const positions = parsePositions(
-    req.nextUrl.searchParams.get("positions") || "AAPL:0.4, MSFT:0.35, NVDA:0.25",
-  );
+  const useSynced = req.nextUrl.searchParams.get("source") === "synced";
 
   const key = bearerFromRequest(req);
   if (!key) return NextResponse.json(noKeyRows(), { headers: cors });
+
+  let positions;
+  let excluded: Array<{ ticker: string; weight: number }> = [];
+  if (useSynced) {
+    const synced = await fetchSyncedPositions(key);
+    if (!synced) {
+      return NextResponse.json(
+        [
+          {
+            status:
+              "No synced positions found — connect a broker via ConnectTrade at riskmodels.net/settings, or switch Source to Manual entry.",
+          },
+        ],
+        { headers: cors },
+      );
+    }
+    positions = synced.positions;
+    excluded = synced.excluded;
+  } else {
+    positions = parsePositions(
+      req.nextUrl.searchParams.get("positions") || "AAPL:0.4, MSFT:0.35, NVDA:0.25",
+    );
+  }
+
   if (!positions.length) {
     return NextResponse.json(
       [{ status: "Enter positions, e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25" }],
@@ -60,6 +87,19 @@ export async function GET(req: NextRequest) {
         sub_hr: num(r.l3_sub_hr),
       };
     });
+
+  // Shorts excluded upstream (risk-snapshot requires positive weight) — shown, not dropped without a trace.
+  for (const e of excluded) {
+    rows.push({
+      ticker: e.ticker,
+      weight: "excluded (short)",
+      market_er: "—",
+      residual_er: "—",
+      mkt_hr: "—",
+      sec_hr: "—",
+      sub_hr: "—",
+    });
+  }
 
   return NextResponse.json(rows, { headers: cors });
 }

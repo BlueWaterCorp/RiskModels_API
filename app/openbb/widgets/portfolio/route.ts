@@ -2,15 +2,23 @@
  * Live widget: portfolio risk + L1/L2/L3 hedge layering → OpenBB table.
  *
  * GET /openbb/widgets/portfolio?positions=AAPL:0.4,MSFT:0.35,NVDA:0.25
- * Parses the positions string, POSTs to /portfolio/risk-snapshot, and maps the
- * portfolio-level L3 decomposition + the hedge-layering ladder (L1 SPY-only →
- * L2 +sector → L3 +subsector, with residual left at each layer). Nulls → "—".
+ * GET /openbb/widgets/portfolio?source=synced
+ * Resolves positions either from the hand-typed `positions` string or (when
+ * `source=synced`) from the user's real ConnectTrade/Plaid holdings via the
+ * portal bridge (E.23 B.6, `_lib/portfolio.ts#fetchSyncedPositions`). Either
+ * way, POSTs to /portfolio/risk-snapshot and maps the portfolio-level L3
+ * decomposition + the hedge-layering ladder (L1 SPY-only → L2 +sector → L3
+ * +subsector, with residual left at each layer). Nulls → "—".
  */
 import { NextRequest, NextResponse } from "next/server";
 import { noKeyRows } from "../../_lib/connect-probe";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest } from "../../_lib/upstream";
-import { parsePositions, fetchPortfolioSnapshot } from "../../_lib/portfolio";
+import {
+  parsePositions,
+  fetchPortfolioSnapshot,
+  fetchSyncedPositions,
+} from "../../_lib/portfolio";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,12 +31,36 @@ const num = (x: unknown): string =>
 
 export async function GET(req: NextRequest) {
   const cors = openbbCors(req);
-  const positions = parsePositions(
-    req.nextUrl.searchParams.get("positions") || "AAPL:0.4, MSFT:0.35, NVDA:0.25",
-  );
+  const useSynced = req.nextUrl.searchParams.get("source") === "synced";
 
   const key = bearerFromRequest(req);
   if (!key) return NextResponse.json(noKeyRows(), { headers: cors });
+
+  let positions;
+  let excludedNote: string | null = null;
+  if (useSynced) {
+    const synced = await fetchSyncedPositions(key);
+    if (!synced) {
+      return NextResponse.json(
+        [
+          {
+            status:
+              "No synced positions found — connect a broker via ConnectTrade at riskmodels.net/settings, or switch Source to Manual entry.",
+          },
+        ],
+        { headers: cors },
+      );
+    }
+    positions = synced.positions;
+    if (synced.excluded.length) {
+      excludedNote = `${synced.excluded.length} short position(s) excluded — /portfolio/risk-snapshot requires positive weights: ${synced.excluded.map((e) => e.ticker).join(", ")}`;
+    }
+  } else {
+    positions = parsePositions(
+      req.nextUrl.searchParams.get("positions") || "AAPL:0.4, MSFT:0.35, NVDA:0.25",
+    );
+  }
+
   if (!positions.length) {
     return NextResponse.json(
       [{ status: "Enter positions, e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25" }],
@@ -80,6 +112,7 @@ export async function GET(req: NextRequest) {
     { metric: "L3 — Subsector HR", value: num(L("L3").subsector_hr) },
     { metric: "L3 — residual left (%)", value: pct(L("L3").residual_er) },
   ];
+  if (excludedNote) rows.push({ metric: "Note", value: excludedNote });
 
   return NextResponse.json(rows, { headers: cors });
 }

@@ -22,6 +22,7 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/metrics",
     gridData: { w: 20, h: 12 },
+    refetchInterval: 60000,
     params: [
       {
         paramName: "ticker",
@@ -50,6 +51,7 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/snapshot-table",
     gridData: { w: 20, h: 14 },
+    refetchInterval: 60000,
     params: [
       {
         paramName: "ticker",
@@ -105,7 +107,17 @@ const WIDGETS = {
         showAll: false,
         columnsDefs: [
           { headerName: "Date", field: "date", chartDataType: "category" },
-          { headerName: "Total return (indexed to 100)", field: "indexed_return" },
+          {
+            headerName: "Total return (indexed to 100)",
+            field: "indexed_return",
+            renderFn: "columnColor",
+            renderFnParams: {
+              colorRules: [
+                { condition: "gt", value: 100, color: "green" },
+                { condition: "lt", value: 100, color: "red" },
+              ],
+            },
+          },
         ],
       },
     },
@@ -154,6 +166,248 @@ const WIDGETS = {
       },
     },
   },
+  rm_etf_factor_returns: {
+    name: "RiskModels — Factor ETF Trailing Returns",
+    description:
+      "Trailing 1d/21d/63d/252d total returns for SPY + the 11 GICS sector SPDR ETFs, as of the latest snapshot (one-teo, cross-sectional).",
+    category: "Risk",
+    source: ["RiskModels API"],
+    endpoint: "widgets/etf-factor-returns",
+    gridData: { w: 40, h: 12 },
+    refetchInterval: 60000,
+    params: [
+      {
+        paramName: "sleeve",
+        value: "all",
+        label: "Sleeve",
+        type: "text",
+        description: "Filter to market (SPY) or sector SPDRs, or show all.",
+        options: [
+          { value: "all", label: "All" },
+          { value: "market", label: "Market" },
+          { value: "sector", label: "Sector" },
+        ],
+      },
+    ],
+    data: {
+      table: {
+        chartView: { enabled: true, chartType: "bar" },
+        showAll: true,
+        columnsDefs: [
+          { headerName: "Ticker", field: "ticker", chartDataType: "category" },
+          { headerName: "Name", field: "name" },
+          {
+            headerName: "1D %",
+            field: "return_1d",
+            renderFn: "columnColor",
+            renderFnParams: {
+              colorRules: [
+                { condition: "gt", value: 0, color: "green" },
+                { condition: "lt", value: 0, color: "red" },
+              ],
+            },
+          },
+          {
+            headerName: "21D %",
+            field: "return_21d",
+            renderFn: "columnColor",
+            renderFnParams: {
+              colorRules: [
+                { condition: "gt", value: 0, color: "green" },
+                { condition: "lt", value: 0, color: "red" },
+              ],
+            },
+          },
+          {
+            headerName: "63D %",
+            field: "return_63d",
+            renderFn: "columnColor",
+            renderFnParams: {
+              colorRules: [
+                { condition: "gt", value: 0, color: "green" },
+                { condition: "lt", value: 0, color: "red" },
+              ],
+            },
+          },
+          {
+            headerName: "252D %",
+            field: "return_252d",
+            renderFn: "columnColor",
+            renderFnParams: {
+              colorRules: [
+                { condition: "gt", value: 0, color: "green" },
+                { condition: "lt", value: 0, color: "red" },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  },
+  rm_tearsheet: {
+    name: "RiskModels — Risk Snapshot Tearsheet",
+    description:
+      "Single-name institutional risk-snapshot PDF, rendered via OpenBB's multi_file_viewer widget (retry of the pdf widget type, which failed to render in OpenBB's pdf.js viewer — see #194).",
+    category: "Risk",
+    type: "multi_file_viewer",
+    source: ["RiskModels API"],
+    endpoint: "widgets/tearsheet",
+    gridData: { w: 24, h: 18 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "AAPL",
+        label: "Ticker",
+        type: "text",
+        description: "US equity ticker (e.g. AAPL, NVDA, BRK.B).",
+      },
+      {
+        paramName: "file",
+        value: ["risk_snapshot"],
+        label: "Document",
+        type: "endpoint",
+        optionsEndpoint: "widgets/tearsheet-options",
+        optionsParams: { ticker: "$ticker" },
+        multiSelect: true,
+        roles: ["fileSelector"],
+        show: false,
+      },
+    ],
+  },
+  rm_etf_holdings: {
+    name: "RiskModels — ETF Holdings",
+    description:
+      "Top-N current holdings of an ETF from its canonical PortfolioSurface (Funds Data Plane). Holdings carry bw_sym_id (no public ticker resolution exists for this identifier) plus weight and market value.",
+    category: "Risk",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/etf-holdings",
+    gridData: { w: 24, h: 14 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "IVV",
+        label: "ETF ticker",
+        type: "text",
+        description: "ETF ticker (e.g. IVV, SPY, QQQ).",
+      },
+      {
+        paramName: "top",
+        value: "25",
+        label: "Top N",
+        type: "text",
+        description: "Number of holdings to return.",
+        options: [
+          { value: "10", label: "10" },
+          { value: "25", label: "25" },
+          { value: "50", label: "50" },
+          { value: "100", label: "100" },
+        ],
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "bw_sym_id", headerName: "Symbol (bw_sym_id)" },
+          { field: "weight_pct", headerName: "Weight %" },
+          { field: "adj_mv", headerName: "Market value" },
+          { field: "sponsor", headerName: "Sponsor" },
+          { field: "report_date", headerName: "Report date" },
+        ],
+      },
+    },
+  },
+  rm_filer_holdings: {
+    name: "RiskModels — 13F Filer Holdings",
+    description:
+      "Top-N holdings at a 13F filer's latest reported quarter, with ticker/name and latest L3 explained-risk shares (best-effort enrichment). Look up bw_filer_id via /13f/filers/search first.",
+    category: "Risk",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/filer-holdings",
+    gridData: { w: 24, h: 14 },
+    params: [
+      {
+        paramName: "bw_filer_id",
+        value: "",
+        label: "Filer ID",
+        type: "text",
+        description: "Opaque bw_filer_id — look one up via /13f/filers/search.",
+      },
+      {
+        paramName: "limit",
+        value: "25",
+        label: "Limit",
+        type: "text",
+        description: "Number of holdings to return.",
+        options: [
+          { value: "10", label: "10" },
+          { value: "25", label: "25" },
+          { value: "50", label: "50" },
+          { value: "100", label: "100" },
+        ],
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "ticker", headerName: "Ticker" },
+          { field: "name", headerName: "Name" },
+          { field: "weight_pct", headerName: "Weight %" },
+          { field: "adj_mv", headerName: "Market value" },
+          { field: "market_er_pct", headerName: "Market ER %" },
+          { field: "residual_er_pct", headerName: "Residual ER %" },
+        ],
+      },
+    },
+  },
+  rm_universe_members: {
+    name: "RiskModels — Universe Members",
+    description:
+      "Active members of a named universe (universe mask AND daily validity gate) at one trading day, latest by default.",
+    category: "Risk",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/universe-members",
+    gridData: { w: 20, h: 16 },
+    params: [
+      {
+        paramName: "universe",
+        value: "uni_mc_3000",
+        label: "Universe",
+        type: "text",
+        description: "Universe label from the KNOWN_UNIVERSES registry.",
+        options: [
+          { value: "uni_mc_50", label: "Market cap top 50" },
+          { value: "uni_mc_500", label: "Market cap top 500" },
+          { value: "uni_mc_1000", label: "Market cap top 1000" },
+          { value: "uni_mc_3000", label: "Market cap top 3000" },
+          { value: "uni_dv_50", label: "Dollar-volume top 50" },
+          { value: "uni_dv_500", label: "Dollar-volume top 500" },
+          { value: "uni_dv_1000", label: "Dollar-volume top 1000" },
+          { value: "uni_dv_3000", label: "Dollar-volume top 3000" },
+        ],
+      },
+      {
+        paramName: "teo",
+        value: "",
+        label: "As-of date",
+        type: "date",
+        description: "Observation date (default: latest teo).",
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "ticker", headerName: "Ticker" },
+          { field: "symbol", headerName: "Symbol" },
+        ],
+      },
+    },
+  },
   rm_rankings_top: {
     name: "RiskModels — Top Rankings",
     description:
@@ -163,6 +417,7 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/rankings-top",
     gridData: { w: 24, h: 14 },
+    refetchInterval: 300000,
     params: [
       {
         paramName: "metric",
@@ -241,6 +496,7 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/rankings",
     gridData: { w: 24, h: 14 },
+    refetchInterval: 300000,
     params: [
       {
         paramName: "ticker",
@@ -273,14 +529,26 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/portfolio",
     gridData: { w: 24, h: 16 },
+    refetchInterval: 60000,
     params: [
+      {
+        paramName: "source",
+        value: "manual",
+        label: "Source",
+        type: "text",
+        description: "Manual entry, or your real ConnectTrade/Plaid-synced positions.",
+        options: [
+          { value: "manual", label: "Manual entry" },
+          { value: "synced", label: "My synced positions (ConnectTrade/Plaid)" },
+        ],
+      },
       {
         paramName: "positions",
         value: "AAPL:0.4, MSFT:0.35, NVDA:0.25",
         label: "Positions",
         type: "text",
         description:
-          "Comma-separated ticker:weight (e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25). Weights auto-normalise; bare tickers = equal weight.",
+          "Comma-separated ticker:weight (e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25). Weights auto-normalise; bare tickers = equal weight. Ignored when Source is set to synced.",
       },
     ],
     data: {
@@ -302,13 +570,25 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/portfolio-positions",
     gridData: { w: 24, h: 14 },
+    refetchInterval: 60000,
     params: [
+      {
+        paramName: "source",
+        value: "manual",
+        label: "Source",
+        type: "text",
+        description: "Manual entry, or your real ConnectTrade/Plaid-synced positions.",
+        options: [
+          { value: "manual", label: "Manual entry" },
+          { value: "synced", label: "My synced positions (ConnectTrade/Plaid)" },
+        ],
+      },
       {
         paramName: "positions",
         value: "AAPL:0.4, MSFT:0.35, NVDA:0.25",
         label: "Positions",
         type: "text",
-        description: "Comma-separated ticker:weight.",
+        description: "Comma-separated ticker:weight. Ignored when Source is set to synced.",
       },
     ],
     data: {
