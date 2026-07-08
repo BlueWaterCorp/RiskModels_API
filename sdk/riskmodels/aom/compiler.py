@@ -54,10 +54,12 @@ def validate_aom(req: AOMRequest) -> None:
             )
         for i, stage in enumerate(chain):
             k = stage.get("kind")
-            if k not in ("analyze", "hedge_action"):
+            if k not in ("analyze", "hedge_action", "fundamentals"):
                 raise RiskModelsValidationError(
-                    f"Invalid chain stage at index {i}: kind must be 'analyze' or 'hedge_action'.",
-                    fix='Use analyze(lens=...) or hedge_action(depends_on="previous").',
+                    f"Invalid chain stage at index {i}: kind must be "
+                    "'analyze', 'hedge_action', or 'fundamentals'.",
+                    fix='Use analyze(lens=...), hedge_action(depends_on="previous"), '
+                    "or fundamentals().",
                 )
             if k == "analyze":
                 if not stage.get("lens"):
@@ -430,6 +432,19 @@ def _compile_chain(req: AOMChainRequest) -> ExecutionPlanV1:
                     client_method="decompose",
                     kwargs={"ticker": ticker, "as_dataframe": False},
                     chain_stage_index=i,
+                )
+            )
+        elif sk == "fundamentals":
+            kwargs: dict[str, Any] = {"ticker": ticker, "as_dataframe": True}
+            for opt_key in ("erp", "tax_rate", "rf_tenor", "periods"):
+                if stage.get(opt_key) is not None:
+                    kwargs[opt_key] = stage[opt_key]
+            steps_list.append(
+                RestFetchStep(
+                    step_id=nid(),
+                    client_method="get_fundamentals",
+                    kwargs=kwargs,
+                    binding={"ticker": ticker, "kind": "fundamentals", "chain_stage_index": i},
                 )
             )
 

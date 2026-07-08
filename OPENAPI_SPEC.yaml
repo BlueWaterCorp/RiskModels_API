@@ -960,6 +960,12 @@ components:
               example: current_snapshot
             note:
               type: string
+        sensitivity_grid:
+          $ref: "#/components/schemas/FundamentalsSensitivityGrid"
+          nullable: true
+          description: >
+            Present only when the request set `grid=true`. Null (with a
+            `note`) when no PIT-visible period exists at `as_of`.
         disclosures:
           type: object
           additionalProperties: true
@@ -970,6 +976,51 @@ components:
         _metadata:
           type: object
           additionalProperties: true
+
+    FundamentalsSensitivityGrid:
+      type: object
+      description: >
+        Cost-of-capital sensitivity grid for the latest PIT-visible period
+        only — `cost_of_equity` / `wacc` / `economic_profit` recomputed
+        across every combination of `erp_values` x `rf_tenor_values`. Pure
+        derived analytics (same fields as `FundamentalsRow`'s cost-of-capital
+        layer), just parameterized instead of single-valued. `cells` is
+        row-major: `cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]`.
+      required:
+        - period_end_date
+        - erp_values
+        - rf_tenor_values
+        - tax_rate
+        - cells
+      properties:
+        period_end_date:
+          type: string
+          format: date
+        filed_date:
+          type: string
+          format: date
+          nullable: true
+        erp_values:
+          type: array
+          items: { type: number }
+        rf_tenor_values:
+          type: array
+          items:
+            type: string
+            enum: [3m, 1y, 2y, 5y, 10y, 30y]
+        tax_rate:
+          type: number
+        cells:
+          type: array
+          description: Row-major [erp_values.length][rf_tenor_values.length].
+          items:
+            type: array
+            items:
+              type: object
+              properties:
+                cost_of_equity: { type: number, nullable: true }
+                wacc: { type: number, nullable: true }
+                economic_profit: { type: number, nullable: true }
 
     MetricsSnapshotResponse:
       type: object
@@ -4019,6 +4070,38 @@ paths:
             Treasury constant-maturity tenor backing rf_rate. Default 10y (valuation
             convention). Pair a short tenor with a bill-basis ERP or cost of capital
             is understated.
+        - name: grid
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            When true, the response also carries `sensitivity_grid` —
+            `cost_of_equity` / `wacc` / `economic_profit` across `erp_grid` x
+            `rf_tenor_grid` for the latest PIT-visible period only (not a time
+            series — a "what if my assumptions were different today" table).
+            Same billing as the base call; no extra cost.
+        - name: erp_grid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Comma-separated ERP values for the sensitivity grid (1-10 values,
+            each in [0, 0.5]), e.g. `0.03,0.04,0.05,0.06,0.07`. Ignored unless
+            `grid=true`. Default: `0.03,0.04,0.05,0.06,0.07`.
+          example: "0.03,0.04,0.05,0.06,0.07"
+        - name: rf_tenor_grid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Comma-separated subset of `3m,1y,2y,5y,10y,30y` for the
+            sensitivity grid. Ignored unless `grid=true`. Default: all six
+            tenors.
+          example: "1y,10y,30y"
       responses:
         "200":
           description: PIT quarterly fundamentals rows (derived analytics only).

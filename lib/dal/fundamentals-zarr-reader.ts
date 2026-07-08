@@ -323,6 +323,82 @@ export function buildFundamentalsRows(
   return out;
 }
 
+// ── Sensitivity grid (H.89.6) — erp × rf_tenor cost-of-capital grid ─────────
+
+/** Canonical erp grid: brackets the 0.05 suggested default without editorializing. */
+export const DEFAULT_ERP_GRID: readonly number[] = [0.03, 0.04, 0.05, 0.06, 0.07];
+
+export interface SensitivityGridCell {
+  cost_of_equity: number | null;
+  wacc: number | null;
+  economic_profit: number | null;
+}
+
+export interface SensitivityGrid {
+  period_end_date: string;
+  filed_date: string | null;
+  erp_values: number[];
+  rf_tenor_values: RfTenor[];
+  tax_rate: number;
+  /** [erp_idx][tenor_idx], row-major over erp_values × rf_tenor_values. */
+  cells: SensitivityGridCell[][];
+}
+
+/**
+ * Cost-of-capital sensitivity grid for the latest PIT-visible period only
+ * (grid across all historical periods would be unbounded cost for no
+ * incremental use case — sensitivity is a "what if my assumptions were
+ * different today" tool, not a time series). Reuses the same TTM window
+ * inputs as `buildFundamentalsRows`'s last row and the already-loaded
+ * `rfCurve` strip (all six tenors are read into the pack regardless of the
+ * caller's single-row `rf_tenor`, so this is pure computation — no extra I/O).
+ * Returns null when no PIT-visible period exists.
+ */
+export function buildSensitivityGrid(
+  pack: FundamentalsRowPack,
+  opts: {
+    asOf: string;
+    erpGrid: readonly number[];
+    rfTenorGrid: readonly RfTenor[];
+    taxRate: number;
+  },
+): SensitivityGrid | null {
+  const visible = selectPitIndices(pack, opts.asOf);
+  if (visible.length === 0) return null;
+  const p = visible.length - 1;
+  const i = visible[p]!;
+  const windowPos = visible.slice(Math.max(0, p - (TTM_WINDOW_QUARTERS - 1)), p + 1);
+  const windowVals = (name: PackVar, positions: number[]): (number | null)[] =>
+    positions.map((pos) => pack.vars[name][pos] ?? null);
+
+  const niTtm = ttmSum(windowVals("net_income", windowPos));
+  const ieTtm = ttmSum(windowVals("interest_expense", windowPos));
+  const eqAvg = ttmAvg(windowVals("total_equity", windowPos));
+  const eqLast = latestFinite(windowVals("total_equity", windowPos));
+  const debtLast = latestFinite(windowVals("total_debt", windowPos));
+  const bm = pack.vars.beta_market[i] ?? NaN;
+
+  const cells: SensitivityGridCell[][] = opts.erpGrid.map((erp) =>
+    opts.rfTenorGrid.map((tenor) => {
+      const rf = pack.rfCurve[tenor]?.[i] ?? NaN;
+      return {
+        cost_of_equity: toNull(costOfEquity(rf, bm, erp)),
+        wacc: toNull(waccBookWeights(rf, bm, ieTtm, eqLast, debtLast, opts.taxRate, erp)),
+        economic_profit: toNull(economicProfit(niTtm, eqAvg, eqLast, rf, bm, erp)),
+      };
+    }),
+  );
+
+  return {
+    period_end_date: pack.periodEndDates[i]!,
+    filed_date: pack.filedDates[i] ?? null,
+    erp_values: [...opts.erpGrid],
+    rf_tenor_values: [...opts.rfTenorGrid],
+    tax_rate: opts.taxRate,
+    cells,
+  };
+}
+
 // ── GCS plumbing (per-store, mirroring lib/dal/funds-zarr-reader.ts) ────────
 
 let _storage: Storage | null = null;
@@ -627,4 +703,17 @@ export async function getFundamentalsForTicker(
   const pack = await readRowPackCached(ticker);
   if (!pack) return null;
   return { ticker: pack.ticker, rows: buildFundamentalsRows(pack, opts) };
+}
+
+/**
+ * Sensitivity-grid entry point — same cached row pack as `getFundamentalsForTicker`
+ * (Redis-cached, so calling both for one request costs a single cold read).
+ */
+export async function getFundamentalsSensitivityGrid(
+  ticker: string,
+  opts: { asOf: string; erpGrid: readonly number[]; rfTenorGrid: readonly RfTenor[]; taxRate: number },
+): Promise<SensitivityGrid | null> {
+  const pack = await readRowPackCached(ticker);
+  if (!pack) return null;
+  return buildSensitivityGrid(pack, opts);
 }

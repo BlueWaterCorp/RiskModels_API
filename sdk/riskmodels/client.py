@@ -54,6 +54,13 @@ import pandas as pd
 
 from .auth import OAuthClientCredentialsAuth, StaticBearerAuth
 from .capabilities import DISCOVER_SPEC, discover_markdown
+from .fundamentals import (
+    RfTenor,
+    attach_fundamentals_metadata,
+    estimate_next_earnings,
+    fundamentals_json_to_dataframe,
+    sensitivity_grid_json_to_dataframe,
+)
 from .legends import COMBINED_ERM3_MACRO_LEGEND, SHORT_MACRO_SERIES_LEGEND, SHORT_RANKINGS_LEGEND
 from .lineage import RiskLineage
 from .mapping import TICKER_RETURNS_COLUMN_RENAME, extract_hedge_levels
@@ -2470,6 +2477,165 @@ class RiskModelsClient:
         if path is not None:
             Path(path).write_bytes(pdf)
         return pdf
+
+    def get_fundamentals(
+        self,
+        ticker: str,
+        *,
+        as_of: str | None = None,
+        periods: int = 8,
+        erp: float = 0.05,
+        tax_rate: float = 0.21,
+        rf_tenor: RfTenor = "10y",
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """PIT quarterly fundamentals — derived analytics only (H.89.5, ``$0.005``).
+
+        Calls ``GET /fundamentals/{ticker}``. Rows carry TTM profitability
+        ratios (``roe_ttm``, ``roa_ttm``, ``fcf_margin``), ``leverage_ratio``,
+        ERM3 cascade betas with provenance, and the cost-of-capital layer
+        (``cost_of_equity``, ``cost_of_debt``, ``wacc``, ``economic_profit``).
+        Raw vendor line items (revenue, net income, EPS, balance-sheet
+        levels) are never included — see the API's
+        ``lib/api/fundamentals-contract.ts`` allowlist.
+
+        PIT: a row is visible iff its ``filed_date`` is on or before
+        ``as_of``. Never "latest".
+
+        Args:
+            ticker: Stock ticker symbol.
+            as_of: Point-in-time date, ``YYYY-MM-DD`` (default: today).
+            periods: Number of quarterly rows returned, most recent last
+                (server caps at 40).
+            erp: Equity risk premium for the cost-of-capital layer
+                (caller-supplied; no ERP opinion is stored server-side).
+            tax_rate: Tax rate applied to the WACC debt shield.
+            rf_tenor: Treasury CMT tenor backing ``rf_rate``. Default
+                ``"10y"`` (the valuation convention — pair a shorter tenor
+                with a bill-basis ERP or cost of capital is understated).
+            as_dataframe: If True, return a one-row-per-quarter DataFrame
+                with SDK lineage/legend/cheatsheet attrs (rides
+                :func:`riskmodels.llm.to_llm_context`). If False (default),
+                return the raw response dict.
+
+        Returns:
+            Raw JSON dict, or a DataFrame when ``as_dataframe=True``.
+
+        Example:
+            >>> df = client.get_fundamentals("AAPL", as_dataframe=True)
+            >>> df[["period_end_date", "roe_ttm", "wacc"]].tail(1)
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {
+            "periods": periods,
+            "erp": erp,
+            "tax_rate": tax_rate,
+            "rf_tenor": rf_tenor,
+        }
+        if as_of is not None:
+            params["as_of"] = as_of
+        body, _lineage, _r = self._transport.request(
+            "GET", f"/fundamentals/{quote(t, safe='')}", params=params
+        )
+        if not as_dataframe:
+            return body
+        df = fundamentals_json_to_dataframe(body)
+        attach_fundamentals_metadata(df, body)
+        return df
+
+    def get_fundamentals_sensitivity_grid(
+        self,
+        ticker: str,
+        *,
+        as_of: str | None = None,
+        erp_grid: list[float] | None = None,
+        rf_tenor_grid: list[RfTenor] | None = None,
+        tax_rate: float = 0.21,
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Cost-of-capital sensitivity grid — ``erp_grid`` x ``rf_tenor_grid`` (H.89.6, ``$0.005``).
+
+        Calls ``GET /fundamentals/{ticker}?grid=true``. Recomputes
+        ``cost_of_equity`` / ``wacc`` / ``economic_profit`` across every
+        combination of ERP and risk-free tenor for the latest PIT-visible
+        period only — a "what if my assumptions were different today" table,
+        not a time series. Same billing as :meth:`get_fundamentals`.
+
+        Args:
+            ticker: Stock ticker symbol.
+            as_of: Point-in-time date, ``YYYY-MM-DD`` (default: today).
+            erp_grid: ERP values to grid over (server default:
+                ``[0.03, 0.04, 0.05, 0.06, 0.07]``; 1-10 values in [0, 0.5]).
+            rf_tenor_grid: Tenor subset to grid over (server default: all
+                six tenors).
+            tax_rate: Tax rate applied to the WACC debt shield.
+            as_dataframe: If True, return a long-form DataFrame — one row
+                per ``(erp, rf_tenor)`` combination — with SDK attrs. If
+                False (default), return the raw response dict.
+
+        Returns:
+            Raw JSON dict (``sensitivity_grid`` key), or a long-form
+            DataFrame when ``as_dataframe=True``. ``None``-shaped
+            (``sensitivity_grid`` is ``null``) when no PIT-visible period
+            exists at ``as_of``.
+
+        Example:
+            >>> grid = client.get_fundamentals_sensitivity_grid(
+            ...     "AAPL", erp_grid=[0.04, 0.05, 0.06], as_dataframe=True
+            ... )
+            >>> grid.pivot(index="erp", columns="rf_tenor", values="wacc")
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"grid": "true", "tax_rate": tax_rate}
+        if as_of is not None:
+            params["as_of"] = as_of
+        if erp_grid is not None:
+            params["erp_grid"] = ",".join(str(v) for v in erp_grid)
+        if rf_tenor_grid is not None:
+            params["rf_tenor_grid"] = ",".join(rf_tenor_grid)
+        body, _lineage, _r = self._transport.request(
+            "GET", f"/fundamentals/{quote(t, safe='')}", params=params
+        )
+        if not as_dataframe:
+            return body
+        df = sensitivity_grid_json_to_dataframe(body)
+        attach_fundamentals_metadata(df, body)
+        return df
+
+    def next_earnings(self, ticker: str, *, as_of: str | None = None) -> dict[str, Any]:
+        """Estimate the next earnings filing date from historical filing cadence.
+
+        NOT a real earnings calendar — the store carries no analyst
+        estimates or vendor earnings-calendar feed (``eps_forecast`` /
+        ``analyst_rating`` / ``target_price`` are permanently held back per
+        the no-investment-advice house rule). This is the median gap
+        between this ticker's own historical ``filed_date`` values,
+        projected forward from the most recent one. Always echoes
+        ``basis="filed_date_cadence"`` so callers don't mistake it for a
+        confirmed date.
+
+        Calls :meth:`get_fundamentals` under the hood (``periods=8``, enough
+        history for a stable cadence estimate without over-fetching).
+
+        Args:
+            ticker: Stock ticker symbol.
+            as_of: Point-in-time date, ``YYYY-MM-DD`` (default: today) — the
+                cadence is computed only from filings visible by this date.
+
+        Returns:
+            Dict with ``ticker``, ``last_filed_date``,
+            ``estimated_next_filed_date``, ``median_cadence_days``,
+            ``n_periods_observed``, ``basis``, ``note``. Date fields are
+            ``None`` when fewer than 2 filed quarters are visible.
+
+        Example:
+            >>> client.next_earnings("AAPL")
+            {'ticker': 'AAPL', 'estimated_next_filed_date': '2026-05-01', ...}
+        """
+        body = self.get_fundamentals(ticker, as_of=as_of, periods=8)
+        rows = body.get("rows") or [] if isinstance(body, dict) else []
+        t, _ = resolve_ticker(ticker, self)
+        return estimate_next_earnings(t, rows).to_dict()
 
     def _batch_json_for_portfolio(
         self, tickers: list[str], metrics: list[str], years: int
