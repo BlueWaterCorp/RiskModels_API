@@ -334,20 +334,29 @@ def apply_theme() -> None:
 # the legacy `bwmacro.snapshots.funds.f1_tearsheet` so the artifact modules
 # don't need to import the full monolithic renderer just to reach the four
 # layer colors + the empty-panel helper.
+#
+# Re-exported from ``_palette`` (the SSOT) — do not redefine these values
+# here. See ``_palette.py`` for the governing rule and provenance.
 
-LAYER_COLORS: dict[str, str] = {
-    "market":    "#64748B",   # slate-500
-    "sector":    "#14B8A6",   # teal-500
-    "subsector": "#8B5CF6",   # violet-500
-    "residual":  "#4FA48A",   # desaturated emerald — calmer green, less dominant
-}
-"""F1 ontology layer palette (Market → Sector → Subsector → Residual)."""
+from ._palette import GROSS_TOTAL, LAYER_COLORS  # noqa: E402
 
-FUND_LINE_COLOR: str = "#4F46E5"   # indigo-600
-"""F1 fund / portfolio gross-return line color."""
+FUND_LINE_COLOR: str = GROSS_TOTAL
+"""F1 fund / portfolio gross-return line color.
+
+Deprecated alias: this used to be an orphan indigo (#4F46E5) with no
+relationship to the rest of the palette. It is now an alias for the
+neutral ``GROSS_TOTAL`` color — "gross" is a total, not a differentiated
+layer. Prefer importing ``GROSS_TOTAL`` from ``_palette`` directly in new
+code; this name is kept only so existing callers don't break.
+"""
 
 BENCH_LINE_COLOR: str = "#94A3B8"  # slate-400
-"""F1 benchmark line color."""
+"""F1 benchmark line color.
+
+Not a layer color (not part of LAYER_COLORS) — a separate neutral gray
+intended for a fund-vs-benchmark comparison line. Currently unused by any
+renderer (dead import in ``bwmacro.snapshots.funds.f1_tearsheet``); left
+as-is per the palette consolidation scope."""
 
 
 def _empty_panel_placeholder(message: str) -> go.Figure:

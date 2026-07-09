@@ -14,6 +14,7 @@ from typing import Any, Literal
 import pandas as pd
 
 from ..lineage import RiskLineage
+from ..snapshots._palette import LAYER_COLORS as _PALETTE_LAYER_COLORS
 from ._base import RenderOptions
 from .components.l3_decomposition import (
     build_l3_decomposition_data,
@@ -26,12 +27,10 @@ PlotlyTheme = Literal["light", "terminal_dark"]
 L3Metric = Literal["variance", "return"]
 L3Mode = Literal["timeseries", "snapshot"]
 
-L3_API_LAYER_COLORS: dict[str, str] = {
-    "market": "#6b7280",
-    "sector": "#2563eb",
-    "subsector": "#7c3aed",
-    "residual": "#ea580c",
-}
+# Re-exported from ``_palette`` (the SSOT) — do not redefine these values
+# here. Previously this dict had its own divergent hexes (residual was
+# orange, `#ea580c`) — see `_palette.py` for the governing rule.
+L3_API_LAYER_COLORS: dict[str, str] = dict(_PALETTE_LAYER_COLORS)
 
 
 @dataclasses.dataclass(frozen=True)

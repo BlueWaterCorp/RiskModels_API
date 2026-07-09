@@ -60,11 +60,18 @@ PDF_LAYOUT: dict[str, str | int] = {
 
 # ---------------------------------------------------------------------------
 # Publication palette (aligned with article visuals / portal / Plotly charts)
+#
+# L3_MARKET/SECTOR/SUBSECTOR/RESIDUAL are re-exported from ``_palette``
+# (the SSOT) — do not redefine these values here. See ``_palette.py`` for
+# the governing rule and provenance.
 # ---------------------------------------------------------------------------
-L3_MARKET = "#3b82f6"
-L3_SECTOR = "#06b6d4"
-L3_SUBSECTOR = "#f97316"
-L3_RESIDUAL = "#94a3b8"
+from ..snapshots._palette import LAYER_COLORS as _PALETTE_LAYER_COLORS  # noqa: E402
+
+L3_MARKET = _PALETTE_LAYER_COLORS["market"]
+L3_SECTOR = _PALETTE_LAYER_COLORS["sector"]
+L3_SUBSECTOR = _PALETTE_LAYER_COLORS["subsector"]
+L3_RESIDUAL = _PALETTE_LAYER_COLORS["residual"]
+
 TITLE_SLATE = "#475569"
 TITLE_DEEP = "#1a365d"
 
