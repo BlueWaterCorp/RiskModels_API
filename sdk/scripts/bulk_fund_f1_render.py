@@ -1,29 +1,25 @@
 #!/usr/bin/env python3
-"""Bulk F1 institutional tearsheet PNGs for 13F filers (BWMACRO Matplotlib).
+"""Bulk F1 fund tearsheet PNGs for mutual funds (BWMACRO Matplotlib).
 
-Writes flat filenames for CDN probing (`riskmodels.app/snapshots/{bw_filer_id}_f1.png`):
+Writes flat filenames for CDN probing (`riskmodels.app/snapshots/{bw_fund_id}_f1.png`):
 
-    {out_dir}/BW-FILER-CIK..._f1.png
+    {out_dir}/BW-FUND-..._f1.png
 
 Prerequisites
 -------------
-- BWMACRO monorepo venv (imports ``bwmacro.snapshots.filers``).
+- BWMACRO monorepo venv (imports ``bwmacro.snapshots.funds``).
 - ``FUNDS_DAG_ZARR_ROOT`` pointing at the directory that **contains**
-  ``bw_filer_id/`` (same convention as ``bwmacro.snapshots.filers._data``).
+  ``bw_fund_id/`` (same convention as ``bwmacro.snapshots.funds._data``).
 
-PYTHONPATH must include ``sdk`` plus ``BWMACRO/src`` (see ``run_bulk_filer_f1.sh``).
+PYTHONPATH must include ``sdk`` plus ``BWMACRO/src`` (see ``run_bulk_fund_f1.sh``).
 
 Examples
 --------
-    export FUNDS_DAG_ZARR_ROOT=/path/to/Funds_DAG/data/sec_data/zarr
+    export FUNDS_DAG_ZARR_ROOT=/path/to/Funds_DAG/data/sync/funds
     PYTHONPATH=sdk:../BWMACRO/src ../BWMACRO/.venv/bin/python \\
-      sdk/scripts/bulk_filer_f1_render.py \\
-      --filers BW-FILER-CIK0001067983 BW-FILER-CIK0001336528 \\
-      --out-dir /tmp/filer_f1_out
-
-    # Discover every ``BW-FILER-*`` directory under the zarr root:
-    PYTHONPATH=sdk:../BWMACRO/src ../BWMACRO/.venv/bin/python \\
-      sdk/scripts/bulk_filer_f1_render.py --scan --upload-gcs
+      sdk/scripts/bulk_fund_f1_render.py \\
+      --funds BW-FUND-001 BW-FUND-002 \\
+      --out-dir /tmp/fund_f1_out
 """
 
 from __future__ import annotations
@@ -45,43 +41,43 @@ _LOG_LOCK = threading.Lock()
 
 
 def _default_out_dir() -> Path:
-    if os.environ.get("BULK_SNAPSHOT_DIR"):
-        return Path(os.environ["BULK_SNAPSHOT_DIR"]).expanduser().resolve()
-    return Path("/Volumes/ext_2t/Filer_F1_Snapshots")
+    if os.environ.get("BULK_FUND_SNAPSHOT_DIR"):
+        return Path(os.environ["BULK_FUND_SNAPSHOT_DIR"]).expanduser().resolve()
+    return Path("/Volumes/ext_2t/Fund_F1_Snapshots")
 
 
-def _default_filer_parent() -> Path:
+def _default_fund_parent() -> Path:
     raw = os.environ.get("FUNDS_DAG_ZARR_ROOT", "").strip()
     if raw:
         return Path(raw).expanduser().resolve()
     raise RuntimeError(
         "FUNDS_DAG_ZARR_ROOT is not set. Point it at the zarr directory "
-        "that contains bw_filer_id/ (e.g. "
-        "<funds_dag_root>/data/sec_data/zarr).",
+        "that contains bw_fund_id/ (e.g. "
+        "<funds_dag_root>/data/sync/funds).",
     )
 
 
-def _filer_root(parent: Path) -> Path:
-    return parent / "bw_filer_id"
+def _fund_root(parent: Path) -> Path:
+    return parent / "bw_fund_id"
 
 
-def _discover_filers(root: Path) -> list[str]:
+def _discover_funds(root: Path) -> list[str]:
     if not root.is_dir():
         return []
     out: list[str] = []
     for p in sorted(root.iterdir()):
-        if p.is_dir() and p.name.startswith("BW-FILER-"):
+        if p.is_dir() and p.name.startswith("BW-FUND-"):
             out.append(p.name)
     return out
 
 
-def _filers_from_registry(path: Path) -> list[str]:
+def _funds_from_registry(path: Path) -> list[str]:
     data = json.loads(path.read_text())
     rows = data if isinstance(data, list) else data.get("rows", [])
     ids: list[str] = []
     for row in rows:
         if isinstance(row, dict):
-            fid = row.get("bw_filer_id")
+            fid = row.get("bw_fund_id")
             if fid:
                 ids.append(str(fid))
     return sorted(set(ids))
@@ -108,7 +104,7 @@ def _rsync_out_dir_to_gcs(out_dir: Path, gcs_bucket: str) -> tuple[bool, str]:
 
 
 def _render_one(
-    bw_filer_id: str,
+    bw_fund_id: str,
     out_dir: Path,
     funds_dag_zarr_parent: Path,
     *,
@@ -116,16 +112,16 @@ def _render_one(
     gcs_bucket: str,
     resume: bool,
     force: bool,
-    enrich_supabase: bool,
 ) -> dict:
-    from bwmacro.snapshots.filers.f1_filer_tearsheet import render_f1_filer_for_id
+    from bwmacro.snapshots.funds._data import get_data_for_f1
+    from bwmacro.snapshots.funds.f1_tearsheet import render_f1_to_png
 
     t0 = time.perf_counter()
-    png = out_dir / f"{bw_filer_id}_f1.png"
+    png = out_dir / f"{bw_fund_id}_f1.png"
 
     if resume and not force and png.is_file():
         return {
-            "bw_filer_id": bw_filer_id,
+            "bw_fund_id": bw_fund_id,
             "status": "skipped_resume",
             "duration_s": 0.0,
             "png": str(png),
@@ -135,13 +131,13 @@ def _render_one(
     os.environ["FUNDS_DAG_ZARR_ROOT"] = str(funds_dag_zarr_parent.resolve())
 
     try:
+        # Fetch fund data (no-mock-data rule: fail on error, don't fabricate)
+        fund_data = get_data_for_f1(bw_fund_id)
+
+        # Render to PNG under render lock
         with _MATPLOTLIB_RENDER_LOCK:
-            render_f1_filer_for_id(
-                bw_filer_id,
-                png,
-                fmt="png",
-                enrich_supabase=enrich_supabase,
-            )
+            render_f1_to_png(fund_data, png)
+
         uploaded = False
         if upload_gcs:
             dest = f"{gcs_bucket.rstrip('/')}/{png.name}"
@@ -155,14 +151,14 @@ def _render_one(
                 uploaded = True
             except subprocess.CalledProcessError as e:
                 return {
-                    "bw_filer_id": bw_filer_id,
+                    "bw_fund_id": bw_fund_id,
                     "status": "uploaded_partial",
                     "duration_s": round(time.perf_counter() - t0, 2),
                     "png": str(png),
                     "upload_error": e.stderr,
                 }
         return {
-            "bw_filer_id": bw_filer_id,
+            "bw_fund_id": bw_fund_id,
             "status": "ok",
             "duration_s": round(time.perf_counter() - t0, 2),
             "png": str(png),
@@ -170,7 +166,7 @@ def _render_one(
         }
     except Exception as exc:
         return {
-            "bw_filer_id": bw_filer_id,
+            "bw_fund_id": bw_fund_id,
             "status": "error",
             "duration_s": round(time.perf_counter() - t0, 2),
             "error": str(exc),
@@ -186,39 +182,34 @@ def _render_one(
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
-        "--filer-zarr-parent",
+        "--fund-zarr-parent",
         type=Path,
         default=None,
-        help="Directory containing bw_filer_id/ (default: FUNDS_DAG_ZARR_ROOT).",
+        help="Directory containing bw_fund_id/ (default: FUNDS_DAG_ZARR_ROOT).",
     )
     ap.add_argument("--out-dir", type=Path, default=_default_out_dir())
-    ap.add_argument("--filers", nargs="*", help="Explicit bw_filer_id list.")
-    ap.add_argument("--filers-file", type=Path, help="Newline-delimited bw_filer_id.")
+    ap.add_argument("--funds", nargs="*", help="Explicit bw_fund_id list.")
+    ap.add_argument("--funds-file", type=Path, help="Newline-delimited bw_fund_id.")
     ap.add_argument(
         "--registry-json",
         type=Path,
         default=None,
-        help="filers.json-style registry with bw_filer_id rows.",
+        help="funds.json-style registry with bw_fund_id rows.",
     )
     ap.add_argument(
         "--scan",
         action="store_true",
-        help="Discover all BW-FILER-* dirs under bw_filer_id/.",
+        help="Discover all BW-FUND-* dirs under bw_fund_id/.",
     )
     ap.add_argument("--upload-gcs", action="store_true")
     ap.add_argument(
         "--upload-mode",
-        choices=["none", "per-filer", "batch"],
+        choices=["none", "per-fund", "batch"],
         default=None,
     )
-    ap.add_argument("--gcs-bucket", default="gs://rm_api_data/snapshots/filers")
+    ap.add_argument("--gcs-bucket", default="gs://rm_api_data/snapshots/funds")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--force", action="store_true")
-    ap.add_argument(
-        "--no-supabase-enrich",
-        action="store_true",
-        help="Skip REST enrichment (faster bulk; stacked ER bars may be sparse).",
-    )
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
@@ -231,46 +222,45 @@ def main() -> int:
     args = ap.parse_args()
 
     parent = (
-        Path(args.filer_zarr_parent).expanduser().resolve()
-        if args.filer_zarr_parent
-        else _default_filer_parent()
+        Path(args.fund_zarr_parent).expanduser().resolve()
+        if args.fund_zarr_parent
+        else _default_fund_parent()
     )
-    root = _filer_root(parent)
+    root = _fund_root(parent)
 
-    filers: list[str] = []
-    if args.filers:
-        filers.extend(args.filers)
-    if args.filers_file:
-        filers.extend(
+    funds: list[str] = []
+    if args.funds:
+        funds.extend(args.funds)
+    if args.funds_file:
+        funds.extend(
             ln.strip()
-            for ln in args.filers_file.read_text().splitlines()
+            for ln in args.funds_file.read_text().splitlines()
             if ln.strip()
         )
     if args.registry_json:
-        filers.extend(_filers_from_registry(args.registry_json))
+        funds.extend(_funds_from_registry(args.registry_json))
     if args.scan:
-        filers.extend(_discover_filers(root))
+        funds.extend(_discover_funds(root))
 
-    filers = sorted(set(filers))
+    funds = sorted(set(funds))
     if args.limit is not None:
-        filers = filers[: max(0, args.limit)]
+        funds = funds[: max(0, args.limit)]
 
     upload_mode = args.upload_mode
     if upload_mode is None:
-        upload_mode = "per-filer" if args.upload_gcs else "none"
+        upload_mode = "per-fund" if args.upload_gcs else "none"
 
-    per_upload = upload_mode == "per-filer"
-    enrich_supabase = not args.no_supabase_enrich
+    per_upload = upload_mode == "per-fund"
 
     if args.dry_run:
-        print(f"funds_dag_zarr_parent: {parent}")
-        print(f"filer_root: {root}")
-        print(f"count: {len(filers)}")
-        print(f"first 15: {filers[:15]}")
+        print(f"fund_zarr_parent: {parent}")
+        print(f"fund_root: {root}")
+        print(f"count: {len(funds)}")
+        print(f"first 15: {funds[:15]}")
         return 0
 
     if not root.is_dir():
-        print(f"FAIL: filer zarr root missing: {root}", file=sys.stderr)
+        print(f"FAIL: fund zarr root missing: {root}", file=sys.stderr)
         return 2
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -291,7 +281,6 @@ def main() -> int:
             gcs_bucket=args.gcs_bucket,
             resume=args.resume,
             force=args.force,
-            enrich_supabase=enrich_supabase,
         )
         row["i"] = i
         row["ts"] = datetime.now(timezone.utc).isoformat()
@@ -302,15 +291,15 @@ def main() -> int:
             tag = {"ok": "ok", "skipped_resume": "skip", "error": "err", "uploaded_partial": "partial"}.get(
                 row["status"], "?"
             )
-            print(f"  [{i:>4}/{len(filers)}] {tag} {fid}", flush=True)
+            print(f"  [{i:>4}/{len(funds)}] {tag} {fid}", flush=True)
 
     with log_path.open("w") as logf:
         if workers <= 1:
-            for i, fid in enumerate(filers, start=1):
+            for i, fid in enumerate(funds, start=1):
                 dispatch(i, fid, logf)
         else:
             with ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = [ex.submit(dispatch, i, fid, logf) for i, fid in enumerate(filers, start=1)]
+                futs = [ex.submit(dispatch, i, fid, logf) for i, fid in enumerate(funds, start=1)]
                 for _ in as_completed(futs):
                     pass
 
@@ -327,10 +316,10 @@ def main() -> int:
             {
                 "started_at_utc": datetime.now(timezone.utc).isoformat(),
                 "duration_s": duration,
-                "count_total": len(filers),
+                "count_total": len(funds),
                 "counts": counts,
                 "out_dir": str(args.out_dir),
-                "filer_root": str(root),
+                "fund_root": str(root),
                 "upload_mode": upload_mode,
                 "workers": workers,
                 "batch_upload": batch_upload,
@@ -346,7 +335,7 @@ def main() -> int:
         print(f"  {k:<18}: {v}")
 
     error_count = counts.get("error", 0)
-    error_rate = error_count / max(1, len(filers))
+    error_rate = error_count / max(1, len(funds))
     render_ok = error_rate <= args.max_error_rate
     print(f"  error_rate : {error_rate:.1%} (threshold: {args.max_error_rate:.1%})")
 
