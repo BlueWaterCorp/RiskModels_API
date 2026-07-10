@@ -22,6 +22,8 @@ export const FUNDAMENTALS_ROW_ALLOWED_FIELDS = [
   "period_end_date",
   "filed_date",
   "filed_date_source",
+  // SEC-sourced raw line items, gated PER CELL by secCellValue (H.69 per-row rule).
+  "sec_facts",
   // Derived margins/ratios (computed server-side; raw inputs stay internal)
   "gross_margin",
   "operating_margin",
@@ -47,40 +49,108 @@ export const FUNDAMENTALS_ROW_ALLOWED_FIELDS = [
 export type FundamentalsRowField = (typeof FUNDAMENTALS_ROW_ALLOWED_FIELDS)[number];
 
 /**
- * Raw vendor line items — HELD BACK pending SEC promotion or counsel clearance
- * (H.69 / EODHD Exhibit B). `earnings_surprise` and `book_value_per_share` are
- * parked gray pending counsel. No analyst/forecast fields exist in the store,
- * but they are listed so the contract test asserts their absence anyway.
+ * Fields that must never appear as a FLAT raw plane on a response row.
+ *
+ * The SEC-sourced raw line items in `SEC_FACT_CONCEPTS` are no longer here: they ship inside
+ * `sec_facts`, gated per cell by `secCellValue`, so a flat `revenue` key must still never appear
+ * (the test asserts this) while `sec_facts.revenue` may — but only for SEC cells.
+ *
+ * These remain hard-held-back as flat keys:
+ *  - EODHD-only levels with no clean SEC exposure yet: `ebitda` (not an XBRL concept),
+ *    `eps_actual`, `total_debt` (a roll-up), `shares_outstanding_q` (lives in the shares layer).
+ *  - `eps_estimate` and forecast/rating fields — no-investment-advice house rule (also in
+ *    SEC_FACT_DENY so they cannot enter sec_facts either).
+ *  - `earnings_surprise`, `book_value_per_share` — gray pending counsel.
  */
 export const FUNDAMENTALS_HELD_BACK_FIELDS = [
-  "revenue",
-  "net_income",
+  // EODHD-only, no clean SEC raw exposure
   "ebitda",
   "eps_actual",
-  "eps_estimate",
-  "eps_diluted",
-  "total_assets",
-  "total_equity",
   "total_debt",
   "shares_outstanding_q",
-  "cash_from_operations",
-  "capital_expenditures",
-  "interest_expense",
-  // gray pending counsel
-  "earnings_surprise",
-  "book_value_per_share",
-  // never in the store (no-investment-advice house rule) — asserted anyway
+  // house rule — analyst/forecast, never shipped (also denied inside sec_facts)
+  "eps_estimate",
   "eps_forecast",
   "revenue_forecast",
   "analyst_rating",
   "target_price",
+  // gray pending counsel
+  "earnings_surprise",
+  "book_value_per_share",
+  // derived, exposed only as the computed `fcf_margin` ratio, never as a raw flat plane
   "free_cash_flow",
 ] as const;
+
+/**
+ * SEC-sourced raw line items — the H.69 per-ROW rule made operable.
+ *
+ * A raw vendor line item is not redistributable (EODHD Exhibit B). But the store now serves many
+ * cells from SEC XBRL (public), marked per cell by a `{concept}_source` plane
+ * (0=none, 1=EODHD, 2=SEC us-gaap, 3=SEC ifrs). This block ships the raw value ONLY for cells
+ * whose SERVING row is SEC — regardless of the concept's internal promotion status, because even
+ * an EODHD-primary concept (e.g. interest_expense) is SEC-served on cells EODHD left empty.
+ *
+ * The gate is per CELL and lives in the DAL: a value reaches `sec_facts` only after
+ * `secCellValue` has confirmed its source is SEC. `sec_facts` therefore CANNOT contain an EODHD
+ * value by construction. That is the licensing invariant, asserted in the contract test.
+ *
+ * `eps_estimate` and any forecast/rating field are DENIED here unconditionally (no-investment-
+ * advice house rule) even though they never carry a SEC source today.
+ */
+export const SEC_FACT_CONCEPTS = [
+  // income statement
+  "revenue", "net_income", "operating_income", "pretax_income", "income_tax_expense",
+  "total_costs_and_expenses", "profit_loss", "nci_income", "eps_diluted", "interest_expense",
+  // balance sheet
+  "total_assets", "total_equity", "total_liabilities", "liabilities_and_equity",
+  "retained_earnings", "accumulated_oci",
+  // cash flow
+  "cash_from_operations", "capital_expenditures", "cash_from_investing", "cash_from_financing",
+  "fx_effect_on_cash", "change_in_cash",
+  // capital management
+  "dividends_paid", "dividends_declared", "dividends_preferred", "share_repurchases",
+  "share_issuance", "share_based_comp",
+] as const;
+export type SecFactConcept = (typeof SEC_FACT_CONCEPTS)[number];
+
+/** Concepts that must NEVER ship raw, whatever their source (house rule). */
+export const SEC_FACT_DENY = new Set<string>([
+  "eps_estimate", "eps_forecast", "revenue_forecast", "analyst_rating", "target_price",
+]);
+
+export type SecFactSource = "us_gaap" | "ifrs";
+export interface SecFact {
+  value: number;
+  /** basis of the serving SEC row: us-gaap or FX-converted ifrs-full. */
+  source: SecFactSource;
+}
+/** Per-period map of only the concepts SEC-served for that cell. Absent key = not SEC-served. */
+export type SecFacts = Partial<Record<SecFactConcept, SecFact>>;
+
+/**
+ * The per-cell licensing gate. Returns a SecFact iff the source plane says SEC (2=us-gaap,
+ * 3=ifrs) and the value is finite and the concept is not denied. Any other case → undefined,
+ * so the concept is simply absent from `sec_facts`. This is the ONLY door a raw value passes
+ * through; keep it that way.
+ */
+export function secCellValue(
+  concept: string,
+  value: number | null | undefined,
+  sourcePlane: number | null | undefined,
+): SecFact | undefined {
+  if (SEC_FACT_DENY.has(concept)) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (sourcePlane === 2) return { value, source: "us_gaap" };
+  if (sourcePlane === 3) return { value, source: "ifrs" };
+  return undefined; // 0/1/null → EODHD or empty → not redistributable
+}
 
 export interface FundamentalsRow {
   period_end_date: string;
   filed_date: string | null;
   filed_date_source: "exact" | "approx" | null;
+  /** SEC-sourced raw line items for this period (only SEC-served concepts appear). */
+  sec_facts: SecFacts;
   gross_margin: number | null;
   operating_margin: number | null;
   roe_ttm: number | null;
@@ -111,9 +181,32 @@ export function sanitizeFundamentalsRow(
   const out: Record<string, unknown> = {};
   for (const key of FUNDAMENTALS_ROW_ALLOWED_FIELDS) {
     const v = row[key];
+    if (key === "sec_facts") {
+      // Defense in depth: even if a caller hands us a raw sec_facts, re-run every entry through
+      // the gate so a non-SEC or denied value cannot survive to serialization. The DAL already
+      // gated on read; this is the belt to that suspenders.
+      out[key] = sanitizeSecFacts(v);
+      continue;
+    }
     out[key] = v === undefined || (typeof v === "number" && !Number.isFinite(v)) ? null : v;
   }
   return out as unknown as FundamentalsRow;
+}
+
+/** Re-assert the licensing invariant: keep only finite SEC-basis, non-denied entries. */
+export function sanitizeSecFacts(v: unknown): SecFacts {
+  const out: SecFacts = {};
+  if (!v || typeof v !== "object") return out;
+  const allowed = new Set<string>(SEC_FACT_CONCEPTS);
+  for (const [concept, fact] of Object.entries(v as Record<string, unknown>)) {
+    if (!allowed.has(concept) || SEC_FACT_DENY.has(concept)) continue;
+    if (!fact || typeof fact !== "object") continue;
+    const { value, source } = fact as { value?: unknown; source?: unknown };
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    if (source !== "us_gaap" && source !== "ifrs") continue;
+    out[concept as SecFactConcept] = { value, source };
+  }
+  return out;
 }
 
 /**
@@ -140,8 +233,12 @@ export function buildFundamentalsDisclosures(params: {
       "WACC uses BOOK-value weights (balance-sheet equity and debt). Market-value weights are the textbook convention; compute them yourself if you have market-cap access.",
     ttm_convention:
       "TTM aggregates sum flows over the trailing 4 reported quarters; stock quantities are point-in-time (ROE denominator uses the trailing-4-quarter average equity). Ratios need 4 finite quarters or they are null.",
-    derived_only:
-      "Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are not redistributable and are not included. gross_margin and operating_margin are null pending store inputs. market_cap is a current snapshot, not point-in-time per quarter.",
+    sec_facts_provenance:
+      "sec_facts carries RAW line items only for cells whose serving value is SEC XBRL (public, redistributable), tagged us_gaap or ifrs. A concept is absent for a period when that cell is EODHD-sourced (not redistributable) or empty. Coverage varies by concept and filer: income-statement/balance-sheet levels are ~30-50% SEC on large caps; cash-flow and capital-management items are near-100% SEC where reported. Values are as-originally-reported (earliest filing), not restated.",
+    sec_facts_definitions:
+      "Bank/insurer revenue is the CONSOLIDATED top line (interest+dividend income + noninterest income for banks), not the parent-company (Schedule I) figure. This can differ materially from a vendor total; for mortgage REITs it excludes investment gains. total_equity is PARENT-attributable. dividends_declared (accrual, drives retained earnings) and dividends_paid (cash) are distinct. All cash flows are POSITIVE = cash out.",
+    market_cap_note:
+      "market_cap is a current snapshot (Exhibit B(e)), not point-in-time per quarter. gross_margin and operating_margin ratios are null pending store inputs.",
     parameters: {
       as_of: params.as_of,
       erp: params.erp,

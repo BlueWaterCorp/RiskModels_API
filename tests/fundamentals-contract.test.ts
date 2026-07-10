@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   FUNDAMENTALS_HELD_BACK_FIELDS,
   FUNDAMENTALS_ROW_ALLOWED_FIELDS,
+  SEC_FACT_CONCEPTS,
+  SEC_FACT_DENY,
   sanitizeFundamentalsRow,
+  sanitizeSecFacts,
+  secCellValue,
 } from "@/lib/api/fundamentals-contract";
 
 /**
- * LICENSING GATE TESTS — these are the enforcement mechanism for the EODHD
- * Exhibit-B posture: raw vendor line items must never appear in a response
- * row. If a raw field is ever added to the allowlist (or leaks through
- * sanitize), this file fails.
+ * LICENSING GATE TESTS — the enforcement mechanism for the EODHD Exhibit-B posture.
+ *
+ * Since 2026-07-10 raw line items may ship, but ONLY inside `sec_facts` and ONLY for cells whose
+ * serving value is SEC XBRL (public). Two invariants this file guards:
+ *  1. no raw vendor line item appears as a FLAT key on a response row;
+ *  2. `sec_facts` only ever contains SEC-basis (us_gaap/ifrs), non-denied, finite values.
  */
 describe("fundamentals response allowlist", () => {
   it("held-back raw fields are disjoint from the allowlist", () => {
@@ -19,46 +25,35 @@ describe("fundamentals response allowlist", () => {
     }
   });
 
-  it("every raw vendor line item from the store is on the held-back list", () => {
-    // The 13 stored line items — raw levels ship only if promoted to
-    // SEC-sourced or cleared by counsel.
-    const rawStorePlanes = [
-      "revenue",
-      "net_income",
-      "ebitda",
-      "eps_actual",
-      "eps_estimate",
-      "eps_diluted",
-      "total_assets",
-      "total_equity",
-      "total_debt",
-      "shares_outstanding_q",
-      "cash_from_operations",
-      "capital_expenditures",
-      "interest_expense",
-    ];
-    const heldBack = new Set<string>(FUNDAMENTALS_HELD_BACK_FIELDS);
-    for (const plane of rawStorePlanes) {
-      expect(heldBack.has(plane), `store plane "${plane}" must be held back`).toBe(true);
+  it("SEC-fact concepts are NOT flat-allowlisted — they ship only nested in sec_facts", () => {
+    const allowed = new Set<string>(FUNDAMENTALS_ROW_ALLOWED_FIELDS);
+    for (const c of SEC_FACT_CONCEPTS) {
+      expect(allowed.has(c), `concept "${c}" must never be a flat allowlist key`).toBe(false);
     }
+    expect(allowed.has("sec_facts")).toBe(true);
   });
 
-  it("gray-pending-counsel and analyst/forecast fields are held back (asserted even though absent from the store)", () => {
+  it("EODHD-only and house-rule fields remain hard-held-back as flat keys", () => {
     const heldBack = new Set<string>(FUNDAMENTALS_HELD_BACK_FIELDS);
     for (const f of [
-      "earnings_surprise",
-      "book_value_per_share",
-      "eps_forecast",
-      "revenue_forecast",
-      "analyst_rating",
-      "target_price",
+      // EODHD-only, no clean SEC raw exposure
+      "ebitda", "eps_actual", "total_debt", "shares_outstanding_q",
+      // no-investment-advice house rule
+      "eps_estimate", "eps_forecast", "revenue_forecast", "analyst_rating", "target_price",
+      // gray pending counsel
+      "earnings_surprise", "book_value_per_share",
     ]) {
       expect(heldBack.has(f), `"${f}" must be held back`).toBe(true);
     }
   });
 
-  it("sanitizeFundamentalsRow strips every held-back field even when present on the input", () => {
-    // Simulate a future refactor accidentally attaching raw planes to the row.
+  it("house-rule fields are in SEC_FACT_DENY so they cannot enter sec_facts either", () => {
+    for (const f of ["eps_estimate", "eps_forecast", "revenue_forecast", "analyst_rating", "target_price"]) {
+      expect(SEC_FACT_DENY.has(f), `"${f}" must be denied inside sec_facts`).toBe(true);
+    }
+  });
+
+  it("sanitizeFundamentalsRow strips held-back and stray flat SEC-concept keys", () => {
     const dirty: Record<string, unknown> = {
       period_end_date: "2025-12-31",
       filed_date: "2026-01-30",
@@ -66,32 +61,67 @@ describe("fundamentals response allowlist", () => {
       roe_ttm: 1.6,
       cost_of_equity: 0.093,
     };
-    for (const f of FUNDAMENTALS_HELD_BACK_FIELDS) {
-      dirty[f] = 123456789;
-    }
+    for (const f of FUNDAMENTALS_HELD_BACK_FIELDS) dirty[f] = 123456789;
+    // a future refactor accidentally attaching a raw flat plane:
+    for (const c of SEC_FACT_CONCEPTS) dirty[c] = 999;
     const clean = sanitizeFundamentalsRow(dirty) as unknown as Record<string, unknown>;
-    for (const f of FUNDAMENTALS_HELD_BACK_FIELDS) {
-      expect(f in clean, `held-back field "${f}" leaked through sanitize`).toBe(false);
-    }
-    // And nothing outside the allowlist survives at all.
     const allowed = new Set<string>(FUNDAMENTALS_ROW_ALLOWED_FIELDS);
     for (const key of Object.keys(clean)) {
-      expect(allowed.has(key), `unexpected key "${key}" in sanitized row`).toBe(true);
+      expect(allowed.has(key), `unexpected key "${key}" survived sanitize`).toBe(true);
     }
+    for (const f of FUNDAMENTALS_HELD_BACK_FIELDS) expect(f in clean).toBe(false);
+    for (const c of SEC_FACT_CONCEPTS) expect(c in clean).toBe(false); // no flat raw plane
     expect(clean.roe_ttm).toBe(1.6);
-    expect(clean.period_end_date).toBe("2025-12-31");
   });
 
-  it("sanitize null-fills missing allowlisted keys and maps non-finite numbers to null", () => {
+  it("sanitize null-fills allowlisted keys; sec_facts defaults to {}", () => {
     const clean = sanitizeFundamentalsRow({
       period_end_date: "2025-12-31",
       wacc: NaN,
-      cost_of_debt: Infinity,
     }) as unknown as Record<string, unknown>;
     expect(Object.keys(clean).sort()).toEqual([...FUNDAMENTALS_ROW_ALLOWED_FIELDS].sort());
     expect(clean.wacc).toBeNull();
-    expect(clean.cost_of_debt).toBeNull();
-    expect(clean.filed_date).toBeNull();
-    expect(clean.roe_ttm).toBeNull();
+    expect(clean.sec_facts).toEqual({});
+  });
+});
+
+describe("secCellValue — the per-cell licensing gate", () => {
+  it("passes a finite value only for SEC source planes (2=us_gaap, 3=ifrs)", () => {
+    expect(secCellValue("revenue", 100, 2)).toEqual({ value: 100, source: "us_gaap" });
+    expect(secCellValue("revenue", 100, 3)).toEqual({ value: 100, source: "ifrs" });
+  });
+
+  it("blocks EODHD (1), none (0) and null source — not redistributable", () => {
+    expect(secCellValue("revenue", 100, 1)).toBeUndefined();
+    expect(secCellValue("revenue", 100, 0)).toBeUndefined();
+    expect(secCellValue("revenue", 100, null)).toBeUndefined();
+  });
+
+  it("blocks non-finite values and denied concepts", () => {
+    expect(secCellValue("revenue", NaN, 2)).toBeUndefined();
+    expect(secCellValue("revenue", null, 2)).toBeUndefined();
+    expect(secCellValue("eps_estimate", 5, 2)).toBeUndefined(); // denied even with SEC source
+  });
+});
+
+describe("sanitizeSecFacts — belt to the DAL suspenders", () => {
+  it("keeps only allowed concepts with a SEC basis and finite value", () => {
+    const clean = sanitizeSecFacts({
+      revenue: { value: 100, source: "us_gaap" },
+      total_equity: { value: 50, source: "ifrs" },
+      net_income: { value: 10, source: "eodhd" }, // wrong basis → dropped
+      capital_expenditures: { value: NaN, source: "us_gaap" }, // non-finite → dropped
+      eps_estimate: { value: 5, source: "us_gaap" }, // denied → dropped
+      not_a_concept: { value: 1, source: "us_gaap" }, // unknown → dropped
+    });
+    expect(clean).toEqual({
+      revenue: { value: 100, source: "us_gaap" },
+      total_equity: { value: 50, source: "ifrs" },
+    });
+  });
+
+  it("never lets a non-SEC basis survive (the licensing invariant)", () => {
+    const clean = sanitizeSecFacts({ revenue: { value: 1, source: "eodhd" } });
+    expect(clean).toEqual({});
   });
 });
