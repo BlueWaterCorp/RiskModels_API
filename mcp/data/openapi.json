@@ -878,7 +878,7 @@
       },
       "FundamentalsRow": {
         "type": "object",
-        "description": "One PIT quarterly observation — derived analytics only. Any ratio lacking 4 finite trailing quarters, or hitting a guard (equity <= 0, debt <= 0, missing beta), is null. Never clipped.\n",
+        "description": "One PIT quarterly observation. Derived analytics plus, in sec_facts, raw line items for cells whose serving value is SEC XBRL (public). Any ratio lacking 4 finite trailing quarters, or hitting a guard (equity <= 0, debt <= 0, missing beta), is null. Never clipped.\n",
         "properties": {
           "period_end_date": {
             "type": "string",
@@ -899,6 +899,25 @@
             ],
             "nullable": true,
             "description": "exact = vendor filing date; approx = period_end + 45 days (10-Q deadline) when the vendor date is missing.\n"
+          },
+          "sec_facts": {
+            "type": "object",
+            "description": "Raw line items for this period, present only for cells whose serving value is SEC XBRL. Keyed by concept (revenue, net_income, total_equity, cash_from_operations, dividends_paid, share_repurchases, etc.); a concept is absent when its cell is vendor-sourced or empty.\n",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "us_gaap",
+                    "ifrs"
+                  ]
+                }
+              }
+            }
           },
           "gross_margin": {
             "type": "number",
@@ -929,6 +948,43 @@
             "type": "number",
             "nullable": true,
             "description": "TTM free cash flow (CFO - capex) over TTM revenue."
+          },
+          "payout_ratio": {
+            "type": "number",
+            "nullable": true,
+            "description": "TTM dividends paid / TTM net income. Null when TTM net income <= 0."
+          },
+          "retention_ratio": {
+            "type": "number",
+            "nullable": true,
+            "description": "1 - payout_ratio (the reinvestment-rate proxy). Cash basis."
+          },
+          "buyback_ratio": {
+            "type": "number",
+            "nullable": true,
+            "description": "TTM share repurchases / TTM net income."
+          },
+          "total_payout_ratio": {
+            "type": "number",
+            "nullable": true,
+            "description": "(TTM dividends paid + share repurchases) / TTM net income. May exceed 1."
+          },
+          "sustainable_growth": {
+            "type": "number",
+            "nullable": true,
+            "description": "retention_ratio * roe_ttm."
+          },
+          "equity_bridge_residual": {
+            "type": "number",
+            "nullable": true,
+            "description": "Plug that closes the equity roll-forward by construction (total_equity_t - total_equity_{t-1} = sum of tagged components + residual). Frequently large; a decomposition aid, not a measured line. Null on a symbol's first reported period.\n"
+          },
+          "equity_bridge_inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Components that backed the residual. A component MISSING from the list means its movement is inside the residual, not that it was zero.\n"
           },
           "beta_market": {
             "type": "number",
@@ -5553,8 +5609,8 @@
     },
     "/fundamentals/{ticker}": {
       "get": {
-        "summary": "Point-in-time quarterly fundamentals (derived analytics only)",
-        "description": "Quarterly fundamentals for a single ticker, point-in-time filtered: a row is visible if and only if its `filed_date` is on or before `as_of` (never \"latest\"). `filed_date_source` is `exact` (vendor filing date) or `approx` (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).\n\n**Derived analytics only.** Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are not redistributable and are never included. Rows carry TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), `leverage_ratio`, ERM3 cascade betas with provenance (`beta_market` / `beta_sector` / `beta_subsector` / `beta_source`), and the cost-of-capital layer (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`). `gross_margin` and `operating_margin` are currently always null (inputs not yet in the store). `market_cap` is a current snapshot, not point-in-time per quarter.\n\n**Disclosures (also returned in every response body):**\n- Realized historical data only. No forecasts, no analyst targets, no buy/sell\n  signals.\n\n- Coverage starts ~2009 for most filers; pre-2009 and small-cap or\n  recently-IPO'd names are thin. Missing fields are null.\n\n- `beta_market` is a short-half-life conditional market beta, not a textbook\n  long-run CAPM beta; for defensive names `cost_of_equity` can fall below the\n  risk-free rate. That is a property of the conditional beta, not an error.\n\n- WACC uses BOOK-value weights. Market-value weights are the textbook\n  convention; compute them yourself if you have market-cap access.\n\n- TTM sums flows over the trailing 4 reported quarters; stock quantities are\n  point-in-time (ROE denominator uses trailing-4-quarter average equity).\n  Ratios need 4 finite quarters or they are null.\n\n- `erp` (default 0.05) and `tax_rate` (default 0.21) are always\n  caller-supplied parameters, echoed in the response; no equity-risk-premium\n  opinion is stored.\n\n- `rf_rate` is the Treasury constant-maturity yield at the selected\n  `rf_tenor` (3m|1y|2y|5y|10y|30y, default 10y — the valuation convention),\n  sampled at the last observation on or before each quarter's period end.\n  A short tenor should be paired with a bill-basis ERP or cost of capital\n  is understated.\n\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n\nPer-symbol, per-call only: no batch variant, no CSV/bulk export (JSON only).\n",
+        "summary": "Point-in-time quarterly fundamentals (derived analytics + SEC-sourced raw)",
+        "description": "Quarterly fundamentals for a single ticker, point-in-time filtered: a row is visible if and only if its `filed_date` is on or before `as_of` (never \"latest\"). `filed_date_source` is `exact` (vendor filing date) or `approx` (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).\n\n**Derived analytics + per-cell raw SEC exposure.** Rows carry TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), capital-return ratios (`payout_ratio`, `retention_ratio`, `buyback_ratio`, `total_payout_ratio`, `sustainable_growth`), `leverage_ratio`, ERM3 cascade betas with provenance, the cost-of-capital layer (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`), and the equity-bridge residual + inputs mask. `sec_facts` carries RAW line items for the cells whose serving value is SEC XBRL (public); vendor-sourced cells are not included there.\n\nNumeric line items are stored at ~7 significant figures (float32) — suitable for analysis, not cent-level reconciliation. `gross_margin` and `operating_margin` are currently always null (inputs not yet in the store). `market_cap` is a current snapshot, not point-in-time per quarter.\n\n**Disclosures (also returned in every response body):**\n- Realized historical data only. No forecasts, no analyst targets, no buy/sell\n  signals.\n\n- Coverage starts ~2009 for most filers; pre-2009 and small-cap or\n  recently-IPO'd names are thin. Missing fields are null.\n\n- `beta_market` is a short-half-life conditional market beta, not a textbook\n  long-run CAPM beta; for defensive names `cost_of_equity` can fall below the\n  risk-free rate. That is a property of the conditional beta, not an error.\n\n- WACC uses BOOK-value weights. Market-value weights are the textbook\n  convention; compute them yourself if you have market-cap access.\n\n- TTM sums flows over the trailing 4 reported quarters; stock quantities are\n  point-in-time (ROE denominator uses trailing-4-quarter average equity).\n  Ratios need 4 finite quarters or they are null.\n\n- `erp` (default 0.05) and `tax_rate` (default 0.21) are always\n  caller-supplied parameters, echoed in the response; no equity-risk-premium\n  opinion is stored.\n\n- `rf_rate` is the Treasury constant-maturity yield at the selected\n  `rf_tenor` (3m|1y|2y|5y|10y|30y, default 10y — the valuation convention),\n  sampled at the last observation on or before each quarter's period end.\n  A short tenor should be paired with a bill-basis ERP or cost of capital\n  is understated.\n\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n\nPer-symbol, per-call only: no batch variant, no CSV/bulk export (JSON only).\n",
         "operationId": "getFundamentals",
         "tags": [
           "Fundamentals"

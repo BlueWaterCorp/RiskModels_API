@@ -304,3 +304,38 @@ def test_sensitivity_grid_json_to_dataframe_handles_missing_grid():
         "wacc",
         "economic_profit",
     ]
+
+
+def test_fundamentals_dataframe_carries_sec_facts_ratios_and_bridge():
+    """The new surface: sec_facts (nested raw), capital-return ratios, and the equity bridge
+    are columns; raw line items still never appear as FLAT columns (they live inside sec_facts)."""
+    from riskmodels.fundamentals import fundamentals_json_to_dataframe
+
+    df = fundamentals_json_to_dataframe(
+        {
+            "rows": [
+                {
+                    "period_end_date": "2026-03-31",
+                    "sec_facts": {"revenue": {"value": 111184000000, "source": "us_gaap"}},
+                    "payout_ratio": 0.13,
+                    "retention_ratio": 0.87,
+                    "buyback_ratio": 0.8,
+                    "total_payout_ratio": 0.76,
+                    "sustainable_growth": 1.36,
+                    "equity_bridge_residual": -1995998720,
+                    "equity_bridge_inputs": ["net_income", "share_repurchases"],
+                }
+            ]
+        }
+    )
+    for col in (
+        "sec_facts", "payout_ratio", "retention_ratio", "buyback_ratio",
+        "total_payout_ratio", "sustainable_growth",
+        "equity_bridge_residual", "equity_bridge_inputs",
+    ):
+        assert col in df.columns, col
+    # raw line items are nested, never flat columns
+    for flat in ("revenue", "net_income", "total_equity"):
+        assert flat not in df.columns
+    assert df["sec_facts"].iloc[0]["revenue"]["source"] == "us_gaap"
+    assert df["equity_bridge_inputs"].iloc[0] == ["net_income", "share_repurchases"]

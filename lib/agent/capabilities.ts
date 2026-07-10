@@ -646,9 +646,9 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "fundamentals",
-    name: "Quarterly Fundamentals (Derived)",
+    name: "Quarterly Fundamentals",
     description:
-      "Point-in-time quarterly fundamentals for a single ticker — derived analytics only: TTM profitability ratios (ROE, ROA, FCF margin), leverage, ERM3 cascade betas with provenance, and the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit). Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields, no raw vendor line items. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
+      "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks, etc.); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
     endpoint: "/api/fundamentals",
     method: "GET",
     parameters: {
