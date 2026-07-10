@@ -5742,7 +5742,7 @@
         ],
         "responses": {
           "200": {
-            "description": "PIT quarterly fundamentals rows (derived analytics only).",
+            "description": "PIT quarterly fundamentals rows.",
             "headers": {
               "X-API-Cost-USD": {
                 "schema": {

@@ -87,9 +87,10 @@ export function zarrLinkBetasBasename(marketFactorEtf = "SPY"): string {
 
 /**
  * Quarterly fundamentals panel — (symbol, period_end_date) with a separate
- * filed_date PIT stamp. INTERNAL store (EODHD-primary line items): the API
- * serves DERIVED analytics only; raw planes never leave the DAL. See
- * lib/api/fundamentals-contract.ts for the response allowlist.
+ * filed_date PIT stamp. INTERNAL store (EODHD-primary line items). The API
+ * serves derived analytics plus raw line items ONLY for cells whose serving
+ * value is SEC XBRL (exposed in sec_facts); vendor-sourced raw planes never
+ * leave the DAL. See lib/api/fundamentals-contract.ts for the response allowlist.
  */
 export function zarrFundamentalsBasename(): string {
   return "ds_fundamentals.zarr";

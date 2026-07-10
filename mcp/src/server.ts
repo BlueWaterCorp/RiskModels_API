@@ -501,9 +501,9 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   server.registerTool(
     "get_fundamentals",
     {
-      title: "PIT Quarterly Fundamentals (Derived)",
+      title: "PIT Quarterly Fundamentals",
       description:
-        "Point-in-time quarterly fundamentals for a ticker — derived analytics only: TTM ROE/ROA/FCF margin, leverage, ERM3 cascade betas with provenance, and the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit). Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only: no forecasts, no analyst fields, no raw vendor line items. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names. Per-symbol per-call only — no batch.",
+        "Point-in-time quarterly fundamentals for a ticker: TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only: no forecasts, no analyst fields. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names. Per-symbol per-call only — no batch.",
       inputSchema: z.object({
         ticker: z.string().describe("Stock ticker symbol, e.g. AAPL, NVDA"),
         as_of: z
