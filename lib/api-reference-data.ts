@@ -326,14 +326,14 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
   {
     name: 'Fundamentals',
     description:
-      'Point-in-time quarterly fundamentals — derived analytics only (TTM profitability ratios, leverage, cascade betas, cost-of-capital layer). Realized historical data; no forecasts, no analyst fields, no raw vendor line items.',
+      'Point-in-time quarterly fundamentals (TTM profitability + capital-return ratios, leverage, cascade betas, cost-of-capital layer, equity-bridge decomposition, and SEC-sourced raw line items in sec_facts). Realized historical data; no forecasts, no analyst fields.',
     endpoints: [
       {
         path: '/fundamentals/{ticker}',
         method: 'get',
-        summary: 'Point-in-time quarterly fundamentals (derived)',
+        summary: 'Point-in-time quarterly fundamentals',
         description:
-          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, leverage, ERM3 cascade betas with provenance, and the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit). Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names — a property of the beta, not an error. Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are not redistributable and never included. Per-symbol per-call only; JSON only. Cost: $0.005/request.',
+          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names — a property of the beta, not an error. Per-symbol per-call only; JSON only. Cost: $0.005/request.',
         operationId: 'getFundamentals',
         tag: 'Fundamentals',
         params: [

@@ -2489,14 +2489,17 @@ class RiskModelsClient:
         rf_tenor: RfTenor = "10y",
         as_dataframe: bool = False,
     ) -> dict[str, Any] | pd.DataFrame:
-        """PIT quarterly fundamentals — derived analytics only (H.89.5, ``$0.005``).
+        """PIT quarterly fundamentals (H.89.5, ``$0.005``).
 
         Calls ``GET /fundamentals/{ticker}``. Rows carry TTM profitability
-        ratios (``roe_ttm``, ``roa_ttm``, ``fcf_margin``), ``leverage_ratio``,
-        ERM3 cascade betas with provenance, and the cost-of-capital layer
-        (``cost_of_equity``, ``cost_of_debt``, ``wacc``, ``economic_profit``).
-        Raw vendor line items (revenue, net income, EPS, balance-sheet
-        levels) are never included — see the API's
+        ratios (``roe_ttm``, ``roa_ttm``, ``fcf_margin``), capital-return
+        ratios (payout, retention, buyback, total payout, sustainable growth),
+        ``leverage_ratio``, ERM3 cascade betas with provenance, the
+        cost-of-capital layer (``cost_of_equity``, ``cost_of_debt``, ``wacc``,
+        ``economic_profit``), and an equity-bridge decomposition. ``sec_facts``
+        carries raw line items per cell where the serving value is SEC XBRL
+        (revenue, net income, equity, cash flows, dividends, buybacks);
+        vendor-sourced cells are not exposed as raw — see the API's
         ``lib/api/fundamentals-contract.ts`` allowlist.
 
         PIT: a row is visible iff its ``filed_date`` is on or before

@@ -649,7 +649,7 @@ export function registerRiskModelsTools(
       title: "RiskModels PIT Quarterly Fundamentals",
       annotations: { readOnlyHint: true },
       description:
-        "PIT quarterly fundamentals, derived analytics only (GET /fundamentals/{ticker}): TTM profitability ratios (roe_ttm, roa_ttm, fcf_margin), leverage_ratio, ERM3 cascade betas, and the cost-of-capital layer (cost_of_equity, wacc, economic_profit). Rows are visible iff filed_date <= as_of — never \"latest\". Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are never included (derived-only licensing). Set grid=true for a cost-of-capital sensitivity table across erp_grid x rf_tenor_grid instead of a scalar wacc/cost_of_equity.",
+        "PIT quarterly fundamentals (GET /fundamentals/{ticker}): TTM profitability ratios (roe_ttm, roa_ttm, fcf_margin), capital-return ratios (payout, retention, buyback, total_payout, sustainable_growth), leverage_ratio, ERM3 cascade betas, the cost-of-capital layer (cost_of_equity, wacc, economic_profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of — never \"latest\". Realized historical only; no forecasts or analyst fields. Set grid=true for a cost-of-capital sensitivity table across erp_grid x rf_tenor_grid instead of a scalar wacc/cost_of_equity.",
       inputSchema: {
         ticker: z.string().min(1).describe("Ticker symbol, e.g. AAPL"),
         as_of: z.string().optional().describe("Point-in-time date YYYY-MM-DD (default: today)"),
