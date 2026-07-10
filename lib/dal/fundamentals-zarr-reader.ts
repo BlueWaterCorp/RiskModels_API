@@ -14,12 +14,13 @@
  *   - Windows look at the last 8 visible quarters so TTM can find 4 finite
  *     values when the newest quarter is only partially reported.
  *
- * LICENSING: raw line items in this store are EODHD-primary and NOT
- * redistributable. This module reads them as internal compute inputs only;
- * everything that leaves the server goes through
- * lib/api/fundamentals-contract.ts (allowlist). Raw planes must never be
- * attached to a response object. Never expose bucket paths or store names in
- * errors or API JSON.
+ * LICENSING: raw line items are EODHD-primary and NOT redistributable, EXCEPT
+ * per cell where the store serves a SEC-XBRL value (public). Those cells ship
+ * inside `sec_facts`, gated one cell at a time by `secCellValue` (H.69 per-row
+ * rule): an EODHD-served or empty cell never enters sec_facts. Everything else
+ * that leaves the server still goes through lib/api/fundamentals-contract.ts.
+ * A raw EODHD plane must never be attached flat to a response object. Never
+ * expose bucket paths or store names in errors or API JSON.
  *
  * Store layout (one whole-panel chunk per variable) makes a cold read heavy,
  * so the extracted single-symbol row pack is cached in Redis and all PIT
@@ -38,6 +39,12 @@ import {
   getCache,
   setCache,
 } from "@/lib/cache/redis";
+import {
+  SEC_FACT_CONCEPTS,
+  secCellValue,
+  type SecFactConcept,
+  type SecFacts,
+} from "@/lib/api/fundamentals-contract";
 
 export const DEFAULT_ERP = 0.05; // suggested only; ERP is ALWAYS caller-supplied
 export const DEFAULT_TAX_RATE = 0.21;
@@ -190,6 +197,10 @@ export interface FundamentalsRowPack {
   /** 1=exact, 2=approx, 0/null=none — per column. */
   filedDateSource: (number | null)[];
   vars: Record<PackVar, (number | null)[]>;
+  /** Raw SEC-facts concept values per column (value plane). Gated at row-build, not here. */
+  secRaw: Record<SecFactConcept, (number | null)[]>;
+  /** `{concept}_source` plane per column (0=none,1=EODHD,2=SEC us-gaap,3=SEC ifrs). */
+  secSource: Record<SecFactConcept, (number | null)[]>;
   /** 1-D rf strip per tenor over the shared period_end axis (fraction, e.g. 0.0448). */
   rfCurve: Partial<Record<RfTenor, (number | null)[]>>;
 }
@@ -214,6 +225,8 @@ export interface FundamentalsInternalRow {
   cost_of_debt: number | null;
   wacc: number | null;
   economic_profit: number | null;
+  /** SEC-sourced raw line items for this period, gated per cell (H.69 per-row rule). */
+  sec_facts: SecFacts;
 }
 
 /**
@@ -297,6 +310,15 @@ export function buildFundamentalsRows(
     const fdsRaw = pack.filedDateSource[i];
     const fds = fdsRaw === 1 ? "exact" : fdsRaw === 2 ? "approx" : null;
 
+    // SEC facts for this period: a concept enters ONLY when secCellValue confirms its cell is
+    // SEC-served (source plane 2/3). EODHD-served or empty cells are simply absent. This is the
+    // single door raw values pass through.
+    const secFacts: SecFacts = {};
+    for (const concept of SEC_FACT_CONCEPTS) {
+      const fact = secCellValue(concept, pack.secRaw[concept]?.[i], pack.secSource[concept]?.[i]);
+      if (fact) secFacts[concept] = fact;
+    }
+
     out.push({
       period_end_date: pack.periodEndDates[i]!,
       filed_date: pack.filedDates[i] ?? null,
@@ -318,6 +340,7 @@ export function buildFundamentalsRows(
       cost_of_debt: toNull(costOfDebt(ieTtm, debtLast)),
       wacc: toNull(waccBookWeights(rf, bm, ieTtm, eqLast, debtLast, opts.taxRate, opts.erp)),
       economic_profit: toNull(economicProfit(niTtm, eqAvg, eqLast, rf, bm, opts.erp)),
+      sec_facts: secFacts,
     });
   }
   return out;
@@ -646,6 +669,18 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
     vars[name] = decoded ?? new Array<number | null>(periodEndDates.length).fill(null);
   }
 
+  // SEC-fact concepts: read the value plane AND its `{concept}_source` companion. A concept or
+  // source plane absent from the store leaves an all-null column, so the gate simply omits it.
+  const nulls = () => new Array<number | null>(periodEndDates.length).fill(null);
+  const secRaw = {} as Record<SecFactConcept, (number | null)[]>;
+  const secSource = {} as Record<SecFactConcept, (number | null)[]>;
+  for (const concept of SEC_FACT_CONCEPTS) {
+    const valRaw = await readVarRow(grp, concept, symIdx);
+    const srcRaw = await readVarRow(grp, `${concept}_source`, symIdx);
+    secRaw[concept] = (valRaw ? decodeFloatsNullable(valRaw.data) : null) ?? nulls();
+    secSource[concept] = (srcRaw ? decodeFloatsNullable(srcRaw.data) : null) ?? nulls();
+  }
+
   // rf tenor strip: six tiny 1-D arrays, read once per pack so any tenor is
   // served from cache. A missing tenor variable (pre-2026-07-06 store) leaves
   // that tenor absent → rf/CoC null, never a wrong-tenor substitute.
@@ -662,13 +697,16 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
     filedDateSource:
       filedDateSource ?? new Array<number | null>(periodEndDates.length).fill(null),
     vars,
+    secRaw,
+    secSource,
     rfCurve,
   };
 }
 
 async function readRowPackCached(ticker: string): Promise<FundamentalsRowPack | null> {
-  // v2: pack shape changed 2026-07-07 (per-cell rf_rate → rfCurve tenor strip)
-  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v2", { ticker });
+  // v3: pack shape changed 2026-07-10 (added secRaw/secSource for SEC-fact exposure).
+  // Bumping the key invalidates v2 packs that lack those fields.
+  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v3", { ticker });
   const hit = await getCache<FundamentalsRowPack | typeof EMPTY_SENTINEL>(ck);
   if (hit !== null && hit !== undefined) {
     return (hit as { __empty?: boolean }).__empty === true

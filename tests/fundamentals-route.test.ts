@@ -85,6 +85,7 @@ const CLEAN_ROW = {
   cost_of_debt: null,
   wacc: null,
   economic_profit: null,
+  sec_facts: {},
 };
 
 beforeEach(() => {
