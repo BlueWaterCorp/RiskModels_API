@@ -381,10 +381,7 @@ def main() -> int:
 
     from riskmodels.client import RiskModelsClient
     from riskmodels.visual_refinement import (
-        save_macro_sensitivity_matrix,
-        save_ranking_chart,
         save_ranking_percentile_bar_chart,
-        save_risk_intel_inspiration_figure,
     )
 
     client = RiskModelsClient.from_env()
@@ -418,75 +415,10 @@ def main() -> int:
     mag7 = _mag7_tickers(client)
     ranking_ticker = args.ranking_ticker or mag7[0]
 
-    try:
-        matrix, rt_label = _correlation_matrix_with_gross_fallback(
-            client,
-            mag7,
-            mode=args.correlation_mode,
-            return_type=args.return_type,
-            fallback_gross=not args.no_fallback_gross,
-        )
-    except Exception as e:
-        from riskmodels.exceptions import APIError
-
-        if isinstance(e, APIError):
-            _print_api_error(e)
-        else:
-            print(f"Correlation fetch failed: {e}", file=sys.stderr)
-        return 3
-
-    if rt_label != args.return_type:
-        print(
-            f"Note: macro heatmaps use return_type={rt_label} (automatic fallback from l3_residual).",
-            file=sys.stderr,
-        )
-
-    # All-null correlations (e.g. sparse L3 residual overlap vs macro) — try gross before plotting.
-    if (
-        not _corr_matrix_has_finite(matrix)
-        and args.return_type == "l3_residual"
-        and not args.no_fallback_gross
-    ):
-        print(
-            "Macro correlation matrix has no finite values (all null). "
-            "Retrying with return_type=gross …",
-            file=sys.stderr,
-        )
-        try:
-            matrix, rt_label = (
-                _correlation_matrix(client, mag7, mode=args.correlation_mode, return_type="gross"),
-                "gross",
-            )
-        except Exception as e:
-            print(f"Gross correlation retry failed: {e}", file=sys.stderr)
-            return 3
-        print(f"Note: macro heatmaps use return_type={rt_label} (fallback from all-null l3_residual).", file=sys.stderr)
-
-    matrix_ok = _corr_matrix_has_finite(matrix)
-    if not matrix_ok:
-        print(
-            "Macro correlation matrix has no finite correlations after coercion (macro_factors may be "
-            "empty for this window, or all overlap checks failed). "
-            "Skipping macro_heatmap.png and readme_inspiration.png; continuing with rankings + MAG7 assets.",
-            file=sys.stderr,
-        )
-
     args.out_dir.mkdir(parents=True, exist_ok=True)
     args.public_dir.mkdir(parents=True, exist_ok=True)
 
-    readme_dpi = 300
-    macro_path: Path | None = None
-    if matrix_ok:
-        macro_path = args.out_dir / "macro_heatmap.png"
-        save_macro_sensitivity_matrix(
-            matrix,
-            str(macro_path),
-            title=f"MAG7 — macro correlations ({rt_label}, 252d)",
-            dpi=readme_dpi,
-            style="readme_dark",
-        )
-
-    # Fetch ALL cohorts for the bar chart (universe, sector, subsector)
+    # Cross-sectional rank cohorts (universe, sector, subsector) for the bar chart.
     rank_df = client.get_rankings(
         ranking_ticker,
         metric=args.metric,
@@ -507,44 +439,6 @@ def main() -> int:
         readme_dark=True,
     )
 
-    sub = rank_df
-    if "metric" in sub.columns:
-        sub = sub.loc[sub["metric"].astype(str) == args.metric]
-    if "window" in sub.columns:
-        sub = sub.loc[sub["window"].astype(str) == args.window]
-    if "cohort" in sub.columns:
-        sub_cohort = sub.loc[sub["cohort"].astype(str) == args.cohort]
-        if not sub_cohort.empty:
-            sub = sub_cohort
-    if sub.empty:
-        sub = rank_df
-    row = sub.iloc[0]
-    subtitle = f"{args.window} · {args.cohort} · {args.metric}"
-    needle_path = args.out_dir / "ranking_snapshot.png"
-    save_ranking_chart(
-        ranking_ticker,
-        row,
-        str(needle_path),
-        subtitle=subtitle,
-        theme="readme_dark",
-        transparent=False,
-        dpi=readme_dpi,
-    )
-
-    hero_path: Path | None = None
-    if matrix_ok:
-        hero_path = args.out_dir / "readme_inspiration.png"
-        save_risk_intel_inspiration_figure(
-            matrix,
-            ranking_ticker,
-            row,
-            str(hero_path),
-            macro_title=f"MAG7 — macro correlations ({rt_label}, 252d)",
-            ranking_subtitle=subtitle,
-            theme="readme_dark",
-            dpi=readme_dpi,
-        )
-
     cascade_path: Path | None = None
     if not args.no_sdk_cascade:
         cascade_path = args.out_dir / "mag7_risk_cascade.png"
@@ -556,22 +450,14 @@ def main() -> int:
             cascade_path = None
 
     extra = tuple(p for p in (cascade_path,) if p is not None)
-    for src in (macro_path, bar_path, needle_path, hero_path, *extra):
-        if src is None:
-            continue
+    for src in (bar_path, *extra):
         dest = args.public_dir / src.name
         dest.write_bytes(src.read_bytes())
 
     base_display = (
         os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
     )
-    factor_cols = ", ".join(str(c) for c in matrix.columns) if matrix_ok else "(skipped)"
-    wrote: list[Path] = []
-    if macro_path is not None:
-        wrote.append(macro_path)
-    wrote.extend([bar_path, needle_path])
-    if hero_path is not None:
-        wrote.append(hero_path)
+    wrote: list[Path] = [bar_path]
     if cascade_path is not None:
         wrote.append(cascade_path)
     print(
@@ -579,26 +465,12 @@ def main() -> int:
         *wrote,
         f"(mirrored to {args.public_dir})",
     )
-    macro_blurb = (
-        f"  Macro heatmap + hero left: Pearson macro_corr_* for [{factor_cols}] — "
-        f"{rt_label}, 252d (POST /correlation).\n"
-        if matrix_ok
-        else "  Macro heatmap + hero: skipped (no finite correlations — check macro_factors / window).\n"
-    )
-    hero_right_blurb = (
-        f"  Needle + hero right: rank_percentile from the {args.cohort} cohort row "
-        f"(same API response as the bars, filtered in-script).\n"
-        if hero_path is not None
-        else "  Needle: rank_percentile from cohort row; readme hero skipped (no macro matrix).\n"
-    )
     print(
         "\n--- README assets: live API data (no synthetic series) ---\n"
         f"  Base URL: {base_display}\n"
         f"  MAG7 tickers ({len(mag7)}): {', '.join(mag7)}\n"
-        f"{macro_blurb}"
-        f"  Rankings charts: GET /rankings/{ranking_ticker} — metric={args.metric}, "
+        f"  Rankings chart: GET /rankings/{ranking_ticker} — metric={args.metric}, "
         f"window={args.window} (all cohort rows returned by the API).\n"
-        f"{hero_right_blurb}"
         + "---\n",
         file=sys.stderr,
     )

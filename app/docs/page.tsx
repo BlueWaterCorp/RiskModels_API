@@ -99,30 +99,6 @@ export default function DocsHubPage() {
         ))}
       </div>
 
-      <div className="mt-10 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 sm:p-6">
-        <div className="flex items-baseline justify-between gap-3 mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-            Live API snapshot
-          </p>
-          <Link href="/docs/api" className="text-[11px] font-medium text-primary hover:text-primary/80">
-            See how it&apos;s built →
-          </Link>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 items-start">
-          <img
-            src="/docs/readme/macro_heatmap.png"
-            alt="MAG7 macro correlation matrix from the RiskModels API"
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-900"
-          />
-          <p className="text-sm text-zinc-400 leading-relaxed">
-            Every number on this site is generated from the live API — here, MAG7 residual
-            correlations to VIX, Gold, and BTC (252-day, L3 residual). No synthetic data.{' '}
-            <Link href="/docs/macro-factors" className="text-primary hover:underline">
-              Factor correlation guide →
-            </Link>
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

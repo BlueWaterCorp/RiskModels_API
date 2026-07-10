@@ -10,8 +10,6 @@ RiskModels provides clean dividend-adjusted total returns, factor risk decomposi
 [![PyPI](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
 [![smithery badge](https://smithery.ai/badge/service-c09f/riskmodels)](https://smithery.ai/servers/service-c09f/riskmodels)
 
-![RiskModels — MAG7 macro correlations & cross-sectional rank snapshot](./assets/readme_inspiration.png)
-
 This repository is the **authoritative public API reference** for the [RiskModels](https://riskmodels.net) equity risk model API, featuring:
 
 - 📖 **Model methodology (wiki)** — [ERM3 L3 overview](https://riskmodels.net/docs/methodology/erm3-l3) (same URI as API `wiki_uri` in response metadata)
@@ -120,7 +118,7 @@ render_r1_to_pdf(data, "NVDA_R1_Risk.pdf")   # render → PDF (~0.3s, no API)
 
 ## Risk intelligence
 
-Charts below are **generated from live API data** (MAG7 batch correlation + `get_rankings` + MAG7 L3 batch metrics) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/`.
+Charts below are **generated from live API data** (`get_rankings` + MAG7 L3 batch metrics) via [`scripts/generate_readme_assets.py`](./scripts/generate_readme_assets.py). Set `RISKMODELS_API_KEY` (free tier is sufficient), run the script from the repo root, then commit `./assets/` and `./public/docs/readme/`.
 
 ### MAG7 — L3 σ-scaled decomposition
 
@@ -130,21 +128,7 @@ Charts below are **generated from live API data** (MAG7 batch correlation + `get
   <sub>Same “tech” label, different subsector DNA — bar length ∝ annualized σ; segments = σ × L3 market/sector/subsector risk ratios + residual (HR share). <code>POST /batch/analyze</code> via SDK <code>save_mag7_l3_sigma_rr_png</code></sub>
 </p>
 
-### Macro sensitivity
-
-<p align="center">
-  <img src="./assets/macro_heatmap.png" width="680" alt="MAG7 macro correlation matrix" />
-  <br>
-  <sub>Pearson correlations of L3 residual returns vs macro factors — <code>POST /correlation</code></sub>
-</p>
-
 ### Cross-sectional rankings
-
-<p align="center">
-  <img src="./assets/ranking_snapshot.png" width="680" alt="Ticker ranking needle" />
-  <br>
-  <sub>Universe rank percentile from <code>get_rankings</code></sub>
-</p>
 
 <p align="center">
   <img src="./assets/ranking_cohorts.png" width="680" alt="Ranking by cohort" />
