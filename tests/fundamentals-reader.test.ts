@@ -51,6 +51,19 @@ function syntheticPack(): FundamentalsRowPack {
       beta_subsector: fill([0.2, 0.2, 0.2, 0.2, 0.2, 0.2]),
       beta_source: fill([1, 1, 1, 1, 1, 1]),
     },
+    // SEC-fact planes (Phase 1+2). dividends_paid + share_repurchases feed the capital-return
+    // ratios; source planes drive per-cell gating. Only the newest quarter is SEC-served here so
+    // the ratios have flows and the gate has a positive case.
+    secRaw: {
+      dividends_paid: fill([2, 2, 2, 2, 2, 3]),
+      share_repurchases: fill([4, 4, 4, 4, 4, 5]),
+      revenue: fill([100, 100, 100, 100, 100, 120]),
+    } as FundamentalsRowPack["secRaw"],
+    secSource: {
+      dividends_paid: fill([1, 1, 1, 1, 2, 2]),
+      share_repurchases: fill([1, 1, 1, 1, 2, 2]),
+      revenue: fill([1, 1, 1, 1, 2, 2]),
+    } as FundamentalsRowPack["secSource"],
     // rf is a 1-D per-tenor strip on the period axis (2026-07-06 store revision);
     // 3m deliberately different so tenor selection is observable.
     rfCurve: {
