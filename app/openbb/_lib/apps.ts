@@ -27,6 +27,9 @@ export const APPS = [
       "Walk me through the L3 explained-risk composition over time in @[id:rm_risk_composition].",
       "How would I hedge this position based on @[id:rm_single_name_snapshot]?",
       "How does this ticker rank cross-sectionally per @[id:rm_rankings_single]?",
+      "Summarize the fundamentals trend in @[id:rm_fundamentals_history] — which line items are SEC-sourced?",
+      "Is this company returning or reinvesting capital, per @[id:rm_fundamentals_ratios]?",
+      "Walk me through @[id:rm_cost_of_capital] and how sensitive WACC is to my ERP assumption in @[id:rm_wacc_grid].",
     ],
     tabs: {
       overview: {
@@ -75,6 +78,44 @@ export const APPS = [
           },
         ],
       },
+      fundamentals: {
+        id: "fundamentals",
+        name: "Fundamentals",
+        layout: [
+          {
+            i: "rm_fundamentals_history",
+            x: 0,
+            y: 0,
+            w: 40,
+            h: 14,
+            state: { params: { ticker: "AAPL", periods: "8" } },
+          },
+          {
+            i: "rm_fundamentals_ratios",
+            x: 0,
+            y: 14,
+            w: 40,
+            h: 12,
+            state: { params: { ticker: "AAPL", periods: "16" } },
+          },
+          {
+            i: "rm_cost_of_capital",
+            x: 0,
+            y: 26,
+            w: 20,
+            h: 14,
+            state: { params: { ticker: "AAPL", erp: "0.05", rf_tenor: "10y" } },
+          },
+          {
+            i: "rm_wacc_grid",
+            x: 20,
+            y: 26,
+            w: 20,
+            h: 14,
+            state: { params: { ticker: "AAPL", measure: "wacc" } },
+          },
+        ],
+      },
       tearsheet: {
         id: "tearsheet",
         name: "Tearsheet",
@@ -91,7 +132,7 @@ export const APPS = [
       },
     },
     groups: [
-      // Change the ticker in one widget → the whole app follows (both tabs).
+      // Change the ticker in one widget → the whole app follows (all tabs).
       {
         name: "ticker",
         type: "param",
@@ -103,6 +144,10 @@ export const APPS = [
           "rm_cumulative_return",
           "rm_risk_composition",
           "rm_rankings_single",
+          "rm_fundamentals_history",
+          "rm_fundamentals_ratios",
+          "rm_cost_of_capital",
+          "rm_wacc_grid",
           "rm_tearsheet",
         ],
       },

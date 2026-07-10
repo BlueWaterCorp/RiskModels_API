@@ -15,6 +15,8 @@ import {
   readFilerHoldingsTopN,
 } from "@/lib/dal/funds-zarr-reader";
 import { fetchMacroFactorSeriesRows } from "@/lib/dal/macro-factors";
+import { getFundamentalsForTicker } from "@/lib/dal/fundamentals-zarr-reader";
+import { sanitizeFundamentalsRow } from "@/lib/api/fundamentals-contract";
 import {
   resolveSymbolByTicker,
   fetchLatestMetrics,
@@ -168,6 +170,58 @@ const portfolioRiskArgs = z.object({
   timeSeries: z.boolean().default(false),
   years: YearsSchema,
 });
+
+const getFundamentalsArgs = z.object({
+  ticker: TickerSchema,
+  periods: z.coerce.number().int().min(1).max(40).default(4),
+  as_of: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of must be YYYY-MM-DD")
+    .optional(),
+  erp: z.coerce.number().min(0).max(0.5).default(0.05),
+  rf_tenor: z.enum(["3m", "1y", "2y", "5y", "10y", "30y"]).default("10y"),
+});
+
+/**
+ * PIT quarterly fundamentals via the same DAL + licensing gate as
+ * GET /api/fundamentals — every row passes sanitizeFundamentalsRow, so raw
+ * vendor line items can never reach the model. Compact usage_notes replace
+ * the endpoint's full disclosures block (context economy); the semantics are
+ * identical.
+ */
+async function execGetFundamentals(args: z.infer<typeof getFundamentalsArgs>) {
+  const asOf = args.as_of ?? new Date().toISOString().slice(0, 10);
+  const result = await getFundamentalsForTicker(args.ticker, {
+    asOf,
+    periods: args.periods,
+    erp: args.erp,
+    taxRate: 0.21,
+    rfTenor: args.rf_tenor,
+  });
+  if (!result) {
+    throw new Error(`No fundamentals coverage for ticker ${args.ticker}`);
+  }
+  const rows = result.rows.map((row) =>
+    sanitizeFundamentalsRow(row as unknown as Record<string, unknown>),
+  );
+  return {
+    ticker: result.ticker,
+    as_of: asOf,
+    parameters: { erp: args.erp, tax_rate: 0.21, rf_tenor: args.rf_tenor },
+    rows,
+    usage_notes: {
+      realized_only:
+        "Realized historical data only — no forecasts, targets, or buy/sell signals.",
+      point_in_time: `Rows visible only where filed_date <= ${asOf}; filed_date_source 'approx' = period_end + 45 days.`,
+      sec_facts:
+        "sec_facts carries raw line items ONLY where the serving cell is SEC XBRL; a concept absent for a period means vendor-sourced or unreported there, NOT zero. As-originally-reported, not restated.",
+      ratios:
+        "Capital-return ratios are TTM on a cash-dividend basis; null when trailing-4-quarter net income <= 0 (not meaningful, not zero).",
+      cost_of_capital:
+        "ERP is caller-supplied (no stored opinion). beta_market is a short-half-life CONDITIONAL beta — cost_of_equity below the risk-free rate is possible for defensives and is not an error. WACC uses book-value weights.",
+    },
+  };
+}
 
 async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
   const { ticker } = args;
@@ -772,6 +826,43 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: "metrics-snapshot",
     argSchema: getRiskMetricsArgs,
     executor: async (a) => execGetRiskMetrics(getRiskMetricsArgs.parse(a)),
+  },
+  {
+    name: "get_fundamentals",
+    openaiTool: fnTool(
+      "get_fundamentals",
+      "Point-in-time quarterly fundamentals for a US equity: per-period sec_facts (raw line items served ONLY where the cell is SEC XBRL — a missing concept means vendor-sourced/unreported, never zero), derived TTM ratios (ROE, FCF margin, leverage), capital-return ratios (payout/retention/buyback/total-payout/sustainable-growth — null when trailing net income <= 0), the equity-bridge residual (a disclosed PLUG, not a measured line), and cost of capital (rf tenor + caller ERP -> cost_of_equity, book-weight WACC, TTM economic_profit). Rows are visible only where filed_date <= as_of — use as_of for anti-look-ahead backtests or 'what was known then' questions. Realized historical data ONLY: never present anything from this tool as a forecast or a buy/sell view, and quote usage_notes.cost_of_capital when discussing WACC or cost of equity (conditional beta; ERP is the user's assumption, not ours).",
+      {
+        ticker: {
+          type: "string",
+          description: "US stock ticker symbol, e.g. AAPL, NVDA, MSFT",
+        },
+        periods: {
+          type: "number",
+          description: "Quarters to return, newest last (default 4, max 40).",
+        },
+        as_of: {
+          type: "string",
+          description:
+            "PIT anchor YYYY-MM-DD: only quarters FILED on or before this date are visible (default today).",
+        },
+        erp: {
+          type: "number",
+          description:
+            "Equity risk premium for cost-of-capital fields (default 0.05). Always the caller's assumption.",
+        },
+        rf_tenor: {
+          type: "string",
+          enum: ["3m", "1y", "2y", "5y", "10y", "30y"],
+          description:
+            "Treasury CMT tenor for the risk-free rate (default 10y — valuation convention).",
+        },
+      },
+      ["ticker"],
+    ),
+    capabilityId: "fundamentals",
+    argSchema: getFundamentalsArgs,
+    executor: async (a) => execGetFundamentals(getFundamentalsArgs.parse(a)),
   },
   {
     name: "get_hedge_basket",
