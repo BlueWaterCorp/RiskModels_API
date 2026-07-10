@@ -18,9 +18,51 @@ Point-in-time (PIT) quarterly fundamentals for a single US equity. The endpoint 
 | `leverage_ratio` | Balance-sheet leverage |
 | `beta_market`, `beta_sector`, `beta_subsector` | ERM3 cascade betas PIT-sampled at the quarter end (`beta_source` flags provenance) |
 | `rf_rate` | Treasury CMT yield at the selected tenor (`rf_tenor`, default 10y) |
-| `cost_of_equity`, `wacc`, `economic_profit` | Cost-of-capital layer (book-weight WACC; ERP is caller-supplied) |
+| `cost_of_equity` | `rf_rate + beta_market × erp` |
+| `wacc` | Book-weight WACC |
+| `economic_profit` | NOPAT less a capital charge (`NOPAT − WACC × invested capital`), in **absolute USD** |
 
-**Point-in-time:** a row is returned only where `filed_date <= as_of`. There is no "latest" shortcut — you always see the panel as it was known on `as_of` (default: today).
+**Units:** rates and ratios are **decimal fractions** — `roe_ttm` of `1.47` is ≈ 147% ROE, `wacc` of `0.05` is 5%. `economic_profit` is an **absolute USD** figure (not per-share, not millions). `market_cap` is a **current snapshot in USD**, not a per-quarter PIT value.
+
+## Point-in-time
+
+A row is returned only where `filed_date <= as_of`. There is no "latest" shortcut — you always see the panel as it was known on `as_of` (default: today). `filed_date_source` is `exact` (vendor filing date) or `approx` (period end + 45 days, the 10-Q deadline) when the vendor date is missing.
+
+## Example response
+
+```json
+{
+  "ticker": "AAPL",
+  "as_of": "2026-07-10",
+  "periods_returned": 8,
+  "rows": [
+    {
+      "period_end_date": "2026-03-31",
+      "filed_date": "2026-05-01",
+      "filed_date_source": "exact",
+      "roe_ttm": 1.4669,
+      "roa_ttm": 0.3402,
+      "fcf_margin": 0.2965,
+      "leverage_ratio": 0.8499,
+      "beta_market": 1.0012,
+      "beta_sector": -0.3954,
+      "beta_subsector": -0.1920,
+      "beta_source": "in-universe",
+      "rf_rate": 0.0430,
+      "cost_of_equity": 0.0931,
+      "cost_of_debt": null,
+      "wacc": 0.0503,
+      "economic_profit": 146300933417.0,
+      "gross_margin": null,
+      "operating_margin": null,
+      "market_cap": null
+    }
+  ],
+  "market_cap": { "value": 4596707098624, "basis": "current_snapshot" }
+}
+```
+
+`rows` is ordered oldest → newest (`rows[-1]` is the most recent PIT-visible quarter). `gross_margin` / `operating_margin` and the per-row `market_cap` are `null` under derived-only licensing (see below); the top-level `market_cap` is the current snapshot.
 
 ## Parameters
 
@@ -38,16 +80,63 @@ curl -X GET "https://riskmodels.app/api/fundamentals/AAPL?periods=8&rf_tenor=10y
   -H "Authorization: Bearer $RISKMODELS_API_KEY"
 ```
 
+```python
+from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()  # reads RISKMODELS_API_KEY
+resp = client.get_fundamentals("AAPL", periods=8, erp=0.05, rf_tenor="10y")
+latest = resp["rows"][-1]
+print(latest["period_end_date"], latest["cost_of_equity"], latest["economic_profit"])
+
+# Or a tidy one-row-per-quarter DataFrame:
+df = client.get_fundamentals("AAPL", periods=8, as_dataframe=True)
+```
+
+Agents with the MCP server connected call the same data through the `get_fundamentals` tool (same parameters).
+
+## Cost-of-capital sensitivity grid (`grid=true`)
+
+Pass `grid=true` with `erp_grid` and `rf_tenor_grid` to get `cost_of_equity` / `wacc` / `economic_profit` across every (ERP × tenor) combination for the latest PIT-visible period — one read, no hardcoded ERP opinion:
+
+```json
+"sensitivity_grid": {
+  "period_end_date": "2026-03-31",
+  "erp_values": [0.04, 0.05, 0.06],
+  "rf_tenor_values": ["1y", "10y", "30y"],
+  "tax_rate": 0.21,
+  "cells": [
+    [
+      { "cost_of_equity": 0.0768, "wacc": 0.0415, "economic_profit": 148027338416 },
+      { "cost_of_equity": 0.0830, "wacc": 0.0449, "economic_profit": 147367094129 },
+      { "cost_of_equity": 0.0888, "wacc": 0.0480, "economic_profit": 146749446568 }
+    ]
+  ]
+}
+```
+
+`cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]` (the example above shows the `erp=0.04` row across the three tenors).
+
 ## Derived-only licensing
 
 Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are **not redistributable and not returned**. `gross_margin` / `operating_margin` come back `null` pending licensing-clean inputs, and `market_cap` is a **current snapshot**, not point-in-time per quarter. Rows sourced from SEC filings (a subset of concepts) may carry raw values where the licensing is clean; everything else is derived.
 
-## Notes that bite
+## Caveats
 
-- **Conditional betas, not textbook CAPM.** `beta_market` is a short-half-life conditional beta. For defensive names it can be low or negative, so `cost_of_equity` can fall below the risk-free rate — a property of the conditional beta, not an error.
+- **Conditional betas, not textbook CAPM.** `beta_market` is a **short-half-life conditional** beta from the ERM3 L3 cascade (see [ERM3 engine](/docs/erm3-engine)), so `cost_of_equity` is closer to a **current expected return** than a long-run Damodaran-style cost of equity. For defensive names the beta can be low or negative, so `cost_of_equity` can fall **below the risk-free rate** — a property of the conditional beta, not an error.
+- **`market_cap` is current, not PIT.** The top-level `market_cap` is today's snapshot; the per-row `market_cap` is `null`. Do not read it as the market cap at that quarter end.
 - **Book-weight WACC.** WACC uses balance-sheet (book) weights. Market-value weights are the textbook convention; compute them yourself if you have market cap.
 - **ERP is never stored.** The endpoint has no house ERP opinion — you pass `erp` (and optionally `grid`) and own the assumption. Pair a short `rf_tenor` (3m/1y) with a bill-basis ERP or cost of capital is understated.
 - **Coverage** starts ~2009 for most filers; pre-2009, small-cap, and recently-IPO'd names are thin. Missing fields are `null`, not row-dropped.
+
+## Error responses
+
+| Status | When |
+| --- | --- |
+| `400` | Malformed ticker or query parameter (e.g. an unsupported `rf_tenor`) |
+| `401` | Missing or invalid Bearer token |
+| `402` | Insufficient balance |
+| `404` | Ticker not present in the fundamentals panel (unknown, delisted before coverage, or non-US) |
+| `429` | Rate limit exceeded (`Retry-After` header carries the wait) |
 
 ## Pricing
 
@@ -58,3 +147,4 @@ Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are **not
 - [API guide](/docs/api) — endpoint map and workflow
 - [OpenAPI reference](/api-reference) — full request/response schema for `/fundamentals/{ticker}`
 - [ERM3 engine](/docs/erm3-engine) — where the cascade betas come from
+- [Methodology](/docs/methodology) — the hierarchical model and factor set
