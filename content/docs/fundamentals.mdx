@@ -1,0 +1,60 @@
+---
+title: Fundamentals (PIT quarterly, derived analytics)
+description: GET /api/fundamentals/{ticker} — point-in-time quarterly fundamentals, derived-only: TTM ratios, leverage, ERM3 cascade betas, and the cost-of-capital layer (cost of equity, WACC, economic profit).
+---
+
+# Fundamentals — `GET /api/fundamentals/{ticker}`
+
+Point-in-time (PIT) quarterly fundamentals for a single US equity. The endpoint returns **derived analytics only** — realized ratios plus a cost-of-capital layer computed on top of the fundamentals panel — never raw vendor line items and never forecasts.
+
+**Realized historical only.** No forecasts, no analyst targets, no consensus/estimate EPS, no buy/sell signals — consistent with the no-investment-advice rule.
+
+## What you get
+
+| Field | Meaning |
+| --- | --- |
+| `period_end_date` / `filed_date` | Quarter end + the date the filing became public (the PIT key) |
+| `roe_ttm`, `roa_ttm`, `fcf_margin` | Trailing-twelve-month profitability ratios |
+| `leverage_ratio` | Balance-sheet leverage |
+| `beta_market`, `beta_sector`, `beta_subsector` | ERM3 cascade betas PIT-sampled at the quarter end (`beta_source` flags provenance) |
+| `rf_rate` | Treasury CMT yield at the selected tenor (`rf_tenor`, default 10y) |
+| `cost_of_equity`, `wacc`, `economic_profit` | Cost-of-capital layer (book-weight WACC; ERP is caller-supplied) |
+
+**Point-in-time:** a row is returned only where `filed_date <= as_of`. There is no "latest" shortcut — you always see the panel as it was known on `as_of` (default: today).
+
+## Parameters
+
+| Param | Default | Notes |
+| --- | --- | --- |
+| `periods` | 8 | Quarterly rows returned, most recent last (max 40) |
+| `as_of` | today | PIT cutoff — rows visible iff `filed_date <= as_of` |
+| `erp` | 0.05 | Equity risk premium for the cost-of-capital layer (always caller-supplied) |
+| `rf_tenor` | 10y | Treasury tenor backing `rf_rate` — `3m` / `1y` / `2y` / `5y` / `10y` / `30y` |
+| `tax_rate` | 0.21 | Applied to the WACC debt shield |
+| `grid` | false | If true, adds a cost-of-capital sensitivity grid across `erp_grid` × `rf_tenor_grid` for the latest PIT-visible period |
+
+```bash
+curl -X GET "https://riskmodels.app/api/fundamentals/AAPL?periods=8&rf_tenor=10y" \
+  -H "Authorization: Bearer $RISKMODELS_API_KEY"
+```
+
+## Derived-only licensing
+
+Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are **not redistributable and not returned**. `gross_margin` / `operating_margin` come back `null` pending licensing-clean inputs, and `market_cap` is a **current snapshot**, not point-in-time per quarter. Rows sourced from SEC filings (a subset of concepts) may carry raw values where the licensing is clean; everything else is derived.
+
+## Notes that bite
+
+- **Conditional betas, not textbook CAPM.** `beta_market` is a short-half-life conditional beta. For defensive names it can be low or negative, so `cost_of_equity` can fall below the risk-free rate — a property of the conditional beta, not an error.
+- **Book-weight WACC.** WACC uses balance-sheet (book) weights. Market-value weights are the textbook convention; compute them yourself if you have market cap.
+- **ERP is never stored.** The endpoint has no house ERP opinion — you pass `erp` (and optionally `grid`) and own the assumption. Pair a short `rf_tenor` (3m/1y) with a bill-basis ERP or cost of capital is understated.
+- **Coverage** starts ~2009 for most filers; pre-2009, small-cap, and recently-IPO'd names are thin. Missing fields are `null`, not row-dropped.
+
+## Pricing
+
+**$0.005 / call** (`billing_code: fundamentals_v1`), per symbol per call. There is no batch variant — one ticker per request.
+
+## Related
+
+- [API guide](/docs/api) — endpoint map and workflow
+- [OpenAPI reference](/api-reference) — full request/response schema for `/fundamentals/{ticker}`
+- [ERM3 engine](/docs/erm3-engine) — where the cascade betas come from

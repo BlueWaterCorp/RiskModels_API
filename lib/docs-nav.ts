@@ -38,6 +38,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
       { href: '/docs/universe-members', label: 'Universe members' },
       { href: '/docs/residual-signal-basket', label: 'Residual signal basket' },
       { href: '/docs/macro-factors', label: 'Factor correlation' },
+      { href: '/docs/fundamentals', label: 'Fundamentals' },
       { href: '/docs/response-metadata', label: 'Response metadata' },
     ],
   },
