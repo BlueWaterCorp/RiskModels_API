@@ -331,7 +331,7 @@ export function buildFundamentalsRows(
   // Capital-management concepts live in secRaw (the served plane value). Used here for DERIVED
   // ratios only — not gated, because derived analytics are redistributable.
   const secWindow = (name: SecFactConcept, positions: number[]): (number | null)[] =>
-    positions.map((i) => pack.secRaw[name]?.[i] ?? null);
+    positions.map((i) => pack.secRaw?.[name]?.[i] ?? null);
 
   for (let p = Math.max(0, visible.length - periods); p < visible.length; p++) {
     const i = visible[p]!;
@@ -376,7 +376,7 @@ export function buildFundamentalsRows(
     // single door raw values pass through.
     const secFacts: SecFacts = {};
     for (const concept of SEC_FACT_CONCEPTS) {
-      const fact = secCellValue(concept, pack.secRaw[concept]?.[i], pack.secSource[concept]?.[i]);
+      const fact = secCellValue(concept, pack.secRaw?.[concept]?.[i], pack.secSource?.[concept]?.[i]);
       if (fact) secFacts[concept] = fact;
     }
 
