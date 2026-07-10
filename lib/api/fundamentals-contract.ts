@@ -31,6 +31,12 @@ export const FUNDAMENTALS_ROW_ALLOWED_FIELDS = [
   "roa_ttm",
   "leverage_ratio",
   "fcf_margin",
+  // Capital-return ratios (Phase 2) — derived from SEC-served TTM flows
+  "payout_ratio",
+  "retention_ratio",
+  "buyback_ratio",
+  "total_payout_ratio",
+  "sustainable_growth",
   // Our own derived analytics (ERM3 cascade betas + provenance)
   "beta_market",
   "beta_sector",
@@ -157,6 +163,11 @@ export interface FundamentalsRow {
   roa_ttm: number | null;
   leverage_ratio: number | null;
   fcf_margin: number | null;
+  payout_ratio: number | null;
+  retention_ratio: number | null;
+  buyback_ratio: number | null;
+  total_payout_ratio: number | null;
+  sustainable_growth: number | null;
   beta_market: number | null;
   beta_sector: number | null;
   beta_subsector: number | null;
@@ -233,6 +244,8 @@ export function buildFundamentalsDisclosures(params: {
       "WACC uses BOOK-value weights (balance-sheet equity and debt). Market-value weights are the textbook convention; compute them yourself if you have market-cap access.",
     ttm_convention:
       "TTM aggregates sum flows over the trailing 4 reported quarters; stock quantities are point-in-time (ROE denominator uses the trailing-4-quarter average equity). Ratios need 4 finite quarters or they are null.",
+    capital_return_ratios:
+      "payout_ratio, retention_ratio (=1-payout, the reinvestment-rate proxy), buyback_ratio, total_payout_ratio, and sustainable_growth (=retention*roe_ttm) are TTM. Dividend basis is CASH PAID (dividends_paid) — the shareholder-return measure, and denser than declared (many filers, e.g. Apple and Exxon, tag only paid). For the EXACT retained-earnings roll-forward use dividends_declared, exposed raw in sec_facts: retention_ratio here is cash-basis and equals accrual retention up to declaration-vs-payment timing. All are null when trailing-4-quarter net income is <= 0 — a payout on non-positive earnings is not meaningful, not zero. total_payout_ratio (dividends + buybacks) can exceed 1 in a heavy-buyback year and is more volatile than payout_ratio.",
     sec_facts_provenance:
       "sec_facts carries RAW line items only for cells whose serving value is SEC XBRL (public, redistributable), tagged us_gaap or ifrs. A concept is absent for a period when that cell is EODHD-sourced (not redistributable) or empty. Coverage varies by concept and filer: income-statement/balance-sheet levels are ~30-50% SEC on large caps; cash-flow and capital-management items are near-100% SEC where reported. Values are as-originally-reported (earliest filing), not restated.",
     sec_facts_definitions:

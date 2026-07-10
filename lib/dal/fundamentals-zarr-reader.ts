@@ -130,6 +130,56 @@ export function economicProfit(
   return (re - ke) * totalEquity;
 }
 
+// ── Capital-return ratios (Phase 2) — the reinvestment inputs for economic-profit models ──
+// All computed from SEC-served TTM flows. These are DERIVED analytics (redistributable), so they
+// use the served value of each concept, not the per-cell SEC gate that guards the raw line items.
+// A ratio over non-positive earnings is not meaningful, so `net_income_ttm <= 0 → NaN` (matching
+// the equity<=0 guard on ROE); the caller sees null, not a misleading negative payout.
+//
+// DIVIDEND BASIS = CASH PAID. These are shareholder-return metrics, so they use dividends_paid,
+// which is denser than dividends_declared (many filers — Apple, Exxon — tag only paid). The
+// distinction matters: dividends DECLARED (accrual) is what drives the retained-earnings
+// roll-forward, and it is exposed RAW in sec_facts for a modeller who needs exact RE dynamics.
+// retention_ratio here is therefore a CASH-basis reinvestment proxy (1 - cash payout), which
+// equals the accrual retention up to declaration-vs-payment timing.
+
+/** dividends_paid_ttm / net_income_ttm — cash dividends as a share of earnings. */
+export function payoutRatio(dividendsPaidTtm: number, netIncomeTtm: number): number {
+  if (!(finite(dividendsPaidTtm) && finite(netIncomeTtm)) || netIncomeTtm <= 0) return NaN;
+  return dividendsPaidTtm / netIncomeTtm;
+}
+
+/** 1 - cash payout = the reinvestment-rate proxy `b`. NaN whenever payout is NaN. */
+export function retentionRatio(dividendsPaidTtm: number, netIncomeTtm: number): number {
+  const p = payoutRatio(dividendsPaidTtm, netIncomeTtm);
+  return Number.isFinite(p) ? 1 - p : NaN;
+}
+
+/** share_repurchases_ttm / net_income_ttm — buybacks as a share of earnings. */
+export function buybackRatio(shareRepurchasesTtm: number, netIncomeTtm: number): number {
+  if (!(finite(shareRepurchasesTtm) && finite(netIncomeTtm)) || netIncomeTtm <= 0) return NaN;
+  return shareRepurchasesTtm / netIncomeTtm;
+}
+
+/** (dividends_paid + share_repurchases) / net_income — total cash returned per $ earned. */
+export function totalPayoutRatio(
+  dividendsPaidTtm: number,
+  shareRepurchasesTtm: number,
+  netIncomeTtm: number,
+): number {
+  const div = finite(dividendsPaidTtm) ? dividendsPaidTtm : 0;
+  const buy = finite(shareRepurchasesTtm) ? shareRepurchasesTtm : 0;
+  if (!finite(netIncomeTtm) || netIncomeTtm <= 0) return NaN;
+  if (!finite(dividendsPaidTtm) && !finite(shareRepurchasesTtm)) return NaN; // nothing to sum
+  return (div + buy) / netIncomeTtm;
+}
+
+/** Sustainable growth g = retention * ROE — the internally-funded equity growth rate. */
+export function sustainableGrowth(retention: number, roe: number): number {
+  if (!(Number.isFinite(retention) && Number.isFinite(roe))) return NaN;
+  return retention * roe;
+}
+
 /** SUM of the last `minQuarters` finite FLOW values. NaN if fewer are finite. */
 export function ttmSum(values: (number | null)[], minQuarters = 4): number {
   const fin = values.filter(finite);
@@ -216,6 +266,11 @@ export interface FundamentalsInternalRow {
   roa_ttm: number | null;
   leverage_ratio: number | null;
   fcf_margin: number | null;
+  payout_ratio: number | null;
+  retention_ratio: number | null;
+  buyback_ratio: number | null;
+  total_payout_ratio: number | null;
+  sustainable_growth: number | null;
   beta_market: number | null;
   beta_sector: number | null;
   beta_subsector: number | null;
@@ -273,6 +328,10 @@ export function buildFundamentalsRows(
 
   const windowVals = (name: PackVar, positions: number[]): (number | null)[] =>
     positions.map((i) => pack.vars[name][i] ?? null);
+  // Capital-management concepts live in secRaw (the served plane value). Used here for DERIVED
+  // ratios only — not gated, because derived analytics are redistributable.
+  const secWindow = (name: SecFactConcept, positions: number[]): (number | null)[] =>
+    positions.map((i) => pack.secRaw[name]?.[i] ?? null);
 
   for (let p = Math.max(0, visible.length - periods); p < visible.length; p++) {
     const i = visible[p]!;
@@ -283,6 +342,8 @@ export function buildFundamentalsRows(
     const revTtm = ttmSum(windowVals("revenue", windowPos));
     const cfoTtm = ttmSum(windowVals("cash_from_operations", windowPos));
     const capexTtm = ttmSum(windowVals("capital_expenditures", windowPos));
+    const divPaidTtm = ttmSum(secWindow("dividends_paid", windowPos));
+    const buybackTtm = ttmSum(secWindow("share_repurchases", windowPos));
     const eqAvg = ttmAvg(windowVals("total_equity", windowPos));
     const assetsAvg = ttmAvg(windowVals("total_assets", windowPos));
     const eqLast = latestFinite(windowVals("total_equity", windowPos));
@@ -331,6 +392,14 @@ export function buildFundamentalsRows(
       roa_ttm: toNull(roa),
       leverage_ratio: toNull(leverage),
       fcf_margin: toNull(fcfMargin),
+      // Capital-return ratios (Phase 2) — reinvestment inputs for economic-profit models
+      payout_ratio: toNull(payoutRatio(divPaidTtm, niTtm)),
+      retention_ratio: toNull(retentionRatio(divPaidTtm, niTtm)),
+      buyback_ratio: toNull(buybackRatio(buybackTtm, niTtm)),
+      total_payout_ratio: toNull(totalPayoutRatio(divPaidTtm, buybackTtm, niTtm)),
+      sustainable_growth: toNull(
+        sustainableGrowth(retentionRatio(divPaidTtm, niTtm), roeTtm(niTtm, eqAvg)),
+      ),
       beta_market: toNull(finite(bm) ? bm : NaN),
       beta_sector: toNull(finite(bsec) ? bsec : NaN),
       beta_subsector: toNull(finite(bsub) ? bsub : NaN),
