@@ -8,7 +8,7 @@
   "description": "RiskModels API Developer Portal",
   "scripts": {
     "dev": "next dev",
-    "build": "npm run build:openapi && npm run build:sdk && npm run build:web-sdk && next build",
+    "build": "npm run build:capabilities && npm run build:openapi && npm run build:sdk && npm run build:web-sdk && next build",
     "build:sdk": "npm run build --workspace=@riskmodels/sdk",
     "build:web-sdk": "npm run build --workspace=@riskmodels/web",
     "vercel:sync-env": "./scripts/sync-env-to-vercel.sh",
@@ -34,7 +34,8 @@
     "publish:riskmodels-py:doppler": "doppler run -p erm3 -c prd -- bash sdk/scripts/publish_pypi.sh",
     "db:push": "bash ./scripts/check-supabase-cli.sh db push --linked",
     "db:migration:list": "bash ./scripts/check-supabase-cli.sh migration list --linked",
-    "postinstall": "npm run build:sdk && npm run build:web-sdk"
+    "postinstall": "npm run build:sdk && npm run build:web-sdk",
+    "build:capabilities": "node scripts/generate-mcp-capabilities.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",

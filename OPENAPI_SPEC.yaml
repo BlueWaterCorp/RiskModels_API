@@ -840,9 +840,10 @@ components:
     FundamentalsRow:
       type: object
       description: >
-        One PIT quarterly observation — derived analytics only. Any ratio lacking
-        4 finite trailing quarters, or hitting a guard (equity <= 0, debt <= 0,
-        missing beta), is null. Never clipped.
+        One PIT quarterly observation. Derived analytics plus, in sec_facts, raw
+        line items for cells whose serving value is SEC XBRL (public). Any ratio
+        lacking 4 finite trailing quarters, or hitting a guard (equity <= 0,
+        debt <= 0, missing beta), is null. Never clipped.
       properties:
         period_end_date:
           type: string
@@ -860,6 +861,21 @@ components:
           description: >
             exact = vendor filing date; approx = period_end + 45 days (10-Q
             deadline) when the vendor date is missing.
+        sec_facts:
+          type: object
+          description: >
+            Raw line items for this period, present only for cells whose serving
+            value is SEC XBRL. Keyed by concept (revenue, net_income,
+            total_equity, cash_from_operations, dividends_paid, share_repurchases,
+            etc.); a concept is absent when its cell is vendor-sourced or empty.
+          additionalProperties:
+            type: object
+            properties:
+              value:
+                type: number
+              source:
+                type: string
+                enum: [us_gaap, ifrs]
         gross_margin:
           type: number
           nullable: true
@@ -884,6 +900,41 @@ components:
           type: number
           nullable: true
           description: TTM free cash flow (CFO - capex) over TTM revenue.
+        payout_ratio:
+          type: number
+          nullable: true
+          description: TTM dividends paid / TTM net income. Null when TTM net income <= 0.
+        retention_ratio:
+          type: number
+          nullable: true
+          description: 1 - payout_ratio (the reinvestment-rate proxy). Cash basis.
+        buyback_ratio:
+          type: number
+          nullable: true
+          description: TTM share repurchases / TTM net income.
+        total_payout_ratio:
+          type: number
+          nullable: true
+          description: (TTM dividends paid + share repurchases) / TTM net income. May exceed 1.
+        sustainable_growth:
+          type: number
+          nullable: true
+          description: retention_ratio * roe_ttm.
+        equity_bridge_residual:
+          type: number
+          nullable: true
+          description: >
+            Plug that closes the equity roll-forward by construction
+            (total_equity_t - total_equity_{t-1} = sum of tagged components +
+            residual). Frequently large; a decomposition aid, not a measured line.
+            Null on a symbol's first reported period.
+        equity_bridge_inputs:
+          type: array
+          items:
+            type: string
+          description: >
+            Components that backed the residual. A component MISSING from the list
+            means its movement is inside the residual, not that it was zero.
         beta_market:
           type: number
           nullable: true
@@ -3946,7 +3997,7 @@ paths:
 
   /fundamentals/{ticker}:
     get:
-      summary: Point-in-time quarterly fundamentals (derived analytics only)
+      summary: Point-in-time quarterly fundamentals (derived analytics + SEC-sourced raw)
       description: >
         Quarterly fundamentals for a single ticker, point-in-time filtered: a row is
         visible if and only if its `filed_date` is on or before `as_of` (never "latest").
@@ -3954,14 +4005,19 @@ paths:
         (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).
 
 
-        **Derived analytics only.** Raw vendor line items (revenue, net income, EPS,
-        balance-sheet levels) are not redistributable and are never included. Rows carry
-        TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), `leverage_ratio`,
-        ERM3 cascade betas with provenance (`beta_market` / `beta_sector` /
-        `beta_subsector` / `beta_source`), and the cost-of-capital layer
-        (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`). `gross_margin`
-        and `operating_margin` are currently always null (inputs not yet in the store).
-        `market_cap` is a current snapshot, not point-in-time per quarter.
+        **Derived analytics + per-cell raw SEC exposure.** Rows carry TTM profitability
+        ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), capital-return ratios (`payout_ratio`,
+        `retention_ratio`, `buyback_ratio`, `total_payout_ratio`, `sustainable_growth`),
+        `leverage_ratio`, ERM3 cascade betas with provenance, the cost-of-capital layer
+        (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`), and the equity-bridge
+        residual + inputs mask. `sec_facts` carries RAW line items for the cells whose serving
+        value is SEC XBRL (public); vendor-sourced cells are not included there.
+
+
+        Numeric line items are stored at ~7 significant figures (float32) — suitable for
+        analysis, not cent-level reconciliation. `gross_margin` and `operating_margin` are
+        currently always null (inputs not yet in the store). `market_cap` is a current
+        snapshot, not point-in-time per quarter.
 
 
         **Disclosures (also returned in every response body):**

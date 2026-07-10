@@ -1,11 +1,11 @@
 ---
-title: "Fundamentals — PIT quarterly, derived analytics"
-description: "Point-in-time quarterly fundamentals for one US equity — derived-only: TTM ratios, leverage, ERM3 cascade betas, and the cost-of-capital layer (cost of equity, WACC, economic profit)."
+title: "Fundamentals — PIT quarterly, derived + SEC-sourced raw"
+description: "Point-in-time quarterly fundamentals for one US equity: TTM and capital-return ratios, ERM3 cascade betas, the cost-of-capital layer, an equity-bridge decomposition, and raw SEC-sourced line items per cell (sec_facts)."
 ---
 
 # Fundamentals — `GET /api/fundamentals/{ticker}`
 
-Point-in-time (PIT) quarterly fundamentals for a single US equity. The endpoint returns **derived analytics only** — realized ratios plus a cost-of-capital layer computed on top of the fundamentals panel — never raw vendor line items and never forecasts.
+Point-in-time (PIT) quarterly fundamentals for a single US equity. Each row carries derived analytics — TTM profitability and capital-return ratios, a cost-of-capital layer, an equity-bridge decomposition — and, in `sec_facts`, **raw line items for the cells whose serving value is SEC XBRL (public)**. Vendor-sourced cells are not exposed as raw; no forecasts.
 
 **Realized historical only.** No forecasts, no analyst targets, no consensus/estimate EPS, no buy/sell signals — consistent with the no-investment-advice rule.
 
@@ -62,7 +62,7 @@ A row is returned only where `filed_date <= as_of`. There is no "latest" shortcu
 }
 ```
 
-`rows` is ordered oldest → newest (`rows[-1]` is the most recent PIT-visible quarter). `gross_margin` / `operating_margin` and the per-row `market_cap` are `null` under derived-only licensing (see below); the top-level `market_cap` is the current snapshot.
+`rows` is ordered oldest → newest (`rows[-1]` is the most recent PIT-visible quarter). Each row also carries `sec_facts` (raw SEC-sourced line items, per cell — see below), the capital-return ratios, and the equity-bridge fields. `gross_margin` / `operating_margin` and the per-row `market_cap` are `null` (see below); the top-level `market_cap` is the current snapshot.
 
 ## Parameters
 
@@ -116,9 +116,34 @@ Pass `grid=true` with `erp_grid` and `rf_tenor_grid` to get `cost_of_equity` / `
 
 `cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]` (the example above shows the `erp=0.04` row across the three tenors).
 
-## Derived-only licensing
+## Raw SEC line items — `sec_facts`
 
-Raw vendor line items (revenue, net income, EPS, balance-sheet levels) are **not redistributable and not returned**. `gross_margin` / `operating_margin` come back `null` pending licensing-clean inputs, and `market_cap` is a **current snapshot**, not point-in-time per quarter. Rows sourced from SEC filings (a subset of concepts) may carry raw values where the licensing is clean; everything else is derived.
+Each row carries a `sec_facts` object of raw line items, but **only for the cells whose serving value is SEC XBRL** (public, redistributable). It is keyed by concept — `revenue`, `net_income`, `operating_income`, `pretax_income`, `income_tax_expense`, `total_assets`, `total_equity`, `total_liabilities`, `retained_earnings`, `accumulated_oci`, `cash_from_operations`, `capital_expenditures`, `cash_from_investing`, `cash_from_financing`, `change_in_cash`, `dividends_paid`, `dividends_declared`, `share_repurchases`, `share_issuance`, `share_based_comp`, and more — each an object `{ value, source }` where `source` is `us_gaap` or `ifrs`.
+
+A concept is **absent** for a period when that cell is vendor-sourced (not redistributable) or empty. Coverage is per filer and contiguous in time: from the quarter a filer adopted XBRL (generally 2009+) forward, most concepts are SEC-served; earlier periods are vendor-sourced and so absent from `sec_facts`. Values are as-originally-reported.
+
+```json
+"sec_facts": {
+  "revenue":       { "value": 111184000000, "source": "us_gaap" },
+  "net_income":    { "value": 29578000000,  "source": "us_gaap" },
+  "total_equity":  { "value": 106491000000, "source": "us_gaap" },
+  "dividends_paid":{ "value": 3822000000,   "source": "us_gaap" }
+}
+```
+
+## Capital-return ratios
+
+`payout_ratio`, `retention_ratio` (`= 1 - payout`, the reinvestment-rate proxy), `buyback_ratio`, `total_payout_ratio` (dividends + buybacks / net income; can exceed 1 in a heavy-buyback year), and `sustainable_growth` (`= retention_ratio × roe_ttm`) are TTM. Dividend basis is cash paid; all are `null` when trailing-4-quarter net income is `<= 0`.
+
+## Equity bridge
+
+`equity_bridge_residual` is the **plug** that closes the equity roll-forward by construction (`total_equity_t − total_equity_{t-1} =` tagged components `+ residual`). It is a decomposition aid, not a measured line, and is frequently large. `equity_bridge_inputs` lists the components that backed it — a component **missing** from the list means its movement is inside the residual, not that it was zero (e.g. a filer that does not tag dividends has its dividends in the residual). For modelling, anchor on `retained_earnings`.
+
+## Licensing & precision
+
+Raw line items appear only in `sec_facts`, per the SEC-cell rule above; vendor-sourced raw values are not returned. `gross_margin` / `operating_margin` come back `null` pending inputs, and `market_cap` is a **current snapshot**, not point-in-time per quarter.
+
+Numeric line items are stored at **~7 significant figures** (float32) — suitable for analysis, not for cent-level reconciliation. (Share counts are exempt once the exact-precision store update lands.)
 
 ## Caveats
 

@@ -8,12 +8,12 @@ parsing here — mirroring how ``parsing.py`` backs ``get_ticker_returns`` /
 ``get_rankings``.
 
 LICENSING: every field this module reads comes from the server's already
-derived-only, sanitized response body (``lib/api/fundamentals-contract.ts`` on
-the API side). This module never reconstructs a held-back raw field (revenue,
-net income, EPS, balance-sheet levels, earnings surprise) from derived ones —
-it only reshapes and aggregates what the server already cleared to ship. See
-``CLAUDE.md`` — "Derived-only licensing is enforced server-side — never add
-client-side raw-field reconstruction."
+sanitized response body (``lib/api/fundamentals-contract.ts`` on the API side).
+Raw line items appear only inside ``sec_facts``, and only for the cells the
+server cleared to ship there (per-cell gate). This module never reconstructs a
+held-back raw field from derived ones — it only reshapes what the server already
+sent. See ``CLAUDE.md`` — "raw-field exposure is enforced server-side — never add
+client-side reconstruction."
 
 Examples
 --------
@@ -44,12 +44,20 @@ FUNDAMENTALS_ROW_COLUMNS = [
     "period_end_date",
     "filed_date",
     "filed_date_source",
+    "sec_facts",
     "gross_margin",
     "operating_margin",
     "roe_ttm",
     "roa_ttm",
     "leverage_ratio",
     "fcf_margin",
+    "payout_ratio",
+    "retention_ratio",
+    "buyback_ratio",
+    "total_payout_ratio",
+    "sustainable_growth",
+    "equity_bridge_residual",
+    "equity_bridge_inputs",
     "beta_market",
     "beta_sector",
     "beta_subsector",
@@ -70,6 +78,14 @@ FUNDAMENTALS_COLUMN_HINTS: dict[str, str] = {
     "roa_ttm": "Trailing-4Q net income / trailing-4Q average total assets.",
     "leverage_ratio": "Latest total_debt / latest total_equity (point-in-time, not TTM).",
     "fcf_margin": "(cash_from_operations_ttm - capex_ttm) / revenue_ttm.",
+    "sec_facts": "Per-period dict of raw SEC-sourced line items {concept: {value, source}}; a concept is present only where its cell is SEC XBRL (us_gaap|ifrs), absent when vendor-sourced.",
+    "payout_ratio": "TTM dividends paid / TTM net income; null when TTM net income <= 0.",
+    "retention_ratio": "1 - payout_ratio (reinvestment-rate proxy, cash basis).",
+    "buyback_ratio": "TTM share repurchases / TTM net income.",
+    "total_payout_ratio": "(TTM dividends paid + share repurchases) / TTM net income; may exceed 1.",
+    "sustainable_growth": "retention_ratio * roe_ttm.",
+    "equity_bridge_residual": "Plug that closes the equity roll-forward; a decomposition aid, not a measured line. Often large.",
+    "equity_bridge_inputs": "List of components that backed the residual; a component absent means its movement is inside the residual.",
     "beta_market": "Short-half-life conditional market beta — NOT a textbook long-run CAPM beta.",
     "beta_source": "Provenance of the beta window: none | in-universe | out-of-universe | post-delisting.",
     "rf_rate": "Treasury CMT yield at the requested rf_tenor, sampled at/before this quarter's period end.",
