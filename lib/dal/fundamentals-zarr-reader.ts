@@ -41,6 +41,7 @@ import {
 } from "@/lib/cache/redis";
 import {
   SEC_FACT_CONCEPTS,
+  decodeEquityBridgeInputs,
   secCellValue,
   type SecFactConcept,
   type SecFacts,
@@ -251,6 +252,10 @@ export interface FundamentalsRowPack {
   secRaw: Record<SecFactConcept, (number | null)[]>;
   /** `{concept}_source` plane per column (0=none,1=EODHD,2=SEC us-gaap,3=SEC ifrs). */
   secSource: Record<SecFactConcept, (number | null)[]>;
+  /** Equity-bridge residual per column (dollars); null on a symbol's first reported period. */
+  bridgeResidual: (number | null)[];
+  /** Equity-bridge inputs bitmask per column; decoded to component names at row-build. */
+  bridgeInputs: (number | null)[];
   /** 1-D rf strip per tenor over the shared period_end axis (fraction, e.g. 0.0448). */
   rfCurve: Partial<Record<RfTenor, (number | null)[]>>;
 }
@@ -271,6 +276,8 @@ export interface FundamentalsInternalRow {
   buyback_ratio: number | null;
   total_payout_ratio: number | null;
   sustainable_growth: number | null;
+  equity_bridge_residual: number | null;
+  equity_bridge_inputs: string[];
   beta_market: number | null;
   beta_sector: number | null;
   beta_subsector: number | null;
@@ -400,6 +407,10 @@ export function buildFundamentalsRows(
       sustainable_growth: toNull(
         sustainableGrowth(retentionRatio(divPaidTtm, niTtm), roeTtm(niTtm, eqAvg)),
       ),
+      equity_bridge_residual: toNull(
+        finite(pack.bridgeResidual[i]) ? (pack.bridgeResidual[i] as number) : NaN,
+      ),
+      equity_bridge_inputs: decodeEquityBridgeInputs(pack.bridgeInputs[i]),
       beta_market: toNull(finite(bm) ? bm : NaN),
       beta_sector: toNull(finite(bsec) ? bsec : NaN),
       beta_subsector: toNull(finite(bsub) ? bsub : NaN),
@@ -750,6 +761,13 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
     secSource[concept] = (srcRaw ? decodeFloatsNullable(srcRaw.data) : null) ?? nulls();
   }
 
+  // Equity-bridge planes (Phase 3). Both are per-cell on the symbol row; residual is float
+  // (null on a symbol's first period), inputs is a small-integer bitmask stored float32 (exact).
+  const bridgeResRaw = await readVarRow(grp, "equity_bridge_residual", symIdx);
+  const bridgeInRaw = await readVarRow(grp, "equity_bridge_inputs", symIdx);
+  const bridgeResidual = (bridgeResRaw ? decodeFloatsNullable(bridgeResRaw.data) : null) ?? nulls();
+  const bridgeInputs = (bridgeInRaw ? decodeFloatsNullable(bridgeInRaw.data) : null) ?? nulls();
+
   // rf tenor strip: six tiny 1-D arrays, read once per pack so any tenor is
   // served from cache. A missing tenor variable (pre-2026-07-06 store) leaves
   // that tenor absent → rf/CoC null, never a wrong-tenor substitute.
@@ -768,6 +786,8 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
     vars,
     secRaw,
     secSource,
+    bridgeResidual,
+    bridgeInputs,
     rfCurve,
   };
 }

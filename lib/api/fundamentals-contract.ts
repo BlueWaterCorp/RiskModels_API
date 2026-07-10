@@ -37,6 +37,9 @@ export const FUNDAMENTALS_ROW_ALLOWED_FIELDS = [
   "buyback_ratio",
   "total_payout_ratio",
   "sustainable_growth",
+  // Equity bridge (Phase 3) — the residual that closes the roll-forward, + what backed it
+  "equity_bridge_residual",
+  "equity_bridge_inputs",
   // Our own derived analytics (ERM3 cascade betas + provenance)
   "beta_market",
   "beta_sector",
@@ -151,6 +154,28 @@ export function secCellValue(
   return undefined; // 0/1/null → EODHD or empty → not redistributable
 }
 
+/**
+ * Equity-bridge components, in the store's bit order (ERM3 fundamentals_concepts.BRIDGE_COMPONENTS).
+ * `equity_bridge_inputs` is a bitmask; bit i is set when component i backed that period's residual.
+ * MUST match the Python order exactly — bit 0 = net_income, …, bit 6 = share_based_comp.
+ */
+export const EQUITY_BRIDGE_COMPONENTS = [
+  "net_income",          // +1, bit 0
+  "accumulated_oci",     // +1 (as a DELTA), bit 1
+  "dividends_declared",  // -1, bit 2
+  "dividends_preferred", // -1, bit 3
+  "share_repurchases",   // -1, bit 4
+  "share_issuance",      // +1, bit 5
+  "share_based_comp",    // +1, bit 6
+] as const;
+
+/** Decode the bitmask into the component names that were present. Absent bit = MISSING that term. */
+export function decodeEquityBridgeInputs(mask: number | null | undefined): string[] {
+  if (typeof mask !== "number" || !Number.isFinite(mask)) return [];
+  const m = Math.round(mask);
+  return EQUITY_BRIDGE_COMPONENTS.filter((_c, i) => (m & (1 << i)) !== 0);
+}
+
 export interface FundamentalsRow {
   period_end_date: string;
   filed_date: string | null;
@@ -168,6 +193,10 @@ export interface FundamentalsRow {
   buyback_ratio: number | null;
   total_payout_ratio: number | null;
   sustainable_growth: number | null;
+  /** The plug that closes E_t - E_{t-1} = modelled + residual. See the disclosure. */
+  equity_bridge_residual: number | null;
+  /** Which components backed the residual; a MISSING one means an unattributed movement. */
+  equity_bridge_inputs: string[];
   beta_market: number | null;
   beta_sector: number | null;
   beta_subsector: number | null;
@@ -197,6 +226,13 @@ export function sanitizeFundamentalsRow(
       // the gate so a non-SEC or denied value cannot survive to serialization. The DAL already
       // gated on read; this is the belt to that suspenders.
       out[key] = sanitizeSecFacts(v);
+      continue;
+    }
+    if (key === "equity_bridge_inputs") {
+      // Array-valued: keep an array of known component names, default []. Never null (the shape
+      // is a stable list a consumer can iterate).
+      const known = new Set<string>(EQUITY_BRIDGE_COMPONENTS);
+      out[key] = Array.isArray(v) ? v.filter((x) => typeof x === "string" && known.has(x)) : [];
       continue;
     }
     out[key] = v === undefined || (typeof v === "number" && !Number.isFinite(v)) ? null : v;
@@ -244,6 +280,8 @@ export function buildFundamentalsDisclosures(params: {
       "WACC uses BOOK-value weights (balance-sheet equity and debt). Market-value weights are the textbook convention; compute them yourself if you have market-cap access.",
     ttm_convention:
       "TTM aggregates sum flows over the trailing 4 reported quarters; stock quantities are point-in-time (ROE denominator uses the trailing-4-quarter average equity). Ratios need 4 finite quarters or they are null.",
+    equity_bridge:
+      "equity_bridge_residual makes the equity roll-forward an identity BY CONSTRUCTION: total_equity_t - total_equity_{t-1} = net_income + d(accumulated_oci) - dividends_declared - dividends_preferred - share_repurchases + share_issuance + share_based_comp + equity_bridge_residual. It is a PLUG, not a measured line, and is frequently large: it absorbs equity-statement movements not captured by the listed components (treasury purchases at cost, noncontrolling-interest movements, cumulative-effect adjustments, conversions, spin-offs) AND any listed component the filer did not tag. equity_bridge_inputs names the components that were present; a term MISSING from that list means its movement is inside the residual, not that it was zero (e.g. a filer that does not tag dividends_declared has its dividends in the residual). Treat this bridge as a disclosed decomposition, not truth; for modelling, anchor on retained_earnings. Null on a symbol's first reported period.",
     capital_return_ratios:
       "payout_ratio, retention_ratio (=1-payout, the reinvestment-rate proxy), buyback_ratio, total_payout_ratio, and sustainable_growth (=retention*roe_ttm) are TTM. Dividend basis is CASH PAID (dividends_paid) — the shareholder-return measure, and denser than declared (many filers, e.g. Apple and Exxon, tag only paid). For the EXACT retained-earnings roll-forward use dividends_declared, exposed raw in sec_facts: retention_ratio here is cash-basis and equals accrual retention up to declaration-vs-payment timing. All are null when trailing-4-quarter net income is <= 0 — a payout on non-positive earnings is not meaningful, not zero. total_payout_ratio (dividends + buybacks) can exceed 1 in a heavy-buyback year and is more volatile than payout_ratio.",
     sec_facts_provenance:

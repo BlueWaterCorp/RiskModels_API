@@ -125,3 +125,26 @@ describe("sanitizeSecFacts — belt to the DAL suspenders", () => {
     expect(clean).toEqual({});
   });
 });
+
+import { decodeEquityBridgeInputs, EQUITY_BRIDGE_COMPONENTS } from "@/lib/api/fundamentals-contract";
+
+describe("equity-bridge inputs decode (Phase 3)", () => {
+  it("bit order matches the store (net_income..share_based_comp)", () => {
+    expect(EQUITY_BRIDGE_COMPONENTS).toEqual([
+      "net_income", "accumulated_oci", "dividends_declared", "dividends_preferred",
+      "share_repurchases", "share_issuance", "share_based_comp",
+    ]);
+  });
+  it("decodes a mask to the present components; a missing bit means unattributed", () => {
+    // 83 = 1 + 2 + 16 + 64 (Apple's real mask): NI + OCI + buybacks + SBC, NO dividends
+    expect(decodeEquityBridgeInputs(83)).toEqual([
+      "net_income", "accumulated_oci", "share_repurchases", "share_based_comp",
+    ]);
+    expect(decodeEquityBridgeInputs(83)).not.toContain("dividends_declared");
+  });
+  it("null/NaN/0 → empty list", () => {
+    expect(decodeEquityBridgeInputs(null)).toEqual([]);
+    expect(decodeEquityBridgeInputs(NaN)).toEqual([]);
+    expect(decodeEquityBridgeInputs(0)).toEqual([]);
+  });
+});
