@@ -81,6 +81,8 @@ const CLEAN_ROW = {
   buyback_ratio: 0.8,
   total_payout_ratio: 0.95,
   sustainable_growth: 1.36,
+  equity_bridge_residual: null,
+  equity_bridge_inputs: [],
   beta_market: 1.2,
   beta_sector: -0.2,
   beta_subsector: -0.1,

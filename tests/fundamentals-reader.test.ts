@@ -64,6 +64,10 @@ function syntheticPack(): FundamentalsRowPack {
       share_repurchases: fill([1, 1, 1, 1, 2, 2]),
       revenue: fill([1, 1, 1, 1, 2, 2]),
     } as FundamentalsRowPack["secSource"],
+    // equity bridge (Phase 3): residual null on the first period, mask 83 (net_income +
+    // accumulated_oci + share_repurchases + share_based_comp) on the newest.
+    bridgeResidual: fill([null, -5, -5, -5, -5, -7]),
+    bridgeInputs: fill([0, 83, 83, 83, 83, 83]),
     // rf is a 1-D per-tenor strip on the period axis (2026-07-06 store revision);
     // 3m deliberately different so tenor selection is observable.
     rfCurve: {
