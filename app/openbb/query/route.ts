@@ -26,6 +26,7 @@
  */
 import { NextRequest } from "next/server";
 import { openbbCors } from "../_lib/cors";
+import { deLatex } from "../_lib/delatex";
 import { bearerFromRequest, upstreamBase } from "../_lib/upstream";
 
 export const dynamic = "force-dynamic";
@@ -275,7 +276,11 @@ export async function POST(req: NextRequest) {
           send("copilotCitationCollection", { citations });
         }
 
-        const content = json?.message?.content;
+        const rawContent = json?.message?.content;
+        // OpenBB's chat panel doesn't render LaTeX — convert the math the
+        // LLM tends to emit ($$...$$, $R_f$, \beta) to plain text/unicode.
+        const content =
+          typeof rawContent === "string" ? deLatex(rawContent) : rawContent;
         if (typeof content === "string" && content.trim()) {
           // Not true token-level LLM streaming (the upstream call is
           // blocking) — pace the complete answer out word-by-word so it
