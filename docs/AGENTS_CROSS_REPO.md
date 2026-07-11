@@ -97,6 +97,27 @@ When API changes ship, run the **API Broadcast Checklist** in `BWMACRO/docs/api_
 - Colab notebook (Risk_Models canonical)
 - erm3.md and web docs
 - CHANGELOG, current_state, **MASTER_BACKLOG** (if scope changed)
+
+### 7. Re-validate the `riskmodels-plugin` (public Claude Code plugin) — new API-contract consumer
+
+`BlueWaterCorp/riskmodels-plugin` (public) is a downstream consumer of the hosted MCP
+contract: its skills and cookbook name specific MCP tool ids (e.g. `riskmodels_get_fundamentals`)
+and describe response shapes (e.g. fundamentals `sec_facts` per-cell provenance). It has **no
+build-time link** to the API, so it rots silently when tools are renamed or response shapes change.
+
+When MCP tool names, capability ids, or a documented response shape change (fundamentals,
+decompose, hedge, rankings, lstar, residual-signal), **before each plugin release**:
+
+1. Diff the referenced tool ids against **live** `riskmodels_list_endpoints` and the MCP tool
+   surface (not repo source — E.29's lesson: served ≠ source).
+2. Update `plugins/riskmodels/skills/*/SKILL.md`, `agents/riskmodels-analyst.md`, `cookbook.md`,
+   and `README.md` for any renamed tool / changed shape. Keep skills thin (wrappers + prompts;
+   no logic that can drift).
+3. Copy gates apply to **all content** (README, SKILL.md, cookbook): approved sourcing phrase
+   *"PIT-normalized fundamentals derived from SEC filings and licensed sources"*; never "IP-free";
+   no layered/decomposed cost-of-capital methodology (CAPM-mode only); no investment advice.
+
+Plan SSOT: `BWMACRO/docs/gtm/anthropic-agents-fundamentals-gtm.md` (E.30).
 ---
 
 ## Cursor / sync automation (BWMACRO to API and portal)
@@ -142,3 +163,4 @@ Also runs **weekly (Monday 06:00 UTC)** and via **`workflow_dispatch`** for a ma
 | **BWMACRO** | Dagster deployment hub; `docs/ceo/MASTER_BACKLOG.md` + `docs/api_roadmap/current_state.md`; **hosted `.net` + Client Memory Layer strategy** — [`docs/architecture/intelligence_runtime/MANAGED_COGNITIVE_RUNTIME_STRATEGY.md`](./architecture/intelligence_runtime/MANAGED_COGNITIVE_RUNTIME_STRATEGY.md) |
 | **RiskModels_API** | Canonical public API at `riskmodels.app`. Owns: `OPENAPI_SPEC.yaml`, data routes, `lib/agent/*`, `lib/dal/*`, MCP schemas, `schema-paths.json`, `CHANGELOG.md` |
 | **Risk_Models** | User portal at `riskmodels.net`. Web UI, auth, MCP schema **copies** under `riskmodels_com/mcp-server/` |
+| **riskmodels-plugin** | Public Claude Code plugin (marketplace-installable): hosted-MCP config + thin skills + analyst agent + cookbook. **Downstream consumer** of the MCP contract — re-validate per rule 7 on tool/shape changes. Copy gates apply to all content. |
