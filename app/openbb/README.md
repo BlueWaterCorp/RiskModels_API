@@ -84,11 +84,17 @@ intentionally skipped (POST-only upstream; OpenBB widgets fetch via GET).
   `multi_file_viewer` widget. `snapshot.png` needs `PLAYWRIGHT_PDF_ENABLED=true`
   upstream — prefer the PDF route, which is pure server-side.)
 - **Portfolio** → `/portfolio/risk-snapshot` + L1/L2/L3 hedge layering
-- **Apps** → three-app set filled out in `apps.json` (Single-Name Risk ·
-  Portfolio Risk & Hedge · Screener), each with `selected_agent` and `prompts`
-  (`@[id:WIDGET_ID]` mentions) for the RiskModels Analyst copilot. Optional
-  follow-up: add ConnectTrade's remote MCP server under an app's `mcp_servers`
-  once its remote-MCP endpoint is confirmed.
+- **Apps** → flagship **"RiskModels"** app (the ONE listable marketplace
+  unit — Overview · Fundamentals · Portfolio · Screener · Tearsheet in one
+  app) + the original three focused apps (Single-Name Risk · Portfolio Risk
+  & Hedge · Screener), all with cover images (`public/openbb-assets/`),
+  `selected_agent`, and `prompts` (`@[id:WIDGET_ID]` mentions) for the
+  RiskModels Analyst copilot. `agents.json` declares
+  `widget-dashboard-select` / `widget-dashboard-search` so Workspace sends
+  pinned-widget context to `/openbb/query` (without them the panel shows
+  "Context not available for this copilot"). Optional follow-up: add
+  ConnectTrade's remote MCP server under an app's `mcp_servers` once its
+  remote-MCP endpoint is confirmed.
 - **Fundamentals (E.23 g)** → `fundamentals-history`, `fundamentals-ratios`,
   `cost-of-capital`, and `wacc-grid` widgets over `GET /api/fundamentals`
   (PIT, per-cell `sec_facts` provenance, caller-supplied ERP), a

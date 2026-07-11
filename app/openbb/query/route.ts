@@ -286,13 +286,13 @@ export async function POST(req: NextRequest) {
           }
           if (isDemo) {
             say(
-              "\n\n— *Free demo · Magnificent 7 only. Get a key at riskmodels.app for the full US universe + portfolio hedging.*",
+              "\n\n— *Free demo · fundamentals & cost of capital for any covered US ticker; risk tools for the Magnificent 7. Get a key at riskmodels.app for the full universe + portfolio hedging.*",
             );
           }
         } else {
           say(
             isDemo
-              ? "This free demo covers the Magnificent 7 — AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA. For any US ticker plus portfolio hedging, get a key at riskmodels.app."
+              ? "This free demo answers fundamentals and cost-of-capital questions for any covered US ticker, and risk questions for the Magnificent 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA). For the full universe plus portfolio hedging, get a key at riskmodels.app."
               : "I couldn't find an answer for that. Try naming a specific US ticker.",
           );
         }

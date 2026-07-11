@@ -218,7 +218,7 @@ async function execGetFundamentals(args: z.infer<typeof getFundamentalsArgs>) {
       ratios:
         "Capital-return ratios are TTM on a cash-dividend basis; null when trailing-4-quarter net income <= 0 (not meaningful, not zero).",
       cost_of_capital:
-        "ERP is caller-supplied (no stored opinion). beta_market is a short-half-life CONDITIONAL beta — cost_of_equity below the risk-free rate is possible for defensives and is not an error. WACC uses book-value weights.",
+        "ERP is caller-supplied (no stored opinion). beta_market is a short-half-life CONDITIONAL beta — cost_of_equity below the risk-free rate is possible for defensives and is not an error. WACC uses book-value weights. economic_profit = TTM net income − cost_of_equity × trailing-average book equity; quote THIS definition, never a textbook NOPAT/invested-capital formula.",
     },
   };
 }
