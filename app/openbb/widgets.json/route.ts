@@ -408,6 +408,248 @@ const WIDGETS = {
       },
     },
   },
+  rm_fundamentals_history: {
+    name: "RiskModels — Fundamentals History (PIT)",
+    description:
+      "Point-in-time quarterly fundamentals: rows are visible only where filed_date <= as_of (no look-ahead). Columns marked (SEC) are raw line items served exclusively from per-cell SEC XBRL sources — '—' means that cell is vendor-sourced or unreported, never zero. Derived TTM ratios alongside. Realized historical data only.",
+    category: "Fundamentals",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/fundamentals-history",
+    gridData: { w: 40, h: 14 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "AAPL",
+        label: "Ticker",
+        type: "text",
+        description: "US stock ticker.",
+      },
+      {
+        paramName: "periods",
+        value: "8",
+        label: "Quarters",
+        type: "text",
+        description: "Number of quarters (max 40).",
+        options: [
+          { value: "4", label: "4" },
+          { value: "8", label: "8" },
+          { value: "12", label: "12" },
+          { value: "20", label: "20" },
+          { value: "40", label: "40" },
+        ],
+      },
+      {
+        paramName: "as_of",
+        value: "",
+        label: "As-of date",
+        type: "date",
+        description:
+          "PIT anchor: only quarters filed on or before this date are visible (default: today).",
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "period_end", headerName: "Period end" },
+          { field: "filed", headerName: "Filed" },
+          { field: "revenue_sec", headerName: "Revenue (SEC)" },
+          { field: "net_income_sec", headerName: "Net income (SEC)" },
+          { field: "eps_diluted_sec", headerName: "EPS dil. (SEC)" },
+          { field: "cfo_sec", headerName: "CFO (SEC)" },
+          { field: "dividends_paid_sec", headerName: "Dividends paid (SEC)" },
+          { field: "buybacks_sec", headerName: "Buybacks (SEC)" },
+          { field: "roe_ttm", headerName: "ROE TTM" },
+          { field: "fcf_margin", headerName: "FCF margin" },
+          { field: "leverage", headerName: "Leverage" },
+          { field: "sec_facts_served", headerName: "SEC facts" },
+        ],
+      },
+    },
+  },
+  rm_fundamentals_ratios: {
+    name: "RiskModels — Capital Return Ratios (TTM)",
+    description:
+      "Payout, retention, buyback, total-payout, and sustainable-growth ratios over time (TTM, cash-dividend basis). Null when trailing-4-quarter net income <= 0 — a payout on non-positive earnings is not meaningful, not zero. Point-in-time per quarter.",
+    category: "Fundamentals",
+    source: ["RiskModels API"],
+    endpoint: "widgets/fundamentals-ratios",
+    gridData: { w: 40, h: 12 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "AAPL",
+        label: "Ticker",
+        type: "text",
+        description: "US stock ticker.",
+      },
+      {
+        paramName: "periods",
+        value: "16",
+        label: "Quarters",
+        type: "text",
+        description: "Number of quarters (max 40).",
+        options: [
+          { value: "8", label: "8" },
+          { value: "16", label: "16" },
+          { value: "24", label: "24" },
+          { value: "40", label: "40" },
+        ],
+      },
+      {
+        paramName: "as_of",
+        value: "",
+        label: "As-of date",
+        type: "date",
+        description:
+          "PIT anchor: only quarters filed on or before this date are visible (default: today).",
+      },
+    ],
+    data: {
+      table: {
+        chartView: { enabled: true, chartType: "line" },
+        showAll: false,
+        columnsDefs: [
+          { headerName: "Period end", field: "date", chartDataType: "category" },
+          { headerName: "Payout (%)", field: "Payout" },
+          { headerName: "Retention (%)", field: "Retention" },
+          { headerName: "Buyback (%)", field: "Buyback" },
+          { headerName: "Total payout (%)", field: "Total payout" },
+          { headerName: "Sustainable growth (%)", field: "Sustainable growth" },
+        ],
+      },
+    },
+  },
+  rm_cost_of_capital: {
+    name: "RiskModels — Cost of Capital",
+    description:
+      "Latest-quarter cost of equity, cost of debt, WACC (book weights), and TTM economic profit built from RiskModels conditional betas and the Treasury CMT curve. The equity risk premium is always caller-supplied via the ERP param — no ERP opinion is stored. Realized historical inputs only; not investment advice.",
+    category: "Fundamentals",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/cost-of-capital",
+    gridData: { w: 20, h: 14 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "AAPL",
+        label: "Ticker",
+        type: "text",
+        description: "US stock ticker.",
+      },
+      {
+        paramName: "erp",
+        value: "0.05",
+        label: "ERP",
+        type: "text",
+        description:
+          "Equity risk premium (caller-supplied; pair short rf tenors with a bill-basis ERP).",
+        options: [
+          { value: "0.03", label: "3%" },
+          { value: "0.04", label: "4%" },
+          { value: "0.05", label: "5%" },
+          { value: "0.06", label: "6%" },
+          { value: "0.07", label: "7%" },
+        ],
+      },
+      {
+        paramName: "rf_tenor",
+        value: "10y",
+        label: "Risk-free tenor",
+        type: "text",
+        description: "Treasury CMT tenor for the risk-free rate (10y = valuation convention).",
+        options: [
+          { value: "3m", label: "3 months" },
+          { value: "1y", label: "1 year" },
+          { value: "2y", label: "2 years" },
+          { value: "5y", label: "5 years" },
+          { value: "10y", label: "10 years" },
+          { value: "30y", label: "30 years" },
+        ],
+      },
+      {
+        paramName: "tax_rate",
+        value: "0.21",
+        label: "Tax rate",
+        type: "text",
+        description: "Tax rate applied to the WACC debt shield.",
+        options: [
+          { value: "0.15", label: "15%" },
+          { value: "0.21", label: "21%" },
+          { value: "0.25", label: "25%" },
+          { value: "0.28", label: "28%" },
+        ],
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "metric", headerName: "Metric" },
+          { field: "value", headerName: "Value" },
+        ],
+      },
+    },
+  },
+  rm_wacc_grid: {
+    name: "RiskModels — WACC Sensitivity Grid",
+    description:
+      "Cost-of-capital sensitivity for the latest quarter: the selected measure across ERP rows (3–7%) and Treasury tenor columns (3m–30y). Rate measures in percent; economic profit in $B. Shows how the answer moves with YOUR assumptions — no stored ERP opinion.",
+    category: "Fundamentals",
+    type: "table",
+    source: ["RiskModels API"],
+    endpoint: "widgets/wacc-grid",
+    gridData: { w: 20, h: 12 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "AAPL",
+        label: "Ticker",
+        type: "text",
+        description: "US stock ticker.",
+      },
+      {
+        paramName: "measure",
+        value: "wacc",
+        label: "Measure",
+        type: "text",
+        description: "Grid measure.",
+        options: [
+          { value: "wacc", label: "WACC (book weights)" },
+          { value: "cost_of_equity", label: "Cost of equity" },
+          { value: "economic_profit", label: "Economic profit ($B)" },
+        ],
+      },
+      {
+        paramName: "tax_rate",
+        value: "0.21",
+        label: "Tax rate",
+        type: "text",
+        description: "Tax rate applied to the WACC debt shield.",
+        options: [
+          { value: "0.15", label: "15%" },
+          { value: "0.21", label: "21%" },
+          { value: "0.25", label: "25%" },
+          { value: "0.28", label: "28%" },
+        ],
+      },
+    ],
+    data: {
+      table: {
+        showAll: true,
+        columnsDefs: [
+          { field: "erp", headerName: "ERP \\ rf tenor" },
+          { field: "3m", headerName: "3m" },
+          { field: "1y", headerName: "1y" },
+          { field: "2y", headerName: "2y" },
+          { field: "5y", headerName: "5y" },
+          { field: "10y", headerName: "10y" },
+          { field: "30y", headerName: "30y" },
+        ],
+      },
+    },
+  },
   rm_rankings_top: {
     name: "RiskModels — Top Rankings",
     description:

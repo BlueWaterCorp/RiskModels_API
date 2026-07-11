@@ -60,6 +60,10 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/widgets/etf-holdings?ticker=&top=` | ETF top-N holdings table | ✅ live |
 | `GET /openbb/widgets/filer-holdings?bw_filer_id=&limit=` | 13F filer top-N holdings table | ✅ live |
 | `GET /openbb/widgets/universe-members?universe=&teo=` | Named-universe active membership table | ✅ live |
+| `GET /openbb/widgets/fundamentals-history?ticker=&periods=&as_of=` | PIT quarterly fundamentals table (sec_facts raw columns + derived TTM ratios) | ✅ live |
+| `GET /openbb/widgets/fundamentals-ratios?ticker=&periods=&as_of=` | TTM capital-return ratios (line chart) | ✅ live |
+| `GET /openbb/widgets/cost-of-capital?ticker=&erp=&rf_tenor=&tax_rate=` | Latest-quarter cost of capital metric table | ✅ live |
+| `GET /openbb/widgets/wacc-grid?ticker=&measure=&tax_rate=` | ERP × rf-tenor sensitivity grid table | ✅ live |
 
 Chart widgets use OpenBB's built-in table `chartView` (`data.table.chartView`,
 `chartType: "line"` or `"bar"`) — the endpoint returns plain row arrays, so
@@ -85,6 +89,14 @@ intentionally skipped (POST-only upstream; OpenBB widgets fetch via GET).
   (`@[id:WIDGET_ID]` mentions) for the RiskModels Analyst copilot. Optional
   follow-up: add ConnectTrade's remote MCP server under an app's `mcp_servers`
   once its remote-MCP endpoint is confirmed.
+- **Fundamentals (E.23 g)** → `fundamentals-history`, `fundamentals-ratios`,
+  `cost-of-capital`, and `wacc-grid` widgets over `GET /api/fundamentals`
+  (PIT, per-cell `sec_facts` provenance, caller-supplied ERP), a
+  "Fundamentals" tab in the Single-Name Risk app, and a `get_fundamentals`
+  chat tool so the copilot reads the same surface. Earnings-surprise /
+  beat-streak widgets are deliberately absent: the fundamentals contract
+  holds back `eps_estimate`/`eps_actual`/`earnings_surprise` (licensing
+  allowlist), so there is no served field to render.
 - **Widget polish** → `refetchInterval` on live/intraday widgets (60s for
   single-name metrics/snapshot, portfolio risk/positions, and the ETF
   factor-returns snapshot; 5min for rankings — holdings/universe/filer/
