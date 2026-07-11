@@ -11,7 +11,12 @@ import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
  *
  *   - Skips per-tool billing (skipBilling: true, no deductBalance).
  *   - Restricts the tool registry to a tight subset (search_tickers,
- *     get_risk_metrics, get_correlation, get_rankings).
+ *     get_risk_metrics, get_correlation, get_rankings, get_fundamentals).
+ *     get_fundamentals is in the demo deliberately: the OpenBB copilot is
+ *     structurally keyless (OpenBB never forwards the backend key to agent
+ *     queries), so this route is the ONLY agent path in OpenBB Workspace —
+ *     without the tool the model answers cost-of-capital questions from
+ *     recalled third-party estimates instead of our PIT surface.
  *   - preFlightGuard rejects any tool arg that references a non-MAG7
  *     ticker.
  *   - Caps tool rounds at 2 and max_tokens at ~700 to bound LLM spend.
@@ -41,6 +46,7 @@ const ALLOWED_TOOLS = [
   "get_risk_metrics",
   "get_correlation",
   "get_rankings",
+  "get_fundamentals",
 ] as const;
 
 // Model + client come from resolveAgentBackend() (Moonshot/Kimi when
