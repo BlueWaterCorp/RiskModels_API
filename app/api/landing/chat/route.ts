@@ -18,7 +18,9 @@ import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
  *     without the tool the model answers cost-of-capital questions from
  *     recalled third-party estimates instead of our PIT surface.
  *   - preFlightGuard rejects any tool arg that references a non-MAG7
- *     ticker.
+ *     ticker — except get_fundamentals, which is full-universe in the
+ *     demo (traction-first: PIT fundamentals are the acquisition surface;
+ *     marginal cost is a GCS zarr read bounded by the per-IP cap).
  *   - Caps tool rounds at 2 and max_tokens at ~700 to bound LLM spend.
  *   - Per-IP throttle: MAX_MSGS_PER_HOUR per IP using an in-memory Map
  *     (good enough for MVP on a single Vercel instance; swap to Redis
@@ -105,6 +107,11 @@ function extractTickersFromArgs(toolName: string, args: unknown): string[] {
 }
 
 function mag7Guard(toolName: string, args: unknown): string | null {
+  // get_fundamentals is full-universe in the demo (traction-first ruling,
+  // 2026-07-11): zero marginal vendor cost (GCS zarr read; licensing-gated
+  // rows), spend bounded by the per-IP hourly cap and round/token caps.
+  // Every other tool stays MAG7-gated.
+  if (toolName === "get_fundamentals") return null;
   const tickers = extractTickersFromArgs(toolName, args);
   if (tickers.length === 0) return null;
   const bad = tickers.filter((t) => !MAG7_ALLOWLIST.has(t));
