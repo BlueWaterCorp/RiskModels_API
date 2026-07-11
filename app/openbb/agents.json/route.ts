@@ -27,10 +27,17 @@ export async function GET(req: NextRequest) {
       // cases (not "free demo"), which is what makes non-MAG7 questions route to
       // this agent instead of falling through to the default OpenBB Copilot.
       description:
-        "RiskModels institutional equity risk analyst. Decomposes any US stock or portfolio into market, sector, subsector, and stock-specific (residual/idiosyncratic) risk — position-up L1/L2/L3 factor decomposition with tradeable hedge ratios, residual (Lstar) signal, and cross-sectional rankings. Use it to answer what is driving a name's or portfolio's risk, how to hedge a specific exposure, how idiosyncratic a position is, or how a stock ranks on factor and residual risk. Free for the Magnificent 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA); add your riskmodels.app API key as X-API-KEY for the full US universe and multi-position portfolio hedging.",
+        "RiskModels institutional equity risk and fundamentals analyst. Decomposes any US stock or portfolio into market, sector, subsector, and stock-specific (residual/idiosyncratic) risk — position-up L1/L2/L3 factor decomposition with tradeable hedge ratios, residual (Lstar) signal, and cross-sectional rankings. Also serves point-in-time quarterly fundamentals (SEC-sourced raw line items with per-cell provenance, TTM ratios, capital-return ratios) and cost of capital — cost of equity, book-weight WACC, and economic profit with a caller-supplied equity risk premium. Use it for what is driving a name's or portfolio's risk, how to hedge a specific exposure, earnings and margin history as it was known at the time, payout and buyback behavior, or a company's cost of capital. Fundamentals and cost-of-capital questions are free for any covered US ticker; risk tools are free for the Magnificent 7 — add your riskmodels.app API key as X-API-KEY for the full US universe and multi-position portfolio hedging.",
       image: `${u.protocol}//${u.host}/logo.png`,
       endpoints: { query: queryUrl },
-      features: { streaming: true },
+      features: {
+        streaming: true,
+        // Without these flags Workspace shows "Context not available for this
+        // copilot" and never sends pinned-widget context — the /openbb/query
+        // summarizeContext + citations path is implemented but starved.
+        "widget-dashboard-select": true,
+        "widget-dashboard-search": true,
+      },
     },
   };
 
