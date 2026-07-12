@@ -252,6 +252,16 @@ export interface BillingOptions {
    * Use for public JSON intended for Shields.io or README embeds so traffic does not bypass all limits.
    */
   publicIpRateLimitPerMinute?: number;
+  /**
+   * Streaming routes (SSE): run every pre-flight check (auth, rate limit,
+   * caps, balance) as usual, but defer deduction + free-tier increment +
+   * telemetry to the handler via `context.settleBilling(success)`. A streaming
+   * handler returns its Response at stream START, so wrapper-side deduction
+   * would bill before the work ran; the handler settles at its terminal event
+   * instead, keeping "deduct only on success, after completion" semantics
+   * identical to blocking routes.
+   */
+  deferBillingToHandler?: boolean;
 }
 
 export interface BillingContext {
@@ -265,6 +275,12 @@ export interface BillingContext {
   freeTierStatus?: any;
   /** First-party gateway traffic — unlimited internal allowance (no 402/deduct). */
   internalUnlimited?: boolean;
+  /**
+   * Present only with `deferBillingToHandler`: the handler MUST call this once
+   * when the request outcome is known (e.g. at the SSE `final`/`error` event).
+   * Idempotent; deducts + increments free tier + logs telemetry on success.
+   */
+  settleBilling?: (success: boolean) => Promise<void>;
 }
 
 /**
@@ -702,6 +718,49 @@ export function withBilling(
         internalUnlimited,
       };
 
+      // 4.5. Deferred billing (streaming handlers): expose a one-shot settle
+      // callback instead of deducting at handler-return (see BillingOptions).
+      if (options.deferBillingToHandler) {
+        const settleUserId = userId;
+        let settled = false;
+        context.settleBilling = async (settleSuccess: boolean) => {
+          if (settled) return;
+          settled = true;
+          if (costUsd > 0 && settleSuccess && !internalUnlimited) {
+            try {
+              await deductBalance(
+                settleUserId,
+                costUsd,
+                requestId,
+                options.capabilityId,
+                {
+                  original_url: req.url,
+                  user_agent: req.headers.get("user-agent"),
+                  ip_address: req.headers.get("x-forwarded-for") || "unknown",
+                },
+              );
+            } catch (deductError) {
+              // Mid-stream there is no way to return 402 — pre-flight balance
+              // check above is the gate; log and continue.
+              console.error("[Billing] Deferred deduction failed:", deductError);
+            }
+          }
+          if (costUsd > 0 && settleSuccess && context.tier === "free") {
+            await incrementFreeTierUsage(settleUserId).catch(console.error);
+          }
+          await logTelemetry({
+            request_id: requestId,
+            capability_id: options.capabilityId,
+            user_id: settleUserId,
+            latency_ms: Date.now() - startTime,
+            status_code: settleSuccess ? 200 : 502,
+            success: settleSuccess,
+            cost_usd: settleSuccess ? costUsd : 0,
+            timestamp: new Date().toISOString(),
+          }).catch(console.error);
+        };
+      }
+
       // 5. Process the request
       const handlerStart = Date.now();
       const response = await handler(req, context);
@@ -712,7 +771,8 @@ export function withBilling(
 
       // 6. Atomically deduct balance on success (only if cost > 0).
       //    The deduct_balance RPC uses FOR UPDATE — immune to race conditions.
-      if (costUsd > 0 && success && !internalUnlimited) {
+      //    (Deferred mode: the handler settles via context.settleBilling.)
+      if (costUsd > 0 && success && !internalUnlimited && !options.deferBillingToHandler) {
         try {
           await deductBalance(
             userId,
@@ -741,25 +801,27 @@ export function withBilling(
       }
 
       // 6.5. Increment free tier usage (for free tier accounts)
-      if (costUsd > 0 && success && context.tier === "free") {
+      if (costUsd > 0 && success && context.tier === "free" && !options.deferBillingToHandler) {
         await incrementFreeTierUsage(userId);
       }
 
-      // 7. Log telemetry
-      await logTelemetry({
-        request_id: requestId,
-        capability_id: options.capabilityId,
-        user_id: userId,
-        latency_ms: latencyMs,
-        status_code: response.status,
-        success,
-        cost_usd: success ? costUsd : 0, // Only charge on success
-        timestamp: new Date().toISOString(),
-        metadata: {
-          fetch_latency_ms: fetchLatencyMs,
-          agent_decision_latency_ms: agentDecisionLatencyMs,
-        },
-      }).catch(console.error);
+      // 7. Log telemetry (deferred mode logs at settle time instead)
+      if (!options.deferBillingToHandler) {
+        await logTelemetry({
+          request_id: requestId,
+          capability_id: options.capabilityId,
+          user_id: userId,
+          latency_ms: latencyMs,
+          status_code: response.status,
+          success,
+          cost_usd: success ? costUsd : 0, // Only charge on success
+          timestamp: new Date().toISOString(),
+          metadata: {
+            fetch_latency_ms: fetchLatencyMs,
+            agent_decision_latency_ms: agentDecisionLatencyMs,
+          },
+        }).catch(console.error);
+      }
 
       // 8. Add billing headers to response
       response.headers.set("X-Request-ID", requestId);
@@ -838,11 +900,14 @@ export function withBilling(
       // the idempotency store so replays return the identical enriched body.
       const finalResponse = await injectAgentMeta(response, { latencyMs, requestId });
 
+      // Never buffer a streaming (SSE) body for the idempotency cache —
+      // clone().text() would drain the whole stream inside the middleware.
       if (
         idempotencyFingerprintVal &&
         userId &&
         req.method === "POST" &&
-        finalResponse.status < 500
+        finalResponse.status < 500 &&
+        !finalResponse.headers.get("content-type")?.includes("text/event-stream")
       ) {
         try {
           const bodyText = await finalResponse.clone().text();
