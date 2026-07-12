@@ -13,18 +13,20 @@
  * forwarding the OpenBB user's `X-API-KEY` as a Bearer token so auth, billing,
  * entitlements, and the institutional analyst doctrine are all reused unchanged.
  *
- * NOT true token-level LLM streaming: `/api/chat` (`lib/chat/agent-runner.ts`)
- * runs its multi-round tool loop as a single blocking call with no SSE mode of
- * its own, and that's shared with the main portal chat — adding real streaming
- * there is a core-engine change beyond this thin-adapter's scope, tracked as a
- * follow-up in app/openbb/README.md. What this endpoint does instead: paces
- * the already-complete answer out word-by-word over real `copilotMessageChunk`
- * events (a genuine typewriter reveal, not a fabricated one), and reports
- * `copilotStatusUpdate` reasoning steps + `copilotCitationCollection` entries
- * built from data that's actually true of the run (tools actually called,
- * dashboard context actually supplied) — no invented sources or timings.
+ * Keyed requests stream real tokens (G.23 P1): the adapter calls `/api/chat`
+ * with `Accept: text/event-stream` and translates the engine's event
+ * vocabulary (`lib/chat/stream-events.ts`) live — `status` / `tool` →
+ * `copilotStatusUpdate` ("Consulted: <label>"), `delta` →
+ * `copilotMessageChunk` (deLatex applied per-delta via a stateful buffer),
+ * `final` → `copilotCitationCollection` + close. Two paths keep the previous
+ * blocking + word-paced reveal: the keyless demo (`/api/landing/chat` has no
+ * SSE mode in P1) and a non-SSE upstream response (older deploy). Statuses and
+ * citations are built only from data that's actually true of the run (tools
+ * actually called, dashboard context actually supplied) — no invented sources
+ * or timings.
  */
 import { NextRequest } from "next/server";
+import { translateChatStream, parseSseEvents } from "../_lib/chat-stream";
 import { openbbCors } from "../_lib/cors";
 import { deLatex } from "../_lib/delatex";
 import { bearerFromRequest, upstreamBase } from "../_lib/upstream";
@@ -201,8 +203,9 @@ export async function POST(req: NextRequest) {
       // for direct API callers — unlocks the full universe via /api/chat.
       const isDemo = !key;
 
-      // Flush an early status so OpenBB starts the stream, then heartbeat while
-      // the (blocking) tool-calling agent runs so the SSE doesn't idle-timeout.
+      // Flush an early status so OpenBB starts the stream, then heartbeat
+      // until the upstream produces its first event (keyed SSE path) or the
+      // blocking call returns (demo / fallback) so the SSE doesn't idle out.
       send("copilotStatusUpdate", {
         eventType: "INFO",
         message: "Analyzing with RiskModels…",
@@ -218,22 +221,10 @@ export async function POST(req: NextRequest) {
         });
       }, 5000);
 
-      try {
-        const res = await fetch(
-          `${upstreamBase()}${isDemo ? "/landing/chat" : "/chat"}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(isDemo ? {} : { Authorization: `Bearer ${key}` }),
-            },
-            // No model override — /api/chat and /api/landing/chat resolve the
-            // backend themselves (Moonshot/Kimi when configured).
-            body: JSON.stringify({ messages }),
-          },
-        );
-        clearInterval(heartbeat);
-
+      // Blocking JSON response → paced word-by-word reveal. Used by the demo
+      // path (no SSE mode on /api/landing/chat in P1) and as the fallback when
+      // a keyed upstream doesn't speak SSE (older deploy).
+      const handleBlockingResponse = async (res: Response) => {
         const json = (await res.json().catch(() => ({}))) as {
           message?: { content?: string };
           error?: string;
@@ -245,7 +236,6 @@ export async function POST(req: NextRequest) {
             json?.error ||
             "Sorry — the analyst is unavailable right now. Please try again.";
           say(typeof err === "string" ? err : "Sorry — the analyst is unavailable.");
-          controller.close();
           return;
         }
 
@@ -282,9 +272,8 @@ export async function POST(req: NextRequest) {
         const content =
           typeof rawContent === "string" ? deLatex(rawContent) : rawContent;
         if (typeof content === "string" && content.trim()) {
-          // Not true token-level LLM streaming (the upstream call is
-          // blocking) — pace the complete answer out word-by-word so it
-          // reads as a live reveal rather than one dump. See file docstring.
+          // The upstream call was blocking — pace the complete answer out
+          // word-by-word so it reads as a live reveal rather than one dump.
           for (const chunk of wordChunks(content)) {
             say(chunk);
             await sleep(12);
@@ -300,6 +289,62 @@ export async function POST(req: NextRequest) {
               ? "This free demo answers fundamentals and cost-of-capital questions for any covered US ticker, and risk questions for the Magnificent 7 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA). For the full universe plus portfolio hedging, get a key at riskmodels.app."
               : "I couldn't find an answer for that. Try naming a specific US ticker.",
           );
+        }
+      };
+
+      try {
+        if (isDemo) {
+          const res = await fetch(`${upstreamBase()}/landing/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // No model override — /api/landing/chat resolves the backend
+            // itself (Moonshot/Kimi when configured).
+            body: JSON.stringify({ messages }),
+          });
+          clearInterval(heartbeat);
+          await handleBlockingResponse(res);
+        } else {
+          const res = await fetch(`${upstreamBase()}/chat`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              // Opt into the engine's SSE mode (G.23 P1) — real token deltas.
+              Accept: "text/event-stream",
+              Authorization: `Bearer ${key}`,
+            },
+            body: JSON.stringify({ messages }),
+          });
+          const contentType = res.headers.get("content-type") ?? "";
+          if (res.ok && res.body && contentType.includes("text/event-stream")) {
+            // Keep the heartbeat until the first upstream event arrives, then
+            // let real status/delta frames carry the stream.
+            const result = await translateChatStream({
+              events: parseSseEvents(res.body),
+              send,
+              toolLabels: TOOL_LABELS,
+              onEvent: () => clearInterval(heartbeat),
+            });
+            clearInterval(heartbeat);
+            if (result.errored) {
+              say(
+                result.errorMessage ||
+                  "Sorry — the analyst is unavailable right now. Please try again.",
+              );
+            } else {
+              // Cite the dashboard widgets that actually fed this answer.
+              if (result.sawFinal && citations.length) {
+                send("copilotCitationCollection", { citations });
+              }
+              if (!result.streamedText) {
+                say("I couldn't find an answer for that. Try naming a specific US ticker.");
+              }
+            }
+          } else {
+            // Upstream doesn't speak SSE (older deploy) or returned an error —
+            // fall back to today's blocking + pacing behavior.
+            clearInterval(heartbeat);
+            await handleBlockingResponse(res);
+          }
         }
       } catch {
         clearInterval(heartbeat);
