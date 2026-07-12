@@ -1,0 +1,27 @@
+name: Production copilot eval (post-deploy)
+
+# Cross-service guard: an API-side deploy changes the chat backend that
+# riskmodels.net and the OpenBB agent share. Run the golden-question evals
+# against production within minutes of every successful deploy (E.31/G.22).
+# Zero secrets: the eval targets the keyless demo path.
+
+on:
+  deployment_status:
+
+concurrency:
+  group: prod-copilot-eval
+  cancel-in-progress: true
+
+jobs:
+  copilot-eval:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run golden-question evals vs production
+        run: node scripts/evals/copilot-eval.mjs
