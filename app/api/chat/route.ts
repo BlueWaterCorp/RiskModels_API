@@ -3,13 +3,25 @@ import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { getCorsHeaders } from "@/lib/cors";
 import { ChatPostSchema } from "@/lib/api/schemas";
-import { runChatAgent, AgentUpstreamError } from "@/lib/chat/agent-runner";
+import {
+  runChatAgent,
+  runChatAgentStream,
+  summarizeToolCalls,
+  AgentUpstreamError,
+} from "@/lib/chat/agent-runner";
+import {
+  encodeSseEvent,
+  type ChatQuota,
+  type ChatStreamEvent,
+} from "@/lib/chat/stream-events";
+import { getUserBalance } from "@/lib/agent/billing";
 import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import type { ToolCallResult } from "@/lib/chat/tool-executor";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 // Backend (model + client) is resolved per-request by resolveAgentBackend():
 // Moonshot/Kimi when MOONSHOT_API_KEY is set, else Claude (AGENT_BACKEND=claude)
@@ -89,8 +101,7 @@ async function estimateChatTokens(req: NextRequest) {
   return { inputTokens, outputTokens };
 }
 
-export const POST = withBilling(
-  async (request: NextRequest, context: BillingContext) => {
+const chatHandler = async (request: NextRequest, context: BillingContext) => {
     const origin = request.headers.get("origin");
 
     // At least one backend must be configured. The runner picks per-request
@@ -229,12 +240,188 @@ export const POST = withBilling(
     );
     addMetadataHeaders(response, metadata);
     return response;
-  },
-  {
-    capabilityId: "chat-risk-analyst",
-    getTokenEstimates: estimateChatTokens,
-  },
-);
+};
+
+/** $20 = 1M tokens (mirrors billing-middleware's token-bucket headers). */
+const TOKEN_PRICE_USD = 0.00002;
+
+/**
+ * SSE handler for `Accept: text/event-stream` (G.23 P1).
+ *
+ * Frames = the ChatStreamEvent vocabulary (lib/chat/stream-events.ts). The
+ * engine's `final` is intercepted and re-emitted enriched: same cost-line
+ * append as the blocking path, plus `quota`. Billing settles at `final` via
+ * `context.settleBilling` (deferBillingToHandler) — deduct only on success,
+ * after the run completes, identical to the blocking path's semantics. A
+ * dropped connection does not cancel the run: it proceeds to `final` and
+ * still bills (enqueue failures are swallowed). Turn persistence is a
+ * consumer concern in P1, so `persisted_id` is always null here.
+ */
+const chatStreamHandler = async (
+  request: NextRequest,
+  context: BillingContext,
+) => {
+  const origin = request.headers.get("origin");
+
+  if (!hasChatBackend()) {
+    return NextResponse.json(
+      {
+        error: "Service unavailable",
+        message:
+          "AI chat is not configured (need MOONSHOT_API_KEY or ANTHROPIC_API_KEY)",
+      },
+      { status: 503, headers: getCorsHeaders(origin) },
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid request body", message: "Expected JSON body" },
+      { status: 400, headers: getCorsHeaders(origin) },
+    );
+  }
+
+  const validation = ChatPostSchema.safeParse(raw);
+  if (!validation.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid request",
+        message: validation.error.issues[0]?.message ?? "Validation failed",
+      },
+      { status: 400, headers: getCorsHeaders(origin) },
+    );
+  }
+
+  const {
+    messages: userMessages,
+    model: modelOpt,
+    parallel_tool_calls: bodyParallelToolCalls,
+    execute_tools_sequentially: bodyExecSequential,
+  } = validation.data;
+  const backend = resolveAgentBackend(modelOpt);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: ChatStreamEvent) => {
+        try {
+          controller.enqueue(encoder.encode(encodeSseEvent(event)));
+        } catch {
+          // Client gone — keep running so billing still settles at final.
+        }
+      };
+      let engineErrorSent = false;
+      try {
+        const result = await runChatAgentStream(
+          {
+            userMessages,
+            model: backend.model,
+            openai: backend.openai,
+            userId: context.userId,
+            requestId: context.requestId,
+            maxToolRounds: MAX_TOOL_ROUNDS,
+            allowParallelOpenAI:
+              backend.allowParallel && bodyParallelToolCalls !== false,
+            omitParallelToolCalls: backend.omitParallelToolCalls,
+            execParallel: !bodyExecSequential,
+          },
+          (event) => {
+            if (event.type === "final") return; // re-emitted enriched below
+            if (event.type === "error") engineErrorSent = true;
+            send(event);
+          },
+        );
+
+        const toolCostTotal = result.toolCallResults.reduce(
+          (s, r) => s + r.cost_usd,
+          0,
+        );
+        const finalContent = appendCostLineIfMissing(
+          result.finalContent,
+          toolCostTotal,
+          result.toolCallResults.length,
+        );
+
+        await context.settleBilling?.(true);
+
+        let quota: ChatQuota | null = null;
+        try {
+          const balance = await getUserBalance(context.userId);
+          quota = {
+            tokens_consumed: Math.ceil(
+              (context.costUsd + toolCostTotal) / TOKEN_PRICE_USD,
+            ),
+            tokens_remaining: Math.floor(balance / TOKEN_PRICE_USD),
+          };
+        } catch {
+          quota = null;
+        }
+
+        send({
+          type: "final",
+          content: finalContent,
+          tool_calls_summary: summarizeToolCalls(result.toolCallResults),
+          usage: result.usage,
+          quota,
+          persisted_id: null,
+        });
+      } catch (e) {
+        await context.settleBilling?.(false).catch(() => {});
+        if (!engineErrorSent) {
+          send({
+            type: "error",
+            status: e instanceof AgentUpstreamError ? 502 : 500,
+            message: e instanceof Error ? e.message : "Chat agent failed",
+          });
+        }
+        console.error("[chat:stream]", e);
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          // already closed/errored
+        }
+      }
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      ...getCorsHeaders(origin),
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+};
+
+const postBlocking = withBilling(chatHandler, {
+  capabilityId: "chat-risk-analyst",
+  getTokenEstimates: estimateChatTokens,
+});
+
+const postStreaming = withBilling(chatStreamHandler, {
+  capabilityId: "chat-risk-analyst",
+  getTokenEstimates: estimateChatTokens,
+  deferBillingToHandler: true,
+});
+
+/**
+ * Content negotiation: `Accept: text/event-stream` opts into SSE streaming;
+ * every other request takes the existing blocking JSON path unchanged
+ * (OpenBB adapter, .net portal, eval harness stay byte-identical).
+ */
+export async function POST(request: NextRequest) {
+  const accept = request.headers.get("accept")?.toLowerCase() ?? "";
+  if (accept.includes("text/event-stream")) {
+    return postStreaming(request);
+  }
+  return postBlocking(request);
+}
 
 export async function OPTIONS(request: NextRequest) {
   const origin = request.headers.get("origin");

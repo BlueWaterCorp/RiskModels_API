@@ -7,10 +7,12 @@ import { CHAT_TOOLS } from "@/lib/chat/tools";
 import { buildSystemPrompt } from "@/lib/chat/system-prompt";
 import { executeToolCalls } from "@/lib/chat/tool-executor";
 import {
+  AgentAbortError,
   AgentUpstreamError,
   type RunChatAgentOptions,
   type RunChatAgentResult,
 } from "@/lib/chat/agent-runner";
+import { roundStatusMessage, type ChatStreamEmit } from "@/lib/chat/stream-events";
 
 const DEFAULT_MAX_TOKENS = 4096;
 
@@ -65,9 +67,15 @@ function toolUseToFakeOpenAICall(
  *
  * Models: dispatch is based on `model.startsWith("claude-")`; callers pass any
  * canonical alias from shared/models.md (e.g. claude-sonnet-4-6).
+ *
+ * Streaming: with `emit` present each round uses `client.messages.stream()` and
+ * forwards text deltas live; tool execution stays blocking. Text blocks that
+ * precede tool_use in a tool round stream as narration — `final.content`
+ * (emitted by runChatAgentStream) is authoritative.
  */
 export async function runAnthropicChatAgent(
   opts: RunChatAgentOptions,
+  emit?: ChatStreamEmit,
 ): Promise<RunChatAgentResult> {
   const {
     userMessages,
@@ -80,6 +88,7 @@ export async function runAnthropicChatAgent(
     execParallel = true,
     skipBilling = false,
     preFlightGuard,
+    signal,
   } = opts;
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -110,22 +119,40 @@ export async function runAnthropicChatAgent(
   let finalModel = model;
 
   for (let round = 0; round < maxToolRounds; round++) {
+    if (signal?.aborted) throw new AgentAbortError();
+    emit?.({ type: "status", round, message: roundStatusMessage(round) });
+
+    const requestParams: Anthropic.MessageCreateParamsNonStreaming = {
+      model,
+      max_tokens: maxCompletionTokens ?? DEFAULT_MAX_TOKENS,
+      system: [
+        {
+          type: "text",
+          text: buildSystemPrompt(),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: anthropicTools,
+      messages,
+    };
+
     let response: Anthropic.Message;
     try {
-      response = await client.messages.create({
-        model,
-        max_tokens: maxCompletionTokens ?? DEFAULT_MAX_TOKENS,
-        system: [
-          {
-            type: "text",
-            text: buildSystemPrompt(),
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        tools: anthropicTools,
-        messages,
-      });
+      if (emit) {
+        const stream = client.messages.stream(
+          requestParams,
+          signal ? { signal } : undefined,
+        );
+        stream.on("text", (text) => emit({ type: "delta", text }));
+        response = await stream.finalMessage();
+      } else {
+        response = await client.messages.create(
+          requestParams,
+          signal ? { signal } : undefined,
+        );
+      }
     } catch (e) {
+      if (signal?.aborted) throw new AgentAbortError();
       if (e instanceof Anthropic.APIError) {
         throw new AgentUpstreamError(
           `Anthropic API error (${e.status}): ${e.message}`,
@@ -181,6 +208,11 @@ export async function runAnthropicChatAgent(
     }
 
     const fakeCalls = toolUseBlocks.map(toolUseToFakeOpenAICall);
+    if (emit) {
+      for (const block of toolUseBlocks) {
+        emit({ type: "status", round, message: `Running ${block.name}` });
+      }
+    }
     const results = await executeToolCalls(fakeCalls, {
       parallel: execParallel,
       userId,
@@ -190,6 +222,12 @@ export async function runAnthropicChatAgent(
     });
     for (const r of results) {
       toolCallResults.push(r);
+      emit?.({
+        type: "tool",
+        name: r.name,
+        latency_ms: r.latency_ms,
+        ...(r.error ? { error: r.error } : {}),
+      });
     }
 
     const toolResultBlocks: Anthropic.ToolResultBlockParam[] = toolUseBlocks.map(
