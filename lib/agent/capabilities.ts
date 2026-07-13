@@ -2386,7 +2386,8 @@ export const CAPABILITIES: Capability[] = [
         type: "string",
         required: true,
         description:
-          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}). " +
+          "Composite entities (BW-SYNTH-*) are served by the same route.",
       },
       limit: {
         type: "integer",
@@ -2525,7 +2526,8 @@ export const CAPABILITIES: Capability[] = [
         type: "string",
         required: true,
         description:
-          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+          "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}). " +
+          "Composite entities (BW-SYNTH-*) are served by the same route.",
       },
     },
     pricing: {

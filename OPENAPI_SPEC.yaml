@@ -9639,6 +9639,10 @@ paths:
           required: true
           schema:
             type: string
+          description: >
+            Canonical filer id (BW-FILER-CIK{cik}). Composite entities
+            (BW-SYNTH-*) are served by the same route; registry-only fields
+            (cik, filer_type, aum_tier) return null.
         - name: limit
           in: query
           required: false
@@ -9834,6 +9838,12 @@ paths:
           required: true
           schema:
             type: string
+          description: >
+            Canonical filer id (BW-FILER-CIK{cik}). Composite entities
+            (BW-SYNTH-*) are served by the same route; the snapshot adds
+            entity_kind: synthetic_composite, evidence_class: reconstructed,
+            recipe, and composition coverage; registry-only fields return
+            null.
       responses:
         "200":
           description: Composed FilerSnapshot.

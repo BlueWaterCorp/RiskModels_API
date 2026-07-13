@@ -4,6 +4,7 @@
  * Per-entity stores live at:
  *   gs://{bucket}/{basePath}/bw_fund_id/{BW-FUND-...}/{ds_portfolio,ds_ph,ds_hr,ds_nav}.zarr
  *   gs://{bucket}/{basePath}/bw_filer_id/{BW-FILER-CIK...}/{ds_portfolio,ds_ph}.zarr
+ *   gs://{bucket}/{basePath}/bw_synth_id/{BW-SYNTH-...}/{ds_portfolio,ds_ph}.zarr
  *
  * Default GCS prefix is `rm_api_data/ERM3_Funds` (env override:
  * `ZARR_FUNDS_GCS_PREFIX`). The bucket is shared with the stocks-side
@@ -25,6 +26,7 @@
  * stocks-side module stays untouched.
  */
 
+import { readFile } from "node:fs/promises";
 import { Storage, type Bucket } from "@google-cloud/storage";
 import {
   get,
@@ -156,6 +158,28 @@ class GcsZarrStore {
   }
 }
 
+/**
+ * Local filesystem mirror of the funds zarr tree (dev/tests only). When
+ * `ZARR_FUNDS_LOCAL_ROOT` is set, all reads in this module resolve against
+ * `${root}/${relativePath}` instead of GCS. Unset in production.
+ */
+class FsZarrStore {
+  constructor(private readonly rootDir: string) {}
+
+  async get(key: AbsolutePath): Promise<Uint8Array | undefined> {
+    const rel = key.startsWith("/") ? key.slice(1) : key;
+    try {
+      const buf = await readFile(`${this.rootDir}/${rel}`);
+      return new Uint8Array(buf);
+    } catch (e: unknown) {
+      const err = e as { code?: string };
+      if (err?.code === "ENOENT" || err?.code === "EISDIR") return undefined;
+      console.error("[funds-zarr] local read failed");
+      throw new Error("Zarr read failed");
+    }
+  }
+}
+
 function parseFundsZarrPrefix(): { bucket: string; basePath: string } {
   const raw = (process.env.ZARR_FUNDS_GCS_PREFIX ?? "rm_api_data/ERM3_Funds").trim();
   const i = raw.indexOf("/");
@@ -166,13 +190,18 @@ function parseFundsZarrPrefix(): { bucket: string; basePath: string } {
 async function openZarrGroupAt(
   relativePath: string,
 ): Promise<Group<Readable> | null> {
-  const { bucket: bucketName, basePath } = parseFundsZarrPrefix();
-  const fullPrefix = `${basePath}/${relativePath}`
-    .replace(/\/+/g, "/")
-    .replace(/^\//, "");
   try {
-    const bucket = getGcs().bucket(bucketName);
-    const raw = new GcsZarrStore(bucket, fullPrefix);
+    let raw: FsZarrStore | GcsZarrStore;
+    const localRoot = process.env.ZARR_FUNDS_LOCAL_ROOT?.trim();
+    if (localRoot) {
+      raw = new FsZarrStore(`${localRoot}/${relativePath}`.replace(/\/+/g, "/"));
+    } else {
+      const { bucket: bucketName, basePath } = parseFundsZarrPrefix();
+      const fullPrefix = `${basePath}/${relativePath}`
+        .replace(/\/+/g, "/")
+        .replace(/^\//, "");
+      raw = new GcsZarrStore(getGcs().bucket(bucketName), fullPrefix);
+    }
     const consolidated = await tryWithConsolidated(raw);
     const store = consolidated as unknown as Readable;
     return (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
@@ -189,11 +218,21 @@ async function openFundZarrGroup(
   return openZarrGroupAt(`bw_fund_id/${bwFundId}/${basename}`);
 }
 
+/**
+ * Synthetic composite entities (`BW-SYNTH-*`) live under `bw_synth_id/` with
+ * the same per-entity dataset schemas as filers. The filer readers below are
+ * polymorphic over both families via this id-prefix dispatch.
+ */
+export function isSyntheticEntityId(id: string): boolean {
+  return id.startsWith("BW-SYNTH-");
+}
+
 async function openFilerZarrGroup(
   bwFilerId: string,
   basename: string,
 ): Promise<Group<Readable> | null> {
-  return openZarrGroupAt(`bw_filer_id/${bwFilerId}/${basename}`);
+  const family = isSyntheticEntityId(bwFilerId) ? "bw_synth_id" : "bw_filer_id";
+  return openZarrGroupAt(`${family}/${bwFilerId}/${basename}`);
 }
 
 /** Per-cell stores: portfolio_style/{Cell_Name}/... and equity_style_9box/{Cell_Name}/... */
@@ -1779,6 +1818,110 @@ async function computeFilerHedgeLatest(
     return null;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Synthetic composite entities — bw_synth_id/{BW-SYNTH-*}/ds_ph.zarr
+//
+// Same holdings schema as filers (coords symbol = bw_sym_id, teo; data_var
+// adj_mv) plus self-describing group attrs (recipe JSON, recipe_hash,
+// weight_basis, ontology_version, layer_depth) and per-teo composition
+// coverage vars. No registry row exists — the zarr is the source of truth.
+// ---------------------------------------------------------------------------
+
+/** Composition coverage at one teo — how much of the recipe is materialized. */
+export interface SyntheticEntityCoverage {
+  mapped_weight_frac: number | null;
+  child_coverage: number | null;
+  effective_coverage: number | null;
+  n_children: number | null;
+}
+
+export interface SyntheticEntityMeta {
+  /** Latest teo in the holdings panel (YYYY-MM-DD). */
+  teo: string;
+  /** Display handle from the zarr attrs (`plan_id`). */
+  name: string | null;
+  /** Parsed `recipe` attr — self-describing composition spec. */
+  recipe: Record<string, unknown> | null;
+  recipe_hash: string | null;
+  weight_basis: string | null;
+  ontology_version: string | null;
+  layer_depth: number | null;
+  /** Coverage vars at the latest teo. */
+  coverage: SyntheticEntityCoverage;
+}
+
+/**
+ * Entity metadata for a synthetic composite, read from its `ds_ph.zarr`
+ * group attrs + latest-teo coverage vars. Null when the id is not a
+ * synthetic id or the store is missing/empty.
+ */
+export async function readSyntheticEntityMeta(
+  bwSynthId: string,
+): Promise<SyntheticEntityMeta | null> {
+  if (!isSyntheticEntityId(bwSynthId)) return null;
+  const ck = generateCacheKey("funds_zarr", "synth_entity_meta", {
+    id: bwSynthId,
+  });
+  return withZarrCache(ck, () => computeSyntheticEntityMeta(bwSynthId), {
+    emptyValue: null,
+  });
+}
+
+async function computeSyntheticEntityMeta(
+  bwSynthId: string,
+): Promise<SyntheticEntityMeta | null> {
+  const grp = await openFilerZarrGroup(bwSynthId, "ds_ph.zarr");
+  if (!grp) return null;
+
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const teoIdx = teos.length - 1;
+
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const str = (k: string): string | null =>
+    typeof attrs[k] === "string" ? (attrs[k] as string) : null;
+  const num = (k: string): number | null =>
+    typeof attrs[k] === "number" && Number.isFinite(attrs[k] as number)
+      ? (attrs[k] as number)
+      : null;
+
+  let recipe: Record<string, unknown> | null = null;
+  const rawRecipe = str("recipe");
+  if (rawRecipe) {
+    try {
+      const parsed: unknown = JSON.parse(rawRecipe);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        recipe = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // malformed recipe attr → surface null rather than fail the read
+    }
+  }
+
+  const [mapped, child, effective, nChildren] = await Promise.all([
+    readFloatSlice1d(grp, "mapped_weight_frac", teoIdx, teoIdx + 1),
+    readFloatSlice1d(grp, "child_coverage", teoIdx, teoIdx + 1),
+    readFloatSlice1d(grp, "effective_coverage", teoIdx, teoIdx + 1),
+    readFloatSlice1d(grp, "n_children", teoIdx, teoIdx + 1),
+  ]);
+
+  return {
+    teo: teos[teoIdx]!,
+    name: str("plan_id"),
+    recipe,
+    recipe_hash: str("recipe_hash"),
+    weight_basis: str("weight_basis"),
+    ontology_version: str("ontology_version"),
+    layer_depth: num("layer_depth"),
+    coverage: {
+      mapped_weight_frac: mapped?.[0] ?? null,
+      child_coverage: child?.[0] ?? null,
+      effective_coverage: effective?.[0] ?? null,
+      n_children: nChildren?.[0] ?? null,
+    },
+  };
 }
 
 // ===========================================================================

@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
-import { fetchFiler } from "@/lib/dal/filers-engine";
-import { readFilerHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
+import { fetchFiler, type FilerRow } from "@/lib/dal/filers-engine";
+import {
+  isSyntheticEntityId,
+  readFilerHoldingsTopN,
+  readSyntheticEntityMeta,
+  type SyntheticEntityMeta,
+} from "@/lib/dal/funds-zarr-reader";
 import { enrichFilerHoldingsWithL3 } from "@/lib/13f/enrich-filer-holdings";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +34,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * X-Data-Filing-Date headers.
  *
  * Default `limit = 25`; caller can request up to 1000.
+ *
+ * Composite entities (BW-SYNTH-*) are served by the same route; registry-only
+ * fields (cik, filer_type, aum_tier) return null.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
@@ -62,9 +70,21 @@ export const GET = withBilling(
       );
     }
 
-    const filer = await fetchFiler(bwFilerId);
-    if (!filer) {
-      return NextResponse.json({ error: "Filer not found" }, { status: 404 });
+    // Synthetic composite entities (BW-SYNTH-*) are served by the same
+    // route: no registry row, entity resolves from its zarr attrs.
+    const synthetic = isSyntheticEntityId(bwFilerId);
+    let filer: FilerRow | null = null;
+    let synthMeta: SyntheticEntityMeta | null = null;
+    if (synthetic) {
+      synthMeta = await readSyntheticEntityMeta(bwFilerId);
+      if (!synthMeta) {
+        return NextResponse.json({ error: "Entity not found" }, { status: 404 });
+      }
+    } else {
+      filer = await fetchFiler(bwFilerId);
+      if (!filer) {
+        return NextResponse.json({ error: "Filer not found" }, { status: 404 });
+      }
     }
 
     const snapshot = await enrichFilerHoldingsWithL3(
@@ -86,17 +106,23 @@ export const GET = withBilling(
     const headers = new Headers({ "X-Data-As-Of": snapshot.teo });
     if (snapshot.filing_date) {
       headers.set("X-Data-Filing-Date", snapshot.filing_date);
-    } else if (filer.latest_filing_date) {
+    } else if (filer?.latest_filing_date) {
       headers.set("X-Data-Filing-Date", filer.latest_filing_date);
     }
 
     return NextResponse.json(
       {
         bw_filer_id: bwFilerId,
-        cik: filer.cik,
-        name: filer.name,
-        filer_type: filer.filer_type,
-        aum_tier: filer.aum_tier,
+        ...(synthetic
+          ? {
+              entity_kind: "synthetic_composite" as const,
+              evidence_class: "reconstructed" as const,
+            }
+          : {}),
+        cik: filer?.cik ?? null,
+        name: synthetic ? synthMeta!.name : (filer?.name ?? null),
+        filer_type: filer?.filer_type ?? null,
+        aum_tier: filer?.aum_tier ?? null,
         ...(asOf ? { as_of: asOf } : {}),
         ...snapshot,
       },
