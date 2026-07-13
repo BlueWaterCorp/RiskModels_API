@@ -650,6 +650,39 @@ const WIDGETS = {
       },
     },
   },
+  rm_model_scaffold: {
+    name: "RiskModels — Model Scaffold (Excel)",
+    description:
+      "Download a ready-to-fill valuation-model .xlsx: the historical income/cash-flow block (revenue → EBIT → net income → FCF) plus a CAPM WACC build, filled from PIT SEC-sourced fundamentals. The block an Excel model pulls from a licensed terminal — here at $0.005/call. Forward projections stay your assumptions (RiskModels serves realized data only).",
+    category: "Fundamentals",
+    type: "multi_file_viewer",
+    source: ["RiskModels API"],
+    endpoint: "widgets/model-scaffold",
+    gridData: { w: 24, h: 16 },
+    params: [
+      {
+        paramName: "ticker",
+        value: "AAPL",
+        label: "Ticker",
+        type: "text",
+        description: "US equity ticker (e.g. AAPL, MSFT, NVDA).",
+      },
+      {
+        paramName: "erp",
+        value: "0.05",
+        label: "Equity risk premium",
+        type: "text",
+        description: "Your ERP assumption for the CAPM cost of equity (default 0.05).",
+      },
+      {
+        paramName: "periods",
+        value: "8",
+        label: "Quarters of history",
+        type: "text",
+        description: "Historical quarters to include (default 8).",
+      },
+    ],
+  },
   rm_rankings_top: {
     name: "RiskModels — Top Rankings",
     description:
