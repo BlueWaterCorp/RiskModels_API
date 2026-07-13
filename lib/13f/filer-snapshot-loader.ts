@@ -147,7 +147,7 @@ async function loadSyntheticCompositeSnapshot(
     country: null,
     status: null,
     style_label: null,
-    factset_entity_id: null,
+    factset_entity_id: null, // licensed-id-ok: hardcoded null for synthetic entities — field name only, no licensed value ever present
     latest_report_date: meta.teo,
     latest_filing_date: null,
     latest_extracted_at: null,
