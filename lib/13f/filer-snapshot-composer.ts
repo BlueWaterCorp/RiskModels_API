@@ -26,6 +26,7 @@ import type {
   FilerPortfolioRow,
   FilerReturnsDecomposition,
   FundHedgeSnapshot,
+  SyntheticEntityMeta,
 } from "@/lib/dal/funds-zarr-reader";
 import {
   formatFilerMetrics,
@@ -51,6 +52,12 @@ export interface FilerSnapshotPrimitives {
   returnsDecomposition: FilerReturnsDecomposition | null;
   /** Latest hedge legs when ``ds_hr.zarr`` exists (Phase 3). */
   hedgeSleeve: FundHedgeSnapshot | null;
+  /**
+   * Present only for synthetic composite entities (BW-SYNTH-*). Switches
+   * `entity_kind`, adds `evidence_class`/`recipe`, and merges composition
+   * coverage into the `coverage` block. Registry-only fields stay null.
+   */
+  synthetic?: SyntheticEntityMeta | null;
 }
 
 export interface FilerCohortRankEntry {
@@ -65,7 +72,11 @@ export interface FilerCohortRankEntry {
 
 export interface FilerSnapshot {
   /** Discriminator so renderers can branch off this rather than route shape. */
-  entity_kind: "13f_filer";
+  entity_kind: "13f_filer" | "synthetic_composite";
+  /** Synthetic composites only: holdings are reconstructed from a recipe, not filed. */
+  evidence_class?: "reconstructed";
+  /** Synthetic composites only: the self-describing composition spec (zarr attrs). */
+  recipe?: Record<string, unknown> | null;
   bw_filer_id: string;
   cik: string | null;
   name: string | null;
@@ -108,6 +119,11 @@ export interface FilerSnapshot {
     aum_in_erm3: number | null;
     n_holdings_in_erm3: number | null;
     effective_n_in_erm3: number | null;
+    /** Synthetic composites only: recipe-composition coverage at the latest teo. */
+    mapped_weight_frac?: number | null;
+    child_coverage?: number | null;
+    effective_coverage?: number | null;
+    n_children?: number | null;
   };
   /**
    * Filer modelability gate result. A filer can have low coverage_in_erm3
@@ -149,6 +165,7 @@ export function composeFilerSnapshot(
     returnsDecomposition,
     hedgeSleeve,
   } = p;
+  const synthetic = p.synthetic ?? null;
 
   const trimmed = trimToLookbackMonths(portfolioHistory, FILER_LOOKBACK_MONTHS);
 
@@ -180,7 +197,10 @@ export function composeFilerSnapshot(
       : null;
 
   return {
-    entity_kind: "13f_filer",
+    entity_kind: synthetic ? "synthetic_composite" : "13f_filer",
+    ...(synthetic
+      ? { evidence_class: "reconstructed" as const, recipe: synthetic.recipe }
+      : {}),
     bw_filer_id: filer.bw_filer_id,
     cik: filer.cik,
     name: filer.name,
@@ -208,6 +228,7 @@ export function composeFilerSnapshot(
       aum_in_erm3: latest?.aum_in_erm3 ?? null,
       n_holdings_in_erm3: latest?.n_holdings_in_erm3 ?? null,
       effective_n_in_erm3: latest?.effective_n_in_erm3 ?? null,
+      ...(synthetic ? synthetic.coverage : {}),
     },
     is_modelable: latest?.is_modelable ?? null,
     cohort_context: ranks.length > 0

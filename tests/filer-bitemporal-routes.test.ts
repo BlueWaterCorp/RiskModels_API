@@ -10,6 +10,8 @@ vi.mock("@/lib/dal/filers-engine", () => ({
 }));
 
 vi.mock("@/lib/dal/funds-zarr-reader", () => ({
+  isSyntheticEntityId: (id: string) => id.startsWith("BW-SYNTH-"),
+  readSyntheticEntityMeta: vi.fn(),
   readFilerHoldingsTopN: vi.fn(),
   readFilerPortfolioSeries: vi.fn(),
 }));

@@ -16,6 +16,10 @@ export const dynamic = "force-dynamic";
  * ratios are Phase 3 (D.8.10) and not present today.
  *
  * All sub-fetches run in parallel inside loadFilerSnapshot.
+ *
+ * Composite entities (BW-SYNTH-*) are served by the same route; registry-only
+ * fields return null and the snapshot adds entity_kind/evidence_class/recipe
+ * plus composition coverage.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {

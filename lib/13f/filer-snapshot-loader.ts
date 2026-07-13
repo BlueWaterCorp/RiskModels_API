@@ -9,12 +9,15 @@
 import {
   fetchFilerRanks,
   resolveFilerById,
+  type FilerRow,
 } from "@/lib/dal/filers-engine";
 import {
+  isSyntheticEntityId,
   readFilerHoldingsTopN,
   readFilerPortfolioSeries,
   readFilerReturnsDecomposition,
   readFilerHedgeLatest,
+  readSyntheticEntityMeta,
 } from "@/lib/dal/funds-zarr-reader";
 import {
   composeFilerSnapshot,
@@ -38,6 +41,11 @@ export type LoadFilerSnapshotResult =
 export async function loadFilerSnapshot(
   bwFilerId: string,
 ): Promise<LoadFilerSnapshotResult> {
+  // Synthetic composite entities (BW-SYNTH-*) are served by the same route.
+  // They have no registry row — the zarr attrs are self-describing.
+  if (isSyntheticEntityId(bwFilerId)) {
+    return loadSyntheticCompositeSnapshot(bwFilerId);
+  }
   const resolved = await resolveFilerById(bwFilerId);
   if (!resolved) {
     return { ok: false, status: 404, error: "Filer not found" };
@@ -49,15 +57,7 @@ export async function loadFilerSnapshot(
   // rather than 404. This matches the schema-ready-but-empty state of the
   // table during Phase 1 ramp-up.
   const referenceDate = latest?.report_date ?? filer.latest_report_date ?? null;
-  let startDate: string | undefined = undefined;
-  if (referenceDate) {
-    const ref = new Date(`${referenceDate}T12:00:00Z`);
-    const startWindow = new Date(ref);
-    startWindow.setUTCMonth(
-      startWindow.getUTCMonth() - FILER_LOOKBACK_MONTHS - 1,
-    );
-    startDate = startWindow.toISOString().slice(0, 10);
-  }
+  const startDate = lookbackStartDate(referenceDate);
 
   const [holdingsRaw, portfolioHistory, cohortRanks, returnsDec, hedgeSleeve] =
     await Promise.all([
@@ -92,5 +92,89 @@ export async function loadFilerSnapshot(
     reportDate: latest?.report_date ?? filer.latest_report_date ?? null,
     filingDate: latest?.filing_date ?? filer.latest_filing_date ?? null,
     modelVersion: latest?.model_version ?? null,
+  };
+}
+
+function lookbackStartDate(referenceDate: string | null): string | undefined {
+  if (!referenceDate) return undefined;
+  const startWindow = new Date(`${referenceDate}T12:00:00Z`);
+  startWindow.setUTCMonth(startWindow.getUTCMonth() - FILER_LOOKBACK_MONTHS - 1);
+  return startWindow.toISOString().slice(0, 10);
+}
+
+/**
+ * Snapshot for a synthetic composite entity. Same composed shape; the
+ * entity resolves from its zarr (attrs + coverage vars) instead of the
+ * registry, so registry-only fields (cik, filer_type, aum_tier, cohort
+ * ranks) are null/empty. Additive fields: `entity_kind:
+ * "synthetic_composite"`, `evidence_class: "reconstructed"`, `recipe`, and
+ * composition coverage merged into `coverage`.
+ */
+async function loadSyntheticCompositeSnapshot(
+  bwSynthId: string,
+): Promise<LoadFilerSnapshotResult> {
+  const meta = await readSyntheticEntityMeta(bwSynthId);
+  if (!meta) {
+    return { ok: false, status: 404, error: "Entity not found" };
+  }
+
+  const referenceDate = meta.teo;
+  const startDate = lookbackStartDate(referenceDate);
+
+  const [holdingsRaw, portfolioHistory, returnsDec, hedgeSleeve] =
+    await Promise.all([
+      readFilerHoldingsTopN(bwSynthId, HOLDINGS_TOP_N),
+      readFilerPortfolioSeries(bwSynthId, {
+        startDate,
+        endDate: referenceDate,
+      }),
+      readFilerReturnsDecomposition(bwSynthId, {
+        startDate,
+        endDate: referenceDate,
+      }),
+      readFilerHedgeLatest(bwSynthId),
+    ]);
+
+  const holdings = await enrichFilerHoldingsWithL3(holdingsRaw);
+
+  const filer: FilerRow = {
+    bw_filer_id: bwSynthId,
+    cik: null,
+    lei: null,
+    name: meta.name,
+    filer_type: null,
+    filer_subtype: null,
+    country: null,
+    status: null,
+    style_label: null,
+    factset_entity_id: null, // licensed-id-ok: hardcoded null for synthetic entities — field name only, no licensed value ever present
+    latest_report_date: meta.teo,
+    latest_filing_date: null,
+    latest_extracted_at: null,
+    latest_aum_usd: null,
+    aum_tier: null,
+    latest_n_holdings: null,
+    last_in_eligible_universe_at: null,
+    n_funds_managed: null,
+    metadata: null,
+  };
+
+  const snapshot = composeFilerSnapshot({
+    filer,
+    latest: null,
+    holdings,
+    portfolioHistory,
+    cohortRanks: [],
+    returnsDecomposition: returnsDec,
+    hedgeSleeve,
+    synthetic: meta,
+  });
+
+  return {
+    ok: true,
+    snapshot,
+    reportDate: meta.teo,
+    filingDate: null,
+    modelVersion: null,
   };
 }

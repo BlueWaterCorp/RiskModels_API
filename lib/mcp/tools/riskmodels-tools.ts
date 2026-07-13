@@ -791,9 +791,9 @@ export function registerRiskModelsTools(
       title: "RiskModels 13F Filer Snapshot",
       annotations: { readOnlyHint: true },
       description:
-        "Composed JSON snapshot for one 13F filer (GET /13f/filers/{bw_filer_id}/snapshot): registry + latest metrics + concentration. Resolve bw_filer_id via riskmodels_search_filers first.",
+        "Composed JSON snapshot for one 13F filer (GET /13f/filers/{bw_filer_id}/snapshot): registry + latest metrics + concentration. Resolve bw_filer_id via riskmodels_search_filers first. Composite entities (BW-SYNTH-*) are served by the same route.",
       inputSchema: {
-        bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers"),
+        bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers, or a composite entity id (BW-SYNTH-*)"),
       },
     },
     async ({ bw_filer_id }) => {
@@ -813,9 +813,9 @@ export function registerRiskModelsTools(
       title: "RiskModels 13F Filer Holdings",
       annotations: { readOnlyHint: true },
       description:
-        "Top-N current holdings of a 13F filer (GET /13f/filers/{bw_filer_id}/holdings). Resolve bw_filer_id via riskmodels_search_filers first.",
+        "Top-N current holdings of a 13F filer (GET /13f/filers/{bw_filer_id}/holdings). Resolve bw_filer_id via riskmodels_search_filers first. Composite entities (BW-SYNTH-*) are served by the same route.",
       inputSchema: {
-        bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers"),
+        bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers, or a composite entity id (BW-SYNTH-*)"),
         top: z.number().int().min(1).max(200).optional().describe("Number of holdings (default 25)"),
       },
     },
