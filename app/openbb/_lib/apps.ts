@@ -152,6 +152,14 @@ export const APPS: WorkspaceApp[] = [
             h: 14,
             state: { params: { ticker: "AAPL", measure: "wacc" } },
           },
+          {
+            i: "rm_model_scaffold",
+            x: 0,
+            y: 40,
+            w: 40,
+            h: 16,
+            state: { params: { ticker: "AAPL", erp: "0.05", periods: "8" } },
+          },
         ],
       },
       portfolio: {
@@ -235,6 +243,7 @@ export const APPS: WorkspaceApp[] = [
           "rm_fundamentals_ratios",
           "rm_cost_of_capital",
           "rm_wacc_grid",
+          "rm_model_scaffold",
           "rm_tearsheet",
         ],
       },
