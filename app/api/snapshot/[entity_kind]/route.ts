@@ -1,19 +1,19 @@
 /**
  * Stock Deep Dive (DD) snapshot — served from precomputed GCS objects.
  *
- * The DD snapshots are generated offline by the Python pipeline in
- * `sdk/riskmodels/snapshots/stock_deep_dive.py` and uploaded to
- * `gs://rm_api_public/snapshot/{TICKER}/{TICKER}_DD_latest.{png,pdf}`.
- *
- * This endpoint adds an authenticated, branded API URL on top of the
- * public bucket, enforcing API-key auth, billing, CORS, and a Redis cache
- * layer. The Python generation code stays proprietary on the offline
- * batch infrastructure — only the rendered bytes ever leave that
- * environment.
- *
  *   GET /api/snapshot/{ticker}              → image/png
  *   GET /api/snapshot/{ticker}?format=pdf   → application/pdf
- *   GET /api/snapshot/{ticker}?format=png   → image/png
+ *
+ * Route param is named `entity_kind` so this folder can nest
+ * `[entity_kind]/[id]/panels/[slug]` without a Next.js sibling-dynamic
+ * conflict against a separate `[ticker]` segment.
+ *
+ * Reserved kinds (`stock`, `fund`, …) are not tickers — hitting
+ * `/api/snapshot/stock` alone returns 400 with the panel URL shape.
+ *
+ * Preferred panel drill-down (O.6):
+ *   GET /api/snapshot/stock/{ticker}/panels/{slug}?format=png
+ *   GET /api/snapshot/stock/{ticker}/panels/_full?format=png
  */
 
 import { createHash } from "crypto";
@@ -32,8 +32,15 @@ import { getCorsHeaders } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
 
-// Public GCS bucket where the offline pipeline uploads the rendered DD files.
 const GCS_BASE = "https://storage.googleapis.com/rm_api_public/snapshot";
+
+const RESERVED_ENTITY_KINDS = new Set([
+  "stock",
+  "fund",
+  "filer_13f",
+  "client_portfolio",
+  "cohort",
+]);
 
 const ALLOWED_FORMATS = ["png", "pdf"] as const;
 type SnapshotFormat = (typeof ALLOWED_FORMATS)[number];
@@ -45,19 +52,17 @@ type SnapshotCache = {
   etag?: string;
 };
 
-// Bumped during PR 3 (snapshot canonicalization, 2026-05) to invalidate cached
-// PNG/PDF bytes after the subsector slate→violet color cutover and the move to
-// the canonical reference renderer. Bump again whenever the rendered output
-// changes deterministically and old hashes would otherwise still match.
 const SNAPSHOT_CACHE_VERSION = "v2";
 
 function snapshotCacheKey(ticker: string, format: SnapshotFormat) {
   const h = createHash("sha256")
-    .update(JSON.stringify({
-      ticker: ticker.toUpperCase(),
-      format,
-      v: SNAPSHOT_CACHE_VERSION,
-    }))
+    .update(
+      JSON.stringify({
+        ticker: ticker.toUpperCase(),
+        format,
+        v: SNAPSHOT_CACHE_VERSION,
+      }),
+    )
     .digest("hex");
   return generateCacheKey("dd_snapshot", h);
 }
@@ -120,12 +125,12 @@ async function fetchFromGcs(
     "Content-Type": contentType,
     "Content-Disposition": `inline; filename="${ticker.toUpperCase()}_DD_latest.${format}"`,
     "Cache-Control": "public, max-age=300, s-maxage=300",
+    "X-Deprecated-Prefer": `/api/snapshot/stock/${ticker.toUpperCase()}/panels/_full?format=${format}`,
   };
   if (lastModified) headers["Last-Modified"] = lastModified;
   if (etag) headers["ETag"] = etag;
 
   const res = new NextResponse(buf, { status: 200, headers });
-  // Stash on the response so the caller can write it to Redis after billing succeeds.
   (res as NextResponse & { __cachePayload?: SnapshotCache }).__cachePayload = {
     base64: buf.toString("base64"),
     contentType,
@@ -137,12 +142,26 @@ async function fetchFromGcs(
 
 export async function GET(
   request: NextRequest,
-  segmentData: { params: Promise<{ ticker: string }> },
+  segmentData: { params: Promise<{ entity_kind: string }> },
 ) {
   const origin = request.headers.get("origin");
-  const { ticker: rawTicker } = await segmentData.params;
+  const { entity_kind: raw } = await segmentData.params;
+  const kindLower = raw.trim().toLowerCase();
 
-  const parsed = TickerSchema.safeParse(rawTicker);
+  if (RESERVED_ENTITY_KINDS.has(kindLower)) {
+    return NextResponse.json(
+      {
+        error: "Use panel path",
+        message:
+          `GET /api/snapshot/${kindLower}/{id}/panels/{slug} — ` +
+          `e.g. /api/snapshot/stock/CRM/panels/l3_explained_risk_hbar?format=png ` +
+          `or /api/snapshot/stock/CRM/panels/_full?format=png`,
+      },
+      { status: 400, headers: getCorsHeaders(origin) },
+    );
+  }
+
+  const parsed = TickerSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid ticker", message: parsed.error.issues[0].message },
@@ -164,7 +183,6 @@ export async function GET(
   }
   const format = formatParam as SnapshotFormat;
 
-  // Auth gate (mirrors snapshot.png/snapshot.pdf routes).
   const auth = await getBillingUserId(request);
   if (!auth) {
     return NextResponse.json(
@@ -176,9 +194,6 @@ export async function GET(
     );
   }
 
-  // Redis hot cache: keyed on (ticker, format), shared across users since the
-  // file is identical for everyone. Short TTL because the offline pipeline
-  // updates GCS daily.
   const key = snapshotCacheKey(ticker, format);
   const hit = await getCache<SnapshotCache>(key);
   if (isDdSnapshotCacheHit(hit)) {
@@ -197,7 +212,6 @@ export async function GET(
     });
   }
 
-  // Cache miss → bill the request, fetch from GCS, populate cache.
   const req2 = new NextRequest(url.toString(), {
     method: "GET",
     headers: request.headers,
@@ -207,15 +221,12 @@ export async function GET(
     async (req, _ctx: BillingContext) => {
       const res = await fetchFromGcs(ticker, format, req.headers.get("origin"));
       if (res.status === 200) {
-        const payload = (res as NextResponse & {
-          __cachePayload?: SnapshotCache;
-        }).__cachePayload;
+        const payload = (
+          res as NextResponse & {
+            __cachePayload?: SnapshotCache;
+          }
+        ).__cachePayload;
         if (payload) {
-          // 1h TTL matches the offline pipeline's daily refresh cadence — long
-          // enough to absorb traffic bursts, short enough that a fresh GCS
-          // upload propagates to end users in under an hour. Previously this
-          // was HISTORICAL (24h), which meant a same-day refresh of GCS could
-          // be invisible to website users for almost a full day.
           await setCache(key, payload, CACHE_TTL.DAILY);
         }
       }

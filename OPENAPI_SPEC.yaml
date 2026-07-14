@@ -6752,6 +6752,100 @@ paths:
               schema:
                 $ref: "#/components/schemas/InsufficientBalance"
 
+  /snapshot/{entity_kind}/{id}/panels/{slug}:
+    get:
+      summary: Snapshot panel drill-down (artifact PNG/JSON)
+      description: >
+        Addressable panel from the Artifact Registry (O.6). Product alias onto
+        render-svc `POST /artifacts/render`. Stock panels:
+        `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`,
+        `watchlist_er_stacked` (pass `tickers=CRM,MSFT,NVDA`), and `_full` (composed
+        DD page from GCS). See BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
+
+        **Billing:** `portfolio-risk-snapshot` ($0.25; cache hits may be $0).
+      operationId: getSnapshotPanel
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-risk-snapshot
+        tier: premium
+        model: per_request
+        cost_usd: 0.25
+        currency: USD
+        billing_code: risk_snapshot_pdf_v1
+      security:
+        - BearerAuth: []
+        - OAuth2ClientCredentials: ["*"]
+      parameters:
+        - name: entity_kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [stock, fund, filer_13f, client_portfolio, cohort]
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Ticker (CRM), BW-STOCK-CRM, fund/filer id, or WATCHLIST.
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Panel artifact slug or `_full`.
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [png, json, svg, pdf]
+            default: png
+        - name: version
+          in: query
+          schema:
+            type: string
+            default: v1
+        - name: as_of
+          in: query
+          schema:
+            type: string
+            default: latest
+        - name: tickers
+          in: query
+          schema:
+            type: string
+          description: Comma-separated tickers for watchlist_er_stacked.
+      responses:
+        "200":
+          description: Panel PNG/SVG bytes or JSON contract.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Unknown panel or missing DD asset.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: render-svc not configured or panel not live-renderable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /metrics/{ticker}/snapshot.pdf:
     get:
       summary: Single-ticker risk snapshot PDF

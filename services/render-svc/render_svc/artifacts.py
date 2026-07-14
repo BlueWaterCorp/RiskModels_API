@@ -186,6 +186,24 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
             ),
         )
 
+    if subject_kind == "stock":
+        if slug == "l3_explained_risk_hbar":
+            return adapters.stock_l3_exposure_from_decompose
+        if slug == "hedge_notionals_hbar":
+            return adapters.stock_hedge_notionals_from_decompose
+        if slug == "hedge_depth_retained":
+            return adapters.stock_l3_exposure_from_decompose
+        if slug == "watchlist_er_stacked":
+            return adapters.watchlist_er_stacked_from_decomposes
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"No stock adapter wired for slug={slug!r} "
+                f"(O.6 panels: l3_explained_risk_hbar, hedge_notionals_hbar, "
+                f"hedge_depth_retained, watchlist_er_stacked)"
+            ),
+        )
+
     raise HTTPException(
         status_code=501,
         detail=(
@@ -252,9 +270,10 @@ def _resolve_client_portfolio(
 # Subject kinds with no SDK loader inside render-svc. Pre-rendered artifacts
 # (explicit as_of, bytes already in GCS) serve via the cache-hit path; cache
 # miss raises 501. filer_13f data lives behind the private BWMACRO surface;
-# cohort/stock cover the research artifact registry (BW-COHORT-RES-*,
-# BW-STOCK-* — published by BWMACRO research/papers/build_artifacts.py).
-_PRERENDERED_SUBJECT_KINDS: tuple[str, ...] = ("filer_13f", "cohort", "stock")
+# cohort covers research artifacts (BW-COHORT-RES-* — published by
+# BWMACRO research/papers/build_artifacts.py).
+# ``stock`` was removed from this set 2026-07-14 (O.6): live decompose loader.
+_PRERENDERED_SUBJECT_KINDS: tuple[str, ...] = ("filer_13f", "cohort")
 
 
 def _resolve_prerendered_subject(
@@ -295,12 +314,13 @@ def _resolve_prerendered_subject(
 def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
     """Load subject data + verify the loader's resolved as_of.
 
-    Phase 1B: only ``subject_kind == "fund"`` is wired, and only
-    ``as_of == "latest"`` (or an as_of matching the loader's resolved
-    latest_report_date) is supported. Arbitrary historical as_of is a
-    Phase 2 task (the SDK ``get_data_for_f1`` doesn't yet accept an
-    ``as_of`` parameter).
+    Wired today:
+      - ``fund`` via ``get_data_for_f1`` (as_of=latest or matching teo)
+      - ``stock`` via live ``POST /api/decompose`` (as_of=latest or matching data_as_of)
     """
+    if subject_kind == "stock":
+        return _load_stock_decompose(subject_id, as_of)
+
     if subject_kind != "fund":
         raise HTTPException(
             status_code=501,
@@ -336,6 +356,126 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
         )
 
     return fd, resolved
+
+
+def _ticker_from_stock_subject_id(subject_id: str) -> str:
+    """BW-STOCK-CRM → CRM."""
+    prefix = "BW-STOCK-"
+    if not subject_id.startswith(prefix):
+        raise HTTPException(
+            status_code=422,
+            detail=f"stock subject_id must start with {prefix!r}",
+        )
+    ticker = subject_id[len(prefix) :].strip().upper()
+    if not ticker or ticker == "WATCHLIST":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "BW-STOCK-WATCHLIST requires subject_payload.tickers; "
+                "single-name panels use BW-STOCK-{TICKER}"
+            ),
+        )
+    return ticker
+
+
+def _fetch_decompose(ticker: str) -> dict[str, Any]:
+    """Call RiskModels ``POST /api/decompose`` with service credentials."""
+    import os
+
+    import requests
+
+    api_key = (
+        os.environ.get("RISKMODELS_API_KEY")
+        or os.environ.get("RENDER_SVC_RISKMODELS_API_KEY")
+        or ""
+    ).strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="RISKMODELS_API_KEY not configured on render-svc for stock panels",
+        )
+    base = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+    try:
+        resp = requests.post(
+            f"{base}/decompose",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"ticker": ticker},
+            timeout=45,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("decompose failed for %s", ticker)
+        raise HTTPException(
+            status_code=502,
+            detail=f"decompose failed for {ticker!r}: {exc}",
+        ) from exc
+    if "ticker" not in payload:
+        payload = {**payload, "ticker": ticker}
+    return payload
+
+
+def _load_stock_decompose(
+    subject_id: str, as_of: str
+) -> tuple[dict[str, Any], str]:
+    """Load a single-name decompose payload for stock panel artifacts."""
+    ticker = _ticker_from_stock_subject_id(subject_id)
+    payload = _fetch_decompose(ticker)
+    resolved = str(payload.get("data_as_of") or "").strip()
+    if not resolved:
+        resolved = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if as_of != "latest" and as_of != resolved:
+        # Decompose is latest-only today; refuse mismatched historical pins.
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"as_of={as_of!r} differs from decompose data_as_of={resolved!r}; "
+                f"historical stock panel as_of is not yet supported. "
+                f"Use as_of='latest' or as_of={resolved!r}."
+            ),
+        )
+    return payload, resolved
+
+
+def _resolve_stock_watchlist(
+    req: "ArtifactRenderRequest",
+) -> tuple[list[dict[str, Any]], str, str]:
+    """Inline watchlist: subject_payload.tickers → list of decompose payloads."""
+    if req.subject_payload is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "watchlist_er_stacked requires subject_payload.tickers "
+                "(list of US equity tickers)"
+            ),
+        )
+    tickers = req.subject_payload.get("tickers")
+    if not isinstance(tickers, list) or not tickers:
+        raise HTTPException(
+            status_code=400,
+            detail="subject_payload.tickers must be a non-empty list",
+        )
+    if len(tickers) > 12:
+        raise HTTPException(status_code=400, detail="at most 12 watchlist tickers")
+    payloads = [_fetch_decompose(str(t).strip().upper()) for t in tickers]
+    as_ofs = {str(p.get("data_as_of") or "") for p in payloads}
+    as_ofs.discard("")
+    if req.as_of == "latest":
+        resolved_as_of = (
+            next(iter(as_ofs))
+            if len(as_ofs) == 1
+            else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        )
+    else:
+        resolved_as_of = req.as_of
+    # Stable subject id from ticker set
+    key = ",".join(sorted(str(t).strip().upper() for t in tickers))
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    resolved_subject_id = f"BW-STOCK-WATCHLIST-{digest}"
+    return payloads, resolved_subject_id, resolved_as_of
 
 
 def _render_bytes(mod: Any, data: Any, fmt: str) -> bytes:
@@ -398,6 +538,8 @@ def render_artifact(
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
+    elif subject_kind == "stock" and req.slug == "watchlist_er_stacked":
+        subject_data, resolved_subject_id, resolved_as_of = _resolve_stock_watchlist(req)
     elif subject_kind in _PRERENDERED_SUBJECT_KINDS:
         # No SDK loader in render-svc — cache-hit path works for pre-rendered
         # artifacts; cache miss raises 501 (live-render is Phase 2 follow-on).
@@ -405,7 +547,7 @@ def render_artifact(
             req, subject_kind
         )
     else:
-        # Loader-resolved path (fund today; etf to follow).
+        # Loader-resolved path (fund + stock today; etf to follow).
         subject_data, resolved_as_of = _load_subject_data(
             req.subject_id, subject_kind, req.as_of
         )
