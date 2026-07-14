@@ -91,6 +91,10 @@ RUN python -c "import sys; \
 import bwmacro.snapshots.artifacts; \
 import bwmacro.snapshots.artifacts.top_holdings_erm_stacked.v1; \
 import bwmacro.snapshots.artifacts.cumulative_return_strip.v1; \
+import bwmacro.snapshots.artifacts.l3_explained_risk_hbar.v1; \
+import bwmacro.snapshots.artifacts.hedge_notionals_hbar.v1; \
+import bwmacro.snapshots.artifacts.hedge_depth_retained.v1; \
+import bwmacro.snapshots.artifacts.watchlist_er_stacked.v1; \
 forbidden = ['bwmacro.snapshots.funds._ai_insight', 'bwmacro.snapshots.funds._data', 'supabase']; \
 hit = [m for m in forbidden if m in sys.modules]; \
 assert not hit, f'forbidden modules imported at artifact import: {hit}'; \

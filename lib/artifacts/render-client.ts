@@ -53,6 +53,14 @@ export const WIRED_ARTIFACT_RENDER_MATRIX: Record<
   return_composition_bars: { subject_kinds: ["filer_13f"] },
   active_risk_composition: { subject_kinds: ["filer_13f"] },
   risk_summary_panel: { subject_kinds: ["filer_13f"] },
+  // O.6 stock panels (2026-07-14) — live decompose loader on render-svc
+  l3_explained_risk_hbar: { subject_kinds: ["stock"] },
+  hedge_notionals_hbar: { subject_kinds: ["stock"] },
+  hedge_depth_retained: { subject_kinds: ["stock"] },
+  watchlist_er_stacked: {
+    subject_kinds: ["stock"],
+    notes: "Requires subject_payload.tickers; subject_id BW-STOCK-WATCHLIST.",
+  },
 };
 
 function renderSvcUrl(): string | null {

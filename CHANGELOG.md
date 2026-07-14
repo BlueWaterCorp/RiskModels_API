@@ -3,6 +3,18 @@
 All notable changes to the RiskModels API surface and public assets.
 
 
+## [Unreleased]
+
+### Added
+
+- **`GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`** — Stock panel drill-down (O.6): `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`, `watchlist_er_stacked`, and `_full` (composed DD page). Thin alias onto Artifact Registry / render-svc. ADR: BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
+- **Python SDK — `snapshot_panel()`** — Fetches a single panel PNG/JSON/SVG via the product panel route.
+- **render-svc** — Live stock `POST /decompose` loader for O.6 panels (`BW-STOCK-*` / watchlist).
+
+### Changed
+
+- **`GET /api/snapshot/{ticker}`** — Implemented under `[entity_kind]/route.ts` (same dynamic segment as panels) so Next.js does not reject sibling `[ticker]` vs `[entity_kind]` folders. Reserved kinds (`stock`, `fund`, …) return 400 with the panel URL shape. Deprecation header still prefers `…/panels/_full`.
+
 ## [0.6.2] — 2026-06-30
 
 ### Added

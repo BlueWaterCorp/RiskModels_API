@@ -1400,16 +1400,17 @@ export const CAPABILITIES: Capability[] = [
     id: "artifact-render",
     name: "Artifact registry render",
     description:
-      "Deterministic render-once artifact from the intelligence registry (fund / filer / client_portfolio subjects). " +
-      "Invokes render-svc `POST /artifacts/render` — same contract as riskmodels.net workspace `fetchArtifact`. " +
-      "Returns JSON chart/table/narrative payloads or PNG/SVG bytes (base64). Chat tool: `render_artifact`; MCP: `riskmodels_render_artifact`.",
+      "Deterministic render-once artifact from the intelligence registry (stock / fund / filer / client_portfolio). " +
+      "Invokes render-svc `POST /artifacts/render`; product alias `GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`. " +
+      "Stock O.6: l3_explained_risk_hbar, hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked. " +
+      "Returns JSON or PNG/SVG (base64). Chat: `render_artifact`; MCP: `riskmodels_render_artifact`.",
     endpoint: "/artifacts/render",
     method: "POST",
     parameters: {
       slug: {
         type: "string",
         required: true,
-        description: "Artifact slug (e.g. top_holdings_erm_stacked, narrative_profile)",
+        description: "Artifact slug (e.g. l3_explained_risk_hbar, top_holdings_erm_stacked)",
       },
       version: {
         type: "string",
@@ -1420,7 +1421,7 @@ export const CAPABILITIES: Capability[] = [
       subject_id: {
         type: "string",
         required: true,
-        description: "BW-FUND-…, BW-FILER-…, or BW-PORTFOLIO-…",
+        description: "BW-STOCK-…, BW-FUND-…, BW-FILER-…, BW-PORTFOLIO-…, or BW-STOCK-WATCHLIST",
       },
       as_of: {
         type: "string",

@@ -1962,6 +1962,59 @@ class RiskModelsClient:
         )
         return data, lineage
 
+    def snapshot_panel(
+        self,
+        entity_kind: str,
+        subject_id: str,
+        slug: str,
+        *,
+        format: Literal["png", "json", "svg"] = "png",
+        version: str = "v1",
+        as_of: str = "latest",
+        tickers: list[str] | None = None,
+    ) -> tuple[bytes | dict, RiskLineage]:
+        """Fetch one snapshot panel via ``GET /api/snapshot/{kind}/{id}/panels/{slug}``.
+
+        Stock panels (O.6): ``l3_explained_risk_hbar``, ``hedge_notionals_hbar``,
+        ``hedge_depth_retained``, ``watchlist_er_stacked``, ``_full`` (DD page).
+
+        Args:
+            entity_kind: ``stock`` | ``fund`` | ``filer_13f`` | …
+            subject_id: Ticker (``CRM``) or ``BW-STOCK-CRM``; use ``WATCHLIST``
+                with ``tickers=`` for ``watchlist_er_stacked``.
+            slug: Panel artifact slug (or ``_full`` for the composed DD page).
+            format: ``png`` (default), ``json``, or ``svg``.
+            version: Artifact version (default ``v1``).
+            as_of: ``latest`` or ISO date.
+            tickers: Optional watchlist tickers for ``watchlist_er_stacked``.
+
+        Returns:
+            ``(png_bytes, lineage)`` for binary formats, or ``(dict, lineage)``
+            when ``format="json"``.
+        """
+        from urllib.parse import quote, urlencode
+
+        kind = entity_kind.strip().lower()
+        sid = subject_id.strip()
+        path = (
+            f"/snapshot/{quote(kind, safe='')}/"
+            f"{quote(sid, safe='')}/panels/{quote(slug, safe='')}"
+        )
+        q: dict[str, str] = {
+            "format": format,
+            "version": version,
+            "as_of": as_of,
+        }
+        if tickers:
+            q["tickers"] = ",".join(t.strip().upper() for t in tickers)
+        qs = urlencode(q)
+        data, lineage, _r = self._transport.request(
+            "GET",
+            f"{path}?{qs}",
+            expect_json=(format == "json"),
+        )
+        return data, lineage
+
     def snapshot_ticker(
         self,
         ticker: str,
