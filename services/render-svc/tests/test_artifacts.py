@@ -718,3 +718,73 @@ class TestFilerAdapterRouting:
             _adapter_for("not_yet_widened_slug", "filer_13f")
         assert exc.value.status_code == 501
         assert "BWMACRO adapters.py" in str(exc.value.detail)
+
+
+class TestDdPanelPrerendered:
+    """Institutional DD figure units (dd_* stock slugs) — Tier-1 batch
+    pre-rendered by ``bulk_dd_render --panels``; render-svc has no DDData
+    loader, so cache-hit serves and cache-miss returns the actionable 501
+    (full-page pointer + service@riskmodels.app request path)."""
+
+    def _dd_req(self, **overrides):
+        base = dict(
+            slug="dd_peer_dna",
+            version="v1",
+            subject_id="BW-STOCK-NVDA",
+            as_of="latest",
+            format="png",
+        )
+        base.update(overrides)
+        return ArtifactRenderRequest(**base)
+
+    def test_latest_alias_cache_hit(self, store):
+        """`as_of=latest` reads the batch-written latest.png alias key —
+        no stock decompose loader call, no bwmacro import."""
+        path = _artifact_gcs_path(
+            PREFIX, "dd_peer_dna", "v1", "BW-STOCK-NVDA", "latest", "png"
+        )
+        store.write(path, b"\x89PNG-dd-panel", content_type="image/png")
+        raw, mime, gcs_path, resolved_as_of, cache_control, _rid = render_artifact(
+            self._dd_req(), store=store, prefix=PREFIX,
+        )
+        assert raw == b"\x89PNG-dd-panel"
+        assert mime == "image/png"
+        assert gcs_path == path
+        assert resolved_as_of == "latest"
+        assert "max-age=3600" in cache_control
+
+    def test_explicit_as_of_cache_hit_immutable(self, store):
+        path = _artifact_gcs_path(
+            PREFIX, "dd_peer_dna", "v1", "BW-STOCK-NVDA", "2026-05-07", "png"
+        )
+        store.write(path, b"\x89PNG-vintage", content_type="image/png")
+        raw, _mime, _p, resolved_as_of, cache_control, _rid = render_artifact(
+            self._dd_req(as_of="2026-05-07"), store=store, prefix=PREFIX,
+        )
+        assert raw == b"\x89PNG-vintage"
+        assert resolved_as_of == "2026-05-07"
+        assert "immutable" in cache_control
+
+    def test_cache_miss_returns_tier2_501(self, store):
+        """Tier-2 contract: miss → 501 with the _full pointer and the
+        service@riskmodels.app request path (the demand signal)."""
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                self._dd_req(subject_id="BW-STOCK-ZZZC"), store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 501
+        detail = str(exc.value.detail)
+        assert "zzzc_dd_latest.png" in detail
+        assert "service@riskmodels.app" in detail
+
+    def test_json_form_served_from_cache(self, store):
+        path = _artifact_gcs_path(
+            PREFIX, "dd_peer_dna", "v1", "BW-STOCK-NVDA", "latest", "json"
+        )
+        store.write(path, b'{"slug":"dd_peer_dna"}', content_type="application/json")
+        raw, mime, *_rest = render_artifact(
+            self._dd_req(format="json"), store=store, prefix=PREFIX,
+        )
+        assert json.loads(raw)["slug"] == "dd_peer_dna"
+        assert mime == "application/json"

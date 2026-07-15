@@ -236,6 +236,8 @@ def _render_one(
     resume: bool,
     force: bool = False,
     renderer: str = "public",
+    panels: bool = False,
+    panels_gcs_root: str | None = None,
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -309,6 +311,7 @@ def _render_one(
                 )
 
         tdir.mkdir(parents=True, exist_ok=True)
+        panel_status: dict | None = None
         with _MATPLOTLIB_RENDER_LOCK:
             if renderer == "institutional":
                 dd = DDData(
@@ -326,6 +329,9 @@ def _render_one(
                     judgment = None
                 render_dd_to_png(dd, png, judgment=judgment)
                 render_dd_to_pdf(dd, pdf, judgment=judgment)
+                # Same DDData, same lock (matplotlib is not thread-safe) —
+                # panel pixels match the letter page by construction.
+                panel_status = _emit_dd_panels(dd, tdir, ticker, panels_gcs_root) if panels else None
             else:
                 snap = from_components(
                     p1,
@@ -369,6 +375,8 @@ def _render_one(
         }
         if peer_error:
             out["peer_error"] = peer_error
+        if panel_status is not None:
+            out["panels"] = panel_status
         return out
     except Exception as exc:
         return {
@@ -378,6 +386,63 @@ def _render_one(
             "error": str(exc),
             "traceback": traceback.format_exc().splitlines()[-3:],
         }
+
+
+# DD registry panels emitted per ticker when --panels is on (institutional
+# renderer only — they consume the same in-memory DDData as the letter page,
+# so panel pixels match the page by construction). Keys mirror render-svc's
+# artifact cache (`{root}/artifacts/{slug}@{version}/{subject_id}/{as_of}.{fmt}`)
+# plus a `latest.*` alias so `as_of=latest` resolves without a loader.
+# See BWMACRO docs/ceo/DD_PANEL_REGISTRY_EXPOSE_PROJECT.md (Tier-1 cohort).
+_DD_PANEL_SLUGS: tuple[tuple[str, str], ...] = (
+    ("dd_peer_dna", "v1"),
+)
+
+
+def _emit_dd_panels(
+    dd,
+    tdir: Path,
+    ticker: str,
+    panels_gcs_root: str | None,
+) -> dict:
+    """Render + upload registry DD panels from the in-memory ``DDData``.
+
+    Returns a status dict folded into the ticker row: per-slug ok/error,
+    upload state. Never raises — a panel failure must not fail the page
+    render that already succeeded.
+    """
+    import importlib
+    import json as _json
+
+    teo = dd.teo
+    subject_id = f"BW-STOCK-{ticker}"
+    status: dict = {"emitted": [], "errors": {}}
+    for slug, version in _DD_PANEL_SLUGS:
+        try:
+            mod = importlib.import_module(f"bwmacro.snapshots.artifacts.{slug}.{version}")
+            png = mod.render_png_bytes(dd)
+            data = _json.dumps(mod.render_data(dd), separators=(",", ":")).encode("utf-8")
+
+            local_dir = tdir / "panels" / f"{slug}@{version}"
+            local_dir.mkdir(parents=True, exist_ok=True)
+            (local_dir / f"{teo}.png").write_bytes(png)
+            (local_dir / f"{teo}.json").write_bytes(data)
+
+            if panels_gcs_root:
+                key_root = f"{panels_gcs_root.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}"
+                for fmt in ("png", "json"):
+                    local = local_dir / f"{teo}.{fmt}"
+                    for key in (f"{teo}.{fmt}", f"latest.{fmt}"):
+                        subprocess.run(
+                            ["gcloud", "storage", "cp", str(local), f"{key_root}/{key}"],
+                            check=True, capture_output=True, text=True,
+                        )
+            status["emitted"].append(f"{slug}@{version}")
+        except subprocess.CalledProcessError as e:
+            status["errors"][f"{slug}@{version}"] = f"upload: {e.stderr}"[:300]
+        except Exception as exc:  # noqa: BLE001 — panel failure must not fail the page
+            status["errors"][f"{slug}@{version}"] = f"{type(exc).__name__}: {exc}"[:300]
+    return status
 
 
 def _rsync_out_dir_to_gcs(out_dir: Path, gcs_bucket: str) -> tuple[bool, str]:
@@ -503,9 +568,37 @@ def main() -> int:
             "DD_Snapshots code location)."
         ),
     )
+    ap.add_argument(
+        "--panels",
+        action="store_true",
+        help=(
+            "Also emit registry DD panels (dd_peer_dna@v1, …) per ticker from "
+            "the same in-memory DDData as the letter page, and upload them to "
+            "the render-svc artifact cache keys (+ a latest.* alias). "
+            "Institutional renderer only. Intended for the Tier-1 hot cohort "
+            "(~100 tickers, ~seconds/ticker marginal) — see BWMACRO "
+            "docs/ceo/DD_PANEL_REGISTRY_EXPOSE_PROJECT.md before running it "
+            "over a full universe."
+        ),
+    )
+    ap.add_argument(
+        "--panels-gcs-root",
+        default="gs://rm_api_data/snapshots",
+        help=(
+            "GCS root for panel artifact keys "
+            "({root}/artifacts/{slug}@{version}/BW-STOCK-{T}/{as_of}.{fmt}). "
+            "Must match render-svc RENDER_SVC_BUCKET/RENDER_SVC_PREFIX. "
+            "Pass an empty string to keep panels local-only."
+        ),
+    )
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve the ticker list, print the count + first 10, exit.")
     args = ap.parse_args()
+
+    if args.panels and args.renderer != "institutional":
+        print("FAIL: --panels requires --renderer institutional (panels wrap the "
+              "private DDData figure units)", file=sys.stderr)
+        return 2
 
     sys.path.insert(0, str(_SDK_ROOT))
 
@@ -648,6 +741,7 @@ def main() -> int:
                     ticker, args.out_dir, args.zarr_root,
                     upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
                     resume=args.resume, force=args.force, renderer=args.renderer,
+                    panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
                 )
                 _log_result(row, i, logf)
         else:
@@ -664,6 +758,7 @@ def main() -> int:
                         _render_one, t, args.out_dir, args.zarr_root,
                         upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
                         resume=args.resume, force=args.force, renderer=args.renderer,
+                        panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
                     ): (i, t)
                     for i, t in enumerate(tickers, start=1)
                 }

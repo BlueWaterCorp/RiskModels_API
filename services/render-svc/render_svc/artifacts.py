@@ -534,12 +534,22 @@ def render_artifact(
     rationale.
     """
     subject_kind = _resolve_subject_kind(req.subject_id)
+    is_dd_panel = subject_kind == "stock" and req.slug.startswith("dd_")
 
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
     elif subject_kind == "stock" and req.slug == "watchlist_er_stacked":
         subject_data, resolved_subject_id, resolved_as_of = _resolve_stock_watchlist(req)
+    elif is_dd_panel:
+        # Institutional DD figure units (dd_peer_dna@v1, …) — Tier-1 batch
+        # pre-rendered by `bulk_dd_render --panels` (same in-memory DDData as
+        # the letter page); no live loader here (DDData needs the private
+        # zarr path). `as_of=latest` resolves via the batch-written
+        # `latest.{fmt}` alias key, refreshed each batch run — so unlike
+        # the loaderless subject kinds below, `latest` is allowed.
+        # See BWMACRO docs/ceo/DD_PANEL_REGISTRY_EXPOSE_PROJECT.md.
+        subject_data, resolved_subject_id, resolved_as_of = None, req.subject_id, req.as_of
     elif subject_kind in _PRERENDERED_SUBJECT_KINDS:
         # No SDK loader in render-svc — cache-hit path works for pre-rendered
         # artifacts; cache miss raises 501 (live-render is Phase 2 follow-on).
@@ -570,6 +580,22 @@ def render_artifact(
         )
 
     # Cache miss → live render.
+    if is_dd_panel:
+        # Tier-2 contract: not pre-rendered → explicit error with the full-page
+        # pointer AND the request path. Misses are the demand signal for
+        # widening the Tier-1 cohort.
+        ticker = _ticker_from_stock_subject_id(req.subject_id)
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"{req.slug}@{req.version} is not pre-rendered for {ticker} "
+                f"(institutional DD panels are batch-rendered for a hot ticker "
+                f"cohort only). The full institutional page is at "
+                f"https://www.riskmodels.org/snapshots/{ticker.lower()}_dd_latest.png. "
+                f"To have {ticker} added to the panel cohort, email "
+                f"service@riskmodels.app."
+            ),
+        )
     if subject_kind in _PRERENDERED_SUBJECT_KINDS:
         # No SDK loader inside render-svc means the adapter has no subject
         # data to consume. Pre-render the artifact (LANDING daily refresh for
