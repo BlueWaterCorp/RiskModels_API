@@ -21,23 +21,23 @@ This rule applies when editing schemas, OpenAPI specs, MCP data, or tracking doc
 | Repo | Role | Key Paths |
 |------|------|-----------|
 | **BWMACRO** | AI instructions + operational backlog | `docs/ceo/MASTER_BACKLOG.md`, `docs/api_roadmap/current_state.md`, `docs/api_roadmap/next_steps.md` |
-| **RiskModels_API** | Canonical API surface | `OPENAPI_SPEC.yaml`, `mcp-server/data/schemas/*.json`, `schema-paths.json`, `examples/`, `CHANGELOG.md` |
+| **RiskModels_API** | Canonical API surface | `OPENAPI_SPEC.yaml`, `mcp/data/schemas/*.json`, `schema-paths.json`, `examples/`, `CHANGELOG.md` |
 | **Risk_Models** | User portal & dashboard (riskmodels.net). MCP schema consumer. No longer the canonical public API. | `riskmodels_com/mcp-server/data/schemas/`, `riskmodels_com/mcp-server/data/schema-paths.json` |
 
 ## Core Rules (Always Enforce)
 
 1. **Schemas are canonical ONLY in RiskModels_API**  
-   New or updated JSON schemas (e.g. `estimate-v1.json`) must be created/edited in `RiskModels_API/mcp-server/data/schemas/`.
+   New or updated JSON schemas (e.g. `estimate-v1.json`) must be created/edited in `RiskModels_API/mcp/data/schemas/`.
 
 2. **Copy new schemas to Risk_Models**  
    After adding a schema in RiskModels_API, manually copy to Risk_Models:
    ```bash
-   cp RiskModels_API/mcp-server/data/schemas/NEW_SCHEMA.json Risk_Models/riskmodels_com/mcp-server/data/schemas/
+   cp RiskModels_API/mcp/data/schemas/NEW_SCHEMA.json Risk_Models/riskmodels_com/mcp-server/data/schemas/
    ```
 
 3. **Update schema-paths.json in BOTH repos**  
    Add the new schema path to `schema-paths.json` in:
-   - `RiskModels_API/mcp-server/data/schema-paths.json`
+   - `RiskModels_API/mcp/data/schema-paths.json`
    - `Risk_Models/riskmodels_com/mcp-server/data/schema-paths.json`
 
 4. **Changelog in RiskModels_API**  

@@ -7,6 +7,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **MCP Tool `riskmodels_get_openapi_spec`** — Added to `@riskmodels/mcp` to expose the OpenAPI 3.x specification, allowing agents to read actual API requests and query parameters directly instead of relying solely on `capabilities.json`.
 - **`GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`** — Stock panel drill-down (O.6): `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`, `watchlist_er_stacked`, and `_full` (composed DD page). Thin alias onto Artifact Registry / render-svc. ADR: BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
 - **Python SDK — `snapshot_panel()`** — Fetches a single panel PNG/JSON/SVG via the product panel route.
 - **render-svc** — Live stock `POST /decompose` loader for O.6 panels (`BW-STOCK-*` / watchlist).

@@ -359,6 +359,26 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
 
   // --- Tools ---
 
+  server.registerTool(
+    "riskmodels_get_openapi_spec",
+    {
+      title: "Get RiskModels OpenAPI Spec",
+      description: "Get the full OpenAPI 3.x specification for the API. Use this to discover exact paths, HTTP methods, and query vs path parameters.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const json = loadJson<unknown>("openapi.json");
+      if (json) {
+        return { content: [{ type: "text", text: JSON.stringify(json, null, 2) }] };
+      }
+      const yaml = loadText("openapi.yaml");
+      if (yaml) {
+        return { content: [{ type: "text", text: yaml }] };
+      }
+      return { content: [{ type: "text", text: JSON.stringify({ error: "OpenAPI spec not found in mcp/data/" }) }] };
+    }
+  );
+
   registerRiskModelsTools(sdk, server, {
     capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
   });

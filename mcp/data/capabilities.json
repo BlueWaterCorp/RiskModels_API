@@ -1571,14 +1571,14 @@
   {
     "id": "artifact-render",
     "name": "Artifact registry render",
-    "description": "Deterministic render-once artifact from the intelligence registry (stock / fund / filer / client_portfolio subjects). Invokes render-svc `POST /artifacts/render` — same contract as riskmodels.net workspace `fetchArtifact` and product alias `GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`. Stock O.6 panels: l3_explained_risk_hbar, hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked. Returns JSON chart/table/narrative payloads or PNG/SVG bytes (base64). Chat tool: `render_artifact`; MCP: `riskmodels_render_artifact`.",
+    "description": "Deterministic render-once artifact from the intelligence registry (stock / fund / filer / client_portfolio). Invokes render-svc `POST /artifacts/render`; product alias `GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`. Stock O.6: l3_explained_risk_hbar, hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked. Returns JSON or PNG/SVG (base64). Chat: `render_artifact`; MCP: `riskmodels_render_artifact`.",
     "endpoint": "/artifacts/render",
     "method": "POST",
     "parameters": {
       "slug": {
         "type": "string",
         "required": true,
-        "description": "Artifact slug (e.g. l3_explained_risk_hbar, top_holdings_erm_stacked, narrative_profile)"
+        "description": "Artifact slug (e.g. l3_explained_risk_hbar, top_holdings_erm_stacked)"
       },
       "version": {
         "type": "string",
@@ -2645,7 +2645,7 @@
       "bw_filer_id": {
         "type": "string",
         "required": true,
-        "description": "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik})."
+        "description": "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}). Composite entities (BW-SYNTH-*) are served by the same route."
       },
       "limit": {
         "type": "integer",
@@ -2791,7 +2791,7 @@
       "bw_filer_id": {
         "type": "string",
         "required": true,
-        "description": "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik})."
+        "description": "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}). Composite entities (BW-SYNTH-*) are served by the same route."
       }
     },
     "pricing": {

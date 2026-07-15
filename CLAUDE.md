@@ -2,7 +2,7 @@
 
 ## Claude Code quick path
 
-Before adding SDK methods, HTTP clients, or MCP tools: run the **RiskModels API discovery** workflow — [`.cursor/skills/riskmodels-api-discovery/SKILL.md`](.cursor/skills/riskmodels-api-discovery/SKILL.md) (MCP `riskmodels_list_endpoints` / `riskmodels_get_schema` when available; else [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml) and [mcp/data/openapi.json](./mcp/data/openapi.json)).
+Before adding SDK methods, HTTP clients, or MCP tools: run the **RiskModels API discovery** workflow — [`.cursor/skills/riskmodels-api-discovery/SKILL.md`](.cursor/skills/riskmodels-api-discovery/SKILL.md) (MCP `riskmodels_list_endpoints` / `riskmodels_get_schema` / `riskmodels_get_openapi_spec` when available; else [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml) and [mcp/data/openapi.json](./mcp/data/openapi.json)).
 
 | Doc | Use |
 |-----|-----|
