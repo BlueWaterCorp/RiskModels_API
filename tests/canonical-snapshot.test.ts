@@ -96,7 +96,8 @@ describe("buildCanonicalPortfolioSnapshot", () => {
       new Map<string, SymbolRegistryRow>([["MSFT", msftRow]]),
     );
     const teos = ["2026-01-10", "2026-01-11", "2026-01-12", "2026-01-13", "2026-01-14"];
-    const daily = teos.map(() => ({ g: 0.01, l1: 0.006, l2: 0.007, l3: 0.008, rr: 0.002, vol: 0.2 }));
+    // l1_fr/l2_fr/l3_fr are per-level *incremental* legs, so g = l1 + l2 + l3 + rr.
+    const daily = teos.map(() => ({ g: 0.01, l1: 0.006, l2: 0.0015, l3: 0.0005, rr: 0.002, vol: 0.2 }));
     vi.mocked(fetchBatchHistory).mockResolvedValue(
       historyRowsForOneTicker("FSYM_MSFT", teos, daily),
     );
@@ -124,6 +125,27 @@ describe("buildCanonicalPortfolioSnapshot", () => {
     expect(body.time_behavior.cumulative_return.length).toBe(5);
     expect(body.time_behavior.drawdown.length).toBe(5);
     expect(getRiskMetadata).toHaveBeenCalled();
+  });
+
+  it("builds attribution strips from the per-level incremental legs (gross = m + s + u + r)", async () => {
+    const r = await buildCanonicalPortfolioSnapshot({
+      positions: [{ ticker: "MSFT", weight: 1 }],
+      lookbackDays: 5,
+      mode: "frozen",
+      benchmark: null,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const att = r.body.attribution;
+    // Single holding, weight 1 → strips are the raw per-level legs.
+    expect(att.market[0]).toBeCloseTo(0.006, 10);
+    expect(att.sector[0]).toBeCloseTo(0.0015, 10); // l2_fr directly, NOT l2_fr - l1_fr
+    expect(att.subsector[0]).toBeCloseTo(0.0005, 10); // l3_fr directly, NOT l3_fr - l2_fr
+    expect(att.residual[0]).toBeCloseTo(0.002, 10);
+    for (let i = 0; i < att.gross.length; i++) {
+      const sum = att.market[i]! + att.sector[i]! + att.subsector[i]! + att.residual[i]!;
+      expect(att.gross[i]).toBeCloseTo(sum, 10);
+    }
   });
 
   it("fills time_behavior when one of six holdings has no batch history (80% coverage tier)", async () => {
@@ -172,7 +194,7 @@ describe("buildCanonicalPortfolioSnapshot", () => {
     );
 
     const teos = ["2026-01-10", "2026-01-11", "2026-01-12", "2026-01-13", "2026-01-14"];
-    const daily = teos.map(() => ({ g: 0.01, l1: 0.006, l2: 0.007, l3: 0.008, rr: 0.002, vol: 0.2 }));
+    const daily = teos.map(() => ({ g: 0.01, l1: 0.006, l2: 0.0015, l3: 0.0005, rr: 0.002, vol: 0.2 }));
 
     /** No rows for `TKF` — strict aggregation would omit every calendar day (<100% strip coverage). */
     const mergedHistory = tickers.slice(0, 5).flatMap((t, i) =>

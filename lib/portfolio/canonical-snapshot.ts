@@ -353,11 +353,13 @@ function aggregatePortfolioDailySeries(
       const l3 = m.l3_fr!;
       const rr = m.l3_rr!;
       gSum += w * num(g);
+      // l1_fr / l2_fr / l3_fr are the per-level *incremental* orthogonalized
+      // factor legs (zarr `factor_return`, not `combined_factor_return`), so
+      // gross = l1_fr + l2_fr + l3_fr + l3_rr exactly. Differencing them
+      // (l2 - l1, l3 - l2) treats them as cumulative and breaks that identity.
       mSum += w * num(l1);
-      const secStrip = num(l2) - num(l1);
-      const subStrip = num(l3) - num(l2);
-      sSum += w * secStrip;
-      uSum += w * subStrip;
+      sSum += w * num(l2);
+      uSum += w * num(l3);
       rSum += w * num(rr);
     }
     teoOut.push(teo);
