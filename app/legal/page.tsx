@@ -21,6 +21,12 @@ const sections = [
       'Risk estimates, decompositions, hedge ratios, and other analytics are model-driven outputs based on historical and third-party data. These outputs may be incomplete, delayed, inaccurate, or unsuitable for a particular use case. Past performance and historical relationships do not guarantee future results.',
   },
   {
+    title: 'Data Sources and Attribution',
+    summary: 'Analytics are derived works; underlying market data is licensed from third parties.',
+    body:
+      'RiskModels analytics are derived outputs computed by Blue Water Macro Corp. from a combination of public filings (U.S. Securities and Exchange Commission EDGAR) and licensed third-party market data. End-of-day pricing, market capitalization, corporate fundamentals, and reference classification data are sourced in part from EOD Historical Data (Unicorn Data Services SAS). Third-party data is provided under license, remains the property of its respective provider, and may not be extracted, redistributed, or used to reconstruct the underlying data feed.',
+  },
+  {
     title: 'No Warranty; Use at Your Own Risk',
     summary: 'We do not promise the API or its outputs are error-free or fit for your purpose.',
     body:

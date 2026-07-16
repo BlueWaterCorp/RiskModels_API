@@ -2,6 +2,7 @@ import type { ChatCompletionMessageToolCall } from "openai/resources/chat/comple
 import { deductBalance } from "@/lib/agent/billing";
 import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { TOOL_MAP, type ChatToolDef } from "@/lib/chat/tools";
+import { getDataLicenseMode, stripRawRestrictedDeep } from "@/lib/data-license";
 
 export interface ToolCallResult {
   tool_call_id: string;
@@ -20,6 +21,12 @@ export interface ExecuteToolCallsOptions {
   requestId: string;
   /** When true, skip deductBalance (keyless demo / landing proxy). */
   skipBilling?: boolean;
+  /**
+   * Exhibit B(e) condition (1): raw close/market cap may only be served in an
+   * authenticated environment. Defaults to false so any new caller fails
+   * closed; authenticated, billed chat routes opt in explicitly.
+   */
+  rawFieldsPermitted?: boolean;
   /**
    * Optional per-call arg gate. Return a string to reject with that error
    * message; return null to allow. Runs after Zod parse, before executor.
@@ -48,6 +55,7 @@ async function runOneTool(
     userId: string;
     requestId: string;
     skipBilling?: boolean;
+    rawFieldsPermitted?: boolean;
     preFlightGuard?: (toolName: string, parsedArgs: unknown) => string | null;
   },
 ): Promise<ToolCallResult> {
@@ -149,6 +157,12 @@ async function runOneTool(
     }
   }
 
+  // Gate 1 (EODHD Exhibit B(e)) for the chat surface. license_free mode
+  // withholds raw fields from every caller, authenticated or not.
+  if (!ctx.rawFieldsPermitted || getDataLicenseMode() === "license_free") {
+    result = stripRawRestrictedDeep(result);
+  }
+
   let costUsd = 0;
   if (def.capabilityId && !ctx.skipBilling) {
     costUsd = calculateRequestCost(def.capabilityId);
@@ -198,8 +212,9 @@ export async function executeToolCalls(
   toolCalls: ChatCompletionMessageToolCall[],
   options: ExecuteToolCallsOptions,
 ): Promise<ToolCallResult[]> {
-  const { parallel = true, userId, requestId, skipBilling, preFlightGuard } = options;
-  const ctx = { userId, requestId, skipBilling, preFlightGuard };
+  const { parallel = true, userId, requestId, skipBilling, rawFieldsPermitted, preFlightGuard } =
+    options;
+  const ctx = { userId, requestId, skipBilling, rawFieldsPermitted, preFlightGuard };
 
   if (!parallel) {
     const out: ToolCallResult[] = [];

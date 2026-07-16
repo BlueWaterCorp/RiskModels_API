@@ -177,6 +177,8 @@ const chatHandler = async (request: NextRequest, context: BillingContext) => {
         allowParallelOpenAI: backend.allowParallel && bodyParallelToolCalls !== false,
         omitParallelToolCalls: backend.omitParallelToolCalls,
         execParallel: !bodyExecSequential,
+        // withBilling-gated: an authenticated environment per Exhibit B(e).
+        rawFieldsPermitted: true,
       });
     } catch (e) {
       if (e instanceof AgentUpstreamError) {
@@ -327,6 +329,8 @@ const chatStreamHandler = async (
               backend.allowParallel && bodyParallelToolCalls !== false,
             omitParallelToolCalls: backend.omitParallelToolCalls,
             execParallel: !bodyExecSequential,
+            // withBilling-gated: an authenticated environment per Exhibit B(e).
+            rawFieldsPermitted: true,
           },
           (event) => {
             if (event.type === "final") return; // re-emitted enriched below

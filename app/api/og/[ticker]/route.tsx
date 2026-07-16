@@ -19,7 +19,7 @@ import {
 export const runtime = "nodejs";
 
 const OG_METRIC_KEYS: V3MetricKey[] = [
-  "vol_23d", "price_close", "market_cap",
+  "vol_23d",
   "l3_mkt_hr", "l3_sec_hr", "l3_sub_hr",
   "l3_mkt_er", "l3_sec_er", "l3_sub_er", "l3_res_er",
 ];
@@ -54,14 +54,6 @@ function fmtHR(v: number | null | undefined): string {
   return v.toFixed(2);
 }
 
-function fmtCap(v: number | null | undefined): string {
-  if (v == null) return "—";
-  if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
-  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-  return `$${v.toLocaleString()}`;
-}
-
 // ── Route Handler ───────────────────────────────────────────────────────
 export async function GET(
   request: Request,
@@ -70,7 +62,8 @@ export async function GET(
   const { ticker: rawTicker } = await params;
   const ticker = rawTicker.toUpperCase();
 
-  // Fetch metrics directly from DAL (no auth needed)
+  // Fetch metrics directly from DAL. This card is public and unauthenticated,
+  // so it carries derived metrics only — no raw close/market cap.
   const symbolRecord = await resolveSymbolByTicker(ticker);
   const latest = symbolRecord
     ? await fetchLatestMetricsWithFallback(symbolRecord.symbol, OG_METRIC_KEYS, "daily")
@@ -79,8 +72,6 @@ export async function GET(
   const m = (latest?.metrics ?? {}) as Record<string, number | null>;
 
   const vol = m.vol_23d;
-  const price = m.price_close;
-  const marketCap = m.market_cap;
   const teo = latest?.teo ?? "—";
   const subsectorEtf = symbolRecord?.subsector_etf ?? symbolRecord?.sector_etf ?? "—";
 
@@ -187,8 +178,6 @@ export async function GET(
               marginBottom: "32px",
             }}
           >
-            <MetricRow label="Price" value={price != null ? `$${price.toFixed(2)}` : "—"} />
-            <MetricRow label="Market Cap" value={fmtCap(marketCap)} />
             <MetricRow label="Vol (23d)" value={fmtPct(vol)} />
             <MetricRow
               label="Residual α"

@@ -69,7 +69,6 @@ type PortfolioBlock = {
 type ConcentrationTicker = {
   ticker: string;
   name: string | null;
-  market_cap: number | null;
   l3_mkt_er: number;
   l3_sec_er: number;
   l3_sub_er: number;
@@ -180,7 +179,6 @@ export async function GET(request: NextRequest) {
         perTicker[ticker] = {
           ticker,
           name: sym.name ?? WALKTHROUGH_MAG7_NAMES[ticker] ?? null,
-          market_cap: cap,
           l3_mkt_er: mkt,
           l3_sec_er: sec,
           l3_sub_er: sub,

@@ -98,6 +98,27 @@ export function stripRawRestricted<T extends Record<string, unknown>>(row: T): T
   return out;
 }
 
+/**
+ * Recursively drop raw, license-restricted fields from an arbitrary value.
+ *
+ * The chat surface returns nested tool results — raw fields sit under
+ * `metrics.price_close` on one tool and across a `data[].price_close` series on
+ * another — so a shallow strip is not enough. Used to serve the unauthenticated
+ * landing demo, where Exhibit B(e) condition (1) is not met for any raw field.
+ */
+export function stripRawRestrictedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => stripRawRestrictedDeep(v)) as unknown as T;
+  }
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (RAW_RESTRICTED_KEYS.has(k)) continue;
+    out[k] = stripRawRestrictedDeep(v);
+  }
+  return out as T;
+}
+
 /* ------------------------------------------------------------------------- *
  * GATE 2 — CRSP-sourced symbols (symbol-level, unconditional in BOTH modes).
  *

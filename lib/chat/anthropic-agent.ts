@@ -87,6 +87,7 @@ export async function runAnthropicChatAgent(
     allowedToolNames,
     execParallel = true,
     skipBilling = false,
+    rawFieldsPermitted = false,
     preFlightGuard,
     signal,
   } = opts;
@@ -218,6 +219,7 @@ export async function runAnthropicChatAgent(
       userId,
       requestId,
       skipBilling,
+      rawFieldsPermitted,
       preFlightGuard,
     });
     for (const r of results) {

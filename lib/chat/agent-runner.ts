@@ -35,6 +35,8 @@ export interface RunChatAgentOptions {
   openai?: OpenAI;
   /** Skip per-tool deductBalance (keyless demo). */
   skipBilling?: boolean;
+  /** Serve raw close/market cap (Exhibit B(e): authenticated callers only). */
+  rawFieldsPermitted?: boolean;
   /** Reject tool calls whose args fail this gate (e.g. non-MAG7 ticker). */
   preFlightGuard?: (toolName: string, parsedArgs: unknown) => string | null;
   /** Optional cancellation; checked between rounds and passed to provider round-trips. */
@@ -262,6 +264,7 @@ async function runOpenAIChatAgent(
     allowParallelOpenAI = true,
     omitParallelToolCalls = false,
     skipBilling = false,
+    rawFieldsPermitted = false,
     preFlightGuard,
     signal,
   } = opts;
@@ -392,6 +395,7 @@ async function runOpenAIChatAgent(
       userId,
       requestId,
       skipBilling,
+      rawFieldsPermitted,
       preFlightGuard,
     });
 

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { TICKER_ALIASES } from "@/lib/ticker-aliases";
+import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -64,5 +65,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 
-  return NextResponse.json({ results: data ?? [] });
+  // Same normalization as /symbols/{ticker} and /symbols/batch: the raw
+  // metadata JSONB carries licensed identifiers, so it never ships whole.
+  const results = (data ?? []).map((row) => {
+    const metadata = (row.metadata as Record<string, unknown>) ?? {};
+    return {
+      symbol: row.symbol,
+      ticker: row.ticker,
+      name: row.name ?? (metadata.company_name as string | null) ?? null,
+      asset_type: row.asset_type,
+      sector_etf: row.sector_etf ?? (metadata.sector_etf as string | null) ?? null,
+      subsector_etf: row.subsector_etf,
+      is_adr: row.is_adr,
+      metadata: filterSafeMetadata(row.metadata),
+      latest_metrics: row.latest_metrics,
+      latest_vol: row.latest_vol,
+      latest_teo: row.latest_teo,
+    };
+  });
+
+  return NextResponse.json({ results });
 }

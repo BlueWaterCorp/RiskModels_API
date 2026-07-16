@@ -195,6 +195,9 @@ export async function POST(request: NextRequest) {
       maxCompletionTokens: LANDING_MAX_TOKENS,
       allowedToolNames: ALLOWED_TOOLS,
       skipBilling: true,
+      // Unauthenticated demo: Exhibit B(e) permits raw close/market cap only in
+      // authenticated environments, so tool results are stripped to derived.
+      rawFieldsPermitted: false,
       preFlightGuard: mag7Guard,
       execParallel: true,
       allowParallelOpenAI: backend.allowParallel,
