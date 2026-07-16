@@ -11,6 +11,7 @@ import {
   rawEodhdPermitted,
   requestsRawRestricted,
   stripRawRestricted,
+  stripRawRestrictedDeep,
   stripRawSeries,
 } from "@/lib/data-license";
 
@@ -45,6 +46,48 @@ describe("EODHD data-license policy", () => {
   it("strips raw fields but keeps derived columns", () => {
     const row = { symbol: "AAPL", price_close: 200, market_cap: 3e12, l1_mkt_hr: 0.9 };
     expect(stripRawRestricted(row)).toEqual({ symbol: "AAPL", l1_mkt_hr: 0.9 });
+  });
+
+  describe("stripRawRestrictedDeep (chat tool results)", () => {
+    it("strips raw fields nested under an object", () => {
+      const result = {
+        ticker: "AAPL",
+        teo: "2026-07-15",
+        metrics: { vol_23d: 0.28, price_close: 200, market_cap: 3e12, l3_res_er: 0.4 },
+      };
+      expect(stripRawRestrictedDeep(result)).toEqual({
+        ticker: "AAPL",
+        teo: "2026-07-15",
+        metrics: { vol_23d: 0.28, l3_res_er: 0.4 },
+      });
+    });
+
+    it("strips raw fields across every row of a history series", () => {
+      const result = {
+        ticker: "AAPL",
+        data: [
+          { date: "2026-07-14", returns_gross: 0.01, price_close: 198 },
+          { date: "2026-07-15", returns_gross: -0.02, price_close: 200 },
+        ],
+      };
+      expect(stripRawRestrictedDeep(result)).toEqual({
+        ticker: "AAPL",
+        data: [
+          { date: "2026-07-14", returns_gross: 0.01 },
+          { date: "2026-07-15", returns_gross: -0.02 },
+        ],
+      });
+    });
+
+    it("keeps returns_gross — Derived Data under the EODHD terms", () => {
+      expect(stripRawRestrictedDeep({ returns_gross: 0.01 })).toEqual({ returns_gross: 0.01 });
+    });
+
+    it("passes through primitives, null, and arrays of scalars", () => {
+      expect(stripRawRestrictedDeep(null)).toBeNull();
+      expect(stripRawRestrictedDeep("AAPL")).toBe("AAPL");
+      expect(stripRawRestrictedDeep([1, 2, 3])).toEqual([1, 2, 3]);
+    });
   });
 
   describe("isGatewayAuthenticated", () => {

@@ -32,8 +32,6 @@ interface TickerMetrics {
   teo: string;
   sector_etf: string | null;
   subsector_etf: string | null;
-  market_cap: number | null;
-  price_close: number | null;
   vol_23d: number | null;
   l3_mkt_hr: number | null;
   l3_sec_hr: number | null;
@@ -56,7 +54,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 const METRIC_KEYS: V3MetricKey[] = [
   "returns_gross",
-  "vol_23d", "price_close", "market_cap",
+  "vol_23d",
   "l3_mkt_hr", "l3_sec_hr", "l3_sub_hr",
   "l3_mkt_er", "l3_sec_er", "l3_sub_er", "l3_res_er",
   "l1_fr", "l2_fr", "l3_fr", "l3_rr",
@@ -95,8 +93,6 @@ async function getTickerMetrics(ticker: string): Promise<TickerMetrics | null> {
       teo: latest.teo,
       sector_etf: symbolRecord.sector_etf,
       subsector_etf: symbolRecord.subsector_etf || symbolRecord.sector_etf,
-      market_cap: m.market_cap ?? null,
-      price_close: m.price_close ?? null,
       vol_23d: m.vol_23d ?? null,
       l3_mkt_hr: m.l3_mkt_hr ?? null,
       l3_sec_hr: m.l3_sec_hr ?? null,
@@ -151,22 +147,6 @@ function fmtPct(v: unknown, decimals = 1): string {
   if (v == null) return "—";
   const n = Number(v);
   return isNaN(n) ? "—" : `${(n * 100).toFixed(decimals)}%`;
-}
-
-function fmtNum(v: unknown, decimals = 2): string {
-  if (v == null) return "—";
-  const n = Number(v);
-  return isNaN(n) ? "—" : n.toFixed(decimals);
-}
-
-function fmtCap(v: unknown): string {
-  if (v == null) return "—";
-  const n = Number(v);
-  if (isNaN(n)) return "—";
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  return `$${n.toLocaleString()}`;
 }
 
 /** Daily simple return as ±bps for small moves */
@@ -273,8 +253,6 @@ export default async function TickerDashboard({
       {/* ── Metric Cards ────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-8 py-8">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <MetricCard label="Last Price" value={`$${fmtNum(metrics.price_close)}`} />
-          <MetricCard label="Market Cap" value={fmtCap(metrics.market_cap)} />
           <MetricCard label="Vol (23d)" value={fmtPct(vol)} />
           <MetricCard label="L3 Res ER (α)" value={fmtPct(resER)} accent />
           <MetricCard label="Subsector" value={subEtf} />

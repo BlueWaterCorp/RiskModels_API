@@ -47,7 +47,6 @@ const DEFAULT_HEDGED: LayerKey[] = ["market", "sector"];
 interface ConcentrationTicker {
   ticker: string;
   name: string | null;
-  market_cap: number | null;
   l3_mkt_er: number;
   l3_sec_er: number;
   l3_sub_er: number;
@@ -181,27 +180,25 @@ function ChartBody({ data }: { data: ConcentrationPayload }) {
   const { tickers, per_ticker, portfolios, cap_etf_hedges, notional_usd } = data;
   const cap = portfolios.cap_weighted;
 
+  // Cap weights come from the API already normalized — the raw market caps
+  // they derive from are licensed and are not sent to the browser.
   const capRows = useMemo<CapRow[]>(() => {
-    const totalCap = tickers.reduce(
-      (sum, t) => sum + (per_ticker[t]?.market_cap ?? 0),
-      0,
-    );
-    if (totalCap <= 0) return [];
+    const capWeights = cap?.weights;
+    if (!capWeights) return [];
     return tickers
       .map((t) => {
         const row = per_ticker[t];
-        const c = row?.market_cap ?? 0;
         return {
           ticker: t,
           name: row?.name ?? null,
-          capWeight: c / totalCap,
+          capWeight: capWeights[t] ?? 0,
           sigma: row?.sigma ?? 0,
           shares: normalizeShares(row),
         };
       })
       .filter((r) => r.capWeight > 0)
       .sort((a, b) => b.capWeight - a.capWeight);
-  }, [tickers, per_ticker]);
+  }, [tickers, per_ticker, cap]);
 
   const sigmaMaxTicker = capRows.reduce((m, r) => Math.max(m, r.sigma), 0);
   const sharedSigmaMax = niceCeil5(Math.max(sigmaMaxTicker, cap?.sigma_naive ?? 0) * 1.06);

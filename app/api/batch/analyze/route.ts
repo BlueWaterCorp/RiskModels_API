@@ -416,8 +416,6 @@ async function analyzeTicker(
         [
           // Core
           "vol_23d",
-          "price_close",
-          "market_cap",
           "stock_var",
           // L1
           "l1_mkt_hr",
@@ -527,8 +525,6 @@ async function analyzeTicker(
           l1_mkt_beta: m?.l1_mkt_beta ?? null,
           l2_sec_beta: m?.l2_sec_beta ?? null,
           l3_sub_beta: m?.l3_sub_beta ?? null,
-          market_cap: m?.market_cap ?? null,
-          close_price: m?.price_close ?? null,
         };
       }
 
