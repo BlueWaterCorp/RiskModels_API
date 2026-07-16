@@ -66,6 +66,7 @@ const fakeContext: BillingContext = {
   capabilityId: "fund-portfolio-history",
   costUsd: 0.005,
   startTime: Date.now(),
+  rawFieldsPermitted: true,
 };
 
 function req(path: string): NextRequest {

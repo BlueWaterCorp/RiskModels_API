@@ -76,6 +76,7 @@ const fakeContext: BillingContext = {
   capabilityId: "fund-snapshot-json",
   costUsd: 0.01,
   startTime: Date.now(),
+  rawFieldsPermitted: true,
 };
 
 function req(path: string): NextRequest {

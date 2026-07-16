@@ -1,10 +1,10 @@
 /**
  * Response contract for GET /api/fundamentals/{ticker} — LICENSING IS THE SPEC.
  *
- * The backing store's raw line items are EODHD-primary and are NOT cleared for
- * redistribution (EODHD Exhibit B; H.69 counsel question pending). Only derived
- * analytics plus Exhibit B(e) fields ship. This module is the single place that
- * decides what leaves the server:
+ * The backing store's raw line items are vendor-primary, so they stay internal.
+ * What ships is derived analytics, the Exhibit B(e) fields, and SEC-sourced
+ * facts gated per cell. This module is the single place that decides what
+ * leaves the server:
  *
  * - `FUNDAMENTALS_ROW_ALLOWED_FIELDS` is a strict allowlist enforced by
  *   `sanitizeFundamentalsRow` on every row at the serialization boundary.
@@ -69,7 +69,8 @@ export type FundamentalsRowField = (typeof FUNDAMENTALS_ROW_ALLOWED_FIELDS)[numb
  *    `eps_actual`, `total_debt` (a roll-up), `shares_outstanding_q` (lives in the shares layer).
  *  - `eps_estimate` and forecast/rating fields — no-investment-advice house rule (also in
  *    SEC_FACT_DENY so they cannot enter sec_facts either).
- *  - `earnings_surprise`, `book_value_per_share` — gray pending counsel.
+ *  - `earnings_surprise`, `book_value_per_share` — withheld out of caution; they may only move
+ *    to the allowlist via the SEC-promotion rule above.
  */
 export const FUNDAMENTALS_HELD_BACK_FIELDS = [
   // EODHD-only, no clean SEC raw exposure
@@ -83,7 +84,7 @@ export const FUNDAMENTALS_HELD_BACK_FIELDS = [
   "revenue_forecast",
   "analyst_rating",
   "target_price",
-  // gray pending counsel
+  // withheld out of caution — promote only via the SEC-sourced rule
   "earnings_surprise",
   "book_value_per_share",
   // derived, exposed only as the computed `fcf_margin` ratio, never as a raw flat plane

@@ -95,7 +95,7 @@ async function computeVol252dAnnualised(
 }
 
 export const GET = withBilling(
-  async (request: NextRequest, _context: BillingContext) => {
+  async (request: NextRequest, context: BillingContext) => {
     const rawTicker = request.nextUrl.pathname.split("/").pop();
     const origin = request.headers.get("origin");
 
@@ -250,12 +250,14 @@ export const GET = withBilling(
       },
     );
 
-    // GATE 2 (CRSP derived-only symbol) / GATE 1 license_free mode: the raw
-    // latest-day close and market cap scalars are withheld (nulled); every
-    // derived metric below is unaffected.
+    // GATE 2 (CRSP derived-only symbol) / GATE 1 license_free mode / Exhibit
+    // B(e)(1) (the published shared demo key is not an authenticated
+    // environment): the raw latest-day close and market cap scalars are
+    // withheld (nulled); every derived metric below is unaffected.
     const rawScalarsPermitted =
       !isRestrictedSourceSymbol(symbolRecord.symbol) &&
-      getDataLicenseMode() !== "license_free";
+      getDataLicenseMode() !== "license_free" &&
+      context.rawFieldsPermitted;
 
     const formattedData = {
       symbol: symbolRecord.symbol,

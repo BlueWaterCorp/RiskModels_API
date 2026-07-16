@@ -58,6 +58,7 @@ const fakeContext: BillingContext = {
   capabilityId: "lstar",
   costUsd: 0.02,
   startTime: Date.now(),
+  rawFieldsPermitted: true,
 };
 
 describe("GET /api/lstar — axis=style removed (H.92)", () => {

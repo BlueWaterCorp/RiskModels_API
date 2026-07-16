@@ -51,6 +51,7 @@ const fakeContext: BillingContext = {
   capabilityId: "fundamentals",
   costUsd: 0.005,
   startTime: Date.now(),
+  rawFieldsPermitted: true,
 };
 
 const METADATA = {
