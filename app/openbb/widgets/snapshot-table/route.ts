@@ -6,6 +6,11 @@
  * viewer wouldn't render our tearsheet). One call to /metrics/{ticker} carries
  * the whole story: L3 explained-risk decomposition, systematic share,
  * volatility, hedge level, and L3 hedge ratios. Missing fields render as "—".
+ *
+ * raw-field-ok-file: the close price serves under Exhibit B(e) — no API key
+ * returns the connect-probe rows instead of data (authenticated), the route
+ * takes a single ?ticker= (per-symbol, per-request), and the price sits
+ * alongside the derived decomposition rows (ancillary).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { noKeyRows } from "../../_lib/connect-probe";

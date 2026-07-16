@@ -5,6 +5,10 @@
  * Auth: X-API-KEY header (the OpenBB user's rm_agent_live_* key), forwarded
  * upstream as a Bearer token. Maps the real /metrics/{ticker} response — no
  * synthetic values; missing fields render as "—".
+ *
+ * raw-field-ok-file: close/market cap serve under Exhibit B(e) — the route 401s
+ * without an API key (authenticated), takes a single ?ticker= (per-symbol,
+ * per-request), and shows both alongside the derived risk rows (ancillary).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { metricsConnectProbe } from "../../_lib/connect-probe";
