@@ -1,7 +1,8 @@
-name: License-Guard — licensed-identifier exposure
+name: License-Guard — licensed data exposure
 
-# Two-pronged check for accidental exposure of LICENSED third-party
-# identifiers (CUSIP, ISIN, fsym_id, factset_*_id):
+# Three checks for accidental exposure of licensed third-party data.
+#
+# Checks 1-2 cover LICENSED IDENTIFIERS (CUSIP, ISIN, fsym_id, factset_*_id):
 #
 #   1. Code scan      — scripts/check-licensed-identifiers.sh
 #                       Walks API-exposed paths (app/api, lib, sdk,
@@ -19,6 +20,15 @@ name: License-Guard — licensed-identifier exposure
 #   AUDIT-PENDING                     — surfaced as warning, doesn't fail
 #
 # See scripts/check-licensed-identifiers.sh header for full rationale.
+#
+#   3. Raw-field gate — scripts/check-raw-field-gate.sh
+#                       EODHD Exhibit B(e): raw close / market cap may serve
+#                       only in authenticated, per-symbol contexts. The gate in
+#                       lib/data-license.ts is import-based, so a new route can
+#                       silently bypass it — this fails the build when a
+#                       user-facing file references a raw field without either
+#                       importing the gate or carrying `raw-field-ok: <reason>`.
+#                       (Backlog V.14; root cause of V.1-V.6.)
 
 on:
   push:
@@ -57,3 +67,12 @@ jobs:
           # it's empty and the script falls back to HEAD~20..HEAD.
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: bash scripts/check-licensed-identifiers-git.sh
+
+  raw-field-gate:
+    name: Raw-field gate (Exhibit B(e))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run raw-field gate scan
+        run: bash scripts/check-raw-field-gate.sh

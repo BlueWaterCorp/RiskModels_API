@@ -1,3 +1,11 @@
+/**
+ * raw-field-ok-file: AUDIT-PENDING — the positions table renders a Price column
+ * across the holder's portfolio (up to 100 rows) in a single authenticated,
+ * billed request. Exhibit B(e) conditions (1) authenticated and (3) ancillary to
+ * derived output are met; condition (2) "per-symbol, per-request" is the open
+ * question for a multi-row artifact. Tracked as backlog V.15 — resolve there,
+ * do not treat this marker as precedent for new multi-symbol raw surfaces.
+ */
 "use client";
 
 import { useEffect, useState } from "react";

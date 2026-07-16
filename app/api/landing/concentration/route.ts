@@ -31,7 +31,7 @@ const METRIC_KEYS: V3MetricKey[] = [
   "l3_mkt_hr",
   "l3_sec_hr",
   "l3_sub_hr",
-  "market_cap",
+  "market_cap", // raw-field-ok: server-side only; response carries cap weights, not caps
   "vol_23d",
   "stock_var",
 ];
@@ -158,7 +158,9 @@ export async function GET(request: NextRequest) {
           subsector_etf: subsectorEtf,
         });
 
-        const cap = m.market_cap != null ? Number(m.market_cap) : null;
+        // Server-side input to the cap weights below; the raw value is never
+        // placed on the response (see ConcentrationTicker).
+        const cap = m.market_cap != null ? Number(m.market_cap) : null; // raw-field-ok: never emitted
         if (cap && Number.isFinite(cap) && cap > 0) {
           marketCaps.set(ticker, cap);
         }

@@ -1,3 +1,12 @@
+/**
+ * GET /fundamentals/{ticker}
+ *
+ * raw-field-ok-file: market_cap is served under Exhibit B(e) — withBilling
+ * makes this an authenticated environment, the route is per-symbol/per-request,
+ * and the value is ancillary to the derived capital-cost outputs. Raw vendor
+ * line items are withheld by lib/api/fundamentals-contract (allowlist + per-cell
+ * SEC-provenance gate); only SEC-basis facts ship.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";

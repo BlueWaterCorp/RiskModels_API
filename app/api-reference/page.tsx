@@ -1,3 +1,8 @@
+/**
+ * raw-field-ok-file: API reference docs. Every raw-field reference here is an
+ * illustrative literal in an example response body or a field name in a schema
+ * table — no vendor data is read or served by this page.
+ */
 'use client';
 
 import { useEffect, useState } from 'react';
