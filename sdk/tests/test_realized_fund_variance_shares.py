@@ -44,9 +44,12 @@ def test_shares_sum_to_one_and_largest_amplitude_dominates():
         rows.append((m, s, u, r))
     out = _realized_variance_shares(_series(rows))
     assert out is not None
-    assert sum(out.values()) == pytest.approx(1.0, abs=1e-9)
-    for v in out.values():
-        assert 0.0 <= v <= 1.0
+    LAYERS = ("market", "sector", "subsector", "residual")
+    assert sum(out[k] for k in LAYERS) == pytest.approx(1.0, abs=1e-9)
+    for k in LAYERS:
+        assert 0.0 <= out[k] <= 1.0
+    # Annualized total vol rides along, from the same gross strip.
+    assert out["total_vol_ann"] > 0.0
     assert out["market"] > out["sector"]
     assert out["market"] > out["subsector"]
     assert out["market"] > out["residual"]
@@ -79,4 +82,4 @@ def test_negative_hedging_layer_clamped_and_renormalized():
     out = _realized_variance_shares(_series(rows))
     assert out is not None
     assert out["residual"] == 0.0
-    assert sum(out.values()) == pytest.approx(1.0, abs=1e-9)
+    assert sum(out[k] for k in ("market", "sector", "subsector", "residual")) == pytest.approx(1.0, abs=1e-9)

@@ -11,6 +11,7 @@ shares backed by RiskModels Supabase reads; pip consumers work without keys.
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -80,7 +81,27 @@ def _realized_variance_shares(
     total = sum(clamped.values())
     if not (total > 1e-12):
         return None
-    return {k: v / total for k, v in clamped.items()}
+    shares = {k: v / total for k, v in clamped.items()}
+
+    # Annualized total vol from the SAME gross strip the shares come from —
+    # internally consistent with the decomposition (unlike the published-NAV
+    # fit vol, which is also absent entirely for synthetic composites, leaving
+    # the F1 Active Risk Composition panel blank). Cadence inferred from the
+    # median teo spacing so quarterly-filing series annualize correctly.
+    periods_per_year = 12.0
+    try:
+        teos = [_dt.date.fromisoformat(str(t[0])[:10]) for t in layer_series]
+        gaps = sorted(
+            (teos[i + 1] - teos[i]).days for i in range(len(teos) - 1)
+        )
+        if gaps:
+            med_gap = float(gaps[len(gaps) // 2])
+            if med_gap > 0:
+                periods_per_year = min(365.25 / med_gap, 252.0)
+    except (ValueError, TypeError):
+        pass
+    shares["total_vol_ann"] = float((g_var ** 0.5) * (periods_per_year ** 0.5))
+    return shares
 
 
 # ---------------------------------------------------------------------------
@@ -1454,6 +1475,7 @@ def get_data_for_f1(
             "l2_sector_er":    realized["sector"],
             "l3_subsector_er": realized["subsector"],
             "l3_residual_er":  realized["residual"],
+            "total_vol_ann":   realized.get("total_vol_ann", 0.0),
             "_basis":          "realized_strips",
         }
         # "Recent" window = trailing slice of the same realized series, when
@@ -1468,6 +1490,7 @@ def get_data_for_f1(
                     "l2_sector_er":    realized_recent["sector"],
                     "l3_subsector_er": realized_recent["subsector"],
                     "l3_residual_er":  realized_recent["residual"],
+                    "total_vol_ann":   realized_recent.get("total_vol_ann", 0.0),
                     "_basis":          "realized_strips_recent",
                 }
 
