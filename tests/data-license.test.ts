@@ -7,6 +7,7 @@ import {
   dropRawSeriesKeys,
   getDataLicenseMode,
   isGatewayAuthenticated,
+  isPublicSampleKey,
   isRestrictedSourceSymbol,
   rawEodhdPermitted,
   requestsRawRestricted,
@@ -113,6 +114,38 @@ describe("EODHD data-license policy", () => {
       delete process.env.RISKMODELS_API_SERVICE_KEY;
       expect(isGatewayAuthenticated(reqWithAuth(null))).toBe(true);
     });
+  });
+});
+
+describe("published /llms.txt demo key is not an authenticated environment", () => {
+  const ORIG = process.env.LLMS_TXT_PUBLIC_AGENT_KEY;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.LLMS_TXT_PUBLIC_AGENT_KEY;
+    else process.env.LLMS_TXT_PUBLIC_AGENT_KEY = ORIG;
+  });
+
+  it("flags the exact published key", () => {
+    process.env.LLMS_TXT_PUBLIC_AGENT_KEY = "rm_agent_live_publishedkey123";
+    expect(isPublicSampleKey("rm_agent_live_publishedkey123")).toBe(true);
+    expect(isPublicSampleKey(" rm_agent_live_publishedkey123 ")).toBe(true); // tolerates whitespace
+  });
+
+  it("does not flag a personal key", () => {
+    process.env.LLMS_TXT_PUBLIC_AGENT_KEY = "rm_agent_live_publishedkey123";
+    expect(isPublicSampleKey("rm_agent_live_someuserskey456")).toBe(false);
+    expect(isPublicSampleKey(undefined)).toBe(false);
+    expect(isPublicSampleKey(null)).toBe(false);
+    expect(isPublicSampleKey("")).toBe(false);
+  });
+
+  it("flags nothing when no key is published", () => {
+    delete process.env.LLMS_TXT_PUBLIC_AGENT_KEY;
+    expect(isPublicSampleKey("rm_agent_live_anything")).toBe(false);
+  });
+
+  it("mirrors buildLlmsTxt's length guard — a too-short value is never published, so never flagged", () => {
+    process.env.LLMS_TXT_PUBLIC_AGENT_KEY = "short";
+    expect(isPublicSampleKey("short")).toBe(false);
   });
 });
 

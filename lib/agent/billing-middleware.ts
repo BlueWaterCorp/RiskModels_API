@@ -20,6 +20,7 @@ import {
 import { createPaymentRequiredResponse, createMonthlyCapExceededResponse } from "./errors";
 import { generateRequestId, logTelemetry } from "./telemetry";
 import { extractApiKey, validateApiKey } from "./api-keys";
+import { isPublicSampleKey } from "@/lib/data-license";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
@@ -271,6 +272,14 @@ export interface BillingContext {
   costUsd: number;
   startTime: number;
   apiKey?: string;
+  /**
+   * Exhibit B(e) condition (1). False when the caller presented the SHARED demo
+   * key published in /llms.txt — a credential anyone can copy out of a public
+   * text file is not an authenticated environment, so raw close/market cap are
+   * withheld from it. Required (not optional) so every construction site has to
+   * decide rather than defaulting open.
+   */
+  rawFieldsPermitted: boolean;
   tier?: "free" | "paid" | "enterprise";
   freeTierStatus?: any;
   /** First-party gateway traffic — unlimited internal allowance (no 402/deduct). */
@@ -354,6 +363,9 @@ export function withBilling(
         capabilityId: options.capabilityId,
         costUsd: 0,
         startTime,
+        // Free/unmetered endpoints (search, badge, Plaid link) serve derived
+        // data only; none reads a raw field. Fail closed.
+        rawFieldsPermitted: false,
       };
 
       const response = await handler(req, context);
@@ -713,6 +725,9 @@ export function withBilling(
         costUsd,
         startTime,
         apiKey,
+        // The published /llms.txt demo key authenticates in form only — anyone
+        // can lift it from a public file — so it serves derived data only.
+        rawFieldsPermitted: !isPublicSampleKey(apiKey),
         tier: freeTierCheck?.tier,
         freeTierStatus: freeTierCheck,
         internalUnlimited,
@@ -1062,6 +1077,7 @@ export async function createBillingContext(
       capabilityId,
       costUsd,
       startTime,
+      rawFieldsPermitted: !isPublicSampleKey(extractedKey),
     },
   };
 }

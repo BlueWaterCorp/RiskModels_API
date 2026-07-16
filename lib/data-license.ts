@@ -76,6 +76,26 @@ export function isGatewayAuthenticated(request: NextRequest): boolean {
 }
 
 /**
+ * True when the presented API key is the SHARED demo credential published in
+ * /llms.txt (`LLMS_TXT_PUBLIC_AGENT_KEY`).
+ *
+ * Exhibit B(e) condition (1) requires an *authenticated environment*. A key
+ * printed verbatim in a public text file is authentication in form only —
+ * anyone can lift it — so raw close/mktcap are withheld from it. The derived
+ * surface it does reach is what the agent-discovery demo actually needs.
+ *
+ * Keyed on the same env var that causes the key to be published, and mirroring
+ * buildLlmsTxt()'s own length guard, so the two cannot drift: if it appears in
+ * llms.txt, it is derived-only, by construction.
+ */
+export function isPublicSampleKey(apiKey?: string | null): boolean {
+  const published = process.env.LLMS_TXT_PUBLIC_AGENT_KEY?.trim();
+  if (!published || published.length <= 10) return false;
+  const presented = apiKey?.trim();
+  return Boolean(presented) && presented === published;
+}
+
+/**
  * GATE 1 decision: may raw EODHD fields (close/mktcap) be served on THIS
  * request? Standard mode: yes when gateway-authenticated (Exhibit B(e)
  * condition 1). License-free mode: never, for anyone — use this instead of

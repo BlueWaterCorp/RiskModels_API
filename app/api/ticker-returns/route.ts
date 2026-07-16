@@ -72,9 +72,15 @@ export const GET = withBilling(
     // raw EODHD close for everyone; returns_gross stays (Derived Data under
     // Exhibit B) except for CRSP symbols, where the return path IS the
     // licensed series.
+    // Exhibit B(e)(1) also withholds the close series from the published shared
+    // demo key — a credential lifted from a public text file is not an
+    // authenticated environment. returns_gross is Derived and still serves.
     const restrictedSource = isRestrictedSourceSymbol(symbolRecord.symbol);
     const serveReturns = !restrictedSource;
-    const servePrice = !restrictedSource && getDataLicenseMode() !== "license_free";
+    const servePrice =
+      !restrictedSource &&
+      getDataLicenseMode() !== "license_free" &&
+      context.rawFieldsPermitted;
 
     // ETFs live in ds_etf.zarr and have no L1/L2/L3 decomposition. Only request
     // daily-role keys for them — the hedge/returns zarr stores don't carry ETF

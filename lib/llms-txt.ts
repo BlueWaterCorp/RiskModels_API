@@ -131,6 +131,9 @@ function appendPublicSampleKey(baseUrl: string, plainKey: string): string {
     `When this block appears, the host has enabled a **shared** demo credential (Doppler / Vercel: \`LLMS_TXT_PUBLIC_AGENT_KEY\`). ` +
     `It is intended for documentation and agent smoke tests on the **Magnificent 7** listed above (**${mag7Csv}**). ` +
     `It is rate-limited and may be rotated without notice; for production or the full ~3k universe, use a personal key from https://riskmodels.app/get-key .\n\n` +
+    `Because this key is shared and published, it returns **derived analytics only** — risk decomposition, ` +
+    `hedge ratios, factor exposures, volatility, and returns. Raw last-close and market-cap fields come back ` +
+    `\`null\`; a personal key returns them.\n\n` +
     `Public MAG7 ticker array from the API (no auth; symbols may show GOOGL):\n\n` +
     `curl -sS "${baseUrl}/api/tickers?mag7=true"\n\n` +
     `RISKMODELS_API_KEY=${trimmed}\n\n` +

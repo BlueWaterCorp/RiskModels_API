@@ -30,6 +30,7 @@ const fakeContext: BillingContext = {
   capabilityId: "style-cohort-metrics",
   costUsd: 0.005,
   startTime: Date.now(),
+  rawFieldsPermitted: true,
 };
 
 function req(path: string): NextRequest {
