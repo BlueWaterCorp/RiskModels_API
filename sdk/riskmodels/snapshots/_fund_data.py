@@ -101,6 +101,10 @@ def _realized_variance_shares(
     except (ValueError, TypeError):
         pass
     shares["total_vol_ann"] = float((g_var ** 0.5) * (periods_per_year ** 0.5))
+    # Pre-clamp shares so renderers can tell "clamped negative — the layer
+    # moved against the book over this window" apart from a true zero.
+    for k, v in raw.items():
+        shares[f"{k}_raw"] = float(v)
     return shares
 
 
@@ -1498,6 +1502,8 @@ def get_data_for_f1(
             "l3_subsector_er": realized["subsector"],
             "l3_residual_er":  realized["residual"],
             "total_vol_ann":   realized.get("total_vol_ann", 0.0),
+            "l2_sector_er_raw":    realized.get("sector_raw"),
+            "l3_subsector_er_raw": realized.get("subsector_raw"),
             "_basis":          "realized_strips",
         }
         # "Recent" window = trailing slice of the same realized series, when
@@ -1513,6 +1519,8 @@ def get_data_for_f1(
                     "l3_subsector_er": realized_recent["subsector"],
                     "l3_residual_er":  realized_recent["residual"],
                     "total_vol_ann":   realized_recent.get("total_vol_ann", 0.0),
+                    "l2_sector_er_raw":    realized_recent.get("sector_raw"),
+                    "l3_subsector_er_raw": realized_recent.get("subsector_raw"),
                     "_basis":          "realized_strips_recent",
                 }
 
