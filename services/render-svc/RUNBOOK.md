@@ -209,6 +209,36 @@ file /tmp/nvda.png
 
 ---
 
+## Stock-panel API key (O.6 live decompose loader)
+
+The stock panel route (`GET /api/snapshot/stock/{id}/panels/{slug}`) needs
+`RISKMODELS_API_KEY` in the render-svc environment to make its internal
+`POST /api/decompose` call (`render_svc/artifacts.py::_fetch_decompose`).
+Without it the route 503s with "RISKMODELS_API_KEY not configured".
+
+Wired 2026-07-14 (revision `render-svc-00021-gkn`):
+
+- **SSOT:** Doppler `erm3/prd` → `RENDER_SVC_RISKMODELS_API_KEY`
+- **Runtime:** GCP Secret Manager secret `render-svc-riskmodels-api-key`,
+  mounted on the service as env var `RISKMODELS_API_KEY`
+  (`--update-secrets RISKMODELS_API_KEY=render-svc-riskmodels-api-key:latest`);
+  `render-svc@` SA has `secretmanager.secretAccessor` on it.
+
+**Rotation:**
+
+```bash
+doppler secrets set RENDER_SVC_RISKMODELS_API_KEY --project erm3 --config prd   # update SSOT
+doppler secrets get RENDER_SVC_RISKMODELS_API_KEY --project erm3 --config prd --plain \
+  | gcloud secrets versions add render-svc-riskmodels-api-key --data-file=-
+gcloud run services update render-svc --region us-central1 \
+  --update-secrets RISKMODELS_API_KEY=render-svc-riskmodels-api-key:latest      # new revision picks up :latest
+```
+
+Current value is an operator key; replace with a dedicated service key when
+one is minted (tracked under MASTER_BACKLOG O.6).
+
+---
+
 ## Monitoring + rollback
 
 - **Logs:** Cloud Run console → Logs (or `gcloud run services logs tail render-svc`)

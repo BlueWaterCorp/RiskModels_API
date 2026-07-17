@@ -6760,7 +6760,11 @@ paths:
         render-svc `POST /artifacts/render`. Stock panels:
         `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`,
         `watchlist_er_stacked` (pass `tickers=CRM,MSFT,NVDA`), and `_full` (composed
-        DD page from GCS). See BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
+        DD page from GCS). Institutional DD figure units (`dd_peer_dna`, more to
+        follow) are batch pre-rendered for a hot ticker cohort — same pixels as the
+        institutional letter page; outside the cohort the route returns 501 with a
+        pointer to `_full` and a request path (email service@riskmodels.app to have
+        a ticker added). See BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
 
         **Billing:** `portfolio-risk-snapshot` ($0.25; cache hits may be $0).
       operationId: getSnapshotPanel

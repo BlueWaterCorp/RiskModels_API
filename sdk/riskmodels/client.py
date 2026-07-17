@@ -1977,6 +1977,9 @@ class RiskModelsClient:
 
         Stock panels (O.6): ``l3_explained_risk_hbar``, ``hedge_notionals_hbar``,
         ``hedge_depth_retained``, ``watchlist_er_stacked``, ``_full`` (DD page).
+        Institutional DD figure units (``dd_peer_dna``, …) are batch
+        pre-rendered for a hot ticker cohort; outside it the route returns
+        501 with a request path (service@riskmodels.app).
 
         Args:
             entity_kind: ``stock`` | ``fund`` | ``filer_13f`` | …

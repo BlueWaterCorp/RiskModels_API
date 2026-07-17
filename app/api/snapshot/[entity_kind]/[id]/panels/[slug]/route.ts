@@ -32,6 +32,10 @@ const STOCK_PANEL_SLUGS = new Set([
   "hedge_notionals_hbar",
   "hedge_depth_retained",
   "watchlist_er_stacked",
+  // Institutional DD figure units — Tier-1 batch pre-rendered
+  // (bulk_dd_render --panels); render-svc serves the GCS cache and returns
+  // an actionable 501 for tickers outside the hot cohort.
+  "dd_peer_dna",
   "_full",
 ]);
 
