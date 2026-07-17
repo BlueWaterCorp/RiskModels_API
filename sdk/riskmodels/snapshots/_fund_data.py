@@ -1172,11 +1172,19 @@ def get_data_for_f1(
 
     # If layer-returns series exists, expand cum_nav back to the layer
     # start so the gross line and the L*/Residual lines share a common
-    # anchor at 0%. We rebuild cum_nav from raw monthly returns to
-    # avoid being limited by the nav_lookback_months window.
-    if layer_series and nav_ret_all:
-        first_d = layer_series[0][0]
-        last_d  = layer_series[-1][0]
+    # anchor at 0% — CAPPED at nav_lookback_months. Real funds' N-PORT
+    # strips start ~2021 so the cap is a no-op, but synthetic composites
+    # carry decades of layer history and the uncapped expansion turned the
+    # "5-Year" section into a 20-year compounding chart (unreadable, and
+    # the section title lied). The FULL layer_series still drives the
+    # realized variance shares below — only the chart/waterfall window is
+    # capped here. (The daily-returns path below already windows in days.)
+    layer_series_chart = (
+        layer_series[-nav_lookback_months:] if layer_series else layer_series
+    )
+    if layer_series_chart and nav_ret_all:
+        first_d = layer_series_chart[0][0]
+        last_d  = layer_series_chart[-1][0]
         # Find first NAV index >= first_d.
         start_i = next(
             (i for i, t in enumerate(nav_teo_all) if t >= first_d),
@@ -1212,15 +1220,15 @@ def get_data_for_f1(
     cum_l2: list[tuple[str, float]] = []
     cum_l3: list[tuple[str, float]] = []
     cum_res: list[tuple[str, float]] = []
-    if layer_series:
+    if layer_series_chart:
         # Anchor at 0% (matches stock_deep_dive's series_with_zero_start).
-        anchor_d = cum_nav[0][0] if cum_nav else layer_series[0][0]
+        anchor_d = cum_nav[0][0] if cum_nav else layer_series_chart[0][0]
         cum_l1.append((anchor_d, 0.0))
         cum_l2.append((anchor_d, 0.0))
         cum_l3.append((anchor_d, 0.0))
         cum_res.append((anchor_d, 0.0))
         prod_l1 = prod_l2 = prod_l3 = prod_g = 1.0
-        for d, mkt, sec, sub, res in layer_series:
+        for d, mkt, sec, sub, res in layer_series_chart:
             prod_l1 *= 1.0 + mkt
             prod_l2 *= 1.0 + mkt + sec
             prod_l3 *= 1.0 + mkt + sec + sub
