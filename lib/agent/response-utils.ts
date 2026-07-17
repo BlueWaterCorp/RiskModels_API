@@ -99,7 +99,7 @@ export function createAgentResponse(
           historical_coverage: 1.0
         },
         warnings: warnings,
-        methodology: 'https://riskmodels.net/docs/methodology'
+        methodology: 'https://riskmodels.app/docs/methodology'
       },
       alternatives: alternatives
     };
@@ -290,7 +290,7 @@ export function createAgentErrorResponse(
         capability_id: capabilityId,
         timestamp: new Date().toISOString(),
         support: 'service@riskmodels.app',
-        documentation: 'https://riskmodels.net/docs/api',
+        documentation: 'https://riskmodels.app/api-reference',
         ...additionalContext
       }
     },

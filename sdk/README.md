@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/riskmodels-py.svg)](https://pypi.org/project/riskmodels-py/)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)
 
-Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`). **Methodology / wiki:** [ERM3 L3](https://riskmodels.net/docs/methodology/erm3-l3) (aligned with API `wiki_uri`).
+Published on PyPI as [`riskmodels-py`](https://pypi.org/project/riskmodels-py/) (import package `riskmodels`). **Methodology:** [ERM3](https://riskmodels.app/docs/methodology) (aligned with API `wiki_uri` / `METHODOLOGY_URL`).
 
 **Try the Analysis Object Model without cloning:** open the **[AOM quickstart (Colab)](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb)** — install cell, API key (Secrets or paste), then `rm` / `run` examples. Same flows live in-repo as [`notebooks/quickstart.ipynb`](./notebooks/quickstart.ipynb).
 

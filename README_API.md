@@ -192,4 +192,4 @@ Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → A
 - **Issues & feature requests:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
 - **API support email:** [service@riskmodels.app](mailto:service@riskmodels.app)
 - **Interactive docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
-- **Status:** [riskmodels.net/status](https://riskmodels.net/status)
+- **Status:** [riskmodels.net/status](https://riskmodels.net/status) · API metrics [riskmodels.app/api/status](https://riskmodels.app/api/status)
