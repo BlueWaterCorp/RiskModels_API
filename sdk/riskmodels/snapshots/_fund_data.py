@@ -1246,6 +1246,20 @@ def get_data_for_f1(
             cum_l2  = [(d, v * scale) for d, v in cum_l2]
             cum_l3  = [(d, v * scale) for d, v in cum_l3]
             cum_res = [(d, v * scale) for d, v in cum_res]
+        # Recompute layer_attribution over the SAME chart window. The
+        # earlier full-history ratios are wrong once the chart is capped:
+        # the waterfall multiplies these ratios by the chart's gross
+        # endpoint, so full-history mix × windowed gross breaks the
+        # wiki-mandated identity "residual line endpoint == residual
+        # waterfall bar". (The daily path below overrides again from its
+        # own chart endpoints, same invariant.)
+        if abs(gross_geom) > 1e-12:
+            layer_attr = {
+                "market":    (prod_l1 - 1.0)      / gross_geom,
+                "sector":    (prod_l2 - prod_l1)  / gross_geom,
+                "subsector": (prod_l3 - prod_l2)  / gross_geom,
+                "residual":  (prod_g  - prod_l3)  / gross_geom,
+            }
 
     # ── DAILY FUND RETURNS (ds_fund_returns_daily.zarr) ─────────────────
     # If the per-fund daily-returns cube exists, prefer it as the source
