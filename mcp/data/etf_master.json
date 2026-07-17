@@ -1,6 +1,6 @@
 {
   "schema_version": "etf-master/2.0",
-  "n_entries": 43,
+  "n_entries": 67,
   "aliases": {
     "arkf": "BW-ETF-ARKF",
     "arkg": "BW-ETF-ARKG",
@@ -17,6 +17,14 @@
     "iwd": "BW-ETF-IWD",
     "iwf": "BW-ETF-IWF",
     "iwm": "BW-ETF-IWM",
+    "iwn": "BW-ETF-IWN",
+    "iwo": "BW-ETF-IWO",
+    "iwp": "BW-ETF-IWP",
+    "iwr": "BW-ETF-IWR",
+    "iws": "BW-ETF-IWS",
+    "kbe": "BW-ETF-KBE",
+    "kie": "BW-ETF-KIE",
+    "kre": "BW-ETF-KRE",
     "mdy": "BW-ETF-MDY",
     "qqq": "BW-ETF-QQQ",
     "rsp": "BW-ETF-RSP",
@@ -27,13 +35,22 @@
     "spyg": "BW-ETF-SPYG",
     "spyv": "BW-ETF-SPYV",
     "vb": "BW-ETF-VB",
+    "vnq": "BW-ETF-VNQ",
     "vo": "BW-ETF-VO",
     "voo": "BW-ETF-VOO",
+    "vox": "BW-ETF-VOX",
+    "vpu": "BW-ETF-VPU",
     "vti": "BW-ETF-VTI",
     "vtv": "BW-ETF-VTV",
     "vug": "BW-ETF-VUG",
     "vv": "BW-ETF-VV",
     "vxf": "BW-ETF-VXF",
+    "xar": "BW-ETF-XAR",
+    "xbi": "BW-ETF-XBI",
+    "xes": "BW-ETF-XES",
+    "xhb": "BW-ETF-XHB",
+    "xhe": "BW-ETF-XHE",
+    "xhs": "BW-ETF-XHS",
     "xlb": "BW-ETF-XLB",
     "xlc": "BW-ETF-XLC",
     "xle": "BW-ETF-XLE",
@@ -44,7 +61,14 @@
     "xlre": "BW-ETF-XLRE",
     "xlu": "BW-ETF-XLU",
     "xlv": "BW-ETF-XLV",
-    "xly": "BW-ETF-XLY"
+    "xly": "BW-ETF-XLY",
+    "xme": "BW-ETF-XME",
+    "xop": "BW-ETF-XOP",
+    "xph": "BW-ETF-XPH",
+    "xrt": "BW-ETF-XRT",
+    "xsd": "BW-ETF-XSD",
+    "xsw": "BW-ETF-XSW",
+    "xtn": "BW-ETF-XTN"
   },
   "entries": {
     "BW-ETF-ARKF": {
@@ -122,6 +146,46 @@
       "ticker": "IWM",
       "name": "iShares Russell 2000 ETF"
     },
+    "BW-ETF-IWN": {
+      "bw_etf_id": "BW-ETF-IWN",
+      "ticker": "IWN",
+      "name": "iShares Russell 2000 Value ETF"
+    },
+    "BW-ETF-IWO": {
+      "bw_etf_id": "BW-ETF-IWO",
+      "ticker": "IWO",
+      "name": "iShares Russell 2000 Growth ETF"
+    },
+    "BW-ETF-IWP": {
+      "bw_etf_id": "BW-ETF-IWP",
+      "ticker": "IWP",
+      "name": "iShares Russell Mid-Cap Growth ETF"
+    },
+    "BW-ETF-IWR": {
+      "bw_etf_id": "BW-ETF-IWR",
+      "ticker": "IWR",
+      "name": "iShares Russell Mid-Cap ETF"
+    },
+    "BW-ETF-IWS": {
+      "bw_etf_id": "BW-ETF-IWS",
+      "ticker": "IWS",
+      "name": "iShares Russell Mid-Cap Value ETF"
+    },
+    "BW-ETF-KBE": {
+      "bw_etf_id": "BW-ETF-KBE",
+      "ticker": "KBE",
+      "name": "SPDR S&P Bank ETF"
+    },
+    "BW-ETF-KIE": {
+      "bw_etf_id": "BW-ETF-KIE",
+      "ticker": "KIE",
+      "name": "SPDR S&P Insurance ETF"
+    },
+    "BW-ETF-KRE": {
+      "bw_etf_id": "BW-ETF-KRE",
+      "ticker": "KRE",
+      "name": "SPDR S&P Regional Banking ETF"
+    },
     "BW-ETF-MDY": {
       "bw_etf_id": "BW-ETF-MDY",
       "ticker": "MDY",
@@ -172,6 +236,11 @@
       "ticker": "VB",
       "name": "Vanguard Small-Cap ETF"
     },
+    "BW-ETF-VNQ": {
+      "bw_etf_id": "BW-ETF-VNQ",
+      "ticker": "VNQ",
+      "name": "Vanguard Real Estate ETF"
+    },
     "BW-ETF-VO": {
       "bw_etf_id": "BW-ETF-VO",
       "ticker": "VO",
@@ -181,6 +250,16 @@
       "bw_etf_id": "BW-ETF-VOO",
       "ticker": "VOO",
       "name": "Vanguard S&P 500 ETF"
+    },
+    "BW-ETF-VOX": {
+      "bw_etf_id": "BW-ETF-VOX",
+      "ticker": "VOX",
+      "name": "Vanguard Communication Services ETF"
+    },
+    "BW-ETF-VPU": {
+      "bw_etf_id": "BW-ETF-VPU",
+      "ticker": "VPU",
+      "name": "Vanguard Utilities ETF"
     },
     "BW-ETF-VTI": {
       "bw_etf_id": "BW-ETF-VTI",
@@ -206,6 +285,36 @@
       "bw_etf_id": "BW-ETF-VXF",
       "ticker": "VXF",
       "name": "Vanguard Extended Market ETF"
+    },
+    "BW-ETF-XAR": {
+      "bw_etf_id": "BW-ETF-XAR",
+      "ticker": "XAR",
+      "name": "SPDR S&P Aerospace & Defense ETF"
+    },
+    "BW-ETF-XBI": {
+      "bw_etf_id": "BW-ETF-XBI",
+      "ticker": "XBI",
+      "name": "SPDR S&P Biotech ETF"
+    },
+    "BW-ETF-XES": {
+      "bw_etf_id": "BW-ETF-XES",
+      "ticker": "XES",
+      "name": "SPDR S&P Oil & Gas Equipment & Services ETF"
+    },
+    "BW-ETF-XHB": {
+      "bw_etf_id": "BW-ETF-XHB",
+      "ticker": "XHB",
+      "name": "SPDR S&P Homebuilders ETF"
+    },
+    "BW-ETF-XHE": {
+      "bw_etf_id": "BW-ETF-XHE",
+      "ticker": "XHE",
+      "name": "SPDR S&P Health Care Equipment ETF"
+    },
+    "BW-ETF-XHS": {
+      "bw_etf_id": "BW-ETF-XHS",
+      "ticker": "XHS",
+      "name": "SPDR S&P Health Care Services ETF"
     },
     "BW-ETF-XLB": {
       "bw_etf_id": "BW-ETF-XLB",
@@ -261,6 +370,41 @@
       "bw_etf_id": "BW-ETF-XLY",
       "ticker": "XLY",
       "name": "Consumer Discretionary Select Sector SPDR Fund"
+    },
+    "BW-ETF-XME": {
+      "bw_etf_id": "BW-ETF-XME",
+      "ticker": "XME",
+      "name": "SPDR S&P Metals & Mining ETF"
+    },
+    "BW-ETF-XOP": {
+      "bw_etf_id": "BW-ETF-XOP",
+      "ticker": "XOP",
+      "name": "SPDR S&P Oil & Gas Exploration & Production ETF"
+    },
+    "BW-ETF-XPH": {
+      "bw_etf_id": "BW-ETF-XPH",
+      "ticker": "XPH",
+      "name": "SPDR S&P Pharmaceuticals ETF"
+    },
+    "BW-ETF-XRT": {
+      "bw_etf_id": "BW-ETF-XRT",
+      "ticker": "XRT",
+      "name": "SPDR S&P Retail ETF"
+    },
+    "BW-ETF-XSD": {
+      "bw_etf_id": "BW-ETF-XSD",
+      "ticker": "XSD",
+      "name": "SPDR S&P Semiconductor ETF"
+    },
+    "BW-ETF-XSW": {
+      "bw_etf_id": "BW-ETF-XSW",
+      "ticker": "XSW",
+      "name": "SPDR S&P Software & Services ETF"
+    },
+    "BW-ETF-XTN": {
+      "bw_etf_id": "BW-ETF-XTN",
+      "ticker": "XTN",
+      "name": "SPDR S&P Transportation ETF"
     }
   }
 }
