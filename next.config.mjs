@@ -20,6 +20,12 @@ const nextConfig = {
       { source: '/documentation', destination: '/docs', permanent: true },
       // Only one comparison page today; bare /compare points at it so a trimmed URL doesn't 404.
       { source: '/compare', destination: '/compare/barra-axioma', permanent: false },
+      // Stale README / SDK wiki_uri path — canonical methodology is /docs/methodology.
+      {
+        source: '/docs/methodology/erm3-l3',
+        destination: '/docs/methodology',
+        permanent: true,
+      },
     ];
   },
   async rewrites() {

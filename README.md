@@ -12,7 +12,7 @@ RiskModels provides clean dividend-adjusted total returns, factor risk decomposi
 
 This repository is the **authoritative public API reference** for the [RiskModels](https://riskmodels.net) equity risk model API, featuring:
 
-- 📖 **Model methodology (wiki)** — [ERM3 L3 overview](https://riskmodels.net/docs/methodology/erm3-l3) (same URI as API `wiki_uri` in response metadata)
+- 📖 **Model methodology** — [ERM3 overview](https://riskmodels.app/docs/methodology) (canonical; also mirrored on [riskmodels.net](https://riskmodels.net/docs/methodology/erm3-l3))
 - 📚 **Comprehensive API Documentation** — OpenAPI 3.0.3 specification, guides, and examples
 - 🌐 **Developer Portal** — Beautiful Next.js site (this repo) deployed at **riskmodels.app**
 - 🐍 **Python & TypeScript Examples** — Production-ready code in `examples/`
@@ -25,7 +25,7 @@ This repository is the **authoritative public API reference** for the [RiskModel
 - **Python SDK — AOM quickstart (Google Colab):** [Open notebook](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb) · source: [`sdk/notebooks/riskmodels_aom_colab.ipynb`](sdk/notebooks/riskmodels_aom_colab.ipynb)
 - **Developer Portal:** [riskmodels.app](https://riskmodels.app)
 - **Live API Docs:** [riskmodels.net/docs/api/erm3](https://riskmodels.net/docs/api/erm3)
-- **ERM3 methodology (wiki):** [riskmodels.net/docs/methodology/erm3-l3](https://riskmodels.net/docs/methodology/erm3-l3)
+- **ERM3 methodology:** [riskmodels.app/docs/methodology](https://riskmodels.app/docs/methodology)
 - **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key)
 - **API Terms:** [riskmodels.net/terms/api](https://riskmodels.net/terms/api)
 - **Issues:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
@@ -372,7 +372,7 @@ We welcome pull requests, especially to improve the **OpenAPI spec** — clearer
 
 - **API Support:** [service@riskmodels.app](mailto:service@riskmodels.app)
 - **Issues:** [github.com/BlueWaterCorp/RiskModels_API/issues](https://github.com/BlueWaterCorp/RiskModels_API/issues)
-- **Status:** [riskmodels.net/status](https://riskmodels.net/status)
+- **Status:** [riskmodels.net/status](https://riskmodels.net/status) · API metrics [riskmodels.app/api/status](https://riskmodels.app/api/status)
 
 ---
 

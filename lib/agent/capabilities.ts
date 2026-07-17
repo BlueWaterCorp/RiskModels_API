@@ -109,7 +109,7 @@ export const CAPABILITIES: Capability[] = [
       data_quality_score: 0.98,
       update_frequency: "daily",
       sources: ["market_data", "proprietary_models", "erm3_regression"],
-      methodology_url: "https://riskmodels.net/docs/methodology",
+      methodology_url: "https://riskmodels.app/docs/methodology",
     },
     tags: ["returns", "hedging", "risk-analysis"],
     examples: [
@@ -246,7 +246,7 @@ export const CAPABILITIES: Capability[] = [
       data_quality_score: 0.99,
       update_frequency: "daily",
       sources: ["erm3_models", "factor_regression"],
-      methodology_url: "https://riskmodels.net/docs/l3-methodology",
+      methodology_url: "https://riskmodels.app/docs/methodology",
     },
     tags: ["risk-analysis", "decomposition", "factors"],
   },
