@@ -32,6 +32,7 @@ export interface FilerMetricsResponse {
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  portfolio_style_return: number | null;
   portfolio_idiosyncratic_return: number | null;
   identity_residual: number | null;
   // Diagnostics
@@ -80,6 +81,7 @@ export function formatFilerMetrics(
     portfolio_market_return: latest?.portfolio_market_return ?? null,
     portfolio_sector_return: latest?.portfolio_sector_return ?? null,
     portfolio_subsector_return: latest?.portfolio_subsector_return ?? null,
+    portfolio_style_return: latest?.portfolio_style_return ?? null,
     portfolio_idiosyncratic_return: latest?.portfolio_idiosyncratic_return ?? null,
     identity_residual: latest?.identity_residual ?? null,
     weight_sum: latest?.weight_sum ?? null,
