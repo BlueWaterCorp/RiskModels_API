@@ -120,6 +120,8 @@ export const SEC_FACT_CONCEPTS = [
   // capital management
   "dividends_paid", "dividends_declared", "dividends_preferred", "share_repurchases",
   "share_issuance", "share_based_comp",
+  // WACC product legs (H.89.12 — SEC-promoted; EODHD-primary cells stay internal)
+  "interest_paid", "cash_and_equivalents", "short_term_investments", "preferred_equity",
 ] as const;
 export type SecFactConcept = (typeof SEC_FACT_CONCEPTS)[number];
 
@@ -275,10 +277,10 @@ export function buildFundamentalsDisclosures(params: {
       "Coverage starts ~2009 for most filers; pre-2009 and small-cap or recently-IPO'd names are thin. Missing fields are null, not row-dropped.",
     point_in_time:
       "Rows are visible only where filed_date <= as_of. filed_date_source is 'exact' (vendor filing date) or 'approx' (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).",
-    conditional_beta_cost_of_equity:
-      "beta_market is a short-half-life conditional market beta, not a textbook long-run CAPM beta. For defensive names it can be low or negative, so cost_of_equity can fall below the risk-free rate. That is a property of the conditional beta, not an error.",
+    valuation_beta_cost_of_equity:
+      "beta_market is the long-window (~60-month monthly, Vasicek-shrunk) valuation beta from ds_valuation_betas — the CFO-grade CAPM input for cost of equity / WACC / economic profit. It is NOT the short-half-life hedging beta on the risk surface.",
     wacc_book_weights:
-      "WACC uses BOOK-value weights (balance-sheet equity and debt). Market-value weights are the textbook convention; compute them yourself if you have market-cap access.",
+      "WACC uses BOOK-value weights (balance-sheet equity and debt). Market-value weights are the textbook convention; compute them yourself if you have market-cap access. If book debt is positive but cost_of_debt cannot be formed (missing or non-positive TTM interest expense), wacc is null — never a partial equity-only fraction of ke.",
     ttm_convention:
       "TTM aggregates sum flows over the trailing 4 reported quarters; stock quantities are point-in-time (ROE denominator uses the trailing-4-quarter average equity). Ratios need 4 finite quarters or they are null.",
     equity_bridge:

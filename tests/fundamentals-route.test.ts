@@ -135,11 +135,11 @@ describe("GET /api/fundamentals/[ticker]", () => {
       rfTenor: "10y",
     });
 
-    // Disclosures: realized-only statement, coverage note, conditional-beta
+    // Disclosures: realized-only statement, coverage note, valuation-beta
     // caveat, and the parameter echo.
     expect(body.disclosures.realized_historical_only).toMatch(/realized historical/i);
     expect(body.disclosures.coverage).toMatch(/2009/);
-    expect(body.disclosures.conditional_beta_cost_of_equity).toMatch(/conditional/i);
+    expect(body.disclosures.valuation_beta_cost_of_equity).toMatch(/valuation/i);
     expect(body.disclosures.parameters.erp).toBe(0.06);
     expect(body.disclosures.parameters.tax_rate).toBe(0.25);
     expect(body.disclosures.parameters.as_of).toBe("2026-03-31");
