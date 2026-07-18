@@ -103,10 +103,13 @@ class CoreMetrics:
     residual_er: float | None = None          # residual explained return (pct)
     residual_vol: float | None = None         # residual vol (annualized)
 
-    # Variance-share decomposition (Σ ≈ 1.0 when populated)
+    # Variance-share decomposition (Σ ≈ 1.0 when populated). The FF2 (v4) fund
+    # cascade adds ``style_share`` (SMB+HML); it is None for pre-v4 funds and
+    # for stock-level metrics, in which case the remaining four sum to ~1.
     market_share: float | None = None
     sector_share: float | None = None
     subsector_share: float | None = None
+    style_share: float | None = None
     residual_share: float | None = None
 
 
