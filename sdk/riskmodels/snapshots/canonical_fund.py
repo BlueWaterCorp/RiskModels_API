@@ -350,8 +350,11 @@ def from_fund_components(
     mkt_er = _to_float(_g(m, "l1_market_er", "l3_market_er", "l3_mkt_er")) or 0.0
     sec_er = _to_float(_g(m, "l2_sector_er", "l3_sector_er", "l3_sec_er")) or 0.0
     sub_er = _to_float(_g(m, "l3_subsector_er", "l3_sub_er")) or 0.0
+    # FF2 (v4) style leg — 0.0 on pre-v4 funds, so total_er reduces to the old
+    # 4-leg sum and the style share is ~0.
+    style_er = _to_float(_g(m, "style_er")) or 0.0
     res_er = _to_float(_g(m, "l3_residual_er", "l3_res_er")) or 0.0
-    total_er = mkt_er + sec_er + sub_er + res_er
+    total_er = mkt_er + sec_er + sub_er + style_er + res_er
 
     def _share(x: float) -> float | None:
         return (x / total_er) if total_er > 0 else None
@@ -370,6 +373,7 @@ def from_fund_components(
         market_share=_share(mkt_er),
         sector_share=_share(sec_er),
         subsector_share=_share(sub_er),
+        style_share=_share(style_er),
         residual_share=_share(res_er),
     )
 
@@ -379,7 +383,8 @@ def from_fund_components(
             DecompositionPoint("Market", mkt_er / total_er, 0),
             DecompositionPoint("Sector", sec_er / total_er, 1),
             DecompositionPoint("Subsector", sub_er / total_er, 2),
-            DecompositionPoint("Residual", res_er / total_er, 3),
+            DecompositionPoint("Style", style_er / total_er, 3),
+            DecompositionPoint("Residual", res_er / total_er, 4),
         ]
     risk = RiskDecomposition(
         total_variance=_to_float(

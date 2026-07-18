@@ -34,19 +34,24 @@ _MIN_REALIZED_FUND_OBS = 12
 
 
 def _realized_variance_shares(
-    layer_series: list[tuple[str, float, float, float, float]],
+    layer_series: list[tuple[str, float, float, float, float, float]],
 ) -> dict[str, float] | None:
     """Fund variance decomposition from the layer return strips.
 
-    ``layer_series`` is ``[(teo, mkt, sec, sub, res), ...]`` — the per-filing
-    portfolio layer returns from ``ds_portfolio.zarr``, which sum to the
-    portfolio's gross return per period. Each layer's share of fund variance is
-    ``cov(strip_k, gross) / var(gross)``; since ``gross = mkt + sec + sub + res``
-    exactly, ``Σ_k cov(strip_k, gross) = cov(gross, gross) = var(gross)``, so the
-    four shares sum to exactly 1 before clamping. ``var(residual_strip)`` is the
-    *realized* portfolio residual variance — it already includes every
-    cross-holding residual covariance — so there is no uncorrelated-residuals
-    assumption anywhere.
+    ``layer_series`` is ``[(teo, mkt, sec, sub, style, res), ...]`` — the
+    per-filing portfolio layer returns from ``ds_portfolio.zarr``, which sum to
+    the portfolio's gross return per period. Each layer's share of fund variance
+    is ``cov(strip_k, gross) / var(gross)``; since the ERM3 FF2 (v4) identity is
+    ``gross = mkt + sec + sub + style + res`` exactly,
+    ``Σ_k cov(strip_k, gross) = cov(gross, gross) = var(gross)``, so the five
+    shares sum to exactly 1 before clamping. ``style`` is the FF size(SMB)+
+    value(HML) strip; ``res`` is the stock-specific idiosyncratic strip *net of*
+    style. ``var(residual_strip)`` is the *realized* portfolio residual variance
+    — it already includes every cross-holding residual covariance — so there is
+    no uncorrelated-residuals assumption anywhere.
+
+    Pre-v4 funds (cascade_basis ``l3_pre_v4``) carry ``style ≡ 0`` upstream, so
+    the style share is ~0 and the decomposition reduces to the old four legs.
 
     A layer whose strip moved against the portfolio over the window (it hedged)
     has negative covariance → negative share; for a clean shares-of-100% headline
@@ -59,8 +64,9 @@ def _realized_variance_shares(
     mkt = [float(t[1]) for t in layer_series]
     sec = [float(t[2]) for t in layer_series]
     sub = [float(t[3]) for t in layer_series]
-    res = [float(t[4]) for t in layer_series]
-    gross = [a + b + c + d for a, b, c, d in zip(mkt, sec, sub, res)]
+    style = [float(t[4]) for t in layer_series]
+    res = [float(t[5]) for t in layer_series]
+    gross = [a + b + c + s + d for a, b, c, s, d in zip(mkt, sec, sub, style, res)]
     n = len(gross)
     g_mean = sum(gross) / n
     g_var = sum((g - g_mean) ** 2 for g in gross) / n
@@ -75,6 +81,7 @@ def _realized_variance_shares(
         "market": _cov_with_gross(mkt) / g_var,
         "sector": _cov_with_gross(sec) / g_var,
         "subsector": _cov_with_gross(sub) / g_var,
+        "style": _cov_with_gross(style) / g_var,
         "residual": _cov_with_gross(res) / g_var,
     }
     clamped = {k: max(0.0, v) for k, v in raw.items()}
@@ -244,9 +251,9 @@ class FundData:
     # Per-period layer returns from ds_portfolio.zarr — the dense input to
     # the Section I waterfall's geometric telescoping math (same scheme
     # as ``P1Data.l3_er_series`` in the stock-side snapshot). Each tuple
-    # is ``(teo_str, mkt, sec, sub, res)``. Empty if ds_portfolio.zarr
-    # has no populated periods.
-    layer_returns_series: list[tuple[str, float, float, float, float]] = field(default_factory=list)
+    # is the FF2 (v4) 5-leg strip ``(teo_str, mkt, sec, sub, style, res)``.
+    # Empty if ds_portfolio.zarr has no populated periods.
+    layer_returns_series: list[tuple[str, float, float, float, float, float]] = field(default_factory=list)
 
     # Layered cumulative-return time series, derived from
     # layer_returns_series via the ERM3 sequential-compounding scheme
@@ -257,6 +264,10 @@ class FundData:
     cum_l1_market:    list[tuple[str, float]] = field(default_factory=list)
     cum_l2_sector:    list[tuple[str, float]] = field(default_factory=list)
     cum_l3_subsector: list[tuple[str, float]] = field(default_factory=list)
+    # FF2 (v4) style leg — the SMB+HML increment over L3. Populated from the
+    # (v4-split) ds_portfolio monthly cascade; empty when the daily cube
+    # overrides the chart (that cube is pre-split — see cum_l3_residual).
+    cum_style:        list[tuple[str, float]] = field(default_factory=list)
     cum_l3_residual:  list[tuple[str, float]] = field(default_factory=list)
 
     # Peer cohort
@@ -401,11 +412,19 @@ def _fund_data_institutional_dict_to_cls(cls: type[FundData], d: dict[str, Any])
     holds_raw = d.get("holdings") or []
     holdings = [_fund_holding_from_plain(h) for h in holds_raw]
     lr = d.get("layer_returns_series") or []
-    layer_returns_series: list[tuple[str, float, float, float, float]] = []
-    if lr and isinstance(lr[0], (list, tuple)) and len(lr[0]) >= 5:
-        layer_returns_series = [
-            (str(t[0]), float(t[1]), float(t[2]), float(t[3]), float(t[4])) for t in lr
-        ]
+    layer_returns_series: list[tuple[str, float, float, float, float, float]] = []
+    if lr and isinstance(lr[0], (list, tuple)):
+        for t in lr:
+            if len(t) >= 6:  # v4 5-leg tuple (teo, mkt, sec, sub, style, res)
+                layer_returns_series.append(
+                    (str(t[0]), float(t[1]), float(t[2]), float(t[3]),
+                     float(t[4]), float(t[5]))
+                )
+            elif len(t) >= 5:  # legacy 4-leg (teo, mkt, sec, sub, res) — style=0
+                layer_returns_series.append(
+                    (str(t[0]), float(t[1]), float(t[2]), float(t[3]),
+                     0.0, float(t[4]))
+                )
     return cls(
         bw_fund_id=str(d.get("bw_fund_id", "")),
         ticker_primary=str(d["ticker_primary"]),
@@ -432,6 +451,7 @@ def _fund_data_institutional_dict_to_cls(cls: type[FundData], d: dict[str, Any])
         cum_l1_market=_load_series_pairs(d.get("cum_l1_market")),
         cum_l2_sector=_load_series_pairs(d.get("cum_l2_sector")),
         cum_l3_subsector=_load_series_pairs(d.get("cum_l3_subsector")),
+        cum_style=_load_series_pairs(d.get("cum_style")),
         cum_l3_residual=_load_series_pairs(d.get("cum_l3_residual")),
         peer_cohort_label=d.get("peer_cohort_label"),
         peer_cohort_size=d.get("peer_cohort_size"),
@@ -553,6 +573,9 @@ def from_fixture_row(row: dict[str, Any]) -> FundData:
         "l1_market_er":    float(row.get("portfolio_market_return")     or 0.0),
         "l2_sector_er":    float(row.get("portfolio_sector_return")     or 0.0),
         "l3_subsector_er": float(row.get("portfolio_subsector_return")  or 0.0),
+        # FF2 (v4) style leg — present in the fixture row for v4 funds; 0 when
+        # absent (pre-v4). Kept alongside the idio-net-of-style residual.
+        "style_er":        float(row.get("portfolio_style_return")      or 0.0),
         "l3_residual_er":  float(row.get("portfolio_idiosyncratic_return") or 0.0),
     }
     return FundData(
@@ -1110,6 +1133,13 @@ def get_data_for_f1(
             mkt_arr = pt["portfolio_market_return"][:]
             sec_arr = pt["portfolio_sector_return"][:]
             sub_arr = pt["portfolio_subsector_return"][:]
+            # FF2 (v4) style leg (SMB+HML). Present on v4-cascade stores; older
+            # stores predate the split → treat as 0 so the 5-leg identity
+            # gross = mkt+sec+sub+style+idio reduces to the old 4-leg cleanly.
+            if "portfolio_style_return" in pt:
+                style_arr = pt["portfolio_style_return"][:]
+            else:
+                style_arr = np.zeros_like(mkt_arr)
             res_arr = pt["portfolio_idiosyncratic_return"][:]
             teo_decoded = _decode_teo_array(pt["teo"])
             for i in nz:
@@ -1119,31 +1149,39 @@ def get_data_for_f1(
                     float(mkt_arr[i]),
                     float(sec_arr[i]),
                     float(sub_arr[i]),
+                    float(style_arr[i]),
                     float(res_arr[i]),
                 ))
             mkt_nz = mkt_arr[nz]
             sec_nz = sec_arr[nz]
             sub_nz = sub_arr[nz]
+            style_nz = style_arr[nz]
             res_nz = res_arr[nz]
             P1 = float(np.prod(1.0 + mkt_nz) - 1.0)
             P2 = float(np.prod(1.0 + mkt_nz + sec_nz) - 1.0)
             P3 = float(np.prod(1.0 + mkt_nz + sec_nz + sub_nz) - 1.0)
-            PG = float(np.prod(1.0 + mkt_nz + sec_nz + sub_nz + res_nz) - 1.0)
+            PS = float(np.prod(1.0 + mkt_nz + sec_nz + sub_nz + style_nz) - 1.0)
+            PG = float(
+                np.prod(1.0 + mkt_nz + sec_nz + sub_nz + style_nz + res_nz) - 1.0
+            )
             if abs(PG) > 1e-12:
                 layer_attr = {
                     "market":    P1            / PG,
                     "sector":    (P2 - P1)     / PG,
                     "subsector": (P3 - P2)     / PG,
-                    "residual":  (PG - P3)     / PG,
+                    "style":     (PS - P3)     / PG,
+                    "residual":  (PG - PS)     / PG,
                 }
         # Strict CFR-ortho variance shares written by Funds_DAG
         # `aggregate_fund_portfolio` as zarr attrs. Two windows: the
         # full-history shares (used as primary) and a trailing-12m
-        # "recent" set for the F1 side-by-side comparison.
+        # "recent" set for the F1 side-by-side comparison. The v4 cascade adds
+        # `adjusted_style_er`; absent on pre-v4 stores (share omitted → ~0).
         for k_out, k_in in [
             ("market",    "adjusted_l1_market_er"),
             ("sector",    "adjusted_l2_sector_er"),
             ("subsector", "adjusted_l3_subsector_er"),
+            ("style",     "adjusted_style_er"),
             ("residual",  "adjusted_l3_residual_er"),
             ("total_vol_ann", "adjusted_total_vol_ann"),
         ]:
@@ -1153,6 +1191,7 @@ def get_data_for_f1(
             ("market",    "adjusted_recent_l1_market_er"),
             ("sector",    "adjusted_recent_l2_sector_er"),
             ("subsector", "adjusted_recent_l3_subsector_er"),
+            ("style",     "adjusted_recent_style_er"),
             ("residual",  "adjusted_recent_l3_residual_er"),
             ("total_vol_ann", "adjusted_recent_total_vol_ann"),
         ]:
@@ -1223,6 +1262,7 @@ def get_data_for_f1(
     cum_l1: list[tuple[str, float]] = []
     cum_l2: list[tuple[str, float]] = []
     cum_l3: list[tuple[str, float]] = []
+    cum_style: list[tuple[str, float]] = []
     cum_res: list[tuple[str, float]] = []
     if layer_series_chart:
         # Anchor at 0% (matches stock_deep_dive's series_with_zero_start).
@@ -1230,26 +1270,30 @@ def get_data_for_f1(
         cum_l1.append((anchor_d, 0.0))
         cum_l2.append((anchor_d, 0.0))
         cum_l3.append((anchor_d, 0.0))
+        cum_style.append((anchor_d, 0.0))
         cum_res.append((anchor_d, 0.0))
-        prod_l1 = prod_l2 = prod_l3 = prod_g = 1.0
-        for d, mkt, sec, sub, res in layer_series_chart:
-            prod_l1 *= 1.0 + mkt
-            prod_l2 *= 1.0 + mkt + sec
-            prod_l3 *= 1.0 + mkt + sec + sub
-            prod_g  *= 1.0 + mkt + sec + sub + res
+        prod_l1 = prod_l2 = prod_l3 = prod_style = prod_g = 1.0
+        for d, mkt, sec, sub, style, res in layer_series_chart:
+            prod_l1    *= 1.0 + mkt
+            prod_l2    *= 1.0 + mkt + sec
+            prod_l3    *= 1.0 + mkt + sec + sub
+            prod_style *= 1.0 + mkt + sec + sub + style
+            prod_g     *= 1.0 + mkt + sec + sub + style + res
             cum_l1.append((d, prod_l1 - 1.0))
             cum_l2.append((d, prod_l2 - 1.0))
             cum_l3.append((d, prod_l3 - 1.0))
-            cum_res.append((d, prod_g - prod_l3))
-        # Scale L*/Residual so gross endpoint == NAV gross endpoint.
+            cum_style.append((d, prod_style - prod_l3))
+            cum_res.append((d, prod_g - prod_style))
+        # Scale L*/Style/Residual so gross endpoint == NAV gross endpoint.
         gross_geom = prod_g - 1.0
         nav_gross = cum_nav[-1][1] if cum_nav else gross_geom
         if gross_geom != 0 and nav_gross != 0:
             scale = nav_gross / gross_geom
-            cum_l1  = [(d, v * scale) for d, v in cum_l1]
-            cum_l2  = [(d, v * scale) for d, v in cum_l2]
-            cum_l3  = [(d, v * scale) for d, v in cum_l3]
-            cum_res = [(d, v * scale) for d, v in cum_res]
+            cum_l1    = [(d, v * scale) for d, v in cum_l1]
+            cum_l2    = [(d, v * scale) for d, v in cum_l2]
+            cum_l3    = [(d, v * scale) for d, v in cum_l3]
+            cum_style = [(d, v * scale) for d, v in cum_style]
+            cum_res   = [(d, v * scale) for d, v in cum_res]
         # Recompute layer_attribution over the SAME chart window. The
         # earlier full-history ratios are wrong once the chart is capped:
         # the waterfall multiplies these ratios by the chart's gross
@@ -1259,10 +1303,11 @@ def get_data_for_f1(
         # own chart endpoints, same invariant.)
         if abs(gross_geom) > 1e-12:
             layer_attr = {
-                "market":    (prod_l1 - 1.0)      / gross_geom,
-                "sector":    (prod_l2 - prod_l1)  / gross_geom,
-                "subsector": (prod_l3 - prod_l2)  / gross_geom,
-                "residual":  (prod_g  - prod_l3)  / gross_geom,
+                "market":    (prod_l1    - 1.0)       / gross_geom,
+                "sector":    (prod_l2    - prod_l1)   / gross_geom,
+                "subsector": (prod_l3    - prod_l2)   / gross_geom,
+                "style":     (prod_style - prod_l3)   / gross_geom,
+                "residual":  (prod_g     - prod_style)/ gross_geom,
             }
 
     # ── DAILY FUND RETURNS (ds_fund_returns_daily.zarr) ─────────────────
@@ -1359,11 +1404,22 @@ def get_data_for_f1(
 
             # Override the monthly/quarterly-based series above. The new
             # daily series is denser and self-consistent.
-            cum_nav = cum_nav_new
-            cum_l1  = cum_l1_new
-            cum_l2  = cum_l2_new
-            cum_l3  = cum_l3_new
-            cum_res = cum_res_new
+            #
+            # NOTE (FF2 style leg): ds_fund_returns_daily.zarr is still the
+            # pre-split daily cascade — it has no style strip, so its `res_d`
+            # (= gross − L1 − L2 − L3) is style + idio combined. We therefore
+            # clear cum_style here (no daily-scale style line is available) so
+            # the monthly-derived cum_style above can't leak onto a daily-scale
+            # chart. The monthly variance-share panel (from ds_portfolio, which
+            # IS v4-split) still shows style separately. Splitting the daily
+            # residual requires adding a style leg to fund_returns_daily
+            # upstream (tracked separately).
+            cum_nav   = cum_nav_new
+            cum_l1    = cum_l1_new
+            cum_l2    = cum_l2_new
+            cum_l3    = cum_l3_new
+            cum_style = []
+            cum_res   = cum_res_new
 
             # When the daily-returns cube is present, recompute
             # layer_attribution from the SAME cascade endpoints that
@@ -1500,10 +1556,12 @@ def get_data_for_f1(
             "l1_market_er":    realized["market"],
             "l2_sector_er":    realized["sector"],
             "l3_subsector_er": realized["subsector"],
+            "style_er":        realized["style"],
             "l3_residual_er":  realized["residual"],
             "total_vol_ann":   realized.get("total_vol_ann", 0.0),
             "l2_sector_er_raw":    realized.get("sector_raw"),
             "l3_subsector_er_raw": realized.get("subsector_raw"),
+            "style_er_raw":        realized.get("style_raw"),
             "_basis":          "realized_strips",
         }
         # "Recent" window = trailing slice of the same realized series, when
@@ -1517,10 +1575,12 @@ def get_data_for_f1(
                     "l1_market_er":    realized_recent["market"],
                     "l2_sector_er":    realized_recent["sector"],
                     "l3_subsector_er": realized_recent["subsector"],
+                    "style_er":        realized_recent["style"],
                     "l3_residual_er":  realized_recent["residual"],
                     "total_vol_ann":   realized_recent.get("total_vol_ann", 0.0),
                     "l2_sector_er_raw":    realized_recent.get("sector_raw"),
                     "l3_subsector_er_raw": realized_recent.get("subsector_raw"),
+                    "style_er_raw":        realized_recent.get("style_raw"),
                     "_basis":          "realized_strips_recent",
                 }
 
@@ -1529,6 +1589,7 @@ def get_data_for_f1(
             "l1_market_er":    adj_variance_shares["market"],
             "l2_sector_er":    adj_variance_shares["sector"],
             "l3_subsector_er": adj_variance_shares["subsector"],
+            "style_er":        adj_variance_shares.get("style", 0.0),
             "l3_residual_er":  adj_variance_shares["residual"],
             "total_vol_ann":   adj_variance_shares.get("total_vol_ann", 0.0),
             "_basis":          "adjusted_attrs",
@@ -1538,6 +1599,7 @@ def get_data_for_f1(
             "l1_market_er":    adj_variance_shares_recent["market"],
             "l2_sector_er":    adj_variance_shares_recent["sector"],
             "l3_subsector_er": adj_variance_shares_recent["subsector"],
+            "style_er":        adj_variance_shares_recent.get("style", 0.0),
             "l3_residual_er":  adj_variance_shares_recent["residual"],
             "total_vol_ann":   adj_variance_shares_recent.get("total_vol_ann", 0.0),
             "_basis":          "adjusted_attrs_recent",
@@ -1584,6 +1646,7 @@ def get_data_for_f1(
         cum_l1_market=cum_l1,
         cum_l2_sector=cum_l2,
         cum_l3_subsector=cum_l3,
+        cum_style=cum_style,
         cum_l3_residual=cum_res,
         peer_cohort_label=equity_style,
         peer_cohort_size=identity.get("n_funds_in_cell_at_report_date"),

@@ -18,8 +18,20 @@ from riskmodels.snapshots._fund_data import (
 
 
 def _series(rows):
-    """rows = list of (mkt, sec, sub, res); teo is just a label."""
-    return [(f"2020-{i:02d}-01", m, s, u, r) for i, (m, s, u, r) in enumerate(rows, start=1)]
+    """rows = list of (mkt, sec, sub, res); teo is just a label. Style leg is
+    injected as 0.0 (pre-v4 shape) — see _series5 for the v4 5-leg form."""
+    return [
+        (f"2020-{i:02d}-01", m, s, u, 0.0, r)
+        for i, (m, s, u, r) in enumerate(rows, start=1)
+    ]
+
+
+def _series5(rows):
+    """rows = list of (mkt, sec, sub, style, res) — the FF2 v4 5-leg strip."""
+    return [
+        (f"2020-{i:02d}-01", m, s, u, y, r)
+        for i, (m, s, u, y, r) in enumerate(rows, start=1)
+    ]
 
 
 def test_returns_none_below_observation_floor():
@@ -82,4 +94,35 @@ def test_negative_hedging_layer_clamped_and_renormalized():
     out = _realized_variance_shares(_series(rows))
     assert out is not None
     assert out["residual"] == 0.0
+    assert sum(out[k] for k in ("market", "sector", "subsector", "style", "residual")) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_v4_style_leg_carries_variance_and_five_shares_sum_to_one():
+    """FF2 (v4) 5-leg: a real style strip carries its own variance share and the
+    five shares sum to 1 — style is not dropped or folded into residual."""
+    rng = random.Random(3)
+    rows = []
+    for _ in range(72):
+        m  = (rng.random() - 0.5) * 0.02
+        s  = (rng.random() - 0.5) * 0.01
+        u  = (rng.random() - 0.5) * 0.008
+        y  = (rng.random() - 0.5) * 0.03   # widest → largest share
+        r  = (rng.random() - 0.5) * 0.01
+        rows.append((m, s, u, y, r))
+    out = _realized_variance_shares(_series5(rows))
+    assert out is not None
+    LAYERS = ("market", "sector", "subsector", "style", "residual")
+    assert sum(out[k] for k in LAYERS) == pytest.approx(1.0, abs=1e-9)
+    assert out["style"] > 0.0
+    # The widest strip (style) dominates the decomposition.
+    assert out["style"] == max(out[k] for k in LAYERS)
+
+
+def test_pre_v4_zero_style_reduces_to_four_legs():
+    """Style ≡ 0 (pre-v4) ⇒ style share ~0 and the other four legs sum to ~1."""
+    rng = random.Random(5)
+    rows = [((rng.random() - 0.5) * 0.03, 0.0, 0.0, 0.0) for _ in range(50)]
+    out = _realized_variance_shares(_series(rows))  # _series injects style=0
+    assert out is not None
+    assert out["style"] == pytest.approx(0.0, abs=1e-12)
     assert sum(out[k] for k in ("market", "sector", "subsector", "residual")) == pytest.approx(1.0, abs=1e-9)

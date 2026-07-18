@@ -91,7 +91,10 @@ if FIXTURES:
             assert snap.identity.as_of == fd.teo
 
             cm = snap.core_metrics
-            shares = [cm.market_share, cm.sector_share, cm.subsector_share, cm.residual_share]
+            # FF2 (v4) 5-leg decomposition: market+sector+subsector+style+residual
+            # sum to ~1 (style_share is 0 on pre-v4 funds).
+            shares = [cm.market_share, cm.sector_share, cm.subsector_share,
+                      cm.style_share, cm.residual_share]
             if all(s is not None for s in shares):
                 total = sum(shares)
                 assert 0.99 <= total <= 1.01
