@@ -275,13 +275,16 @@ def _variance_shares(
     v_m = _v(monthly["portfolio_market_return"])
     v_s = _v(monthly["portfolio_sector_return"])
     v_b = _v(monthly["portfolio_subsector_return"])
+    # FF2 (v4) style leg — 0 when the segment kernel ran on pre-v4 ERM3.
+    v_y = _v(monthly["portfolio_style_return"]) if "portfolio_style_return" in monthly else 0.0
     v_i = _v(monthly["portfolio_idiosyncratic_return"])
-    v_t = v_m + v_s + v_b + v_i
+    v_t = v_m + v_s + v_b + v_y + v_i
     if v_t > 0 and np.isfinite(v_t):
         return {
             "market": v_m / v_t,
             "sector": v_s / v_t,
             "subsector": v_b / v_t,
+            "style": v_y / v_t,
             "residual": v_i / v_t,
             "total_var": v_t,
             "total_vol_ann": float(np.sqrt(v_t * 12.0)),
@@ -291,6 +294,7 @@ def _variance_shares(
         "market": 0.0,
         "sector": 0.0,
         "subsector": 0.0,
+        "style": 0.0,
         "residual": 0.0,
         "total_var": 0.0,
         "total_vol_ann": 0.0,
@@ -352,9 +356,25 @@ def _compute_segment_returns(
     mkt_all = em["factor_return"].sel(level="market").drop_vars("level", errors="ignore")
     sec_all = em["factor_return"].sel(level="sector").drop_vars("level", errors="ignore")
     sub_all = em["factor_return"].sel(level="subsector").drop_vars("level", errors="ignore")
-    idi_all = (
+    # FF2 (v4) cascade: the subsector-level residual is style (SMB+HML) + the
+    # stock-specific idio. When ERM3 emits the `stock_specific_l3` level, split
+    # it — idio = stock_specific, style = subsector_resid − stock_specific — so
+    # the decomposition matches the 5-leg identity
+    # gross = market + sector + subsector + style + idio. Pre-v4 ERM3 (no
+    # stock_specific_l3 level) → style ≡ 0 and idio = the subsector residual.
+    sub_resid_all = (
         em["residual_return"].sel(level="subsector").drop_vars("level", errors="ignore")
     )
+    _resid_levels = {str(lv) for lv in np.atleast_1d(em["residual_return"]["level"].values)}
+    if "stock_specific_l3" in _resid_levels:
+        idi_all = (
+            em["residual_return"].sel(level="stock_specific_l3")
+            .drop_vars("level", errors="ignore")
+        )
+        style_all = sub_resid_all - idi_all
+    else:
+        idi_all = sub_resid_all
+        style_all = xr.zeros_like(sub_resid_all)
     last_erm3 = erm3_teos[-1]
 
     # w_0 = first snapshot's resolved weights, re-normalized on the joinable sleeve.
@@ -398,6 +418,7 @@ def _compute_segment_returns(
         m_seg = mkt_all.sel(teo=months.values).fillna(0.0)
         sec_seg = sec_all.sel(teo=months.values).fillna(0.0)
         sub_seg = sub_all.sel(teo=months.values).fillna(0.0)
+        style_seg = style_all.sel(teo=months.values).fillna(0.0)
         idi_seg = idi_all.sel(teo=months.values).fillna(0.0)
 
         # ── Actual path (time-varying weights = this segment's w_k) ───────────
@@ -405,8 +426,9 @@ def _compute_segment_returns(
         pm = (w_q * m_seg).sum("symbol")
         ps = (w_q * sec_seg).sum("symbol")
         pb = (w_q * sub_seg).sum("symbol")
+        py = (w_q * style_seg).sum("symbol")
         pi = (w_q * idi_seg).sum("symbol")
-        ir = pg - (pm + ps + pb + pi)
+        ir = pg - (pm + ps + pb + py + pi)
 
         valid = gross_all.sel(teo=months.values).notnull()
         weight_sum = (w_q * valid).sum("symbol")
@@ -424,6 +446,7 @@ def _compute_segment_returns(
                     "portfolio_market_return": pm,
                     "portfolio_sector_return": ps,
                     "portfolio_subsector_return": pb,
+                    "portfolio_style_return": py,
                     "portfolio_idiosyncratic_return": pi,
                     "identity_residual": ir,
                     "weight_sum": weight_sum,
@@ -440,6 +463,7 @@ def _compute_segment_returns(
         pm_s = (w0_q * m_seg).sum("symbol")
         ps_s = (w0_q * sec_seg).sum("symbol")
         pb_s = (w0_q * sub_seg).sum("symbol")
+        py_s = (w0_q * style_seg).sum("symbol")
         pi_s = (w0_q * idi_seg).sum("symbol")
         chunks_static.append(
             xr.Dataset(
@@ -448,6 +472,7 @@ def _compute_segment_returns(
                     "portfolio_market_return": pm_s,
                     "portfolio_sector_return": ps_s,
                     "portfolio_subsector_return": pb_s,
+                    "portfolio_style_return": py_s,
                     "portfolio_idiosyncratic_return": pi_s,
                 },
                 coords={"teo": months.values},
@@ -550,6 +575,11 @@ def compute_portfolio_evolution(
     pm = monthly["portfolio_market_return"].values
     ps = monthly["portfolio_sector_return"].values
     pb = monthly["portfolio_subsector_return"].values
+    # FF2 (v4) style leg — SMB+HML is a systematic factor, so its variance joins
+    # the systematic share (not residual). 0 when the kernel ran on pre-v4 ERM3.
+    py = (monthly["portfolio_style_return"].values
+          if "portfolio_style_return" in monthly
+          else np.zeros(n_m, dtype=float))
     pi = monthly["portfolio_idiosyncratic_return"].values
     sys_share_series: list[float] = []
     res_share_series: list[float] = []
@@ -557,10 +587,11 @@ def compute_portfolio_evolution(
         v_m = float(np.var(pm[:j], ddof=1)) if j > 1 else 0.0
         v_s = float(np.var(ps[:j], ddof=1)) if j > 1 else 0.0
         v_b = float(np.var(pb[:j], ddof=1)) if j > 1 else 0.0
+        v_y = float(np.var(py[:j], ddof=1)) if j > 1 else 0.0
         v_i = float(np.var(pi[:j], ddof=1)) if j > 1 else 0.0
-        v_t = v_m + v_s + v_b + v_i
+        v_t = v_m + v_s + v_b + v_y + v_i
         if v_t > 0:
-            sys_share_series.append((v_m + v_s + v_b) / v_t)
+            sys_share_series.append((v_m + v_s + v_b + v_y) / v_t)
             res_share_series.append(v_i / v_t)
         else:
             sys_share_series.append(0.0)
@@ -589,11 +620,12 @@ def compute_portfolio_evolution(
     # compound, since the identity gross ≈ market+sector+sub+idio is additive
     # in monthly contributions and the question we're answering is "how many
     # bps did each bucket contribute").
-    bucket_keys = ("market", "sector", "subsector", "residual")
+    bucket_keys = ("market", "sector", "subsector", "style", "residual")
     bucket_var_names = {
         "market": "portfolio_market_return",
         "sector": "portfolio_sector_return",
         "subsector": "portfolio_subsector_return",
+        "style": "portfolio_style_return",
         "residual": "portfolio_idiosyncratic_return",
     }
     by_l3_bucket: dict[str, dict[str, int]] = {}
