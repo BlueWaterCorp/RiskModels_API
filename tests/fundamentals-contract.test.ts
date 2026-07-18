@@ -148,3 +148,17 @@ describe("equity-bridge inputs decode (Phase 3)", () => {
     expect(decodeEquityBridgeInputs(0)).toEqual([]);
   });
 });
+
+describe("fundamentals Kd honesty disclosures", () => {
+  it("documents AAPL-class null policy and bank deposit-interest caveat", async () => {
+    const { buildFundamentalsDisclosures } = await import("@/lib/api/fundamentals-contract");
+    const d = buildFundamentalsDisclosures({
+      erp: 0.05,
+      tax_rate: 0.21,
+      as_of: "2026-07-18",
+      rf_tenor: "10y",
+    });
+    expect(String(d.cost_of_debt_null_policy)).toMatch(/Other income|null Kd as 0%/i);
+    expect(String(d.cost_of_debt_bank_caveat)).toMatch(/deposit/i);
+  });
+});

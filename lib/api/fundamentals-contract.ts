@@ -289,6 +289,10 @@ export function buildFundamentalsDisclosures(params: {
       "beta_market is the long-window (~60-month monthly, Vasicek-shrunk) valuation beta from ds_valuation_betas — the CFO-grade CAPM input for cost of equity / WACC / economic profit. It is NOT the short-half-life hedging beta on the risk surface.",
     wacc_book_weights:
       "WACC uses BOOK-value weights (balance-sheet equity and SEC component-sum debt via total_debt_sec = borrowings + finance leases + operating leases). EODHD total_debt is never used for Kd/WACC. Market-value weights are the textbook convention; compute them yourself if you have market-cap access. If book debt is positive but cost_of_debt cannot be formed (missing or non-positive TTM interest expense), wacc is null — never a partial equity-only fraction of ke.",
+    cost_of_debt_null_policy:
+      "cost_of_debt is null (and wacc is null whenever book debt > 0) when TTM interest_expense is missing or non-positive beside positive total_debt_sec. That shape is a data gap — e.g. interest buried in Other income / net finance (AAPL-class) — not a free balance sheet. Do not treat a null Kd as 0%.",
+    cost_of_debt_bank_caveat:
+      "For deposit-taking banks and similar financials, reported interest expense is dominated by deposit interest, not the coupon on wholesale/borrowed debt. Realized interest_expense / total_debt_sec is therefore NOT a corporate cost of debt. Treat bank Kd/WACC from this endpoint as unreliable unless you substitute a credit-spread or peer-bond estimate; we do not invent one.",
     ttm_convention:
       "TTM aggregates sum flows over the trailing 4 reported quarters; stock quantities are point-in-time (ROE denominator uses the trailing-4-quarter average equity). Ratios need 4 finite quarters or they are null.",
     equity_bridge:
