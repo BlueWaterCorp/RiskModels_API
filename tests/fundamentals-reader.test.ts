@@ -58,11 +58,14 @@ function syntheticPack(): FundamentalsRowPack {
       dividends_paid: fill([2, 2, 2, 2, 2, 3]),
       share_repurchases: fill([4, 4, 4, 4, 4, 5]),
       revenue: fill([100, 100, 100, 100, 100, 120]),
+      // H.89.12: Kd / WACC / leverage read total_debt_sec (SEC recipe), not EODHD total_debt
+      total_debt_sec: fill([50, 50, 50, 50, 50, 60]),
     } as FundamentalsRowPack["secRaw"],
     secSource: {
       dividends_paid: fill([1, 1, 1, 1, 2, 2]),
       share_repurchases: fill([1, 1, 1, 1, 2, 2]),
       revenue: fill([1, 1, 1, 1, 2, 2]),
+      total_debt_sec: fill([2, 2, 2, 2, 2, 2]),
     } as FundamentalsRowPack["secSource"],
     // equity bridge (Phase 3): residual null on the first period, mask 83 (net_income +
     // accumulated_oci + share_repurchases + share_based_comp) on the newest.
@@ -216,6 +219,7 @@ describe("guards — equity <= 0, debt <= 0, missing betas (NaN, never clip)", (
     const pack = syntheticPack();
     pack.vars.total_equity = [-10, -10, -10, -10, -10, -10];
     pack.vars.total_debt = [0, 0, 0, 0, 0, 0];
+    pack.secRaw.total_debt_sec = [0, 0, 0, 0, 0, 0];
     pack.vars.beta_market = [null, null, null, null, null, null];
     const rows = buildFundamentalsRows(pack, OPTS);
     const last = rows[rows.length - 1]!;
