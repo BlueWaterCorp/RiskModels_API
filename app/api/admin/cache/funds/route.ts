@@ -8,9 +8,12 @@
  * next request per key just recomputes from GCS/Supabase.
  *
  * Auth: Authorization: Bearer CRON_SECRET (same machine-to-machine secret
- * the Vercel cron routes use).
+ * the Vercel cron routes use). Production value: Doppler `erm3/prd`
+ * (a bare shell `$CRON_SECRET` often 401s — use doppler run):
  *
- * Manual: curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" "https://riskmodels.app/api/admin/cache/funds"
+ *   doppler run -p erm3 -c prd -- bash -c \
+ *     'curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
+ *      "https://riskmodels.app/api/admin/cache/funds"'
  */
 
 import { NextRequest, NextResponse } from "next/server";
