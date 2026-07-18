@@ -174,10 +174,12 @@ describe("TTM conventions (flow sum / stock avg-latest, 4 finite quarters requir
 });
 
 describe("guards — equity <= 0, debt <= 0, missing betas (NaN, never clip)", () => {
-  it("cost_of_debt guards debt <= 0", () => {
+  it("cost_of_debt guards debt <= 0 and non-positive interest", () => {
     expect(costOfDebt(4, 0)).toBeNaN();
     expect(costOfDebt(4, -10)).toBeNaN();
     expect(costOfDebt(NaN, 50)).toBeNaN();
+    expect(costOfDebt(0, 50)).toBeNaN();
+    expect(costOfDebt(-1, 50)).toBeNaN();
     expect(costOfDebt(4, 50)).toBeCloseTo(0.08, 10);
   });
 
@@ -200,8 +202,10 @@ describe("guards — equity <= 0, debt <= 0, missing betas (NaN, never clip)", (
   });
 
   it("wacc collapses to equity-only when there is no positive debt", () => {
-    // no-debt firm: kd is NaN, w_d = 0 → w_e * ke with w_e = 1
+    // no-debt firm: kd is NaN, w_d = 0 → ke
     expect(waccBookWeights(0.04, 1.0, NaN, 100, 0, 0.21)).toBeCloseTo(0.09, 10);
+    // positive debt but missing interest → NaN (never understate as wE*ke)
+    expect(waccBookWeights(0.04, 1.0, NaN, 100, 50, 0.21)).toBeNaN();
     // negative total capital → NaN
     expect(waccBookWeights(0.04, 1.0, 4, -100, 0, 0.21)).toBeNaN();
     // missing beta → NaN even with clean legs

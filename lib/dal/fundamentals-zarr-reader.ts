@@ -70,16 +70,18 @@ export function costOfEquity(
   return rfRate + betaMarket * erp;
 }
 
-/** Realized cost of debt = interest_expense_ttm / total_debt. Guard debt <= 0 → NaN. */
+/** Realized cost of debt = interest_expense_ttm / total_debt. Guards debt <= 0 or interest <= 0 → NaN. */
 export function costOfDebt(interestExpenseTtm: number, totalDebt: number): number {
   if (!(finite(interestExpenseTtm) && finite(totalDebt)) || totalDebt <= 0) return NaN;
+  if (interestExpenseTtm <= 0) return NaN;
   return interestExpenseTtm / totalDebt;
 }
 
 /**
  * WACC with BOOK-value weights (balance-sheet equity/debt) — deliberately, per
  * the Python SSOT; market-value weights are the caller's job. Debt leg is
- * tax-shielded; a no-debt firm collapses to equity-only.
+ * tax-shielded; a no-debt firm collapses to equity-only (= ke). Positive book
+ * debt with missing kd → NaN (never return wE*ke — that understates WACC).
  */
 export function waccBookWeights(
   rfRate: number,
@@ -99,9 +101,8 @@ export function waccBookWeights(
   if (cap <= 0 || !Number.isFinite(ke)) return NaN;
   const wE = E / cap;
   const wD = D / cap;
-  if (wD <= 0 || !Number.isFinite(kd)) {
-    return wE > 0 ? wE * ke : NaN;
-  }
+  if (wD <= 0) return ke;
+  if (!Number.isFinite(kd)) return NaN;
   return wE * ke + wD * kd * (1.0 - taxRate);
 }
 
@@ -795,7 +796,7 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
 async function readRowPackCached(ticker: string): Promise<FundamentalsRowPack | null> {
   // v3: pack shape changed 2026-07-10 (added secRaw/secSource for SEC-fact exposure).
   // Bumping the key invalidates v2 packs that lack those fields.
-  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v3", { ticker });
+  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v4", { ticker });
   const hit = await getCache<FundamentalsRowPack | typeof EMPTY_SENTINEL>(ck);
   if (hit !== null && hit !== undefined) {
     return (hit as { __empty?: boolean }).__empty === true
