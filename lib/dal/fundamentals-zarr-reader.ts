@@ -355,7 +355,10 @@ export function buildFundamentalsRows(
     const eqAvg = ttmAvg(windowVals("total_equity", windowPos));
     const assetsAvg = ttmAvg(windowVals("total_assets", windowPos));
     const eqLast = latestFinite(windowVals("total_equity", windowPos));
-    const debtLast = latestFinite(windowVals("total_debt", windowPos));
+    // H.89.12: WACC / Kd / leverage use SEC component-sum total_debt_sec only —
+    // never the EODHD total_debt plane (kept as a compute-input holdback).
+    const debtSec = latestFinite(secWindow("total_debt_sec", windowPos));
+    const debtLast = debtSec;
 
     const rf = rfByPeriod?.[i] ?? NaN;
     const bm = pack.vars.beta_market[i] ?? NaN;
@@ -479,7 +482,9 @@ export function buildSensitivityGrid(
   const ieTtm = ttmSum(windowVals("interest_expense", windowPos));
   const eqAvg = ttmAvg(windowVals("total_equity", windowPos));
   const eqLast = latestFinite(windowVals("total_equity", windowPos));
-  const debtLast = latestFinite(windowVals("total_debt", windowPos));
+  const debtLast = latestFinite(
+    windowPos.map((pos) => pack.secRaw?.total_debt_sec?.[pos] ?? null),
+  );
   const bm = pack.vars.beta_market[i] ?? NaN;
 
   const cells: SensitivityGridCell[][] = opts.erpGrid.map((erp) =>
@@ -796,7 +801,9 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
 async function readRowPackCached(ticker: string): Promise<FundamentalsRowPack | null> {
   // v3: pack shape changed 2026-07-10 (added secRaw/secSource for SEC-fact exposure).
   // Bumping the key invalidates v2 packs that lack those fields.
-  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v4", { ticker });
+  // v6: 2026-07-18 — SEC_FACT_CONCEPTS gained ebitda_sec / eps_basic / shares_outstanding_sec;
+  // v5 packs lack those secRaw/secSource columns.
+  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v6", { ticker });
   const hit = await getCache<FundamentalsRowPack | typeof EMPTY_SENTINEL>(ck);
   if (hit !== null && hit !== undefined) {
     return (hit as { __empty?: boolean }).__empty === true
