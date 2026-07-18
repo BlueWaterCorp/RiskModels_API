@@ -10,9 +10,13 @@
  * per ticker recomputes from GCS.
  *
  * Auth: Authorization: Bearer CRON_SECRET (same machine-to-machine secret
- * as /api/admin/cache/funds).
+ * as /api/admin/cache/funds). Production value lives in Doppler `erm3/prd`
+ * (synced to Vercel). A bare `$CRON_SECRET` in the shell is often unset or
+ * from `dev` and will 401 — pull from prd:
  *
- * Manual: curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" "https://riskmodels.app/api/admin/cache/fundamentals"
+ *   doppler run -p erm3 -c prd -- bash -c \
+ *     'curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
+ *      "https://riskmodels.app/api/admin/cache/fundamentals"'
  */
 
 import { NextRequest, NextResponse } from "next/server";
