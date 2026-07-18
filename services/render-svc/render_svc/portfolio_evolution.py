@@ -799,6 +799,10 @@ def compute_portfolio_evolution(
                     "portfolio_market_return": float(monthly["portfolio_market_return"].values[k]),
                     "portfolio_sector_return": float(monthly["portfolio_sector_return"].values[k]),
                     "portfolio_subsector_return": float(monthly["portfolio_subsector_return"].values[k]),
+                    "portfolio_style_return": (
+                        float(monthly["portfolio_style_return"].values[k])
+                        if "portfolio_style_return" in monthly else 0.0
+                    ),
                     "portfolio_idiosyncratic_return": float(
                         monthly["portfolio_idiosyncratic_return"].values[k]
                     ),
