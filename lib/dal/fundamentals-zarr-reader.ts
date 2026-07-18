@@ -70,7 +70,9 @@ export function costOfEquity(
   return rfRate + betaMarket * erp;
 }
 
-/** Realized cost of debt = interest_expense_ttm / total_debt. Guards debt <= 0 or interest <= 0 → NaN. */
+/** Realized cost of debt = interest_expense_ttm / total_debt.
+ * Guards debt <= 0 or interest <= 0 → NaN (AAPL-class / GOOG data-gap — never 0%).
+ * Bank deposit-interest caveat is disclosed at the API layer; this math does not invent a coupon. */
 export function costOfDebt(interestExpenseTtm: number, totalDebt: number): number {
   if (!(finite(interestExpenseTtm) && finite(totalDebt)) || totalDebt <= 0) return NaN;
   if (interestExpenseTtm <= 0) return NaN;
