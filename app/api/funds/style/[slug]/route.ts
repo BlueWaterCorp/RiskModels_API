@@ -53,6 +53,7 @@ export const GET = withBilling(
         portfolio_market_return: r.portfolio_market_return,
         portfolio_sector_return: r.portfolio_sector_return,
         portfolio_subsector_return: r.portfolio_subsector_return,
+        portfolio_style_return: r.portfolio_style_return,
         portfolio_idiosyncratic_return: r.portfolio_idiosyncratic_return,
         identity_residual: r.identity_residual,
         weight_sum: r.weight_sum,

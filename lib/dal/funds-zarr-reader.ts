@@ -896,6 +896,7 @@ const COHORT_PORTFOLIO_VARS = [
   "portfolio_market_return",
   "portfolio_sector_return",
   "portfolio_subsector_return",
+  "portfolio_style_return",
   "portfolio_idiosyncratic_return",
   "identity_residual",
   "weight_sum",
@@ -911,6 +912,7 @@ export interface CohortPortfolioRowPerWeighting {
   portfolio_market_return: number | null;
   portfolio_sector_return: number | null;
   portfolio_subsector_return: number | null;
+  portfolio_style_return: number | null;
   portfolio_idiosyncratic_return: number | null;
   identity_residual: number | null;
   weight_sum: number | null;
