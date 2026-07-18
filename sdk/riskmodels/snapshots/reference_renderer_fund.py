@@ -91,12 +91,16 @@ def _render_left_rail(page: SnapshotPage, snap: CanonicalFundSnapshot) -> None:
             ("AUM", _fmt_aum(idy.aum_usd)),
         ]))
 
-    sections.append(("DECOMPOSITION", [
+    decomp_rows = [
         ("Market", _fmt_pct(cm.market_share)),
         ("Sector", _fmt_pct(cm.sector_share)),
         ("Subsector", _fmt_pct(cm.subsector_share)),
-        ("Residual", _fmt_pct(cm.residual_share)),
-    ]))
+    ]
+    # FF2 (v4): show the SMB+HML style leg when present. Pre-v4 (None) stays 4-leg.
+    if cm.style_share is not None:
+        decomp_rows.append(("Style", _fmt_pct(cm.style_share)))
+    decomp_rows.append(("Residual", _fmt_pct(cm.residual_share)))
+    sections.append(("DECOMPOSITION", decomp_rows))
 
     if snap.macro and snap.macro.correlations:
         macro_rows = [(name, f"{rho:+.2f}")
@@ -300,12 +304,13 @@ def _render_section_iii_holdings(page: SnapshotPage, snap: CanonicalFundSnapshot
         [
             h.ticker,
             _fmt_pct(h.weight),
+            _fmt_pct(h.style_share) if h.style_share is not None else "—",
             _fmt_pct(h.residual_share) if h.residual_share is not None else "—",
         ]
         for h in top
     ]
 
-    chart_table(ax, rows=rows, headers=["Ticker", "Wt", "Resid"])
+    chart_table(ax, rows=rows, headers=["Ticker", "Wt", "Style", "Resid"])
 
     cov = portfolio.coverage_pct
     cov_s = _fmt_pct(cov) if cov is not None else "—"

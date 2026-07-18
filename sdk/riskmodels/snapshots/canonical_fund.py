@@ -76,6 +76,7 @@ class HoldingRow:
     market_share: float | None = None
     sector_share: float | None = None
     subsector_share: float | None = None
+    style_share: float | None = None      # FF2 SMB+HML slice; None pre-v4
     residual_share: float | None = None
 
 
@@ -150,6 +151,7 @@ def _holding_from_raw(h: dict[str, Any]) -> HoldingRow:
         market_share=_to_float(h.get("market_share")),
         sector_share=_to_float(h.get("sector_share")),
         subsector_share=_to_float(h.get("subsector_share")),
+        style_share=_to_float(h.get("style_share")),
         residual_share=_to_float(h.get("residual_share")),
     )
 
@@ -290,6 +292,7 @@ def _holding_row_from_fund_holding(h: FundHolding) -> HoldingRow:
         market_share=_to_float(h.market_share),
         sector_share=_to_float(h.sector_share),
         subsector_share=_to_float(h.subsector_share),
+        style_share=_to_float(h.style_share),
         residual_share=_to_float(h.residual_share),
     )
 

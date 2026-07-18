@@ -108,7 +108,9 @@ def check_one(p1_cache: Path, *, generated_utc: str) -> tuple[bool, list[str]]:
     cm = snap_a.core_metrics
     shares = [cm.market_share, cm.sector_share, cm.subsector_share, cm.residual_share]
     if all(s is not None for s in shares):
-        total = sum(shares)
+        # FF2 (v4): residual_share is true idio and style_share is the 5th leg.
+        # Pre-v4 (style_share None): the 4 legs already sum to ~1 (residual full).
+        total = sum(shares) + (cm.style_share or 0.0)
         if not 0.99 <= total <= 1.01:
             failures.append(f"variance shares sum to {total:.4f} (expected ≈ 1.0)")
 
@@ -254,7 +256,8 @@ def check_one_fund(f1_cache: Path, *, generated_utc: str) -> tuple[bool, list[st
     cm = snap_a.core_metrics
     shares = [cm.market_share, cm.sector_share, cm.subsector_share, cm.residual_share]
     if all(s is not None for s in shares):
-        total = sum(shares)
+        # v4: add style_share (residual_share is true idio); pre-v4 it's None.
+        total = sum(shares) + (cm.style_share or 0.0)
         if not 0.99 <= total <= 1.01:
             failures.append(f"variance shares sum to {total:.4f} (expected ~1.0)")
 

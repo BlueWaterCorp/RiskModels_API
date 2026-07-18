@@ -283,6 +283,110 @@ def test_enrich_populates_l3_shares_from_security_history_latest(monkeypatch):
     assert h.residual_share == pytest.approx(0.20)
 
 
+def test_resolve_l3_v4_splits_style_from_residual(monkeypatch):
+    """FF2 (v4): when l3_style_er / l3_stock_specific_er are present, style_share
+    is the style leg and residual_share is the TRUE idio (not the full residual).
+    All five legs sum to ~1."""
+
+    def _fake_query(_path, params):
+        assert "l3_style_er" in params["select"]
+        return [
+            {
+                "symbol": "BW-FIGI-AAPL",
+                "l3_mkt_er": 0.55,
+                "l3_sec_er": 0.20,
+                "l3_sub_er": 0.05,
+                "l3_res_er": 0.20,  # full residual = style + idio
+                "l3_style_er": 0.08,
+                "l3_stock_specific_er": 0.12,
+            }
+        ]
+
+    monkeypatch.setattr(_fund_data, "_supabase_query", _fake_query)
+    s = _resolve_l3_decomposition(["BW-FIGI-AAPL"])["BW-FIGI-AAPL"]
+    assert s["style_share"] == pytest.approx(0.08)
+    assert s["residual_share"] == pytest.approx(0.12)  # true idio, not 0.20
+    assert sum(v for v in s.values() if v is not None) == pytest.approx(1.0)
+
+
+def test_resolve_l3_pre_v4_falls_back_to_full_residual(monkeypatch):
+    """Pre-migration: the extended select 400s → [] (soft-fail), so the reader
+    retries the base 4-leg select and residual_share carries the full residual."""
+    calls: list[str] = []
+
+    def _fake_query(_path, params):
+        calls.append(params["select"])
+        if "l3_style_er" in params["select"]:
+            return []  # simulate unknown-column soft-fail
+        return [
+            {
+                "symbol": "BW-FIGI-AAPL",
+                "l3_mkt_er": 0.55,
+                "l3_sec_er": 0.20,
+                "l3_sub_er": 0.05,
+                "l3_res_er": 0.20,
+            }
+        ]
+
+    monkeypatch.setattr(_fund_data, "_supabase_query", _fake_query)
+    s = _resolve_l3_decomposition(["BW-FIGI-AAPL"])["BW-FIGI-AAPL"]
+    assert s["style_share"] is None
+    assert s["residual_share"] == pytest.approx(0.20)  # full residual
+    assert len(calls) == 2  # extended tried, then base fallback
+
+
+def test_resolve_l3_per_row_feature_detect(monkeypatch):
+    """A v4 row and a null-style row in the same response are handled
+    independently: the null-style row falls back to the full residual."""
+
+    def _fake_query(_path, _params):
+        return [
+            {
+                "symbol": "V4",
+                "l3_mkt_er": 0.5, "l3_sec_er": 0.2, "l3_sub_er": 0.1,
+                "l3_res_er": 0.2, "l3_style_er": 0.07,
+                "l3_stock_specific_er": 0.13,
+            },
+            {
+                "symbol": "PREV4",
+                "l3_mkt_er": 0.5, "l3_sec_er": 0.2, "l3_sub_er": 0.1,
+                "l3_res_er": 0.2, "l3_style_er": None,
+                "l3_stock_specific_er": None,
+            },
+        ]
+
+    monkeypatch.setattr(_fund_data, "_supabase_query", _fake_query)
+    out = _resolve_l3_decomposition(["V4", "PREV4"])
+    assert out["V4"]["style_share"] == pytest.approx(0.07)
+    assert out["V4"]["residual_share"] == pytest.approx(0.13)
+    assert out["PREV4"]["style_share"] is None
+    assert out["PREV4"]["residual_share"] == pytest.approx(0.20)
+
+
+def test_enrich_populates_style_share_from_v4_split(monkeypatch):
+    """The per-holding headline: style_share flows through enrich →
+    FundHolding, and residual_share becomes the true idio."""
+    monkeypatch.setattr(_fund_data, "_resolve_holdings_metadata", lambda _syms: {})
+    monkeypatch.setattr(
+        _fund_data,
+        "_resolve_l3_decomposition",
+        lambda syms: {
+            "BW-FIGI-AAPL": {
+                "market_share": 0.55,
+                "sector_share": 0.20,
+                "subsector_share": 0.05,
+                "style_share": 0.08,
+                "residual_share": 0.12,
+            },
+        },
+    )
+    fd = _fund_with_holdings(symbols=["BW-FIGI-AAPL"])
+    out = enrich_fund_data_with_supabase(fd)
+    h = out.holdings[0]
+    assert h.style_share == pytest.approx(0.08)
+    assert h.residual_share == pytest.approx(0.12)
+
+
 def test_enrich_soft_fails_when_supabase_unreachable(monkeypatch):
     """No creds → enricher returns the FundData unchanged (no raise)."""
     monkeypatch.setattr(_fund_data, "_supabase_creds", lambda: None)

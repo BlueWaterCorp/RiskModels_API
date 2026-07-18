@@ -167,4 +167,13 @@ if FIXTURES:
                 assert 0.0 <= port.coverage_pct <= 1.0
             for h in port.holdings:
                 assert 0.0 <= h.weight <= 1.0
+                # Per-holding variance shares sum to ~1 when populated. v4 adds
+                # style_share (residual_share is true idio); pre-v4 style is None.
+                base = [h.market_share, h.sector_share,
+                        h.subsector_share, h.residual_share]
+                if all(s is not None for s in base):
+                    total = sum(base) + (h.style_share or 0.0)
+                    assert 0.98 <= total <= 1.02, (
+                        f"holding {h.ticker} shares sum to {total:.4f}"
+                    )
             assert len(port.holdings) <= port.total_holdings_count

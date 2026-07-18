@@ -123,13 +123,20 @@ def _realized_variance_shares(
 class FundHolding:
     """A single position in the fund's most-recent holdings snapshot.
 
-    The four risk-share fields (``market_share``, ``sector_share``,
-    ``subsector_share``, ``residual_share``) are the per-stock ERM3 L3
-    explained-risk decomposition. They're shares of *that holding's*
-    explained variance and must sum to ~1.0 when present. The F1
-    holdings chart uses them to colour each bar's segments — so a
+    The risk-share fields (``market_share``, ``sector_share``,
+    ``subsector_share``, ``style_share``, ``residual_share``) are the
+    per-stock ERM3 L3 explained-risk decomposition. They're shares of
+    *that holding's* explained variance and must sum to ~1.0 when present.
+    The F1 holdings chart uses them to colour each bar's segments — so a
     holding's bar shows both its weight (total length) and its risk
     composition (segment widths × weight = share of fund's variance).
+
+    ``style_share`` is the FF2 (v4) SMB+HML slice split out of the L3
+    residual; it's ``None`` on pre-v4 stocks, where ``residual_share``
+    carries the full style+idio residual (4-leg fallback). On v4 stocks
+    ``residual_share`` is the *true* idiosyncratic slice and
+    ``style_share`` the style slice — matching the portfolio-level split
+    (SDK/render-svc #262/#263).
     """
 
     symbol: str            # canonical bw_sym_id (e.g. "BW-FIGI-BBG000B9XRY4")
@@ -142,6 +149,7 @@ class FundHolding:
     market_share: float | None = None
     sector_share: float | None = None
     subsector_share: float | None = None
+    style_share: float | None = None      # FF2 SMB+HML slice; None pre-v4
     residual_share: float | None = None
 
 
@@ -392,6 +400,7 @@ def _fund_holding_from_plain(h: Any) -> FundHolding:
         market_share=h.get("market_share"),
         sector_share=h.get("sector_share"),
         subsector_share=h.get("subsector_share"),
+        style_share=h.get("style_share"),
         residual_share=h.get("residual_share"),
     )
 
@@ -504,6 +513,7 @@ def _fund_data_legacy_cache_dict_to_cls(cls: type[FundData], d: dict[str, Any]) 
             market_share=row.get("market_share"),
             sector_share=row.get("sector_share"),
             subsector_share=row.get("subsector_share"),
+            style_share=row.get("style_share"),
             residual_share=row.get("residual_share"),
         )
 
@@ -867,28 +877,59 @@ def _resolve_holdings_metadata(symbols: list[str]) -> dict[str, dict[str, Any]]:
     return {r["symbol"]: r for r in rows}
 
 
-def _resolve_l3_decomposition(symbols: list[str]) -> dict[str, dict[str, float]]:
+def _resolve_l3_decomposition(symbols: list[str]) -> dict[str, dict[str, float | None]]:
     """Resolve ``symbol → ERM3 L3 explained-variance share dict``."""
     if not symbols:
         return {}
     in_clause = "(" + ",".join(symbols) + ")"
+    base_cols = "symbol,l3_mkt_er,l3_sec_er,l3_sub_er,l3_res_er"
+    # FF2 (v4) split columns. Try them first; _supabase_query soft-fails an
+    # unknown-column 400 to [] (pre-migration), so an empty result triggers the
+    # base 4-leg retry. This keeps the reader deployable ahead of the migration.
     rows = _supabase_query(
         "security_history_latest",
         {
             "symbol": f"in.{in_clause}",
             "periodicity": "eq.daily",
-            "select": "symbol,l3_mkt_er,l3_sec_er,l3_sub_er,l3_res_er",
+            "select": base_cols + ",l3_style_er,l3_stock_specific_er",
         },
     )
-    return {
-        r["symbol"]: {
+    if not rows:
+        rows = _supabase_query(
+            "security_history_latest",
+            {
+                "symbol": f"in.{in_clause}",
+                "periodicity": "eq.daily",
+                "select": base_cols,
+            },
+        )
+
+    out: dict[str, dict[str, float]] = {}
+    for r in rows:
+        style = r.get("l3_style_er")
+        idio = r.get("l3_stock_specific_er")
+        base = {
             "market_share": float(r["l3_mkt_er"] or 0.0),
             "sector_share": float(r["l3_sec_er"] or 0.0),
             "subsector_share": float(r["l3_sub_er"] or 0.0),
-            "residual_share": float(r["l3_res_er"] or 0.0),
         }
-        for r in rows
-    }
+        if style is not None and idio is not None:
+            # v4: L3 residual splits into style (SMB+HML) + true idio. The
+            # identity l3_res_er = l3_style_er + l3_stock_specific_er holds, so
+            # residual_share here is the *true* idio slice, not the full residual.
+            out[r["symbol"]] = {
+                **base,
+                "style_share": float(style or 0.0),
+                "residual_share": float(idio or 0.0),
+            }
+        else:
+            # pre-v4 stock: 4-leg, residual carries the full style+idio residual.
+            out[r["symbol"]] = {
+                **base,
+                "style_share": None,
+                "residual_share": float(r["l3_res_er"] or 0.0),
+            }
+    return out
 
 
 def _share_or_fallback(
@@ -939,6 +980,8 @@ def enrich_fund_data_with_supabase(fd: FundData) -> FundData:
                     shares, "sector_share", h.sector_share),
                 subsector_share=_share_or_fallback(
                     shares, "subsector_share", h.subsector_share),
+                style_share=_share_or_fallback(
+                    shares, "style_share", h.style_share),
                 residual_share=_share_or_fallback(
                     shares, "residual_share", h.residual_share),
             )
@@ -1026,6 +1069,7 @@ def get_data_for_f1(
                     market_share=shares.get("market_share"),
                     sector_share=shares.get("sector_share"),
                     subsector_share=shares.get("subsector_share"),
+                    style_share=shares.get("style_share"),
                     residual_share=shares.get("residual_share"),
                 ))
     except FileNotFoundError:
@@ -1606,11 +1650,13 @@ def get_data_for_f1(
         }
 
     if holdings_list:
-        agg = {"market": 0.0, "sector": 0.0, "subsector": 0.0, "residual": 0.0}
+        agg = {"market": 0.0, "sector": 0.0, "subsector": 0.0,
+               "style": 0.0, "residual": 0.0}
         for h in holdings_list:
             agg["market"]    += (h.market_share    or 0.0) * h.weight
             agg["sector"]    += (h.sector_share    or 0.0) * h.weight
             agg["subsector"] += (h.subsector_share or 0.0) * h.weight
+            agg["style"]     += (h.style_share     or 0.0) * h.weight
             agg["residual"]  += (h.residual_share  or 0.0) * h.weight
         total = sum(agg.values())
         if total > 0:
@@ -1618,6 +1664,7 @@ def get_data_for_f1(
                 "l1_market_er":    agg["market"]    / total,
                 "l2_sector_er":    agg["sector"]    / total,
                 "l3_subsector_er": agg["subsector"] / total,
+                "style_er":        agg["style"]     / total,
                 "l3_residual_er":  agg["residual"]  / total,
             }
         if pm is None and pm_naive is not None:
