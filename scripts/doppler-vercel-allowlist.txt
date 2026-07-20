@@ -41,6 +41,11 @@ RENDER_SVC_URL
 GCP_SERVICE_ACCOUNT_JSON
 ZARR_GCS_PREFIX
 ZARR_FACTOR_SET_ID
+# Funds-side per-domain trees (Funds_DAG #76 split; reader: lib/dal/funds-zarr-reader.ts).
+# ZARR_FUNDS_GCS_PREFIX intentionally absent — code default rm_api_data/ERM3_Funds is correct.
+ZARR_FILERS_GCS_PREFIX
+ZARR_ETFS_GCS_PREFIX
+ZARR_BENCH_GCS_PREFIX
 UPSTASH_REDIS_REST_URL
 UPSTASH_REDIS_REST_TOKEN
 

@@ -11,6 +11,21 @@
  * `rm_api_data` per ARCHITECTURE_FUNDS_API.md §3.1.1; only the basePath
  * differs.
  *
+ * Per-domain tree split (Funds_DAG #76): the writer moved filer and ETF
+ * trees out of the shared `ERM3_Funds` root into their own roots
+ * (`ERM3_Filers/bw_filer_id/…`, `ERM3_ETFs/bw_etf_id/…`) — benchmarks moved
+ * to a reference tree as well (`ERM3_Reference/bw_bench_id/…`). The reader
+ * follows via three optional overrides, each tried FIRST with an automatic
+ * fallback to the shared `ZARR_FUNDS_GCS_PREFIX` tree — the dual-read
+ * window that covers the gap between the writer's #76 config change and
+ * the next full/nuclear run that actually publishes the new trees:
+ *   - `ZARR_FILERS_GCS_PREFIX` — filers + synthetic composites (synths share
+ *     the filer-family tree, as they did pre-split)
+ *   - `ZARR_ETFS_GCS_PREFIX`   — ETF sponsor holdings
+ *   - `ZARR_BENCH_GCS_PREFIX`  — benchmark/reference surfaces
+ * Funds, cohort cells (portfolio_style/, equity_style_9box/) stay on the
+ * shared prefix — the funds domain tree did not move.
+ *
  * Folder-as-entity-key convention (BWMACRO/docs/13f_pipeline_plan.md §2):
  * dataset names are universal (ds_ph, ds_portfolio); the path prefix
  * (`bw_fund_id/` vs `bw_filer_id/`) discriminates entity kind. ds_nav is
@@ -180,35 +195,98 @@ class FsZarrStore {
   }
 }
 
-function parseFundsZarrPrefix(): { bucket: string; basePath: string } {
-  const raw = (process.env.ZARR_FUNDS_GCS_PREFIX ?? "rm_api_data/ERM3_Funds").trim();
+const FUNDS_ZARR_PREFIX_DEFAULT = "rm_api_data/ERM3_Funds";
+
+function parseZarrPrefix(raw: string): { bucket: string; basePath: string } {
   const i = raw.indexOf("/");
   if (i <= 0) return { bucket: raw || "rm_api_data", basePath: "" };
   return { bucket: raw.slice(0, i), basePath: raw.slice(i + 1).replace(/\/$/, "") };
 }
 
-async function openZarrGroupAt(
+function parseFundsZarrPrefix(): { bucket: string; basePath: string } {
+  return parseZarrPrefix(
+    (process.env.ZARR_FUNDS_GCS_PREFIX ?? FUNDS_ZARR_PREFIX_DEFAULT).trim(),
+  );
+}
+
+/**
+ * Resolve the candidate GCS prefixes for a domain tree (Funds_DAG #76
+ * split), most-preferred first: the per-domain override
+ * (`domainEnv`, e.g. ZARR_FILERS_GCS_PREFIX → rm_api_data/ERM3_Filers) when
+ * set and non-empty, then the shared `ZARR_FUNDS_GCS_PREFIX` (or its
+ * default) as fallback.
+ *
+ * The fallback is the dual-read window: the writer cut over to per-domain
+ * trees in #76 but publishes them only on the next full/nuclear run —
+ * until then the moved trees don't exist in GCS and every read must land
+ * on the old shared tree. Trying override-first then shared means reads
+ * follow the split automatically once the writer publishes, and survive
+ * the old tree's later retirement. Exported for tests.
+ */
+export function domainZarrPrefixCandidates(
+  domainEnv: string,
+): { bucket: string; basePath: string }[] {
+  const shared = parseFundsZarrPrefix();
+  const override = process.env[domainEnv]?.trim();
+  if (!override) return [shared];
+  const preferred = parseZarrPrefix(override);
+  if (
+    preferred.bucket === shared.bucket &&
+    preferred.basePath === shared.basePath
+  ) {
+    return [shared];
+  }
+  return [preferred, shared];
+}
+
+async function openZarrGroupAtPrefix(
   relativePath: string,
+  prefix: { bucket: string; basePath: string },
 ): Promise<Group<Readable> | null> {
   try {
-    let raw: FsZarrStore | GcsZarrStore;
-    const localRoot = process.env.ZARR_FUNDS_LOCAL_ROOT?.trim();
-    if (localRoot) {
-      raw = new FsZarrStore(`${localRoot}/${relativePath}`.replace(/\/+/g, "/"));
-    } else {
-      const { bucket: bucketName, basePath } = parseFundsZarrPrefix();
-      const fullPrefix = `${basePath}/${relativePath}`
-        .replace(/\/+/g, "/")
-        .replace(/^\//, "");
-      raw = new GcsZarrStore(getGcs().bucket(bucketName), fullPrefix);
-    }
+    const fullPrefix = `${prefix.basePath}/${relativePath}`
+      .replace(/\/+/g, "/")
+      .replace(/^\//, "");
+    const raw = new GcsZarrStore(getGcs().bucket(prefix.bucket), fullPrefix);
     const consolidated = await tryWithConsolidated(raw);
     const store = consolidated as unknown as Readable;
     return (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
   } catch {
-    console.error("[funds-zarr] open group failed");
     return null;
   }
+}
+
+async function openZarrGroupAt(
+  relativePath: string,
+  domainEnv?: string,
+): Promise<Group<Readable> | null> {
+  const localRoot = process.env.ZARR_FUNDS_LOCAL_ROOT?.trim();
+  if (localRoot) {
+    try {
+      const raw = new FsZarrStore(
+        `${localRoot}/${relativePath}`.replace(/\/+/g, "/"),
+      );
+      const consolidated = await tryWithConsolidated(raw);
+      const store = consolidated as unknown as Readable;
+      return (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
+    } catch {
+      console.error("[funds-zarr] open group failed");
+      return null;
+    }
+  }
+  // Domain-split reads (Funds_DAG #76): try the per-domain tree first, then
+  // fall back to the shared tree — see domainZarrPrefixCandidates. The extra
+  // attempt only fires while the moved tree is absent (a couple of 404s on
+  // cache miss), and for entities that are genuinely missing either way.
+  const candidates = domainEnv
+    ? domainZarrPrefixCandidates(domainEnv)
+    : [parseFundsZarrPrefix()];
+  for (const prefix of candidates) {
+    const grp = await openZarrGroupAtPrefix(relativePath, prefix);
+    if (grp) return grp;
+  }
+  console.error("[funds-zarr] open group failed");
+  return null;
 }
 
 async function openFundZarrGroup(
@@ -232,7 +310,12 @@ async function openFilerZarrGroup(
   basename: string,
 ): Promise<Group<Readable> | null> {
   const family = isSyntheticEntityId(bwFilerId) ? "bw_synth_id" : "bw_filer_id";
-  return openZarrGroupAt(`${family}/${bwFilerId}/${basename}`);
+  // Filers domain tree (Funds_DAG #76): ERM3_Filers/… when
+  // ZARR_FILERS_GCS_PREFIX is set, else the shared funds prefix.
+  return openZarrGroupAt(
+    `${family}/${bwFilerId}/${basename}`,
+    "ZARR_FILERS_GCS_PREFIX",
+  );
 }
 
 /** Per-cell stores: portfolio_style/{Cell_Name}/... and equity_style_9box/{Cell_Name}/... */
@@ -1949,7 +2032,12 @@ async function openEtfZarrGroup(
   bwEtfId: string,
   basename: string,
 ): Promise<Group<Readable> | null> {
-  return openZarrGroupAt(`bw_etf_id/${bwEtfId}/${basename}`);
+  // ETFs domain tree (Funds_DAG #76): ERM3_ETFs/… when ZARR_ETFS_GCS_PREFIX
+  // is set, else the shared funds prefix.
+  return openZarrGroupAt(
+    `bw_etf_id/${bwEtfId}/${basename}`,
+    "ZARR_ETFS_GCS_PREFIX",
+  );
 }
 
 export interface EtfHolding {
@@ -2117,7 +2205,12 @@ async function openBenchmarkZarrGroup(
   bwBenchId: string,
   basename: string,
 ): Promise<Group<Readable> | null> {
-  return openZarrGroupAt(`bw_bench_id/${bwBenchId}/${basename}`);
+  // Benchmarks domain tree (Funds_DAG #76): ERM3_Reference/… when
+  // ZARR_BENCH_GCS_PREFIX is set, else the shared funds prefix.
+  return openZarrGroupAt(
+    `bw_bench_id/${bwBenchId}/${basename}`,
+    "ZARR_BENCH_GCS_PREFIX",
+  );
 }
 
 /** Dispatch a portfolio_id to its ds_*.zarr group by prefix (fund / filer / ETF / benchmark). */

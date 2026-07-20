@@ -1,0 +1,4 @@
+# Scoped: Funds_DAG #76 per-domain GCS tree read-prefixes (lib/dal/funds-zarr-reader.ts).
+ZARR_FILERS_GCS_PREFIX
+ZARR_ETFS_GCS_PREFIX
+ZARR_BENCH_GCS_PREFIX
