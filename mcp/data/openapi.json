@@ -12669,7 +12669,7 @@
     "/data/benchmark-fit": {
       "get": {
         "summary": "BenchmarkFit — fit a portfolio surface to a benchmark",
-        "description": "`BenchmarkFit` (the comparison facet — CANONICAL_INTELLIGENCE_OBJECTS.md §9): fit a subject portfolio's weight vector against a benchmark surface at a common teo (the subject's latest teo ≤ `as_of`; the benchmark then at its latest teo ≤ the subject's teo — never peeking ahead). Returns active share, an active-weight RMS (a coarse tracking-error *proxy* — factor-based TE is a follow-on), overlap, and the top over/underweights. `subject` = a `BW-*` portfolio id (`BW-FUND-…`, `BW-FILER-…`, `BW-ETF-…`, `BW-BENCH-…`) or an ETF ticker (→ `BW-ETF-{TICKER}`); `benchmark` = a `bw_bench_id` or an alias (`SPY`, `70/30`, …) — the static benches, free on the gateway plane — or a custom bench (billed $0.005/call, capability `bench-active-custom`, parity with per-entity fund reads): `ff_own` (free-float-cap weight of the subject's OWN holdings — conviction vs what market cap alone implies; held symbols without a valid cap are dropped and counted in `benchmark_provenance`, never synthesized), `cell_<9-box slug>` (e.g. `cell_large-growth` — the style cell's MV weight surface at the latest teo ≤ the subject's teo), or `all` (fan-out: SPY + ff_own + the subject's declared style cell when resolvable, one call, response `{ fits: [...], omitted: [...] }`).\n",
+        "description": "`BenchmarkFit` (the comparison facet — CANONICAL_INTELLIGENCE_OBJECTS.md §9): fit a subject portfolio's weight vector against a benchmark surface at a common teo (the subject's latest teo ≤ `as_of`; the benchmark then at its latest teo ≤ the subject's teo — never peeking ahead). Returns active share, an active-weight RMS (a coarse tracking-error *proxy* — factor-based TE is a follow-on), overlap, and the top over/underweights. `subject` = a `BW-*` portfolio id (`BW-FUND-…`, `BW-FILER-…`, `BW-ETF-…`, `BW-BENCH-…`) or an ETF ticker (→ `BW-ETF-{TICKER}`); `benchmark` = a `bw_bench_id` or an alias (`SPY`, `70/30`, …) — the static benches, free on the gateway plane — or a custom bench (billed $0.005/call, capability `bench-active-custom`, parity with per-entity fund reads): `ff_own` (free-float-cap weight of the subject's OWN holdings — conviction vs what market cap alone implies; held symbols without a valid cap are dropped and counted in `benchmark_provenance`, never synthesized), `cell_<9-box slug>` (e.g. `cell_large-growth` — the style cell's MV weight surface at the latest teo ≤ the subject's teo), or `all` (fan-out: SPY + ff_own + the subject's declared style cell when resolvable, one call, response `{ fits: [...], omitted: [...] }`). Readiness gate: benchmarks under development (hollow trailing teos, shallow history, unverifiable stores) are blocked with `409` before billing; on `all` they are listed in `omitted[]` with reason `under_development`.\n",
         "operationId": "getBenchmarkFit",
         "tags": [
           "Funds Data Plane"
@@ -12906,6 +12906,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Benchmark is under development (readiness gate, pre-billing).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "benchmark 'BW-BENCH-SPY' is under development"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "development"
+                      ]
+                    }
+                  }
                 }
               }
             }

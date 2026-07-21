@@ -62,6 +62,7 @@ import {
   applyScrubToHoldings,
 } from "@/lib/dal/symbols-batch";
 import { parseZarrGcsPrefix } from "@/lib/zarr-config";
+import { isBenchLive } from "@/lib/benchmark-registry";
 import {
   styleNameToSlug,
   styleSlugToName,
@@ -3113,29 +3114,78 @@ export interface BenchActiveAllResult {
  * benches whose inputs are missing are listed in `omitted`, never fabricated.
  * Returns null when no fit could be computed at all.
  */
+export interface BenchFanOutItem {
+  /** Label used in fits/omitted (SPY, ff_own, cell_<slug>). */
+  label: string;
+  /** Registry key for the readiness gate. */
+  benchId: string;
+  /** computeBenchmarkFit / computeBenchActiveFit input. */
+  input: string;
+  kind: "static" | "custom";
+}
+
+/**
+ * The `all` fan-out plan against the readiness registry: benches marked
+ * `development` are omitted with reason `under_development` (never
+ * computed); a subject with no declared style cell omits `cell_*`.
+ * Pure — the compute loop below just executes it.
+ */
+export function planBenchActiveFanOut(cellSlug: string | null): {
+  live: BenchFanOutItem[];
+  omitted: { benchmark: string; reason: string }[];
+} {
+  const items: BenchFanOutItem[] = [
+    { label: "SPY", benchId: "BW-BENCH-SPY", input: "SPY", kind: "static" },
+    { label: FF_OWN_BENCH_ID, benchId: FF_OWN_BENCH_ID, input: FF_OWN_BENCH_ID, kind: "custom" },
+  ];
+  if (cellSlug) {
+    items.push({
+      label: `cell_${cellSlug}`,
+      benchId: `cell_${cellSlug}`,
+      input: `cell_${cellSlug}`,
+      kind: "custom",
+    });
+  }
+  const live = items.filter((i) => isBenchLive(i.benchId));
+  const omitted = items
+    .filter((i) => !isBenchLive(i.benchId))
+    .map((i) => ({ benchmark: i.label, reason: "under_development" }));
+  if (!cellSlug) {
+    omitted.push({ benchmark: "cell_*", reason: "no declared style cell for this subject" });
+  }
+  return { live, omitted };
+}
+
 export async function computeBenchActiveFitAll(
   subjectId: string,
   opts: { asOf?: string; topN?: number } = {},
 ): Promise<BenchActiveAllResult | null> {
   const resolvedSubject = resolveSubjectId(subjectId);
   const fits: BenchmarkFitResult[] = [];
-  const omitted: { benchmark: string; reason: string }[] = [];
 
-  const spy = await computeBenchmarkFit(resolvedSubject, "SPY", opts);
-  if (spy) fits.push(spy);
-  else omitted.push({ benchmark: "SPY", reason: "subject or SPY surface unavailable" });
-
-  const ffOwn = await computeBenchActiveFit(resolvedSubject, FF_OWN_BENCH_ID, opts);
-  if (ffOwn) fits.push(ffOwn);
-  else omitted.push({ benchmark: FF_OWN_BENCH_ID, reason: "subject surface or cap data unavailable" });
-
+  // Readiness gate: development benches are omitted, never computed.
   const cell = await resolveSubjectStyleCell(resolvedSubject);
-  if (cell) {
-    const cellFit = await computeBenchActiveFit(resolvedSubject, `cell_${cell.slug}`, opts);
-    if (cellFit) fits.push(cellFit);
-    else omitted.push({ benchmark: `cell_${cell.slug}`, reason: "cell surface unavailable" });
-  } else {
-    omitted.push({ benchmark: "cell_*", reason: "no declared style cell for this subject" });
+  const plan = planBenchActiveFanOut(cell?.slug ?? null);
+  const omitted = [...plan.omitted];
+
+  for (const item of plan.live) {
+    const fit =
+      item.kind === "static"
+        ? await computeBenchmarkFit(resolvedSubject, item.input, opts)
+        : await computeBenchActiveFit(resolvedSubject, item.input, opts);
+    if (fit) {
+      fits.push(fit);
+    } else {
+      omitted.push({
+        benchmark: item.label,
+        reason:
+          item.kind === "static"
+            ? "subject or SPY surface unavailable"
+            : item.benchId === FF_OWN_BENCH_ID
+              ? "subject surface or cap data unavailable"
+              : "cell surface unavailable",
+      });
+    }
   }
 
   if (fits.length === 0) return null;

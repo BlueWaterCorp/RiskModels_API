@@ -12,6 +12,7 @@ import {
   buildFfOwnBenchWeights,
   isCustomBenchInput,
   parseBenchRef,
+  planBenchActiveFanOut,
 } from "@/lib/dal/funds-zarr-reader";
 
 describe("parseBenchRef", () => {
@@ -132,5 +133,35 @@ describe("buildFfOwnBenchWeights", () => {
       buildFfOwnBenchWeights(subject, new Map([["BW-A", null]])),
     ).toBeNull();
     expect(buildFfOwnBenchWeights(new Map(), new Map())).toBeNull();
+  });
+});
+
+
+describe("planBenchActiveFanOut (readiness gate)", () => {
+  it("omits development benches with reason under_development", () => {
+    // Real registry: SPY is development (hollow trailing teos), ff_own +
+    // large-blend are live.
+    const plan = planBenchActiveFanOut("large-blend");
+    expect(plan.live.map((i) => i.label)).toEqual(["ff_own", "cell_large-blend"]);
+    expect(plan.omitted).toEqual([{ benchmark: "SPY", reason: "under_development" }]);
+  });
+
+  it("omits mid cells (Mid-Cap naming mismatch) while keeping ff_own", () => {
+    const plan = planBenchActiveFanOut("mid-blend");
+    expect(plan.live.map((i) => i.label)).toEqual(["ff_own"]);
+    expect(plan.omitted).toEqual([
+      { benchmark: "SPY", reason: "under_development" },
+      { benchmark: "cell_mid-blend", reason: "under_development" },
+    ]);
+  });
+
+  it("omits cell_* entirely when the subject has no declared style cell", () => {
+    const plan = planBenchActiveFanOut(null);
+    expect(plan.live.map((i) => i.label)).toEqual(["ff_own"]);
+    expect(plan.omitted).toContainEqual({
+      benchmark: "cell_*",
+      reason: "no declared style cell for this subject",
+    });
+    expect(plan.omitted).toContainEqual({ benchmark: "SPY", reason: "under_development" });
   });
 });

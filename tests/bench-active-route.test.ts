@@ -10,6 +10,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ billedCalls: [] as string[] }));
+const reg = vi.hoisted(() => ({ blocked: new Set<string>() }));
+
+vi.mock("@/lib/benchmark-registry", () => ({
+  // Controllable readiness gate: live unless explicitly blocked in a test.
+  isBenchLive: (id: string) => !reg.blocked.has(id),
+}));
 
 vi.mock("@/lib/agent/billing-middleware", () => ({
   // Stand-in for the withBilling wrapper: records every billed-plane entry
@@ -26,6 +32,13 @@ vi.mock("@/lib/dal/funds-zarr-reader", () => ({
   computeBenchmarkFit: vi.fn(),
   computeBenchActiveFit: vi.fn(),
   computeBenchActiveFitAll: vi.fn(),
+  // Static-id resolution stand-in: BW-BENCH-* passes through, "NOPE" stays
+  // unresolvable (404 path), aliases map to a resolved id.
+  resolveBenchmarkId: (s: string) => {
+    const v = (s ?? "").trim();
+    if (!v || v === "NOPE") return null;
+    return v.toUpperCase().startsWith("BW-BENCH-") ? v.toUpperCase() : `BW-BENCH-${v.toUpperCase()}`;
+  },
 }));
 
 import { NextRequest } from "next/server";
@@ -91,6 +104,7 @@ beforeEach(() => {
   mockCustomFit.mockReset();
   mockAllFit.mockReset();
   h.billedCalls.length = 0;
+  reg.blocked.clear();
 });
 
 describe("GET /api/data/benchmark-fit — static bench stays gateway-free", () => {
@@ -189,5 +203,65 @@ describe("GET /api/data/benchmark-fit — custom benches go through billing", ()
     expect(res.status).toBe(400);
     res = await GET(req("http://x/api/data/benchmark-fit?subject=BW-FUND-X&benchmark=all&as_of=last-week"));
     expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/data/benchmark-fit — readiness gate (409, pre-billing)", () => {
+  it("409 on a development static bench — DAL never called", async () => {
+    reg.blocked.add("BW-BENCH-SPY");
+    const res = await GET(req("http://x/api/data/benchmark-fit?subject=BW-FUND-S000004310&benchmark=SPY"));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toEqual({
+      error: "benchmark 'BW-BENCH-SPY' is under development",
+      status: "development",
+    });
+    expect(mockStaticFit).not.toHaveBeenCalled();
+    expect(h.billedCalls).toEqual([]);
+  });
+
+  it("409 on an unregistered (fail-closed) static bench id", async () => {
+    reg.blocked.add("BW-BENCH-EQ-LARGE-VALUE-60-40");
+    const res = await GET(req("http://x/api/data/benchmark-fit?subject=BW-FUND-X&benchmark=BW-BENCH-EQ-LARGE-VALUE-60-40"));
+    expect(res.status).toBe(409);
+    expect(mockStaticFit).not.toHaveBeenCalled();
+  });
+
+  it("409 on a development cell bench BEFORE the billed wrapper runs", async () => {
+    reg.blocked.add("cell_mid-blend");
+    const res = await GET(req("http://x/api/data/benchmark-fit?subject=BW-FUND-X&benchmark=cell_mid-blend"));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.status).toBe("development");
+    // Pre-billing: the withBilling wrapper was never entered.
+    expect(h.billedCalls).toEqual([]);
+    expect(mockCustomFit).not.toHaveBeenCalled();
+  });
+
+  it("409 on ff_own when blocked, also pre-billing", async () => {
+    reg.blocked.add("ff_own");
+    const res = await GET(req("http://x/api/data/benchmark-fit?subject=BW-FUND-X&benchmark=ff_own"));
+    expect(res.status).toBe(409);
+    expect(h.billedCalls).toEqual([]);
+  });
+
+  it("all is never 409 — development members surface via omitted[] in the payload", async () => {
+    mockAllFit.mockResolvedValue({
+      fit_schema_version: "benchmark-fit/1.1",
+      subject_id: "BW-FUND-S000004310",
+      subject_source_kind: "fund",
+      subject_teo: "2026-04-30",
+      fits: [FF_OWN_FIT],
+      omitted: [
+        { benchmark: "SPY", reason: "under_development" },
+        { benchmark: "cell_mid-blend", reason: "under_development" },
+      ],
+    });
+    const res = await GET(req("http://x/api/data/benchmark-fit?subject=BW-FUND-S000004310&benchmark=all"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fits).toHaveLength(1);
+    expect(body.omitted).toContainEqual({ benchmark: "SPY", reason: "under_development" });
+    expect(body.omitted).toContainEqual({ benchmark: "cell_mid-blend", reason: "under_development" });
   });
 });

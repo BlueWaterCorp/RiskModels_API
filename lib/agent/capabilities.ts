@@ -2103,7 +2103,10 @@ export const CAPABILITIES: Capability[] = [
       "counted in benchmark_provenance (cap_var, cap_coverage, caps_as_of, n_cap_dropped), " +
       "never synthesized. cell_<slug> uses the cell's MV weight surface at the latest teo ≤ " +
       "the subject's teo. Returns the BenchmarkFit shape (active share, active-weight RMS, " +
-      "overlap, top over/underweights) with benchmark_kind + benchmark_provenance.",
+      "overlap, top over/underweights) with benchmark_kind + benchmark_provenance. Readiness " +
+      "gate: benches under development (hollow trailing teos / shallow history) are blocked " +
+      "with HTTP 409 before billing — see lib/benchmark-registry.ts; on `all` they move to " +
+      "omitted[] with reason under_development.",
     endpoint: "/api/data/benchmark-fit",
     method: "GET",
     parameters: {

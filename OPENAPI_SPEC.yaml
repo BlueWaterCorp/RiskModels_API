@@ -8580,7 +8580,10 @@ paths:
         (e.g. `cell_large-growth` — the style cell's MV weight surface at the
         latest teo ≤ the subject's teo), or `all` (fan-out: SPY + ff_own +
         the subject's declared style cell when resolvable, one call, response
-        `{ fits: [...], omitted: [...] }`).
+        `{ fits: [...], omitted: [...] }`). Readiness gate: benchmarks under
+        development (hollow trailing teos, shallow history, unverifiable
+        stores) are blocked with `409` before billing; on `all` they are
+        listed in `omitted[]` with reason `under_development`.
       operationId: getBenchmarkFit
       tags: [Funds Data Plane]
       security:
@@ -8684,6 +8687,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Benchmark is under development (readiness gate, pre-billing).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, example: "benchmark 'BW-BENCH-SPY' is under development" }
+                  status: { type: string, enum: [development] }
 
   /data/benchmark/{id}/portfolio:
     get:

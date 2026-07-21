@@ -11,6 +11,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/dal/funds-zarr-reader", () => ({
   readBenchmarkSurface: vi.fn(),
   computeBenchmarkFit: vi.fn(),
+  // Static-id resolution stand-in: BW-BENCH-* passes through, "NOPE" stays
+  // unresolvable (404 path), anything else maps to a resolved id.
+  resolveBenchmarkId: (s: string) => {
+    const v = (s ?? "").trim();
+    if (!v || v === "NOPE") return null;
+    return v.toUpperCase().startsWith("BW-BENCH-") ? v.toUpperCase() : `BW-BENCH-${v.toUpperCase()}`;
+  },
+}));
+
+// Readiness gate: these are serving-contract tests, so treat every bench as
+// live here. The gate itself is covered in bench-active-route.test.ts and
+// benchmark-registry.test.ts.
+vi.mock("@/lib/benchmark-registry", () => ({
+  isBenchLive: () => true,
 }));
 
 import { NextRequest } from "next/server";

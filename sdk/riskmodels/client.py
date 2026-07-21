@@ -2269,6 +2269,43 @@ class RiskModelsClient:
         "US-LARGE-SMALL-70-30": "BW-BENCH-EQ70-30",
     }
 
+    #: Client-side mirror of the server readiness registry
+    #: (``lib/benchmark-registry.ts``). Benches marked ``"development"`` are
+    #: blocked server-side with HTTP 409 (never billed) until promoted.
+    BENCHMARK_READINESS: dict[str, dict[str, str]] = {
+        "BW-BENCH-SPY": {
+            "status": "development",
+            "notes": "trailing teos hollow — writer staleness, Funds_DAG follow-up",
+        },
+        "BW-BENCH-EQ70-30": {
+            "status": "development",
+            "notes": "trailing teos hollow — writer staleness, Funds_DAG follow-up",
+        },
+        "BW-BENCH-EQ-LARGE-VALUE-60-40": {
+            "status": "development",
+            "notes": "single-teo surface — no history depth; not in the API alias catalog",
+        },
+        "ff_own": {"status": "live", "notes": "verified: cap_coverage 0.996"},
+        "cell_large-value": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_large-blend": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_large-growth": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_mid-value": {
+            "status": "development",
+            "notes": "GCS store named Mid-Cap_Value vs slug mapping Mid_Value (404)",
+        },
+        "cell_mid-blend": {
+            "status": "development",
+            "notes": "GCS store named Mid-Cap_Blend vs slug mapping Mid_Blend (404)",
+        },
+        "cell_mid-growth": {
+            "status": "development",
+            "notes": "GCS store named Mid-Cap_Growth vs slug mapping Mid_Growth (404)",
+        },
+        "cell_small-value": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_small-blend": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_small-growth": {"status": "live", "notes": "249 teos, no hollow trailing"},
+    }
+
     def list_benchmarks(self) -> dict[str, Any]:
         """The bench registry accepted by :meth:`get_benchmark_fit`.
 
@@ -2276,6 +2313,12 @@ class RiskModelsClient:
         aliases from the benchmark catalog + the 9 style-cell slugs +
         ``ff_own`` + ``all``). ``ff_own``/``cell_*``/``all`` are billed
         ($0.005, ``bench-active-custom``); static benches are free.
+
+        ``readiness`` mirrors the server-side readiness gate
+        (``lib/benchmark-registry.ts``): benches marked ``"development"``
+        (hollow trailing teos, shallow history, unverifiable stores) are
+        blocked with HTTP 409 — never billed — until promoted. Shown here
+        for transparency; the server is authoritative.
         """
         return {
             "static_aliases": dict(self.STATIC_BENCHMARK_ALIASES),
@@ -2288,6 +2331,7 @@ class RiskModelsClient:
                 "static": "free (gateway plane)",
                 "custom": "$0.005/call (capability bench-active-custom)",
             },
+            "readiness": {k: dict(v) for k, v in self.BENCHMARK_READINESS.items()},
         }
 
     def get_benchmark_fit(
@@ -2326,6 +2370,11 @@ class RiskModelsClient:
             The fit payload (single fit dict, or ``{"fits": [...], "omitted":
             [...]}`` for ``benchmark="all"``), or a DataFrame when
             ``as_dataframe=True``.
+
+        Raises:
+            riskmodels.exceptions.APIError: ``status_code == 409`` when the
+                requested benchmark is under development (readiness gate —
+                see :meth:`list_benchmarks` ``readiness``; never billed).
         """
         params: dict[str, str] = {"subject": subject, "benchmark": benchmark}
         if as_of is not None:

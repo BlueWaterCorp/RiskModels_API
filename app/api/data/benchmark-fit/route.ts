@@ -5,7 +5,9 @@ import {
   computeBenchActiveFit,
   computeBenchActiveFitAll,
   computeBenchmarkFit,
+  resolveBenchmarkId,
 } from "@/lib/dal/funds-zarr-reader";
+import { isBenchLive } from "@/lib/benchmark-registry";
 import { isValidStyleSlug } from "@/lib/funds/style-slug";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +36,11 @@ export const dynamic = "force-dynamic";
  *                                style cell (when resolvable) in one call.
  *
  * 400 on a bad cell slug, 404 when a benchmark alias doesn't resolve or a
- * surface is missing. X-Data-As-Of / X-Benchmark-As-Of headers on single-fit
+ * surface is missing. Readiness gate (lib/benchmark-registry.ts): benches
+ * marked `development` (hollow trailing teos, shallow history, unverifiable
+ * stores) are blocked with 409 before auth/billing — never billed — and are
+ * listed in `omitted[]` with reason `under_development` on the `all` fan-out.
+ * X-Data-As-Of / X-Benchmark-As-Of headers on single-fit
  * responses (X-Data-As-Of only on `all`).
  */
 
@@ -103,6 +109,14 @@ const customBenchGET = withBilling(
   { capabilityId: "bench-active-custom" },
 );
 
+/** 409 body for a bench blocked by the readiness gate (never billed). */
+function benchUnderDevelopment(id: string): NextResponse {
+  return NextResponse.json(
+    { error: `benchmark '${id}' is under development`, status: "development" },
+    { status: 409 },
+  );
+}
+
 export async function GET(request: NextRequest) {
   const benchmarkRaw =
     new URL(request.url).searchParams.get("benchmark")?.trim() ?? "";
@@ -117,7 +131,12 @@ export async function GET(request: NextRequest) {
   }
 
   // Custom benches (ff_own / cell_<slug> / all) → billed capability path.
-  if (benchLow === "ff_own" || benchLow === "all" || benchLow.startsWith("cell_")) {
+  // Readiness gate runs BEFORE withBilling — a blocked bench is never billed.
+  if (benchLow === "ff_own" || benchLow.startsWith("cell_")) {
+    if (!isBenchLive(benchLow)) return benchUnderDevelopment(benchLow);
+    return customBenchGET(request);
+  }
+  if (benchLow === "all") {
     return customBenchGET(request);
   }
 
@@ -128,6 +147,13 @@ export async function GET(request: NextRequest) {
   const parsed = parseFitParams(request);
   if (parsed instanceof NextResponse) return parsed;
   const { subject, benchmark, asOf, topN } = parsed;
+
+  // Readiness gate on the resolved static id (fail-closed: ids absent from
+  // the registry are development). Unknown aliases still 404 below.
+  const bwBenchId = resolveBenchmarkId(benchmark);
+  if (bwBenchId && !isBenchLive(bwBenchId)) {
+    return benchUnderDevelopment(bwBenchId);
+  }
 
   const fit = await computeBenchmarkFit(subject, benchmark, { asOf, topN });
   if (!fit) {

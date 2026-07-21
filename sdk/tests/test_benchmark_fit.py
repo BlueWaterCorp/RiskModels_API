@@ -169,3 +169,43 @@ def test_list_benchmarks_registry_shape():
     assert all(s.startswith("cell_") for s in reg["style_cells"])
     assert reg["pricing"]["static"].startswith("free")
     assert "0.005" in reg["pricing"]["custom"]
+
+
+def test_list_benchmarks_readiness_statuses():
+    """Readiness gate mirror: development benches shown, marked."""
+    reg = _client(lambda r: httpx.Response(500)).list_benchmarks()
+    readiness = reg["readiness"]
+    # static benches blocked on hollow/shallow history
+    assert readiness["BW-BENCH-SPY"]["status"] == "development"
+    assert "hollow" in readiness["BW-BENCH-SPY"]["notes"]
+    assert readiness["BW-BENCH-EQ70-30"]["status"] == "development"
+    assert readiness["BW-BENCH-EQ-LARGE-VALUE-60-40"]["status"] == "development"
+    # verified-live custom benches
+    assert readiness["ff_own"]["status"] == "live"
+    assert readiness["cell_large-blend"]["status"] == "live"
+    assert readiness["cell_small-growth"]["status"] == "live"
+    # mid cells blocked on the Mid-Cap_* naming mismatch
+    for slug in ("mid-value", "mid-blend", "mid-growth"):
+        assert readiness[f"cell_{slug}"]["status"] == "development"
+
+
+def test_get_benchmark_fit_surfaces_409_readiness_gate():
+    """A development bench raises APIError status 409 with the gate message."""
+    import pytest
+
+    from riskmodels.exceptions import APIError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409,
+            json={
+                "error": "benchmark 'BW-BENCH-SPY' is under development",
+                "status": "development",
+            },
+        )
+
+    with pytest.raises(APIError) as exc_info:
+        _client(handler).get_benchmark_fit(FUND_ID, benchmark="SPY")
+    assert exc_info.value.status_code == 409
+    assert "under development" in str(exc_info.value)
+    assert exc_info.value.body["status"] == "development"
