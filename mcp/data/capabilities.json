@@ -691,7 +691,7 @@
   {
     "id": "fundamentals",
     "name": "Quarterly Fundamentals",
-    "description": "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks, etc.); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only \u2014 no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
+    "description": "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks, etc.); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
     "endpoint": "/api/fundamentals",
     "method": "GET",
     "parameters": {
@@ -756,7 +756,7 @@
   {
     "id": "hedge-basket",
     "name": "Hedge Basket",
-    "description": "Structured 4-leg hedge basket (stock + SPY + sector ETF + subsector ETF) with per-leg \u03b2-to-SPY contribution, net market \u03b2 subtotal, marginal ERs, recommended_hedge_level, and a human-readable decision_trace narration. Replaces the easy-to-misread single 'Market HR (L3)' row in chat/SDK surfaces.",
+    "description": "Structured 4-leg hedge basket (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution, net market β subtotal, marginal ERs, recommended_hedge_level, and a human-readable decision_trace narration. Replaces the easy-to-misread single 'Market HR (L3)' row in chat/SDK surfaces.",
     "endpoint": "/api/hedge-basket",
     "method": "GET",
     "parameters": {
@@ -768,7 +768,7 @@
       "user_segment": {
         "type": "string",
         "required": false,
-        "description": "Drives leverage cap: retail (1.5\u00d7) | family_office (2.0\u00d7 default) | ls_equity (3.0\u00d7) | stat_arb (5.0\u00d7)"
+        "description": "Drives leverage cap: retail (1.5×) | family_office (2.0× default) | ls_equity (3.0×) | stat_arb (5.0×)"
       }
     },
     "pricing": {
@@ -914,7 +914,7 @@
   {
     "id": "industry-panel",
     "name": "Industry Panel",
-    "description": "Cross-section of Vasicek industry peer \u03b2 statistics from ds_erm3_industry: beta_mean, beta_variance, n_companies, and total_log_mcap_weight by EODHD industry code and cascade level (market/sector/subsector).",
+    "description": "Cross-section of Vasicek industry peer β statistics from ds_erm3_industry: beta_mean, beta_variance, n_companies, and total_log_mcap_weight by EODHD industry code and cascade level (market/sector/subsector).",
     "endpoint": "/api/industry-panel",
     "method": "GET",
     "parameters": {
@@ -1017,7 +1017,7 @@
       "limit": {
         "type": "integer",
         "required": false,
-        "description": "Max rows after filter (1\u2013500, default 100)",
+        "description": "Max rows after filter (1–500, default 100)",
         "default": 100
       }
     },
@@ -1186,7 +1186,7 @@
   {
     "id": "residual-signal",
     "name": "Residual Mean-Reversion Signal",
-    "description": "L3 orthogonal-residual 5-day mean-reversion factor. A combo-input building block for multi-signal alpha stacks \u2014 NOT a standalone strategy. Returns residual_z_5d, decile_rank, signal_quality_quintile (subsector-tracking conditioning), industry_percentile and a residual autocorrelation diagnostic. Every response carries an explicit gross-Sharpe + market-impact capacity disclosure.",
+    "description": "L3 orthogonal-residual 5-day mean-reversion factor. A combo-input building block for multi-signal alpha stacks — NOT a standalone strategy. Returns residual_z_5d, decile_rank, signal_quality_quintile (subsector-tracking conditioning), industry_percentile and a residual autocorrelation diagnostic. Every response carries an explicit gross-Sharpe + market-impact capacity disclosure.",
     "endpoint": "/api/residual-signal",
     "method": "GET",
     "parameters": {
@@ -1233,14 +1233,14 @@
   {
     "id": "residual-signal-basket",
     "name": "Residual Mean-Reversion Basket",
-    "description": "Aggregate the L3 residual mean-reversion signal across a user-defined basket of tickers (max 500). Returns the weighted aggregate of residual_z_5d / signal_strength / l3_subsector_er + decile and quality-quintile histograms + per-member rows. Equal-weight default; optional `weights[]` aligned to tickers; optional `signal_quality_min_quintile` gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Tickers absent from ds_erm3_residual_signal are silently dropped \u2014 see `coverage.missing_tickers`. Combo-input building block, NOT a standalone strategy.",
+    "description": "Aggregate the L3 residual mean-reversion signal across a user-defined basket of tickers (max 500). Returns the weighted aggregate of residual_z_5d / signal_strength / l3_subsector_er + decile and quality-quintile histograms + per-member rows. Equal-weight default; optional `weights[]` aligned to tickers; optional `signal_quality_min_quintile` gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Tickers absent from ds_erm3_residual_signal are silently dropped — see `coverage.missing_tickers`. Combo-input building block, NOT a standalone strategy.",
     "endpoint": "/api/signals/residual-reversion/basket",
     "method": "POST",
     "parameters": {
       "tickers": {
         "type": "array",
         "required": true,
-        "description": "1\u2013500 tickers to aggregate.",
+        "description": "1–500 tickers to aggregate.",
         "items": {
           "type": "string"
         }
@@ -1256,7 +1256,7 @@
       "signal_quality_min_quintile": {
         "type": "integer",
         "required": false,
-        "description": "Optional 1\u20135 gate on signal_quality_quintile. Members below this still appear in the response but don't contribute to the aggregate."
+        "description": "Optional 1–5 gate on signal_quality_quintile. Members below this still appear in the response but don't contribute to the aggregate."
       }
     },
     "pricing": {
@@ -1336,7 +1336,7 @@
   {
     "id": "etf-factor-returns",
     "name": "ETF Factor Returns (Public Scope)",
-    "description": "One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for SPY + the 11 GICS sector SPDR ETFs (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public scope only \u2014 the broader BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed here by design. Use this to pair with /industry-panel for the daily 'what's happening at the market and sector index level' read. Tickers outside the public scope return 400.",
+    "description": "One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for SPY + the 11 GICS sector SPDR ETFs (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public scope only — the broader BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed here by design. Use this to pair with /industry-panel for the daily 'what's happening at the market and sector index level' read. Tickers outside the public scope return 400.",
     "endpoint": "/api/etf/factor-returns",
     "method": "GET",
     "parameters": {
@@ -1495,7 +1495,7 @@
   },
   {
     "id": "portfolio-risk-snapshot",
-    "name": "Snapshot \u2014 portfolio or ticker",
+    "name": "Snapshot — portfolio or ticker",
     "description": "Canonical JSON snapshot via `POST /api/snapshot` for either a weighted portfolio (`type: \"portfolio\"`) or a single name (`type: \"ticker\"`, a shim over `/metrics` + `/decompose`): L3 explained-risk decomposition, hedge ratios, frozen-weight return attribution, cumulative return / drawdown, risk summary. Ticker mode also returns `snapshot.ticker_meta` with sector/subsector ETFs and the active L3 factor list. Also serves the bundled PDF/JSON via `POST /api/portfolio/risk-snapshot`. Single bundled charge per request; uses internal data access only (no double-billing).",
     "endpoint": "/api/portfolio/risk-snapshot",
     "method": "POST",
@@ -1589,7 +1589,7 @@
       "subject_id": {
         "type": "string",
         "required": true,
-        "description": "BW-STOCK-\u2026, BW-FUND-\u2026, BW-FILER-\u2026, BW-PORTFOLIO-\u2026, or BW-STOCK-WATCHLIST"
+        "description": "BW-STOCK-…, BW-FUND-…, BW-FILER-…, BW-PORTFOLIO-…, or BW-STOCK-WATCHLIST"
       },
       "as_of": {
         "type": "string",
@@ -1654,7 +1654,7 @@
       "factors": {
         "type": "array",
         "required": false,
-        "description": "Macro factor keys (inflation, term_spread, short_rates, credit, oil, gold, usd, volatility, bitcoin, vix_spot); default all ten. volatility=VXX futures, vix_spot=FRED VIXCLS \u2014 different series. Legacy aliases accepted (dxy\u2192usd, vix\u2192vix_spot, ust10y2y\u2192term_spread)."
+        "description": "Macro factor keys (inflation, term_spread, short_rates, credit, oil, gold, usd, volatility, bitcoin, vix_spot); default all ten. volatility=VXX futures, vix_spot=FRED VIXCLS — different series. Legacy aliases accepted (dxy→usd, vix→vix_spot, ust10y2y→term_spread)."
       },
       "return_type": {
         "type": "string",
@@ -1836,7 +1836,7 @@
   {
     "id": "fund-search",
     "name": "Fund Search & Discovery",
-    "description": "Search the funds universe by ticker, fund name, or equity style 9-box cohort. Returns a list of FundRow records (bw_fund_id, ticker, fund_name, equity_style_9box, asset_class, total_assets, etc.) for downstream calls to /api/funds/{bw_fund_id}/*. Free for users (no per-request cost) \u2014 discovery is intentionally unbilled so quants and agents can resolve a bw_fund_id without paying. Per-fund follow-up calls are metered.",
+    "description": "Search the funds universe by ticker, fund name, or equity style 9-box cohort. Returns a list of FundRow records (bw_fund_id, ticker, fund_name, equity_style_9box, asset_class, total_assets, etc.) for downstream calls to /api/funds/{bw_fund_id}/*. Free for users (no per-request cost) — discovery is intentionally unbilled so quants and agents can resolve a bw_fund_id without paying. Per-fund follow-up calls are metered.",
     "endpoint": "/api/funds/search",
     "method": "GET",
     "parameters": {
@@ -1892,7 +1892,7 @@
   {
     "id": "fund-metrics",
     "name": "Latest Fund Metrics",
-    "description": "Latest knowledge-mode portfolio return decomposition + diagnostics for a single mutual fund. Returns the gross / market / sector / subsector / idiosyncratic return components, the identity_residual, ERM3 universe coverage (weight_sum), n_holdings_active, effective_n (HHI-derived diversification), and top10_weight_sum. Resolves bw_fund_id against public.funds + public.funds_latest. Bitemporal lineage surfaces as X-Data-As-Of (report_date) and X-Data-Filing-Date headers; v1 returns the latest knowledge-mode answer only (no ?as_of= / ?mode= \u2014 deferred to v2).",
+    "description": "Latest knowledge-mode portfolio return decomposition + diagnostics for a single mutual fund. Returns the gross / market / sector / subsector / idiosyncratic return components, the identity_residual, ERM3 universe coverage (weight_sum), n_holdings_active, effective_n (HHI-derived diversification), and top10_weight_sum. Resolves bw_fund_id against public.funds + public.funds_latest. Bitemporal lineage surfaces as X-Data-As-Of (report_date) and X-Data-Filing-Date headers; v1 returns the latest knowledge-mode answer only (no ?as_of= / ?mode= — deferred to v2).",
     "endpoint": "/api/funds/{bw_fund_id}",
     "method": "GET",
     "parameters": {
@@ -2121,7 +2121,7 @@
   {
     "id": "style-cohort-metrics",
     "name": "Style Cohort Latest Metrics",
-    "description": "Latest portfolio return decomposition + diagnostics for one of the 9-box style cells, aggregated across all funds in the cell. Returns both equal-weight (EW) and market-value-weighted (MV) cohort portfolios side-by-side. Sourced from Slice 6's per-cell ds_portfolio.zarr (latest snapshot in style_portfolios_latest). The differentiated wedge \u2014 Morningstar reports per-fund metrics but doesn't expose cohort aggregates with this attribution depth.",
+    "description": "Latest portfolio return decomposition + diagnostics for one of the 9-box style cells, aggregated across all funds in the cell. Returns both equal-weight (EW) and market-value-weighted (MV) cohort portfolios side-by-side. Sourced from Slice 6's per-cell ds_portfolio.zarr (latest snapshot in style_portfolios_latest). The differentiated wedge — Morningstar reports per-fund metrics but doesn't expose cohort aggregates with this attribution depth.",
     "endpoint": "/api/funds/style/{slug}",
     "method": "GET",
     "parameters": {
@@ -2161,7 +2161,7 @@
   {
     "id": "style-cohort-rankings",
     "name": "Style Cohort Top-N Rankings",
-    "description": "Top-N rankings within a 9-box style cell \u00d7 cohort_type \u00d7 metric \u00d7 period_window \u00d7 weighting. cohort_type \u2208 {symbol, sector, fund}. period_window \u2208 {1m, 3m, 12m, 36m}. weighting \u2208 {ew, mv} \u2014 ignored for cohort_type=fund (writer stores 'ew' placeholder). Top-N capped at 50 (Slice 9 storage ceiling).",
+    "description": "Top-N rankings within a 9-box style cell × cohort_type × metric × period_window × weighting. cohort_type ∈ {symbol, sector, fund}. period_window ∈ {1m, 3m, 12m, 36m}. weighting ∈ {ew, mv} — ignored for cohort_type=fund (writer stores 'ew' placeholder). Top-N capped at 50 (Slice 9 storage ceiling).",
     "endpoint": "/api/funds/style/{slug}/rankings/{cohort_type}",
     "method": "GET",
     "parameters": {
@@ -2352,6 +2352,67 @@
     ]
   },
   {
+    "id": "bench-active-custom",
+    "name": "Custom Benchmark Active Weights",
+    "description": "Custom benchmark active weights — conviction vs own-holdings cap benchmark (ff_own) or 9-box style-cell benchmark. Same route as the free static benchmark fit (GET /api/data/benchmark-fit); the `benchmark` param selects the plane: static aliases (SPY, 70/30, …) stay free on the gateway plane, while ff_own, cell_<9box-slug> (e.g. cell_large-growth), and `all` (fan-out: SPY + ff_own + the subject's declared style cell, one call) are billed at this capability. ff_own builds a free-float-cap benchmark of the subject's own holdings from the ERM3 cap store (free_float_market_cap preferred, market_cap fallback) — held symbols without a valid cap are dropped and counted in benchmark_provenance (cap_var, cap_coverage, caps_as_of, n_cap_dropped), never synthesized. cell_<slug> uses the cell's MV weight surface at the latest teo ≤ the subject's teo. Returns the BenchmarkFit shape (active share, active-weight RMS, overlap, top over/underweights) with benchmark_kind + benchmark_provenance.",
+    "endpoint": "/api/data/benchmark-fit",
+    "method": "GET",
+    "parameters": {
+      "subject": {
+        "type": "string",
+        "required": true,
+        "description": "BW-* portfolio id (BW-FUND-…, BW-FILER-…, BW-ETF-…) or an ETF ticker (→ BW-ETF-{TICKER})"
+      },
+      "benchmark": {
+        "type": "string",
+        "required": true,
+        "description": "ff_own | cell_<9-box slug> (large-value … small-growth) | all. Static aliases (SPY, 70/30, …) are served free via the same param."
+      },
+      "as_of": {
+        "type": "string",
+        "required": false,
+        "description": "YYYY-MM-DD upper bound on the subject teo (benchmark surfaces then at their latest teo ≤ the subject's)"
+      },
+      "top": {
+        "type": "integer",
+        "required": false,
+        "description": "Top-N over/underweights (default 10, max 100)",
+        "default": 10,
+        "min": 1,
+        "max": 100
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "tier": "baseline",
+      "cost_usd": 0.005,
+      "currency": "USD",
+      "billing_code": "bench_active_custom_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 800,
+      "p95_latency_ms": 4000,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 0.95,
+      "update_frequency": "daily",
+      "sources": [
+        "ds_market_cap",
+        "equity_style_9box/ds_symbols",
+        "bw_bench_id/ds_ph"
+      ]
+    },
+    "tags": [
+      "funds",
+      "benchmark",
+      "active-weights",
+      "conviction",
+      "style-cell"
+    ]
+  },
+  {
     "id": "fund-snapshot-json",
     "name": "Fund Snapshot (JSON)",
     "description": "Composed JSON snapshot for a single mutual fund. Bundles registry + latest metrics + top-25 holdings + L1/L2/L3 hedge + 12-month portfolio time series + cohort context (fund's rank within its 9-box cell on every metric we rank, expressed as rank N of cohort_size). The matching server-rendered PDF is /funds/snapshot.pdf/{bw_fund_id} (Stage D.2).",
@@ -2448,7 +2509,7 @@
   {
     "id": "style-cohort-snapshot-json",
     "name": "Style Cohort Snapshot (JSON)",
-    "description": "Composed JSON snapshot for a 9-box style cell \u2014 the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell + top-15 symbols in cell. Matching server-rendered PDF is /funds/style/{slug}/snapshot.pdf (Stage D.2).",
+    "description": "Composed JSON snapshot for a 9-box style cell — the differentiated wedge vs Morningstar. Bundles cohort metrics (EW + MV) + top-25 cohort holdings (MV) + 12-month cohort portfolio history (both weightings) + top-10 funds in cell + top-15 symbols in cell. Matching server-rendered PDF is /funds/style/{slug}/snapshot.pdf (Stage D.2).",
     "endpoint": "/api/funds/style/{slug}/snapshot",
     "method": "GET",
     "parameters": {
@@ -2535,7 +2596,7 @@
   {
     "id": "filer-search",
     "name": "13F Filer Search & Discovery",
-    "description": "Search the 13F filer universe by name, CIK, LEI, or filer_type/aum_tier cohort. Returns a list of FilerRow records (bw_filer_id, cik, name, filer_type, aum_tier, latest_aum_usd, etc.) for downstream calls to /api/13f/filers/{bw_filer_id}/*. Optional modelable_only filter restricts results to filers whose in-ERM3 sub-portfolio carries signal value (passes the modelability gate). Free for users \u2014 discovery is unbilled; per-filer follow-up calls are metered.",
+    "description": "Search the 13F filer universe by name, CIK, LEI, or filer_type/aum_tier cohort. Returns a list of FilerRow records (bw_filer_id, cik, name, filer_type, aum_tier, latest_aum_usd, etc.) for downstream calls to /api/13f/filers/{bw_filer_id}/*. Optional modelable_only filter restricts results to filers whose in-ERM3 sub-portfolio carries signal value (passes the modelability gate). Free for users — discovery is unbilled; per-filer follow-up calls are metered.",
     "endpoint": "/api/13f/filers/search",
     "method": "GET",
     "parameters": {
@@ -2597,7 +2658,7 @@
   {
     "id": "filer-metrics",
     "name": "Latest 13F Filer Metrics",
-    "description": "Latest knowledge-mode portfolio metrics for a single 13F filer. Returns diagnostics (weight_sum, n_holdings_active, effective_n, top10_weight_sum), AUM (total_aum_usd + aum_in_erm3 \u2014 the latter is the absolute scale of holdings inside the ERM3 universe), ERM3-coverage modelability inputs, and the portfolio-derived 9-box style attribution (portfolio_style_hhi, dominant_9box, effective_n_styles). Return components are NULL until D.8 Phase 2 (the security-master \u2194 ERM3 attribution bridge). NAV is permanently absent \u2014 filers have no NAV time series. Resolves bw_filer_id against public.filers + public.filer_portfolios_latest.",
+    "description": "Latest knowledge-mode portfolio metrics for a single 13F filer. Returns diagnostics (weight_sum, n_holdings_active, effective_n, top10_weight_sum), AUM (total_aum_usd + aum_in_erm3 — the latter is the absolute scale of holdings inside the ERM3 universe), ERM3-coverage modelability inputs, and the portfolio-derived 9-box style attribution (portfolio_style_hhi, dominant_9box, effective_n_styles). Return components are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge). NAV is permanently absent — filers have no NAV time series. Resolves bw_filer_id against public.filers + public.filer_portfolios_latest.",
     "endpoint": "/api/13f/filers/{bw_filer_id}",
     "method": "GET",
     "parameters": {
@@ -2683,7 +2744,7 @@
   {
     "id": "filer-portfolio-history",
     "name": "13F Filer Portfolio History",
-    "description": "Per-filer portfolio time series of diagnostics + AUM + style attribution from per-filer ds_portfolio.zarr on GCS. One row per teo (quarter-end). Optional ?start_date and ?end_date trim the panel. Return components (portfolio_*_return, identity_residual) are NULL until D.8 Phase 2 (the security-master \u2194 ERM3 attribution bridge).",
+    "description": "Per-filer portfolio time series of diagnostics + AUM + style attribution from per-filer ds_portfolio.zarr on GCS. One row per teo (quarter-end). Optional ?start_date and ?end_date trim the panel. Return components (portfolio_*_return, identity_residual) are NULL until D.8 Phase 2 (the security-master ↔ ERM3 attribution bridge).",
     "endpoint": "/api/13f/filers/{bw_filer_id}/portfolio",
     "method": "GET",
     "parameters": {
@@ -2784,7 +2845,7 @@
   {
     "id": "filer-snapshot-json",
     "name": "13F Filer Snapshot (JSON)",
-    "description": "Single-call composed snapshot for a 13F filer: registry + latest metrics + top 25 holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) + portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability flag. Permanently no NAV (surfaced as _metadata.nav_applicable: false) \u2014 filers have no NAV time series. Hedge ratios are Phase 3 (D.8.10) and absent today.",
+    "description": "Single-call composed snapshot for a 13F filer: registry + latest metrics + top 25 holdings + 12mo portfolio history + cohort ranks (filer_type and aum_tier partitions) + portfolio-derived 9-box style attribution + ERM3 coverage diagnostics + modelability flag. Permanently no NAV (surfaced as _metadata.nav_applicable: false) — filers have no NAV time series. Hedge ratios are Phase 3 (D.8.10) and absent today.",
     "endpoint": "/api/13f/filers/{bw_filer_id}/snapshot",
     "method": "GET",
     "parameters": {

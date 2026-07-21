@@ -61,6 +61,13 @@ import {
   applyScrubToFilerHoldings,
   applyScrubToHoldings,
 } from "@/lib/dal/symbols-batch";
+import { parseZarrGcsPrefix } from "@/lib/zarr-config";
+import {
+  styleNameToSlug,
+  styleSlugToName,
+  styleSlugToPathComponent,
+  type StyleCellName,
+} from "@/lib/funds/style-slug";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getCache,
@@ -2379,12 +2386,28 @@ async function computeBenchmarkSurface(
   };
 }
 
+export interface BenchmarkFitProvenance {
+  /** ff_own: which cap variable the endogenous benchmark was built from. */
+  cap_var?: string;
+  /** ff_own: share of the subject's weight with a valid cap (rest dropped + counted). */
+  cap_coverage?: number;
+  /** ff_own: teo of the cap cross-section used (latest ≤ the subject's teo). */
+  caps_as_of?: string;
+  /** ff_own: held symbols dropped for a missing/invalid cap. */
+  n_cap_dropped?: number;
+  /** cell: the 9-box slug + the cell surface teo the MV weights were taken at. */
+  cell_slug?: string;
+  cell_teo?: string;
+}
+
 export interface BenchmarkFitResult {
   fit_schema_version: string;
   subject_id: string;
   subject_source_kind: string;
   benchmark_context_id: string;
   benchmark_name: string;
+  /** static = bw_bench_id surface; ff_own = own-holdings cap benchmark; cell = 9-box style cell. */
+  benchmark_kind: "static" | "ff_own" | "cell";
   subject_teo: string;
   benchmark_teo: string;
   n_subject_holdings: number;
@@ -2396,9 +2419,14 @@ export interface BenchmarkFitResult {
   benchmark_coverage: number;      // share of the benchmark the subject touches
   top_overweights: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[];
   top_underweights: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[];
+  /** Present for ff_own / cell benches; absent on plain static fits. */
+  benchmark_provenance?: BenchmarkFitProvenance;
 }
 
 const BENCHMARK_FIT_SCHEMA_VERSION = "benchmark-fit/1.0";
+
+/** Schema version for the custom-bench (ff_own / cell) + fan-out payloads. */
+const BENCH_ACTIVE_SCHEMA_VERSION = "benchmark-fit/1.1";
 
 /**
  * Fit a subject portfolio's weight vector against a benchmark surface.
@@ -2454,12 +2482,50 @@ async function computeBenchmarkFitUncached(
     const g = await openBenchmarkZarrGroup(bwBenchId, "ds_ph.zarr");
     return g ? ((g.attrs ?? {}) as Record<string, unknown>) : {};
   })();
-  const allSyms = new Set<string>([...subj.weights.keys(), ...bench.weights.keys()]);
+  const stats = fitWeightVectors(subj.weights, bench.weights, topN);
+
+  return {
+    fit_schema_version: BENCHMARK_FIT_SCHEMA_VERSION,
+    subject_id: resolvedSubject,
+    subject_source_kind: subj.source_kind,
+    benchmark_context_id: bwBenchId,
+    benchmark_name: typeof benchAttrs.name === "string" ? benchAttrs.name : bwBenchId,
+    benchmark_kind: "static",
+    subject_teo: subj.teo,
+    benchmark_teo: bench.teo,
+    ...stats,
+  };
+}
+
+/**
+ * The canonical bench-active kernel (BWMACRO/docs/architecture/bench_active_signals.md):
+ * `active_wt = w_book − w_bench` over the union of names, active share
+ * (½·Σ|a|), active-weight RMS (coarse tracking-error proxy), overlap, and the
+ * top-N over/underweights. Pure — shared by the static, ff_own, and cell
+ * benchmark paths so all three serve the same math.
+ */
+function fitWeightVectors(
+  subjectWeights: ReadonlyMap<string, number>,
+  benchWeights: ReadonlyMap<string, number>,
+  topN: number,
+): Pick<
+  BenchmarkFitResult,
+  | "n_subject_holdings"
+  | "n_benchmark_constituents"
+  | "n_overlap"
+  | "active_share"
+  | "active_weight_rms"
+  | "weight_in_benchmark"
+  | "benchmark_coverage"
+  | "top_overweights"
+  | "top_underweights"
+> {
+  const allSyms = new Set<string>([...subjectWeights.keys(), ...benchWeights.keys()]);
   let activeAbs = 0, activeSq = 0, weightInBench = 0, benchCoverage = 0, nOverlap = 0;
   const active: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[] = [];
   for (const s of allSyms) {
-    const wp = subj.weights.get(s) ?? 0;
-    const wb = bench.weights.get(s) ?? 0;
+    const wp = subjectWeights.get(s) ?? 0;
+    const wb = benchWeights.get(s) ?? 0;
     const a = wp - wb;
     activeAbs += Math.abs(a);
     activeSq += a * a;
@@ -2468,17 +2534,9 @@ async function computeBenchmarkFitUncached(
   }
   const over = active.filter((r) => r.active_weight > 0).sort((a, b) => b.active_weight - a.active_weight).slice(0, topN);
   const under = active.filter((r) => r.active_weight < 0).sort((a, b) => a.active_weight - b.active_weight).slice(0, topN);
-
   return {
-    fit_schema_version: BENCHMARK_FIT_SCHEMA_VERSION,
-    subject_id: resolvedSubject,
-    subject_source_kind: subj.source_kind,
-    benchmark_context_id: bwBenchId,
-    benchmark_name: typeof benchAttrs.name === "string" ? benchAttrs.name : bwBenchId,
-    subject_teo: subj.teo,
-    benchmark_teo: bench.teo,
-    n_subject_holdings: subj.weights.size,
-    n_benchmark_constituents: bench.weights.size,
+    n_subject_holdings: subjectWeights.size,
+    n_benchmark_constituents: benchWeights.size,
     n_overlap: nOverlap,
     active_share: 0.5 * activeAbs,
     active_weight_rms: Math.sqrt(activeSq),
@@ -2604,5 +2662,489 @@ async function computeSurfacePortfolioSeries(
     variance_shares: varianceShares,
     n_rows: rows.length,
     rows,
+  };
+}
+
+
+// ===========================================================================
+// BENCH-ACTIVE SIGNALS — custom + style-cell benchmarks (bench_active_signals.md)
+//
+// Read-time extension of the BenchmarkFit route to the full bench registry:
+//   - static          — existing bw_bench_id surfaces (computeBenchmarkFit above)
+//   - ff_own          — endogenous custom benchmark: free-float-cap weight of
+//                       the SUBJECT's own holdings (w_b(s) = cap(s)/Σcaps(held)).
+//                       Caps come from the ERM3 stocks-side `ds_market_cap.zarr`
+//                       (eodhd tree, ZARR_GCS_PREFIX) at the latest teo ≤ the
+//                       subject's teo; `free_float_market_cap` preferred,
+//                       `market_cap` fallback. Missing/invalid caps are DROPPED
+//                       and counted (cap_coverage) — never synthesized.
+//   - cell_<slug>     — 9-box style-cell benchmark: the MV weighting vector
+//                       from equity_style_9box/{Cell}/ds_symbols.zarr at the
+//                       latest teo ≤ the subject's teo.
+//   - all             — fan-out: SPY + ff_own + the subject's declared style
+//                       cell (funds: public.funds.equity_style_9box; 13F
+//                       filers: filers_latest.dominant_9box) when resolvable.
+// All three custom kinds share the one canonical fit kernel (fitWeightVectors)
+// with the static path.
+// ===========================================================================
+
+export type BenchRef =
+  | { kind: "static"; bwBenchId: string }
+  | { kind: "ff_own" }
+  | { kind: "cell"; slug: string; cellName: StyleCellName; pathComponent: string }
+  | { kind: "all" };
+
+export const FF_OWN_BENCH_ID = "ff_own";
+
+/**
+ * Parse a `benchmark` param into a typed BenchRef. Accepts the static
+ * aliases/bw_bench_ids (`SPY`, `70/30`, `BW-BENCH-…`), `ff_own`,
+ * `cell_<9box-slug>` (e.g. `cell_large-growth`), and `all`. Returns null for
+ * anything unresolvable (unknown alias, bad cell slug).
+ */
+export function parseBenchRef(input: string): BenchRef | null {
+  const s = (input ?? "").trim();
+  if (!s) return null;
+  const low = s.toLowerCase();
+  if (low === FF_OWN_BENCH_ID) return { kind: "ff_own" };
+  if (low === "all") return { kind: "all" };
+  if (low.startsWith("cell_")) {
+    const slug = low.slice("cell_".length);
+    const cellName = styleSlugToName(slug);
+    const pathComponent = styleSlugToPathComponent(slug);
+    if (!cellName || !pathComponent) return null;
+    return { kind: "cell", slug, cellName, pathComponent };
+  }
+  const bwBenchId = resolveBenchmarkId(s);
+  return bwBenchId ? { kind: "static", bwBenchId } : null;
+}
+
+/** True when the `benchmark` param selects a custom (billed) bench kind. */
+export function isCustomBenchInput(input: string): boolean {
+  const low = (input ?? "").trim().toLowerCase();
+  return low === FF_OWN_BENCH_ID || low === "all" || low.startsWith("cell_");
+}
+
+export interface FfOwnBenchWeights {
+  /** symbol → cap weight, renormalized over the capped names only (Σ = 1). */
+  weights: Map<string, number>;
+  /** Share of the subject's weight backed by a valid cap. */
+  cap_coverage: number;
+  /** Held symbols dropped for a missing/invalid cap. */
+  n_cap_dropped: number;
+}
+
+/**
+ * Build the ff_own benchmark: cap-weight the subject's own holdings,
+ * `w_b(s) = cap(s) / Σ caps(held)`. Held symbols with a missing/invalid cap
+ * are dropped, the bench renormalized over the survivors, and the drop is
+ * counted (`cap_coverage` = share of subject weight retained). Pure; returns
+ * null when no held symbol has a valid cap. NEVER synthesizes caps
+ * (no-mock-data).
+ */
+export function buildFfOwnBenchWeights(
+  subjectWeights: ReadonlyMap<string, number>,
+  caps: ReadonlyMap<string, number | null>,
+): FfOwnBenchWeights | null {
+  let totalW = 0;
+  for (const w of subjectWeights.values()) if (w > 0) totalW += w;
+  if (totalW <= 0) return null;
+
+  let coveredW = 0;
+  let nDropped = 0;
+  let capSum = 0;
+  const validCaps = new Map<string, number>();
+  for (const [s, w] of subjectWeights) {
+    if (!(w > 0)) continue;
+    const c = caps.get(s);
+    if (c != null && Number.isFinite(c) && c > 0) {
+      validCaps.set(s, c);
+      capSum += c;
+      coveredW += w;
+    } else {
+      nDropped++;
+    }
+  }
+  if (validCaps.size === 0 || capSum <= 0) return null;
+
+  const weights = new Map<string, number>();
+  for (const [s, c] of validCaps) weights.set(s, c / capSum);
+  return {
+    weights,
+    cap_coverage: coveredW / totalW,
+    n_cap_dropped: nDropped,
+  };
+}
+
+export interface MarketCapRow {
+  /** Which cap variable was served: free_float preferred, total fallback. */
+  cap_var: "free_float_market_cap" | "market_cap";
+  /** teo of the cap cross-section (latest ≤ the requested as-of). */
+  caps_as_of: string;
+  /** Requested symbol → cap; null = not in the store's roster. */
+  caps: Map<string, number | null>;
+}
+
+/** Stocks-side (eodhd) tree — same bucket, ZARR_GCS_PREFIX basePath. */
+async function openStocksSideZarrGroup(
+  basename: string,
+): Promise<Group<Readable> | null> {
+  return openZarrGroupAtPrefix(basename, parseZarrGcsPrefix());
+}
+
+/** True when a group contains an array with this name. */
+async function hasZarrArray(grp: Group<Readable>, varName: string): Promise<boolean> {
+  try {
+    await open.v2(grp.resolve(varName), { kind: "array" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read one market-cap cross-section (latest teo ≤ `asOfTeo`) from the ERM3
+ * stocks-side `ds_market_cap.zarr` for the requested bw_sym_ids.
+ *
+ * The store is (teo, symbol) float32, chunked {teo: -1, symbol: 1000} — a
+ * full-row read would pull every chunk, so the read is grouped by symbol
+ * chunk-block and only blocks overlapping the requested roster are fetched.
+ * `free_float_market_cap` is preferred; when the array is absent the reader
+ * falls back to `market_cap` (same store) and reports which var it served.
+ * Returns null when the store / coords are missing or no teo ≤ asOfTeo.
+ */
+export async function readMarketCapRow(
+  symbols: string[],
+  opts: { asOfTeo?: string } = {},
+): Promise<MarketCapRow | null> {
+  const grp = await openStocksSideZarrGroup("ds_market_cap.zarr");
+  if (!grp) return null;
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const storeSymbols = await readSymbolStrings(grp);
+  if (!storeSymbols || storeSymbols.length === 0) return null;
+
+  let teoIdx = teos.length - 1;
+  if (opts.asOfTeo) {
+    teoIdx = -1;
+    for (let i = teos.length - 1; i >= 0; i--) {
+      if ((teos[i] ?? "") <= opts.asOfTeo) { teoIdx = i; break; }
+    }
+    if (teoIdx < 0) return null;
+  }
+
+  const capVar = (await hasZarrArray(grp, "free_float_market_cap"))
+    ? ("free_float_market_cap" as const)
+    : (await hasZarrArray(grp, "market_cap"))
+      ? ("market_cap" as const)
+      : null;
+  if (!capVar) return null;
+
+  const symIndex = new Map<string, number>();
+  for (let i = 0; i < storeSymbols.length; i++) symIndex.set(storeSymbols[i]!, i);
+
+  // Resolve requested symbols to store indices; symbols off the roster come
+  // back as null caps (dropped + counted by the caller, never fabricated).
+  const caps = new Map<string, number | null>();
+  const wanted = new Map<number, string[]>(); // store idx → requested symbols
+  for (const raw of symbols) {
+    const s = raw.trim();
+    if (!s || caps.has(s)) continue;
+    const idx = symIndex.get(s);
+    if (idx === undefined) {
+      caps.set(s, null);
+      continue;
+    }
+    caps.set(s, null);
+    const list = wanted.get(idx);
+    if (list) list.push(s);
+    else wanted.set(idx, [s]);
+  }
+  if (wanted.size === 0) {
+    return { cap_var: capVar, caps_as_of: teos[teoIdx]!, caps };
+  }
+
+  let arr;
+  try {
+    arr = await open.v2(grp.resolve(capVar), { kind: "array" });
+  } catch {
+    return null;
+  }
+  // Dimension-order guard: production is (teo, symbol), but resolve from the
+  // shape rather than assuming so a transposed store fails safe (null).
+  const shape = arr.shape ?? [];
+  const teoFirst =
+    shape.length === 2 && shape[0] === teos.length && shape[1] === storeSymbols.length;
+  const symFirst =
+    shape.length === 2 && shape[0] === storeSymbols.length && shape[1] === teos.length;
+  if (!teoFirst && !symFirst) return null;
+  const symChunk = arr.chunks?.[teoFirst ? 1 : 0] || 1000;
+
+  // Group wanted indices by symbol chunk-block; one slice read per touched
+  // block (each read = one zarr chunk).
+  const byBlock = new Map<number, number[]>();
+  for (const idx of wanted.keys()) {
+    const b0 = Math.floor(idx / symChunk) * symChunk;
+    const list = byBlock.get(b0);
+    if (list) list.push(idx);
+    else byBlock.set(b0, [idx]);
+  }
+  for (const [b0, indices] of byBlock) {
+    const b1 = Math.min(b0 + symChunk, storeSymbols.length);
+    let block: (number | null)[] | null = null;
+    try {
+      const ch = await get(
+        arr,
+        teoFirst ? [teoIdx, slice(b0, b1)] : [slice(b0, b1), teoIdx],
+      );
+      const d = ch?.data;
+      if (d instanceof Float32Array || d instanceof Float64Array) {
+        block = Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+      }
+    } catch {
+      block = null;
+    }
+    if (!block) continue; // leave these symbols as null caps (dropped + counted)
+    for (const idx of indices) {
+      const v = block[idx - b0] ?? null;
+      for (const s of wanted.get(idx)!) caps.set(s, v);
+    }
+  }
+
+  return { cap_var: capVar, caps_as_of: teos[teoIdx]!, caps };
+}
+
+export interface StyleCellWeightVector {
+  cell_slug: string;
+  teo: string;
+  weighting: "mv";
+  /** symbol → MV weight, renormalized to Σ = 1 over positive entries. */
+  weights: Map<string, number>;
+}
+
+/**
+ * The style-cell benchmark vector: the MV weighting from
+ * `equity_style_9box/{Cell}/ds_symbols.zarr` at the latest teo ≤ `asOfTeo`.
+ * Returns null when the cell surface / the `mv` weighting / a usable teo is
+ * missing.
+ */
+export async function readStyleCellWeightVector(
+  slug: string,
+  opts: { asOfTeo?: string } = {},
+): Promise<StyleCellWeightVector | null> {
+  const pathComponent = styleSlugToPathComponent(slug);
+  if (!pathComponent) return null;
+  const grp = await openCohortZarrGroup(
+    "equity_style_9box",
+    pathComponent,
+    "ds_symbols.zarr",
+  );
+  if (!grp) return null;
+  const teos = await readTeoStrings(grp);
+  if (!teos || teos.length === 0) return null;
+  const symbols = await readSymbolStrings(grp);
+  if (!symbols || symbols.length === 0) return null;
+  const weightings = await readWeightingCoord(grp);
+  if (!weightings || weightings.length === 0) return null;
+  const wIdx = weightings.findIndex((w) => w.toLowerCase() === "mv");
+  if (wIdx < 0) return null;
+
+  let teoIdx = teos.length - 1;
+  if (opts.asOfTeo) {
+    teoIdx = -1;
+    for (let i = teos.length - 1; i >= 0; i--) {
+      if ((teos[i] ?? "") <= opts.asOfTeo) { teoIdx = i; break; }
+    }
+    if (teoIdx < 0) return null;
+  }
+
+  const vec = await readFloat3dSlice(grp, "weight", teoIdx, symbols.length, wIdx);
+  if (!vec) return null;
+  let total = 0;
+  for (const v of vec) if (v != null && v > 0) total += v;
+  if (total <= 0) return null;
+  const weights = new Map<string, number>();
+  for (let i = 0; i < vec.length; i++) {
+    const v = vec[i];
+    if (v != null && v > 0) weights.set(symbols[i]!, v / total);
+  }
+  if (weights.size === 0) return null;
+  return { cell_slug: slug, teo: teos[teoIdx]!, weighting: "mv", weights };
+}
+
+/**
+ * The subject's declared style cell for the `all` fan-out: funds →
+ * public.funds.equity_style_9box; 13F filers/synths →
+ * filers_latest.dominant_9box. ETF/benchmark subjects have no declared cell —
+ * null (the fan-out then serves SPY + ff_own only). Best-effort: any lookup
+ * failure is null, never an error.
+ */
+export async function resolveSubjectStyleCell(
+  portfolioId: string,
+): Promise<{ cellName: StyleCellName; slug: string } | null> {
+  const id = portfolioId.toUpperCase();
+  try {
+    const admin = createAdminClient();
+    let raw: string | null = null;
+    if (id.startsWith("BW-FUND-")) {
+      const { data, error } = await admin
+        .from("funds")
+        .select("equity_style_9box")
+        .eq("bw_fund_id", id)
+        .maybeSingle();
+      if (error) return null;
+      raw = (data as { equity_style_9box?: string | null } | null)?.equity_style_9box ?? null;
+    } else if (id.startsWith("BW-FILER-") || id.startsWith("BW-SYNTH-")) {
+      const { data, error } = await admin
+        .from("filers_latest")
+        .select("dominant_9box")
+        .eq("bw_filer_id", id)
+        .maybeSingle();
+      if (error) return null;
+      raw = (data as { dominant_9box?: string | null } | null)?.dominant_9box ?? null;
+    } else {
+      return null;
+    }
+    if (!raw) return null;
+    const slug = styleNameToSlug(raw.trim());
+    const cellName = slug ? styleSlugToName(slug) : null;
+    return slug && cellName ? { cellName, slug } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fit a subject against one custom bench (`ff_own` or `cell_<slug>`).
+ * Static benches are served by `computeBenchmarkFit`; this returns null for
+ * them (and for `all` — use `computeBenchActiveFitAll`). 404 semantics: null
+ * when the subject surface, the cap store, or the cell surface is missing,
+ * or when no held symbol has a valid cap.
+ */
+export async function computeBenchActiveFit(
+  subjectId: string,
+  benchmarkInput: string,
+  opts: { asOf?: string; topN?: number } = {},
+): Promise<BenchmarkFitResult | null> {
+  const ref = parseBenchRef(benchmarkInput);
+  if (!ref || ref.kind === "static" || ref.kind === "all") return null;
+  const resolvedSubject = resolveSubjectId(subjectId);
+  const topN = Math.min(Math.max(opts.topN ?? 10, 1), 100);
+
+  const ck = generateCacheKey("funds_zarr", "benchmark_fit_custom", {
+    subject: resolvedSubject,
+    bench: ref.kind === "ff_own" ? FF_OWN_BENCH_ID : `cell_${ref.slug}`,
+    asOf: opts.asOf ?? "",
+    topN,
+    v: BENCH_ACTIVE_SCHEMA_VERSION,
+  });
+  return withZarrCache(
+    ck,
+    () => computeBenchActiveFitUncached(resolvedSubject, ref, topN, opts),
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
+  );
+}
+
+async function computeBenchActiveFitUncached(
+  resolvedSubject: string,
+  ref: Extract<BenchRef, { kind: "ff_own" | "cell" }>,
+  topN: number,
+  opts: { asOf?: string },
+): Promise<BenchmarkFitResult | null> {
+  const subj = await readSurfaceWeightVector(resolvedSubject, { asOfTeo: opts.asOf });
+  if (!subj) return null;
+
+  if (ref.kind === "ff_own") {
+    const capRow = await readMarketCapRow([...subj.weights.keys()], { asOfTeo: subj.teo });
+    if (!capRow) return null;
+    const bench = buildFfOwnBenchWeights(subj.weights, capRow.caps);
+    if (!bench) return null;
+    const stats = fitWeightVectors(subj.weights, bench.weights, topN);
+    return {
+      fit_schema_version: BENCH_ACTIVE_SCHEMA_VERSION,
+      subject_id: resolvedSubject,
+      subject_source_kind: subj.source_kind,
+      benchmark_context_id: FF_OWN_BENCH_ID,
+      benchmark_name: "Own-holdings free-float cap benchmark",
+      benchmark_kind: "ff_own",
+      subject_teo: subj.teo,
+      benchmark_teo: capRow.caps_as_of,
+      ...stats,
+      benchmark_provenance: {
+        cap_var: capRow.cap_var,
+        cap_coverage: bench.cap_coverage,
+        caps_as_of: capRow.caps_as_of,
+        n_cap_dropped: bench.n_cap_dropped,
+      },
+    };
+  }
+
+  // ref.kind === "cell": the cell surface at its latest teo ≤ the subject's teo.
+  const cell = await readStyleCellWeightVector(ref.slug, { asOfTeo: subj.teo });
+  if (!cell) return null;
+  const stats = fitWeightVectors(subj.weights, cell.weights, topN);
+  return {
+    fit_schema_version: BENCH_ACTIVE_SCHEMA_VERSION,
+    subject_id: resolvedSubject,
+    subject_source_kind: subj.source_kind,
+    benchmark_context_id: `cell_${ref.slug}`,
+    benchmark_name: `9-box style cell: ${ref.cellName} (MV)`,
+    benchmark_kind: "cell",
+    subject_teo: subj.teo,
+    benchmark_teo: cell.teo,
+    ...stats,
+    benchmark_provenance: { cell_slug: ref.slug, cell_teo: cell.teo },
+  };
+}
+
+export interface BenchActiveAllResult {
+  fit_schema_version: string;
+  subject_id: string;
+  subject_source_kind: string;
+  subject_teo: string;
+  fits: BenchmarkFitResult[];
+  /** Benches skipped because their inputs were unavailable (never fabricated). */
+  omitted: { benchmark: string; reason: string }[];
+}
+
+/**
+ * `benchmark=all` fan-out: SPY (static surface) + ff_own + the subject's
+ * declared style cell when resolvable. One response (one capability call);
+ * benches whose inputs are missing are listed in `omitted`, never fabricated.
+ * Returns null when no fit could be computed at all.
+ */
+export async function computeBenchActiveFitAll(
+  subjectId: string,
+  opts: { asOf?: string; topN?: number } = {},
+): Promise<BenchActiveAllResult | null> {
+  const resolvedSubject = resolveSubjectId(subjectId);
+  const fits: BenchmarkFitResult[] = [];
+  const omitted: { benchmark: string; reason: string }[] = [];
+
+  const spy = await computeBenchmarkFit(resolvedSubject, "SPY", opts);
+  if (spy) fits.push(spy);
+  else omitted.push({ benchmark: "SPY", reason: "subject or SPY surface unavailable" });
+
+  const ffOwn = await computeBenchActiveFit(resolvedSubject, FF_OWN_BENCH_ID, opts);
+  if (ffOwn) fits.push(ffOwn);
+  else omitted.push({ benchmark: FF_OWN_BENCH_ID, reason: "subject surface or cap data unavailable" });
+
+  const cell = await resolveSubjectStyleCell(resolvedSubject);
+  if (cell) {
+    const cellFit = await computeBenchActiveFit(resolvedSubject, `cell_${cell.slug}`, opts);
+    if (cellFit) fits.push(cellFit);
+    else omitted.push({ benchmark: `cell_${cell.slug}`, reason: "cell surface unavailable" });
+  } else {
+    omitted.push({ benchmark: "cell_*", reason: "no declared style cell for this subject" });
+  }
+
+  if (fits.length === 0) return null;
+  return {
+    fit_schema_version: BENCH_ACTIVE_SCHEMA_VERSION,
+    subject_id: resolvedSubject,
+    subject_source_kind: fits[0]!.subject_source_kind,
+    subject_teo: fits[0]!.subject_teo,
+    fits,
+    omitted,
   };
 }
