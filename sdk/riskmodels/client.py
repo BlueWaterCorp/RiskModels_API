@@ -2234,6 +2234,193 @@ class RiskModelsClient:
         return data
 
     # -------------------------------------------------------------------
+    # Bench-active signals (bench_active_signals.md)
+    #
+    # One route — /api/data/benchmark-fit — two planes:
+    #   * static benches (SPY, 70/30, bw_bench_id) — free gateway plane.
+    #   * custom benches (ff_own, cell_<slug>, all) — billed $0.005/call
+    #     (capability ``bench-active-custom``), parity with per-entity reads.
+    # -------------------------------------------------------------------
+
+    #: The 9-box style cells, as accepted by ``benchmark="cell_<slug>"``.
+    STYLE_CELL_SLUGS: tuple[str, ...] = (
+        "large-value",
+        "large-blend",
+        "large-growth",
+        "mid-value",
+        "mid-blend",
+        "mid-growth",
+        "small-value",
+        "small-blend",
+        "small-growth",
+    )
+
+    #: Static benchmark aliases mirrored from the server-side benchmark
+    #: catalog (``mcp/data/benchmark_master.json``; alias → bw_bench_id).
+    STATIC_BENCHMARK_ALIASES: dict[str, str] = {
+        "SPY": "BW-BENCH-SPY",
+        "S&P 500": "BW-BENCH-SPY",
+        "SP500": "BW-BENCH-SPY",
+        "SPX": "BW-BENCH-SPY",
+        "IVV": "BW-BENCH-SPY",
+        "70/30": "BW-BENCH-EQ70-30",
+        "EQ70-30": "BW-BENCH-EQ70-30",
+        "70-30-large-small": "BW-BENCH-EQ70-30",
+        "US-LARGE-SMALL-70-30": "BW-BENCH-EQ70-30",
+    }
+
+    #: Client-side mirror of the server readiness registry
+    #: (``lib/benchmark-registry.ts``). Benches marked ``"development"`` are
+    #: blocked server-side with HTTP 409 (never billed) until promoted.
+    BENCHMARK_READINESS: dict[str, dict[str, str]] = {
+        "BW-BENCH-SPY": {
+            "status": "development",
+            "notes": "trailing teos hollow — writer staleness, Funds_DAG follow-up",
+        },
+        "BW-BENCH-EQ70-30": {
+            "status": "development",
+            "notes": "trailing teos hollow — writer staleness, Funds_DAG follow-up",
+        },
+        "BW-BENCH-EQ-LARGE-VALUE-60-40": {
+            "status": "development",
+            "notes": "single-teo surface — no history depth; not in the API alias catalog",
+        },
+        "ff_own": {"status": "live", "notes": "verified: cap_coverage 0.996"},
+        "cell_large-value": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_large-blend": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_large-growth": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_mid-value": {
+            "status": "development",
+            "notes": "GCS store named Mid-Cap_Value vs slug mapping Mid_Value (404)",
+        },
+        "cell_mid-blend": {
+            "status": "development",
+            "notes": "GCS store named Mid-Cap_Blend vs slug mapping Mid_Blend (404)",
+        },
+        "cell_mid-growth": {
+            "status": "development",
+            "notes": "GCS store named Mid-Cap_Growth vs slug mapping Mid_Growth (404)",
+        },
+        "cell_small-value": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_small-blend": {"status": "live", "notes": "249 teos, no hollow trailing"},
+        "cell_small-growth": {"status": "live", "notes": "249 teos, no hollow trailing"},
+    }
+
+    def list_benchmarks(self) -> dict[str, Any]:
+        """The bench registry accepted by :meth:`get_benchmark_fit`.
+
+        Client-side constant mirroring the server-side registry (static
+        aliases from the benchmark catalog + the 9 style-cell slugs +
+        ``ff_own`` + ``all``). ``ff_own``/``cell_*``/``all`` are billed
+        ($0.005, ``bench-active-custom``); static benches are free.
+
+        ``readiness`` mirrors the server-side readiness gate
+        (``lib/benchmark-registry.ts``): benches marked ``"development"``
+        (hollow trailing teos, shallow history, unverifiable stores) are
+        blocked with HTTP 409 — never billed — until promoted. Shown here
+        for transparency; the server is authoritative.
+        """
+        return {
+            "static_aliases": dict(self.STATIC_BENCHMARK_ALIASES),
+            "custom": {
+                "ff_own": "Free-float-cap weight of the subject's own holdings (billed)",
+                "all": "Fan-out: SPY + ff_own + declared style cell (billed, one call)",
+            },
+            "style_cells": [f"cell_{slug}" for slug in self.STYLE_CELL_SLUGS],
+            "pricing": {
+                "static": "free (gateway plane)",
+                "custom": "$0.005/call (capability bench-active-custom)",
+            },
+            "readiness": {k: dict(v) for k, v in self.BENCHMARK_READINESS.items()},
+        }
+
+    def get_benchmark_fit(
+        self,
+        subject: str,
+        benchmark: str = "SPY",
+        as_of: str | None = None,
+        top: int = 10,
+        as_dataframe: bool = False,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Fit a portfolio surface against a benchmark (active weights).
+
+        ``GET /api/data/benchmark-fit`` — active share, active-weight RMS
+        (coarse tracking-error proxy), overlap, and the top over/underweights
+        at a common teo (the subject's latest teo ≤ ``as_of``; the benchmark
+        at its latest teo ≤ the subject's).
+
+        Args:
+            subject: A ``BW-*`` portfolio id (``BW-FUND-…``, ``BW-FILER-…``,
+                ``BW-ETF-…``) or an ETF ticker (→ ``BW-ETF-{TICKER}``).
+            benchmark: Static alias/bw_bench_id (``"SPY"``, ``"70/30"``, … —
+                free) or a custom bench — ``"ff_own"`` (free-float-cap
+                benchmark of the subject's own holdings), ``"cell_<slug>"``
+                (9-box style-cell MV surface, e.g. ``"cell_large-growth"``),
+                or ``"all"`` (SPY + ff_own + declared cell in one call).
+                Custom benches are billed $0.005/call
+                (``bench-active-custom``).
+            as_of: Optional ``YYYY-MM-DD`` upper bound on the subject teo.
+            top: Top-N over/underweights (server default 10, max 100).
+            as_dataframe: If True, return the top over/underweights as a
+                DataFrame (columns: benchmark_context_id, direction,
+                bw_sym_id, subject_weight, benchmark_weight, active_weight);
+                for ``benchmark="all"`` the rows of every fit are stacked.
+
+        Returns:
+            The fit payload (single fit dict, or ``{"fits": [...], "omitted":
+            [...]}`` for ``benchmark="all"``), or a DataFrame when
+            ``as_dataframe=True``.
+
+        Raises:
+            riskmodels.exceptions.APIError: ``status_code == 409`` when the
+                requested benchmark is under development (readiness gate —
+                see :meth:`list_benchmarks` ``readiness``; never billed).
+        """
+        params: dict[str, str] = {"subject": subject, "benchmark": benchmark}
+        if as_of is not None:
+            params["as_of"] = as_of
+        if top is not None:
+            params["top"] = str(top)
+        data, _lineage, _r = self._transport.request(
+            "GET", "/data/benchmark-fit", params=params
+        )
+        if not as_dataframe:
+            return data
+
+        fits = data.get("fits") if isinstance(data, dict) else None
+        if not fits and isinstance(data, dict) and "active_share" in data:
+            fits = [data]
+        rows: list[dict[str, Any]] = []
+        for fit in fits or []:
+            bench_id = fit.get("benchmark_context_id")
+            for direction, key in (
+                ("over", "top_overweights"),
+                ("under", "top_underweights"),
+            ):
+                for r in fit.get(key) or []:
+                    rows.append(
+                        {
+                            "benchmark_context_id": bench_id,
+                            "direction": direction,
+                            "bw_sym_id": r.get("bw_sym_id"),
+                            "subject_weight": r.get("subject_weight"),
+                            "benchmark_weight": r.get("benchmark_weight"),
+                            "active_weight": r.get("active_weight"),
+                        }
+                    )
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "benchmark_context_id",
+                "direction",
+                "bw_sym_id",
+                "subject_weight",
+                "benchmark_weight",
+                "active_weight",
+            ],
+        )
+
+    # -------------------------------------------------------------------
     # End funds API
     # -------------------------------------------------------------------
     # Note: /api/data/funds/* routes (Stage A — registry / search /

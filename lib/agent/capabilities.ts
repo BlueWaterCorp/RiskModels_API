@@ -2089,6 +2089,74 @@ export const CAPABILITIES: Capability[] = [
     tags: ["funds", "cohort", "holdings", "differentiated-wedge"],
   },
   {
+    id: "bench-active-custom",
+    name: "Custom Benchmark Active Weights",
+    description:
+      "Custom benchmark active weights — conviction vs own-holdings cap benchmark (ff_own) or " +
+      "9-box style-cell benchmark. Same route as the free static benchmark fit " +
+      "(GET /api/data/benchmark-fit); the `benchmark` param selects the plane: static aliases " +
+      "(SPY, 70/30, …) stay free on the gateway plane, while ff_own, cell_<9box-slug> " +
+      "(e.g. cell_large-growth), and `all` (fan-out: SPY + ff_own + the subject's declared " +
+      "style cell, one call) are billed at this capability. ff_own builds a free-float-cap " +
+      "benchmark of the subject's own holdings from the ERM3 cap store (free_float_market_cap " +
+      "preferred, market_cap fallback) — held symbols without a valid cap are dropped and " +
+      "counted in benchmark_provenance (cap_var, cap_coverage, caps_as_of, n_cap_dropped), " +
+      "never synthesized. cell_<slug> uses the cell's MV weight surface at the latest teo ≤ " +
+      "the subject's teo. Returns the BenchmarkFit shape (active share, active-weight RMS, " +
+      "overlap, top over/underweights) with benchmark_kind + benchmark_provenance. Readiness " +
+      "gate: benches under development (hollow trailing teos / shallow history) are blocked " +
+      "with HTTP 409 before billing — see lib/benchmark-registry.ts; on `all` they move to " +
+      "omitted[] with reason under_development.",
+    endpoint: "/api/data/benchmark-fit",
+    method: "GET",
+    parameters: {
+      subject: {
+        type: "string",
+        required: true,
+        description:
+          "BW-* portfolio id (BW-FUND-…, BW-FILER-…, BW-ETF-…) or an ETF ticker (→ BW-ETF-{TICKER})",
+      },
+      benchmark: {
+        type: "string",
+        required: true,
+        description:
+          "ff_own | cell_<9-box slug> (large-value … small-growth) | all. Static aliases (SPY, 70/30, …) are served free via the same param.",
+      },
+      as_of: {
+        type: "string",
+        required: false,
+        description: "YYYY-MM-DD upper bound on the subject teo (benchmark surfaces then at their latest teo ≤ the subject's)",
+      },
+      top: {
+        type: "integer",
+        required: false,
+        description: "Top-N over/underweights (default 10, max 100)",
+        default: 10,
+        min: 1,
+        max: 100,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.005,
+      currency: "USD",
+      billing_code: "bench_active_custom_v1",
+    },
+    performance: {
+      avg_latency_ms: 800,
+      p95_latency_ms: 4000,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "daily",
+      sources: ["ds_market_cap", "equity_style_9box/ds_symbols", "bw_bench_id/ds_ph"],
+    },
+    tags: ["funds", "benchmark", "active-weights", "conviction", "style-cell"],
+  },
+  {
     id: "fund-snapshot-json",
     name: "Fund Snapshot (JSON)",
     description:

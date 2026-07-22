@@ -8570,7 +8570,20 @@ paths:
         factor-based TE is a follow-on), overlap, and the top over/underweights.
         `subject` = a `BW-*` portfolio id (`BW-FUND-…`, `BW-FILER-…`,
         `BW-ETF-…`, `BW-BENCH-…`) or an ETF ticker (→ `BW-ETF-{TICKER}`);
-        `benchmark` = a `bw_bench_id` or an alias (`SPY`, `70/30`, …).
+        `benchmark` = a `bw_bench_id` or an alias (`SPY`, `70/30`, …) — the
+        static benches, free on the gateway plane — or a custom bench (billed
+        $0.005/call, capability `bench-active-custom`, parity with per-entity
+        fund reads): `ff_own` (free-float-cap weight of the subject's OWN
+        holdings — conviction vs what market cap alone implies; held symbols
+        without a valid cap are dropped and counted in
+        `benchmark_provenance`, never synthesized), `cell_<9-box slug>`
+        (e.g. `cell_large-growth` — the style cell's MV weight surface at the
+        latest teo ≤ the subject's teo), or `all` (fan-out: SPY + ff_own +
+        the subject's declared style cell when resolvable, one call, response
+        `{ fits: [...], omitted: [...] }`). Readiness gate: benchmarks under
+        development (hollow trailing teos, shallow history, unverifiable
+        stores) are blocked with `409` before billing; on `all` they are
+        listed in `omitted[]` with reason `under_development`.
       operationId: getBenchmarkFit
       tags: [Funds Data Plane]
       security:
@@ -8586,6 +8599,7 @@ paths:
           in: query
           required: true
           schema: { type: string }
+          description: "Static: bw_bench_id or alias (SPY, 70/30, …) — free. Custom (billed $0.005): ff_own, cell_<9-box slug> (large-value … small-growth), all."
           example: SPY
         - name: as_of
           in: query
@@ -8613,6 +8627,21 @@ paths:
                   subject_source_kind: { type: string }
                   benchmark_context_id: { type: string }
                   benchmark_name: { type: string }
+                  benchmark_kind:
+                    type: string
+                    enum: [static, ff_own, cell]
+                    description: static = bw_bench_id surface; ff_own = own-holdings cap benchmark; cell = 9-box style cell.
+                  benchmark_provenance:
+                    type: object
+                    nullable: true
+                    description: Present for ff_own / cell benches.
+                    properties:
+                      cap_var: { type: string, enum: [free_float_market_cap, market_cap], description: ff_own — cap variable used (free-float preferred, total fallback) }
+                      cap_coverage: { type: number, description: ff_own — share of subject weight with a valid cap (rest dropped + counted) }
+                      caps_as_of: { type: string, format: date, description: ff_own — teo of the cap cross-section }
+                      n_cap_dropped: { type: integer, description: ff_own — held symbols dropped for a missing/invalid cap }
+                      cell_slug: { type: string, description: cell — the 9-box slug }
+                      cell_teo: { type: string, format: date, description: cell — the cell surface teo }
                   subject_teo: { type: string, format: date }
                   benchmark_teo: { type: string, format: date }
                   n_subject_holdings: { type: integer }
@@ -8641,17 +8670,32 @@ paths:
                         benchmark_weight: { type: number }
                         active_weight: { type: number }
         "400":
-          description: Missing/invalid query params.
+          description: Missing/invalid query params (incl. invalid cell_<slug>).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Custom bench (ff_own / cell_* / all) with insufficient balance.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Unknown benchmark, or no surface for the subject/benchmark.
+          description: Unknown benchmark, or no surface for the subject/benchmark (or no cap/cell data for a custom bench).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Benchmark is under development (readiness gate, pre-billing).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, example: "benchmark 'BW-BENCH-SPY' is under development" }
+                  status: { type: string, enum: [development] }
 
   /data/benchmark/{id}/portfolio:
     get:

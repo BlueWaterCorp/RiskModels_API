@@ -247,6 +247,7 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_get_filer_holdings",
       "riskmodels_get_etf",
       "riskmodels_get_etf_holdings",
+      "riskmodels_get_benchmark_fit",
       "riskmodels_call_endpoint",
     ]);
     // riskmodels_render_artifact is hosted-only — registered separately via

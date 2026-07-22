@@ -880,6 +880,50 @@ export function registerRiskModelsTools(
     },
   );
 
+  server.registerTool(
+    "riskmodels_get_benchmark_fit",
+    {
+      title: "RiskModels Benchmark Fit (active weights)",
+      annotations: { readOnlyHint: true },
+      description:
+        "Fit a portfolio surface (fund / 13F filer / ETF) against a benchmark at a common teo (GET /data/benchmark-fit): active share, active-weight RMS (coarse tracking-error proxy), overlap, and the top over/underweights. Static benchmarks (SPY, 70/30, … or a bw_bench_id) are free; custom benches are billed $0.005 (bench-active-custom): `ff_own` = free-float-cap benchmark of the subject's OWN holdings (conviction vs what market cap alone implies; see benchmark_provenance.cap_coverage), `cell_<9box-slug>` (e.g. cell_large-growth) = the style cell's MV weight surface, `all` = SPY + ff_own + the subject's declared style cell in one call.",
+      inputSchema: {
+        subject: z
+          .string()
+          .min(1)
+          .describe("BW-* portfolio id (BW-FUND-…, BW-FILER-…, BW-ETF-…) or an ETF ticker (→ BW-ETF-{TICKER})"),
+        benchmark: z
+          .string()
+          .min(1)
+          .describe("Static alias (SPY, 70/30, …) or bw_bench_id — free; or ff_own | cell_<9box-slug> | all — billed $0.005"),
+        as_of: z
+          .string()
+          .optional()
+          .describe("YYYY-MM-DD upper bound on the subject teo (benchmark then at its latest teo ≤ the subject's)"),
+        top: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Top-N over/underweights (default 10, max 100)"),
+      },
+    },
+    async ({ subject, benchmark, as_of, top }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {
+          subject: subject.trim(),
+          benchmark: benchmark.trim(),
+        };
+        if (as_of !== undefined) query.as_of = as_of;
+        if (top !== undefined) query.top = top;
+        return textResult(await sdk.call("GET", "/data/benchmark-fit", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
   // --- Generic passthrough: invoke any capability not covered by a typed tool ---
 
   server.registerTool(
