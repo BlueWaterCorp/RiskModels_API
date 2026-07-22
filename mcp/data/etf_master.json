@@ -1,6 +1,6 @@
 {
   "schema_version": "etf-master/2.0",
-  "n_entries": 67,
+  "n_entries": 70,
   "aliases": {
     "arkf": "BW-ETF-ARKF",
     "arkg": "BW-ETF-ARKG",
@@ -9,6 +9,7 @@
     "arkw": "BW-ETF-ARKW",
     "arkx": "BW-ETF-ARKX",
     "dia": "BW-ETF-DIA",
+    "igv": "BW-ETF-IGV",
     "ijh": "BW-ETF-IJH",
     "ijr": "BW-ETF-IJR",
     "itot": "BW-ETF-ITOT",
@@ -28,6 +29,8 @@
     "mdy": "BW-ETF-MDY",
     "qqq": "BW-ETF-QQQ",
     "rsp": "BW-ETF-RSP",
+    "smh": "BW-ETF-SMH",
+    "soxx": "BW-ETF-SOXX",
     "splg": "BW-ETF-SPLG",
     "spmd": "BW-ETF-SPMD",
     "spsm": "BW-ETF-SPSM",
@@ -105,6 +108,11 @@
       "bw_etf_id": "BW-ETF-DIA",
       "ticker": "DIA",
       "name": "SPDR Dow Jones Industrial Average ETF Trust"
+    },
+    "BW-ETF-IGV": {
+      "bw_etf_id": "BW-ETF-IGV",
+      "ticker": "IGV",
+      "name": "iShares Expanded Tech-Software Sector ETF"
     },
     "BW-ETF-IJH": {
       "bw_etf_id": "BW-ETF-IJH",
@@ -200,6 +208,16 @@
       "bw_etf_id": "BW-ETF-RSP",
       "ticker": "RSP",
       "name": "Invesco S&P 500 Equal Weight ETF"
+    },
+    "BW-ETF-SMH": {
+      "bw_etf_id": "BW-ETF-SMH",
+      "ticker": "SMH",
+      "name": "VanEck Semiconductor ETF"
+    },
+    "BW-ETF-SOXX": {
+      "bw_etf_id": "BW-ETF-SOXX",
+      "ticker": "SOXX",
+      "name": "iShares Semiconductor ETF"
     },
     "BW-ETF-SPLG": {
       "bw_etf_id": "BW-ETF-SPLG",
