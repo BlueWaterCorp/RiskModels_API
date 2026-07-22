@@ -80,6 +80,7 @@ import matplotlib as _matplotlib
 _matplotlib.use("Agg")
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -250,6 +251,134 @@ def input_mtime(zarr_root: Path) -> float:
     except OSError:
         return 0.0
     return newest
+
+
+FINGERPRINT_MANIFEST = "_render_fingerprints.json"
+
+
+def symbol_fingerprints(
+    zarr_root: Path, tickers: list[str], window_teos: int = 750
+) -> dict[str, str]:
+    """Per-ticker digest of every input the render reads for that symbol.
+
+    ``input_mtime`` answers "did anything change"; this answers "did anything
+    change *for this ticker*". A nightly panel rebuild rewrites every store, so
+    a timestamp gate re-renders all 1,000 names even when a repair touched 11 —
+    ~1h45m of work to reproduce identical images.
+
+    Variables are discovered dynamically rather than listed: any numeric
+    symbol-dimensioned variable in any store under ``zarr_root`` is folded in, so
+    an input added later cannot silently escape the digest and leave a ticker
+    stale. Stores with no ``ticker`` coordinate (macro factors, ETF series) are
+    shared across tickers, so their metadata is folded into a global component
+    that every digest carries — a change there correctly invalidates everything.
+
+    Returns ``{}`` when nothing is readable, which makes the caller fall back to
+    the timestamp gate rather than skip work it cannot justify skipping.
+    """
+    import numpy as np
+    import xarray as xr
+
+    want = list(dict.fromkeys(tickers))
+    per_ticker: dict[str, "hashlib._Hash"] = {t: hashlib.blake2b(digest_size=16) for t in want}
+    global_part = hashlib.blake2b(digest_size=16)
+    touched = False
+
+    for store in sorted(Path(zarr_root).glob("*.zarr")):
+        try:
+            ds = xr.open_zarr(store, consolidated=True)
+        except Exception:
+            continue
+        if "ticker" not in ds.coords or "symbol" not in ds.dims:
+            # Shared input — fold its metadata in globally.
+            try:
+                global_part.update(store.name.encode())
+                global_part.update((store / ".zmetadata").read_bytes())
+            except OSError:
+                pass
+            continue
+
+        store_tickers = np.array([str(t) for t in ds.ticker.values])
+        idx = {t: i for i, t in enumerate(store_tickers)}
+        sel = [(t, idx[t]) for t in want if t in idx]
+        if not sel:
+            continue
+        cols = np.array([i for _, i in sel])
+
+        variables = sorted(
+            v for v in ds.data_vars
+            if "symbol" in ds[v].dims and np.issubdtype(ds[v].dtype, np.number)
+        )
+        if not variables:
+            continue
+        try:
+            # Subset the symbol axis BEFORE reading. Selecting after the read pulls
+            # the whole panel (17k symbols x 750 teos x N vars per store) to keep a
+            # few hundred columns, which costs more than the render it is meant to
+            # avoid.
+            order = np.argsort(cols)
+            sub = ds[variables].isel(symbol=cols[order])
+            if "teo" in ds.dims:
+                sub = sub.isel(teo=slice(-window_teos, None))
+            block = np.stack([
+                np.nan_to_num(np.asarray(sub[v].values, dtype=np.float32), nan=0.0)
+                for v in variables
+            ])
+            # Undo the sort so block columns line up with `sel` order again.
+            inverse = np.argsort(order)
+        except Exception:
+            continue
+        touched = True
+        # Axis order varies by store; put symbol last so a per-ticker slice is contiguous.
+        sym_axis = next(
+            (a for a, d in enumerate(sub[variables[0]].dims, start=1) if d == "symbol"), None
+        )
+        if sym_axis is None:
+            continue
+        block = np.moveaxis(block, sym_axis, -1)
+        tag = f"{store.name}:{','.join(variables)}".encode()
+        for pos, (tkr, _) in enumerate(sel):
+            h = per_ticker[tkr]
+            h.update(tag)
+            h.update(np.ascontiguousarray(block[..., inverse[pos]]).tobytes())
+
+    if not touched:
+        return {}
+    gdigest = global_part.digest()
+    return {t: hashlib.blake2b(h.digest() + gdigest, digest_size=16).hexdigest() for t, h in per_ticker.items()}
+
+
+def load_fingerprint_manifest(out_root: Path) -> dict[str, str]:
+    path = Path(out_root) / FINGERPRINT_MANIFEST
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+        return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_fingerprint_manifest(out_root: Path, manifest: dict[str, str]) -> None:
+    try:
+        (Path(out_root) / FINGERPRINT_MANIFEST).write_text(
+            json.dumps(dict(sorted(manifest.items())), indent=0)
+        )
+    except OSError:
+        pass
+
+
+def _fingerprint_skip_row(out_root: Path, ticker: str) -> dict:
+    """Log row for a ticker whose inputs are byte-identical to its last render."""
+    tdir = Path(out_root) / ticker
+    return {
+        "ticker": ticker,
+        "status": "skipped_resume",
+        "duration_s": 0.0,
+        "png": str(tdir / f"{ticker}_DD_latest.png"),
+        "pdf": str(tdir / f"{ticker}_DD_latest.pdf"),
+        "skip_reason": "fingerprint_unchanged",
+    }
 
 
 def _outputs_are_current(png: Path, pdf: Path, inputs_mtime: float) -> bool:
@@ -736,6 +865,35 @@ def main() -> int:
         )
     )
     print(f"  renderer     : {args.renderer}")
+
+    # Per-ticker staleness. The timestamp above says "something changed"; the
+    # digests say "changed FOR THIS TICKER", so a rebuild that corrected a
+    # handful of names re-renders those names instead of the whole universe.
+    fingerprints: dict[str, str] = {}
+    fp_manifest: dict[str, str] = {}
+    fresh: set[str] = set()
+    if args.resume and not args.force:
+        fp_t0 = time.perf_counter()
+        try:
+            fingerprints = symbol_fingerprints(args.zarr_root, tickers)
+        except Exception as exc:  # never let the optimisation break the run
+            print(f"  fingerprints : unavailable ({exc}) — falling back to timestamp gate")
+            fingerprints = {}
+        if fingerprints:
+            fp_manifest = load_fingerprint_manifest(args.out_dir)
+            for t in tickers:
+                tdir = args.out_dir / t
+                if not (tdir / f"{t}_DD_latest.png").is_file():
+                    continue
+                if not (tdir / f"{t}_DD_latest.pdf").is_file():
+                    continue
+                if fp_manifest.get(t) and fp_manifest[t] == fingerprints.get(t):
+                    fresh.add(t)
+            print(
+                f"  fingerprints : {len(fingerprints)} computed in "
+                f"{time.perf_counter() - fp_t0:.1f}s — {len(fresh)} unchanged, "
+                f"{len(tickers) - len(fresh)} to render"
+            )
     print()
 
     total = len(tickers)
@@ -770,6 +928,10 @@ def main() -> int:
         row["ts"] = datetime.now(timezone.utc).isoformat()
         ticker = row.get("ticker", "?")
         counts[row["status"]] = counts.get(row["status"], 0) + 1
+        # Record the digest only on a render that actually succeeded, so a failed
+        # or partial ticker stays stale and is retried on the next run.
+        if row["status"] in ("ok", "uploaded_partial") and ticker in fingerprints:
+            fp_manifest[ticker] = fingerprints[ticker]
         logf.write(json.dumps(row) + "\n")
         logf.flush()
         if pbar is not None:
@@ -790,6 +952,9 @@ def main() -> int:
     with log_path.open("w") as logf:
         if workers <= 1:
             for i, ticker in enumerate(tickers, start=1):
+                if ticker in fresh:
+                    _log_result(_fingerprint_skip_row(args.out_dir, ticker), i, logf)
+                    continue
                 row = _render_one(
                     ticker, args.out_dir, args.zarr_root,
                     upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
@@ -807,6 +972,9 @@ def main() -> int:
             # future completes below), so there's nothing to pickle across the
             # process boundary except _render_one's plain str/Path/bool arguments.
             with ProcessPoolExecutor(max_workers=workers) as ex:
+                for i, t in enumerate(tickers, start=1):
+                    if t in fresh:
+                        _log_result(_fingerprint_skip_row(args.out_dir, t), i, logf)
                 futs = {
                     ex.submit(
                         _render_one, t, args.out_dir, args.zarr_root,
@@ -870,6 +1038,11 @@ def main() -> int:
     if batch_upload is not None:
         summary["batch_upload"] = batch_upload
     summary_path.write_text(json.dumps(summary, indent=2))
+
+    # Written after the batch upload so a ticker is only recorded as current once
+    # its outputs are actually published; an interrupted run simply re-renders.
+    if fp_manifest:
+        save_fingerprint_manifest(args.out_dir, fp_manifest)
 
     print()
     print("=== Summary ===")
