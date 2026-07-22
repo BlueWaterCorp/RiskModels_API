@@ -84,6 +84,7 @@ import hashlib
 import json
 import os
 import subprocess
+import signal
 import sys
 import threading
 import time
@@ -393,6 +394,49 @@ def _outputs_are_current(png: Path, pdf: Path, inputs_mtime: float) -> bool:
         return False
 
 
+class RenderTimeout(Exception):
+    """A single ticker exceeded its render budget."""
+
+
+def _raise_render_timeout(signum, frame):
+    raise RenderTimeout("render exceeded its per-ticker budget")
+
+
+def _arm_render_timeout(seconds: int) -> None:
+    """Start a SIGALRM deadline for this ticker, inside the worker process.
+
+    Enforced in the worker rather than by cancelling the future: a
+    ProcessPoolExecutor future that has already started cannot be cancelled, and
+    the pool's shutdown waits for it, so an executor-level deadline still hangs at
+    exit. Raising here frees the slot and returns an ordinary error row, letting
+    the run finish and — critically — the batch upload proceed.
+
+    Guards an observed failure: a 1,000-ticker run reached 999 and then sat ~48
+    minutes with every worker at 0% CPU and one future that never returned,
+    silently withholding the publish. That ticker rendered fine on retry, so the
+    stall is transient and will recur.
+
+    No-ops where SIGALRM is unavailable (non-Unix) or unusable (not the main
+    thread), degrading to the previous behaviour rather than failing the render.
+    """
+    if seconds <= 0 or not hasattr(signal, "SIGALRM"):
+        return
+    try:
+        signal.signal(signal.SIGALRM, _raise_render_timeout)
+        signal.alarm(seconds)
+    except ValueError:  # not the main thread of this process
+        pass
+
+
+def _disarm_render_timeout() -> None:
+    if not hasattr(signal, "SIGALRM"):
+        return
+    try:
+        signal.alarm(0)
+    except ValueError:
+        pass
+
+
 # -----------------------------------------------------------------------------
 # Per-ticker render
 # -----------------------------------------------------------------------------
@@ -410,6 +454,7 @@ def _render_one(
     panels: bool = False,
     panels_gcs_root: str | None = None,
     inputs_mtime: float = 0.0,
+    timeout_s: int = 0,
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -459,6 +504,7 @@ def _render_one(
         }
 
     try:
+        _arm_render_timeout(timeout_s)
         p1 = build_p1_from_zarr(ticker, zarr_root)
 
         peer_comparison = None
@@ -558,6 +604,8 @@ def _render_one(
             "error": str(exc),
             "traceback": traceback.format_exc().splitlines()[-3:],
         }
+    finally:
+        _disarm_render_timeout()
 
 
 # DD registry panels emitted per ticker when --panels is on (institutional
@@ -697,6 +745,11 @@ def main() -> int:
         ),
     )
     ap.add_argument("--gcs-bucket", default="gs://rm_api_public/snapshot")
+    parser.add_argument(
+        "--ticker-timeout", type=int, default=300,
+        help="Per-ticker render budget in seconds (0 disables). A stuck ticker "
+             "otherwise holds a pool slot forever and blocks the batch upload.",
+    )
     ap.add_argument("--resume", action="store_true",
                     help="Skip tickers whose PNG+PDF already exist in --out-dir.")
     ap.add_argument(
@@ -852,6 +905,7 @@ def main() -> int:
     print(f"  peers        : zarr (no API)")
     print(f"  upload_mode  : {upload_mode}")
     print(f"  workers      : {workers}")
+    print(f"  ticker_tmout : {args.ticker_timeout}s")
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
     # Under --resume a ticker is re-rendered when its outputs predate this.
@@ -960,7 +1014,7 @@ def main() -> int:
                     upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
                     resume=args.resume, force=args.force, renderer=args.renderer,
                     panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
-                    inputs_mtime=inputs_mtime,
+                    inputs_mtime=inputs_mtime, timeout_s=args.ticker_timeout,
                 )
                 _log_result(row, i, logf)
         else:
@@ -981,7 +1035,7 @@ def main() -> int:
                         upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
                         resume=args.resume, force=args.force, renderer=args.renderer,
                         panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
-                        inputs_mtime=inputs_mtime,
+                        inputs_mtime=inputs_mtime, timeout_s=args.ticker_timeout,
                     ): (i, t)
                     for i, t in enumerate(tickers, start=1)
                 }
