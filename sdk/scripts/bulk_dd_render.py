@@ -223,6 +223,48 @@ def _cap_rank_tickers(zarr_root: Path, tickers: list[str]) -> list[str]:
 
 
 # -----------------------------------------------------------------------------
+# Input freshness
+# -----------------------------------------------------------------------------
+
+def input_mtime(zarr_root: Path) -> float:
+    """Newest write time across the zarr stores a render reads.
+
+    ``--resume`` skips a ticker whose PNG+PDF already exist. On its own that means
+    a ticker is rendered once and never again: a rebuilt panel produces no new
+    output, and the run still reports success. Comparing against this timestamp
+    turns the skip into "output is newer than its inputs", so corrected data is
+    picked up automatically while unchanged tickers stay cheap to skip.
+
+    Uses ``.zmetadata`` (rewritten on every consolidated zarr write) rather than
+    directory mtimes, which do not change when only chunks are rewritten. Returns
+    0.0 when nothing is readable, which makes the caller fall back to plain
+    existence-based resume rather than re-rendering the world.
+    """
+    newest = 0.0
+    try:
+        for meta in Path(zarr_root).glob("*.zarr/.zmetadata"):
+            try:
+                newest = max(newest, meta.stat().st_mtime)
+            except OSError:
+                continue
+    except OSError:
+        return 0.0
+    return newest
+
+
+def _outputs_are_current(png: Path, pdf: Path, inputs_mtime: float) -> bool:
+    """True when both outputs exist and post-date the inputs."""
+    try:
+        if not (png.is_file() and pdf.is_file()):
+            return False
+        if inputs_mtime <= 0:
+            return True  # freshness unknown — preserve legacy resume behaviour
+        return min(png.stat().st_mtime, pdf.stat().st_mtime) >= inputs_mtime
+    except OSError:
+        return False
+
+
+# -----------------------------------------------------------------------------
 # Per-ticker render
 # -----------------------------------------------------------------------------
 
@@ -238,6 +280,7 @@ def _render_one(
     renderer: str = "public",
     panels: bool = False,
     panels_gcs_root: str | None = None,
+    inputs_mtime: float = 0.0,
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -277,7 +320,7 @@ def _render_one(
     png = tdir / f"{ticker}_DD_latest.png"
     pdf = tdir / f"{ticker}_DD_latest.pdf"
 
-    if resume and not force and png.is_file() and pdf.is_file():
+    if resume and not force and _outputs_are_current(png, pdf, inputs_mtime):
         return {
             "ticker": ticker,
             "status": "skipped_resume",
@@ -682,6 +725,16 @@ def main() -> int:
     print(f"  workers      : {workers}")
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
+    # Under --resume a ticker is re-rendered when its outputs predate this.
+    inputs_mtime = input_mtime(args.zarr_root)
+    print(
+        f"  inputs as-of : "
+        + (
+            datetime.fromtimestamp(inputs_mtime, timezone.utc).isoformat(timespec="seconds")
+            if inputs_mtime
+            else "unknown (resume falls back to existence check)"
+        )
+    )
     print(f"  renderer     : {args.renderer}")
     print()
 
@@ -742,6 +795,7 @@ def main() -> int:
                     upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
                     resume=args.resume, force=args.force, renderer=args.renderer,
                     panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
+                    inputs_mtime=inputs_mtime,
                 )
                 _log_result(row, i, logf)
         else:
@@ -759,6 +813,7 @@ def main() -> int:
                         upload_gcs=per_ticker_upload, gcs_bucket=args.gcs_bucket,
                         resume=args.resume, force=args.force, renderer=args.renderer,
                         panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
+                        inputs_mtime=inputs_mtime,
                     ): (i, t)
                     for i, t in enumerate(tickers, start=1)
                 }
