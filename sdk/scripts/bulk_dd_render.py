@@ -745,7 +745,7 @@ def main() -> int:
         ),
     )
     ap.add_argument("--gcs-bucket", default="gs://rm_api_public/snapshot")
-    parser.add_argument(
+    ap.add_argument(
         "--ticker-timeout", type=int, default=300,
         help="Per-ticker render budget in seconds (0 disables). A stuck ticker "
              "otherwise holds a pool slot forever and blocks the batch upload.",
@@ -1038,6 +1038,7 @@ def main() -> int:
                         inputs_mtime=inputs_mtime, timeout_s=args.ticker_timeout,
                     ): (i, t)
                     for i, t in enumerate(tickers, start=1)
+                    if t not in fresh
                 }
                 # _render_one already catches everything it can raise internally,
                 # but a worker-process crash (e.g. killed for OOM) must never vanish
