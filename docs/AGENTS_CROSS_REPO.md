@@ -66,7 +66,7 @@ After adding a schema in RiskModels_API, copy to Risk_Models (or merge to **`mai
 
 ```bash
 cp RiskModels_API/mcp/data/schemas/NEW_SCHEMA.json \
-   Risk_Models/riskmodels_com/mcp-server/data/schemas/
+   Risk_Models/riskmodels_net/mcp-server/data/schemas/
 ```
 
 ### 3. Update schema-paths.json in both repos
@@ -74,7 +74,7 @@ cp RiskModels_API/mcp/data/schemas/NEW_SCHEMA.json \
 Add the new schema path to `schema-paths.json` in:
 
 - `RiskModels_API/mcp/data/schema-paths.json`
-- `Risk_Models/riskmodels_com/mcp-server/data/schema-paths.json`
+- `Risk_Models/riskmodels_net/mcp-server/data/schema-paths.json`
 
 ### 4. Changelog in RiskModels_API
 
@@ -141,7 +141,7 @@ When **OpenAPI** or **`mcp/data/*`** change on **`RiskModels_API` `main`**, GitH
 
 1. Checks out the API repo, runs **`npm ci`** and **`npm run build:openapi`** (so `mcp/data/openapi.json` matches `OPENAPI_SPEC.yaml`).
 2. Clones **`Risk_Models`** using **`REPO_ACCESS_TOKEN`** (same secret as drift detection; needs **write** on that repo).
-3. Copies **`schema-paths.json`**, **`openapi.json`**, **`schemas/*.json`**, and **`capabilities.json`** (if present) into **`riskmodels_com/mcp-server/data/`**, then commits and pushes if there is a diff.
+3. Copies **`schema-paths.json`**, **`openapi.json`**, **`schemas/*.json`**, and **`capabilities.json`** (if present) into **`riskmodels_net/mcp-server/data/`**, then commits and pushes if there is a diff.
 
 Also runs **weekly (Monday 06:00 UTC)** and via **`workflow_dispatch`** for a manual reconcile.
 
@@ -162,5 +162,5 @@ Also runs **weekly (Monday 06:00 UTC)** and via **`workflow_dispatch`** for a ma
 |------|------|
 | **BWMACRO** | Dagster deployment hub; `docs/ceo/MASTER_BACKLOG.md` + `docs/api_roadmap/current_state.md`; **hosted `.net` + Client Memory Layer strategy** — [`docs/architecture/intelligence_runtime/MANAGED_COGNITIVE_RUNTIME_STRATEGY.md`](./architecture/intelligence_runtime/MANAGED_COGNITIVE_RUNTIME_STRATEGY.md) |
 | **RiskModels_API** | Canonical public API at `riskmodels.app`. Owns: `OPENAPI_SPEC.yaml`, data routes, `lib/agent/*`, `lib/dal/*`, MCP schemas, `schema-paths.json`, `CHANGELOG.md` |
-| **Risk_Models** | User portal at `riskmodels.net`. Web UI, auth, MCP schema **copies** under `riskmodels_com/mcp-server/` |
+| **Risk_Models** | User portal at `riskmodels.net`. Web UI, auth, MCP schema **copies** under `riskmodels_net/mcp-server/` |
 | **riskmodels-plugin** | Public Claude Code plugin (marketplace-installable): hosted-MCP config + thin skills + analyst agent + cookbook. **Downstream consumer** of the MCP contract — re-validate per rule 7 on tool/shape changes. Copy gates apply to all content. |

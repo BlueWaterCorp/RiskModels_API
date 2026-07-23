@@ -20,7 +20,7 @@ When editing schemas, OpenAPI specs, MCP data, or tracking docs across the RiskM
 | MASTER_BACKLOG.md (engineering OSOT) | BWMACRO | `docs/ceo/MASTER_BACKLOG.md` |
 | current_state.md (API narrative) | BWMACRO | `docs/api_roadmap/current_state.md` |
 
-**Path note:** canonical is `RiskModels_API/mcp/` (singular). The portal mirror lives at `Risk_Models/riskmodels_com/mcp-server/` (different subdir name). Don't confuse them — copying into the wrong path creates phantom drift that passes `diff -q` only if both sides have the same subdir name.
+**Path note:** canonical is `RiskModels_API/mcp/` (singular). The portal mirror lives at `Risk_Models/riskmodels_net/mcp-server/` (different subdir name). Don't confuse them — copying into the wrong path creates phantom drift that passes `diff -q` only if both sides have the same subdir name.
 
 ## Step 2: New Schema Workflow
 
@@ -32,7 +32,7 @@ When editing schemas, OpenAPI specs, MCP data, or tracking docs across the RiskM
 3. **Copy schema to Risk_Models** (or merge to RiskModels_API `main` and rely on **Sync MCP data to Risk_Models** in that repo — requires `REPO_ACCESS_TOKEN` with write to Risk_Models; see `docs/AGENTS_CROSS_REPO.md`):
    ```bash
    cp RiskModels_API/mcp/data/schemas/NEW_SCHEMA-v1.json \
-      Risk_Models/riskmodels_com/mcp-server/data/schemas/
+      Risk_Models/riskmodels_net/mcp-server/data/schemas/
    ```
 4. **Update schema-paths.json** in Risk_Models (same entry)
 5. **Add CHANGELOG entry** in RiskModels_API
@@ -44,7 +44,7 @@ When the portal is behind on multiple artifacts at once, do a full one-direction
 
 ```bash
 API=/path/to/RiskModels_API/mcp/data
-PORTAL=/path/to/Risk_Models/riskmodels_com/mcp-server/data
+PORTAL=/path/to/Risk_Models/riskmodels_net/mcp-server/data
 cp -r "$API/schemas/." "$PORTAL/schemas/"
 cp "$API/schema-paths.json" "$PORTAL/schema-paths.json"
 cp "$API/capabilities.json" "$PORTAL/capabilities.json"
