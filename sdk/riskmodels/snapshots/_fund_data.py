@@ -272,9 +272,10 @@ class FundData:
     cum_l1_market:    list[tuple[str, float]] = field(default_factory=list)
     cum_l2_sector:    list[tuple[str, float]] = field(default_factory=list)
     cum_l3_subsector: list[tuple[str, float]] = field(default_factory=list)
-    # FF2 (v4) style leg — the SMB+HML increment over L3. Populated from the
-    # (v4-split) ds_portfolio monthly cascade; empty when the daily cube
-    # overrides the chart (that cube is pre-split — see cum_l3_residual).
+    # FF2 (v4) style leg — the SMB+HML increment over L3. From monthly
+    # ds_portfolio, or from daily ``style_return`` when present. Cleared only
+    # when a pre-split daily cube overrides Section I and monthly Style is
+    # not material (F.23 Option C keeps monthly Style in that case).
     cum_style:        list[tuple[str, float]] = field(default_factory=list)
     cum_l3_residual:  list[tuple[str, float]] = field(default_factory=list)
 
@@ -1355,10 +1356,15 @@ def get_data_for_f1(
             }
 
     # ── DAILY FUND RETURNS (ds_fund_returns_daily.zarr) ─────────────────
-    # If the per-fund daily-returns cube exists, prefer it as the source
-    # for cum_nav + cum_l*/cum_res — daily granularity, all 5 lines from
-    # the same weighted aggregation, mathematically reconciled by
-    # construction (gross == l1 + l2 + l3 + residual at every day).
+    # Prefer the daily cube for Section I when it can carry a full FF2
+    # (v4) cascade. Gate (MASTER_BACKLOG F.23 / Option C):
+    #
+    #   1. Daily has ``style_return`` → 5-leg daily override (Option A
+    #      cubes, once Funds_DAG rematerializes).
+    #   2. Else monthly ``cum_style`` is material → keep monthly Section I
+    #      (Option C). Still refresh TTM from daily gross when possible.
+    #   3. Else 4-leg daily override and clear ``cum_style`` (pre-v4 /
+    #      no style on either clock).
     #
     # Selects lag_basis="report_date" per the F1 design spec — the
     # tearsheet shows the manager-attribution view (what was the manager
@@ -1381,6 +1387,12 @@ def get_data_for_f1(
         l2_d    = fr["l2_sector"][:, report_idx]
         l3_d    = fr["l3_subsector"][:, report_idx]
         res_d   = fr["l3_residual"][:, report_idx]
+        # Optional FF2 style strip (absent on pre-split daily cubes).
+        style_d = None
+        try:
+            style_d = fr["style_return"][:, report_idx]
+        except KeyError:
+            pass
 
         # Window to last nav_lookback_months. ~21 trading days/month.
         window_days = int(nav_lookback_months * 21)
@@ -1389,6 +1401,8 @@ def get_data_for_f1(
             fr_teo = fr_teo[sl]
             gross_d = gross_d[sl]
             l1_d, l2_d, l3_d, res_d = l1_d[sl], l2_d[sl], l3_d[sl], res_d[sl]
+            if style_d is not None:
+                style_d = style_d[sl]
 
         # Drop pre-history days where coverage was 0 (no holdings yet).
         # gross_d == 0 exactly is a strong signal of "no positions"; we
@@ -1404,6 +1418,8 @@ def get_data_for_f1(
             l2_d = l2_d[first_nonzero:]
             l3_d = l3_d[first_nonzero:]
             res_d = res_d[first_nonzero:]
+            if style_d is not None:
+                style_d = style_d[first_nonzero:]
 
         # Build cumulative series, anchored at 0% on day 0 (matches
         # stock_deep_dive's series_with_zero_start). Sequential
@@ -1415,79 +1431,129 @@ def get_data_for_f1(
             l2_safe = np.nan_to_num(np.asarray(l2_d, dtype=np.float64), nan=0.0)
             l3_safe = np.nan_to_num(np.asarray(l3_d, dtype=np.float64), nan=0.0)
             res_safe = np.nan_to_num(np.asarray(res_d, dtype=np.float64), nan=0.0)
+            style_safe = (
+                np.nan_to_num(np.asarray(style_d, dtype=np.float64), nan=0.0)
+                if style_d is not None
+                else None
+            )
 
-            cum_nav_new: list[tuple[str, float]] = []
-            cum_l1_new:  list[tuple[str, float]] = []
-            cum_l2_new:  list[tuple[str, float]] = []
-            cum_l3_new:  list[tuple[str, float]] = []
-            cum_res_new: list[tuple[str, float]] = []
+            daily_has_style = style_safe is not None
+            # Material monthly Style → Option C prefers monthly Section I
+            # over a 4-leg daily override that would wipe Style. Zero-filled
+            # pre-v4 monthly style does NOT trip this (daily remains denser).
+            monthly_style_material = (
+                len(cum_style) > 1
+                and (
+                    abs(float(cum_style[-1][1])) > 1e-6
+                    or abs(float(layer_attr.get("style", 0.0))) > 1e-6
+                    or abs(float(adj_variance_shares.get("style", 0.0) or 0.0)) > 1e-6
+                )
+            )
 
-            # Anchor row at 0% — index 0 of the daily series.
-            anchor_d = str(fr_teo[0])
-            cum_nav_new.append((anchor_d, 0.0))
-            cum_l1_new.append((anchor_d, 0.0))
-            cum_l2_new.append((anchor_d, 0.0))
-            cum_l3_new.append((anchor_d, 0.0))
-            cum_res_new.append((anchor_d, 0.0))
-
-            prod_g = prod_l1 = prod_l2 = prod_l3 = 1.0
-            for i in range(len(fr_teo)):
-                d = str(fr_teo[i])
-                prod_g  *= 1.0 + gross_d_safe[i]
-                prod_l1 *= 1.0 + l1_safe[i]
-                prod_l2 *= 1.0 + (l1_safe[i] + l2_safe[i])
-                prod_l3 *= 1.0 + (l1_safe[i] + l2_safe[i] + l3_safe[i])
-                cum_nav_new.append((d, prod_g - 1.0))
-                cum_l1_new.append((d, prod_l1 - 1.0))
-                cum_l2_new.append((d, prod_l2 - 1.0))
-                cum_l3_new.append((d, prod_l3 - 1.0))
-                # Residual = gross − sum of L1/L2/L3 contributions, in
-                # cumulative space. Equivalent to compounding (1+res_d_i)
-                # under the identity gross_d == l1+l2+l3+res_d.
-                cum_res_new.append((d, prod_g - prod_l3))
-
-            # Override the monthly/quarterly-based series above. The new
-            # daily series is denser and self-consistent.
-            #
-            # NOTE (FF2 style leg): ds_fund_returns_daily.zarr is still the
-            # pre-split daily cascade — it has no style strip, so its `res_d`
-            # (= gross − L1 − L2 − L3) is style + idio combined. We therefore
-            # clear cum_style here (no daily-scale style line is available) so
-            # the monthly-derived cum_style above can't leak onto a daily-scale
-            # chart. The monthly variance-share panel (from ds_portfolio, which
-            # IS v4-split) still shows style separately. Splitting the daily
-            # residual requires adding a style leg to fund_returns_daily
-            # upstream (tracked separately).
-            cum_nav   = cum_nav_new
-            cum_l1    = cum_l1_new
-            cum_l2    = cum_l2_new
-            cum_l3    = cum_l3_new
-            cum_style = []
-            cum_res   = cum_res_new
-
-            # When the daily-returns cube is present, recompute
-            # layer_attribution from the SAME cascade endpoints that
-            # drive the line chart so the Section I waterfall's bars
-            # exactly match the line-chart cascade levels by
-            # construction. Fractions are `(P_layer − P_prev) / PG`
-            # per the cascade-telescoping identity; consumers multiply
-            # by gross_pct to recover pp. Falls back to the
-            # monthly-derived layer_attribution above only when the
-            # daily block hasn't run (no ds_fund_returns_daily).
-            PG_d = prod_g - 1.0
-            if abs(PG_d) > 1e-12:
-                layer_attr = {
-                    "market":    (prod_l1 - 1.0)        / PG_d,
-                    "sector":    (prod_l2 - prod_l1)    / PG_d,
-                    "subsector": (prod_l3 - prod_l2)    / PG_d,
-                    "residual":  (prod_g  - prod_l3)    / PG_d,
-                }
-
-            # Refresh tr_fund["1y"] from the daily series (last 252 days
-            # compounded). Replaces the monthly-NAV-based calculation.
+            # Refresh tr_fund["1y"] from daily gross whenever we have enough
+            # days — safe under all three gates (does not touch Style).
             if len(gross_d_safe) >= 252:
                 ttm_window = gross_d_safe[-252:]
                 tr_fund["1y"] = float(np.prod(1.0 + ttm_window) - 1.0)
+
+            if daily_has_style:
+                # Option A path: 5-leg daily cascade (gross = Σ L* + style + idio).
+                cum_nav_new: list[tuple[str, float]] = []
+                cum_l1_new: list[tuple[str, float]] = []
+                cum_l2_new: list[tuple[str, float]] = []
+                cum_l3_new: list[tuple[str, float]] = []
+                cum_style_new: list[tuple[str, float]] = []
+                cum_res_new: list[tuple[str, float]] = []
+
+                anchor_d = str(fr_teo[0])
+                cum_nav_new.append((anchor_d, 0.0))
+                cum_l1_new.append((anchor_d, 0.0))
+                cum_l2_new.append((anchor_d, 0.0))
+                cum_l3_new.append((anchor_d, 0.0))
+                cum_style_new.append((anchor_d, 0.0))
+                cum_res_new.append((anchor_d, 0.0))
+
+                prod_g = prod_l1 = prod_l2 = prod_l3 = prod_style = 1.0
+                assert style_safe is not None  # for type checkers
+                for i in range(len(fr_teo)):
+                    d = str(fr_teo[i])
+                    prod_l1 *= 1.0 + l1_safe[i]
+                    prod_l2 *= 1.0 + (l1_safe[i] + l2_safe[i])
+                    prod_l3 *= 1.0 + (l1_safe[i] + l2_safe[i] + l3_safe[i])
+                    prod_style *= 1.0 + (
+                        l1_safe[i] + l2_safe[i] + l3_safe[i] + style_safe[i]
+                    )
+                    prod_g *= 1.0 + gross_d_safe[i]
+                    cum_nav_new.append((d, prod_g - 1.0))
+                    cum_l1_new.append((d, prod_l1 - 1.0))
+                    cum_l2_new.append((d, prod_l2 - 1.0))
+                    cum_l3_new.append((d, prod_l3 - 1.0))
+                    cum_style_new.append((d, prod_style - prod_l3))
+                    cum_res_new.append((d, prod_g - prod_style))
+
+                cum_nav = cum_nav_new
+                cum_l1 = cum_l1_new
+                cum_l2 = cum_l2_new
+                cum_l3 = cum_l3_new
+                cum_style = cum_style_new
+                cum_res = cum_res_new
+
+                PG_d = prod_g - 1.0
+                if abs(PG_d) > 1e-12:
+                    layer_attr = {
+                        "market":    (prod_l1 - 1.0) / PG_d,
+                        "sector":    (prod_l2 - prod_l1) / PG_d,
+                        "subsector": (prod_l3 - prod_l2) / PG_d,
+                        "style":     (prod_style - prod_l3) / PG_d,
+                        "residual":  (prod_g - prod_style) / PG_d,
+                    }
+            elif monthly_style_material:
+                # Option C: keep monthly 5-leg Section I; daily only fed TTM.
+                pass
+            else:
+                # Pre-v4 / no Style on either clock — denser 4-leg daily wins.
+                cum_nav_new = []
+                cum_l1_new = []
+                cum_l2_new = []
+                cum_l3_new = []
+                cum_res_new = []
+
+                anchor_d = str(fr_teo[0])
+                cum_nav_new.append((anchor_d, 0.0))
+                cum_l1_new.append((anchor_d, 0.0))
+                cum_l2_new.append((anchor_d, 0.0))
+                cum_l3_new.append((anchor_d, 0.0))
+                cum_res_new.append((anchor_d, 0.0))
+
+                prod_g = prod_l1 = prod_l2 = prod_l3 = 1.0
+                for i in range(len(fr_teo)):
+                    d = str(fr_teo[i])
+                    prod_g *= 1.0 + gross_d_safe[i]
+                    prod_l1 *= 1.0 + l1_safe[i]
+                    prod_l2 *= 1.0 + (l1_safe[i] + l2_safe[i])
+                    prod_l3 *= 1.0 + (l1_safe[i] + l2_safe[i] + l3_safe[i])
+                    cum_nav_new.append((d, prod_g - 1.0))
+                    cum_l1_new.append((d, prod_l1 - 1.0))
+                    cum_l2_new.append((d, prod_l2 - 1.0))
+                    cum_l3_new.append((d, prod_l3 - 1.0))
+                    # Residual = gross − L1/L2/L3 (style+idio combined).
+                    cum_res_new.append((d, prod_g - prod_l3))
+
+                cum_nav = cum_nav_new
+                cum_l1 = cum_l1_new
+                cum_l2 = cum_l2_new
+                cum_l3 = cum_l3_new
+                cum_style = []
+                cum_res = cum_res_new
+
+                PG_d = prod_g - 1.0
+                if abs(PG_d) > 1e-12:
+                    layer_attr = {
+                        "market":    (prod_l1 - 1.0) / PG_d,
+                        "sector":    (prod_l2 - prod_l1) / PG_d,
+                        "subsector": (prod_l3 - prod_l2) / PG_d,
+                        "residual":  (prod_g - prod_l3) / PG_d,
+                    }
     except (FileNotFoundError, KeyError) as e:
         # P.4 — surface the silent monthly downgrade so operators see
         # which funds are rendering coarse charts. The chart still draws
