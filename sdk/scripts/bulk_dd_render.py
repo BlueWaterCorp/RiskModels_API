@@ -39,7 +39,8 @@ Examples
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py
 
-    # Resume after a crash — skips tickers whose PNG+PDF already exist:
+    # Resume after a crash — skips tickers whose PNG+PDF exist, post-date the
+    # zarr inputs, and whose per-ticker input fingerprint is unchanged:
     export ERM3_ZARR_ROOT=/path/to/zarr/root
     PYTHONPATH=sdk python sdk/scripts/bulk_dd_render.py --resume
 
@@ -82,6 +83,7 @@ _matplotlib.use("Agg")
 import argparse
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import signal
@@ -91,6 +93,7 @@ import time
 import traceback
 import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -111,6 +114,8 @@ except ImportError:  # tqdm is in BWMACRO venv; fall back to plain prints if mis
 
 # pyplot.figure is not thread-safe; SnapshotPage uses pyplot internally.
 _MATPLOTLIB_RENDER_LOCK = threading.Lock()
+
+_log = logging.getLogger("bulk_dd_render")
 
 # -----------------------------------------------------------------------------
 # Paths
@@ -256,9 +261,111 @@ def input_mtime(zarr_root: Path) -> float:
 
 FINGERPRINT_MANIFEST = "_render_fingerprints.json"
 
+# Ticker statuses whose digest is recorded in the fingerprint manifest.
+# 'uploaded_partial' (a per-ticker GCS upload failed) must NOT be here: recording
+# it marks the ticker fingerprint-current, so the failed upload is never retried
+# and the ticker stays stale on GCS forever (H.119).
+_FINGERPRINT_RECORD_STATUSES: tuple[str, ...] = ("ok",)
+
+# NaN marker folded into digests in place of np.nan. Must be a value real data
+# can never take: nan_to_num's default 0.0 made a NaN→0.0 repair (or a 0.0→NaN
+# regression) hash-invisible, so the repaired ticker skipped forever (H.118).
+# -3.0e38 is representable in float32 (max ≈ 3.4e38) and unreachable by any
+# return/price/cap series.
+_FP_NAN_SENTINEL = -3.0e38
+
+# Cohort members hashed per subsector for the peer-data digest component.
+# Peer selection takes the top-15 by market cap (zarr_peer_analytics
+# ``max_peers=15``); hashing the top-20 plus the membership list itself gives
+# churn margin at the selection boundary without hashing whole cohorts.
+_COHORT_TOP_N = 20
+
+
+def _peer_cohorts(
+    zarr_root: Path, tickers: list[str]
+) -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]:
+    """Peer-cohort membership for the fingerprint's peer-data component.
+
+    A DD page reads OTHER symbols' histories through the peer path:
+    :func:`riskmodels.snapshots.zarr_peer_analytics.build_peer_comparison_from_zarr`
+    groups by ``fs_industry_code`` at the latest ``ds_daily`` teo (falling back
+    to ``bw_sector_code`` when a subsector has <3 peers) and keeps the top-15 by
+    market cap. A repair to peer XYZ therefore changes ABC's rendered page while
+    leaving ABC's own rows byte-identical — a purely per-ticker digest calls ABC
+    fresh forever (H.118). This reuses the exact same assignment source
+    (``ds_daily`` ``fs_industry_code``/``bw_sector_code`` at the latest teo) to
+    scope invalidation to the cohort: a change in one subsector re-renders that
+    subsector, not the world.
+
+    Returns ``(ticker_groups, group_members)``: cohort key(s) per wanted ticker,
+    and the top-``_COHORT_TOP_N``-by-cap member tickers per cohort key. Only
+    cohorts containing a wanted ticker are materialised.
+    """
+    import numpy as np
+    import xarray as xr
+
+    ds = xr.open_zarr(Path(zarr_root) / "ds_daily.zarr", consolidated=True)
+    d = ds.sel(teo=ds.teo.values[-1])
+    fs = np.asarray(d["fs_industry_code"].values).astype(float)
+    bw = np.asarray(d["bw_sector_code"].values).astype(float)
+    mc = np.asarray(d["market_cap"].values).astype(float)
+    tkr = np.array([
+        (t.decode("utf-8") if isinstance(t, bytes) else str(t)).upper().strip()
+        for t in np.asarray(d["ticker"].values)
+    ])
+
+    idx_by_tkr: dict[str, int] = {}
+    fs_idx: dict[float, list[int]] = {}
+    bw_idx: dict[float, list[int]] = {}
+    for i, name in enumerate(tkr):
+        if not name or name == "NAN":
+            continue
+        idx_by_tkr.setdefault(name, i)
+        if np.isfinite(fs[i]):
+            fs_idx.setdefault(fs[i], []).append(i)
+        if np.isfinite(bw[i]):
+            bw_idx.setdefault(bw[i], []).append(i)
+
+    def _top_members(member_idx: list[int]) -> tuple[str, ...]:
+        rows = sorted(
+            ((float(mc[i]) if np.isfinite(mc[i]) else -1.0, tkr[i]) for i in member_idx),
+            key=lambda r: (-r[0], r[1]),
+        )
+        out: list[str] = []
+        for _, name in rows:
+            if name not in out:
+                out.append(name)
+                if len(out) >= _COHORT_TOP_N:
+                    break
+        return tuple(out)
+
+    ticker_groups: dict[str, tuple[str, ...]] = {}
+    group_members: dict[str, tuple[str, ...]] = {}
+    for t in dict.fromkeys(tickers):
+        i = idx_by_tkr.get(t)
+        if i is None:
+            continue
+        groups: list[str] = []
+        n_sub_peers = 0
+        if np.isfinite(fs[i]):
+            key = f"fs:{fs[i]:g}"
+            if key not in group_members:
+                group_members[key] = _top_members(fs_idx[fs[i]])
+            groups.append(key)
+            n_sub_peers = len(fs_idx[fs[i]]) - 1
+        if n_sub_peers < 3 and np.isfinite(bw[i]):
+            # Mirrors zarr_peer_analytics' same-sector fallback for thin subsectors.
+            key = f"bw:{bw[i]:g}"
+            if key not in group_members:
+                group_members[key] = _top_members(bw_idx[bw[i]])
+            groups.append(key)
+        if groups:
+            ticker_groups[t] = tuple(groups)
+    return ticker_groups, group_members
+
 
 def symbol_fingerprints(
-    zarr_root: Path, tickers: list[str], window_teos: int = 750
+    zarr_root: Path, tickers: list[str], window_teos: int = 1300
 ) -> dict[str, str]:
     """Per-ticker digest of every input the render reads for that symbol.
 
@@ -267,12 +374,23 @@ def symbol_fingerprints(
     a timestamp gate re-renders all 1,000 names even when a repair touched 11 —
     ~1h45m of work to reproduce identical images.
 
-    Variables are discovered dynamically rather than listed: any numeric
-    symbol-dimensioned variable in any store under ``zarr_root`` is folded in, so
-    an input added later cannot silently escape the digest and leave a ticker
-    stale. Stores with no ``ticker`` coordinate (macro factors, ETF series) are
-    shared across tickers, so their metadata is folded into a global component
-    that every digest carries — a change there correctly invalidates everything.
+    Variables are discovered dynamically rather than listed: any numeric or
+    boolean symbol-dimensioned variable in any store under ``zarr_root`` is
+    folded in (bools cast to uint8 — ``np.issubdtype(bool, np.number)`` is
+    False, so a numeric-only filter silently drops them), so an input added
+    later cannot silently escape the digest and leave a ticker stale. Each
+    variable is hashed separately (mixed shapes within a store must not knock
+    the whole store out of the digest), NaN hashes as a sentinel distinct from
+    0.0, and ``window_teos`` covers the 5Y ≈ 1300 teos the renderer actually
+    reads (alpha trajectory / 3Y Sharpe). Stores with no ``ticker`` coordinate
+    (macro factors, ETF series) are shared across tickers, so their metadata is
+    folded into a global component that every digest carries — a change there
+    correctly invalidates everything.
+
+    Peer data: each ticker's digest also mixes in a per-cohort group digest
+    (see :func:`_peer_cohorts`) built from its peer candidates' own per-ticker
+    digests, so a repair to a peer re-renders the cohort that reads it —
+    without degrading to a global digest.
 
     Returns ``{}`` when nothing is readable, which makes the caller fall back to
     the timestamp gate rather than skip work it cannot justify skipping.
@@ -281,14 +399,31 @@ def symbol_fingerprints(
     import xarray as xr
 
     want = list(dict.fromkeys(tickers))
-    per_ticker: dict[str, "hashlib._Hash"] = {t: hashlib.blake2b(digest_size=16) for t in want}
+    try:
+        ticker_groups, group_members = _peer_cohorts(zarr_root, want)
+    except Exception as exc:
+        _log.warning(
+            "fingerprints: peer cohorts unavailable (%s: %s) — digests omit the "
+            "peer-data component; a peer-only repair will not re-render its cohort",
+            type(exc).__name__, exc,
+        )
+        ticker_groups, group_members = {}, {}
+    cohort_extra = sorted(
+        {m for members in group_members.values() for m in members} - set(want)
+    )
+    hashed = want + cohort_extra
+    per_ticker: dict[str, "hashlib._Hash"] = {t: hashlib.blake2b(digest_size=16) for t in hashed}
     global_part = hashlib.blake2b(digest_size=16)
     touched = False
 
     for store in sorted(Path(zarr_root).glob("*.zarr")):
         try:
             ds = xr.open_zarr(store, consolidated=True)
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "fingerprints: store %s unreadable, excluded from digest (%s: %s)",
+                store.name, type(exc).__name__, exc,
+            )
             continue
         if "ticker" not in ds.coords or "symbol" not in ds.dims:
             # Shared input — fold its metadata in globally.
@@ -301,52 +436,85 @@ def symbol_fingerprints(
 
         store_tickers = np.array([str(t) for t in ds.ticker.values])
         idx = {t: i for i, t in enumerate(store_tickers)}
-        sel = [(t, idx[t]) for t in want if t in idx]
+        sel = [(t, idx[t]) for t in hashed if t in idx]
         if not sel:
             continue
         cols = np.array([i for _, i in sel])
 
         variables = sorted(
             v for v in ds.data_vars
-            if "symbol" in ds[v].dims and np.issubdtype(ds[v].dtype, np.number)
+            if "symbol" in ds[v].dims
+            and (np.issubdtype(ds[v].dtype, np.number) or ds[v].dtype == np.bool_)
         )
         if not variables:
             continue
         try:
             # Subset the symbol axis BEFORE reading. Selecting after the read pulls
-            # the whole panel (17k symbols x 750 teos x N vars per store) to keep a
+            # the whole panel (17k symbols x 1300 teos x N vars per store) to keep a
             # few hundred columns, which costs more than the render it is meant to
             # avoid.
             order = np.argsort(cols)
             sub = ds[variables].isel(symbol=cols[order])
             if "teo" in ds.dims:
                 sub = sub.isel(teo=slice(-window_teos, None))
-            block = np.stack([
-                np.nan_to_num(np.asarray(sub[v].values, dtype=np.float32), nan=0.0)
-                for v in variables
-            ])
-            # Undo the sort so block columns line up with `sel` order again.
+            # Undo the sort so per-var columns line up with `sel` order again.
             inverse = np.argsort(order)
-        except Exception:
+        except Exception as exc:
+            _log.warning(
+                "fingerprints: store %s excluded from digest (%s: %s)",
+                store.name, type(exc).__name__, exc,
+            )
             continue
-        touched = True
-        # Axis order varies by store; put symbol last so a per-ticker slice is contiguous.
-        sym_axis = next(
-            (a for a, d in enumerate(sub[variables[0]].dims, start=1) if d == "symbol"), None
-        )
-        if sym_axis is None:
-            continue
-        block = np.moveaxis(block, sym_axis, -1)
-        tag = f"{store.name}:{','.join(variables)}".encode()
-        for pos, (tkr, _) in enumerate(sel):
-            h = per_ticker[tkr]
-            h.update(tag)
-            h.update(np.ascontiguousarray(block[..., inverse[pos]]).tobytes())
+        # Hash per variable: stacking all vars raises on mixed shapes, which used
+        # to silently drop the WHOLE store from the digest.
+        for v in variables:
+            try:
+                da = sub[v]
+                # Axis order varies by var; put symbol last so a per-ticker slice
+                # is contiguous.
+                sym_axis = next((a for a, d in enumerate(da.dims) if d == "symbol"), None)
+                if sym_axis is None:
+                    continue
+                arr = np.asarray(da.values)
+                if arr.dtype == np.bool_:
+                    arr = arr.astype(np.uint8)
+                else:
+                    arr = np.nan_to_num(arr.astype(np.float32), nan=_FP_NAN_SENTINEL)
+                arr = np.moveaxis(arr, sym_axis, -1)
+            except Exception as exc:
+                _log.warning(
+                    "fingerprints: %s:%s excluded from digest (%s: %s)",
+                    store.name, v, type(exc).__name__, exc,
+                )
+                continue
+            touched = True
+            tag = f"{store.name}:{v}".encode()
+            for pos, (tkr, _) in enumerate(sel):
+                h = per_ticker[tkr]
+                h.update(tag)
+                h.update(np.ascontiguousarray(arr[..., inverse[pos]]).tobytes())
 
     if not touched:
         return {}
+    # Cohort digest = membership list + each member's own digest. Any change to a
+    # peer candidate's data (or to who the candidates are) flips it — for that
+    # cohort only.
+    group_digest = {
+        g: hashlib.blake2b(
+            b"|".join(m.encode() for m in members)
+            + b"".join(per_ticker[m].digest() for m in members),
+            digest_size=16,
+        ).digest()
+        for g, members in group_members.items()
+    }
     gdigest = global_part.digest()
-    return {t: hashlib.blake2b(h.digest() + gdigest, digest_size=16).hexdigest() for t, h in per_ticker.items()}
+    out: dict[str, str] = {}
+    for t in want:
+        payload = per_ticker[t].digest() + gdigest
+        for g in ticker_groups.get(t, ()):
+            payload += group_digest.get(g, b"")
+        out[t] = hashlib.blake2b(payload, digest_size=16).hexdigest()
+    return out
 
 
 def load_fingerprint_manifest(out_root: Path) -> dict[str, str]:
@@ -437,6 +605,40 @@ def _disarm_render_timeout() -> None:
         pass
 
 
+# Grace period past the SIGALRM deadline before the watchdog hard-kills the
+# worker. SIGALRM gets first shot at a clean error row; the watchdog only fires
+# when the alarm could not be delivered as a Python exception.
+_WATCHDOG_GRACE_S = 30
+
+
+def _start_render_watchdog(seconds: int) -> threading.Event | None:
+    """SIGKILL backstop for hangs SIGALRM cannot reach, armed per render.
+
+    A Python-level SIGALRM handler only runs between bytecodes: a render stuck
+    inside a C extension (matplotlib/Pillow/zarr codec) never raises
+    :class:`RenderTimeout` and holds its pool slot forever — the exact stall
+    SIGALRM was added for, one layer down. This daemon thread hard-kills the
+    process at ``seconds + _WATCHDOG_GRACE_S``; the parent's ``as_completed``
+    loop turns the resulting :class:`BrokenProcessPool` into error rows and
+    proceeds to the batch upload instead of hanging.
+
+    In single-process mode (``--workers 1``) this kills the run itself — an
+    intentional fail-fast (partial log intact, scheduler retries) versus an
+    unbounded silent hang. Returns the cancel event, or ``None`` where SIGKILL
+    is unavailable or the timeout is disabled.
+    """
+    if seconds <= 0 or not hasattr(signal, "SIGKILL"):
+        return None
+    cancel = threading.Event()
+
+    def _kill() -> None:
+        if not cancel.wait(seconds + _WATCHDOG_GRACE_S):
+            os.kill(os.getpid(), signal.SIGKILL)
+
+    threading.Thread(target=_kill, name="render-watchdog", daemon=True).start()
+    return cancel
+
+
 # -----------------------------------------------------------------------------
 # Per-ticker render
 # -----------------------------------------------------------------------------
@@ -493,6 +695,11 @@ def _render_one(
     tdir = out_root / ticker
     png = tdir / f"{ticker}_DD_latest.png"
     pdf = tdir / f"{ticker}_DD_latest.pdf"
+    # Rendered to temp names and os.replace()d into place only after BOTH
+    # succeed: a timeout mid-savefig used to leave a fresh-mtime truncated file
+    # that the resume gate then pinned as current forever (H.119).
+    png_tmp = tdir / f"{ticker}_DD_latest.png.tmp"
+    pdf_tmp = tdir / f"{ticker}_DD_latest.pdf.tmp"
 
     if resume and not force and _outputs_are_current(png, pdf, inputs_mtime):
         return {
@@ -503,8 +710,10 @@ def _render_one(
             "pdf": str(pdf),
         }
 
+    watchdog: threading.Event | None = None
     try:
         _arm_render_timeout(timeout_s)
+        watchdog = _start_render_watchdog(timeout_s)
         p1 = build_p1_from_zarr(ticker, zarr_root)
 
         peer_comparison = None
@@ -545,8 +754,8 @@ def _render_one(
                     judgment = derive_judgment(dd)
                 except Exception:
                     judgment = None
-                render_dd_to_png(dd, png, judgment=judgment)
-                render_dd_to_pdf(dd, pdf, judgment=judgment)
+                render_dd_to_png(dd, png_tmp, judgment=judgment)
+                render_dd_to_pdf(dd, pdf_tmp, judgment=judgment)
                 # Same DDData, same lock (matplotlib is not thread-safe) —
                 # panel pixels match the letter page by construction.
                 panel_status = _emit_dd_panels(dd, tdir, ticker, panels_gcs_root) if panels else None
@@ -556,8 +765,13 @@ def _render_one(
                     peer_comparison=peer_comparison,
                     peer_rankings=peer_rankings,
                 )
-                render_canonical_to_png(snap, png)
-                render_canonical_to_pdf(snap, pdf)
+                render_canonical_to_png(snap, png_tmp)
+                render_canonical_to_pdf(snap, pdf_tmp)
+
+        # Both renders succeeded — promote atomically so the resume gate can
+        # never observe a partial artifact with a fresh mtime.
+        os.replace(png_tmp, png)
+        os.replace(pdf_tmp, pdf)
 
         uploaded = False
         if upload_gcs:
@@ -597,6 +811,21 @@ def _render_one(
             out["panels"] = panel_status
         return out
     except Exception as exc:
+        # A timeout mid-savefig leaks a half-composed figure into the reused
+        # pool worker — close everything before this worker takes its next ticker.
+        try:
+            import matplotlib.pyplot as plt
+
+            plt.close("all")
+        except Exception:
+            pass
+        # Drop any temp/partial outputs so the mtime resume gate cannot see a
+        # fresh-mtime corrupt artifact.
+        for tmp in (png_tmp, pdf_tmp):
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
         return {
             "ticker": ticker,
             "status": "error",
@@ -606,6 +835,8 @@ def _render_one(
         }
     finally:
         _disarm_render_timeout()
+        if watchdog is not None:
+            watchdog.set()
 
 
 # DD registry panels emitted per ticker when --panels is on (institutional
@@ -751,7 +982,10 @@ def main() -> int:
              "otherwise holds a pool slot forever and blocks the batch upload.",
     )
     ap.add_argument("--resume", action="store_true",
-                    help="Skip tickers whose PNG+PDF already exist in --out-dir.")
+                    help="Skip tickers whose PNG+PDF already exist in --out-dir, "
+                         "post-date the newest zarr input (mtime gate), and — when "
+                         "computable — whose per-ticker input fingerprint is "
+                         "unchanged since the last recorded render.")
     ap.add_argument(
         "--force",
         action="store_true",
@@ -982,9 +1216,10 @@ def main() -> int:
         row["ts"] = datetime.now(timezone.utc).isoformat()
         ticker = row.get("ticker", "?")
         counts[row["status"]] = counts.get(row["status"], 0) + 1
-        # Record the digest only on a render that actually succeeded, so a failed
-        # or partial ticker stays stale and is retried on the next run.
-        if row["status"] in ("ok", "uploaded_partial") and ticker in fingerprints:
+        # Record the digest only on a render that fully succeeded, so a failed,
+        # partial, or partially-uploaded ticker stays stale and is retried on the
+        # next run (see _FINGERPRINT_RECORD_STATUSES).
+        if row["status"] in _FINGERPRINT_RECORD_STATUSES and ticker in fingerprints:
             fp_manifest[ticker] = fingerprints[ticker]
         logf.write(json.dumps(row) + "\n")
         logf.flush()
@@ -1041,21 +1276,41 @@ def main() -> int:
                     if t not in fresh
                 }
                 # _render_one already catches everything it can raise internally,
-                # but a worker-process crash (e.g. killed for OOM) must never vanish
-                # silently — .result() forces that to surface as an error row
-                # instead of a ticker just disappearing from the counts.
-                for fut in as_completed(futs):
-                    i, ticker = futs[fut]
-                    try:
-                        row = fut.result()
-                    except Exception as exc:
-                        row = {
-                            "ticker": ticker,
-                            "status": "error",
-                            "error": f"{type(exc).__name__}: {exc}",
-                            "traceback": traceback.format_exc().splitlines()[-5:],
-                        }
-                    _log_result(row, i, logf)
+                # but a worker-process crash (e.g. killed for OOM, or by the
+                # render watchdog's SIGKILL) must never vanish silently —
+                # .result() forces that to surface as an error row instead of a
+                # ticker just disappearing from the counts. A dead worker also
+                # breaks the WHOLE pool: catch BrokenProcessPool, emit error rows
+                # for every outstanding future, and continue to the batch-upload
+                # step instead of crashing the run.
+                logged: set = set()
+                try:
+                    for fut in as_completed(futs):
+                        i, ticker = futs[fut]
+                        try:
+                            row = fut.result()
+                        except Exception as exc:
+                            row = {
+                                "ticker": ticker,
+                                "status": "error",
+                                "error": f"{type(exc).__name__}: {exc}",
+                                "traceback": traceback.format_exc().splitlines()[-5:],
+                            }
+                        _log_result(row, i, logf)
+                        logged.add(fut)
+                except BrokenProcessPool as exc:
+                    for fut, (i, ticker) in futs.items():
+                        if fut in logged:
+                            continue
+                        _log_result(
+                            {
+                                "ticker": ticker,
+                                "status": "error",
+                                "error": f"BrokenProcessPool: {exc}",
+                            },
+                            i,
+                            logf,
+                        )
 
     if pbar is not None:
         pbar.close()
