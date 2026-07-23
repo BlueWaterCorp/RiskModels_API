@@ -374,13 +374,13 @@ Expected:
 
 ### 4. Wire RENDER_SVC_URL on the Risk_Models Vercel project
 
-The Next.js proxy route (`riskmodels_com/src/app/api/artifacts/render/route.ts`)
+The Next.js proxy route (`riskmodels_net/src/app/api/artifacts/render/route.ts`)
 returns 503 with a friendly message when `RENDER_SVC_URL` is unset,
 so the workspace preview panel (Risk_Models PR #83) degrades cleanly.
 To activate it:
 
 ```bash
-# Vercel CLI from riskmodels_com/:
+# Vercel CLI from riskmodels_net/:
 vercel env add RENDER_SVC_URL production
 # paste the Cloud Run URL from step 3
 vercel env add RENDER_SVC_URL preview   # if you want preview deploys to use it too

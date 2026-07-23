@@ -5,7 +5,7 @@
 #
 # Prerequisites:
 #   - Risk_Models repo path: set RISK_MODELS_REPO, or defaults to ../Risk_Models
-#   - In Risk_Models: riskmodels_com has deps installed (npm install) and generate-mcp-data works
+#   - In Risk_Models: riskmodels_net has deps installed (npm install) and generate-mcp-data works
 #
 
 set -e
@@ -13,7 +13,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 RISK_MODELS_REPO="${RISK_MODELS_REPO:-$ROOT_DIR/../Risk_Models}"
-RM_COM="$RISK_MODELS_REPO/riskmodels_com"
+RM_COM="$RISK_MODELS_REPO/riskmodels_net"
 SRC_DATA="$RM_COM/mcp-server/data"
 DST_DATA="$ROOT_DIR/mcp/data"
 
@@ -24,12 +24,12 @@ if [[ ! -d "$RISK_MODELS_REPO" ]]; then
 fi
 
 if [[ ! -d "$RM_COM" ]]; then
-  echo "Error: riskmodels_com not found at: $RM_COM"
+  echo "Error: riskmodels_net not found at: $RM_COM"
   exit 1
 fi
 
 echo "Risk_Models repo: $RISK_MODELS_REPO"
-echo "Generating MCP data in riskmodels_com..."
+echo "Generating MCP data in riskmodels_net..."
 (cd "$RM_COM" && npm run generate-mcp-data)
 
 if [[ ! -f "$SRC_DATA/capabilities.json" ]]; then

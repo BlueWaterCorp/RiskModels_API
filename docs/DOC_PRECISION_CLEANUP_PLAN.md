@@ -57,7 +57,7 @@ Avoid duplicating long engine prose—link out.
 ### 6. Optional consistency pass
 
 - Grep markdown for **`erm3_betas` / `erm3_rankings`** outside historical migrations/archives.
-- **Sibling repos:** `Risk_Models/riskmodels_com` (email, glossary, `erm3_wisdom`, ticker tape mocks, MCP `openapi.json` sync), `RM_ORG` (README “copy precision” note; leave narrative Medium articles unless intentionally rewriting positioning).
+- **Sibling repos:** `Risk_Models/riskmodels_net` (email, glossary, `erm3_wisdom`, ticker tape mocks, MCP `openapi.json` sync), `RM_ORG` (README “copy precision” note; leave narrative Medium articles unless intentionally rewriting positioning).
 
 ---
 
@@ -79,6 +79,6 @@ Avoid duplicating long engine prose—link out.
 
 Executed in **RiskModels_API**: `SEMANTIC_ALIASES.md`, `OPENAPI_SPEC.yaml`, `SUPABASE_TABLES.md`, `README_API.md`, `docs/SNAPSHOT_CONTENT_MAP.md`, `sync-mcp-from-risk-models.sh` note, portal components (`UseCases`, `AgenticSection`, `TerminalShowcase`, pricing page), `emails/low-balance.tsx`, `lib/chat/system-prompt.ts`, `CHANGELOG.md`, OpenAPI JSON regen.
 
-Executed in **Risk_Models** (`riskmodels_com`): mirrored `openapi.json`, same low-balance email pattern, `erm3_wisdom.md`, `glossary-data.ts` (`l1_mkt_hr`), `useTickerTapeData.ts` mocks, `about-panel.tsx`, `layout.tsx` keywords.
+Executed in **Risk_Models** (`riskmodels_net`): mirrored `openapi.json`, same low-balance email pattern, `erm3_wisdom.md`, `glossary-data.ts` (`l1_mkt_hr`), `useTickerTapeData.ts` mocks, `about-panel.tsx`, `layout.tsx` keywords.
 
 Executed in **RM_ORG**: `README.md` subsection on copy precision; Medium/dist narrative left unchanged by design.

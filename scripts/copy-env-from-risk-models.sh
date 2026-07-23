@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SRC="$REPO_ROOT/../Risk_Models/riskmodels_com/.env.local"
+SRC="$REPO_ROOT/../Risk_Models/riskmodels_net/.env.local"
 DEST="$REPO_ROOT/.env.local"
 
 if [ ! -f "$SRC" ]; then

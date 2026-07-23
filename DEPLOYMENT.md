@@ -113,7 +113,7 @@ In Supabase → Authentication → URL Configuration:
 
 ### OAuth providers (Google, GitHub)
 
-The developer portal (`/get-key`) uses **Google** and **GitHub** OAuth plus email magic links, same Supabase providers as the sibling **Risk_Models** app (`riskmodels_com`). Enable each provider under Supabase → Authentication → Providers and add the client ID/secret. For Google setup notes and troubleshooting, use the Risk_Models doc: `Risk_Models/riskmodels_com/docs/integrations/GOOGLE_AUTH_SETUP.md` (clone path may vary).
+The developer portal (`/get-key`) uses **Google** and **GitHub** OAuth plus email magic links, same Supabase providers as the sibling **Risk_Models** app (`riskmodels_net`). Enable each provider under Supabase → Authentication → Providers and add the client ID/secret. For Google setup notes and troubleshooting, use the Risk_Models doc: `Risk_Models/riskmodels_net/docs/integrations/GOOGLE_AUTH_SETUP.md` (clone path may vary).
 
 ## 4. Stripe
 
