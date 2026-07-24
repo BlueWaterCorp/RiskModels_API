@@ -72,7 +72,7 @@ MCP URL with \`mcp-remote\` and AUTHORIZATION=Bearer … (see Quickstart / MCP R
 - **Agent integration guide:** https://riskmodels.app/docs/agent-integration (ChatGPT Developer Mode, Grok Connectors, Gemini CLI/Enterprise, Finances + holdings workflow)
 - Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — Bearer token, OAuth connector (Claude/Cursor/ChatGPT), or \`mcp-remote\` proxy. The MCP endpoint authenticates every call (including initialize); data tools bill per underlying REST route.
 - OpenAPI: https://riskmodels.app/openapi (or /api-docs in the portal)
-- Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/docs/python-sdk
+- Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/installation
 
 ## Panel / batch endpoints — when one call beats many
 
