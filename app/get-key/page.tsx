@@ -763,6 +763,39 @@ function GetKeyPage() {
           </div>
         )}
 
+        {/* Payment method — saved-card management */}
+        {hasCard && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
+            <h2 className="text-sm font-semibold text-zinc-200 mb-1 flex items-center gap-2">
+              <CreditCard size={14} /> Payment method
+            </h2>
+            {account?.stripe_payment_method_id ? (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-zinc-500">
+                  Card on file with Stripe. Top-ups and auto-refill charge this card.
+                </p>
+                <button
+                  onClick={removeCard}
+                  disabled={removingCard}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-800/60 bg-red-950/30 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-950/60 hover:text-red-300 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  <Trash2 size={12} />
+                  {removingCard ? 'Removing…' : 'Remove card'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500">
+                No card on file. Add one via the &quot;Add credits&quot; section below.
+              </p>
+            )}
+            {removeCardError && (
+              <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
+                {removeCardError}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Add credits — top up an already-activated account against the saved card */}
         {hasCard && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
@@ -805,24 +838,6 @@ function GetKeyPage() {
             {stripeSetupError && (
               <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
                 {stripeSetupError}
-              </p>
-            )}
-            {account?.stripe_payment_method_id && (
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-800">
-                <span className="text-xs text-zinc-500">Card on file with Stripe</span>
-                <button
-                  onClick={removeCard}
-                  disabled={removingCard}
-                  className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 disabled:opacity-50 transition-colors"
-                >
-                  <Trash2 size={12} />
-                  {removingCard ? 'Removing…' : 'Remove card'}
-                </button>
-              </div>
-            )}
-            {removeCardError && (
-              <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
-                {removeCardError}
               </p>
             )}
           </div>
