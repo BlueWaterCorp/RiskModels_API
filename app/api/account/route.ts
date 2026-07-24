@@ -12,7 +12,7 @@ export async function GET() {
   const admin = createAdminClient();
   const { data } = await admin
     .from('agent_accounts')
-    .select('balance_usd, stripe_customer_id, auto_top_up, status')
+    .select('balance_usd, stripe_customer_id, stripe_payment_method_id, auto_top_up, status')
     .eq('user_id', user.id)
     .maybeSingle();
 
