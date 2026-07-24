@@ -199,11 +199,11 @@ Retry-After: 23
 ## Documentation Synchronization
 
 ### Source Documents (Risk_Models repo)
-- `Risk_Models/riskmodels_com/docs/api/README.md`
-- `Risk_Models/riskmodels_com/docs/api/UPDATE_API_SPEC_PROMPT.md`
-- `Risk_Models/riskmodels_com/docs/api/API_SPEC_UPDATE_GUIDE.md`
-- `Risk_Models/riskmodels_com/docs/api/IMPLEMENTATION_COMPLETE.md`
-- `Risk_Models/riskmodels_com/docs/api/PRIVATE_ENGINE_AGENT_BRIDGE.md`
+- `Risk_Models/riskmodels_net/docs/api/README.md`
+- `Risk_Models/riskmodels_net/docs/api/UPDATE_API_SPEC_PROMPT.md`
+- `Risk_Models/riskmodels_net/docs/api/API_SPEC_UPDATE_GUIDE.md`
+- `Risk_Models/riskmodels_net/docs/api/IMPLEMENTATION_COMPLETE.md`
+- `Risk_Models/riskmodels_net/docs/api/PRIVATE_ENGINE_AGENT_BRIDGE.md`
 
 ### Target Documents (RiskModels_API repo)
 - `OPENAPI_SPEC.yaml` ✅ Updated

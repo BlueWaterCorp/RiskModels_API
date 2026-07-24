@@ -46,7 +46,7 @@
 
 `mcp/data/openapi.json` is canonical here. **Every** PR that touches
 `OPENAPI_SPEC.yaml` requires a paired byte-for-byte copy on
-`Risk_Models/riskmodels_com/mcp-server/data/openapi.json`. The
+`Risk_Models/riskmodels_net/mcp-server/data/openapi.json`. The
 `detect-drift` CI workflow blocks the RiskModels_API PR until the
 mirror is on Risk_Models main.
 

@@ -33,7 +33,7 @@ CORS already allows `http://localhost:3000` for browser clients ([`lib/cors.ts`]
 
 ## MCP data sync from Risk_Models
 
-- Script: [`sync-mcp-from-risk-models.sh`](./sync-mcp-from-risk-models.sh) (run from repo root). It runs `generate-mcp-data` in `riskmodels_com` and copies `mcp-server/data` into this repo’s `mcp/data/`.
+- Script: [`sync-mcp-from-risk-models.sh`](./sync-mcp-from-risk-models.sh) (run from repo root). It runs `generate-mcp-data` in `riskmodels_net` and copies `mcp-server/data` into this repo’s `mcp/data/`.
 - [`mcp/README.md`](./mcp/README.md) describes the MCP package and when to refresh static data.
 
 ## Optional tooling

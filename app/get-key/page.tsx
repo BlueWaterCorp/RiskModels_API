@@ -29,7 +29,7 @@ interface AccountInfo {
   status: string;
 }
 
-/** Google “G” mark — same paths as Risk_Models `riskmodels_com` auth modal for visual parity. */
+/** Google “G” mark — same paths as Risk_Models `riskmodels_net` auth modal for visual parity. */
 function GoogleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
@@ -298,7 +298,7 @@ function GetKeyPage() {
     });
   };
 
-  /** Google — same Supabase provider as Risk_Models (`riskmodels_com` auth-context). Enable in Supabase → Authentication → Providers. */
+  /** Google — same Supabase provider as Risk_Models (`riskmodels_net` auth-context). Enable in Supabase → Authentication → Providers. */
   const signInWithGoogle = async () => {
     setAuthError('');
     await supabase.auth.signInWithOAuth({
@@ -489,7 +489,7 @@ function GetKeyPage() {
                 </div>
               )}
 
-              {/* OAuth — Google + GitHub (provider config shared concept with Risk_Models riskmodels_com) */}
+              {/* OAuth — Google + GitHub (provider config shared concept with Risk_Models riskmodels_net) */}
               <button
                 type="button"
                 onClick={signInWithGoogle}

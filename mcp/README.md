@@ -46,7 +46,7 @@ Data tools return the same numbers the REST API and CLI return — GCP zarr for 
 | `get_metrics` | `GET /api/metrics/{ticker}` | Latest snapshot from the `_latest` table: L1/L2/L3 hedge ratios, ER fractions, volatility, close price, market cap. |
 | `get_portfolio_risk_snapshot` | `POST /api/portfolio/risk-snapshot` | Portfolio variance decomposition (up to 100 positions), optional diversification analytics, Redis-cached per user/portfolio for 1h. |
 | `riskmodels_decompose` | `POST /api/decompose` via `@riskmodels/sdk` | Single-stock four-bet decomposition with `chart_data`, `suggested_chart`, `plain_english`, and `api_call`. |
-| `riskmodels_compare` | `POST /api/batch/analyze` via `@riskmodels/sdk` | Multi-ticker four-layer comparison. Clients should prefer grouped bar charts. |
+| `riskmodels_netpare` | `POST /api/batch/analyze` via `@riskmodels/sdk` | Multi-ticker four-layer comparison. Clients should prefer grouped bar charts. |
 | `riskmodels_hedge_position` | `POST /api/decompose` via `@riskmodels/sdk` | Scales hedge ratios to ETF notionals for a dollar stock position. |
 | `riskmodels_portfolio_decompose` | `POST /api/portfolio/risk-snapshot` via `@riskmodels/sdk` | Portfolio-level market / sector / subsector / residual decomposition. |
 | `riskmodels_whitepaper_example` | `@riskmodels/sdk.whitepaperExample()` | Chapter text plus the live SDK/API example result. |
@@ -222,7 +222,7 @@ The MCP server serves static data from `mcp/data/`. When the live RiskModels API
 
 ### How to update
 
-The **canonical API and capabilities** live in the [Risk_Models](https://github.com/BlueWaterCorp/Risk_Models) platform repo. From that repo you can run `npm run generate-mcp-data` (in `riskmodels_com/`) to regenerate `capabilities.json`, `schema-paths.json`, and `schemas/*.json` from the app’s `lib/agent` registry; then copy the updated files into this repo’s `mcp/data/`. The `openapi.json` here is a subset of the full [OPENAPI_SPEC.yaml](../OPENAPI_SPEC.yaml) and should be updated when new public endpoints are added.
+The **canonical API and capabilities** live in the [Risk_Models](https://github.com/BlueWaterCorp/Risk_Models) platform repo. From that repo you can run `npm run generate-mcp-data` (in `riskmodels_net/`) to regenerate `capabilities.json`, `schema-paths.json`, and `schemas/*.json` from the app’s `lib/agent` registry; then copy the updated files into this repo’s `mcp/data/`. The `openapi.json` here is a subset of the full [OPENAPI_SPEC.yaml](../OPENAPI_SPEC.yaml) and should be updated when new public endpoints are added.
 
 1. **Obtain updated data** from the canonical source (Risk_Models) or by hand from the API application’s capabilities and schema registry.
 2. **Replace** the contents of `mcp/data/`:

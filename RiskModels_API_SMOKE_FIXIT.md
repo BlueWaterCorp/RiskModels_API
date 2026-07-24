@@ -2,7 +2,7 @@
 
 **Generated:** 2026-03-23 (updated: L1/L2/L3 checks on latest + batch)
 
-This report is produced by hitting every HTTP route used by `riskmodels_com/src/lib/api-gateway-client.ts` against **`RISKMODELS_API_URL`** with **`RISKMODELS_API_SERVICE_KEY`**, plus a billed **`POST /api/cli/query`** smoke test on **`NEXT_PUBLIC_APP_URL`** with **`RISKMODELS_API_KEY`**.
+This report is produced by hitting every HTTP route used by `riskmodels_net/src/lib/api-gateway-client.ts` against **`RISKMODELS_API_URL`** with **`RISKMODELS_API_SERVICE_KEY`**, plus a billed **`POST /api/cli/query`** smoke test on **`NEXT_PUBLIC_APP_URL`** with **`RISKMODELS_API_KEY`**.
 
 **Do not commit secrets.** This file contains no keys.
 
@@ -11,7 +11,7 @@ This report is produced by hitting every HTTP route used by `riskmodels_com/src/
 ## Re-run locally
 
 ```bash
-cd riskmodels_com
+cd riskmodels_net
 node scripts/smoke-test-riskmodels-api.mjs
 ```
 
@@ -66,7 +66,7 @@ Requires in `.env.local`:
 - **Observed:** `{"error":"Ticker not found"}` for ticker `GOOGL`.
 - **Expected (align with `Risk_Models`):** Same behavior as Next.js / DAL: resolve **`GOOGL` → `GOOG`** (or store both tickers in `symbols`).
 - **Suggested work:**
-  - [x] In symbol resolution used by `GET /api/data/symbols/{ticker}` (and batch/search if needed), add alias map **`GOOGL` → `GOOG`** (mirror `riskmodels_com/src/lib/dal/risk-engine-v3.ts` `TICKER_ALIASES`).
+  - [x] In symbol resolution used by `GET /api/data/symbols/{ticker}` (and batch/search if needed), add alias map **`GOOGL` → `GOOG`** (mirror `riskmodels_net/src/lib/dal/risk-engine-v3.ts` `TICKER_ALIASES`).
   - [x] Add regression test: `GET .../symbols/GOOGL` → **200** with same `symbol` as `GOOG`.
   - [ ] Update `OPENAPI_SPEC.yaml` / examples if you document ticker resolution rules.
   
@@ -93,7 +93,7 @@ Requires in `.env.local`:
 
 ### 3. **Optional — CI parity**
 
-- [ ] Port `riskmodels_com/scripts/smoke-test-riskmodels-api.mjs` into RiskModels_API (or call it from CI) so deploys fail if any gateway route regresses or **latest** L1/L2 regression reappears.
+- [ ] Port `riskmodels_net/scripts/smoke-test-riskmodels-api.mjs` into RiskModels_API (or call it from CI) so deploys fail if any gateway route regresses or **latest** L1/L2 regression reappears.
 
 ---
 
@@ -107,6 +107,6 @@ Requires in `.env.local`:
 
 ## Reference
 
-- Gateway client source of truth: `riskmodels_com/src/lib/api-gateway-client.ts`
-- Smoke script: `riskmodels_com/scripts/smoke-test-riskmodels-api.mjs`
+- Gateway client source of truth: `riskmodels_net/src/lib/api-gateway-client.ts`
+- Smoke script: `riskmodels_net/scripts/smoke-test-riskmodels-api.mjs`
 - Landing cache pipeline doc: `docs/ERM3_LANDING_CACHE_SYNC.md`

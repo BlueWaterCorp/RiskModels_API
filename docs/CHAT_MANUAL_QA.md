@@ -126,13 +126,13 @@ This does not call OpenAI or Supabase; it only verifies the TypeScript build.
 
 ## 8. RiskModels portal (`riskmodels.net` / local dev)
 
-The consumer portal proxies chat to the same RiskModels API (`POST /api/chat`) via **same-origin** `POST /chat` → `riskmodels_com` route `POST /api/chat` (see Risk_Models repo). Use this checklist in a browser (not only curl).
+The consumer portal proxies chat to the same RiskModels API (`POST /api/chat`) via **same-origin** `POST /chat` → `riskmodels_net` route `POST /api/chat` (see Risk_Models repo). Use this checklist in a browser (not only curl).
 
 ### Prerequisites (portal)
 
 1. **Portal env:** `RISKMODELS_API_SERVICE_KEY` (or `GATEWAY_SERVICE_KEY`) if you want **anonymous** guest chat; otherwise guests get **503** (“sign in”). For **IP rate limits** across instances, set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (anonymous: 5 requests/day/IP; authenticated users also use Redis for per-plan daily caps when configured).
 2. **Logged-in test:** Cookie session on the portal; the proxy forwards the Supabase **JWT** to `riskmodels.app` so billing hits that user’s API account.
-3. **Optional:** `cd Risk_Models/riskmodels_com && npm run typecheck && npm run build` (no live OpenAI).
+3. **Optional:** `cd Risk_Models/riskmodels_net && npm run typecheck && npm run build` (no live OpenAI).
 
 ### Logged-in UI pass
 

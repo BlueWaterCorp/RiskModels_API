@@ -56,7 +56,7 @@ TypeScript mirrors with typed builders returning **`AOMRequest`** objects suitab
 
 | Risk | Mitigation |
 |------|------------|
-| Website breakage (riskmodels_com) | Ship dual API; migrate screens method-by-method |
+| Website breakage (riskmodels_net) | Ship dual API; migrate screens method-by-method |
 | Complexity vs usability | Fluent builder optional; plain `AOMRequest` JSON always valid |
 | Attribution semantics drift | Single compiler module; tests incremental vs cumulative |
 
@@ -76,4 +76,4 @@ TypeScript mirrors with typed builders returning **`AOMRequest`** objects suitab
 
 - **RiskModels_API** — [`aom/`](.) holds [`AOM_SPEC.md`](./AOM_SPEC.md), [`AOM_TYPES.ts`](./AOM_TYPES.ts), and migration docs — source of truth for the Analysis Object Model contract next to the HTTP API ([`OPENAPI_SPEC.yaml`](../OPENAPI_SPEC.yaml)).
 - **ERM3** — data pipeline / zarr producers only; does not own `aom/` (avoid drift).
-- **Risk_Models / riskmodels_com** — consume types (copy or package) and implement compiler-backed client.
+- **Risk_Models / riskmodels_net** — consume types (copy or package) and implement compiler-backed client.

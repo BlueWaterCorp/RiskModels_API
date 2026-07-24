@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sync env vars to GitHub Actions secrets
-# Source: RiskModels_API/.env.local, fallback to Risk_Models/riskmodels_com/.env.local
+# Source: RiskModels_API/.env.local, fallback to Risk_Models/riskmodels_net/.env.local
 # Requires: gh cli (brew install gh), gh auth login
 # Usage: ./scripts/sync-secrets-to-gh.sh
 
@@ -12,10 +12,10 @@ REPO="BlueWaterCorp/RiskModels_API"
 
 # Prefer local .env.local, then copy from Risk_Models
 LOCAL_ENV="$REPO_ROOT/.env.local"
-RISK_MODELS_ENV="$REPO_ROOT/../Risk_Models/riskmodels_com/.env.local"
+RISK_MODELS_ENV="$REPO_ROOT/../Risk_Models/riskmodels_net/.env.local"
 
 if [ ! -f "$LOCAL_ENV" ] && [ ! -f "$RISK_MODELS_ENV" ]; then
-  echo "❌ No .env.local found in RiskModels_API or Risk_Models/riskmodels_com"
+  echo "❌ No .env.local found in RiskModels_API or Risk_Models/riskmodels_net"
   exit 1
 fi
 
