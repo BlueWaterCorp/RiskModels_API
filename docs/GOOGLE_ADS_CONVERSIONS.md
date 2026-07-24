@@ -58,7 +58,9 @@ Conversion Time), so the endpoint emits a rolling window with a stable conversio
 ### Data flow (all in code)
 
 1. **Capture** — `captureGclid()` persists `gclid`/`wbraid`/`gbraid` to `localStorage`
-   (`rm_gclid`) on the `/get-key` page ([`lib/google-ads-conversion.ts`](../lib/google-ads-conversion.ts)).
+   (`rm_gclid`) on **every** page via [`components/UTMTracker.tsx`](../components/UTMTracker.tsx)
+   (also still called on `/get-key`). Site-wide capture is required because Ads final URLs
+   often land on `/` or docs; a later nav to `/get-key` drops the query string.
 2. **Persist** — on key creation, the client sends `gclid` in `POST /api/agent-keys`;
    `persistGclidIfVacant()` stores it (first-touch) in `agent_accounts.signup_attribution`
    jsonb under `gclid` / `gclid_at`. No schema change — `supabase/` is gitignored / governed
