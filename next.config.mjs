@@ -26,6 +26,12 @@ const nextConfig = {
         destination: '/docs/methodology',
         permanent: true,
       },
+      // Stale /docs/python-sdk links (api-reference, llms.txt, key-issued email) — SDK onboarding is /installation.
+      {
+        source: '/docs/python-sdk',
+        destination: '/installation',
+        permanent: true,
+      },
     ];
   },
   async rewrites() {

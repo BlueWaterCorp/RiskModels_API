@@ -588,7 +588,7 @@ df = client.ticker_returns("NVDA", years=3)`}</pre>
                 </div>
 
                 <div className="pt-4 border-t border-zinc-800">
-                  <a href="https://riskmodels.app/docs/python-sdk" target="_blank" className="text-sm text-blue-400 hover:text-blue-300">
+                  <a href="/installation" target="_blank" className="text-sm text-blue-400 hover:text-blue-300">
                     Full Python SDK docs →
                   </a>
                 </div>

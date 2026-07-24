@@ -135,6 +135,9 @@ function GetKeyPage() {
   // Stripe flow — matches redirect query params from /api/stripe/setup-success
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeSetupError, setStripeSetupError] = useState('');
+  // Remove-card action on the "Add credits" card (DELETE /api/stripe/payment-method).
+  const [removingCard, setRemovingCard] = useState(false);
+  const [removeCardError, setRemoveCardError] = useState('');
   // Prepay selection on the activation CTA. 0 = free start ($0 charged, $20 free).
   // Allowed amounts mirror ALLOWED_PREPAY_USD in /api/stripe/setup-session.
   const [prepayUsd, setPrepayUsd] = useState(0);
@@ -393,6 +396,23 @@ function GetKeyPage() {
       body: JSON.stringify({ id }),
     });
     await fetchAccountData();
+  };
+
+  const removeCard = async () => {
+    if (!confirm('Remove the card on file? Auto-refill will be disabled and future top-ups will ask for a new card.')) return;
+    setRemovingCard(true);
+    setRemoveCardError('');
+    try {
+      const res = await fetch('/api/stripe/payment-method', { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setRemoveCardError(data?.error ?? 'Failed to remove card. Please try again.');
+        return;
+      }
+      await fetchAccountData();
+    } finally {
+      setRemovingCard(false);
+    }
   };
 
   const startRename = (k: ApiKey) => {
@@ -785,6 +805,24 @@ function GetKeyPage() {
             {stripeSetupError && (
               <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
                 {stripeSetupError}
+              </p>
+            )}
+            {account?.stripe_payment_method_id && (
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-800">
+                <span className="text-xs text-zinc-500">Card on file with Stripe</span>
+                <button
+                  onClick={removeCard}
+                  disabled={removingCard}
+                  className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 disabled:opacity-50 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  {removingCard ? 'Removing…' : 'Remove card'}
+                </button>
+              </div>
+            )}
+            {removeCardError && (
+              <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
+                {removeCardError}
               </p>
             )}
           </div>

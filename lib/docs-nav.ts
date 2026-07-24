@@ -35,6 +35,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
       { href: '/docs/rankings-screen', label: 'Rankings screen' },
       { href: '/docs/batch-lstar', label: 'Batch Lstar' },
       { href: '/docs/industry-panel', label: 'Industry panel' },
+      { href: '/docs/etf-factor-returns', label: 'ETF factor returns' },
       { href: '/docs/universe-members', label: 'Universe members' },
       { href: '/docs/residual-signal-basket', label: 'Residual signal basket' },
       { href: '/docs/macro-factors', label: 'Factor correlation' },
