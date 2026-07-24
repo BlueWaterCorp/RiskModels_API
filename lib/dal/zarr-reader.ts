@@ -875,28 +875,41 @@ export async function readLatestRankSnapshot(
 // market root by convention, so λ_*→SPY = 1.0 and never reads from this store.
 
 async function readTickerIndexMap(grp: Group<Readable>): Promise<Map<string, number> | null> {
-  try {
-    const loc = grp.resolve("ticker");
-    const arr = await open.v2(loc, { kind: "array" });
-    const ch = await get(arr, null);
-    const d = ch?.data;
-    const m = new Map<string, number>();
-    if (d instanceof UnicodeStringArray) {
-      for (let i = 0; i < d.length; i++) {
-        m.set(String(d.get(i)).trim().toUpperCase(), i);
+  // Recycled-ticker collision policy: prefer the collision-free `unique_ticker`
+  // coord when the store carries one (bare ticker = canonical current holder,
+  // 'X#N' = prior holder); on the display `ticker` coord keep the FIRST
+  // symbol-axis occurrence and warn — never silent last-wins.
+  const readCoordMap = async (coordName: string): Promise<Map<string, number> | null> => {
+    try {
+      const loc = grp.resolve(coordName);
+      const arr = await open.v2(loc, { kind: "array" });
+      const ch = await get(arr, null);
+      const d = ch?.data;
+      const at =
+        d instanceof UnicodeStringArray
+          ? (i: number) => String(d.get(i)).trim().toUpperCase()
+          : Array.isArray(d)
+            ? (i: number) => String(d[i]).trim().toUpperCase()
+            : null;
+      if (!at) return null;
+      const n = (d as { length: number }).length;
+      const m = new Map<string, number>();
+      for (let i = 0; i < n; i++) {
+        const t = at(i);
+        if (m.has(t)) {
+          console.warn(
+            `[zarr-reader] Duplicate ${coordName} ${t} at symbol indexes ${m.get(t)}, ${i} — keeping first`,
+          );
+          continue;
+        }
+        m.set(t, i);
       }
       return m;
+    } catch {
+      return null;
     }
-    if (Array.isArray(d)) {
-      for (let i = 0; i < d.length; i++) {
-        m.set(String(d[i]).trim().toUpperCase(), i);
-      }
-      return m;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  };
+  return (await readCoordMap("unique_ticker")) ?? (await readCoordMap("ticker"));
 }
 
 async function readFloatScalarTeoSymbol(

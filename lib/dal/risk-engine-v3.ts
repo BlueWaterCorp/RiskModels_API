@@ -361,16 +361,29 @@ export async function resolveSymbolByTicker(
   const tryResolve = async (t: string): Promise<SymbolRegistryRow | null> => {
     try {
       const admin = createAdminClient();
+      // Recycled tickers can leave >1 symbols row per display ticker (e.g. if a
+      // sync ever includes delisted rows). maybeSingle() would throw and turn a
+      // valid ticker into a 404 — instead fetch up to 2, warn on a collision,
+      // and pick deterministically (first by bw_sym_id).
       const { data, error } = await admin
         .from("symbols")
         .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
         .eq("ticker", t)
-        .maybeSingle();
+        .order("symbol", { ascending: true })
+        .limit(2);
       if (error) {
         console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
         return null;
       }
-      return normalizeSymbolRow(data as Record<string, unknown> | null);
+      const rows = data ?? [];
+      if (rows.length > 1) {
+        console.warn(
+          `[V3 DAL] Ticker ${t} matches multiple symbols: ${rows
+            .map((r) => String((r as Record<string, unknown>).symbol))
+            .join(", ")} — picking first by bw_sym_id`,
+        );
+      }
+      return normalizeSymbolRow((rows[0] as Record<string, unknown> | undefined) ?? null);
     } catch (error) {
       console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
       return null;
@@ -436,12 +449,23 @@ export async function resolveSymbolsByTickers(
       return result;
     }
 
-    for (const row of data ?? []) {
-      const normalized = normalizeSymbolRow(row as Record<string, unknown>);
-      if (normalized) {
-        const requestedKey = upperTickers.find(ut => ut === normalized.ticker) ?? normalized.ticker;
-        result.set(requestedKey, normalized);
+    // Recycled tickers can leave >1 row per display ticker. Sort by bw_sym_id
+    // and keep the first per ticker so a collision resolves deterministically
+    // (same pick as resolveSymbolByTicker), never silent last-wins.
+    const sortedRows = (data ?? [])
+      .map(row => normalizeSymbolRow(row as Record<string, unknown>))
+      .filter((r): r is SymbolRegistryRow => r !== null)
+      .sort((a, b) => a.symbol.localeCompare(b.symbol));
+    for (const normalized of sortedRows) {
+      const requestedKey = upperTickers.find(ut => ut === normalized.ticker) ?? normalized.ticker;
+      const existing = result.get(requestedKey);
+      if (existing) {
+        console.warn(
+          `[V3 DAL] Ticker ${requestedKey} matches multiple symbols: ${existing.symbol}, ${normalized.symbol} — keeping first by bw_sym_id`,
+        );
+        continue;
       }
+      result.set(requestedKey, normalized);
     }
 
     // Alias fallback for missing tickers

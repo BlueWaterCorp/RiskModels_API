@@ -15,6 +15,7 @@ HTTP call, hence no rate-limit throttling and no per-call billing.
 
 from __future__ import annotations
 
+import logging
 import math as _math
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,8 @@ from .zarr_context import (
     _subsector_etf,
     _symbol_for_ticker,
 )
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -401,15 +404,35 @@ def compute_peer_analytics_from_zarr(
                 .sort_values(sort_col, ascending=False, na_position="last")
                 .head(6).index
             )
-            # Ticker → symbol lookup for peers.
+            # Ticker → symbol lookup for peers. Recycled-ticker collision
+            # policy: prefer the collision-free unique_ticker coord (bare
+            # ticker = canonical current holder); on display-ticker collisions
+            # keep the FIRST symbol-axis occurrence — same policy as the
+            # target's _symbol_for_ticker resolution.
             d_last = _latest_daily_slice(ds_daily)
-            tkr_arr = np.asarray(d_last["ticker"].values)
+            tkr_coord = "unique_ticker" if "unique_ticker" in d_last.coords else "ticker"
+            tkr_arr = np.asarray(d_last[tkr_coord].values)
             sym_arr = np.asarray(d_last.symbol.values)
             tkr_upper = np.array([
                 (t.decode("utf-8") if isinstance(t, bytes) else str(t)).upper().strip()
                 for t in tkr_arr
             ])
-            lookup = {t: s for t, s in zip(tkr_upper, sym_arr) if t}
+            lookup: dict[str, Any] = {}
+            dropped: dict[str, list[Any]] = {}
+            for t, s in zip(tkr_upper, sym_arr):
+                if not t:
+                    continue
+                if t in lookup:
+                    dropped.setdefault(t, []).append(s)
+                else:
+                    lookup[t] = s
+            if dropped:
+                _log.debug(
+                    "peer lookup (%s coord): kept first symbol for colliding "
+                    "tickers, dropped duplicates: %s",
+                    tkr_coord,
+                    {t: [str(s) for s in syms] for t, syms in dropped.items()},
+                )
 
             for pt in top_peer_tickers:
                 sym = lookup.get(str(pt).upper())

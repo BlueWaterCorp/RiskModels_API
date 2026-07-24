@@ -21,6 +21,7 @@ See ``docs/ERM3_ZARR_API_PARITY.md`` (section **Local zarr paths**) for setup no
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import sys
@@ -36,6 +37,8 @@ import pandas as pd
 import xarray as xr
 
 from ._data import StockContext
+
+_log = logging.getLogger(__name__)
 
 
 def _riskmodels_repo_root() -> Path:
@@ -262,18 +265,37 @@ def _ticker_coord_scalar_str(v: Any) -> str:
 
 
 def _symbol_for_ticker(ds: xr.Dataset, ticker: str) -> str:
-    """Resolve ticker to symbol using the dataset's ticker coordinate.
+    """Resolve ticker to symbol using the dataset's ticker coordinates.
 
-    Falls back to matching by symbol substring if the ticker coordinate is
-    unpopulated (e.g. ds_erm3 where ticker coord may be 'None').
+    Recycled-ticker collision policy: an exact ``unique_ticker`` match wins —
+    the bare ticker names the canonical current holder, an explicit '#N'
+    suffix ('PLX#1') names a prior holder. The display ``ticker`` coord is
+    only a fallback; when it matches more than one symbol the first hit in
+    symbol-axis order is returned and all candidates are logged.
     """
     want = ticker.upper()
-    if "ticker" in ds.coords:
-        raw = np.asarray(ds["ticker"].values)
+    if "unique_ticker" in ds.coords:
+        raw = np.asarray(ds["unique_ticker"].values)
         syms = np.asarray(ds["symbol"].values)
         for i in range(int(raw.size)):
             if _ticker_coord_scalar_str(raw.flat[i]) == want:
                 return str(syms.flat[i])
+    if "ticker" in ds.coords:
+        raw = np.asarray(ds["ticker"].values)
+        syms = np.asarray(ds["symbol"].values)
+        hits = [
+            i for i in range(int(raw.size))
+            if _ticker_coord_scalar_str(raw.flat[i]) == want
+        ]
+        if hits:
+            if len(hits) > 1:
+                candidates = [str(syms.flat[i]) for i in hits]
+                _log.warning(
+                    "Ticker %s matches %d symbols %s — picking first by symbol-axis "
+                    "order (%s); use a unique_ticker ('%s#N') to address a prior holder",
+                    want, len(hits), candidates, candidates[0], want,
+                )
+            return str(syms.flat[hits[0]])
     raise ValueError(f"No symbol for ticker {ticker} in {list(ds.dims)}")
 
 
