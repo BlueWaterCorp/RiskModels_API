@@ -29,6 +29,16 @@ interface AccountInfo {
   status: string;
 }
 
+/** One saved card from GET /api/stripe/payment-methods. */
+interface SavedCard {
+  id: string;
+  brand: string;
+  last4: string;
+  exp_month: number | null;
+  exp_year: number | null;
+  is_default: boolean;
+}
+
 /** Google “G” mark — same paths as Risk_Models `riskmodels_net` auth modal for visual parity. */
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -135,9 +145,11 @@ function GetKeyPage() {
   // Stripe flow — matches redirect query params from /api/stripe/setup-success
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripeSetupError, setStripeSetupError] = useState('');
-  // Remove-card action on the "Add credits" card (DELETE /api/stripe/payment-method).
-  const [removingCard, setRemovingCard] = useState(false);
-  const [removeCardError, setRemoveCardError] = useState('');
+  // Payment-methods management: list from Stripe, per-card remove, Add card.
+  const [cards, setCards] = useState<SavedCard[]>([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [removingCardId, setRemovingCardId] = useState<string | null>(null);
+  const [cardsError, setCardsError] = useState('');
   // Prepay selection on the activation CTA. 0 = free start ($0 charged, $20 free).
   // Allowed amounts mirror ALLOWED_PREPAY_USD in /api/stripe/setup-session.
   const [prepayUsd, setPrepayUsd] = useState(0);
@@ -225,15 +237,22 @@ function GetKeyPage() {
 
   const fetchAccountData = useCallback(async () => {
     setDataLoading(true);
-    const [acctRes, keysRes] = await Promise.all([
+    setCardsLoading(true);
+    const [acctRes, keysRes, cardsRes] = await Promise.all([
       fetch('/api/account'),
       fetch('/api/agent-keys'),
+      fetch('/api/stripe/payment-methods'),
     ]);
     if (acctRes.ok) setAccount(await acctRes.json());
     if (keysRes.ok) {
       const data = await keysRes.json();
       setKeys(data.keys ?? []);
     }
+    if (cardsRes.ok) {
+      const data = await cardsRes.json();
+      setCards(data.cards ?? []);
+    }
+    setCardsLoading(false);
     setDataLoading(false);
   }, []);
 
@@ -398,20 +417,24 @@ function GetKeyPage() {
     await fetchAccountData();
   };
 
-  const removeCard = async () => {
-    if (!confirm('Remove the card on file? Auto-refill will be disabled and future top-ups will ask for a new card.')) return;
-    setRemovingCard(true);
-    setRemoveCardError('');
+  const removeCard = async (id: string, label: string) => {
+    if (!confirm(`Remove ${label}? If it was the default, auto-refill moves to another card on file — or turns off when none remain.`)) return;
+    setRemovingCardId(id);
+    setCardsError('');
     try {
-      const res = await fetch('/api/stripe/payment-method', { method: 'DELETE' });
+      const res = await fetch('/api/stripe/payment-method', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethodId: id }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setRemoveCardError(data?.error ?? 'Failed to remove card. Please try again.');
+        setCardsError(data?.error ?? 'Failed to remove card. Please try again.');
         return;
       }
       await fetchAccountData();
     } finally {
-      setRemovingCard(false);
+      setRemovingCardId(null);
     }
   };
 
@@ -763,34 +786,68 @@ function GetKeyPage() {
           </div>
         )}
 
-        {/* Payment method — saved-card management */}
+        {/* Payment methods — list / add / remove saved cards */}
         {hasCard && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
-            <h2 className="text-sm font-semibold text-zinc-200 mb-1 flex items-center gap-2">
-              <CreditCard size={14} /> Payment method
-            </h2>
-            {account?.stripe_payment_method_id ? (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-zinc-500">
-                  Card on file with Stripe. Top-ups and auto-refill charge this card.
-                </p>
-                <button
-                  onClick={removeCard}
-                  disabled={removingCard}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-800/60 bg-red-950/30 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-950/60 hover:text-red-300 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  <Trash2 size={12} />
-                  {removingCard ? 'Removing…' : 'Remove card'}
-                </button>
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                <CreditCard size={14} /> Payment methods
+              </h2>
+              <button
+                onClick={() => startStripeSetup(0)}
+                disabled={stripeLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50 transition-colors"
+              >
+                <Plus size={12} /> Add card
+              </button>
+            </div>
+            {cards.length > 0 ? (
+              <ul className="divide-y divide-zinc-800/70">
+                {cards.map((c) => {
+                  const label = `${c.brand} •••• ${c.last4}`;
+                  return (
+                    <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <CreditCard size={16} className="text-zinc-500 flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-zinc-200 capitalize">
+                          {label}
+                          {c.is_default && (
+                            <span className="ml-2 rounded border border-blue-800/60 bg-blue-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 align-middle">
+                              Default
+                            </span>
+                          )}
+                        </p>
+                        {c.exp_month != null && c.exp_year != null && (
+                          <p className="text-xs text-zinc-500">
+                            Expires {String(c.exp_month).padStart(2, '0')}/{String(c.exp_year).slice(-2)}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeCard(c.id, label)}
+                        disabled={removingCardId === c.id}
+                        className="p-1.5 rounded hover:bg-red-900/30 text-zinc-600 hover:text-red-400 disabled:opacity-50 transition-colors"
+                        title={removingCardId === c.id ? 'Removing…' : `Remove ${label}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
               <p className="text-xs text-zinc-500">
-                No card on file. Add one via the &quot;Add credits&quot; section below.
+                {cardsLoading ? 'Loading cards…' : 'No cards on file. Add one to enable top-ups and auto-refill.'}
               </p>
             )}
-            {removeCardError && (
+            {cards.length > 0 && (
+              <p className="text-[11px] text-zinc-600 mt-3">
+                Top-ups and auto-refill charge the default card. Adding a card makes it the default.
+              </p>
+            )}
+            {cardsError && (
               <p className="text-red-400 text-xs mt-3 bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
-                {removeCardError}
+                {cardsError}
               </p>
             )}
           </div>

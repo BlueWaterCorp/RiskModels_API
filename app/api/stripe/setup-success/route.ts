@@ -165,13 +165,13 @@ export async function GET(req: NextRequest) {
 
     // ── Upsert the account ────────────────────────────────────────────────────────
     if (existingAccount) {
+      // Newest saved card becomes the default. Auto-refill prefs are NOT reset
+      // here — re-running setup (e.g. "Add card" from /get-key) must not wipe
+      // them; the defaults below apply to first-time inserts only.
       const updates: Record<string, unknown> = {
         stripe_customer_id: session.customer as string,
         stripe_payment_method_id: paymentMethodId ?? null,
         contact_email: email,
-        auto_top_up: false,
-        auto_top_up_threshold: DEFAULT_REFILL_THRESHOLD,
-        auto_top_up_amount: DEFAULT_REFILL_AMOUNT,
         updated_at: new Date().toISOString(),
       };
       if (creditTotal > 0) {

@@ -1,13 +1,14 @@
 /**
  * DELETE /api/stripe/payment-method
- * Removes the caller's saved card(s): detaches the recorded payment method AND
- * any other card attached to the Stripe customer (legacy activations predate
- * the stripe_payment_method_id column, so some cards were never recorded
- * locally). Clears stripe_payment_method_id on agent_accounts and disables
- * auto_top_up (billing-config refuses auto-refill without a card on file).
+ * Removes ONE saved card: body `{ paymentMethodId }`. The id is validated
+ * against the caller's Stripe customer before detaching. If the removed card
+ * was the default (agent_accounts.stripe_payment_method_id — the one top-ups /
+ * auto-refill charge), the default moves to the next remaining card; when no
+ * cards remain, the column is cleared and auto_top_up is disabled
+ * (billing-config refuses auto-refill without a card on file).
  *
- * Idempotent: a payment method already gone on Stripe's side still clears the
- * local record. Adding a new card afterwards is the normal /get-key flow.
+ * Idempotent: a card already gone on Stripe's side still resyncs the default.
+ * Adding a card is the normal /get-key Checkout setup flow.
  *
  * Auth: browser session only (same as setup-session).
  */
@@ -18,12 +19,18 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const paymentMethodId = (body as { paymentMethodId?: unknown }).paymentMethodId;
+    if (typeof paymentMethodId !== 'string' || !paymentMethodId.startsWith('pm_')) {
+      return NextResponse.json({ error: 'paymentMethodId required' }, { status: 400 });
     }
 
     const admin = createAdminClient();
@@ -34,68 +41,58 @@ export async function DELETE() {
       .limit(1)
       .maybeSingle();
 
-    if (!account) {
+    if (!account?.stripe_customer_id) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    const customerId = account.stripe_customer_id as string;
+    const recordedDefault = (account.stripe_payment_method_id as string | null) ?? null;
 
-    // Every card we know about: the recorded one plus any still attached to the
-    // customer at Stripe. If the Stripe list call fails we can still act on the
-    // recorded id; the user can retry to catch the rest.
-    const paymentMethodIds = new Set<string>();
-    if (account.stripe_payment_method_id) {
-      paymentMethodIds.add(account.stripe_payment_method_id as string);
+    // Ownership check — only detach cards actually attached to this customer.
+    try {
+      const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+      if (pm.customer !== customerId) {
+        return NextResponse.json({ error: 'Payment method not found' }, { status: 404 });
+      }
+    } catch (err) {
+      // Already gone on Stripe's side — fall through so the default resyncs.
+      if ((err as Stripe.errors.StripeError)?.code !== 'resource_missing') throw err;
     }
-    if (account.stripe_customer_id) {
-      try {
-        const attached = await stripe.paymentMethods.list({
-          customer: account.stripe_customer_id as string,
-          type: 'card',
-          limit: 100,
-        });
-        for (const pm of attached.data) paymentMethodIds.add(pm.id);
-      } catch (err) {
-        console.error('[payment-method] list attached cards failed:', err);
+
+    try {
+      await stripe.paymentMethods.detach(paymentMethodId);
+    } catch (err) {
+      if ((err as Stripe.errors.StripeError)?.code !== 'resource_missing') {
+        console.error('[payment-method] detach failed:', err);
+        return NextResponse.json({ error: 'Failed to remove card with Stripe' }, { status: 502 });
       }
     }
 
-    if (paymentMethodIds.size === 0) {
-      return NextResponse.json({ error: 'No payment method on file' }, { status: 400 });
-    }
+    // Resync the default if the removed card was it.
+    let newDefault = recordedDefault;
+    let autoTopUp = Boolean(account.auto_top_up);
+    if (recordedDefault === paymentMethodId) {
+      const remaining = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 100 });
+      newDefault = remaining.data[0]?.id ?? null;
+      if (!newDefault) autoTopUp = false;
 
-    for (const id of paymentMethodIds) {
-      try {
-        await stripe.paymentMethods.detach(id);
-      } catch (err) {
-        // Already detached/expired on Stripe's side — keep going.
-        if ((err as Stripe.errors.StripeError)?.code !== 'resource_missing') {
-          console.error('[payment-method] detach failed:', err);
-          return NextResponse.json({ error: 'Failed to remove card with Stripe' }, { status: 502 });
-        }
+      const { error: updateError } = await admin
+        .from('agent_accounts')
+        .update({
+          stripe_payment_method_id: newDefault,
+          auto_top_up: autoTopUp,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('[payment-method] account update failed:', updateError);
+        return NextResponse.json({ error: 'Failed to update account' }, { status: 500 });
       }
     }
 
-    const hadAutoTopUp = Boolean(account.auto_top_up);
-    const { error: updateError } = await admin
-      .from('agent_accounts')
-      .update({
-        stripe_payment_method_id: null,
-        auto_top_up: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id);
-
-    if (updateError) {
-      console.error('[payment-method] account update failed:', updateError);
-      return NextResponse.json({ error: 'Failed to update account' }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      removed: paymentMethodIds.size,
-      auto_top_up_disabled: hadAutoTopUp,
-    });
+    return NextResponse.json({ success: true, default_payment_method_id: newDefault });
   } catch (err) {
     console.error('[payment-method]', err);
     return NextResponse.json({ error: 'Failed to remove payment method' }, { status: 500 });
