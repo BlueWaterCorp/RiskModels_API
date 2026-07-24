@@ -65,7 +65,9 @@ export default function Navbar() {
             <Logo subWord="API" />
           </div>
 
-          <div className="hidden md:block flex-1 min-w-0 max-w-md lg:max-w-lg xl:max-w-xl">
+          {/* Search needs ~150px of non-shrinkable content (icon + input + ⌘K);
+              below xl the bar is too tight and it overflows over the Docs link. */}
+          <div className="hidden xl:block flex-1 min-w-0 max-w-xl">
             <PortalSearch />
           </div>
 
