@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { captureGclid } from '@/lib/google-ads-conversion';
 import { captureUTMFromURL, getUTMData } from '@/lib/utm';
 
 declare global {
@@ -11,12 +12,19 @@ declare global {
 }
 
 /**
- * Runs once per page load to capture URL UTM params and mirror them into gtag
- * user_properties when available.
+ * Runs once per page load to capture URL UTM + Google click id (gclid/wbraid/gbraid)
+ * into localStorage, and mirror UTM into gtag user_properties when available.
+ *
+ * gclid must be captured site-wide (not only on /get-key): Ads final URLs often
+ * land on `/` or docs; navigating to /get-key drops the query string and would
+ * otherwise leave signup_attribution.gclid empty forever (45d+ zero paid observed
+ * 2026-07-23 while Ads was spending).
  */
 export function UTMTracker() {
   useEffect(() => {
-    captureUTMFromURL(window.location.search);
+    const search = window.location.search;
+    captureUTMFromURL(search);
+    captureGclid(search);
     const utm = getUTMData();
     if (!utm || typeof window.gtag !== 'function') return;
 

@@ -9,9 +9,9 @@
  *   components/GoogleAdsTag.tsx.
  *
  * Phase 2 (planned): "first API key use" activation via offline conversion import.
- *   captureGclid() persists the Google click id at landing so a server job can later
- *   upload an offline conversion (tied to the GCLID) when a key is first used.
- *   See docs/GOOGLE_ADS_CONVERSIONS.md.
+ *   captureGclid() persists the Google click id at landing (site-wide via UTMTracker,
+ *   and on /get-key) so a server job can later upload an offline conversion (tied to
+ *   the GCLID) when a key is first used. See docs/GOOGLE_ADS_CONVERSIONS.md.
  */
 
 import type { User } from '@supabase/supabase-js';
