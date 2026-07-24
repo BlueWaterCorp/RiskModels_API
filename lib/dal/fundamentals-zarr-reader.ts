@@ -677,15 +677,17 @@ async function readStringCoord(grp: Group<Readable>, name: string): Promise<stri
 }
 
 /**
- * Resolve the symbol axis index for a ticker — `ticker` coord first (first hit,
- * matching the Python reader), then `unique_ticker`, then the `symbol` axis so
- * internal callers can address by bw_sym_id.
+ * Resolve the symbol axis index for a ticker — collision-free `unique_ticker`
+ * coord first (recycled display tickers alias >1 symbol; the bare ticker names
+ * the canonical current holder, 'X#N' a prior holder), then display `ticker`
+ * (first hit, matching the Python reader), then the `symbol` axis so internal
+ * callers can address by bw_sym_id.
  */
 async function resolveSymbolIndex(
   grp: Group<Readable>,
   ticker: string,
 ): Promise<number | null> {
-  for (const coord of ["ticker", "unique_ticker", "symbol"] as const) {
+  for (const coord of ["unique_ticker", "ticker", "symbol"] as const) {
     const values = await readStringCoord(grp, coord);
     if (!values) continue;
     const hit = values.findIndex((v) => v === ticker);
@@ -723,12 +725,41 @@ async function readVar1d(
   }
 }
 
-async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | null> {
+/**
+ * Resolve ticker → (symbol-axis index, bw_sym_id) for cache keying. Recycled
+ * display tickers map two companies onto one string, so the row-pack cache is
+ * keyed by the resolved identity — never the raw ticker — or two companies
+ * would share a cache entry. Redis-cached so cache hits skip the coord reads.
+ */
+async function resolveRowIdentity(
+  ticker: string,
+): Promise<{ symIdx: number; symbol: string } | null> {
+  const ck = generateCacheKey("fundamentals_zarr", "row_identity_v1", { ticker });
+  const hit = await getCache<{ symIdx: number; symbol: string } | typeof EMPTY_SENTINEL>(ck);
+  if (hit !== null && hit !== undefined) {
+    return (hit as { __empty?: boolean }).__empty === true
+      ? null
+      : (hit as { symIdx: number; symbol: string });
+  }
+  const grp = await openFundamentalsGroup();
+  if (!grp) return null; // transient open failure — don't negative-cache
+  const symIdx = await resolveSymbolIndex(grp, ticker);
+  if (symIdx === null) {
+    setCache(ck, EMPTY_SENTINEL, FUNDAMENTALS_NEGATIVE_TTL).catch(console.error);
+    return null;
+  }
+  const symbols = await readStringCoord(grp, "symbol");
+  const resolved = { symIdx, symbol: symbols?.[symIdx] ?? ticker };
+  setCache(ck, resolved, FUNDAMENTALS_PACK_TTL).catch(console.error);
+  return resolved;
+}
+
+async function computeRowPack(
+  ticker: string,
+  symIdx: number,
+): Promise<FundamentalsRowPack | null> {
   const grp = await openFundamentalsGroup();
   if (!grp) return null;
-
-  const symIdx = await resolveSymbolIndex(grp, ticker);
-  if (symIdx === null) return null;
 
   // Period axis
   let periodEndDates: string[] | null = null;
@@ -801,18 +832,22 @@ async function computeRowPack(ticker: string): Promise<FundamentalsRowPack | nul
 }
 
 async function readRowPackCached(ticker: string): Promise<FundamentalsRowPack | null> {
+  const identity = await resolveRowIdentity(ticker);
+  if (identity === null) return null;
   // v3: pack shape changed 2026-07-10 (added secRaw/secSource for SEC-fact exposure).
   // Bumping the key invalidates v2 packs that lack those fields.
   // v6: 2026-07-18 — SEC_FACT_CONCEPTS gained ebitda_sec / eps_basic / shares_outstanding_sec;
   // v5 packs lack those secRaw/secSource columns.
-  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v6", { ticker });
+  // Keyed by resolved bw_sym_id, not display ticker — recycled tickers alias
+  // two companies onto one string and must not share a cache entry.
+  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v6", { symbol: identity.symbol });
   const hit = await getCache<FundamentalsRowPack | typeof EMPTY_SENTINEL>(ck);
   if (hit !== null && hit !== undefined) {
     return (hit as { __empty?: boolean }).__empty === true
       ? null
       : (hit as FundamentalsRowPack);
   }
-  const pack = await computeRowPack(ticker);
+  const pack = await computeRowPack(ticker, identity.symIdx);
   if (pack === null) {
     setCache(ck, EMPTY_SENTINEL, FUNDAMENTALS_NEGATIVE_TTL).catch(console.error);
   } else {

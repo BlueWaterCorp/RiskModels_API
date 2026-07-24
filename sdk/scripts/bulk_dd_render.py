@@ -435,7 +435,13 @@ def symbol_fingerprints(
             continue
 
         store_tickers = np.array([str(t) for t in ds.ticker.values])
-        idx = {t: i for i, t in enumerate(store_tickers)}
+        # Recycled-ticker collisions keep the FIRST symbol-axis occurrence.
+        # All three ticker resolutions in this script — this map, the cohort
+        # builder's idx_by_tkr, and the render path via zarr_context
+        # ._symbol_for_ticker — share first-wins-with-unique_ticker-preference.
+        idx: dict[str, int] = {}
+        for i, t in enumerate(store_tickers):
+            idx.setdefault(t, i)
         sel = [(t, idx[t]) for t in hashed if t in idx]
         if not sel:
             continue
