@@ -1394,6 +1394,33 @@ def get_data_for_f1(
         except KeyError:
             pass
 
+        # Ragged-cube guard: any strip can end earlier than `teo` when its
+        # factor panel stalls (seen 2026-07-26: style_return ended 2 days
+        # before the rest). All strips are left-aligned from day 0, so
+        # truncate every series to the shortest common length — pairing a
+        # stale trailing value with teo's latest date (or IndexError-ing in
+        # the 5-leg cascade) is worse than ending the chart at the common
+        # coverage edge. Warn loudly: the truncated tail is a pipeline
+        # drift signal, not normal operation.
+        _strips = [fr_teo, gross_d, l1_d, l2_d, l3_d, res_d]
+        if style_d is not None:
+            _strips.append(style_d)
+        _n = min(len(x) for x in _strips)
+        if any(len(x) != _n for x in _strips):
+            log.warning(
+                "ds_fund_returns_daily.zarr ragged for %s: teo=%d gross=%d "
+                "style=%s — truncating all daily series to the common %d "
+                "points (chart ends at the shared coverage edge; check the "
+                "style panel materialization).",
+                bw_fund_id, len(fr_teo), len(gross_d),
+                len(style_d) if style_d is not None else "absent", _n,
+            )
+            fr_teo = fr_teo[:_n]
+            gross_d = gross_d[:_n]
+            l1_d, l2_d, l3_d, res_d = l1_d[:_n], l2_d[:_n], l3_d[:_n], res_d[:_n]
+            if style_d is not None:
+                style_d = style_d[:_n]
+
         # Window to last nav_lookback_months. ~21 trading days/month.
         window_days = int(nav_lookback_months * 21)
         if len(fr_teo) > window_days:
