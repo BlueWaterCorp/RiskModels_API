@@ -66,6 +66,48 @@ function getGcs(): Storage {
 }
 
 /** Minimal AsyncReadable for zarrita + consolidated metadata. */
+/**
+ * In-process chunk cache for zarr object reads. zarr chunks span many
+ * symbols per teo-block, so a portfolio slice re-downloads the same chunk
+ * once per symbol (18 series reads × ~9 chunks, mostly duplicates), and
+ * every `.get` opens a fresh TLS connection. Caching by object name with
+ * in-flight promise dedup collapses that to one download per distinct
+ * chunk per warm instance. Chunk bytes are written nightly (immutable
+ * intra-day), so a 30-minute TTL + small LRU cap is safe.
+ */
+const ZARR_CHUNK_TTL_MS = 30 * 60 * 1000;
+const ZARR_CHUNK_CACHE_MAX = 512;
+const zarrChunkCache = new Map<
+  string,
+  { at: number; promise: Promise<Uint8Array | undefined> }
+>();
+
+function zarrChunkCacheGet(
+  objectName: string,
+): Promise<Uint8Array | undefined> | null {
+  const hit = zarrChunkCache.get(objectName);
+  if (!hit) return null;
+  if (Date.now() - hit.at >= ZARR_CHUNK_TTL_MS) {
+    zarrChunkCache.delete(objectName);
+    return null;
+  }
+  // Refresh LRU position.
+  zarrChunkCache.delete(objectName);
+  zarrChunkCache.set(objectName, hit);
+  return hit.promise;
+}
+
+function zarrChunkCacheSet(
+  objectName: string,
+  promise: Promise<Uint8Array | undefined>,
+): void {
+  zarrChunkCache.set(objectName, { at: Date.now(), promise });
+  if (zarrChunkCache.size > ZARR_CHUNK_CACHE_MAX) {
+    const oldest = zarrChunkCache.keys().next().value;
+    if (oldest !== undefined) zarrChunkCache.delete(oldest);
+  }
+}
+
 class GcsZarrStore {
   constructor(
     private readonly bucket: Bucket,
@@ -75,19 +117,30 @@ class GcsZarrStore {
   async get(key: AbsolutePath): Promise<Uint8Array | undefined> {
     const rel = key.startsWith("/") ? key.slice(1) : key;
     const objectName = `${this.zarrObjectPrefix}/${rel}`.replace(/\/+/g, "/");
-    try {
-      const [buf] = await this.bucket.file(objectName).download();
-      return new Uint8Array(buf);
-    } catch (e: unknown) {
-      const err = e as { code?: number };
-      if (err?.code === 404) return undefined;
-      console.error("[zarr-internal] storage read failed");
-      throw new Error("Zarr read failed");
-    }
+    const cached = zarrChunkCacheGet(objectName);
+    if (cached) return cached;
+    const promise = (async () => {
+      try {
+        const [buf] = await this.bucket.file(objectName).download();
+        return new Uint8Array(buf);
+      } catch (e: unknown) {
+        const err = e as { code?: number };
+        if (err?.code === 404) return undefined;
+        console.error("[zarr-internal] storage read failed");
+        throw new Error("Zarr read failed");
+      }
+    })();
+    // In-flight dedup: concurrent same-chunk reads share this promise.
+    zarrChunkCacheSet(objectName, promise);
+    // Don't let a transient failure poison the cache for the full TTL.
+    promise.catch(() => zarrChunkCache.delete(objectName));
+    return promise;
   }
 }
 
-async function openZarrGroup(objectPrefix: string): Promise<Group<Readable> | null> {
+async function openZarrGroupUncached(
+  objectPrefix: string,
+): Promise<Group<Readable> | null> {
   const { bucket: bucketName, basePath } = parseZarrGcsPrefix();
   const fullPrefix = `${basePath}/${objectPrefix}`.replace(/\/+/g, "/").replace(/^\//, "");
   try {
@@ -109,6 +162,27 @@ async function openZarrGroup(objectPrefix: string): Promise<Group<Readable> | nu
     }
     return null;
   }
+}
+
+/**
+ * In-process zarr group cache. Each `readHistorySlice` used to re-download
+ * `.zmetadata` for up to 4 groups per call (and /api/snapshot fires up to 4
+ * slices per request). Groups are opened once per warm instance and reused
+ * for `GROUP_CACHE_TTL_MS` — zarrs update nightly, so a 30-minute staleness
+ * ceiling stays well inside the publish cadence.
+ */
+const GROUP_CACHE_TTL_MS = 30 * 60 * 1000;
+const zarrGroupCache = new Map<
+  string,
+  { at: number; promise: Promise<Group<Readable> | null> }
+>();
+
+async function openZarrGroup(objectPrefix: string): Promise<Group<Readable> | null> {
+  const hit = zarrGroupCache.get(objectPrefix);
+  if (hit && Date.now() - hit.at < GROUP_CACHE_TTL_MS) return hit.promise;
+  const promise = openZarrGroupUncached(objectPrefix);
+  zarrGroupCache.set(objectPrefix, { at: Date.now(), promise });
+  return promise;
 }
 
 function nsToIsoDate(ns: bigint): string {
@@ -561,8 +635,184 @@ export async function readHistorySlice(
   const rangeStart = validWindow ? (dailyTeo[dt0] ?? effStart) : "";
   const rangeEnd = validWindow ? (dailyTeo[Math.max(0, dt1 - 1)] ?? effEnd) : "";
 
-  const rows: SecurityHistoryRow[] = [];
+  // One independent read per (symbol, key) pair. The body is unchanged from
+  // the old sequential loop — only `continue` became `return rows` and the
+  // pair's rows collect into a local array.
+  const readOne = async (
+    symbol: string,
+    key: V3MetricKey,
+    idxs: {
+      dailyIdx: number | undefined;
+      etfIdx: number | undefined;
+      hedgeIdx: number | undefined;
+      returnsIdx: number | undefined;
+    },
+  ): Promise<SecurityHistoryRow[]> => {
+    const rows: SecurityHistoryRow[] = [];
+    const { dailyIdx, etfIdx, hedgeIdx, returnsIdx } = idxs;
+    const spec = getZarrSpec(key);
+    if (!spec) return rows;
 
+    if (spec.role === "daily") {
+      // Stock path first.
+      if (dailyIdx !== undefined && dt1 > dt0) {
+        const vals = await readFloatSeriesTeoSymbol(
+          dailyGrp,
+          spec.zarrVar,
+          dt0,
+          dt1,
+          dailyIdx,
+        );
+        if (vals) {
+          for (let i = 0; i < vals.length; i++) {
+            const teoStr = dailyTeo[dt0 + i];
+            if (!teoStr) continue;
+            rows.push({
+              symbol,
+              teo: teoStr,
+              periodicity: "daily",
+              metric_key: key,
+              metric_value: vals[i] ?? null,
+            });
+          }
+          return rows;
+        }
+      }
+      // ETF path fallback: only if the symbol wasn't in ds_daily at all
+      // (so we don't double-read for a symbol that just happens to have
+      // an empty daily series for some reason).
+      if (
+        dailyIdx === undefined &&
+        etfGrp &&
+        etfIdx !== undefined &&
+        etfTeo?.length &&
+        etfT1 > etfT0
+      ) {
+        const vals = await readFloatSeriesTeoSymbol(
+          etfGrp,
+          spec.zarrVar,
+          etfT0,
+          etfT1,
+          etfIdx,
+        );
+        if (vals) {
+          for (let i = 0; i < vals.length; i++) {
+            const teoStr = etfTeo[etfT0 + i];
+            if (!teoStr) continue;
+            rows.push({
+              symbol,
+              teo: teoStr,
+              periodicity: "daily",
+              metric_key: key,
+              metric_value: vals[i] ?? null,
+            });
+          }
+        }
+      }
+      return rows;
+    }
+
+    if (spec.role === "hedge") {
+      if (!hedgeGrp || hedgeIdx === undefined || !hedgeTeo || ht1 <= ht0) return rows;
+      const isVolDerived = "derivedVol23d" in spec && spec.derivedVol23d;
+      const isStockVarRaw = "asStockVar" in spec && spec.asStockVar;
+      const zarrVar = isVolDerived || isStockVarRaw ? "_stock_var" : spec.zarrVar;
+      const raw = await readFloatSeriesTeoSymbol(
+        hedgeGrp,
+        zarrVar,
+        ht0,
+        ht1,
+        hedgeIdx,
+      );
+      if (!raw) return rows;
+      for (let i = 0; i < raw.length; i++) {
+        const teoStr = hedgeTeo[ht0 + i];
+        if (!teoStr) continue;
+        const sv = raw[i];
+        let mv: number | null;
+        if (isVolDerived) {
+          mv = sv != null && Number.isFinite(sv) && sv >= 0 ? Math.sqrt(sv * 252) : null;
+        } else {
+          mv = sv ?? null;
+        }
+        rows.push({
+          symbol,
+          teo: teoStr,
+          periodicity: "daily",
+          metric_key: key,
+          metric_value: mv,
+        });
+      }
+      return rows;
+    }
+
+    if (spec.role === "returns") {
+      if (
+        !returnsGrp ||
+        returnsIdx === undefined ||
+        !returnsTeo ||
+        !levelMaps ||
+        rt1 <= rt0
+      ) return rows;
+      const li = levelMaps.get(spec.level);
+      if (li === undefined) return rows;
+      const vals = await readFloatSeriesTeoSymbolLevel(
+        returnsGrp,
+        spec.zarrVar,
+        rt0,
+        rt1,
+        returnsIdx,
+        li,
+      );
+      if (!vals) return rows;
+      for (let i = 0; i < vals.length; i++) {
+        const teoStr = returnsTeo[rt0 + i];
+        if (!teoStr) continue;
+        rows.push({
+          symbol,
+          teo: teoStr,
+          periodicity: "daily",
+          metric_key: key,
+          metric_value: vals[i] ?? null,
+        });
+      }
+      return rows;
+    }
+
+    if (spec.role === "returnsFlat") {
+      if (
+        !returnsGrp ||
+        returnsIdx === undefined ||
+        !returnsTeo ||
+        rt1 <= rt0
+      ) return rows;
+      const vals = await readNumericSeriesTeoSymbol(
+        returnsGrp,
+        spec.zarrVar,
+        rt0,
+        rt1,
+        returnsIdx,
+      );
+      if (!vals) return rows;
+      const sentinel = spec.nullSentinel;
+      for (let i = 0; i < vals.length; i++) {
+        const teoStr = returnsTeo[rt0 + i];
+        if (!teoStr) continue;
+        const v = vals[i];
+        const mv = (v != null && sentinel !== undefined && v === sentinel) ? null : v ?? null;
+        rows.push({
+          symbol,
+          teo: teoStr,
+          periodicity: "daily",
+          metric_key: key,
+          metric_value: mv,
+        });
+      }
+    }
+    return rows;
+  };
+
+  const tasks: Array<() => Promise<SecurityHistoryRow[]>> = [];
   for (const symbol of symbols) {
     // Each store has its OWN symbol roster and ordering. Resolve per store.
     // ETFs live in ds_etf.zarr and are NOT present in ds_daily — the daily-
@@ -575,167 +825,34 @@ export async function readHistorySlice(
     const returnsIdx = returnsSymMap?.get(symbol);
 
     for (const key of keys) {
-      const spec = getZarrSpec(key);
-      if (!spec) continue;
-
-      if (spec.role === "daily") {
-        // Stock path first.
-        if (dailyIdx !== undefined && dt1 > dt0) {
-          const vals = await readFloatSeriesTeoSymbol(
-            dailyGrp,
-            spec.zarrVar,
-            dt0,
-            dt1,
-            dailyIdx,
-          );
-          if (vals) {
-            for (let i = 0; i < vals.length; i++) {
-              const teoStr = dailyTeo[dt0 + i];
-              if (!teoStr) continue;
-              rows.push({
-                symbol,
-                teo: teoStr,
-                periodicity: "daily",
-                metric_key: key,
-                metric_value: vals[i] ?? null,
-              });
-            }
-            continue;
-          }
-        }
-        // ETF path fallback: only if the symbol wasn't in ds_daily at all
-        // (so we don't double-read for a symbol that just happens to have
-        // an empty daily series for some reason).
-        if (
-          dailyIdx === undefined &&
-          etfGrp &&
-          etfIdx !== undefined &&
-          etfTeo?.length &&
-          etfT1 > etfT0
-        ) {
-          const vals = await readFloatSeriesTeoSymbol(
-            etfGrp,
-            spec.zarrVar,
-            etfT0,
-            etfT1,
-            etfIdx,
-          );
-          if (vals) {
-            for (let i = 0; i < vals.length; i++) {
-              const teoStr = etfTeo[etfT0 + i];
-              if (!teoStr) continue;
-              rows.push({
-                symbol,
-                teo: teoStr,
-                periodicity: "daily",
-                metric_key: key,
-                metric_value: vals[i] ?? null,
-              });
-            }
-          }
-        }
-        continue;
-      }
-
-      if (spec.role === "hedge") {
-        if (!hedgeGrp || hedgeIdx === undefined || !hedgeTeo || ht1 <= ht0) continue;
-        const isVolDerived = "derivedVol23d" in spec && spec.derivedVol23d;
-        const isStockVarRaw = "asStockVar" in spec && spec.asStockVar;
-        const zarrVar = isVolDerived || isStockVarRaw ? "_stock_var" : spec.zarrVar;
-        const raw = await readFloatSeriesTeoSymbol(
-          hedgeGrp,
-          zarrVar,
-          ht0,
-          ht1,
-          hedgeIdx,
-        );
-        if (!raw) continue;
-        for (let i = 0; i < raw.length; i++) {
-          const teoStr = hedgeTeo[ht0 + i];
-          if (!teoStr) continue;
-          const sv = raw[i];
-          let mv: number | null;
-          if (isVolDerived) {
-            mv = sv != null && Number.isFinite(sv) && sv >= 0 ? Math.sqrt(sv * 252) : null;
-          } else {
-            mv = sv ?? null;
-          }
-          rows.push({
-            symbol,
-            teo: teoStr,
-            periodicity: "daily",
-            metric_key: key,
-            metric_value: mv,
-          });
-        }
-        continue;
-      }
-
-      if (spec.role === "returns") {
-        if (
-          !returnsGrp ||
-          returnsIdx === undefined ||
-          !returnsTeo ||
-          !levelMaps ||
-          rt1 <= rt0
-        ) continue;
-        const li = levelMaps.get(spec.level);
-        if (li === undefined) continue;
-        const vals = await readFloatSeriesTeoSymbolLevel(
-          returnsGrp,
-          spec.zarrVar,
-          rt0,
-          rt1,
-          returnsIdx,
-          li,
-        );
-        if (!vals) continue;
-        for (let i = 0; i < vals.length; i++) {
-          const teoStr = returnsTeo[rt0 + i];
-          if (!teoStr) continue;
-          rows.push({
-            symbol,
-            teo: teoStr,
-            periodicity: "daily",
-            metric_key: key,
-            metric_value: vals[i] ?? null,
-          });
-        }
-        continue;
-      }
-
-      if (spec.role === "returnsFlat") {
-        if (
-          !returnsGrp ||
-          returnsIdx === undefined ||
-          !returnsTeo ||
-          rt1 <= rt0
-        ) continue;
-        const vals = await readNumericSeriesTeoSymbol(
-          returnsGrp,
-          spec.zarrVar,
-          rt0,
-          rt1,
-          returnsIdx,
-        );
-        if (!vals) continue;
-        const sentinel = spec.nullSentinel;
-        for (let i = 0; i < vals.length; i++) {
-          const teoStr = returnsTeo[rt0 + i];
-          if (!teoStr) continue;
-          const v = vals[i];
-          const mv = (v != null && sentinel !== undefined && v === sentinel) ? null : v ?? null;
-          rows.push({
-            symbol,
-            teo: teoStr,
-            periodicity: "daily",
-            metric_key: key,
-            metric_value: mv,
-          });
-        }
-      }
+      tasks.push(() =>
+        readOne(symbol, key, { dailyIdx, etfIdx, hedgeIdx, returnsIdx }),
+      );
     }
   }
+
+  // Bounded-parallel chunk reads: 20 tickers × 6 keys = 120 independent
+  // GCS round-trips that used to run strictly sequentially — the dominant
+  // /api/snapshot latency. A small worker pool keeps GCS pressure bounded;
+  // the rows.sort below makes output order deterministic regardless of
+  // task completion order. Env-tunable for ops (1 = old sequential behavior).
+  const ZARR_READ_CONCURRENCY = Math.max(
+    1,
+    Number(process.env.ZARR_READ_CONCURRENCY ?? 8) || 8,
+  );
+  const rows: SecurityHistoryRow[] = [];
+  let cursor = 0;
+  await Promise.all(
+    Array.from(
+      { length: Math.min(ZARR_READ_CONCURRENCY, tasks.length) },
+      async () => {
+        while (cursor < tasks.length) {
+          const part = await tasks[cursor++]();
+          rows.push(...part);
+        }
+      },
+    ),
+  );
 
   rows.sort((a, b) => {
     const c = a.teo.localeCompare(b.teo);
