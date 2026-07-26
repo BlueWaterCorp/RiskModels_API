@@ -6,7 +6,7 @@
  */
 
 export interface ParameterSpec {
-  type: "string" | "integer" | "number" | "boolean" | "array";
+  type: "string" | "integer" | "number" | "boolean" | "array" | "object";
   required: boolean;
   description?: string;
   default?: any;
@@ -1435,6 +1435,15 @@ export const CAPABILITIES: Capability[] = [
         description: "json | png | svg",
         enum: ["json", "png", "svg"],
         default: "json",
+      },
+      params: {
+        type: "object",
+        required: false,
+        description:
+          "Per-slug render params (Phase 3). top_holdings_erm_stacked: top_n (int 1-50, default 12). " +
+          "cumulative_return_strip: window ('3m'|'6m'|'1y'|'2y'|'max', default 'max'). " +
+          "Unknown or slug-inapplicable params → 422. Params participate in the render-once GCS cache key " +
+          "({as_of}.top_n-5.json); empty params keep the legacy key.",
       },
     },
     pricing: {

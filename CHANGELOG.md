@@ -11,6 +11,7 @@ All notable changes to the RiskModels API surface and public assets.
 - **`GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`** — Stock panel drill-down (O.6): `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`, `watchlist_er_stacked`, and `_full` (composed DD page). Thin alias onto Artifact Registry / render-svc. ADR: BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
 - **Python SDK — `snapshot_panel()`** — Fetches a single panel PNG/JSON/SVG via the product panel route.
 - **render-svc** — Live stock `POST /decompose` loader for O.6 panels (`BW-STOCK-*` / watchlist).
+- **render-svc `POST /artifacts/render` — render params** — Optional `params` object for per-slug render parameters: `top_n` (int 1–50, default 12) on `top_holdings_erm_stacked@v1` (threads the holdings adapters + module cap; echoed as `top_n_requested`) and `window` (`3m`/`6m`/`1y`/`2y`/`max`, default `max`) on `cumulative_return_strip@v1` (trailing date-cutoff slice — cadence-agnostic across daily fund + monthly filer series — rebased so the window's base point reads 0; echoed as `window_requested`). Unknown or slug-inapplicable params → 422; artifact modules declare honored params via `RENDER_PARAMS` (undeclared → 501 deploy-skew guard). Params fold into the render-once GCS key (`{as_of}.top_n-5.json`); empty params keep the legacy key. Requires the matching BWMACRO artifact modules (the render-svc image symlinks `bwmacro-src` — coordinated rebuild). TS client `renderArtifact()` accepts `params`.
 
 ### Changed
 
