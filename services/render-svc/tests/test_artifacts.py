@@ -788,3 +788,211 @@ class TestDdPanelPrerendered:
         )
         assert json.loads(raw)["slug"] == "dd_peer_dna"
         assert mime == "application/json"
+
+
+# ── Render params (Phase 3) ───────────────────────────────────────────────
+
+from fastapi import HTTPException  # noqa: E402
+
+from render_svc.artifacts import _params_key_fragment, _supplied_params  # noqa: E402
+
+
+def _install_params_fake_artifact(
+    monkeypatch, *, slug: str, applicable: tuple[str, ...],
+    render_params: tuple[str, ...], capture: dict,
+):
+    """Fake artifact module that declares RENDER_PARAMS + records kwargs.
+
+    Like ``_install_fake_bwmacro_artifact`` but the fake ``render_data`` /
+    ``render_figure`` accept **kwargs (storing them in ``capture``) and the
+    fake holdings adapter records the ``top_n`` it was called with.
+    Overwrites any previously installed fake for the same slug.
+    """
+    pkg_root = "bwmacro.snapshots.artifacts"
+    qualname = f"{pkg_root}.{slug}.v1"
+    for p in ["bwmacro", "bwmacro.snapshots", pkg_root, f"{pkg_root}.{slug}"]:
+        if p not in sys.modules:
+            sys.modules[p] = types.ModuleType(p)
+
+    mod = types.ModuleType(qualname)
+    mod.ARTIFACT_SLUG = slug
+    mod.ARTIFACT_VERSION = "v1"
+    mod.APPLICABLE_SUBJECT_KINDS = applicable
+    mod.RENDER_PARAMS = render_params
+
+    def _render_data(data, **kwargs):
+        capture["render_data_kwargs"] = kwargs
+        return {"slug": slug, "kwargs": kwargs}
+
+    class _FakeFigure:
+        def to_image(self, *, format: str, scale: float = 1.0) -> bytes:
+            return b"\x89PNG\r\n\x1a\nFAKE" if format == "png" else b"<svg>FAKE</svg>"
+
+    def _render_figure(data, **kwargs):
+        capture["render_figure_kwargs"] = kwargs
+        return _FakeFigure()
+
+    mod.render_data = _render_data
+    mod.render_figure = _render_figure
+    sys.modules[qualname] = mod
+
+    adapters_qual = f"{pkg_root}.adapters"
+    adapters_mod = sys.modules.get(adapters_qual) or types.ModuleType(adapters_qual)
+
+    def _holdings(fd, top_n=12):
+        capture["adapter_top_n"] = top_n
+        return list(fd.holdings)[:top_n]
+
+    adapters_mod.holdings_from_fund_data = _holdings
+    if not hasattr(adapters_mod, "cumulative_return_series_from_fund_data"):
+        adapters_mod.cumulative_return_series_from_fund_data = lambda fd: []
+    sys.modules[adapters_qual] = adapters_mod
+    sys.modules[pkg_root].adapters = adapters_mod  # type: ignore[attr-defined]
+    return mod
+
+
+class TestParamsValidation:
+    def test_unknown_param_key_rejected(self):
+        with pytest.raises(ValueError):
+            ArtifactRenderRequest(
+                slug="top_holdings_erm_stacked",
+                version="v1",
+                subject_id="BW-FUND-X",
+                as_of="latest",
+                params={"topk": 5},  # typo — extra=forbid
+            )
+
+    def test_top_n_bounds_enforced(self):
+        with pytest.raises(ValueError):
+            _req(params={"top_n": 0})
+        with pytest.raises(ValueError):
+            _req(params={"top_n": 51})
+
+    def test_window_enum_enforced(self):
+        with pytest.raises(ValueError):
+            _req(slug="cumulative_return_strip", params={"window": "5y"})
+
+    def test_valid_params_round_trip(self):
+        req = _req(params={"top_n": 5})
+        assert req.params is not None
+        assert req.params.top_n == 5
+
+
+class TestSuppliedParams:
+    def test_inapplicable_param_422(self, store):
+        # window applies to cumulative_return_strip, not top_holdings.
+        req = _req(params={"window": "3m"})
+        with pytest.raises(HTTPException) as exc_info:
+            render_artifact(req, store=store, prefix=PREFIX)
+        assert exc_info.value.status_code == 422
+        assert "not applicable" in exc_info.value.detail
+
+    def test_paramless_slug_422(self, store):
+        req = _req(slug="entity_header", params={"top_n": 5})
+        with pytest.raises(HTTPException) as exc_info:
+            render_artifact(req, store=store, prefix=PREFIX)
+        assert exc_info.value.status_code == 422
+
+    def test_no_params_passes_through_empty(self):
+        assert _supplied_params(_req()) == {}
+
+
+class TestParamsKeyFragment:
+    def test_empty_params_legacy_key(self):
+        assert _params_key_fragment({}) == ""
+
+    def test_fragment_shapes(self):
+        assert _params_key_fragment({"top_n": 5}) == ".top_n-5"
+        assert _params_key_fragment({"window": "3m"}) == ".window-3m"
+
+    def test_fragment_sorted_for_determinism(self):
+        assert (
+            _params_key_fragment({"window": "3m", "top_n": 5})
+            == ".top_n-5+window-3m"
+        )
+
+    def test_path_includes_fragment(self):
+        assert (
+            _artifact_gcs_path(
+                "snapshots", "top_holdings_erm_stacked", "v1",
+                "BW-FUND-S000004563", "2025-11-30", "json", ".top_n-5",
+            )
+            == "snapshots/artifacts/top_holdings_erm_stacked@v1/"
+               "BW-FUND-S000004563/2025-11-30.top_n-5.json"
+        )
+
+
+class TestRenderArtifactWithParams:
+    def test_top_n_threads_to_adapter_and_module(self, store, monkeypatch):
+        capture: dict = {}
+        _install_params_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), render_params=("top_n",), capture=capture,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+        data, mime, gcs_path, *_ = render_artifact(
+            _req(params={"top_n": 5}), store=store, prefix=PREFIX,
+        )
+        assert capture["adapter_top_n"] == 5
+        assert capture["render_data_kwargs"] == {"top_n": 5}
+        assert gcs_path.endswith("/2025-11-30.top_n-5.json")
+        assert json.loads(data)["kwargs"] == {"top_n": 5}
+
+    def test_window_threads_to_module(self, store, monkeypatch):
+        capture: dict = {}
+        _install_params_fake_artifact(
+            monkeypatch, slug="cumulative_return_strip",
+            applicable=("fund",), render_params=("window",), capture=capture,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+        _, _, gcs_path, *_ = render_artifact(
+            _req(slug="cumulative_return_strip", params={"window": "3m"}),
+            store=store, prefix=PREFIX,
+        )
+        assert capture["render_data_kwargs"] == {"window": "3m"}
+        assert gcs_path.endswith("/2025-11-30.window-3m.json")
+
+    def test_module_without_render_params_501(self, store, monkeypatch):
+        capture: dict = {}
+        _install_params_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), render_params=(), capture=capture,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+        with pytest.raises(HTTPException) as exc_info:
+            render_artifact(_req(params={"top_n": 5}), store=store, prefix=PREFIX)
+        assert exc_info.value.status_code == 501
+        assert "RENDER_PARAMS" in exc_info.value.detail
+
+    def test_no_params_legacy_key_and_defaults(self, store, monkeypatch):
+        capture: dict = {}
+        _install_params_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), render_params=("top_n",), capture=capture,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+        _, _, gcs_path, *_ = render_artifact(_req(), store=store, prefix=PREFIX)
+        assert gcs_path.endswith("/2025-11-30.json")
+        assert capture["render_data_kwargs"] == {}
+        assert capture["adapter_top_n"] == 12
+
+    def test_params_variants_persist_under_distinct_keys(self, store, monkeypatch):
+        capture: dict = {}
+        _install_params_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), render_params=("top_n",), capture=capture,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+        _, _, path5, *_ = render_artifact(
+            _req(params={"top_n": 5}), store=store, prefix=PREFIX,
+        )
+        _, _, path10, *_ = render_artifact(
+            _req(params={"top_n": 10}), store=store, prefix=PREFIX,
+        )
+        _, _, path_default, *_ = render_artifact(
+            _req(), store=store, prefix=PREFIX,
+        )
+        assert len({path5, path10, path_default}) == 3
+        assert store.read(path5) is not None
+        assert store.read(path10) is not None
+        assert store.read(path_default) is not None

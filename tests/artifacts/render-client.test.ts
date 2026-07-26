@@ -54,4 +54,26 @@ describe("renderArtifact", () => {
       expect((result.data as { slug: string }).slug).toBe("narrative_profile");
     }
   });
+
+  it("forwards per-slug params in the POST body", async () => {
+    process.env.RENDER_SVC_URL = "https://render.example.run.app";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ slug: "top_holdings_erm_stacked", top_n_requested: 5 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    global.fetch = fetchMock;
+
+    const result = await renderArtifact({
+      slug: "top_holdings_erm_stacked",
+      subject_id: "BW-FUND-S000004563",
+      params: { top_n: 5 },
+    });
+
+    expect(result.ok).toBe(true);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const sentBody = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sentBody.params).toEqual({ top_n: 5 });
+  });
 });

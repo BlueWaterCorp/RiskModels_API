@@ -14,6 +14,17 @@ export interface ArtifactRenderParams {
   as_of?: string;
   format?: ArtifactRenderFormat;
   subject_payload?: Record<string, unknown> | null;
+  /**
+   * Per-slug render params (render-svc Phase 3). Forwarded verbatim as the
+   * request's `params` field; render-svc validates per slug (422 on
+   * unknown/inapplicable) and folds them into the render-once cache key.
+   */
+  params?: {
+    /** top_holdings_erm_stacked: rows to render (1–50, default 12). */
+    top_n?: number;
+    /** cumulative_return_strip: trailing window (default "max"). */
+    window?: "3m" | "6m" | "1y" | "2y" | "max";
+  };
 }
 
 export interface ArtifactRenderSuccess {
@@ -106,6 +117,9 @@ export async function renderArtifact(
   };
   if (params.subject_payload != null) {
     body.subject_payload = params.subject_payload;
+  }
+  if (params.params != null) {
+    body.params = params.params;
   }
 
   const upstream = `${base}/artifacts/render`;

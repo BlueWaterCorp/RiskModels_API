@@ -5,12 +5,15 @@ Cache-first artifact rendering for the artifact registry described in
 
 Request flow
 ------------
-1. Validate the request shape (slug / version / subject_id / as_of / format).
+1. Validate the request shape (slug / version / subject_id / as_of /
+   format / params).
 2. Resolve ``subject_kind`` from ``subject_id`` prefix.
 3. Load subject data via the public SDK (today: ``riskmodels.snapshots.
    get_data_for_f1`` for funds).
 4. Compose the GCS key
-   ``{prefix}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}.{ext}``.
+   ``{prefix}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}[.params].[ext]``
+   — request ``params`` (Phase 3) append a ``.top_n-5`` / ``.window-3m``
+   fragment so each params combination is its own render-once instance.
    ``resolved_as_of`` is whatever the loader actually picked (the SDK's
    "latest valid period" today; an arbitrary historical as_of is Phase 2).
 5. Cache hit → return bytes.
@@ -40,7 +43,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .gcs import ObjectStore
 
@@ -65,6 +68,20 @@ _FORMAT_MIME: dict[str, str] = {
 }
 
 
+class ArtifactParams(BaseModel):
+    """Optional per-slug render parameters (Phase 3).
+
+    Which keys apply to which slug is enforced in ``render_artifact`` via
+    ``_SLUG_PARAMS`` — unknown keys are rejected here (422) so a typo'd
+    param can never silently fall back to the default render.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    top_n: int | None = Field(default=None, ge=1, le=50)
+    window: Literal["3m", "6m", "1y", "2y", "max"] | None = None
+
+
 class ArtifactRenderRequest(BaseModel):
     """Request body for ``POST /artifacts/render``."""
 
@@ -85,6 +102,16 @@ class ArtifactRenderRequest(BaseModel):
             "subject_kind == 'client_portfolio'; the GCS cache key is "
             "derived from a stable hash of the payload so render-once "
             "still holds for identical pastes."
+        ),
+    )
+    params: ArtifactParams | None = Field(
+        default=None,
+        description=(
+            "Per-slug render parameters. top_holdings_erm_stacked accepts "
+            "top_n (int 1-50, default 12); cumulative_return_strip accepts "
+            "window ('3m'|'6m'|'1y'|'2y'|'max', default 'max'). Params "
+            "participate in the GCS cache key — each distinct combination "
+            "renders once under its own key."
         ),
     )
 
@@ -109,8 +136,54 @@ def _artifact_gcs_path(
     subject_id: str,
     resolved_as_of: str,
     fmt: str,
+    params_fragment: str = "",
 ) -> str:
-    return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}.{fmt}"
+    return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}{params_fragment}.{fmt}"
+
+
+# Which params each slug honors (Phase 3). Keys must be a subset of the
+# ArtifactParams fields; the artifact module's RENDER_PARAMS declaration
+# is the module-side gate (deploy-skew guard in _render_bytes).
+_SLUG_PARAMS: dict[str, frozenset[str]] = {
+    "top_holdings_erm_stacked": frozenset({"top_n"}),
+    "cumulative_return_strip": frozenset({"window"}),
+}
+
+
+def _supplied_params(req: ArtifactRenderRequest) -> dict[str, Any]:
+    """Params the caller explicitly set, validated against the slug.
+
+    422 on a param that isn't applicable to the slug — silently ignoring
+    it would serve the default render while looking like an honored
+    request.
+    """
+    supplied = req.params.model_dump(exclude_none=True) if req.params else {}
+    if not supplied:
+        return {}
+    applicable = _SLUG_PARAMS.get(req.slug, frozenset())
+    unknown = sorted(set(supplied) - applicable)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"params {unknown} not applicable to slug={req.slug!r} "
+                f"(accepted: {sorted(applicable) or 'none'})"
+            ),
+        )
+    return supplied
+
+
+def _params_key_fragment(supplied: dict[str, Any]) -> str:
+    """Deterministic GCS-key fragment for a supplied params dict.
+
+    Empty → ``""`` (legacy key shape, so pre-params cache entries still
+    hit). Non-empty → ``".top_n-5"`` / ``".window-3m"`` (sorted,
+    ``+``-joined). Values are validated ints/enums, so the fragment is
+    path-safe.
+    """
+    if not supplied:
+        return ""
+    return "." + "+".join(f"{k}-{supplied[k]}" for k in sorted(supplied))
 
 
 def _import_artifact_module(slug: str, version: str) -> Any:
@@ -126,8 +199,14 @@ def _import_artifact_module(slug: str, version: str) -> Any:
         ) from exc
 
 
-def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
+def _adapter_for(
+    slug: str, subject_kind: str, params: dict[str, Any] | None = None
+) -> Callable[[Any], Any]:
     """Resolve the adapter for ``(slug, subject_kind)``.
+
+    ``params`` carries the validated request params (Phase 3); today only
+    ``top_n`` reaches an adapter (the holdings adapters slice server-side
+    before the artifact module applies its own cap).
 
     Currently wired:
       - fund: ``top_holdings_erm_stacked``, ``cumulative_return_strip``
@@ -138,9 +217,11 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
     """
     from bwmacro.snapshots.artifacts import adapters
 
+    top_n = (params or {}).get("top_n", 12)
+
     if subject_kind == "fund":
         if slug == "top_holdings_erm_stacked":
-            return lambda fd: adapters.holdings_from_fund_data(fd, top_n=12)
+            return lambda fd: adapters.holdings_from_fund_data(fd, top_n=top_n)
         if slug == "cumulative_return_strip":
             return adapters.cumulative_return_series_from_fund_data
         raise HTTPException(
@@ -154,7 +235,7 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
     if subject_kind == "client_portfolio":
         if slug == "top_holdings_erm_stacked":
             return lambda positions: adapters.holdings_from_client_portfolio(
-                positions, top_n=12
+                positions, top_n=top_n
             )
         raise HTTPException(
             status_code=501,
@@ -166,7 +247,7 @@ def _adapter_for(slug: str, subject_kind: str) -> Callable[[Any], Any]:
 
     if subject_kind == "filer_13f":
         if slug == "top_holdings_erm_stacked":
-            return lambda fd: adapters.holdings_from_filer_data(fd, top_n=12)
+            return lambda fd: adapters.holdings_from_filer_data(fd, top_n=top_n)
         if slug == "cumulative_return_strip":
             return adapters.cumulative_return_series_from_filer_data
         if slug == "entity_header":
@@ -478,11 +559,36 @@ def _resolve_stock_watchlist(
     return payloads, resolved_subject_id, resolved_as_of
 
 
-def _render_bytes(mod: Any, data: Any, fmt: str) -> bytes:
-    """Materialize the artifact in the requested format."""
+def _render_bytes(
+    mod: Any, data: Any, fmt: str, params: dict[str, Any] | None = None
+) -> bytes:
+    """Materialize the artifact in the requested format.
+
+    Supplied params are passed to the module's ``render_data`` /
+    ``render_figure`` as keyword args, gated on the module's declared
+    ``RENDER_PARAMS``: a module too old to declare them means a deploy
+    skew (render-svc image ahead of its ``bwmacro-src``), so fail 501
+    rather than silently serve the default render.
+    """
+    supplied = params or {}
+    if supplied:
+        declared = set(getattr(mod, "RENDER_PARAMS", ()) or ())
+        unsupported = sorted(set(supplied) - declared)
+        if unsupported:
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    f"Artifact module for this slug does not declare "
+                    f"RENDER_PARAMS support for {unsupported} (deploy skew: "
+                    f"rebuild the render-svc image with the bwmacro-src "
+                    f"revision that declares it)"
+                ),
+            )
     if fmt == "json":
-        return json.dumps(mod.render_data(data), separators=(",", ":")).encode("utf-8")
-    fig = mod.render_figure(data)
+        return json.dumps(
+            mod.render_data(data, **supplied), separators=(",", ":")
+        ).encode("utf-8")
+    fig = mod.render_figure(data, **supplied)
     if fmt == "png":
         return fig.to_image(format="png", scale=2.0)
     if fmt == "svg":
@@ -535,6 +641,8 @@ def render_artifact(
     """
     subject_kind = _resolve_subject_kind(req.subject_id)
     is_dd_panel = subject_kind == "stock" and req.slug.startswith("dd_")
+    # Validate params against the slug before any loader work (422 fast).
+    supplied_params = _supplied_params(req)
 
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
@@ -564,7 +672,13 @@ def render_artifact(
         resolved_subject_id = req.subject_id
 
     gcs_path = _artifact_gcs_path(
-        prefix, req.slug, req.version, resolved_subject_id, resolved_as_of, req.format
+        prefix,
+        req.slug,
+        req.version,
+        resolved_subject_id,
+        resolved_as_of,
+        req.format,
+        _params_key_fragment(supplied_params),
     )
     receipt_id = _receipt_id(gcs_path)
 
@@ -627,9 +741,9 @@ def render_artifact(
             ),
         )
 
-    adapter = _adapter_for(req.slug, subject_kind)
+    adapter = _adapter_for(req.slug, subject_kind, supplied_params)
     normalized = adapter(subject_data)
-    rendered = _render_bytes(mod, normalized, req.format)
+    rendered = _render_bytes(mod, normalized, req.format, supplied_params)
 
     if persist:
         store.write(gcs_path, rendered, content_type=_FORMAT_MIME[req.format])
