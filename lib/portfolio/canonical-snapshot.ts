@@ -427,7 +427,11 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   const years = yearsForLookback(lookbackDays);
 
   const core = await runPortfolioRiskComputation(positions, {
-    timeSeries: true,
+    // timeSeries=false: this builder consumes perTicker / portfolioER /
+    // portfolioVol / hedge levels / errorsList but never core.timeSeriesData,
+    // so the full L3_ER_KEYS history slice it triggers (symbols × 6 keys of
+    // serialized GCS chunk reads) was dead work on every /api/snapshot call.
+    timeSeries: false,
     years,
     includeHedgeRatios: true,
   });
