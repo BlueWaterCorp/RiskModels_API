@@ -70,6 +70,11 @@ const HOLDINGS_SNAPSHOT = {
   report_date: "2025-12-31",
   filing_date: null,
   as_of_basis: "report_date" as const,
+  // Composites are assembled from many filers' panels — no single surviving
+  // accession, so filing identity is null by construction, not by gap.
+  accession_number: null,
+  filing_type: null,
+  amendment_type: null,
   total_aum_usd: null,
   aum_in_erm3: null,
   n_holdings_returned: 2,

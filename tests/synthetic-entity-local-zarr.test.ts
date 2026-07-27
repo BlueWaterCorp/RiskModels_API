@@ -77,6 +77,35 @@ describe.skipIf(!AVAILABLE)("synthetic composite — local zarr", () => {
     }
   });
 
+  it("resolves filing identity from whatever the store actually publishes", async () => {
+    const snap = await readFilerHoldingsTopN(SYNTH_ID!, 10);
+    expect(snap).not.toBeNull();
+    // Present-and-null on pre-schema-v2 stores; populated once the
+    // accession-vintage stores land. Never a made-up value either way.
+    for (const key of [
+      "accession_number",
+      "filing_type",
+      "amendment_type",
+    ] as const) {
+      expect(snap!).toHaveProperty(key);
+      const v = snap![key];
+      expect(v === null || (typeof v === "string" && v.length > 0)).toBe(true);
+    }
+    if (snap!.filing_type != null) {
+      expect(snap!.filing_type).toMatch(/^13F-/);
+      // Form type never arrives without the accession it belongs to.
+      expect(snap!.accession_number).toBeTruthy();
+    }
+    if (snap!.amendment_type != null) {
+      expect([
+        "ORIGINAL",
+        "RESTATEMENT",
+        "NEW_HOLDINGS",
+        "UNKNOWN",
+      ]).toContain(snap!.amendment_type);
+    }
+  });
+
   it("serves the portfolio series through the shared filer reader", async () => {
     const rows = await readFilerPortfolioSeries(SYNTH_ID!);
     expect(rows.length).toBeGreaterThan(0);

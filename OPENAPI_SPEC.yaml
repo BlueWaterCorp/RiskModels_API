@@ -9767,6 +9767,20 @@ paths:
         time, EDGAR date_filed of the surviving submission; null until the
         per-quarter data fill lands) — mirrored on the X-Data-As-Of /
         X-Data-Filing-Date headers.
+
+
+        The surviving submission's filing identity is reported alongside
+        them, at the response root (one accession state per selected
+        quarter, not per holding): `accession_number`, `filing_type` (the
+        SEC **form type** — `13F-HR`, `13F-HR/A`, `13F-NT` — not the report
+        quarter) and `amendment_type` (cover-page semantics: `ORIGINAL`,
+        `RESTATEMENT`, `NEW_HOLDINGS`, `UNKNOWN`). Use them to tell an
+        original filing from an amendment, and a restatement of previously
+        reported positions from an amendment that only adds new ones. All
+        three are `null` on panels published before the accession-vintage
+        stores; `amendment_type` is never inferred from a `/A` suffix, so a
+        null means "not classified upstream", which is distinct from the
+        `UNKNOWN` value.
       operationId: getFilerHoldings
       tags:
         - 13F Filers
@@ -9805,11 +9819,73 @@ paths:
         "200":
           description: >
             Top-N holdings at the selected teo, with `report_date`,
-            `filing_date`, and (under `as_of`) `as_of_basis`.
+            `filing_date`, the selected accession's filing identity
+            (`accession_number`, `filing_type`, `amendment_type`), and
+            (under `as_of`) `as_of_basis`.
           content:
             application/json:
               schema:
                 type: object
+                additionalProperties: true
+                properties:
+                  report_date:
+                    type: string
+                    format: date
+                    description: >
+                      Valid time — the 13F reporting period end (= teo)
+                      the holdings describe.
+                  filing_date:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: >
+                      Knowledge time — EDGAR date_filed of the surviving
+                      submission for this quarter. Null on panels without
+                      per-quarter filing dates.
+                  as_of_basis:
+                    type: string
+                    enum: [filing_date, report_date]
+                    description: >
+                      Which axis resolved an `as_of` selection.
+                  accession_number:
+                    type: string
+                    nullable: true
+                    description: >
+                      EDGAR accession number of the surviving submission
+                      for the selected quarter — the filing whose positions
+                      this panel reports. Null on panels published before
+                      the accession-vintage stores.
+                    example: "0000950123-24-008496"
+                  filing_type:
+                    type: string
+                    nullable: true
+                    description: >
+                      SEC **submission/form type** of that accession — not
+                      the report quarter. `13F-HR` is an original holdings
+                      report, `13F-HR/A` an amendment to one, `13F-NT` a
+                      notice filing. Null when the form type is not
+                      published for this panel.
+                    example: "13F-HR/A"
+                  amendment_type:
+                    type: string
+                    nullable: true
+                    enum: [ORIGINAL, RESTATEMENT, NEW_HOLDINGS, UNKNOWN]
+                    description: >
+                      Cover-page amendment semantics of that accession, as
+                      classified upstream. `ORIGINAL` — not an amendment.
+                      `RESTATEMENT` — the amendment replaces the previously
+                      reported holdings in full. `NEW_HOLDINGS` — it adds
+                      holdings on top of the prior filing. `UNKNOWN` — an
+                      amendment whose cover page did not declare which.
+                      Null means no upstream classification is published
+                      for this panel, which is *not* the same as `UNKNOWN`;
+                      it is never inferred from a `/A` suffix.
+                    example: "RESTATEMENT"
+                  holdings:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
         "402":
           description: Insufficient prepaid balance.
           content:
