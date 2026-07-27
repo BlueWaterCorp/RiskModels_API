@@ -33,6 +33,14 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * SDK/MCP consumers see them, mirrored on the X-Data-As-Of /
  * X-Data-Filing-Date headers.
  *
+ * Filing identity of the selected quarter's surviving submission —
+ * `accession_number`, `filing_type` (the SEC form: `13F-HR`, `13F-HR/A`,
+ * `13F-NT`, …) and `amendment_type` (`ORIGINAL` / `RESTATEMENT` /
+ * `NEW_HOLDINGS` / `UNKNOWN`) — is panel-level, not per holding row: one
+ * accession state per selected quarter. All three are null on panels
+ * published before the accession-vintage stores, and `amendment_type` is
+ * never inferred from a `/A` suffix.
+ *
  * Default `limit = 25`; caller can request up to 1000.
  *
  * Composite entities (BW-SYNTH-*) are served by the same route; registry-only

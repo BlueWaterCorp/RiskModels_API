@@ -60,6 +60,9 @@ const HOLDINGS_SNAPSHOT = {
   report_date: "2026-03-31",
   filing_date: "2026-05-14",
   as_of_basis: "filing_date" as const,
+  accession_number: "0000950123-26-008496",
+  filing_type: "13F-HR",
+  amendment_type: "ORIGINAL",
   total_aum_usd: 1_000_000_000,
   aum_in_erm3: 900_000_000,
   n_holdings_returned: 2,
@@ -165,6 +168,92 @@ describe("GET /api/13f/filers/[bw_filer_id]/holdings (D.8.39)", () => {
       25,
       "2026-03-01",
     );
+  });
+
+  it("surfaces the original filing's identity at the response root", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerHoldingsTopN).mockResolvedValue(HOLDINGS_SNAPSHOT);
+
+    const res = await holdingsGET(
+      req("/api/13f/filers/BW-FILER-X/holdings"),
+      fakeContext,
+    );
+    const body = await res.json();
+    expect(body.filing_type).toBe("13F-HR");
+    expect(body.amendment_type).toBe("ORIGINAL");
+    expect(body.accession_number).toBe("0000950123-26-008496");
+    // Panel-level, not per row: holdings must not carry filing identity.
+    for (const h of body.holdings) {
+      expect(h.filing_type).toBeUndefined();
+      expect(h.amendment_type).toBeUndefined();
+      expect(h.accession_number).toBeUndefined();
+    }
+  });
+
+  it("surfaces amendment semantics for a restating 13F-HR/A", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerHoldingsTopN).mockResolvedValue({
+      ...HOLDINGS_SNAPSHOT,
+      filing_date: "2026-06-02",
+      accession_number: "0000950123-26-009110",
+      filing_type: "13F-HR/A",
+      amendment_type: "RESTATEMENT",
+    });
+
+    const res = await holdingsGET(
+      req("/api/13f/filers/BW-FILER-X/holdings"),
+      fakeContext,
+    );
+    const body = await res.json();
+    expect(body.filing_type).toBe("13F-HR/A");
+    expect(body.amendment_type).toBe("RESTATEMENT");
+    // The identity describes the *selected* accession, so the amendment's
+    // own filing_date is what drives the knowledge-time header.
+    expect(body.filing_date).toBe("2026-06-02");
+    expect(res.headers.get("X-Data-Filing-Date")).toBe("2026-06-02");
+  });
+
+  it("surfaces NEW_HOLDINGS amendments distinctly from restatements", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerHoldingsTopN).mockResolvedValue({
+      ...HOLDINGS_SNAPSHOT,
+      accession_number: "0000950123-26-009344",
+      filing_type: "13F-HR/A",
+      amendment_type: "NEW_HOLDINGS",
+    });
+
+    const res = await holdingsGET(
+      req("/api/13f/filers/BW-FILER-X/holdings"),
+      fakeContext,
+    );
+    const body = await res.json();
+    expect(body.amendment_type).toBe("NEW_HOLDINGS");
+  });
+
+  it("serves nulls — not inferred values — when the panel has no filing identity", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerHoldingsTopN).mockResolvedValue({
+      ...HOLDINGS_SNAPSHOT,
+      accession_number: null,
+      filing_type: null,
+      amendment_type: null,
+    });
+
+    const res = await holdingsGET(
+      req("/api/13f/filers/BW-FILER-X/holdings"),
+      fakeContext,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.accession_number).toBeNull();
+    expect(body.filing_type).toBeNull();
+    expect(body.amendment_type).toBeNull();
+    // The fields are present-and-null, not dropped — clients can tell
+    // "unknown" from "endpoint doesn't report this".
+    expect("filing_type" in body).toBe(true);
+    expect("amendment_type" in body).toBe(true);
+    // Holdings still serve normally.
+    expect(body.holdings).toHaveLength(2);
   });
 
   it("rejects malformed as_of with 400", async () => {

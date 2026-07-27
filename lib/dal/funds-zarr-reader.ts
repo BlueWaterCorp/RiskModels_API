@@ -662,11 +662,18 @@ async function computeFundNavSeries(
 // We surface top-N at the latest teo only — full panel stays GCS-only.
 // ---------------------------------------------------------------------------
 
-async function readSymbolStrings(
+/**
+ * Read a 1-D string variable or coord (`symbol`, `accession_number`,
+ * `filing_type`, …) as trimmed strings. Returns null when the variable is
+ * absent or isn't a string array — callers treat that as "writer hasn't
+ * published this coord yet" rather than an error.
+ */
+async function readStringVarStrings(
   grp: Group<Readable>,
+  varName: string,
 ): Promise<string[] | null> {
   try {
-    const loc = grp.resolve("symbol");
+    const loc = grp.resolve(varName);
     const arr = await open.v2(loc, { kind: "array" });
     const ch = await get(arr, null);
     const d = ch?.data;
@@ -682,6 +689,12 @@ async function readSymbolStrings(
   } catch {
     return null;
   }
+}
+
+async function readSymbolStrings(
+  grp: Group<Readable>,
+): Promise<string[] | null> {
+  return readStringVarStrings(grp, "symbol");
 }
 
 /** Read all symbols at a single teo for a (symbol, teo) float var. */
@@ -1293,6 +1306,17 @@ async function computeStyleCohortHoldingsTopN(
 //   ds_portfolio.zarr dim (teo,); diagnostics + AUM + portfolio style
 //                     attribution columns. Return components (Phase 2)
 //                     are absent for filers today and read as null.
+//
+// Schema-v2 (the accession-vintage rebuild) adds a per-event store beside
+// them:
+//
+//   ds_filing_vintages.zarr  dims (symbol, filing_event); every accession
+//                     ever filed by the filer, carrying per-event
+//                     accession_number / filing_type / amendment_type.
+//                     ds_ph is the latest-filed-per-quarter view derived
+//                     from it. Read here only to resolve the selected
+//                     panel's form type + amendment semantics, which the
+//                     compatibility view doesn't project onto `teo`.
 // ===========================================================================
 
 export interface FilerHolding {
@@ -1334,6 +1358,26 @@ export interface FilerHoldingsSnapshot {
    * statutory 13F lag).
    */
   as_of_basis: "filing_date" | "report_date";
+  /**
+   * EDGAR accession number of the surviving submission for this quarter —
+   * the one whose positions this panel reports. Null until the schema-v2
+   * (vintage-derived) `ds_ph` carries the `accession_number` teo coord.
+   */
+  accession_number: string | null;
+  /**
+   * SEC submission type of that accession (`13F-HR`, `13F-HR/A`, `13F-NT`,
+   * …) — the *form*, not the report quarter. Null when neither the schema-v2
+   * `ds_ph` nor the accession-vintage store carries it.
+   */
+  filing_type: string | null;
+  /**
+   * Cover-page amendment semantics of that accession, as classified by the
+   * Funds_DAG 13F parser: `ORIGINAL`, `RESTATEMENT`, `NEW_HOLDINGS`, or
+   * `UNKNOWN` (an amendment whose cover page didn't say). Never inferred
+   * from a `/A` suffix here — a null means the upstream classification
+   * isn't published yet, which is not the same as `UNKNOWN`.
+   */
+  amendment_type: string | null;
   total_aum_usd: number | null;
   /** Sum of `adj_mv` over the in-ERM3 mapped subset; null pre-D.8.1. */
   aum_in_erm3: number | null;
@@ -1363,7 +1407,7 @@ export async function readFilerHoldingsTopN(
     filer: bwFilerId,
     n: safeN,
     as_of: asOf ?? "",
-    v: 2, // D.8.39 snapshot shape (report_date/filing_date/as_of_basis)
+    v: 3, // + filing identity (accession_number/filing_type/amendment_type)
   });
   const snapshot = await withZarrCache(
     ck,
@@ -1375,6 +1419,158 @@ export async function readFilerHoldingsTopN(
   return {
     ...snapshot,
     holdings: await applyScrubToFilerHoldings(snapshot.holdings),
+  };
+}
+
+/**
+ * The selected quarter's surviving 13F submission, identified. Panel-level:
+ * one accession state per report quarter, not per holding row.
+ */
+export type FilingIdentity = Pick<
+  FilerHoldingsSnapshot,
+  "accession_number" | "filing_type" | "amendment_type"
+>;
+
+/** Empty-string cells in an object-dtype zarr coord mean "not recorded". */
+function nonEmpty(v: string | undefined | null): string | null {
+  const s = v?.trim();
+  return s ? s : null;
+}
+
+/**
+ * Pick one axis position out of a string coord, but only when the coord's
+ * length matches the axis — a same-named variable on another dim would
+ * otherwise index into the wrong entity. Absent/misaligned/blank → null.
+ */
+function pickAligned(
+  vals: string[] | null,
+  idx: number,
+  axisLength: number,
+): string | null {
+  if (!vals || vals.length !== axisLength) return null;
+  return nonEmpty(vals[idx]);
+}
+
+/**
+ * Resolve the selected quarter's filing identity from raw ds_ph teo-axis
+ * coords. Pure; exported for tests.
+ *
+ * Nothing is inferred: a `13F-HR/A` with no published amendment_type stays
+ * `amendment_type: null`, never `UNKNOWN` (which is a real upstream
+ * classification meaning "the amendment's cover page didn't declare which").
+ */
+export function selectFilingIdentity(
+  coords: {
+    accession_number: string[] | null;
+    filing_type: string[] | null;
+    amendment_type: string[] | null;
+  },
+  teoIdx: number,
+  nTeos: number,
+): FilingIdentity {
+  return {
+    accession_number: pickAligned(coords.accession_number, teoIdx, nTeos),
+    filing_type: pickAligned(coords.filing_type, teoIdx, nTeos),
+    amendment_type: pickAligned(coords.amendment_type, teoIdx, nTeos),
+  };
+}
+
+/**
+ * Fill gaps in a ds_ph-derived identity from the accession-vintage store's
+ * per-event record for the *same* accession. ds_ph values win where present.
+ * Pure; exported for tests.
+ */
+export function mergeVintageFilingIdentity(
+  identity: FilingIdentity,
+  fromVintages: {
+    filing_type: string | null;
+    amendment_type: string | null;
+  } | null,
+): FilingIdentity {
+  if (!fromVintages) return identity;
+  return {
+    accession_number: identity.accession_number,
+    filing_type: identity.filing_type ?? fromVintages.filing_type,
+    amendment_type: identity.amendment_type ?? fromVintages.amendment_type,
+  };
+}
+
+/** True when the vintage store is worth opening to complete this identity. */
+export function needsVintageLookup(identity: FilingIdentity): boolean {
+  return (
+    identity.accession_number != null &&
+    (identity.filing_type == null || identity.amendment_type == null)
+  );
+}
+
+/**
+ * Filing identity of the accession this panel reports — SEC form type and
+ * cover-page amendment semantics for the selected quarter.
+ *
+ * Two sources, in order:
+ *   1. `ds_ph.zarr` teo-axis coords. Schema-v2 (vintage-derived) stores carry
+ *      `accession_number`; pre-schema-v2 stores carry none of the three.
+ *   2. `ds_filing_vintages.zarr`, keyed on that accession number. The
+ *      compatibility view does not project `filing_type` / `amendment_type`
+ *      onto the teo axis, so the per-event store is the only place they
+ *      exist. Opened only when ds_ph left one of them unresolved AND an
+ *      accession is available to key on — never to guess at an unkeyed panel.
+ */
+async function readFilingIdentityAtTeo(
+  grp: Group<Readable>,
+  bwFilerId: string,
+  teoIdx: number,
+  nTeos: number,
+): Promise<FilingIdentity> {
+  const [accession_number, filing_type, amendment_type] = await Promise.all([
+    readStringVarStrings(grp, "accession_number"),
+    readStringVarStrings(grp, "filing_type"),
+    readStringVarStrings(grp, "amendment_type"),
+  ]);
+
+  const identity = selectFilingIdentity(
+    { accession_number, filing_type, amendment_type },
+    teoIdx,
+    nTeos,
+  );
+  if (!needsVintageLookup(identity)) return identity;
+
+  return mergeVintageFilingIdentity(
+    identity,
+    await readVintageFilingIdentity(bwFilerId, identity.accession_number!),
+  );
+}
+
+/**
+ * Look up one accession's form type + amendment semantics in the per-filer
+ * accession-vintage store. Returns null when the store isn't published, is
+ * malformed, or doesn't contain that accession.
+ *
+ * The store's `filing_event` axis is an internal zarr detail — only the two
+ * resolved scalars cross into the response.
+ */
+async function readVintageFilingIdentity(
+  bwFilerId: string,
+  accession: string,
+): Promise<{ filing_type: string | null; amendment_type: string | null } | null> {
+  const grp = await openFilerZarrGroup(bwFilerId, "ds_filing_vintages.zarr");
+  if (!grp) return null;
+
+  const accessions = await readStringVarStrings(grp, "accession_number");
+  if (!accessions) return null;
+  const idx = accessions.indexOf(accession);
+  if (idx < 0) return null;
+
+  const [filingTypes, amendmentTypes] = await Promise.all([
+    readStringVarStrings(grp, "filing_type"),
+    readStringVarStrings(grp, "amendment_type"),
+  ]);
+  const aligned = (vals: string[] | null): string | null =>
+    vals && vals.length === accessions.length ? nonEmpty(vals[idx]) : null;
+
+  return {
+    filing_type: aligned(filingTypes),
+    amendment_type: aligned(amendmentTypes),
   };
 }
 
@@ -1416,10 +1612,11 @@ async function computeFilerHoldingsTopN(
   const teo = teos[teoIdx]!;
 
   // total_aum_usd may not exist on filer ds_ph — readScalarAtTeo returns null on missing var.
-  const [adjMv, totalAumUsd, aumInErm3] = await Promise.all([
+  const [adjMv, totalAumUsd, aumInErm3, filingIdentity] = await Promise.all([
     readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length),
     readScalarAtTeo(grp, "total_aum_usd", teoIdx),
     readScalarAtTeo(grp, "aum_in_erm3", teoIdx),
+    readFilingIdentityAtTeo(grp, bwFilerId, teoIdx, teos.length),
   ]);
   if (!adjMv) return null;
 
@@ -1452,6 +1649,9 @@ async function computeFilerHoldingsTopN(
     report_date: teo,
     filing_date: filingDates?.[teoIdx] ?? null,
     as_of_basis: asOfBasis,
+    accession_number: filingIdentity.accession_number,
+    filing_type: filingIdentity.filing_type,
+    amendment_type: filingIdentity.amendment_type,
     total_aum_usd: totalAumUsd,
     aum_in_erm3: aumInErm3,
     n_holdings_returned: Math.min(safeN, holdings.length),

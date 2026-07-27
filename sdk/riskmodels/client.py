@@ -2549,6 +2549,26 @@ class RiskModelsClient:
         knowable by up to the ~45-day filing lag);
         ``as_of_basis="filing_date"`` marks true knowledge mode.
 
+        The selected quarter's surviving submission also reports its
+        filing identity at the response root — one accession state per
+        quarter, not per holding row:
+
+        * ``accession_number`` — EDGAR accession of that submission.
+        * ``filing_type`` — the SEC **form type**, not the report
+          quarter: ``"13F-HR"`` (original holdings report),
+          ``"13F-HR/A"`` (amendment), ``"13F-NT"`` (notice), ...
+        * ``amendment_type`` — cover-page semantics: ``"ORIGINAL"``,
+          ``"RESTATEMENT"`` (replaces the prior holdings in full),
+          ``"NEW_HOLDINGS"`` (adds to them), or ``"UNKNOWN"`` (an
+          amendment that didn't declare which).
+
+        All three are ``None`` on panels published before the
+        accession-vintage stores. ``amendment_type`` is never inferred
+        from a ``/A`` suffix, so ``None`` means "not classified
+        upstream" — distinct from the ``"UNKNOWN"`` value. To branch on
+        "is this an amendment at all", test ``filing_type``; use
+        ``amendment_type`` only for restatement-vs-new-holdings.
+
         Args:
             bw_filer_id: Canonical filer id (e.g.
                 ``"BW-FILER-CIK0001067983"``).

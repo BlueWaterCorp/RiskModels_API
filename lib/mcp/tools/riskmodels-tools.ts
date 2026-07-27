@@ -813,7 +813,7 @@ export function registerRiskModelsTools(
       title: "RiskModels 13F Filer Holdings",
       annotations: { readOnlyHint: true },
       description:
-        "Top-N current holdings of a 13F filer (GET /13f/filers/{bw_filer_id}/holdings). Resolve bw_filer_id via riskmodels_search_filers first. Composite entities (BW-SYNTH-*) are served by the same route.",
+        "Top-N current holdings of a 13F filer (GET /13f/filers/{bw_filer_id}/holdings). Resolve bw_filer_id via riskmodels_search_filers first. Composite entities (BW-SYNTH-*) are served by the same route. The response root also identifies the filing the panel came from: accession_number, filing_type (the SEC form type — 13F-HR original, 13F-HR/A amendment, 13F-NT notice) and amendment_type (ORIGINAL / RESTATEMENT / NEW_HOLDINGS / UNKNOWN). These are null on panels published before the accession-vintage stores; a null amendment_type means unclassified upstream, not UNKNOWN, and is never inferred from a /A suffix.",
       inputSchema: {
         bw_filer_id: z.string().min(1).describe("Filer id from riskmodels_search_filers, or a composite entity id (BW-SYNTH-*)"),
         top: z.number().int().min(1).max(200).optional().describe("Number of holdings (default 25)"),
