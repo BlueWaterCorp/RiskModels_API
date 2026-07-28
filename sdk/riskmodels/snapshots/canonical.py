@@ -40,11 +40,12 @@ The institutional renderer is private to BWMACRO. Both consume this contract.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..interpretation import Judgment
+from ..mapping import first_present as _g
 
 if TYPE_CHECKING:
     from ..peer_group import PeerComparison
@@ -474,14 +475,6 @@ def _from_jsonable(raw: dict[str, Any]) -> CanonicalStockSnapshot:
 # Adapter: P1Data (+ peer context) → CanonicalStockSnapshot
 # ---------------------------------------------------------------------------
 
-def _g(d: dict, *keys: str) -> Any:
-    """First non-None value among `keys`. Tolerates abbreviated/full schemas
-    (``l3_market_hr`` vs ``l3_mkt_hr``). Mirrors :func:`interpretation._g`."""
-    for k in keys:
-        v = d.get(k)
-        if v is not None:
-            return v
-    return None
 
 
 def _to_float(v: Any) -> float | None:

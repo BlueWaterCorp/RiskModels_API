@@ -52,7 +52,7 @@ from urllib.parse import quote
 import httpx
 import pandas as pd
 
-from .auth import OAuthClientCredentialsAuth, StaticBearerAuth
+from .auth import StaticBearerAuth
 from .capabilities import DISCOVER_SPEC, discover_markdown
 from .fundamentals import (
     RfTenor,
@@ -108,9 +108,6 @@ RankingCohort = Literal["universe", "sector", "subsector"]
 RankingWindow = Literal["1d", "21d", "63d", "252d"]
 
 
-DEFAULT_SCOPE = (
-    "ticker-returns risk-decomposition batch-analysis factor-correlation macro-factor-series rankings"
-)
 DEFAULT_BASE_URL = "https://riskmodels.app/api"
 
 
@@ -139,7 +136,6 @@ class RiskModelsClient:
         api_key: str | None = None,
         client_id: str | None = None,
         client_secret: str | None = None,
-        default_scope: str = DEFAULT_SCOPE,
         timeout: float = 120.0,
         validate: ValidateMode = "warn",
         er_tolerance: float = 0.05,
@@ -151,16 +147,19 @@ class RiskModelsClient:
         self._base_url = base_url
         if api_key:
             auth: Any = StaticBearerAuth(api_key)
-        elif client_id and client_secret:
-            auth = OAuthClientCredentialsAuth(
-                base_url,
-                client_id,
-                client_secret,
-                default_scope,
-                timeout=timeout,
+        elif client_id or client_secret:
+            raise ValueError(
+                "client_id / client_secret are no longer supported: the API has no "
+                "client_credentials grant (POST /api/auth/token returns 404 and "
+                "/api/oauth/token rejects the grant). Pass api_key=... with an "
+                "rm_agent_* or rm_user_* key from https://riskmodels.app/get-key. "
+                "MCP clients obtain an rm_user_* key via the authorization-code "
+                "flow and pass it here as api_key."
             )
         else:
-            raise ValueError("Provide api_key or (client_id and client_secret)")
+            raise ValueError(
+                "Provide api_key=... (get one at https://riskmodels.app/get-key)"
+            )
         self._transport = Transport(base_url, auth, timeout=timeout, http_client=http_client)
 
     @classmethod
@@ -169,17 +168,19 @@ class RiskModelsClient:
 
         Reads credentials from the environment (or ``.env`` / ``.env.local`` files):
 
-        - ``RISKMODELS_API_KEY`` — static Bearer token (simplest option).
-        - ``RISKMODELS_CLIENT_ID`` + ``RISKMODELS_CLIENT_SECRET`` — OAuth2 client
-          credentials (~15 min JWT refresh).
+        - ``RISKMODELS_API_KEY`` — Bearer token (``rm_agent_*`` or ``rm_user_*``).
         - ``RISKMODELS_BASE_URL`` — optional, defaults to ``https://riskmodels.app/api``.
-        - ``RISKMODELS_OAUTH_SCOPE`` — optional OAuth scope override.
+
+        ``RISKMODELS_CLIENT_ID`` / ``RISKMODELS_CLIENT_SECRET`` are no longer
+        honoured — see :mod:`riskmodels.auth`. If they are set without
+        ``RISKMODELS_API_KEY``, this raises with instructions rather than
+        building a client that would fail on its first request.
 
         Returns:
             Configured :class:`RiskModelsClient` instance.
 
         Raises:
-            ValueError: If neither API key nor OAuth credentials are set.
+            ValueError: If ``RISKMODELS_API_KEY`` is not set.
 
         Example:
             >>> import os
@@ -199,7 +200,6 @@ class RiskModelsClient:
             cid = cid.strip()
         if csec is not None:
             csec = csec.strip()
-        scope = os.environ.get("RISKMODELS_OAUTH_SCOPE", DEFAULT_SCOPE)
         timeout = _timeout_seconds_from_env()
         # Surface Supabase-enrichment readiness at init time, not at first
         # get_ticker_metadata() call. WARN-only — Supabase access is optional;
@@ -207,15 +207,16 @@ class RiskModelsClient:
         _warn_if_supabase_creds_missing()
         if key:
             return cls(base_url=base, api_key=key, timeout=timeout)
-        if cid and csec:
-            return cls(
-                base_url=base,
-                client_id=cid,
-                client_secret=csec,
-                default_scope=scope,
-                timeout=timeout,
+        if cid or csec:
+            raise ValueError(
+                "RISKMODELS_CLIENT_ID / RISKMODELS_CLIENT_SECRET are no longer "
+                "supported: the API has no client_credentials grant. Set "
+                "RISKMODELS_API_KEY instead — get a key at "
+                "https://riskmodels.app/get-key"
             )
-        raise ValueError("Set RISKMODELS_API_KEY or RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET")
+        raise ValueError(
+            "Set RISKMODELS_API_KEY (get a key at https://riskmodels.app/get-key)"
+        )
 
     def close(self) -> None:
         """Close the underlying HTTP transport and release connections."""

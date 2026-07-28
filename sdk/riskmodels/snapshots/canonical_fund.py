@@ -10,21 +10,22 @@ semantics.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..interpretation import Judgment
+from ..mapping import first_present as _g
 from ._fund_data import FundData, FundHolding
 from .canonical import (
+    CANONICAL_ONTOLOGY_VERSION,
+    OBSERVATION_MODES,
     AomProvenance,
     AttributionPoint,
-    CANONICAL_ONTOLOGY_VERSION,
     CoreMetrics,
     DecompositionPoint,
     HedgeBasis,
     MacroBasis,
-    OBSERVATION_MODES,
     PeerContext,
     PeerRow,
     PerformanceAttribution,
@@ -244,12 +245,6 @@ def _from_jsonable(raw: dict[str, Any]) -> CanonicalFundSnapshot:
     )
 
 
-def _g(d: dict, *keys: str) -> Any:
-    for k in keys:
-        v = d.get(k)
-        if v is not None:
-            return v
-    return None
 
 
 def _to_float(v: Any) -> float | None:

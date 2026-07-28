@@ -1,4 +1,4 @@
-"""HTTP transport with optional OAuth retry on 401."""
+"""HTTP transport."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import Any
 
 import httpx
 
-from .auth import OAuthClientCredentialsAuth
 from .exceptions import APIError, AuthError
 from .lineage import RiskLineage
 
@@ -45,46 +44,37 @@ class Transport:
         hdrs: dict[str, str] = dict(self._auth.authorization_header())
         if headers:
             hdrs.update(headers)
-        attempt = 0
-        while True:
-            attempt += 1
-            r = self._client.request(
-                method,
-                url,
-                params=params,
-                json=json,
-                content=content,
-                headers=hdrs,
-            )
-            if r.status_code == 401 and attempt == 1 and isinstance(self._auth, OAuthClientCredentialsAuth):
-                self._auth.invalidate()
-                hdrs = dict(self._auth.authorization_header())
-                if headers:
-                    hdrs.update(headers)
-                continue
-            lineage = RiskLineage.from_response_headers(r.headers)
-            if r.status_code >= 400:
-                body: Any
-                try:
-                    body = r.json()
-                except Exception:
-                    body = r.text
-                if isinstance(body, dict):
-                    msg = (
-                        body.get("message")
-                        or body.get("error")
-                        or (body.get("detail") if isinstance(body.get("detail"), str) else None)
-                        or str(body)
-                    )
-                else:
-                    msg = str(body) if body else ""
-                text_fallback = (r.text or "").strip()
-                if not (msg and str(msg).strip()):
-                    msg = text_fallback[:2000] if text_fallback else f"HTTP {r.status_code} (empty error body)"
-                exc: type[APIError] = AuthError if r.status_code == 401 else APIError
-                raise exc(str(msg), status_code=r.status_code, body=body)
-            if expect_json:
-                if not r.content:
-                    return None, lineage, r
-                return r.json(), lineage, r
-            return r.content, lineage, r
+        r = self._client.request(
+            method,
+            url,
+            params=params,
+            json=json,
+            content=content,
+            headers=hdrs,
+        )
+        lineage = RiskLineage.from_response_headers(r.headers)
+        if r.status_code >= 400:
+            body: Any
+            try:
+                body = r.json()
+            except Exception:
+                body = r.text
+            if isinstance(body, dict):
+                msg = (
+                    body.get("message")
+                    or body.get("error")
+                    or (body.get("detail") if isinstance(body.get("detail"), str) else None)
+                    or str(body)
+                )
+            else:
+                msg = str(body) if body else ""
+            text_fallback = (r.text or "").strip()
+            if not (msg and str(msg).strip()):
+                msg = text_fallback[:2000] if text_fallback else f"HTTP {r.status_code} (empty error body)"
+            exc: type[APIError] = AuthError if r.status_code == 401 else APIError
+            raise exc(str(msg), status_code=r.status_code, body=body)
+        if expect_json:
+            if not r.content:
+                return None, lineage, r
+            return r.json(), lineage, r
+        return r.content, lineage, r

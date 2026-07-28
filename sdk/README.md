@@ -305,10 +305,17 @@ The `generate_refined_plot` method implements the **MatPlotAgent Pattern**:
 
 Environment variables:
 
-- `RISKMODELS_API_KEY` — static Bearer token, or
-- `RISKMODELS_CLIENT_ID` + `RISKMODELS_CLIENT_SECRET` — OAuth2 client credentials (JWT ~15m),
-- `RISKMODELS_BASE_URL` (default `https://riskmodels.app/api`),
-- `RISKMODELS_OAUTH_SCOPE` (optional).
+- `RISKMODELS_API_KEY` — Bearer token (`rm_agent_*` or `rm_user_*`). Get one at
+  [riskmodels.app/get-key](https://riskmodels.app/get-key).
+- `RISKMODELS_BASE_URL` (default `https://riskmodels.app/api`).
+
+> **Removed in 0.4.0:** `RISKMODELS_CLIENT_ID` / `RISKMODELS_CLIENT_SECRET` and
+> `RISKMODELS_OAUTH_SCOPE`. They drove a `client_credentials` grant against
+> `/api/auth/token`, an endpoint that was documented but never implemented (404),
+> so that path failed on its first request for every user. Setting them now raises
+> immediately with instructions instead of building a client that cannot work.
+> The API's only OAuth flow is authorization-code + PKCE for MCP clients; it
+> issues an `rm_user_*` key which you pass as `RISKMODELS_API_KEY`.
 
 ## Agent-native helpers (vibe coding)
 
