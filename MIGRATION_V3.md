@@ -68,40 +68,22 @@ curl https://riskmodels.app/api/ticker-returns?ticker=NVDA \
 
 ## New Features
 
-### 1. OAuth2 Client Credentials Flow
+### 1. OAuth2 Client Credentials Flow — NEVER SHIPPED
 
-**Use Case:** Machine-to-machine authentication for AI agents, server-to-server integrations
-
-**Example:**
-```bash
-# Exchange API credentials for short-lived JWT token
-curl -X POST https://riskmodels.app/api/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "client_credentials",
-    "client_id": "rm_agent_live_abc123",
-    "client_secret": "rm_agent_live_abc123_xyz789_checksum",
-    "scope": "ticker-returns risk-decomposition"
-  }'
-
-# Response:
-# {
-#   "access_token": "eyJhbGc...",
-#   "token_type": "Bearer",
-#   "expires_in": 900,
-#   "scope": "ticker-returns risk-decomposition"
-# }
-
-# Use access token in subsequent requests
-curl -X GET https://riskmodels.app/api/metrics/NVDA \
-  -H "Authorization: Bearer eyJhbGc..."
-```
-
-**Benefits:**
-- Short-lived tokens (15 minutes) improve security
-- Scoped access control
-- Standard OAuth2 protocol
-- Automatic token refresh in SDKs
+> **Correction (2026-07-28):** this feature was announced here but never implemented.
+> `POST /api/auth/token` returns 404, and the real token endpoint
+> (`POST /api/oauth/token`) rejects `client_credentials` with `unsupported_grant_type`.
+>
+> For machine-to-machine and server-to-server use, authenticate with a Bearer **API key**
+> directly — there is no token-exchange step:
+>
+> ```bash
+> curl -H "Authorization: Bearer rm_agent_live_..." \
+>   https://riskmodels.app/api/metrics/NVDA
+> ```
+>
+> The only OAuth flow that exists is authorization-code + PKCE for MCP clients. See
+> [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) Mode 2.
 
 ### 2. Plaid Investments Integration
 
@@ -173,34 +155,10 @@ const response = await fetch('https://riskmodels.app/api/metrics/NVDA', {
 });
 ```
 
-#### Option B: Use OAuth2 Flow (Recommended for AI Agents)
+#### Option B: OAuth2 Flow — NOT AVAILABLE
 
-```typescript
-// Step 1: Get OAuth2 token
-async function getAccessToken(clientId: string, clientSecret: string) {
-  const response = await fetch('https://riskmodels.app/api/auth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: clientId,
-      client_secret: clientSecret,
-      scope: 'ticker-returns risk-decomposition'
-    })
-  });
-  const data = await response.json();
-  return data.access_token;
-}
-
-// Step 2: Use access token (cache for 15 minutes)
-const token = await getAccessToken('rm_agent_live_abc123', 'rm_agent_live_abc123_xyz789_checksum');
-
-const response = await fetch('https://riskmodels.app/api/metrics/NVDA', {
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
-```
+> **Correction (2026-07-28):** the `client_credentials` example previously shown here
+> called `POST /api/auth/token`, which does not exist. Use Option A (Bearer API key).
 
 ### Step 2: Handle Rate Limits
 

@@ -15,7 +15,10 @@ const text = readFileSync(specPath, "utf8");
 
 /** Paths the CLI implements (relative to /api — spec lists without /api prefix). */
 const CLI_COVERED = new Set([
-  "/auth/token",
+  // NOTE: "/auth/token" was tracked here but never existed as a route and is not
+  // implemented by the CLI — it documented a client_credentials grant the API does
+  // not support. Removed with the spec entry; the real token endpoint is
+  // /oauth/token (authorization_code + refresh_token only).
   "/balance",
   "/batch/analyze",
   "/cli/query",
