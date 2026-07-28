@@ -1,8 +1,12 @@
 # riskmodels.app — repo review (2026-07-28)
 
-Companion to the `.net` design review (`Risk_Models` 04f19386) and the `.org` review
-(`RM_ORG` #33/#34). Same method as `.org`: findings come from **inspecting served
-output and the published contract**, not from reading source and guessing.
+Engineering review of the public API surface. Findings come from **inspecting served
+output and the published contract**, not from reading source and guessing — every claim
+here was verified against production or by test.
+
+This document is committed to a public repository. It describes defects that are **fixed
+in the same pull request that adds it**; it is kept as an engineering record of what was
+found and how, not as a description of current behaviour.
 
 Baseline **before** review: `npm test` → 574 passed / 10 skipped, `cli:openapi-check` → OK,
 `tsc --noEmit` failing on one file (L4).
@@ -12,8 +16,8 @@ Baseline **before** review: `npm test` → 574 passed / 10 skipped, `cli:openapi
 > actually applied, and where it differed from the proposed fix, is in the two tables at
 > the end.
 
-Scope note: `.org` was ~13 research pages and got equal-depth full coverage. `.app` is
-129 API routes at review time (128 after H2) + Python SDK + MCP + OAuth + billing. This pass prioritised the
+Scope note: 129 API routes at review time (128 after H2) + Python SDK + MCP + OAuth +
+billing. This pass prioritised the
 machine-facing contract surface (auth, cost, spec fidelity, agent discovery). Every
 route without a recognised auth wrapper was opened and classified. **Not** covered:
 the MCP tool layer, OpenBB widgets, the Playwright PDF/PNG workers, Plaid internals,
@@ -364,9 +368,9 @@ Worth recording so the next pass doesn't redo it:
 
 ---
 
-## Suggested landing order
+## Landing order
 
-Mirrors `.org` (#33 quick wins → #34 second pass):
+Split so each pass is reviewable on its own:
 
 **PR 1 — contract fixes. ✅ APPLIED (2026-07-28).** M1, M2, M3, M4. Detail below.
 
