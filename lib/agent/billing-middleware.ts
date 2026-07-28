@@ -26,6 +26,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 import { checkFreeTierLimit, incrementFreeTierUsage } from "./free-tier";
+import { checkMemoryRateLimit } from "@/lib/ratelimit/memory-fallback";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getIdempotentResponse,
@@ -205,6 +206,8 @@ function getRedis(): Redis | null {
 // Cache Ratelimit instances keyed by limit value so we re-use the same limiter
 // for keys with the same rate limit setting.
 const _limiters = new Map<number, Ratelimit>();
+/** One-shot guard so the public-throttle fallback logs once per instance. */
+let _warnedPublicRlFallback = false;
 function getRatelimiter(requestsPerMinute: number): Ratelimit | null {
   const redis = getRedis();
   if (!redis) return null; // Fall back gracefully when Redis is not configured
@@ -327,19 +330,46 @@ export function withBilling(
     if (options.skipBilling) {
       const rpm = options.publicIpRateLimitPerMinute;
       if (rpm != null && rpm > 0) {
+        const forwarded = req.headers.get("x-forwarded-for");
+        const ipRaw =
+          forwarded?.split(",")[0]?.trim() ||
+          req.headers.get("x-real-ip") ||
+          req.headers.get("cf-connecting-ip") ||
+          "unknown";
+        const ip = ipRaw.slice(0, 128);
+        const bucketKey = `public:${options.capabilityId}:${ip}`;
+
+        // These routes are unauthenticated, so this per-IP cap is the ONLY
+        // control on them — for /funds/search and /13f/filers/search it is the
+        // EODHD Exhibit B(g) safeguard. It must degrade rather than vanish when
+        // Redis is unavailable, otherwise the rate limit documented in
+        // OPENAPI_SPEC.yaml silently stops being true. Same posture as
+        // lib/ratelimit/data-gateway-rate-limit.ts.
         const limiter = getRatelimiter(rpm);
-        if (limiter) {
-          const forwarded = req.headers.get("x-forwarded-for");
-          const ipRaw =
-            forwarded?.split(",")[0]?.trim() ||
-            req.headers.get("x-real-ip") ||
-            req.headers.get("cf-connecting-ip") ||
-            "unknown";
-          const ip = ipRaw.slice(0, 128);
-          const rl = await tryRatelimit(
-            limiter,
-            `public:${options.capabilityId}:${ip}`,
-          );
+        const redisResult = limiter ? await tryRatelimit(limiter, bucketKey) : null;
+        if (!limiter || redisResult === null) {
+          if (!_warnedPublicRlFallback) {
+            _warnedPublicRlFallback = true;
+            console.error(
+              `[Billing] FAIL_OPEN reason=${limiter ? "upstash_error" : "unconfigured"} ` +
+                `capability=${options.capabilityId} — degrading public IP limit to per-instance memory`,
+            );
+          }
+        }
+
+        const rl =
+          redisResult ??
+          (() => {
+            const m = checkMemoryRateLimit(bucketKey, rpm, 60_000);
+            return {
+              success: m.ok,
+              limit: rpm,
+              remaining: m.remaining,
+              reset: m.resetAt,
+            } as RatelimitResult;
+          })();
+
+        {
           if (rl && !rl.success) {
             const { limit, remaining, reset } = rl;
             const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);

@@ -4,11 +4,16 @@ Companion to the `.net` design review (`Risk_Models` 04f19386) and the `.org` re
 (`RM_ORG` #33/#34). Same method as `.org`: findings come from **inspecting served
 output and the published contract**, not from reading source and guessing.
 
-Baseline before review: `npm test` → 574 passed / 10 skipped, `cli:openapi-check` → OK.
-`tsc --noEmit` fails on one file — see L4.
+Baseline **before** review: `npm test` → 574 passed / 10 skipped, `cli:openapi-check` → OK,
+`tsc --noEmit` failing on one file (L4).
+
+> **Status: every finding below is fixed in #285.** The finding bodies are left in their
+> pre-fix, present-tense form on purpose — the diagnosis is the durable part. What was
+> actually applied, and where it differed from the proposed fix, is in the two tables at
+> the end.
 
 Scope note: `.org` was ~13 research pages and got equal-depth full coverage. `.app` is
-129 API routes + Python SDK + MCP + OAuth + billing. This pass prioritised the
+129 API routes at review time (128 after H2) + Python SDK + MCP + OAuth + billing. This pass prioritised the
 machine-facing contract surface (auth, cost, spec fidelity, agent discovery). Every
 route without a recognised auth wrapper was opened and classified. **Not** covered:
 the MCP tool layer, OpenBB widgets, the Playwright PDF/PNG workers, Plaid internals,
@@ -47,7 +52,7 @@ consider a cheap second layer that does not depend on Upstash — e.g. a per-ins
 in-memory ceiling as a floor when Redis is unavailable, so the safeguard degrades
 instead of disappearing.
 
-### H1b — `verifyGatewayAuth()` cannot deny anything, and 15 routes branch on a dead value
+### H1b — `verifyGatewayAuth()` cannot deny anything, and 24 routes branch on a dead value
 
 Hygiene, not a vulnerability — but it is what made H1 hard to see. Every path through
 `lib/gateway-auth.ts:23-36` returns `null`:
@@ -59,7 +64,7 @@ if (token === key) return null;
 return null;   // "User keys, JWTs, or any other Bearer: allow public read"
 ```
 
-15 `/api/data/*` routes call it as `const denied = verifyGatewayAuth(request)` and branch
+24 `/api/data/*` routes call it as `const denied = verifyGatewayAuth(request)` and branch
 on `denied`, which is unreachable. The name asserts a check the function does not
 perform, and the call sites read as an access-control gate — so the surface looks
 defended when the actual defence is entirely in middleware.
@@ -434,6 +439,7 @@ in prod, or changing the default to the `.app` origin.
 | H4 | Kept both discovery routes public — that is the clear design intent — but added per-IP throttles (`FUND_SEARCH_IP_RPM` / `FILER_SEARCH_IP_RPM`, default 60/min) and cut the public row cap from 500 → 100. Corrected both routes' doc comments, which claimed key auth they never had. | `app/api/funds/search`, `app/api/13f/filers/search` |
 | H4b | **Found while fixing H4:** the `skipBilling` throttle response was hardcoded to a Shields.io badge payload at **HTTP 200**. Correct for the badge route, wrong for a JSON API — a throttled search caller would have seen a 200 that looks like an empty result. Added `publicRateLimitResponse: "json" \| "badge"`, defaulting to a real `429`; the badge route opts into the 200 shape explicitly. | `lib/agent/billing-middleware.ts`, `app/api/rankings/[ticker]/badge` |
 | H3 | Removed `OAuthClientCredentialsAuth` from the SDK, plus the now-dead 401-retry branch in `transport.py` (which flattened a pointless `while True`) and the unused `DEFAULT_SCOPE`. `client_id`/`client_secret` and their env vars now raise immediately with instructions. **SDK 0.3.11 → 0.4.0** (breaking removal of a public symbol). Rewrote `tests/test_auth.py`: the old tests mocked `/auth/token` and asserted the SDK called it, so they passed while the feature was broken for every real user. | `sdk/riskmodels/{auth,transport,client}.py`, `sdk/tests/test_auth.py`, `sdk/pyproject.toml`, `sdk/README.md` |
+| H4c | **Caught in review of this PR:** the throttle added for H4 fails open the same way H1 did — `getRatelimiter()` returns null when Upstash is unconfigured and `tryRatelimit()` swallows errors, so both public routes would have been unthrottled during a Redis outage *while the spec I had just written claimed a 60/min limit*. Routed the `skipBilling` public-throttle branch through the memory fallback so the documented limit stays true. 3 tests. | `lib/agent/billing-middleware.ts`, `tests/public-ip-rate-limit-degrades.test.ts` |
 | M5 | Landing-chat throttle moved to Upstash so the cap is global, not `10/hr × live instances`. Kept the in-memory limiter as the **fallback** rather than replacing it — swapping outright would have left an unauthenticated LLM-spend endpoint with zero cap during a Redis outage. | `app/api/landing/chat/route.ts` |
 | L1 | 18 sites across 16 routes no longer return raw `error.message`. Two `tickers/route.ts` catches had **no logging at all**, so genericising them alone would have destroyed the diagnostic — added `console.error` there before changing the response. | 16 `app/api/**` routes |
 | L2 | Deleted the 14 zero-importer modules after re-verifying each. `lib/agent/middleware.ts` needed a second look: it appeared to have 4 references, all of which were prose in comments, and its `createAgentResponse` export is a name collision with a live function in `response-utils.ts`. | 14 files removed |
@@ -444,7 +450,7 @@ in prod, or changing the default to the `.app` origin.
 
 | Check | Result |
 |---|---|
-| `npm test` | 577 passed / 10 skipped (was 574 — 3 new degraded-mode tests) |
+| `npm test` | 580 passed / 10 skipped (was 574 — 6 new degraded-mode tests) |
 | `sdk` pytest (`sdk/.venv`, Python 3.12) | 503 passed / 3 skipped — same as baseline |
 | `tsc --noEmit` | clean |
 | `eslint app components lib` | clean |
@@ -462,6 +468,10 @@ collection errors that are an interpreter artefact, not real failures.
   dependency in this repo, so the honest fix was to make the condition greppable and
   leave the alerting decision to whoever owns the log drain. Building a monitoring stack
   is not a review fix.
+- **Documenting `FUND_SEARCH_IP_RPM` / `FILER_SEARCH_IP_RPM` in `.env.example`.** That
+  file documents no rate-limit knob today — not `DATA_GATEWAY_RPM`, not
+  `RANKINGS_BADGE_IP_RPM` — and all of them are optional with working defaults. Adding
+  only the two new ones would be inconsistent; documenting the set is a separate cleanup.
 - **Auditing the remaining `skipBilling` routes** beyond the three public ones. The two
   Plaid routes (`link-token`, `exchange-public-token`) were checked and are safe — they
   call `authenticateOrRespond` inside the handler, which is the correct way to get
