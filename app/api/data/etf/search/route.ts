@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { etfCatalogMetadata, searchEtfs } from "@/lib/dal/etf-catalog";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +28,6 @@ export const dynamic = "force-dynamic";
  * MASTER_BACKLOG L.6 / D.9.
  */
 export async function GET(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? "";
   const limitRaw = url.searchParams.get("limit");

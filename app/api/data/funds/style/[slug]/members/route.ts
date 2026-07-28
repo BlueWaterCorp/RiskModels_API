@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { getStyleCellMembers } from "@/lib/dal/funds-engine";
 import { styleSlugToName } from "@/lib/funds/style-slug";
 
@@ -19,9 +18,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { slug } = await params;
   const cellName = styleSlugToName(slug ?? "");
   if (!cellName) {

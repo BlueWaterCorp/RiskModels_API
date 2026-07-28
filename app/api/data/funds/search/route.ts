@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { searchFunds } from "@/lib/dal/funds-engine";
 import { isValidStyleSlug, styleSlugToName } from "@/lib/funds/style-slug";
 
@@ -17,9 +16,6 @@ export const dynamic = "force-dynamic";
  * Returns: { results: FundRow[] }
  */
 export async function GET(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { searchParams } = request.nextUrl;
   const q = searchParams.get("q")?.trim() ?? undefined;
   const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 50), 1), 500);

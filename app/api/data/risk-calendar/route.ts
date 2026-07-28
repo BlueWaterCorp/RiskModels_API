@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import {
   getRiskCalendar,
   type RiskCalendarEventType,
@@ -31,9 +30,6 @@ const VALID_TYPES: RiskCalendarEventType[] = [
  *   ?types=earnings,macro     — restrict event types
  */
 export async function GET(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const sp = request.nextUrl.searchParams;
   const tickersParam = sp.get("tickers");
   const typesParam = sp.get("types");

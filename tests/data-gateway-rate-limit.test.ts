@@ -3,11 +3,12 @@ import {
   checkDataGatewayRateLimit,
   clientIp,
 } from "@/lib/ratelimit/data-gateway-rate-limit";
+import { __resetMemoryRateLimits } from "@/lib/ratelimit/memory-fallback";
 
 /**
  * EODHD Exhibit B(g) anti-scraping throttle on the /api/data/* gateway.
  * These tests cover the pure logic (IP extraction, service-key exemption,
- * fail-open). The Upstash-backed counting path is exercised in integration.
+ * degraded mode). The Upstash-backed counting path is exercised in integration.
  */
 
 function headers(map: Record<string, string>): Headers {
@@ -33,6 +34,7 @@ describe("checkDataGatewayRateLimit", () => {
     process.env.RISKMODELS_API_SERVICE_KEY = "svc-secret";
     // Ensure Upstash is treated as unconfigured so we never hit the network.
     delete process.env.UPSTASH_REDIS_REST_URL;
+    __resetMemoryRateLimits();
   });
   afterEach(() => {
     if (ORIG_KEY === undefined) delete process.env.RISKMODELS_API_SERVICE_KEY;
@@ -46,8 +48,35 @@ describe("checkDataGatewayRateLimit", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("fails open when Upstash is not configured", async () => {
+  it("still serves normal traffic when Upstash is not configured", async () => {
     const r = await checkDataGatewayRateLimit(headers({ "x-forwarded-for": "1.2.3.4" }));
     expect(r.ok).toBe(true);
+  });
+
+  it("degrades to a per-instance ceiling instead of failing fully open", async () => {
+    // With Upstash unconfigured the limiter must still bound a single caller.
+    // DATA_GATEWAY_RPM defaults to 120, so request 121 from one IP is refused.
+    const h = headers({ "x-forwarded-for": "7.7.7.7" });
+    let lastOk = true;
+    for (let i = 0; i < 121; i++) {
+      lastOk = (await checkDataGatewayRateLimit(h)).ok;
+    }
+    expect(lastOk).toBe(false);
+  });
+
+  it("keeps the degraded ceiling per-IP", async () => {
+    const a = headers({ "x-forwarded-for": "8.8.8.8" });
+    for (let i = 0; i < 121; i++) await checkDataGatewayRateLimit(a);
+    expect((await checkDataGatewayRateLimit(a)).ok).toBe(false);
+    // A different IP is unaffected.
+    const b = headers({ "x-forwarded-for": "8.8.4.4" });
+    expect((await checkDataGatewayRateLimit(b)).ok).toBe(true);
+  });
+
+  it("exempts the service key even in degraded mode", async () => {
+    const h = headers({ authorization: "Bearer svc-secret", "x-forwarded-for": "9.9.9.9" });
+    for (let i = 0; i < 200; i++) {
+      expect((await checkDataGatewayRateLimit(h)).ok).toBe(true);
+    }
   });
 });

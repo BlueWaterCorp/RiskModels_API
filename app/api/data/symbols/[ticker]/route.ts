@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { resolveTickerAlias } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
@@ -16,9 +15,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ ticker: string }> },
 ) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { ticker } = await params;
   if (!ticker) {
     return NextResponse.json({ error: "ticker is required" }, { status: 400 });

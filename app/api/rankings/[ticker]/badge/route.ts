@@ -181,6 +181,8 @@ export async function GET(
       capabilityId: "rankings-badge",
       skipBilling: true,
       publicIpRateLimitPerMinute: effectiveBadgeRpm,
+      // Shields.io needs HTTP 200 to render a grey "rate limited" pill.
+      publicRateLimitResponse: "badge",
     },
   )(request);
 }

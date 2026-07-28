@@ -254,6 +254,15 @@ export interface BillingOptions {
    */
   publicIpRateLimitPerMinute?: number;
   /**
+   * Shape of the throttled response for `publicIpRateLimitPerMinute`.
+   *
+   * - `"json"` (default) — a normal `429` with an `{ error, message }` body.
+   * - `"badge"` — a Shields.io Endpoint payload at HTTP **200**, so a README
+   *   badge renders a grey "rate limited" pill instead of a broken image.
+   *   Only correct for badge endpoints; a JSON API must not 200 on throttle.
+   */
+  publicRateLimitResponse?: "json" | "badge";
+  /**
    * Streaming routes (SSE): run every pre-flight check (auth, rate limit,
    * caps, balance) as usual, but defer deduction + free-tier increment +
    * telemetry to the handler via `context.settleBilling(success)`. A streaming
@@ -334,24 +343,34 @@ export function withBilling(
           if (rl && !rl.success) {
             const { limit, remaining, reset } = rl;
             const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
-            // 200 so Shields.io Endpoint badges show a grey error badge instead of a transport failure
+            const rlHeaders = {
+              "Content-Type": "application/json",
+              "Retry-After": String(retryAfterSecs),
+              "X-RateLimit-Limit": String(limit),
+              "X-RateLimit-Remaining": String(remaining),
+              "X-RateLimit-Reset": String(reset),
+            };
+            // Badge endpoints answer 200 so Shields.io renders a grey "rate limited"
+            // pill rather than a broken image. Every other public JSON route must
+            // return a real 429 — a 200 would look like a successful empty result.
+            if (options.publicRateLimitResponse === "badge") {
+              return new NextResponse(
+                JSON.stringify({
+                  schemaVersion: 1,
+                  isError: true,
+                  label: "riskmodels",
+                  message: "rate limited",
+                }),
+                { status: 200, headers: rlHeaders },
+              );
+            }
             return new NextResponse(
               JSON.stringify({
-                schemaVersion: 1,
-                isError: true,
-                label: "riskmodels",
-                message: "rate limited",
+                error: "RATE_LIMIT_EXCEEDED",
+                message: `Rate limit exceeded. Retry after ${retryAfterSecs}s.`,
+                code: 429,
               }),
-              {
-                status: 200,
-                headers: {
-                  "Content-Type": "application/json",
-                  "Retry-After": String(retryAfterSecs),
-                  "X-RateLimit-Limit": String(limit),
-                  "X-RateLimit-Remaining": String(remaining),
-                  "X-RateLimit-Reset": String(reset),
-                },
-              },
+              { status: 429, headers: rlHeaders },
             );
           }
         }

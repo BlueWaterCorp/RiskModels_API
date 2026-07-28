@@ -223,7 +223,7 @@ export function createPaymentRequiredResponse(
   requestId?: string
 ): NextResponse {
   const requestIdFinal = requestId || generateRequestId();
-  const topUpUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/top-up`;
+  const topUpUrl = `${process.env.NEXT_PUBLIC_APP_URL}/get-key`;
 
   return NextResponse.json(
     {

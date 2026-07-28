@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { resolveFundsByIds } from "@/lib/dal/funds-engine";
 
 export const dynamic = "force-dynamic";
@@ -16,9 +15,6 @@ const MAX_BATCH = 1000;
  * portfolio's full registry+latest payload in one call.
  */
 export async function POST(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   let body: { fund_ids?: unknown };
   try {
     body = (await request.json()) as { fund_ids?: unknown };
