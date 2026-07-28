@@ -1284,7 +1284,7 @@ DISCOVER_SPEC: dict[str, Any] = {
     "auth": {
         "modes": [
             "Static API key: RISKMODELS_API_KEY → Bearer token (no refresh).",
-            "OAuth2 client credentials: RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET; JWT ~15m refresh.",
+            "API key only: set RISKMODELS_API_KEY (rm_agent_* or rm_user_*). There is no client_credentials grant.",
         ],
         "default_oauth_scope": (
             "ticker-returns risk-decomposition batch-analysis factor-correlation macro-factor-series rankings"

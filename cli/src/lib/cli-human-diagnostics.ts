@@ -43,7 +43,6 @@ export type StatusPayload = {
   configFound: boolean;
   apiBaseUrl: string;
   apiKey: string;
-  oauthConfigured: boolean;
   mcpClients: ClientDetection[];
 };
 
@@ -61,7 +60,6 @@ export function printStatusHuman(payload: StatusPayload): void {
   );
   logLine(`  ${BULLET} ${chalk.bold("apiBaseUrl")} ${chalk.dim(payload.apiBaseUrl)}`);
   logLine(`  ${BULLET} ${chalk.bold("API key")} ${payload.apiKey}`);
-  logLine(`  ${BULLET} ${chalk.bold("OAuth")} ${payload.oauthConfigured ? chalk.green("configured") : chalk.dim("not configured")}`);
   logLine("");
   logLine(chalk.bold("MCP-related clients:"));
   for (const d of payload.mcpClients) {

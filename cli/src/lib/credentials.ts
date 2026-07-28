@@ -1,17 +1,21 @@
 import { apiRootFromUserBase } from "./api-url.js";
 import type { RiskmodelsConfig } from "./config.js";
 import { DEFAULT_API_BASE } from "./config.js";
-import { fetchOAuthAccessToken, invalidateOAuthToken } from "./oauth.js";
 
-/** Matches sdk/riskmodels/client.py DEFAULT_SCOPE. */
-export const DEFAULT_OAUTH_SCOPE =
-  "ticker-returns risk-decomposition batch-analysis factor-correlation macro-factor-series rankings";
-
+/**
+ * Auth is a static Bearer API key. There is no token exchange.
+ *
+ * Removed in 3.0.0: the OAuth client-credentials path. It POSTed a
+ * `client_credentials` grant to `{apiRoot}/auth/token`, an endpoint that was
+ * documented but never implemented — it returns 404, so any invocation
+ * configured that way failed on its first request. The API's only OAuth flow is
+ * authorization-code + PKCE for MCP clients, which issues an `rm_user_*` key
+ * that is used here as a plain API key.
+ */
 export type ResolvedApiAuth = {
   apiRoot: string;
-  /** Static Bearer (API key) — preferred when set */
-  apiKey?: string;
-  oauth?: { clientId: string; clientSecret: string; scope: string };
+  /** Static Bearer (`rm_agent_*` or `rm_user_*`). */
+  apiKey: string;
 };
 
 function trimEnv(key: string): string | undefined {
@@ -25,14 +29,6 @@ export function resolveApiAuth(cfg: RiskmodelsConfig | null): ResolvedApiAuth | 
   const apiKey = cfg?.apiKey?.trim() || trimEnv("RISKMODELS_API_KEY");
   if (apiKey) {
     return { apiRoot, apiKey };
-  }
-
-  const clientId = cfg?.clientId?.trim() || trimEnv("RISKMODELS_CLIENT_ID");
-  const clientSecret = cfg?.clientSecret?.trim() || trimEnv("RISKMODELS_CLIENT_SECRET");
-  const scope = cfg?.oauthScope?.trim() || trimEnv("RISKMODELS_OAUTH_SCOPE") || DEFAULT_OAUTH_SCOPE;
-
-  if (clientId && clientSecret) {
-    return { apiRoot, oauth: { clientId, clientSecret, scope } };
   }
 
   return null;
@@ -52,7 +48,7 @@ export function assertRestApiAuth(cfg: RiskmodelsConfig | null, chalkYellow: (s:
     console.error(
       chalkYellow(
         "REST API commands need an API key or OAuth client credentials. " +
-          "Set RISKMODELS_API_KEY (or RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET), " +
+          "Set RISKMODELS_API_KEY — get a key at https://riskmodels.app/get-key — " +
           "or run `riskmodels config init` in billed mode.",
       ),
     );
@@ -75,25 +71,7 @@ export function requireResolvedAuth(
 }
 
 export async function getAuthorizationHeader(auth: ResolvedApiAuth): Promise<Record<string, string>> {
-  if (auth.apiKey) {
-    return { Authorization: `Bearer ${auth.apiKey}` };
-  }
-  if (auth.oauth) {
-    const token = await fetchOAuthAccessToken(
-      auth.apiRoot,
-      auth.oauth.clientId,
-      auth.oauth.clientSecret,
-      auth.oauth.scope,
-    );
-    return { Authorization: `Bearer ${token}` };
-  }
-  throw new Error("No API credentials");
-}
-
-export function invalidateAuthForRetry(auth: ResolvedApiAuth): void {
-  if (auth.oauth) {
-    invalidateOAuthToken(auth.apiRoot, auth.oauth.clientId, auth.oauth.scope);
-  }
+  return { Authorization: `Bearer ${auth.apiKey}` };
 }
 
 /** Public origin for docs (no `/api` suffix). */

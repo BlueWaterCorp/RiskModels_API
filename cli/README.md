@@ -27,9 +27,8 @@ node dist/index.js install --dry-run
 ## Authentication
 
 - **API key (recommended):** `riskmodels config init` (billed mode) or `riskmodels config set apiKey <rm_agent_...>`.
-- **OAuth client credentials:** `riskmodels config set clientId …` and `config set clientSecret …`, or set `RISKMODELS_CLIENT_ID` / `RISKMODELS_CLIENT_SECRET` (optional `RISKMODELS_OAUTH_SCOPE`; default matches the Python SDK).
 - **Environment:** `RISKMODELS_API_KEY` works without a config file for REST commands.
-- **Direct (Supabase) mode** is for `query` + `schema` only. REST analytics need an API key or OAuth (config or env).
+- **Direct (Supabase) mode** is for `query` + `schema` only. REST analytics need an API key (config or env).
 
 Base URL: stored as `apiBaseUrl` (default `https://riskmodels.app`). The CLI calls paths under `…/api/...` (same as `OPENAPI_SPEC.yaml`).
 
@@ -51,7 +50,7 @@ Config file: `~/.config/riskmodels/config.json`
 
 | Command | Description |
 |--------|-------------|
-| `riskmodels config init \| set \| list` | API key, OAuth fields (`clientId`, `clientSecret`, `oauthScope`), `apiBaseUrl`, or Supabase (direct) |
+| `riskmodels config init \| set \| list` | API key, `apiBaseUrl`, or Supabase (direct) |
 | `riskmodels install` | Detect Claude, Cursor, Codex, and VS Code MCP targets, store the API key in shared config, merge MCP configs with backups, and run a connection test. |
 | `riskmodels status` | Show shared config and MCP client detection status. |
 | `riskmodels doctor` | Local install-readiness diagnostics: Node, npx, API credentials, and client detection. |

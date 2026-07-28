@@ -35,7 +35,7 @@ export function doctorCommand(): Command {
         },
         {
           id: "api_credentials",
-          ok: !!cfg?.apiKey || !!process.env.RISKMODELS_API_KEY || (!!cfg?.clientId && !!cfg?.clientSecret),
+          ok: !!cfg?.apiKey || !!process.env.RISKMODELS_API_KEY,
           detail: cfg?.apiKey
             ? `Config API key ${maskSecret(cfg.apiKey)} in ${abbreviatePath(configPath())}`
             : process.env.RISKMODELS_API_KEY

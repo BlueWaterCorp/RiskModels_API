@@ -2,7 +2,7 @@
  * /api/data/benchmark-fit — bench-active routing (DAL + billing mocked).
  *
  * The pricing split: static benches (SPY, aliases, bw_bench_id) stay on the
- * free gateway plane (verifyGatewayAuth, computeBenchmarkFit — the billed
+ * free gateway plane (public read, computeBenchmarkFit — the billed
  * wrapper is never entered); custom benches (ff_own / cell_<slug> / all) go
  * through the withBilling capability wrapper (bench-active-custom). Bad cell
  * slugs are a 400 on either plane, before auth.
