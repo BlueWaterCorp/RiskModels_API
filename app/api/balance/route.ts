@@ -193,7 +193,7 @@ export async function GET(request: Request) {
       "balance-check",
       requestId,
       {
-        error_details: error instanceof Error ? error.message : "Unknown error",
+        error_details: "An unexpected error occurred. The incident has been logged.",
       },
     );
   }
@@ -372,7 +372,7 @@ export async function PATCH(request: Request) {
       "balance-update",
       requestId,
       {
-        error_details: error instanceof Error ? error.message : "Unknown error",
+        error_details: "An unexpected error occurred. The incident has been logged.",
       },
     );
   }

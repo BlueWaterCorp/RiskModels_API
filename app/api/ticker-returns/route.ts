@@ -127,7 +127,7 @@ export const GET = withBilling(
       console.error("[ticker-returns] history fetch failed", {
         ticker,
         symbol: symbolRecord.symbol,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Internal server error",
       });
       return NextResponse.json(
         {

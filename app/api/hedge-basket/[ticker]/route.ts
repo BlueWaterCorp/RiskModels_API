@@ -163,7 +163,7 @@ export const GET = withBilling(
       console.error(`[hedge-basket] Exception for ${ticker}:`, error);
       const metadata = await getRiskMetadata();
       const response = NextResponse.json(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error: "Internal server error" },
         { status: 500, headers: getCorsHeaders(origin) },
       );
       addMetadataHeaders(response, metadata);

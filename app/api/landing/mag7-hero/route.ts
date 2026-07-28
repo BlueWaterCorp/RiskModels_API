@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Failed to build Mag7 landing hero data",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: "An unexpected error occurred. The incident has been logged.",
       },
       { status: 500, headers: corsHeaders },
     );
