@@ -24,13 +24,13 @@ dependencies = [
   "gcsfs>=2023.6.0",
   "pydantic>=2.6,<3",
   "zarr>=2.18,<3",
+  # Portfolio-evolution kernel + /healthz ERM3 probe (see portfolio_evolution.py).
+  "xarray>=2024.1",
   # Public SDK with F1 canonical schema + reference renderers.
-  # In dev installs from local sibling path; container build installs from PyPI
-  # once the SDK with F1 is published, or from the in-tree wheel.
-  # Tracks the local SDK editable install. Production should pin to the
-  # PyPI release that includes the F1 canonical schema (canonical-fund/1.0)
-  # and ontology riskmodels-ontology/2.0.
-  "riskmodels-py>=0.3",
+  # Local uv resolves via [tool.uv.sources] → ../../sdk (editable).
+  # Container build copies in-tree sdk/ (see Dockerfile) — not this lock pin.
+  # Keep the floor at the published filer-surface release (as_of, concentration).
+  "riskmodels-py>=0.3.11",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +39,18 @@ dev = [
   "httpx>=0.27,<1",
   "pytest-asyncio>=0.23,<1",
 ]
+
+# Prefer the sibling editable SDK over a stale PyPI wheel (uv.lock previously
+# pinned 0.3.10 while source/__version__ were already 0.3.11 — pytest then
+# imported the older site-packages copy and silently skipped filer coverage).
+[tool.uv.sources]
+riskmodels-py = { path = "../../sdk", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Keep render_svc importable without relying on an ambient PYTHONPATH that
+# might also inject a second riskmodels tree ahead of the editable install.
+pythonpath = ["."]
 
 [tool.hatch.build.targets.wheel]
 packages = ["render_svc"]
