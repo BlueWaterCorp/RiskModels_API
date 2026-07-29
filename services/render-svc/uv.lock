@@ -1881,8 +1881,8 @@ wheels = [
 
 [[package]]
 name = "riskmodels-py"
-version = "0.3.10"
-source = { registry = "https://pypi.org/simple" }
+version = "0.4.0"
+source = { editable = "../../sdk" }
 dependencies = [
     { name = "httpx" },
     { name = "matplotlib" },
@@ -1890,10 +1890,43 @@ dependencies = [
     { name = "plotly" },
     { name = "pyarrow" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/50/fc36ea8e33881db67c1455ac67469e4319061aa75ffbb199aa251fb4527e/riskmodels_py-0.3.10.tar.gz", hash = "sha256:7148b680187778f498377a5457defac11d7c71054af863a39c6b56badd90f9f3", size = 33976073, upload-time = "2026-05-27T21:48:52.581Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/a7/9160b46842d274bb9de538c34aa1bd3d59597d4ffbad718ea98c76209766/riskmodels_py-0.3.10-py3-none-any.whl", hash = "sha256:107bc160525c79ae69e60b73df16f684b5ebbf780924603f3fcd0f82bf645249", size = 33398164, upload-time = "2026-05-27T21:48:47.582Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "build", marker = "extra == 'dev'", specifier = ">=1.2" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "jinja2", marker = "extra == 'pdf'", specifier = ">=3.1,<4" },
+    { name = "kaleido", marker = "extra == 'dev'", specifier = ">=0.2,<1" },
+    { name = "kaleido", marker = "extra == 'snapshots'", specifier = ">=0.2,<1" },
+    { name = "kaleido", marker = "extra == 'viz'", specifier = ">=0.2,<1" },
+    { name = "matplotlib", specifier = ">=3.8,<4" },
+    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8,<4" },
+    { name = "matplotlib", marker = "extra == 'pdf'", specifier = ">=3.8,<4" },
+    { name = "matplotlib", marker = "extra == 'snapshots'", specifier = ">=3.8,<4" },
+    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8,<4" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
+    { name = "pandas", specifier = ">=2.0,<3" },
+    { name = "plotly", specifier = ">=5.18,<7" },
+    { name = "plotly", marker = "extra == 'dev'", specifier = ">=5.18,<7" },
+    { name = "plotly", marker = "extra == 'snapshots'", specifier = ">=5.18,<7" },
+    { name = "plotly", marker = "extra == 'viz'", specifier = ">=5.18,<7" },
+    { name = "pyarrow", specifier = ">=14,<22" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
+    { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.35,<1" },
+    { name = "python-dotenv", marker = "extra == 'dev'", specifier = ">=1.0,<2" },
+    { name = "python-dotenv", marker = "extra == 'dotenv'", specifier = ">=1.0,<2" },
+    { name = "qrcode", extras = ["pil"], marker = "extra == 'dev'", specifier = ">=7.0" },
+    { name = "qrcode", extras = ["pil"], marker = "extra == 'snapshots'", specifier = ">=7.0" },
+    { name = "riskmodels-py", extras = ["viz", "xarray", "dotenv", "pdf", "snapshots"], marker = "extra == 'all'" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "seaborn", marker = "extra == 'dev'", specifier = ">=0.13,<1" },
+    { name = "seaborn", marker = "extra == 'viz'", specifier = ">=0.13,<1" },
+    { name = "twine", marker = "extra == 'dev'", specifier = ">=5,<7" },
+    { name = "weasyprint", marker = "extra == 'pdf'", specifier = ">=60" },
+    { name = "xarray", marker = "extra == 'xarray'", specifier = ">=2024.1" },
+    { name = "zarr", marker = "extra == 'xarray'", specifier = ">=2" },
 ]
+provides-extras = ["viz", "xarray", "dotenv", "pdf", "snapshots", "all", "dev"]
 
 [[package]]
 name = "riskmodels-render-svc"
@@ -1906,6 +1939,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "riskmodels-py" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "xarray" },
     { name = "zarr" },
 ]
 
@@ -1925,8 +1959,9 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.6,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0,<9" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23,<1" },
-    { name = "riskmodels-py", specifier = ">=0.3" },
+    { name = "riskmodels-py", editable = "../../sdk" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27,<1" },
+    { name = "xarray", specifier = ">=2024.1" },
     { name = "zarr", specifier = ">=2.18,<3" },
 ]
 provides-extras = ["dev"]
@@ -2241,6 +2276,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/31/2a7dc5f6abb2fca0b6e1610e120419f603650aceb4f1d3ac4cae0354e162/wrapt-2.2.1-cp314-cp314t-win_amd64.whl", hash = "sha256:fd0135d34387f5fd087d9be368ea77ea89cf2451dc1cd1c622d35021bcb3ab50", size = 83835, upload-time = "2026-05-22T14:49:21.634Z" },
     { url = "https://files.pythonhosted.org/packages/9f/c0/782b86e28d1ceebeb74cccea12d2cd3d2ba0bd68e3dec20b1bc5873f6127/wrapt-2.2.1-cp314-cp314t-win_arm64.whl", hash = "sha256:f70db64e8266d7c45d3b735f2e08eeb434b5e03da9a479ae42b2e2e486a21a00", size = 80722, upload-time = "2026-05-22T14:49:23.59Z" },
     { url = "https://files.pythonhosted.org/packages/53/46/29ac9daf11a86c22a8c38cd9236c62928ccae83f7ceb06bd3b0467cf9d05/wrapt-2.2.1-py3-none-any.whl", hash = "sha256:3aafea2975caef8ca49400640dde02cc7426e798f24870ed01f490bc3cffd32f", size = 61000, upload-time = "2026-05-22T14:49:41.593Z" },
+]
+
+[[package]]
+name = "xarray"
+version = "2026.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pandas" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ea/96/3f7bdd00e505ec3698903415b30135024703e017b28c6b61f98da3193b0d/xarray-2026.7.0.tar.gz", hash = "sha256:361b495928fdbf5b58d0969bb6775339019da5e93ca74d61ddf4eb5edd6ce604", size = 3145348, upload-time = "2026-07-09T17:38:26.515Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/57/5b/28365212062939d213802e5e5fe855cdb231e1c2a93254ba1690066504e3/xarray-2026.7.0-py3-none-any.whl", hash = "sha256:bf9dd130b93806dc78e90c1b7ac24851b31557b888674c53622235691cf21824", size = 1426778, upload-time = "2026-07-09T17:38:24.224Z" },
 ]
 
 [[package]]

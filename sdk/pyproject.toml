@@ -91,6 +91,9 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Resolve ``import riskmodels`` from this tree (the package under test), not a
+# stale site-packages wheel whose dist-info lagged ``__version__`` / source.
+pythonpath = ["."]
 addopts = ["-q", "-m", "not integration"]
 markers = [
     "integration: live HTTP tests against the RiskModels API (requires RISKMODELS_API_KEY)",
