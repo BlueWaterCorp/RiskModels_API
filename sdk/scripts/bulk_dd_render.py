@@ -81,6 +81,7 @@ import matplotlib as _matplotlib
 _matplotlib.use("Agg")
 
 import argparse
+import atexit
 import hashlib
 import json
 import logging
@@ -568,6 +569,142 @@ def _outputs_are_current(png: Path, pdf: Path, inputs_mtime: float) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Headless-browser lifecycle (kaleido >= 1.0)
+# ---------------------------------------------------------------------------
+# plotly 6 + kaleido 1.x resolve `fig.to_image()` through choreographer, which
+# launches a *fresh* Chrome per call unless a persistent server is running
+# (`kaleido.calc_fig_sync` reuses `_global_server` when it is up, else falls
+# back to `oneshot_async_run`). With N workers x hundreds of figures that was
+# hundreds of launches a night: Dock churn on macOS, memory pressure, and
+# tmpdir litter. One server per worker process turns that into N launches.
+#
+# `RISKMODELS_CHROME_BIN` may point at `chrome-headless-shell` — the UI-less
+# build, which never registers with the macOS Dock. Left unset, kaleido finds
+# its own browser and behaviour is unchanged.
+
+def _chrome_kwargs() -> dict:
+    """Explicit browser binary for kaleido, when one is configured."""
+    path = os.environ.get("RISKMODELS_CHROME_BIN", "").strip()
+    return {"path": path} if path else {}
+
+
+def _init_render_worker() -> None:
+    """ProcessPool initializer — one persistent browser for this worker's life.
+
+    Best-effort: kaleido 0.x has no sync-server API and needs no such fix, and
+    a browser that cannot start here would fail identically at first export.
+    Either way we fall through to the per-call behaviour rather than killing
+    the worker before it renders anything.
+    """
+    _matplotlib.use("Agg")
+    try:
+        import kaleido
+    except ImportError:
+        return
+    start = getattr(kaleido, "start_sync_server", None)
+    if start is None:  # kaleido 0.x — no persistent server, no per-call spawn
+        return
+    try:
+        start(silence_warnings=True, **_chrome_kwargs())
+    except Exception as exc:  # pragma: no cover - env-dependent
+        logging.warning("kaleido sync server unavailable (%s); per-call browsers", exc)
+        return
+    atexit.register(_shutdown_render_worker)
+
+
+def _shutdown_render_worker() -> None:
+    """Stop this worker's browser. Safe to call twice."""
+    try:
+        import kaleido
+    except ImportError:
+        return
+    stop = getattr(kaleido, "stop_sync_server", None)
+    if stop is None:
+        return
+    try:
+        stop(silence_warnings=True)
+    except Exception:  # pragma: no cover - teardown is best-effort
+        pass
+
+
+def _install_sigterm_teardown(executor_box: dict) -> None:
+    """Shut the pool down on SIGTERM instead of orphaning it.
+
+    Dagster terminates a run by signalling the subprocess. Without this the
+    script kept running under launchd (PPID 1) with its whole worker pool and
+    their browsers — the 2026-07-29 incident. `cancel_futures` drops queued
+    work; already-running renders finish or die with their worker.
+    """
+    if not hasattr(signal, "SIGTERM"):
+        return
+
+    def _handler(signum, _frame):
+        logging.warning("signal %s received — shutting down render pool", signum)
+        ex = executor_box.get("executor")
+        if ex is not None:
+            try:
+                ex.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+        _shutdown_render_worker()
+        # Re-raise as the default disposition so the exit status still reads
+        # as "terminated by signal" to Dagster rather than a clean 0.
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except (ValueError, OSError):  # pragma: no cover - non-main thread
+            pass
+
+
+# Live executor handle for the SIGTERM handler (set once the pool opens).
+_executor_box: dict = {}
+
+
+def _start_orphan_watchdog(executor_box: dict, poll_s: float = 5.0):
+    """Exit if our parent dies, instead of rendering on as an orphan.
+
+    SIGTERM handling alone cannot cover this. The Dagster helper launches us
+    with ``start_new_session=True`` (so it can kill our whole group) and tears
+    the group down in ``cleanup_process`` — but that is the *graceful* path
+    only. If the run worker dies abruptly, its cleanup never executes, and the
+    new session means we are excluded from any group kill aimed at it: we
+    reparent to launchd and keep going, pool and browsers included. That is
+    the 2026-07-29 incident, and the 2026-07-24 one before it.
+
+    Watching our own PPID catches every variant, because it does not depend on
+    the parent managing to signal us. Only armed when we actually have a live
+    parent — a deliberately detached run (``nohup``, launchd) starts at PPID 1
+    and must be left alone.
+    """
+    if not hasattr(os, "getppid"):
+        return None
+    if os.getppid() == 1:
+        return None  # already detached on purpose
+
+    def _watch() -> None:
+        while True:
+            time.sleep(poll_s)
+            if os.getppid() != 1:
+                continue
+            _log.error("parent process died — shutting down rather than orphaning")
+            ex = executor_box.get("executor")
+            if ex is not None:
+                try:
+                    ex.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
+            _shutdown_render_worker()
+            os._exit(143)  # 128 + SIGTERM: reads as terminated, not clean
+
+    t = threading.Thread(target=_watch, name="orphan-watchdog", daemon=True)
+    t.start()
+    return t
+
+
 class RenderTimeout(Exception):
     """A single ticker exceeded its render budget."""
 
@@ -933,6 +1070,8 @@ def _rsync_out_dir_to_gcs(out_dir: Path, gcs_bucket: str) -> tuple[bool, str]:
 # -----------------------------------------------------------------------------
 
 def main() -> int:
+    _install_sigterm_teardown(_executor_box)
+    _start_orphan_watchdog(_executor_box)
     ap = argparse.ArgumentParser(
         description=__doc__.split("\n\n", 1)[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1266,7 +1405,14 @@ def main() -> int:
             # shared state (logf/counts/pbar are main-process-only, updated as each
             # future completes below), so there's nothing to pickle across the
             # process boundary except _render_one's plain str/Path/bool arguments.
-            with ProcessPoolExecutor(max_workers=workers) as ex:
+            # initializer: one persistent browser per worker (see
+            # _init_render_worker) — without it kaleido spawns a Chrome per
+            # figure export, which is what flooded the Dock and leaked
+            # processes on 2026-07-29.
+            with ProcessPoolExecutor(
+                max_workers=workers, initializer=_init_render_worker
+            ) as ex:
+                _executor_box["executor"] = ex
                 for i, t in enumerate(tickers, start=1):
                     if t in fresh:
                         _log_result(_fingerprint_skip_row(args.out_dir, t), i, logf)
