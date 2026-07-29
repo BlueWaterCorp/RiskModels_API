@@ -1,0 +1,114 @@
+---
+title: API changelog
+description: Notable changes to the RiskModels API, SDK, and CLI
+---
+
+# API changelog
+
+Changes that affect code you have written against the API. For the full engineering history
+see [`CHANGELOG.md`](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/CHANGELOG.md)
+in the repository.
+
+---
+
+## July 2026 — contract corrections, client releases
+
+**Python SDK `riskmodels-py` 0.4.0 · npm CLI `riskmodels` 3.0.0**
+
+```bash
+pip install -U riskmodels-py
+npm  install -g riskmodels
+```
+
+### Breaking: OAuth client credentials removed from both clients
+
+If you authenticate with an **API key**, nothing changes and no action is needed.
+
+If you configured `client_id` / `client_secret` — or the `RISKMODELS_CLIENT_ID`,
+`RISKMODELS_CLIENT_SECRET`, `RISKMODELS_OAUTH_SCOPE` environment variables — that path has
+been removed from both clients.
+
+```python
+# Before
+client = RiskModelsClient(client_id="...", client_secret="...")
+
+# After
+client = RiskModelsClient(api_key="rm_agent_live_...")
+```
+
+For the CLI, use `RISKMODELS_API_KEY` or `riskmodels config set apiKey ...`. The
+`clientId` / `clientSecret` / `oauthScope` config keys are gone.
+
+**Why:** those clients posted a `client_credentials` grant to `POST /api/auth/token`, an
+endpoint that was documented but never implemented — it returns 404, so that path failed on
+its first request for every user who tried it. Supplying those credentials now raises
+immediately with migration instructions instead of constructing a client that cannot work.
+
+### Authentication documentation corrected
+
+The OpenAPI security scheme described a `client_credentials` flow the API does not implement.
+It now describes the flow that exists — **authorization code + PKCE**, used by MCP clients —
+copied from [`/.well-known/oauth-authorization-server`](https://riskmodels.app/.well-known/oauth-authorization-server).
+
+- `POST /api/auth/token` — never existed, removed from the spec
+- `POST /api/oauth/token` — the real token endpoint (`authorization_code`, `refresh_token`)
+- `POST /api/oauth/register`, `POST /api/oauth/revoke` — now documented
+
+See [Authentication](/docs/authentication) for the current flow.
+
+### Nine endpoints added to the OpenAPI spec
+
+These were always callable but were missing from the published spec, so they could not be
+discovered from the contract:
+
+| Endpoint | Description | Cost |
+|---|---|---|
+| `POST /v4/decompose` | Named-block decomposition (market / industry / style / stock-specific) | $0.001 |
+| `GET /hedge-basket/{ticker}` | Hedge basket with recommended level and decision trace | $0.001 |
+| `GET /batch/latest-metrics` | Latest L3 scalars for up to 100 tickers | $0.001 |
+| `GET /metrics/{ticker}/snapshot.png` | Snapshot as PNG **bytes** | $0.25 |
+| `GET /snapshot/{entity_kind}` | Deep Dive snapshot, PNG or PDF **bytes** | $0.25 |
+| `GET /funds/search` | Fund discovery → `bw_fund_id` | free |
+| `POST /oauth/register` · `/oauth/token` · `/oauth/revoke` | MCP OAuth flow | free |
+
+The two snapshot endpoints return image or PDF bytes, not JSON.
+
+### Response behaviour
+
+**Rate-limited JSON endpoints now return `429`.** Throttled public endpoints previously
+returned HTTP `200` with a status-badge body, which parses as a successful empty result. If
+your code treats an empty response as "no more data", add a `429` check. Badge endpoints
+still return `200` when throttled, because image badges require it.
+
+**Public search endpoints are rate limited.** `GET /api/funds/search` and
+`GET /api/13f/filers/search` still require no API key, but now allow **60 requests/minute per
+IP** and return at most **100 rows** per call.
+
+**`500` responses no longer include internal exception text.** You get a generic message; the
+detail is in server-side logs. Include the `request_id` from the response when reporting an
+issue.
+
+**`402` responses point to a working URL.** The `top_up_url` field and `X-Top-Up-URL` header
+previously returned `/api/billing/top-up`, which does not exist. They now return
+[riskmodels.app/get-key](https://riskmodels.app/get-key). There is no programmatic top-up
+endpoint — top-ups go through Stripe Checkout.
+
+### Removed
+
+**`GET /api/pdf/{symbol}/latest`** — undocumented and unused. Use
+`GET /api/metrics/{ticker}/snapshot.pdf`.
+
+### Also
+
+- `llms.txt` pointed at `/openapi` (404); it now points at
+  [`/openapi.json`](https://riskmodels.app/openapi.json).
+- The Python wheel dropped from 33 MB to 0.33 MB — it was bundling render output that is not
+  part of the package.
+
+---
+
+## Reporting a discrepancy
+
+If anything in the documentation disagrees with what the API actually returns, the API is
+correct and the documentation is a bug. Please report it — that mismatch is exactly what this
+release set out to fix.

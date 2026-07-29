@@ -61,67 +61,101 @@ Tokens use a **prepaid balance** model:
 - Cached responses are **free** (`cost_usd: 0` in the `_agent` block)
 - Minimum top-up: $10.00 USD
 
-## Mode 2 — OAuth2 Client Credentials (Recommended for AI Agents)
+## Mode 2 — OAuth 2.0 Authorization Code + PKCE (MCP clients)
 
-**New in v3.0.0-agent:** OAuth2 client credentials flow for machine-to-machine authentication.
+> **`client_credentials` is not supported.** Earlier versions of this page documented a
+> machine-to-machine `client_credentials` grant against `POST /api/auth/token`. That endpoint
+> was never implemented and returns 404, and `/api/oauth/token` rejects the grant with
+> `unsupported_grant_type`. For servers, agents, and CLI tools, use **Mode 1 (Bearer API key)** —
+> there is no token-exchange step.
 
-### Overview
+This mode exists for **MCP clients** — Claude Desktop, Cursor, ChatGPT Developer Mode, Grok —
+which self-register and sign in interactively. Most of them drive the whole flow for you: paste
+the MCP URL, click through the OAuth sign-in, leave client id/secret blank.
 
-Exchange API credentials for a short-lived JWT access token (15 minutes). This is the recommended method for:
-- AI agents and LLM applications
-- Server-to-server integrations
-- npm packages and CLI tools
-- MCP clients
+The authorization server describes itself at
+[`/.well-known/oauth-authorization-server`](https://riskmodels.app/.well-known/oauth-authorization-server),
+which is the source of truth for this flow.
 
-### Benefits
+| Property | Value |
+|---|---|
+| Grants | `authorization_code`, `refresh_token` |
+| Authorization endpoint | `https://riskmodels.app/oauth/authorize` |
+| Token endpoint | `https://riskmodels.app/api/oauth/token` |
+| Registration endpoint | `https://riskmodels.app/api/oauth/register` |
+| Revocation endpoint | `https://riskmodels.app/api/oauth/revoke` |
+| PKCE | Required, `S256` |
+| Client authentication | `none` — public clients, no `client_secret` is issued |
+| Scopes | `mcp:read` |
+| Access token lifetime | 1 hour |
+| Refresh token lifetime | 30 days, rotating |
 
-- **Short-lived tokens** - 15-minute expiry reduces security risk
-- **Scoped access** - Request only the scopes you need
-- **Standard protocol** - OAuth2 is widely supported
-- **Automatic refresh** - SDKs can refresh tokens automatically
+### Building a client by hand
 
-### OAuth2 Flow
-
-#### Step 1: Exchange credentials for access token
+**1. Register (RFC 7591)**
 
 ```bash
-curl -X POST https://riskmodels.app/api/auth/token \
+curl -X POST https://riskmodels.app/api/oauth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "grant_type": "client_credentials",
-    "client_id": "rm_agent_live_abc123",
-    "client_secret": "rm_agent_live_abc123_xyz789_checksum",
-    "scope": "ticker-returns risk-decomposition"
+    "client_name": "My MCP Client",
+    "redirect_uris": ["https://example.com/callback"]
   }'
 ```
 
-**Response:**
+Returns a `client_id`. `redirect_uris` must be absolute; `http://` is accepted only for
+loopback hosts (RFC 8252). Limited to 30 registrations per IP per hour.
+
+**2. Authorize**
+
+Send the user to `https://riskmodels.app/oauth/authorize` with `response_type=code`, your
+`client_id`, `redirect_uri`, `scope=mcp:read`, `state`, and a PKCE `code_challenge`
+(`code_challenge_method=S256`). On approval you receive a single-use `code`.
+
+**3. Exchange the code**
+
+```bash
+curl -X POST https://riskmodels.app/api/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code" \
+  -d "code=$CODE" \
+  -d "redirect_uri=https://example.com/callback" \
+  -d "client_id=$CLIENT_ID" \
+  -d "code_verifier=$CODE_VERIFIER"
+```
+
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "rm_user_live_abc123_xyz789",
   "token_type": "Bearer",
-  "expires_in": 900,
-  "scope": "ticker-returns risk-decomposition batch-analysis"
+  "expires_in": 3600,
+  "refresh_token": "5f3a...",
+  "scope": "mcp:read"
 }
 ```
 
-#### Step 2: Use access token in API requests
+The `access_token` **is** an `rm_user_*` API key — use it exactly like a Mode 1 key.
+
+**4. Refresh**
 
 ```bash
-curl -X GET https://riskmodels.app/api/metrics/NVDA \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+curl -X POST https://riskmodels.app/api/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN" \
+  -d "client_id=$CLIENT_ID"
 ```
 
-### Available Scopes
+Refresh tokens **rotate**: each use returns a new one and invalidates the old. Replaying an
+already-rotated token is treated as a theft signal and revokes every token for that
+user/client pair, so persist the new value on every refresh.
 
-| Scope | Description |
-|-------|-------------|
-| `ticker-returns` | Access ticker returns and historical data |
-| `risk-decomposition` | Access L3 risk decomposition |
-| `batch-analysis` | Perform portfolio batch analysis |
-| `chat-risk-analyst` | Use AI risk analyst |
-| `plaid:holdings` | Access Plaid-synced portfolio holdings |
-| `*` | Full API access (all scopes) |
+### A note on scopes
+
+`mcp:read` is the only scope the authorization server advertises. Scope is currently
+**informational** — the API records it for telemetry but authorises on key validity and
+account balance, not scope. Do not rely on it for access control.
+
 
 ## Mode 3 — Supabase JWT (Browser / Mobile Apps)
 

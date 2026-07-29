@@ -62,6 +62,10 @@ export const DOCS_NAV: DocsNavGroup[] = [
     title: 'Account & data',
     items: [{ href: '/docs/plaid-holdings', label: 'Plaid holdings' }],
   },
+  {
+    title: 'Releases',
+    items: [{ href: '/docs/changelog', label: 'API changelog' }],
+  },
 ];
 
 /** Slugs referenced by the sidebar, i.e. every /docs/<slug> link. Used by the
