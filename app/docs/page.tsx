@@ -6,6 +6,7 @@ export const metadata = {
   title: 'RiskModels API Docs',
   description:
     'Start here: hierarchical equity risk decomposition, hedge ratios, and residual risk for quant developers and AI agents.',
+  alternates: { canonical: '/docs' },
 };
 
 // Build-time guard: every MDX page on disk must be listed in the sidebar nav,
