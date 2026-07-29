@@ -5,7 +5,12 @@
 
 import { authorizationHeaderForCloudRun } from "@/lib/artifacts/gcp-id-token";
 
-export type ArtifactRenderFormat = "json" | "png" | "svg";
+/**
+ * ``figure`` returns a Plotly figure spec (``fig.to_json()``) for
+ * Plotly-backed slugs — the live client-side form, rendered by plotly.js
+ * rather than rasterized server-side. Non-Plotly slugs reject it with 400.
+ */
+export type ArtifactRenderFormat = "json" | "png" | "svg" | "figure";
 
 export interface ArtifactRenderParams {
   slug: string;
@@ -184,7 +189,9 @@ export async function renderArtifact(
     };
   }
 
-  if (format === "json") {
+  // Figure specs are JSON too — parse rather than base64-wrapping them, so a
+  // caller gets a usable spec object instead of an opaque blob.
+  if (format === "json" || format === "figure") {
     const text = await res.text();
     return {
       ok: true,

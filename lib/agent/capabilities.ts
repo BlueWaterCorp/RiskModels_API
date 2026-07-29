@@ -1432,8 +1432,10 @@ export const CAPABILITIES: Capability[] = [
       format: {
         type: "string",
         required: false,
-        description: "json | png | svg",
-        enum: ["json", "png", "svg"],
+        description:
+          "json | png | svg | figure. 'figure' returns a Plotly figure spec for " +
+          "client-side rendering (Plotly-backed slugs only; others → 400).",
+        enum: ["json", "png", "svg", "figure"],
         default: "json",
       },
       params: {
