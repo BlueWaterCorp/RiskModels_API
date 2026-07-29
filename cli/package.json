@@ -1,6 +1,6 @@
 {
   "name": "riskmodels",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "RiskModels CLI — REST API, SQL query, schema, billing, and agent manifests",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "prepublishOnly": "npm run build",
     "install:global": "npm run build && npm link"
   },

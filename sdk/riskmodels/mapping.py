@@ -6,6 +6,29 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
+
+def first_present(d: Mapping[str, Any], *keys: str) -> Any:
+    """Return the first non-None value among ``keys`` in ``d``.
+
+    The ERM3 metric surface carries a dual schema — abbreviated wire keys
+    (``l3_res_er``) and documentation-style semantic names
+    (``l3_residual_er``) — and which one you get depends on whether the payload
+    came through :func:`normalize_metrics_v3`. Call sites that may see either
+    should read through this helper rather than guessing:
+
+        res_er = first_present(m, "l3_residual_er", "l3_res_er")
+
+    Lives here because this module already owns both halves of that mapping
+    (:data:`METRICS_V3_TO_SEMANTIC`). Previously copy-pasted as a private
+    ``_g()`` into three separate modules.
+    """
+    for k in keys:
+        v = d.get(k)
+        if v is not None:
+            return v
+    return None
+
+
 # Curated share-class shortcuts (upper-case keys). Expand as needed.
 TICKER_ALIAS_MAP: dict[str, str] = {
     "GOOGL": "GOOG",

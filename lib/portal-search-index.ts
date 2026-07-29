@@ -41,7 +41,7 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
   },
   {
     title: 'Authentication Guide',
-    description: 'OAuth2 client credentials, Bearer tokens, billing, and API key provisioning.',
+    description: 'Bearer API keys, the MCP OAuth authorization-code flow, billing, and API key provisioning.',
     href: '/docs/authentication',
     keywords: 'jwt stripe prepaid oauth scope',
   },

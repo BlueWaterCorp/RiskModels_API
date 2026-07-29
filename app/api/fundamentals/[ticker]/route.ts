@@ -165,7 +165,7 @@ export const GET = withBilling(
       console.error(`[Fundamentals API] Exception fetching ${ticker}:`, error);
       const metadata = await getRiskMetadata();
       const response = NextResponse.json(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error: "Internal server error" },
         { status: 500 },
       );
       addMetadataHeaders(response, metadata);

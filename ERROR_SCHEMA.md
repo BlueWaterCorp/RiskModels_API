@@ -38,7 +38,7 @@ All API errors follow a consistent JSON envelope. This document defines the erro
 | Code | HTTP | Meaning | Recovery |
 |---|---|---|---|
 | `AUTHENTICATION_REQUIRED` | 401 | Missing, malformed, or expired Bearer token. | Verify token format: `rm_agent_{live\|test}_{random}_{checksum}`. Re-provision via `POST /api/auth/provision`. |
-| `INSUFFICIENT_BALANCE` | 402 | Prepaid balance too low to cover request cost. | Top up at `POST /api/billing/top-up` or via [riskmodels.net/settings](https://riskmodels.net/settings). Check balance: `GET /api/balance`. |
+| `INSUFFICIENT_BALANCE` | 402 | Prepaid balance too low to cover request cost. | Top up via Stripe Checkout at [riskmodels.app/get-key](https://riskmodels.app/get-key) — there is no programmatic top-up endpoint. Check balance: `GET /api/balance` (its `top_up` field returns the same URL). |
 | `INVALID_REQUEST_BODY` | 400 | Malformed JSON or missing required fields in request body. | Check request shape against [OPENAPI_SPEC.yaml](OPENAPI_SPEC.yaml). |
 | `TOO_MANY_TICKERS` | 400 | Batch request contains more than 100 tickers. | Split into multiple calls with ≤ 100 tickers each. |
 | `TICKER_NOT_FOUND` | 404 | Ticker not in universe `uni_mc_3000`. | Search for the ticker: `GET /api/tickers?search=SYMBOL`. Check for typos or delisted symbols. |
@@ -82,7 +82,7 @@ def check_balance_before_workflow(headers, min_balance=1.0):
     if balance["balance_usd"] < min_balance:
         raise ValueError(
             f"Insufficient balance: ${balance['balance_usd']:.4f}. "
-            f"Top up at https://riskmodels.net/settings"
+            f"Top up at {balance.get('top_up', 'https://riskmodels.app/get-key')}"
         )
 ```
 

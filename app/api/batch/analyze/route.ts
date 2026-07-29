@@ -539,7 +539,7 @@ async function analyzeTicker(
   } catch (error) {
     console.error(`[Batch/analyzeTicker] Error for ${ticker}:`, error);
     result.status = "error";
-    result.error = error instanceof Error ? error.message : "Unknown error";
+    result.error = "Internal error analyzing this ticker.";
   }
   return result;
 }

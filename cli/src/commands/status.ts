@@ -24,7 +24,6 @@ export function statusCommand(): Command {
         configFound: !!cfg,
         apiBaseUrl: cfg?.apiBaseUrl ?? "https://riskmodels.app",
         apiKey: maskSecret(cfg?.apiKey),
-        oauthConfigured: !!cfg?.clientId && !!cfg?.clientSecret,
         mcpClients: detections,
       };
 

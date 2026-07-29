@@ -4,7 +4,6 @@
 // echoes of the user-supplied input (not redistributed by us).
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +21,6 @@ interface ResolveIdentifier {
  * Returns: { resolved: [{ type, value, ticker, symbol }] }
  */
 export async function POST(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   let body: { identifiers?: ResolveIdentifier[] };
   try {
     body = await request.json();

@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { readEtfHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +26,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ ticker: string }> },
 ) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { ticker } = await params;
   if (!ticker) {
     return NextResponse.json({ error: "ticker is required" }, { status: 400 });

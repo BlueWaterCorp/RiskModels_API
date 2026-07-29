@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
+import { checkMemoryRateLimit } from "@/lib/ratelimit/memory-fallback";
 import { getCorsHeaders } from "@/lib/cors";
 import { ChatPostSchema } from "@/lib/api/schemas";
 import { runChatAgent, AgentUpstreamError } from "@/lib/chat/agent-runner";
@@ -22,9 +26,9 @@ import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
  *     demo (traction-first: PIT fundamentals are the acquisition surface;
  *     marginal cost is a GCS zarr read bounded by the per-IP cap).
  *   - Caps tool rounds at 2 and max_tokens at ~700 to bound LLM spend.
- *   - Per-IP throttle: MAX_MSGS_PER_HOUR per IP using an in-memory Map
- *     (good enough for MVP on a single Vercel instance; swap to Redis
- *     if the demo is opened more than that).
+ *   - Per-IP throttle: MAX_MSGS_PER_HOUR per IP, Redis-backed (Upstash) so
+ *     the cap is global rather than per-instance, degrading to a per-instance
+ *     in-memory ceiling if Redis is unavailable. See checkRateLimit below.
  *
  * For anything beyond MAG7 or the allowlisted tool set, clients must
  * use the real, keyed POST /api/chat.
@@ -58,10 +62,6 @@ const LANDING_MAX_TOKENS = 700;
 const MAX_MSGS_PER_HOUR = 10;
 const WINDOW_MS = 60 * 60 * 1000;
 
-type RateBucket = { count: number; resetAt: number };
-const rateBuckets: Map<string, RateBucket> = (globalThis as any).__rmLandingChatBuckets ?? new Map();
-(globalThis as any).__rmLandingChatBuckets = rateBuckets;
-
 function ipFromRequest(req: NextRequest): string {
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0].trim();
@@ -70,19 +70,54 @@ function ipFromRequest(req: NextRequest): string {
   return "unknown";
 }
 
-function checkRateLimit(ip: string): { ok: boolean; remaining: number; resetAt: number } {
-  const now = Date.now();
-  const existing = rateBuckets.get(ip);
-  if (!existing || existing.resetAt <= now) {
-    const bucket = { count: 1, resetAt: now + WINDOW_MS };
-    rateBuckets.set(ip, bucket);
-    return { ok: true, remaining: MAX_MSGS_PER_HOUR - 1, resetAt: bucket.resetAt };
+/**
+ * Per-IP cap on an UNAUTHENTICATED endpoint that spends real LLM tokens.
+ *
+ * Redis-backed so the cap is global rather than per-instance — the previous
+ * `globalThis` Map meant the true ceiling was (MAX_MSGS_PER_HOUR × live Vercel
+ * instances), which for a metered vendor bill is the wrong kind of surprise.
+ *
+ * If Upstash is unconfigured or throws we fall back to that same in-process
+ * ceiling rather than allowing the request: a Redis outage should degrade this
+ * limit, never remove it. `middleware.ts` throttles `/api/data/*` only, so this
+ * is the sole control on this route.
+ */
+let _chatLimiter: Ratelimit | null | undefined;
+function getChatLimiter(): Ratelimit | null {
+  if (_chatLimiter !== undefined) return _chatLimiter;
+  _chatLimiter = null;
+  if (!isUpstashRedisConfigured()) return _chatLimiter;
+  _chatLimiter = new Ratelimit({
+    redis: new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    }),
+    limiter: Ratelimit.slidingWindow(MAX_MSGS_PER_HOUR, "1 h"),
+    prefix: "rl:landing-chat",
+  });
+  return _chatLimiter;
+}
+
+function memoryChatLimit(ip: string): { ok: boolean; remaining: number; resetAt: number } {
+  const r = checkMemoryRateLimit(`landing-chat:ip:${ip}`, MAX_MSGS_PER_HOUR, WINDOW_MS);
+  return { ok: r.ok, remaining: r.remaining, resetAt: r.resetAt };
+}
+
+async function checkRateLimit(
+  ip: string,
+): Promise<{ ok: boolean; remaining: number; resetAt: number }> {
+  const lim = getChatLimiter();
+  if (!lim) return memoryChatLimit(ip);
+  try {
+    const r = await lim.limit(`ip:${ip}`);
+    return { ok: r.success, remaining: r.remaining, resetAt: r.reset };
+  } catch (err) {
+    console.error(
+      "[landing-chat] FAIL_OPEN reason=upstash_error — degrading to per-instance memory limit",
+      err,
+    );
+    return memoryChatLimit(ip);
   }
-  if (existing.count >= MAX_MSGS_PER_HOUR) {
-    return { ok: false, remaining: 0, resetAt: existing.resetAt };
-  }
-  existing.count += 1;
-  return { ok: true, remaining: MAX_MSGS_PER_HOUR - existing.count, resetAt: existing.resetAt };
 }
 
 function extractTickersFromArgs(toolName: string, args: unknown): string[] {
@@ -135,7 +170,7 @@ export async function POST(request: NextRequest) {
   }
 
   const ip = ipFromRequest(request);
-  const limit = checkRateLimit(ip);
+  const limit = await checkRateLimit(ip);
   if (!limit.ok) {
     return NextResponse.json(
       {

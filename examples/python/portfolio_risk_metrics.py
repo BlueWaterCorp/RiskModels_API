@@ -457,10 +457,9 @@ def main() -> int:
         pass
     if not (
         os.environ.get("RISKMODELS_API_KEY")
-        or (os.environ.get("RISKMODELS_CLIENT_ID") and os.environ.get("RISKMODELS_CLIENT_SECRET"))
     ):
         sys.exit(
-            "Set RISKMODELS_API_KEY (or RISKMODELS_CLIENT_ID + RISKMODELS_CLIENT_SECRET) "
+            "Set RISKMODELS_API_KEY (get a key at https://riskmodels.app/get-key) "
             "in the environment or in .env.local at the repo root."
         )
 

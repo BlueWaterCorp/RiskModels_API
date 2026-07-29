@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import {
   fetchHistory,
   isZarrHistoryPath,
@@ -38,9 +37,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ symbol: string }> },
 ) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { symbol } = await params;
   if (!symbol) {
     return NextResponse.json({ error: "symbol is required" }, { status: 400 });

@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: "An unexpected error occurred. The incident has been logged.",
         _agent: { latency_ms: Date.now() - startTime },
       },
       { status: 500 },

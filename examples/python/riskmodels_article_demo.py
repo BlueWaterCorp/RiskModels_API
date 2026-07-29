@@ -14,7 +14,6 @@ Setup:
 Auth (pick one):
   export RISKMODELS_API_KEY=rm_...
   # or OAuth:
-  export RISKMODELS_CLIENT_ID=... RISKMODELS_CLIENT_SECRET=...
 
 Optional:
   export RISKMODELS_BASE_URL=https://riskmodels.app/api
@@ -126,7 +125,6 @@ def _print_auth_help() -> None:
     else:
         print("    • RISKMODELS_API_KEY is not set in the environment.")
     print("    • Or run from repo root so `.env.local` is loaded (this script loads it if vars are unset).")
-    print("    • OAuth: set RISKMODELS_CLIENT_ID and RISKMODELS_CLIENT_SECRET instead.")
 
 
 def _section(title: str) -> None:

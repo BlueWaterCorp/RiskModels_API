@@ -74,217 +74,130 @@ Tokens use a **prepaid balance** model:
 
 ---
 
-## Mode 2 — OAuth2 Client Credentials (Recommended for AI Agents)
+## Mode 2 — OAuth 2.0 Authorization Code + PKCE (MCP clients)
 
-**New in v3.0.0-agent:** OAuth2 client credentials flow for machine-to-machine authentication.
+> **`client_credentials` is not supported.** Earlier revisions of this guide documented a
+> machine-to-machine `client_credentials` grant against `POST /api/auth/token`. That
+> endpoint was never implemented — it returns 404, and `/api/oauth/token` rejects the
+> grant with `unsupported_grant_type`. If you are calling the REST API from a server,
+> agent, or CLI, use **Mode 1 (Bearer API key)**. There is no token-exchange step.
 
-### Overview
+This mode exists for **MCP clients** — Claude Desktop, Cursor, ChatGPT Developer Mode,
+Grok — which self-register and sign in interactively. The authorization server advertises
+itself at [`/.well-known/oauth-authorization-server`](https://riskmodels.app/.well-known/oauth-authorization-server);
+that document is the source of truth for this flow.
 
-Exchange API credentials for a short-lived JWT access token (15 minutes). This is the recommended method for:
-- AI agents and LLM applications
-- Server-to-server integrations
-- npm packages and CLI tools
-- MCP clients
+| Property | Value |
+|---|---|
+| Grants | `authorization_code`, `refresh_token` |
+| Authorization endpoint | `https://riskmodels.app/oauth/authorize` |
+| Token endpoint | `https://riskmodels.app/api/oauth/token` |
+| Registration endpoint | `https://riskmodels.app/api/oauth/register` |
+| Revocation endpoint | `https://riskmodels.app/api/oauth/revoke` |
+| PKCE | Required, `S256` |
+| Client auth | `none` — public clients, no `client_secret` is issued |
+| Scopes | `mcp:read` |
+| Access token TTL | 1 hour |
+| Refresh token TTL | 30 days, rotating |
 
-### Benefits
+Most MCP clients drive all of this for you: paste the MCP URL, click through the OAuth
+sign-in, and leave client id/secret blank. The steps below are for building a client by hand.
 
-- **Short-lived tokens** - 15-minute expiry reduces security risk
-- **Scoped access** - Request only the scopes you need
-- **Standard protocol** - OAuth2 is widely supported
-- **Automatic refresh** - SDKs can refresh tokens automatically
-
-### OAuth2 Flow
-
-#### Step 1: Exchange credentials for access token
+### Step 1 — Register (RFC 7591)
 
 ```bash
-curl -X POST https://riskmodels.app/api/auth/token \
+curl -X POST https://riskmodels.app/api/oauth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "grant_type": "client_credentials",
-    "client_id": "rm_agent_live_abc123",
-    "client_secret": "rm_agent_live_abc123_xyz789_checksum",
-    "scope": "ticker-returns risk-decomposition"
+    "client_name": "My MCP Client",
+    "redirect_uris": ["https://example.com/callback"]
   }'
 ```
 
-**Request Parameters:**
-- `grant_type` (required): Must be `"client_credentials"`
-- `client_id` (required): Your API key prefix (e.g., `rm_agent_live_abc123`)
-- `client_secret` (required): Your full API key
-- `scope` (optional): Space-separated list of requested scopes
+Returns a `client_id` (UUID). `redirect_uris` must be absolute; `http://` is accepted only
+for loopback hosts (RFC 8252). Limited to 30 registrations per IP per hour.
 
-**Response:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 900,
-  "scope": "ticker-returns risk-decomposition batch-analysis"
-}
-```
+### Step 2 — Authorize
 
-#### Step 2: Use access token in API requests
+Send the user to `https://riskmodels.app/oauth/authorize` with `response_type=code`,
+your `client_id`, `redirect_uri`, `scope=mcp:read`, `state`, and a PKCE
+`code_challenge` (`code_challenge_method=S256`). On approval you receive a
+single-use `code` at your redirect URI.
+
+### Step 3 — Exchange the code for a token
 
 ```bash
-curl -X GET https://riskmodels.app/api/metrics/NVDA \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+curl -X POST https://riskmodels.app/api/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code" \
+  -d "code=$CODE" \
+  -d "redirect_uri=https://example.com/callback" \
+  -d "client_id=$CLIENT_ID" \
+  -d "code_verifier=$CODE_VERIFIER"
 ```
 
-#### Step 3: Refresh token when expired
-
-Tokens expire after 15 minutes. Request a new token using the same OAuth2 endpoint.
-
-### Available Scopes
-
-| Scope | Description |
-|-------|-------------|
-| `ticker-returns` | Access ticker returns and historical data |
-| `risk-decomposition` | Access L3 risk decomposition |
-| `batch-analysis` | Perform portfolio batch analysis |
-| `factor-correlation` | Correlate stocks with macro factors (VIX, Bitcoin, Gold, etc.) |
-| `macro-factor-series` | Download daily macro factor return series (`GET /api/macro-factors`, no ticker) |
-| `chat-risk-analyst` | Use AI risk analyst |
-| `plaid:holdings` | Access Plaid-synced portfolio holdings |
-| `portfolio-risk-snapshot` | `POST /portfolio/risk-snapshot` (JSON or PDF one-page report) |
-| `*` | Full API access (all scopes) |
-
-### Python Example
-
-```python
-import requests
-from datetime import datetime, timedelta
-
-class RiskModelsClient:
-    def __init__(self, client_id: str, client_secret: str):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.access_token = None
-        self.token_expiry = None
-    
-    def get_access_token(self) -> str:
-        """Get cached token or request new one if expired."""
-        if self.access_token and self.token_expiry > datetime.now():
-            return self.access_token
-        
-        # Request new token
-        response = requests.post(
-            'https://riskmodels.app/api/auth/token',
-            json={
-                'grant_type': 'client_credentials',
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'scope': 'ticker-returns risk-decomposition'
-            }
-        )
-        data = response.json()
-        
-        self.access_token = data['access_token']
-        self.token_expiry = datetime.now() + timedelta(seconds=data['expires_in'] - 60)  # 60s buffer
-        
-        return self.access_token
-    
-    def get_metrics(self, ticker: str):
-        """Fetch metrics with automatic token refresh."""
-        token = self.get_access_token()
-        response = requests.get(
-            f'https://riskmodels.app/api/metrics/{ticker}',
-            headers={'Authorization': f'Bearer {token}'}
-        )
-        return response.json()
-
-# Usage
-client = RiskModelsClient('rm_agent_live_abc123', 'rm_agent_live_abc123_xyz789_checksum')
-metrics = client.get_metrics('NVDA')
-```
-
-### TypeScript Example
-
-```typescript
-interface OAuth2TokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  scope: string;
-}
-
-class RiskModelsClient {
-  private clientId: string;
-  private clientSecret: string;
-  private accessToken: string | null = null;
-  private tokenExpiry: Date | null = null;
-
-  constructor(clientId: string, clientSecret: string) {
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-  }
-
-  private async getAccessToken(): Promise<string> {
-    // Return cached token if still valid
-    if (this.accessToken && this.tokenExpiry && this.tokenExpiry > new Date()) {
-      return this.accessToken;
-    }
-
-    // Request new token
-    const response = await fetch('https://riskmodels.app/api/auth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        scope: 'ticker-returns risk-decomposition'
-      })
-    });
-
-    const data: OAuth2TokenResponse = await response.json();
-    
-    this.accessToken = data.access_token;
-    this.tokenExpiry = new Date(Date.now() + (data.expires_in - 60) * 1000); // 60s buffer
-    
-    return this.accessToken;
-  }
-
-  async getMetrics(ticker: string) {
-    const token = await this.getAccessToken();
-    const response = await fetch(`https://riskmodels.app/api/metrics/${ticker}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return response.json();
-  }
-}
-
-// Usage
-const client = new RiskModelsClient('rm_agent_live_abc123', 'rm_agent_live_abc123_xyz789_checksum');
-const metrics = await client.getMetrics('NVDA');
-```
-
-### Error Handling
-
-**400 Bad Request** - Invalid grant_type or missing parameters
 ```json
 {
-  "error": "invalid_request",
-  "error_description": "grant_type must be 'client_credentials'"
+  "access_token": "rm_user_live_abc123_xyz789",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "5f3a...",
+  "scope": "mcp:read"
 }
 ```
 
-**401 Unauthorized** - Invalid credentials
+The `access_token` **is** an `rm_user_*` API key. Use it exactly like a Mode 1 key —
+`Authorization: Bearer rm_user_live_...` — against `/api/mcp/sse` or any REST endpoint.
+
+### Step 4 — Refresh
+
+```bash
+curl -X POST https://riskmodels.app/api/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN" \
+  -d "client_id=$CLIENT_ID"
+```
+
+Refresh tokens **rotate**: each use returns a new one and invalidates the old. Replaying an
+already-rotated refresh token is treated as a theft signal (RFC 6819 §5.2.2.3) and revokes
+every token for that user/client pair — so persist the new value on every refresh.
+
+### Revoking
+
+```bash
+curl -X POST https://riskmodels.app/api/oauth/revoke \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=$TOKEN"
+```
+
+Accepts either an `rm_user_*` access token or a refresh token. Per RFC 7009 it returns 200
+even for unknown tokens.
+
+### A note on scopes
+
+`mcp:read` is the only scope the authorization server advertises. Scope is currently
+**informational**: the API records the presented scope for telemetry but authorises by key
+validity and account balance, not by scope. Do not rely on scope for access control.
+
+### Error handling
+
+Both endpoints return RFC 6749 error bodies:
+
 ```json
-{
-  "error": "invalid_client",
-  "error_description": "Invalid client_id or client_secret"
-}
+{ "error": "invalid_grant", "error_description": "Authorization code already used" }
 ```
 
-### Configuration
-
-Set token TTL via environment variable (server-side only):
-```env
-OAUTH_TOKEN_TTL_SECONDS=900  # 15 minutes (default)
-```
+| Error | Meaning |
+|---|---|
+| `invalid_request` | Missing a required parameter |
+| `invalid_grant` | Code/refresh token not found, expired, already used, or PKCE / `client_id` / `redirect_uri` mismatch |
+| `unsupported_grant_type` | A grant other than `authorization_code` or `refresh_token` (e.g. `client_credentials`) |
+| `invalid_redirect_uri` | Registration: `redirect_uris` missing, relative, or non-loopback `http://` |
+| `too_many_requests` | 60 token requests/IP/min; 30 registrations/IP/hr |
 
 ---
+
 
 ## Mode 3 — Supabase JWT (Browser / Mobile Apps)
 
@@ -466,9 +379,12 @@ Recommended pattern for LLM agents integrating with the RiskModels API:
    Read `_agent.cost_usd` in each response body, or the `X-API-Cost-USD` header.
 
 6. **Top up when balance is low**
+
+   There is no programmatic top-up endpoint — top-ups go through Stripe Checkout:
    ```
-   POST /api/billing/top-up
+   https://riskmodels.app/get-key
    ```
+   402 responses carry the same URL in `top_up_url` and the `X-Top-Up-URL` header.
 
 ---
 

@@ -10,9 +10,6 @@ export interface RiskmodelsConfig {
   /** Base URL without trailing slash, e.g. https://riskmodels.app */
   apiBaseUrl?: string;
   /** OAuth client credentials (billed mode); scope defaults match the Python SDK. */
-  clientId?: string;
-  clientSecret?: string;
-  oauthScope?: string;
   supabaseUrl?: string;
   serviceRoleKey?: string;
 }
@@ -60,7 +57,7 @@ export function isBilledReady(cfg: RiskmodelsConfig | null): boolean {
   return (
     !!cfg &&
     cfg.mode === "billed" &&
-    (!!cfg.apiKey?.trim() || (!!cfg.clientId?.trim() && !!cfg.clientSecret?.trim()))
+    !!cfg.apiKey?.trim()
   );
 }
 

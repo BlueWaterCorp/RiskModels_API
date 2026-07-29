@@ -420,33 +420,81 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
   },
   {
     name: 'Authentication',
-    description: 'API key provisioning and OAuth2 token management.',
+    description:
+      'API key provisioning, and the OAuth 2.0 authorization-code flow used by MCP clients. There is no client_credentials grant — server-to-server callers use a Bearer API key directly.',
     endpoints: [
       {
-        path: '/auth/token',
+        path: '/oauth/token',
         method: 'post',
-        summary: 'Generate OAuth2 Access Token',
-        description: 'OAuth 2.0 client credentials flow for machine-to-machine authentication. Exchange API credentials for a short-lived JWT (15 min).',
-        operationId: 'generateOAuthToken',
+        summary: 'Exchange an authorization code or refresh token',
+        description:
+          'OAuth 2.0 token endpoint. Supports authorization_code (PKCE S256, single-use codes) and refresh_token (rotating) only; client_credentials returns unsupported_grant_type. The access_token is an rm_user_* API key valid 1 hour, usable as Bearer against any endpoint here. Accepts form-encoded or JSON.',
+        operationId: 'exchangeOAuthToken',
         tag: 'Authentication',
         params: [],
         requestBody: {
-          contentType: 'application/json',
+          contentType: 'application/x-www-form-urlencoded',
           example: JSON.stringify(
             {
-              grant_type: 'client_credentials',
-              client_id: 'rm_agent_live_abc123',
-              client_secret: 'rm_agent_live_abc123_xyz789_checksum',
-              scope: 'ticker-returns risk-decomposition',
+              grant_type: 'authorization_code',
+              code: '9f2c1d…',
+              redirect_uri: 'https://example.com/callback',
+              client_id: '3f8a1c2e-5b47-4d90-9e21-7c6b0a4d8f13',
+              code_verifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
             },
             null,
             2
           ),
         },
         responses: [
-          { status: 200, description: 'Access token generated successfully.' },
-          { status: 400, description: 'Invalid request.' },
-          { status: 401, description: 'Invalid credentials.' },
+          { status: 200, description: 'Access token issued (rm_user_* key + rotating refresh token).' },
+          { status: 400, description: 'invalid_request, invalid_grant, or unsupported_grant_type.' },
+          { status: 429, description: 'Token rate limit exceeded (60/min per IP).' },
+        ],
+      },
+      {
+        path: '/oauth/register',
+        method: 'post',
+        summary: 'Register an OAuth client (RFC 7591)',
+        description:
+          'Dynamic client registration for MCP clients. Public clients only — no client_secret is issued; the grant is bound by PKCE. redirect_uris must be absolute; http:// only for loopback hosts. Limited to 30 registrations per IP per hour.',
+        operationId: 'registerOAuthClient',
+        tag: 'Authentication',
+        params: [],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify(
+            {
+              client_name: 'My MCP Client',
+              redirect_uris: ['https://example.com/callback'],
+            },
+            null,
+            2
+          ),
+        },
+        responses: [
+          { status: 201, description: 'Client registered; returns client_id.' },
+          { status: 400, description: 'invalid_client_metadata or invalid_redirect_uri.' },
+          { status: 429, description: 'Registration rate limit exceeded.' },
+        ],
+      },
+      {
+        path: '/oauth/revoke',
+        method: 'post',
+        summary: 'Revoke an access or refresh token (RFC 7009)',
+        description:
+          'Revokes the presented rm_user_* access token or refresh token. Returns 200 even for unknown tokens, per RFC 7009.',
+        operationId: 'revokeOAuthToken',
+        tag: 'Authentication',
+        params: [],
+        requestBody: {
+          contentType: 'application/x-www-form-urlencoded',
+          example: JSON.stringify({ token: 'rm_user_live_abc123_xyz789' }, null, 2),
+        },
+        responses: [
+          { status: 200, description: 'Token revoked (or was already invalid).' },
+          { status: 400, description: 'invalid_request — token parameter missing.' },
+          { status: 429, description: 'Revocation rate limit exceeded.' },
         ],
       },
       {

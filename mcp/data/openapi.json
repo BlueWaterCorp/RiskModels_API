@@ -33,20 +33,16 @@
         "bearerFormat": "rm_agent_{environment}_{random}_{checksum}",
         "description": "API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`. Obtain via `POST /api/auth/provision` or from riskmodels.app/settings → API Keys. Include as: `Authorization: Bearer rm_agent_live_...`\n"
       },
-      "OAuth2ClientCredentials": {
+      "OAuth2AuthorizationCode": {
         "type": "oauth2",
+        "description": "OAuth 2.0 authorization code flow with PKCE (S256), used by MCP clients (Claude Desktop, Cursor, ChatGPT Developer Mode, Grok) that self-register via `POST /api/oauth/register`. Public clients only — no `client_secret` is issued and `token_endpoint_auth_method` is `none`.\n\nThe access token this flow returns **is** an `rm_user_*` API key (1 h TTL, 30 d rotating refresh token), so it authenticates every `BearerAuth` operation below, not just `/api/mcp/sse`. Scope is currently informational: the API records the presented scope for telemetry but authorises by key validity and account balance, not by scope.\n\nDiscovery metadata: `/.well-known/oauth-authorization-server`.\n",
         "flows": {
-          "clientCredentials": {
-            "tokenUrl": "https://riskmodels.app/api/auth/token",
+          "authorizationCode": {
+            "authorizationUrl": "https://riskmodels.app/oauth/authorize",
+            "tokenUrl": "https://riskmodels.app/api/oauth/token",
+            "refreshUrl": "https://riskmodels.app/api/oauth/token",
             "scopes": {
-              "ticker-returns": "Access ticker returns and historical data",
-              "risk-decomposition": "Access L3 risk decomposition",
-              "batch-analysis": "Perform portfolio batch analysis",
-              "factor-correlation": "Correlate stocks with macro factors (VIX, Bitcoin, Gold, etc.)",
-              "macro-factor-series": "Download daily macro factor return series (no ticker)",
-              "chat-risk-analyst": "Use AI risk analyst",
-              "plaid:holdings": "Access Plaid-synced portfolio holdings",
-              "*": "Full API access"
+              "mcp:read": "Read access to risk analytics (the only scope the authorization server advertises)"
             }
           }
         }
@@ -2848,37 +2844,119 @@
           }
         }
       },
+      "OAuthClientRegistrationRequest": {
+        "type": "object",
+        "required": [
+          "redirect_uris"
+        ],
+        "properties": {
+          "redirect_uris": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "Absolute redirect URIs. `https://` and custom (native app) schemes are accepted; `http://` only for loopback hosts (`localhost`, `127.0.0.1`, `::1`).\n",
+            "example": [
+              "https://claude.ai/api/mcp/auth_callback"
+            ]
+          },
+          "client_name": {
+            "type": "string",
+            "maxLength": 200,
+            "example": "Claude Desktop"
+          }
+        },
+        "additionalProperties": true
+      },
+      "OAuthClientRegistrationResponse": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3f8a1c2e-5b47-4d90-9e21-7c6b0a4d8f13"
+          },
+          "client_id_issued_at": {
+            "type": "integer",
+            "description": "Unix timestamp (seconds)."
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "response_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "code"
+            ]
+          },
+          "token_endpoint_auth_method": {
+            "type": "string",
+            "enum": [
+              "none"
+            ],
+            "description": "Public client — no client_secret is issued; PKCE binds the grant."
+          },
+          "client_name": {
+            "type": "string",
+            "description": "Present only if supplied at registration."
+          }
+        }
+      },
       "OAuth2TokenRequest": {
         "type": "object",
         "required": [
-          "grant_type",
-          "client_id",
-          "client_secret"
+          "grant_type"
         ],
+        "description": "Shape depends on `grant_type`. For `authorization_code`: `code`, `redirect_uri`, `client_id`, `code_verifier` are all required. For `refresh_token`: `refresh_token` and `client_id` are required.\n",
         "properties": {
           "grant_type": {
             "type": "string",
             "enum": [
-              "client_credentials"
+              "authorization_code",
+              "refresh_token"
             ],
-            "description": "Must be \"client_credentials\""
+            "description": "`client_credentials` is not supported and returns `unsupported_grant_type`.\n"
+          },
+          "code": {
+            "type": "string",
+            "description": "Single-use authorization code (authorization_code grant)."
+          },
+          "redirect_uri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Must match the URI the code was issued for (authorization_code grant)."
           },
           "client_id": {
             "type": "string",
-            "pattern": "^rm_(user|agent)_[a-z0-9_]{32,}$",
-            "example": "rm_agent_live_abc123",
-            "description": "API key prefix (first segment)"
+            "format": "uuid",
+            "description": "Client id from `POST /api/oauth/register`."
           },
-          "client_secret": {
+          "code_verifier": {
             "type": "string",
-            "format": "password",
-            "example": "rm_agent_live_abc123_xyz789_checksum",
-            "description": "Full API key"
+            "description": "PKCE verifier; must hash (S256) to the registered code_challenge."
           },
-          "scope": {
+          "refresh_token": {
             "type": "string",
-            "example": "ticker-returns risk-decomposition",
-            "description": "Space-separated list of requested scopes"
+            "description": "Rotating refresh token (refresh_token grant)."
           }
         }
       },
@@ -2887,8 +2965,8 @@
         "properties": {
           "access_token": {
             "type": "string",
-            "format": "jwt",
-            "description": "JWT access token (use as Bearer token)"
+            "example": "rm_user_live_abc123_xyz789",
+            "description": "An `rm_user_*` API key. Use directly as `Authorization: Bearer …` against any endpoint in this spec.\n"
           },
           "token_type": {
             "type": "string",
@@ -2898,12 +2976,28 @@
           },
           "expires_in": {
             "type": "integer",
-            "example": 900,
-            "description": "Token lifetime in seconds (900 = 15 minutes)"
+            "example": 3600,
+            "description": "Access token lifetime in seconds (3600 = 1 hour)."
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "Valid 30 days and rotated on every use. Replaying a rotated token revokes the whole family for that user/client pair.\n"
           },
           "scope": {
             "type": "string",
-            "description": "Space-separated list of granted scopes"
+            "example": "mcp:read"
+          }
+        }
+      },
+      "OAuth2RevokeRequest": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The `rm_user_*` access token or the opaque refresh token to revoke. The endpoint infers which from the `rm_user_` prefix.\n"
           }
         }
       },
@@ -2914,9 +3008,11 @@
             "type": "string",
             "enum": [
               "invalid_request",
-              "invalid_client",
+              "invalid_client_metadata",
+              "invalid_redirect_uri",
               "invalid_grant",
               "unsupported_grant_type",
+              "too_many_requests",
               "server_error"
             ]
           },
@@ -4674,11 +4770,11 @@
     }
   ],
   "paths": {
-    "/auth/token": {
+    "/oauth/register": {
       "post": {
-        "summary": "Generate OAuth2 Access Token",
-        "description": "OAuth 2.0 client credentials flow for machine-to-machine authentication. Exchange API credentials for a short-lived JWT token (15 minutes).\n\n**Use Cases:**\n- AI agents connecting to the API\n- Server-to-server integrations\n- npm package authentication\n- MCP client authentication\n",
-        "operationId": "generateOAuthToken",
+        "summary": "Register an OAuth client (Dynamic Client Registration)",
+        "description": "RFC 7591 dynamic client registration. MCP clients self-register here after discovering the authorization server at `/.well-known/oauth-authorization-server`.\n\nPublic clients only: no `client_secret` is issued and `token_endpoint_auth_method` is `none` — the authorization code grant is bound to the client by PKCE instead. `redirect_uris` must be absolute; `http://` is accepted only for loopback hosts (RFC 8252).\n\nRate limited to 30 registrations per IP per hour.\n",
+        "operationId": "registerOAuthClient",
         "tags": [
           "Authentication"
         ],
@@ -4688,36 +4784,30 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OAuth2TokenRequest"
+                "$ref": "#/components/schemas/OAuthClientRegistrationRequest"
               },
               "example": {
-                "grant_type": "client_credentials",
-                "client_id": "rm_agent_live_abc123",
-                "client_secret": "rm_agent_live_abc123_xyz789_checksum",
-                "scope": "ticker-returns risk-decomposition"
+                "client_name": "Claude Desktop",
+                "redirect_uris": [
+                  "https://claude.ai/api/mcp/auth_callback"
+                ]
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "Access token generated successfully",
+          "201": {
+            "description": "Client registered",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OAuth2TokenResponse"
-                },
-                "example": {
-                  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                  "token_type": "Bearer",
-                  "expires_in": 900,
-                  "scope": "ticker-returns risk-decomposition batch-analysis"
+                  "$ref": "#/components/schemas/OAuthClientRegistrationResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request (missing or invalid grant_type)",
+            "description": "`invalid_client_metadata` (body is not JSON) or `invalid_redirect_uri` (`redirect_uris` missing, empty, non-absolute, or a non-loopback `http://` URI).\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -4726,8 +4816,151 @@
               }
             }
           },
-          "401": {
-            "description": "Invalid credentials",
+          "429": {
+            "description": "Registration rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "server_error — client record could not be persisted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "summary": "Exchange an authorization code or refresh token for an access token",
+        "description": "OAuth 2.0 token endpoint. Supports exactly two grants — `authorization_code` (PKCE S256, single-use codes) and `refresh_token` (rotating). There is **no** `client_credentials` grant; presenting one returns `unsupported_grant_type`.\n\nThe issued `access_token` is an `rm_user_*` API key valid for 1 hour, usable as `Authorization: Bearer …` against any endpoint in this spec. The `refresh_token` is valid for 30 days and rotates on every use — replaying an already-rotated refresh token revokes the whole token family for that user/client pair (RFC 6819 §5.2.2.3).\n\nAccepts either `application/x-www-form-urlencoded` or `application/json`. Responses are `Cache-Control: no-store`. Rate limited to 60 requests per IP per minute.\n",
+        "operationId": "exchangeOAuthToken",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuth2TokenRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuth2TokenRequest"
+              },
+              "example": {
+                "grant_type": "authorization_code",
+                "code": "9f2c1d…",
+                "redirect_uri": "https://claude.ai/api/mcp/auth_callback",
+                "client_id": "3f8a1c2e-5b47-4d90-9e21-7c6b0a4d8f13",
+                "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access token issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2TokenResponse"
+                },
+                "example": {
+                  "access_token": "rm_user_live_abc123_xyz789",
+                  "token_type": "Bearer",
+                  "expires_in": 3600,
+                  "refresh_token": "5f3a…",
+                  "scope": "mcp:read"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request` (missing parameters), `invalid_grant` (code/refresh token not found, expired, already used, or PKCE/client mismatch), or `unsupported_grant_type`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Token rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "server_error — token issuance failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "summary": "Revoke an access or refresh token",
+        "description": "RFC 7009 token revocation. Revokes the presented `rm_user_*` access token or refresh token. Rate limited to 60 requests per IP per minute. Per RFC 7009 the endpoint returns 200 even for unknown tokens.\n",
+        "operationId": "revokeOAuthToken",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuth2RevokeRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuth2RevokeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token revoked (or was already invalid). Body is an empty object."
+          },
+          "400": {
+            "description": "invalid_request — `token` parameter missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Revocation rate limit exceeded",
             "content": {
               "application/json": {
                 "schema": {
@@ -4752,8 +4985,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -4821,8 +5054,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -5187,8 +5420,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "plaid:holdings"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -5249,8 +5482,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "plaid:holdings"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -5325,8 +5558,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "plaid:holdings"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -5486,8 +5719,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "ticker-returns"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -5628,8 +5861,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "ticker-returns"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -5838,6 +6071,762 @@
         }
       }
     },
+    "/v4/decompose": {
+      "post": {
+        "summary": "Decompose a position into named blocks (market / industry / style / stock-specific)",
+        "description": "The v4 product spine: `market + industry(sector, subsector) + style + stock_specific ≈ 1.0`.\n\nThe `industry` block is ETF-hedgeable (per-layer `hedge_notional_per_1_long`); the `style` block is a **diagnostic** — exposures plus incremental explained variance, never a tradeable hedge. `stock_specific` is the doubly-cleaned skill residual.\n\n`basis` selects the explained-variance basis for the `style` and `stock_specific` blocks: `L3` (default — the clean variance partition) or `lstar` (skill basis). Industry hedge layers are always L3.\n\nTwo leaf fields are `null` until their upstream producer lands and fill in with no schema change: `style.exposures.{size,value}.beta` and `stock_specific.{sharpe_36m,rank_percentile}`.\n\nThe legacy flat shape remains at `POST /decompose`, same billing profile.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "operationId": "decomposePositionV4",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "decompose-position",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0.001,
+          "currency": "USD",
+          "billing_code": "metrics_v3"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ticker"
+                ],
+                "properties": {
+                  "ticker": {
+                    "type": "string",
+                    "example": "NVDA"
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "L3",
+                      "lstar"
+                    ],
+                    "default": "L3"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Named-block decomposition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticker": {
+                      "type": "string"
+                    },
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "basis": {
+                      "type": "string",
+                      "enum": [
+                        "L3",
+                        "lstar"
+                      ]
+                    },
+                    "data_as_of": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "teo": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "decomposition": {
+                      "type": "object",
+                      "properties": {
+                        "market": {
+                          "type": "object",
+                          "properties": {
+                            "factor": {
+                              "type": "string",
+                              "example": "SPY"
+                            },
+                            "beta": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "explained_variance": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "hedge_notional_per_1_long": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "hedgeable": {
+                              "type": "boolean",
+                              "example": true
+                            }
+                          }
+                        },
+                        "industry": {
+                          "type": "object",
+                          "properties": {
+                            "explained_variance": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "hedgeable": {
+                              "type": "boolean",
+                              "example": true
+                            },
+                            "layers": {
+                              "type": "object",
+                              "properties": {
+                                "sector": {
+                                  "type": "object",
+                                  "properties": {
+                                    "etf": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "beta": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "explained_variance": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "hedge_notional_per_1_long": {
+                                      "type": "number",
+                                      "nullable": true
+                                    }
+                                  }
+                                },
+                                "subsector": {
+                                  "type": "object",
+                                  "properties": {
+                                    "etf": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "beta": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "explained_variance": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "hedge_notional_per_1_long": {
+                                      "type": "number",
+                                      "nullable": true
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "style": {
+                          "type": "object",
+                          "description": "Diagnostic only — not hedgeable.",
+                          "properties": {
+                            "explained_variance": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "hedgeable": {
+                              "type": "boolean",
+                              "example": false
+                            },
+                            "exposures": {
+                              "type": "object",
+                              "description": "`size` is the IWM-IWB (SMB) spread; `value` is IWD-IWF (HML). `beta` is null until the ERM3 per-stock loadings land.\n"
+                            }
+                          }
+                        },
+                        "stock_specific": {
+                          "type": "object",
+                          "properties": {
+                            "explained_variance": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "sharpe_36m": {
+                              "type": "number",
+                              "nullable": true
+                            },
+                            "rank_percentile": {
+                              "type": "number",
+                              "nullable": true
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "_data_health": {
+                      "type": "object",
+                      "properties": {
+                        "er_populated": {
+                          "type": "boolean"
+                        },
+                        "er_sum": {
+                          "type": "number",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body (ticker missing or malformed)"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "402": {
+            "description": "Insufficient balance"
+          },
+          "404": {
+            "description": "Ticker not found in the universe"
+          }
+        }
+      }
+    },
+    "/hedge-basket/{ticker}": {
+      "get": {
+        "summary": "Structured hedge basket with a recommended hedge level and decision trace",
+        "description": "The chat-rendered hedge table: per-layer ETF legs with a net-market-β subtotal, plus a `decision_trace` explaining why `recommended_level` was chosen. Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas read from `ds_erm3_link_betas_{market_factor_etf}.zarr`.\n\n`user_segment` drives the leverage cap (default `family_office`, 2.0×).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "operationId": "getHedgeBasket",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "hedge-basket",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0.001,
+          "currency": "USD",
+          "billing_code": "hedge_basket_v1"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "NVDA"
+          },
+          {
+            "name": "user_segment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "retail",
+                "family_office",
+                "ls_equity",
+                "stat_arb"
+              ],
+              "default": "family_office"
+            },
+            "description": "Drives the leverage cap applied to the recommended level."
+          },
+          {
+            "name": "market_factor_etf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "SPY"
+            },
+            "description": "Market factor ETF whose link-beta cube is read."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hedge basket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticker": {
+                      "type": "string"
+                    },
+                    "as_of": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "inputs": {
+                      "type": "object",
+                      "description": "Betas, layer ETF tickers, and the `lambda_s_to_m` / `lambda_u_to_m` link betas the basket was built from.\n"
+                    },
+                    "basket": {
+                      "type": "object",
+                      "properties": {
+                        "recommended_level": {
+                          "type": "string"
+                        },
+                        "statistical_lstar": {
+                          "type": "number",
+                          "nullable": true
+                        }
+                      }
+                    },
+                    "decision_trace": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Ordered rationale for the recommended level."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ticker or query parameter"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "402": {
+            "description": "Insufficient balance"
+          },
+          "404": {
+            "description": "Ticker not found in the universe"
+          }
+        }
+      }
+    },
+    "/batch/latest-metrics": {
+      "get": {
+        "summary": "Latest L3 hedge ratios and explained variances for up to 100 tickers",
+        "description": "Lightweight batch read from `security_history_latest` — one row per requested ticker with the six L3 scalars. Cheaper and narrower than `POST /batch/analyze`; use that endpoint when you need returns panels or full metrics.\n\nTickers are de-duplicated and upper-cased; the list is truncated to the first 100. Tickers that resolve but have no latest row come back with `date` and all six metrics `null` rather than being omitted, so the response aligns positionally with what resolved.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "operationId": "getBatchLatestMetrics",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "metrics-snapshot",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0.001,
+          "currency": "USD",
+          "billing_code": "metrics_snapshot_v1"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tickers",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "NVDA,AAPL,MSFT",
+            "description": "Comma- or whitespace-separated. Max 100 after de-duplication."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest metrics per ticker",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ticker": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "l3_mkt_hr": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "l3_sec_hr": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "l3_sub_hr": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "l3_mkt_er": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "l3_sec_er": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "l3_sub_er": {
+                            "type": "number",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    },
+                    "source": {
+                      "type": "string",
+                      "example": "security_history_latest"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`tickers` missing or empty after parsing"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "402": {
+            "description": "Insufficient balance"
+          },
+          "404": {
+            "description": "None of the supplied tickers resolved to the universe"
+          }
+        }
+      }
+    },
+    "/funds/search": {
+      "get": {
+        "summary": "Search funds to resolve a bw_fund_id",
+        "description": "Funds discovery. Resolves a `bw_fund_id` for downstream `/funds/{bw_fund_id}/*` calls, which are metered.\n\n`net_expense_ratio` is a **percent per year** (0.59 = 0.59%/yr, not 0.0059), and `net_expense_ratio_asof` can trail by years — treat it as a staleness signal, not a current-fee guarantee.\n\n**Authentication:** None — this endpoint is public. It is wrapped in `withBilling` with `skipBilling: true`, which bypasses key validation entirely, so no `Authorization` header is required or checked.\n**Billing:** Free\n**Rate Limit:** 60 requests/minute per IP (`FUND_SEARCH_IP_RPM`). `limit` is capped at 100 rows on this public route; the keyed `/api/data/funds/search` mirror allows more.\n",
+        "operationId": "searchFunds",
+        "tags": [
+          "Funds"
+        ],
+        "x-pricing": {
+          "capability_id": "fund-search",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0,
+          "currency": "USD",
+          "billing_code": "fund_search_v1"
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full-text match on ticker or fund name (ilike)."
+          },
+          {
+            "name": "equity_style_9box",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "large-blend",
+            "description": "Style slug (`large-blend`) or canonical name (`Large Blend`)."
+          },
+          {
+            "name": "primary",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "`true` restricts results to share-class primaries."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching funds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "bw_fund_id": {
+                            "type": "string"
+                          },
+                          "series_id": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "ticker": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "cik": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "fund_name": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "morningstar_category": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "equity_style_9box": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "style_link_method": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "net_expense_ratio": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "Percent per year (0.59 = 0.59%/yr)."
+                          },
+                          "net_expense_ratio_asof": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "primary_bw_fund_id": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "latest_report_date": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "latest_filing_date": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-IP rate limit exceeded"
+          }
+        }
+      }
+    },
+    "/metrics/{ticker}/snapshot.png": {
+      "get": {
+        "summary": "Single-ticker risk snapshot as a PNG image",
+        "description": "Returns **image bytes**, not JSON. The PNG twin of `GET /metrics/{ticker}/snapshot.pdf`, rendered from the same report data and served from a Redis cache on repeat requests.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.25 per request (premium tier)\n**Rate Limit:** 120 requests/minute (default)\n",
+        "operationId": "getTickerSnapshotPng",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "portfolio-risk-snapshot",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.25,
+          "currency": "USD",
+          "billing_code": "risk_snapshot_pdf_v1"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "NVDA"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG image bytes",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ticker"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "402": {
+            "description": "Insufficient balance"
+          }
+        }
+      }
+    },
+    "/snapshot/{entity_kind}": {
+      "get": {
+        "summary": "Stock Deep Dive snapshot as PNG or PDF",
+        "description": "Returns **image or PDF bytes**, not JSON. Served from precomputed GCS objects.\n\nDespite the parameter name, the path segment is a **ticker** — it is called `entity_kind` so the folder can nest `/snapshot/{entity_kind}/{id}/panels/{slug}` without a Next.js sibling-dynamic route conflict. Reserved kinds (`stock`, `fund`, …) are not tickers: requesting `/snapshot/stock` on its own returns 400 with the panel URL shape.\n\nFor panel drill-down prefer `GET /snapshot/stock/{ticker}/panels/{slug}?format=png` (`_full` for the whole sheet).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.25 per request (premium tier)\n**Rate Limit:** 120 requests/minute (default)\n",
+        "operationId": "getDeepDiveSnapshot",
+        "tags": [
+          "Risk Metrics"
+        ],
+        "x-pricing": {
+          "capability_id": "portfolio-risk-snapshot",
+          "tier": "premium",
+          "model": "per_request",
+          "cost_usd": 0.25,
+          "currency": "USD",
+          "billing_code": "risk_snapshot_pdf_v1"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entity_kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "NVDA",
+            "description": "A ticker. Reserved kind names (`stock`, `fund`) return 400."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "pdf"
+              ],
+              "default": "png"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot bytes in the requested format",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reserved kind supplied instead of a ticker, or unsupported format"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "402": {
+            "description": "Insufficient balance"
+          }
+        }
+      }
+    },
     "/decompose": {
       "post": {
         "summary": "(internal/legacy) Decompose a position into four additive bets with hedge ratios",
@@ -5859,8 +6848,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "ticker-returns"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -8176,8 +9165,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "macro-factor-series"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -9423,8 +10412,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -9591,8 +10580,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -9740,8 +10729,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -9890,8 +10879,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -10313,8 +11302,8 @@
             "BearerAuth": []
           },
           {
-            "OAuth2ClientCredentials": [
-              "*"
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
             ]
           }
         ],
@@ -14484,11 +15473,12 @@
     "/13f/filers/search": {
       "get": {
         "summary": "13F filer search",
-        "description": "Discovery surface for 13F filers. Search by name, CIK, or LEI; filter by filer_type / aum_tier; optionally restrict to filers passing the modelability gate. Free for users (no per-request cost) — per-filer follow-up calls are metered.\n",
+        "description": "Discovery surface for 13F filers. Search by name, CIK, or LEI; filter by filer_type / aum_tier; optionally restrict to filers passing the modelability gate. Per-filer follow-up calls under `/13f/filers/{bw_filer_id}/*` are metered.\n\n**Authentication:** None — this endpoint is public. Like `/funds/search`, it is wrapped in `withBilling` with `skipBilling: true`, which bypasses key validation entirely.\n**Billing:** Free\n**Rate Limit:** 60 requests/minute per IP (`FILER_SEARCH_IP_RPM`). `limit` is capped at 100 rows.\n",
         "operationId": "searchFilers",
         "tags": [
           "13F Filers"
         ],
+        "security": [],
         "x-pricing": {
           "capability_id": "filer-search",
           "tier": "baseline",
@@ -14535,7 +15525,7 @@
             "schema": {
               "type": "integer",
               "default": 50,
-              "maximum": 500
+              "maximum": 100
             }
           }
         ],

@@ -1,5 +1,5 @@
 import type { ResolvedApiAuth } from "./credentials.js";
-import { getAuthorizationHeader, invalidateAuthForRetry } from "./credentials.js";
+import { getAuthorizationHeader } from "./credentials.js";
 
 /** Thrown on non-2xx API responses so callers can inspect `status` (e.g. retries on 503). */
 export class ApiHttpError extends Error {
@@ -40,37 +40,32 @@ export async function apiFetchJson(
   },
 ): Promise<ApiJsonResult> {
   const url = buildUrl(auth.apiRoot, path, options?.query);
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const headers = await getAuthorizationHeader(auth);
-    const init: RequestInit = {
-      method,
-      headers: {
-        ...headers,
-        Accept: "application/json",
-        ...(options?.jsonBody !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: options?.jsonBody !== undefined ? JSON.stringify(options.jsonBody) : undefined,
-    };
-    const res = await fetch(url, init);
-    if (res.status === 401 && attempt === 1 && auth.oauth) {
-      invalidateAuthForRetry(auth);
-      continue;
-    }
-    const costUsd = res.headers.get("x-api-cost-usd") ?? undefined;
-    const text = await res.text();
-    let body: unknown;
-    try {
-      body = text ? (JSON.parse(text) as unknown) : null;
-    } catch {
-      body = { raw: text };
-    }
-    if (!res.ok) {
-      const msg = errorMessageFromBody(body) || `HTTP ${res.status}`;
-      throw new ApiHttpError(res.status, msg);
-    }
-    return { body, costUsd, status: res.status, headers: res.headers };
+  // Single attempt: the retry existed only to refresh an expiring OAuth access
+  // token, and auth is now a static API key with nothing to refresh.
+  const headers = await getAuthorizationHeader(auth);
+  const init: RequestInit = {
+    method,
+    headers: {
+      ...headers,
+      Accept: "application/json",
+      ...(options?.jsonBody !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: options?.jsonBody !== undefined ? JSON.stringify(options.jsonBody) : undefined,
+  };
+  const res = await fetch(url, init);
+  const costUsd = res.headers.get("x-api-cost-usd") ?? undefined;
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    body = { raw: text };
   }
-  throw new Error("Unreachable");
+  if (!res.ok) {
+    const msg = errorMessageFromBody(body) || `HTTP ${res.status}`;
+    throw new ApiHttpError(res.status, msg);
+  }
+  return { body, costUsd, status: res.status, headers: res.headers };
 }
 
 export async function apiFetchOptionalAuth(

@@ -123,7 +123,7 @@ describe("GET /api/data/funds/[bw_fund_id]", () => {
     // Soft-auth contract per lib/gateway-auth.ts: only the matching service key
     // grants elevated role; user API keys, JWTs, or any other Bearer fall back
     // to public read (same as omitting Authorization). An invalid Bearer must
-    // NOT 401 — that's the requireGatewayAuth path, not used here.
+    // NOT 401 — public read is the product on this plane.
     process.env.RISKMODELS_API_SERVICE_KEY = "secret";
     vi.mocked(resolveFundById).mockResolvedValue({ fund: FUND, latest: LATEST });
     const res = await getFund(

@@ -223,8 +223,6 @@ def json_body(method: str, path: str, *, stock: str, bw_fund_id: str) -> dict[st
         return {"sql": f"SELECT ticker, symbol FROM symbols WHERE ticker = '{stock}' LIMIT 1", "limit": 10}
     if path == "/mcp/sse":
         return {"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}
-    if path == "/auth/token":
-        return {}  # caller handles skip if no oauth
     return None
 
 
@@ -643,13 +641,6 @@ def main() -> int:
                         None,
                         None,
                     )
-                )
-                continue
-            if path == "/auth/token":
-                msg = "skip OAuth token (needs RISKMODELS_CLIENT_ID / RISKMODELS_CLIENT_SECRET)"
-                run.add(Row(grp, method, path, None, True, msg))
-                records.append(
-                    CallRecord(grp, method, path, "", None, True, msg, "", "skip", msg, None, None)
                 )
                 continue
 

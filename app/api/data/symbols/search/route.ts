@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { TICKER_ALIASES } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
@@ -13,9 +12,6 @@ export const dynamic = "force-dynamic";
  * Also supports ?asset_type=stock to filter by asset type.
  */
 export async function GET(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { searchParams } = request.nextUrl;
   const q = searchParams.get("q")?.trim() ?? "";
   const limit = Math.min(Number(searchParams.get("limit") ?? 50), 500);

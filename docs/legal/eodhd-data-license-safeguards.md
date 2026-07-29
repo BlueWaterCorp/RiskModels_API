@@ -39,11 +39,35 @@ Policy helpers: `lib/data-license.ts`. Tests: `tests/data-license.test.ts`.
 | Layer | Control | Where |
 |---|---|---|
 | Billed API (`/api/*` via `withBilling`) | Per-API-key Upstash sliding-window rate limit (`429` + `Retry-After`); per-request metered cost (iteration is throttled *and* priced) | `lib/agent/billing-middleware.ts` |
-| Data gateway (`/api/data/*`, soft auth, no billing) | Per-IP Upstash sliding-window limit at the middleware chokepoint; service-key callers exempt; fails open | `lib/ratelimit/data-gateway-rate-limit.ts`, `middleware.ts` (`DATA_GATEWAY_RPM`, default 120/min) |
+| Data gateway (`/api/data/*`, public read, no billing) | Per-IP Upstash sliding-window limit at the middleware chokepoint; service-key callers exempt. **Degrades, does not fail open** — if Upstash is unconfigured or erroring, falls back to a per-instance ceiling at the same rate and logs `FAIL_OPEN` | `lib/ratelimit/data-gateway-rate-limit.ts`, `lib/ratelimit/memory-fallback.ts`, `middleware.ts` (`DATA_GATEWAY_RPM`, default 120/min) |
 | Raw-field surface | No multi-symbol raw export exists — raw is per-symbol only (B(e) gating above), so single-call dataset reconstruction is structurally impossible | see B(e) |
-| Public endpoints (`skipBilling`) | Per-IP rate limit | `lib/agent/billing-middleware.ts` |
+| Public unbilled endpoints (`skipBilling`) | Per-IP rate limit **plus** a row cap on the two bulk-readable discovery endpoints, with the same degrade-not-fail-open behaviour | `lib/agent/billing-middleware.ts` (`publicIpRateLimitPerMinute`) |
 
-Tests: `tests/data-gateway-rate-limit.test.ts`.
+Per-endpoint limits for the `skipBilling` surface — `skipBilling` bypasses key
+validation entirely, so these are genuinely public and the per-IP cap is the only
+control on them:
+
+| Endpoint | Per-IP limit | Row cap | Env var |
+|---|---|---|---|
+| `GET /api/funds/search` | 60/min | 100 | `FUND_SEARCH_IP_RPM` |
+| `GET /api/13f/filers/search` | 60/min | 100 | `FILER_SEARCH_IP_RPM` |
+| `GET /api/rankings/{ticker}/badge` | 120/min | n/a | `RANKINGS_BADGE_IP_RPM` |
+| `POST /api/landing/chat` | 10/hr | n/a (MAG7-only demo) | — |
+| `POST /api/plaid/link-token`, `/api/plaid/exchange-public-token` | n/a — authenticate in-handler (`authenticateOrRespond`), not public | — | — |
+
+> **Correction (2026-07-28).** Before that date this table claimed a per-IP rate
+> limit across the `skipBilling` surface as a blanket control. In implementation
+> only `/api/rankings/{ticker}/badge` carried one; `/api/funds/search` and
+> `/api/13f/filers/search` — the two endpoints that serve fund reference data in
+> bulk, and therefore the ones B(g) most directly concerns — had no throttle and
+> returned up to 500 rows per call. The data gateway's limiter also failed open
+> rather than degrading. Both gaps were found in an internal review of the public
+> API surface and closed in the same change that added this correction; the table
+> above now describes implemented behaviour, verified by the tests below.
+
+Tests: `tests/data-gateway-rate-limit.test.ts`,
+`tests/public-ip-rate-limit-degrades.test.ts` (asserts the per-IP cap still
+refuses over-limit callers when the Redis backend is unavailable).
 
 **Contractual:** B(g) also calls for *contractual* safeguards (end users bound
 against scraping / redistribution). The API Terms of Service / acceptable-use

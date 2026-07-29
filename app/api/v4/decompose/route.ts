@@ -271,7 +271,7 @@ export const POST = withBilling(
       console.error(`[v4/decompose] Exception for ${ticker}:`, error);
       const metadata = await getRiskMetadata().catch(() => null);
       const response = NextResponse.json(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error: "Internal server error" },
         { status: 500, headers: corsHeaders },
       );
       if (metadata) addMetadataHeaders(response, metadata);

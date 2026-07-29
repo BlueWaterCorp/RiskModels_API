@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
@@ -15,9 +14,6 @@ export const dynamic = "force-dynamic";
  * Returns: { results: { [ticker]: SymbolRegistryRow } }
  */
 export async function POST(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   let body: { tickers?: string[] };
   try {
     body = await request.json();

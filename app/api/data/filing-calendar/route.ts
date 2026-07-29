@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +18,6 @@ export const dynamic = "force-dynamic";
  *   ?to=YYYY-MM-DD           — due_date <= to
  */
 export async function GET(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const sp = request.nextUrl.searchParams;
   const category = sp.get("category");
   const form = sp.get("form");

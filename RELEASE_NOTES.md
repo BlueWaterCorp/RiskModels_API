@@ -13,12 +13,15 @@ Successfully synchronized the RiskModels_API repository with the Private Engine 
 ### Key Features
 - **ERM3 Hierarchical Factor Model** — Enhanced risk decomposition with better sector/subsector precision.
 - **MCP Server** — First-class Model Context Protocol support for AI agents.
-- **OAuth2 Authentication** — Secure client credentials flow for production applications.
+- ~~**OAuth2 Authentication** — Secure client credentials flow for production applications.~~
+  **Correction (2026-07-28):** the client-credentials flow was announced but never
+  implemented. Use a Bearer API key for server-to-server access; OAuth exists only as
+  authorization-code + PKCE for MCP clients.
 - **Parquet/CSV Format Support** — High-performance bulk data export for backtesting.
 - **Developer Portal** — Comprehensive documentation, interactive API reference, and quickstart guides at riskmodels.app.
 
 ### New Endpoints
-- `POST /api/auth/token` - Generate OAuth2 access token
+- ~~`POST /api/auth/token` - Generate OAuth2 access token~~ — never shipped, returns 404 (see above)
 - `GET /api/mcp/sse` - MCP SSE connection
 - `POST /api/mcp/sse` - MCP JSON-RPC requests
 - `GET /api/plaid/holdings` - Fetch enriched holdings with risk metrics

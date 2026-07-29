@@ -64,7 +64,7 @@ export function requestsRawRestricted(keys: readonly string[]): boolean {
  *
  * When no service key is configured (local/dev), treat as authenticated so the
  * dev experience is unchanged. Production always sets RISKMODELS_API_SERVICE_KEY.
- * This mirrors the pass-through behavior of `verifyGatewayAuth` when `!key`.
+ * This mirrors the pass-through behavior of `resolveGatewayRole` when `!key`.
  */
 export function isGatewayAuthenticated(request: NextRequest): boolean {
   const key = process.env.RISKMODELS_API_SERVICE_KEY;

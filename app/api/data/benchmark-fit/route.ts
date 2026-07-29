@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import {
   computeBenchActiveFit,
@@ -141,9 +140,6 @@ export async function GET(request: NextRequest) {
   }
 
   // Static benches: soft gateway auth (public read), unchanged behavior.
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const parsed = parseFitParams(request);
   if (parsed instanceof NextResponse) return parsed;
   const { subject, benchmark, asOf, topN } = parsed;

@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { resolveFundById } from "@/lib/dal/funds-engine";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +17,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ bw_fund_id: string }> },
 ) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { bw_fund_id } = await params;
   if (!bw_fund_id) {
     return NextResponse.json(

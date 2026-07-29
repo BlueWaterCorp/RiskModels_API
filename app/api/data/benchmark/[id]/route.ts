@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import { readBenchmarkSurface } from "@/lib/dal/funds-zarr-reader";
 
 export const dynamic = "force-dynamic";
@@ -22,9 +21,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "benchmark id is required" }, { status: 400 });
 

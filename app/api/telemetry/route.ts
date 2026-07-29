@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Failed to retrieve telemetry',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: 'An unexpected error occurred. The incident has been logged.',
         _agent: { latency_ms: Date.now() - startTime },
       },
       { status: 500 }

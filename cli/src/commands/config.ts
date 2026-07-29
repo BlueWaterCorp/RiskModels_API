@@ -86,15 +86,12 @@ export function configCommand(): Command {
   cmd
     .command("set")
     .description("Set a config value")
-    .argument("<key>", "apiKey | apiBaseUrl | clientId | clientSecret | oauthScope | supabaseUrl | serviceRoleKey")
+    .argument("<key>", "apiKey | apiBaseUrl | supabaseUrl | serviceRoleKey")
     .argument("<value>", "value to store")
     .action(async (key: string, value: string) => {
       const allowed = new Set([
         "apiKey",
         "apiBaseUrl",
-        "clientId",
-        "clientSecret",
-        "oauthScope",
         "supabaseUrl",
         "serviceRoleKey",
       ]);
@@ -109,15 +106,6 @@ export function configCommand(): Command {
         cfg.apiKey = value;
       } else if (key === "apiBaseUrl") {
         cfg.apiBaseUrl = value.replace(/\/$/, "");
-      } else if (key === "clientId") {
-        cfg.mode = "billed";
-        cfg.clientId = value;
-      } else if (key === "clientSecret") {
-        cfg.mode = "billed";
-        cfg.clientSecret = value;
-      } else if (key === "oauthScope") {
-        cfg.mode = "billed";
-        cfg.oauthScope = value;
       } else if (key === "supabaseUrl") {
         cfg.mode = "direct";
         cfg.supabaseUrl = value.replace(/\/$/, "");
@@ -145,9 +133,6 @@ export function configCommand(): Command {
         mode: cfg.mode,
         apiBaseUrl: cfg.apiBaseUrl ?? DEFAULT_API_BASE,
         apiKey: maskSecret(cfg.apiKey),
-        clientId: maskSecret(cfg.clientId),
-        clientSecret: maskSecret(cfg.clientSecret),
-        oauthScope: cfg.oauthScope ?? "(not set)",
         supabaseUrl: cfg.supabaseUrl ?? "(not set)",
         serviceRoleKey: maskSecret(cfg.serviceRoleKey),
       };

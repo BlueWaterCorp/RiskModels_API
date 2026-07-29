@@ -40,6 +40,8 @@ import math as _math
 from dataclasses import dataclass, field
 from typing import Any
 
+from .mapping import first_present as _g
+
 # DDData lives privately in BWMACRO post-PR 3. This module is structurally typed:
 # any object exposing ``.p1.metrics``, ``.peer_comparison``, etc. works at runtime.
 
@@ -71,17 +73,6 @@ class Judgment:
 # BWMACRO engine consumes it. No qualifiers, no thresholds, no editorial.
 # ---------------------------------------------------------------------------
 
-def _g(d: dict, *keys: str) -> Any:
-    """Return the first non-None value among `keys` in dict `d`.
-
-    Tolerates the abbreviated/full-name dual schema for ERM3 metrics
-    (e.g. ``l3_residual_er`` vs ``l3_res_er``).
-    """
-    for k in keys:
-        v = d.get(k)
-        if v is not None:
-            return v
-    return None
 
 
 def _to_float(v: Any) -> float | None:

@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyGatewayAuth } from "@/lib/gateway-auth";
 import {
   fetchBatchHistory,
   type V3MetricKey,
@@ -35,9 +34,6 @@ export const runtime = "nodejs";
  * }
  */
 export async function POST(request: NextRequest) {
-  const denied = verifyGatewayAuth(request);
-  if (denied) return denied;
-
   let body: {
     symbols?: string[];
     keys?: string[];

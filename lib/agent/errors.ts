@@ -52,7 +52,7 @@ export interface MonthlyCapExceededError {
 export function createPaymentRequiredResponse(
   requiredAmount: number,
   currentBalance: number,
-  appUrl: string = process.env.NEXT_PUBLIC_APP_URL || "https://riskmodels.net",
+  appUrl: string = process.env.NEXT_PUBLIC_APP_URL || "https://riskmodels.app",
 ): NextResponse {
   const shortfall = Math.max(0, requiredAmount - currentBalance);
   const minTopUp = Math.max(10, Math.ceil(shortfall / 10) * 10); // Round up to nearest $10, minimum $10
@@ -64,11 +64,11 @@ export function createPaymentRequiredResponse(
     required_amount_usd: requiredAmount,
     current_balance_usd: currentBalance,
     shortfall_usd: shortfall,
-    top_up_url: `${appUrl}/api/billing/top-up`,
+    top_up_url: `${appUrl}/get-key`,
     minimum_top_up_usd: minTopUp,
     _agent: {
       action: "top_up",
-      top_up_url: `${appUrl}/api/billing/top-up`,
+      top_up_url: `${appUrl}/get-key`,
       min_top_up_usd: minTopUp,
       retry_after_seconds: 60,
     },
@@ -81,7 +81,7 @@ export function createPaymentRequiredResponse(
       "X-API-Cost-USD": String(requiredAmount),
       "X-Current-Balance-USD": String(currentBalance),
       "X-Shortfall-USD": String(shortfall),
-      "X-Top-Up-URL": `${appUrl}/api/billing/top-up`,
+      "X-Top-Up-URL": `${appUrl}/get-key`,
       "Retry-After": "60",
     },
   });
@@ -97,7 +97,7 @@ export function createMonthlyCapExceededResponse(
   currentSpend: number,
   cap: number,
   resetAt: Date,
-  appUrl: string = process.env.NEXT_PUBLIC_APP_URL || "https://riskmodels.net",
+  appUrl: string = process.env.NEXT_PUBLIC_APP_URL || "https://riskmodels.app",
 ): NextResponse {
   const now = new Date();
   const resetDate = new Date(resetAt);
@@ -162,7 +162,7 @@ export function createAgentErrorResponse(
       ...(action === "authenticate" && {
         authenticate_url: "/api/auth/provision-free",
       }),
-      ...(action === "top_up" && { top_up_url: "/api/billing/top-up" }),
+      ...(action === "top_up" && { top_up_url: "/get-key" }),
       ...(action === "upgrade" && { upgrade_url: "/pricing" }),
       ...(action === "contact_support" && {
         support_email: "service@riskmodels.app",

@@ -145,8 +145,8 @@ def main() -> None:
         client = RiskModelsClient.from_env()
     except ValueError as e:
         log_event(
-            "Missing credentials: set RISKMODELS_API_KEY, or RISKMODELS_CLIENT_ID "
-            f"and RISKMODELS_CLIENT_SECRET. ({e})",
+            f"Missing credentials: set RISKMODELS_API_KEY "
+            f"(get a key at https://riskmodels.app/get-key). ({e})",
             level="ERROR",
         )
         raise SystemExit(1) from e

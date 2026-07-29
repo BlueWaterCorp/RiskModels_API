@@ -51,7 +51,11 @@ Successfully synchronized the RiskModels_API repository with the Private Engine 
 ## New Endpoints Added
 
 ### Authentication & OAuth2
-- `POST /api/auth/token` - Generate OAuth2 access token
+- ~~`POST /api/auth/token` - Generate OAuth2 access token~~ — **never shipped.** This
+  endpoint and the `clientCredentials` scheme below (including the `tokenUrl` and scope
+  list) were planned but not implemented; the path returns 404. Corrected 2026-07-28.
+  The OAuth flow that does exist is authorization-code + PKCE at `/api/oauth/token`,
+  for MCP clients. See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) Mode 2.
 
 ### MCP Server
 - `GET /api/mcp/sse` - MCP SSE connection
@@ -144,7 +148,11 @@ headers:
 
 ## Implementation Details
 
-### OAuth2 Token Flow
+### OAuth2 Token Flow — never implemented
+
+> **Correction (2026-07-28):** the request/response shapes below describe a planned
+> `client_credentials` grant that was never built. `POST /api/auth/token` returns 404.
+> Retained as a record of what v3.0.0-agent announced, not as usable documentation.
 
 **Request:**
 ```bash
