@@ -73,6 +73,14 @@ Issues = "https://github.com/BlueWaterCorp/RiskModels_API/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["riskmodels"]
+# `snapshots/output/` is render output, not package data — nothing imports it, and
+# it is gitignored. Without this exclude hatchling sweeps in whatever PNGs happen
+# to be on the publisher's disk, so the artifact is not reproducible: 0.3.11
+# shipped 33 MB of one machine's local renders to every `pip install`.
+exclude = ["riskmodels/snapshots/output/**"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["riskmodels/snapshots/output/**"]
 
 [tool.ruff]
 line-length = 120
