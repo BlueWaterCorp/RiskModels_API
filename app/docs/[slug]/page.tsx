@@ -22,6 +22,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: doc.meta.title,
     description: doc.meta.description,
+    // Self-canonical. These pages are in the sitemap but emitted no canonical
+    // at all, so any query-string or trailing-slash variant Google reached
+    // competed with the clean URL. Resolves against metadataBase in layout.tsx.
+    //
+    // Deliberately NOT cross-domain. /docs/methodology points readers to
+    // riskmodels.org/methodology as the canonical home of the model spec, but
+    // it is a pointer with its own content (what stays in the API docs, how the
+    // L* rule maps onto API surfaces) — canonicalling it to .org would ask
+    // Google to drop a page that is not a duplicate. The .org relationship is
+    // expressed in prose and a link, which is the correct signal here.
+    alternates: { canonical: `/docs/${slug}` },
   };
 }
 
