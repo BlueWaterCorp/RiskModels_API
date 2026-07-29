@@ -153,7 +153,7 @@ const renderArtifactArgs = z.object({
   subject_id: z.string().min(1),
   version: z.string().default("v1"),
   as_of: z.string().default("latest"),
-  format: z.enum(["json", "png", "svg"]).default("json"),
+  format: z.enum(["json", "png", "svg", "figure"]).default("json"),
   subject_payload_json: z.string().default(""),
 });
 
@@ -1192,8 +1192,10 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
         },
         format: {
           type: "string",
-          enum: ["json", "png", "svg"],
-          description: "Output format, default json",
+          enum: ["json", "png", "svg", "figure"],
+          description:
+            "Output format, default json. 'figure' = Plotly figure spec for " +
+            "client-side rendering (Plotly-backed slugs only).",
         },
         subject_payload_json: {
           type: "string",

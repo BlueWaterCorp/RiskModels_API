@@ -39,9 +39,12 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .optional()
           .describe("YYYY-MM-DD or latest; filers need explicit filing period end"),
         format: z
-          .enum(["json", "png", "svg"])
+          .enum(["json", "png", "svg", "figure"])
           .optional()
-          .describe("Output format, default json"),
+          .describe(
+            "Output format, default json. 'figure' = Plotly figure spec for " +
+              "client-side rendering (Plotly-backed slugs only).",
+          ),
         subject_payload: z
           .record(z.string(), z.unknown())
           .optional()

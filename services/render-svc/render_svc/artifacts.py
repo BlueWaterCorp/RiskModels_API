@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import logging
 from datetime import datetime, timezone
@@ -65,6 +66,9 @@ _FORMAT_MIME: dict[str, str] = {
     "json": "application/json",
     "png": "image/png",
     "svg": "image/svg+xml",
+    # Plotly figure spec (``fig.to_json()``) — plotly.js renders it directly
+    # in the browser without a matplotlib/kaleido round-trip server-side.
+    "figure": "application/json",
 }
 
 
@@ -93,7 +97,7 @@ class ArtifactRenderRequest(BaseModel):
         description="ISO date 'YYYY-MM-DD' or the literal 'latest'",
         pattern=r"^(latest|\d{4}-\d{2}-\d{2})$",
     )
-    format: Literal["json", "png", "svg"] = "json"
+    format: Literal["json", "png", "svg", "figure"] = "json"
     subject_payload: dict[str, Any] | None = Field(
         default=None,
         description=(
@@ -569,6 +573,18 @@ def _render_bytes(
     ``RENDER_PARAMS``: a module too old to declare them means a deploy
     skew (render-svc image ahead of its ``bwmacro-src``), so fail 501
     rather than silently serve the default render.
+
+    ``format="figure"`` returns the Plotly figure spec (``fig.to_json()``)
+    so a browser can render it client-side via plotly.js without a
+    server-side kaleido/matplotlib rasterization round-trip. Only
+    Plotly-backed artifacts support it — some slugs' ``render_figure``
+    returns a PIL Image (``dd_peer_dna``) or a matplotlib Figure
+    (``variance_shares_bars``, ``lag_erosion``, ``turnover_bars``,
+    ``cumulative_panels``, ``rolling_residual_share``), neither of which
+    has ``.to_json()``. Detected by duck-typing on ``hasattr(fig,
+    "to_json")`` rather than a hardcoded slug list, since the artifact
+    module's own ``RENDER_FORMATS`` enum doesn't yet have a FIGURE member
+    to gate on (bwmacro._contract.RenderFormat is JSON/PNG/SVG today).
     """
     supplied = params or {}
     if supplied:
@@ -588,11 +604,33 @@ def _render_bytes(
         return json.dumps(
             mod.render_data(data, **supplied), separators=(",", ":")
         ).encode("utf-8")
-    fig = mod.render_figure(data, **supplied)
+    # ``spec_mode`` lets a module build its figure without resolving layout
+    # through Kaleido (which would launch headless Chrome — the very thing
+    # format="figure" exists to avoid). Modules that don't offer it are
+    # unaffected; plotly.js does the layout either way.
+    figure_kwargs = dict(supplied)
+    if fmt == "figure" and "spec_mode" in inspect.signature(
+        mod.render_figure
+    ).parameters:
+        figure_kwargs["spec_mode"] = True
+    fig = mod.render_figure(data, **figure_kwargs)
     if fmt == "png":
         return fig.to_image(format="png", scale=2.0)
     if fmt == "svg":
         return fig.to_image(format="svg")
+    if fmt == "figure":
+        to_json = getattr(fig, "to_json", None)
+        if to_json is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"format='figure' is only supported for Plotly-backed "
+                    f"artifacts; this slug's render_figure() returned a "
+                    f"{type(fig).__name__} (no .to_json()). Use format="
+                    f"'png' (or 'svg', if declared) instead."
+                ),
+            )
+        return to_json().encode("utf-8")
     raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt!r}")
 
 
