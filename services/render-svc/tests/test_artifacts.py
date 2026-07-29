@@ -996,3 +996,181 @@ class TestRenderArtifactWithParams:
         assert store.read(path5) is not None
         assert store.read(path10) is not None
         assert store.read(path_default) is not None
+
+
+# ── format="figure" (Plotly figure spec) ──────────────────────────────────
+
+
+class _FakePlotlyFigure:
+    """Stand-in for a Plotly ``go.Figure`` — has ``.to_json()``."""
+
+    def __init__(self, slug: str = "fake_slug"):
+        self._slug = slug
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "data": [{"type": "bar", "x": [1, 2], "y": [3, 4]}],
+                "layout": {"title": {"text": self._slug}},
+            }
+        )
+
+    def to_image(self, *, format: str, scale: float = 1.0) -> bytes:
+        return b"\x89PNG\r\n\x1a\nFAKE" if format == "png" else b"<svg>FAKE</svg>"
+
+
+class _FakeMplFigure:
+    """Stand-in for a matplotlib ``Figure`` (or PIL ``Image``) — no
+    ``.to_json()``, mirroring real slugs like ``variance_shares_bars`` /
+    ``dd_peer_dna`` that are not Plotly-backed."""
+
+    def to_image(self, *, format: str, scale: float = 1.0) -> bytes:
+        return b"\x89PNG\r\n\x1a\nFAKE-MPL"
+
+
+def _install_figure_fake_artifact(
+    monkeypatch, *, slug: str, applicable: tuple[str, ...], plotly_backed: bool,
+):
+    """Fake artifact module whose ``render_figure`` returns a Plotly-like
+    fake (``plotly_backed=True``) or a matplotlib/PIL-like fake with no
+    ``.to_json()`` (``plotly_backed=False``)."""
+    pkg_root = "bwmacro.snapshots.artifacts"
+    qualname = f"{pkg_root}.{slug}.v1"
+    for p in ["bwmacro", "bwmacro.snapshots", pkg_root, f"{pkg_root}.{slug}"]:
+        if p not in sys.modules:
+            sys.modules[p] = types.ModuleType(p)
+
+    mod = types.ModuleType(qualname)
+    mod.ARTIFACT_SLUG = slug
+    mod.ARTIFACT_VERSION = "v1"
+    mod.APPLICABLE_SUBJECT_KINDS = applicable
+    mod.RENDER_PARAMS = ("top_n",)
+    mod.render_data = lambda data, **kw: {"slug": slug}
+
+    fig = _FakePlotlyFigure(slug) if plotly_backed else _FakeMplFigure()
+    mod.render_figure = lambda data, **kw: fig
+    sys.modules[qualname] = mod
+
+    adapters_qual = f"{pkg_root}.adapters"
+    adapters_mod = sys.modules.get(adapters_qual) or types.ModuleType(adapters_qual)
+    if not hasattr(adapters_mod, "holdings_from_fund_data"):
+        adapters_mod.holdings_from_fund_data = (
+            lambda fd, top_n=12: list(fd.holdings)[:top_n]
+        )
+    sys.modules[adapters_qual] = adapters_mod
+    sys.modules[pkg_root].adapters = adapters_mod  # type: ignore[attr-defined]
+    return mod
+
+
+class TestFigureFormat:
+    """``format='figure'`` returns the Plotly figure spec (``fig.to_json()``)
+    for Plotly-backed slugs, and is rejected for slugs whose
+    ``render_figure`` returns a PIL/matplotlib object instead."""
+
+    def test_figure_format_returns_parseable_plotly_json(self, store, monkeypatch):
+        _install_figure_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), plotly_backed=True,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+
+        data, mime, gcs_path, *_ = render_artifact(
+            _req(format="figure"), store=store, prefix=PREFIX,
+        )
+
+        assert mime == "application/json"
+        assert gcs_path.endswith(".figure")
+        parsed = json.loads(data)
+        assert "data" in parsed
+        assert "layout" in parsed
+        assert parsed["layout"]["title"]["text"] == "top_holdings_erm_stacked"
+
+    def test_non_plotly_slug_rejects_figure_format(self, store, monkeypatch):
+        """``render_figure`` returning a matplotlib/PIL object (no
+        ``.to_json()``) must 400, not silently serve something bogus."""
+        _install_figure_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), plotly_backed=False,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(_req(format="figure"), store=store, prefix=PREFIX)
+        assert exc.value.status_code == 400
+        detail = str(exc.value.detail)
+        assert "figure" in detail
+        assert "to_json" in detail
+
+    def test_figure_format_still_writes_to_cache(self, store, monkeypatch):
+        _install_figure_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), plotly_backed=True,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+
+        _, _, gcs_path, *_ = render_artifact(
+            _req(format="figure"), store=store, prefix=PREFIX,
+        )
+        assert gcs_path in store.objects
+
+
+class TestFigureFormatCacheKey:
+    """Render params (Phase 3) participate in the cache key regardless of
+    output format; the no-params key must stay byte-identical to the
+    pre-``figure`` shape so existing cached renders aren't orphaned."""
+
+    def test_params_variants_produce_distinct_keys_under_figure_format(
+        self, store, monkeypatch
+    ):
+        _install_figure_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), plotly_backed=True,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+
+        _, _, path5, *_ = render_artifact(
+            _req(format="figure", params={"top_n": 5}), store=store, prefix=PREFIX,
+        )
+        _, _, path10, *_ = render_artifact(
+            _req(format="figure", params={"top_n": 10}), store=store, prefix=PREFIX,
+        )
+        _, _, path_default, *_ = render_artifact(
+            _req(format="figure"), store=store, prefix=PREFIX,
+        )
+
+        assert len({path5, path10, path_default}) == 3
+        assert store.read(path5) is not None
+        assert store.read(path10) is not None
+        assert store.read(path_default) is not None
+
+    def test_no_params_key_unchanged_from_pre_figure_shape(self):
+        """Legacy (no-params) key shape must be byte-identical to what it
+        was before 'figure' landed — same extension-as-format convention,
+        no stray fragment — so pre-existing cached json/png/svg renders
+        keep hitting."""
+        assert (
+            _artifact_gcs_path(
+                "snapshots", "top_holdings_erm_stacked", "v1",
+                "BW-FUND-S000004563", "2025-11-30", "json",
+            )
+            == "snapshots/artifacts/top_holdings_erm_stacked@v1/"
+               "BW-FUND-S000004563/2025-11-30.json"
+        )
+        assert _params_key_fragment({}) == ""
+
+    def test_figure_format_key_distinct_from_json_key(self, store, monkeypatch):
+        """Same slug/subject/as_of/params but different format → different
+        GCS key (format is part of the cache key, same as png vs svg)."""
+        _install_figure_fake_artifact(
+            monkeypatch, slug="top_holdings_erm_stacked",
+            applicable=("fund",), plotly_backed=True,
+        )
+        _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
+
+        _, _, json_path, *_ = render_artifact(
+            _req(format="json"), store=store, prefix=PREFIX,
+        )
+        _, _, figure_path, *_ = render_artifact(
+            _req(format="figure"), store=store, prefix=PREFIX,
+        )
+        assert json_path != figure_path
