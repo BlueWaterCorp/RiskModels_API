@@ -250,7 +250,25 @@ export interface BillingOptions {
   ) => Promise<{ inputTokens?: number; outputTokens?: number } | undefined>;
   inputTokens?: number;
   outputTokens?: number;
-  skipBilling?: boolean; // For free endpoints or internal use
+  /**
+   * Skip billing — and, importantly, **skip authentication**.
+   *
+   * The `skipBilling` branch below returns before key validation and calls the
+   * handler with `userId: ""`. A route wrapped this way is reachable by anyone
+   * on the internet; it is not "authenticated but free". Reading it as the
+   * latter is how `/api/funds/search` and `/api/13f/filers/search` shipped
+   * unauthenticated, unthrottled, and bulk-readable.
+   *
+   * If you set this, do one of:
+   *   - public by design → also set `publicIpRateLimitPerMinute`, and document
+   *     the limit on the endpoint in `OPENAPI_SPEC.yaml`; or
+   *   - it should require a key → authenticate inside the handler with
+   *     `authenticateOrRespond` (see `app/api/plaid/link-token/route.ts`), or
+   *     drop `skipBilling` and keep `cost_usd: 0` so the key is still checked.
+   *
+   * Enforced by `tests/skip-billing-public-guard.test.ts`.
+   */
+  skipBilling?: boolean;
   /**
    * When `skipBilling` is true, optionally still rate-limit by caller IP (Upstash Redis).
    * Use for public JSON intended for Shields.io or README embeds so traffic does not bypass all limits.
