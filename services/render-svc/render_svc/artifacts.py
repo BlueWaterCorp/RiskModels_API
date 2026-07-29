@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import logging
 from datetime import datetime, timezone
@@ -603,7 +604,16 @@ def _render_bytes(
         return json.dumps(
             mod.render_data(data, **supplied), separators=(",", ":")
         ).encode("utf-8")
-    fig = mod.render_figure(data, **supplied)
+    # ``spec_mode`` lets a module build its figure without resolving layout
+    # through Kaleido (which would launch headless Chrome — the very thing
+    # format="figure" exists to avoid). Modules that don't offer it are
+    # unaffected; plotly.js does the layout either way.
+    figure_kwargs = dict(supplied)
+    if fmt == "figure" and "spec_mode" in inspect.signature(
+        mod.render_figure
+    ).parameters:
+        figure_kwargs["spec_mode"] = True
+    fig = mod.render_figure(data, **figure_kwargs)
     if fmt == "png":
         return fig.to_image(format="png", scale=2.0)
     if fmt == "svg":
