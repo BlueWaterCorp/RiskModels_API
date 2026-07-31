@@ -6,7 +6,7 @@ Legacy S1/S2 (WeasyPrint) continue to use _theme.py until retired.
 Design Principles
 -----------------
 - Tufte-style minimalism: no chart junk, direct labeling, minimal ink
-- Professional sans-serif typography (Inter → Roboto → Helvetica)
+- House typography: Charter (exhibit titles) + Inter (everything analytical)
 - G10 continuous color scale, Prism discrete palette
 - Zero unnecessary whitespace (tight margins for snapshot composition)
 - plotly_white base template with all defaults overridden
@@ -110,9 +110,22 @@ class Palette:
 
 @dataclass(frozen=True)
 class Fonts:
-    """Professional sans-serif typography stack."""
+    """House typography for the Plotly tier.
 
-    family:     str = "Inter, Roboto, Helvetica, Arial, sans-serif"
+    Charter (bold) sets exhibit titles, Inter sets everything analytical —
+    the same system ``_typography`` binds for matplotlib. The two engines
+    must name the same faces or one page ends up set in two typefaces,
+    which is exactly what happened while this stack asked for Inter and
+    the host had none: matplotlib drew DejaVu Sans and Chrome drew
+    Helvetica.
+
+    ``Roboto`` is gone from the stack deliberately. It was never installed
+    anywhere and only served to push resolution one step further from the
+    face actually intended.
+    """
+
+    family:      str = "Inter, system-ui, Helvetica, Arial, sans-serif"
+    family_head: str = "Charter, Georgia, serif"
     family_mono: str = "JetBrains Mono, Fira Code, monospace"
 
     # Sizes (px for Plotly)
@@ -186,8 +199,11 @@ class PlotlyTheme:
                 "color": pal.text_dark,
             },
             "title": {
+                # Exhibit titles are the one place the serif runs — the
+                # house system puts Charter Bold on headings and Inter on
+                # everything analytical.
                 "font": {
-                    "family": fonts.family,
+                    "family": fonts.family_head,
                     "size": fonts.panel_title,
                     "color": pal.navy,
                 },

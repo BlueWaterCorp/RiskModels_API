@@ -769,12 +769,26 @@ def build_p1_from_zarr(
     as_of_date: str | None = None,
     sector_etf_override: str | None = None,
     subsector_etf_override: str | None = None,
+    envelope_rows: int | None = None,
 ) -> "P1Data":
     """Same :class:`P1Data` contract as ``get_data_for_p1``, sourced from zarr.
 
     See :func:`fetch_stock_context_zarr` for parameter docs.
+
+    ``envelope_rows`` widens the stored daily history (default 1Y). Zarr
+    already holds the full series, so a wider envelope costs read time and
+    output size, not another fetch — but ``years`` must cover it, and the
+    two are checked against each other rather than left to drift.
     """
-    from ._stock_data import build_p1_data_from_stock_context
+    from ._stock_data import ENVELOPE_ROWS_1Y, build_p1_data_from_stock_context
+
+    rows = ENVELOPE_ROWS_1Y if envelope_rows is None else int(envelope_rows)
+    if rows > int(252 * years):
+        raise ValueError(
+            f"envelope_rows={rows} needs at least {rows / 252:.1f} years of "
+            f"history but years={years} was requested; raise years so the "
+            "envelope is filled rather than silently short"
+        )
 
     ctx, rankings, macro_corr, macro_win = fetch_stock_context_zarr(
         ticker, zarr_root,
@@ -791,6 +805,7 @@ def build_p1_from_zarr(
         rankings=rankings,
         macro_correlations=macro_corr,
         macro_window=macro_win,
+        envelope_rows=rows,
     )
     # Populate human-readable classification (None when ETF not in registry).
     p1.sector_name = _sector_name_from_etf(p1.sector_etf)

@@ -334,9 +334,16 @@ def series_with_zero_start(series: list[tuple[str, float]]) -> list[tuple[str, f
 
     Used for cumulative-return charts so each line starts at 0% on the left;
     raw series begin at the first day's move instead of 0.
+
+    Idempotent: a series that already opens at exactly 0 is returned
+    unchanged. A windowed series is rebased to its anchor row and so opens
+    at 0 already — prepending there would draw a flat two-point segment
+    hanging off the left edge before the line starts moving.
     """
     if not series:
         return []
+    if float(series[0][1]) == 0.0:
+        return list(series)
     first = str(series[0][0])[:10]
     ts = pd.Timestamp(first)
     anchor = ts - pd.offsets.BDay(1)

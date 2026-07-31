@@ -786,6 +786,12 @@ def _start_render_watchdog(seconds: int) -> threading.Event | None:
 # Per-ticker render
 # -----------------------------------------------------------------------------
 
+from riskmodels.snapshots._stock_data import (  # noqa: E402
+    ENVELOPE_ROWS_1Y,
+    ENVELOPE_ROWS_5Y,
+)
+
+
 def _render_one(
     ticker: str,
     out_root: Path,
@@ -800,6 +806,7 @@ def _render_one(
     panels_gcs_root: str | None = None,
     inputs_mtime: float = 0.0,
     timeout_s: int = 0,
+    envelope_rows: int = ENVELOPE_ROWS_5Y,
 ) -> dict:
     """Render one ticker's DD to PNG + PDF. Returns a status dict for the log.
 
@@ -857,7 +864,16 @@ def _render_one(
     try:
         _arm_render_timeout(timeout_s)
         watchdog = _start_render_watchdog(timeout_s)
-        p1 = build_p1_from_zarr(ticker, zarr_root)
+        # Envelope, not display window. The registry panels serve trailing
+        # windows by subsetting this object offline, so it has to hold the
+        # longest one a user can ask for; the composed page still draws its
+        # own pinned window. See PANEL_PARAMETER_SURFACE_PROJECT §2 / §5b.
+        p1 = build_p1_from_zarr(
+            ticker,
+            zarr_root,
+            years=max(2, -(-envelope_rows // 252) + 1),
+            envelope_rows=envelope_rows,
+        )
 
         peer_comparison = None
         peer_error: str | None = None
@@ -1126,6 +1142,18 @@ def main() -> int:
         help="Per-ticker render budget in seconds (0 disables). A stuck ticker "
              "otherwise holds a pool slot forever and blocks the batch upload.",
     )
+    ap.add_argument(
+        "--envelope-rows", type=int, default=ENVELOPE_ROWS_5Y,
+        help=(
+            f"Trailing daily rows stored in each ticker's P1Data / panel "
+            f"inputs (default {ENVELOPE_ROWS_5Y} = 5Y, "
+            f"{ENVELOPE_ROWS_1Y} = the pre-2026-07 1Y). This is the *stored* "
+            "envelope, not the drawn window: registry panels serve 3M/6M/1Y/3Y "
+            "views by subsetting it offline, and the composed page draws its "
+            "own pinned window either way. Measured on NVDA, 5Y is ~711 KB per "
+            "ticker against ~158 KB at 1Y."
+        ),
+    )
     ap.add_argument("--resume", action="store_true",
                     help="Skip tickers whose PNG+PDF already exist in --out-dir, "
                          "post-date the newest zarr input (mtime gate), and — when "
@@ -1285,6 +1313,10 @@ def main() -> int:
     print(f"  upload_mode  : {upload_mode}")
     print(f"  workers      : {workers}")
     print(f"  ticker_tmout : {args.ticker_timeout}s")
+    print(
+        f"  envelope     : {args.envelope_rows} daily rows "
+        f"(~{args.envelope_rows / 252:.1f}Y stored per ticker)"
+    )
     print(f"  resume       : {args.resume}")
     print(f"  force        : {args.force}")
     # Under --resume a ticker is re-rendered when its outputs predate this.
@@ -1395,6 +1427,7 @@ def main() -> int:
                     resume=args.resume, force=args.force, renderer=args.renderer,
                     panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
                     inputs_mtime=inputs_mtime, timeout_s=args.ticker_timeout,
+                    envelope_rows=args.envelope_rows,
                 )
                 _log_result(row, i, logf)
         else:
@@ -1423,6 +1456,7 @@ def main() -> int:
                         resume=args.resume, force=args.force, renderer=args.renderer,
                         panels=args.panels, panels_gcs_root=args.panels_gcs_root or None,
                         inputs_mtime=inputs_mtime, timeout_s=args.ticker_timeout,
+                        envelope_rows=args.envelope_rows,
                     ): (i, t)
                     for i, t in enumerate(tickers, start=1)
                     if t not in fresh

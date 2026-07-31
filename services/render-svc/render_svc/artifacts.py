@@ -40,6 +40,8 @@ import importlib
 import inspect
 import json
 import logging
+import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
@@ -78,12 +80,34 @@ class ArtifactParams(BaseModel):
     Which keys apply to which slug is enforced in ``render_artifact`` via
     ``_SLUG_PARAMS`` — unknown keys are rejected here (422) so a typo'd
     param can never silently fall back to the default render.
+
+    Every field here is a *render-time* knob: it subsets data the cached
+    artifact input already holds, so it is served by re-rendering, never
+    by recomputing from zarr (PANEL_PARAMETER_SURFACE_PROJECT §2).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     top_n: int | None = Field(default=None, ge=1, le=50)
-    window: Literal["3m", "6m", "1y", "2y", "max"] | None = None
+    # Cohort truncation. Distinct from ``top_n`` on purpose: ``top_n``
+    # ranks rows within one subject's holdings, ``peer_n`` narrows a
+    # cohort of subjects, and a cohort knob invalidates every cohort-level
+    # aggregate (§5c) while a holdings knob does not.
+    peer_n: int | None = Field(default=None, ge=1, le=50)
+    window: Literal["3m", "6m", "1y", "2y", "3y", "5y", "max"] | None = None
+    # Row ordering. The accepted vocabulary differs per slug (a watchlist
+    # sorts by ER layer, a risk-DNA cohort by residual share or σ), so the
+    # artifact module validates the value and 422s through the same path
+    # an out-of-range int would take.
+    sort_by: str | None = Field(default=None, min_length=1, max_length=32)
+    # Cascade-layer selection, comma-separated ("sector,residual"). A
+    # string rather than a list so it survives a query string and a GCS
+    # key fragment unchanged.
+    layers: str | None = Field(
+        default=None, min_length=1, max_length=64, pattern=r"^[a-z]+(,[a-z]+)*$"
+    )
+    # A specific observation date for history-navigating panels.
+    date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ArtifactRenderRequest(BaseModel):
@@ -111,9 +135,13 @@ class ArtifactRenderRequest(BaseModel):
     params: ArtifactParams | None = Field(
         default=None,
         description=(
-            "Per-slug render parameters. top_holdings_erm_stacked accepts "
-            "top_n (int 1-50, default 12); cumulative_return_strip accepts "
-            "window ('3m'|'6m'|'1y'|'2y'|'max', default 'max'). Params "
+            "Per-slug render parameters; see _SLUG_PARAMS for the map. "
+            "top_n (int 1-50) on top_holdings_erm_stacked and "
+            "hedge_notionals_hbar; peer_n on risk_dna_stacked; window "
+            "('3m'|'6m'|'1y'|'2y'|'3y'|'5y'|'max') on the cumulative and "
+            "historical panels; sort_by on the row-ordered cohort panels; "
+            "layers (comma-separated cascade levels) on the ER bar panels; "
+            "date (YYYY-MM-DD) on historical_risk_waterfall. Params "
             "participate in the GCS cache key — each distinct combination "
             "renders once under its own key."
         ),
@@ -148,9 +176,23 @@ def _artifact_gcs_path(
 # Which params each slug honors (Phase 3). Keys must be a subset of the
 # ArtifactParams fields; the artifact module's RENDER_PARAMS declaration
 # is the module-side gate (deploy-skew guard in _render_bytes).
+#
+# This map and the modules' RENDER_PARAMS must agree. They are checked
+# against each other in the tests rather than derived from one another at
+# import time: this service must be able to 422 an inapplicable param
+# before importing any artifact module (the fast-fail path in
+# ``_supplied_params``), and it must 501 rather than 500 when the image's
+# bwmacro-src predates a declaration.
 _SLUG_PARAMS: dict[str, frozenset[str]] = {
     "top_holdings_erm_stacked": frozenset({"top_n"}),
     "cumulative_return_strip": frozenset({"window"}),
+    "position_cumulative_decomposition": frozenset({"window"}),
+    "l3_explained_risk_hbar": frozenset({"layers"}),
+    "active_risk_composition": frozenset({"layers"}),
+    "hedge_notionals_hbar": frozenset({"top_n"}),
+    "watchlist_er_stacked": frozenset({"top_n", "sort_by"}),
+    "risk_dna_stacked": frozenset({"peer_n", "sort_by"}),
+    "historical_risk_waterfall": frozenset({"date", "window"}),
 }
 
 
@@ -182,12 +224,25 @@ def _params_key_fragment(supplied: dict[str, Any]) -> str:
 
     Empty → ``""`` (legacy key shape, so pre-params cache entries still
     hit). Non-empty → ``".top_n-5"`` / ``".window-3m"`` (sorted,
-    ``+``-joined). Values are validated ints/enums, so the fragment is
-    path-safe.
+    ``+``-joined).
+
+    Values reach here already validated by ``ArtifactParams``, but not all
+    of them are ints and enums any more: ``layers`` carries commas and
+    ``date`` carries dashes. Anything outside ``[A-Za-z0-9._-]`` is
+    replaced so the fragment stays a safe object-name component, and the
+    substitution is injective enough for cache purposes because the
+    validated vocabularies contain no two values that differ only in a
+    replaced character.
     """
     if not supplied:
         return ""
-    return "." + "+".join(f"{k}-{supplied[k]}" for k in sorted(supplied))
+    return "." + "+".join(
+        f"{k}-{_key_safe(supplied[k])}" for k in sorted(supplied)
+    )
+
+
+def _key_safe(value: Any) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", str(value))
 
 
 def _import_artifact_module(slug: str, version: str) -> Any:
@@ -563,6 +618,27 @@ def _resolve_stock_watchlist(
     return payloads, resolved_subject_id, resolved_as_of
 
 
+@contextmanager
+def _param_errors_as_422(supplied: dict[str, Any]):
+    """Turn a module's param-validation ``ValueError`` into a 422.
+
+    ``ArtifactParams`` can only check a param's *shape* — an int range, a
+    date pattern, a comma-separated word list. Which values a given slug
+    actually accepts (``sort_by="residual"``, ``layers="sector,market"``,
+    a ``date`` the pinned series carries) is the artifact module's to
+    know, and it says so by raising. That is a bad request, not a service
+    fault, so it must not surface as a 500 — a 500 tells the caller to
+    retry something that will never succeed.
+    """
+    try:
+        yield
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid render params {supplied}: {exc}",
+        ) from exc
+
+
 def _render_bytes(
     mod: Any, data: Any, fmt: str, params: dict[str, Any] | None = None
 ) -> bytes:
@@ -601,9 +677,9 @@ def _render_bytes(
                 ),
             )
     if fmt == "json":
-        return json.dumps(
-            mod.render_data(data, **supplied), separators=(",", ":")
-        ).encode("utf-8")
+        with _param_errors_as_422(supplied):
+            payload = mod.render_data(data, **supplied)
+        return json.dumps(payload, separators=(",", ":")).encode("utf-8")
     # ``spec_mode`` lets a module build its figure without resolving layout
     # through Kaleido (which would launch headless Chrome — the very thing
     # format="figure" exists to avoid). Modules that don't offer it are
@@ -613,7 +689,8 @@ def _render_bytes(
         mod.render_figure
     ).parameters:
         figure_kwargs["spec_mode"] = True
-    fig = mod.render_figure(data, **figure_kwargs)
+    with _param_errors_as_422(supplied):
+        fig = mod.render_figure(data, **figure_kwargs)
     if fmt == "png":
         return fig.to_image(format="png", scale=2.0)
     if fmt == "svg":

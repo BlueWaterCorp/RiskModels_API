@@ -74,12 +74,14 @@ class Palette:
 class Typography:
     """Font sizes and families.
 
-    Preferred font is Inter (bundled). Falls back through Liberation Sans →
-    DejaVu Sans if Inter is unavailable (e.g. minimal Docker images).
+    Charter (bold) sets headlines, Inter sets everything analytical; the
+    role -> file binding lives in ``_typography``, which is what renderers
+    should ask rather than naming a family here.
     """
 
     family:        str = "Inter"
-    family_fallback: tuple[str, ...] = ("Liberation Sans", "DejaVu Sans", "Arial", "Helvetica")
+    family_serif:  str = "Charter"   # headlines — see _typography
+    family_fallback: tuple[str, ...] = ("Helvetica Neue", "Arial", "DejaVu Sans")
     family_mono:   str = "Liberation Mono"
 
     # Sizes (points)
@@ -172,10 +174,17 @@ class Theme:
         font directory, so the font is available on any machine without
         requiring a system-level install.
         """
-        # ── Register bundled fonts (Inter) if available ────────────
+        # ── Register bundled faces + vector-output settings ────────
+        # _typography binds each role to an explicit bundled file: naming a
+        # family lets whatever the host has installed win, which is how this
+        # theme spent its life declaring Inter and drawing DejaVu Sans.
         _register_bundled_fonts()
-
         rc = mpl.rcParams
+        try:
+            from ._typography import apply_rcparams as _apply_type
+            _apply_type(rc)
+        except Exception:  # pragma: no cover - never block a render on fonts
+            pass
         rc["figure.facecolor"]  = self.palette.fig_bg
         rc["axes.facecolor"]    = self.palette.panel_bg
         rc["axes.edgecolor"]    = self.palette.border
@@ -193,8 +202,6 @@ class Theme:
         rc["ytick.labelsize"]   = self.type.axis_tick
         rc["xtick.color"]       = self.palette.text_mid
         rc["ytick.color"]       = self.palette.text_mid
-        rc["font.family"]       = "sans-serif"
-        rc["font.sans-serif"]   = [self.type.family, *self.type.family_fallback]
         rc["font.size"]         = self.type.body
         rc["legend.fontsize"]   = self.type.axis_tick
         rc["legend.frameon"]    = False
@@ -246,17 +253,23 @@ def _register_bundled_fonts() -> None:
     import os
 
     search_dirs = [
+        os.path.join(os.path.dirname(__file__), "fonts"),   # shipped with the SDK
+        os.path.expanduser("~/Library/Fonts"),              # macOS user install
         os.path.expanduser("~/.local/share/fonts"),
-        os.path.join(os.path.dirname(__file__), "fonts"),
         "/usr/share/fonts/truetype/inter",
     ]
 
+    # Both extensions and both families: the shipped faces are .otf, and the
+    # previous glob (``Inter-*.ttf``) matched none of them — so "bundled
+    # Inter" registered nothing even on a machine that had it.
+    patterns = ("Inter-*.otf", "Inter-*.ttf", "InterTabular-*.otf", "Charter*.otf")
     for d in search_dirs:
-        for ttf in glob.glob(os.path.join(d, "Inter-*.ttf")):
-            try:
-                font_manager.fontManager.addfont(ttf)
-            except Exception:
-                pass
+        for pattern in patterns:
+            for f in glob.glob(os.path.join(d, pattern)):
+                try:
+                    font_manager.fontManager.addfont(f)
+                except Exception:
+                    pass
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────

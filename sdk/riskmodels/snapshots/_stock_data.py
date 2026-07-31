@@ -38,6 +38,13 @@ from ._data import (
 WINDOWS = {"1d": 1, "5d": 5, "1m": 21, "3m": 63, "6m": 126, "1y": 252}
 WINDOW_LABELS = ["1d", "5d", "1m", "3m", "6m", "1y"]
 
+# How many trailing daily rows a built P1Data stores. The 1Y default is what
+# the reference renderer draws; a caller that serves trailing-window views of
+# a cached P1Data passes a wider envelope so those views are a subset rather
+# than a refetch.
+ENVELOPE_ROWS_1Y: int = 252
+ENVELOPE_ROWS_5Y: int = 1260
+
 CFR_L1_COL = "l1_combined_factor_return"
 CFR_L2_COL = "l2_combined_factor_return"
 CFR_L3_COL = "l3_combined_factor_return"
@@ -272,17 +279,26 @@ def build_p1_data_from_stock_context(
     rankings: dict[str, Any] | None = None,
     macro_correlations: dict[str, Any] | None = None,
     macro_window: str | None = None,
+    envelope_rows: int | None = None,
 ) -> "P1Data":
     """Assemble :class:`P1Data` from a :class:`StockContext`.
 
     Production path: :func:`fetch_stock_context` → this function with ``client`` set.
     Zarr path: :func:`riskmodels.snapshots.zarr_context.fetch_stock_context_zarr`
     → this function with ``client=None``, pre-filled ``rankings`` and macro.
+
+    ``envelope_rows`` is how many trailing daily rows the built P1Data keeps
+    (default :data:`ENVELOPE_ROWS_1Y`). A consumer that serves trailing-window
+    views of this object without recomputing needs the object to hold the
+    longest window it will ever be asked for; anything past the envelope is a
+    live-compute request, not a display choice.
     """
     m = ctx.metrics
     vol_23d = m.get("vol_23d")
 
-    def _tail(df: pd.DataFrame | None, days: int = 252) -> pd.DataFrame | None:
+    rows = ENVELOPE_ROWS_1Y if envelope_rows is None else int(envelope_rows)
+
+    def _tail(df: pd.DataFrame | None, days: int = rows) -> pd.DataFrame | None:
         if df is None or df.empty:
             return df
         return df.iloc[-days:].reset_index(drop=True)

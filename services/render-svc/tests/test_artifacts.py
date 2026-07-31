@@ -869,8 +869,11 @@ class TestParamsValidation:
             _req(params={"top_n": 51})
 
     def test_window_enum_enforced(self):
+        # "5y" is in the enum (historical_risk_waterfall navigates that far
+        # back); "7y" is not, and an unlisted rung must not reach a module
+        # that would clamp it to the stored envelope and look honored.
         with pytest.raises(ValueError):
-            _req(slug="cumulative_return_strip", params={"window": "5y"})
+            _req(slug="cumulative_return_strip", params={"window": "7y"})
 
     def test_valid_params_round_trip(self):
         req = _req(params={"top_n": 5})
@@ -1174,3 +1177,101 @@ class TestFigureFormatCacheKey:
             _req(format="figure"), store=store, prefix=PREFIX,
         )
         assert json_path != figure_path
+
+
+
+
+# ── _SLUG_PARAMS ↔ the real artifact modules ──────────────────────────────
+#
+# Everything above runs against fake modules, which is right for the
+# wiring (that a declared param reaches render_data / render_figure and
+# lands in the cache key) and useless for the agreement: the fake
+# declares whatever the test asks it to. PANEL_PARAMETER_SURFACE_PROJECT
+# §8b — "green suites over fakes prove the wiring, not the integration."
+#
+# The check runs in a subprocess for two reasons. The fakes above are
+# installed by raw ``sys.modules`` assignment and are never removed, so an
+# in-process import of ``bwmacro`` here would silently inspect a fake and
+# pass. And ``bwmacro`` is not a render-svc dependency — it is mounted
+# into the deployed image as ``bwmacro-src`` — so this must skip cleanly
+# where it is absent rather than fail the local suite.
+
+import subprocess  # noqa: E402
+
+from render_svc.artifacts import _SLUG_PARAMS, ArtifactParams  # noqa: E402
+
+_PROBE = """
+import importlib, inspect, json, sys
+slugs = json.loads(sys.argv[1])
+out = {}
+for slug in slugs:
+    mod = importlib.import_module("bwmacro.snapshots.artifacts.%s.v1" % slug)
+    entry = {"declared": sorted(getattr(mod, "RENDER_PARAMS", ()) or ())}
+    for form in ("render_data", "render_figure"):
+        fn = getattr(mod, form, None)
+        if fn is None:
+            entry[form] = None
+            continue
+        sig = inspect.signature(fn)
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            entry[form] = "**kwargs"
+        else:
+            entry[form] = sorted(sig.parameters)
+    out[slug] = entry
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def real_module_params() -> dict:
+    slugs = sorted(_SLUG_PARAMS)
+    probe = subprocess.run(
+        [sys.executable, "-c", _PROBE, json.dumps(slugs)],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        pytest.skip(
+            "bwmacro artifact modules not importable in this environment "
+            f"(bwmacro-src is mounted into the deployed image): "
+            f"{probe.stderr.strip().splitlines()[-1] if probe.stderr.strip() else ''}"
+        )
+    return json.loads(probe.stdout)
+
+
+class TestSlugParamsMatchModules:
+    def test_module_declares_exactly_what_the_service_offers(self, real_module_params):
+        """A param this service accepts but the module does not declare is a
+        501 at request time; one the module declares but the service rejects
+        is unreachable. Both stay invisible until a user tries the knob."""
+        mismatched = {
+            slug: {"module": entry["declared"], "service": sorted(_SLUG_PARAMS[slug])}
+            for slug, entry in real_module_params.items()
+            if set(entry["declared"]) != set(_SLUG_PARAMS[slug])
+        }
+        assert not mismatched, f"RENDER_PARAMS / _SLUG_PARAMS disagree: {mismatched}"
+
+    def test_both_render_forms_accept_every_declared_param(self, real_module_params):
+        """render-svc splats the same params into render_data and
+        render_figure, so a param only one of them takes is a TypeError in
+        production — on whichever format the caller happened to ask for."""
+        missing = []
+        for slug, entry in real_module_params.items():
+            for form in ("render_data", "render_figure"):
+                accepted = entry[form]
+                if accepted is None or accepted == "**kwargs":
+                    continue
+                for param in sorted(_SLUG_PARAMS[slug]):
+                    if param not in accepted:
+                        missing.append(f"{slug}.{form}({param})")
+        assert not missing, f"declared params not accepted: {missing}"
+
+    def test_every_offered_param_is_an_artifact_params_field(self):
+        """No subprocess needed — this one is entirely about this service."""
+        fields = set(ArtifactParams.model_fields)
+        unknown = {
+            slug: sorted(set(params) - fields)
+            for slug, params in _SLUG_PARAMS.items()
+            if set(params) - fields
+        }
+        assert not unknown, f"slugs offering non-ArtifactParams keys: {unknown}"
