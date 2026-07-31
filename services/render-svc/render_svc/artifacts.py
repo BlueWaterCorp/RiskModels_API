@@ -40,6 +40,7 @@ import importlib
 import inspect
 import json
 import logging
+import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -361,9 +362,23 @@ def _payload_hash(positions: list[dict]) -> str:
     digest. Truncates to 16 hex chars (64 bits) — enough collision
     resistance for an artifact-registry cache key, short enough to stay
     readable in URLs and logs.
+
+    Salted with ``RENDER_SVC_SUBJECT_SALT``. Derived from content alone, the
+    digest is reproducible by anyone holding the same positions, so the subject
+    id cannot be treated as opaque. The salt makes it opaque while preserving
+    render-once dedup: the same portfolio from two callers still resolves to
+    one cache key. Joined with a NUL separator so two ``(salt, payload)`` pairs
+    cannot collide by concatenation.
+
+    Rotating or first setting the salt re-keys every ``client_portfolio``
+    artifact: existing cached objects are orphaned and the next request for
+    each re-renders. That is a cost and cache-occupancy event, not a
+    correctness one.
     """
     canonical = json.dumps(positions, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    salt = os.environ.get("RENDER_SVC_SUBJECT_SALT", "")
+    digest_input = f"{salt}\x00{canonical}" if salt else canonical
+    return hashlib.sha256(digest_input.encode("utf-8")).hexdigest()[:16]
 
 
 def _resolve_client_portfolio(
@@ -520,8 +535,6 @@ def _ticker_from_stock_subject_id(subject_id: str) -> str:
 
 def _fetch_decompose(ticker: str) -> dict[str, Any]:
     """Call RiskModels ``POST /api/decompose`` with service credentials."""
-    import os
-
     import requests
 
     api_key = (
