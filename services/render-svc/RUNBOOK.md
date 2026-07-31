@@ -239,6 +239,44 @@ one is minted (tracked under MASTER_BACKLOG O.6).
 
 ---
 
+## Portfolio subject-id salt (`RENDER_SVC_SUBJECT_SALT`)
+
+`client_portfolio` subjects are addressed as `BW-PORTFOLIO-<digest>`, where the
+digest comes from `render_svc/artifacts.py::_payload_hash`. Derived from content
+alone, the digest is reproducible by anyone holding the same positions, so the
+id cannot be treated as opaque. The salt makes it opaque while preserving
+render-once dedup: the same portfolio still resolves to one cache key.
+
+Unset, `_payload_hash` falls back to its previous form, so the service starts
+and existing cached objects keep resolving. Set it.
+
+- **SSOT:** Doppler `erm3/prd` → `RENDER_SVC_SUBJECT_SALT`
+- **Runtime:** GCP Secret Manager secret `render-svc-subject-salt`, mounted as
+  env var `RENDER_SVC_SUBJECT_SALT`
+
+```bash
+# Mint (once). Any high-entropy value; it is never transmitted or displayed.
+openssl rand -hex 32 | doppler secrets set RENDER_SVC_SUBJECT_SALT \
+  --project erm3 --config prd
+doppler secrets get RENDER_SVC_SUBJECT_SALT --project erm3 --config prd --plain \
+  | gcloud secrets create render-svc-subject-salt --data-file=-
+gcloud run services update render-svc --region us-central1 \
+  --update-secrets RENDER_SVC_SUBJECT_SALT=render-svc-subject-salt:latest
+```
+
+**Setting or rotating this re-keys every `client_portfolio` artifact.** Objects
+under the old digest are orphaned and the next request for each re-renders.
+That is a cost and cache-occupancy event, not a correctness one — no user sees
+a wrong artifact. Set it before any consumer starts persisting the subject id,
+so no stored reference is invalidated. Orphaned objects under
+`gs://rm_api_data/snapshots/artifacts/*/BW-PORTFOLIO-*/` can be swept
+separately; nothing reads them once the salt changes.
+
+Rotation is otherwise not routine: the salt is not a credential and holding it
+grants no access, so rotate only if the value itself is disclosed.
+
+---
+
 ## Monitoring + rollback
 
 - **Logs:** Cloud Run console → Logs (or `gcloud run services logs tail render-svc`)

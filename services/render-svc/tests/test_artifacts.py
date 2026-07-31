@@ -407,6 +407,43 @@ class TestPayloadHash:
         # hex-only
         assert all(c in "0123456789abcdef" for c in h)
 
+    def test_salt_changes_the_digest(self, monkeypatch):
+        """The salt is what makes the subject id opaque.
+
+        Without it the digest is reproducible by anyone holding the same
+        positions, so the id could not be treated as an opaque handle.
+        """
+        positions = [{"ticker": "AAPL", "weight": 0.5}]
+        monkeypatch.delenv("RENDER_SVC_SUBJECT_SALT", raising=False)
+        unsalted = _payload_hash(positions)
+        monkeypatch.setenv("RENDER_SVC_SUBJECT_SALT", "s3cr3t")
+        assert _payload_hash(positions) != unsalted
+
+    def test_salt_preserves_dedup(self, monkeypatch):
+        """Render-once still holds: one portfolio, one cache key, any caller."""
+        monkeypatch.setenv("RENDER_SVC_SUBJECT_SALT", "s3cr3t")
+        a = [{"ticker": "NVDA", "weight": 0.2}, {"weight": 0.1, "ticker": "AAPL"}]
+        b = [{"weight": 0.2, "ticker": "NVDA"}, {"ticker": "AAPL", "weight": 0.1}]
+        assert _payload_hash(a) == _payload_hash(b)
+
+    def test_distinct_salts_give_distinct_digests(self, monkeypatch):
+        positions = [{"ticker": "AAPL", "weight": 0.5}]
+        monkeypatch.setenv("RENDER_SVC_SUBJECT_SALT", "one")
+        first = _payload_hash(positions)
+        monkeypatch.setenv("RENDER_SVC_SUBJECT_SALT", "two")
+        assert _payload_hash(positions) != first
+
+    def test_salt_separator_blocks_boundary_collisions(self, monkeypatch):
+        """`salt + canonical` alone would let two (salt, payload) pairs collide.
+
+        The NUL separator makes the concatenation unambiguous.
+        """
+        positions = [{"ticker": "A", "weight": 1.0}]
+        monkeypatch.setenv("RENDER_SVC_SUBJECT_SALT", "ab")
+        with_ab = _payload_hash(positions)
+        monkeypatch.setenv("RENDER_SVC_SUBJECT_SALT", "a")
+        assert _payload_hash(positions) != with_ab
+
 
 class TestClientPortfolioPath:
     def _payload(self):
