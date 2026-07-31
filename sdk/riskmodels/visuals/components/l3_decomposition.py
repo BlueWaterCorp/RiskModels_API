@@ -164,7 +164,7 @@ def plot_l3_decomposition_from_data(
                 "(L3 market/sector/subsector RR + HR residual)"
             )
         else:
-            x_title = "Annualized σ × variance share (total length ∝ σ)"
+            x_title = "Annualized σ × variance share (total length scales with σ)"
     else:
         mkt_v, sec_v, sub_v, res_v = mkt, sec, sub, res
         x_title = (
