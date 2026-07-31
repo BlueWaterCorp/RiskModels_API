@@ -217,3 +217,29 @@ def test_uploaded_partial_is_not_fingerprint_recorded(bdr):
         "recording a failed per-ticker upload as fingerprint-current means the "
         "upload is never retried"
     )
+
+
+def test_snapshot_page_saves_through_a_tmp_suffix(tmp_path):
+    """`foo.png.tmp` must write a PNG, not raise on an unknown format.
+
+    The bulk runner renders to temp names and os.replace()s them into place
+    only after every output succeeds (H.119). matplotlib infers format from
+    the extension, so a `.tmp` suffix made savefig raise "Format 'tmp' is not
+    supported" — which meant the public renderer failed on every ticker in the
+    batch while the mocked tests stayed green, because they never reach a real
+    savefig.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from riskmodels.snapshots._page import SnapshotPage
+
+    for ext in ("png", "pdf"):
+        out = tmp_path / f"X_DD_latest.{ext}.tmp"
+        SnapshotPage("X", "tmp-suffix save").save(out)
+        assert out.exists() and out.stat().st_size > 0, f"{ext} temp write produced nothing"
+
+    # An ordinary extension still infers normally.
+    plain = tmp_path / "X_DD_latest.png"
+    SnapshotPage("X", "tmp-suffix save").save(plain)
+    assert plain.exists() and plain.stat().st_size > 0

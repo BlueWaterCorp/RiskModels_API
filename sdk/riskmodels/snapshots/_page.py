@@ -105,14 +105,26 @@ class SnapshotPage:
         ax.set_facecolor(THEME.palette.panel_bg)
         return ax
 
-    def save(self, path: str | Path) -> Path:
-        """Save to PDF, PNG, or any format Matplotlib supports and close."""
+    def save(self, path: str | Path, *, format: str | None = None) -> Path:
+        """Save to PDF, PNG, or any format Matplotlib supports and close.
+
+        ``format`` defaults to the file's extension, except that a trailing
+        ``.tmp`` is looked through: callers that render to ``foo.png.tmp`` and
+        promote with ``os.replace`` only after every output succeeds want a
+        PNG, and matplotlib would otherwise infer the format as "tmp" and
+        refuse. The bulk DD runner writes exactly those names, so without this
+        every ticker on the public renderer fails at the first savefig.
+        """
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
+        if format is None and p.suffix.lower() == ".tmp":
+            real = Path(p.stem).suffix.lstrip(".")
+            format = real or None
         self.fig.savefig(
             str(p),
             dpi=THEME.layout.dpi,
             facecolor=self.fig.get_facecolor(),
+            **({"format": format} if format else {}),
         )
         plt.close(self.fig)
         return p
