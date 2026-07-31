@@ -153,7 +153,14 @@ def _patch_render_stack(monkeypatch, *, pdf_fails: bool):
     import riskmodels.snapshots.zarr_context as zarr_context
     import riskmodels.snapshots.zarr_peer_analytics as zarr_peer_analytics
 
-    monkeypatch.setattr(zarr_context, "build_p1_from_zarr", lambda t, z: object())
+    # **kw, not a fixed arity: these tests assert the promote-atomically
+    # behavior, and a fake that pins the loader's signature fails whenever
+    # that signature legitimately grows (it gained years/envelope_rows with
+    # the 5Y stored envelope) — reporting a rendering defect that is really
+    # a stale stub.
+    monkeypatch.setattr(
+        zarr_context, "build_p1_from_zarr", lambda t, z, **kw: object()
+    )
     monkeypatch.setattr(
         zarr_peer_analytics, "build_peer_comparison_from_zarr", lambda t, z: None
     )
