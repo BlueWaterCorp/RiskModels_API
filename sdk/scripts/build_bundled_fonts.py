@@ -146,10 +146,58 @@ def verify(src_dir: Path) -> int:
         print(f"\n{bugs} face(s) lost glyphs in subsetting. Widen UNICODES and "
               "rebuild — a dropped glyph prints as a tofu box.", file=sys.stderr)
     elif upstream_gaps:
-        print(f"\nClean. {upstream_gaps} glyph(s) the code contains are absent "
-              "from upstream Inter (∈ ∝ ≡); matplotlib falls back for those. "
-              "Only ∝ reaches rendered text — attribution_cascade's title.")
+        absent = _absent_from_upstream(src_dir, wanted)
+        exposed = _on_code_lines(absent)
+        chars = " ".join(chr(c) for c in sorted(absent))
+        print(f"\nClean. {len(absent)} glyph(s) the code contains are absent "
+              f"from upstream Inter ({chars}); matplotlib falls back for those.")
+        if exposed:
+            print("  On non-comment lines — check whether these are strings a "
+                  "renderer draws (a docstring is fine, a title= is not):")
+            for c, where in exposed:
+                print(f"    {chr(c)}  {where}")
+        else:
+            print("  All of them sit in comments — nothing to do.")
     return 1 if bugs else 0
+
+
+def _absent_from_upstream(src_dir: Path, wanted: set[int]) -> set[int]:
+    src = src_dir / "Inter-Regular.otf"
+    if not src.is_file():
+        return set()
+    cmap = TTFont(src, lazy=True).getBestCmap()
+    return {c for c in wanted if c not in cmap}
+
+
+def _on_code_lines(absent: set[int]) -> list[tuple[int, str]]:
+    """Which absent glyphs sit on a line that is not a comment.
+
+    A rough proxy for "reaches rendered text": a glyph in a ``title=`` or a
+    string assignment will be drawn, one in a ``#`` comment will not. Rough is
+    the right level here — the point is to stop the script asserting a fixed
+    claim about which glyphs are exposed, since that claim goes stale the
+    moment someone rewords a title.
+    """
+    out: list[tuple[int, str]] = []
+    for code in sorted(absent):
+        ch = chr(code)
+        for root in SCAN_ROOTS:
+            for path in root.rglob("*.py"):
+                try:
+                    lines = path.read_text().splitlines()
+                except (OSError, UnicodeDecodeError):
+                    continue
+                for n, line in enumerate(lines, 1):
+                    if ch in line and not line.lstrip().startswith("#"):
+                        out.append((code, f"{path.name}:{n}"))
+                        break
+                else:
+                    continue
+                break
+            else:
+                continue
+            break
+    return out
 
 
 def subset(src: Path, dest: Path) -> None:

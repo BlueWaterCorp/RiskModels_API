@@ -168,7 +168,7 @@ def plot_risk_cascade_from_data(
     fig.update_layout(
         title=dict(text=title_text),
         xaxis=dict(
-            title="Position (width ∝ weight; adjacent, no gaps)",
+            title="Position (width scales with weight; adjacent, no gaps)",
             range=[0.0, 1.0],
             showgrid=True,
             tickmode="array",

@@ -35,7 +35,24 @@ from ._data import (
 
 # ── Windowing + decomposition column names ────────────────────────────────
 
-WINDOWS = {"1d": 1, "5d": 5, "1m": 21, "3m": 63, "6m": 126, "1y": 252}
+# Trailing-return windows, in trading rows.
+#
+# 3y and 5y are computed but deliberately absent from WINDOW_LABELS: the
+# rendered trailing-returns table shows the same six columns it always has.
+# They exist so a windowed cumulative render can be checked against a scalar
+# the metrics path computed independently — the cross-check that caught a
+# rebase off-by-one during prototyping, where 3M read +9.0% against a true
+# +12.3%. Without them the two rungs the 5Y envelope unlocked would be the
+# only ones nothing verifies.
+#
+# They cost one extra reduction over a series already in memory, and yield
+# None on a history shorter than the window, same as every other entry.
+WINDOWS = {
+    "1d": 1, "5d": 5, "1m": 21, "3m": 63, "6m": 126, "1y": 252,
+    "3y": 756, "5y": 1260,
+}
+
+# What the trailing-returns table renders. Not WINDOWS — see above.
 WINDOW_LABELS = ["1d", "5d", "1m", "3m", "6m", "1y"]
 
 # How many trailing daily rows a built P1Data stores. The 1Y default is what

@@ -25,13 +25,21 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PORT=8080
 
-# matplotlib needs freetype + libpng. fonts-dejavu-core is the fallback when
-# the bundled Inter font isn't present (the F1 renderer logs warnings but
-# falls through cleanly).
+# matplotlib needs freetype + libpng. fonts-dejavu-core stays as a last-resort
+# fallback, but the house faces are installed system-wide below and should be
+# what actually renders — a DejaVu panel is the bug, not the baseline.
+#
+# librsvg2-bin supplies rsvg-convert, the only route from a Plotly figure to a
+# PDF whose text is real embedded text: Kaleido renders through headless
+# Chrome, whose PDF writer emits Type 3 fonts carrying no font file — glyph
+# drawings that cannot be searched, copied, or accepted by a print workflow.
+# Plotly's SVG export is fine, so the path is SVG -> rsvg-convert -> PDF.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libfreetype6 \
         libpng16-16 \
         fonts-dejavu-core \
+        librsvg2-bin \
+        fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -47,6 +55,24 @@ COPY sdk/ /tmp/sdk/
 RUN echo '=== /tmp/sdk top ===' && ls /tmp/sdk/ && \
     echo '=== /tmp/sdk/riskmodels/ ===' && ls /tmp/sdk/riskmodels/ && \
     echo '=== /tmp/sdk/riskmodels/aom/ ===' && (ls /tmp/sdk/riskmodels/aom/ || echo 'AOM MISSING IN COPIED SOURCE')
+# Install the SDK's bundled faces system-wide.
+#
+# matplotlib does not need this — _typography binds each role to an explicit
+# file path inside the installed package, precisely so rendering never depends
+# on what the host has. rsvg-convert does: it resolves families through
+# fontconfig, so without this step every Plotly panel converted to PDF silently
+# falls back to DejaVu and the house typography is lost on exactly the output
+# that gets printed. Copy before the pip install so a failed font step is
+# visible on its own layer.
+RUN mkdir -p /usr/local/share/fonts/riskmodels && \
+    cp /tmp/sdk/riskmodels/snapshots/fonts/*.otf /usr/local/share/fonts/riskmodels/ && \
+    fc-cache -f > /dev/null && \
+    for family in Charter Inter "Inter Tabular"; do \
+        fc-list : family | grep -q "$family" \
+            || { echo "FONT MISSING AFTER INSTALL: $family"; exit 1; }; \
+    done && \
+    echo "house faces registered with fontconfig"
+
 RUN pip install --no-deps /tmp/sdk && \
     pip install \
         'httpx>=0.27,<1' \
