@@ -123,3 +123,91 @@ def test_only_one_warning_when_only_one_unset(monkeypatch, caplog):
     messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     assert not any("RENDER_SVC_BUCKET" in m for m in messages)
     assert any("RENDER_SVC_ZARR_ROOT_URI" in m for m in messages)
+
+
+def test_holdings_enrichment_reported_absent(monkeypatch):
+    """Missing Supabase creds must be observable, not just visible in pixels.
+
+    The failure this guards is a fund render returning HTTP 200 with a blank
+    chart, which no status-code assertion can see.
+    """
+    for var in (
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    settings = load_from_env()
+    assert settings.holdings_enrichment_available is False
+
+
+def test_holdings_enrichment_accepts_either_naming_convention(monkeypatch):
+    """The SDK reads either pair, so the probe must agree with it."""
+    for var in (
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role")
+    assert load_from_env().holdings_enrichment_available is True
+
+    monkeypatch.delenv("SUPABASE_URL")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY")
+    monkeypatch.setenv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon")
+    assert load_from_env().holdings_enrichment_available is True
+
+
+def test_partial_supabase_credentials_are_not_enough(monkeypatch):
+    """A url with no key is the same as nothing — the SDK requires both."""
+    for var in (
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    assert load_from_env().holdings_enrichment_available is False
+
+
+def test_legacy_jwt_key_is_not_treated_as_usable(monkeypatch):
+    """A legacy JWT is present-but-dead — presence alone must not pass.
+
+    Regression guard for 2026-08-01: render-svc was wired with a well-formed
+    service_role JWT that Supabase 401s ("Legacy API keys are disabled",
+    turned off 2026-07-06). A presence-only check reported the service healthy
+    while every fund chart still rendered blank.
+    """
+    for var in (
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fake.sig")
+
+    assert load_from_env().holdings_enrichment_available is False
+
+
+def test_current_format_key_is_usable(monkeypatch):
+    """sb_secret_… is the current key format and must pass."""
+    for var in (
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "sb_secret_notarealkeyvalue")
+
+    assert load_from_env().holdings_enrichment_available is True

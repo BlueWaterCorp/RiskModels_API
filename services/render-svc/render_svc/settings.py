@@ -44,9 +44,69 @@ class Settings:
     # ERM3 EODHD zarr path. Used only when live_render is True.
     zarr_root_uri: str
 
+    # Whether Supabase credentials are present for holdings enrichment.
+    #
+    # Not a knob — an observation. ``get_data_for_f1`` enriches fund holdings
+    # via ``enrich_fund_data_with_supabase``, which resolves bw_sym_id → ticker
+    # and attaches per-holding L3 risk shares. Every Supabase read in that path
+    # soft-fails to ``[]`` when credentials are missing, by design, so that pip
+    # consumers without keys still work. In a *service* that same design turns
+    # into a silent wrong answer: fund and client_portfolio renders return
+    # HTTP 200 with raw ``BW-BBG…`` labels and every risk share ``None`` — a
+    # structurally valid, completely empty stacked bar. Nothing errors, so
+    # nothing alerts.
+    #
+    # Recording it here makes the degradation legible at startup and on
+    # /readyz instead of only in the pixels.
+    #
+    # Defaults to False — "assume degraded until proven otherwise". A caller
+    # constructing Settings by hand (tests, fixtures) has not resolved
+    # credentials, and claiming enrichment works would be the same optimistic
+    # guess this field exists to remove.
+    holdings_enrichment_available: bool = False
+
 
 _DEFAULT_BUCKET = "rm_api_data"
 _DEFAULT_ZARR_ROOT_URI = "gs://rm_api_data/eodhd"
+
+
+def _supabase_credentials_present() -> tuple[bool, str | None]:
+    """Mirror ``_supabase_creds`` in ``riskmodels.snapshots._fund_data``.
+
+    Both naming conventions count, because the SDK accepts either.
+
+    Returns ``(usable, warning)``. Presence is deliberately not the whole
+    test: on 2026-08-01 this service was wired with a well-formed
+    ``service_role`` JWT that Supabase rejected with 401 *Legacy API keys are
+    disabled* (they were turned off 2026-07-06). A presence-only check called
+    that configuration healthy while every fund chart still rendered blank —
+    the same silent-wrong-answer this whole field exists to surface, just
+    moved one level up.
+
+    A live probe would be the real test, but it costs a network round trip at
+    import time. The cheap discriminator is the key format: legacy keys are
+    JWTs (``eyJ…``), current keys are ``sb_secret_…`` / ``sb_publishable_…``.
+    A JWT here is almost certainly disabled, so say so.
+    """
+    url = (
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+        or ""
+    ).strip()
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        or ""
+    ).strip()
+    if not (url and key):
+        return False, None
+    if key.startswith("eyJ"):
+        return False, (
+            "Supabase key is a legacy JWT (eyJ…). Legacy anon/service_role keys were "
+            "disabled 2026-07-06 and return 401, which the SDK soft-fails into an "
+            "un-enriched render. Use the sb_secret_… key from Doppler erm3/prd."
+        )
+    return True, None
 
 
 def load_from_env() -> Settings:
@@ -78,6 +138,18 @@ def load_from_env() -> Settings:
             zarr_root_uri,
         )
 
+    enrichment, credential_warning = _supabase_credentials_present()
+    if credential_warning:
+        log.warning("Holdings enrichment will not work: %s", credential_warning)
+    elif not enrichment:
+        log.warning(
+            "Supabase credentials absent (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY, "
+            "or the NEXT_PUBLIC_* pair). Holdings enrichment will silently no-op: "
+            "fund renders will return HTTP 200 carrying raw bw_sym_id labels and "
+            "null risk shares — a valid-looking, empty chart. Set the credentials "
+            "(Doppler erm3/prd) to restore ticker resolution and L3 shares."
+        )
+
     return Settings(
         bucket=bucket,
         prefix=os.environ.get("RENDER_SVC_PREFIX", "snapshots"),
@@ -86,4 +158,5 @@ def load_from_env() -> Settings:
         persist_renders=os.environ.get("RENDER_SVC_PERSIST_RENDERS", "1") != "0",
         live_render=os.environ.get("RENDER_SVC_LIVE_RENDER", "0") == "1",
         zarr_root_uri=zarr_root_uri,
+        holdings_enrichment_available=enrichment,
     )

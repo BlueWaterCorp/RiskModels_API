@@ -87,12 +87,32 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/readyz")
-    def readyz() -> dict[str, str]:
+    def readyz() -> dict[str, object]:
         # Cheap readiness probe: confirm the store can resolve a HEAD on a
         # known-not-existent path (proves credentials + connectivity work).
+        #
+        # ``holdings_enrichment`` is reported but deliberately does NOT gate
+        # readiness. Without it the service still answers every request
+        # correctly for filer / cohort / stock subjects; only fund and
+        # client_portfolio degrade. Failing readiness would take the whole
+        # service down to signal a partial gap. Reporting it means an operator
+        # can see the gap without having to render a chart and look at it.
         try:
             store.head("__readyz_probe__")
-            return {"status": "ready", "bucket": settings.bucket}
+            return {
+                "status": "ready",
+                "bucket": settings.bucket,
+                "holdings_enrichment": (
+                    "available"
+                    if settings.holdings_enrichment_available
+                    else "unavailable"
+                ),
+                "degraded_subject_kinds": (
+                    []
+                    if settings.holdings_enrichment_available
+                    else ["fund", "client_portfolio"]
+                ),
+            }
         except Exception as exc:  # noqa: BLE001
             log.exception("readiness probe failed")
             raise HTTPException(status_code=503, detail=f"not ready: {exc}")
