@@ -49,6 +49,7 @@ from typing import Any, Callable, Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from .filer_ids import resolve_filer_subject_id
 from .gcs import ObjectStore
 
 log = logging.getLogger(__name__)
@@ -172,6 +173,44 @@ def _artifact_gcs_path(
     params_fragment: str = "",
 ) -> str:
     return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}{params_fragment}.{fmt}"
+
+
+def _subject_dir(prefix: str, slug: str, version: str, subject_id: str) -> str:
+    return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/"
+
+
+def available_as_of(
+    store: ObjectStore,
+    prefix: str,
+    slug: str,
+    version: str,
+    subject_id: str,
+) -> list[str]:
+    """Distinct ``as_of`` values pre-rendered for this ``(slug, subject)``.
+
+    Answers the question a caller of a loaderless subject kind cannot
+    otherwise answer. ``filer_13f`` rejects ``as_of='latest'`` because there
+    is no loader to resolve it, so without this the valid dates are known only
+    to whoever ran the pre-render job.
+
+    Both spellings of a filer id are searched and their results merged: the
+    corpus holds ``entity_header`` under the bare form and
+    ``nav_composition_dual`` under the CIK-infix form, so searching one
+    spelling reports an empty set for artifacts that plainly exist.
+
+    Object names are ``{as_of}{.params}.{fmt}``. ``as_of`` is an ISO date
+    containing dashes but no dots, so the first dot-delimited component is
+    the date regardless of which params fragment or format follows.
+    """
+    found: set[str] = set()
+    for candidate_id in resolve_filer_subject_id(subject_id).candidates:
+        base = _subject_dir(prefix, slug, version, candidate_id)
+        for name in store.list_prefix(base):
+            leaf = name[len(base) :]
+            if not leaf or "/" in leaf:
+                continue
+            found.add(leaf.split(".", 1)[0])
+    return sorted(found)
 
 
 # Which params each slug honors (Phase 3). Keys must be a subset of the
@@ -799,27 +838,39 @@ def render_artifact(
         )
         resolved_subject_id = req.subject_id
 
-    gcs_path = _artifact_gcs_path(
-        prefix,
-        req.slug,
-        req.version,
-        resolved_subject_id,
-        resolved_as_of,
-        req.format,
-        _params_key_fragment(supplied_params),
-    )
-    receipt_id = _receipt_id(gcs_path)
+    params_fragment = _params_key_fragment(supplied_params)
 
-    raw = store.read(gcs_path)
-    if raw is not None:
-        return (
-            raw,
-            _FORMAT_MIME[req.format],
-            gcs_path,
-            resolved_as_of,
-            _cache_control_for(req.as_of),
-            receipt_id,
+    # A filer subject id has two production spellings and the corpus genuinely
+    # holds artifacts under both (bare for entity_header, CIK-infix for
+    # nav_composition_dual), so probe each before declaring a miss. Non-filer
+    # ids resolve to a single candidate and this is a plain one-path read.
+    #
+    # Both spellings therefore land on the SAME object, hence the same bytes
+    # and the same receipt_id — the receipt is a hash of the path that hit,
+    # not of the path the caller happened to ask for.
+    candidate_ids = resolve_filer_subject_id(resolved_subject_id).candidates
+    gcs_path = _artifact_gcs_path(
+        prefix, req.slug, req.version, candidate_ids[0], resolved_as_of,
+        req.format, params_fragment,
+    )
+
+    for candidate_id in candidate_ids:
+        candidate_path = _artifact_gcs_path(
+            prefix, req.slug, req.version, candidate_id, resolved_as_of,
+            req.format, params_fragment,
         )
+        raw = store.read(candidate_path)
+        if raw is not None:
+            return (
+                raw,
+                _FORMAT_MIME[req.format],
+                candidate_path,
+                resolved_as_of,
+                _cache_control_for(req.as_of),
+                _receipt_id(candidate_path),
+            )
+
+    receipt_id = _receipt_id(gcs_path)
 
     # Cache miss → live render.
     if is_dd_panel:
@@ -839,15 +890,64 @@ def render_artifact(
             ),
         )
     if subject_kind in _PRERENDERED_SUBJECT_KINDS:
-        # No SDK loader inside render-svc means the adapter has no subject
-        # data to consume. Pre-render the artifact (LANDING daily refresh for
-        # filers; BWMACRO research/papers/build_artifacts.py --publish for
-        # research cohort/stock artifacts) so subsequent requests cache-hit.
+        # No SDK loader inside render-svc means the adapter has no subject data
+        # to consume, so a miss cannot be served live. But "cannot serve live"
+        # is not one condition — it is three, and answering all of them with
+        # 501 is what made a mistyped subject id read as an unbuilt slug.
+        # Separate them, because each has a different fix:
+        #
+        #   wrong as_of      → the subject IS pre-rendered, just not at that
+        #                      date. Nameable, so name the dates that exist.
+        #   unknown subject  → nothing under any spelling for this slug. The
+        #                      id is the problem; say so and point at
+        #                      discovery rather than implying the slug is
+        #                      missing.
+        #   slug never built → nothing under this slug for ANY subject. This
+        #                      alone is genuinely "not implemented", and it
+        #                      keeps the original 501.
+        known_as_of = available_as_of(
+            store, prefix, req.slug, req.version, resolved_subject_id
+        )
+        if known_as_of:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No {req.slug}@{req.version} artifact for "
+                    f"{resolved_subject_id!r} at as_of={resolved_as_of!r} "
+                    f"(format={req.format!r}"
+                    f"{', params=' + params_fragment.lstrip('.') if params_fragment else ''}). "
+                    f"Pre-rendered as_of values for this subject: "
+                    f"{known_as_of}. "
+                    f"GET /artifacts/as-of lists these without guessing."
+                ),
+            )
+
+        slug_has_any_subject = bool(
+            store.list_prefix(
+                f"{prefix.rstrip('/')}/artifacts/{req.slug}@{req.version}/"
+            )
+        )
+        if slug_has_any_subject:
+            tried = resolve_filer_subject_id(resolved_subject_id).candidates
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Subject {resolved_subject_id!r} has no pre-rendered "
+                    f"{req.slug}@{req.version} artifact under any known "
+                    f"spelling of its id (tried {list(tried)}). The slug "
+                    f"itself is populated for other subjects, so this is the "
+                    f"subject id, not an unimplemented artifact. "
+                    f"GET /artifacts/as-of?slug={req.slug}&subject_id=... "
+                    f"lists what exists."
+                ),
+            )
+
         raise HTTPException(
             status_code=501,
             detail=(
-                f"Live render not supported for subject_kind={subject_kind!r}. "
-                f"Pre-render the artifact to GCS at "
+                f"{req.slug}@{req.version} is not pre-rendered for any "
+                f"subject, and live render is not supported for "
+                f"subject_kind={subject_kind!r}. Pre-render it to GCS at "
                 f"{gcs_path!r} via the daily refresh job (filers) or "
                 f"BWMACRO research/papers/build_artifacts.py --publish "
                 f"(research cohort/stock artifacts); "

@@ -27,6 +27,9 @@ class FakeStore(ObjectStore):
     def write(self, path: str, data: bytes, *, content_type: str) -> None:
         self.objects[path] = (data, content_type)
 
+    def list_prefix(self, prefix: str) -> list[str]:
+        return sorted(p for p in self.objects if p.startswith(prefix))
+
 
 @pytest.fixture
 def store() -> FakeStore:
