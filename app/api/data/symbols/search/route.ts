@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { TICKER_ALIASES } from "@/lib/ticker-aliases";
+import { resolveTicker } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 
 export const dynamic = "force-dynamic";
@@ -29,15 +29,13 @@ export async function GET(request: NextRequest) {
     );
 
   if (q) {
-    const upperQ = q.toUpperCase();
-    // Check if query matches an alias (e.g., GOOGL → GOOG)
-    const canonicalTicker = TICKER_ALIASES[upperQ];
-    if (canonicalTicker) {
-      // Search for the canonical ticker instead
-      query = query.or(`ticker.ilike.%${canonicalTicker}%,name.ilike.%${q}%`);
-    } else {
-      query = query.or(`ticker.ilike.%${q}%,name.ilike.%${q}%`);
-    }
+    // A dual-class query resolves to the class the registry actually carries
+    // (GOOGL → GOOG, BRK-A → BRK-B), so the search returns a hit rather than
+    // nothing. Match names against the original query either way.
+    const resolution = resolveTicker(q);
+    const tickerMatch =
+      resolution.canonical !== resolution.requested ? resolution.canonical : q;
+    query = query.or(`ticker.ilike.%${tickerMatch}%,name.ilike.%${q}%`);
   }
 
   if (assetType) {

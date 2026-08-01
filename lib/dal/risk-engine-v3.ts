@@ -17,6 +17,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveTicker } from "@/lib/ticker-aliases";
 import {
   readHistorySlice,
   readLatestRankSnapshot,
@@ -129,6 +130,19 @@ export interface SymbolRegistryRow {
   sector_etf: string | null;
   subsector_etf: string | null;
   is_adr: boolean | null;
+  /**
+   * False when this row answers a request for a different share class — the
+   * numbers belong to a sibling (GOOG's series answering GOOGL). See G.35:
+   * resolution used to relabel the row with the requested ticker, leaving no
+   * way for a caller to tell the substitution had happened.
+   */
+  is_modelled_class: boolean;
+  /** Ticker whose series these numbers are, when it differs from `ticker`. */
+  modelled_ticker: string | null;
+  /** Share class requested, when a projection applied. */
+  share_class: string | null;
+  /** Share class actually modelled, when a projection applied. */
+  modelled_share_class: string | null;
 }
 
 // Fetch options
@@ -346,6 +360,12 @@ function normalizeSymbolRow(row: Record<string, unknown> | null): SymbolRegistry
     sector_etf: (row.sector_etf as string | null) ?? (metadata.sector_etf as string | null) ?? null,
     subsector_etf: row.subsector_etf as string | null,
     is_adr: row.is_adr as boolean | null,
+    // A row fetched by its own ticker is its own modelled class. The alias
+    // fallback in resolveSymbolByTicker overrides these when it substitutes.
+    is_modelled_class: true,
+    modelled_ticker: null,
+    share_class: null,
+    modelled_share_class: null,
   };
 }
 
@@ -398,7 +418,21 @@ export async function resolveSymbolByTicker(
     for (const alias of aliases) {
       result = await tryResolve(alias);
       if (result) {
-        return { ...result, ticker: upper };
+        // This used to return `{ ...result, ticker: upper }` — the resolved
+        // row relabelled with the requested ticker, so nothing downstream
+        // could tell that one share class had been answered with another's
+        // series. That is the G.35 defect. Keep `ticker` as the requested
+        // symbol (callers echo it), but carry the substitution alongside so a
+        // renderer can disclose it.
+        const projection = resolveTicker(upper);
+        return {
+          ...result,
+          ticker: upper,
+          is_modelled_class: false,
+          modelled_ticker: result.ticker,
+          share_class: projection.requestedClass,
+          modelled_share_class: projection.modelledClass,
+        };
       }
     }
   }
