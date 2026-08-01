@@ -114,8 +114,63 @@ gcloud run deploy render-svc \
     --memory=2Gi \
     --cpu=2 \
     --timeout=60s \
-    --set-env-vars=RENDER_SVC_BUCKET=rm_api_data,RENDER_SVC_PREFIX=snapshots,RENDER_SVC_LOG_LEVEL=INFO
+    --set-env-vars=RENDER_SVC_BUCKET=rm_api_data,RENDER_SVC_PREFIX=snapshots,RENDER_SVC_LOG_LEVEL=INFO \
+    --set-secrets=RISKMODELS_API_KEY=render-svc-riskmodels-api-key:latest,RENDER_SVC_SUBJECT_SALT=render-svc-subject-salt:latest,SUPABASE_URL=render-svc-supabase-url:latest,SUPABASE_SERVICE_ROLE_KEY=render-svc-supabase-service-role-key:latest
 ```
+
+> **`--set-secrets` replaces the whole secret set — list every one.** Naming
+> only the new pair silently drops `RISKMODELS_API_KEY` and
+> `RENDER_SVC_SUBJECT_SALT`. To add one secret to a running service without
+> touching the rest, use `gcloud run services update --update-secrets=…`
+> instead.
+
+> **`SUPABASE_*` is not optional, and the key format matters.** Without usable
+> credentials, fund renders return **HTTP 200 carrying an empty chart** — raw
+> `BW-BBG…` labels and every risk share `null` — because
+> `enrich_fund_data_with_supabase` soft-fails to `[]`. That soft-fail is
+> correct for pip consumers and wrong for a service: nothing errors, so
+> nothing alerts.
+>
+> Audited 2026-08-01: prod had been running with no Supabase credentials since
+> deploy, so the P.1 fix (moving the enricher into the public SDK) had never
+> taken effect in production. Fixed the same day.
+>
+> **Take the key from Doppler `erm3/prd`, not `.env.local`.** The local file
+> still holds a legacy `service_role` JWT (`eyJ…`); Supabase disabled legacy
+> anon/service_role keys on **2026-07-06** and they now 401 — which the SDK
+> soft-fails into exactly the blank chart above. The current key is
+> `sb_secret_…`. `load_from_env` warns when it sees a JWT for this reason.
+>
+> ```bash
+> doppler secrets get SUPABASE_SERVICE_ROLE_KEY -p erm3 -c prd --plain \
+>   | gcloud secrets versions add render-svc-supabase-service-role-key --data-file=-
+> gcloud run services update render-svc --region us-central1 \
+>   --update-secrets=SUPABASE_URL=render-svc-supabase-url:latest,SUPABASE_SERVICE_ROLE_KEY=render-svc-supabase-service-role-key:latest
+> ```
+>
+> Verify by rendering, not by reading config — a present key can still be a
+> dead one. Pass a `top_n` that is not already cached, or the GCS render cache
+> will hand back the pre-fix artifact and everything will look unchanged:
+>
+> ```bash
+> curl -s -X POST "$URL/artifacts/render" -H "Authorization: Bearer $TOKEN" \
+>   -H 'Content-Type: application/json' \
+>   -d '{"slug":"top_holdings_erm_stacked","version":"v1",
+>        "subject_id":"BW-FUND-S000004310","as_of":"latest","format":"json",
+>        "params":{"top_n":6}}'
+> # rows[].label must be tickers (NVDA, AAPL…), not BW-BBG…,
+> # and decomposition_available must be true.
+> ```
+>
+> `/readyz` also reports `holdings_enrichment`, but it does not fail readiness:
+> filer, cohort and stock subjects are unaffected, and failing the probe would
+> take the service down to report a partial gap.
+>
+> **`client_portfolio` is not affected by any of this.**
+> `holdings_from_client_portfolio` is a pass-through — it reads `l3_mkt_er` /
+> `l3_sec_er` / `l3_sub_er` / `l3_res_er` off the supplied positions and looks
+> nothing up. A payload carrying only `ticker`+`weight` renders null segments
+> because that is the contract, not because enrichment is broken.
 
 **Why these settings:**
 
