@@ -20,6 +20,7 @@ class ObjectStore(Protocol):
     def head(self, path: str) -> bool: ...
     def read(self, path: str) -> bytes | None: ...
     def write(self, path: str, data: bytes, *, content_type: str) -> None: ...
+    def list_prefix(self, prefix: str) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,26 @@ class GcsObjectStore:
     def write(self, path: str, data: bytes, *, content_type: str) -> None:
         blob = self._blob(path)
         blob.upload_from_string(data, content_type=content_type)
+
+    def list_prefix(self, prefix: str) -> list[str]:
+        """Full object names under ``prefix``.
+
+        Used to answer "which as_of values exist for this subject", which is
+        otherwise unanswerable by a caller: a pre-rendered-only subject kind
+        has no loader to ask, so without a listing the valid inputs are
+        undiscoverable and a wrong guess is indistinguishable from an
+        unbuilt slug.
+
+        Returns ``[]`` rather than raising on a listing failure. This feeds
+        error-message construction and a discovery endpoint; degrading to
+        "nothing found" keeps a transient GCS fault from turning a 404 into
+        a 500, and the caller sees an empty list either way.
+        """
+        try:
+            client = self._client()
+            return [b.name for b in client.list_blobs(self.bucket, prefix=prefix)]
+        except Exception:  # noqa: BLE001 — see docstring
+            return []
 
 
 # Path resolution — the canonical layout for snapshot artifacts.

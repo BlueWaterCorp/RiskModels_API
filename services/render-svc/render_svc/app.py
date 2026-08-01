@@ -14,7 +14,8 @@ import xarray as xr
 from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from .artifacts import ArtifactRenderRequest, render_artifact
+from .artifacts import ArtifactRenderRequest, available_as_of, render_artifact
+from .filer_ids import resolve_filer_subject_id
 from .gcs import GcsObjectStore, ObjectStore
 from .portfolio_evolution import KERNEL_VERSION, compute_portfolio_evolution
 from .render import (
@@ -159,6 +160,40 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
                 "Cache-Control": cache_control,
             },
         )
+
+    @app.get("/artifacts/as-of")
+    def get_artifacts_as_of(
+        slug: str,
+        subject_id: str,
+        version: str = "v1",
+    ) -> dict[str, Any]:
+        """Which ``as_of`` values are pre-rendered for a ``(slug, subject)``.
+
+        Subject kinds with no loader inside render-svc (``filer_13f``,
+        ``cohort``) reject ``as_of='latest'``, because there is nothing to
+        resolve "latest" against. Before this endpoint a caller who did not
+        already know the right quarter-end could not render one of those
+        artifacts at all, and had no way to find out — a wrong guess came
+        back indistinguishable from an unbuilt slug.
+
+        Read-only listing of the artifact prefix. Both spellings of a filer
+        id are searched and merged, so the answer does not depend on which
+        convention the caller happens to use.
+
+        This does NOT add live rendering for filers; it makes the already
+        valid inputs discoverable.
+        """
+        resolution = resolve_filer_subject_id(subject_id)
+        values = available_as_of(store, settings.prefix, slug, version, subject_id)
+        return {
+            "slug": slug,
+            "version": version,
+            "requested_subject_id": resolution.requested,
+            "canonical_subject_id": resolution.canonical,
+            "subject_id_spellings_searched": list(resolution.candidates),
+            "as_of": values,
+            "count": len(values),
+        }
 
     @app.get("/portfolio-evolution/health")
     def portfolio_evolution_health() -> dict[str, Any]:

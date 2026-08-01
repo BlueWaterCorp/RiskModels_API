@@ -651,6 +651,226 @@ class TestFilerPath:
         assert exc.value.status_code == 501
 
 
+class TestFilerSubjectIdSpellings:
+    """One filer identity, two production spellings.
+
+    Verified against ``gs://rm_api_data/snapshots/artifacts`` on 2026-08-01:
+    ``entity_header@v1`` and ``top_holdings_erm_stacked@v1`` store CIK 1067983
+    under the bare form, while ``nav_composition_dual@v1`` stores the same
+    filer under the CIK-infix form. Both spellings must reach the bytes; the
+    corpus is not going to be rewritten to one convention.
+    """
+
+    BARE = "BW-FILER-0001067983"
+    CIK = "BW-FILER-CIK0001067983"
+
+    def _write(self, store, subject_id, slug="top_holdings_erm_stacked"):
+        path = f"snapshots/artifacts/{slug}@v1/{subject_id}/2026-03-31.json"
+        store.write(path, b'{"pre_rendered":true}', content_type="application/json")
+        return path
+
+    def test_both_spellings_return_identical_bytes_when_stored_bare(self, store):
+        """Artifact stored under the declared canonical spelling."""
+        path = self._write(store, self.BARE)
+
+        results = [
+            render_artifact(
+                _req(subject_id=sid, as_of="2026-03-31"),
+                store=store, prefix=PREFIX, persist=False,
+            )
+            for sid in (self.BARE, self.CIK)
+        ]
+
+        assert results[0][0] == results[1][0], "same filer must yield same bytes"
+        # Both land on the one object that exists, so the path and the
+        # receipt derived from it agree too.
+        assert results[0][2] == results[1][2] == path
+        assert results[0][5] == results[1][5]
+
+    def test_both_spellings_return_identical_bytes_when_stored_cik(self, store):
+        """The nav_composition_dual case — stored under the deviation."""
+        path = self._write(store, self.CIK, slug="nav_composition_dual")
+
+        results = [
+            render_artifact(
+                _req(slug="nav_composition_dual", subject_id=sid, as_of="2026-03-31"),
+                store=store, prefix=PREFIX, persist=False,
+            )
+            for sid in (self.BARE, self.CIK)
+        ]
+
+        assert results[0][0] == results[1][0]
+        assert results[0][2] == results[1][2] == path
+
+    def test_canonical_spelling_wins_when_both_exist(self, store):
+        """Probe order is deterministic, so a duplicated artifact resolves the
+        same way every time rather than depending on store iteration."""
+        canonical_path = self._write(store, self.BARE)
+        self._write(store, self.CIK)
+
+        _, _, gcs_path, _, _, _ = render_artifact(
+            _req(subject_id=self.CIK, as_of="2026-03-31"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert gcs_path == canonical_path
+
+
+class TestFilerErrorNamesTheRealCause:
+    """A wrong id must not read as an unimplemented slug.
+
+    This is the defect that cost the most time: every miss returned 501 with
+    the GCS path render-svc wanted, which is indistinguishable from a slug
+    that was never built, so filer coverage looked broken when the id
+    convention was simply wrong.
+    """
+
+    BARE = "BW-FILER-0001067983"
+    OTHER = "BW-FILER-0000320193"
+
+    def test_wrong_as_of_is_404_and_lists_what_exists(self, store):
+        from fastapi import HTTPException
+
+        store.write(
+            f"snapshots/artifacts/top_holdings_erm_stacked@v1/{self.BARE}/2026-03-31.json",
+            b"{}", content_type="application/json",
+        )
+        store.write(
+            f"snapshots/artifacts/top_holdings_erm_stacked@v1/{self.BARE}/2025-12-31.json",
+            b"{}", content_type="application/json",
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id=self.BARE, as_of="2026-06-30"),
+                store=store, prefix=PREFIX,
+            )
+
+        assert exc.value.status_code == 404, "wrong date is not 'not implemented'"
+        msg = str(exc.value.detail)
+        assert "2025-12-31" in msg and "2026-03-31" in msg, "must name valid dates"
+
+    def test_available_dates_are_found_through_either_spelling(self, store):
+        """The caller asking with the CIK infix still learns the real dates."""
+        from fastapi import HTTPException
+
+        store.write(
+            f"snapshots/artifacts/top_holdings_erm_stacked@v1/{self.BARE}/2026-03-31.json",
+            b"{}", content_type="application/json",
+        )
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id="BW-FILER-CIK0001067983", as_of="2026-06-30"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 404
+        assert "2026-03-31" in str(exc.value.detail)
+
+    def test_unknown_subject_is_404_naming_the_id_not_501(self, store):
+        """The slug is populated for someone else, so the id is the problem."""
+        from fastapi import HTTPException
+
+        store.write(
+            f"snapshots/artifacts/top_holdings_erm_stacked@v1/{self.OTHER}/2026-03-31.json",
+            b"{}", content_type="application/json",
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id="BW-FILER-9999999999", as_of="2026-03-31"),
+                store=store, prefix=PREFIX,
+            )
+
+        assert exc.value.status_code == 404, "an unknown id is not 501"
+        msg = str(exc.value.detail)
+        assert "BW-FILER-9999999999" in msg, "the error must name the id"
+        assert "BW-FILER-CIK9999999999" in msg, "and the spellings it tried"
+
+    def test_slug_never_built_still_returns_501(self, store):
+        """The one condition 501 genuinely describes is preserved."""
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(subject_id=self.BARE, as_of="2026-03-31"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 501
+        assert "not pre-rendered for any" in str(exc.value.detail)
+
+
+class TestAvailableAsOfDiscovery:
+    """filer_13f rejects as_of='latest', so the valid dates must be listable."""
+
+    BARE = "BW-FILER-0001067983"
+    CIK = "BW-FILER-CIK0001067983"
+
+    def test_merges_both_spellings(self, store):
+        from render_svc.artifacts import available_as_of
+
+        store.write(
+            f"snapshots/artifacts/entity_header@v1/{self.BARE}/2025-12-31.json",
+            b"{}", content_type="application/json",
+        )
+        store.write(
+            f"snapshots/artifacts/entity_header@v1/{self.CIK}/2026-04-30.json",
+            b"{}", content_type="application/json",
+        )
+
+        assert available_as_of(store, PREFIX, "entity_header", "v1", self.BARE) == [
+            "2025-12-31", "2026-04-30",
+        ]
+
+    def test_dedupes_formats_and_params_to_distinct_dates(self, store):
+        from render_svc.artifacts import available_as_of
+
+        for leaf in ("2026-03-31.json", "2026-03-31.png", "2026-03-31.top_n-5.json"):
+            store.write(
+                f"snapshots/artifacts/top_holdings_erm_stacked@v1/{self.BARE}/{leaf}",
+                b"{}", content_type="application/json",
+            )
+
+        assert available_as_of(
+            store, PREFIX, "top_holdings_erm_stacked", "v1", self.BARE
+        ) == ["2026-03-31"]
+
+    def test_empty_for_unknown_subject(self, store):
+        from render_svc.artifacts import available_as_of
+
+        assert available_as_of(
+            store, PREFIX, "entity_header", "v1", "BW-FILER-9999999999"
+        ) == []
+
+    def test_endpoint_reports_dates_and_the_spellings_it_searched(self, store):
+        from dataclasses import replace
+
+        from fastapi.testclient import TestClient
+
+        from render_svc.app import _make_app
+        from render_svc.settings import load_from_env
+
+        store.write(
+            f"snapshots/artifacts/entity_header@v1/{self.BARE}/2025-12-31.json",
+            b"{}", content_type="application/json",
+        )
+        store.write(
+            f"snapshots/artifacts/entity_header@v1/{self.CIK}/2026-04-30.json",
+            b"{}", content_type="application/json",
+        )
+        settings = replace(load_from_env(), prefix=PREFIX, persist_renders=False)
+        client = TestClient(_make_app(settings, store))
+
+        body = client.get(
+            "/artifacts/as-of",
+            params={"slug": "entity_header", "subject_id": self.CIK},
+        ).json()
+
+        assert body["as_of"] == ["2025-12-31", "2026-04-30"]
+        assert body["canonical_subject_id"] == self.BARE
+        # The caller can see WHICH spellings were searched, so an empty result
+        # is interpretable rather than just absent.
+        assert body["subject_id_spellings_searched"] == [self.BARE, self.CIK]
+
+
 # ── _adapter_for routing — verifies filer_13f dispatches by slug ──────────
 
 
