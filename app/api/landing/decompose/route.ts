@@ -62,7 +62,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { ticker } = validation.data;
+  const { ticker, as_of } = validation.data;
+  if (as_of) {
+    // The preview serves latest-only; ignoring as_of here would silently
+    // return the latest row for a historical request (house PIT convention
+    // forbids that — AGENTS_CROSS_REPO.md §0).
+    return NextResponse.json(
+      {
+        error: "as_of not supported in landing preview",
+        message:
+          "Historical as_of requires POST /api/decompose with an API key.",
+      },
+      { status: 400, headers: corsHeaders },
+    );
+  }
   if (!MAG7_ALLOWLIST.has(ticker)) {
     return NextResponse.json(
       {

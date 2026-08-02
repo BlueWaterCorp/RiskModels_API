@@ -573,7 +573,8 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
 
     Wired today:
       - ``fund`` via ``get_data_for_f1`` (as_of=latest or matching teo)
-      - ``stock`` via live ``POST /api/decompose`` (as_of=latest or matching data_as_of)
+      - ``stock`` via live ``POST /api/decompose`` (as_of=latest, or a
+        historical date served as "latest row ≤ as_of" — G.42)
     """
     if subject_kind == "stock":
         return _load_stock_decompose(subject_id, as_of)
@@ -635,8 +636,13 @@ def _ticker_from_stock_subject_id(subject_id: str) -> str:
     return ticker
 
 
-def _fetch_decompose(ticker: str) -> dict[str, Any]:
-    """Call RiskModels ``POST /api/decompose`` with service credentials."""
+def _fetch_decompose(ticker: str, as_of: str | None = None) -> dict[str, Any]:
+    """Call RiskModels ``POST /api/decompose`` with service credentials.
+
+    ``as_of`` (YYYY-MM-DD) requests the latest stored row at or before that
+    date (reality mode, report_date basis — ADR 2026-08-01); ``None`` serves
+    the latest row.
+    """
     import requests
 
     api_key = (
@@ -650,6 +656,9 @@ def _fetch_decompose(ticker: str) -> dict[str, Any]:
             detail="RISKMODELS_API_KEY not configured on render-svc for stock panels",
         )
     base = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+    body: dict[str, Any] = {"ticker": ticker}
+    if as_of is not None:
+        body["as_of"] = as_of
     try:
         resp = requests.post(
             f"{base}/decompose",
@@ -657,11 +666,26 @@ def _fetch_decompose(ticker: str) -> dict[str, Any]:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={"ticker": ticker},
+            json=body,
             timeout=45,
         )
+        if as_of is not None and resp.status_code == 404:
+            # Upstream's as_of-specific 404 (nothing known at or before the
+            # date) is the caller's date being out of range, not a service
+            # fault — pass it through instead of masking it as a 502.
+            try:
+                upstream_error = str(resp.json().get("error") or "")
+            except Exception:  # noqa: BLE001
+                upstream_error = ""
+            raise HTTPException(
+                status_code=404,
+                detail=upstream_error
+                or f"no decompose data for {ticker!r} at or before as_of={as_of!r}",
+            )
         resp.raise_for_status()
         payload = resp.json()
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         log.exception("decompose failed for %s", ticker)
         raise HTTPException(
@@ -676,20 +700,33 @@ def _fetch_decompose(ticker: str) -> dict[str, Any]:
 def _load_stock_decompose(
     subject_id: str, as_of: str
 ) -> tuple[dict[str, Any], str]:
-    """Load a single-name decompose payload for stock panel artifacts."""
+    """Load a single-name decompose payload for stock panel artifacts.
+
+    A historical ``as_of`` passes through to ``/api/decompose``, which serves
+    the latest stored row at or before the date (reality mode, report_date
+    basis — ADR 2026-08-01) and echoes the served row via ``as_of_resolved``.
+    That echo becomes the resolved as_of here, so the GCS path and
+    ``X-Artifact-Resolved-As-Of`` carry the date the numbers are from.
+    """
     ticker = _ticker_from_stock_subject_id(subject_id)
-    payload = _fetch_decompose(ticker)
-    resolved = str(payload.get("data_as_of") or "").strip()
+    if as_of == "latest":
+        payload = _fetch_decompose(ticker)
+        resolved = str(payload.get("data_as_of") or "").strip()
+        if not resolved:
+            resolved = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return payload, resolved
+    payload = _fetch_decompose(ticker, as_of=as_of)
+    resolved = str(
+        payload.get("as_of_resolved") or payload.get("teo") or ""
+    ).strip()
     if not resolved:
-        resolved = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if as_of != "latest" and as_of != resolved:
-        # Decompose is latest-only today; refuse mismatched historical pins.
+        # An as_of response without the served-row echo predates the as-of
+        # contract; refuse rather than mislabel the artifact's date.
         raise HTTPException(
-            status_code=501,
+            status_code=502,
             detail=(
-                f"as_of={as_of!r} differs from decompose data_as_of={resolved!r}; "
-                f"historical stock panel as_of is not yet supported. "
-                f"Use as_of='latest' or as_of={resolved!r}."
+                f"decompose response for {ticker!r} lacks as_of_resolved/teo; "
+                f"cannot resolve historical as_of={as_of!r}"
             ),
         )
     return payload, resolved
