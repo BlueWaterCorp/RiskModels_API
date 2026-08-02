@@ -424,7 +424,7 @@ export async function resolveSymbolByTicker(
         // series. That is the G.35 defect. Keep `ticker` as the requested
         // symbol (callers echo it), but carry the substitution alongside so a
         // renderer can disclose it.
-        const projection = resolveTicker(upper);
+        const projection = await resolveTicker(upper);
         return {
           ...result,
           ticker: upper,
