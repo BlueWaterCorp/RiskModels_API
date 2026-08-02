@@ -192,7 +192,14 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   watchlist_er_stacked: {
     stock: {
       status: "verified",
-      notes: "Requires subject_payload.tickers; subject_id BW-STOCK-WATCHLIST.",
+      notes:
+        "Requires subject_payload.tickers; subject_id BW-STOCK-WATCHLIST. " +
+        "A second mode — peer group (G.43): subject_id BW-STOCK-{TICKER} with no " +
+        "payload renders the target vs its top-6 market-cap peers from /api/peers, " +
+        "with broadening warnings and an explicit empty state — is in render-svc " +
+        "code but NOT yet deployed (render-svc does not deploy on merge). Re-audit " +
+        "and extend this note after the next render-svc deploy; until then only the " +
+        "payload.tickers form is live.",
     },
   },
   position_cumulative_decomposition: {

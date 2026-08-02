@@ -1818,6 +1818,57 @@ components:
           type: string
           example: zarr
 
+    PeerMember:
+      type: object
+      required: [ticker, symbol]
+      properties:
+        ticker:
+          type: string
+          example: AMD
+        company_name:
+          type: string
+          nullable: true
+        market_cap:
+          type: number
+          nullable: true
+        sector_etf:
+          type: string
+          nullable: true
+          example: XLK
+        subsector_etf:
+          type: string
+          nullable: true
+          example: SOXX
+        symbol:
+          type: string
+          description: Internal bw_sym_id (not a public join key for clients).
+
+    PeersResponse:
+      type: object
+      required: [ticker, target, group_by, group_etf, peers, peer_count]
+      properties:
+        ticker:
+          type: string
+          example: NVDA
+        target:
+          $ref: "#/components/schemas/PeerMember"
+        group_by:
+          type: string
+          enum: [subsector_etf, sector_etf]
+        group_etf:
+          type: string
+          example: SOXX
+        peers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerMember"
+        peer_count:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+
     ResidualSignalReading:
       type: object
       description: >
@@ -7764,6 +7815,81 @@ paths:
           description: Unauthorized.
         "404":
           description: Subscription not found.
+
+  /peers:
+    get:
+      summary: Sector / subsector peer cohort
+      description: >
+        Resolve a ticker's peer cohort from the symbols registry, ordered by
+        latest market cap. Defaults to `subsector_etf` grouping and falls back
+        to `sector_etf` when the subsector cohort is thin. Powers PeerGroupProxy
+        selection-skill workflows without exposing storage credentials to clients.
+
+        **Authentication:** Required (API Key or OAuth2)
+
+        **Billing:** $0.001 per request
+      operationId: getPeers
+      tags: [Utility]
+      x-pricing:
+        capability_id: peers
+        tier: baseline
+        model: per_request
+        cost_usd: 0.001
+        currency: USD
+        billing_code: peers_v1
+      security:
+        - BearerAuth: []
+        - OAuth2AuthorizationCode: [mcp:read]
+      parameters:
+        - name: ticker
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Target ticker (case-insensitive).
+          example: NVDA
+        - name: group_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [subsector_etf, sector_etf]
+            default: subsector_etf
+          description: Peer grouping field.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Maximum peers to return (excluding the target).
+      responses:
+        "200":
+          description: Peer cohort for the ticker.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeersResponse"
+        "400":
+          description: Missing or invalid query parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Ticker not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /tickers:
     get:

@@ -715,6 +715,42 @@
             "nullable": true,
             "description": "Canonical L1/L2/L3 compare alongside the L3-focused `exposure` map. Prefer this when the user asks how L1/L2/L3 hedge ratios differ — `exposure` alone is the four-bet semantic view for L3.\n"
           },
+          "style": {
+            "type": "object",
+            "nullable": true,
+            "description": "FF2 (SMB + HML) diagnostic split of the `exposure.residual` variance — attribution only, never a tradable hedge (`hedgeable` is always `false`). `explained_variance` is a variance-ratio share on the `hedge_levels` basis named by `hedge_levels.statistical_lstar` (style + `stock_specific` ≈ that level's residual share). See `POST /v4/decompose` for the named-block form of this same split.\n",
+            "properties": {
+              "explained_variance": {
+                "type": "number",
+                "nullable": true,
+                "example": 0.102
+              },
+              "hedgeable": {
+                "type": "boolean",
+                "example": false
+              },
+              "role": {
+                "type": "string",
+                "example": "diagnostic"
+              }
+            }
+          },
+          "stock_specific": {
+            "type": "object",
+            "nullable": true,
+            "description": "Doubly-cleaned skill residual — `exposure.residual` after the FF2 `style` strip. The stock-selection basis (skills-paper skill metric); not a tradable hedge.\n",
+            "properties": {
+              "explained_variance": {
+                "type": "number",
+                "nullable": true,
+                "example": 0.475
+              },
+              "hedgeable": {
+                "type": "boolean",
+                "example": false
+              }
+            }
+          },
           "_metadata": {
             "type": "object",
             "description": "Lineage, billing code, and freshness (same shape as `/metrics`)."
@@ -2012,6 +2048,87 @@
           "data_source": {
             "type": "string",
             "example": "zarr"
+          }
+        }
+      },
+      "PeerMember": {
+        "type": "object",
+        "required": [
+          "ticker",
+          "symbol"
+        ],
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "example": "AMD"
+          },
+          "company_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "market_cap": {
+            "type": "number",
+            "nullable": true
+          },
+          "sector_etf": {
+            "type": "string",
+            "nullable": true,
+            "example": "XLK"
+          },
+          "subsector_etf": {
+            "type": "string",
+            "nullable": true,
+            "example": "SOXX"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Internal bw_sym_id (not a public join key for clients)."
+          }
+        }
+      },
+      "PeersResponse": {
+        "type": "object",
+        "required": [
+          "ticker",
+          "target",
+          "group_by",
+          "group_etf",
+          "peers",
+          "peer_count"
+        ],
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "example": "NVDA"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PeerMember"
+          },
+          "group_by": {
+            "type": "string",
+            "enum": [
+              "subsector_etf",
+              "sector_etf"
+            ]
+          },
+          "group_etf": {
+            "type": "string",
+            "example": "SOXX"
+          },
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeerMember"
+            }
+          },
+          "peer_count": {
+            "type": "integer"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -6830,7 +6947,7 @@
     "/decompose": {
       "post": {
         "summary": "(internal/legacy) Decompose a position into four additive bets with hedge ratios",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "decomposePosition",
         "tags": [
           "Risk Metrics"
@@ -11172,6 +11289,114 @@
           },
           "404": {
             "description": "Subscription not found."
+          }
+        }
+      }
+    },
+    "/peers": {
+      "get": {
+        "summary": "Sector / subsector peer cohort",
+        "description": "Resolve a ticker's peer cohort from the symbols registry, ordered by latest market cap. Defaults to `subsector_etf` grouping and falls back to `sector_etf` when the subsector cohort is thin. Powers PeerGroupProxy selection-skill workflows without exposing storage credentials to clients.\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n",
+        "operationId": "getPeers",
+        "tags": [
+          "Utility"
+        ],
+        "x-pricing": {
+          "capability_id": "peers",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0.001,
+          "currency": "USD",
+          "billing_code": "peers_v1"
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "OAuth2AuthorizationCode": [
+              "mcp:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Target ticker (case-insensitive).",
+            "example": "NVDA"
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "subsector_etf",
+                "sector_etf"
+              ],
+              "default": "subsector_etf"
+            },
+            "description": "Peer grouping field."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "description": "Maximum peers to return (excluding the target)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Peer cohort for the ticker.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid query parameters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ticker not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
