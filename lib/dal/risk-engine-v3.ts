@@ -1243,6 +1243,156 @@ export async function fetchRankingsScreen(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Peer cohort (symbols + security_history_latest market_cap)
+// ---------------------------------------------------------------------------
+
+export type PeerGroupBy = "subsector_etf" | "sector_etf";
+
+export interface PeerRow {
+  ticker: string;
+  company_name: string | null;
+  market_cap: number | null;
+  sector_etf: string | null;
+  subsector_etf: string | null;
+  symbol: string;
+}
+
+export interface PeersResult {
+  target: PeerRow;
+  group_by: PeerGroupBy;
+  group_etf: string;
+  peers: PeerRow[];
+  warnings: string[];
+}
+
+/**
+ * Resolve a ticker's sector/subsector peer cohort from ``symbols``, ordered
+ * by ``security_history_latest.market_cap`` (desc). Prefers ``subsector_etf``
+ * and falls back to ``sector_etf`` when the subsector cohort is too thin.
+ */
+export async function fetchPeersByTicker(params: {
+  ticker: string;
+  groupBy?: PeerGroupBy;
+  limit?: number;
+  minPeers?: number;
+  excludeTarget?: boolean;
+}): Promise<PeersResult | null> {
+  const ticker = params.ticker.trim().toUpperCase();
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
+  const minPeers = params.minPeers ?? 3;
+  const excludeTarget = params.excludeTarget !== false;
+  const warnings: string[] = [];
+
+  const targetRecord = await resolveSymbolByTicker(ticker);
+  if (!targetRecord) return null;
+
+  const targetSummary = await fetchLatestSummary(targetRecord.symbol);
+  const target: PeerRow = {
+    ticker: targetRecord.ticker,
+    company_name: targetRecord.name,
+    market_cap: targetSummary?.metrics?.market_cap ?? null,
+    sector_etf: targetRecord.sector_etf,
+    subsector_etf: targetRecord.subsector_etf,
+    symbol: targetRecord.symbol,
+  };
+
+  let groupBy: PeerGroupBy = params.groupBy ?? "subsector_etf";
+  let groupEtf =
+    groupBy === "subsector_etf"
+      ? targetRecord.subsector_etf
+      : targetRecord.sector_etf;
+
+  if (!groupEtf && groupBy === "subsector_etf" && targetRecord.sector_etf) {
+    groupBy = "sector_etf";
+    groupEtf = targetRecord.sector_etf;
+    warnings.push(
+      `${ticker} has no subsector_etf; falling back to sector_etf=${groupEtf}`,
+    );
+  }
+  if (!groupEtf) {
+    warnings.push(
+      `Cannot build peer group: ${ticker} has no ${groupBy} in symbols registry`,
+    );
+    return {
+      target,
+      group_by: groupBy,
+      group_etf: "",
+      peers: [],
+      warnings,
+    };
+  }
+
+  const fetchCohort = async (
+    by: PeerGroupBy,
+    etf: string,
+  ): Promise<PeerRow[]> => {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("symbols")
+      .select("symbol, ticker, name, sector_etf, subsector_etf")
+      .eq(by, etf.toUpperCase())
+      .limit(500);
+    if (error) {
+      console.error(`[V3 DAL] Error fetching peers for ${by}=${etf}:`, error);
+      return [];
+    }
+    const rows = (data ?? []) as Array<{
+      symbol: string;
+      ticker: string;
+      name: string | null;
+      sector_etf: string | null;
+      subsector_etf: string | null;
+    }>;
+    const symbols = rows.map((r) => r.symbol).filter(Boolean);
+    const caps = await fetchBatchLatestSummary(symbols);
+    const peers: PeerRow[] = rows
+      .map((r) => ({
+        ticker: String(r.ticker || "").toUpperCase(),
+        company_name: r.name,
+        market_cap: caps.get(r.symbol)?.metrics?.market_cap ?? null,
+        sector_etf: r.sector_etf,
+        subsector_etf: r.subsector_etf,
+        symbol: r.symbol,
+      }))
+      .filter((r) => r.ticker);
+    peers.sort((a, b) => (b.market_cap ?? -1) - (a.market_cap ?? -1));
+    return peers;
+  };
+
+  let cohort = await fetchCohort(groupBy, groupEtf);
+  let peers = excludeTarget
+    ? cohort.filter((p) => p.ticker !== target.ticker)
+    : cohort;
+
+  if (peers.length < minPeers && groupBy === "subsector_etf" && targetRecord.sector_etf) {
+    const broader = targetRecord.sector_etf;
+    warnings.push(
+      `Only ${peers.length} peers in ${groupEtf}; broadening to sector_etf=${broader}`,
+    );
+    groupBy = "sector_etf";
+    groupEtf = broader;
+    cohort = await fetchCohort(groupBy, groupEtf);
+    peers = excludeTarget
+      ? cohort.filter((p) => p.ticker !== target.ticker)
+      : cohort;
+  }
+
+  if (peers.length < minPeers) {
+    warnings.push(
+      `Only ${peers.length} peers found for ${ticker} in ${groupEtf} (min_peers=${minPeers})`,
+    );
+  }
+
+  return {
+    target,
+    group_by: groupBy,
+    group_etf: groupEtf,
+    peers: peers.slice(0, limit),
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Pure helpers (identical to Risk_Models source)
 // ---------------------------------------------------------------------------
 

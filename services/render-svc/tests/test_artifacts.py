@@ -1438,6 +1438,464 @@ class TestFigureFormatCacheKey:
 
 
 
+# ── Stock peer-group mode (G.43) ──────────────────────────────────────────
+#
+# watchlist_er_stacked gains a second stock mode: subject_id BW-STOCK-{TICKER}
+# with no inline tickers → resolve top-6 market-cap peers via /api/peers,
+# decompose target + peers, render through the existing watchlist module with
+# a peer-group disclosure overlay. These tests fake the two upstream fetches
+# (`_fetch_peers` / `_fetch_decompose`) and the bwmacro module; content is
+# asserted, not status.
+
+import render_svc.artifacts as artifacts_module  # noqa: E402
+from render_svc.artifacts import (  # noqa: E402
+    _is_stock_peer_group_request,
+    _peer_group_ticker_from_subject_id,
+)
+
+
+def _decompose_payload(ticker: str, *, residual: float, data_as_of: str = "2026-07-31") -> dict:
+    return {
+        "ticker": ticker,
+        "data_as_of": data_as_of,
+        "exposure": {
+            "market": {"er": 0.55, "hedge_etf": "SPY"},
+            "sector": {"er": 0.20, "hedge_etf": "XLK"},
+            "subsector": {"er": 1.0 - 0.55 - 0.20 - residual, "hedge_etf": "SMH"},
+            "residual": {"er": residual},
+        },
+    }
+
+
+class _RecordingFigure:
+    """Stands in for the module's plotly Figure; records the overlay calls."""
+
+    def __init__(self, tickers: list[str]):
+        self.layout_calls: list[dict] = []
+        self.annotations: list[dict] = []
+        self.data = (types.SimpleNamespace(y=tuple(tickers)),)
+
+    def update_layout(self, **kwargs):
+        self.layout_calls.append(kwargs)
+
+    def add_annotation(self, **kwargs):
+        self.annotations.append(kwargs)
+
+    def to_image(self, *, format: str, scale: float = 1.0) -> bytes:
+        return b"\x89PNG\r\n\x1a\nFAKE" if format == "png" else b"<svg>FAKE</svg>"
+
+
+def _install_watchlist_fakes(monkeypatch, capture: dict | None = None):
+    """Fake watchlist_er_stacked@v1 module + pass-through decompose adapter."""
+    capture = capture if capture is not None else {}
+    pkg_root = "bwmacro.snapshots.artifacts"
+    slug = "watchlist_er_stacked"
+    qualname = f"{pkg_root}.{slug}.v1"
+    for p in ["bwmacro", "bwmacro.snapshots", pkg_root, f"{pkg_root}.{slug}"]:
+        if p not in sys.modules:
+            sys.modules[p] = types.ModuleType(p)
+
+    mod = types.ModuleType(qualname)
+    mod.ARTIFACT_SLUG = slug
+    mod.ARTIFACT_VERSION = "v1"
+    mod.APPLICABLE_SUBJECT_KINDS = ("stock", "cohort", "client_portfolio")
+    mod.RENDER_PARAMS = ("top_n", "sort_by")
+
+    def _render_data(payloads, **kwargs):
+        capture["render_data_kwargs"] = kwargs
+        return {
+            "slug": slug,
+            "rows": [
+                {
+                    "ticker": p["ticker"],
+                    "residual": p["exposure"]["residual"]["er"],
+                }
+                for p in payloads
+            ],
+        }
+
+    def _render_figure(payloads, **kwargs):
+        capture["render_figure_kwargs"] = kwargs
+        fig = _RecordingFigure([p["ticker"] for p in payloads])
+        capture["figure"] = fig
+        return fig
+
+    mod.render_data = _render_data
+    mod.render_figure = _render_figure
+    sys.modules[qualname] = mod
+
+    adapters_qual = f"{pkg_root}.adapters"
+    adapters_mod = sys.modules.get(adapters_qual) or types.ModuleType(adapters_qual)
+    adapters_mod.watchlist_er_stacked_from_decomposes = lambda payloads: payloads
+    sys.modules[adapters_qual] = adapters_mod
+    sys.modules[pkg_root].adapters = adapters_mod  # type: ignore[attr-defined]
+    return capture
+
+
+def _install_peer_fetch_fakes(
+    monkeypatch,
+    *,
+    peers_response: dict,
+    residuals: dict[str, float],
+    fail_tickers: tuple[str, ...] = (),
+    data_as_of: str = "2026-07-31",
+):
+    """Monkeypatch _fetch_peers / _fetch_decompose; record every call."""
+    calls = {"peers": [], "decompose": []}
+
+    def fake_fetch_peers(ticker, *, limit):
+        calls["peers"].append((ticker, limit))
+        return peers_response
+
+    def fake_fetch_decompose(ticker):
+        calls["decompose"].append(ticker)
+        if ticker in fail_tickers:
+            raise HTTPException(status_code=502, detail=f"decompose failed for {ticker!r}")
+        return _decompose_payload(
+            ticker, residual=residuals[ticker], data_as_of=data_as_of
+        )
+
+    monkeypatch.setattr(artifacts_module, "_fetch_peers", fake_fetch_peers)
+    monkeypatch.setattr(artifacts_module, "_fetch_decompose", fake_fetch_decompose)
+    return calls
+
+
+def _peers_response(peers: list[str], *, group_by="subsector_etf", group_etf="SMH", warnings=()):
+    return {
+        "ticker": "AAPL",
+        "group_by": group_by,
+        "group_etf": group_etf,
+        "peers": [
+            {"ticker": t, "market_cap": 1e12 - i * 1e10} for i, t in enumerate(peers)
+        ],
+        "warnings": list(warnings),
+    }
+
+
+def _peer_req(**overrides):
+    base = dict(
+        slug="watchlist_er_stacked",
+        version="v1",
+        subject_id="BW-STOCK-AAPL",
+        as_of="latest",
+        format="json",
+    )
+    base.update(overrides)
+    return ArtifactRenderRequest(**base)
+
+
+class TestPeerGroupModeDetection:
+    def test_concrete_ticker_without_payload_is_peer_mode(self):
+        assert _is_stock_peer_group_request(_peer_req()) is True
+
+    def test_inline_tickers_always_win(self):
+        req = _peer_req(subject_payload={"tickers": ["NVDA", "AMD"]})
+        assert _is_stock_peer_group_request(req) is False
+
+    def test_malformed_tickers_payload_stays_on_the_watchlist_400_path(self):
+        # A bad `tickers` must fail through the watchlist validator, never
+        # silently become a peer render.
+        req = _peer_req(subject_payload={"tickers": "NVDA"})
+        assert _is_stock_peer_group_request(req) is False
+
+    def test_watchlist_ids_are_never_peer_mode(self):
+        assert _is_stock_peer_group_request(
+            _peer_req(subject_id="BW-STOCK-WATCHLIST")
+        ) is False
+        assert _is_stock_peer_group_request(
+            _peer_req(subject_id="BW-STOCK-WATCHLIST-abc123")
+        ) is False
+
+    def test_derived_peer_subject_id_round_trips(self):
+        assert _peer_group_ticker_from_subject_id("BW-STOCK-AAPL-PEERS") == "AAPL"
+        assert _peer_group_ticker_from_subject_id("BW-STOCK-AAPL") == "AAPL"
+
+
+class TestPeerGroupHappyPath:
+    def test_target_plus_capped_peers_with_distinct_rows(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        # 8 peers offered; the render must cap at 6 (dd_peer_dna parity + G.32).
+        offered = ["MSFT", "NVDA", "GOOG", "AMZN", "META", "AVGO", "TSM", "ORCL"]
+        residuals = {"AAPL": 0.10}
+        residuals.update({t: 0.11 + i * 0.01 for i, t in enumerate(offered)})
+        calls = _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(offered),
+            residuals=residuals,
+        )
+
+        data, mime, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
+            _peer_req(), store=store, prefix=PREFIX,
+        )
+
+        # The peers lookup itself is capped, not just the render.
+        assert calls["peers"] == [("AAPL", 6)]
+        assert sorted(calls["decompose"]) == sorted(["AAPL"] + offered[:6])
+
+        body = json.loads(data)
+        rows = body["rows"]
+        assert [r["ticker"] for r in rows] == ["AAPL"] + offered[:6]
+        # Distinct values per row — content, not shape.
+        assert len({r["residual"] for r in rows}) == len(rows)
+
+        pg = body["peer_group"]
+        assert pg["ticker"] == "AAPL"
+        assert pg["group_by"] == "subsector_etf"
+        assert pg["group_etf"] == "SMH"
+        assert pg["peers"] == offered[:6]
+        assert pg["peer_count"] == 6
+        assert pg["warnings"] == []
+
+        assert resolved_as_of == "2026-07-31"
+        assert gcs_path == (
+            "snapshots/artifacts/watchlist_er_stacked@v1/BW-STOCK-AAPL-PEERS/2026-07-31.json"
+        )
+        assert gcs_path in store.objects
+        assert cache_control == "public, max-age=3600"
+
+    def test_figure_overlay_titles_and_bolds_the_target(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch)
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(["MSFT", "NVDA"]),
+            residuals={"AAPL": 0.10, "MSFT": 0.12, "NVDA": 0.14},
+        )
+
+        data, mime, *_ = render_artifact(
+            _peer_req(format="png"), store=store, prefix=PREFIX,
+        )
+        assert data.startswith(b"\x89PNG")
+
+        fig = capture["figure"]
+        titles = [c["title_text"] for c in fig.layout_calls if "title_text" in c]
+        assert titles == ["<b>Peer group · AAPL vs SMH subsector peers</b>"]
+        yaxis_calls = [c["yaxis"] for c in fig.layout_calls if "yaxis" in c]
+        assert yaxis_calls and yaxis_calls[0]["ticktext"] == [
+            "<b>AAPL</b>", "MSFT", "NVDA",
+        ]
+        # No warnings → no warning annotation.
+        assert fig.annotations == []
+
+    def test_render_params_thread_through_peer_mode(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch)
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(["MSFT", "NVDA"]),
+            residuals={"AAPL": 0.10, "MSFT": 0.12, "NVDA": 0.14},
+        )
+
+        _, _, gcs_path, *_ = render_artifact(
+            _peer_req(params={"sort_by": "residual"}), store=store, prefix=PREFIX,
+        )
+        assert capture["render_data_kwargs"] == {"sort_by": "residual"}
+        assert ".sort_by-residual." in gcs_path
+
+
+class TestPeerGroupHonestStates:
+    def test_broadening_warning_surfaces_in_json(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        warning = "Only 1 peers in SMH; broadening to sector_etf=XLK"
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(
+                ["MSFT", "NVDA", "GOOG"],
+                group_by="sector_etf",
+                group_etf="XLK",
+                warnings=[warning],
+            ),
+            residuals={"AAPL": 0.10, "MSFT": 0.12, "NVDA": 0.14, "GOOG": 0.16},
+        )
+
+        data, *_ = render_artifact(_peer_req(), store=store, prefix=PREFIX)
+        pg = json.loads(data)["peer_group"]
+        assert warning in pg["warnings"]
+        assert pg["group_by"] == "sector_etf"
+        assert pg["group_etf"] == "XLK"
+
+    def test_broadening_warning_drawn_on_figure_in_warning_orange(self, store, monkeypatch):
+        from riskmodels.snapshots._plotly_theme import PLOTLY_THEME
+
+        capture = _install_watchlist_fakes(monkeypatch)
+        warning = "Only 1 peers in SMH; broadening to sector_etf=XLK"
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(
+                ["MSFT"], group_by="sector_etf", group_etf="XLK", warnings=[warning],
+            ),
+            residuals={"AAPL": 0.10, "MSFT": 0.12},
+        )
+
+        render_artifact(_peer_req(format="png"), store=store, prefix=PREFIX)
+        fig = capture["figure"]
+        warn_annotations = [a for a in fig.annotations if warning in a["text"]]
+        assert len(warn_annotations) == 1
+        assert warn_annotations[0]["font"]["color"] == PLOTLY_THEME.palette.orange
+
+    def test_no_peer_set_renders_explicit_empty_state(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch)
+        warning = "Cannot build peer group: AAPL has no subsector_etf in symbols registry"
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response([], group_etf="", warnings=[warning]),
+            residuals={"AAPL": 0.10},
+        )
+
+        data, *_ = render_artifact(_peer_req(), store=store, prefix=PREFIX)
+        body = json.loads(data)
+        # Target only — never synthetic peer rows.
+        assert [r["ticker"] for r in body["rows"]] == ["AAPL"]
+        assert body["peer_group"]["peer_count"] == 0
+        assert body["peer_group"]["peers"] == []
+        assert warning in body["peer_group"]["warnings"]
+
+        render_artifact(_peer_req(format="png"), store=store, prefix=PREFIX)
+        fig = capture["figure"]
+        titles = [c["title_text"] for c in fig.layout_calls if "title_text" in c]
+        assert titles == ["<b>Peer group · AAPL — no usable peer set</b>"]
+        empty_notes = [a for a in fig.annotations if "No usable peer set" in a["text"]]
+        assert len(empty_notes) == 1
+
+    def test_failed_peer_decompose_is_dropped_and_disclosed(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(["MSFT", "NVDA", "GOOG"]),
+            residuals={"AAPL": 0.10, "MSFT": 0.12, "GOOG": 0.16},
+            fail_tickers=("NVDA",),
+        )
+
+        data, *_ = render_artifact(_peer_req(), store=store, prefix=PREFIX)
+        body = json.loads(data)
+        assert [r["ticker"] for r in body["rows"]] == ["AAPL", "MSFT", "GOOG"]
+        dropped = [w for w in body["peer_group"]["warnings"] if "dropped" in w]
+        assert dropped and "NVDA" in dropped[0]
+
+    def test_target_decompose_failure_fails_the_render(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(["MSFT"]),
+            residuals={"MSFT": 0.12},
+            fail_tickers=("AAPL",),
+        )
+        with pytest.raises(HTTPException) as err:
+            render_artifact(_peer_req(), store=store, prefix=PREFIX)
+        assert err.value.status_code == 502
+
+
+class TestPeerGroupAsOfAndCache:
+    def test_explicit_as_of_cache_hit_skips_all_upstream_fetches(self, store, monkeypatch):
+        def _fail(*a, **kw):
+            raise AssertionError("upstream fetch must not run on a cache hit")
+
+        monkeypatch.setattr(artifacts_module, "_fetch_peers", _fail)
+        monkeypatch.setattr(artifacts_module, "_fetch_decompose", _fail)
+
+        cached = b'{"slug":"watchlist_er_stacked","peer_group":{"peers":["MSFT"]}}'
+        path = (
+            "snapshots/artifacts/watchlist_er_stacked@v1/BW-STOCK-AAPL-PEERS/2026-07-31.json"
+        )
+        store.write(path, cached, content_type="application/json")
+
+        data, _, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
+            _peer_req(as_of="2026-07-31"), store=store, prefix=PREFIX, persist=False,
+        )
+        assert data == cached
+        assert gcs_path == path
+        assert resolved_as_of == "2026-07-31"
+        assert "immutable" in cache_control
+
+    def test_explicit_as_of_mismatching_served_data_refused(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(["MSFT"]),
+            residuals={"AAPL": 0.10, "MSFT": 0.12},
+            data_as_of="2026-07-31",
+        )
+        with pytest.raises(HTTPException) as err:
+            render_artifact(_peer_req(as_of="2026-01-31"), store=store, prefix=PREFIX)
+        assert err.value.status_code == 501
+        assert "historical peer-group as_of" in err.value.detail
+
+    def test_explicit_as_of_matching_served_data_renders_immutable(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        _install_peer_fetch_fakes(
+            monkeypatch,
+            peers_response=_peers_response(["MSFT"]),
+            residuals={"AAPL": 0.10, "MSFT": 0.12},
+            data_as_of="2026-07-31",
+        )
+        data, _, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
+            _peer_req(as_of="2026-07-31"), store=store, prefix=PREFIX,
+        )
+        assert json.loads(data)["peer_group"]["peers"] == ["MSFT"]
+        assert resolved_as_of == "2026-07-31"
+        assert "immutable" in cache_control
+
+    def test_mixed_data_as_of_resolves_to_today_for_latest(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        calls = {"n": 0}
+
+        def fake_fetch_peers(ticker, *, limit):
+            return _peers_response(["MSFT"])
+
+        def fake_fetch_decompose(ticker):
+            calls["n"] += 1
+            return _decompose_payload(
+                ticker, residual=0.1 + calls["n"] * 0.01,
+                data_as_of="2026-07-31" if ticker == "AAPL" else "2026-07-30",
+            )
+
+        monkeypatch.setattr(artifacts_module, "_fetch_peers", fake_fetch_peers)
+        monkeypatch.setattr(artifacts_module, "_fetch_decompose", fake_fetch_decompose)
+
+        from datetime import datetime, timezone
+
+        _, _, _, resolved_as_of, _, _ = render_artifact(
+            _peer_req(), store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+class TestPeerGroupWatchlistRegression:
+    def test_watchlist_id_without_payload_still_400s(self, store, monkeypatch):
+        monkeypatch.setattr(
+            artifacts_module, "_fetch_peers",
+            lambda *a, **kw: pytest.fail("peers lookup must not run for BW-STOCK-WATCHLIST"),
+        )
+        with pytest.raises(HTTPException) as err:
+            render_artifact(
+                _peer_req(subject_id="BW-STOCK-WATCHLIST"), store=store, prefix=PREFIX,
+            )
+        assert err.value.status_code == 400
+        assert "tickers" in err.value.detail
+
+    def test_inline_watchlist_path_untouched(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch)
+        monkeypatch.setattr(
+            artifacts_module, "_fetch_peers",
+            lambda *a, **kw: pytest.fail("peers lookup must not run for inline watchlists"),
+        )
+        monkeypatch.setattr(
+            artifacts_module, "_fetch_decompose",
+            lambda t: _decompose_payload(t, residual=0.1 + len(t) * 0.01),
+        )
+
+        data, _, gcs_path, *_ = render_artifact(
+            _peer_req(
+                subject_id="BW-STOCK-WATCHLIST",
+                subject_payload={"tickers": ["NVDA", "AMD"]},
+            ),
+            store=store, prefix=PREFIX,
+        )
+        body = json.loads(data)
+        assert [r["ticker"] for r in body["rows"]] == ["NVDA", "AMD"]
+        # Watchlist renders carry no peer_group overlay.
+        assert "peer_group" not in body
+        assert "/BW-STOCK-WATCHLIST-" in gcs_path
+
+
 # ── _SLUG_PARAMS ↔ the real artifact modules ──────────────────────────────
 #
 # Everything above runs against fake modules, which is right for the

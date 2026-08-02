@@ -461,6 +461,52 @@ export const CAPABILITIES: Capability[] = [
     tags: ["portfolio", "batch", "analysis", "hedging"],
   },
   {
+    id: "peers",
+    name: "Peer Cohort",
+    description:
+      "Return a market-cap-ordered sector/subsector peer cohort for a ticker (GET /api/peers). Prefers subsector_etf grouping with sector_etf fallback. Used by PeerGroupProxy and selection-skill workflows.",
+    endpoint: "/api/peers",
+    method: "GET",
+    parameters: {
+      ticker: {
+        type: "string",
+        required: true,
+        description: "Target stock ticker (case-insensitive)",
+      },
+      group_by: {
+        type: "string",
+        required: false,
+        description: "Peer grouping field: subsector_etf (default) or sector_etf",
+        default: "subsector_etf",
+      },
+      limit: {
+        type: "integer",
+        required: false,
+        description: "Max peers returned (default 50, max 200)",
+        default: 50,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.001,
+      currency: "USD",
+      billing_code: "peers_v1",
+    },
+    performance: {
+      avg_latency_ms: 120,
+      p95_latency_ms: 300,
+      availability_sla: 99.5,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.97,
+      update_frequency: "daily",
+      sources: ["symbols", "security_history_latest"],
+    },
+    tags: ["peers", "sector", "subsector", "cohort"],
+  },
+  {
     id: "ticker-search",
     name: "Ticker Search",
     description:

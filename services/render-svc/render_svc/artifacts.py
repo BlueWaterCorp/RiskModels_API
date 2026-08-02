@@ -42,7 +42,9 @@ import json
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
@@ -670,6 +672,300 @@ def _resolve_stock_watchlist(
     return payloads, resolved_subject_id, resolved_as_of
 
 
+# ---------------------------------------------------------------------------
+# Stock peer-group mode (G.43) — watchlist_er_stacked over a resolved cohort
+# ---------------------------------------------------------------------------
+
+# Top-N peers by market cap, matching dd_peer_dna's 6-peer cohort. Also the
+# G.32 latency gate: each peer costs one live decompose, so the cap bounds
+# the render fan-out. Never raise this without re-measuring render time.
+_PEER_CAP = 6
+
+# Concurrent decompose calls per peer-group render. Small on purpose: the
+# fan-out is bounded by _PEER_CAP + 1 and the upstream API is billed/metered.
+_PEER_DECOMPOSE_WORKERS = 4
+
+
+@dataclass(frozen=True)
+class PeerGroupContext:
+    """What the peer-group render must disclose alongside the rows.
+
+    ``warnings`` carries ``/api/peers`` broadening/thin-cohort messages plus
+    any peers dropped because their decompose failed — the honest-state
+    surface required by G.43 (a subsector that fell back to sector must say
+    so; an empty cohort must render as explicitly empty, never as synthetic
+    rows).
+    """
+
+    ticker: str
+    group_by: str
+    group_etf: str
+    peers: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+def _is_stock_peer_group_request(req: "ArtifactRenderRequest") -> bool:
+    """Peer-group mode: a concrete single-name stock subject, no inline list.
+
+    Inline ``subject_payload.tickers`` always wins (the existing watchlist
+    contract) — including a MALFORMED ``tickers``, which must keep failing
+    through the watchlist validator's 400 rather than silently becoming a
+    peer render. ``BW-STOCK-WATCHLIST[-hash]`` without a payload keeps its
+    existing 400 so a mistyped watchlist request does not become a peers
+    lookup for the literal ticker "WATCHLIST".
+    """
+    payload = req.subject_payload or {}
+    if "tickers" in payload:
+        return False
+    bare = req.subject_id[len("BW-STOCK-") :].strip().upper()
+    return bare not in ("", "WATCHLIST") and not bare.startswith("WATCHLIST-")
+
+
+def _peer_group_ticker_from_subject_id(subject_id: str) -> str:
+    """BW-STOCK-CRM → CRM; BW-STOCK-CRM-PEERS → CRM (derived id round-trips)."""
+    ticker = _ticker_from_stock_subject_id(subject_id)
+    if ticker.endswith("-PEERS"):
+        ticker = ticker[: -len("-PEERS")]
+    if not ticker:
+        raise HTTPException(
+            status_code=422,
+            detail=f"cannot derive a ticker from subject_id {subject_id!r}",
+        )
+    return ticker
+
+
+def _fetch_peers(ticker: str, *, limit: int = _PEER_CAP) -> dict[str, Any]:
+    """Call RiskModels ``GET /api/peers`` with service credentials.
+
+    Same auth/base-URL convention as ``_fetch_decompose``. A 404 (unknown
+    ticker) surfaces as 404, not 502 — the subject id is the problem, not
+    the upstream service.
+    """
+    import requests
+
+    api_key = (
+        os.environ.get("RISKMODELS_API_KEY")
+        or os.environ.get("RENDER_SVC_RISKMODELS_API_KEY")
+        or ""
+    ).strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="RISKMODELS_API_KEY not configured on render-svc for stock panels",
+        )
+    base = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+    try:
+        resp = requests.get(
+            f"{base}/peers",
+            params={"ticker": ticker, "limit": limit},
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30,
+        )
+        if resp.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"ticker {ticker!r} not found in the symbols registry (/api/peers)",
+            )
+        resp.raise_for_status()
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        log.exception("peers lookup failed for %s", ticker)
+        raise HTTPException(
+            status_code=502,
+            detail=f"peers lookup failed for {ticker!r}: {exc}",
+        ) from exc
+
+
+def _fetch_peer_group_data(
+    ticker: str,
+) -> tuple[list[dict[str, Any]], PeerGroupContext]:
+    """Resolve + decompose a ticker's peer group.
+
+    Returns ``(payloads, ctx)`` where ``payloads[0]`` is the target's
+    decompose payload followed by up to ``_PEER_CAP`` peers in the market-cap
+    order ``/api/peers`` returns. A peer whose decompose fails is dropped and
+    disclosed in ``ctx.warnings`` (matching dd_peer_dna's drop-with-fallback
+    behavior, but never silently); a target failure fails the whole render.
+    """
+    peers_resp = _fetch_peers(ticker, limit=_PEER_CAP)
+    warnings = [str(w) for w in (peers_resp.get("warnings") or [])]
+
+    peer_tickers: list[str] = []
+    for row in peers_resp.get("peers") or []:
+        t = str((row or {}).get("ticker") or "").strip().upper()
+        if t and t != ticker and t not in peer_tickers:
+            peer_tickers.append(t)
+    peer_tickers = peer_tickers[:_PEER_CAP]
+
+    payloads_by_ticker: dict[str, dict[str, Any]] = {}
+    dropped: list[str] = []
+    with ThreadPoolExecutor(
+        max_workers=min(_PEER_DECOMPOSE_WORKERS, 1 + len(peer_tickers))
+    ) as pool:
+        target_future = pool.submit(_fetch_decompose, ticker)
+        peer_futures = {t: pool.submit(_fetch_decompose, t) for t in peer_tickers}
+        target_payload = target_future.result()  # target failure propagates
+        for t in peer_tickers:
+            try:
+                payloads_by_ticker[t] = peer_futures[t].result()
+            except HTTPException as exc:
+                dropped.append(t)
+                log.warning(
+                    "peer %s dropped from %s peer group: %s", t, ticker, exc.detail
+                )
+    if dropped:
+        warnings.append(
+            f"{len(dropped)} peer(s) not modeled and dropped: {', '.join(dropped)}"
+        )
+
+    rendered = tuple(t for t in peer_tickers if t in payloads_by_ticker)
+    payloads = [target_payload] + [payloads_by_ticker[t] for t in rendered]
+    ctx = PeerGroupContext(
+        ticker=ticker,
+        group_by=str(peers_resp.get("group_by") or ""),
+        group_etf=str(peers_resp.get("group_etf") or ""),
+        peers=rendered,
+        warnings=tuple(warnings),
+    )
+    return payloads, ctx
+
+
+def _peer_group_resolved_as_of(payloads: list[dict[str, Any]], as_of: str) -> str:
+    """Resolve the peer-group as_of from the decompose payloads.
+
+    ``latest`` → the unanimous ``data_as_of`` when there is one, else today
+    (same rule as the watchlist path). An explicit historical date that does
+    not match what decompose served is refused — decompose is latest-only
+    today, and keying live-latest bytes under a historical date would label
+    the data with a date it does not have.
+    """
+    as_ofs = {str(p.get("data_as_of") or "") for p in payloads}
+    as_ofs.discard("")
+    if as_of == "latest":
+        return (
+            next(iter(as_ofs))
+            if len(as_ofs) == 1
+            else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        )
+    if as_ofs - {as_of}:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"as_of={as_of!r} differs from decompose data_as_of="
+                f"{sorted(as_ofs)}; historical peer-group as_of is not yet "
+                f"supported (decompose is latest-only). Use as_of='latest'."
+            ),
+        )
+    return as_of
+
+
+class _PeerGroupPresentation:
+    """Peer-group decoration over the ``watchlist_er_stacked`` module.
+
+    Delegates everything to the underlying artifact module and overlays the
+    peer-group disclosure: a ``peer_group`` block (membership, grouping ETF,
+    warnings) on the JSON payload, and on figures a peer-group title, a
+    bolded target row label, the broadening/drop warnings in warning orange,
+    and an explicit empty-state notice when no peer rendered. Lives in
+    render-svc rather than the BWMACRO module because the peer resolution —
+    and therefore everything there is to disclose about it — happens here.
+    """
+
+    def __init__(self, mod: Any, ctx: PeerGroupContext) -> None:
+        self._mod = mod
+        self._ctx = ctx
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._mod, name)
+
+    def render_data(self, data: Any, **params: Any) -> dict:
+        payload = self._mod.render_data(data, **params)
+        ctx = self._ctx
+        payload["peer_group"] = {
+            "ticker": ctx.ticker,
+            "group_by": ctx.group_by,
+            "group_etf": ctx.group_etf,
+            "peers": list(ctx.peers),
+            "peer_count": len(ctx.peers),
+            "warnings": list(ctx.warnings),
+        }
+        return payload
+
+    def render_figure(self, data: Any, **params: Any) -> Any:
+        fig = self._mod.render_figure(data, **params)
+        ctx = self._ctx
+
+        # Warning orange + faint ink from the palette SSOT (DESIGN.md locks
+        # these; never hardcode).
+        from riskmodels.snapshots._plotly_theme import PLOTLY_THEME
+
+        warn_color = PLOTLY_THEME.palette.orange
+
+        if ctx.peers:
+            cohort_word = (
+                "subsector" if ctx.group_by == "subsector_etf" else "sector"
+            )
+            title = (
+                f"<b>Peer group · {ctx.ticker} vs {ctx.group_etf} "
+                f"{cohort_word} peers</b>"
+            )
+        else:
+            title = f"<b>Peer group · {ctx.ticker} — no usable peer set</b>"
+        fig.update_layout(title_text=title)
+
+        # Bold the target's row label so it reads as the subject, not one
+        # more peer — robust to sort_by/top_n reordering because the order
+        # is read off the rendered trace, and skipped when the target row
+        # was truncated away by the caller's own params.
+        traces = getattr(fig, "data", ()) or ()
+        first = traces[0] if len(traces) else None
+        order = [str(t) for t in (getattr(first, "y", None) or ())]
+        if ctx.ticker in order:
+            fig.update_layout(
+                yaxis=dict(
+                    tickvals=order,
+                    ticktext=[
+                        f"<b>{t}</b>" if t == ctx.ticker else t for t in order
+                    ],
+                )
+            )
+
+        if not ctx.peers:
+            fig.add_annotation(
+                text=(
+                    f"No usable peer set for {ctx.ticker} — "
+                    f"showing {ctx.ticker} alone"
+                ),
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                xanchor="center",
+                showarrow=False,
+                font=dict(size=12, color=warn_color),
+            )
+
+        if ctx.warnings:
+            fig.update_layout(
+                margin_b=92 + 12 * max(0, len(ctx.warnings) - 1)
+            )
+            fig.add_annotation(
+                text="<br>".join(ctx.warnings),
+                xref="paper",
+                yref="paper",
+                x=0,
+                y=-0.26,
+                xanchor="left",
+                yanchor="top",
+                align="left",
+                showarrow=False,
+                font=dict(size=9, color=warn_color),
+            )
+        return fig
+
+
 @contextmanager
 def _param_errors_as_422(supplied: dict[str, Any]):
     """Turn a module's param-validation ``ValueError`` into a 422.
@@ -811,11 +1107,37 @@ def render_artifact(
     # Validate params against the slug before any loader work (422 fast).
     supplied_params = _supplied_params(req)
 
+    # G.43 peer-group mode state; set only on the peer branch below.
+    peer_group_ctx: PeerGroupContext | None = None
+    peer_group_ticker: str | None = None
+
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
     elif subject_kind == "stock" and req.slug == "watchlist_er_stacked":
-        subject_data, resolved_subject_id, resolved_as_of = _resolve_stock_watchlist(req)
+        if _is_stock_peer_group_request(req):
+            # Peer-group mode (G.43): BW-STOCK-{TICKER} with no inline
+            # tickers → resolve top-6 peers by market cap via /api/peers,
+            # live-decompose target + peers, render through the existing
+            # watchlist module. One derived subject id per target ticker.
+            peer_group_ticker = _peer_group_ticker_from_subject_id(req.subject_id)
+            resolved_subject_id = f"BW-STOCK-{peer_group_ticker}-PEERS"
+            if req.as_of == "latest":
+                subject_data, peer_group_ctx = _fetch_peer_group_data(
+                    peer_group_ticker
+                )
+                resolved_as_of = _peer_group_resolved_as_of(subject_data, req.as_of)
+            else:
+                # Explicit as_of needs no fetch to build the cache key —
+                # defer the decompose fan-out until a cache miss is
+                # established (G.32: never pay N live decomposes for bytes
+                # already in GCS).
+                subject_data = None
+                resolved_as_of = req.as_of
+        else:
+            subject_data, resolved_subject_id, resolved_as_of = (
+                _resolve_stock_watchlist(req)
+            )
     elif is_dd_panel:
         # Institutional DD figure units (dd_peer_dna@v1, …) — Tier-1 batch
         # pre-rendered by `bulk_dd_render --panels` (same in-memory DDData as
@@ -956,6 +1278,14 @@ def render_artifact(
             ),
         )
 
+    # Deferred peer-group fan-out (explicit as_of that missed the cache).
+    # Runs after the miss is established so a cache hit never pays the
+    # decompose calls; the resolved-date check still refuses to key
+    # live-latest data under a historical date.
+    if peer_group_ticker is not None and subject_data is None:
+        subject_data, peer_group_ctx = _fetch_peer_group_data(peer_group_ticker)
+        resolved_as_of = _peer_group_resolved_as_of(subject_data, req.as_of)
+
     mod = _import_artifact_module(req.slug, req.version)
 
     applicable = tuple(getattr(mod, "APPLICABLE_SUBJECT_KINDS", ()))
@@ -971,6 +1301,10 @@ def render_artifact(
 
     adapter = _adapter_for(req.slug, subject_kind, supplied_params)
     normalized = adapter(subject_data)
+    if peer_group_ctx is not None:
+        # Overlay the peer-group disclosure (title, warnings, empty state)
+        # on the module's output without touching the module itself.
+        mod = _PeerGroupPresentation(mod, peer_group_ctx)
     rendered = _render_bytes(mod, normalized, req.format, supplied_params)
 
     if persist:
