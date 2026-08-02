@@ -114,3 +114,67 @@ def test_module_registry_contract():
     assert v1.APPLICABLE_SUBJECT_KINDS == ("fund",)
     assert set(v1.RENDER_PARAMS) == {"benchmark", "top_n"}
     assert v1.ARTIFACT_SLUG == "holdings_active_panel"
+
+
+# ---------------------------------------------------------------------------
+# G.45 clipping fix — extreme-value labels fall back inside the bar
+# ---------------------------------------------------------------------------
+
+
+def test_label_positions_extreme_bars_go_inside():
+    # -7.9% is the side extreme (the clipped AAPL case); +2.7% is the
+    # positive extreme; +2.3% sits at 85.2% of the positive extent, so it
+    # is also within the inside band; a small bar stays outside.
+    values = [0.027, 0.023, 0.004, -0.012, -0.079]
+    assert v1._label_positions(values) == [
+        "inside",
+        "inside",
+        "outside",
+        "outside",
+        "inside",
+    ]
+
+
+def test_label_positions_non_extreme_bars_unchanged():
+    values = [0.05, 0.02, 0.01, -0.06, -0.02]
+    assert v1._label_positions(values) == [
+        "inside",
+        "outside",
+        "outside",
+        "inside",
+        "outside",
+    ]
+
+
+def test_label_positions_single_sided():
+    # All-positive payload: only the bars near the positive extent flip.
+    assert v1._label_positions([0.04, 0.01]) == ["inside", "outside"]
+    # All-negative payload mirrors.
+    assert v1._label_positions([-0.04, -0.01]) == ["inside", "outside"]
+
+
+def test_render_figure_extreme_labels_inside_bar():
+    fig = v1.render_figure(FIT)
+    trace = fig.data[0]
+    # Rows are over + reversed under: [+0.027, +0.023, -0.079]. +0.023 is
+    # 85.2% of the positive extent, so all three sit in the inside band.
+    assert tuple(trace.textposition) == ("inside", "inside", "inside")
+    assert trace.insidetextanchor == "end"
+
+
+def test_render_figure_small_bars_keep_outside_labels():
+    fit = {
+        **FIT,
+        "top_overweights": [
+            {"bw_sym_id": "BW-A", "subject_weight": 0.03, "benchmark_weight": 0.003, "active_weight": 0.06},
+            {"bw_sym_id": "BW-B", "subject_weight": 0.031, "benchmark_weight": 0.008, "active_weight": 0.01},
+        ],
+        "top_underweights": [
+            {"bw_sym_id": "BW-C", "subject_weight": 0.098, "benchmark_weight": 0.177, "active_weight": -0.079},
+            {"bw_sym_id": "BW-D", "subject_weight": 0.01, "benchmark_weight": 0.03, "active_weight": -0.02},
+        ],
+    }
+    fig = v1.render_figure(fit)
+    trace = fig.data[0]
+    # rows = over + reversed under: [+0.06, +0.01, -0.02, -0.079]
+    assert tuple(trace.textposition) == ("inside", "outside", "outside", "inside")
