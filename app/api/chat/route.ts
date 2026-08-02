@@ -302,6 +302,7 @@ const chatStreamHandler = async (
     model: modelOpt,
     parallel_tool_calls: bodyParallelToolCalls,
     execute_tools_sequentially: bodyExecSequential,
+    workspace_tools: bodyWorkspaceTools,
   } = validation.data;
   const backend = resolveAgentBackend(modelOpt);
 
@@ -331,6 +332,10 @@ const chatStreamHandler = async (
             execParallel: !bodyExecSequential,
             // withBilling-gated: an authenticated environment per Exhibit B(e).
             rawFieldsPermitted: true,
+            // Workspace command bus (G.36): streaming-only — the `action`
+            // frame is the delivery channel, so the blocking handler above
+            // deliberately never offers these tools even if the flag is sent.
+            workspaceTools: bodyWorkspaceTools === true,
           },
           (event) => {
             if (event.type === "final") return; // re-emitted enriched below

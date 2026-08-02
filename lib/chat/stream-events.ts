@@ -12,6 +12,12 @@
  *    produces text with our tool-calling providers, so deltas effectively
  *    stream the final answer; if a tool round emits preamble text it is
  *    forwarded as narration and `final.content` remains authoritative.
+ *  - `action`  — a typed workspace command (G.36): emitted per successful
+ *    workspace-action tool call, only when the request opted in via
+ *    `workspace_tools: true`. Distinct frame type by design — existing frames
+ *    are unchanged and `.net` proxies everything verbatim; the workspace
+ *    client feeds `action` to its command bus (`dispatchWorkspaceAction`,
+ *    fail-closed) and non-workspace consumers ignore the unknown type.
  *  - `final`   — exactly once on success. `content` is authoritative (clients
  *    replace accumulated deltas with it). `quota` / `persisted_id` are
  *    engine-level null; the route enriches `quota`, and turn persistence is a
@@ -42,6 +48,7 @@ export type ChatStreamEvent =
   | { type: "status"; round: number; message: string }
   | { type: "tool"; name: string; latency_ms: number; error?: string }
   | { type: "delta"; text: string }
+  | { type: "action"; tool_call_id: string; action: Record<string, unknown> }
   | {
       type: "final";
       content: string;

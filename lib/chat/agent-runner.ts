@@ -7,6 +7,11 @@ import type {
 } from "openai/resources/chat/completions";
 import type { CompletionUsage } from "openai/resources/completions";
 import { CHAT_TOOLS } from "@/lib/chat/tools";
+import {
+  collectWorkspaceActions,
+  WORKSPACE_CHAT_TOOLS,
+  WORKSPACE_TOOLS_SYSTEM_APPEND,
+} from "@/lib/chat/workspace-action-tools";
 import { buildSystemPrompt } from "@/lib/chat/system-prompt";
 import { executeToolCalls, type ToolCallResult } from "@/lib/chat/tool-executor";
 import {
@@ -39,6 +44,14 @@ export interface RunChatAgentOptions {
   rawFieldsPermitted?: boolean;
   /** Reject tool calls whose args fail this gate (e.g. non-MAG7 ticker). */
   preFlightGuard?: (toolName: string, parsedArgs: unknown) => string | null;
+  /**
+   * Offer the workspace command-bus tools (`set_subject` / `set_window`) and
+   * emit their typed actions as distinct `action` SSE frames (G.36). Only the
+   * streaming chat route sets this, and only when the caller opted in via
+   * `workspace_tools: true` — the frame is the sole delivery channel, so a
+   * blocking-path caller must never be offered these tools.
+   */
+  workspaceTools?: boolean;
   /** Optional cancellation; checked between rounds and passed to provider round-trips. */
   signal?: AbortSignal;
 }
@@ -266,6 +279,7 @@ async function runOpenAIChatAgent(
     skipBilling = false,
     rawFieldsPermitted = false,
     preFlightGuard,
+    workspaceTools = false,
     signal,
   } = opts;
 
@@ -282,14 +296,23 @@ async function runOpenAIChatAgent(
       baseURL: process.env.MOONSHOT_BASE_URL?.trim() || "https://api.moonshot.ai/v1",
     });
 
-  const tools: ChatCompletionTool[] = allowedToolNames
+  const baseTools: ChatCompletionTool[] = allowedToolNames
     ? CHAT_TOOLS.filter(
         (t) => t.type === "function" && allowedToolNames.includes(t.function.name),
       )
     : CHAT_TOOLS;
+  // Workspace tools ride outside allowedToolNames: they are gated by the
+  // caller's own opt-in, and generated from the Risk_Models mirror.
+  const tools: ChatCompletionTool[] = workspaceTools
+    ? [...baseTools, ...WORKSPACE_CHAT_TOOLS]
+    : baseTools;
 
   const messages: ChatCompletionMessageParam[] = [
-    { role: "system", content: buildSystemPrompt() },
+    {
+      role: "system",
+      content:
+        buildSystemPrompt() + (workspaceTools ? WORKSPACE_TOOLS_SYSTEM_APPEND : ""),
+    },
     ...userMessages.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -407,6 +430,15 @@ async function runOpenAIChatAgent(
         latency_ms: r.latency_ms,
         ...(r.error ? { error: r.error } : {}),
       });
+    }
+
+    // Workspace command bus (G.36): each successful workspace-action tool call
+    // becomes its own `action` frame. Streaming-only by construction — with no
+    // emit there is no channel, and workspaceTools is never set there.
+    if (emit && workspaceTools) {
+      for (const a of collectWorkspaceActions(results)) {
+        emit({ type: "action", tool_call_id: a.tool_call_id, action: a.action });
+      }
     }
 
     for (let i = 0; i < toolCalls.length; i++) {

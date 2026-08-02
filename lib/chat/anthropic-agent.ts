@@ -4,6 +4,11 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
 import { CHAT_TOOLS } from "@/lib/chat/tools";
+import {
+  collectWorkspaceActions,
+  WORKSPACE_CHAT_TOOLS,
+  WORKSPACE_TOOLS_SYSTEM_APPEND,
+} from "@/lib/chat/workspace-action-tools";
 import { buildSystemPrompt } from "@/lib/chat/system-prompt";
 import { executeToolCalls } from "@/lib/chat/tool-executor";
 import {
@@ -89,6 +94,7 @@ export async function runAnthropicChatAgent(
     skipBilling = false,
     rawFieldsPermitted = false,
     preFlightGuard,
+    workspaceTools = false,
     signal,
   } = opts;
 
@@ -103,7 +109,12 @@ export async function runAnthropicChatAgent(
           t.type === "function" && allowedToolNames.includes(t.function.name),
       )
     : CHAT_TOOLS;
-  const anthropicTools = selectedTools.map(toAnthropicTool);
+  // Workspace command-bus tools (G.36): schemas generated from the
+  // Risk_Models mirror; offered only on the caller's explicit opt-in.
+  const offeredTools: ChatCompletionTool[] = workspaceTools
+    ? [...selectedTools, ...WORKSPACE_CHAT_TOOLS]
+    : selectedTools;
+  const anthropicTools = offeredTools.map(toAnthropicTool);
 
   const messages: Anthropic.MessageParam[] = userMessages.map((m) => ({
     role: m.role,
@@ -129,7 +140,9 @@ export async function runAnthropicChatAgent(
       system: [
         {
           type: "text",
-          text: buildSystemPrompt(),
+          text:
+            buildSystemPrompt() +
+            (workspaceTools ? WORKSPACE_TOOLS_SYSTEM_APPEND : ""),
           cache_control: { type: "ephemeral" },
         },
       ],
@@ -230,6 +243,14 @@ export async function runAnthropicChatAgent(
         latency_ms: r.latency_ms,
         ...(r.error ? { error: r.error } : {}),
       });
+    }
+
+    // Workspace command bus (G.36): distinct `action` frame per successful
+    // workspace-action tool call (see agent-runner.ts for the rationale).
+    if (emit && workspaceTools) {
+      for (const a of collectWorkspaceActions(results)) {
+        emit({ type: "action", tool_call_id: a.tool_call_id, action: a.action });
+      }
     }
 
     const toolResultBlocks: Anthropic.ToolResultBlockParam[] = toolUseBlocks.map(

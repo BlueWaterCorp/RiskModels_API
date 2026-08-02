@@ -2,6 +2,7 @@ import type { ChatCompletionMessageToolCall } from "openai/resources/chat/comple
 import { deductBalance } from "@/lib/agent/billing";
 import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { TOOL_MAP, type ChatToolDef } from "@/lib/chat/tools";
+import { WORKSPACE_TOOL_MAP } from "@/lib/chat/workspace-action-tools";
 import { getDataLicenseMode, stripRawRestrictedDeep } from "@/lib/data-license";
 
 export interface ToolCallResult {
@@ -74,7 +75,10 @@ async function runOneTool(
   }
 
   const name = toolCall.function.name;
-  const def: ChatToolDef | undefined = TOOL_MAP[name];
+  // Workspace-action tools (G.36) live in their own registry: they are only
+  // *offered* when the caller opts in, but a call the model makes must always
+  // resolve here. They bill nothing (capabilityId null) and fetch nothing.
+  const def: ChatToolDef | undefined = TOOL_MAP[name] ?? WORKSPACE_TOOL_MAP[name];
   if (!def) {
     return {
       tool_call_id: toolCallId,
@@ -238,7 +242,8 @@ export async function executeToolCalls(
         suggestion: "Retry or simplify the request.",
       },
       cost_usd: 0,
-      capability_id: TOOL_MAP[name]?.capabilityId ?? null,
+      capability_id:
+        (TOOL_MAP[name] ?? WORKSPACE_TOOL_MAP[name])?.capabilityId ?? null,
       latency_ms: 0,
       error: "Rejected",
     };
