@@ -228,14 +228,16 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   },
   holdings_active_panel: {
     fund: {
-      status: "unavailable",
+      status: "verified",
       reason:
-        "G.45: shipped in render-svc code (loader over GET /api/data/benchmark-fit, " +
-        "renderer in the SDK at riskmodels.snapshots.artifacts.holdings_active_panel.v1, " +
-        "params benchmark + top_n, default benchmark ff_own) but NOT yet deployed — " +
-        "render-svc does not deploy on merge. Re-audit and promote to verified after " +
-        "the next render-svc deploy. Static BW-BENCH benches stay 409-gated by the " +
-        "readiness registry until the Funds_DAG writer fix lands.",
+        "G.45: loader over GET /api/data/benchmark-fit, renderer in the SDK at " +
+        "riskmodels.snapshots.artifacts.holdings_active_panel.v1, params benchmark + " +
+        "top_n, default benchmark ff_own. Verified against prod render-svc " +
+        "(revision render-svc-00033-vv6, 2026-08-02): BW-FUND-S000000008 ff_own " +
+        "returned active_share 0.227, matching the pre-merge measurement. Static " +
+        "BW-BENCH benches stay 409-gated by the readiness registry until the " +
+        "Funds_DAG writer fix lands (H.145) — verified the gate still refuses " +
+        "benchmark=spy with 409 on the same revision.",
     },
   },
 };
