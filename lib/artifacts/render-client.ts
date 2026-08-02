@@ -25,10 +25,16 @@ export interface ArtifactRenderParams {
    * unknown/inapplicable) and folds them into the render-once cache key.
    */
   params?: {
-    /** top_holdings_erm_stacked: rows to render (1–50, default 12). */
+    /** top_holdings_erm_stacked / holdings_active_panel: rows to render (1–50, default 12 / 10). */
     top_n?: number;
     /** cumulative_return_strip: trailing window (default "max"). */
     window?: "3m" | "6m" | "1y" | "2y" | "max";
+    /**
+     * holdings_active_panel (G.45): bw_bench_id | alias | ff_own |
+     * cell_<slug>. Default ff_own. Development-status benches are refused
+     * upstream with 409 (readiness registry) — surface that refusal.
+     */
+    benchmark?: string;
   };
 }
 
@@ -212,6 +218,18 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   },
   narrative_risk_insight: {
     fund: { status: "unavailable", reason: "No fund adapter; never rendered." },
+  },
+  holdings_active_panel: {
+    fund: {
+      status: "unavailable",
+      reason:
+        "G.45: shipped in render-svc code (loader over GET /api/data/benchmark-fit, " +
+        "renderer in the SDK at riskmodels.snapshots.artifacts.holdings_active_panel.v1, " +
+        "params benchmark + top_n, default benchmark ff_own) but NOT yet deployed — " +
+        "render-svc does not deploy on merge. Re-audit and promote to verified after " +
+        "the next render-svc deploy. Static BW-BENCH benches stay 409-gated by the " +
+        "readiness registry until the Funds_DAG writer fix lands.",
+    },
   },
 };
 

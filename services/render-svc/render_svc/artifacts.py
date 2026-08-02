@@ -114,6 +114,16 @@ class ArtifactParams(BaseModel):
     )
     # A specific observation date for history-navigating panels.
     date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    # Benchmark selector for the holdings-active panel (G.45): a
+    # bw_bench_id, a catalog alias, "ff_own", or "cell_<slug>". Resolved
+    # and gated server-side by /api/data/benchmark-fit (the readiness
+    # registry 409s development benches — that refusal is propagated,
+    # never worked around here). Lowercased so alias spellings share one
+    # render-once cache key.
+    benchmark: str | None = Field(
+        default=None, min_length=1, max_length=64,
+        pattern=r"^[A-Za-z0-9&/. _-]+$",
+    )
 
 
 class ArtifactRenderRequest(BaseModel):
@@ -147,7 +157,9 @@ class ArtifactRenderRequest(BaseModel):
             "('3m'|'6m'|'1y'|'2y'|'3y'|'5y'|'max') on the cumulative and "
             "historical panels; sort_by on the row-ordered cohort panels; "
             "layers (comma-separated cascade levels) on the ER bar panels; "
-            "date (YYYY-MM-DD) on historical_risk_waterfall. Params "
+            "date (YYYY-MM-DD) on historical_risk_waterfall; benchmark "
+            "(bw_bench_id | alias | ff_own | cell_<slug>) plus top_n on "
+            "holdings_active_panel. Params "
             "participate in the GCS cache key — each distinct combination "
             "renders once under its own key."
         ),
@@ -237,6 +249,7 @@ _SLUG_PARAMS: dict[str, frozenset[str]] = {
     "watchlist_er_stacked": frozenset({"top_n", "sort_by"}),
     "risk_dna_stacked": frozenset({"peer_n", "sort_by"}),
     "historical_risk_waterfall": frozenset({"date", "window"}),
+    "holdings_active_panel": frozenset({"benchmark", "top_n"}),
 }
 
 
@@ -260,6 +273,11 @@ def _supplied_params(req: ArtifactRenderRequest) -> dict[str, Any]:
                 f"(accepted: {sorted(applicable) or 'none'})"
             ),
         )
+    if "benchmark" in supplied:
+        # Alias spellings ("SPY" / "spy" / "Sp500") must share one
+        # render-once cache key; the fit endpoint resolves aliases
+        # case-insensitively anyway.
+        supplied["benchmark"] = str(supplied["benchmark"]).strip().lower()
     return supplied
 
 
@@ -290,16 +308,44 @@ def _key_safe(value: Any) -> str:
 
 
 def _import_artifact_module(slug: str, version: str) -> Any:
-    """Lazy import of ``bwmacro.snapshots.artifacts.{slug}.{version}``."""
-    qualname = f"bwmacro.snapshots.artifacts.{slug}.{version}"
-    try:
-        return importlib.import_module(qualname)
-    except ImportError as exc:
-        log.warning("artifact module not found: %s", qualname)
-        raise HTTPException(
-            status_code=404,
-            detail=f"Artifact {slug}@{version} not found",
-        ) from exc
+    """Lazy import of the artifact renderer module for ``slug@version``.
+
+    Resolution order:
+
+    1. ``bwmacro.snapshots.artifacts.{slug}.{version}`` — the private
+       renderer corpus baked into the deployed image.
+    2. ``riskmodels.snapshots.artifacts.{slug}.{version}`` — public-SDK
+       renderers (G.45): modules whose inputs are entirely public API
+       surface ship in the SDK this service already installs, so they are
+       importable both here and by pip consumers.
+
+    Same module contract either way (``APPLICABLE_SUBJECT_KINDS`` /
+    ``RENDER_PARAMS`` / ``render_data`` / ``render_figure``).
+    """
+    candidates = (
+        f"bwmacro.snapshots.artifacts.{slug}.{version}",
+        f"riskmodels.snapshots.artifacts.{slug}.{version}",
+    )
+    for qualname in candidates:
+        try:
+            return importlib.import_module(qualname)
+        except ModuleNotFoundError as exc:
+            # Fall through only when the *candidate itself* is missing. A
+            # ModuleNotFoundError for some dependency inside an existing
+            # module is a deploy fault and must not be masked as "slug
+            # not found".
+            if exc.name and qualname.startswith(exc.name):
+                continue
+            log.exception("artifact module %s failed to import", qualname)
+            raise HTTPException(
+                status_code=404,
+                detail=f"Artifact {slug}@{version} not found",
+            ) from exc
+    log.warning("artifact module not found: %s", " / ".join(candidates))
+    raise HTTPException(
+        status_code=404,
+        detail=f"Artifact {slug}@{version} not found",
+    )
 
 
 def _adapter_for(
@@ -318,6 +364,22 @@ def _adapter_for(
     Filer / ETF / cohort adapters land alongside their Phase 2 artifact
     rows in ``BWMACRO/src/bwmacro/snapshots/artifacts/adapters.py``.
     """
+    # SDK-hosted artifact (G.45): the loader already returns the fit
+    # payload in the module's input shape, and the module lives in
+    # riskmodels.snapshots.artifacts — resolve before touching bwmacro,
+    # which is not importable in every environment this service tests in.
+    if slug == "holdings_active_panel":
+        if subject_kind == "fund":
+            return lambda fit: fit
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"holdings_active_panel is wired for subject_kind='fund' "
+                f"only (got {subject_kind!r}); widen APPLICABLE_SUBJECT_KINDS "
+                f"with verification before advertising more kinds"
+            ),
+        )
+
     from bwmacro.snapshots.artifacts import adapters
 
     top_n = (params or {}).get("top_n", 12)
@@ -652,6 +714,112 @@ def _load_stock_decompose(
     return payload, resolved
 
 
+def _load_benchmark_fit_subject(
+    req: "ArtifactRenderRequest", supplied_params: dict[str, Any]
+) -> tuple[dict[str, Any], str]:
+    """Loader for ``holdings_active_panel`` (G.45).
+
+    Calls ``GET /api/data/benchmark-fit`` — the existing
+    ``fitWeightVectors`` kernel — with service credentials, keeping the
+    kernel's as_of semantics untouched (subject at latest teo ≤ as_of,
+    benchmark at latest teo ≤ the subject's teo). Default benchmark is
+    ``ff_own``: the static BW-BENCH surfaces are status ``development``
+    in the readiness registry and the endpoint fail-closes on them with
+    409 — that refusal is propagated verbatim (409 here too), never
+    weakened or worked around.
+
+    Returns ``(fit_payload, resolved_as_of)`` where ``resolved_as_of`` is
+    the kernel's ``subject_teo``.
+    """
+    import requests
+
+    api_key = (
+        os.environ.get("RISKMODELS_API_KEY")
+        or os.environ.get("RENDER_SVC_RISKMODELS_API_KEY")
+        or ""
+    ).strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "RISKMODELS_API_KEY not configured on render-svc for the "
+                "holdings-active panel"
+            ),
+        )
+    base = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+
+    benchmark = str(supplied_params.get("benchmark") or "ff_own")
+    params: dict[str, Any] = {
+        "subject": req.subject_id,
+        "benchmark": benchmark,
+        "top": int(supplied_params.get("top_n") or 10),
+    }
+    if req.as_of != "latest":
+        params["as_of"] = req.as_of
+
+    try:
+        resp = requests.get(
+            f"{base}/data/benchmark-fit",
+            headers={"Authorization": f"Bearer {api_key}"},
+            params=params,
+            timeout=45,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("benchmark-fit fetch failed for %s", req.subject_id)
+        raise HTTPException(
+            status_code=502,
+            detail=f"benchmark-fit failed for {req.subject_id!r}: {exc}",
+        ) from exc
+
+    if resp.status_code != 200:
+        try:
+            body = resp.json()
+        except Exception:  # noqa: BLE001
+            body = {"error": resp.text[:300]}
+        upstream_error = str(body.get("error") or body)
+        if resp.status_code == 409:
+            # Readiness gate: the bench is under development (hollow
+            # trailing teos). Surfacing the refusal IS the contract —
+            # do not fall back to another benchmark.
+            raise HTTPException(status_code=409, detail=upstream_error)
+        if resp.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"benchmark-fit: {upstream_error} "
+                    f"(subject={req.subject_id!r}, benchmark={benchmark!r})"
+                ),
+            )
+        if resp.status_code == 400:
+            raise HTTPException(status_code=422, detail=upstream_error)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"benchmark-fit returned HTTP {resp.status_code} for "
+                f"{req.subject_id!r}: {upstream_error}"
+            ),
+        )
+
+    fit = resp.json()
+    resolved = str(fit.get("subject_teo") or "").strip()
+    if not resolved:
+        raise HTTPException(
+            status_code=502,
+            detail=f"benchmark-fit payload for {req.subject_id!r} has no subject_teo",
+        )
+    if req.as_of != "latest" and resolved[:10] > req.as_of:
+        # PIT invariant, same as the fund loader: a historical request
+        # must never resolve to a period after the requested date.
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"benchmark-fit resolved subject_teo={resolved!r} > "
+                f"as_of={req.as_of!r} for {req.subject_id!r} (PIT invariant violated)"
+            ),
+        )
+    return fit, resolved[:10]
+
+
 def _resolve_stock_watchlist(
     req: "ArtifactRenderRequest",
 ) -> tuple[list[dict[str, Any]], str, str]:
@@ -834,6 +1002,14 @@ def render_artifact(
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
+    elif subject_kind == "fund" and req.slug == "holdings_active_panel":
+        # G.45: the panel's subject data is a benchmark-fit payload, not
+        # FundData — the fitWeightVectors kernel already owns the as_of
+        # semantics and the readiness gate.
+        subject_data, resolved_as_of = _load_benchmark_fit_subject(
+            req, supplied_params
+        )
+        resolved_subject_id = req.subject_id
     elif subject_kind == "stock" and req.slug == "watchlist_er_stacked":
         subject_data, resolved_subject_id, resolved_as_of = _resolve_stock_watchlist(req)
     elif is_dd_panel:

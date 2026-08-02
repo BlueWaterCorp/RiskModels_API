@@ -189,7 +189,9 @@ def _render_section_i_performance(page: SnapshotPage, snap: CanonicalFundSnapsho
 
     target = snap.identity.symbol_id
     ordered_labels: list[str] = []
-    for k in [target, "SPY"]:
+    # Benchmark second: legacy "SPY" key, or the G.45 disclosed-default
+    # label ("SPY (default)") the loader now emits.
+    for k in [target, "SPY", "SPY (default)"]:
         if k in perf.cumulative_curves and k not in ordered_labels:
             ordered_labels.append(k)
     for k in perf.cumulative_curves:

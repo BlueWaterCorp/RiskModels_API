@@ -1042,11 +1042,164 @@ def enrich_fund_data_with_supabase(
     return replace(fd, holdings=new_holdings)
 
 
+def _benchmark_overlay_series(
+    cum_nav: list[tuple[str, float]],
+    proxy_ticker: str,
+    client: Any | None,
+) -> tuple[list[tuple[str, float]], dict[str, float | None]]:
+    """Benchmark cumulative-return overlay from the proxy ETF's realized returns.
+
+    G.45 (ADR 2026-08-01): the overlay is sourced from the benchmark's
+    **proxy ETF** daily gross returns via the existing ``/ticker-returns``
+    endpoint (IVV for BW-BENCH-SPY) — never from the BW-BENCH
+    ``ds_portfolio`` series, whose ``latest_holdings_constant`` weight
+    basis is a risk profile, not realized performance.
+
+    Alignment: the proxy's daily returns are compounded onto the fund
+    series' own date grid, anchored at the same start —
+
+    - Anchored fund series (first value == 0.0, the daily-cube and
+      layer-expanded paths): the benchmark is 0.0 at the same anchor date
+      and compounds over the days after it.
+    - Non-anchored monthly series (first point carries the first month's
+      return): the benchmark compounds from the end of the *previous*
+      month, so its first point is that same month's benchmark return.
+
+    Each fund date ``d`` samples the proxy at its last trading day ≤ ``d``
+    (month-end teos on weekends resolve to the prior trading day). Because
+    only fund dates are sampled, a historical ``as_of`` read truncates the
+    overlay at the same served period as the fund series — no benchmark
+    data after the fund's resolved teo can appear.
+
+    Honest omissions (returns ``([], {})``, logged):
+
+    - no client and no ``RISKMODELS_API_KEY`` in the environment;
+    - the proxy's history does not reach back to the anchor (a
+      shorter, re-anchored curve would not be comparable);
+    - the proxy's history ends more than ~7 days before the fund window
+      does (a silently flat tail would misstate the comparison);
+    - the endpoint call fails.
+
+    Returns ``(cum_bench, tr_bench)`` where ``tr_bench`` carries a
+    trailing-1y benchmark return when the proxy history covers it.
+    """
+    import numpy as np
+
+    if not cum_nav:
+        return [], {}
+
+    if client is None:
+        import os as _os
+
+        if not (_os.environ.get("RISKMODELS_API_KEY") or "").strip():
+            log.info(
+                "benchmark overlay skipped: no client and RISKMODELS_API_KEY "
+                "unset — cum_bench_return stays empty (honest omission)."
+            )
+            return [], {}
+        from riskmodels.client import RiskModelsClient
+
+        client = RiskModelsClient.from_env()
+
+    first_d = np.datetime64(str(cum_nav[0][0])[:10])
+    last_d = np.datetime64(str(cum_nav[-1][0])[:10])
+    today = np.datetime64(_dt.date.today())
+    years = int(min(25, max(1, (today - first_d).astype(int) // 365 + 2)))
+
+    try:
+        df = client.get_ticker_returns(proxy_ticker, years=years, validate="off")
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "benchmark overlay skipped: /ticker-returns failed for proxy "
+            "%s (%s).", proxy_ticker, exc,
+        )
+        return [], {}
+    if df is None or getattr(df, "empty", True) or "returns_gross" not in df.columns:
+        log.warning(
+            "benchmark overlay skipped: no usable returns for proxy %s.",
+            proxy_ticker,
+        )
+        return [], {}
+
+    dates = np.array(
+        [np.datetime64(str(d)[:10]) for d in df["date"].tolist()],
+        dtype="datetime64[D]",
+    )
+    rets = np.asarray(df["returns_gross"].to_numpy(), dtype=np.float64)
+    finite = np.isfinite(rets)
+    dates, rets = dates[finite], rets[finite]
+    if len(dates) == 0:
+        return [], {}
+    order = np.argsort(dates)
+    dates, rets = dates[order], rets[order]
+
+    # C[j] = prod(1 + r) through day j; C_at(d) samples last day ≤ d.
+    C = np.cumprod(1.0 + rets)
+
+    def _c_at(d: Any) -> float | None:
+        idx = int(np.searchsorted(dates, d, side="right")) - 1
+        return float(C[idx]) if idx >= 0 else None
+
+    anchored = abs(float(cum_nav[0][1])) < 1e-12
+    if anchored:
+        anchor_d = first_d
+    else:
+        # End of the month before the first fund period, so the first
+        # benchmark point spans the same month as the fund's first return.
+        anchor_d = first_d.astype("datetime64[M]").astype("datetime64[D]") - np.timedelta64(1, "D")
+
+    if anchor_d < dates[0]:
+        log.warning(
+            "benchmark overlay skipped: proxy %s history starts %s, after "
+            "the fund window anchor %s — a re-anchored curve would not be "
+            "comparable.", proxy_ticker, str(dates[0]), str(anchor_d),
+        )
+        return [], {}
+    if last_d > dates[-1] + np.timedelta64(7, "D"):
+        log.warning(
+            "benchmark overlay skipped: proxy %s history ends %s but the "
+            "fund series runs to %s — refusing a silently flat tail.",
+            proxy_ticker, str(dates[-1]), str(last_d),
+        )
+        return [], {}
+
+    c_anchor = _c_at(anchor_d)
+    if c_anchor is None or c_anchor == 0.0:
+        return [], {}
+
+    cum_bench: list[tuple[str, float]] = []
+    for d_str, _v in cum_nav:
+        d = np.datetime64(str(d_str)[:10])
+        c_d = _c_at(d)
+        if c_d is None:
+            continue
+        cum_bench.append((str(d_str), c_d / c_anchor - 1.0))
+
+    tr_bench: dict[str, float | None] = {}
+    c_last = _c_at(last_d)
+    c_year_ago = _c_at(last_d - np.timedelta64(365, "D"))
+    if (
+        c_last is not None
+        and c_year_ago is not None
+        and last_d - np.timedelta64(365, "D") >= dates[0]
+    ):
+        tr_bench["1y"] = c_last / c_year_ago - 1.0
+
+    return cum_bench, tr_bench
+
+
 def get_data_for_f1(
     bw_fund_id: str,
     *,
-    client: Any | None = None,           # kept for API back-compat; unused
-    benchmark_ticker: str = "SPY",        # ditto — benchmark wiring deferred
+    client: Any | None = None,           # optional RiskModelsClient for the
+                                         # benchmark overlay (G.45); when None
+                                         # one is built from the env if
+                                         # RISKMODELS_API_KEY is set
+    benchmark_ticker: str = "SPY",        # benchmark id/alias → proxy ETF via
+                                          # riskmodels.snapshots._benchmark
+                                          # (G.45; "SPY" is a hardcoded
+                                          # default — benchmark_index is NULL
+                                          # everywhere)
     top_n_holdings: int = 10,
     nav_lookback_months: int = 60,
     enrich: bool = True,
@@ -1090,6 +1243,20 @@ def get_data_for_f1(
     holding labels are disclosed as non-point-in-time. The dormant
     ``adjusted_*`` whole-window attrs are left as-is. Without ``as_of``
     the latest-path behavior is byte-for-byte unchanged.
+
+    Benchmark overlay (G.45, ADR 2026-08-01): ``benchmark_ticker`` (an id
+    or alias — default ``"SPY"``, a hardcoded house default since
+    ``benchmark_index`` is NULL for every fund) resolves through
+    :mod:`riskmodels.snapshots._benchmark` to the benchmark's proxy ETF
+    (IVV for BW-BENCH-SPY), whose realized daily returns from
+    ``/ticker-returns`` are compounded onto the fund series' date grid
+    into ``cum_bench_return`` (+ ``tr_bench``), labeled
+    ``benchmark_label="SPY (default)"``. Requires a ``client`` or
+    ``RISKMODELS_API_KEY`` in the environment; otherwise (or for a
+    benchmark with no proxy ETF) the overlay is omitted honestly. The
+    BW-BENCH ``ds_portfolio`` series is never used here — its
+    ``latest_holdings_constant`` basis is a risk profile, not realized
+    performance.
 
     Why direct zarr reads: the composer endpoints (/api/funds/snapshot
     and friends) currently return ``aum_erm3=null``, ``weight=null``, and
@@ -1971,6 +2138,35 @@ def get_data_for_f1(
         if enrich:
             degradations.append("holdings_labels_from_current_registry")
 
+    # ── Benchmark return overlay (G.45, ADR 2026-08-01) ─────────────────
+    # benchmark id/alias → proxy ETF (BW-BENCH-SPY → IVV per the catalog's
+    # proxy.ref) → realized daily returns via /ticker-returns, compounded
+    # onto the fund series' own date grid. cum_nav is already bounded at
+    # as_of (G.44), and the overlay only samples fund dates, so a
+    # historical read truncates both series at the same served period.
+    # No proxy (unknown/blend benchmark) or no client/key → honest empty
+    # overlay; the render's placeholder path handles it.
+    from ._benchmark import resolve_benchmark_proxy
+
+    cum_bench: list[tuple[str, float]] = []
+    tr_bench: dict[str, float | None] = {}
+    bench_label = "Benchmark"
+    proxy = resolve_benchmark_proxy(benchmark_ticker)
+    if proxy is None:
+        log.info(
+            "no proxy ETF for benchmark %r — cum_bench_return stays empty "
+            "(only catalog contexts with proxy.ref have an honest realized-"
+            "return source).", benchmark_ticker,
+        )
+    else:
+        # benchmark_index is NULL for every fund (prospectus parse
+        # deferred), so the label always discloses the hardcoded default:
+        # "SPY (default)", never an implied prospectus benchmark.
+        bench_label = proxy.default_label
+        cum_bench, tr_bench = _benchmark_overlay_series(
+            cum_nav, proxy.proxy_ticker, client
+        )
+
     fd = FundData(
         bw_fund_id=bw_fund_id,
         ticker_primary=ticker_primary,
@@ -1979,10 +2175,10 @@ def get_data_for_f1(
         equity_style_9box=equity_style,
         aum_usd=aum_usd,
         cum_nav_return=cum_nav,
-        cum_bench_return=[],
+        cum_bench_return=cum_bench,
         tr_fund=tr_fund,
-        tr_bench={},
-        benchmark_label="S&P 500",
+        tr_bench=tr_bench,
+        benchmark_label=bench_label,
         holdings=holdings_list,
         n_holdings=n_holdings_total,
         portfolio_metrics=pm,
