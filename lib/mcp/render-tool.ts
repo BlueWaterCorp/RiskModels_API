@@ -4,6 +4,11 @@ import {
   WIRED_ARTIFACT_RENDER_MATRIX,
 } from "@/lib/artifacts/render-client";
 import {
+  artifactRenderParamsSchema,
+  compactParams,
+  describeSlugParams,
+} from "@/lib/artifacts/render-params-schema";
+import {
   textResult,
   errorResult,
   type McpLikeServer,
@@ -49,9 +54,12 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .record(z.string(), z.unknown())
           .optional()
           .describe("Required for BW-PORTFOLIO-*: { positions: [{ ticker, weight }] }"),
+        params: artifactRenderParamsSchema
+          .optional()
+          .describe(describeSlugParams()),
       },
     },
-    async ({ slug, version, subject_id, as_of, format, subject_payload }) => {
+    async ({ slug, version, subject_id, as_of, format, subject_payload, params }) => {
       try {
         const result = await renderArtifact({
           slug,
@@ -60,6 +68,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           as_of,
           format,
           subject_payload: subject_payload ?? null,
+          params: compactParams(params),
         });
         if (!result.ok) {
           return textResult({
@@ -67,11 +76,18 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
             status: result.status,
             detail: result.detail,
             wired_slugs: WIRED_ARTIFACT_RENDER_MATRIX,
+            capability_endpoint:
+              "GET /api/artifacts/capability?subject_kind=… — the full verified " +
+              "(slug, subject_kind) table plus per-slug param applicability.",
           });
         }
         return textResult({
           slug,
           subject_id,
+          // Echoed so a caller can see which knobs were actually sent — a
+          // render that silently ignored a param is indistinguishable from one
+          // that honored it otherwise.
+          params: compactParams(params) ?? null,
           format: result.format,
           resolved_as_of: result.resolved_as_of,
           gcs_path: result.gcs_path,

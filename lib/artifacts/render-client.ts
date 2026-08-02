@@ -12,6 +12,111 @@ import { authorizationHeaderForCloudRun } from "@/lib/artifacts/gcp-id-token";
  */
 export type ArtifactRenderFormat = "json" | "png" | "svg" | "figure";
 
+/**
+ * The `params.window` vocabulary render-svc's request schema accepts.
+ *
+ * Mirrors `ArtifactParams.window` in `artifacts.py`. Wider than any one slug:
+ * the request schema admits all seven and the *artifact module* narrows further
+ * (`cumulative_return_strip` accepts `max|3m|6m|1y|2y`, `historical_risk_waterfall`
+ * accepts `max|1y|2y|3y|5y`). That second narrowing is deliberately NOT mirrored
+ * here — see `ARTIFACT_SLUG_PARAMS`.
+ */
+export type ArtifactWindow = "3m" | "6m" | "1y" | "2y" | "3y" | "5y" | "max";
+
+/**
+ * Per-slug render params (render-svc Phase 3). Forwarded verbatim as the
+ * request's `params` field; render-svc validates per slug (422 on
+ * unknown/inapplicable) and folds them into the render-once cache key.
+ *
+ * All seven keys render-svc's `ArtifactParams` model declares. The previous
+ * shape carried three, so `peer_n`, `sort_by`, `layers` and `date` were
+ * untypeable from this side and no caller could set them.
+ */
+export interface ArtifactParams {
+  /** top_holdings_erm_stacked / hedge_notionals_hbar / watchlist_er_stacked / holdings_active_panel: rows to render (1–50). */
+  top_n?: number;
+  /**
+   * risk_dna_stacked: cohort truncation (1–50). Distinct from `top_n` on
+   * purpose — `top_n` ranks rows inside one subject's holdings, `peer_n`
+   * narrows a cohort of subjects and invalidates every cohort-level aggregate.
+   */
+  peer_n?: number;
+  /** cumulative_return_strip / position_cumulative_decomposition / historical_risk_waterfall: trailing window. */
+  window?: ArtifactWindow;
+  /**
+   * watchlist_er_stacked / risk_dna_stacked: row ordering. The accepted
+   * vocabulary differs per slug and is validated by the artifact module, which
+   * 422s through the same path an out-of-range int takes.
+   */
+  sort_by?: string;
+  /**
+   * l3_explained_risk_hbar / active_risk_composition: comma-separated cascade
+   * levels ("sector,residual"). A string rather than a list so it survives a
+   * query string and a GCS key fragment unchanged.
+   */
+  layers?: string;
+  /**
+   * historical_risk_waterfall: a specific observation date (YYYY-MM-DD) for a
+   * history-navigating panel.
+   *
+   * NOT the request-level `as_of`. `as_of` selects which artifact *vintage* is
+   * resolved; `date` selects which observation *inside* that vintage the panel
+   * draws. A control surface needs both and must not conflate them.
+   */
+  date?: string;
+  /**
+   * holdings_active_panel (G.45): bw_bench_id | alias | ff_own |
+   * cell_<slug>. Default ff_own. Development-status benches are refused
+   * upstream with 409 (readiness registry) — surface that refusal.
+   */
+  benchmark?: string;
+}
+
+/** Every key render-svc's `ArtifactParams` model declares. */
+export const ARTIFACT_PARAM_KEYS = [
+  "top_n",
+  "peer_n",
+  "window",
+  "sort_by",
+  "layers",
+  "date",
+  "benchmark",
+] as const satisfies ReadonlyArray<keyof ArtifactParams>;
+
+export type ArtifactParamKey = (typeof ARTIFACT_PARAM_KEYS)[number];
+
+/**
+ * Which params each slug honors.
+ *
+ * A mirror of `_SLUG_PARAMS` in `services/render-svc/render_svc/artifacts.py`,
+ * which lives in **this repo** — so the copy is checked rather than trusted:
+ * `tests/artifacts/slug-params-parity.test.ts` parses the Python literal and
+ * fails on any divergence. Without that test this would be a fourth
+ * hand-maintained vocabulary, which is the failure G.54 exists to end.
+ *
+ * A slug absent from this map accepts no params at all (render-svc 422s any).
+ *
+ * This map records *applicability*, not the accepted value set. `window` is
+ * applicable to `cumulative_return_strip` and to `historical_risk_waterfall`,
+ * and each module accepts a different subset of the seven window values. That
+ * narrowing is a module-side fact measured only by asking, so it is left to
+ * render-svc's 422 rather than copied here where it would go stale silently.
+ */
+export const ARTIFACT_SLUG_PARAMS: Readonly<
+  Record<string, readonly ArtifactParamKey[]>
+> = {
+  top_holdings_erm_stacked: ["top_n"],
+  cumulative_return_strip: ["window"],
+  position_cumulative_decomposition: ["window"],
+  l3_explained_risk_hbar: ["layers"],
+  active_risk_composition: ["layers"],
+  hedge_notionals_hbar: ["top_n"],
+  watchlist_er_stacked: ["sort_by", "top_n"],
+  risk_dna_stacked: ["peer_n", "sort_by"],
+  historical_risk_waterfall: ["date", "window"],
+  holdings_active_panel: ["benchmark", "top_n"],
+};
+
 export interface ArtifactRenderParams {
   slug: string;
   version?: string;
@@ -19,23 +124,7 @@ export interface ArtifactRenderParams {
   as_of?: string;
   format?: ArtifactRenderFormat;
   subject_payload?: Record<string, unknown> | null;
-  /**
-   * Per-slug render params (render-svc Phase 3). Forwarded verbatim as the
-   * request's `params` field; render-svc validates per slug (422 on
-   * unknown/inapplicable) and folds them into the render-once cache key.
-   */
-  params?: {
-    /** top_holdings_erm_stacked / holdings_active_panel: rows to render (1–50, default 12 / 10). */
-    top_n?: number;
-    /** cumulative_return_strip: trailing window (default "max"). */
-    window?: "3m" | "6m" | "1y" | "2y" | "max";
-    /**
-     * holdings_active_panel (G.45): bw_bench_id | alias | ff_own |
-     * cell_<slug>. Default ff_own. Development-status benches are refused
-     * upstream with 409 (readiness registry) — surface that refusal.
-     */
-    benchmark?: string;
-  };
+  params?: ArtifactParams;
 }
 
 export interface ArtifactRenderSuccess {
@@ -89,6 +178,30 @@ export const PRERENDERED_SUBJECT_KINDS: readonly ArtifactSubjectKind[] = [
 ];
 
 /**
+ * Subject kinds render-svc resolves from a prefix but has no way to serve.
+ *
+ * `etf` is a first-class entry in `_SUBJECT_PREFIX_KIND`, so `BW-ETF-AAA`
+ * parses; nothing behind it does. There is no ETF loader, no adapter, no
+ * pre-rendered GCS prefix, and no capability entry for any slug — every
+ * `BW-ETF-*` render 501s. That was true silently: the kind's absence from
+ * `ARTIFACT_RENDER_CAPABILITY` was indistinguishable from an unaudited gap.
+ *
+ * Recorded rather than removed. Removing `etf` would diverge this list from
+ * render-svc's prefix table, which is the one thing it exists to mirror, and
+ * ETFs do file N-PORT — the kind is unimplemented, not wrong. `date` for the
+ * decision: 2026-08-02 (G.55).
+ */
+export const UNIMPLEMENTED_SUBJECT_KINDS: Readonly<
+  Partial<Record<ArtifactSubjectKind, string>>
+> = {
+  etf: [
+    "render-svc resolves the BW-ETF- prefix but has no ETF loader, adapter or",
+    "pre-rendered content for any slug, so every render 501s. Real-but-unimplemented:",
+    "ETFs do file N-PORT, and the kind is kept to mirror _SUBJECT_PREFIX_KIND.",
+  ].join(" "),
+};
+
+/**
  * What one (slug, subject_kind) pair can actually do.
  *
  * Capability is a property of the **pair**, never of a slug alone. The same
@@ -129,6 +242,20 @@ export type ArtifactCapability = {
  * Three `narrative_*` slugs were removed in that pass — render-svc answers
  * `No fund adapter wired` for all three and no GCS prefix has ever existed for
  * them. They are kept below as `unavailable` rather than silently dropped.
+ *
+ * 2026-08-02 (G.53/G.55): re-probed against prod. `watchlist_er_stacked`'s peer
+ * mode was found live and promoted out of its "not yet deployed" note; three
+ * previously **unprobed** pairs were measured and recorded `unavailable`. Counts
+ * are now 21 verified / 9 unavailable across 23 slugs — and this table is served
+ * over HTTP at `GET /api/artifacts/capability`, derived, so a client can ask what
+ * renders for a subject kind instead of inferring it from a failure payload.
+ *
+ * This table — not the BWMACRO generated catalog — is the authority on
+ * *capability*. The generated catalog scans a source tree and can therefore only
+ * report what a module DECLARES; the 2026-08-01 audit found three slugs declared
+ * fund-capable with no adapter behind them, which no scan can see. The catalog
+ * owns authoring inventory (what renderers exist, which papers use them); this
+ * owns what the deployed service actually serves.
  */
 export const ARTIFACT_RENDER_CAPABILITY: Record<
   string,
@@ -199,13 +326,15 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
     stock: {
       status: "verified",
       notes:
-        "Requires subject_payload.tickers; subject_id BW-STOCK-WATCHLIST. " +
-        "A second mode — peer group (G.43): subject_id BW-STOCK-{TICKER} with no " +
-        "payload renders the target vs its top-6 market-cap peers from /api/peers, " +
-        "with broadening warnings and an explicit empty state — is in render-svc " +
-        "code but NOT yet deployed (render-svc does not deploy on merge). Re-audit " +
-        "and extend this note after the next render-svc deploy; until then only the " +
-        "payload.tickers form is live.",
+        "Two modes, both live. (1) Watchlist: requires subject_payload.tickers; " +
+        "subject_id BW-STOCK-WATCHLIST. (2) Peer group (G.43): subject_id " +
+        "BW-STOCK-{TICKER} with no payload renders the target vs its top-6 " +
+        "market-cap peers from /api/peers, with broadening warnings and an " +
+        "explicit empty state. The peer mode was advertised here as 'not yet " +
+        "deployed' after the 2026-08-01 audit; re-probed against prod 2026-08-02 " +
+        "and it serves — BW-STOCK-AAPL returned 7 rows (AAPL + DELL/ANET/STX/WDC/" +
+        "SNDK/E) with peer_group.group_etf=RSPT and no warnings. Slow: no " +
+        "pre-render, live decompose fan-out (G.32 applies — never eagerly mount).",
     },
   },
   position_cumulative_decomposition: {
@@ -225,6 +354,43 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   },
   narrative_risk_insight: {
     fund: { status: "unavailable", reason: "No fund adapter; never rendered." },
+  },
+  // Three pairs the 2026-08-01 audit never probed (G.55). They were absent
+  // from `artifact_serving_audit.json` entirely, which the BWMACRO catalog
+  // generator's `continue` rendered as *clean* rather than *unmeasured*.
+  // Probed against prod render-svc 2026-08-02; all three answered, none served.
+  dd_peer_dna: {
+    stock: {
+      status: "unavailable",
+      reason:
+        "Batch-rendered for a hot-ticker cohort only, and no GCS prefix " +
+        "dd_peer_dna@v1/ exists in the artifact bucket — render-svc 501s " +
+        "('not pre-rendered for AAPL'). Measured 2026-08-02.",
+    },
+  },
+  historical_risk_waterfall: {
+    stock: {
+      status: "unavailable",
+      reason:
+        "No stock adapter wired (render-svc names the four O.6 panels that are), " +
+        "and no GCS prefix exists. 501 for BW-STOCK-AAPL. Measured 2026-08-02. " +
+        "Its `date` + `window` params are declared in _SLUG_PARAMS and reachable " +
+        "through the request schema — the 501 comes from the adapter lookup, " +
+        "after param validation.",
+    },
+  },
+  active_share_skill_scatter: {
+    cohort: {
+      status: "unavailable",
+      reason:
+        "Declared for the phantom `fund_cohort` kind until 2026-08-02 (no subject " +
+        "id could ever resolve to it — see UNIMPLEMENTED_SUBJECT_KINDS' sibling " +
+        "note in contracts.ts). Re-declared against the kind BW-COHORT- actually " +
+        "resolves to, which makes it probeable: it is pre-rendered-only and no " +
+        "active_share_skill_scatter@v1/ prefix exists in the bucket " +
+        "(GET /artifacts/as-of returns count=0), so every call 501s. Measured " +
+        "2026-08-02.",
+    },
   },
   holdings_active_panel: {
     fund: {
@@ -268,6 +434,124 @@ export const WIRED_ARTIFACT_RENDER_MATRIX: Record<
     })
     .filter(([, v]) => (v as { subject_kinds: string[] }).subject_kinds.length > 0),
 );
+
+/* -------------------------------------------------------------------------- */
+/* The read surface (G.53)                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** One advertisable (slug, subject_kind) pair. */
+export interface ArtifactCapabilityPair {
+  slug: string;
+  version: string;
+  subject_kind: ArtifactSubjectKind;
+  /** Params the slug honors; `[]` means the slug takes none. */
+  params: readonly ArtifactParamKey[];
+  /** True when render-svc can only read pre-rendered GCS content for this kind. */
+  prerendered: boolean;
+  notes?: string;
+}
+
+/** One measured-but-not-servable pair, with the reason it was refused. */
+export interface ArtifactUnavailablePair {
+  slug: string;
+  subject_kind: ArtifactSubjectKind;
+  status: "degraded" | "unavailable";
+  reason: string;
+}
+
+export interface ArtifactCapabilityDocument {
+  /** Where every field below is computed from — never hand-maintained. */
+  derived_from: string;
+  subject_kinds: readonly ArtifactSubjectKind[];
+  prerendered_subject_kinds: readonly ArtifactSubjectKind[];
+  /** Kinds render-svc resolves but cannot serve, with the reason. */
+  unimplemented_subject_kinds: Readonly<Partial<Record<ArtifactSubjectKind, string>>>;
+  params: {
+    /** Every key render-svc's request schema accepts. */
+    vocabulary: readonly ArtifactParamKey[];
+    /** Applicability per slug; render-svc 422s anything outside it. */
+    by_slug: Readonly<Record<string, readonly ArtifactParamKey[]>>;
+  };
+  /** Only `verified` pairs. Nothing else may ever appear here. */
+  pairs: readonly ArtifactCapabilityPair[];
+  /** Recorded so a caller can tell "refused" from "never asked". */
+  unavailable: readonly ArtifactUnavailablePair[];
+  counts: { verified: number; unavailable: number; slugs: number };
+}
+
+/**
+ * Build the capability document served by `GET /api/artifacts/capability`.
+ *
+ * Derived from `ARTIFACT_RENDER_CAPABILITY` on every call. That is the whole
+ * design constraint: a hand-written response object could advertise a pair
+ * nobody verified, and the reason this endpoint exists at all is that the one
+ * reconciled list in the codebase was reachable only from inside an
+ * `if (!result.ok)` failure payload.
+ *
+ * `subjectKind` narrows the `pairs` list — the canvas's actual question is
+ * "what renders for this subject?", not "what exists". `unavailable` is not
+ * narrowed: a client asking about `fund` still benefits from seeing that
+ * `narrative_profile/fund` was measured and refused.
+ */
+export function buildArtifactCapability(opts?: {
+  subjectKind?: ArtifactSubjectKind;
+  slug?: string;
+}): ArtifactCapabilityDocument {
+  const pairs: ArtifactCapabilityPair[] = [];
+  const unavailable: ArtifactUnavailablePair[] = [];
+
+  for (const [slug, byKind] of Object.entries(ARTIFACT_RENDER_CAPABILITY)) {
+    for (const [rawKind, cap] of Object.entries(byKind)) {
+      if (!cap) continue;
+      const kind = rawKind as ArtifactSubjectKind;
+      if (cap.status === "verified") {
+        pairs.push({
+          slug,
+          version: "v1",
+          subject_kind: kind,
+          params: ARTIFACT_SLUG_PARAMS[slug] ?? [],
+          prerendered: PRERENDERED_SUBJECT_KINDS.includes(kind),
+          ...(cap.notes ? { notes: cap.notes } : {}),
+        });
+      } else {
+        unavailable.push({
+          slug,
+          subject_kind: kind,
+          status: cap.status,
+          reason: cap.reason ?? "",
+        });
+      }
+    }
+  }
+
+  const filtered = pairs.filter(
+    (p) =>
+      (!opts?.subjectKind || p.subject_kind === opts.subjectKind) &&
+      (!opts?.slug || p.slug === opts.slug),
+  );
+  const sortPair = (a: { slug: string; subject_kind: string }, b: typeof a) =>
+    a.slug === b.slug
+      ? a.subject_kind.localeCompare(b.subject_kind)
+      : a.slug.localeCompare(b.slug);
+
+  return {
+    derived_from: "lib/artifacts/render-client.ts::ARTIFACT_RENDER_CAPABILITY",
+    subject_kinds: ARTIFACT_SUBJECT_KINDS,
+    prerendered_subject_kinds: PRERENDERED_SUBJECT_KINDS,
+    unimplemented_subject_kinds: UNIMPLEMENTED_SUBJECT_KINDS,
+    params: {
+      vocabulary: ARTIFACT_PARAM_KEYS,
+      by_slug: ARTIFACT_SLUG_PARAMS,
+    },
+    pairs: [...filtered].sort(sortPair),
+    unavailable: [...unavailable].sort(sortPair),
+    counts: {
+      verified: filtered.length,
+      unavailable: unavailable.length,
+      slugs: new Set(filtered.map((p) => p.slug)).size,
+    },
+  };
+}
 
 /** Every (slug, kind) that returns 200 but is not drawable — never advertise these. */
 export const DEGRADED_ARTIFACT_PAIRS: ReadonlyArray<{
@@ -339,11 +623,12 @@ function appendPrerenderHint(
  * Resolve a subject kind from an id prefix, mirroring `_SUBJECT_PREFIX_KIND`
  * in `services/render-svc/render_svc/artifacts.py`.
  *
- * `BW-COHORT-` always resolves to `cohort`. The `.net` contract additionally
- * declares `fund_cohort` against the *same* prefix — server-side the two are
- * one kind and the distinction is UI-level, so it is not recoverable from an
- * id and must not be guessed here (`contracts.ts::SUBJECT_ID_PREFIX` records
- * the same wrinkle from the other side).
+ * `BW-COHORT-` always resolves to `cohort`. The `.net` contract used to declare
+ * a second kind `fund_cohort` against the *same* prefix, which meant no subject
+ * id could ever resolve to it and `active_share_skill_scatter/fund_cohort` was
+ * permanently unrenderable while reading as declared. It was retired on
+ * 2026-08-02 (G.55) on both sides; the scatter now declares `cohort`, which is
+ * what its `BW-COHORT-RES-*` subjects actually are.
  */
 export function subjectKindOf(subjectId: string): ArtifactSubjectKind | null {
   if (subjectId.startsWith("BW-FUND-")) return "fund";

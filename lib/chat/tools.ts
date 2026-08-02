@@ -50,7 +50,13 @@ import {
 import {
   renderArtifact,
   WIRED_ARTIFACT_RENDER_MATRIX,
+  type ArtifactParams,
 } from "@/lib/artifacts/render-client";
+import {
+  artifactRenderParamsSchema,
+  compactParams,
+  describeSlugParams,
+} from "@/lib/artifacts/render-params-schema";
 
 /** Exported for `workspace-action-tools.ts` (G.36) so the generated workspace
  *  manifest carries the exact same strict-schema wrapper as every other tool. */
@@ -157,6 +163,12 @@ const renderArtifactArgs = z.object({
   as_of: z.string().default("latest"),
   format: z.enum(["json", "png", "svg", "figure"]).default("json"),
   subject_payload_json: z.string().default(""),
+  /**
+   * Per-slug render params (G.54). A JSON string rather than a nested object
+   * because every other structured argument on this surface is passed that way
+   * (`subject_payload_json`), and the OpenAI function schema below stays flat.
+   */
+  params_json: z.string().default(""),
 });
 
 const portfolioRiskArgs = z.object({
@@ -575,6 +587,34 @@ async function execRenderArtifact(args: z.infer<typeof renderArtifactArgs>) {
     }
   }
 
+  let params: ArtifactParams | undefined;
+  const rawParams = args.params_json?.trim();
+  if (rawParams) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawParams);
+    } catch {
+      return {
+        error: "invalid_params_json",
+        message:
+          'params_json must be valid JSON (e.g. {"top_n":5} or {"window":"1y"}).',
+      };
+    }
+    // Refuse locally rather than forward junk: an out-of-range top_n would
+    // otherwise cost a round trip to learn the same thing.
+    const checked = artifactRenderParamsSchema.safeParse(parsed);
+    if (!checked.success) {
+      return {
+        error: "invalid_params",
+        message: checked.error.issues
+          .map((i) => `${i.path.join(".") || "params"}: ${i.message}`)
+          .join("; "),
+        accepted: describeSlugParams(),
+      };
+    }
+    params = compactParams(checked.data);
+  }
+
   const result = await renderArtifact({
     slug: args.slug,
     version: args.version,
@@ -582,6 +622,7 @@ async function execRenderArtifact(args: z.infer<typeof renderArtifactArgs>) {
     as_of: args.as_of,
     format: args.format,
     subject_payload,
+    params,
   });
 
   if (!result.ok) {
@@ -591,6 +632,9 @@ async function execRenderArtifact(args: z.infer<typeof renderArtifactArgs>) {
       message: result.error,
       detail: result.detail,
       wired_slugs: WIRED_ARTIFACT_RENDER_MATRIX,
+      capability_endpoint:
+        "GET /api/artifacts/capability?subject_kind=… — the verified " +
+        "(slug, subject_kind) table plus per-slug param applicability.",
     };
   }
 
@@ -598,6 +642,9 @@ async function execRenderArtifact(args: z.infer<typeof renderArtifactArgs>) {
     slug: args.slug,
     version: args.version,
     subject_id: args.subject_id,
+    // Echoed: a render that dropped a param must not look like one that
+    // honored it.
+    params: params ?? null,
     format: result.format,
     resolved_as_of: result.resolved_as_of,
     gcs_path: result.gcs_path,
@@ -1204,8 +1251,23 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
           description:
             "Optional JSON string for BW-PORTFOLIO-* subjects: {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}",
         },
+        params_json: {
+          type: "string",
+          description:
+            "Optional JSON string of render params, e.g. {\"top_n\":5} or " +
+            "{\"window\":\"1y\"}. " +
+            describeSlugParams(),
+        },
       },
-      ["slug", "subject_id", "version", "as_of", "format", "subject_payload_json"],
+      [
+        "slug",
+        "subject_id",
+        "version",
+        "as_of",
+        "format",
+        "subject_payload_json",
+        "params_json",
+      ],
     ),
     capabilityId: "artifact-render",
     argSchema: renderArtifactArgs,

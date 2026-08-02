@@ -2086,6 +2086,149 @@
           }
         }
       },
+      "ArtifactCapabilityResponse": {
+        "type": "object",
+        "required": [
+          "derived_from",
+          "subject_kinds",
+          "params",
+          "pairs",
+          "unavailable",
+          "counts"
+        ],
+        "properties": {
+          "derived_from": {
+            "type": "string",
+            "description": "The source constant the response is computed from.",
+            "example": "lib/artifacts/render-client.ts::ARTIFACT_RENDER_CAPABILITY"
+          },
+          "subject_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every kind render-svc resolves from a subject_id prefix."
+          },
+          "prerendered_subject_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Kinds render-svc can only read from GCS. `as_of=latest` is refused for these — pass an ISO date that already exists.\n"
+          },
+          "unimplemented_subject_kinds": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Kinds resolvable from an id prefix that no loader serves, keyed to the reason. Present so a zero-capability kind reads as measured rather than unaudited.\n"
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "vocabulary": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Every key the render request schema accepts."
+              },
+              "by_slug": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": "Applicability per slug. A slug absent from this map accepts no params. Applicability is not the accepted value set — the artifact module narrows further and answers 422 on a value it does not take.\n"
+              }
+            }
+          },
+          "pairs": {
+            "type": "array",
+            "description": "Verified pairs only. Nothing else may appear here.",
+            "items": {
+              "type": "object",
+              "required": [
+                "slug",
+                "version",
+                "subject_kind",
+                "params",
+                "prerendered"
+              ],
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "subject_kind": {
+                  "type": "string"
+                },
+                "params": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "prerendered": {
+                  "type": "boolean"
+                },
+                "notes": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "unavailable": {
+            "type": "array",
+            "description": "Pairs measured against prod and refused, with the reason. Recorded rather than deleted so a later audit does not re-add them hopefully.\n",
+            "items": {
+              "type": "object",
+              "required": [
+                "slug",
+                "subject_kind",
+                "status",
+                "reason"
+              ],
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "subject_kind": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "degraded",
+                    "unavailable"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "verified": {
+                "type": "integer"
+              },
+              "unavailable": {
+                "type": "integer"
+              },
+              "slugs": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
       "PeersResponse": {
         "type": "object",
         "required": [
@@ -11390,6 +11533,77 @@
           },
           "404": {
             "description": "Ticker not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/artifacts/capability": {
+      "get": {
+        "summary": "Artifact render capability",
+        "description": "The verified (slug, subject_kind) pairs render-svc can serve, each slug's applicable render params, and the pairs that were measured and refused.\nDerived from the audited capability table on every request, so a pair that was never verified cannot be advertised. Answers \"what renders for this subject?\" before a client mounts anything — previously the only way to learn the answer was to request something that failed, because the reconciled table appeared solely inside error payloads.\n**Authentication:** None. Discovery only: it names renderers and subject kinds and returns no subject content, no holdings and no numbers.\n**Billing:** Free.\n",
+        "operationId": "getArtifactCapability",
+        "tags": [
+          "Discovery"
+        ],
+        "x-pricing": {
+          "capability_id": "artifact-capability",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0,
+          "currency": "USD",
+          "billing_code": "artifact_capability"
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "subject_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fund",
+                "etf",
+                "filer_13f",
+                "cohort",
+                "stock",
+                "client_portfolio"
+              ]
+            },
+            "description": "Narrow `pairs` to one subject kind. `unavailable` is never narrowed: a caller needs to tell \"measured and refused\" from \"never asked\".\n",
+            "example": "fund"
+          },
+          {
+            "name": "slug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Narrow `pairs` to one artifact slug.",
+            "example": "cumulative_return_strip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Capability document. A narrowing query that matches nothing returns 200 with an empty `pairs` list, not 404.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactCapabilityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown subject_kind.",
             "content": {
               "application/json": {
                 "schema": {
