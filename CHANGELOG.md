@@ -7,6 +7,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **`GET /api/peers`** — Authenticated sector/subsector peer cohort (market-cap ordered) from the symbols registry. Capability `peers`, MCP `riskmodels_get_peers`, schema `peers-v1.json`, Python SDK `RiskModelsClient.get_peers()` / `PeerGroupProxy.from_ticker` (HTTPS only).
 - **OpenAPI: nine previously-undocumented endpoints** — `POST /v4/decompose` (named-block decomposition), `GET /hedge-basket/{ticker}`, `GET /batch/latest-metrics`, `GET /metrics/{ticker}/snapshot.png` and `GET /snapshot/{entity_kind}` (both return image/PDF bytes, not JSON), `GET /funds/search`, and the OAuth trio `POST /oauth/register` · `POST /oauth/token` · `POST /oauth/revoke`. All existed and were callable; none appeared in the spec. Documented with real `x-pricing` from `lib/agent/capabilities.ts` and correct response content types.
 - **Schemas** — `OAuthClientRegistrationRequest` / `OAuthClientRegistrationResponse` / `OAuth2RevokeRequest`; `OAuth2TokenRequest` / `OAuth2TokenResponse` / `OAuth2Error` rewritten for the grants that exist.
 - **Per-IP rate limits on the unbilled public surface** — `GET /api/funds/search` and `GET /api/13f/filers/search` now enforce 60 req/min per IP (`FUND_SEARCH_IP_RPM`, `FILER_SEARCH_IP_RPM`) and cap `limit` at 100 rows (was 500, unthrottled). `publicRateLimitResponse` option selects a real `429` (default) vs the Shields.io 200-with-badge payload.
@@ -19,6 +20,7 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **render-svc holdings enrich, private path** — Cloud Run F1 renders (`get_fund_data_for_f1`, `_load_generic_snapshot_data`) now also apply private `services/render-svc/render_svc/fund_enrich.py` (its own `SUPABASE_*` / `NEXT_PUBLIC_SUPABASE_*` credential resolution, kept out of the public wheel) after the SDK's `get_data_for_f1`. AUTHENTICATION_GUIDE Modes 3–4 labeled as platform/direct-DB, not SDK setup. The public SDK's own `enrich_fund_data_with_supabase` / `get_ticker_metadata` are unchanged for now — removing those is a separate, not-yet-decided step (see MASTER_BACKLOG P.1).
 - **`GET /api/snapshot/{ticker}`** — Implemented under `[entity_kind]/route.ts` (same dynamic segment as panels) so Next.js does not reject sibling `[ticker]` vs `[entity_kind]` folders. Reserved kinds (`stock`, `fund`, …) return 400 with the panel URL shape. Deprecation header still prefers `…/panels/_full`.
 
 - **OpenAPI security scheme: `OAuth2ClientCredentials` → `OAuth2AuthorizationCode`** — The spec described a `client_credentials` grant the API does not implement. `POST /api/auth/token` (documented `tokenUrl`) returns **404**, and `/api/oauth/token` supports only `authorization_code` (PKCE S256) and `refresh_token`. The scheme now mirrors `/.well-known/oauth-authorization-server` verbatim; the `/auth/token` path is removed and 14 operation-level `security` entries updated to `OAuth2AuthorizationCode: [mcp:read]`. Scope is informational — the API records it for telemetry and authorises on key validity + balance, not scope.

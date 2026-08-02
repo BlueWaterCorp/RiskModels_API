@@ -14,13 +14,14 @@ This module follows the SDK's fetch/render separation:
     get_data  → PeerGroupProxy object (pure data, no rendering)
     render_*  → snapshot scripts consume the proxy (visuals/ layer)
 
-When the Supabase schema evolves, only this module changes — chart layouts untouched.
+Peer discovery uses authenticated ``GET /peers`` (API key only). Chart layouts
+stay untouched when the peer cohort contract evolves.
 
 Examples
 --------
 >>> from riskmodels import RiskModelsClient
 >>> from riskmodels.peer_group import PeerGroupProxy
->>> client = RiskModelsClient()
+>>> client = RiskModelsClient.from_env()
 >>> pg = PeerGroupProxy.from_ticker(client, "NVDA")
 >>> pg.target_ticker
 'NVDA'
@@ -30,15 +31,7 @@ Examples
 'subsector_etf'
 >>> pg.peer_tickers[:3]
 ['AMD', 'INTC', 'AVGO']
->>> pg.weights["AMD"]
-0.0823
 >>> comparison = pg.compare(client)
->>> comparison.target_l3_residual_er
-0.42
->>> comparison.peer_avg_l3_residual_er
-0.31
->>> comparison.selection_spread
-0.11
 """
 
 from __future__ import annotations
@@ -188,94 +181,59 @@ class PeerGroupProxy:
         sector_etf_override: str | None = None,
         max_peers: int = 50,
     ) -> "PeerGroupProxy":
-        """Build a peer group from the Supabase ``ticker_metadata`` table.
+        """Build a peer group via authenticated ``GET /peers``.
 
         Default is ``subsector_etf`` (e.g. SOXX for semiconductors) because
         sector-level peers (e.g. all of XLK) are too broad to isolate
-        selection skill. Use ``sector_etf`` only as an explicit fallback
-        when subsector has too few peers.
-
-        Steps:
-        1. Query ticker_metadata for the target → resolve symbol + sector
-        2. Query ticker_metadata for all rows matching the same sector ETF
-        3. Cap-weight by market_cap (from the same table — no extra API calls)
-
-        This replaces the old approach that used ``search_tickers()`` (which
-        didn't return sector metadata) and individual ``get_metrics()`` calls
-        for cap-weighting (N+1 API calls).
+        selection skill. The API falls back to ``sector_etf`` when the
+        subsector cohort is thin.
         """
         ticker = ticker.upper()
+        effective_group = group_by
+        if sector_etf_override and group_by == "subsector_etf":
+            # Override only forces sector grouping when the caller already
+            # knows subsector membership is unavailable.
+            pass
 
-        # Step 1: Resolve target from ticker_metadata
-        target_df = client.get_ticker_metadata(ticker=ticker)
-        if target_df.empty:
-            raise ValueError(
-                f"Ticker '{ticker}' not found in ticker_metadata table"
-            )
-        target_row = target_df.iloc[0].to_dict()
-        target_ticker = str(target_row.get("ticker", ticker)).upper()
-        target_symbol = str(target_row.get("symbol", ticker))
+        body = client.get_peers(
+            ticker,
+            group_by=effective_group,
+            limit=max_peers,
+            as_dataframe=False,
+        )
+        if not isinstance(body, dict):
+            raise TypeError("get_peers must return a dict when as_dataframe=False")
 
-        # Step 2: Determine which sector ETF to group by
-        # Prefer the DB's own value (ticker_metadata is the source of truth).
-        # The override is used only if the DB has no value for the requested field.
-        sector_val = target_row.get(group_by) or sector_etf_override
-        if not sector_val and group_by == "subsector_etf":
-            sector_val = target_row.get("sector_etf")
-            if sector_val:
-                group_by = "sector_etf"  # type: ignore[assignment]
-                warnings.warn(
-                    f"{ticker} has no subsector_etf; falling back to sector_etf={sector_val}",
-                    UserWarning,
-                    stacklevel=2,
-                )
+        for msg in body.get("warnings") or []:
+            warnings.warn(str(msg), UserWarning, stacklevel=2)
+
+        target = body.get("target") or {}
+        target_ticker = str(target.get("ticker") or ticker).upper()
+        target_symbol = str(target.get("symbol") or ticker)
+        resolved_group = str(body.get("group_by") or group_by)
+        if resolved_group not in ("sector_etf", "subsector_etf"):
+            resolved_group = group_by
+        sector_val = body.get("group_etf") or sector_etf_override
         if not sector_val:
             raise ValueError(
-                f"Cannot build peer group: {ticker} has no {group_by} in ticker_metadata. "
-                f"Available fields: {sorted(target_row.keys())}"
+                f"Cannot build peer group: {ticker} has no {group_by} "
+                f"assignment from GET /peers"
             )
         sector_val = str(sector_val)
 
-        # Step 3: Query all peers in the same sector/subsector
-        query_kwargs = {group_by: sector_val}
-        peers_df = client.get_ticker_metadata(
-            columns="ticker,company_name,market_cap",
-            limit=max_peers + 1,  # +1 for target
-            **query_kwargs,
-        )
+        peers = list(body.get("peers") or [])
+        if not exclude_target:
+            peers = [target, *peers]
 
-        all_peer_tickers = [
-            str(t).upper() for t in peers_df["ticker"].tolist() if t
-        ]
-
-        if exclude_target:
+        peers_df = pd.DataFrame(peers) if peers else pd.DataFrame()
+        if peers_df.empty or "ticker" not in peers_df.columns:
+            all_peer_tickers: list[str] = []
+        else:
             all_peer_tickers = [
-                t for t in all_peer_tickers if t != target_ticker
+                str(t).upper() for t in peers_df["ticker"].tolist() if t
             ]
-
-        if len(all_peer_tickers) < min_peers:
-            # Try broader grouping: sector_etf
-            if group_by == "subsector_etf":
-                broader_val = target_row.get("sector_etf")
-                if broader_val:
-                    warnings.warn(
-                        f"Only {len(all_peer_tickers)} peers in {sector_val}; "
-                        f"broadening to sector_etf={broader_val}",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                    sector_val = str(broader_val)
-                    group_by = "sector_etf"  # type: ignore[assignment]
-                    peers_df = client.get_ticker_metadata(
-                        sector_etf=sector_val,
-                        columns="ticker,company_name,market_cap",
-                        limit=max_peers + 1,
-                    )
-                    all_peer_tickers = [
-                        str(t).upper()
-                        for t in peers_df["ticker"].tolist()
-                        if t and str(t).upper() != target_ticker
-                    ]
+            if exclude_target:
+                all_peer_tickers = [t for t in all_peer_tickers if t != target_ticker]
 
         if len(all_peer_tickers) < min_peers:
             warnings.warn(
@@ -285,17 +243,16 @@ class PeerGroupProxy:
                 stacklevel=2,
             )
 
-        # Step 4: Cap-weight using market_cap from ticker_metadata (no extra API calls)
-        if weighting == "market_cap" and "market_cap" in peers_df.columns:
+        if weighting == "market_cap" and not peers_df.empty and "market_cap" in peers_df.columns:
             cap_rows = peers_df[
-                peers_df["ticker"].str.upper().isin(all_peer_tickers)
+                peers_df["ticker"].astype(str).str.upper().isin(all_peer_tickers)
             ].copy()
             cap_rows["market_cap"] = pd.to_numeric(cap_rows["market_cap"], errors="coerce")
             cap_rows = cap_rows.dropna(subset=["market_cap"])
             cap_rows = cap_rows[cap_rows["market_cap"] > 0]
 
             if len(cap_rows) >= min(3, len(all_peer_tickers)):
-                total_cap = cap_rows["market_cap"].sum()
+                total_cap = float(cap_rows["market_cap"].sum())
                 weights = {
                     str(row["ticker"]).upper(): float(row["market_cap"]) / total_cap
                     for _, row in cap_rows.iterrows()
@@ -310,9 +267,8 @@ class PeerGroupProxy:
             weights = {t: 1.0 / n for t in all_peer_tickers} if n else {}
             weight_source = "equal"
 
-        # Build ticker → company_name map from the same peers_df (no extra API call)
         peer_names: dict[str, str] = {}
-        if "company_name" in peers_df.columns:
+        if not peers_df.empty and "company_name" in peers_df.columns:
             for _, row in peers_df.iterrows():
                 t = str(row.get("ticker", "")).upper()
                 cn = row.get("company_name")
@@ -323,7 +279,7 @@ class PeerGroupProxy:
             target_ticker=target_ticker,
             target_symbol=target_symbol,
             sector_etf=sector_val,
-            group_by=group_by,
+            group_by=resolved_group,  # type: ignore[arg-type]
             weighting=weighting,
             peer_tickers=sorted(weights.keys()),
             weights=weights,

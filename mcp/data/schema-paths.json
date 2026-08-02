@@ -5,6 +5,7 @@
   "/schemas/factor-correlation-request-v1.json",
   "/schemas/l3-decomposition-v1.json",
   "/schemas/tickers-list-v1.json",
+  "/schemas/peers-v1.json",
   "/schemas/error-v1.json",
   "/schemas/health-v1.json",
   "/schemas/telemetry-v1.json",
