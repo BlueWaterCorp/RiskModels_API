@@ -299,6 +299,18 @@ class TemporalContext:
     filing_date: str | None = None   # ISO date — knowledge time / TEO
     extracted_at: str | None = None  # ISO timestamp — system time
 
+    # ── Historical as-of echo (G.44, ADR 2026-08-01) ──────────────────
+    # Populated when the object is a historical read: the caller's
+    # requested date, the axis the "latest stored period ≤ as_of"
+    # selection ran on (``"report_date"`` today — reality mode), and
+    # stable codes for sections omitted or disclosed because latest-only
+    # overlays could not be honestly served at the historical date (see
+    # ``FundData.historical_degradations``). All default-empty, so
+    # pre-G.44 canonical JSON round-trips unchanged.
+    as_of_requested: str | None = None
+    as_of_basis: str | None = None
+    degraded_sections: list[str] = field(default_factory=list)
+
 
 # ---------------------------------------------------------------------------
 # AOM provenance — how to re-issue this canonical via the AOM compiler

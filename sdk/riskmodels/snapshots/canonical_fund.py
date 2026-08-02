@@ -465,11 +465,23 @@ def from_fund_components(
             window_label=getattr(fund_data, "macro_window", None) or "252d",
         )
 
+    # G.44 (ADR 2026-08-01): a historical ``as_of`` read is a reality-axis
+    # selection — the loader served the latest stored period ≤ the
+    # requested date on the report_date axis — so the default temporal
+    # frame declares ``observation_mode="reality"`` and echoes the
+    # requested date, basis, and any honest-degradation markers. Without
+    # an as_of request the pre-G.44 default ("knowledge") is unchanged.
+    fd_as_of_basis = getattr(fund_data, "as_of_basis", None)
     temporal_context = temporal or TemporalContext(
-        observation_mode="knowledge",
+        observation_mode="reality" if fd_as_of_basis else "knowledge",
         report_date=report_date,
         filing_date=filing_when,
         extracted_at=None,
+        as_of_requested=getattr(fund_data, "as_of_requested", None),
+        as_of_basis=fd_as_of_basis,
+        degraded_sections=list(
+            getattr(fund_data, "historical_degradations", None) or []
+        ),
     )
 
     if temporal_context.observation_mode not in OBSERVATION_MODES:

@@ -20,6 +20,25 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
+class FundAsOfUnavailableError(LookupError):
+    """No stored period at or before the requested ``as_of`` for this fund.
+
+    Raised by :func:`get_data_for_f1` when a historical ``as_of`` predates
+    every store's history (house PIT convention: a date with nothing known
+    at or before it is an explicit error, never an empty payload or a
+    silent fall-forward to the latest row). render-svc maps this to an
+    as_of-specific 404.
+    """
+
+    def __init__(self, bw_fund_id: str, as_of: str) -> None:
+        self.bw_fund_id = bw_fund_id
+        self.as_of = as_of
+        super().__init__(
+            f"no fund data for {bw_fund_id!r} at or before as_of={as_of!r} "
+            f"(reality mode, report_date basis)"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Realized fund variance decomposition (matches the canonical /api/snapshot
 # "realized_strips" basis — RiskModels_API #52). Computed from the per-filing
@@ -351,6 +370,26 @@ class FundData:
 
     coverage_pct: float | None = None
 
+    # ── Historical as-of echo (G.44, ADR 2026-08-01) ─────────────────────
+    # Populated when ``get_data_for_f1`` was called with an explicit
+    # ``as_of``; the served period is ``teo`` (latest stored period ≤ the
+    # requested date — the "as_of_resolved" echo).
+    #   as_of_requested — the caller's YYYY-MM-DD date
+    #   as_of_basis     — "report_date" (reality mode; the monthly stores'
+    #                     teo axis is month-end-snapped report_date)
+    # ``historical_degradations`` carries stable codes for sections omitted
+    # or disclosed on a truly historical read (see get_data_for_f1):
+    #   holdings_model_share_overlay_skipped — per-holding L3 shares from
+    #     the CURRENT security_history_latest are not overlaid
+    #   fund_fit_section_omitted — fund_fit.parquet is latest-only; Section
+    #     III fit stats are omitted rather than served stale unlabeled
+    #   holdings_labels_from_current_registry — tickers / names / sector
+    #     ETFs resolve against the current symbols registry (disclosed,
+    #     not point-in-time — same convention as G.42's label warning)
+    as_of_requested: str | None = None
+    as_of_basis: str | None = None
+    historical_degradations: list[str] = field(default_factory=list)
+
     @property
     def symbol_id(self) -> str:
         return self.bw_fund_id
@@ -497,6 +536,9 @@ def _fund_data_institutional_dict_to_cls(cls: type[FundData], d: dict[str, Any])
         expense_ratio=d.get("expense_ratio"),
         inception_date=d.get("inception_date"),
         coverage_pct=d.get("coverage_pct"),
+        as_of_requested=d.get("as_of_requested"),
+        as_of_basis=d.get("as_of_basis"),
+        historical_degradations=list(d.get("historical_degradations") or []),
     )
 
 
@@ -944,7 +986,9 @@ def _share_or_fallback(
     return fallback if v is None else float(v)
 
 
-def enrich_fund_data_with_supabase(fd: FundData) -> FundData:
+def enrich_fund_data_with_supabase(
+    fd: FundData, *, include_model_shares: bool = True
+) -> FundData:
     """Resolve tickers / sector ETFs / per-stock L3 shares for holdings.
 
     The public SDK's ``get_data_for_f1`` calls this by default so renders
@@ -953,6 +997,14 @@ def enrich_fund_data_with_supabase(fd: FundData) -> FundData:
     when Supabase credentials are not wired (pip consumers; CI tests
     without env access) — never raises.
 
+    ``include_model_shares=False`` skips the per-stock L3 explained-variance
+    overlay from ``security_history_latest`` (a CURRENT-model, latest-only
+    table) while keeping the registry label resolution. Used for historical
+    ``as_of`` reads (G.44): overlaying today's model shares onto a
+    years-old portfolio would be a silent mislabel, whereas registry labels
+    are disclosed as non-point-in-time via
+    ``FundData.historical_degradations``.
+
     Returns the input unchanged when holdings are empty.
     """
     if not fd.holdings:
@@ -960,7 +1012,7 @@ def enrich_fund_data_with_supabase(fd: FundData) -> FundData:
 
     syms = [h.symbol for h in fd.holdings]
     ticker_map = _resolve_holdings_metadata(syms)
-    l3_map = _resolve_l3_decomposition(syms)
+    l3_map = _resolve_l3_decomposition(syms) if include_model_shares else {}
     new_holdings: list[FundHolding] = []
     for h in fd.holdings:
         meta = ticker_map.get(h.symbol, {})
@@ -998,6 +1050,7 @@ def get_data_for_f1(
     top_n_holdings: int = 10,
     nav_lookback_months: int = 60,
     enrich: bool = True,
+    as_of: str | None = None,
 ) -> FundData:
     """Populate ``FundData`` directly from the per-fund GCS zarrs.
 
@@ -1014,6 +1067,30 @@ def get_data_for_f1(
     fund_name / equity_style) comes from the local Funds_DAG funds.json
     sibling clone.
 
+    ``as_of`` (YYYY-MM-DD, optional — G.44, ADR 2026-08-01) requests a
+    historical read on the reality axis (``report_date`` basis): each
+    store serves its latest stored period **≤ as_of** —
+
+      - ``ds_ph``   → last valid-AUM period with teo ≤ as_of (teo decoded
+        *before* index selection)
+      - ``ds_nav``  → series truncated at as_of before TTM / cum windows
+      - ``ds_hr``   → the ≤-as_of row instead of ``[-1, :]``
+      - ``ds_portfolio`` → periods ≤ as_of (realized variance shares then
+        window for free)
+      - ``ds_fund_returns_daily`` → window ends at as_of
+
+    The served period is echoed on ``FundData.teo`` with
+    ``as_of_basis="report_date"``. A date predating every store's history
+    raises :class:`FundAsOfUnavailableError` (never an empty payload or a
+    silent fall-forward). When the read is truly historical (any store
+    holds data after as_of), latest-only overlays degrade honestly and the
+    payload is marked via ``historical_degradations``: the CURRENT-model
+    per-holding share overlay is skipped, Section III fit stats
+    (latest-only ``fund_fit.parquet``) are omitted, and registry-based
+    holding labels are disclosed as non-point-in-time. The dormant
+    ``adjusted_*`` whole-window attrs are left as-is. Without ``as_of``
+    the latest-path behavior is byte-for-byte unchanged.
+
     Why direct zarr reads: the composer endpoints (/api/funds/snapshot
     and friends) currently return ``aum_erm3=null``, ``weight=null``, and
     ``"No NAV history available"`` for funds whose portfolio metrics are
@@ -1025,20 +1102,63 @@ def get_data_for_f1(
     """
     import numpy as np
 
+    # ── as_of validation (reality mode, report_date basis) ──────────────
+    as_of_req: str | None = None
+    as_of_np: Any = None  # numpy datetime64[D]
+    if as_of is not None:
+        as_of_req = str(as_of).strip()
+        try:
+            as_of_np = np.datetime64(_dt.date.fromisoformat(as_of_req))
+        except ValueError as e:
+            raise ValueError(
+                f"as_of must be an ISO date (YYYY-MM-DD), got {as_of!r}"
+            ) from e
+    # True once any consulted store holds data AFTER as_of — i.e. the read
+    # is genuinely historical rather than "as_of resolves to the latest
+    # period anyway". Only a genuinely historical read triggers the
+    # honest-degradation rules (fit omission, model-share skip).
+    data_after_asof = False
+
     identity = _fund_identity(bw_fund_id)
     ticker_primary = identity.get("ticker") or "—"
     fund_name = identity.get("fund_name") or bw_fund_id
     equity_style = identity.get("equity_style_9box")
 
     # ── Holdings (ds_ph.zarr) — pick latest period with finite AUM ──────
+    # Historical as_of must not seed from the identity row's latest_*
+    # fields (they are stamped at the latest report date by construction).
     holdings_list: list[FundHolding] = []
     n_holdings_total = 0
-    aum_usd: float | None = identity.get("latest_total_adj_mv")
-    teo_str: str = identity.get("latest_report_date") or ""
+    aum_usd: float | None = (
+        None if as_of_req is not None else identity.get("latest_total_adj_mv")
+    )
+    teo_str: str = (
+        "" if as_of_req is not None else (identity.get("latest_report_date") or "")
+    )
     try:
         ph = _open_fund_zarr(bw_fund_id, "ds_ph.zarr")
         ph_aum = ph["aum_erm3"][:]
         valid = np.where(np.isfinite(ph_aum) & (ph_aum > 0))[0]
+        # G.44: decode teo BEFORE index selection so a historical as_of can
+        # pick "latest valid period ≤ as_of" (previously decoded after).
+        ph_teo_decoded = (
+            _decode_teo_array(ph["teo"]) if "teo" in ph.array_keys() else None
+        )
+        if as_of_np is not None:
+            if ph_teo_decoded is None:
+                # No teo axis → cannot date-select. Omitting holdings is
+                # honest; serving the latest period under a historical
+                # label is not.
+                log.warning(
+                    "ds_ph.zarr for %s has no teo array; holdings omitted "
+                    "for historical as_of=%s (cannot select a period ≤ as_of).",
+                    bw_fund_id, as_of_req,
+                )
+                valid = valid[:0]
+            elif len(valid):
+                if bool((ph_teo_decoded[valid] > as_of_np).any()):
+                    data_after_asof = True
+                valid = valid[ph_teo_decoded[valid] <= as_of_np]
         if len(valid):
             idx = int(valid.max())
             adj_mv = ph["adj_mv"][:, idx]
@@ -1048,9 +1168,8 @@ def get_data_for_f1(
             mv_real = adj_mv[mask]
             n_holdings_total = int(mask.sum())
             aum_usd = float(ph_aum[idx])
-            if "teo" in ph.array_keys():
-                teo_decoded = _decode_teo_array(ph["teo"])
-                teo_str = str(teo_decoded[idx])
+            if ph_teo_decoded is not None:
+                teo_str = str(ph_teo_decoded[idx])
             order = np.argsort(-mv_real)[:top_n_holdings]
             top_syms = [str(sym_real[i]) for i in order]
             ticker_map = {s: {} for s in top_syms}
@@ -1085,6 +1204,13 @@ def get_data_for_f1(
         nav_teo_decoded = _decode_teo_array(nv["teo"])
         nav_ret = nv["nav_return_monthly"][:]
         finite = np.isfinite(nav_ret)
+        if as_of_np is not None:
+            # Truncate the monthly series at as_of BEFORE the TTM / cum
+            # windows below, so both compute over the historical window.
+            in_window = finite & (nav_teo_decoded <= as_of_np)
+            if bool((finite & ~in_window).any()):
+                data_after_asof = True
+            finite = in_window
         nav_teo_all = [str(t) for t in nav_teo_decoded[finite]]
         nav_ret_all = nav_ret[finite].tolist()
         if len(nav_ret_all) >= 12:
@@ -1117,6 +1243,29 @@ def get_data_for_f1(
         hr_keys = list(hr.array_keys()) if hasattr(hr, "array_keys") else []
         hr_sym = hr["symbol"][:] if "symbol" in hr_keys else None
 
+        # G.44: historical as_of replaces the hard-coded latest row [-1, :]
+        # with the last row whose teo ≤ as_of. No teo axis, or no row at or
+        # before the date → omit hedge ratios rather than serve the latest
+        # row under a historical label.
+        hr_sel = -1
+        if as_of_np is not None:
+            if "teo" not in hr_keys:
+                log.warning(
+                    "ds_hr.zarr for %s has no teo array; hedge ratios "
+                    "omitted for historical as_of=%s.",
+                    bw_fund_id, as_of_req,
+                )
+                hr_sym = None
+            else:
+                hr_teo = _decode_teo_array(hr["teo"])
+                hr_le = np.where(hr_teo <= as_of_np)[0]
+                if len(hr_le) < len(hr_teo):
+                    data_after_asof = True
+                if not len(hr_le):
+                    hr_sym = None
+                else:
+                    hr_sel = int(hr_le.max())
+
         def _top_beta(arr, prefer: str | None = None) -> tuple[str, float] | None:
             if hr_sym is None:
                 return None
@@ -1131,16 +1280,16 @@ def get_data_for_f1(
             return str(hr_sym[i]), float(arr[i])
 
         if "L1_HR" in hr_keys and hr_sym is not None:
-            l1 = _top_beta(hr["L1_HR"][-1, :], prefer="SPY")
+            l1 = _top_beta(hr["L1_HR"][hr_sel, :], prefer="SPY")
             if l1:
                 hr_out[f"l1_{l1[0].lower()}"] = l1[1]
         if "L2_HR" in hr_keys and hr_sym is not None:
-            L2 = hr["L2_HR"][-1, :]
+            L2 = hr["L2_HR"][hr_sel, :]
             l2 = _top_beta(np.where(np.array([s == "SPY" for s in hr_sym]), np.nan, L2))
             if l2:
                 hr_out[f"l2_{l2[0].lower()}"] = l2[1]
         if "L3_HR" in hr_keys and hr_sym is not None:
-            L3 = hr["L3_HR"][-1, :]
+            L3 = hr["L3_HR"][hr_sel, :]
             l3 = _top_beta(np.where(np.array([s == "SPY" for s in hr_sym]), np.nan, L3))
             if l3:
                 hr_out[f"l3_{l3[0].lower()}"] = l3[1]
@@ -1174,6 +1323,15 @@ def get_data_for_f1(
         pt = _open_fund_zarr(bw_fund_id, "ds_portfolio.zarr")
         ws = pt["weight_sum"][:]
         nz = np.where(ws > 0)[0]
+        if len(nz) and as_of_np is not None:
+            # G.44: mask populated periods to teo ≤ as_of. The realized
+            # variance shares below consume the masked layer_series, so
+            # they window to the historical period for free.
+            pt_teo_all = _decode_teo_array(pt["teo"])
+            nz_le = nz[pt_teo_all[nz] <= as_of_np]
+            if len(nz_le) < len(nz):
+                data_after_asof = True
+            nz = nz_le
         if len(nz):
             mkt_arr = pt["portfolio_market_return"][:]
             sec_arr = pt["portfolio_sector_return"][:]
@@ -1257,6 +1415,21 @@ def get_data_for_f1(
         teo_str = nav_teo_all[-1]
     if not teo_str and layer_series:
         teo_str = layer_series[-1][0]
+
+    # ── Historical as_of: honest failure + PIT invariant ────────────────
+    # All sources above were already bounded at as_of, so an empty teo_str
+    # here means NOTHING is known at or before the requested date — the
+    # house PIT convention makes that an explicit error, never an empty
+    # payload or a silent nearest-match beyond the date. Coverage is not
+    # guaranteed dense; a gap surfaces here, not as a fall-forward.
+    if as_of_req is not None:
+        if not teo_str:
+            raise FundAsOfUnavailableError(bw_fund_id, as_of_req)
+        if str(teo_str)[:10] > as_of_req:
+            raise RuntimeError(
+                f"fund as_of invariant violated for {bw_fund_id!r}: resolved "
+                f"teo={teo_str!r} > as_of={as_of_req!r}"
+            )
 
     # If layer-returns series exists, expand cum_nav back to the layer
     # start so the gross line and the L*/Residual lines share a common
@@ -1420,6 +1593,19 @@ def get_data_for_f1(
             l1_d, l2_d, l3_d, res_d = l1_d[:_n], l2_d[:_n], l3_d[:_n], res_d[:_n]
             if style_d is not None:
                 style_d = style_d[:_n]
+
+        # G.44: historical as_of ends the daily window at as_of — drop
+        # days after the requested date BEFORE the lookback window below,
+        # so the window is "last N months ending at as_of".
+        if as_of_np is not None:
+            keep = fr_teo <= as_of_np
+            if bool((~keep).any()):
+                data_after_asof = True
+            fr_teo = fr_teo[keep]
+            gross_d = gross_d[keep]
+            l1_d, l2_d, l3_d, res_d = l1_d[keep], l2_d[keep], l3_d[keep], res_d[keep]
+            if style_d is not None:
+                style_d = style_d[keep]
 
         # Window to last nav_lookback_months. ~21 trading days/month.
         window_days = int(nav_lookback_months * 21)
@@ -1609,63 +1795,75 @@ def get_data_for_f1(
     # that doesn't exist when the SDK is installed in site-packages.
     # Surface that loudly.
     fit_kw: dict[str, Any] = {}
-    try:
-        import pandas as _pd
-        fit_path = _funds_latest_path().parent / "fund_fit.parquet"
-        if not fit_path.exists():
-            log.warning(
-                "fund_fit.parquet missing at %s for %s; Section III fit card "
-                "renders blank (fit_coverage / correlation_monthly / "
-                "delta_5y_pp etc. all None). Operational cause is usually "
-                "FUNDS_DAG_DATA_ROOT unset on render-svc Cloud Run, or "
-                "fund_fit.parquet not baked into the mounted root. See "
-                "BWMACRO master backlog P.3 / O.9.",
-                fit_path, bw_fund_id,
-            )
-        else:
-            _fit_df = _pd.read_parquet(fit_path)
-            _hit = _fit_df[_fit_df["bw_fund_id"] == bw_fund_id]
-            if not len(_hit):
+    # G.44 honest degradation (decided in the dispatch, not here):
+    # fund_fit.parquet is one latest-only row per fund. For a genuinely
+    # historical as_of, omit Section III fit data entirely rather than
+    # serving latest-window stats unlabeled under a historical date.
+    historical_mode = as_of_req is not None and data_after_asof
+    if historical_mode:
+        log.info(
+            "fund_fit.parquet is latest-only; Section III fit omitted for "
+            "%s at historical as_of=%s (resolved teo=%s).",
+            bw_fund_id, as_of_req, teo_str,
+        )
+    else:
+        try:
+            import pandas as _pd
+            fit_path = _funds_latest_path().parent / "fund_fit.parquet"
+            if not fit_path.exists():
                 log.warning(
-                    "fund_fit.parquet present at %s but contains no row for "
-                    "bw_fund_id=%s; Section III fit card renders blank for "
-                    "this fund only (other funds presumably fine). Likely "
-                    "the fund-fit asset run hasn't covered this id yet — "
-                    "cross-check against the asset's expected universe.",
+                    "fund_fit.parquet missing at %s for %s; Section III fit card "
+                    "renders blank (fit_coverage / correlation_monthly / "
+                    "delta_5y_pp etc. all None). Operational cause is usually "
+                    "FUNDS_DAG_DATA_ROOT unset on render-svc Cloud Run, or "
+                    "fund_fit.parquet not baked into the mounted root. See "
+                    "BWMACRO master backlog P.3 / O.9.",
                     fit_path, bw_fund_id,
                 )
             else:
-                _r = _hit.iloc[0]
-                def _opt(v: Any) -> Any:
-                    if v is None or (isinstance(v, float) and not np.isfinite(v)):
-                        return None
-                    if hasattr(v, "item"):
-                        return v.item()
-                    return v
-                fit_kw = {
-                    "fit_coverage_mean":      _opt(_r.get("weight_coverage_mean")),
-                    "fit_coverage_latest":    _opt(_r.get("weight_coverage_latest")),
-                    "fit_correlation_monthly": _opt(_r.get("correlation_monthly")),
-                    "fit_n_obs_monthly":      _opt(_r.get("n_obs_monthly")),
-                    "fit_erm3_5y_return":     _opt(_r.get("erm3_5y_return")),
-                    "fit_nav_5y_return":      _opt(_r.get("nav_5y_return")),
-                    "fit_delta_5y_pp":        _opt(_r.get("delta_5y_pp")),
-                    "fit_expense_ratio":      _opt(_r.get("expense_ratio")),
-                    "fit_nav_vol_5y":         _opt(_r.get("nav_vol_5y_annualized")),
-                    "fit_spy_vol_5y":         _opt(_r.get("spy_vol_5y_annualized")),
-                    "fit_nav_beta":           _opt(_r.get("nav_beta_to_spy_5y")),
-                    "fit_nav_alpha":          _opt(_r.get("nav_alpha_to_spy_5y_annualized")),
-                    "fit_nav_r2_capm":        _opt(_r.get("nav_r2_to_spy_5y")),
-                    "fit_capm_implied_vol":   _opt(_r.get("nav_capm_implied_vol_5y")),
-                    "fit_residual_vol":       _opt(_r.get("nav_residual_vol_5y")),
-                    "fit_erm3_multifactor_r2": _opt(_r.get("erm3_multifactor_r2_5y")),
-                }
-    except Exception as e:
-        log.warning(
-            "fund_fit.parquet read failed for %s: %s — Section III fit card "
-            "renders blank. Falling through silently to preserve f1 render.",
-            bw_fund_id, e,
-        )
+                _fit_df = _pd.read_parquet(fit_path)
+                _hit = _fit_df[_fit_df["bw_fund_id"] == bw_fund_id]
+                if not len(_hit):
+                    log.warning(
+                        "fund_fit.parquet present at %s but contains no row for "
+                        "bw_fund_id=%s; Section III fit card renders blank for "
+                        "this fund only (other funds presumably fine). Likely "
+                        "the fund-fit asset run hasn't covered this id yet — "
+                        "cross-check against the asset's expected universe.",
+                        fit_path, bw_fund_id,
+                    )
+                else:
+                    _r = _hit.iloc[0]
+                    def _opt(v: Any) -> Any:
+                        if v is None or (isinstance(v, float) and not np.isfinite(v)):
+                            return None
+                        if hasattr(v, "item"):
+                            return v.item()
+                        return v
+                    fit_kw = {
+                        "fit_coverage_mean":      _opt(_r.get("weight_coverage_mean")),
+                        "fit_coverage_latest":    _opt(_r.get("weight_coverage_latest")),
+                        "fit_correlation_monthly": _opt(_r.get("correlation_monthly")),
+                        "fit_n_obs_monthly":      _opt(_r.get("n_obs_monthly")),
+                        "fit_erm3_5y_return":     _opt(_r.get("erm3_5y_return")),
+                        "fit_nav_5y_return":      _opt(_r.get("nav_5y_return")),
+                        "fit_delta_5y_pp":        _opt(_r.get("delta_5y_pp")),
+                        "fit_expense_ratio":      _opt(_r.get("expense_ratio")),
+                        "fit_nav_vol_5y":         _opt(_r.get("nav_vol_5y_annualized")),
+                        "fit_spy_vol_5y":         _opt(_r.get("spy_vol_5y_annualized")),
+                        "fit_nav_beta":           _opt(_r.get("nav_beta_to_spy_5y")),
+                        "fit_nav_alpha":          _opt(_r.get("nav_alpha_to_spy_5y_annualized")),
+                        "fit_nav_r2_capm":        _opt(_r.get("nav_r2_to_spy_5y")),
+                        "fit_capm_implied_vol":   _opt(_r.get("nav_capm_implied_vol_5y")),
+                        "fit_residual_vol":       _opt(_r.get("nav_residual_vol_5y")),
+                        "fit_erm3_multifactor_r2": _opt(_r.get("erm3_multifactor_r2_5y")),
+                    }
+        except Exception as e:
+            log.warning(
+                "fund_fit.parquet read failed for %s: %s — Section III fit card "
+                "renders blank. Falling through silently to preserve f1 render.",
+                bw_fund_id, e,
+            )
 
     # ── Portfolio variance shares ───────────────────────────────────────
     # Headline `portfolio_metrics`, in order of preference (`_basis` records it):
@@ -1763,6 +1961,16 @@ def get_data_for_f1(
         if pm is None and pm_naive is not None:
             pm = {**pm_naive, "_basis": "naive_top_n"}
 
+    # ── Historical-degradation markers (G.44) ───────────────────────────
+    # Only a genuinely historical read (data exists after as_of) degrades;
+    # an as_of that resolves to the latest period serves the full payload.
+    degradations: list[str] = []
+    if historical_mode:
+        degradations.append("holdings_model_share_overlay_skipped")
+        degradations.append("fund_fit_section_omitted")
+        if enrich:
+            degradations.append("holdings_labels_from_current_registry")
+
     fd = FundData(
         bw_fund_id=bw_fund_id,
         ticker_primary=ticker_primary,
@@ -1790,6 +1998,9 @@ def get_data_for_f1(
         cum_l3_residual=cum_res,
         peer_cohort_label=equity_style,
         peer_cohort_size=identity.get("n_funds_in_cell_at_report_date"),
+        as_of_requested=as_of_req,
+        as_of_basis="report_date" if as_of_req is not None else None,
+        historical_degradations=degradations,
         **fit_kw,
     )
     # Default-enrich holdings against Supabase so render-svc + every other
@@ -1797,14 +2008,23 @@ def get_data_for_f1(
     # shares. Soft-fails when Supabase creds aren't wired (returns ``fd``
     # unchanged); callers can pass ``enrich=False`` to skip the round-trip
     # entirely. Closes MASTER_BACKLOG P.1.
+    #
+    # G.44: a genuinely historical read keeps the registry label
+    # resolution (disclosed via historical_degradations) but skips the
+    # per-holding L3 share overlay — security_history_latest is a
+    # CURRENT-model, latest-only table, and overlaying today's shares
+    # onto a historical portfolio would be a silent mislabel.
     if enrich:
-        fd = enrich_fund_data_with_supabase(fd)
+        fd = enrich_fund_data_with_supabase(
+            fd, include_model_shares=not historical_mode
+        )
     return fd
 
 
 __all__ = [
     "FundHolding",
     "FundData",
+    "FundAsOfUnavailableError",
     "from_fixture_row",
     "load_fund_from_fixture",
     "get_data_for_f1",

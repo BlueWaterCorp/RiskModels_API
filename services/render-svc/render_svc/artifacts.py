@@ -14,8 +14,10 @@ Request flow
    ``{prefix}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}[.params].[ext]``
    — request ``params`` (Phase 3) append a ``.top_n-5`` / ``.window-3m``
    fragment so each params combination is its own render-once instance.
-   ``resolved_as_of`` is whatever the loader actually picked (the SDK's
-   "latest valid period" today; an arbitrary historical as_of is Phase 2).
+   ``resolved_as_of`` is whatever the loader actually picked — the SDK's
+   latest valid period for ``as_of='latest'``, or the latest stored
+   period ≤ the date for a historical ``as_of`` (fund: G.44; stock:
+   G.42 — reality mode, report_date basis, ADR 2026-08-01).
 5. Cache hit → return bytes.
 6. Cache miss → import ``bwmacro.snapshots.artifacts.{slug}.{version}``,
    check ``subject_kind`` against the module's ``APPLICABLE_SUBJECT_KINDS``,
@@ -27,10 +29,12 @@ Phase 1B deliberately defers
 - Postgres ``artifact_registry`` UPSERT — Dagster reconciliation job
   populates the table from GCS in a follow-on. The GCS object existence
   is the v1 source of truth.
-- Arbitrary historical ``as_of`` — the SDK loader doesn't yet accept an
-  as_of param; threading it through is a follow-on (returns 501 today).
 - ``subject_kind != fund`` — filer / ETF / cohort / client adapters land
   as their Phase 2 artifact rows ship.
+
+(Arbitrary historical ``as_of`` was deferred here until G.42/G.44
+landed it for the stock and fund loaders; subject kinds without a
+loader still serve only pre-rendered dates.)
 """
 
 from __future__ import annotations
@@ -521,10 +525,25 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
             detail=f"subject_kind={subject_kind!r} loader not wired (Phase 2)",
         )
 
-    from riskmodels.snapshots import get_data_for_f1
+    from riskmodels.snapshots import FundAsOfUnavailableError, get_data_for_f1
 
     try:
-        fd = get_data_for_f1(subject_id)
+        if as_of == "latest":
+            fd = get_data_for_f1(subject_id)
+        else:
+            # G.44: historical as_of passes through to the SDK loader,
+            # which serves the latest stored period ≤ the date (reality
+            # mode, report_date basis — ADR 2026-08-01) and marks
+            # genuinely historical payloads via historical_degradations.
+            # The old 501 "must match the loader's latest teo" gate is
+            # gone with it.
+            fd = get_data_for_f1(subject_id, as_of=as_of)
+    except FundAsOfUnavailableError as exc:
+        # Upstream's as_of-specific not-found (nothing known at or before
+        # the date) is the caller's date being out of range, not a service
+        # fault — 404, never an empty-200 or the latest row (house PIT
+        # convention, AGENTS_CROSS_REPO.md §0).
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         log.exception("get_data_for_f1 failed for %s", subject_id)
         raise HTTPException(
@@ -539,17 +558,18 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
             detail=f"Subject {subject_id!r} has no resolved as_of from loader",
         )
 
-    if as_of != "latest" and as_of != resolved:
+    if as_of != "latest" and str(resolved)[:10] > as_of:
+        # PIT invariant: a historical request must never resolve to a
+        # period after the requested date.
         raise HTTPException(
-            status_code=501,
+            status_code=502,
             detail=(
-                f"as_of={as_of!r} differs from loader's resolved {resolved!r}; "
-                f"specific historical as_of is Phase 2. Use as_of='latest' "
-                f"or as_of={resolved!r}."
+                f"fund loader resolved teo={resolved!r} > as_of={as_of!r} "
+                f"for {subject_id!r} (PIT invariant violated)"
             ),
         )
 
-    return fd, resolved
+    return fd, str(resolved)[:10]
 
 
 def _ticker_from_stock_subject_id(subject_id: str) -> str:

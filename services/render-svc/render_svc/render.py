@@ -176,11 +176,27 @@ def _compute_canonical_f1(
     F1's data path reads ``gs://rm_api_data/ERM3_Funds/bw_fund_id/{id}/ds_*.zarr/``
     directly via the public SDK (no Supabase enrichment). The Supabase-backed
     enrichment lives in BWMACRO and is unavailable in this service.
+
+    ``as_of`` threads into the loader (G.44): the SDK serves the latest
+    stored period ≤ the date (reality mode, report_date basis — ADR
+    2026-08-01) and marks genuinely historical payloads so the render
+    carries the degraded-sections labeling. Previously the loader always
+    took the latest index and this parameter appeared only in the error
+    string — a request for an older date silently rendered latest data
+    under the historical path.
     """
-    from riskmodels.snapshots import from_fund_components, get_data_for_f1
+    from riskmodels.snapshots import (
+        FundAsOfUnavailableError,
+        from_fund_components,
+        get_data_for_f1,
+    )
 
     try:
-        fd = get_data_for_f1(bw_fund_id)
+        fd = get_data_for_f1(bw_fund_id, as_of=as_of)
+    except FundAsOfUnavailableError as exc:
+        # Nothing known at or before the date → the house PIT convention's
+        # as_of-specific not-found, not a service fault (maps to 404).
+        raise CanonicalNotFound(str(exc)) from exc
     except Exception as exc:
         raise LiveRenderUnavailable(
             f"zarr-direct F1 fetch failed for {bw_fund_id}@{as_of}: {exc}"
