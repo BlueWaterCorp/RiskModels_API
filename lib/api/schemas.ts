@@ -394,9 +394,17 @@ export type EtfFactorReturnsRequest = z.infer<typeof EtfFactorReturnsRequestSche
  * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
  * Returns market / sector / subsector / residual with each tradable layer's
  * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).
+ *
+ * `as_of` (optional) requests a historical read: the latest stored row at or
+ * before the date — reality mode, `report_date` basis, echoed back as
+ * `as_of_basis` (ADR 2026-08-01). Omitted → the latest-row fast path.
  */
 export const DecomposeRequestSchema = z.object({
   ticker: TickerSchema,
+  as_of: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of must be YYYY-MM-DD")
+    .optional(),
 });
 
 export type DecomposeRequest = z.infer<typeof DecomposeRequestSchema>;

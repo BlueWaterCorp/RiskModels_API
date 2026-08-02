@@ -825,13 +825,22 @@ export async function fetchLatestMetrics(
   symbol: string,
   keys: V3MetricKey[],
   periodicity: V3Periodicity = "daily",
+  asOf?: string,
 ): Promise<{ teo: string; metrics: Record<string, number | null> } | null> {
   try {
     const options: FetchHistoryOptions = {
       periodicity,
       orderBy: "desc",
     };
-    if (isZarrHistoryPath(keys, periodicity)) {
+    if (asOf) {
+      // Historical as-of (reality mode, report_date basis — ADR 2026-08-01):
+      // cap the window at the requested date so the newest complete row
+      // ≤ asOf is served, never a later one. Same lookback as the latest path.
+      const start = new Date(`${asOf}T12:00:00Z`);
+      start.setUTCDate(start.getUTCDate() - ZARR_LATEST_METRICS_LOOKBACK_DAYS);
+      options.startDate = start.toISOString().slice(0, 10);
+      options.endDate = asOf;
+    } else if (isZarrHistoryPath(keys, periodicity)) {
       const meta = await getRiskMetadata();
       const end = meta.data_as_of;
       const start = new Date(`${end}T12:00:00Z`);

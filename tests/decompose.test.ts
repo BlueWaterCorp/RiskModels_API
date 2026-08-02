@@ -32,6 +32,32 @@ describe("DecomposeRequestSchema", () => {
     const r = DecomposeRequestSchema.safeParse({ ticker: "X".repeat(13) });
     expect(r.success).toBe(false);
   });
+
+  it("accepts an optional as_of date (G.42 historical read)", () => {
+    const r = DecomposeRequestSchema.safeParse({
+      ticker: "NVDA",
+      as_of: "2025-06-30",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.as_of).toBe("2025-06-30");
+    }
+  });
+
+  it("leaves as_of undefined when omitted (fast path)", () => {
+    const r = DecomposeRequestSchema.safeParse({ ticker: "NVDA" });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.as_of).toBeUndefined();
+    }
+  });
+
+  it("rejects malformed as_of", () => {
+    for (const bad of ["last-week", "2025-6-30", "20250630", "2025/06/30"]) {
+      const r = DecomposeRequestSchema.safeParse({ ticker: "NVDA", as_of: bad });
+      expect(r.success).toBe(false);
+    }
+  });
 });
 
 /**
