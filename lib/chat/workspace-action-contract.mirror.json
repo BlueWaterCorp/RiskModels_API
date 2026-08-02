@@ -12,14 +12,14 @@
   "supported_actions": [
     "set_subject",
     "set_window",
-    "set_as_of",
     "set_stage"
   ],
   "unsupported_actions": [
     "generate_artifact",
     "add_to_ic_pack",
     "set_roster",
-    "open_roster_entity"
+    "open_roster_entity",
+    "set_as_of"
   ],
   "window_presets": {
     "3m": 63,
