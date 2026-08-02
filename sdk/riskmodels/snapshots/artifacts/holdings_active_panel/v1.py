@@ -167,6 +167,31 @@ def _row_label(r: dict[str, Any]) -> str:
     return str(r.get("ticker") or r.get("bw_sym_id") or "?")
 
 
+#: A bar within this fraction of its side's extent takes its value label
+#: inside the bar. The longest bar on each side ends at (or near) the plot
+#: edge, so its ``outside`` label draws past the axis and Plotly clips it —
+#: the first prod render truncated AAPL's "−7.90%" exactly this way (G.45).
+_INSIDE_LABEL_FRACTION = 0.85
+
+
+def _label_positions(values: list[float]) -> list[str]:
+    """Per-bar ``textposition``: inside-the-bar fallback for extreme bars.
+
+    Bars whose length is ≥ ``_INSIDE_LABEL_FRACTION`` of their side's
+    maximum extent would place an ``outside`` label beyond the axis margin;
+    those take ``inside`` (anchored at the bar tip, where the outside label
+    would have sat). Every other bar keeps the outside label unchanged.
+    """
+    max_pos = max((v for v in values if v > 0), default=0.0)
+    min_neg = min((v for v in values if v < 0), default=0.0)
+    positions: list[str] = []
+    for v in values:
+        near_pos_edge = v > 0 and v >= _INSIDE_LABEL_FRACTION * max_pos
+        near_neg_edge = v < 0 and v <= _INSIDE_LABEL_FRACTION * min_neg
+        positions.append("inside" if near_pos_edge or near_neg_edge else "outside")
+    return positions
+
+
 # ---------------------------------------------------------------------------
 # Render forms
 # ---------------------------------------------------------------------------
@@ -250,7 +275,10 @@ def render_figure(
             orientation="h",
             marker={"color": colors},
             text=[f"{v * 100:+.2f}%" for v in values],
-            textposition="outside",
+            # G.45 clipping fix: extreme bars label inside the bar; the rest
+            # keep the outside placement they shipped with.
+            textposition=_label_positions(values),
+            insidetextanchor="end",
             textfont={"size": PLOTLY_THEME.fonts.axis_tick},
             hovertemplate=(
                 "%{y}: active %{x:+.2%}<extra></extra>"
