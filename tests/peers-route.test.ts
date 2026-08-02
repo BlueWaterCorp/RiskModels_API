@@ -62,20 +62,20 @@ const RESULT = {
 
 describe("GET /api/peers", () => {
   it("400s when ticker is missing", async () => {
-    const res = await GET(req(""), {} as never);
+    const res = await GET(req(""));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.message).toContain("ticker");
   });
 
   it("400s on a non-positive limit", async () => {
-    const res = await GET(req("?ticker=NVDA&limit=0"), {} as never);
+    const res = await GET(req("?ticker=NVDA&limit=0"));
     expect(res.status).toBe(400);
   });
 
   it("404s when the DAL cannot resolve the ticker", async () => {
     mockFetch.mockResolvedValueOnce(null);
-    const res = await GET(req("?ticker=ZZZQ"), {} as never);
+    const res = await GET(req("?ticker=ZZZQ"));
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.message).toContain("ZZZQ");
@@ -83,7 +83,7 @@ describe("GET /api/peers", () => {
 
   it("returns the cohort with warnings passed through verbatim", async () => {
     mockFetch.mockResolvedValueOnce(RESULT);
-    const res = await GET(req("?ticker=nvda&limit=6"), {} as never);
+    const res = await GET(req("?ticker=nvda&limit=6"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ticker).toBe("NVDA");
@@ -102,13 +102,13 @@ describe("GET /api/peers", () => {
 
   it("forwards group_by only when it names a real grouping field", async () => {
     mockFetch.mockResolvedValueOnce({ ...RESULT, warnings: [] });
-    await GET(req("?ticker=NVDA&group_by=sector_etf"), {} as never);
+    await GET(req("?ticker=NVDA&group_by=sector_etf"));
     expect(mockFetch).toHaveBeenLastCalledWith(
       expect.objectContaining({ groupBy: "sector_etf" }),
     );
 
     mockFetch.mockResolvedValueOnce({ ...RESULT, warnings: [] });
-    await GET(req("?ticker=NVDA&group_by=nonsense"), {} as never);
+    await GET(req("?ticker=NVDA&group_by=nonsense"));
     expect(mockFetch).toHaveBeenLastCalledWith(
       expect.objectContaining({ groupBy: undefined }),
     );

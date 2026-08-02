@@ -494,8 +494,11 @@ export const CAPABILITIES: Capability[] = [
       billing_code: "peers_v1",
     },
     performance: {
-      avg_latency_ms: 120,
-      p95_latency_ms: 300,
+      // Measured 2026-08-01: 12 live fetchPeersByTicker calls against prod
+      // Supabase (cohort fetch + batch market-cap summary), avg 364ms,
+      // p95 888ms. Remeasure at the route once /api/peers is deployed.
+      avg_latency_ms: 364,
+      p95_latency_ms: 888,
       availability_sla: 99.5,
       rate_limit_per_minute: 60,
     },
