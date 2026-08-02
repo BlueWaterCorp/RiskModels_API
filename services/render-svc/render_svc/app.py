@@ -14,7 +14,13 @@ import xarray as xr
 from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from .artifacts import ArtifactRenderRequest, available_as_of, render_artifact
+from .artifacts import (
+    ArtifactRenderRequest,
+    available_as_of,
+    coverage_fraction_for,
+    evidence_class_for,
+    render_artifact,
+)
 from .filer_ids import resolve_filer_subject_id
 from .gcs import GcsObjectStore, ObjectStore
 from .portfolio_evolution import KERNEL_VERSION, compute_portfolio_evolution
@@ -164,22 +170,35 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
         `render_data` / `render_figure`. Phase 1B scope: fund subjects +
         as_of='latest'. See ARTIFACT_REGISTRY_PHASE_1B_PLAN.md §10.
         """
+        # G.41 provenance completion — resolved from the request alone, before
+        # the render, so a malformed coverage_fraction 422s without paying for
+        # a render. Both are OMITTED (not defaulted) where they don't apply:
+        # evidence class only where the holdings vocabulary is real
+        # (fund/filer_13f/client_portfolio), coverage only when the portfolio
+        # payload actually carries one.
+        evidence_class = evidence_class_for(req.subject_id)
+        coverage_fraction = coverage_fraction_for(req)
+
         data, mime, gcs_path, resolved_as_of, cache_control, receipt_id = render_artifact(
             req,
             store=store,
             prefix=settings.prefix,
             persist=settings.persist_renders,
         )
-        return Response(
-            content=data,
-            media_type=mime,
-            headers={
-                "X-Artifact-GCS-Path": f"gs://{settings.bucket}/{gcs_path}",
-                "X-Artifact-Resolved-As-Of": resolved_as_of,
-                "X-Artifact-Receipt-Id": receipt_id,
-                "Cache-Control": cache_control,
-            },
-        )
+        headers = {
+            "X-Artifact-GCS-Path": f"gs://{settings.bucket}/{gcs_path}",
+            "X-Artifact-Resolved-As-Of": resolved_as_of,
+            "X-Artifact-Receipt-Id": receipt_id,
+            "Cache-Control": cache_control,
+        }
+        if evidence_class is not None:
+            headers["X-Artifact-Evidence-Class"] = evidence_class
+        if coverage_fraction is not None:
+            # Trim trailing zeros so 0.85 serializes as "0.85", not "0.850000".
+            headers["X-Artifact-Coverage-Fraction"] = (
+                f"{coverage_fraction:.6f}".rstrip("0").rstrip(".")
+            )
+        return Response(content=data, media_type=mime, headers=headers)
 
     @app.get("/artifacts/as-of")
     def get_artifacts_as_of(
