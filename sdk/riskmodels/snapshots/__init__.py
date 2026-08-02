@@ -83,6 +83,7 @@ from ._stock_data import (
 
 # Fund data layer (F1 — zarr-backed; BWMACRO may enrich with Supabase downstream)
 from ._fund_data import (
+    FundAsOfUnavailableError,
     FundData,
     FundHolding,
     ZARR_FUNDS_GCS_PREFIX,
@@ -178,6 +179,7 @@ __all__ = [
     "fetch_macro_correlations_resilient",
     "get_data_for_p1",
     # Fund data layer (F1)
+    "FundAsOfUnavailableError",
     "FundData",
     "FundHolding",
     "from_fixture_row",

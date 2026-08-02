@@ -454,10 +454,11 @@ def test_enrich_preserves_existing_values_when_supabase_returns_none(monkeypatch
 def test_get_data_for_f1_default_enriches(monkeypatch):
     """The headline contract change: render-svc now gets enriched
     FundData by default."""
-    captured = {"called": False}
+    captured = {"called": False, "include_model_shares": None}
 
-    def _spy_enrich(fd):
+    def _spy_enrich(fd, *, include_model_shares=True):
         captured["called"] = True
+        captured["include_model_shares"] = include_model_shares
         return fd
 
     monkeypatch.setattr(_fund_data, "enrich_fund_data_with_supabase", _spy_enrich)
@@ -470,6 +471,9 @@ def test_get_data_for_f1_default_enriches(monkeypatch):
     )
     _fund_data.get_data_for_f1("BW-FUND-TEST")
     assert captured["called"] is True
+    # Latest path keeps the current-model share overlay (G.44 only skips
+    # it for genuinely historical as_of reads).
+    assert captured["include_model_shares"] is True
 
 
 def test_get_data_for_f1_enrich_false_skips_supabase(monkeypatch):

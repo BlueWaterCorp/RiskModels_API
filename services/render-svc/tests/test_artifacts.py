@@ -294,7 +294,13 @@ class TestRenderArtifactErrors:
         assert exc.value.status_code == 501
         assert "subject_kind='etf'" in str(exc.value.detail)
 
-    def test_specific_historical_as_of_returns_501(self, store, monkeypatch):
+    def test_historical_as_of_never_resolves_past_the_date(self, store, monkeypatch):
+        # G.44: the 501 "historical as_of is Phase 2" gate is gone — an
+        # explicit date passes through to the loader (the pass-through
+        # render itself is pinned in test_fund_asof.py). What remains
+        # refused is a loader resolving PAST the requested date: that
+        # violates the PIT invariant and must never be persisted under a
+        # historical key.
         _patch_get_data_for_f1(monkeypatch, fd=FakeFundData(teo="2025-11-30"))
 
         from fastapi import HTTPException
@@ -303,8 +309,8 @@ class TestRenderArtifactErrors:
                 _req(as_of="2024-12-31"),
                 store=store, prefix=PREFIX,
             )
-        assert exc.value.status_code == 501
-        assert "Phase 2" in str(exc.value.detail)
+        assert exc.value.status_code == 502
+        assert "PIT invariant" in str(exc.value.detail)
 
     def test_subject_kind_not_in_applicable_returns_422(self, store, monkeypatch):
         _install_fake_bwmacro_artifact(

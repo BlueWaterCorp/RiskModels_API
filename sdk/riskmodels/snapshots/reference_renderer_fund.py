@@ -189,7 +189,9 @@ def _render_section_i_performance(page: SnapshotPage, snap: CanonicalFundSnapsho
 
     target = snap.identity.symbol_id
     ordered_labels: list[str] = []
-    for k in [target, "SPY"]:
+    # Benchmark second: legacy "SPY" key, or the G.45 disclosed-default
+    # label ("SPY (default)") the loader now emits.
+    for k in [target, "SPY", "SPY (default)"]:
         if k in perf.cumulative_curves and k not in ordered_labels:
             ordered_labels.append(k)
     for k in perf.cumulative_curves:
@@ -324,6 +326,16 @@ def _render_section_iii_holdings(page: SnapshotPage, snap: CanonicalFundSnapshot
     )
 
 
+# Human-readable labels for the historical-degradation codes carried on
+# ``TemporalContext.degraded_sections`` (G.44). Unknown codes fall back to
+# the code itself — an unlabeled degradation is still disclosed.
+_DEGRADED_SECTION_LABELS = {
+    "holdings_model_share_overlay_skipped": "per-holding model shares omitted (current-model overlay)",
+    "fund_fit_section_omitted": "model-fit statistics omitted (latest-only)",
+    "holdings_labels_from_current_registry": "holding labels from the current symbols registry",
+}
+
+
 def _build_page(snap: CanonicalFundSnapshot) -> SnapshotPage:
     # Display the symbol_id with underscores stripped to avoid the literal
     # underscores reading as a fake underline on synthetic fixtures.
@@ -333,6 +345,12 @@ def _build_page(snap: CanonicalFundSnapshot) -> SnapshotPage:
     subtitle = f"Fund Snapshot · As of {snap.identity.as_of}"
     if snap.identity.filer_metadata is not None:
         subtitle = f"13F Filer Snapshot · As of {snap.identity.as_of}"
+
+    # Historical as-of read (G.44): name the axis in the subtitle so the
+    # page can never pass as a current snapshot.
+    t = snap.temporal
+    if t is not None and getattr(t, "as_of_basis", None):
+        subtitle += f" · Historical ({t.as_of_basis} basis)"
 
     page = SnapshotPage(
         title=title,
@@ -346,6 +364,24 @@ def _build_page(snap: CanonicalFundSnapshot) -> SnapshotPage:
     _render_section_i_performance(page, snap)
     _render_section_ii_risk(page, snap)
     _render_section_iii_holdings(page, snap)
+
+    # Degraded-sections labeling for historical reads: latest-only overlays
+    # (current-model holding shares, fund-fit stats) are omitted rather
+    # than served stale — say so on the page instead of leaving blanks.
+    if t is not None and getattr(t, "degraded_sections", None):
+        note = "; ".join(
+            _DEGRADED_SECTION_LABELS.get(c, c) for c in t.degraded_sections
+        )
+        # Sits between the panel area and the footer rule (0.025); the
+        # Section III coverage string occupies y=0.115 on the right, so
+        # this line stays below it to avoid a collision.
+        page.fig.text(
+            0.05, 0.045,
+            f"Historical as-of view — {note}.",
+            fontsize=THEME.type.footer,
+            color=THEME.palette.text_light,
+            ha="left", va="bottom",
+        )
 
     return page
 
