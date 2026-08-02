@@ -1,0 +1,92 @@
+# =============================================================================
+# Workspace Action Contract Drift (G.36)
+# =============================================================================
+#
+# The chat agent's set_subject / set_window tool schemas are GENERATED from
+# lib/chat/workspace-action-contract.mirror.json — an explicit copy of the
+# canonical vocabulary owned by Risk_Models
+# (riskmodels_net/src/lib/workspace/workspace-action-contract.json, itself
+# pinned byte-for-byte to action-bus.ts by a test in that repo).
+#
+# This is the AGENTS_CROSS_REPO.md §1-3 mechanism REVERSED: for this contract,
+# Risk_Models is canonical and this repo holds the mirror. A drifted mirror
+# means the producer's tool manifest may offer actions the workspace bus
+# refuses — the "analyst describes actions it cannot take" hole, producer-side.
+#
+# Fix on failure:
+#   cp Risk_Models/riskmodels_net/src/lib/workspace/workspace-action-contract.json \
+#      RiskModels_API/lib/chat/workspace-action-contract.mirror.json
+#
+# NOTE: like drift-detection.yml, this check is red by construction while the
+# canonical file only exists on a not-yet-merged Risk_Models branch. It heals
+# once both sides are on main.
+#
+# REQUIRED SECRET: REPO_ACCESS_TOKEN (read access to BlueWaterCorp/Risk_Models)
+#
+name: Workspace Action Contract Drift
+
+on:
+  pull_request:
+    paths:
+      - "lib/chat/workspace-action-contract.mirror.json"
+      - "lib/chat/workspace-action-tools.ts"
+  schedule:
+    # Weekly reconcile (Mon 06:20 UTC) — catches canonical-side changes that
+    # never touched this repo.
+    - cron: "20 6 * * 1"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  detect-drift:
+    # Fork PRs do not receive REPO_ACCESS_TOKEN; skip instead of failing checkout.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout RiskModels_API
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Checkout Risk_Models (private)
+        uses: actions/checkout@v6
+        with:
+          repository: BlueWaterCorp/Risk_Models
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          path: risk_models
+          fetch-depth: 1
+
+      - name: Compare mirror to canonical
+        run: |
+          MIRROR="lib/chat/workspace-action-contract.mirror.json"
+          CANONICAL="risk_models/riskmodels_net/src/lib/workspace/workspace-action-contract.json"
+
+          if [ ! -f "$MIRROR" ]; then
+            echo "❌ Mirror not found at $MIRROR"
+            exit 1
+          fi
+          if [ ! -f "$CANONICAL" ]; then
+            echo "❌ Canonical contract not found at $CANONICAL on Risk_Models main."
+            echo "   If the Risk_Models G.36 PR has not merged yet, this is the expected"
+            echo "   pre-merge redness — re-run after it lands."
+            exit 1
+          fi
+
+          if diff -u "$CANONICAL" "$MIRROR"; then
+            echo "✅ workspace-action-contract mirror is in sync with Risk_Models"
+          else
+            echo ""
+            echo "❌ DRIFT DETECTED: the mirror no longer matches Risk_Models's canonical contract."
+            echo "   The tool manifest generated from the mirror may now disagree with what the"
+            echo "   workspace command bus actually performs. Sync with:"
+            echo ""
+            echo "   cp Risk_Models/riskmodels_net/src/lib/workspace/workspace-action-contract.json \\"
+            echo "      RiskModels_API/lib/chat/workspace-action-contract.mirror.json"
+            exit 1
+          fi

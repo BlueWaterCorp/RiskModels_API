@@ -52,7 +52,9 @@ import {
   WIRED_ARTIFACT_RENDER_MATRIX,
 } from "@/lib/artifacts/render-client";
 
-function fnTool(
+/** Exported for `workspace-action-tools.ts` (G.36) so the generated workspace
+ *  manifest carries the exact same strict-schema wrapper as every other tool. */
+export function fnTool(
   name: string,
   description: string,
   parameters: Record<string, unknown>,

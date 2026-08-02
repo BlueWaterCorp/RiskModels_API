@@ -12833,6 +12833,10 @@
                   "execute_tools_sequentially": {
                     "type": "boolean",
                     "description": "When true, server executes tool calls sequentially instead of concurrently."
+                  },
+                  "workspace_tools": {
+                    "type": "boolean",
+                    "description": "Offer the riskmodels.net workspace command-bus tools (set_subject / set_window) and emit their typed actions as distinct `action` SSE frames. Honored only when streaming (Accept: text/event-stream) — the frame is the delivery channel — and intended for the workspace-mounted portal chat, which validates actions client-side (fail-closed) before applying them.\n"
                   }
                 }
               }

@@ -1,0 +1,46 @@
+{
+  "contract_version": 1,
+  "source": {
+    "repo": "BlueWaterCorp/Risk_Models",
+    "path": "riskmodels_net/src/lib/workspace/workspace-action-contract.json",
+    "derived_from": [
+      "riskmodels_net/src/lib/workspace/action-bus.ts",
+      "riskmodels_net/src/lib/workspace/contracts.ts",
+      "riskmodels_net/src/lib/workspace/store.ts"
+    ]
+  },
+  "supported_actions": [
+    "set_subject",
+    "set_window",
+    "set_as_of",
+    "set_stage"
+  ],
+  "unsupported_actions": [
+    "generate_artifact",
+    "add_to_ic_pack",
+    "set_roster",
+    "open_roster_entity"
+  ],
+  "window_presets": {
+    "3m": 63,
+    "6m": 126,
+    "1y": 252,
+    "2y": 504,
+    "max": 504
+  },
+  "offered_lookback_days": [
+    63,
+    126,
+    252,
+    504
+  ],
+  "subject_kinds": [
+    "fund",
+    "etf",
+    "filer_13f",
+    "cohort",
+    "fund_cohort",
+    "stock",
+    "client_portfolio"
+  ]
+}

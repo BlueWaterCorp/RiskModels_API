@@ -637,6 +637,13 @@ export const ChatPostSchema = z.object({
   parallel_tool_calls: z.boolean().optional(),
   /** When true, chat tool executor runs tools sequentially instead of Promise.allSettled. */
   execute_tools_sequentially: z.boolean().optional(),
+  /**
+   * Offer the workspace command-bus tools (`set_subject` / `set_window`) and
+   * emit their actions as `action` SSE frames (G.36). Honored on the
+   * streaming path only — the frame is the sole delivery channel — and sent
+   * by the `.net` workspace-mounted chat, which has a consumer for it.
+   */
+  workspace_tools: z.boolean().optional(),
 });
 
 export type ChatPostBody = z.infer<typeof ChatPostSchema>;
