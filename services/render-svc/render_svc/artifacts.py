@@ -165,6 +165,69 @@ def _resolve_subject_kind(subject_id: str) -> str:
     )
 
 
+# G.41 provenance completion. Evidence class describes the quality of the
+# HOLDINGS behind a subject (the `.net` `ProvenanceRef.evidenceClass`
+# vocabulary: nport | 13f | user | reconstructed) and is determined by
+# subject kind. Kinds deliberately absent from this map:
+#   stock            — a single listed security is not holdings-backed;
+#                      emitting any class here would be an invented value.
+#   etf              — ETFs do file N-PORT, but no etf loader exists in
+#                      render-svc and the G.41 contract names only
+#                      fund/filer_13f/client_portfolio; omit rather than guess.
+#   cohort           — an aggregate over subjects, not one subject's holdings.
+# An omitted header is the honest answer for those kinds — the client field
+# is optional on purpose.
+_EVIDENCE_CLASS_BY_SUBJECT_KIND: dict[str, str] = {
+    "fund": "nport",
+    "filer_13f": "13f",
+    "client_portfolio": "user",
+}
+
+
+def evidence_class_for(subject_id: str) -> str | None:
+    """Evidence class for a subject id, or ``None`` where the holdings
+    vocabulary does not apply (stock / etf / cohort).
+
+    Raises the same 422 as ``_resolve_subject_kind`` for an unknown prefix.
+    """
+    return _EVIDENCE_CLASS_BY_SUBJECT_KIND.get(_resolve_subject_kind(subject_id))
+
+
+def coverage_fraction_for(req: "ArtifactRenderRequest") -> float | None:
+    """Coverage fraction (0–1) when the request genuinely carries one.
+
+    The only source today is a ``client_portfolio`` ``subject_payload`` whose
+    caller supplied ``coverage_fraction`` — the share of the pasted book the
+    model could actually see. No render-svc loader computes one (there is no
+    look-through-composite path here), so for every other request the honest
+    answer is ``None`` and no header. NEVER defaulted — a fabricated 1.0 is
+    the no-mock-data violation this function exists to avoid.
+
+    A present-but-malformed value 422s rather than silently disappearing:
+    a caller who tried to state coverage should not get an unlabeled render.
+    """
+    if _resolve_subject_kind(req.subject_id) != "client_portfolio":
+        return None
+    if req.subject_payload is None:
+        return None
+    value = req.subject_payload.get("coverage_fraction")
+    if value is None:
+        # Absent and explicit-null both mean "unknown" → honest omission.
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not (
+        0.0 <= float(value) <= 1.0
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "subject_payload.coverage_fraction must be a number in [0, 1] "
+                f"(got {value!r}). Omit the key when coverage is unknown — "
+                "it is never defaulted."
+            ),
+        )
+    return float(value)
+
+
 def _artifact_gcs_path(
     prefix: str,
     slug: str,
@@ -512,7 +575,8 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
 
     Wired today:
       - ``fund`` via ``get_data_for_f1`` (as_of=latest or matching teo)
-      - ``stock`` via live ``POST /api/decompose`` (as_of=latest or matching data_as_of)
+      - ``stock`` via live ``POST /api/decompose`` (as_of=latest, or a
+        historical date served as "latest row ≤ as_of" — G.42)
     """
     if subject_kind == "stock":
         return _load_stock_decompose(subject_id, as_of)
@@ -574,8 +638,13 @@ def _ticker_from_stock_subject_id(subject_id: str) -> str:
     return ticker
 
 
-def _fetch_decompose(ticker: str) -> dict[str, Any]:
-    """Call RiskModels ``POST /api/decompose`` with service credentials."""
+def _fetch_decompose(ticker: str, as_of: str | None = None) -> dict[str, Any]:
+    """Call RiskModels ``POST /api/decompose`` with service credentials.
+
+    ``as_of`` (YYYY-MM-DD) requests the latest stored row at or before that
+    date (reality mode, report_date basis — ADR 2026-08-01); ``None`` serves
+    the latest row.
+    """
     import requests
 
     api_key = (
@@ -589,6 +658,9 @@ def _fetch_decompose(ticker: str) -> dict[str, Any]:
             detail="RISKMODELS_API_KEY not configured on render-svc for stock panels",
         )
     base = os.environ.get("RISKMODELS_BASE_URL", "https://riskmodels.app/api").rstrip("/")
+    body: dict[str, Any] = {"ticker": ticker}
+    if as_of is not None:
+        body["as_of"] = as_of
     try:
         resp = requests.post(
             f"{base}/decompose",
@@ -596,11 +668,26 @@ def _fetch_decompose(ticker: str) -> dict[str, Any]:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={"ticker": ticker},
+            json=body,
             timeout=45,
         )
+        if as_of is not None and resp.status_code == 404:
+            # Upstream's as_of-specific 404 (nothing known at or before the
+            # date) is the caller's date being out of range, not a service
+            # fault — pass it through instead of masking it as a 502.
+            try:
+                upstream_error = str(resp.json().get("error") or "")
+            except Exception:  # noqa: BLE001
+                upstream_error = ""
+            raise HTTPException(
+                status_code=404,
+                detail=upstream_error
+                or f"no decompose data for {ticker!r} at or before as_of={as_of!r}",
+            )
         resp.raise_for_status()
         payload = resp.json()
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         log.exception("decompose failed for %s", ticker)
         raise HTTPException(
@@ -615,20 +702,33 @@ def _fetch_decompose(ticker: str) -> dict[str, Any]:
 def _load_stock_decompose(
     subject_id: str, as_of: str
 ) -> tuple[dict[str, Any], str]:
-    """Load a single-name decompose payload for stock panel artifacts."""
+    """Load a single-name decompose payload for stock panel artifacts.
+
+    A historical ``as_of`` passes through to ``/api/decompose``, which serves
+    the latest stored row at or before the date (reality mode, report_date
+    basis — ADR 2026-08-01) and echoes the served row via ``as_of_resolved``.
+    That echo becomes the resolved as_of here, so the GCS path and
+    ``X-Artifact-Resolved-As-Of`` carry the date the numbers are from.
+    """
     ticker = _ticker_from_stock_subject_id(subject_id)
-    payload = _fetch_decompose(ticker)
-    resolved = str(payload.get("data_as_of") or "").strip()
+    if as_of == "latest":
+        payload = _fetch_decompose(ticker)
+        resolved = str(payload.get("data_as_of") or "").strip()
+        if not resolved:
+            resolved = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return payload, resolved
+    payload = _fetch_decompose(ticker, as_of=as_of)
+    resolved = str(
+        payload.get("as_of_resolved") or payload.get("teo") or ""
+    ).strip()
     if not resolved:
-        resolved = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if as_of != "latest" and as_of != resolved:
-        # Decompose is latest-only today; refuse mismatched historical pins.
+        # An as_of response without the served-row echo predates the as-of
+        # contract; refuse rather than mislabel the artifact's date.
         raise HTTPException(
-            status_code=501,
+            status_code=502,
             detail=(
-                f"as_of={as_of!r} differs from decompose data_as_of={resolved!r}; "
-                f"historical stock panel as_of is not yet supported. "
-                f"Use as_of='latest' or as_of={resolved!r}."
+                f"decompose response for {ticker!r} lacks as_of_resolved/teo; "
+                f"cannot resolve historical as_of={as_of!r}"
             ),
         )
     return payload, resolved

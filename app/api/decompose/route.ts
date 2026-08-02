@@ -3,7 +3,9 @@ import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import {
   resolveSymbolByTicker,
+  fetchLatestMetrics,
   fetchLatestMetricsWithFallback,
+  type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
@@ -28,10 +30,40 @@ import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
  * layer `hr` (dollars of ETF short per $1 long stock).
  *
  * Same billing profile as `GET /metrics/{ticker}` ($0.001, baseline tier).
+ *
+ * Optional `as_of` (YYYY-MM-DD) serves the latest stored row ≤ that date from
+ * the date-indexed zarr (reality mode, report_date basis — ADR 2026-08-01),
+ * echoed via `as_of_resolved` / `as_of_basis`. Without it, the
+ * security_history_latest fast path is unchanged.
  */
 
 const MARKET_ETF = "SPY";
 const ER_SUM_TOLERANCE = 0.05;
+
+const DECOMPOSE_METRIC_KEYS: V3MetricKey[] = [
+  // L1
+  "l1_mkt_hr",
+  "l1_mkt_er",
+  "l1_res_er",
+  // L2
+  "l2_mkt_hr",
+  "l2_sec_hr",
+  "l2_mkt_er",
+  "l2_sec_er",
+  "l2_res_er",
+  // L3
+  "l3_mkt_hr",
+  "l3_sec_hr",
+  "l3_sub_hr",
+  "l3_mkt_er",
+  "l3_sec_er",
+  "l3_sub_er",
+  "l3_res_er",
+  // v4 Tier-1 explained-variance scalars (L* skill basis): style = incremental
+  // size+value share (diagnostic); stock_specific = final idiosyncratic share.
+  "style_er",
+  "stock_specific_er",
+];
 
 type LayerName = "market" | "sector" | "subsector" | "residual";
 
@@ -73,7 +105,7 @@ export const POST = withBilling(
       );
     }
 
-    const { ticker } = validation.data;
+    const { ticker, as_of } = validation.data;
 
     try {
       const symbolRecord = await resolveSymbolByTicker(ticker);
@@ -87,43 +119,48 @@ export const POST = withBilling(
         return response;
       }
 
-      const latestData = await fetchLatestMetricsWithFallback(
-        symbolRecord.symbol,
-          [
-          // L1
-          "l1_mkt_hr",
-          "l1_mkt_er",
-          "l1_res_er",
-          // L2
-          "l2_mkt_hr",
-          "l2_sec_hr",
-          "l2_mkt_er",
-          "l2_sec_er",
-          "l2_res_er",
-          // L3
-          "l3_mkt_hr",
-          "l3_sec_hr",
-          "l3_sub_hr",
-          "l3_mkt_er",
-          "l3_sec_er",
-          "l3_sub_er",
-          "l3_res_er",
-          // v4 Tier-1 explained-variance scalars (L* skill basis): style = incremental
-          // size+value share (diagnostic); stock_specific = final idiosyncratic share.
-          "style_er",
-          "stock_specific_er",
-        ],
-        "daily",
-      );
+      // Historical as_of skips the security_history_latest fast path entirely
+      // (that table is latest-only by construction) and reads the date-indexed
+      // zarr bounded at as_of — "latest complete row ≤ as_of", reality mode,
+      // report_date basis (ADR 2026-08-01). No as_of → fast path untouched.
+      const latestData = as_of
+        ? await fetchLatestMetrics(
+            symbolRecord.symbol,
+            DECOMPOSE_METRIC_KEYS,
+            "daily",
+            as_of,
+          )
+        : await fetchLatestMetricsWithFallback(
+            symbolRecord.symbol,
+            DECOMPOSE_METRIC_KEYS,
+            "daily",
+          );
 
       if (!latestData) {
+        // House PIT convention (AGENTS_CROSS_REPO.md §0): nothing known at or
+        // before as_of is an as_of-specific 404 — never an empty 200 or the
+        // latest row.
         const metadata = await getRiskMetadata();
         const response = NextResponse.json(
-          { error: "No metrics found" },
+          as_of
+            ? {
+                error: `No metrics found for ${ticker} at or before as_of=${as_of}`,
+                as_of,
+                as_of_basis: "report_date",
+              }
+            : { error: "No metrics found" },
           { status: 404, headers: corsHeaders },
         );
         addMetadataHeaders(response, metadata);
         return response;
+      }
+
+      if (as_of && latestData.teo > as_of) {
+        // PIT invariant: a historical request must never serve a row after
+        // the requested date. Surfaces as a 500 via the catch below.
+        throw new Error(
+          `decompose as_of invariant violated: teo=${latestData.teo} > as_of=${as_of}`,
+        );
       }
 
       const metadata = await getRiskMetadata();
@@ -229,6 +266,16 @@ export const POST = withBilling(
         symbol: symbolRecord.symbol,
         data_as_of: metadata.data_as_of,
         teo: latestData.teo,
+        // Historical read: echo the requested date, the SERVED row's teo as
+        // the effective as-of, and the axis it was selected on (house PIT
+        // convention, AGENTS_CROSS_REPO.md §0; ADR 2026-08-01 reality mode).
+        ...(as_of
+          ? {
+              as_of,
+              as_of_resolved: latestData.teo,
+              as_of_basis: "report_date" as const,
+            }
+          : {}),
         exposure: layers,
         // v4 named blocks (additive — legacy `exposure.residual` retained for
         // back-compat / decompose_legacy consumers). stock_specific = doubly-cleaned
@@ -245,7 +292,18 @@ export const POST = withBilling(
         },
         hedge,
         hedge_levels,
-        _metadata: buildMetadataBody(metadata, { factors: tickerFactors }),
+        _metadata: buildMetadataBody(metadata, {
+          factors: tickerFactors,
+          // Disclosed, not fixed (G.42): hedge-ETF labels come from the
+          // current symbols registry and are not point-in-time — a stock
+          // reclassified since as_of carries today's sector/subsector ETFs.
+          ...(as_of
+            ? {
+                data_warning:
+                  "sector_etf/subsector_etf labels reflect the current symbols registry, not the requested as_of; classifications are not point-in-time.",
+              }
+            : {}),
+        }),
         _data_health: {
           er_populated: erPopulated,
           er_sum: erPopulated ? erSum : null,
