@@ -1406,6 +1406,47 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "returns": {"type": "pandas.DataFrame | list", "description": "Symbols or rows."},
     },
     {
+        "name": "get_peers",
+        "aliases": [],
+        "summary": "Sector/subsector peer cohort for a ticker (GET /peers).",
+        "description": (
+            "Market-cap-ordered peers from the authenticated RiskModels API. "
+            "Used by PeerGroupProxy.from_ticker."
+        ),
+        "scopes": [],
+        "parameters": [
+            {
+                "name": "ticker",
+                "type": "string",
+                "required": True,
+                "description": "Target ticker.",
+            },
+            {
+                "name": "group_by",
+                "type": "string",
+                "required": False,
+                "description": "subsector_etf (default) or sector_etf.",
+            },
+            {
+                "name": "limit",
+                "type": "integer",
+                "required": False,
+                "description": "Max peers (default 50).",
+            },
+            {
+                "name": "as_dataframe",
+                "type": "boolean",
+                "required": False,
+                "default": True,
+                "description": "Peers as DataFrame; raw JSON when False.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame | dict",
+            "description": "Peer rows or full peers JSON body.",
+        },
+    },
+    {
         "name": "discover",
         "aliases": [],
         "summary": "Capability digest for humans and tool-def generators.",

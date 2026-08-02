@@ -133,17 +133,22 @@ def _safe_etf_returns(
 
 
 def _resolve_company_name(ticker: str, client: Any = None) -> str:
-    """Best-effort company name from ticker_metadata.
+    """Best-effort company name from authenticated API helpers.
 
-    Falls back to the ticker itself if anything goes wrong.
+    Tries ``search_tickers(include_metadata=True)``, then falls back to the
+    ticker itself if anything goes wrong.
     """
     if client is not None:
         try:
-            df = client.get_ticker_metadata(ticker=ticker, columns="company_name")
+            df = client.search_tickers(
+                search=ticker, include_metadata=True, as_dataframe=True
+            )
             if not df.empty:
-                name = df.iloc[0].get("company_name")
-                if name:
-                    return str(name)
+                for col in ("name", "company_name"):
+                    if col in df.columns:
+                        name = df.iloc[0].get(col)
+                        if name:
+                            return str(name)
         except Exception:
             pass
     return ticker

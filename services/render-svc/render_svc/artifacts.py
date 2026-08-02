@@ -655,6 +655,8 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
 
     from riskmodels.snapshots import FundAsOfUnavailableError, get_data_for_f1
 
+    from .fund_enrich import enrich_fund_data
+
     try:
         if as_of == "latest":
             fd = get_data_for_f1(subject_id)
@@ -666,6 +668,7 @@ def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
             # The old 501 "must match the loader's latest teo" gate is
             # gone with it.
             fd = get_data_for_f1(subject_id, as_of=as_of)
+        fd = enrich_fund_data(fd)
     except FundAsOfUnavailableError as exc:
         # Upstream's as_of-specific not-found (nothing known at or before
         # the date) is the caller's date being out of range, not a service

@@ -3099,6 +3099,47 @@ class RiskModelsClient:
             return df
         return rows
 
+    def get_peers(
+        self,
+        ticker: str,
+        *,
+        group_by: Literal["subsector_etf", "sector_etf"] | None = None,
+        limit: int | None = None,
+        as_dataframe: bool = True,
+    ) -> dict[str, Any] | pd.DataFrame:
+        """Fetch a market-cap-ordered sector/subsector peer cohort (GET /peers).
+
+        Args:
+            ticker: Target stock ticker.
+            group_by: ``subsector_etf`` (default on the server) or ``sector_etf``.
+            limit: Max peers to return (server default 50, max 200).
+            as_dataframe: If True, return the ``peers`` list as a DataFrame
+                (target + warnings stay in ``df.attrs``). If False, return the
+                raw JSON body.
+
+        Returns:
+            Peer cohort JSON, or a DataFrame of peer rows with SDK metadata.
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params: dict[str, Any] = {"ticker": t}
+        if group_by is not None:
+            params["group_by"] = group_by
+        if limit is not None:
+            params["limit"] = limit
+        body, lin, _ = self._transport.request("GET", "/peers", params=params)
+        if not isinstance(body, dict):
+            raise TypeError("Expected JSON object from GET /peers")
+        if not as_dataframe:
+            return body
+        peers = body.get("peers") or []
+        df = pd.DataFrame(peers) if peers else pd.DataFrame()
+        attach_sdk_metadata(df, lin, kind="peers")
+        df.attrs["riskmodels_peers_target"] = body.get("target")
+        df.attrs["riskmodels_peers_group_by"] = body.get("group_by")
+        df.attrs["riskmodels_peers_group_etf"] = body.get("group_etf")
+        df.attrs["riskmodels_peers_warnings"] = body.get("warnings") or []
+        return df
+
     # --- Visual Refinement (MatPlotAgent Pattern) ---
     def generate_refined_plot(
         self,
