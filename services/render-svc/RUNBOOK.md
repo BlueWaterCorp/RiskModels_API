@@ -345,6 +345,73 @@ grants no access, so rotate only if the value itself is disclosed.
 
 ---
 
+## Purging a defective render-once artifact (H.146)
+
+The render-once contract makes every artifact object immutable at
+`{slug}@{version}/{subject_id}/{as_of}.{ext}`: once a render lands in GCS, every
+subsequent request for that key serves the cached object. A shipped render
+later found defective therefore keeps serving **after** the code fix deploys —
+the fix never runs because the cache always hits. Restoring correctness
+requires deleting the defective objects by name and re-rendering.
+
+The protocol is deliberately narrow. Deleting by prefix (`.../{slug}@v1/**` or
+`.../{subject_id}/**`) destroys healthy cached renders alongside the defective
+ones and turns a two-object correction into a fleet-wide cache rebuild. Every
+step below operates on **exact object names only**.
+
+1. **Identify the exact object names.** A defective render is a specific
+   `(slug@version, subject_id, as_of)` triple, and each triple has one object
+   per format (`.json`, `.png`, `.pdf` where rendered). Write the full
+   `gs://` paths down before touching anything.
+
+2. **List before deleting.** Confirm each named object exists and that the
+   listing returns only the objects you intend to remove:
+
+   ```bash
+   gcloud storage ls \
+     "gs://rm_api_public/snapshots/artifacts/{slug}@{v}/{subject_id}/{as_of}.json" \
+     "gs://rm_api_public/snapshots/artifacts/{slug}@{v}/{subject_id}/{as_of}.png"
+   ```
+
+   If the listing shows anything you did not name, stop and re-derive the
+   names. Never proceed from a wildcard listing.
+
+3. **Delete by name** — the same explicit paths, no wildcards:
+
+   ```bash
+   gcloud storage rm \
+     "gs://rm_api_public/snapshots/artifacts/{slug}@{v}/{subject_id}/{as_of}.json" \
+     "gs://rm_api_public/snapshots/artifacts/{slug}@{v}/{subject_id}/{as_of}.png"
+   ```
+
+4. **Re-render** the triple through the normal endpoint (`POST
+   /artifacts/render` with the same `slug` / `version` / `subject_id` /
+   `as_of`). The cache miss now routes through the fixed code and writes a
+   fresh object under the same key. The fixed code must already be deployed —
+   re-rendering against the old revision re-caches the defect.
+
+5. **Verify content, not status.** A 200 also comes from a stale or re-broken
+   render. Fetch the re-rendered artifact and check the property the defect
+   violated (for a PNG, view it; for JSON, assert on the fields).
+
+**Worked example — the G.46 purge, 2026-08-02.** The first prod historical
+render of `top_holdings_erm_stacked` (before the G.46 fix) cached bars with
+zero-width segments. Exactly two objects were defective and both were named,
+listed, and deleted individually:
+
+```
+gs://rm_api_public/snapshots/artifacts/top_holdings_erm_stacked@v1/BW-FUND-S000000008/2024-06-30.json
+gs://rm_api_public/snapshots/artifacts/top_holdings_erm_stacked@v1/BW-FUND-S000000008/2024-06-30.png
+```
+
+The re-render (after revision `render-svc-00034-gcn` deployed the fix) was
+verified by content: plain weight bars plus the on-face "Historical
+(report_date basis) — risk composition unavailable" note, PNG archived as
+`g46_prod_verified_historical.png`. No other `(subject, as_of)` under the slug
+was touched.
+
+---
+
 ## Post-deploy follow-ups (not blocking)
 
 1. **`cloudbuild.yaml`** to automate the SDK staging during build.
