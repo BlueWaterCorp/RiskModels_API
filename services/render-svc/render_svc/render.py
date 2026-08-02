@@ -174,7 +174,8 @@ def _compute_canonical_f1(
     """Phase 2 — fetch F1 from per-fund zarrs and build a CanonicalFundSnapshot.
 
     F1's data path reads ``gs://rm_api_data/ERM3_Funds/bw_fund_id/{id}/ds_*.zarr/``
-    directly via the public SDK (no Supabase enrichment). The Supabase-backed
+    directly via the public SDK, then applies private ``fund_enrich`` for holdings
+    tickers / L3 shares when Cloud Run credentials are wired. The Supabase-backed
     enrichment lives in BWMACRO and is unavailable in this service.
 
     ``as_of`` threads into the loader (G.44): the SDK serves the latest
@@ -191,8 +192,11 @@ def _compute_canonical_f1(
         get_data_for_f1,
     )
 
+    from .fund_enrich import enrich_fund_data
+
     try:
         fd = get_data_for_f1(bw_fund_id, as_of=as_of)
+        fd = enrich_fund_data(fd)
     except FundAsOfUnavailableError as exc:
         # Nothing known at or before the date → the house PIT convention's
         # as_of-specific not-found, not a service fault (maps to 404).

@@ -46,15 +46,13 @@ class Settings:
 
     # Whether Supabase credentials are present for holdings enrichment.
     #
-    # Not a knob — an observation. ``get_data_for_f1`` enriches fund holdings
-    # via ``enrich_fund_data_with_supabase``, which resolves bw_sym_id → ticker
-    # and attaches per-holding L3 risk shares. Every Supabase read in that path
-    # soft-fails to ``[]`` when credentials are missing, by design, so that pip
-    # consumers without keys still work. In a *service* that same design turns
-    # into a silent wrong answer: fund and client_portfolio renders return
-    # HTTP 200 with raw ``BW-BBG…`` labels and every risk share ``None`` — a
-    # structurally valid, completely empty stacked bar. Nothing errors, so
-    # nothing alerts.
+    # Not a knob — an observation. Private ``render_svc.fund_enrich`` resolves
+    # bw_sym_id → ticker and attaches per-holding L3 risk shares. Every
+    # PostgREST read soft-fails to ``[]`` when credentials are missing. In a
+    # *service* that same design turns into a silent wrong answer: fund and
+    # client_portfolio renders return HTTP 200 with raw ``BW-BBG…`` labels
+    # and every risk share ``None`` — a structurally valid, completely empty
+    # stacked bar. Nothing errors, so nothing alerts.
     #
     # Recording it here makes the degradation legible at startup and on
     # /readyz instead of only in the pixels.
@@ -71,9 +69,9 @@ _DEFAULT_ZARR_ROOT_URI = "gs://rm_api_data/eodhd"
 
 
 def _supabase_credentials_present() -> tuple[bool, str | None]:
-    """Mirror ``_supabase_creds`` in ``riskmodels.snapshots._fund_data``.
+    """Mirror ``render_svc.fund_enrich._supabase_creds``.
 
-    Both naming conventions count, because the SDK accepts either.
+    Both naming conventions count for Cloud Run Doppler wiring.
 
     Returns ``(usable, warning)``. Presence is deliberately not the whole
     test: on 2026-08-01 this service was wired with a well-formed

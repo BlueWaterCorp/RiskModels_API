@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Peers Response",
+  "type": "object",
+  "required": ["ticker", "target", "group_by", "group_etf", "peers", "peer_count"],
+  "properties": {
+    "ticker": {
+      "type": "string"
+    },
+    "target": {
+      "type": "object",
+      "required": ["ticker", "symbol"],
+      "properties": {
+        "ticker": { "type": "string" },
+        "company_name": { "type": ["string", "null"] },
+        "market_cap": { "type": ["number", "null"] },
+        "sector_etf": { "type": ["string", "null"] },
+        "subsector_etf": { "type": ["string", "null"] },
+        "symbol": { "type": "string" }
+      }
+    },
+    "group_by": {
+      "type": "string",
+      "enum": ["subsector_etf", "sector_etf"]
+    },
+    "group_etf": {
+      "type": "string"
+    },
+    "peers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ticker", "symbol"],
+        "properties": {
+          "ticker": { "type": "string" },
+          "company_name": { "type": ["string", "null"] },
+          "market_cap": { "type": ["number", "null"] },
+          "sector_etf": { "type": ["string", "null"] },
+          "subsector_etf": { "type": ["string", "null"] },
+          "symbol": { "type": "string" }
+        }
+      }
+    },
+    "peer_count": {
+      "type": "integer"
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "_agent": {
+      "type": "object",
+      "properties": {
+        "cost_usd": { "type": "number" },
+        "latency_ms": { "type": "integer" },
+        "request_id": { "type": "string" }
+      }
+    }
+  }
+}

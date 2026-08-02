@@ -81,7 +81,7 @@ from ._stock_data import (
     get_data_for_p1,
 )
 
-# Fund data layer (F1 — zarr-backed; BWMACRO may enrich with Supabase downstream)
+# Fund data layer (F1 — zarr-backed; private render-svc may enrich holdings)
 from ._fund_data import (
     FundAsOfUnavailableError,
     FundData,

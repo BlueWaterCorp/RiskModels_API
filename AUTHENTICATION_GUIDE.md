@@ -2,6 +2,8 @@
 
 The RiskModels API supports four authentication modes (as of v3.0.0-agent). Choose based on your application type.
 
+**Python SDK / public API clients:** use **Mode 1 (Bearer API key)** only — `RISKMODELS_API_KEY` with `RiskModelsClient.from_env()`. Modes 3–4 below are platform / direct-database access for internal apps, **not** part of the published `riskmodels-py` setup.
+
 ---
 
 ## Mode 1 — Bearer Token (Direct API Key)
@@ -199,9 +201,9 @@ Both endpoints return RFC 6749 error bodies:
 ---
 
 
-## Mode 3 — Supabase JWT (Browser / Mobile Apps)
+## Mode 3 — Supabase JWT (Browser / Mobile Apps) — platform / direct-DB only
 
-For applications that directly query Supabase (the underlying database), use the public anon key with user authentication.
+**Not used by the Python SDK or public REST analytics clients.** For first-party apps that query the database directly with the anon key + user auth:
 
 ```typescript
 import { createClient } from '@supabase/supabase-js';
@@ -237,9 +239,9 @@ Row Level Security (RLS) is enforced — users can only access data they are aut
 
 ---
 
-## Mode 4 — Service Role Key (Server-Side Internal)
+## Mode 4 — Service Role Key (Server-Side Internal) — platform only
 
-For server-side applications with direct Supabase access. Bypasses RLS — full database access.
+**Never required for `riskmodels-py` or partner notebooks.** Internal services (e.g. Cloud Run render-svc) may use service-role access. Bypasses RLS — full database access. Do not ship these keys in client apps.
 
 ```python
 # NEVER expose in browser or client-side code

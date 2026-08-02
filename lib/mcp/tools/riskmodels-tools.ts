@@ -566,6 +566,36 @@ export function registerRiskModelsTools(
   );
 
   server.registerTool(
+    "riskmodels_get_peers",
+    {
+      title: "RiskModels Peer Cohort",
+      annotations: { readOnlyHint: true },
+      description:
+        "Return a market-cap-ordered sector/subsector peer cohort for a ticker (GET /peers). Defaults to subsector_etf grouping with sector_etf fallback. Use before PeerGroupProxy-style selection analysis.",
+      inputSchema: {
+        ticker: z.string().min(1).describe('Target ticker, e.g. "NVDA"'),
+        group_by: z
+          .enum(["subsector_etf", "sector_etf"])
+          .optional()
+          .describe("Peer grouping field (default subsector_etf)"),
+        limit: z.number().int().min(1).max(200).optional().describe("Max peers (default 50)"),
+      },
+    },
+    async ({ ticker, group_by, limit }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {
+          ticker: ticker.trim().toUpperCase(),
+        };
+        if (group_by !== undefined) query.group_by = group_by;
+        if (limit !== undefined) query.limit = limit;
+        return textResult(await sdk.call("GET", "/peers", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "riskmodels_search_filers",
     {
       title: "RiskModels 13F Filer Search",

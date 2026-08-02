@@ -1582,7 +1582,7 @@ export const CAPABILITIES: Capability[] = [
     id: "macro-factor-series",
     name: "Macro factor time series",
     description:
-      "Read-only daily macro factor total returns from Supabase `macro_factors` (no stock ticker). GET /api/macro-factors with optional `factors`, `start`, `end` (YYYY-MM-DD). JSON Schema for 200 body: macro-factors-series-v1.json (MCP schema list).",
+      "Read-only daily macro factor total returns (no stock ticker). GET /api/macro-factors with optional `factors`, `start`, `end` (YYYY-MM-DD). JSON Schema for 200 body: macro-factors-series-v1.json (MCP schema list).",
     endpoint: "/api/macro-factors",
     method: "GET",
     parameters: {

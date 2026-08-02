@@ -76,13 +76,11 @@ _TICKER_TO_NAME: dict[str, str] | None = None
 
 
 def _resolve_company_name_local(ticker: str) -> str:
-    """Look up company name. Tries ``ERM3_SECURITY_MASTER_DB`` first (canonical SSOT,
-    aligned with Supabase symbols.name), then ``ERM3_TICKER_LIST_CSV`` if set.
-    Final fallback is the ticker itself.
+    """Look up company name. Tries ``ERM3_SECURITY_MASTER_DB`` first (canonical SSOT),
+    then ``ERM3_TICKER_LIST_CSV`` if set. Final fallback is the ticker itself.
 
-    The two-tier lookup ensures the zarr-rendered snapshot displays the same
-    company name as the API-rendered snapshot, even though the zarr path is
-    fully offline (no Supabase access required).
+    The two-tier lookup keeps zarr-rendered snapshots aligned with API display
+    names while remaining fully offline.
     """
     global _TICKER_TO_NAME
     if _TICKER_TO_NAME is None:
@@ -91,10 +89,7 @@ def _resolve_company_name_local(ticker: str) -> str:
         sm_raw = (os.environ.get("ERM3_SECURITY_MASTER_DB") or "").strip()
         sm_path = Path(sm_raw).expanduser() if sm_raw else None
 
-        # Tier 1: security_master SQLite (canonical source — same one Supabase
-        # symbols.name is backfilled from). After the company_name backfill
-        # this contains ~3,400 stocks with the canonical convention (e.g.
-        # "Apple Inc." with the period).
+        # Tier 1: security_master SQLite (canonical source for display names).
         if sm_path is not None and sm_path.exists():
             try:
                 import sqlite3
@@ -502,7 +497,7 @@ def fetch_stock_context_zarr(
     Parameters
     ----------
     as_of_date : Trim history to <= this date (YYYY-MM-DD). Useful when comparing against
-        an API snapshot from a specific date (e.g. when Supabase data lags one day).
+        an API snapshot from a specific date.
     sector_etf_override / subsector_etf_override : Override the auto-derived sector/subsector
         ETF (from fundamentals.csv). Use this to match the API's classification.
     """
@@ -645,8 +640,8 @@ def fetch_stock_context_zarr(
     subsector_etf = subsector_etf_override or _subsector_etf(fs_ind, erm3)
 
     # API behavior: each ETF series uses its own latest date independently of the stock.
-    # When matching the API, ETFs may have 1 day MORE than the stock if Supabase synced them
-    # later. We fetch the ETF's full window matching the API's `years=2` calendar logic.
+    # ETFs may have 1 day more than the stock when upstream sync lags. We fetch the ETF's
+    # full window matching the API's `years=2` calendar logic.
     n_etf_days = len(hist) + 5  # buffer for ETF having extra recent days
 
     def _etf_slice_independent(etf_ticker: str | None) -> pd.DataFrame | None:
