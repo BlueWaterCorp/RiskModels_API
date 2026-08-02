@@ -5,6 +5,46 @@
  * performance specs, and confidence scoring.
  */
 
+/**
+ * Per-slug render-param applicability for the artifact-render capability.
+ *
+ * Spelled out from the same map render-svc enforces (`_SLUG_PARAMS`, mirrored
+ * as `ARTIFACT_SLUG_PARAMS`) so the registry cannot advertise a param the
+ * server refuses, or omit one it accepts. Built here rather than imported to
+ * keep this module free of runtime dependencies — `scripts/generate-mcp-capabilities.mjs`
+ * bundles and evaluates it, and pulling in the render client would drag GCP
+ * auth into that build. The parity test is what makes the copy safe.
+ */
+const ARTIFACT_RENDER_PARAM_APPLICABILITY: Record<string, string[]> = {
+  top_holdings_erm_stacked: ["top_n"],
+  cumulative_return_strip: ["window"],
+  position_cumulative_decomposition: ["window"],
+  l3_explained_risk_hbar: ["layers"],
+  active_risk_composition: ["layers"],
+  hedge_notionals_hbar: ["top_n"],
+  watchlist_er_stacked: ["sort_by", "top_n"],
+  risk_dna_stacked: ["peer_n", "sort_by"],
+  historical_risk_waterfall: ["date", "window"],
+  holdings_active_panel: ["benchmark", "top_n"],
+};
+
+export const ARTIFACT_RENDER_PARAMS_DESCRIPTION =
+  "Per-slug render params. Accepted keys: top_n (int 1-50), peer_n (int 1-50), " +
+  "window ('3m'|'6m'|'1y'|'2y'|'3y'|'5y'|'max'), sort_by (string), layers " +
+  "(comma-separated lowercase cascade levels), date (YYYY-MM-DD), benchmark " +
+  "(bw_bench_id | alias | ff_own | cell_<slug>). Applicability — " +
+  Object.entries(ARTIFACT_RENDER_PARAM_APPLICABILITY)
+    .map(([slug, keys]) => `${slug}: ${keys.join("+")}`)
+    .sort()
+    .join("; ") +
+  ". Every other slug accepts none. Unknown or slug-inapplicable params → 422; " +
+  "a value the artifact module does not accept also → 422 (window ladders differ " +
+  "per slug). `date` selects an observation inside a history panel and is NOT the " +
+  "request-level `as_of`, which selects the artifact vintage. Params participate " +
+  "in the render-once GCS cache key ({as_of}.top_n-5.json); empty params keep the " +
+  "legacy key. GET /api/artifacts/capability serves this map alongside the " +
+  "verified (slug, subject_kind) pairs.";
+
 export interface ParameterSpec {
   type: "string" | "integer" | "number" | "boolean" | "array" | "object";
   required: boolean;
@@ -1490,11 +1530,13 @@ export const CAPABILITIES: Capability[] = [
       params: {
         type: "object",
         required: false,
-        description:
-          "Per-slug render params (Phase 3). top_holdings_erm_stacked: top_n (int 1-50, default 12). " +
-          "cumulative_return_strip: window ('3m'|'6m'|'1y'|'2y'|'max', default 'max'). " +
-          "Unknown or slug-inapplicable params → 422. Params participate in the render-once GCS cache key " +
-          "({as_of}.top_n-5.json); empty params keep the legacy key.",
+        // Applicability is spelled out from ARTIFACT_SLUG_PARAMS rather than
+        // written by hand. This entry named two slugs and two params while
+        // render-svc enforced seven across ten slugs, so an agent reading the
+        // registry could not learn that `layers` or `benchmark` existed
+        // (G.54). `artifact-capability-params.test.ts` fails if the two
+        // diverge again.
+        description: ARTIFACT_RENDER_PARAMS_DESCRIPTION,
       },
     },
     pricing: {

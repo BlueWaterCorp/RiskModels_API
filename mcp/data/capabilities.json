@@ -1665,7 +1665,7 @@
       "params": {
         "type": "object",
         "required": false,
-        "description": "Per-slug render params (Phase 3). top_holdings_erm_stacked: top_n (int 1-50, default 12). cumulative_return_strip: window ('3m'|'6m'|'1y'|'2y'|'max', default 'max'). Unknown or slug-inapplicable params → 422. Params participate in the render-once GCS cache key ({as_of}.top_n-5.json); empty params keep the legacy key."
+        "description": "Per-slug render params. Accepted keys: top_n (int 1-50), peer_n (int 1-50), window ('3m'|'6m'|'1y'|'2y'|'3y'|'5y'|'max'), sort_by (string), layers (comma-separated lowercase cascade levels), date (YYYY-MM-DD), benchmark (bw_bench_id | alias | ff_own | cell_<slug>). Applicability — active_risk_composition: layers; cumulative_return_strip: window; hedge_notionals_hbar: top_n; historical_risk_waterfall: date+window; holdings_active_panel: benchmark+top_n; l3_explained_risk_hbar: layers; position_cumulative_decomposition: window; risk_dna_stacked: peer_n+sort_by; top_holdings_erm_stacked: top_n; watchlist_er_stacked: sort_by+top_n. Every other slug accepts none. Unknown or slug-inapplicable params → 422; a value the artifact module does not accept also → 422 (window ladders differ per slug). `date` selects an observation inside a history panel and is NOT the request-level `as_of`, which selects the artifact vintage. Params participate in the render-once GCS cache key ({as_of}.top_n-5.json); empty params keep the legacy key. GET /api/artifacts/capability serves this map alongside the verified (slug, subject_kind) pairs."
       }
     },
     "pricing": {

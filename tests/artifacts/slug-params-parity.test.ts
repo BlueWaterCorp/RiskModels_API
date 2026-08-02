@@ -124,3 +124,47 @@ describe("render-svc param contract", () => {
     expect([...ARTIFACT_SUBJECT_KINDS].sort()).toEqual(kinds);
   });
 });
+
+describe("agent capability registry", () => {
+  /**
+   * The registry entry for `artifact-render` is a fifth vocabulary. It named
+   * two slugs and two params while render-svc enforced seven params across ten
+   * slugs, so an agent reading `GET /capabilities` could not learn that
+   * `layers`, `benchmark`, `peer_n`, `sort_by` or `date` existed at all (G.54).
+   *
+   * It is spelled out rather than imported — `generate-mcp-capabilities.mjs`
+   * bundles and evaluates `lib/agent/capabilities.ts`, and importing the render
+   * client would pull GCP auth into that build. This test is what makes the
+   * copy safe.
+   */
+  it("describes exactly the slugs and params render-svc enforces", async () => {
+    const { ARTIFACT_RENDER_PARAMS_DESCRIPTION } = await import(
+      "@/lib/agent/capabilities"
+    );
+    for (const [slug, keys] of Object.entries(ARTIFACT_SLUG_PARAMS)) {
+      expect(
+        ARTIFACT_RENDER_PARAMS_DESCRIPTION,
+        `${slug} missing or wrong in the capability description`,
+      ).toContain(`${slug}: ${[...keys].sort().join("+")}`);
+    }
+    for (const key of ARTIFACT_PARAM_KEYS) {
+      expect(ARTIFACT_RENDER_PARAMS_DESCRIPTION).toContain(key);
+    }
+    // No slug may be described that render-svc does not parameterize. Read the
+    // applicability clause only — the surrounding prose contains colons too.
+    const clause = ARTIFACT_RENDER_PARAMS_DESCRIPTION.split("Applicability — ")[1]
+      ?.split(". Every other slug")[0];
+    expect(clause, "applicability clause not found").toBeTruthy();
+    const described = clause!.split("; ").map((pair) => pair.split(":")[0]);
+    expect(described.sort()).toEqual(Object.keys(ARTIFACT_SLUG_PARAMS).sort());
+  });
+
+  it("keeps the generated capabilities.json in step with the registry", () => {
+    const generated = JSON.parse(
+      readFileSync(join(process.cwd(), "mcp/data/capabilities.json"), "utf8"),
+    ) as Array<{ id: string; parameters?: Record<string, { description?: string }> }>;
+    const render = generated.find((c) => c.id === "artifact-render");
+    expect(render, "artifact-render capability missing").toBeDefined();
+    expect(render!.parameters?.params?.description).toContain("holdings_active_panel: benchmark+top_n");
+  });
+});
