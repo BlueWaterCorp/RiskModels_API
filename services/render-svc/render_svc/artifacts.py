@@ -937,9 +937,13 @@ def _peer_group_resolved_as_of(payloads: list[dict[str, Any]], as_of: str) -> st
 
     ``latest`` → the unanimous ``data_as_of`` when there is one, else today
     (same rule as the watchlist path). An explicit historical date that does
-    not match what decompose served is refused — decompose is latest-only
-    today, and keying live-latest bytes under a historical date would label
-    the data with a date it does not have.
+    not match what decompose served is refused: this path always requests
+    the latest rows, and peer MEMBERSHIP (market-cap order, sector /
+    subsector grouping) is resolved from the current registry, not
+    point-in-time — so keying these bytes under a historical date would
+    label the artifact with a date its cohort does not have. Threading
+    G.42's historical decompose ``as_of`` through the fan-out, with the
+    membership caveat disclosed, is a follow-up.
     """
     as_ofs = {str(p.get("data_as_of") or "") for p in payloads}
     as_ofs.discard("")
@@ -955,7 +959,8 @@ def _peer_group_resolved_as_of(payloads: list[dict[str, Any]], as_of: str) -> st
             detail=(
                 f"as_of={as_of!r} differs from decompose data_as_of="
                 f"{sorted(as_ofs)}; historical peer-group as_of is not yet "
-                f"supported (decompose is latest-only). Use as_of='latest'."
+                f"supported (peer membership is not point-in-time). "
+                f"Use as_of='latest'."
             ),
         )
     return as_of
