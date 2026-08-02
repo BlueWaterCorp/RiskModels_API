@@ -723,6 +723,42 @@ components:
           description: >
             Canonical L1/L2/L3 compare alongside the L3-focused `exposure` map. Prefer this when the
             user asks how L1/L2/L3 hedge ratios differ — `exposure` alone is the four-bet semantic view for L3.
+        style:
+          type: object
+          nullable: true
+          description: >
+            FF2 (SMB + HML) diagnostic split of the `exposure.residual` variance —
+            attribution only, never a tradable hedge (`hedgeable` is always `false`).
+            `explained_variance` is a variance-ratio share on the `hedge_levels` basis
+            named by `hedge_levels.statistical_lstar` (style + `stock_specific` ≈ that
+            level's residual share). See `POST /v4/decompose` for the named-block form
+            of this same split.
+          properties:
+            explained_variance:
+              type: number
+              nullable: true
+              example: 0.102
+            hedgeable:
+              type: boolean
+              example: false
+            role:
+              type: string
+              example: diagnostic
+        stock_specific:
+          type: object
+          nullable: true
+          description: >
+            Doubly-cleaned skill residual — `exposure.residual` after the FF2 `style`
+            strip. The stock-selection basis (skills-paper skill metric); not a
+            tradable hedge.
+          properties:
+            explained_variance:
+              type: number
+              nullable: true
+              example: 0.475
+            hedgeable:
+              type: boolean
+              example: false
         _metadata:
           type: object
           description: Lineage, billing code, and freshness (same shape as `/metrics`).
@@ -4917,6 +4953,12 @@ paths:
         a top-level `hedge` map of ETF → dollar ratio (negative of the layer
         hedge ratio by convention, so a positive stock HR yields a negative ETF
         notional: short the ETF to offset long stock exposure).
+
+
+        The response also carries `style` and `stock_specific`: a diagnostic FF2
+        (SMB + HML) split of `exposure.residual` into a non-tradable style share and
+        the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See
+        `POST /v4/decompose` for the same split expressed as named blocks.
 
 
         Same billing profile as `GET /metrics/{ticker}` — this is a thin
