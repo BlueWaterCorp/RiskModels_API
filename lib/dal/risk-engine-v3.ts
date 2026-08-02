@@ -17,7 +17,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { resolveTicker } from "@/lib/ticker-aliases";
+import { resolveTicker, type TickerResolution } from "@/lib/ticker-aliases";
 import {
   readHistorySlice,
   readLatestRankSnapshot,
@@ -238,15 +238,14 @@ export const RANKING_METRICS = [
   "stock_specific_lstar",
 ] as const;
 
-/**
- * Ticker aliases for resolution fallback (e.g. symbols has GOOG but user requests GOOGL).
- * In-process fast path; the authoritative source is `public.security_aliases`
- * (mirrored from ERM3 `eodhd_extractions.db` via sync_ticker_history_from_sqlite).
- */
-const TICKER_ALIASES: Record<string, string[]> = {
-  GOOGL: ["GOOG"],
-  GOOG: ["GOOGL"],
-};
+// C.13: the hardcoded TICKER_ALIASES map that used to live here (GOOGL↔GOOG,
+// bidirectional) is gone. Share-class projections and notation aliases both
+// come from the single `resolveTicker` seam in `lib/ticker-aliases.ts`, which
+// reads the `class_projections_current` mirror — the same resolution the
+// symbols endpoints use, so this DAL can never disagree with them. The old
+// GOOG → GOOGL direction (answering a modelled-class request with the
+// non-modelled sibling) is deliberately not reproduced: the seam only projects
+// requested → modelled.
 
 /** Alias types in security_aliases that represent a ticker symbol. */
 const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER"] as const;
@@ -413,27 +412,26 @@ export async function resolveSymbolByTicker(
   let result = await tryResolve(upper);
   if (result) return result;
 
-  const aliases = TICKER_ALIASES[upper];
-  if (aliases) {
-    for (const alias of aliases) {
-      result = await tryResolve(alias);
-      if (result) {
-        // This used to return `{ ...result, ticker: upper }` — the resolved
-        // row relabelled with the requested ticker, so nothing downstream
-        // could tell that one share class had been answered with another's
-        // series. That is the G.35 defect. Keep `ticker` as the requested
-        // symbol (callers echo it), but carry the substitution alongside so a
-        // renderer can disclose it.
-        const projection = await resolveTicker(upper);
-        return {
-          ...result,
-          ticker: upper,
-          is_modelled_class: false,
-          modelled_ticker: result.ticker,
-          share_class: projection.requestedClass,
-          modelled_share_class: projection.modelledClass,
-        };
+  // Route notation aliases and share-class projections through the single
+  // resolveTicker seam (C.13). Notation (BRK.B → BRK-B) is the same security
+  // and stays silent; a projection (GOOGL → GOOG) answers with a sibling
+  // class's series and is carried on the row so renderers can disclose it —
+  // relabelling without those fields is the G.35 defect.
+  const resolution = await resolveTicker(upper);
+  if (resolution.canonical !== upper) {
+    result = await tryResolve(resolution.canonical);
+    if (result) {
+      if (!resolution.projected) {
+        return result;
       }
+      return {
+        ...result,
+        ticker: upper,
+        is_modelled_class: false,
+        modelled_ticker: result.ticker,
+        share_class: resolution.requestedClass,
+        modelled_share_class: resolution.modelledClass,
+      };
     }
   }
 
@@ -502,33 +500,49 @@ export async function resolveSymbolsByTickers(
       result.set(requestedKey, normalized);
     }
 
-    // Alias fallback for missing tickers
+    // Seam fallback for missing tickers (C.13): notation aliases and
+    // share-class projections both come from resolveTicker, never a local
+    // pair list. Projections carry the disclosure fields; notation stays
+    // silent (same security).
     const missing = upperTickers.filter(t => !result.has(t));
     if (missing.length === 0) return result;
 
-    const allAliases = new Set<string>();
-    const aliasToRequested = new Map<string, string>();
+    const resolutions = new Map<string, TickerResolution>();
     for (const requested of missing) {
-      const aliases = TICKER_ALIASES[requested];
-      if (aliases) {
-        for (const alias of aliases) {
-          allAliases.add(alias);
-          if (!aliasToRequested.has(alias)) aliasToRequested.set(alias, requested);
-        }
-      }
+      resolutions.set(requested, await resolveTicker(requested));
+    }
+    // One canonical can answer several requested spellings (BRK.B and BRK-A
+    // both land on BRK-B), so fan the row back out to every requester.
+    const canonicalToRequested = new Map<string, string[]>();
+    for (const [requested, res] of resolutions) {
+      if (res.canonical === requested) continue;
+      const list = canonicalToRequested.get(res.canonical) ?? [];
+      list.push(requested);
+      canonicalToRequested.set(res.canonical, list);
     }
 
-    if (allAliases.size > 0) {
+    if (canonicalToRequested.size > 0) {
       const { data: aliasData } = await admin
         .from("symbols")
         .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
-        .in("ticker", Array.from(allAliases));
+        .in("ticker", Array.from(canonicalToRequested.keys()));
 
       for (const row of aliasData ?? []) {
         const normalized = normalizeSymbolRow(row as Record<string, unknown>);
-        if (normalized) {
-          const requested = aliasToRequested.get(normalized.ticker);
-          if (requested && !result.has(requested)) {
+        if (!normalized) continue;
+        for (const requested of canonicalToRequested.get(normalized.ticker) ?? []) {
+          if (result.has(requested)) continue;
+          const res = resolutions.get(requested);
+          if (res?.projected) {
+            result.set(requested, {
+              ...normalized,
+              ticker: requested,
+              is_modelled_class: false,
+              modelled_ticker: normalized.ticker,
+              share_class: res.requestedClass,
+              modelled_share_class: res.modelledClass,
+            });
+          } else {
             result.set(requested, { ...normalized, ticker: requested });
           }
         }

@@ -64,6 +64,21 @@ interface PositionAnalysis {
   ticker: string;
   status: "success" | "error";
   error?: string;
+  /** Ticker exactly as requested (uppercased). */
+  requested_ticker?: string;
+  /**
+   * False when the numbers belong to a sibling share class (e.g. GOOGL
+   * answered with GOOG's modelled series). Projection is disclosed, per the
+   * notation-vs-projection split from #294; notation rewrites (BRK.B → BRK-B)
+   * are the same security and stay silent (`is_modelled_class: true`).
+   */
+  is_modelled_class?: boolean;
+  /** Registry ticker whose modelled series answered this request. */
+  modelled_ticker?: string | null;
+  /** Share class of the requested ticker, when projected. */
+  share_class?: string | null;
+  /** Share class of the modelled ticker, when projected. */
+  modelled_share_class?: string | null;
   returns?: {
     dates: string[];
     values: number[];
@@ -283,23 +298,18 @@ export const POST = withBilling(
   },
 );
 
-// Ticker normalization mapping for common variations
-const TICKER_NORMALIZATIONS: Record<string, string> = {
-  "BRK.B": "BRK-B",
-  "BRK-A": "BRK-A",
-  GOOG: "GOOGL", // Class C -> Class A
-};
-
-// Generate ticker variations to try
+// C.13: the TICKER_NORMALIZATIONS map that used to live here is gone. It
+// carried `GOOG → GOOGL` — the OPPOSITE direction from the symbols endpoints,
+// which project GOOGL onto GOOG — so one Alphabet holding could get different
+// numbers depending on which endpoint answered. Share-class projections are
+// now handled inside `resolveSymbolByTicker`, which routes through the single
+// `resolveTicker` seam (lib/ticker-aliases.ts). The variations below are
+// NOTATION-only guesses (dot/dash/suffix spellings of the same security) and
+// never cross share classes.
 function getTickerVariations(ticker: string): string[] {
   const variations = new Set<string>();
   variations.add(ticker);
   variations.add(ticker.toUpperCase());
-
-  // Add normalized version if exists
-  if (TICKER_NORMALIZATIONS[ticker]) {
-    variations.add(TICKER_NORMALIZATIONS[ticker]);
-  }
 
   // Handle dot vs dash variations (e.g., BRK.B -> BRK-B)
   if (ticker.includes(".")) {
@@ -371,6 +381,22 @@ async function analyzeTicker(
     console.log(
       `[Batch/analyzeTicker] Found symbol for ${ticker}: ${symbolRecord.symbol}`,
     );
+
+    // Share-class disclosure (C.13): resolveSymbolByTicker reports when a
+    // request was answered with a sibling class's series. Surface it here the
+    // same way /api/data/symbols does, so a caller reconciling the two
+    // endpoints sees one story.
+    result.requested_ticker = ticker;
+    result.is_modelled_class = symbolRecord.is_modelled_class !== false;
+    if (symbolRecord.is_modelled_class === false) {
+      result.modelled_ticker = symbolRecord.modelled_ticker;
+      result.share_class = symbolRecord.share_class;
+      result.modelled_share_class = symbolRecord.modelled_share_class;
+    } else {
+      result.modelled_ticker = null;
+      result.share_class = null;
+      result.modelled_share_class = null;
+    }
 
     if (metrics.includes("returns")) {
       const startDate = new Date();
