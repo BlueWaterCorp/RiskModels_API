@@ -85,7 +85,8 @@ function dispatchedResult(action: Record<string, unknown>) {
     action,
     note:
       "Action handed to the workspace client, which validates it fail-closed and may " +
-      "refuse it (e.g. unknown_subject when the subject is not loaded this session). " +
+      "refuse it (e.g. unknown_subject when the subject is neither loaded this session " +
+      "nor on the user's roster). " +
       "The workspace shows the user the outcome — do not state the change as fact.",
   };
 }
@@ -105,13 +106,13 @@ export const WORKSPACE_ACTION_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "set_subject",
     openaiTool: fnTool(
       "set_subject",
-      "Switch the riskmodels.net workspace to a subject ALREADY LOADED in this session " +
-        "(the 13F filer, fund, or pasted portfolio on screen). The workspace client validates " +
-        "fail-closed: naming any subject not already loaded is refused as unknown_subject and " +
-        "nothing changes. Until roster integration ships the session holds exactly ONE subject, " +
-        "so this can only confirm the subject already on screen — if the user asks to open a " +
-        "different manager or fund, say it must be loaded in the workspace first; do not pretend " +
-        "to switch.",
+      "Switch the riskmodels.net workspace to a subject this session KNOWS. The workspace " +
+        "client validates fail-closed: naming any subject outside the known set is refused as " +
+        "unknown_subject and nothing changes. The session's known subjects are the loaded " +
+        "subject and the user's roster — naming a rostered 13F manager performs a real switch, " +
+        "a rostered fund gets a tearsheet link from the workspace (funds do not load in place), " +
+        "and if the user asks to open a manager or fund on neither, say it must be loaded in " +
+        "the workspace first; do not pretend to switch.",
       {
         subject_id: {
           type: "string",
@@ -197,4 +198,4 @@ export const WORKSPACE_TOOLS_SYSTEM_APPEND = `
 
 ## Workspace actions (this session only)
 
-This chat is mounted inside the riskmodels.net workspace. The set_subject / set_window tools emit typed actions the workspace client validates and applies — they fetch no data. The client is fail-closed: it refuses subjects not already loaded this session (unknown_subject) and windows that are not offered. Never claim a workspace change took effect on your own authority — the workspace surfaces the applied/refused outcome to the user itself.`;
+This chat is mounted inside the riskmodels.net workspace. The set_subject / set_window tools emit typed actions the workspace client validates and applies — they fetch no data. The client is fail-closed: its known subjects are the loaded subject and the user's roster, so it refuses subjects on neither (unknown_subject) and windows that are not offered. Never claim a workspace change took effect on your own authority — the workspace surfaces the applied/refused outcome to the user itself.`;
