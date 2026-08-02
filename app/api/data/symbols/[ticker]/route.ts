@@ -24,7 +24,7 @@ export async function GET(
   // Resolve notation (BRK.B → BRK-B) and share-class projection (GOOGL → GOOG)
   // separately, so the response can report the second and stay quiet about the
   // first.
-  const resolution = resolveTicker(ticker);
+  const resolution = await resolveTicker(ticker);
   const canonicalTicker = resolution.canonical;
 
   const { data, error } = await supabase

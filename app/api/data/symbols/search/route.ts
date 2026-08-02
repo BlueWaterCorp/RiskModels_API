@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     // A dual-class query resolves to the class the registry actually carries
     // (GOOGL → GOOG, BRK-A → BRK-B), so the search returns a hit rather than
     // nothing. Match names against the original query either way.
-    const resolution = resolveTicker(q);
+    const resolution = await resolveTicker(q);
     const tickerMatch =
       resolution.canonical !== resolution.requested ? resolution.canonical : q;
     query = query.or(`ticker.ilike.%${tickerMatch}%,name.ilike.%${q}%`);

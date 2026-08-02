@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
   // Apply ticker alias resolution (e.g., GOOGL → GOOG)
-  const canonicalTickers = resolveTickerAliases(tickers);
+  const canonicalTickers = await resolveTickerAliases(tickers);
 
   const { data, error } = await supabase
     .from("symbols")
