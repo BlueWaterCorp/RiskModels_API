@@ -140,10 +140,32 @@ def _share_or_fallback(
     return fallback if v is None else float(v)
 
 
+#: G.44's honest-degradation marker: per-holding L3 shares were deliberately
+#: skipped because the read is historical and only CURRENT-model shares exist.
+_SHARE_OVERLAY_SKIPPED = "holdings_model_share_overlay_skipped"
+
+
+def _share_overlay_skipped(fd: Any) -> bool:
+    """True when G.44 marked this payload's share overlay as skipped (H.147).
+
+    The overlay below sources ``security_history_latest`` — current-model
+    shares — so applying it to a historical payload would silently UNDO the
+    G.44 skip whenever Supabase creds are live. Respecting the marker here
+    means no call path can re-overlay; the G.46 adapter scrub becomes
+    defense-in-depth rather than the only guard.
+    """
+    return _SHARE_OVERLAY_SKIPPED in (
+        getattr(fd, "historical_degradations", None) or ()
+    )
+
+
 def enrich_fund_data(fd: Any) -> Any:
     """Resolve tickers / sector ETFs / per-stock L3 shares for holdings.
 
     Soft-fails to an unchanged ``FundData`` when credentials are missing.
+    Label resolution (ticker / company name / sector ETFs) always runs; the
+    per-stock L3 share overlay is withheld when the payload carries the G.44
+    ``holdings_model_share_overlay_skipped`` degradation marker.
     """
     from riskmodels.snapshots import FundHolding
 
@@ -151,9 +173,17 @@ def enrich_fund_data(fd: Any) -> Any:
         # Still try identity fill when holdings empty but ticker missing.
         return _enrich_identity(fd)
 
+    skip_shares = _share_overlay_skipped(fd)
+    if skip_shares:
+        log.info(
+            "fund_enrich: %s present — resolving labels only, "
+            "current-model share overlay withheld",
+            _SHARE_OVERLAY_SKIPPED,
+        )
+
     syms = [h.symbol for h in fd.holdings]
     ticker_map = _resolve_holdings_metadata(syms)
-    l3_map = _resolve_l3_decomposition(syms)
+    l3_map = {} if skip_shares else _resolve_l3_decomposition(syms)
     new_holdings = []
     for h in fd.holdings:
         meta = ticker_map.get(h.symbol, {})
