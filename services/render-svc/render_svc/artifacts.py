@@ -163,6 +163,69 @@ def _resolve_subject_kind(subject_id: str) -> str:
     )
 
 
+# G.41 provenance completion. Evidence class describes the quality of the
+# HOLDINGS behind a subject (the `.net` `ProvenanceRef.evidenceClass`
+# vocabulary: nport | 13f | user | reconstructed) and is determined by
+# subject kind. Kinds deliberately absent from this map:
+#   stock            — a single listed security is not holdings-backed;
+#                      emitting any class here would be an invented value.
+#   etf              — ETFs do file N-PORT, but no etf loader exists in
+#                      render-svc and the G.41 contract names only
+#                      fund/filer_13f/client_portfolio; omit rather than guess.
+#   cohort           — an aggregate over subjects, not one subject's holdings.
+# An omitted header is the honest answer for those kinds — the client field
+# is optional on purpose.
+_EVIDENCE_CLASS_BY_SUBJECT_KIND: dict[str, str] = {
+    "fund": "nport",
+    "filer_13f": "13f",
+    "client_portfolio": "user",
+}
+
+
+def evidence_class_for(subject_id: str) -> str | None:
+    """Evidence class for a subject id, or ``None`` where the holdings
+    vocabulary does not apply (stock / etf / cohort).
+
+    Raises the same 422 as ``_resolve_subject_kind`` for an unknown prefix.
+    """
+    return _EVIDENCE_CLASS_BY_SUBJECT_KIND.get(_resolve_subject_kind(subject_id))
+
+
+def coverage_fraction_for(req: "ArtifactRenderRequest") -> float | None:
+    """Coverage fraction (0–1) when the request genuinely carries one.
+
+    The only source today is a ``client_portfolio`` ``subject_payload`` whose
+    caller supplied ``coverage_fraction`` — the share of the pasted book the
+    model could actually see. No render-svc loader computes one (there is no
+    look-through-composite path here), so for every other request the honest
+    answer is ``None`` and no header. NEVER defaulted — a fabricated 1.0 is
+    the no-mock-data violation this function exists to avoid.
+
+    A present-but-malformed value 422s rather than silently disappearing:
+    a caller who tried to state coverage should not get an unlabeled render.
+    """
+    if _resolve_subject_kind(req.subject_id) != "client_portfolio":
+        return None
+    if req.subject_payload is None:
+        return None
+    value = req.subject_payload.get("coverage_fraction")
+    if value is None:
+        # Absent and explicit-null both mean "unknown" → honest omission.
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not (
+        0.0 <= float(value) <= 1.0
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "subject_payload.coverage_fraction must be a number in [0, 1] "
+                f"(got {value!r}). Omit the key when coverage is unknown — "
+                "it is never defaulted."
+            ),
+        )
+    return float(value)
+
+
 def _artifact_gcs_path(
     prefix: str,
     slug: str,
