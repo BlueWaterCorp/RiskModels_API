@@ -1152,6 +1152,12 @@ def _resolve_stock_watchlist(
     if len(tickers) > 12:
         raise HTTPException(status_code=400, detail="at most 12 watchlist tickers")
     normalized = [str(t).strip().upper() for t in tickers]
+    # First pass defines the set, so a member the caller asked for that has
+    # nothing at or before the requested date fails the render (404 naming
+    # the ticker) rather than vanishing from a list the caller wrote. The
+    # SECOND pass only aligns an already-valid set, so a member that cannot
+    # reach the resolved date there is excluded and disclosed instead —
+    # the caller's request was satisfiable, the set's shared date was not.
     if req.as_of == "latest":
         payloads = [_fetch_decompose(t) for t in normalized]
     else:
