@@ -981,6 +981,216 @@ export const CAPABILITIES: Capability[] = [
     tags: ["industry", "macro", "cross-section", "stat-arb"],
   },
   {
+    id: "cohorts",
+    name: "Cohort Statistics (cross-section)",
+    description:
+      "One-teo cross-section of cross-sectional residual statistics by cohort (market + GICS sector) from ds_erm3_cohorts: residual_mean, residual_sd, residual_skew, residual_p10/p90, mean_pairwise_corr, n_names, n_effective, weight_top1, membership_churn, linked_beta (+se/r2/roll63), cohort_factor_return, cohort_residual_return, cohort_ER, factor_source. ERM3 residuals are fitted WITHOUT an intercept and so retain each stock's alpha — the cross-sectional mean is NOT zero, and residual_mean is the quantity you subtract to demean a relative-ranking signal. Public scope is SPY + the 11 GICS sector SPDRs; the subsector cohort slate is proprietary and not addressable. Filter thin cohorts with min_names.",
+    endpoint: "/api/cohorts",
+    method: "GET",
+    parameters: {
+      cohorts: {
+        type: "string",
+        required: false,
+        description:
+          "Comma-separated cohort tickers (SPY, XLE, XLB, XLI, XLY, XLP, XLV, XLF, XLK, XLC, XLU, XLRE). Default: all public cohorts.",
+      },
+      variables: {
+        type: "string",
+        required: false,
+        description:
+          "Comma-separated variable names. Default: residual_mean, residual_sd, mean_pairwise_corr, n_names, n_effective.",
+      },
+      teo: {
+        type: "string",
+        required: false,
+        description: "Observation date YYYY-MM-DD (default latest teo)",
+      },
+      min_names: {
+        type: "integer",
+        required: false,
+        description:
+          "Drop cohorts with fewer than this many members — their residual statistics are noise. Default 0.",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "cohorts_v1",
+    },
+    performance: {
+      avg_latency_ms: 150,
+      p95_latency_ms: 260,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["ds_erm3_cohorts"],
+    },
+    tags: ["cohort", "residual", "dispersion", "cross-section", "demean"],
+  },
+  {
+    id: "cohorts-series",
+    name: "Cohort Statistics (time series)",
+    description:
+      "Cohort residual statistics over a date range, one series per cohort. This is the demeaning endpoint: request residual_mean at the level your residual is defined against (sector residuals demean within sector cohorts) and subtract it. Panel runs 2000-01-03 to present, though full factor richness begins around 2006. Each cohort reports proxied_fraction — the share of returned days whose factor came from a substitute instrument — because two sector cohorts are majority-proxied over long windows and a chart that hides that shows partly a different basket. Public scope is SPY + the 11 GICS sector SPDRs.",
+    endpoint: "/api/cohorts/series",
+    method: "GET",
+    parameters: {
+      cohorts: {
+        type: "string",
+        required: false,
+        description:
+          "Comma-separated cohort tickers. Default: all public cohorts.",
+      },
+      variables: {
+        type: "string",
+        required: false,
+        description:
+          "Comma-separated variable names. Default: residual_mean, residual_sd, mean_pairwise_corr, n_names, n_effective.",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Window start YYYY-MM-DD (default panel start)",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Window end YYYY-MM-DD (default latest teo)",
+      },
+      min_names: {
+        type: "integer",
+        required: false,
+        description:
+          "Drop days where the cohort had fewer than this many members. Default 0.",
+      },
+      include_proxy_source: {
+        type: "string",
+        required: false,
+        description:
+          "Set 'true' to include the per-day instrument backing the cohort factor.",
+        enum: ["true", "false"],
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.03,
+      currency: "USD",
+      billing_code: "cohorts_series_v1",
+    },
+    performance: {
+      avg_latency_ms: 260,
+      p95_latency_ms: 600,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 30,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["ds_erm3_cohorts"],
+    },
+    tags: ["cohort", "residual", "dispersion", "time-series", "demean"],
+  },
+  {
+    id: "cohorts-roster",
+    name: "Cohort Roster (discovery)",
+    description:
+      "The addressable cohorts, their parent links, the variable catalogue, and the interpretation notes that govern correct use — including the no-intercept contract read directly from the store. Free discovery step; call this before /api/cohorts to learn what may be requested and what the numbers mean.",
+    endpoint: "/api/cohorts/roster",
+    method: "GET",
+    parameters: {},
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0,
+      currency: "USD",
+      billing_code: "cohorts_roster_v1",
+    },
+    performance: {
+      avg_latency_ms: 90,
+      p95_latency_ms: 180,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "daily",
+      sources: ["ds_erm3_cohorts"],
+    },
+    tags: ["cohort", "discovery", "metadata"],
+  },
+  {
+    id: "cohorts-pnl-decomposition",
+    name: "Selection vs Drift Decomposition",
+    description:
+      "Splits a book's realized residual return into within-cohort SELECTION (what it earned by holding names that beat their cohort's average residual) and DRIFT (what it earned purely from net exposure to that average, which accrues on net weight regardless of any selection skill). The two sum to the total exactly — an identity, not a fitted attribution. Answers 'was I paid for stock-picking, or for being net long the average stock?', which is answerable only because ERM3 fits residuals without an intercept and the cohort store exposes the resulting non-zero cross-sectional mean. level='sector' demeans each name's sector-level residual against its sector cohort; level='market' demeans market-level residuals against the market cohort. Weights are treated as constant over the window and are not normalized — rescaling them would change the drift term. Realized historical attribution only; not a forecast, backtest, or recommendation.",
+    endpoint: "/api/cohorts/pnl-decomposition",
+    method: "POST",
+    parameters: {
+      positions: {
+        type: "array",
+        required: true,
+        description:
+          "Positions as [{ticker, weight}]. Weight may be negative for a short. Max 500.",
+        items: { type: "object" },
+      },
+      level: {
+        type: "string",
+        required: false,
+        description:
+          "Cascade level. 'sector' (default) uses each name's sector-level residual; 'market' uses market-level.",
+        enum: ["market", "sector"],
+        default: "sector",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Window start YYYY-MM-DD.",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Window end YYYY-MM-DD.",
+      },
+      min_names: {
+        type: "integer",
+        required: false,
+        description:
+          "Ignore cohort means on days the cohort had fewer than this many members.",
+      },
+      include_series: {
+        type: "boolean",
+        required: false,
+        description: "Include the daily selection/drift series (bulky). Default false.",
+        default: false,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.05,
+      currency: "USD",
+      billing_code: "cohorts_pnl_decomposition_v1",
+    },
+    performance: {
+      avg_latency_ms: 600,
+      p95_latency_ms: 1600,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.98,
+      update_frequency: "daily",
+      sources: ["ds_erm3_cohorts", "ds_erm3_returns"],
+    },
+    tags: ["cohort", "attribution", "portfolio", "selection", "drift"],
+  },
+  {
     id: "rankings-screen",
     name: "Rankings Screen",
     description:
