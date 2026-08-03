@@ -30,7 +30,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
     {
       title: "RiskModels Artifact Registry Render",
       description:
-        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use watchlist_er_stacked with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — each ticker resolves at its own latest close, so the axis is shared but the dates are not aligned. Same contract as riskmodels.net workspace fetchArtifact.",
+        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use watchlist_er_stacked with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — the whole set is resolved to ONE shared date (the oldest latest-close in the set, or an explicit as_of), so it is a date-aligned comparison. Present it as of resolved_as_of, never today's date. Read as_of_alignment on the JSON payload: if excluded is non-empty, those tickers had no data at that date and are NOT on the chart — name them. Same contract as riskmodels.net workspace fetchArtifact.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         slug: z

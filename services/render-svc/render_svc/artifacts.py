@@ -922,10 +922,219 @@ def _load_benchmark_fit_subject(
     return fit, resolved[:10]
 
 
+# ---------------------------------------------------------------------------
+# Multi-name date alignment (G.71)
+# ---------------------------------------------------------------------------
+#
+# ``watchlist_er_stacked`` puts several tickers on one axis, and the only
+# thing that makes such an axis readable is that every bar is the same
+# vintage. Before G.71 each member was fetched at its own latest close and,
+# when the members disagreed, the resolved as_of fell back to
+# ``datetime.now()`` — a date NO member reported, written into the GCS key,
+# the ``X-Artifact-Resolved-As-Of`` header, and whatever the caller printed.
+# That is the succeeds-while-wrong class: the render looks fine and the
+# label is fiction.
+#
+# The rule below never invents a date. It resolves ONE date the whole set
+# can honour — the minimum of the members' own served dates, capped by an
+# explicitly requested ``as_of`` — re-fetches the members that were newer
+# at that date so every bar is the same vintage, and discloses (never
+# silently drops, never silently leaves stale) any member that still cannot
+# reach it.
+
+_AS_OF_BASIS = "report_date"  # ADR 2026-08-01, echoed by /api/decompose
+
+
+@dataclass(frozen=True)
+class DateAlignment:
+    """What the multi-name render must be able to say about its date.
+
+    ``resolved_as_of`` is always a date at least one member actually
+    reported — never ``datetime.now()``, never an unverified echo of the
+    request. ``excluded`` names members whose latest row at the resolved
+    date is older than it (a data gap): their bars would be a different
+    vintage, so they are left out of the axis and said out loud instead.
+    ``pulled_back_from`` names members that had newer data than the set
+    could support, so a viewer can see the chart was dragged back rather
+    than quietly served stale.
+    """
+
+    resolved_as_of: str
+    basis: str
+    rule: str
+    requested_as_of: str | None
+    member_latest: tuple[tuple[str, str], ...]
+    pulled_back_from: tuple[tuple[str, str], ...]
+    excluded: tuple[tuple[str, str], ...]
+
+    @property
+    def notes(self) -> tuple[str, ...]:
+        """Human-readable disclosures; empty when nothing needs saying."""
+        out: list[str] = []
+        if self.pulled_back_from:
+            newest = max(d for _, d in self.pulled_back_from)
+            names = ", ".join(t for t, _ in self.pulled_back_from)
+            out.append(
+                f"Aligned to {self.resolved_as_of}, the oldest latest-close in "
+                f"the set — {names} had data through {newest} and were "
+                f"re-fetched at {self.resolved_as_of}."
+            )
+        if self.excluded:
+            names = ", ".join(
+                f"{t} (latest {d or 'none'})" for t, d in self.excluded
+            )
+            out.append(
+                f"Not shown — no data at {self.resolved_as_of}: {names}."
+            )
+        return tuple(out)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "resolved_as_of": self.resolved_as_of,
+            "as_of_basis": self.basis,
+            "rule": self.rule,
+            "requested_as_of": self.requested_as_of,
+            "aligned": not self.excluded,
+            "member_latest": {t: d for t, d in self.member_latest},
+            "pulled_back_from": {t: d for t, d in self.pulled_back_from},
+            "excluded": {t: d for t, d in self.excluded},
+            "notes": list(self.notes),
+        }
+
+
+def _served_as_of(payload: dict[str, Any], requested: str | None) -> str:
+    """The date of the row this decompose payload actually carries.
+
+    ``data_as_of`` is the panel's newest date, which is what a
+    latest-mode call serves. An explicit ``as_of`` serves the latest row
+    at or before the date and echoes it as ``as_of_resolved`` (G.42) —
+    ``data_as_of`` stays at the panel head, so reading it there would
+    label old numbers with today's panel date. Verified against prod:
+    ``as_of=2025-03-15`` returns ``as_of_resolved=2025-03-14`` with
+    ``data_as_of=2026-07-31``.
+    """
+    if requested is None:
+        return str(payload.get("data_as_of") or "").strip()[:10]
+    return str(
+        payload.get("as_of_resolved") or payload.get("teo") or ""
+    ).strip()[:10]
+
+
+def _align_decompose_payloads(
+    payloads: list[dict[str, Any]],
+    requested_as_of: str,
+) -> tuple[list[dict[str, Any]], DateAlignment]:
+    """Put every member of a multi-name render on one real, shared date.
+
+    ``requested_as_of`` is the request's ``as_of`` (``"latest"`` or a
+    date). A date is a CEILING, not the label: if the caller asks for
+    2026-07-31 and the set's oldest latest-close is 2026-07-30, the
+    artifact is 2026-07-30 — labelling it with the request would be the
+    same defect sourced from the request instead of the clock, and it
+    would mis-key the cached bytes.
+
+    Returns ``(payloads_at_the_resolved_date, alignment)``. Each returned
+    payload's ``data_as_of`` is rewritten to the resolved date, because
+    that is the date its numbers are from and the artifact module prints
+    that field as the figure's provenance line.
+    """
+    requested = None if requested_as_of == "latest" else requested_as_of
+    first_pass: list[tuple[str, dict[str, Any], str]] = []
+    for p in payloads:
+        ticker = str(p.get("ticker") or "").strip().upper()
+        first_pass.append((ticker, p, _served_as_of(p, requested)))
+
+    undated = [t for t, _, d in first_pass if not d]
+    if undated:
+        # No date to align on. Refusing is the only honest answer: the
+        # old fallback (today's date) is exactly what G.71 removes.
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"decompose payload(s) for {undated} carry no served date "
+                f"(data_as_of / as_of_resolved); cannot resolve a shared "
+                f"as_of for a multi-name render without inventing one"
+            ),
+        )
+
+    target = min(d for _, _, d in first_pass)
+
+    # Second pass: only the members that are NEWER than the target need a
+    # re-fetch. When the set already agrees — the normal case — this loop
+    # does nothing and the render costs exactly one decompose per ticker.
+    pulled_back: list[tuple[str, str]] = []
+    aligned: list[dict[str, Any]] = []
+    excluded: list[tuple[str, str]] = []
+    member_latest: list[tuple[str, str]] = [(t, d) for t, _, d in first_pass]
+
+    for ticker, payload, served in first_pass:
+        if served == target:
+            aligned.append(payload)
+            continue
+        pulled_back.append((ticker, served))
+        try:
+            refetched = _fetch_decompose(ticker, as_of=target)
+        except HTTPException as exc:
+            log.warning(
+                "watchlist member %s has no decompose at aligned as_of %s: %s",
+                ticker, target, exc.detail,
+            )
+            excluded.append((ticker, served))
+            continue
+        re_served = _served_as_of(refetched, target)
+        if re_served != target:
+            # A gap: the member's latest row at or before the target is
+            # older than the target, so its bar would be a different
+            # vintage than the rest. Disclose it instead of drawing it.
+            excluded.append((ticker, re_served))
+            continue
+        aligned.append(refetched)
+
+    if not aligned:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"no watchlist member has data at the resolved as_of "
+                f"{target!r}; refusing to render a multi-name axis with no "
+                f"shared date"
+            ),
+        )
+
+    # The module's provenance line reads ``data_as_of`` off each row. After
+    # alignment every row IS at ``target``, so say so on the payload rather
+    # than letting an explicit-as_of response's panel-head ``data_as_of``
+    # print over rows from an older date.
+    aligned = [{**p, "data_as_of": target} for p in aligned]
+
+    alignment = DateAlignment(
+        resolved_as_of=target,
+        basis=_AS_OF_BASIS,
+        rule=(
+            "min_of_member_latest"
+            if requested is None
+            else "min_of_member_latest_at_or_before_requested"
+        ),
+        requested_as_of=requested,
+        member_latest=tuple(member_latest),
+        # A member re-fetched successfully but then excluded is disclosed
+        # once, as excluded — not twice.
+        pulled_back_from=tuple(
+            (t, d) for t, d in pulled_back
+            if t not in {x for x, _ in excluded}
+        ),
+        excluded=tuple(excluded),
+    )
+    return aligned, alignment
+
+
 def _resolve_stock_watchlist(
     req: "ArtifactRenderRequest",
-) -> tuple[list[dict[str, Any]], str, str]:
-    """Inline watchlist: subject_payload.tickers → list of decompose payloads."""
+) -> tuple[list[dict[str, Any]], str, str, DateAlignment]:
+    """Inline watchlist: subject_payload.tickers → list of decompose payloads.
+
+    Every member is fetched at the request's ``as_of`` and then aligned
+    onto one real shared date (G.71 — see ``_align_decompose_payloads``).
+    """
     if req.subject_payload is None:
         raise HTTPException(
             status_code=400,
@@ -942,22 +1151,17 @@ def _resolve_stock_watchlist(
         )
     if len(tickers) > 12:
         raise HTTPException(status_code=400, detail="at most 12 watchlist tickers")
-    payloads = [_fetch_decompose(str(t).strip().upper()) for t in tickers]
-    as_ofs = {str(p.get("data_as_of") or "") for p in payloads}
-    as_ofs.discard("")
+    normalized = [str(t).strip().upper() for t in tickers]
     if req.as_of == "latest":
-        resolved_as_of = (
-            next(iter(as_ofs))
-            if len(as_ofs) == 1
-            else datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        )
+        payloads = [_fetch_decompose(t) for t in normalized]
     else:
-        resolved_as_of = req.as_of
+        payloads = [_fetch_decompose(t, as_of=req.as_of) for t in normalized]
+    payloads, alignment = _align_decompose_payloads(payloads, req.as_of)
     # Stable subject id from ticker set
-    key = ",".join(sorted(str(t).strip().upper() for t in tickers))
+    key = ",".join(sorted(normalized))
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     resolved_subject_id = f"BW-STOCK-WATCHLIST-{digest}"
-    return payloads, resolved_subject_id, resolved_as_of
+    return payloads, resolved_subject_id, alignment.resolved_as_of, alignment
 
 
 # ---------------------------------------------------------------------------
@@ -1120,38 +1324,121 @@ def _fetch_peer_group_data(
     return payloads, ctx
 
 
-def _peer_group_resolved_as_of(payloads: list[dict[str, Any]], as_of: str) -> str:
-    """Resolve the peer-group as_of from the decompose payloads.
+def _peer_group_resolved_as_of(
+    payloads: list[dict[str, Any]], as_of: str
+) -> tuple[list[dict[str, Any]], str, DateAlignment]:
+    """Align the peer-group payloads onto one real date (G.71).
 
-    ``latest`` → the unanimous ``data_as_of`` when there is one, else today
-    (same rule as the watchlist path). An explicit historical date that does
-    not match what decompose served is refused: this path always requests
-    the latest rows, and peer MEMBERSHIP (market-cap order, sector /
-    subsector grouping) is resolved from the current registry, not
-    point-in-time — so keying these bytes under a historical date would
-    label the artifact with a date its cohort does not have. Threading
-    G.42's historical decompose ``as_of`` through the fan-out, with the
-    membership caveat disclosed, is a follow-up.
+    Same slug, same axis, same defect: before G.71 a peer set whose
+    members disagreed resolved to ``datetime.now()``. It now goes through
+    the shared alignment rule — minimum of the members' latest, members
+    re-fetched at that date, non-conformers disclosed.
+
+    An explicit historical date is still refused. This path always
+    requests the latest rows, and peer MEMBERSHIP (market-cap order,
+    sector / subsector grouping) is resolved from the current registry,
+    not point-in-time — so keying these bytes under a historical date
+    would label the artifact with a date its cohort does not have.
+    Aligning to the oldest latest-close is a different thing from
+    honouring a historical request, and does not widen that refusal.
+    Threading G.42's historical decompose ``as_of`` through the fan-out,
+    with the membership caveat disclosed, is a follow-up.
     """
-    as_ofs = {str(p.get("data_as_of") or "") for p in payloads}
-    as_ofs.discard("")
-    if as_of == "latest":
-        return (
-            next(iter(as_ofs))
-            if len(as_ofs) == 1
-            else datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        )
-    if as_ofs - {as_of}:
+    aligned, alignment = _align_decompose_payloads(payloads, "latest")
+    if as_of != "latest" and alignment.resolved_as_of != as_of:
         raise HTTPException(
             status_code=501,
             detail=(
-                f"as_of={as_of!r} differs from decompose data_as_of="
-                f"{sorted(as_ofs)}; historical peer-group as_of is not yet "
-                f"supported (peer membership is not point-in-time). "
-                f"Use as_of='latest'."
+                f"as_of={as_of!r} differs from the peer set's resolved "
+                f"as_of={alignment.resolved_as_of!r}; historical peer-group "
+                f"as_of is not yet supported (peer membership is not "
+                f"point-in-time). Use as_of='latest'."
             ),
         )
-    return as_of
+    return aligned, alignment.resolved_as_of, alignment
+
+
+def _apply_alignment_to_peer_ctx(
+    ctx: PeerGroupContext, alignment: "DateAlignment"
+) -> PeerGroupContext:
+    """Keep the peer-group disclosure honest after date alignment (G.71).
+
+    A peer excluded for having no data at the resolved date is no longer
+    a rendered row, so it must leave ``ctx.peers`` — otherwise the
+    ``peer_group`` block claims membership the chart does not show. The
+    target ticker cannot be excluded silently: a peer-group figure whose
+    subject is missing is not a peer group, so that refuses outright.
+    """
+    excluded = {t for t, _ in alignment.excluded}
+    if not excluded:
+        return ctx
+    if ctx.ticker in excluded:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"peer-group target {ctx.ticker!r} has no decompose row at "
+                f"the set's resolved as_of {alignment.resolved_as_of!r}; "
+                f"refusing to render a peer group without its subject"
+            ),
+        )
+    return PeerGroupContext(
+        ticker=ctx.ticker,
+        group_by=ctx.group_by,
+        group_etf=ctx.group_etf,
+        peers=tuple(p for p in ctx.peers if p not in excluded),
+        warnings=ctx.warnings,
+    )
+
+
+class _DateAlignmentPresentation:
+    """Date-alignment disclosure over a multi-name artifact module (G.71).
+
+    Adds an ``as_of_alignment`` block to the JSON payload — the resolved
+    date, its basis (``report_date``, ADR 2026-08-01), the rule that
+    picked it, each member's own latest, and anything pulled back or
+    excluded — so a caller can state the date instead of guessing it.
+    On figures it writes the disclosure notes on the face, but only when
+    there is something to disclose: a set that already agreed needs no
+    note, and the artifact module's own provenance line already prints
+    the (now guaranteed unanimous) date.
+
+    Wraps OUTSIDE ``_PeerGroupPresentation`` so its bottom-margin
+    allowance is the one that survives.
+    """
+
+    def __init__(self, mod: Any, alignment: "DateAlignment") -> None:
+        self._mod = mod
+        self._alignment = alignment
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._mod, name)
+
+    def render_data(self, data: Any, **params: Any) -> dict:
+        payload = self._mod.render_data(data, **params)
+        payload["as_of_alignment"] = self._alignment.as_json()
+        return payload
+
+    def render_figure(self, data: Any, **params: Any) -> Any:
+        fig = self._mod.render_figure(data, **params)
+        notes = self._alignment.notes
+        if not notes:
+            return fig
+        from riskmodels.snapshots._plotly_theme import PLOTLY_THEME
+
+        fig.update_layout(margin_b=104 + 12 * max(0, len(notes) - 1))
+        fig.add_annotation(
+            text="<br>".join(notes),
+            xref="paper",
+            yref="paper",
+            x=0,
+            y=-0.34,
+            xanchor="left",
+            yanchor="top",
+            align="left",
+            showarrow=False,
+            font=dict(size=9, color=PLOTLY_THEME.palette.orange),
+        )
+        return fig
 
 
 class _PeerGroupPresentation:
@@ -1403,6 +1690,8 @@ def render_artifact(
     # G.43 peer-group mode state; set only on the peer branch below.
     peer_group_ctx: PeerGroupContext | None = None
     peer_group_ticker: str | None = None
+    # G.71 multi-name date alignment; set on both watchlist modes.
+    date_alignment: DateAlignment | None = None
 
     if subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
@@ -1427,7 +1716,12 @@ def render_artifact(
                 subject_data, peer_group_ctx = _fetch_peer_group_data(
                     peer_group_ticker
                 )
-                resolved_as_of = _peer_group_resolved_as_of(subject_data, req.as_of)
+                subject_data, resolved_as_of, date_alignment = (
+                    _peer_group_resolved_as_of(subject_data, req.as_of)
+                )
+                peer_group_ctx = _apply_alignment_to_peer_ctx(
+                    peer_group_ctx, date_alignment
+                )
             else:
                 # Explicit as_of needs no fetch to build the cache key —
                 # defer the decompose fan-out until a cache miss is
@@ -1436,7 +1730,7 @@ def render_artifact(
                 subject_data = None
                 resolved_as_of = req.as_of
         else:
-            subject_data, resolved_subject_id, resolved_as_of = (
+            subject_data, resolved_subject_id, resolved_as_of, date_alignment = (
                 _resolve_stock_watchlist(req)
             )
     elif is_dd_panel:
@@ -1585,7 +1879,10 @@ def render_artifact(
     # live-latest data under a historical date.
     if peer_group_ticker is not None and subject_data is None:
         subject_data, peer_group_ctx = _fetch_peer_group_data(peer_group_ticker)
-        resolved_as_of = _peer_group_resolved_as_of(subject_data, req.as_of)
+        subject_data, resolved_as_of, date_alignment = _peer_group_resolved_as_of(
+            subject_data, req.as_of
+        )
+        peer_group_ctx = _apply_alignment_to_peer_ctx(peer_group_ctx, date_alignment)
 
     mod = _import_artifact_module(req.slug, req.version)
 
@@ -1606,6 +1903,10 @@ def render_artifact(
         # Overlay the peer-group disclosure (title, warnings, empty state)
         # on the module's output without touching the module itself.
         mod = _PeerGroupPresentation(mod, peer_group_ctx)
+    if date_alignment is not None:
+        # Outermost, so the alignment note's bottom margin wins over the
+        # peer overlay's.
+        mod = _DateAlignmentPresentation(mod, date_alignment)
     rendered = _render_bytes(mod, normalized, req.format, supplied_params)
 
     if persist:
