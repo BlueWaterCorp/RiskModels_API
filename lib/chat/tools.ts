@@ -1220,16 +1220,22 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "render_artifact",
     openaiTool: fnTool(
       "render_artifact",
-      "Deterministic artifact from the intelligence registry (fund BW-FUND-…, filer BW-FILER-…, or client portfolio BW-PORTFOLIO-…). Returns JSON chart/table/narrative payloads or PNG/SVG (base64). Use AFTER search_funds/search_filers resolved a subject_id. Prefer format=json for chat tables. For client_portfolio pass subject_payload_json with {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}. Filer slugs need explicit as_of (filing period end). Do not invent chart data — cite fields from the artifact JSON.",
+      "Deterministic artifact from the intelligence registry (stock BW-STOCK-{TICKER}, multi-ticker BW-STOCK-WATCHLIST, fund BW-FUND-…, filer BW-FILER-…, or client portfolio BW-PORTFOLIO-…). Returns JSON chart/table/narrative payloads or PNG/SVG (base64). Stock subjects need no lookup — build BW-STOCK-{TICKER} straight from the ticker; fund and filer ids come from search_funds/search_filers first. To put several named tickers on ONE shared risk-composition axis, call watchlist_er_stacked with subject_id=BW-STOCK-WATCHLIST and subject_payload_json={\"tickers\":[\"BAC\",\"IBM\"]} (up to 12). Each ticker there is fetched at its own latest close, so that chart is a shared composition axis, NOT a date-aligned comparison — never present it as of one date. Prefer format=json for chat tables. For client_portfolio pass subject_payload_json with {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}. Filer slugs need explicit as_of (filing period end). Do not invent chart data — cite fields from the artifact JSON.",
       {
         slug: {
           type: "string",
           description:
-            "Artifact slug, e.g. top_holdings_erm_stacked, narrative_profile, entity_header, risk_summary_panel",
+            "Artifact slug. Stock subjects: l3_explained_risk_hbar, " +
+            "hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked. " +
+            "Fund/filer subjects: top_holdings_erm_stacked, entity_header, " +
+            "risk_summary_panel",
         },
         subject_id: {
           type: "string",
-          description: "BW-FUND-…, BW-FILER-…, or BW-PORTFOLIO-…",
+          description:
+            "BW-STOCK-… (e.g. BW-STOCK-BAC), BW-STOCK-WATCHLIST (multi-ticker; " +
+            "pass subject_payload_json.tickers), BW-FUND-…, BW-FILER-…, or " +
+            "BW-PORTFOLIO-…",
         },
         version: {
           type: "string",
@@ -1249,7 +1255,10 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
         subject_payload_json: {
           type: "string",
           description:
-            "Optional JSON string for BW-PORTFOLIO-* subjects: {\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}",
+            "Optional JSON string. Required for BW-STOCK-WATCHLIST: " +
+            "{\"tickers\":[\"BAC\",\"IBM\"]} — 1 to 12 US equity tickers, each " +
+            "resolved at its own latest close. Required for BW-PORTFOLIO-*: " +
+            "{\"positions\":[{\"ticker\":\"AAPL\",\"weight\":0.5}]}",
         },
         params_json: {
           type: "string",

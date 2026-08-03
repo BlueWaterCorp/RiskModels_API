@@ -30,15 +30,27 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
     {
       title: "RiskModels Artifact Registry Render",
       description:
-        "Render a deterministic registry artifact (fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Same contract as riskmodels.net workspace fetchArtifact.",
+        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use watchlist_er_stacked with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — each ticker resolves at its own latest close, so the axis is shared but the dates are not aligned. Same contract as riskmodels.net workspace fetchArtifact.",
       annotations: { readOnlyHint: true },
       inputSchema: {
-        slug: z.string().min(1).describe("Artifact slug, e.g. top_holdings_erm_stacked"),
+        slug: z
+          .string()
+          .min(1)
+          .describe(
+            "Artifact slug — stock subjects: l3_explained_risk_hbar, " +
+              "hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked; " +
+              "fund/filer subjects: top_holdings_erm_stacked, entity_header, " +
+              "risk_summary_panel",
+          ),
         version: z.string().optional().describe("Version tag, default v1"),
         subject_id: z
           .string()
           .min(1)
-          .describe("BW-FUND-…, BW-FILER-…, or BW-PORTFOLIO-…"),
+          .describe(
+            "BW-STOCK-… (e.g. BW-STOCK-BAC), BW-STOCK-WATCHLIST (multi-ticker; " +
+              "pass subject_payload.tickers), BW-FUND-…, BW-FILER-…, or " +
+              "BW-PORTFOLIO-…",
+          ),
         as_of: z
           .string()
           .optional()
@@ -53,7 +65,11 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
         subject_payload: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe("Required for BW-PORTFOLIO-*: { positions: [{ ticker, weight }] }"),
+          .describe(
+            "Required for BW-STOCK-WATCHLIST: { tickers: [\"BAC\", \"IBM\"] } — " +
+              "1 to 12 US equity tickers. Required for BW-PORTFOLIO-*: " +
+              "{ positions: [{ ticker, weight }] }",
+          ),
         params: artifactRenderParamsSchema
           .optional()
           .describe(describeSlugParams()),
