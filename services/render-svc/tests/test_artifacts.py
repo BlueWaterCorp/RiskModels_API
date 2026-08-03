@@ -1509,6 +1509,7 @@ def _install_watchlist_fakes(monkeypatch, capture: dict | None = None):
 
     def _render_data(payloads, **kwargs):
         capture["render_data_kwargs"] = kwargs
+        capture["payloads"] = payloads
         return {
             "slug": slug,
             "rows": [
@@ -1522,6 +1523,7 @@ def _install_watchlist_fakes(monkeypatch, capture: dict | None = None):
 
     def _render_figure(payloads, **kwargs):
         capture["render_figure_kwargs"] = kwargs
+        capture["payloads"] = payloads
         fig = _RecordingFigure([p["ticker"] for p in payloads])
         capture["figure"] = fig
         return fig
@@ -1839,15 +1841,31 @@ class TestPeerGroupAsOfAndCache:
         assert resolved_as_of == "2026-07-31"
         assert "immutable" in cache_control
 
-    def test_mixed_data_as_of_resolves_to_today_for_latest(self, store, monkeypatch):
+    def test_mixed_data_as_of_aligns_to_the_oldest_member_date(
+        self, store, monkeypatch
+    ):
+        """G.71 — flipped. This asserted ``datetime.now()`` before.
+
+        The peer path renders the same slug and the same shared axis as
+        the watchlist path, so it carried the same defect: a peer set
+        whose members disagreed was labelled with today's date, which no
+        member reported. It now aligns onto the oldest latest-close and
+        re-fetches the newer member there.
+        """
         _install_watchlist_fakes(monkeypatch)
-        calls = {"n": 0}
+        calls = {"n": 0, "refetch": []}
 
         def fake_fetch_peers(ticker, *, limit):
             return _peers_response(["MSFT"])
 
-        def fake_fetch_decompose(ticker):
+        def fake_fetch_decompose(ticker, as_of=None):
             calls["n"] += 1
+            if as_of is not None:
+                calls["refetch"].append((ticker, as_of))
+                return _decompose_payload(
+                    ticker, residual=0.1 + calls["n"] * 0.01,
+                    data_as_of="2026-07-31",
+                ) | {"as_of_resolved": as_of}
             return _decompose_payload(
                 ticker, residual=0.1 + calls["n"] * 0.01,
                 data_as_of="2026-07-31" if ticker == "AAPL" else "2026-07-30",
@@ -1856,12 +1874,19 @@ class TestPeerGroupAsOfAndCache:
         monkeypatch.setattr(artifacts_module, "_fetch_peers", fake_fetch_peers)
         monkeypatch.setattr(artifacts_module, "_fetch_decompose", fake_fetch_decompose)
 
-        from datetime import datetime, timezone
-
-        _, _, _, resolved_as_of, _, _ = render_artifact(
+        data, _, gcs_path, resolved_as_of, _, _ = render_artifact(
             _peer_req(), store=store, prefix=PREFIX,
         )
-        assert resolved_as_of == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        assert resolved_as_of == "2026-07-30"
+        assert calls["refetch"] == [("AAPL", "2026-07-30")]
+        assert "/2026-07-30.json" in gcs_path
+        alignment = json.loads(data)["as_of_alignment"]
+        assert alignment["resolved_as_of"] == "2026-07-30"
+        assert alignment["as_of_basis"] == "report_date"
+        assert alignment["member_latest"] == {
+            "AAPL": "2026-07-31", "MSFT": "2026-07-30",
+        }
+        assert alignment["pulled_back_from"] == {"AAPL": "2026-07-31"}
 
 
 class TestPeerGroupWatchlistRegression:
@@ -1996,3 +2021,484 @@ class TestSlugParamsMatchModules:
             if set(params) - fields
         }
         assert not unknown, f"slugs offering non-ArtifactParams keys: {unknown}"
+
+
+# ── Multi-name date alignment (G.71) ──────────────────────────────────────
+#
+# `watchlist_er_stacked` is a shared comparison axis, so its one claim is
+# that every bar is the same vintage. Before G.71 each member resolved at
+# its own latest close and a disagreeing set was labelled with
+# `datetime.now()` — a date NO member reported, written into the GCS key
+# and the X-Artifact-Resolved-As-Of header.
+#
+# Prod note (probed 2026-08-02, ~70 tickers spanning mega-caps, 2024-25
+# listings, thin names and meme names): every ticker in the registry
+# currently serves `data_as_of=2026-07-31`, and delisted names 404 out of
+# the registry entirely. The panel refreshes atomically, so there is no
+# naturally disagreeing pair to point at today — the defect is reachable
+# in a partial-refresh window. The disagreement is therefore constructed
+# here, at the seam the defect lived on.
+
+import hashlib  # noqa: E402
+
+from render_svc.artifacts import _align_decompose_payloads  # noqa: E402
+
+
+def _watchlist_req(tickers, **overrides):
+    base = dict(
+        slug="watchlist_er_stacked",
+        version="v1",
+        subject_id="BW-STOCK-WATCHLIST",
+        as_of="latest",
+        format="json",
+        subject_payload={"tickers": list(tickers)},
+    )
+    base.update(overrides)
+    return ArtifactRenderRequest(**base)
+
+
+def _install_dated_decompose(
+    monkeypatch,
+    *,
+    latest: dict[str, str],
+    history: dict[str, list[str]] | None = None,
+):
+    """Fake `_fetch_decompose` with a per-ticker date history.
+
+    ``latest`` is each ticker's newest `data_as_of` (what a latest-mode
+    call serves). ``history`` is the sorted list of dates that ticker has
+    rows for; an explicit `as_of` serves the newest entry at or before it
+    and echoes `as_of_resolved`, exactly as /api/decompose does (G.42,
+    verified against prod: as_of=2025-03-15 → as_of_resolved=2025-03-14
+    with data_as_of still at the panel head).
+    """
+    history = history or {}
+    calls: list[tuple[str, str | None]] = []
+
+    def fake(ticker, as_of=None):
+        calls.append((ticker, as_of))
+        payload = _decompose_payload(
+            ticker, residual=0.10 + 0.01 * len(ticker), data_as_of=latest[ticker],
+        )
+        if as_of is None:
+            return payload
+        dates = history.get(ticker, [latest[ticker]])
+        eligible = [d for d in sorted(dates) if d <= as_of]
+        if not eligible:
+            raise HTTPException(
+                status_code=404, detail=f"no decompose data for {ticker!r}",
+            )
+        return payload | {"as_of_resolved": eligible[-1]}
+
+    monkeypatch.setattr(artifacts_module, "_fetch_decompose", fake)
+    return calls
+
+
+class TestWatchlistDateAlignment:
+    def test_disagreeing_set_resolves_to_one_date_a_member_reported(
+        self, store, monkeypatch
+    ):
+        capture = _install_watchlist_fakes(monkeypatch)
+        latest = {"AAPL": "2026-07-31", "MSFT": "2026-07-31", "THIN": "2026-07-24"}
+        calls = _install_dated_decompose(
+            monkeypatch,
+            latest=latest,
+            history={
+                "AAPL": ["2026-07-24", "2026-07-31"],
+                "MSFT": ["2026-07-24", "2026-07-31"],
+                "THIN": ["2026-07-24"],
+            },
+        )
+
+        data, _, gcs_path, resolved_as_of, _, _ = render_artifact(
+            _watchlist_req(["AAPL", "MSFT", "THIN"]), store=store, prefix=PREFIX,
+        )
+
+        # The resolved date is a date a member actually reported — the
+        # minimum of the members' own latest.
+        assert resolved_as_of == "2026-07-24"
+        assert resolved_as_of in set(latest.values())
+        assert f"/{resolved_as_of}.json" in gcs_path
+
+        # The two newer members were re-fetched AT that date, so all three
+        # bars are the same vintage.
+        assert sorted(c for c in calls if c[1] is not None) == [
+            ("AAPL", "2026-07-24"), ("MSFT", "2026-07-24"),
+        ]
+        assert {p["ticker"] for p in capture["payloads"]} == {"AAPL", "MSFT", "THIN"}
+        # Every payload handed to the artifact module carries the aligned
+        # date, because the module prints `data_as_of` as its provenance
+        # line and an explicit-as_of response leaves that field at the
+        # panel head.
+        assert {p["data_as_of"] for p in capture["payloads"]} == {"2026-07-24"}
+
+        alignment = json.loads(data)["as_of_alignment"]
+        assert alignment["resolved_as_of"] == "2026-07-24"
+        assert alignment["as_of_basis"] == "report_date"
+        assert alignment["rule"] == "min_of_member_latest"
+        assert alignment["aligned"] is True
+        assert alignment["excluded"] == {}
+        assert alignment["member_latest"] == latest
+        assert alignment["pulled_back_from"] == {
+            "AAPL": "2026-07-31", "MSFT": "2026-07-31",
+        }
+        assert any("2026-07-24" in n for n in alignment["notes"])
+
+    def test_pull_back_is_disclosed_on_the_face_of_the_figure(
+        self, store, monkeypatch
+    ):
+        capture = _install_watchlist_fakes(monkeypatch)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={"AAPL": "2026-07-31", "THIN": "2026-07-24"},
+            history={"AAPL": ["2026-07-24", "2026-07-31"], "THIN": ["2026-07-24"]},
+        )
+
+        render_artifact(
+            _watchlist_req(["AAPL", "THIN"], format="png"),
+            store=store, prefix=PREFIX,
+        )
+        texts = [a["text"] for a in capture["figure"].annotations]
+        assert texts, "a pulled-back render must say so on its face"
+        assert "2026-07-24" in texts[0] and "AAPL" in texts[0]
+        assert "2026-07-31" in texts[0]
+
+    def test_member_with_no_row_at_the_resolved_date_is_disclosed(
+        self, store, monkeypatch
+    ):
+        capture = _install_watchlist_fakes(monkeypatch)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={"AAPL": "2026-07-31", "GAPPY": "2026-07-31", "THIN": "2026-07-24"},
+            history={
+                "AAPL": ["2026-07-24", "2026-07-31"],
+                # GAPPY has no row on 2026-07-24 — its bar would be a
+                # different vintage than the rest.
+                "GAPPY": ["2026-07-17", "2026-07-31"],
+                "THIN": ["2026-07-24"],
+            },
+        )
+
+        data, _, _, resolved_as_of, _, _ = render_artifact(
+            _watchlist_req(["AAPL", "GAPPY", "THIN"]), store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == "2026-07-24"
+        # Not silently drawn stale, and not silently dropped either.
+        assert {p["ticker"] for p in capture["payloads"]} == {"AAPL", "THIN"}
+        alignment = json.loads(data)["as_of_alignment"]
+        assert alignment["aligned"] is False
+        assert alignment["excluded"] == {"GAPPY": "2026-07-17"}
+        assert any("GAPPY" in n for n in alignment["notes"])
+
+    def test_member_404_at_the_resolved_date_is_disclosed_not_dropped(
+        self, store, monkeypatch
+    ):
+        capture = _install_watchlist_fakes(monkeypatch)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={"NEWCO": "2026-07-31", "THIN": "2026-07-24"},
+            # NEWCO listed after the aligned date: the re-fetch 404s.
+            history={"NEWCO": ["2026-07-28", "2026-07-31"], "THIN": ["2026-07-24"]},
+        )
+
+        data, _, _, resolved_as_of, _, _ = render_artifact(
+            _watchlist_req(["NEWCO", "THIN"]), store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == "2026-07-24"
+        assert [p["ticker"] for p in capture["payloads"]] == ["THIN"]
+        alignment = json.loads(data)["as_of_alignment"]
+        assert "NEWCO" in alignment["excluded"]
+        assert any("NEWCO" in n for n in alignment["notes"])
+
+    def test_explicit_as_of_is_honoured(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch)
+        calls = _install_dated_decompose(
+            monkeypatch,
+            latest={"AAPL": "2026-07-31", "MSFT": "2026-07-31"},
+            history={
+                "AAPL": ["2026-06-30", "2026-07-31"],
+                "MSFT": ["2026-06-30", "2026-07-31"],
+            },
+        )
+
+        data, _, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
+            _watchlist_req(["AAPL", "MSFT"], as_of="2026-06-30"),
+            store=store, prefix=PREFIX,
+        )
+        # Both members were asked for the requested date, not their latest.
+        assert calls == [("AAPL", "2026-06-30"), ("MSFT", "2026-06-30")]
+        assert resolved_as_of == "2026-06-30"
+        assert "/2026-06-30.json" in gcs_path
+        assert "immutable" in cache_control
+        assert {p["data_as_of"] for p in capture["payloads"]} == {"2026-06-30"}
+        alignment = json.loads(data)["as_of_alignment"]
+        assert alignment["requested_as_of"] == "2026-06-30"
+        assert alignment["resolved_as_of"] == "2026-06-30"
+
+    def test_explicit_as_of_is_a_ceiling_not_the_label(self, store, monkeypatch):
+        """The request is no more trustworthy as a label than the clock.
+
+        If the caller asks for a date the set cannot honour, the artifact
+        is labelled with the date the set CAN honour — otherwise the same
+        defect returns, sourced from the request, and the bytes are cached
+        under a key whose date the numbers do not have.
+        """
+        _install_watchlist_fakes(monkeypatch)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={"AAPL": "2026-07-31", "THIN": "2026-07-24"},
+            history={"AAPL": ["2026-07-24", "2026-07-31"], "THIN": ["2026-07-24"]},
+        )
+
+        data, _, gcs_path, resolved_as_of, _, _ = render_artifact(
+            _watchlist_req(["AAPL", "THIN"], as_of="2026-07-31"),
+            store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == "2026-07-24"
+        assert "/2026-07-24.json" in gcs_path
+        alignment = json.loads(data)["as_of_alignment"]
+        assert alignment["requested_as_of"] == "2026-07-31"
+        assert alignment["resolved_as_of"] == "2026-07-24"
+        assert alignment["rule"] == "min_of_member_latest_at_or_before_requested"
+
+    def test_agreeing_set_is_unchanged_and_pays_no_extra_fetch(
+        self, store, monkeypatch
+    ):
+        """BAC + IBM — the prod-observable case, which must not regress.
+
+        One decompose per ticker, no re-fetch, the same GCS key as before
+        G.71, and no on-face note: a set that already agrees has nothing
+        to disclose.
+        """
+        capture = _install_watchlist_fakes(monkeypatch)
+        calls = _install_dated_decompose(
+            monkeypatch, latest={"BAC": "2026-07-31", "IBM": "2026-07-31"},
+        )
+
+        data, _, gcs_path, resolved_as_of, _, _ = render_artifact(
+            _watchlist_req(["BAC", "IBM"]), store=store, prefix=PREFIX,
+        )
+        assert calls == [("BAC", None), ("IBM", None)]
+        assert resolved_as_of == "2026-07-31"
+        digest = hashlib.sha256(b"BAC,IBM").hexdigest()[:16]
+        assert gcs_path == (
+            f"snapshots/artifacts/watchlist_er_stacked@v1/"
+            f"BW-STOCK-WATCHLIST-{digest}/2026-07-31.json"
+        )
+        alignment = json.loads(data)["as_of_alignment"]
+        assert alignment["notes"] == []
+        assert alignment["pulled_back_from"] == {}
+        assert alignment["excluded"] == {}
+
+        render_artifact(
+            _watchlist_req(["BAC", "IBM"], format="png"),
+            store=store, prefix=PREFIX,
+        )
+        assert capture["figure"].annotations == []
+
+
+class TestNoSynthesizedDateCanEscape:
+    """(e) — structural, not a grep.
+
+    Every date the alignment rule can emit must be a date some member
+    actually reported. These drive the resolver directly over the space
+    of disagreements rather than asserting the absence of a call.
+    """
+
+    @pytest.mark.parametrize(
+        "dates",
+        [
+            ["2026-07-31"],
+            ["2026-07-31", "2026-07-31"],
+            ["2026-07-31", "2026-07-30"],
+            ["2026-07-31", "2026-07-30", "2026-07-24"],
+            ["2025-01-02", "2026-07-31"],
+            ["2026-07-24", "2026-07-24", "2026-07-31", "2026-07-31"],
+        ],
+    )
+    def test_resolved_date_is_always_a_reported_date(self, monkeypatch, dates):
+        tickers = [f"T{i}" for i in range(len(dates))]
+        latest = dict(zip(tickers, dates))
+        _install_dated_decompose(
+            monkeypatch,
+            latest=latest,
+            history={t: sorted(set(dates)) for t in tickers},
+        )
+        payloads = [
+            _decompose_payload(t, residual=0.1, data_as_of=latest[t]) for t in tickers
+        ]
+        aligned, alignment = _align_decompose_payloads(payloads, "latest")
+        assert alignment.resolved_as_of in set(dates)
+        assert alignment.resolved_as_of == min(dates)
+        # And nothing that reaches the module carries a different date.
+        assert {p["data_as_of"] for p in aligned} == {alignment.resolved_as_of}
+
+    def test_todays_date_is_never_the_answer_for_a_disagreeing_set(
+        self, monkeypatch
+    ):
+        from datetime import datetime, timezone
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        latest = {"A": "2026-07-31", "B": "2026-07-30"}
+        _install_dated_decompose(
+            monkeypatch,
+            latest=latest,
+            history={"A": ["2026-07-30", "2026-07-31"], "B": ["2026-07-30"]},
+        )
+        payloads = [
+            _decompose_payload(t, residual=0.1, data_as_of=d)
+            for t, d in latest.items()
+        ]
+        _, alignment = _align_decompose_payloads(payloads, "latest")
+        assert alignment.resolved_as_of != today
+        assert alignment.resolved_as_of == "2026-07-30"
+
+    def test_a_payload_with_no_date_refuses_instead_of_falling_back(self):
+        """The old code answered "no date" with today's date. Refuse."""
+        payloads = [
+            _decompose_payload("A", residual=0.1, data_as_of="2026-07-31"),
+            _decompose_payload("B", residual=0.1, data_as_of=""),
+        ]
+        with pytest.raises(HTTPException) as err:
+            _align_decompose_payloads(payloads, "latest")
+        assert err.value.status_code == 502
+        assert "without inventing one" in err.value.detail
+
+    def test_the_resolver_never_calls_the_clock(self, monkeypatch):
+        """Belt and braces: make `datetime.now` explode inside the resolver.
+
+        A future edit that reintroduces a "today" fallback anywhere on
+        this path fails here rather than shipping a plausible-looking
+        date.
+        """
+        import render_svc.artifacts as mod
+
+        class _Exploding(mod.datetime):  # type: ignore[misc,name-defined]
+            @classmethod
+            def now(cls, tz=None):
+                raise AssertionError(
+                    "the multi-name date resolver must not read the clock"
+                )
+
+        monkeypatch.setattr(mod, "datetime", _Exploding)
+        latest = {"A": "2026-07-31", "B": "2026-07-30"}
+        _install_dated_decompose(
+            monkeypatch,
+            latest=latest,
+            history={"A": ["2026-07-30", "2026-07-31"], "B": ["2026-07-30"]},
+        )
+        payloads = [
+            _decompose_payload(t, residual=0.1, data_as_of=d)
+            for t, d in latest.items()
+        ]
+        _, alignment = _align_decompose_payloads(payloads, "latest")
+        assert alignment.resolved_as_of == "2026-07-30"
+
+
+def _dated_decompose_with_override(inner, latest_override: dict[str, str]):
+    """Wrap a dated fake so one ticker's latest-mode date differs."""
+
+    def fake(ticker, as_of=None):
+        payload = inner(ticker, as_of)
+        if as_of is None and ticker in latest_override:
+            return payload | {"data_as_of": latest_override[ticker]}
+        return payload
+
+    return fake
+
+
+class TestPeerGroupAlignmentDisclosure:
+    def test_peer_excluded_by_alignment_leaves_the_membership_block(
+        self, store, monkeypatch
+    ):
+        capture = _install_watchlist_fakes(monkeypatch)
+
+        def fake_fetch_peers(ticker, *, limit):
+            return _peers_response(["MSFT", "GAPPY"])
+
+        monkeypatch.setattr(artifacts_module, "_fetch_peers", fake_fetch_peers)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={
+                "AAPL": "2026-07-31", "MSFT": "2026-07-31", "GAPPY": "2026-07-31",
+            },
+            history={
+                "AAPL": ["2026-07-24", "2026-07-31"],
+                "MSFT": ["2026-07-24", "2026-07-31"],
+                "GAPPY": ["2026-07-17", "2026-07-31"],
+            },
+        )
+        # Make one member older so an alignment pass actually runs.
+        monkeypatch.setattr(
+            artifacts_module, "_fetch_decompose",
+            _dated_decompose_with_override(
+                artifacts_module._fetch_decompose, {"MSFT": "2026-07-24"},
+            ),
+        )
+
+        data, _, _, resolved_as_of, _, _ = render_artifact(
+            _peer_req(), store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == "2026-07-24"
+        body = json.loads(data)
+        assert body["peer_group"]["peers"] == ["MSFT"]
+        assert "GAPPY" in body["as_of_alignment"]["excluded"]
+        assert {p["ticker"] for p in capture["payloads"]} == {"AAPL", "MSFT"}
+
+    def test_peer_target_without_a_row_at_the_resolved_date_refuses(
+        self, store, monkeypatch
+    ):
+        _install_watchlist_fakes(monkeypatch)
+
+        def fake_fetch_peers(ticker, *, limit):
+            return _peers_response(["MSFT"])
+
+        monkeypatch.setattr(artifacts_module, "_fetch_peers", fake_fetch_peers)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={"AAPL": "2026-07-31", "MSFT": "2026-07-24"},
+            # The subject itself has no row at the set's resolved date.
+            history={"AAPL": ["2026-07-17", "2026-07-31"], "MSFT": ["2026-07-24"]},
+        )
+        with pytest.raises(HTTPException) as err:
+            render_artifact(_peer_req(), store=store, prefix=PREFIX)
+        assert err.value.status_code == 502
+        assert "without its subject" in err.value.detail
+
+
+    def test_deferred_fanout_applies_alignment_after_a_cache_miss(
+        self, store, monkeypatch
+    ):
+        """The explicit-as_of peer branch defers its fetches past the cache
+        probe (G.32), so alignment runs at a second call site. A peer
+        excluded there has to leave the membership block too — otherwise
+        only the cache-miss path in prod would disagree with the tests.
+        """
+        capture = _install_watchlist_fakes(monkeypatch)
+
+        def fake_fetch_peers(ticker, *, limit):
+            return _peers_response(["MSFT", "GAPPY"])
+
+        monkeypatch.setattr(artifacts_module, "_fetch_peers", fake_fetch_peers)
+        _install_dated_decompose(
+            monkeypatch,
+            latest={
+                "AAPL": "2026-07-31", "MSFT": "2026-07-24", "GAPPY": "2026-07-31",
+            },
+            history={
+                "AAPL": ["2026-07-24", "2026-07-31"],
+                "MSFT": ["2026-07-24"],
+                "GAPPY": ["2026-07-17", "2026-07-31"],
+            },
+        )
+
+        data, _, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
+            _peer_req(as_of="2026-07-24"), store=store, prefix=PREFIX,
+        )
+        assert resolved_as_of == "2026-07-24"
+        assert "/2026-07-24.json" in gcs_path
+        assert "immutable" in cache_control
+        body = json.loads(data)
+        assert body["peer_group"]["peers"] == ["MSFT"]
+        assert "GAPPY" in body["as_of_alignment"]["excluded"]
+        assert {p["ticker"] for p in capture["payloads"]} == {"AAPL", "MSFT"}

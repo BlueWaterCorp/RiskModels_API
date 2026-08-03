@@ -18,6 +18,12 @@
  * previously offered `narrative_profile`, which `ARTIFACT_RENDER_CAPABILITY`
  * records as never having rendered.
  *
+ * G.71 then moved the date claim. render-svc now resolves a watchlist to ONE
+ * real shared date instead of labelling a disagreeing set with today's, so the
+ * G.72 hedge ("NOT a date-aligned comparison") became false in the other
+ * direction and the assertion below was inverted with it. Descriptions and
+ * resolver have to move together or the drift G.72 closed reopens.
+ *
  * "Offer" strings are deliberately a subset: the `params` description carries
  * `describeSlugParams()`, a param-applicability table that names slugs whose
  * *params* are declared regardless of whether the slug serves. Scanning it for
@@ -134,16 +140,32 @@ describe.each(SURFACES)("%s — subject-kind visibility", (_label, surface) => {
     expect(dead).toEqual([]);
   });
 
-  it("does not claim the watchlist axis is date-aligned", () => {
-    // G.71: `_resolve_stock_watchlist` fetches each ticker without `as_of`, so
-    // members can carry different `data_as_of`, and the label falls back to
-    // today's date when they disagree. The description must therefore promise
-    // a shared composition axis and nothing about dates.
+  it("states the watchlist axis is date-aligned and where the date comes from", () => {
+    // Flipped by G.71 (this asserted the opposite for one commit). The
+    // render-svc resolver now puts the whole set on ONE real date — the
+    // minimum of the members' own latest, or an explicit `as_of` as a
+    // ceiling — and re-fetches the newer members there, so the hedge the
+    // G.72 descriptions carried ("NOT a date-aligned comparison") became
+    // false in the other direction.
     const { all } = surface();
     expect(all).toMatch(/shared risk-composition axis|shared composition axis/i);
-    expect(all).toMatch(/own latest close/i);
-    // The disclaimer has to be explicit, not merely absent: a model that reads
-    // "one shared axis" without it will happily write "as of 2026-07-31".
-    expect(all).toMatch(/NOT a date-aligned comparison|dates are not aligned/i);
+    expect(all).toMatch(/ONE shared date/i);
+    // Naming the date's SOURCE is the load-bearing half. A model told only
+    // "date-aligned" will still date the chart from its own context; it has
+    // to be pointed at the resolved value.
+    expect(all).toMatch(/resolved_as_of/);
+    expect(all).not.toMatch(/its own latest close/i);
+    expect(all).not.toMatch(/NOT a date-aligned comparison|dates are not aligned/i);
+  });
+
+  it("tells the model that excluded members are not on the chart", () => {
+    // G.71's honest-unavailable half: a member with no row at the resolved
+    // date is disclosed in `as_of_alignment.excluded` rather than drawn
+    // stale or dropped in silence. A description that claims alignment
+    // without naming the exclusion channel would make the model assert
+    // completeness the render does not have.
+    const { all } = surface();
+    expect(all).toMatch(/as_of_alignment/);
+    expect(all).toMatch(/excluded/i);
   });
 });
