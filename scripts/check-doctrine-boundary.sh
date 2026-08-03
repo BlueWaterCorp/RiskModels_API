@@ -29,10 +29,20 @@
 # un-publish: the repository is public and git history retains every
 # revision, so anything already pushed stays fetchable.
 #
-# Scope is deliberately narrow — the analyst doctrine stub only. Tool
-# descriptions legitimately name endpoints and parameters; that is the
-# contract surface and scanning it would produce noise that trains people to
-# ignore this check.
+# Two scopes, because the first version of this check had one and missed the
+# larger leak (H.153):
+#
+#   1. The doctrine stub — a size budget and a blocklist of named judgments.
+#   2. Every tracked file — the doctrine's own section headings. A full copy
+#      of the doctrine sat in tests/fixtures/analyst-doctrine-append.md from
+#      2026-05-17, committed by the same change that introduced the "thin
+#      public shell", and check (1) could not see it.
+#
+# Tool descriptions are deliberately out of scope for the blocklist: they
+# legitimately name endpoints and parameters, that is the contract surface, and
+# scanning them would produce noise that trains people to ignore this check.
+# The heading scan is safe everywhere because a doctrine section heading is not
+# something a contract surface has any reason to contain.
 #
 # Allowlist marker (case-insensitive, same line):
 #
@@ -105,8 +115,37 @@ if [[ -n "$hits" ]]; then
     fail=1
 fi
 
+# --- 3. Repo-wide: the doctrine's own section headings ---------------------
+# `git ls-files` rather than a path list: the point is that a copy anywhere is
+# a copy, and the last one arrived somewhere nobody was looking.
+DOCTRINE_HEADINGS='^## You are an analyst, not an investment advisor|^## What you must NOT fabricate|^## Response shape — Aha first|^## ERM3 concepts|^## Panel and batch routing'
+
+heading_hits=$(git ls-files -z 2>/dev/null \
+    | xargs -0 grep -lE "$DOCTRINE_HEADINGS" 2>/dev/null \
+    | grep -v '^scripts/check-doctrine-boundary.sh$' \
+    | grep -v '^tests/system-prompt.test.ts$' \
+    || true)
+
+if [[ -n "$heading_hits" ]]; then
+    echo "✗ doctrine boundary: the doctrine's own section headings appear in tracked files"
+    echo ""
+    while IFS= read -r f; do
+        echo "    $f"
+    done <<< "$heading_hits"
+    echo ""
+    echo "  A copy of the doctrine in this repository is a published copy,"
+    echo "  whatever it is called. Test fixtures included — that is where the"
+    echo "  last one was (H.153). The doctrine lives only in:"
+    echo "    $PRIVATE_SSOT"
+    echo ""
+    echo "  For mechanics tests, use tests/fixtures/synthetic-doctrine.md, which"
+    echo "  exercises loading and placeholder substitution and says nothing."
+    echo ""
+    fail=1
+fi
+
 if [[ "$fail" -eq 0 ]]; then
-    echo "✓ doctrine boundary: public stub is ${doctrine_lines} lines, no interpretive terms"
+    echo "✓ doctrine boundary: stub is ${doctrine_lines} lines, no interpretive terms, no doctrine copies tracked"
 fi
 
 exit "$fail"

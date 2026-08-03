@@ -1,0 +1,133 @@
+name: Keep PR branches current
+
+# When main moves, every open PR against it goes behind. Nothing notices until
+# someone opens the PR to merge it, and by then a sibling PR has often landed
+# in the same append-only file (CHANGELOG.md, OPENAPI_SPEC.yaml) and turned
+# "behind" into "conflicting". This closes the ordinary case: on every push to
+# main, ask GitHub to merge main into each open PR branch.
+#
+# What it deliberately does NOT do:
+#
+#   * Fail on conflict. A real content conflict needs a person; the job records
+#     which PRs need attention in its summary and exits green. A red X here
+#     would mean "someone else's PR conflicts", which is not this workflow's
+#     failure and would train people to ignore it.
+#   * Touch forks. The token cannot push to a fork's branch, and trying just
+#     produces noise.
+#   * Merge anything. Who merges, and when, is unchanged.
+#
+# ── One caveat, and it is the important one ─────────────────────────────────
+# A branch updated with the default GITHUB_TOKEN does not re-trigger workflows
+# (GitHub suppresses events from token-authored pushes, to stop recursion). So
+# with GITHUB_TOKEN the PR becomes *mergeable* but its green checks still
+# describe the pre-update commit — which is exactly the "passes while being
+# wrong" shape this codebase keeps finding.
+#
+# To get checks re-run against the merged state, add a repo secret
+# `PR_UPDATE_TOKEN` (a fine-grained PAT with Contents: read/write and Pull
+# requests: read/write). The job prefers it when present and says which token
+# it used, so the PR summary never leaves that ambiguous.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Two pushes to main in quick succession would otherwise race on the same
+  # PR branches. Let the later one win; it has the newer base.
+  group: keep-pr-branches-current
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Update open PR branches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update every open PR based on main
+        env:
+          GH_TOKEN: ${{ secrets.PR_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          USING_PAT: ${{ secrets.PR_UPDATE_TOKEN != '' }}
+        run: |
+          set -uo pipefail
+
+          if [ "$USING_PAT" = "true" ]; then
+            echo "Token: PR_UPDATE_TOKEN — updated branches will re-run their checks."
+          else
+            echo "Token: GITHUB_TOKEN — branches will be updated, but their checks will NOT re-run."
+            echo "Add a PR_UPDATE_TOKEN secret to close that gap (see this file's header)."
+          fi
+
+          # `--json` keeps this robust against gh's human-readable output
+          # changing. isCrossRepository is the fork test.
+          prs=$(gh pr list --state open --base main --limit 100 \
+                  --json number,headRefName,isCrossRepository,mergeStateStatus)
+
+          total=$(jq 'length' <<<"$prs")
+          echo "Open PRs against main: $total"
+
+          updated=(); conflicted=(); skipped=(); already=()
+
+          while IFS=$'\t' read -r num head fork state; do
+            [ -z "${num:-}" ] && continue
+
+            if [ "$fork" = "true" ]; then
+              skipped+=("#$num ($head — fork)")
+              continue
+            fi
+
+            # DIRTY is a content conflict: update-branch cannot fix it, and
+            # calling it only to read the error back is a wasted round trip.
+            if [ "$state" = "DIRTY" ]; then
+              conflicted+=("#$num ($head)")
+              continue
+            fi
+
+            # BEHIND is the case this workflow exists for. UNKNOWN means
+            # GitHub has not finished computing mergeability, so try. Every
+            # other state (CLEAN, UNSTABLE, BLOCKED, HAS_HOOKS, DRAFT) is not
+            # behind, and updating would churn CI for nothing.
+            if [ "$state" != "BEHIND" ] && [ "$state" != "UNKNOWN" ]; then
+              already+=("#$num")
+              continue
+            fi
+
+            if out=$(gh pr update-branch "$num" 2>&1); then
+              updated+=("#$num ($head)")
+            elif grep -qi 'conflict' <<<"$out"; then
+              conflicted+=("#$num ($head)")
+            elif grep -qi 'not behind\|up to date\|up-to-date' <<<"$out"; then
+              already+=("#$num")
+            else
+              # Anything unexpected is reported rather than swallowed, but it
+              # still does not fail the job — see the header.
+              skipped+=("#$num ($head — $(head -c 120 <<<"$out"))")
+            fi
+          done < <(jq -r '.[] | [.number, .headRefName, .isCrossRepository, .mergeStateStatus] | @tsv' <<<"$prs")
+
+          {
+            echo "## Keep PR branches current"
+            echo ""
+            if [ "$USING_PAT" = "true" ]; then
+              echo "Checks **will** re-run on updated branches (\`PR_UPDATE_TOKEN\`)."
+            else
+              echo "> **Checks will not re-run on updated branches.** The default"
+              echo "> \`GITHUB_TOKEN\` suppresses the push event. A green check on an"
+              echo "> updated PR describes the commit *before* the update."
+            fi
+            echo ""
+            printf '| Outcome | PRs |\n|---|---|\n'
+            printf '| Updated | %s |\n'      "$( [ ${#updated[@]} -gt 0 ]    && echo "${updated[*]}"    || echo '—' )"
+            printf '| Already current | %s |\n' "$( [ ${#already[@]} -gt 0 ] && echo "${already[*]}"    || echo '—' )"
+            printf '| **Conflicting — needs a person** | %s |\n' "$( [ ${#conflicted[@]} -gt 0 ] && echo "${conflicted[*]}" || echo '—' )"
+            printf '| Skipped | %s |\n'      "$( [ ${#skipped[@]} -gt 0 ]    && echo "${skipped[*]}"    || echo '—' )"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ${#conflicted[@]} -gt 0 ]; then
+            echo "::warning::Conflicting PRs need manual resolution: ${conflicted[*]}"
+          fi
