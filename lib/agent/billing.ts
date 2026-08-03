@@ -66,37 +66,88 @@ export interface BillingTransaction {
 /**
  * Get current user balance
  */
-export async function getUserBalance(userId: string): Promise<number> {
-  try {
-    // First check agent_accounts table
-    const { data: agentAccount } = await getSupabase()
-      .from("agent_accounts")
-      .select("balance_usd")
-      .eq("user_id", userId)
-      .single();
+/** PostgREST's "no rows matched" for a `.single()`. An answer, not a failure. */
+const NO_ROWS = "PGRST116";
 
-    if (agentAccount) {
-      return parseFloat(agentAccount.balance_usd) || 0;
-    }
-
-    // Fallback to regular users (assume unlimited balance for now)
-    const { data: user } = await getSupabase()
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .single();
-
-    if (user) {
-      // For existing users without agent accounts, return a high balance
-      // This maintains backward compatibility during transition
-      return 1000.0;
-    }
-
-    return 0;
-  } catch (error) {
-    console.error("[Billing] Error getting user balance:", error);
-    throw new Error("Failed to retrieve user balance");
+/**
+ * The balance could not be read. Distinct from a balance of zero, which is a
+ * fact about the account.
+ */
+export class BalanceUnavailableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "BalanceUnavailableError";
   }
+}
+
+/**
+ * Legacy compatibility: a user row with no `agent_accounts` row is treated as
+ * having credit during the transition. Left in place deliberately — it is a
+ * policy decision, not the defect. The defect was that a *failed* query
+ * reached it and was reported as this same number.
+ */
+const LEGACY_TRANSITIONAL_BALANCE_USD = 1000.0;
+
+/**
+ * Get current user balance.
+ *
+ * Both queries now check `error`. They previously destructured only `data`, so
+ * an RLS denial, a disabled key, or a network blip produced `data = null` and
+ * the function reported a number: `0` if the `users` lookup also failed, or a
+ * hardcoded `1000.0` if it did not. Neither was measured — a caller could not
+ * tell a real empty account from an unreadable one, and the balance endpoint
+ * returned 200 either way.
+ */
+export async function getUserBalance(userId: string): Promise<number> {
+  // First check agent_accounts table
+  const { data: agentAccount, error: agentError } = await getSupabase()
+    .from("agent_accounts")
+    .select("balance_usd")
+    .eq("user_id", userId)
+    .single();
+
+  if (agentError && agentError.code !== NO_ROWS) {
+    console.error("[Billing] agent_accounts lookup failed:", agentError);
+    throw new BalanceUnavailableError(
+      "Could not read the account balance",
+      { cause: agentError },
+    );
+  }
+
+  if (agentAccount) {
+    const parsed = parseFloat(agentAccount.balance_usd);
+    if (!Number.isFinite(parsed)) {
+      // `|| 0` used to turn an unparseable balance into a credible zero.
+      console.error(
+        "[Billing] agent_accounts.balance_usd is not a number:",
+        agentAccount.balance_usd,
+      );
+      throw new BalanceUnavailableError("Stored balance is not a number");
+    }
+    return parsed;
+  }
+
+  // Fallback to regular users (assume unlimited balance for now)
+  const { data: user, error: userError } = await getSupabase()
+    .from("users")
+    .select("id")
+    .eq("id", userId)
+    .single();
+
+  if (userError && userError.code !== NO_ROWS) {
+    console.error("[Billing] users lookup failed:", userError);
+    throw new BalanceUnavailableError(
+      "Could not read the account balance",
+      { cause: userError },
+    );
+  }
+
+  if (user) {
+    return LEGACY_TRANSITIONAL_BALANCE_USD;
+  }
+
+  // No agent account and no user row: there is genuinely nothing to spend.
+  return 0;
 }
 
 /**
