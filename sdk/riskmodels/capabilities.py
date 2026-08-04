@@ -881,6 +881,175 @@ _SDK_METHODS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_cohorts",
+        "aliases": [],
+        "summary": "Cohort residual statistics cross-section (GET /cohorts).",
+        "description": (
+            "Cross-sectional residual statistics by cohort (SPY + the 11 GICS sector SPDRs) at one "
+            "teo. ERM3 residuals are fitted WITHOUT an intercept and therefore retain each stock's "
+            "alpha, so the cross-sectional mean is NOT zero — residual_mean is the quantity you "
+            "subtract to demean a relative-ranking signal at that level. residual_sd is the "
+            "cross-sectional dispersion, i.e. how much selection opportunity a cohort holds; treat "
+            "it as a conditioning and allocation input, not an alpha source, and read it alongside "
+            "mean_pairwise_corr. Thin cohorts give meaningless statistics — filter with min_names "
+            "and prefer n_effective over n_names for breadth. The subsector cohort slate is "
+            "proprietary and not addressable."
+        ),
+        "scopes": ["cohort", "residual", "dispersion", "demean"],
+        "parameters": [
+            {
+                "name": "cohorts",
+                "type": "array",
+                "required": False,
+                "description": (
+                    "Cohort tickers: SPY, XLE, XLB, XLI, XLY, XLP, XLV, XLF, XLK, XLC, XLU, XLRE. "
+                    "Default: all public cohorts."
+                ),
+            },
+            {
+                "name": "variables",
+                "type": "array",
+                "required": False,
+                "description": (
+                    "Variable names. Default: residual_mean, residual_sd, mean_pairwise_corr, "
+                    "n_names, n_effective."
+                ),
+            },
+            {
+                "name": "teo",
+                "type": "string",
+                "required": False,
+                "description": "Observation date YYYY-MM-DD (default latest).",
+            },
+            {
+                "name": "min_names",
+                "type": "integer",
+                "required": False,
+                "description": "Drop cohorts with fewer members — their statistics are noise.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame",
+            "description": "Columns ticker, level, parent, plus one column per requested variable.",
+        },
+    },
+    {
+        "name": "get_cohort_series",
+        "aliases": [],
+        "summary": "Cohort residual statistics over time (GET /cohorts/series).",
+        "description": (
+            "Cohort statistics over a date range, one series per cohort. This is the demeaning "
+            "endpoint: request residual_mean at the level your residual is defined against and "
+            "subtract it. Panel starts 2000-01-03, but full factor richness begins around 2006 — "
+            "earlier history leans on proxy or synthetic backfill. Each cohort reports "
+            "proxied_fraction, the share of returned days whose factor came from a substitute "
+            "instrument; two sector cohorts are majority-proxied over the full panel, so a "
+            "long-history chart that hides the substitution shows partly a different basket."
+        ),
+        "scopes": ["cohort", "residual", "dispersion", "demean", "time-series"],
+        "parameters": [
+            {
+                "name": "cohorts",
+                "type": "array",
+                "required": False,
+                "description": "Cohort tickers. Default: all public cohorts.",
+            },
+            {
+                "name": "variables",
+                "type": "array",
+                "required": False,
+                "description": "Variable names.",
+            },
+            {
+                "name": "start_date",
+                "type": "string",
+                "required": False,
+                "description": "Window start YYYY-MM-DD (default panel start).",
+            },
+            {
+                "name": "end_date",
+                "type": "string",
+                "required": False,
+                "description": "Window end YYYY-MM-DD (default latest teo).",
+            },
+            {
+                "name": "min_names",
+                "type": "integer",
+                "required": False,
+                "description": "Drop days below this member count.",
+            },
+        ],
+        "returns": {
+            "type": "pandas.DataFrame",
+            "description": (
+                "Long-form: date, cohort, level, parent, plus one column per requested variable."
+            ),
+        },
+    },
+    {
+        "name": "decompose_selection_vs_drift",
+        "aliases": [],
+        "summary": "Selection vs drift attribution (POST /cohorts/pnl-decomposition).",
+        "description": (
+            "Splits a book's realized residual return into SELECTION (what it earned by "
+            "holding names that beat their cohort's average residual) and DRIFT (what it "
+            "earned purely from net exposure to that average, which accrues on net weight "
+            "regardless of selection skill). The two sum to the total exactly — an "
+            "identity, not a fitted attribution. Answers 'was I paid for stock-picking, or "
+            "for being net long the average stock?', which is answerable only because ERM3 "
+            "fits residuals without an intercept and the cohort store exposes the resulting "
+            "non-zero cross-sectional mean. Weights are treated as constant over the window "
+            "and are NOT normalized — rescaling them changes the drift term. Positions that "
+            "cannot be resolved are named in coverage.dropped. Realized historical "
+            "attribution only; not a forecast, backtest, or recommendation."
+        ),
+        "scopes": ["cohort", "attribution", "portfolio", "selection", "drift"],
+        "parameters": [
+            {
+                "name": "positions",
+                "type": "array",
+                "required": True,
+                "description": (
+                    "Positions as [{ticker, weight}] or a DataFrame with ticker/weight "
+                    "columns. Weight may be negative for a short. Max 500."
+                ),
+            },
+            {
+                "name": "level",
+                "type": "string",
+                "required": False,
+                "enum": ["market", "sector"],
+                "description": "Cascade level (default sector).",
+            },
+            {
+                "name": "start_date",
+                "type": "string",
+                "required": False,
+                "description": "Window start YYYY-MM-DD.",
+            },
+            {
+                "name": "end_date",
+                "type": "string",
+                "required": False,
+                "description": "Window end YYYY-MM-DD.",
+            },
+            {
+                "name": "min_names",
+                "type": "integer",
+                "required": False,
+                "description": "Ignore cohort means on days the cohort was thinner than this.",
+            },
+        ],
+        "returns": {
+            "type": "dict",
+            "description": (
+                "{level, range, coverage{requested,included,dropped}, "
+                "totals{residual,selection,drift,selection_share}, by_cohort[], "
+                "disclosures}."
+            ),
+        },
+    },
+    {
         "name": "get_factor_correlation",
         "aliases": [],
         "summary": "Correlation vs macro factors (POST /correlation).",

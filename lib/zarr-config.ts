@@ -104,3 +104,24 @@ export function zarrFundamentalsBasename(): string {
 export function zarrIndustryBasename(factorSetId = getZarrFactorSetId()): string {
   return `ds_erm3_industry_${factorSetId}.zarr`;
 }
+
+/**
+ * Cohort store (ERM3 H.146) — cross-sectional residual statistics at
+ * (teo × cohort), where a cohort is the market (L1), a GICS sector (L2), or a
+ * subsector (L3). The first ERM3 artifact published at cohort level rather
+ * than per-stock.
+ *
+ * The statistics are universe-specific: one store per (market factor ETF,
+ * universe) pair, and values must never be averaged across universes. ERM3
+ * names it `ds_erm3_cohorts_{market_factor_etf}_{universe}.zarr`, which is
+ * exactly our factor-set id — that id already folds the two together
+ * ("SPY_uni_mc_3000"), so it is passed through whole rather than re-joined.
+ *
+ * Its headline variable is `residual_mean` — ERM3 fits residuals without an
+ * intercept so each stock keeps its alpha, which leaves the cross-sectional
+ * mean non-zero. Consumers building relative-ranking signals must demean
+ * against it. See lib/dal/cohort-zarr-reader.ts.
+ */
+export function zarrCohortsBasename(factorSetId = getZarrFactorSetId()): string {
+  return `ds_erm3_cohorts_${factorSetId}.zarr`;
+}

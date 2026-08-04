@@ -644,6 +644,107 @@ export function registerRiskModelsTools(
   );
 
   server.registerTool(
+    "riskmodels_get_cohorts",
+    {
+      title: "RiskModels Cohort Statistics",
+      annotations: { readOnlyHint: true },
+      description:
+        "Cross-sectional residual statistics by cohort — SPY plus the 11 GICS sector SPDRs (GET /cohorts for one date, GET /cohorts/series for a range; set series=true). Two things this is for. (1) DEMEANING: ERM3 residuals are fitted WITHOUT an intercept so each stock keeps its alpha, which means the cross-sectional mean is NOT zero. Before building any relative-ranking signal, subtract residual_mean at the level the residual is defined against — sector residuals demean within sector cohorts. Never quote a drift number without its window; the sign is not stable across the sample. (2) DISPERSION: residual_sd says how much selection opportunity a cohort holds. It is a conditioning and allocation variable, NOT an alpha source — it multiplies skill and cannot create it, so never describe it as predicting returns. Always pair it with mean_pairwise_corr. Filter thin cohorts with min_names and prefer n_effective over n_names for breadth. cohort_ER is an incremental attribution that can be slightly negative and is a different quantity from linked_beta_r2. The subsector cohort slate is proprietary and not addressable.",
+      inputSchema: {
+        cohorts: z
+          .string()
+          .optional()
+          .describe("Comma-separated cohort tickers (SPY, XLE, XLB, XLI, XLY, XLP, XLV, XLF, XLK, XLC, XLU, XLRE). Default: all"),
+        variables: z
+          .string()
+          .optional()
+          .describe("Comma-separated variables. Default: residual_mean, residual_sd, mean_pairwise_corr, n_names, n_effective"),
+        series: z
+          .boolean()
+          .optional()
+          .describe("If true, return a time series over start_date..end_date instead of a one-date cross-section"),
+        teo: z.string().optional().describe("Observation date YYYY-MM-DD for the cross-section (default latest)"),
+        start_date: z.string().optional().describe("Series window start YYYY-MM-DD (series=true only)"),
+        end_date: z.string().optional().describe("Series window end YYYY-MM-DD (series=true only)"),
+        min_names: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Drop cohorts/days below this member count — their statistics are noise"),
+      },
+    },
+    async ({ cohorts, variables, series, teo, start_date, end_date, min_names }) => {
+      try {
+        const query: Record<string, string | number | boolean> = {};
+        if (cohorts !== undefined) query.cohorts = cohorts;
+        if (variables !== undefined) query.variables = variables;
+        if (min_names !== undefined) query.min_names = min_names;
+        if (series) {
+          if (start_date !== undefined) query.start_date = start_date;
+          if (end_date !== undefined) query.end_date = end_date;
+          return textResult(await sdk.call("GET", "/cohorts/series", { query }));
+        }
+        if (teo !== undefined) query.teo = teo;
+        return textResult(await sdk.call("GET", "/cohorts", { query }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_decompose_selection_vs_drift",
+    {
+      title: "RiskModels Selection vs Drift",
+      annotations: { readOnlyHint: true },
+      description:
+        "Split a book's realized residual return into SELECTION (what it earned by holding names that beat their cohort's average residual) and DRIFT (what it earned purely from net exposure to that average, which accrues on net weight regardless of selection skill) — POST /cohorts/pnl-decomposition. The two sum to the total exactly; this is an identity, not a fitted attribution. Use it to answer 'was I paid for stock-picking, or for being net long the average stock?'. Weights are treated as constant over the window and are NOT normalized — rescaling them changes the drift term. A short is a negative weight. Positions that cannot be resolved or mapped to an addressable cohort are dropped and named in coverage.dropped; always report that back rather than presenting the total as if the whole book were covered. This is realized historical attribution — never present it as a forecast, a backtest of a strategy, or a recommendation.",
+      inputSchema: {
+        positions: z
+          .array(
+            z.object({
+              ticker: z.string().min(1),
+              weight: z.number().describe("Portfolio weight; negative for a short"),
+            }),
+          )
+          .min(1)
+          .max(500)
+          .describe("The book to attribute"),
+        level: z
+          .enum(["market", "sector"])
+          .optional()
+          .describe("Cascade level (default sector)"),
+        start_date: z.string().optional().describe("Window start YYYY-MM-DD"),
+        end_date: z.string().optional().describe("Window end YYYY-MM-DD"),
+        min_names: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Ignore cohort means on days the cohort was thinner than this"),
+        include_series: z
+          .boolean()
+          .optional()
+          .describe("Include the daily selection/drift series (bulky)"),
+      },
+    },
+    async ({ positions, level, start_date, end_date, min_names, include_series }) => {
+      try {
+        const body: Record<string, unknown> = { positions };
+        if (level !== undefined) body.level = level;
+        if (start_date !== undefined) body.start_date = start_date;
+        if (end_date !== undefined) body.end_date = end_date;
+        if (min_names !== undefined) body.min_names = min_names;
+        if (include_series !== undefined) body.include_series = include_series;
+        return textResult(await sdk.call("POST", "/cohorts/pnl-decomposition", { body }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "riskmodels_get_fundamentals",
     {
       title: "RiskModels PIT Quarterly Fundamentals",

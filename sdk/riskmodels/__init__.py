@@ -27,6 +27,14 @@ from .legends import (
 )
 from .lineage import RiskLineage
 from .llm import to_llm_context
+from .cohorts import (
+    PUBLIC_COHORTS,
+    decompose_selection_vs_drift,
+    demean,
+    fetch_cohort_cross_section,
+    fetch_cohort_roster,
+    fetch_cohort_series,
+)
 from .mapping import extract_hedge_levels
 from .metadata_attach import (
     attach_sdk_metadata,
@@ -88,6 +96,12 @@ from .visuals.save import (
 
 __all__ = [
     "APIError",
+    "PUBLIC_COHORTS",
+    "decompose_selection_vs_drift",
+    "demean",
+    "fetch_cohort_cross_section",
+    "fetch_cohort_roster",
+    "fetch_cohort_series",
     "AuthError",
     "DataKind",
     "ChatInsights",

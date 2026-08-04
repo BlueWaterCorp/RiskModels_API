@@ -1963,6 +1963,421 @@ components:
           type: array
           items:
             type: string
+    CohortDisclosures:
+      type: object
+      description: >
+        Interpretation notes that govern correct use of the cohort statistics.
+        `no_intercept_contract` and `return_source_legend` are read from the
+        store's own attributes rather than restated here, so they cannot drift
+        from the data they describe.
+      properties:
+        no_intercept_contract:
+          type: string
+          description: >
+            ERM3 residuals are estimated WITHOUT an intercept and therefore retain
+            each stock's alpha. The cross-sectional mean is NOT zero. If you are
+            building relative-ranking signals, demean first using `residual_mean`.
+        return_source_legend:
+          type: string
+          description: Meaning of each `factor_source` code.
+        coverage:
+          type: string
+          description: >
+            Cohort coverage of the eligible universe (~88%) and the date from which
+            full factor richness begins.
+        dispersion_use:
+          type: string
+          description: >
+            How to use `residual_sd` — a conditioning and allocation variable, not
+            an alpha source.
+        er_sign:
+          type: string
+          description: >
+            Why `cohort_ER` is an incremental attribution that can be negative, and
+            how it differs from `linked_beta_r2`.
+        thin_cohorts:
+          type: string
+          description: Why to filter on `min_names` and prefer `n_effective` for breadth.
+
+    CohortStatistics:
+      type: object
+      description: >
+        Cohort statistics for one (teo, cohort) cell. Keys present depend on the
+        `variables` requested. Values are null where the statistic is undefined
+        for that day.
+      additionalProperties:
+        type: number
+        nullable: true
+      properties:
+        residual_mean:
+          type: number
+          nullable: true
+          description: >
+            Equal-weighted mean member residual — the quantity to subtract when
+            demeaning a relative-ranking signal at this level.
+        residual_mean_cw:
+          type: number
+          nullable: true
+          description: Cap-weighted equivalent; the EW/CW wedge is itself informative.
+        residual_sd:
+          type: number
+          nullable: true
+          description: >
+            Cross-sectional dispersion of member residuals — how much selection
+            opportunity exists in the cohort. Read with `mean_pairwise_corr`.
+        residual_skew:
+          type: number
+          nullable: true
+        residual_p10:
+          type: number
+          nullable: true
+        residual_p90:
+          type: number
+          nullable: true
+        mean_pairwise_corr:
+          type: number
+          nullable: true
+          description: >
+            Mean pairwise correlation of member residuals, from a 63-day
+            identity-based estimator. An estimate — do not present to high precision.
+        n_names:
+          type: integer
+          nullable: true
+          description: Member count that day. Guards every other statistic.
+        n_effective:
+          type: number
+          nullable: true
+          description: >
+            Inverse-Herfindahl breadth. Prefer this over `n_names` for anything
+            power- or breadth-related — a cohort with one dominant constituent has
+            far less effective breadth than its headcount suggests.
+        weight_top1:
+          type: number
+          nullable: true
+        membership_churn:
+          type: integer
+          nullable: true
+        linked_beta:
+          type: number
+          nullable: true
+          description: Beta of this cohort's factor to its parent's.
+        linked_beta_se:
+          type: number
+          nullable: true
+        linked_beta_r2:
+          type: number
+          nullable: true
+          description: >
+            R² of the cohort factor on its parent. NOT the same quantity as
+            `cohort_ER`.
+        linked_beta_roll63:
+          type: number
+          nullable: true
+          description: 63-day variant; instability in this is itself informative.
+        cohort_factor_return:
+          type: number
+          nullable: true
+        cohort_residual_return:
+          type: number
+          nullable: true
+          description: Factor return net of `linked_beta` × parent return.
+        cohort_ER:
+          type: number
+          nullable: true
+          description: >
+            Mean member's explained risk attributed to this level. An incremental
+            attribution, not an R² share — it can be slightly negative and does not
+            sum to 1.
+        factor_source:
+          type: integer
+          nullable: true
+          description: >
+            Provenance of the factor return that day. 0 = native; non-zero means a
+            substitute instrument backed it. See `return_source_legend`.
+
+    CohortCrossSectionRow:
+      type: object
+      properties:
+        ticker:
+          type: string
+          description: Cohort label (SPY or a GICS sector SPDR).
+        level:
+          type: integer
+          enum: [1, 2]
+          description: 1 = market, 2 = GICS sector.
+        parent:
+          type: string
+          nullable: true
+          description: Parent cohort's ticker; null for the market cohort.
+        values:
+          $ref: "#/components/schemas/CohortStatistics"
+
+    CohortCrossSectionResponse:
+      type: object
+      description: Cohort statistics across cohorts at one observation date.
+      properties:
+        teo:
+          type: string
+          format: date
+        cohorts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CohortCrossSectionRow"
+        variables:
+          type: array
+          items:
+            type: string
+        min_names:
+          type: integer
+        universe:
+          type: string
+        market_factor_etf:
+          type: string
+        store_build:
+          type: string
+          nullable: true
+          description: Build timestamp of the underlying store.
+        disclosures:
+          $ref: "#/components/schemas/CohortDisclosures"
+        data_source:
+          type: string
+          example: zarr
+
+    CohortSeriesPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        values:
+          $ref: "#/components/schemas/CohortStatistics"
+        proxy_source:
+          type: string
+          nullable: true
+          description: >
+            Present only when `include_proxy_source=true`. Identifies the instrument
+            that actually backed the cohort factor that day.
+
+    CohortSeries:
+      type: object
+      properties:
+        ticker:
+          type: string
+        level:
+          type: integer
+          enum: [1, 2]
+        parent:
+          type: string
+          nullable: true
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/CohortSeriesPoint"
+        proxied_fraction:
+          type: number
+          description: >
+            Share of the returned window whose factor came from a substitute
+            instrument (`factor_source != 0`). Two sector cohorts are majority-proxied
+            over the full panel, so a long-history chart that hides this is showing
+            partly a different basket.
+
+    CohortSeriesResponse:
+      type: object
+      description: Cohort statistics over a date range, one series per cohort.
+      properties:
+        cohorts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CohortSeries"
+        range:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: date
+          description: "[first, last] date actually returned."
+        variables:
+          type: array
+          items:
+            type: string
+        min_names:
+          type: integer
+        universe:
+          type: string
+        market_factor_etf:
+          type: string
+        store_build:
+          type: string
+          nullable: true
+        disclosures:
+          $ref: "#/components/schemas/CohortDisclosures"
+        data_source:
+          type: string
+          example: zarr
+
+    CohortRosterResponse:
+      type: object
+      description: >
+        Addressable cohorts, their parent links, the variable catalogue, and the
+        interpretation notes. Call this before /cohorts to learn what may be
+        requested and what the numbers mean.
+      properties:
+        cohorts:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker:
+                type: string
+              level:
+                type: integer
+                enum: [1, 2]
+              parent:
+                type: string
+                nullable: true
+              valid_from:
+                type: string
+                format: date
+                nullable: true
+              valid_to:
+                type: string
+                format: date
+                nullable: true
+                description: null = still open.
+        variables:
+          type: object
+          properties:
+            distribution:
+              type: array
+              items:
+                type: string
+            breadth:
+              type: array
+              items:
+                type: string
+            factor:
+              type: array
+              items:
+                type: string
+        disclosures:
+          $ref: "#/components/schemas/CohortDisclosures"
+        universe:
+          type: string
+        panel:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: date
+          description: "[first, last] date in the store."
+
+    CohortPnlDecompositionResponse:
+      type: object
+      description: >
+        Realized residual return split into within-cohort selection and net-exposure
+        drift. `totals.selection + totals.drift == totals.residual` by construction.
+      properties:
+        level:
+          type: string
+          enum: [market, sector]
+        basis:
+          type: string
+          description: Which stock residual was used and which cohort mean it was demeaned against.
+        range:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: date
+        n_days:
+          type: integer
+        coverage:
+          type: object
+          description: >
+            What was actually included. Positions that could not be resolved or mapped
+            to an addressable cohort are named here, never silently omitted.
+          properties:
+            requested:
+              type: integer
+            included:
+              type: integer
+            dropped:
+              type: array
+              items:
+                type: object
+                properties:
+                  ticker:
+                    type: string
+                  reason:
+                    type: string
+        totals:
+          type: object
+          properties:
+            residual:
+              type: number
+              description: Cumulative residual return of the book over the window.
+            selection:
+              type: number
+              description: Part earned by holding names that beat their cohort average.
+            drift:
+              type: number
+              description: >
+                Part earned from net exposure to the cohort average, independent of
+                selection skill.
+            selection_share:
+              type: number
+              nullable: true
+              description: >
+                |selection| / (|selection| + |drift|). Null when both are ~0.
+        by_cohort:
+          type: array
+          items:
+            type: object
+            properties:
+              cohort:
+                type: string
+              net_weight:
+                type: number
+              n_positions:
+                type: integer
+              drift:
+                type: number
+              selection:
+                type: number
+        series:
+          type: array
+          description: Daily contributions. Present only when include_series=true.
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              selection:
+                type: number
+              drift:
+                type: number
+              residual:
+                type: number
+        net_weight:
+          type: number
+        gross_weight:
+          type: number
+        store_build:
+          type: string
+          nullable: true
+        disclosures:
+          type: object
+          properties:
+            interpretation:
+              type: string
+            no_intercept_contract:
+              type: string
+              nullable: true
+            constant_weights:
+              type: string
+            not_advice:
+              type: string
 
     ResidualSignalReading:
       type: object
@@ -5504,6 +5919,323 @@ paths:
           description: Invalid request
         "404":
           description: Industry panel unavailable
+        "500":
+          description: Internal error
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /cohorts:
+    get:
+      summary: Cohort residual statistics (cross-section)
+      description: |
+        One-teo cross-section of cross-sectional residual statistics by cohort, from
+        `ds_erm3_cohorts`. A cohort is the market (level 1) or a GICS sector (level 2).
+
+        **Residuals are not zero-mean.** ERM3 regressions are fitted *without an
+        intercept*, deliberately, so each stock's residual retains its alpha. The
+        consequence is that the cross-sectional mean residual is **not zero**. If you
+        are building a relative-ranking signal, subtract `residual_mean` at the level
+        your residual is defined against — sector residuals demean within sector
+        cohorts. Any drift figure must be quoted with its window: the sign is not
+        stable across the sample.
+
+        `residual_sd` is the cross-sectional dispersion within a cohort — a measure of
+        how much there is to select from. It is a conditioning and allocation input,
+        not an alpha source; it multiplies skill and cannot create it. Read it with
+        `mean_pairwise_corr`, which separates idiosyncratic dispersion from common
+        movement.
+
+        Thin cohorts produce meaningless statistics — filter with `min_names`, and use
+        `n_effective` rather than `n_names` for anything breadth-related.
+
+        Public scope is SPY plus the 11 GICS sector SPDRs. The subsector cohort slate
+        is proprietary and is not addressable through this API.
+      operationId: getCohorts
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: cohorts
+        tier: premium
+        model: per_request
+        cost_usd: 0.02
+        currency: USD
+        billing_code: cohorts_v1
+      parameters:
+        - name: cohorts
+          in: query
+          schema:
+            type: string
+          description: >
+            Comma-separated cohort tickers (SPY, XLE, XLB, XLI, XLY, XLP, XLV, XLF,
+            XLK, XLC, XLU, XLRE). Default: all public cohorts.
+        - name: variables
+          in: query
+          schema:
+            type: string
+          description: >
+            Comma-separated variable names. Default: residual_mean, residual_sd,
+            mean_pairwise_corr, n_names, n_effective.
+        - name: teo
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Observation date (default latest teo in the store).
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Alias for `teo`.
+        - name: min_names
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 5000
+          description: >
+            Drop cohorts with fewer than this many members — their residual statistics
+            are noise. Default 0.
+      responses:
+        "200":
+          description: Cohort cross-section
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CohortCrossSectionResponse"
+        "400":
+          description: Invalid request, or a cohort outside the addressable set.
+        "404":
+          description: Cohort data unavailable
+        "500":
+          description: Internal error
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /cohorts/series:
+    get:
+      summary: Cohort residual statistics (time series)
+      description: |
+        Cohort statistics over a date range, one series per cohort. This is the
+        endpoint to use for demeaning: request `residual_mean` for the level your
+        residual is defined against and subtract it. See `/cohorts` for why that is
+        necessary — ERM3 fits residuals without an intercept, so the cross-sectional
+        mean is not zero.
+
+        The panel runs from 2000-01-03, but full factor richness begins around 2006;
+        earlier history leans on proxy or synthetic backfill. Each cohort reports
+        `proxied_fraction`, the share of returned days whose factor came from a
+        substitute instrument. This matters for long windows: two sector cohorts are
+        majority-proxied over the full panel, so a chart that does not surface the
+        substitution shows partly a different basket. Pass `include_proxy_source=true`
+        to see which instrument backed each day.
+      operationId: getCohortSeries
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: cohorts-series
+        tier: premium
+        model: per_request
+        cost_usd: 0.03
+        currency: USD
+        billing_code: cohorts_series_v1
+      parameters:
+        - name: cohorts
+          in: query
+          schema:
+            type: string
+          description: "Comma-separated cohort tickers. Default: all public cohorts."
+        - name: variables
+          in: query
+          schema:
+            type: string
+          description: >
+            Comma-separated variable names. Default: residual_mean, residual_sd,
+            mean_pairwise_corr, n_names, n_effective.
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Window start (default panel start).
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Window end (default latest teo).
+        - name: min_names
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 5000
+          description: Drop days where the cohort had fewer than this many members.
+        - name: include_proxy_source
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: Include the per-day instrument backing the cohort factor.
+      responses:
+        "200":
+          description: Cohort time series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CohortSeriesResponse"
+        "400":
+          description: Invalid request, or a cohort outside the addressable set.
+        "404":
+          description: Cohort data unavailable
+        "500":
+          description: Internal error
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /cohorts/roster:
+    get:
+      summary: Cohort roster and variable catalogue (discovery)
+      description: |
+        The addressable cohorts, their parent links, the variable catalogue, and the
+        interpretation notes that govern correct use — including the no-intercept
+        contract read directly from the store's own metadata. Free; call this before
+        `/cohorts` to learn what may be requested and what the numbers mean.
+
+        This lists the public cohorts only. It is not a census of the underlying store.
+      operationId: getCohortRoster
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: cohorts-roster
+        tier: baseline
+        model: per_request
+        cost_usd: 0
+        currency: USD
+        billing_code: cohorts_roster_v1
+      responses:
+        "200":
+          description: Cohort roster
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CohortRosterResponse"
+        "404":
+          description: Cohort data unavailable
+        "500":
+          description: Internal error
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
+  /cohorts/pnl-decomposition:
+    post:
+      summary: Selection vs drift decomposition
+      description: |
+        Splits a book's realized residual return into two parts:
+
+        - **Selection** — what the book earned by holding names that beat their cohort's
+          average residual.
+        - **Drift** — what it earned purely from net exposure to that average, which
+          accrues on net weight regardless of any selection skill.
+
+        The two sum to the total exactly. This is an identity, not a fitted attribution:
+
+            R_t = Σ_i w_i·(ε_i,t − μ_c(i),t) + Σ_c W_c·μ_c,t
+
+        where `w_i` is a position weight, `ε_i,t` its residual, `μ_c,t` its cohort's mean
+        residual, and `W_c` the net weight in cohort `c`.
+
+        This answers *"was I paid for stock-picking, or for being net long the average
+        stock?"* — a question that is only answerable because ERM3 fits residuals without
+        an intercept, leaving a non-zero cross-sectional mean that the cohort store
+        exposes.
+
+        Levels must match: `level=sector` (default) demeans each name's sector-level
+        residual against its sector cohort; `level=market` uses market-level residuals
+        against the market cohort.
+
+        Weights are treated as **constant** over the window and are **not normalized** —
+        rescaling them would change the drift term, which is proportional to net weight.
+        Positions that cannot be resolved or mapped to an addressable cohort are dropped
+        and named in `coverage.dropped` rather than silently omitted.
+
+        Realized historical attribution only — not a forecast, not a backtest of a
+        strategy, and not a recommendation regarding any security.
+      operationId: postCohortPnlDecomposition
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: cohorts-pnl-decomposition
+        tier: premium
+        model: per_request
+        cost_usd: 0.05
+        currency: USD
+        billing_code: cohorts_pnl_decomposition_v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positions]
+              properties:
+                positions:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [ticker, weight]
+                    properties:
+                      ticker:
+                        type: string
+                      weight:
+                        type: number
+                        description: May be negative for a short.
+                level:
+                  type: string
+                  enum: [market, sector]
+                  default: sector
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                min_names:
+                  type: integer
+                  minimum: 0
+                  maximum: 5000
+                  description: >
+                    Ignore cohort means on days the cohort had fewer than this many
+                    members.
+                include_series:
+                  type: boolean
+                  default: false
+                  description: Include the daily selection/drift series.
+      responses:
+        "200":
+          description: Selection vs drift decomposition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CohortPnlDecompositionResponse"
+        "400":
+          description: Invalid request
+        "404":
+          description: Cohort data unavailable
         "500":
           description: Internal error
         "429":

@@ -214,6 +214,118 @@ export const IndustryPanelRequestSchema = z.object({
 
 export type IndustryPanelRequest = z.infer<typeof IndustryPanelRequestSchema>;
 
+/**
+ * Schemas for GET /api/cohorts (cross-section) and /api/cohorts/series.
+ *
+ * `cohorts` is a comma-separated ticker list; omitted means all public cohorts
+ * (SPY + the 11 GICS sector SPDRs). The 42 L3 subsector cohorts are proprietary
+ * and are not addressable — the service rejects them exactly as it rejects a
+ * nonexistent ticker, so the roster cannot be enumerated by probing.
+ *
+ * `min_names` gates the statistics: a cohort with few members has a meaningless
+ * residual_mean / residual_sd, and days below the threshold are dropped rather
+ * than returned as noise.
+ */
+const CohortTickerListSchema = z
+  .string()
+  .transform((s) =>
+    s
+      .split(",")
+      .map((t) => t.trim().toUpperCase())
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.string()).min(1, "cohorts must name at least one cohort").max(12));
+
+const CohortVariableListSchema = z
+  .string()
+  .transform((s) => s.split(",").map((v) => v.trim()).filter(Boolean))
+  .pipe(z.array(z.string()).min(1, "variables must name at least one variable").max(19));
+
+const CohortMinNamesSchema = z.coerce
+  .number()
+  .int()
+  .min(0, "min_names must be >= 0")
+  .max(5000, "min_names must be <= 5000")
+  .optional();
+
+export const CohortCrossSectionRequestSchema = z.object({
+  cohorts: CohortTickerListSchema.optional(),
+  variables: CohortVariableListSchema.optional(),
+  teo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "teo must be YYYY-MM-DD")
+    .optional(),
+  min_names: CohortMinNamesSchema,
+});
+
+export type CohortCrossSectionRequest = z.infer<typeof CohortCrossSectionRequestSchema>;
+
+export const CohortSeriesRequestSchema = z
+  .object({
+    cohorts: CohortTickerListSchema.optional(),
+    variables: CohortVariableListSchema.optional(),
+    start_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "start_date must be YYYY-MM-DD")
+      .optional(),
+    end_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "end_date must be YYYY-MM-DD")
+      .optional(),
+    min_names: CohortMinNamesSchema,
+    include_proxy_source: z
+      .enum(["true", "false"])
+      .transform((v) => v === "true")
+      .optional(),
+  })
+  .refine(
+    (val) => !val.start_date || !val.end_date || val.start_date <= val.end_date,
+    { message: "start_date must be on or before end_date", path: ["start_date"] },
+  );
+
+export type CohortSeriesRequest = z.infer<typeof CohortSeriesRequestSchema>;
+
+/**
+ * Schema for POST /api/cohorts/pnl-decomposition — split a book's realized
+ * residual return into within-cohort selection and net-exposure drift.
+ *
+ * Weights are unconstrained in sign (a short is a negative weight) and are not
+ * normalized: the caller's stated weights are what gets attributed, because
+ * rescaling them would silently change the drift term, which is proportional to
+ * net weight.
+ */
+export const CohortPnlDecompositionRequestSchema = z
+  .object({
+    positions: z
+      .array(
+        z.object({
+          ticker: TickerSchema,
+          weight: z.number().finite("weight must be a finite number"),
+        }),
+      )
+      .min(1, "At least one position is required")
+      .max(500, "Maximum 500 positions per request"),
+    level: z.enum(["market", "sector"]).default("sector"),
+    start_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "start_date must be YYYY-MM-DD")
+      .optional(),
+    end_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "end_date must be YYYY-MM-DD")
+      .optional(),
+    min_names: z.coerce.number().int().min(0).max(5000).optional(),
+    include_series: z.boolean().default(false),
+  })
+  .refine(
+    (val) => !val.start_date || !val.end_date || val.start_date <= val.end_date,
+    { message: "start_date must be on or before end_date", path: ["start_date"] },
+  );
+
+export type CohortPnlDecompositionRequest = z.infer<
+  typeof CohortPnlDecompositionRequestSchema
+>;
+
 const RankingMetricSchema = z.enum([
   "mkt_cap",
   "gross_return",
