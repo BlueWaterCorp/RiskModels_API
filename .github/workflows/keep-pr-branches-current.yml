@@ -16,21 +16,34 @@ name: Keep PR branches current
 #     produces noise.
 #   * Merge anything. Who merges, and when, is unchanged.
 #
-# ── One caveat, and it is the important one ─────────────────────────────────
-# A branch updated with the default GITHUB_TOKEN does not re-trigger workflows
-# (GitHub suppresses events from token-authored pushes, to stop recursion). So
-# with GITHUB_TOKEN the PR becomes *mergeable* but its green checks still
-# describe the pre-update commit — which is exactly the "passes while being
-# wrong" shape this codebase keeps finding.
+# ── Why this requires PR_UPDATE_TOKEN, and refuses to run without it ────────
+# A branch updated with the default GITHUB_TOKEN is committed as
+# `github-actions[bot]`. The documented consequence is that workflows are not
+# re-triggered. The observed consequence on Risk_Models, 2026-08-04, was
+# worse: the required checks landed in "4 workflows awaiting approval", so the
+# PR looked stuck and needed a human click — on a repo whose protection is
+# `strict`, meaning the branch must be current to merge at all. A workflow
+# built to remove friction had added a manual step to every PR it touched.
 #
-# To get checks re-run against the merged state, add a repo secret
-# `PR_UPDATE_TOKEN` (a fine-grained PAT with Contents: read/write and Pull
-# requests: read/write). The job prefers it when present and says which token
-# it used, so the PR summary never leaves that ambiguous.
+# So the fallback is gone. Without `PR_UPDATE_TOKEN` this job does nothing and
+# says so. A stale branch someone updates by hand is a smaller problem than an
+# approval-gated one nobody understands — and a silently expired token now
+# means "no sweep" rather than the return of a symptom whose cause took a
+# screenshot to find.
+#
+# The secret is a fine-grained PAT with Contents: read/write and Pull
+# requests: read/write, scoped to this repository.
 
 on:
   push:
     branches: [main]
+  # A push-only trigger has a hole, found the day this shipped: a PR opened
+  # *after* the last push to main is branched from an older main and never
+  # gets swept, because no push follows it. It sits behind until main happens
+  # to move again — which on a quiet afternoon is hours. The hourly sweep
+  # closes that; it is a no-op when nothing is behind.
+  schedule:
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -48,20 +61,38 @@ jobs:
     name: Update open PR branches
     runs-on: ubuntu-latest
     steps:
-      - name: Update every open PR based on main
+      - name: Require PR_UPDATE_TOKEN
+        id: token
         env:
-          GH_TOKEN: ${{ secrets.PR_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
+          HAVE_TOKEN: ${{ secrets.PR_UPDATE_TOKEN != '' }}
+        run: |
+          if [ "$HAVE_TOKEN" = "true" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Keep PR branches current — did not run"
+            echo ""
+            echo "\`PR_UPDATE_TOKEN\` is not set on this repository, so no branches were touched."
+            echo ""
+            echo "Falling back to \`GITHUB_TOKEN\` would author the update as"
+            echo "\`github-actions[bot]\`, which puts the required checks into"
+            echo "*awaiting approval* and leaves the PR needing a manual click — more"
+            echo "friction than the staleness this job exists to remove."
+            echo ""
+            echo "Add a fine-grained PAT (Contents + Pull requests, read/write) as"
+            echo "\`PR_UPDATE_TOKEN\` to enable it."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::PR_UPDATE_TOKEN not set — sweep skipped by design."
+
+      - name: Update every open PR based on main
+        if: steps.token.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PR_UPDATE_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          USING_PAT: ${{ secrets.PR_UPDATE_TOKEN != '' }}
         run: |
           set -uo pipefail
-
-          if [ "$USING_PAT" = "true" ]; then
-            echo "Token: PR_UPDATE_TOKEN — updated branches will re-run their checks."
-          else
-            echo "Token: GITHUB_TOKEN — branches will be updated, but their checks will NOT re-run."
-            echo "Add a PR_UPDATE_TOKEN secret to close that gap (see this file's header)."
-          fi
 
           # `--json` keeps this robust against gh's human-readable output
           # changing. isCrossRepository is the fork test.
@@ -113,13 +144,8 @@ jobs:
           {
             echo "## Keep PR branches current"
             echo ""
-            if [ "$USING_PAT" = "true" ]; then
-              echo "Checks **will** re-run on updated branches (\`PR_UPDATE_TOKEN\`)."
-            else
-              echo "> **Checks will not re-run on updated branches.** The default"
-              echo "> \`GITHUB_TOKEN\` suppresses the push event. A green check on an"
-              echo "> updated PR describes the commit *before* the update."
-            fi
+            echo "Updated branches re-run their checks — the update is authored by"
+            echo "the \`PR_UPDATE_TOKEN\` identity, not by \`github-actions[bot]\`."
             echo ""
             printf '| Outcome | PRs |\n|---|---|\n'
             printf '| Updated | %s |\n'      "$( [ ${#updated[@]} -gt 0 ]    && echo "${updated[*]}"    || echo '—' )"
