@@ -37,12 +37,22 @@ LAYER_COLORS: dict[str, str] = {
     "market": "#64748b",
     "sector": "#0369a1",
     "subsector": "#6d28d9",
+    "style": "#a16207",
     "residual": "#00aa00",
 }
 """ERM3 ontology layer palette (Market → Sector → Subsector → Residual)."""
 
-LAYER_ORDER: tuple[str, ...] = ("market", "sector", "subsector", "residual")
-"""Canonical layer render order — always Market → Sector → Subsector → Residual."""
+LAYER_ORDER: tuple[str, ...] = ("market", "sector", "subsector", "style", "residual")
+"""Canonical layer render order — Market → Sector → Subsector → Style → Residual.
+
+Style (the Fama-French FF2 tilt) was added to the ontology after this site was
+built, and was locked to a colour on 2026-08-04; before that it had no entry
+here and surfaces that carried it invented their own. It sits between the
+replicable layers and the residual because that is what it is: a known factor
+tilt, not stock selection.
+
+Renderers that only ever receive four layers are unaffected — a decomposition
+without a style share simply has nothing to draw for it."""
 
 # ---------------------------------------------------------------------------
 # NEUTRALS — reserved for baseline, totals, unresolved holdings, and
