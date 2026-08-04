@@ -187,6 +187,138 @@ They appear in **`GET /metrics/{ticker}`** under `metrics` when synced, in **Zar
 
 ---
 
+## Cohort residual statistics (`GET /cohorts`, `GET /cohorts/series`, `GET /cohorts/roster`, `POST /cohorts/pnl-decomposition`)
+
+These 19 variables come from the ERM3 **cohort store** (`ds_erm3_cohorts`) — the first ERM3 artifact published at **cohort** level rather than per-stock. A **cohort** is the market (level 1) or a GICS sector (level 2), and every statistic is a **cross-sectional** summary across that cohort's member stocks on one trading date (`teo`). Public scope is **SPY plus the 11 GICS sector SPDRs**; cohorts are addressed by **ticker** (the store's internal join key is never serialized).
+
+Unless a row says otherwise, values are **daily** — same convention as `returns_gross` and the `l*_rr` fields — not annualised and not cumulative.
+
+### Residuals are not zero-mean (the no-intercept contract)
+
+ERM3 regressions are fitted **without an intercept**, deliberately, so each stock's residual retains its alpha. The consequence is that the **cross-sectional mean residual is not zero**, and `residual_mean` is that quantity per (`teo`, cohort). It is what you subtract to demean a relative-ranking signal:
+
+```
+demeaned_i,t = ε_i,t − residual_mean(cohort(i), t)
+```
+
+**The level must match.** A cohort's `residual_mean` is the mean of its members' residuals **at that cohort's level** — a market cohort holds market-level (`l1_rr`) means, a sector cohort holds sector-level (`l2_rr`) means. Demeaning an `l2_rr` series against the market cohort mixes two different quantities.
+
+**Never quote a drift figure without both its window and its cascade level** (and, where it matters, its population). The sign is not stable across the sample. Two correctly-labelled realized figures, equal-weighted, measured on the published panel:
+
+| Level | Window | Population | Mean residual |
+|---|---|---|---|
+| market (L1) | 2014–2026 | market cohort members | −3.68 %/yr |
+| market (L1) | 2000–2026 | market cohort members | +2.09 %/yr |
+
+Both rows are the **same level and the same population** — only the window differs, and the sign still flips. That is the point: a drift figure is meaningless without its window. Changing the level moves it again (the equal-weighted mean across the 11 sector cohorts runs −2.89 %/yr and +2.76 %/yr over those same two windows), and changing the population moves it a third time — an equal-weighted mean *across cohorts* is not the same statistic as an equal-weighted mean *across stocks*, because cohorts differ in size.
+
+Neither row is "the" drift. Re-derive the number for the level, window, and population you actually care about rather than quoting any of these. These are realized historical measurements, not forecasts.
+
+`no_intercept_contract` in the `disclosures` block is read **from the store's own attributes**, not restated by the API, so it cannot drift from the data it describes.
+
+### Distribution fields
+
+Cross-sectional shape of member residuals within the cohort on that day.
+
+| Field | Unit | Description |
+|---|---|---|
+| `residual_mean` | decimal (daily) | **Equal-weighted** mean member residual — the quantity to subtract when demeaning a relative-ranking signal at this level. |
+| `residual_mean_cw` | decimal (daily) | Cap-weighted equivalent. The EW/CW wedge is itself informative. |
+| `residual_sd` | decimal (daily) | Cross-sectional dispersion of member residuals — how much selection opportunity exists in the cohort. Read with `mean_pairwise_corr`. |
+| `residual_skew` | dimensionless | Cross-sectional skewness of member residuals. |
+| `residual_p10` | decimal (daily) | Cross-sectional 10th-percentile member residual. |
+| `residual_p90` | decimal (daily) | Cross-sectional 90th-percentile member residual. |
+| `mean_pairwise_corr` | dimensionless (−1 to 1) | Mean pairwise correlation of member residuals, from a **63-day identity-based estimator**. |
+
+**`residual_sd` is a conditioning and allocation variable, not an alpha source.** It **multiplies** skill and cannot create it — zero IC times a well-timed gross multiplier is still zero. It does not predict returns and must not be described as a signal. Always read it alongside `mean_pairwise_corr`, which separates idiosyncratic dispersion from common movement: dispersion conflates the two.
+
+**`mean_pairwise_corr` is an estimate, not a measured matrix.** It inverts the portfolio-variance relation `var(mean of n) = avg_var/n + avg_cov·(n−1)/n` over a 63-day window rather than forming a full pairwise correlation matrix. Do not present it to high precision.
+
+### Breadth fields
+
+| Field | Unit | Description |
+|---|---|---|
+| `n_names` | integer count | Member count that day. **Guards every other statistic.** |
+| `n_effective` | dimensionless | **Inverse-Herfindahl breadth** of the cohort's weights. |
+| `weight_top1` | decimal_fraction | Largest constituent weight — concentration. |
+| `membership_churn` | integer count | Names entering + leaving versus the previous `teo`. |
+
+**Prefer `n_effective` over `n_names` for anything power- or breadth-related.** A cohort of 40 names dominated by one constituent has the statistical breadth of far fewer, and inverse-Herfindahl breadth is often well below the headcount.
+
+**Thin cohorts give meaningless statistics.** A four-name cohort's `residual_mean` and `residual_sd` are noise. Filter with `min_names` on any of the cohort endpoints; days (or cohorts) below the threshold are **dropped, not zero-filled**.
+
+### Factor linkage fields
+
+The cohort's own factor return and its relationship to its parent's (sector → market).
+
+| Field | Unit | Description |
+|---|---|---|
+| `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). |
+| `linked_beta_se` | dimensionless | Standard error of that estimate. See the caution below. |
+| `linked_beta_r2` | decimal_fraction | R² of that regression — the **cohort factor's** fit on its parent. **Not** the same quantity as `cohort_ER`. |
+| `linked_beta_roll63` | dimensionless | 63-day variant of `linked_beta`. Divergence from `linked_beta` is beta *instability*, which is itself informative. |
+| `cohort_factor_return` | decimal (daily) | The cohort factor return itself. |
+| `cohort_residual_return` | decimal (daily) | Factor return net of `linked_beta` × parent factor return. |
+| `cohort_ER` | decimal_fraction | Mean **member's** explained risk attributed to this cohort's level. Incremental, can be slightly negative — see below. |
+| `factor_source` | integer code | Provenance of the factor return that day. `0` = native; non-zero means a substitute instrument backed it. |
+
+**`linked_beta_se` is a conditional, homoskedastic model SE.** It assumes iid residuals, so it is **understated for daily returns**, and it is unreliable wherever the rolling window is partial (early history). It is **not** a total-uncertainty measure — do not use it alone to build confidence intervals.
+
+**`cohort_ER` is an incremental attribution (`er_level − er_prev`), not an R² share.** It can be slightly negative and does **not** sum to 1 — do not clamp it to [0, 1] or render it as a percentage of a total. It is a different quantity from `linked_beta_r2` (measured correlation ≈ **−0.15**): `cohort_ER` is the *average member stock's* explained variance at this level, while `linked_beta_r2` is the *cohort factor's* explained variance against its parent factor. Never write "explained variance" for either without saying **whose**.
+
+### `factor_source` codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Native — the cohort's own instrument return |
+| `1` | Primary proxy (a real ETF standing in) |
+| `2` | Chain proxy (a deeper real ETF standing in) |
+| `3` | Synthetic free-float index |
+| `9` | No data |
+
+Any non-zero code means a **substitute instrument** backed the factor that day, so spliced history is not the same basket as the cohort's own. **Two sector cohorts are majority-proxied over the full panel**, which makes this material on long windows. `include_proxy_source=true` on `GET /cohorts/series` adds a per-day `proxy_source` label naming the backing instrument (resolved to a ticker). The store's own `return_source_legend` is echoed in `disclosures`.
+
+### Response-level fields
+
+| Field | Endpoint | Unit | Description |
+|---|---|---|---|
+| `proxied_fraction` | `/cohorts/series` (per cohort) | decimal_fraction | Share of the returned days whose factor came from a substitute instrument (`factor_source != 0`). **Callers must surface this** — a long-history chart that hides it is showing partly a different basket. |
+| `min_names` | `/cohorts`, `/cohorts/series` | integer count | The thin-cohort filter that was applied (echoed back). |
+| `disclosures` | all cohort endpoints | object | Interpretation notes that govern correct use: `no_intercept_contract`, `return_source_legend`, `coverage`, `dispersion_use`, `er_sign`, `thin_cohorts`. The first two are read from the store's attributes. |
+
+### Selection vs drift (`POST /cohorts/pnl-decomposition`)
+
+Splits a constant-weight book's **realized** residual return into what it earned by picking names and what it earned by being net long (or short) the average stock. Adding and subtracting each name's cohort mean splits the daily residual return exactly:
+
+```
+R_t = Σ_i w_i·(ε_i,t − μ_c(i),t)  +  Σ_c W_c·μ_c,t
+      └──── selection ────┘          └──── drift ────┘
+```
+
+where `w_i` is a position weight, `ε_i,t` its residual, `μ_c,t = residual_mean` for its cohort, and `W_c` the net weight in cohort `c`.
+
+| Field | Unit | Description |
+|---|---|---|
+| `totals.selection` | decimal | Cumulative return earned by holding names that beat their cohort's average residual. |
+| `totals.drift` | decimal | Cumulative return earned from net exposure to that cohort average, which accrues on net weight **regardless of any selection skill**. |
+| `totals.residual` | decimal | Cumulative residual return of the book. Equals `selection + drift`. |
+| `totals.selection_share` | decimal_fraction | `abs(selection) / (abs(selection) + abs(drift))`. `null` when both are ≈ 0. |
+| `by_cohort[].net_weight` | decimal | Sum of position weights in that cohort — the weight the cohort's drift accrued on. Negative for a net-short cohort. |
+
+**`selection` and `drift` sum to the total residual return exactly.** This is an **identity**, not a fitted attribution — there is no regression, no residual-of-the-residual term, and no cross-term.
+
+Levels must match here too: `level=sector` (default) demeans each name's sector-level residual against its sector cohort; `level=market` demeans market-level residuals against the market cohort. Weights are treated as **constant** over the window and are **not normalized** — rescaling them changes `drift`, which is proportional to net weight. Positions that cannot be resolved or mapped to an addressable cohort are dropped and named in `coverage.dropped`.
+
+This is realized historical attribution of a stated weight vector — not a forecast, not a backtest of a strategy, and not a recommendation regarding any security.
+
+### Cohort coverage
+
+- **Cohorts cover ~88% of eligible universe names.** The shortfall is names whose sector code maps to no ETF proxy — a real, bounded gap, not a data error.
+- **Panel starts 2000-01-03**, but **full factor richness begins around 2006**; earlier history leans on proxy or synthetic backfill, flagged per-day by `factor_source`.
+- Values are `null` where the statistic is undefined for that day; rows below `min_names` are dropped rather than returned as noise.
+
+---
+
 ## `/ticker-returns` Column Aliases
 
 The `/api/ticker-returns` endpoint returns a daily time series. Each row contains:

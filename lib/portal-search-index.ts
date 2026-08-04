@@ -28,6 +28,14 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     keywords: 'regression orthogonalization variance hedge ratio er hr',
   },
   {
+    title: 'Cohort Dispersion & Opportunity',
+    description:
+      'Cross-sectional residual dispersion by market and GICS sector cohort — where selection opportunity sits, with mean pairwise correlation and effective breadth.',
+    href: '/cohorts',
+    keywords:
+      'cohort cohorts dispersion residual_sd residual_mean demean demeaning no-intercept zero-mean mean_pairwise_corr n_effective breadth herfindahl concentration selection drift opportunity sector spdr xlk xle xlf xlv xlc proxied factor_source',
+  },
+  {
     title: 'ERM3 Engine Design',
     description: 'Time safety, Security Master, tradeable ETF hedges, engine architecture.',
     href: '/docs/erm3-engine',
