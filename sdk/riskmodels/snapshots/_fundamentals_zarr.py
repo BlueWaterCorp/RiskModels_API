@@ -27,6 +27,16 @@ import numpy as np
 import pandas as pd
 
 
+# SEC-recipe completeness floor. `total_debt_sec` must be at least this
+# multiple of the EODHD borrowings figure to be trusted; below it, the recipe
+# missed a component. Set from the superset argument in `leverage_ratio` below
+# — SEC debt includes leases on top of borrowings, so it should never sit
+# under the borrowings-only number at all. 0.90 allows definitional noise;
+# 0.50 is the coverage-preserving alternative and is documented at the call
+# site with its cost.
+SEC_DEBT_COMPLETENESS_FLOOR = 0.90
+
+
 @dataclass
 class FundamentalsPIT:
     """PIT-gated fundamentals snapshot for one ticker as-of one ``teo``.
@@ -41,7 +51,8 @@ class FundamentalsPIT:
     net_margin_ttm: float | None
     fcf_margin_ttm: float | None
     roe_ttm: float | None
-    leverage_ratio: float | None  # D/E, latest finite total_debt / total_equity
+    leverage_ratio: float | None  # D/E = total_debt_sec / total_equity (H.89.12);
+    # None when equity <= 0 or the SEC debt recipe fails its completeness guard
     last_eps_surprise_pct: float | None  # (actual-estimate)/abs(estimate), most recent closed qtr w/ both
     beat_streak: int | None  # consecutive quarters (from most recent) actual > estimate
     currency_suspect: bool
@@ -133,6 +144,9 @@ def build_fundamentals_pit(
         # understates leverage exactly for lease-heavy names — retailers,
         # airlines, restaurants — which is where a leverage read matters most.
         total_debt_sec = col("total_debt_sec", idx)
+        # Read the EODHD cell too — NOT to serve it, but to detect that the SEC
+        # recipe under-captured. See SEC_DEBT_COMPLETENESS_FLOOR below.
+        total_debt_eodhd = col("total_debt", idx)
 
         period_end_vals = np.asarray(ds["period_end_date"].values)[idx]
         filed_vals = np.asarray(ds["filed_date"].isel(symbol=i).values)[idx]
@@ -171,6 +185,40 @@ def build_fundamentals_pit(
 
         equity_latest = latest_finite(total_equity)
         debt_latest = latest_finite(total_debt_sec)
+
+        # SEC-recipe completeness guard.
+        #
+        # `total_debt_sec` is borrowings + finance leases + operating leases, so
+        # it is a SUPERSET of EODHD's borrowings-only `shortLongTermDebtTotal`
+        # and should never sit materially below it. Where it does, the recipe
+        # missed a borrowings component rather than finding a genuinely
+        # unlevered filer.
+        #
+        # This is not rare and it is not historical: on the built store, 12.0%
+        # of cross-checkable cells have the SEC figure below a TENTH of the
+        # EODHD one — median $20.2M against $969.3M — and the rate sits between
+        # 11% and 15% in every period-end year from 2009 through 2026. No
+        # recency filter helps.
+        #
+        # Serving those unguarded turns a ~2.4x leverage into ~0.05x: confidently
+        # wrong, and worse than absent. The house rule is that missing is never
+        # zero and a thin name gets fewer claims rather than softer ones, so the
+        # ratio is refused rather than served.
+        #
+        # Cost at the current floor: ~32% of cross-checkable cells refused,
+        # servable leverage 167,644 -> 119,326. Lowering the floor to 0.50 costs
+        # 23.4% instead but keeps serving cells where the SEC figure is half the
+        # borrowings-only number, which cannot be a definitional difference.
+        # Cells with no EODHD counterpart (9.4%) cannot be cross-checked and are
+        # served on the SEC recipe alone.
+        eodhd_latest = latest_finite(total_debt_eodhd)
+        if (
+            np.isfinite(debt_latest)
+            and np.isfinite(eodhd_latest)
+            and eodhd_latest > 0
+            and debt_latest < SEC_DEBT_COMPLETENESS_FLOOR * eodhd_latest
+        ):
+            debt_latest = float("nan")
         # Requires POSITIVE equity, not merely non-zero. Negative equity — a
         # buyback-driven deficit, or an accumulated one — divides to a finite
         # negative D/E that passes every downstream finiteness check and
