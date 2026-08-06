@@ -126,7 +126,13 @@ def build_fundamentals_pit(
         cfo = col("cash_from_operations", idx)
         capex = col("capital_expenditures", idx)
         total_equity = col("total_equity", idx)
-        total_debt = col("total_debt", idx)
+        # H.89.12: leverage reads the SEC recipe, never the EODHD cell. The
+        # hybrid store keeps `total_debt` for continuity only. The two are not
+        # interchangeable: `total_debt_sec` is borrowings + finance leases +
+        # OPERATING leases, so post-ASC-842 the EODHD borrowings-only figure
+        # understates leverage exactly for lease-heavy names — retailers,
+        # airlines, restaurants — which is where a leverage read matters most.
+        total_debt_sec = col("total_debt_sec", idx)
 
         period_end_vals = np.asarray(ds["period_end_date"].values)[idx]
         filed_vals = np.asarray(ds["filed_date"].isel(symbol=i).values)[idx]
@@ -164,10 +170,15 @@ def build_fundamentals_pit(
         )
 
         equity_latest = latest_finite(total_equity)
-        debt_latest = latest_finite(total_debt)
+        debt_latest = latest_finite(total_debt_sec)
+        # Requires POSITIVE equity, not merely non-zero. Negative equity — a
+        # buyback-driven deficit, or an accumulated one — divides to a finite
+        # negative D/E that passes every downstream finiteness check and
+        # renders as "-3.2x", which is not a leverage reading at all. The
+        # condition itself is the fact worth reporting; a ratio is not.
         leverage_ratio = (
             float(debt_latest / equity_latest)
-            if np.isfinite(debt_latest) and np.isfinite(equity_latest) and equity_latest != 0
+            if np.isfinite(debt_latest) and np.isfinite(equity_latest) and equity_latest > 0
             else None
         )
 
