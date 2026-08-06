@@ -752,6 +752,13 @@ export interface FundHolding {
   l3_sector_er?: number | null;
   l3_subsector_er?: number | null;
   l3_residual_er?: number | null;
+  /** Share-class projection disclosure (G.100) — see `FilerHolding.modelled_as`. */
+  modelled_as?: {
+    security_id: string;
+    ticker: string | null;
+    requested_class: string | null;
+    modelled_class: string | null;
+  } | null;
 }
 
 export interface FundHoldingsSnapshot {
@@ -1339,6 +1346,18 @@ export interface FilerHolding {
   l3_sector_er?: number | null;
   l3_subsector_er?: number | null;
   l3_residual_er?: number | null;
+  /**
+   * Share-class projection disclosure (G.100): present when this holding's
+   * class is not the one ERM3 models and its `l3_*` fields come from the
+   * modelled sibling named here. Substitution must be reported, never
+   * silent (the G.35 doctrine).
+   */
+  modelled_as?: {
+    security_id: string;
+    ticker: string | null;
+    requested_class: string | null;
+    modelled_class: string | null;
+  } | null;
 }
 
 export interface FilerHoldingsSnapshot {
