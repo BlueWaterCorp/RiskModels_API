@@ -86,6 +86,10 @@ const getRiskMetricsArgs = z.object({
   ticker: TickerSchema,
 });
 
+const compareTickersArgs = z.object({
+  tickers: z.array(TickerSchema).min(2).max(8),
+});
+
 const getResidualSignalArgs = z.object({
   ticker: TickerSchema,
 });
@@ -237,6 +241,25 @@ async function execGetFundamentals(args: z.infer<typeof getFundamentalsArgs>) {
   };
 }
 
+/**
+ * One metric list for both the single-ticker snapshot and the comparison —
+ * the two tools must report the same numbers for the same name, or a user
+ * who asks about NVDA alone and then compares NVDA to AMD sees a drift the
+ * product cannot explain.
+ */
+const RISK_METRIC_KEYS = [
+  "vol_23d",
+  "price_close",
+  "market_cap",
+  "l3_mkt_hr",
+  "l3_sec_hr",
+  "l3_sub_hr",
+  "l3_mkt_er",
+  "l3_sec_er",
+  "l3_sub_er",
+  "l3_res_er",
+] as const;
+
 async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
   const { ticker } = args;
   const symbolRecord = await resolveSymbolByTicker(ticker);
@@ -245,18 +268,7 @@ async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
   }
   const latestData = await fetchLatestMetrics(
     symbolRecord.symbol,
-    [
-      "vol_23d",
-      "price_close",
-      "market_cap",
-      "l3_mkt_hr",
-      "l3_sec_hr",
-      "l3_sub_hr",
-      "l3_mkt_er",
-      "l3_sec_er",
-      "l3_sub_er",
-      "l3_res_er",
-    ],
+    [...RISK_METRIC_KEYS],
     "daily",
   );
   if (!latestData) {
@@ -284,6 +296,97 @@ async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
       asset_type: symbolRecord.asset_type || null,
     },
   };
+}
+
+export interface TickerComparisonRow {
+  ticker: string;
+  symbol: string;
+  teo: string | null;
+  metrics: Record<string, number | null>;
+}
+
+export interface TickerComparisonUnresolved {
+  ticker: string;
+  reason: string;
+}
+
+/**
+ * Shape N per-ticker snapshots into one comparison. Pure so the alignment
+ * rule is testable without the DAL: `vintage.aligned` is true only when every
+ * resolved row carries the same `teo` — a comparison quietly mixing vintages
+ * is the G.71 defect in table form, so a mismatch is stated, never hidden.
+ */
+export function shapeTickerComparison(
+  rows: TickerComparisonRow[],
+  unresolved: TickerComparisonUnresolved[],
+): Record<string, unknown> {
+  const teos = [...new Set(rows.map((r) => r.teo).filter((t): t is string => t != null))];
+  const aligned = teos.length <= 1 && rows.every((r) => r.teo != null);
+  return {
+    comparison: rows,
+    shared_axis: [...RISK_METRIC_KEYS],
+    vintage: {
+      aligned,
+      teos: Object.fromEntries(rows.map((r) => [r.ticker, r.teo])),
+      ...(aligned
+        ? {}
+        : {
+            note: "Rows are NOT on one date — state each ticker's as-of date next to its numbers rather than presenting them as a same-day comparison.",
+          }),
+    },
+    ...(unresolved.length ? { unresolved } : {}),
+  };
+}
+
+async function execCompareTickers(args: z.infer<typeof compareTickersArgs>) {
+  const rows: TickerComparisonRow[] = [];
+  const unresolved: TickerComparisonUnresolved[] = [];
+  await Promise.all(
+    args.tickers.map(async (ticker) => {
+      try {
+        const symbolRecord = await resolveSymbolByTicker(ticker);
+        if (!symbolRecord) {
+          unresolved.push({ ticker, reason: "symbol not found" });
+          return;
+        }
+        const latestData = await fetchLatestMetrics(
+          symbolRecord.symbol,
+          [...RISK_METRIC_KEYS],
+          "daily",
+        );
+        if (!latestData) {
+          unresolved.push({ ticker, reason: "no metrics found" });
+          return;
+        }
+        rows.push({
+          ticker: symbolRecord.ticker,
+          symbol: symbolRecord.symbol,
+          teo: latestData.teo ?? null,
+          metrics: Object.fromEntries(
+            RISK_METRIC_KEYS.map((key) => [key, latestData.metrics[key] ?? null]),
+          ),
+        });
+      } catch (error) {
+        unresolved.push({
+          ticker,
+          reason: error instanceof Error ? error.message : "lookup failed",
+        });
+      }
+    }),
+  );
+  if (rows.length < 2) {
+    const detail = unresolved.map((u) => `${u.ticker} (${u.reason})`).join(", ");
+    throw new Error(
+      `Comparison needs at least two resolvable tickers; could not resolve: ${detail}`,
+    );
+  }
+  // Preserve the caller's ordering — Promise.all completion order is arrival
+  // order, and "BAC vs IBM" should render BAC first because the user said so.
+  const order = new Map(args.tickers.map((t, i) => [t.toUpperCase(), i]));
+  rows.sort(
+    (a, b) => (order.get(a.ticker.toUpperCase()) ?? 99) - (order.get(b.ticker.toUpperCase()) ?? 99),
+  );
+  return shapeTickerComparison(rows, unresolved);
 }
 
 /**
@@ -875,6 +978,30 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: "metrics-snapshot",
     argSchema: getRiskMetricsArgs,
     executor: async (a) => execGetRiskMetrics(getRiskMetricsArgs.parse(a)),
+  },
+  {
+    name: "compare_tickers",
+    openaiTool: fnTool(
+      "compare_tickers",
+      "Side-by-side risk comparison of 2-8 US equity tickers on one shared axis. Call this whenever the user asks to compare names ('compare BAC to IBM', 'NVDA vs AMD') instead of calling get_risk_metrics once per ticker — one call returns every ticker's hedge ratios (L3), explained risk, volatility, and price as aligned rows, and bills once. Lead your answer with the comparison itself (the doctrine's collapse-details rule does not apply to an explicitly requested comparison). Check vintage.aligned first: when false, the rows are not on one date — say so and give each ticker its as-of date. Any names listed in unresolved could not be compared; name them rather than silently omitting them.",
+      {
+        tickers: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "2-8 US stock tickers in the order the user named them, e.g. [\"BAC\", \"IBM\"]",
+        },
+      },
+      ["tickers"],
+    ),
+    capabilityId: "batch-analysis",
+    argSchema: compareTickersArgs,
+    executor: async (a) => execCompareTickers(compareTickersArgs.parse(a)),
+    // The global fallback replaces every array over the size limit with a
+    // shape stub — for this tool the rows ARE the answer. The result is
+    // bounded by construction (<= 8 tickers x fixed scalar keys), so pass it
+    // through intact and fall back only if that invariant is ever broken.
+    sanitizer: (r) => (JSON.stringify(r).length <= 30_000 ? r : applyLargeResultFallback(r)),
   },
   {
     name: "get_fundamentals",
