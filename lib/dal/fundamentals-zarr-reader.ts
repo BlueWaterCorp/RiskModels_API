@@ -208,6 +208,38 @@ export function latestFinite(values: (number | null)[]): number {
   return NaN;
 }
 
+/**
+ * SEC-recipe completeness floor. `total_debt_sec` must be at least this
+ * multiple of the EODHD borrowings figure (`total_debt`) to be trusted;
+ * below it, the recipe missed a borrowings component.
+ *
+ * SEC debt is borrowings + finance leases + operating leases — a SUPERSET of
+ * EODHD's borrowings-only figure — so it should never sit materially below
+ * that figure. 0.90 allows definitional noise; 0.50 is the coverage-preserving
+ * alternative. Measured on the built store, ~12% of cross-checkable cells have
+ * SEC below a tenth of EODHD (median $20M vs $969M), every year 2009–2026.
+ * Serving those unguarded turns ~2.4x leverage into ~0.05x.
+ */
+export const SEC_DEBT_COMPLETENESS_FLOOR = 0.9;
+
+/**
+ * Trust a SEC debt cell only when it clears the completeness floor against
+ * EODHD borrowings. Returns NaN when the recipe under-captured. EODHD is for
+ * detection only — never served. Cells with no EODHD counterpart cannot be
+ * cross-checked and pass on the SEC recipe alone.
+ */
+export function trustSecDebt(debtSec: number, debtEodhd: number): number {
+  if (!Number.isFinite(debtSec)) return NaN;
+  if (
+    Number.isFinite(debtEodhd) &&
+    debtEodhd > 0 &&
+    debtSec < SEC_DEBT_COMPLETENESS_FLOOR * debtEodhd
+  ) {
+    return NaN;
+  }
+  return debtSec;
+}
+
 // ── Row pack (internal) ──────────────────────────────────────────────────────
 
 /** Variables read from the store. Raw planes are compute inputs ONLY. */
@@ -359,8 +391,11 @@ export function buildFundamentalsRows(
     const eqLast = latestFinite(windowVals("total_equity", windowPos));
     // H.89.12: WACC / Kd / leverage use SEC component-sum total_debt_sec only —
     // never the EODHD total_debt plane (kept as a compute-input holdback).
+    // Completeness guard: refuse when SEC sits materially below EODHD borrowings
+    // (recipe under-captured). EODHD is detection-only; never served.
     const debtSec = latestFinite(secWindow("total_debt_sec", windowPos));
-    const debtLast = debtSec;
+    const debtEodhd = latestFinite(windowVals("total_debt", windowPos));
+    const debtLast = trustSecDebt(debtSec, debtEodhd);
 
     const rf = rfByPeriod?.[i] ?? NaN;
     const bm = pack.vars.beta_market[i] ?? NaN;
@@ -484,9 +519,11 @@ export function buildSensitivityGrid(
   const ieTtm = ttmSum(windowVals("interest_expense", windowPos));
   const eqAvg = ttmAvg(windowVals("total_equity", windowPos));
   const eqLast = latestFinite(windowVals("total_equity", windowPos));
-  const debtLast = latestFinite(
+  const debtSec = latestFinite(
     windowPos.map((pos) => pack.secRaw?.total_debt_sec?.[pos] ?? null),
   );
+  const debtEodhd = latestFinite(windowVals("total_debt", windowPos));
+  const debtLast = trustSecDebt(debtSec, debtEodhd);
   const bm = pack.vars.beta_market[i] ?? NaN;
 
   const cells: SensitivityGridCell[][] = opts.erpGrid.map((erp) =>
