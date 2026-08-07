@@ -8,7 +8,9 @@ import {
   economicProfit,
   latestFinite,
   roeTtm,
+  SEC_DEBT_COMPLETENESS_FLOOR,
   selectPitIndices,
+  trustSecDebt,
   ttmAvg,
   ttmSum,
   waccBookWeights,
@@ -230,6 +232,31 @@ describe("guards — equity <= 0, debt <= 0, missing betas (NaN, never clip)", (
     expect(last.wacc).toBeNull();
     expect(last.economic_profit).toBeNull();
     expect(last.beta_market).toBeNull();
+  });
+
+  it("trustSecDebt refuses when SEC sits below the completeness floor vs EODHD", () => {
+    expect(trustSecDebt(50, 50)).toBe(50);
+    expect(trustSecDebt(45, 50)).toBe(45); // 0.90 exactly — allowed
+    expect(trustSecDebt(44, 50)).toBeNaN(); // below floor
+    expect(trustSecDebt(20, 1000)).toBeNaN(); // the measured under-capture tail
+    // No EODHD counterpart → cannot cross-check; SEC recipe alone
+    expect(trustSecDebt(50, NaN)).toBe(50);
+    expect(trustSecDebt(50, 0)).toBe(50);
+    expect(SEC_DEBT_COMPLETENESS_FLOOR).toBe(0.9);
+  });
+
+  it("rows refuse leverage/Kd/WACC when the SEC debt recipe under-captured", () => {
+    const pack = syntheticPack();
+    // EODHD borrowings stay at 50; SEC recipe reports a partial sum (~0.1×)
+    pack.secRaw.total_debt_sec = [5, 5, 5, 5, 5, 5];
+    const rows = buildFundamentalsRows(pack, OPTS);
+    const last = rows[rows.length - 1]!;
+    expect(last.leverage_ratio).toBeNull();
+    expect(last.cost_of_debt).toBeNull();
+    expect(last.wacc).toBeNull();
+    // Equity-side metrics still compute
+    expect(last.roe_ttm).toBeCloseTo(0.4, 10);
+    expect(last.cost_of_equity).toBeCloseTo(0.1, 10);
   });
 });
 
