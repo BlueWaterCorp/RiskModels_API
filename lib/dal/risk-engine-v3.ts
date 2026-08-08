@@ -74,6 +74,11 @@ export type V3MetricKey =
   | "style_er_l3"
   | "stock_specific_er_l3"
   | "stock_specific_sharpe_36m"
+  | "stock_specific_sharpe_se_36m"
+  | "stock_specific_psr_36m"
+  | "stock_specific_mintrl_36m"
+  | "stock_specific_n_36m"
+  | "stock_specific_tail_flag_36m"
   | "l1_mkt_beta"
   | "l2_sec_beta"
   | "l3_sub_beta"
@@ -104,6 +109,15 @@ const LSTAR_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>(["lstar_rr", "lstar_level"]
  */
 const STOCK_SPECIFIC_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
   "stock_specific_sharpe_36m",
+  // Phase 1 skill inference. Listed here for the reason the comment above
+  // gives: without it the zarr read never fires for a latest row that lacks
+  // them, and they would serve permanently null even after the store carries
+  // them — exactly the bug that hit the v4 explained-variance scalars.
+  "stock_specific_sharpe_se_36m",
+  "stock_specific_psr_36m",
+  "stock_specific_mintrl_36m",
+  "stock_specific_n_36m",
+  "stock_specific_tail_flag_36m",
   "style_er",
   "stock_specific_er",
   "style_er_l3",

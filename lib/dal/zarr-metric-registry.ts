@@ -142,6 +142,22 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   // column); reliably populated via STOCK_SPECIFIC_ZARR_OVERLAY_KEYS.
   stock_specific_sharpe_36m: { role: "hedge", zarrVar: "StockSpecific_Sharpe36m_lstar" },
 
+  // Skill-inference Phase 1 (ERM3 SKILL_INFERENCE_CONTRACT_PHASE1, contract
+  // 1.0.0). Emitted into the same hedge zarr by the same pass, config-gated
+  // OFF until enablement — so these serve NULL until the Full run lands, which
+  // is the reserved-leaf pattern sharpe_36m itself used.
+  //
+  // Units are contract, not convention, and a consumer that guesses is wrong
+  // silently: SE is ANNUALIZED on the same scale as the Sharpe; PSR is a
+  // FRACTION in [0,1] and not a percent; MinTRL is TRADING-DAY OBSERVATIONS
+  // and not months. n and the tail flag exist so a consumer can derive status
+  // per §4 rather than reading a sentinel — the contract ships none.
+  stock_specific_sharpe_se_36m: { role: "hedge", zarrVar: "StockSpecific_SharpeSE36m_lstar" },
+  stock_specific_psr_36m: { role: "hedge", zarrVar: "StockSpecific_PSR36m_lstar" },
+  stock_specific_mintrl_36m: { role: "hedge", zarrVar: "StockSpecific_MinTRL36m_lstar" },
+  stock_specific_n_36m: { role: "hedge", zarrVar: "StockSpecific_SharpeN36m_lstar" },
+  stock_specific_tail_flag_36m: { role: "hedge", zarrVar: "StockSpecific_TailFlag36m_lstar" },
+
   // Fama–French style cascade (l*_ff_* ER/HR): RETIRED. The H.81 v4 cutover
   // removed the L*_ff_* vars from every store (local + GCS) — they had served
   // all-null since 2026-06-24 — and H.92 (2026-07-06) deprecated the axis=style

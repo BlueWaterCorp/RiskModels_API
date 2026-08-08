@@ -121,6 +121,12 @@ export const POST = withBilling(
           "value_beta",
           // 36m skill Sharpe (hedge zarr, overlay-served) → stock_specific.sharpe_36m
           "stock_specific_sharpe_36m",
+          // Phase 1 skill inference -> stock_specific.inference
+          "stock_specific_sharpe_se_36m",
+          "stock_specific_psr_36m",
+          "stock_specific_mintrl_36m",
+          "stock_specific_n_36m",
+          "stock_specific_tail_flag_36m",
         ],
         "daily",
       );
@@ -218,6 +224,28 @@ export const POST = withBilling(
           // Tier-2 skill metrics (computed on L*): 36m Sharpe of the skill residual and its
           // cross-sectional rank percentile within the universe cohort.
           sharpe_36m: num(m.stock_specific_sharpe_36m),
+          // Nested rather than flattened beside sharpe_36m: these five are one
+          // contract with one version, and a consumer must not pick the PSR
+          // out while ignoring the tail flag that invalidates it.
+          inference: {
+            contract: "skill-inference/1.0.0",
+            sharpe_se_36m: num(m.stock_specific_sharpe_se_36m),
+            psr_36m: num(m.stock_specific_psr_36m),
+            mintrl_36m: num(m.stock_specific_mintrl_36m),
+            n_36m: num(m.stock_specific_n_36m),
+            tail_flag_36m: num(m.stock_specific_tail_flag_36m),
+            units: {
+              sharpe_se_36m: "annualized, same scale as sharpe_36m",
+              psr_36m: "fraction in [0,1]",
+              mintrl_36m: "trading-day observations",
+            },
+            prohibited: [
+              "forecast framing — PSR describes a realized record",
+              "cross-sectional superlatives — unsupported until DSR/BH (Phase 2)",
+              "citing se/psr/mintrl where tail_flag_36m == 1",
+              "re-annualizing psr or mintrl — neither is on the sqrt(252) scale",
+            ],
+          },
           rank_percentile: stockSpecificRankPct,
         },
       };
