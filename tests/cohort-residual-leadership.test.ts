@@ -305,3 +305,80 @@ describe("cohort residual leadership — response contract", () => {
     expect(r.dispersion.best).toBeGreaterThan(r.dispersion.worst);
   });
 });
+
+describe("coverage is a tolerance, not an identity", () => {
+  beforeEach(() => {
+    mockBatchHistory.mockReset();
+    mockFetchHistory.mockReset();
+    mockFrom.mockReset();
+    mockResolveSymbol.mockReset();
+  });
+
+  /** Members whose series has holes punched at the given indices. */
+  function seedWithGaps(gapsByTicker: Record<string, number[]>, n = 220) {
+    const dates = makeDates(n);
+    const members: Member[] = Array.from({ length: 25 }, (_, i) => ({
+      symbol: `BW-${i}`,
+      ticker: `T${i}`,
+      daily: 0.0001,
+    }));
+    seed({ members, windowDates: dates });
+
+    const base = mockBatchHistory.getMockImplementation()!;
+    mockBatchHistory.mockImplementation(async (symbols: string[]) => {
+      const rows = await base(symbols);
+      return rows.filter((r: { symbol: string; teo: string }) => {
+        const idx = Number(r.symbol.split("-")[1]);
+        const holes = gapsByTicker[`T${idx}`];
+        if (!holes) return true;
+        return !holes.includes(dates.indexOf(r.teo));
+      });
+    });
+    return dates;
+  }
+
+  const call = async () => {
+    const { getCohortResidualLeadership } = await import(
+      "@/lib/risk/cohort-residual-leadership-service"
+    );
+    return getCohortResidualLeadership({
+      cohort: "SMH", window: "252d", level: "subsector",
+    });
+  };
+
+  it("ranks a member missing a couple of days rather than dropping it", async () => {
+    // The rule was "any missing day drops you", which excluded IONS from XBI
+    // for 2 absent prints out of 252 — a complete record thrown away in the
+    // name of comparability it was not threatening.
+    seedWithGaps({ T3: [10, 99] });
+    const r = await call();
+    expect(r.ranked.some((x) => x.ticker === "T3")).toBe(true);
+    expect(r.n_short_history).toBe(0);
+    expect(r.n_partial_coverage).toBe(1);
+  });
+
+  it("reports the observed count per row, not just for the window", async () => {
+    seedWithGaps({ T3: [10, 99] });
+    const r = await call();
+    const row = r.ranked.find((x) => x.ticker === "T3")!;
+    const full = r.ranked.find((x) => x.ticker === "T4")!;
+    expect(row.observed).toBe(r.obs - 2);
+    expect(full.observed).toBe(r.obs);
+  });
+
+  it("still drops a member missing more than the tolerance", async () => {
+    // 220-day window, 2% tolerance -> 4 days allowed; 20 is not a gap, it is a
+    // different window, and that is what the rule exists to prevent.
+    seedWithGaps({ T3: Array.from({ length: 20 }, (_, i) => i * 3) });
+    const r = await call();
+    expect(r.ranked.some((x) => x.ticker === "T3")).toBe(false);
+    expect(r.n_short_history).toBe(1);
+  });
+
+  it("does not count a fully-covered member as partial", async () => {
+    seedWithGaps({});
+    const r = await call();
+    expect(r.n_partial_coverage).toBe(0);
+    expect(r.ranked.every((x) => x.observed === r.obs)).toBe(true);
+  });
+});

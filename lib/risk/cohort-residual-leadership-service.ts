@@ -13,7 +13,9 @@
  * 1. Window = the cohort ETF's own dates (or the requested window applied to
  *    the latest teo). Never the intersection of members' dates — one short
  *    peer must not truncate everyone else's comparison. Drop short-history
- *    members and report `n_short_history`.
+ *    members and report `n_short_history`. Coverage is a TOLERANCE, not an
+ *    identity: a member missing up to MAX_MISSING_FRACTION of the window is
+ *    still ranked, with its observed count returned per row.
  * 2. Value = SUM of daily `l3_rr`, not a compounded path. Daily gross =
  *    factor + residual, so sums stay additive; compounds carry a cross term.
  * 3. `dispersion.{best,worst,median,sd}` are required. S10 refuses without them.
@@ -46,6 +48,8 @@ export interface ResidualLeadershipRankedRow {
   rank: number;
   /** Sum of daily l3_rr over the window — a fraction, not percent. */
   value: number;
+  /** Days actually observed for this member; <= the window's own count. */
+  observed: number;
 }
 
 export interface CohortResidualLeadership {
@@ -59,6 +63,8 @@ export interface CohortResidualLeadership {
   n_ranked: number;
   n_members: number;
   n_short_history: number;
+  /** Ranked members with at least one missing day, within tolerance. */
+  n_partial_coverage: number;
   ranked: ResidualLeadershipRankedRow[];
   dispersion: {
     best: number;
@@ -199,17 +205,42 @@ async function resolveWindowDates(
   return dates.slice(dates.length - windowDays);
 }
 
+/**
+ * Fraction of the window a member may be missing and still be ranked.
+ *
+ * This was zero — any missing day dropped the member. The rule it was meant to
+ * enforce is "never rank a 250-day return against a 180-day one", and dropping
+ * on a single absent print is far stricter than that requires. Measured on XBI:
+ * of the members dropped in a large-cap sample, NONE had entered the window
+ * mid-way. Every one was a complete record with a short interior gap — IONS was
+ * excluded for 2 missing days out of 252.
+ *
+ * That is not protecting comparability, it is discarding near-complete records,
+ * and it biases the surviving cohort toward continuously-traded names: halts
+ * and thin prints are not distributed at random across a biotech cohort.
+ *
+ * 2% keeps the attenuation from missing days below the rounding of the figure
+ * it feeds, while admitting the records that were being thrown away.
+ */
+const MAX_MISSING_FRACTION = 0.02;
+
 function sumResidualOverWindow(
   byTeo: Map<string, number>,
   windowDates: string[],
-): number | null {
+): { sum: number; observed: number } | null {
   let sum = 0;
+  let observed = 0;
   for (const teo of windowDates) {
     const v = byTeo.get(teo);
-    if (v == null || !Number.isFinite(v)) return null;
+    if (v == null || !Number.isFinite(v)) continue;
     sum += v;
+    observed += 1;
   }
-  return sum;
+  const missing = windowDates.length - observed;
+  if (missing > Math.floor(windowDates.length * MAX_MISSING_FRACTION)) {
+    return null;
+  }
+  return { sum, observed };
 }
 
 export async function getCohortResidualLeadership(params: {
@@ -266,20 +297,25 @@ export async function getCohortResidualLeadership(params: {
     m.set(row.teo, row.metric_value);
   }
 
-  const rankedRaw: Array<{ symbol: string; ticker: string; value: number }> = [];
+  const rankedRaw: Array<{
+    symbol: string; ticker: string; value: number; observed: number;
+  }> = [];
   let n_short_history = 0;
+  let n_partial = 0;
 
   for (const member of members) {
     const series = bySymbol.get(member.symbol) ?? new Map();
-    const value = sumResidualOverWindow(series, windowDates);
-    if (value == null) {
+    const scored = sumResidualOverWindow(series, windowDates);
+    if (scored == null) {
       n_short_history += 1;
       continue;
     }
+    if (scored.observed < windowDates.length) n_partial += 1;
     rankedRaw.push({
       symbol: member.symbol,
       ticker: member.ticker,
-      value: round6(value),
+      value: round6(scored.sum),
+      observed: scored.observed,
     });
   }
 
@@ -294,6 +330,10 @@ export async function getCohortResidualLeadership(params: {
     ticker: r.ticker,
     rank: i + 1,
     value: r.value,
+    // Per-member, because "252 observations" describes the window and not
+    // necessarily this row. A consumer that wants to exclude gapped names can;
+    // one that does not at least knows they are there.
+    observed: r.observed,
   }));
 
   const values = ranked.map((r) => r.value);
@@ -310,6 +350,8 @@ export async function getCohortResidualLeadership(params: {
     n_ranked: ranked.length,
     n_members: members.length,
     n_short_history,
+    //: ranked members carrying at least one missing day, within tolerance.
+    n_partial_coverage: n_partial,
     ranked,
     dispersion: {
       best: values[0]!,
