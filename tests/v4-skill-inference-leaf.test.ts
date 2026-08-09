@@ -129,6 +129,17 @@ describe("skill-inference v1.1", () => {
     // time someone reads it cold, and this one would have been wrong twice over.
     // What IS stable across all 24 dates: the null maximum sits at 2.02-2.11,
     // and the dependence correction is negative at 24 of 24.
+    //
+    // WHAT MAKES A RESULT FRAGILE, since the intuition runs backwards. Since
+    // dp/dx = -f(x), a p-value moves at the rate of the null DENSITY at the
+    // observed value — fastest in the body, slowest in the tail. So a deep-tail
+    // result is robust and a near-threshold result is fragile, wherever it
+    // sits. 2014 moved less than half as far as a body result under the same
+    // perturbation and crossed anyway, because it started 0.0005 from 0.05;
+    // 2004 moved least of all and survived, because it started 0.0455 clear.
+    // Fragility is movement relative to distance from the threshold, not
+    // extremity. Worth having written down here: the opposite intuition would
+    // suppress the strongest findings and wave through the marginal ones.
     // Matched on contiguous spans: the prohibition is written across string
     // concatenation, so a regex spanning the break silently never fires.
     const block = ROUTE.slice(ROUTE.indexOf("prohibited: ["));
