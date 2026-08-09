@@ -112,9 +112,15 @@ describe("skill-inference v1.1", () => {
 
   it("forbids a universe-scoped multiplicity badge on a single-name answer", () => {
     // Screening 2,500 names and taking the winner is not the same problem as
-    // asking about one name a priori, so one badge cannot serve both. On the
-    // current panel zero names survive search adjustment while 232 clear the
-    // single-name threshold — the gap between those is the whole point.
+    // asking about one name a priori, so one badge cannot serve both.
+    //
+    // Deliberately no discovery count here. "Zero names survive search
+    // adjustment" was true at 2026-08-07 and false at three of 24 annual
+    // reporting dates — the search-adjusted p ranges 0.004 to 0.937 across
+    // them. A date-specific count in a test comment becomes a standing fact
+    // the first time someone reads it cold. What IS stable across all 24
+    // dates: the null maximum sits at 2.02-2.11, and the dependence
+    // correction is negative at 24 of 24.
     // Matched on contiguous spans: the prohibition is written across string
     // concatenation, so a regex spanning the break silently never fires.
     const block = ROUTE.slice(ROUTE.indexOf("prohibited: ["));
