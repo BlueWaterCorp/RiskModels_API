@@ -49,24 +49,57 @@ export const MIN_COHORT_MEMBERS = 20;
 
 export type CohortLevel = "sector" | "subsector";
 
-export interface CohortVarianceShares {
-  cohort: string;
-  level: CohortLevel;
-  /** Peers with a usable decomposition — the denominator of every mean. */
-  n_names: number;
-  /** Names in the cohort before the decomposition filter. */
-  n_universe: number;
-  teo: string | null;
-  /** Means, in percent. Sum to ~100 by construction. */
+/** One leg's marginal distribution across the cohort, in percent. */
+export interface LegQuartiles {
+  p25: number;
+  p50: number;
+  p75: number;
+}
+
+/** The four legs, in percent, plus their sum. */
+export interface LegMeans {
   market_er_pct: number;
   sector_er_pct: number;
   subsector_er_pct: number;
   residual_er_pct: number;
-  /** Sum of the four, returned so a consumer can assert the identity. */
   sum_pct: number;
-  aggregate: "mean";
+}
+
+export interface CohortVarianceShares {
+  cohort: string;
+  level: CohortLevel;
+  /** Peers with a usable decomposition — the denominator of every statistic. */
+  n_names: number;
+  /** Names in the cohort before the decomposition filter. */
+  n_universe: number;
+  /** Peers that also carried a usable weight — the AUM-weighted denominator. */
+  n_weighted: number;
+  teo: string | null;
+
+  /**
+   * PRIMARY (CEO ruling 2026-08-07). Equal-weighted marginal quartiles per leg.
+   * Marginal means each leg's quartiles are computed over that leg alone, so
+   * the four p50s come from four different names and DO NOT sum to 100.
+   */
+  quartiles: {
+    market_er_pct: LegQuartiles;
+    sector_er_pct: LegQuartiles;
+    subsector_er_pct: LegQuartiles;
+    residual_er_pct: LegQuartiles;
+    /** Sum of the four medians. Diagnostic — it is not expected to be 100. */
+    p50_sum_pct: number;
+  };
+
+  /** SECONDARY (CEO ruling). Weighted by market cap; sums to 100. */
+  aum_weighted_mean: LegMeans;
+
+  /** Equal-weighted mean; sums to 100. What a stacked peer bar should draw. */
+  equal_weighted_mean: LegMeans;
+
   disclosures: {
-    aggregate: string;
+    primary: string;
+    marginal_quartiles: string;
+    weighting: string;
     coverage: string;
     sign: string;
   };
@@ -135,11 +168,8 @@ export async function getCohortVarianceShares(params: {
 
   const batch = await fetchBatchLatestSummary(symbols, "daily");
 
-  let n = 0;
-  let mkt = 0;
-  let sec = 0;
-  let sub = 0;
-  let res = 0;
+  const legs: number[][] = [[], [], [], []];
+  const weights: number[] = [];
   let teo: string | null = null;
 
   for (const [, row] of batch) {
@@ -154,24 +184,78 @@ export async function getCohortVarianceShares(params: {
     ) {
       continue;
     }
-    n += 1;
-    mkt += m.l3_mkt_er;
-    sec += m.l3_sec_er;
-    sub += m.l3_sub_er;
-    res += m.l3_res_er;
+    legs[0]!.push(m.l3_mkt_er);
+    legs[1]!.push(m.l3_sec_er);
+    legs[2]!.push(m.l3_sub_er);
+    legs[3]!.push(m.l3_res_er);
+    // A name with no usable size contributes to the equal-weighted statistics
+    // and is skipped by the weighted one, rather than being dropped entirely
+    // or silently given zero weight.
+    const cap = m.market_cap;
+    weights.push(typeof cap === "number" && cap > 0 ? cap : 0);
     // Latest teo across contributors, so a consumer can check the peer row is
     // not a different date from the entity bar beside it.
     if (!teo || row.teo > teo) teo = row.teo;
   }
 
+  const n = legs[0]!.length;
   if (n < MIN_COHORT_MEMBERS) throw new ThinCohortError(cohort, n);
 
-  const pct = (v: number) => Math.round((v / n) * 1e6) / 1e4;
-  const out = {
-    market_er_pct: pct(mkt),
-    sector_er_pct: pct(sec),
-    subsector_er_pct: pct(sub),
-    residual_er_pct: pct(res),
+  const round4 = (v: number) => Math.round(v * 1e4) / 1e4;
+  const toPct = (v: number) => round4(v * 100);
+
+  const meanOf = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  /**
+   * Linear-interpolated quantile (R type 7 / numpy default), stated because a
+   * quartile is not well defined without one and two consumers using different
+   * conventions would disagree on the same data.
+   */
+  const quantile = (xs: number[], q: number) => {
+    const s = [...xs].sort((a, b) => a - b);
+    const h = (s.length - 1) * q;
+    const lo = Math.floor(h);
+    const hi = Math.ceil(h);
+    return s[lo]! + (s[hi]! - s[lo]!) * (h - lo);
+  };
+
+  const legQuartiles = (xs: number[]): LegQuartiles => ({
+    p25: toPct(quantile(xs, 0.25)),
+    p50: toPct(quantile(xs, 0.5)),
+    p75: toPct(quantile(xs, 0.75)),
+  });
+
+  const asMeans = (vals: number[]): LegMeans => {
+    const [mk, se, su, re] = vals.map(toPct) as [number, number, number, number];
+    return {
+      market_er_pct: mk,
+      sector_er_pct: se,
+      subsector_er_pct: su,
+      residual_er_pct: re,
+      sum_pct: round4(mk + se + su + re),
+    };
+  };
+
+  const equal = asMeans(legs.map(meanOf));
+
+  // Weighted by market cap. A weighted average of compositions that each sum
+  // to 1 also sums to 1, so this is a drawable stacked bar too.
+  const wTotal = weights.reduce((a, b) => a + b, 0);
+  const nWeighted = weights.filter((w) => w > 0).length;
+  const weighted =
+    wTotal > 0
+      ? asMeans(
+          legs.map(
+            (xs) => xs.reduce((acc, v, i) => acc + v * weights[i]!, 0) / wTotal,
+          ),
+        )
+      : equal;
+
+  const q = {
+    market_er_pct: legQuartiles(legs[0]!),
+    sector_er_pct: legQuartiles(legs[1]!),
+    subsector_er_pct: legQuartiles(legs[2]!),
+    residual_er_pct: legQuartiles(legs[3]!),
   };
 
   return {
@@ -179,23 +263,35 @@ export async function getCohortVarianceShares(params: {
     level,
     n_names: n,
     n_universe: symbols.length,
+    n_weighted: nWeighted,
     teo,
-    ...out,
-    sum_pct:
-      Math.round(
-        (out.market_er_pct +
-          out.sector_er_pct +
-          out.subsector_er_pct +
-          out.residual_er_pct) *
-          1e4,
-      ) / 1e4,
-    aggregate: "mean" as const,
+    quartiles: {
+      ...q,
+      p50_sum_pct: round4(
+        q.market_er_pct.p50 +
+          q.sector_er_pct.p50 +
+          q.subsector_er_pct.p50 +
+          q.residual_er_pct.p50,
+      ),
+    },
+    aum_weighted_mean: weighted,
+    equal_weighted_mean: equal,
     disclosures: {
-      aggregate:
-        "Means, not medians. Each name's four shares sum to 1, so the mean of " +
-        "those shares also sums to 1 and describes a real composition; four " +
-        "medians would each come from a different name and describe no actual " +
-        "portfolio. The mean is outlier-sensitive — read it with n_names.",
+      primary:
+        "Equal-weighted marginal quartiles are the primary statistic; the " +
+        "AUM-weighted mean is secondary and labelled as such.",
+      marginal_quartiles:
+        "Quartiles are MARGINAL — each leg's quartiles are computed over that " +
+        "leg alone, so the four medians come from four different names and do " +
+        "NOT sum to 100 (p50_sum_pct reports the actual figure). They " +
+        "describe the spread of each leg across the cohort, not a portfolio. " +
+        "Anything drawn as a stacked bar must use one of the means, whose " +
+        "segments do sum. Quantiles are linear-interpolated (R type 7).",
+      weighting:
+        "aum_weighted_mean is weighted by market_cap, the size measure carried " +
+        "per name. Names with no usable size contribute to the equal-weighted " +
+        "statistics and are excluded from the weighted one; n_weighted is that " +
+        "denominator. Both means sum to 100 because each constituent does.",
       coverage:
         "Peers are names whose sector_etf/subsector_etf matches this cohort " +
         "AND which carry all four L3 explained-risk legs at the latest teo. " +
