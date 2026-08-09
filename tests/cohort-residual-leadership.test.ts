@@ -382,3 +382,62 @@ describe("coverage is a tolerance, not an identity", () => {
     expect(r.ranked.every((x) => x.observed === r.obs)).toBe(true);
   });
 });
+
+describe("the two exclusions are counted apart", () => {
+  beforeEach(() => {
+    mockBatchHistory.mockReset();
+    mockFetchHistory.mockReset();
+    mockFrom.mockReset();
+    mockResolveSymbol.mockReset();
+  });
+
+  it("separates short-span from over-gapped, and n_short_history stays the total", async () => {
+    // Panel-wide these are 17.9% and 3.1% respectively, so collapsing them hid
+    // that the DESIGN exclusion — names that did not trade for part of the
+    // window — is doing most of the work, not the data-quality one.
+    const { getCohortResidualLeadership } = await import(
+      "@/lib/risk/cohort-residual-leadership-service"
+    );
+    const dates = makeDates(220);
+    // 25 so the over-gapped drop still leaves 24, above the 20-member floor —
+    // the first attempt fell to 19 and hit the post-coverage thin-cohort check,
+    // which is that check working rather than a fixture to route around.
+    const members: Member[] = Array.from({ length: 25 }, (_, i) => ({
+      symbol: `BW-${i}`,
+      ticker: `T${i}`,
+      daily: 0.0001,
+    }));
+    seed({
+      members,
+      windowDates: dates,
+      // Two names that only cover the first half — they never traded the rest.
+      shortHistory: [
+        { symbol: "BW-S1", ticker: "S1", coverFirst: 110 },
+        { symbol: "BW-S2", ticker: "S2", coverFirst: 110 },
+      ],
+    });
+
+    // And one name that spans the window but is missing 20 of 220 days.
+    const base = mockBatchHistory.getMockImplementation()!;
+    const holes = new Set(
+      Array.from({ length: 20 }, (_, i) => dates[5 + i * 3]!),
+    );
+    mockBatchHistory.mockImplementation(async (symbols: string[]) => {
+      const rows = await base(symbols);
+      return rows.filter(
+        (r: { symbol: string; teo: string }) =>
+          !(r.symbol === "BW-3" && holes.has(r.teo)),
+      );
+    });
+
+    const r = await getCohortResidualLeadership({
+      cohort: "SMH", window: "252d", level: "subsector",
+    });
+
+    expect(r.n_short_span).toBe(2);
+    expect(r.n_excluded_gaps).toBe(1);
+    expect(r.n_short_history).toBe(3);
+    expect(r.ranked.some((x) => x.ticker === "T3")).toBe(false);
+    expect(r.ranked.some((x) => x.ticker === "S1")).toBe(false);
+  });
+});
