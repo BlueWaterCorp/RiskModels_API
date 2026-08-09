@@ -156,6 +156,14 @@ const REGISTRY: Partial<Record<V3MetricKey, ZarrMetricSpec>> = {
   stock_specific_psr_36m: { role: "hedge", zarrVar: "StockSpecific_PSR36m_lstar" },
   stock_specific_mintrl_36m: { role: "hedge", zarrVar: "StockSpecific_MinTRL36m_lstar" },
   stock_specific_n_36m: { role: "hedge", zarrVar: "StockSpecific_SharpeN36m_lstar" },
+  // Contract v1.1: SE/PSR/MinTRL above are now corrected for serial dependence
+  // (weak-dependence CLT). The i.i.d. Mertens forms ride alongside, with the
+  // applied correction factor, so the change is auditable rather than silent —
+  // a consumer comparing today's uncertainty to yesterday's can see WHY it
+  // moved instead of inferring that the point estimate did.
+  stock_specific_sharpe_se_iid_36m: { role: "hedge", zarrVar: "StockSpecific_SharpeSEiid36m_lstar" },
+  stock_specific_psr_iid_36m: { role: "hedge", zarrVar: "StockSpecific_PSRiid36m_lstar" },
+  stock_specific_lrv_ratio_36m: { role: "hedge", zarrVar: "StockSpecific_LRVRatio36m_lstar" },
   stock_specific_tail_flag_36m: { role: "hedge", zarrVar: "StockSpecific_TailFlag36m_lstar" },
 
   // Fama–French style cascade (l*_ff_* ER/HR): RETIRED. The H.81 v4 cutover

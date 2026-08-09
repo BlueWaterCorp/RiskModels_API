@@ -78,6 +78,9 @@ export type V3MetricKey =
   | "stock_specific_psr_36m"
   | "stock_specific_mintrl_36m"
   | "stock_specific_n_36m"
+  | "stock_specific_sharpe_se_iid_36m"
+  | "stock_specific_psr_iid_36m"
+  | "stock_specific_lrv_ratio_36m"
   | "stock_specific_tail_flag_36m"
   | "l1_mkt_beta"
   | "l2_sec_beta"
@@ -117,6 +120,9 @@ const STOCK_SPECIFIC_ZARR_OVERLAY_KEYS = new Set<V3MetricKey>([
   "stock_specific_psr_36m",
   "stock_specific_mintrl_36m",
   "stock_specific_n_36m",
+  "stock_specific_sharpe_se_iid_36m",
+  "stock_specific_psr_iid_36m",
+  "stock_specific_lrv_ratio_36m",
   "stock_specific_tail_flag_36m",
   "style_er",
   "stock_specific_er",
