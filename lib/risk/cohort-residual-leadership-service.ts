@@ -13,7 +13,9 @@
  * 1. Window = the cohort ETF's own dates (or the requested window applied to
  *    the latest teo). Never the intersection of members' dates — one short
  *    peer must not truncate everyone else's comparison. Drop short-history
- *    members and report `n_short_history`.
+ *    members and report `n_short_history`. Coverage is a TOLERANCE, not an
+ *    identity: a member missing up to MAX_MISSING_FRACTION of the window is
+ *    still ranked, with its observed count returned per row.
  * 2. Value = SUM of daily `l3_rr`, not a compounded path. Daily gross =
  *    factor + residual, so sums stay additive; compounds carry a cross term.
  * 3. `dispersion.{best,worst,median,sd}` are required. S10 refuses without them.
@@ -46,6 +48,8 @@ export interface ResidualLeadershipRankedRow {
   rank: number;
   /** Sum of daily l3_rr over the window — a fraction, not percent. */
   value: number;
+  /** Days actually observed for this member; <= the window's own count. */
+  observed: number;
 }
 
 export interface CohortResidualLeadership {
@@ -59,6 +63,12 @@ export interface CohortResidualLeadership {
   n_ranked: number;
   n_members: number;
   n_short_history: number;
+  /** Present for only part of the window — excluded by design. */
+  n_short_span: number;
+  /** Spans the window but misses more of it than the tolerance allows. */
+  n_excluded_gaps: number;
+  /** Ranked members with at least one missing day, within tolerance. */
+  n_partial_coverage: number;
   ranked: ResidualLeadershipRankedRow[];
   dispersion: {
     best: number;
@@ -199,17 +209,78 @@ async function resolveWindowDates(
   return dates.slice(dates.length - windowDays);
 }
 
+/**
+ * Fraction of the window a member may be missing and still be ranked.
+ *
+ * This was zero — any missing day dropped the member. The rule it was meant to
+ * enforce is "never rank a 250-day return against a 180-day one", and dropping
+ * on a single absent print is far stricter than that requires. Measured on XBI:
+ * of the members dropped in a large-cap sample, NONE had entered the window
+ * mid-way. Every one was a complete record with a short interior gap — IONS was
+ * excluded for 2 missing days out of 252.
+ *
+ * That is not protecting comparability, it is discarding near-complete records,
+ * and it biases the surviving cohort toward continuously-traded names: halts
+ * and thin prints are not distributed at random across a biotech cohort.
+ *
+ * 2% keeps the attenuation from missing days below the rounding of the figure
+ * it feeds, while admitting the records that were being thrown away.
+ */
+const MAX_MISSING_FRACTION = 0.02;
+
+/**
+ * NOT A TUNING PARAMETER — measured on the panel, l3_rr over 252 days.
+ *
+ * Of 3,079 names present in the window: 79.1% are complete, 3.1% have interior
+ * gaps only, 17.9% span part of it. The missing-day distribution is p50 0%,
+ * p75 0%, then p90 50% and p95 75% — there is almost nothing between "complete"
+ * and "half the window absent". So the threshold separates two populations
+ * rather than trading off along a curve, and every value from 1% to 10% picks
+ * out nearly the same set:
+ *
+ *   <=0% keeps 2,434   <=2% keeps 2,499   <=5% keeps 2,511   <=10% keeps 2,552
+ *
+ * Among the 94 interior-gap names the gaps run median 1 day, p90 49, max 190.
+ * 2% (5 days) captures 69% of them — the IONS/RADX/CRNX case — while excluding
+ * the long-gap tail, where "gap" really does mean "different window". Widening
+ * to 5% would admit 12 more names panel-wide and change their kind. Do not
+ * loosen this to make a cohort bigger; the data does not reward it.
+ */
+
+/** True when the member traded across the whole window, gaps notwithstanding. */
+function spansWindow(
+  byTeo: Map<string, number>,
+  windowDates: string[],
+): boolean {
+  if (byTeo.size === 0) return false;
+  const first = windowDates.findIndex((d) => byTeo.has(d));
+  let last = -1;
+  for (let i = windowDates.length - 1; i >= 0; i--) {
+    if (byTeo.has(windowDates[i]!)) {
+      last = i;
+      break;
+    }
+  }
+  return first === 0 && last === windowDates.length - 1;
+}
+
 function sumResidualOverWindow(
   byTeo: Map<string, number>,
   windowDates: string[],
-): number | null {
+): { sum: number; observed: number } | null {
   let sum = 0;
+  let observed = 0;
   for (const teo of windowDates) {
     const v = byTeo.get(teo);
-    if (v == null || !Number.isFinite(v)) return null;
+    if (v == null || !Number.isFinite(v)) continue;
     sum += v;
+    observed += 1;
   }
-  return sum;
+  const missing = windowDates.length - observed;
+  if (missing > Math.floor(windowDates.length * MAX_MISSING_FRACTION)) {
+    return null;
+  }
+  return { sum, observed };
 }
 
 export async function getCohortResidualLeadership(params: {
@@ -266,20 +337,34 @@ export async function getCohortResidualLeadership(params: {
     m.set(row.teo, row.metric_value);
   }
 
-  const rankedRaw: Array<{ symbol: string; ticker: string; value: number }> = [];
-  let n_short_history = 0;
+  const rankedRaw: Array<{
+    symbol: string; ticker: string; value: number; observed: number;
+  }> = [];
+  // Two exclusions, deliberately counted apart. A name that never traded over
+  // part of the window is EXCLUDED BY DESIGN — you cannot rank it over days it
+  // did not exist. A name that spans the window but is missing too much of it
+  // is a DATA-QUALITY exclusion. Collapsing both into one number hid the fact
+  // that the first is doing most of the work: 17.9% of the panel is short-span
+  // against 3.1% gapped, so for a cohort like XBI the design exclusion, not the
+  // quality one, is what shapes the surviving group.
+  let n_short_span = 0;
+  let n_excluded_gaps = 0;
+  let n_partial = 0;
 
   for (const member of members) {
     const series = bySymbol.get(member.symbol) ?? new Map();
-    const value = sumResidualOverWindow(series, windowDates);
-    if (value == null) {
-      n_short_history += 1;
+    const scored = sumResidualOverWindow(series, windowDates);
+    if (scored == null) {
+      if (spansWindow(series, windowDates)) n_excluded_gaps += 1;
+      else n_short_span += 1;
       continue;
     }
+    if (scored.observed < windowDates.length) n_partial += 1;
     rankedRaw.push({
       symbol: member.symbol,
       ticker: member.ticker,
-      value: round6(value),
+      value: round6(scored.sum),
+      observed: scored.observed,
     });
   }
 
@@ -294,6 +379,10 @@ export async function getCohortResidualLeadership(params: {
     ticker: r.ticker,
     rank: i + 1,
     value: r.value,
+    // Per-member, because "252 observations" describes the window and not
+    // necessarily this row. A consumer that wants to exclude gapped names can;
+    // one that does not at least knows they are there.
+    observed: r.observed,
   }));
 
   const values = ranked.map((r) => r.value);
@@ -309,7 +398,15 @@ export async function getCohortResidualLeadership(params: {
     end_date,
     n_ranked: ranked.length,
     n_members: members.length,
-    n_short_history,
+    // Retained as the total so existing consumers keep working; the split
+    // below is what a reader should actually reason about.
+    n_short_history: n_short_span + n_excluded_gaps,
+    //: present for only part of the window — excluded by design, not by defect.
+    n_short_span,
+    //: spans the window but misses more of it than the tolerance allows.
+    n_excluded_gaps,
+    //: ranked members carrying at least one missing day, within tolerance.
+    n_partial_coverage: n_partial,
     ranked,
     dispersion: {
       best: values[0]!,
