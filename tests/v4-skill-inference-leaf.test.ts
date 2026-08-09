@@ -30,6 +30,11 @@ const FIELDS = [
   ["stock_specific_mintrl_36m", "StockSpecific_MinTRL36m_lstar"],
   ["stock_specific_n_36m", "StockSpecific_SharpeN36m_lstar"],
   ["stock_specific_tail_flag_36m", "StockSpecific_TailFlag36m_lstar"],
+  // v1.1 sidecars: the i.i.d. forms the corrected statistics superseded, and
+  // the correction factor applied.
+  ["stock_specific_sharpe_se_iid_36m", "StockSpecific_SharpeSEiid36m_lstar"],
+  ["stock_specific_psr_iid_36m", "StockSpecific_PSRiid36m_lstar"],
+  ["stock_specific_lrv_ratio_36m", "StockSpecific_LRVRatio36m_lstar"],
 ] as const;
 
 describe("v4 skill-inference leaf", () => {
@@ -56,7 +61,7 @@ describe("v4 skill-inference leaf", () => {
 
   it("requests them in the v4 route and returns them nested", () => {
     for (const [key] of FIELDS) expect(ROUTE).toContain(`"${key}"`);
-    expect(ROUTE).toContain('contract: "skill-inference/1.0.0"');
+    expect(ROUTE).toContain('contract: "skill-inference/1.1.0"');
   });
 
   it("nests them rather than flattening beside sharpe_36m", () => {
@@ -80,5 +85,40 @@ describe("v4 skill-inference leaf", () => {
     expect(block).toMatch(/superlatives/);
     expect(block).toMatch(/tail_flag_36m == 1/);
     expect(block).toMatch(/re-annualizing/);
+  });
+});
+
+describe("skill-inference v1.1", () => {
+  it("ships the i.i.d. forms beside the corrected ones", () => {
+    // The correction changed what the uncertainty MEANS while leaving the point
+    // estimates alone. Serving only the new values under the old version string
+    // is precisely the silent change these sidecars exist to prevent.
+    for (const f of ["sharpe_se_iid_36m", "psr_iid_36m", "lrv_ratio_36m"]) {
+      expect(ROUTE).toContain(`${f}: num(`);
+    }
+  });
+
+  it("says which direction the correction ran", () => {
+    // A ratio with no stated orientation is a number a consumer will guess at.
+    expect(ROUTE).toContain("i.i.d. form");
+    expect(ROUTE).toMatch(/conservative/);
+  });
+
+  it("forbids cherry-picking between the two forms", () => {
+    const block = ROUTE.slice(ROUTE.indexOf("prohibited: ["));
+    expect(block).toMatch(/mixing the corrected and i\.i\.d\. forms/);
+    expect(block).toMatch(/more favourable/);
+  });
+
+  it("forbids a universe-scoped multiplicity badge on a single-name answer", () => {
+    // Screening 2,500 names and taking the winner is not the same problem as
+    // asking about one name a priori, so one badge cannot serve both. On the
+    // current panel zero names survive search adjustment while 232 clear the
+    // single-name threshold — the gap between those is the whole point.
+    // Matched on contiguous spans: the prohibition is written across string
+    // concatenation, so a regex spanning the break silently never fires.
+    const block = ROUTE.slice(ROUTE.indexOf("prohibited: ["));
+    expect(block).toMatch(/universe-scoped multiplicity badge/);
+    expect(block).toMatch(/screening 2,500 names/);
   });
 });

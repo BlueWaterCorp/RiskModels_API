@@ -127,6 +127,9 @@ export const POST = withBilling(
           "stock_specific_mintrl_36m",
           "stock_specific_n_36m",
           "stock_specific_tail_flag_36m",
+          "stock_specific_sharpe_se_iid_36m",
+          "stock_specific_psr_iid_36m",
+          "stock_specific_lrv_ratio_36m",
         ],
         "daily",
       );
@@ -228,22 +231,43 @@ export const POST = withBilling(
           // contract with one version, and a consumer must not pick the PSR
           // out while ignoring the tail flag that invalidates it.
           inference: {
-            contract: "skill-inference/1.0.0",
+            // v1.1: the dependence-corrected forms became PRIMARY. Point
+            // estimates did not move; only their uncertainty did. Serving the
+            // new values under the old version string would be exactly the
+            // silent change the i.i.d. sidecars exist to prevent.
+            contract: "skill-inference/1.1.0",
             sharpe_se_36m: num(m.stock_specific_sharpe_se_36m),
             psr_36m: num(m.stock_specific_psr_36m),
             mintrl_36m: num(m.stock_specific_mintrl_36m),
             n_36m: num(m.stock_specific_n_36m),
             tail_flag_36m: num(m.stock_specific_tail_flag_36m),
+            // The i.i.d. Mertens forms these superseded, plus the correction
+            // factor actually applied, so a consumer can audit the move rather
+            // than take it on trust.
+            sharpe_se_iid_36m: num(m.stock_specific_sharpe_se_iid_36m),
+            psr_iid_36m: num(m.stock_specific_psr_iid_36m),
+            lrv_ratio_36m: num(m.stock_specific_lrv_ratio_36m),
             units: {
               sharpe_se_36m: "annualized, same scale as sharpe_36m",
               psr_36m: "fraction in [0,1]",
               mintrl_36m: "trading-day observations",
+              sharpe_se_iid_36m: "annualized; the i.i.d. Mertens form, superseded",
+              psr_iid_36m: "fraction in [0,1]; the i.i.d. form, superseded",
+              lrv_ratio_36m:
+                "long-run variance / i.i.d. variance; < 1 means the i.i.d. form "
+                + "was conservative for this name",
             },
             prohibited: [
               "forecast framing — PSR describes a realized record",
               "cross-sectional superlatives — unsupported until DSR/BH (Phase 2)",
               "citing se/psr/mintrl where tail_flag_36m == 1",
               "re-annualizing psr or mintrl — neither is on the sqrt(252) scale",
+              "mixing the corrected and i.i.d. forms in one comparison, or "
+                + "quoting whichever is more favourable",
+              "attaching a universe-scoped multiplicity badge to a single-name "
+                + "answer — the adjustment depends on the caller's decision "
+                + "family, and screening 2,500 names is not the same problem as "
+                + "asking about one a priori",
             ],
           },
           rank_percentile: stockSpecificRankPct,
