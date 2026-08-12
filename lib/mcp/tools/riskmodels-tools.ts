@@ -1094,8 +1094,20 @@ export function registerRiskModelsWhitepaperResources(server: McpLikeServer, dat
   }
 }
 
-export function registerRiskModelsPrompts(server: McpLikeServer): void {
+export function registerRiskModelsPrompts(
+  server: McpLikeServer,
+  firstLivePrompt: string,
+): void {
   if (!server.registerPrompt) return;
+
+  server.registerPrompt(
+    "first_live_call",
+    {
+      title: "First live RiskModels call",
+      description: "Pull live AAPL vs NVDA numbers. Use this after connect — not list_endpoints.",
+    },
+    () => promptText(`${firstLivePrompt}\n\n${CHART_INSTRUCTION}`),
+  );
 
   server.registerPrompt(
     "follow_whitepaper",
@@ -1129,9 +1141,7 @@ ${CHART_INSTRUCTION}`),
       description: "Compare AAPL and NVDA using RiskModels and explain the risk layers.",
     },
     () =>
-      promptText(
-        `Compare AAPL and NVDA using RiskModels. What am I really betting on? Use riskmodels_compare and render a grouped bar chart from chart_data.`,
-      ),
+      promptText(`${firstLivePrompt}\n\n${CHART_INSTRUCTION}`),
   );
 
   server.registerPrompt(

@@ -4,6 +4,7 @@
  */
 
 import { WALKTHROUGH_MAG7_TICKERS } from "@/lib/landing/walkthrough-chart-data";
+import { FIRST_LIVE_PROMPT_MCP, FIRST_LIVE_PROMPT_REST } from "@/lib/mcp/activation";
 
 function mag7BulletList(): string {
   return WALKTHROUGH_MAG7_TICKERS.map((t) => `- ${t}`).join("\n");
@@ -25,10 +26,12 @@ You are an AI assistant reading this because someone pointed you at riskmodels.a
 **1. "Set it up for this chat" / "help me analyze …"** — set yourself up now, in this conversation, with no install:
 - Discovery docs (this file, the OpenAPI spec, and /.well-known/mcp.json) are free and need no key.
 - For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
-- Make one real call to confirm the connection, then tell the human what you can analyze and ask what they want to look at. **Do not tell a human to open a terminal for this case.**
+- Make one real call to confirm the connection: GET /api/metrics/AAPL (or POST /api/decompose with ticker AAPL). Quote residual explained-risk and the L3 hedge ratios from the JSON. Then tell the human what you can analyze. **Do not tell a human to open a terminal for this case. Do not start with a capability catalog.**
 
 **2. "Help me set it up" / "add this to my Claude/Cursor/ChatGPT/Grok/Gemini"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps:
-- **Claude Desktop / Cursor (recommended — no terminal, no API key):** **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave OAuth Client ID / Secret blank, **Add → Connect**. They sign in at riskmodels.app once (OAuth 2.0 + PKCE).
+- **Claude Desktop / Cursor (recommended — no terminal, no API key):** **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave OAuth Client ID / Secret blank, **Add → Connect**. They sign in at riskmodels.app once (OAuth 2.0 + PKCE). After Connect, they should paste this into the chat (do not start with list_endpoints):
+
+  ${FIRST_LIVE_PROMPT_MCP}
 - **ChatGPT (Plus+ on web — Developer Mode):** **Settings → Apps & Connectors → Advanced settings → enable Developer mode**, then **Apps & Connectors → Create**, paste \`https://riskmodels.app/api/mcp/sse\`, choose **OAuth**, sign in at riskmodels.app. This is **not** the built-in Finances / Schwab connector. Guide: \`https://riskmodels.app/docs/agent-integration#chatgpt-mcp\`.
 - **Grok (web / iOS / Android):** **grok.com/connectors → New Connector → Custom**, paste \`https://riskmodels.app/api/mcp/sse\`, OAuth sign-in at riskmodels.app. No Developer Mode. Guide: \`https://riskmodels.app/docs/agent-integration#grok-mcp\`.
 - **Gemini consumer web (gemini.google.com):** no custom MCP UI — use case 1 (\`/llms.txt\` + REST in this chat). **Gemini CLI / Antigravity:** \`gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse\` then \`/mcp auth riskmodels\`. **Gemini Enterprise:** admin registers Custom MCP data store in Google Cloud (Streamable HTTP + OAuth; may need pre-registered Client ID/Secret). Guide: \`https://riskmodels.app/docs/agent-integration#gemini\`.
@@ -120,7 +123,10 @@ sees which depth was assumed. For a custom threshold use \`GET /api/lstar?thresh
 
 ## Agent prompts
 
-- Compare tickers: "Compare AAPL and NVDA using RiskModels. What am I really betting on?"
+After setup, the first message must name a live call. Do not answer from training data. Do not start with a capability catalog.
+
+- MCP (connector already connected): ${FIRST_LIVE_PROMPT_MCP}
+- REST (this chat, no MCP): ${FIRST_LIVE_PROMPT_REST}
 - Do not paste **private** API keys into LLM chats; use env vars or local config. When this file
   includes a **Public sample API key** section, that token is intentionally published for agents.
 

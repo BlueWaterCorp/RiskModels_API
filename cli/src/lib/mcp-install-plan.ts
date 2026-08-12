@@ -120,5 +120,6 @@ export function buildInstallPlans(
 }
 
 export function firstPrompt(): string {
-  return "Compare AAPL and NVDA using RiskModels. What am I really betting on?";
+  // Lockstep with lib/mcp/activation.ts FIRST_LIVE_PROMPT_MCP (onboarding-upgrade.test.ts).
+  return 'Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data. Do not call riskmodels_list_endpoints unless I ask which REST routes exist.';
 }

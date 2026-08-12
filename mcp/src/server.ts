@@ -25,6 +25,14 @@ import {
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
 } from "../../lib/mcp/tools/riskmodels-tools.js";
+import {
+  FIRST_LIVE_PROMPT_MCP,
+  GET_CAPABILITY_DESCRIPTION,
+  GET_OPENAPI_SPEC_DESCRIPTION,
+  GET_SCHEMA_DESCRIPTION,
+  LIST_ENDPOINTS_DESCRIPTION,
+  MCP_SERVER_INSTRUCTIONS,
+} from "../../lib/mcp/activation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, "..", "data");
@@ -210,10 +218,13 @@ function loadText(relativePath: string): string | null {
  * `server.connect(transport)` with whichever transport fits their runtime.
  */
 export function createMcpServer(opts: McpServerOptions = {}): McpServer {
-  const server = new McpServer({
-    name: "riskmodels-api",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    {
+      name: "riskmodels-api",
+      version: "1.0.0",
+    },
+    { instructions: MCP_SERVER_INSTRUCTIONS },
+  );
   const credentials = resolveCredentials(opts);
   const sdk = createRiskModelsSdk({
     apiKey: credentials.apiKey,
@@ -355,15 +366,19 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   );
 
   registerRiskModelsWhitepaperResources(server, DATA_DIR);
-  registerRiskModelsPrompts(server);
+  registerRiskModelsPrompts(server, FIRST_LIVE_PROMPT_MCP);
 
-  // --- Tools ---
+  // --- Tools (data tools first; catalog tools last so a fresh connect does not start there) ---
+
+  registerRiskModelsTools(sdk, server, {
+    capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
+  });
 
   server.registerTool(
     "riskmodels_get_openapi_spec",
     {
       title: "Get RiskModels OpenAPI Spec",
-      description: "Get the full OpenAPI 3.x specification for the API. Use this to discover exact paths, HTTP methods, and query vs path parameters.",
+      description: GET_OPENAPI_SPEC_DESCRIPTION,
       inputSchema: z.object({}),
     },
     async () => {
@@ -379,15 +394,11 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     }
   );
 
-  registerRiskModelsTools(sdk, server, {
-    capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
-  });
-
   server.registerTool(
     "riskmodels_list_endpoints",
     {
       title: "List RiskModels API Endpoints",
-      description: "List all public API capabilities (id, name, method, endpoint, short description)",
+      description: LIST_ENDPOINTS_DESCRIPTION,
       inputSchema: z.object({}).optional(),
     },
     async () => {
@@ -410,7 +421,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "riskmodels_get_capability",
     {
       title: "Get RiskModels Capability Details",
-      description: "Get full capability details (parameters, pricing, examples) by id",
+      description: GET_CAPABILITY_DESCRIPTION,
       inputSchema: z.object({
         id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
       }),
@@ -432,7 +443,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "riskmodels_get_schema",
     {
       title: "Get RiskModels Response Schema",
-      description: "Get JSON schema for an API response by path (e.g. ticker-returns-v2.json)",
+      description: GET_SCHEMA_DESCRIPTION,
       inputSchema: z.object({
         path: z.string().describe("Schema path or filename (e.g. ticker-returns-v2.json or /schemas/ticker-returns-v2.json)"),
       }),

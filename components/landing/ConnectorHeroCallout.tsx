@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Copy, Check } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
+import { FIRST_LIVE_PROMPT_MCP } from '@/lib/mcp/activation';
 
 const MCP_URL = 'https://riskmodels.app/api/mcp/sse';
 
@@ -12,12 +13,12 @@ const MCP_URL = 'https://riskmodels.app/api/mcp/sse';
  * Claude / Cursor's "Add custom connector", sign in once, done — no API key.
  */
 export default function ConnectorHeroCallout() {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void copyTextToClipboard(MCP_URL).then((ok) => {
+  const [copied, setCopied] = useState<'url' | 'prompt' | null>(null);
+  const copy = (text: string, kind: 'url' | 'prompt') => {
+    void copyTextToClipboard(text).then((ok) => {
       if (ok) {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setCopied(kind);
+        setTimeout(() => setCopied(null), 2000);
       }
     });
   };
@@ -30,12 +31,12 @@ export default function ConnectorHeroCallout() {
       <div className="mt-2 flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
         <code className="flex-1 truncate font-mono text-[13px] text-zinc-200">{MCP_URL}</code>
         <button
-          onClick={copy}
+          onClick={() => copy(MCP_URL, 'url')}
           className="inline-flex flex-shrink-0 items-center gap-1.5 rounded border border-zinc-700 px-2 py-1 font-mono text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
           aria-label="Copy connector URL"
         >
-          {copied ? <Check className="size-3.5 text-emerald-400" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-          {copied ? 'Copied' : 'Copy'}
+          {copied === 'url' ? <Check className="size-3.5 text-emerald-400" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+          {copied === 'url' ? 'Copied' : 'Copy'}
         </button>
       </div>
       <p className="mt-2 text-[12px] leading-snug text-zinc-500">
@@ -45,6 +46,20 @@ export default function ConnectorHeroCallout() {
           Setup guide →
         </Link>
       </p>
+      <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+        After Connect, paste this (pulls live data)
+      </p>
+      <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+        <p className="font-mono text-[12px] leading-snug text-zinc-300">{FIRST_LIVE_PROMPT_MCP}</p>
+        <button
+          onClick={() => copy(FIRST_LIVE_PROMPT_MCP, 'prompt')}
+          className="mt-2 inline-flex items-center gap-1.5 rounded border border-zinc-700 px-2 py-1 font-mono text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+          aria-label="Copy first live prompt"
+        >
+          {copied === 'prompt' ? <Check className="size-3.5 text-emerald-400" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+          {copied === 'prompt' ? 'Copied' : 'Copy prompt'}
+        </button>
+      </div>
     </div>
   );
 }

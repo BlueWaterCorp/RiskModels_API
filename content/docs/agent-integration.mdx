@@ -15,10 +15,10 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
     </div>
     <div className="px-5 pt-4 pb-2">
       <span className="text-sm font-semibold text-zinc-100">Try it now (this chat — no install)</span>
-      <p className="text-xs text-zinc-400 mt-1">Works in <strong className="font-normal text-zinc-300">ChatGPT, Claude, Cursor, Grok, Gemini (web)</strong>, or any model that can fetch URLs. The agent reads <code className="text-zinc-500">/llms.txt</code> and calls the REST API for this conversation only — not a persistent MCP connector.</p>
-      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
-        <span>Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.</span>
-        <CopyInline value="Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze." />
+      <p className="text-xs text-zinc-400 mt-1">Works in <strong className="font-normal text-zinc-300">ChatGPT, Claude, Cursor, Grok, Gemini (web)</strong>, or any model that can fetch URLs. The agent reads <code className="text-zinc-500">/llms.txt</code> and must make a live REST call — not a persistent MCP connector.</p>
+      <div className="flex items-start justify-between gap-3 bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-xs text-zinc-200 mt-2">
+        <span className="leading-snug">Fetch https://riskmodels.app/llms.txt. Then GET https://riskmodels.app/api/metrics/AAPL and GET https://riskmodels.app/api/metrics/NVDA using the Bearer key from that file (or POST /api/auth/provision-free). Quote l3 residual explained-risk and the L3 hedge ratios from the JSON. Do not answer from training data.</span>
+        <CopyInline value="Fetch https://riskmodels.app/llms.txt. Then GET https://riskmodels.app/api/metrics/AAPL and GET https://riskmodels.app/api/metrics/NVDA using the Bearer key from that file (or POST /api/auth/provision-free). Quote l3 residual explained-risk and the L3 hedge ratios from the JSON. Do not answer from training data." />
       </div>
     </div>
     <div className="px-5 pb-4 pt-2">
@@ -27,6 +27,11 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
       <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
         <span>https://riskmodels.app/api/mcp/sse</span>
         <CopyInline value="https://riskmodels.app/api/mcp/sse" />
+      </div>
+      <p className="text-xs text-zinc-400 mt-3">After Connect, paste this so the agent pulls live numbers (not the catalog):</p>
+      <div className="flex items-start justify-between gap-3 bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-xs text-zinc-200 mt-2">
+        <span className="leading-snug">Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data. Do not call riskmodels_list_endpoints unless I ask which REST routes exist.</span>
+        <CopyInline value={'Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data. Do not call riskmodels_list_endpoints unless I ask which REST routes exist.'} />
       </div>
       <p className="text-xs text-zinc-600 mt-2">Prefer a terminal, or need Codex / VS Code? <code className="text-zinc-500">npx -y riskmodels@latest install</code> wires every client in one command.</p>
     </div>

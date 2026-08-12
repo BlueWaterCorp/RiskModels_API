@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppUrl } from "@/lib/app-url";
+import { FIRST_LIVE_PROMPT_MCP } from "@/lib/mcp/activation";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,9 @@ export async function GET() {
     },
     documentation_url: `${base}/docs/agent-integration`,
     llms_txt: `${base}/llms.txt`,
+    first_prompt: FIRST_LIVE_PROMPT_MCP,
+    after_connect:
+      "Paste first_prompt into the chat. Call data tools (riskmodels_compare / riskmodels_decompose). Do not start with list_endpoints.",
     client_setup: {
       claude_desktop_cursor:
         "Settings → Connectors → Add custom connector → paste MCP URL → OAuth sign-in (leave client id/secret blank)",

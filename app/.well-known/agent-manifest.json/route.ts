@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { getAppUrl } from "@/lib/app-url";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
+import { FIRST_LIVE_PROMPT_MCP, FIRST_LIVE_PROMPT_REST } from "@/lib/mcp/activation";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +105,8 @@ export async function GET() {
       auth: "Bearer token (rm_agent_* / rm_user_*)",
       provision_free_url: `${base}/api/auth/provision-free`,
       create_key_url: `${base}/api/agent-keys`,
+      first_call_mcp: FIRST_LIVE_PROMPT_MCP,
+      first_call_rest: FIRST_LIVE_PROMPT_REST,
     },
     // Trust loop: flag a result by its _agent.request_id to improve future output.
     feedback: {
