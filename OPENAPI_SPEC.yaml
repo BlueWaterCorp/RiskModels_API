@@ -5928,6 +5928,127 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /stocks/{ticker}/commentary-bundle:
+    get:
+      summary: Stock commentary evidence bundle (one pull)
+      description: |
+        One request for everything a single-name risk commentary note needs:
+        latest L1/L2/L3 metrics + `hedge_levels`, a trailing return-record
+        summary (arithmetic contributions + drawdown), cohort standing on
+        gross return, peer variance shares, and residual leadership for the
+        name's sector/subsector cohort.
+
+        Replaces the consumer's previous fan-out across `/metrics`,
+        `/returns-decomposition`, `/rankings/{ticker}`,
+        `/cohorts/variance-shares`, and `/cohorts/residual-leadership`.
+
+        **Partial enrichment:** metrics are required (unknown ticker → 404).
+        Thin cohorts, short windows, or missing rankings null the affected
+        piece and list a reason under `refusals` — the response stays 200 so
+        the risk note can still render. Return-record values are **sums** of
+        daily returns (additive); `gross_compound` is reported separately.
+      operationId: getStockCommentaryBundle
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: cohorts
+        tier: premium
+        model: per_request
+        cost_usd: 0.02
+        currency: USD
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Stock ticker (e.g. NVDA)
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "252d"
+            pattern: "^[0-9]+d$"
+          description: Trailing window for return record and residual rank (e.g. 252d)
+      responses:
+        "200":
+          description: Commentary evidence bundle
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticker, symbol, teo, window, metrics, hedge_levels, meta, coverage, refusals]
+                properties:
+                  ticker:
+                    type: string
+                  symbol:
+                    type: string
+                  teo:
+                    type: string
+                  window:
+                    type: string
+                  metrics:
+                    type: object
+                    additionalProperties: true
+                  hedge_levels:
+                    type: object
+                    additionalProperties: true
+                  meta:
+                    type: object
+                    properties:
+                      sector_etf:
+                        type: string
+                        nullable: true
+                      subsector_etf:
+                        type: string
+                        nullable: true
+                  return_record:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  standing:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  cohort_shares:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  residual_rank:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  coverage:
+                    type: object
+                    properties:
+                      metrics:
+                        type: boolean
+                      return_record:
+                        type: boolean
+                      standing:
+                        type: boolean
+                      cohort_shares:
+                        type: boolean
+                      residual_rank:
+                        type: boolean
+                  refusals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        piece:
+                          type: string
+                        reason:
+                          type: string
+        "400":
+          description: Invalid ticker or window
+        "404":
+          description: Ticker not found / no metrics
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          description: Rate limit exceeded
+
   /cohorts:
     get:
       summary: Cohort residual statistics (cross-section)
