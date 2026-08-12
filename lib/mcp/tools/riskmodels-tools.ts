@@ -2,7 +2,6 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { RiskModelsClient, type PositionInput, type WhitepaperExampleId } from "@riskmodels/sdk";
 import { z } from "zod";
-import { FIRST_LIVE_PROMPT_MCP } from "../activation.js";
 
 type McpContent = { type: "text"; text: string };
 export type McpToolResult = { content: McpContent[] };
@@ -1095,7 +1094,10 @@ export function registerRiskModelsWhitepaperResources(server: McpLikeServer, dat
   }
 }
 
-export function registerRiskModelsPrompts(server: McpLikeServer): void {
+export function registerRiskModelsPrompts(
+  server: McpLikeServer,
+  firstLivePrompt: string,
+): void {
   if (!server.registerPrompt) return;
 
   server.registerPrompt(
@@ -1104,7 +1106,7 @@ export function registerRiskModelsPrompts(server: McpLikeServer): void {
       title: "First live RiskModels call",
       description: "Pull live AAPL vs NVDA numbers. Use this after connect — not list_endpoints.",
     },
-    () => promptText(`${FIRST_LIVE_PROMPT_MCP}\n\n${CHART_INSTRUCTION}`),
+    () => promptText(`${firstLivePrompt}\n\n${CHART_INSTRUCTION}`),
   );
 
   server.registerPrompt(
@@ -1139,7 +1141,7 @@ ${CHART_INSTRUCTION}`),
       description: "Compare AAPL and NVDA using RiskModels and explain the risk layers.",
     },
     () =>
-      promptText(`${FIRST_LIVE_PROMPT_MCP}\n\n${CHART_INSTRUCTION}`),
+      promptText(`${firstLivePrompt}\n\n${CHART_INSTRUCTION}`),
   );
 
   server.registerPrompt(

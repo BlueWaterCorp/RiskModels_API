@@ -331,7 +331,7 @@ describe("RiskModels MCP live-paper tools", () => {
         prompts.set(name, handler);
       },
     };
-    registerRiskModelsPrompts(server as any);
+    registerRiskModelsPrompts(server as any, FIRST_LIVE_PROMPT_MCP);
     expect([...prompts.keys()][0]).toBe("first_live_call");
     const body = prompts.get("first_live_call")!().messages[0].content.text;
     expect(body).toContain("riskmodels_compare");

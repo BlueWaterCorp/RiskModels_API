@@ -29,6 +29,7 @@ import {
 } from "@/lib/mcp/tools/riskmodels-tools";
 import { registerRiskModelsRenderTool } from "@/lib/mcp/render-tool";
 import {
+  FIRST_LIVE_PROMPT_MCP,
   GET_CAPABILITY_DESCRIPTION,
   GET_SCHEMA_DESCRIPTION,
   LIST_ENDPOINTS_DESCRIPTION,
@@ -305,7 +306,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   );
 
   registerRiskModelsWhitepaperResources(server, DATA_DIR);
-  registerRiskModelsPrompts(server);
+  registerRiskModelsPrompts(server, FIRST_LIVE_PROMPT_MCP);
 
   // --- Tools ---
 

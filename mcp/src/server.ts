@@ -26,6 +26,7 @@ import {
   registerRiskModelsWhitepaperResources,
 } from "../../lib/mcp/tools/riskmodels-tools.js";
 import {
+  FIRST_LIVE_PROMPT_MCP,
   GET_CAPABILITY_DESCRIPTION,
   GET_OPENAPI_SPEC_DESCRIPTION,
   GET_SCHEMA_DESCRIPTION,
@@ -365,7 +366,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   );
 
   registerRiskModelsWhitepaperResources(server, DATA_DIR);
-  registerRiskModelsPrompts(server);
+  registerRiskModelsPrompts(server, FIRST_LIVE_PROMPT_MCP);
 
   // --- Tools (data tools first; catalog tools last so a fresh connect does not start there) ---
 
