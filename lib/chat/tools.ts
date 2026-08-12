@@ -36,6 +36,10 @@ import { getL3DecompositionService } from "@/lib/risk/l3-decomposition-service";
 import { getResidualSignalForTicker } from "@/lib/risk/residual-signal-service";
 import { getRiskCalendar } from "@/lib/risk/risk-calendar-service";
 import {
+  getStockCommentaryBundle,
+  parseWindowDays,
+} from "@/lib/risk/stock-commentary-bundle-service";
+import {
   computeFactorCorrelation,
   DEFAULT_MACRO_FACTORS,
 } from "@/lib/risk/factor-correlation-service";
@@ -84,6 +88,11 @@ export function fnTool(
 
 const getRiskMetricsArgs = z.object({
   ticker: TickerSchema,
+});
+
+const getStockCommentaryBundleArgs = z.object({
+  ticker: TickerSchema,
+  window: z.string().regex(/^\d+d$/, "window must look like '252d'").default("252d"),
 });
 
 const compareTickersArgs = z.object({
@@ -296,6 +305,29 @@ async function execGetRiskMetrics(args: z.infer<typeof getRiskMetricsArgs>) {
       asset_type: symbolRecord.asset_type || null,
     },
   };
+}
+
+/**
+ * One-pull single-name evidence (M.14). Replaces get_risk_metrics +
+ * get_ticker_returns + get_rankings + two cohort reads. Thin pieces come
+ * back as refusals, not a 422 — the model must name a missing piece rather
+ * than invent it.
+ */
+async function execGetStockCommentaryBundle(
+  args: z.infer<typeof getStockCommentaryBundleArgs>,
+) {
+  const window = args.window ?? "252d";
+  if (parseWindowDays(window) == null) {
+    throw new Error("window must look like '252d'");
+  }
+  const bundle = await getStockCommentaryBundle({
+    ticker: args.ticker,
+    window,
+  });
+  if (!bundle) {
+    throw new Error(`Symbol not found for ticker ${args.ticker}`);
+  }
+  return bundle;
 }
 
 export interface TickerComparisonRow {
@@ -966,7 +998,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_risk_metrics",
     openaiTool: fnTool(
       "get_risk_metrics",
-      "Latest hedge ratios (L3), explained risk, volatility, and price for a US equity ticker. Use for current snapshot (e.g. NVDA, AAPL).",
+      "Latest hedge ratios (L3), explained risk, volatility, and price for a US equity ticker — scalar snapshot only. For a single-name risk note (residual vs peers, trailing return record, standing) call get_stock_commentary_bundle once instead of this plus get_ticker_returns plus get_rankings. For two or more names call compare_tickers — do not call this once per ticker.",
       {
         ticker: {
           type: "string",
@@ -978,6 +1010,30 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     capabilityId: "metrics-snapshot",
     argSchema: getRiskMetricsArgs,
     executor: async (a) => execGetRiskMetrics(getRiskMetricsArgs.parse(a)),
+  },
+  {
+    name: "get_stock_commentary_bundle",
+    openaiTool: fnTool(
+      "get_stock_commentary_bundle",
+      "One-pull single-name risk evidence: latest metrics + hedge_levels, trailing return-record summary (additive sums of daily gross/factor/residual + drawdown), cohort standing, peer variance shares, and residual rank. Call this once when the user asks about one stock's risk, residual, or how it sits vs peers. Do not fan out get_risk_metrics + get_ticker_returns + get_rankings for that job. Coverage flags and refusals name any thin piece — quote them, never invent the missing number. For two or more names use compare_tickers instead.",
+      {
+        ticker: {
+          type: "string",
+          description: "US stock ticker symbol, e.g. NVDA, AAPL, MSFT",
+        },
+        window: {
+          type: "string",
+          description: "Trailing window for return record and residual rank, e.g. '252d' (default).",
+        },
+      },
+      ["ticker"],
+    ),
+    capabilityId: "cohorts",
+    argSchema: getStockCommentaryBundleArgs,
+    executor: async (a) =>
+      execGetStockCommentaryBundle(getStockCommentaryBundleArgs.parse(a)),
+    sanitizer: (r) =>
+      JSON.stringify(r).length <= 30_000 ? r : applyLargeResultFallback(r),
   },
   {
     name: "compare_tickers",

@@ -28,8 +28,9 @@ ${toolLines}
 The runtime executes **all tool calls in a single assistant turn concurrently** (they fan out server-side; the response waits only for the slowest one). So when your answer needs data for **multiple independent subjects** — several tickers, several metrics on the same ticker that aren't on the same tool, peer cohorts — emit **all** the tool calls **in one turn** (Anthropic supports multiple \`tool_use\` blocks per response). **Do not** fetch one ticker, await, then fetch the next on the following round — that serializes the latency unnecessarily.
 
 Examples:
-- User asks for major-holdings risk across 8 tickers → emit 8 \`get_risk_metrics\` calls in one turn (≈ one tool latency total, parallel).
-- User asks "compare NVDA and AMD" → emit both \`get_risk_metrics\` calls together; don't fetch NVDA, then AMD.
+- User asks about one stock's risk / residual / vs peers → one \`get_stock_commentary_bundle\` call. Do not fan out \`get_risk_metrics\` + \`get_ticker_returns\` + \`get_rankings\` for that job.
+- User asks "compare NVDA and AMD" → one \`compare_tickers\` call with both names. Do not emit \`get_risk_metrics\` once per ticker.
+- User asks for a scalar snapshot on 8 independent holdings (not a comparison) → emit 8 \`get_risk_metrics\` calls in one turn (≈ one tool latency total, parallel).
 - Reserve a *second* tool-round only when round 2's calls genuinely depend on round 1's results (e.g. you searched for a ticker by name and need to fetch metrics for the resolved symbol).
 
 This matters: a serialized 8-call answer takes ≈ 8 × tool latency; a fan-out answer takes ≈ 1 × tool latency.`;

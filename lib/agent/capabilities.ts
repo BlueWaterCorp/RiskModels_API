@@ -295,7 +295,7 @@ export const CAPABILITIES: Capability[] = [
     name: "AI Risk Analyst",
     description:
       "Natural language risk analysis with live data via OpenAI tools (non-streaming JSON). " +
-      "The model can call: get_risk_metrics, get_l3_decomposition, get_ticker_returns, get_rankings, " +
+      "The model can call: get_stock_commentary_bundle (one-pull single-name evidence), compare_tickers (2–8 names, one bill), get_risk_metrics, get_l3_decomposition, get_ticker_returns, get_rankings, " +
       "get_factor_correlation, get_macro_factors, search_tickers (free), compute_portfolio_risk_index. " +
       "LLM usage is billed per token; each paid tool call is billed at the matching endpoint capability rate. " +
       "response_mode is reserved for future streaming.",

@@ -62,6 +62,8 @@ type RawContext = {
 const TOOL_LABELS: Record<string, string> = {
   search_tickers: "ticker search",
   get_risk_metrics: "risk metrics",
+  get_stock_commentary_bundle: "stock commentary",
+  compare_tickers: "ticker compare",
   get_correlation: "correlation",
   get_rankings: "rankings",
   get_l3_decomposition: "L3 decomposition",
