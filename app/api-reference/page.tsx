@@ -16,6 +16,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { CodeBlock } from '@/components/ui/CodeBlock';
 import { Input } from '@/components/ui/Input';
 import { ENDPOINT_GROUPS, getEndpointById, type Endpoint, type HttpMethod } from '@/lib/api-reference-data';
+import { FIRST_LIVE_PROMPT_REST } from '@/lib/mcp/activation';
 import { cn } from '@/lib/cn';
 
 const BASE_URL = 'https://riskmodels.app/api';
@@ -435,7 +436,7 @@ export default function ApiReferencePage() {
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight mb-3">Fastest way to get started with agents</h2>
                   <p className="text-zinc-400 max-w-2xl">
-                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, wires itself up for the conversation, and tells you what it can do — no install, no terminal.
+                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, makes a live metrics call, and quotes residual explained-risk from the JSON — no install, no terminal.
                   </p>
                 </div>
 
@@ -443,7 +444,7 @@ export default function ApiReferencePage() {
                   <div>
                     <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Paste this into a fresh chat (copy &amp; paste)</div>
                     <div className="relative rounded-xl border border-zinc-800 bg-zinc-950 p-5 font-mono text-sm text-zinc-200 whitespace-pre-wrap">
-{`Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.`}
+{FIRST_LIVE_PROMPT_REST}
                     </div>
                     <p className="text-xs text-zinc-500 mt-2">
                       Want it permanently in Claude or Cursor? Settings → Connectors → Add custom connector → paste{' '}
@@ -455,7 +456,7 @@ export default function ApiReferencePage() {
 
                   <div className="flex flex-wrap gap-3">
                     <button
-                      onClick={() => navigator.clipboard.writeText(`Visit riskmodels.app and set it up to use in this chat, then tell me what you can analyze.`)}
+                      onClick={() => navigator.clipboard.writeText(FIRST_LIVE_PROMPT_REST)}
                       className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-900 transition-colors"
                     >
                       Copy agent prompt
@@ -481,8 +482,9 @@ export default function ApiReferencePage() {
                     ].map((example, i) => (
                       <button
                         key={i}
-                        onClick={() => navigator.clipboard.writeText(`Visit riskmodels.app and set it up to use in this chat. Then help me with this:
+                        onClick={() => navigator.clipboard.writeText(`${FIRST_LIVE_PROMPT_REST}
 
+Then help me with this:
 ${example}`)}
                         className="text-left px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-400 hover:text-zinc-200 transition-all"
                       >

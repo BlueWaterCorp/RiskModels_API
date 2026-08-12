@@ -28,6 +28,12 @@ import {
   registerRiskModelsWhitepaperResources,
 } from "@/lib/mcp/tools/riskmodels-tools";
 import { registerRiskModelsRenderTool } from "@/lib/mcp/render-tool";
+import {
+  GET_CAPABILITY_DESCRIPTION,
+  GET_SCHEMA_DESCRIPTION,
+  LIST_ENDPOINTS_DESCRIPTION,
+  MCP_SERVER_INSTRUCTIONS,
+} from "@/lib/mcp/activation";
 
 const DATA_DIR = join(process.cwd(), "mcp", "data");
 
@@ -161,10 +167,13 @@ function loadText(relativePath: string): string | null {
  * Caller supplies authenticated user credentials via `opts`.
  */
 export function createMcpServer(opts: McpServerOptions): McpServer {
-  const server = new McpServer({
-    name: "riskmodels-api",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    {
+      name: "riskmodels-api",
+      version: "1.0.0",
+    },
+    { instructions: MCP_SERVER_INSTRUCTIONS },
+  );
   const sdk = createRiskModelsSdk({
     apiKey: opts.apiKey,
     apiBase: opts.apiBase || "https://riskmodels.app",
@@ -312,7 +321,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     {
       title: "List RiskModels API Endpoints",
       annotations: { readOnlyHint: true },
-      description: "List all public API capabilities (id, name, method, endpoint, short description)",
+      description: LIST_ENDPOINTS_DESCRIPTION,
     },
     async () => {
       const capabilities = loadJson<Array<{ id: string; name: string; method: string; endpoint: string; description: string }>>("capabilities.json");
@@ -335,7 +344,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     {
       title: "Get RiskModels Capability Details",
       annotations: { readOnlyHint: true },
-      description: "Get full capability details (parameters, pricing, examples) by id",
+      description: GET_CAPABILITY_DESCRIPTION,
       inputSchema: {
         id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
       },
@@ -358,7 +367,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     {
       title: "Get RiskModels Response Schema",
       annotations: { readOnlyHint: true },
-      description: "Get JSON schema for an API response by path (e.g. ticker-returns-v2.json)",
+      description: GET_SCHEMA_DESCRIPTION,
       inputSchema: {
         path: z.string().describe("Schema path or filename"),
       },

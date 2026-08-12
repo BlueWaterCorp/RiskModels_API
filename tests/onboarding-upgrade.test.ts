@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { buildInstallPlans, defaultMcpServerConfig, firstPrompt } from "../cli/src/lib/mcp-install-plan";
+import { FIRST_LIVE_PROMPT_MCP, FIRST_LIVE_PROMPT_REST, MCP_SERVER_INSTRUCTIONS } from "../lib/mcp/activation";
+import { buildLlmsTxt } from "../lib/llms-txt";
 import { selectedClients, type ClientDetection } from "../cli/src/lib/mcp-config-paths";
 import { redactJson, redactSecret } from "../cli/src/lib/redact";
 import {
@@ -9,7 +13,7 @@ import {
   removeJsonMcpConfig,
 } from "../cli/src/lib/mcp-config-writer";
 import { normalizeCompareResult, normalizeDecomposeResult, normalizeHedgePositionResult } from "../packages/riskmodels-sdk/src/normalize";
-import { registerRiskModelsTools } from "../lib/mcp/tools/riskmodels-tools";
+import { registerRiskModelsTools, registerRiskModelsPrompts } from "../lib/mcp/tools/riskmodels-tools";
 
 const apiCall = {
   method: "POST" as const,
@@ -139,7 +143,17 @@ describe("RiskModels CLI installer planning", () => {
     expect(selectedClients({ client: "cursor" })).toEqual(["cursor"]);
     expect(selectedClients({ all: true })).toEqual(["claude", "cursor", "codex", "vscode"]);
     expect(() => selectedClients({ client: "zed" })).toThrow("Unknown client");
-    expect(firstPrompt()).toBe("Compare AAPL and NVDA using RiskModels. What am I really betting on?");
+    expect(firstPrompt()).toBe(FIRST_LIVE_PROMPT_MCP);
+    expect(firstPrompt()).toContain("riskmodels_compare");
+    expect(firstPrompt()).toContain("riskmodels_decompose");
+    expect(MCP_SERVER_INSTRUCTIONS).toContain("Skip riskmodels_list_endpoints");
+    const llms = buildLlmsTxt("https://riskmodels.app");
+    expect(llms).toContain(FIRST_LIVE_PROMPT_MCP);
+    expect(llms).toContain(FIRST_LIVE_PROMPT_REST);
+    expect(llms).toContain("Do not start with a capability catalog");
+    const mdx = readFileSync(join(__dirname, "../content/docs/agent-integration.mdx"), "utf8");
+    expect(mdx).toContain(FIRST_LIVE_PROMPT_MCP);
+    expect(mdx).toContain(FIRST_LIVE_PROMPT_REST);
   });
 
   it("redacts nested secret-shaped keys", () => {
@@ -239,8 +253,6 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_search_filers",
       "riskmodels_search_etfs",
       "riskmodels_get_rankings",
-      "riskmodels_get_cohorts",
-      "riskmodels_decompose_selection_vs_drift",
       "riskmodels_get_fundamentals",
       "riskmodels_screen_rankings",
       "riskmodels_get_macro_correlation",
@@ -306,5 +318,22 @@ describe("RiskModels MCP live-paper tools", () => {
     }
     // Only the single allowed call ever dispatched.
     expect(calls).toHaveLength(1);
+  });
+
+  it("registers first_live_call as the first MCP prompt", () => {
+    const prompts = new Map<string, () => { messages: Array<{ content: { text: string } }> }>();
+    const server = {
+      registerTool: () => undefined,
+      registerResource: () => undefined,
+      registerPrompt: (name: string, _config: Record<string, unknown>, handler: any) => {
+        prompts.set(name, handler);
+      },
+    };
+    registerRiskModelsPrompts(server as any);
+    expect([...prompts.keys()][0]).toBe("first_live_call");
+    const body = prompts.get("first_live_call")!().messages[0].content.text;
+    expect(body).toContain("riskmodels_compare");
+    expect(body).toContain("riskmodels_decompose");
+    expect(body).toContain("Do not call riskmodels_list_endpoints");
   });
 });

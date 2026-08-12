@@ -10,6 +10,6 @@
     "skipLibCheck": true,
     "declaration": true
   },
-  "include": ["src/**/*", "../lib/mcp/tools/**/*.ts"],
+  "include": ["src/**/*", "../lib/mcp/tools/**/*.ts", "../lib/mcp/activation.ts"],
   "exclude": ["node_modules", "dist"]
 }

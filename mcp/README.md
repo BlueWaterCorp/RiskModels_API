@@ -8,8 +8,10 @@ Release note: publish **`@riskmodels/sdk`** to npm first, then **`@riskmodels/mc
 
 MCP server that exposes **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), and any other [MCP](https://modelcontextprotocol.io) client. Two classes of tools:
 
-- **Discovery tools** — list endpoints, read capabilities, fetch response schemas (no API key required).
-- **Data tools** — fetch daily EOD risk decomposition, metrics snapshots, and portfolio risk reports (API key required).
+- **Data tools** — fetch daily EOD risk decomposition, metrics snapshots, and portfolio risk reports (API key / OAuth required). **Start here** after connect: `riskmodels_compare` / `riskmodels_decompose`.
+- **Discovery tools** — list endpoints, read capabilities, fetch response schemas (local, unbilled). Use only when implementing a client. They do not return live numbers.
+
+The server also sends MCP `instructions` on initialize: answer ticker questions from data tools, not training data. Prompt `first_live_call` is the loaded AAPL vs NVDA first message.
 
 Data tools return the same numbers the REST API and CLI return — GCP zarr for historical time series, Supabase `security_history_latest` for the latest snapshot. Data freshness: daily after US market close.
 
@@ -34,7 +36,7 @@ Data tools return the same numbers the REST API and CLI return — GCP zarr for 
 
 | Tool | Description |
 |------|-------------|
-| `riskmodels_list_endpoints` | List all public API capabilities (id, name, method, endpoint, short description). |
+| `riskmodels_list_endpoints` | Catalog of REST capabilities. Skip for stock/portfolio questions — call `riskmodels_decompose` / `riskmodels_compare` instead. |
 | `riskmodels_get_capability` | Get full capability by id (parameters, pricing, examples). |
 | `riskmodels_get_schema` | Get JSON schema by path (e.g. `ticker-returns-v2.json`). |
 

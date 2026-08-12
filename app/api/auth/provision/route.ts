@@ -276,7 +276,8 @@ export async function POST(request: NextRequest) {
             "1. Store your API key securely (it will not be shown again)",
             "2. Complete the initial deposit using the client_secret",
             "3. Use your API key in the Authorization header: Bearer <api_key>",
-            "4. Check your balance at /api/balance",
+            "4. Confirm with GET /api/metrics/AAPL and quote l3 residual explained-risk from the JSON",
+            "5. Check your balance at /api/balance",
           ],
           warnings: [
             "Your API key is shown only once. If lost, you must generate a new one.",

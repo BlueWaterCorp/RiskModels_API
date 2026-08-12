@@ -18,7 +18,9 @@ Apply **before** implementing or refactoring:
 - Example scripts under `examples/python/` or `packages/riskmodels/examples/`
 - Anything that embeds paths, JSON bodies, or query params for the public API
 
-## Discovery order (mandatory)
+**Do not use this skill to answer a stock or portfolio question.** Catalog tools (`riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`, `riskmodels_get_openapi_spec`) are for wiring a client. Live numbers come from `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, or the matching REST routes. After an MCP OAuth connect, call a data tool first — listing endpoints does not count as activation.
+
+## Discovery order (mandatory for client work)
 
 ### 1. MCP tools (if connected)
 
