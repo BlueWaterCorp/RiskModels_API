@@ -316,7 +316,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Batch Lstar Residual Returns",
       annotations: { readOnlyHint: true },
       description:
-        "Batch Lstar-dispatched residual returns for up to 100 tickers (POST /batch/lstar). Same marginal-ER selection rule as GET /lstar. Returns per-ticker dates, lstar level, residual_return[], and dispatched HRs. Billing: $0.005/ticker, minimum $0.01/call.",
+        "Batch Lstar-dispatched residual returns for up to 100 tickers (POST /batch/lstar). Same marginal-ER selection rule as GET /lstar. Returns per-ticker dates, lstar level, residual_return[], and dispatched HRs. Billing: $0.015/ticker + $0.0075/extra year, minimum $0.03/call.",
       inputSchema: {
         tickers: z.array(z.string().min(1)).min(1).max(100).describe("Ticker symbols (1-100)"),
         years: z

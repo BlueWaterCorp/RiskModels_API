@@ -16,6 +16,7 @@ import {
   ensureMinimumBalanceForUserKeyHolder,
   ensureStarterCredits,
   getUserBalance,
+  isGrandfathered,
 } from "./billing";
 import { createPaymentRequiredResponse, createMonthlyCapExceededResponse } from "./errors";
 import { generateRequestId, logTelemetry } from "./telemetry";
@@ -244,7 +245,8 @@ export interface BillingOptions {
   itemCount?: number;
   /** Resolve item count from request (e.g. for batch endpoints). Uses cloned request to avoid consuming body. */
   getItemCount?: (req: NextRequest) => Promise<number | undefined> | number | undefined;
-  /** For per-token capabilities (e.g. chat): estimate tokens from a cloned request body before billing. */
+  /** Resolve years from request (GET query or POST body). Used when cost_per_extra_year_usd is set. */
+  getYears?: (req: NextRequest) => Promise<number | undefined> | number | undefined;
   getTokenEstimates?: (
     req: NextRequest,
   ) => Promise<{ inputTokens?: number; outputTokens?: number } | undefined>;
@@ -320,6 +322,36 @@ export interface BillingContext {
    * Idempotent; deducts + increments free tier + logs telemetry on success.
    */
   settleBilling?: (success: boolean) => Promise<void>;
+}
+
+async function resolveYearsFromRequest(
+  req: NextRequest,
+  options: BillingOptions,
+): Promise<number | undefined> {
+  if (options.getYears) {
+    try {
+      const resolved = await options.getYears(req);
+      if (resolved !== undefined) return resolved;
+    } catch {
+      // Fall through to query / body
+    }
+  }
+  const q = new URL(req.url).searchParams.get("years");
+  if (q != null && q !== "") {
+    const n = Number(q);
+    if (Number.isFinite(n)) return n;
+  }
+  try {
+    const body = await req.clone().json();
+    if (body && typeof body.years === "number") return body.years;
+    if (body && typeof body.years === "string") {
+      const n = Number(body.years);
+      if (Number.isFinite(n)) return n;
+    }
+  } catch {
+    // Not JSON or already consumed — ignore
+  }
+  return undefined;
 }
 
 /**
@@ -672,10 +704,16 @@ export function withBilling(
         }
       }
 
+      const needsYears = !!capability.pricing.cost_per_extra_year_usd;
+      const years = needsYears ? await resolveYearsFromRequest(req, options) : undefined;
+      const grandfathered = await isGrandfathered(userId);
+
       let costUsd = calculateEstimatedCost(options.capabilityId, {
         itemCount,
         inputTokens,
         outputTokens,
+        years,
+        grandfathered,
       });
 
       // Empty portfolio probe (e.g. Plaid sync not finished): no charge.

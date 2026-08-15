@@ -148,12 +148,12 @@ def check_agent_freshness(response_body, max_age_days=3):
 
 | Endpoint | Cost | Notes |
 |---|---|---|
-| `GET /api/ticker-returns` | $0.005/call | Same cost regardless of `years` parameter |
+| `GET /api/ticker-returns` | $0.02 + $0.01/extra year | 1 year base; `years` moves the price |
 | `GET /api/metrics/{ticker}` | $0.005/call | — |
-| `GET /api/l3-decomposition` | $0.01/call | — |
-| `POST /api/batch/analyze` | $0.002/position | Min $0.01/call. 25% cheaper than individual calls. |
-| `GET /api/tickers` | $0.001/call | — |
-| `GET /api/telemetry` | $0.002/call | Optional `capability`, `days` query params |
+| `GET /api/l3-decomposition` | $0.04/call | — |
+| `POST /api/batch/analyze` | $0.015/position | Min $0.03/call. 25% off 1y ticker-returns. |
+| `GET /api/tickers` | Free | Discovery |
+| `GET /api/telemetry` | $0.01/call | Optional `capability`, `days` query params |
 | `POST /api/chat` | Per token | Input/output per 1k tokens; see agent manifest |
 | `GET /api/balance` | Free | — |
 | `GET /api/invoices` | Free | — |

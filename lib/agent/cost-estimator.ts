@@ -130,6 +130,7 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
   if (!capability) return null;
 
   const itemCount = getItemCount(req.params);
+  const years = getYears(req.params);
   const chatTokens =
     capabilityId === "chat-risk-analyst"
       ? estimateChatTokensFromParams(req.params)
@@ -141,7 +142,7 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
           chatTokens.inputTokens,
           chatTokens.outputTokens,
         )
-      : calculateRequestCost(capabilityId, undefined, undefined, itemCount);
+      : calculateRequestCost(capabilityId, undefined, undefined, itemCount, years);
 
   const pricing = capability.pricing;
   const pricingModel =

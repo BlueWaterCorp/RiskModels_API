@@ -153,7 +153,7 @@ The server manifest at `https://riskmodels.app/.well-known/mcp.json` registers
 ## 9. Billing
 
 `POST /snapshot` uses the `portfolio-risk-snapshot` capability:
-**$0.25 per request** (single bundled charge, no per-position fee). Cost and
+**$1.25 per request** (single bundled charge, no per-position fee). Cost and
 remaining balance are returned in the response under `_agent.cost_usd` and the
 `X-Balance-Remaining` HTTP header.
 

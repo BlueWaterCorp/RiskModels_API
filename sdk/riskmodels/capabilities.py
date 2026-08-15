@@ -30,7 +30,7 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "description": (
             "Calls POST /decompose and returns the simplified four-layer ERM3 exposure with "
             "tradable hedge ETFs. Sign convention: hedge[etf] == -exposure[layer].hr. "
-            "Same billing as get_metrics ($0.001)."
+            "Same billing as get_metrics ($0.005)."
         ),
         "scopes": ["ticker-returns (OAuth)"],
         "parameters": [

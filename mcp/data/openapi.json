@@ -6315,7 +6315,7 @@
     "/plaid/holdings": {
       "get": {
         "summary": "Fetch Plaid-synced portfolio holdings",
-        "description": "Returns enriched holdings from connected Plaid accounts with risk metrics.\n\n**Features:**\n- Automatic ticker resolution and normalization\n- Risk enrichment with factor exposures\n- Real-time portfolio valuation\n- Multi-account aggregation\n\n**Authentication:** Required (API Key or OAuth2 with plaid:holdings scope)\n**Billing:** $0.02 per request\n**Rate Limit:** 60 requests/minute\n",
+        "description": "Returns enriched holdings from connected Plaid accounts with risk metrics.\n\n**Features:**\n- Automatic ticker resolution and normalization\n- Risk enrichment with factor exposures\n- Real-time portfolio valuation\n- Multi-account aggregation\n\n**Authentication:** Required (API Key or OAuth2 with plaid:holdings scope)\n**Billing:** $0.10 per request\n**Rate Limit:** 60 requests/minute\n",
         "operationId": "getPlaidHoldings",
         "tags": [
           "Plaid Integration"
@@ -6324,9 +6324,9 @@
           "capability_id": "plaid-holdings",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.02,
+          "cost_usd": 0.1,
           "currency": "USD",
-          "billing_code": "plaid_holdings_v2"
+          "billing_code": "plaid_holdings_v3"
         },
         "security": [
           {
@@ -6476,7 +6476,7 @@
     "/metrics/{ticker}": {
       "get": {
         "summary": "(internal/legacy) Latest risk metrics snapshot",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the latest V3 daily metrics for the ticker. Numeric fields are under the `metrics` object using abbreviated keys (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_res_er`, `vol_23d`, etc.). The observation date is `teo`. Optional `display` maps keys to human-readable labels.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the latest V3 daily metrics for the ticker. Numeric fields are under the `metrics` object using abbreviated keys (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_res_er`, `vol_23d`, etc.). The observation date is `teo`. Optional `display` maps keys to human-readable labels.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n",
         "operationId": "getMetrics",
         "tags": [
           "Risk Metrics"
@@ -6485,9 +6485,9 @@
           "capability_id": "metrics",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "metrics_v3"
+          "billing_code": "metrics_v4"
         },
         "security": [
           {
@@ -6618,7 +6618,7 @@
     "/fundamentals/{ticker}": {
       "get": {
         "summary": "Point-in-time quarterly fundamentals (derived analytics + SEC-sourced raw)",
-        "description": "Quarterly fundamentals for a single ticker, point-in-time filtered: a row is visible if and only if its `filed_date` is on or before `as_of` (never \"latest\"). `filed_date_source` is `exact` (vendor filing date) or `approx` (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).\n\n**Derived analytics + per-cell raw SEC exposure.** Rows carry TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), capital-return ratios (`payout_ratio`, `retention_ratio`, `buyback_ratio`, `total_payout_ratio`, `sustainable_growth`), `leverage_ratio`, ERM3 cascade betas with provenance, the cost-of-capital layer (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`), and the equity-bridge residual + inputs mask. `sec_facts` carries RAW line items for the cells whose serving value is SEC XBRL (public); vendor-sourced cells are not included there.\n\nNumeric line items are stored at ~7 significant figures (float32) — suitable for analysis, not cent-level reconciliation. `gross_margin` and `operating_margin` are currently always null (inputs not yet in the store). `market_cap` is a current snapshot, not point-in-time per quarter.\n\n**Disclosures (also returned in every response body):**\n- Realized historical data only. No forecasts, no analyst targets, no buy/sell\n  signals.\n\n- Coverage starts ~2009 for most filers; pre-2009 and small-cap or\n  recently-IPO'd names are thin. Missing fields are null.\n\n- `beta_market` is a short-half-life conditional market beta, not a textbook\n  long-run CAPM beta; for defensive names `cost_of_equity` can fall below the\n  risk-free rate. That is a property of the conditional beta, not an error.\n\n- WACC uses BOOK-value weights. Market-value weights are the textbook\n  convention; compute them yourself if you have market-cap access.\n\n- TTM sums flows over the trailing 4 reported quarters; stock quantities are\n  point-in-time (ROE denominator uses trailing-4-quarter average equity).\n  Ratios need 4 finite quarters or they are null.\n\n- `erp` (default 0.05) and `tax_rate` (default 0.21) are always\n  caller-supplied parameters, echoed in the response; no equity-risk-premium\n  opinion is stored.\n\n- `rf_rate` is the Treasury constant-maturity yield at the selected\n  `rf_tenor` (3m|1y|2y|5y|10y|30y, default 10y — the valuation convention),\n  sampled at the last observation on or before each quarter's period end.\n  A short tenor should be paired with a bill-basis ERP or cost of capital\n  is understated.\n\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n\nPer-symbol, per-call only: no batch variant, no CSV/bulk export (JSON only).\n",
+        "description": "Quarterly fundamentals for a single ticker, point-in-time filtered: a row is visible if and only if its `filed_date` is on or before `as_of` (never \"latest\"). `filed_date_source` is `exact` (vendor filing date) or `approx` (period_end + 45 days, the 10-Q deadline, when the vendor date is missing).\n\n**Derived analytics + per-cell raw SEC exposure.** Rows carry TTM profitability ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), capital-return ratios (`payout_ratio`, `retention_ratio`, `buyback_ratio`, `total_payout_ratio`, `sustainable_growth`), `leverage_ratio`, ERM3 cascade betas with provenance, the cost-of-capital layer (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`), and the equity-bridge residual + inputs mask. `sec_facts` carries RAW line items for the cells whose serving value is SEC XBRL (public); vendor-sourced cells are not included there.\n\nNumeric line items are stored at ~7 significant figures (float32) — suitable for analysis, not cent-level reconciliation. `gross_margin` and `operating_margin` are currently always null (inputs not yet in the store). `market_cap` is a current snapshot, not point-in-time per quarter.\n\n**Disclosures (also returned in every response body):**\n- Realized historical data only. No forecasts, no analyst targets, no buy/sell\n  signals.\n\n- Coverage starts ~2009 for most filers; pre-2009 and small-cap or\n  recently-IPO'd names are thin. Missing fields are null.\n\n- `beta_market` is a short-half-life conditional market beta, not a textbook\n  long-run CAPM beta; for defensive names `cost_of_equity` can fall below the\n  risk-free rate. That is a property of the conditional beta, not an error.\n\n- WACC uses BOOK-value weights. Market-value weights are the textbook\n  convention; compute them yourself if you have market-cap access.\n\n- TTM sums flows over the trailing 4 reported quarters; stock quantities are\n  point-in-time (ROE denominator uses trailing-4-quarter average equity).\n  Ratios need 4 finite quarters or they are null.\n\n- `erp` (default 0.05) and `tax_rate` (default 0.21) are always\n  caller-supplied parameters, echoed in the response; no equity-risk-premium\n  opinion is stored.\n\n- `rf_rate` is the Treasury constant-maturity yield at the selected\n  `rf_tenor` (3m|1y|2y|5y|10y|30y, default 10y — the valuation convention),\n  sampled at the last observation on or before each quarter's period end.\n  A short tenor should be paired with a bill-basis ERP or cost of capital\n  is understated.\n\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.02 per request (deducted from account balance)\n**Rate Limit:** 60 requests/minute (default)\n\nPer-symbol, per-call only: no batch variant, no CSV/bulk export (JSON only).\n",
         "operationId": "getFundamentals",
         "tags": [
           "Fundamentals"
@@ -6627,9 +6627,9 @@
           "capability_id": "fundamentals",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.005,
+          "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "fundamentals_v1"
+          "billing_code": "fundamentals_v2"
         },
         "security": [
           {
@@ -6849,7 +6849,7 @@
     "/v4/decompose": {
       "post": {
         "summary": "Decompose a position into named blocks (market / industry / style / stock-specific)",
-        "description": "The v4 product spine: `market + industry(sector, subsector) + style + stock_specific ≈ 1.0`.\n\nThe `industry` block is ETF-hedgeable (per-layer `hedge_notional_per_1_long`); the `style` block is a **diagnostic** — exposures plus incremental explained variance, never a tradeable hedge. `stock_specific` is the doubly-cleaned skill residual.\n\n`basis` selects the explained-variance basis for the `style` and `stock_specific` blocks: `L3` (default — the clean variance partition) or `lstar` (skill basis). Industry hedge layers are always L3.\n\nTwo leaf fields are `null` until their upstream producer lands and fill in with no schema change: `style.exposures.{size,value}.beta` and `stock_specific.{sharpe_36m,rank_percentile}`.\n\nThe legacy flat shape remains at `POST /decompose`, same billing profile.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "The v4 product spine: `market + industry(sector, subsector) + style + stock_specific ≈ 1.0`.\n\nThe `industry` block is ETF-hedgeable (per-layer `hedge_notional_per_1_long`); the `style` block is a **diagnostic** — exposures plus incremental explained variance, never a tradeable hedge. `stock_specific` is the doubly-cleaned skill residual.\n\n`basis` selects the explained-variance basis for the `style` and `stock_specific` blocks: `L3` (default — the clean variance partition) or `lstar` (skill basis). Industry hedge layers are always L3.\n\nTwo leaf fields are `null` until their upstream producer lands and fill in with no schema change: `style.exposures.{size,value}.beta` and `stock_specific.{sharpe_36m,rank_percentile}`.\n\nThe legacy flat shape remains at `POST /decompose`, same billing profile.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "decomposePositionV4",
         "tags": [
           "Risk Metrics"
@@ -6858,9 +6858,9 @@
           "capability_id": "decompose-position",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "metrics_v3"
+          "billing_code": "metrics_v4"
         },
         "security": [
           {
@@ -7088,18 +7088,18 @@
     "/hedge-basket/{ticker}": {
       "get": {
         "summary": "Structured hedge basket with a recommended hedge level and decision trace",
-        "description": "The chat-rendered hedge table: per-layer ETF legs with a net-market-β subtotal, plus a `decision_trace` explaining why `recommended_level` was chosen. Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas read from `ds_erm3_link_betas_{market_factor_etf}.zarr`.\n\n`user_segment` drives the leverage cap (default `family_office`, 2.0×).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "The chat-rendered hedge table: per-layer ETF legs with a net-market-β subtotal, plus a `decision_trace` explaining why `recommended_level` was chosen. Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas read from `ds_erm3_link_betas_{market_factor_etf}.zarr`.\n\n`user_segment` drives the leverage cap (default `family_office`, 2.0×).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.02 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "getHedgeBasket",
         "tags": [
           "Risk Metrics"
         ],
         "x-pricing": {
           "capability_id": "hedge-basket",
-          "tier": "baseline",
+          "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "hedge_basket_v1"
+          "billing_code": "hedge_basket_v2"
         },
         "security": [
           {
@@ -7209,7 +7209,7 @@
     "/batch/latest-metrics": {
       "get": {
         "summary": "Latest L3 hedge ratios and explained variances for up to 100 tickers",
-        "description": "Lightweight batch read from `security_history_latest` — one row per requested ticker with the six L3 scalars. Cheaper and narrower than `POST /batch/analyze`; use that endpoint when you need returns panels or full metrics.\n\nTickers are de-duplicated and upper-cased; the list is truncated to the first 100. Tickers that resolve but have no latest row come back with `date` and all six metrics `null` rather than being omitted, so the response aligns positionally with what resolved.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "Lightweight batch read from `security_history_latest` — one row per requested ticker with the six L3 scalars. Cheaper and narrower than `POST /batch/analyze`; use that endpoint when you need returns panels or full metrics.\n\nTickers are de-duplicated and upper-cased; the list is truncated to the first 100. Tickers that resolve but have no latest row come back with `date` and all six metrics `null` rather than being omitted, so the response aligns positionally with what resolved.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "getBatchLatestMetrics",
         "tags": [
           "Risk Metrics"
@@ -7218,9 +7218,9 @@
           "capability_id": "metrics-snapshot",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "metrics_snapshot_v1"
+          "billing_code": "metrics_snapshot_v2"
         },
         "security": [
           {
@@ -7463,7 +7463,7 @@
     "/metrics/{ticker}/snapshot.png": {
       "get": {
         "summary": "Single-ticker risk snapshot as a PNG image",
-        "description": "Returns **image bytes**, not JSON. The PNG twin of `GET /metrics/{ticker}/snapshot.pdf`, rendered from the same report data and served from a Redis cache on repeat requests.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.25 per request (premium tier)\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "Returns **image bytes**, not JSON. The PNG twin of `GET /metrics/{ticker}/snapshot.pdf`, rendered from the same report data and served from a Redis cache on repeat requests.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $1.25 per request (premium tier)\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "getTickerSnapshotPng",
         "tags": [
           "Risk Metrics"
@@ -7472,9 +7472,9 @@
           "capability_id": "portfolio-risk-snapshot",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.25,
+          "cost_usd": 1.25,
           "currency": "USD",
-          "billing_code": "risk_snapshot_pdf_v1"
+          "billing_code": "risk_snapshot_pdf_v2"
         },
         "security": [
           {
@@ -7524,7 +7524,7 @@
     "/snapshot/{entity_kind}": {
       "get": {
         "summary": "Stock Deep Dive snapshot as PNG or PDF",
-        "description": "Returns **image or PDF bytes**, not JSON. Served from precomputed GCS objects.\n\nDespite the parameter name, the path segment is a **ticker** — it is called `entity_kind` so the folder can nest `/snapshot/{entity_kind}/{id}/panels/{slug}` without a Next.js sibling-dynamic route conflict. Reserved kinds (`stock`, `fund`, …) are not tickers: requesting `/snapshot/stock` on its own returns 400 with the panel URL shape.\n\nFor panel drill-down prefer `GET /snapshot/stock/{ticker}/panels/{slug}?format=png` (`_full` for the whole sheet).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.25 per request (premium tier)\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "Returns **image or PDF bytes**, not JSON. Served from precomputed GCS objects.\n\nDespite the parameter name, the path segment is a **ticker** — it is called `entity_kind` so the folder can nest `/snapshot/{entity_kind}/{id}/panels/{slug}` without a Next.js sibling-dynamic route conflict. Reserved kinds (`stock`, `fund`, …) are not tickers: requesting `/snapshot/stock` on its own returns 400 with the panel URL shape.\n\nFor panel drill-down prefer `GET /snapshot/stock/{ticker}/panels/{slug}?format=png` (`_full` for the whole sheet).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $1.25 per request (premium tier)\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "getDeepDiveSnapshot",
         "tags": [
           "Risk Metrics"
@@ -7533,9 +7533,9 @@
           "capability_id": "portfolio-risk-snapshot",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.25,
+          "cost_usd": 1.25,
           "currency": "USD",
-          "billing_code": "risk_snapshot_pdf_v1"
+          "billing_code": "risk_snapshot_pdf_v2"
         },
         "security": [
           {
@@ -7605,7 +7605,7 @@
     "/decompose": {
       "post": {
         "summary": "(internal/legacy) Decompose a position into four additive bets with hedge ratios",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "decomposePosition",
         "tags": [
           "Risk Metrics"
@@ -7614,9 +7614,9 @@
           "capability_id": "decompose-position",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "metrics_v3"
+          "billing_code": "metrics_v4"
         },
         "security": [
           {
@@ -7755,7 +7755,7 @@
     "/ticker-returns": {
       "get": {
         "summary": "Daily returns time series with rolling hedge ratios (stocks and ETFs)",
-        "description": "Returns a daily time series of gross returns (`returns_gross`) and, for stocks, V3 rolling hedge ratios and explained-risk fields per day: `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er`. Up to 15 years per request. **ETFs are supported**: requests for ETF tickers (e.g. `SPY`, `XLK`) return `date`, `returns_gross`, and `price_close` sourced from `ds_etf.zarr`; L1/L2/L3 columns are `null` because ETFs are not factor-decomposed. The response includes `asset_type` (\"stock\" or \"etf\") so clients can branch cleanly. For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent` block; billing is applied server-side. Cost: $0.005/call regardless of years pulled.\n",
+        "description": "Returns a daily time series of gross returns (`returns_gross`) and, for stocks, V3 rolling hedge ratios and explained-risk fields per day: `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er`. Up to 15 years per request. **ETFs are supported**: requests for ETF tickers (e.g. `SPY`, `XLK`) return `date`, `returns_gross`, and `price_close` sourced from `ds_etf.zarr`; L1/L2/L3 columns are `null` because ETFs are not factor-decomposed. The response includes `asset_type` (\"stock\" or \"etf\") so clients can branch cleanly. For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent` block; billing is applied server-side. Cost: $0.02 for 1 year + $0.01 per extra year (up to 15).\n",
         "operationId": "getTickerReturns",
         "tags": [
           "Risk Metrics"
@@ -7764,9 +7764,10 @@
           "capability_id": "ticker-returns",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.005,
+          "cost_usd": 0.02,
+          "cost_per_extra_year_usd": 0.01,
           "currency": "USD",
-          "billing_code": "ticker_returns_v2"
+          "billing_code": "ticker_returns_v3"
         },
         "parameters": [
           {
@@ -8039,9 +8040,10 @@
           "capability_id": "returns-decomposition",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.02,
+          "cost_usd": 0.04,
+          "cost_per_extra_year_usd": 0.01,
           "currency": "USD",
-          "billing_code": "returns_decomposition_v1"
+          "billing_code": "returns_decomposition_v2"
         },
         "parameters": [
           {
@@ -8139,9 +8141,9 @@
           "capability_id": "industry-panel",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.02,
+          "cost_usd": 0.04,
           "currency": "USD",
-          "billing_code": "industry_panel_v1"
+          "billing_code": "industry_panel_v2"
         },
         "parameters": [
           {
@@ -8239,7 +8241,7 @@
           "capability_id": "cohorts",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.02,
+          "cost_usd": 0.04,
           "currency": "USD"
         },
         "parameters": [
@@ -8402,9 +8404,9 @@
           "capability_id": "cohorts",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.02,
+          "cost_usd": 0.04,
           "currency": "USD",
-          "billing_code": "cohorts_v1"
+          "billing_code": "cohorts_v2"
         },
         "parameters": [
           {
@@ -8497,9 +8499,9 @@
           "capability_id": "cohorts-series",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.03,
+          "cost_usd": 0.15,
           "currency": "USD",
-          "billing_code": "cohorts_series_v1"
+          "billing_code": "cohorts_series_v2"
         },
         "parameters": [
           {
@@ -8650,9 +8652,9 @@
           "capability_id": "cohorts-pnl-decomposition",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.05,
+          "cost_usd": 0.25,
           "currency": "USD",
-          "billing_code": "cohorts_pnl_decomposition_v1"
+          "billing_code": "cohorts_pnl_decomposition_v2"
         },
         "requestBody": {
           "required": true,
@@ -8762,9 +8764,9 @@
           "capability_id": "rankings-screen",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.05,
+          "cost_usd": 0.25,
           "currency": "USD",
-          "billing_code": "rankings_screen_v1"
+          "billing_code": "rankings_screen_v2"
         },
         "requestBody": {
           "required": true,
@@ -8963,7 +8965,7 @@
     "/l3-decomposition": {
       "get": {
         "summary": "L3 factor decomposition time series",
-        "description": "Returns columnar time series of L3 hedge ratios and explained-risk fractions (parallel arrays by trading date) from V3 `security_history`. Components: market, sector, subsector, residual. Includes `ticker`, `universe`, and `data_source`. This route does not append `_agent` to the JSON body in the current implementation; use headers / account balance for billing if applicable.\n**Billing:** $0.02 per request.\n",
+        "description": "Returns columnar time series of L3 hedge ratios and explained-risk fractions (parallel arrays by trading date) from V3 `security_history`. Components: market, sector, subsector, residual. Includes `ticker`, `universe`, and `data_source`. This route does not append `_agent` to the JSON body in the current implementation; use headers / account balance for billing if applicable.\n**Billing:** $0.04 per request.\n",
         "operationId": "getL3Decomposition",
         "tags": [
           "Risk Metrics"
@@ -8972,9 +8974,9 @@
           "capability_id": "l3-decomposition",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.02,
+          "cost_usd": 0.04,
           "currency": "USD",
-          "billing_code": "l3_decomposition_v2"
+          "billing_code": "l3_decomposition_v3"
         },
         "parameters": [
           {
@@ -9073,7 +9075,7 @@
     "/lstar": {
       "get": {
         "summary": "Recommended hedge level (L*) per date with dispatched HRs",
-        "description": "Per-(ticker, date) recommended hedge level — the simplest level whose marginal explained-return clears the threshold:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nDefault `θ = 0.01` (1%). The chat-facing default is server-authoritative; SDK callers can override via `?threshold=`. Response carries the chosen level's market / sector / subsector hedge ratios (nulls below the chosen level), the chosen level's total ER and daily residual return (`residual_return`), and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.\n**Billing:** $0.02 per request.\n",
+        "description": "Per-(ticker, date) recommended hedge level — the simplest level whose marginal explained-return clears the threshold:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nDefault `θ = 0.01` (1%). The chat-facing default is server-authoritative; SDK callers can override via `?threshold=`. Response carries the chosen level's market / sector / subsector hedge ratios (nulls below the chosen level), the chosen level's total ER and daily residual return (`residual_return`), and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.\n**Billing:** $0.02 + $0.01 per extra year.\n",
         "operationId": "getLstar",
         "tags": [
           "Risk Metrics"
@@ -9083,8 +9085,9 @@
           "tier": "premium",
           "model": "per_request",
           "cost_usd": 0.02,
+          "cost_per_extra_year_usd": 0.01,
           "currency": "USD",
-          "billing_code": "lstar_v1"
+          "billing_code": "lstar_v2"
         },
         "parameters": [
           {
@@ -9229,7 +9232,7 @@
           "model": "per_request",
           "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "residual_signal_v1"
+          "billing_code": "residual_signal_v2"
         },
         "parameters": [
           {
@@ -9363,7 +9366,7 @@
           "model": "per_request",
           "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "residual_signal_v1"
+          "billing_code": "residual_signal_v2"
         },
         "parameters": [
           {
@@ -9474,7 +9477,7 @@
           "model": "per_request",
           "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "residual_signal_v1"
+          "billing_code": "residual_signal_v2"
         },
         "parameters": [
           {
@@ -9585,7 +9588,7 @@
           "model": "per_request",
           "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "residual_signal_basket_v1"
+          "billing_code": "residual_signal_basket_v2"
         },
         "requestBody": {
           "required": true,
@@ -9837,7 +9840,7 @@
     "/universe/{name}/members": {
       "get": {
         "summary": "Active members of a named universe at a teo",
-        "description": "Active membership of a named universe (e.g. `uni_mc_3000`) at one trading day (latest by default). **Active = monthly universe_mask AND daily validity gate** — matches the same dual-gate the ERM3 pipeline applies to produce its output zarrs. Symbols failing either gate are NOT in the response.\n\nThe universe mask is stamped at month-end and applied to every teo in the following month; validity is per-day. The response includes a `mask_as_of` month-end stamp so callers can disambiguate \"membership changed because new month\" from \"membership changed because daily validity failed\" — useful when tracking turnover over time.\n\nFoundational endpoint for any cross-sectional workflow that needs to align on the canonical universe without the Python SDK.\n\n**Billing:** $0.005 per request.\n",
+        "description": "Active membership of a named universe (e.g. `uni_mc_3000`) at one trading day (latest by default). **Active = monthly universe_mask AND daily validity gate** — matches the same dual-gate the ERM3 pipeline applies to produce its output zarrs. Symbols failing either gate are NOT in the response.\n\nThe universe mask is stamped at month-end and applied to every teo in the following month; validity is per-day. The response includes a `mask_as_of` month-end stamp so callers can disambiguate \"membership changed because new month\" from \"membership changed because daily validity failed\" — useful when tracking turnover over time.\n\nFoundational endpoint for any cross-sectional workflow that needs to align on the canonical universe without the Python SDK.\n\n**Billing:** $0.02 per request.\n",
         "operationId": "getUniverseMembers",
         "tags": [
           "Risk Metrics"
@@ -9846,9 +9849,9 @@
           "capability_id": "universe-members",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.005,
+          "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "universe_members_v1"
+          "billing_code": "universe_members_v2"
         },
         "parameters": [
           {
@@ -10001,7 +10004,7 @@
     "/etf/factor-returns": {
       "get": {
         "summary": "ETF factor returns snapshot (public scope)",
-        "description": "One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for **SPY + the 11 GICS sector SPDR ETFs** (XLE / XLB / XLI / XLY / XLP / XLV / XLF / XLK / XLC / XLU / XLRE).\n\nThe classification scope is intentionally narrow — GICS sector membership is industry-public knowledge so exposing it carries no leakage on top of what any prospectus already discloses. The fuller BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed through this endpoint by design. Tickers requested outside the public scope return **400**.\n\nPairs well with `/industry-panel` to read the day's market and sector index moves alongside aggregate stock-level industry βs.\n\n**Billing:** $0.005 per request.\n",
+        "description": "One-teo snapshot of close + trailing-window total returns (1d / 21d / 63d / 252d) for **SPY + the 11 GICS sector SPDR ETFs** (XLE / XLB / XLI / XLY / XLP / XLV / XLF / XLK / XLC / XLU / XLRE).\n\nThe classification scope is intentionally narrow — GICS sector membership is industry-public knowledge so exposing it carries no leakage on top of what any prospectus already discloses. The fuller BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed through this endpoint by design. Tickers requested outside the public scope return **400**.\n\nPairs well with `/industry-panel` to read the day's market and sector index moves alongside aggregate stock-level industry βs.\n\n**Billing:** $0.02 per request.\n",
         "operationId": "getEtfFactorReturns",
         "tags": [
           "Risk Metrics"
@@ -10010,9 +10013,9 @@
           "capability_id": "etf-factor-returns",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.005,
+          "cost_usd": 0.02,
           "currency": "USD",
-          "billing_code": "etf_factor_returns_v1"
+          "billing_code": "etf_factor_returns_v2"
         },
         "parameters": [
           {
@@ -10204,7 +10207,7 @@
     "/correlation": {
       "post": {
         "summary": "Correlation vs macro factor returns",
-        "description": "Computes Pearson or Spearman correlation between a stock return series and daily macro factor returns stored in `macro_factors` (e.g. bitcoin, vix). Stock series may be gross returns or ERM3 residual returns (L1/L2/L3) using the replication identity with SPY and sector/subsector ETFs. Request body accepts a single ticker or an array for batch (`results` array). Cost: $0.002 per ticker. Factor strings are normalized to lowercase canonical keys matching `macro_factors.factor_key` (aliases such as btc → bitcoin). JSON Schema (MCP / validation): request body https://riskmodels.app/schemas/factor-correlation-request-v1.json ; single-ticker 200 body https://riskmodels.app/schemas/factor-correlation-v1.json .\n",
+        "description": "Computes Pearson or Spearman correlation between a stock return series and daily macro factor returns stored in `macro_factors` (e.g. bitcoin, vix). Stock series may be gross returns or ERM3 residual returns (L1/L2/L3) using the replication identity with SPY and sector/subsector ETFs. Request body accepts a single ticker or an array for batch (`results` array). Cost: $0.01 per request. Factor strings are normalized to lowercase canonical keys matching `macro_factors.factor_key` (aliases such as btc → bitcoin). JSON Schema (MCP / validation): request body https://riskmodels.app/schemas/factor-correlation-request-v1.json ; single-ticker 200 body https://riskmodels.app/schemas/factor-correlation-v1.json .\n",
         "operationId": "postFactorCorrelation",
         "externalDocs": {
           "description": "JSON Schema for POST /correlation request body (MCP validate before call).",
@@ -10217,9 +10220,9 @@
           "capability_id": "factor-correlation",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.002,
+          "cost_usd": 0.01,
           "currency": "USD",
-          "billing_code": "factor_correlation_v1"
+          "billing_code": "factor_correlation_v2"
         },
         "requestBody": {
           "required": true,
@@ -10311,9 +10314,9 @@
           "capability_id": "factor-correlation",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.002,
+          "cost_usd": 0.01,
           "currency": "USD",
-          "billing_code": "factor_correlation_v1"
+          "billing_code": "factor_correlation_v2"
         },
         "parameters": [
           {
@@ -10441,7 +10444,7 @@
     "/macro-factors": {
       "get": {
         "summary": "Macro factor daily return series",
-        "description": "Returns long-format rows from Supabase `macro_factors` (`factor_key`, `teo`, `return_gross`) for the requested date range. No stock ticker is required. Omit `factors` to use all ten canonical keys (`inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility`, `bitcoin`, `vix_spot`); aliases such as `btc` → `bitcoin`, `xau`/`gld` → `gold`, and legacy v1 names (`dxy` → `usd`, `vix` → `vix_spot`, `ust10y2y` → `term_spread`) normalize automatically. Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today. Maximum span: 20 years. Cost: $0.001 per request. JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json\n",
+        "description": "Returns long-format rows from Supabase `macro_factors` (`factor_key`, `teo`, `return_gross`) for the requested date range. No stock ticker is required. Omit `factors` to use all ten canonical keys (`inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility`, `bitcoin`, `vix_spot`); aliases such as `btc` → `bitcoin`, `xau`/`gld` → `gold`, and legacy v1 names (`dxy` → `usd`, `vix` → `vix_spot`, `ust10y2y` → `term_spread`) normalize automatically. Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today. Maximum span: 20 years. Cost: $0.005 per request. JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json\n",
         "operationId": "getMacroFactorSeries",
         "externalDocs": {
           "description": "JSON Schema for GET /macro-factors 200 response body.",
@@ -10454,9 +10457,9 @@
           "capability_id": "macro-factor-series",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "macro_factor_series_v1"
+          "billing_code": "macro_factor_series_v2"
         },
         "security": [
           {
@@ -10572,9 +10575,9 @@
           "capability_id": "rankings",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "rankings_v3"
+          "billing_code": "rankings_v4"
         },
         "parameters": [
           {
@@ -10785,9 +10788,9 @@
           "capability_id": "rankings",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "rankings_v3"
+          "billing_code": "rankings_v4"
         },
         "parameters": [
           {
@@ -10921,9 +10924,9 @@
           "capability_id": "rankings",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "rankings_v3"
+          "billing_code": "rankings_v4"
         },
         "parameters": [
           {
@@ -11111,10 +11114,10 @@
           "capability_id": "batch-analysis",
           "tier": "premium",
           "model": "per_position",
-          "cost_usd": 0.005,
-          "min_charge": 0.01,
+          "cost_usd": 0.015,
+          "min_charge": 0.03,
           "currency": "USD",
-          "billing_code": "batch_analysis_v3"
+          "billing_code": "batch_analysis_v4"
         },
         "requestBody": {
           "required": true,
@@ -11294,7 +11297,7 @@
     "/batch/lstar": {
       "post": {
         "summary": "Batch Lstar residual returns (up to 100 tickers)",
-        "description": "Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3) for up to 100 tickers in one call. Uses the same marginal-ER selection rule as `GET /lstar` (default θ = 1%). Response is a `results` map keyed by upper-case ticker; per-ticker failures use `status: error` or `not_found` without failing the whole batch.\n**Billing:** $0.005/ticker, minimum $0.01/call.\n**Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with non-empty histories are included.\n",
+        "description": "Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3) for up to 100 tickers in one call. Uses the same marginal-ER selection rule as `GET /lstar` (default θ = 1%). Response is a `results` map keyed by upper-case ticker; per-ticker failures use `status: error` or `not_found` without failing the whole batch.\n**Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.\n**Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with non-empty histories are included.\n",
         "operationId": "batchLstar",
         "tags": [
           "Risk Metrics"
@@ -11303,10 +11306,11 @@
           "capability_id": "batch-lstar",
           "tier": "premium",
           "model": "per_position",
-          "cost_usd": 0.005,
-          "min_charge": 0.01,
+          "cost_usd": 0.015,
+          "cost_per_extra_year_usd": 0.0075,
+          "min_charge": 0.03,
           "currency": "USD",
-          "billing_code": "batch_lstar_v1"
+          "billing_code": "batch_lstar_v2"
         },
         "requestBody": {
           "required": true,
@@ -11437,7 +11441,7 @@
     "/portfolio/risk-index": {
       "post": {
         "summary": "Portfolio risk index (L3 variance decomposition)",
-        "description": "Holdings-weighted L3 explained-risk decomposition (market, sector, subsector, residual), approximate portfolio volatility (weighted `vol_23d`), and optional daily time series of portfolio ER over `years`. Partial resolution: unresolved tickers appear in `errors`; computation uses resolved positions only. Metered; includes `_agent` and `_metadata`.\n**Billing:** $0.03 per request (empty `positions` / syncing placeholder responses are not charged).\n",
+        "description": "Holdings-weighted L3 explained-risk decomposition (market, sector, subsector, residual), approximate portfolio volatility (weighted `vol_23d`), and optional daily time series of portfolio ER over `years`. Partial resolution: unresolved tickers appear in `errors`; computation uses resolved positions only. Metered; includes `_agent` and `_metadata`.\n**Billing:** $0.15 per request (empty `positions` / syncing placeholder responses are not charged).\n",
         "operationId": "postPortfolioRiskIndex",
         "tags": [
           "Risk Metrics"
@@ -11446,9 +11450,9 @@
           "capability_id": "portfolio-risk-index",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.03,
+          "cost_usd": 0.15,
           "currency": "USD",
-          "billing_code": "portfolio_risk_index_v2"
+          "billing_code": "portfolio_risk_index_v3"
         },
         "requestBody": {
           "required": true,
@@ -11692,7 +11696,7 @@
     "/portfolio/risk-snapshot": {
       "post": {
         "summary": "(legacy) Portfolio risk snapshot (bundled PDF or JSON)",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` (JSON) for new clients.** This endpoint remains the canonical surface for the bundled **PDF** report; for JSON, `/snapshot` returns the same shape with stronger v3 contract guarantees. One bundled report for a weighted portfolio: L3 explained-risk decomposition, per-name hedge ratios, and volatility. Uses internal data access only (no separate charges for underlying metrics calls). `format=json` returns structured data; `format=pdf` returns `application/pdf`. `format=png` is not implemented yet (501). Identical requests are cached 24 hours per user; cache hits return `X-Cache: HIT` and `X-API-Cost-USD: 0`.\n**Billing:** $0.25 per successful response (not charged on cache hit).\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` (JSON) for new clients.** This endpoint remains the canonical surface for the bundled **PDF** report; for JSON, `/snapshot` returns the same shape with stronger v3 contract guarantees. One bundled report for a weighted portfolio: L3 explained-risk decomposition, per-name hedge ratios, and volatility. Uses internal data access only (no separate charges for underlying metrics calls). `format=json` returns structured data; `format=pdf` returns `application/pdf`. `format=png` is not implemented yet (501). Identical requests are cached 24 hours per user; cache hits return `X-Cache: HIT` and `X-API-Cost-USD: 0`.\n**Billing:** $1.25 per successful response (not charged on cache hit).\n",
         "operationId": "postPortfolioRiskSnapshot",
         "tags": [
           "Risk Metrics"
@@ -11701,9 +11705,9 @@
           "capability_id": "portfolio-risk-snapshot",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.25,
+          "cost_usd": 1.25,
           "currency": "USD",
-          "billing_code": "risk_snapshot_pdf_v1"
+          "billing_code": "risk_snapshot_pdf_v2"
         },
         "security": [
           {
@@ -11860,7 +11864,7 @@
     "/snapshot": {
       "post": {
         "summary": "Canonical JSON snapshot (portfolio or single ticker)",
-        "description": "Per Snapshot Architecture v3, this is the canonical public analysis interface. One structured response shape (`snapshot / time_behavior / attribution / risk_summary`) for either a weighted portfolio (`type: \"portfolio\"`) or a single name (`type: \"ticker\"`): L3 explained-risk decomposition, L3 hedge ratios, frozen-weight daily return attribution (gross, market, sector/subsector strips, residual), cumulative return and drawdown over `lookback_days` trading days, and risk summary.\nFor `type: \"ticker\"` the response also includes `snapshot.ticker_meta` with sector/subsector ETFs and the active L3 factor list. Internal endpoints `/decompose`, `/metrics/{ticker}`, `/portfolio/risk-snapshot`, `/batch/analyze` remain callable but are not the recommended public surface; new clients should use `/snapshot`.\n**Billing:** `portfolio-risk-snapshot` capability ($0.25 per request, single bundled charge).\n**Compact response:** `?compact=1` or `Prefer: return=minimal` omits `time_behavior` and `attribution` (large daily arrays); keeps `snapshot`, `risk_summary`, and `_metadata`.\n**Idempotency:** Optional `Idempotency-Key` header (POST). Repeating the same key with the same JSON body within 24h returns the cached response without a second charge when Redis is configured (`X-Idempotent-Replayed: true`).\n",
+        "description": "Per Snapshot Architecture v3, this is the canonical public analysis interface. One structured response shape (`snapshot / time_behavior / attribution / risk_summary`) for either a weighted portfolio (`type: \"portfolio\"`) or a single name (`type: \"ticker\"`): L3 explained-risk decomposition, L3 hedge ratios, frozen-weight daily return attribution (gross, market, sector/subsector strips, residual), cumulative return and drawdown over `lookback_days` trading days, and risk summary.\nFor `type: \"ticker\"` the response also includes `snapshot.ticker_meta` with sector/subsector ETFs and the active L3 factor list. Internal endpoints `/decompose`, `/metrics/{ticker}`, `/portfolio/risk-snapshot`, `/batch/analyze` remain callable but are not the recommended public surface; new clients should use `/snapshot`.\n**Billing:** `portfolio-risk-snapshot` capability ($1.25 per request, single bundled charge).\n**Compact response:** `?compact=1` or `Prefer: return=minimal` omits `time_behavior` and `attribution` (large daily arrays); keeps `snapshot`, `risk_summary`, and `_metadata`.\n**Idempotency:** Optional `Idempotency-Key` header (POST). Repeating the same key with the same JSON body within 24h returns the cached response without a second charge when Redis is configured (`X-Idempotent-Replayed: true`).\n",
         "operationId": "postCanonicalSnapshot",
         "tags": [
           "Risk Metrics"
@@ -11869,9 +11873,9 @@
           "capability_id": "portfolio-risk-snapshot",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.25,
+          "cost_usd": 1.25,
           "currency": "USD",
-          "billing_code": "risk_snapshot_pdf_v1"
+          "billing_code": "risk_snapshot_pdf_v2"
         },
         "security": [
           {
@@ -12009,7 +12013,7 @@
     "/snapshot/{entity_kind}/{id}/panels/{slug}": {
       "get": {
         "summary": "Snapshot panel drill-down (artifact PNG/JSON)",
-        "description": "Addressable panel from the Artifact Registry (O.6). Product alias onto render-svc `POST /artifacts/render`. Stock panels: `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`, `watchlist_er_stacked` (pass `tickers=CRM,MSFT,NVDA`), and `_full` (composed DD page from GCS). Institutional DD figure units (`dd_peer_dna`, more to follow) are batch pre-rendered for a hot ticker cohort — same pixels as the institutional letter page; outside the cohort the route returns 501 with a pointer to `_full` and a request path (email service@riskmodels.app to have a ticker added). See BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.\n**Billing:** `portfolio-risk-snapshot` ($0.25; cache hits may be $0).\n",
+        "description": "Addressable panel from the Artifact Registry (O.6). Product alias onto render-svc `POST /artifacts/render`. Stock panels: `l3_explained_risk_hbar`, `hedge_notionals_hbar`, `hedge_depth_retained`, `watchlist_er_stacked` (pass `tickers=CRM,MSFT,NVDA`), and `_full` (composed DD page from GCS). Institutional DD figure units (`dd_peer_dna`, more to follow) are batch pre-rendered for a hot ticker cohort — same pixels as the institutional letter page; outside the cohort the route returns 501 with a pointer to `_full` and a request path (email service@riskmodels.app to have a ticker added). See BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.\n**Billing:** `portfolio-risk-snapshot` ($1.25; cache hits may be $0).\n",
         "operationId": "getSnapshotPanel",
         "tags": [
           "Risk Metrics"
@@ -12018,9 +12022,9 @@
           "capability_id": "portfolio-risk-snapshot",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.25,
+          "cost_usd": 1.25,
           "currency": "USD",
-          "billing_code": "risk_snapshot_pdf_v1"
+          "billing_code": "risk_snapshot_pdf_v2"
         },
         "security": [
           {
@@ -12159,7 +12163,7 @@
     "/metrics/{ticker}/snapshot.pdf": {
       "get": {
         "summary": "Single-ticker risk snapshot PDF",
-        "description": "Convenience endpoint for one-name PDF snapshot (implicit weight 1.0). Same capability and $0.25 pricing as `POST /portfolio/risk-snapshot` with `format=pdf`. Cached 24h per authenticated user and ticker.\n**Billing:** $0.25 per successful response (not charged on cache hit).\n",
+        "description": "Convenience endpoint for one-name PDF snapshot (implicit weight 1.0). Same capability and $1.25 pricing as `POST /portfolio/risk-snapshot` with `format=pdf`. Cached 24h per authenticated user and ticker.\n**Billing:** $1.25 per successful response (not charged on cache hit).\n",
         "operationId": "getMetricsTickerSnapshotPdf",
         "tags": [
           "Risk Metrics"
@@ -12168,9 +12172,9 @@
           "capability_id": "portfolio-risk-snapshot",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 0.25,
+          "cost_usd": 1.25,
           "currency": "USD",
-          "billing_code": "risk_snapshot_pdf_v1"
+          "billing_code": "risk_snapshot_pdf_v2"
         },
         "security": [
           {
@@ -12477,7 +12481,7 @@
     "/peers": {
       "get": {
         "summary": "Sector / subsector peer cohort",
-        "description": "Resolve a ticker's peer cohort from the symbols registry, ordered by latest market cap. Defaults to `subsector_etf` grouping and falls back to `sector_etf` when the subsector cohort is thin. Powers PeerGroupProxy selection-skill workflows without exposing storage credentials to clients.\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.001 per request\n",
+        "description": "Resolve a ticker's peer cohort from the symbols registry, ordered by latest market cap. Defaults to `subsector_etf` grouping and falls back to `sector_etf` when the subsector cohort is thin. Powers PeerGroupProxy selection-skill workflows without exposing storage credentials to clients.\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n",
         "operationId": "getPeers",
         "tags": [
           "Utility"
@@ -12486,9 +12490,9 @@
           "capability_id": "peers",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0.005,
           "currency": "USD",
-          "billing_code": "peers_v1"
+          "billing_code": "peers_v2"
         },
         "security": [
           {
@@ -12656,7 +12660,7 @@
     "/tickers": {
       "get": {
         "summary": "Ticker universe search",
-        "description": "List tickers in the universe or search by name/symbol. Billed per request ($0.001). Use the `mag7` flag to retrieve the MAG7 tickers. Use `include_metadata` for sector and ETF assignment per ticker.\n",
+        "description": "List tickers in the universe or search by name/symbol. Free (discovery). Use the `mag7` flag to retrieve the MAG7 tickers. Use `include_metadata` for sector and ETF assignment per ticker.\n",
         "operationId": "getTickers",
         "tags": [
           "Utility"
@@ -12665,7 +12669,7 @@
           "capability_id": "ticker-search",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.001,
+          "cost_usd": 0,
           "currency": "USD",
           "billing_code": "ticker_search_v2"
         },
@@ -13843,9 +13847,9 @@
           "capability_id": "cli-query",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.003,
+          "cost_usd": 0.015,
           "currency": "USD",
-          "billing_code": "cli_query_v1"
+          "billing_code": "cli_query_v2"
         },
         "security": [
           {
@@ -13939,7 +13943,7 @@
     "/telemetry": {
       "get": {
         "summary": "Telemetry metrics",
-        "description": "Performance and reliability metrics for API capabilities. Optional filter by capability and number of days. Cost: $0.002/call.\n",
+        "description": "Performance and reliability metrics for API capabilities. Optional filter by capability and number of days. Cost: $0.01/call.\n",
         "operationId": "getTelemetry",
         "tags": [
           "Utility"
@@ -13948,9 +13952,9 @@
           "capability_id": "telemetry-metrics",
           "tier": "baseline",
           "model": "per_request",
-          "cost_usd": 0.002,
+          "cost_usd": 0.01,
           "currency": "USD",
-          "billing_code": "telemetry_v2"
+          "billing_code": "telemetry_v3"
         },
         "parameters": [
           {
@@ -14032,9 +14036,9 @@
           "tier": "premium",
           "model": "per_token",
           "currency": "USD",
-          "billing_code": "chat_risk_analyst_v2",
-          "input_cost_per_1k": 0.001,
-          "output_cost_per_1k": 0.002
+          "billing_code": "chat_risk_analyst_v3",
+          "input_cost_per_1k": 0.005,
+          "output_cost_per_1k": 0.01
         },
         "requestBody": {
           "required": true,
@@ -15489,8 +15493,8 @@
         "x-pricing": {
           "capability_id": "fund-snapshot-json",
           "tier": "baseline",
-          "cost_usd": 0.01,
-          "billing_code": "fund_snapshot_json_v1"
+          "cost_usd": 0.05,
+          "billing_code": "fund_snapshot_json_v2"
         },
         "parameters": [
           {
@@ -15582,8 +15586,8 @@
         "x-pricing": {
           "capability_id": "fund-snapshot-pdf",
           "tier": "premium",
-          "cost_usd": 0.25,
-          "billing_code": "fund_snapshot_pdf_v1"
+          "cost_usd": 1.25,
+          "billing_code": "fund_snapshot_pdf_v2"
         },
         "parameters": [
           {
@@ -15690,8 +15694,8 @@
         "x-pricing": {
           "capability_id": "style-cohort-snapshot-json",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "style_cohort_snapshot_json_v1"
+          "cost_usd": 0.02,
+          "billing_code": "style_cohort_snapshot_json_v2"
         },
         "parameters": [
           {
@@ -15803,8 +15807,8 @@
         "x-pricing": {
           "capability_id": "style-cohort-snapshot-pdf",
           "tier": "premium",
-          "cost_usd": 0.1,
-          "billing_code": "style_cohort_snapshot_pdf_v1"
+          "cost_usd": 0.5,
+          "billing_code": "style_cohort_snapshot_pdf_v2"
         },
         "parameters": [
           {
@@ -15931,8 +15935,8 @@
         "x-pricing": {
           "capability_id": "style-cohort-portfolio-history",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "style_cohort_portfolio_history_v1"
+          "cost_usd": 0.02,
+          "billing_code": "style_cohort_portfolio_history_v2"
         },
         "parameters": [
           {
@@ -16040,8 +16044,8 @@
         "x-pricing": {
           "capability_id": "style-cohort-holdings",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "style_cohort_holdings_v1"
+          "cost_usd": 0.02,
+          "billing_code": "style_cohort_holdings_v2"
         },
         "parameters": [
           {
@@ -16155,8 +16159,8 @@
         "x-pricing": {
           "capability_id": "style-cohort-metrics",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "style_cohort_metrics_v1"
+          "cost_usd": 0.02,
+          "billing_code": "style_cohort_metrics_v2"
         },
         "parameters": [
           {
@@ -16268,8 +16272,8 @@
         "x-pricing": {
           "capability_id": "style-cohort-rankings",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "style_cohort_rankings_v1"
+          "cost_usd": 0.02,
+          "billing_code": "style_cohort_rankings_v2"
         },
         "parameters": [
           {
@@ -16427,8 +16431,8 @@
         "x-pricing": {
           "capability_id": "fund-hedge",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "fund_hedge_v1"
+          "cost_usd": 0.02,
+          "billing_code": "fund_hedge_v2"
         },
         "parameters": [
           {
@@ -16515,8 +16519,8 @@
         "x-pricing": {
           "capability_id": "fund-holdings",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "fund_holdings_v1"
+          "cost_usd": 0.02,
+          "billing_code": "fund_holdings_v2"
         },
         "parameters": [
           {
@@ -16626,8 +16630,8 @@
         "x-pricing": {
           "capability_id": "fund-portfolio-history",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "fund_portfolio_history_v1"
+          "cost_usd": 0.02,
+          "billing_code": "fund_portfolio_history_v2"
         },
         "parameters": [
           {
@@ -16746,8 +16750,8 @@
         "x-pricing": {
           "capability_id": "fund-nav-history",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "fund_nav_history_v1"
+          "cost_usd": 0.02,
+          "billing_code": "fund_nav_history_v2"
         },
         "parameters": [
           {
@@ -16866,8 +16870,8 @@
         "x-pricing": {
           "capability_id": "fund-metrics",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "fund_metrics_v1"
+          "cost_usd": 0.02,
+          "billing_code": "fund_metrics_v2"
         },
         "parameters": [
           {
@@ -17046,8 +17050,8 @@
         "x-pricing": {
           "capability_id": "filer-metrics",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "filer_metrics_v1"
+          "cost_usd": 0.02,
+          "billing_code": "filer_metrics_v2"
         },
         "parameters": [
           {
@@ -17132,8 +17136,8 @@
         "x-pricing": {
           "capability_id": "filer-holdings",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "filer_holdings_v1"
+          "cost_usd": 0.02,
+          "billing_code": "filer_holdings_v2"
         },
         "parameters": [
           {
@@ -17267,8 +17271,8 @@
         "x-pricing": {
           "capability_id": "filer-portfolio-history",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "filer_portfolio_history_v1"
+          "cost_usd": 0.02,
+          "billing_code": "filer_portfolio_history_v2"
         },
         "parameters": [
           {
@@ -17356,8 +17360,8 @@
         "x-pricing": {
           "capability_id": "filer-concentration",
           "tier": "baseline",
-          "cost_usd": 0.005,
-          "billing_code": "filer_concentration_v1"
+          "cost_usd": 0.02,
+          "billing_code": "filer_concentration_v2"
         },
         "parameters": [
           {
@@ -17435,8 +17439,8 @@
         "x-pricing": {
           "capability_id": "filer-snapshot-json",
           "tier": "premium",
-          "cost_usd": 0.01,
-          "billing_code": "filer_snapshot_json_v1"
+          "cost_usd": 0.05,
+          "billing_code": "filer_snapshot_json_v2"
         },
         "parameters": [
           {
@@ -17497,8 +17501,8 @@
         "x-pricing": {
           "capability_id": "filer-snapshot-pdf",
           "tier": "premium",
-          "cost_usd": 0.05,
-          "billing_code": "filer_snapshot_pdf_v1"
+          "cost_usd": 0.25,
+          "billing_code": "filer_snapshot_pdf_v2"
         },
         "parameters": [
           {

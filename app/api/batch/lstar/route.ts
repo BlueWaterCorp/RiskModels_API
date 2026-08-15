@@ -28,7 +28,7 @@ async function getBatchItemCount(req: NextRequest): Promise<number | undefined> 
  * POST /api/batch/lstar
  *
  * Batch Lstar-dispatched residual return + hedge level per date for up to 100 tickers.
- * Cost: $0.005/ticker, minimum $0.01/call (25% cheaper than repeated GET /lstar).
+ * Cost: $0.015/ticker, minimum $0.03/call (25% cheaper than repeated GET /lstar).
  */
 export const POST = withBilling(
   async (request: NextRequest, context: BillingContext) => {

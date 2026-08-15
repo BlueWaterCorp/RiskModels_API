@@ -4605,7 +4605,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2 with plaid:holdings scope)
 
-        **Billing:** $0.02 per request
+        **Billing:** $0.10 per request
 
         **Rate Limit:** 60 requests/minute
       operationId: getPlaidHoldings
@@ -4615,9 +4615,9 @@ paths:
         capability_id: plaid-holdings
         tier: premium
         model: per_request
-        cost_usd: 0.02
+        cost_usd: 0.1
         currency: USD
-        billing_code: plaid_holdings_v2
+        billing_code: plaid_holdings_v3
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -4716,7 +4716,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.001 per request (deducted from account balance)
+        **Billing:** $0.005 per request (deducted from account balance)
 
         **Rate Limit:** 60 requests/minute (default)
       operationId: getMetrics
@@ -4725,9 +4725,9 @@ paths:
         capability_id: metrics
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: metrics_v3
+        billing_code: metrics_v4
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -4849,7 +4849,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.005 per request (deducted from account balance)
+        **Billing:** $0.02 per request (deducted from account balance)
 
         **Rate Limit:** 60 requests/minute (default)
 
@@ -4861,9 +4861,9 @@ paths:
         capability_id: fundamentals
         tier: baseline
         model: per_request
-        cost_usd: 0.005
+        cost_usd: 0.02
         currency: USD
-        billing_code: fundamentals_v1
+        billing_code: fundamentals_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5039,7 +5039,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.001 per request
+        **Billing:** $0.005 per request
 
         **Rate Limit:** 120 requests/minute (default)
       operationId: decomposePositionV4
@@ -5048,9 +5048,9 @@ paths:
         capability_id: decompose-position
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: metrics_v3
+        billing_code: metrics_v4
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5161,18 +5161,18 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.001 per request
+        **Billing:** $0.02 per request
 
         **Rate Limit:** 120 requests/minute (default)
       operationId: getHedgeBasket
       tags: [Risk Metrics]
       x-pricing:
         capability_id: hedge-basket
-        tier: baseline
+        tier: premium
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.02
         currency: USD
-        billing_code: hedge_basket_v1
+        billing_code: hedge_basket_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5246,7 +5246,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.001 per request
+        **Billing:** $0.005 per request
 
         **Rate Limit:** 120 requests/minute (default)
       operationId: getBatchLatestMetrics
@@ -5255,9 +5255,9 @@ paths:
         capability_id: metrics-snapshot
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: metrics_snapshot_v1
+        billing_code: metrics_snapshot_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5397,7 +5397,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.25 per request (premium tier)
+        **Billing:** $1.25 per request (premium tier)
 
         **Rate Limit:** 120 requests/minute (default)
       operationId: getTickerSnapshotPng
@@ -5406,9 +5406,9 @@ paths:
         capability_id: portfolio-risk-snapshot
         tier: premium
         model: per_request
-        cost_usd: 0.25
+        cost_usd: 1.25
         currency: USD
-        billing_code: risk_snapshot_pdf_v1
+        billing_code: risk_snapshot_pdf_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5456,7 +5456,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.25 per request (premium tier)
+        **Billing:** $1.25 per request (premium tier)
 
         **Rate Limit:** 120 requests/minute (default)
       operationId: getDeepDiveSnapshot
@@ -5465,9 +5465,9 @@ paths:
         capability_id: portfolio-risk-snapshot
         tier: premium
         model: per_request
-        cost_usd: 0.25
+        cost_usd: 1.25
         currency: USD
-        billing_code: risk_snapshot_pdf_v1
+        billing_code: risk_snapshot_pdf_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5530,7 +5530,7 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.001 per request
+        **Billing:** $0.005 per request
 
         **Rate Limit:** 120 requests/minute (default)
       operationId: decomposePosition
@@ -5539,9 +5539,9 @@ paths:
         capability_id: decompose-position
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: metrics_v3
+        billing_code: metrics_v4
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -5624,16 +5624,17 @@ paths:
         `asset_type` ("stock" or "etf") so clients can branch cleanly.
         For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use
         `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent`
-        block; billing is applied server-side. Cost: $0.005/call regardless of years pulled.
+        block; billing is applied server-side. Cost: $0.02 for 1 year + $0.01 per extra year (up to 15).
       operationId: getTickerReturns
       tags: [Risk Metrics]
       x-pricing:
         capability_id: ticker-returns
         tier: baseline
         model: per_request
-        cost_usd: 0.005
+        cost_usd: 0.02
+        cost_per_extra_year_usd: 0.01
         currency: USD
-        billing_code: ticker_returns_v2
+        billing_code: ticker_returns_v3
       parameters:
         - name: ticker
           in: query
@@ -5803,9 +5804,10 @@ paths:
         capability_id: returns-decomposition
         tier: premium
         model: per_request
-        cost_usd: 0.02
+        cost_usd: 0.04
+        cost_per_extra_year_usd: 0.01
         currency: USD
-        billing_code: returns_decomposition_v1
+        billing_code: returns_decomposition_v2
       parameters:
         - name: ticker
           in: query
@@ -5874,9 +5876,9 @@ paths:
         capability_id: industry-panel
         tier: premium
         model: per_request
-        cost_usd: 0.02
+        cost_usd: 0.04
         currency: USD
-        billing_code: industry_panel_v1
+        billing_code: industry_panel_v2
       parameters:
         - name: market_factor_etf
           in: query
@@ -5953,7 +5955,7 @@ paths:
         capability_id: cohorts
         tier: premium
         model: per_request
-        cost_usd: 0.02
+        cost_usd: 0.04
         currency: USD
       parameters:
         - name: ticker
@@ -6081,9 +6083,9 @@ paths:
         capability_id: cohorts
         tier: premium
         model: per_request
-        cost_usd: 0.02
+        cost_usd: 0.04
         currency: USD
-        billing_code: cohorts_v1
+        billing_code: cohorts_v2
       parameters:
         - name: cohorts
           in: query
@@ -6163,9 +6165,9 @@ paths:
         capability_id: cohorts-series
         tier: premium
         model: per_request
-        cost_usd: 0.03
+        cost_usd: 0.15
         currency: USD
-        billing_code: cohorts_series_v1
+        billing_code: cohorts_series_v2
       parameters:
         - name: cohorts
           in: query
@@ -6301,9 +6303,9 @@ paths:
         capability_id: cohorts-pnl-decomposition
         tier: premium
         model: per_request
-        cost_usd: 0.05
+        cost_usd: 0.25
         currency: USD
-        billing_code: cohorts_pnl_decomposition_v1
+        billing_code: cohorts_pnl_decomposition_v2
       requestBody:
         required: true
         content:
@@ -6381,9 +6383,9 @@ paths:
         capability_id: rankings-screen
         tier: premium
         model: per_request
-        cost_usd: 0.05
+        cost_usd: 0.25
         currency: USD
-        billing_code: rankings_screen_v1
+        billing_code: rankings_screen_v2
       requestBody:
         required: true
         content:
@@ -6504,16 +6506,16 @@ paths:
         Includes `ticker`, `universe`, and `data_source`. This route does not append `_agent` to the JSON body
         in the current implementation; use headers / account balance for billing if applicable.
 
-        **Billing:** $0.02 per request.
+        **Billing:** $0.04 per request.
       operationId: getL3Decomposition
       tags: [Risk Metrics]
       x-pricing:
         capability_id: l3-decomposition
         tier: premium
         model: per_request
-        cost_usd: 0.02
+        cost_usd: 0.04
         currency: USD
-        billing_code: l3_decomposition_v2
+        billing_code: l3_decomposition_v3
       parameters:
         - name: ticker
           in: query
@@ -6589,7 +6591,7 @@ paths:
         (`residual_return`), and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at
         `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.
 
-        **Billing:** $0.02 per request.
+        **Billing:** $0.02 + $0.01 per extra year.
       operationId: getLstar
       tags: [Risk Metrics]
       x-pricing:
@@ -6597,8 +6599,9 @@ paths:
         tier: premium
         model: per_request
         cost_usd: 0.02
+        cost_per_extra_year_usd: 0.01
         currency: USD
-        billing_code: lstar_v1
+        billing_code: lstar_v2
       parameters:
         - name: ticker
           in: query
@@ -6711,7 +6714,7 @@ paths:
         model: per_request
         cost_usd: 0.02
         currency: USD
-        billing_code: residual_signal_v1
+        billing_code: residual_signal_v2
       parameters:
         - name: ticker
           in: path
@@ -6790,7 +6793,7 @@ paths:
         model: per_request
         cost_usd: 0.02
         currency: USD
-        billing_code: residual_signal_v1
+        billing_code: residual_signal_v2
       parameters:
         - name: limit
           in: query
@@ -6851,7 +6854,7 @@ paths:
         model: per_request
         cost_usd: 0.02
         currency: USD
-        billing_code: residual_signal_v1
+        billing_code: residual_signal_v2
       parameters:
         - name: n
           in: path
@@ -6938,7 +6941,7 @@ paths:
         model: per_request
         cost_usd: 0.02
         currency: USD
-        billing_code: residual_signal_basket_v1
+        billing_code: residual_signal_basket_v2
       requestBody:
         required: true
         content:
@@ -7081,16 +7084,16 @@ paths:
         align on the canonical universe without the Python SDK.
 
 
-        **Billing:** $0.005 per request.
+        **Billing:** $0.02 per request.
       operationId: getUniverseMembers
       tags: [Risk Metrics]
       x-pricing:
         capability_id: universe-members
         tier: baseline
         model: per_request
-        cost_usd: 0.005
+        cost_usd: 0.02
         currency: USD
-        billing_code: universe_members_v1
+        billing_code: universe_members_v2
       parameters:
         - name: name
           in: path
@@ -7200,16 +7203,16 @@ paths:
         index moves alongside aggregate stock-level industry βs.
 
 
-        **Billing:** $0.005 per request.
+        **Billing:** $0.02 per request.
       operationId: getEtfFactorReturns
       tags: [Risk Metrics]
       x-pricing:
         capability_id: etf-factor-returns
         tier: baseline
         model: per_request
-        cost_usd: 0.005
+        cost_usd: 0.02
         currency: USD
-        billing_code: etf_factor_returns_v1
+        billing_code: etf_factor_returns_v2
       parameters:
         - name: sleeve
           in: query
@@ -7306,7 +7309,7 @@ paths:
         Computes Pearson or Spearman correlation between a stock return series and daily macro factor
         returns stored in `macro_factors` (e.g. bitcoin, vix). Stock series may be gross returns or
         ERM3 residual returns (L1/L2/L3) using the replication identity with SPY and sector/subsector ETFs.
-        Request body accepts a single ticker or an array for batch (`results` array). Cost: $0.002 per ticker.
+        Request body accepts a single ticker or an array for batch (`results` array). Cost: $0.01 per request.
         Factor strings are normalized to lowercase canonical keys matching `macro_factors.factor_key` (aliases such as btc → bitcoin).
         JSON Schema (MCP / validation): request body https://riskmodels.app/schemas/factor-correlation-request-v1.json ;
         single-ticker 200 body https://riskmodels.app/schemas/factor-correlation-v1.json .
@@ -7319,9 +7322,9 @@ paths:
         capability_id: factor-correlation
         tier: baseline
         model: per_request
-        cost_usd: 0.002
+        cost_usd: 0.01
         currency: USD
-        billing_code: factor_correlation_v1
+        billing_code: factor_correlation_v2
       requestBody:
         required: true
         content:
@@ -7381,9 +7384,9 @@ paths:
         capability_id: factor-correlation
         tier: baseline
         model: per_request
-        cost_usd: 0.002
+        cost_usd: 0.01
         currency: USD
-        billing_code: factor_correlation_v1
+        billing_code: factor_correlation_v2
       parameters:
         - name: ticker
           in: path
@@ -7467,7 +7470,7 @@ paths:
         `bitcoin`, `vix_spot`); aliases such as `btc` → `bitcoin`, `xau`/`gld` → `gold`, and legacy v1
         names (`dxy` → `usd`, `vix` → `vix_spot`, `ust10y2y` → `term_spread`) normalize automatically.
         Default date range: from five calendar years before `end` through `end` (UTC date); default `end` is today.
-        Maximum span: 20 years. Cost: $0.001 per request.
+        Maximum span: 20 years. Cost: $0.005 per request.
         JSON Schema (MCP): https://riskmodels.app/schemas/macro-factors-series-v1.json
       operationId: getMacroFactorSeries
       externalDocs:
@@ -7478,9 +7481,9 @@ paths:
         capability_id: macro-factor-series
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: macro_factor_series_v1
+        billing_code: macro_factor_series_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -7553,9 +7556,9 @@ paths:
         capability_id: rankings
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: rankings_v3
+        billing_code: rankings_v4
       parameters:
         - name: ticker
           in: path
@@ -7680,9 +7683,9 @@ paths:
         capability_id: rankings
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: rankings_v3
+        billing_code: rankings_v4
       parameters:
         - name: ticker
           in: path
@@ -7760,9 +7763,9 @@ paths:
         capability_id: rankings
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: rankings_v3
+        billing_code: rankings_v4
       parameters:
         - name: metric
           in: query
@@ -7903,10 +7906,10 @@ paths:
         capability_id: batch-analysis
         tier: premium
         model: per_position
-        cost_usd: 0.005
-        min_charge: 0.01
+        cost_usd: 0.015
+        min_charge: 0.03
         currency: USD
-        billing_code: batch_analysis_v3
+        billing_code: batch_analysis_v4
       requestBody:
         required: true
         content:
@@ -8023,7 +8026,7 @@ paths:
         `GET /lstar` (default θ = 1%). Response is a `results` map keyed by upper-case ticker;
         per-ticker failures use `status: error` or `not_found` without failing the whole batch.
 
-        **Billing:** $0.005/ticker, minimum $0.01/call.
+        **Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.
 
         **Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`,
         `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with
@@ -8034,10 +8037,11 @@ paths:
         capability_id: batch-lstar
         tier: premium
         model: per_position
-        cost_usd: 0.005
-        min_charge: 0.01
+        cost_usd: 0.015
+        cost_per_extra_year_usd: 0.0075
+        min_charge: 0.03
         currency: USD
-        billing_code: batch_lstar_v1
+        billing_code: batch_lstar_v2
       requestBody:
         required: true
         content:
@@ -8126,16 +8130,16 @@ paths:
         portfolio ER over `years`. Partial resolution: unresolved tickers appear in `errors`;
         computation uses resolved positions only. Metered; includes `_agent` and `_metadata`.
 
-        **Billing:** $0.03 per request (empty `positions` / syncing placeholder responses are not charged).
+        **Billing:** $0.15 per request (empty `positions` / syncing placeholder responses are not charged).
       operationId: postPortfolioRiskIndex
       tags: [Risk Metrics]
       x-pricing:
         capability_id: portfolio-risk-index
         tier: premium
         model: per_request
-        cost_usd: 0.03
+        cost_usd: 0.15
         currency: USD
-        billing_code: portfolio_risk_index_v2
+        billing_code: portfolio_risk_index_v3
       requestBody:
         required: true
         content:
@@ -8278,16 +8282,16 @@ paths:
         implemented yet (501). Identical requests are cached 24 hours per user; cache hits return `X-Cache: HIT`
         and `X-API-Cost-USD: 0`.
 
-        **Billing:** $0.25 per successful response (not charged on cache hit).
+        **Billing:** $1.25 per successful response (not charged on cache hit).
       operationId: postPortfolioRiskSnapshot
       tags: [Risk Metrics]
       x-pricing:
         capability_id: portfolio-risk-snapshot
         tier: premium
         model: per_request
-        cost_usd: 0.25
+        cost_usd: 1.25
         currency: USD
-        billing_code: risk_snapshot_pdf_v1
+        billing_code: risk_snapshot_pdf_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -8393,7 +8397,7 @@ paths:
         `/portfolio/risk-snapshot`, `/batch/analyze` remain callable but are not the recommended
         public surface; new clients should use `/snapshot`.
 
-        **Billing:** `portfolio-risk-snapshot` capability ($0.25 per request, single bundled charge).
+        **Billing:** `portfolio-risk-snapshot` capability ($1.25 per request, single bundled charge).
 
         **Compact response:** `?compact=1` or `Prefer: return=minimal` omits `time_behavior` and `attribution`
         (large daily arrays); keeps `snapshot`, `risk_summary`, and `_metadata`.
@@ -8406,9 +8410,9 @@ paths:
         capability_id: portfolio-risk-snapshot
         tier: premium
         model: per_request
-        cost_usd: 0.25
+        cost_usd: 1.25
         currency: USD
-        billing_code: risk_snapshot_pdf_v1
+        billing_code: risk_snapshot_pdf_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -8497,16 +8501,16 @@ paths:
         pointer to `_full` and a request path (email service@riskmodels.app to have
         a ticker added). See BWMACRO `docs/architecture/SNAPSHOT_CANONICAL_PROCESS_ADR.md`.
 
-        **Billing:** `portfolio-risk-snapshot` ($0.25; cache hits may be $0).
+        **Billing:** `portfolio-risk-snapshot` ($1.25; cache hits may be $0).
       operationId: getSnapshotPanel
       tags: [Risk Metrics]
       x-pricing:
         capability_id: portfolio-risk-snapshot
         tier: premium
         model: per_request
-        cost_usd: 0.25
+        cost_usd: 1.25
         currency: USD
-        billing_code: risk_snapshot_pdf_v1
+        billing_code: risk_snapshot_pdf_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -8585,19 +8589,19 @@ paths:
     get:
       summary: Single-ticker risk snapshot PDF
       description: >
-        Convenience endpoint for one-name PDF snapshot (implicit weight 1.0). Same capability and $0.25
+        Convenience endpoint for one-name PDF snapshot (implicit weight 1.0). Same capability and $1.25
         pricing as `POST /portfolio/risk-snapshot` with `format=pdf`. Cached 24h per authenticated user and ticker.
 
-        **Billing:** $0.25 per successful response (not charged on cache hit).
+        **Billing:** $1.25 per successful response (not charged on cache hit).
       operationId: getMetricsTickerSnapshotPdf
       tags: [Risk Metrics]
       x-pricing:
         capability_id: portfolio-risk-snapshot
         tier: premium
         model: per_request
-        cost_usd: 0.25
+        cost_usd: 1.25
         currency: USD
-        billing_code: risk_snapshot_pdf_v1
+        billing_code: risk_snapshot_pdf_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -8775,16 +8779,16 @@ paths:
 
         **Authentication:** Required (API Key or OAuth2)
 
-        **Billing:** $0.001 per request
+        **Billing:** $0.005 per request
       operationId: getPeers
       tags: [Utility]
       x-pricing:
         capability_id: peers
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0.005
         currency: USD
-        billing_code: peers_v1
+        billing_code: peers_v2
       security:
         - BearerAuth: []
         - OAuth2AuthorizationCode: [mcp:read]
@@ -8906,7 +8910,7 @@ paths:
     get:
       summary: Ticker universe search
       description: >
-        List tickers in the universe or search by name/symbol. Billed per request ($0.001).
+        List tickers in the universe or search by name/symbol. Free (discovery).
         Use the `mag7` flag to retrieve the MAG7 tickers. Use `include_metadata` for
         sector and ETF assignment per ticker.
       operationId: getTickers
@@ -8915,7 +8919,7 @@ paths:
         capability_id: ticker-search
         tier: baseline
         model: per_request
-        cost_usd: 0.001
+        cost_usd: 0
         currency: USD
         billing_code: ticker_search_v2
       security: []
@@ -9663,9 +9667,9 @@ paths:
         capability_id: cli-query
         tier: baseline
         model: per_request
-        cost_usd: 0.003
+        cost_usd: 0.015
         currency: USD
-        billing_code: cli_query_v1
+        billing_code: cli_query_v2
       security:
         - BearerAuth: []
       requestBody:
@@ -9725,16 +9729,16 @@ paths:
       summary: Telemetry metrics
       description: >
         Performance and reliability metrics for API capabilities. Optional filter by
-        capability and number of days. Cost: $0.002/call.
+        capability and number of days. Cost: $0.01/call.
       operationId: getTelemetry
       tags: [Utility]
       x-pricing:
         capability_id: telemetry-metrics
         tier: baseline
         model: per_request
-        cost_usd: 0.002
+        cost_usd: 0.01
         currency: USD
-        billing_code: telemetry_v2
+        billing_code: telemetry_v3
       parameters:
         - name: capability
           in: query
@@ -9791,9 +9795,9 @@ paths:
         tier: premium
         model: per_token
         currency: USD
-        billing_code: chat_risk_analyst_v2
-        input_cost_per_1k: 0.001
-        output_cost_per_1k: 0.002
+        billing_code: chat_risk_analyst_v3
+        input_cost_per_1k: 0.005
+        output_cost_per_1k: 0.01
       requestBody:
         required: true
         content:
@@ -10640,8 +10644,8 @@ paths:
       x-pricing:
         capability_id: fund-snapshot-json
         tier: baseline
-        cost_usd: 0.01
-        billing_code: fund_snapshot_json_v1
+        cost_usd: 0.05
+        billing_code: fund_snapshot_json_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -10691,8 +10695,8 @@ paths:
       x-pricing:
         capability_id: fund-snapshot-pdf
         tier: premium
-        cost_usd: 0.25
-        billing_code: fund_snapshot_pdf_v1
+        cost_usd: 1.25
+        billing_code: fund_snapshot_pdf_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -10749,8 +10753,8 @@ paths:
       x-pricing:
         capability_id: style-cohort-snapshot-json
         tier: baseline
-        cost_usd: 0.005
-        billing_code: style_cohort_snapshot_json_v1
+        cost_usd: 0.02
+        billing_code: style_cohort_snapshot_json_v2
       parameters:
         - name: slug
           in: path
@@ -10816,8 +10820,8 @@ paths:
       x-pricing:
         capability_id: style-cohort-snapshot-pdf
         tier: premium
-        cost_usd: 0.10
-        billing_code: style_cohort_snapshot_pdf_v1
+        cost_usd: 0.5
+        billing_code: style_cohort_snapshot_pdf_v2
       parameters:
         - name: slug
           in: path
@@ -10884,8 +10888,8 @@ paths:
       x-pricing:
         capability_id: style-cohort-portfolio-history
         tier: baseline
-        cost_usd: 0.005
-        billing_code: style_cohort_portfolio_history_v1
+        cost_usd: 0.02
+        billing_code: style_cohort_portfolio_history_v2
       parameters:
         - name: slug
           in: path
@@ -10946,8 +10950,8 @@ paths:
       x-pricing:
         capability_id: style-cohort-holdings
         tier: baseline
-        cost_usd: 0.005
-        billing_code: style_cohort_holdings_v1
+        cost_usd: 0.02
+        billing_code: style_cohort_holdings_v2
       parameters:
         - name: slug
           in: path
@@ -11009,8 +11013,8 @@ paths:
       x-pricing:
         capability_id: style-cohort-metrics
         tier: baseline
-        cost_usd: 0.005
-        billing_code: style_cohort_metrics_v1
+        cost_usd: 0.02
+        billing_code: style_cohort_metrics_v2
       parameters:
         - name: slug
           in: path
@@ -11077,8 +11081,8 @@ paths:
       x-pricing:
         capability_id: style-cohort-rankings
         tier: baseline
-        cost_usd: 0.005
-        billing_code: style_cohort_rankings_v1
+        cost_usd: 0.02
+        billing_code: style_cohort_rankings_v2
       parameters:
         - name: slug
           in: path
@@ -11159,8 +11163,8 @@ paths:
       x-pricing:
         capability_id: fund-hedge
         tier: baseline
-        cost_usd: 0.005
-        billing_code: fund_hedge_v1
+        cost_usd: 0.02
+        billing_code: fund_hedge_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -11214,8 +11218,8 @@ paths:
       x-pricing:
         capability_id: fund-holdings
         tier: baseline
-        cost_usd: 0.005
-        billing_code: fund_holdings_v1
+        cost_usd: 0.02
+        billing_code: fund_holdings_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -11285,8 +11289,8 @@ paths:
       x-pricing:
         capability_id: fund-portfolio-history
         tier: baseline
-        cost_usd: 0.005
-        billing_code: fund_portfolio_history_v1
+        cost_usd: 0.02
+        billing_code: fund_portfolio_history_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -11373,8 +11377,8 @@ paths:
       x-pricing:
         capability_id: fund-nav-history
         tier: baseline
-        cost_usd: 0.005
-        billing_code: fund_nav_history_v1
+        cost_usd: 0.02
+        billing_code: fund_nav_history_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -11457,8 +11461,8 @@ paths:
       x-pricing:
         capability_id: fund-metrics
         tier: baseline
-        cost_usd: 0.005
-        billing_code: fund_metrics_v1
+        cost_usd: 0.02
+        billing_code: fund_metrics_v2
       parameters:
         - name: bw_fund_id
           in: path
@@ -11593,8 +11597,8 @@ paths:
       x-pricing:
         capability_id: filer-metrics
         tier: baseline
-        cost_usd: 0.005
-        billing_code: filer_metrics_v1
+        cost_usd: 0.02
+        billing_code: filer_metrics_v2
       parameters:
         - name: bw_filer_id
           in: path
@@ -11675,8 +11679,8 @@ paths:
       x-pricing:
         capability_id: filer-holdings
         tier: baseline
-        cost_usd: 0.005
-        billing_code: filer_holdings_v1
+        cost_usd: 0.02
+        billing_code: filer_holdings_v2
       parameters:
         - name: bw_filer_id
           in: path
@@ -11808,8 +11812,8 @@ paths:
       x-pricing:
         capability_id: filer-portfolio-history
         tier: baseline
-        cost_usd: 0.005
-        billing_code: filer_portfolio_history_v1
+        cost_usd: 0.02
+        billing_code: filer_portfolio_history_v2
       parameters:
         - name: bw_filer_id
           in: path
@@ -11873,8 +11877,8 @@ paths:
       x-pricing:
         capability_id: filer-concentration
         tier: baseline
-        cost_usd: 0.005
-        billing_code: filer_concentration_v1
+        cost_usd: 0.02
+        billing_code: filer_concentration_v2
       parameters:
         - name: bw_filer_id
           in: path
@@ -11936,8 +11940,8 @@ paths:
       x-pricing:
         capability_id: filer-snapshot-json
         tier: premium
-        cost_usd: 0.01
-        billing_code: filer_snapshot_json_v1
+        cost_usd: 0.05
+        billing_code: filer_snapshot_json_v2
       parameters:
         - name: bw_filer_id
           in: path
@@ -11986,8 +11990,8 @@ paths:
       x-pricing:
         capability_id: filer-snapshot-pdf
         tier: premium
-        cost_usd: 0.05
-        billing_code: filer_snapshot_pdf_v1
+        cost_usd: 0.25
+        billing_code: filer_snapshot_pdf_v2
       parameters:
         - name: bw_filer_id
           in: path

@@ -3,10 +3,10 @@
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/cn';
 
-/** Weighted typical average for baseline-style calls (metrics, macro, returns mix). */
-const BASELINE_AVG_COST_USD = 0.002;
-/** Weighted typical average for premium-style calls (L3, PRI, batch mix). */
-const PREMIUM_AVG_COST_USD = 0.025;
+/** Weighted typical average for baseline-style calls (metrics, macro, 1y returns mix). */
+const BASELINE_AVG_COST_USD = 0.01;
+/** Weighted typical average for premium-style calls (Lstar, L3, batch mix). */
+const PREMIUM_AVG_COST_USD = 0.04;
 
 function formatUsd(n: number) {
   if (!Number.isFinite(n)) return '—';
@@ -43,9 +43,9 @@ export default function PricingEstimator() {
           Model your monthly spend
         </h3>
         <p className="text-xs text-zinc-300 max-w-2xl leading-snug">
-          Baseline features ($0.001–$0.005/call) power everyday risk checks and time series. Premium
-          capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots,
-          and batch analytics — perfect for agents and power users.
+          Baseline features ($0.005–$0.02/call) power everyday risk checks and time series. Premium
+          capabilities unlock Lstar dispatch, L3 decomposition, portfolio-level risk indexing, PDF snapshots,
+          and batch analytics — billed per request or per position.
         </p>
         <p className="text-xs text-zinc-500 max-w-2xl leading-snug">
           Slide request volumes by tier. Averages (

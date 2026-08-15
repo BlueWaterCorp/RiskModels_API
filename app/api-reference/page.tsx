@@ -422,7 +422,7 @@ export default function ApiReferencePage() {
                       Per-ticker daily Lstar level + dispatched residual return for up to 100 tickers in one request. The history companion to <code className="text-zinc-400">lstar_rr</code> in MetricsV3.
                     </p>
                     <p className="text-xs text-zinc-500">
-                      <code className="text-zinc-400">POST /api/batch/lstar</code> — $0.005/ticker, 25% cheaper than looping.
+                      <code className="text-zinc-400">POST /api/batch/lstar</code> — $0.015/ticker, 25% cheaper than looping.
                     </p>
                   </div>
                 </div>

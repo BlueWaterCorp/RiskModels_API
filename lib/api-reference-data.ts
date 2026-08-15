@@ -93,7 +93,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Daily returns time series with rolling hedge ratios',
         description:
-          'The most common endpoint for time-series work. Returns daily gross returns + the full set of rolling L3 hedge ratios and explained-risk fractions (including the residual layer). Use this when you need historical residual returns, betas (via HR), or evolving hedge ratios. Cost: $0.005/call.',
+          'The most common endpoint for time-series work. Returns daily gross returns + the full set of rolling L3 hedge ratios and explained-risk fractions (including the residual layer). Use this when you need historical residual returns, betas (via HR), or evolving hedge ratios. Cost: $0.02 for 1 year + $0.01 per extra year (max 15).',
         operationId: 'getTickerReturns',
         tag: 'Risk Metrics',
         params: [
@@ -112,7 +112,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         path: '/returns',
         method: 'get',
         summary: 'Daily gross returns time series',
-        description: 'Returns daily gross returns for a single stock. Simpler than /ticker-returns (no hedge ratios). Cost: $0.005/call.',
+        description: 'Returns daily gross returns for a single stock. Simpler than /ticker-returns (no hedge ratios). Cost: $0.02 for 1 year + $0.01 per extra year.',
         operationId: 'getReturns',
         tag: 'Risk Metrics',
         params: [
@@ -130,7 +130,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'L3 explained-risk decomposition',
         description:
-          'Point-in-time or range L3 decomposition. Returns the hedge ratios and explained risk broken into Market / Sector / Subsector / Residual for the requested window. Great when you want a clean snapshot of current betas and residual exposure without the full time series. Cost: $0.005/call.',
+          'Point-in-time or range L3 decomposition. Returns the hedge ratios and explained risk broken into Market / Sector / Subsector / Residual for the requested window. Great when you want a clean snapshot of current betas and residual exposure without the full time series. Cost: $0.04/call.',
         operationId: 'getL3Decomposition',
         tag: 'Risk Metrics',
         params: [
@@ -149,7 +149,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'post',
         summary: 'Multi-ticker batch analysis (25% discount)',
         description:
-          'Fetch metrics for up to 100 tickers in a single call. 25% cheaper per position than individual /metrics/{ticker} calls. Cost: $0.002/position, minimum $0.01/call.',
+          'Fetch metrics for up to 100 tickers in a single call. 25% cheaper per position than individual /ticker-returns calls at 1 year. Cost: $0.015/position, minimum $0.03/call.',
         operationId: 'batchAnalyze',
         tag: 'Risk Metrics',
         params: [
@@ -177,7 +177,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'One-call L1/L2/L3 return decomposition',
         description:
-          'Daily gross return + L1/L2/L3 factor / combined-factor / residual return series in a single call from ds_erm3_returns. Replaces 6+ field-by-field round-trips. Add ?include_lstar=true (or ?dispatch=lstar) to also return the Lstar-dispatched residual and per-date level pick. Cost: $0.02/call.',
+          'Daily gross return + L1/L2/L3 factor / combined-factor / residual return series in a single call from ds_erm3_returns. Replaces 6+ field-by-field round-trips. Add ?include_lstar=true (or ?dispatch=lstar) to also return the Lstar-dispatched residual and per-date level pick. Cost: $0.04/call.',
         operationId: 'getReturnsDecomposition',
         tag: 'Risk Metrics',
         params: [
@@ -199,7 +199,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Industry peer β cross-section',
         description:
-          'Vasicek peer-β cross-section from ds_erm3_industry zarr: beta_mean, beta_variance, n_companies, total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector). One teo per call (latest by default). The macro/sector-rotation surface. Cost: $0.02/call.',
+          'Vasicek peer-β cross-section from ds_erm3_industry zarr: beta_mean, beta_variance, n_companies, total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector). One teo per call (latest by default). The macro/sector-rotation surface. Cost: $0.04/call.',
         operationId: 'getIndustryPanel',
         tag: 'Risk Metrics',
         params: [
@@ -220,7 +220,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Cohort residual statistics (cross-section)',
         description:
-          'Cross-sectional residual statistics by cohort (market + GICS sector) from ds_erm3_cohorts at one teo: residual_mean, residual_sd, residual_skew, residual_p10/p90, mean_pairwise_corr, n_names, n_effective, weight_top1, membership_churn, linked_beta (+se/r2/roll63), cohort_factor_return, cohort_residual_return, cohort_ER, factor_source. linked_beta_se is a CONDITIONAL, homoskedastic model SE: it assumes iid residuals, so it is understated for daily returns, and it is unreliable wherever the rolling window is partial (early history). It is not a total-uncertainty measure — do not use it alone for confidence intervals. ERM3 residuals are fitted WITHOUT an intercept and so retain each stock alpha — the cross-sectional mean is NOT zero, and residual_mean is what you subtract to demean a relative-ranking signal. residual_sd measures how much selection opportunity a cohort holds; it is an allocation input, not an alpha source. Public scope is SPY + the 11 GICS sector SPDRs. Cost: $0.02/call.',
+          'Cross-sectional residual statistics by cohort (market + GICS sector) from ds_erm3_cohorts at one teo: residual_mean, residual_sd, residual_skew, residual_p10/p90, mean_pairwise_corr, n_names, n_effective, weight_top1, membership_churn, linked_beta (+se/r2/roll63), cohort_factor_return, cohort_residual_return, cohort_ER, factor_source. linked_beta_se is a CONDITIONAL, homoskedastic model SE: it assumes iid residuals, so it is understated for daily returns, and it is unreliable wherever the rolling window is partial (early history). It is not a total-uncertainty measure — do not use it alone for confidence intervals. ERM3 residuals are fitted WITHOUT an intercept and so retain each stock alpha — the cross-sectional mean is NOT zero, and residual_mean is what you subtract to demean a relative-ranking signal. residual_sd measures how much selection opportunity a cohort holds; it is an allocation input, not an alpha source. Public scope is SPY + the 11 GICS sector SPDRs. Cost: $0.04/call.',
         operationId: 'getCohorts',
         tag: 'Risk Metrics',
         params: [
@@ -242,7 +242,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Cohort residual statistics (time series)',
         description:
-          'Cohort statistics over a date range, one series per cohort. The demeaning endpoint: request residual_mean at the level your residual is defined against and subtract it. Panel runs from 2000-01-03, though full factor richness begins around 2006. Each cohort reports proxied_fraction — the share of returned days whose factor came from a substitute instrument — because two sector cohorts are majority-proxied over long windows. Cost: $0.03/call.',
+          'Cohort statistics over a date range, one series per cohort. The demeaning endpoint: request residual_mean at the level your residual is defined against and subtract it. Panel runs from 2000-01-03, though full factor richness begins around 2006. Each cohort reports proxied_fraction — the share of returned days whose factor came from a substitute instrument — because two sector cohorts are majority-proxied over long windows. Cost: $0.15/call.',
         operationId: 'getCohortSeries',
         tag: 'Risk Metrics',
         params: [
@@ -282,7 +282,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'post',
         summary: 'Selection vs drift decomposition',
         description:
-          "Splits a book's realized residual return into within-cohort SELECTION (earned by holding names that beat their cohort's average residual) and DRIFT (earned purely from net exposure to that average, which accrues on net weight regardless of selection skill). The two sum to the total exactly — an identity, not a fitted attribution. Answers 'was I paid for stock-picking, or for being net long the average stock?'. Weights are constant over the window and are NOT normalized, since rescaling them would change the drift term. Unresolvable positions are named in coverage.dropped, never silently omitted. Realized historical attribution only — not a forecast, backtest, or recommendation. Cost: $0.05/call.",
+          "Splits a book's realized residual return into within-cohort SELECTION (earned by holding names that beat their cohort's average residual) and DRIFT (earned purely from net exposure to that average, which accrues on net weight regardless of selection skill). The two sum to the total exactly — an identity, not a fitted attribution. Answers 'was I paid for stock-picking, or for being net long the average stock?'. Weights are constant over the window and are NOT normalized, since rescaling them would change the drift term. Unresolvable positions are named in coverage.dropped, never silently omitted. Realized historical attribution only — not a forecast, backtest, or recommendation. Cost: $0.25/call.",
         operationId: 'postCohortPnlDecomposition',
         tag: 'Risk Metrics',
         params: [
@@ -306,7 +306,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'post',
         summary: 'Universe-wide rank screen',
         description:
-          'Server-side percentile / decile / sector filters over the full ds_rankings cross-section at one teo (default latest). Replaces N per-ticker /rankings calls. Returns up to 500 rows sorted by rank_ordinal (1 = best, rank_percentile 100 = best). Cost: $0.05/call.',
+          'Server-side percentile / decile / sector filters over the full ds_rankings cross-section at one teo (default latest). Replaces N per-ticker /rankings calls. Returns up to 500 rows sorted by rank_ordinal (1 = best, rank_percentile 100 = best). Cost: $0.25/call.',
         operationId: 'postRankingsScreen',
         tag: 'Risk Metrics',
         params: [
@@ -339,7 +339,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'ETF factor returns (public scope: SPY + 11 GICS sectors)',
         description:
-          'One-teo snapshot of close + trailing 1d / 21d / 63d / 252d total returns for SPY + the 11 GICS sector SPDR ETFs (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public-scope only — the broader BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed through this endpoint by design. Tickers outside the public scope return 400. Pairs with /industry-panel for the daily market + sector index read alongside stock-level industry βs. Cost: $0.005/call.',
+          'One-teo snapshot of close + trailing 1d / 21d / 63d / 252d total returns for SPY + the 11 GICS sector SPDR ETFs (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public-scope only — the broader BWMACRO factor roster (subsectors, style, macro, broad-market) is NOT exposed through this endpoint by design. Tickers outside the public scope return 400. Pairs with /industry-panel for the daily market + sector index read alongside stock-level industry βs. Cost: $0.02/call.',
         operationId: 'getEtfFactorReturns',
         tag: 'Risk Metrics',
         params: [
@@ -360,7 +360,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'post',
         summary: 'Batch Lstar history (up to 100 tickers)',
         description:
-          'Per-ticker daily Lstar level + dispatched hedge ratios + Lstar-dispatched residual return for up to 100 tickers in one call. Companion to lstar_rr / lstar_level in MetricsV3 (single-name latest snapshot); use batch/lstar when you need per-ticker history across a panel. 25% cheaper than repeated GET /lstar. Cost: $0.005/ticker, minimum $0.01/call.',
+          'Per-ticker daily Lstar level + dispatched hedge ratios + Lstar-dispatched residual return for up to 100 tickers in one call. Companion to lstar_rr / lstar_level in MetricsV3 (single-name latest snapshot); use batch/lstar when you need per-ticker history across a panel. 25% cheaper than repeated GET /lstar. Cost: $0.015/ticker, minimum $0.03/call.',
         operationId: 'postBatchLstar',
         tag: 'Risk Metrics',
         params: [
@@ -419,7 +419,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Point-in-time quarterly fundamentals',
         description:
-          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names — a property of the beta, not an error. Per-symbol per-call only; JSON only. Cost: $0.005/request.',
+          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names — a property of the beta, not an error. Per-symbol per-call only; JSON only. Cost: $0.02/request.',
         operationId: 'getFundamentals',
         tag: 'Fundamentals',
         params: [

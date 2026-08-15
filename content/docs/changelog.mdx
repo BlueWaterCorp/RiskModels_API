@@ -11,6 +11,16 @@ in the repository.
 
 ---
 
+## August 2026 — catalogue reprice
+
+Self-serve rates moved on **14 August 2026**. Lookups are **$0.005**; ticker-returns is
+**$0.02 + $0.01 per extra year**; batch Lstar is **$0.015/position** (25% off `GET /lstar`).
+Institutional licenses: Desk $50k / Firm $150k / Production $250k per year.
+Keys that recorded a paid call before that date keep prior rates through **31 December 2026**.
+Current schedule: [Pricing](/pricing).
+
+---
+
 ## July 2026 — contract corrections, client releases
 
 **Python SDK `riskmodels-py` 0.4.0 · npm CLI `riskmodels` 3.0.0**
@@ -63,11 +73,11 @@ discovered from the contract:
 
 | Endpoint | Description | Cost |
 |---|---|---|
-| `POST /v4/decompose` | Named-block decomposition (market / industry / style / stock-specific) | $0.001 |
-| `GET /hedge-basket/{ticker}` | Hedge basket with recommended level and decision trace | $0.001 |
-| `GET /batch/latest-metrics` | Latest L3 scalars for up to 100 tickers | $0.001 |
-| `GET /metrics/{ticker}/snapshot.png` | Snapshot as PNG **bytes** | $0.25 |
-| `GET /snapshot/{entity_kind}` | Deep Dive snapshot, PNG or PDF **bytes** | $0.25 |
+| `POST /v4/decompose` | Named-block decomposition (market / industry / style / stock-specific) | $0.005 |
+| `GET /hedge-basket/{ticker}` | Hedge basket with recommended level and decision trace | $0.02 |
+| `GET /batch/latest-metrics` | Latest L3 scalars for up to 100 tickers | $0.005 |
+| `GET /metrics/{ticker}/snapshot.png` | Snapshot as PNG **bytes** | $1.25 |
+| `GET /snapshot/{entity_kind}` | Deep Dive snapshot, PNG or PDF **bytes** | $1.25 |
 | `GET /funds/search` | Fund discovery → `bw_fund_id` | free |
 | `POST /oauth/register` · `/oauth/token` · `/oauth/revoke` | MCP OAuth flow | free |
 
