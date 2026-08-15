@@ -26,6 +26,14 @@ const PUBLIC = ["id", "name", "description", "endpoint", "method", "parameters",
 const json = CAPS.map((c) => {
   const o = {};
   for (const k of PUBLIC) if (c[k] !== undefined) o[k] = c[k];
+  if (o.pricing) {
+    const p = { ...o.pricing };
+    delete p.legacy_cost_usd;
+    delete p.legacy_min_charge;
+    delete p.legacy_input_cost_per_1k;
+    delete p.legacy_output_cost_per_1k;
+    o.pricing = p;
+  }
   return o;
 });
 writeFileSync(out, JSON.stringify(json, null, 2) + "\n");

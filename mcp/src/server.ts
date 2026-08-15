@@ -647,7 +647,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     {
       title: "Canonical Portfolio Snapshot",
       description:
-        "Run a canonical risk snapshot on a portfolio (1–100 positions): L3 variance decomposition (market / sector / subsector / residual / systematic), L3 hedge ratios per position, frozen-weight daily return attribution (gross + market / sector / subsector strips + residual), cumulative return and drawdown over the lookback window, and a risk_summary with dominant drivers, concentration flags, and top exposures. This is the canonical RiskModels public surface — same response shape across UI, CLI, SDK, and agents. Provide either weight or shares for every position (do not mix). Bills as portfolio-risk-snapshot ($0.25 per request).",
+        "Run a canonical risk snapshot on a portfolio (1–100 positions): L3 variance decomposition (market / sector / subsector / residual / systematic), L3 hedge ratios per position, frozen-weight daily return attribution (gross + market / sector / subsector strips + residual), cumulative return and drawdown over the lookback window, and a risk_summary with dominant drivers, concentration flags, and top exposures. This is the canonical RiskModels public surface — same response shape across UI, CLI, SDK, and agents. Provide either weight or shares for every position (do not mix). Bills as portfolio-risk-snapshot ($1.25 per request).",
       inputSchema: z.object({
         portfolio: z
           .array(

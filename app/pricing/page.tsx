@@ -10,7 +10,7 @@ import PricingFAQ, { type PricingFaqItem } from "@/components/pricing/PricingFAQ
 export const metadata: Metadata = {
   title: "Pricing — RiskModels API",
   description:
-    "Baseline vs Premium: everyday risk checks from $0.001–$0.005/call; Premium unlocks L3 decomposition, portfolio risk indexing, PDF snapshots, and batch analytics. $20 free credits — no subscriptions.",
+    "Pay-as-you-go from $0.005/call; ticker-returns $0.02 + $0.01/extra year. Desk $50k, Firm $150k, Production $250k annual. $20 free credits. Existing keys keep prior rates through 31 Dec 2026.",
 };
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -18,65 +18,77 @@ export const metadata: Metadata = {
 const baselineRows = [
   {
     endpoint: "Risk metrics / rankings / search",
-    cost: "$0.001",
-    callsPer20: "20,000",
+    cost: "$0.005",
+    callsPer20: "4,000",
     tier: "baseline" as const,
   },
   {
     endpoint: "Macro factors / correlations",
-    cost: "$0.002",
-    callsPer20: "10,000",
+    cost: "$0.005–$0.01",
+    callsPer20: "2,000–4,000",
     tier: "baseline" as const,
   },
   {
     endpoint: "CLI query",
-    cost: "$0.003",
-    callsPer20: "6,667",
+    cost: "$0.015",
+    callsPer20: "1,333",
     tier: "baseline" as const,
   },
   {
-    endpoint: "Ticker returns (daily; L3 HR/ER in series, up to 15y)",
-    cost: "$0.005",
-    callsPer20: "4,000",
+    endpoint: "Ticker returns (daily L3 HR/ER; $0.02 for 1y + $0.01/extra year, up to 15y)",
+    cost: "$0.02+",
+    callsPer20: "1,000 (1y)",
     tier: "baseline" as const,
   },
 ];
 
 const premiumRows = [
   {
+    endpoint: "Lstar recommended hedge level",
+    cost: "$0.02 + $0.01/extra year",
+    callsPer20: "1,000 (1y)",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "Batch Lstar (25% off single Lstar)",
+    cost: "$0.015/pos",
+    callsPer20: "varies",
+    tier: "premium" as const,
+  },
+  {
     endpoint: "L3 risk decomposition",
-    cost: "$0.02",
-    callsPer20: "1,000",
+    cost: "$0.04",
+    callsPer20: "500",
     tier: "premium" as const,
   },
   {
     endpoint: "Plaid holdings sync",
-    cost: "$0.02",
-    callsPer20: "1,000",
+    cost: "$0.10",
+    callsPer20: "200",
     tier: "premium" as const,
   },
   {
     endpoint: "Portfolio Risk Index",
-    cost: "$0.03",
-    callsPer20: "667",
+    cost: "$0.15",
+    callsPer20: "133",
     tier: "premium" as const,
   },
   {
     endpoint: "Batch portfolio analysis",
-    cost: "$0.005/pos",
+    cost: "$0.015/pos",
     callsPer20: "varies",
     tier: "premium" as const,
   },
   {
     endpoint: "AI risk analyst (chat)",
-    cost: "~$0.003/turn",
-    callsPer20: "~6,600",
+    cost: "~$0.015/turn",
+    callsPer20: "~1,300",
     tier: "premium" as const,
   },
   {
     endpoint: "PDF risk snapshot",
-    cost: "$0.25",
-    callsPer20: "80",
+    cost: "$1.25",
+    callsPer20: "16",
     tier: "premium" as const,
   },
 ];
@@ -84,14 +96,14 @@ const premiumRows = [
 const tierComparisonRows = [
   {
     aspect: "Typical price band",
-    baseline: "$0.001–$0.005 per successful call",
-    premium: "From ~$0.02/call; batch per position (min $0.01); PDF snapshot $0.25",
+    baseline: "$0.005–$0.02 per successful call; ticker-returns $0.02 + $0.01 per extra year",
+    premium: "From $0.02/call; batch $0.015/position (min $0.03); PDF snapshot $1.25",
   },
   {
     aspect: "What you get",
     baseline:
       "Metrics (L1/L2/L3 snapshot), rankings, search, macro factors, correlations, returns (L3 HR/ER history), CLI",
-    premium: "L3 decomposition, Portfolio Risk Index, Plaid sync, batch analytics, chat agent, PDF reports",
+    premium: "Lstar dispatch, L3 decomposition, Portfolio Risk Index, Plaid sync, batch analytics, chat agent, PDF reports",
   },
   {
     aspect: "Best for",
@@ -138,11 +150,27 @@ const refillTiers = [
 ];
 
 const researchDeskIncludes = [
-  "Higher API limits than standard pay-as-you-go",
-  "Priority support for production workflows",
-  "Onboarding help for portfolio, fund, or 13F workflows",
-  "Access to expanded fund / manager analytics where available",
-  "Limited model interpretation and implementation support",
+  "Standard universe (uni_mc_3000), one team, one strategy",
+  "Named support contact and onboarding for the desk workflow",
+  "Higher API limits than pay-as-you-go",
+  "Model interpretation during onboarding (analytics, not advice)",
+  "Version-stability notice for scheduled deprecations",
+];
+
+const firmIncludes = [
+  "Unlimited internal use across the firm",
+  "Full published universe",
+  "Named support and onboarding for production research systems",
+  "SLA on availability of the public API",
+  "Deprecation policy with a stated notice window",
+];
+
+const productionIncludes = [
+  "Systematic dependency: version pinning of model vintages",
+  "Contracted SLA and incident contact",
+  "Deprecation policy with a minimum notice window",
+  "Onboarding for production pipelines and entitlement review",
+  "Everything in Firm",
 ];
 
 const institutionalScope = [
@@ -158,27 +186,31 @@ const institutionalScope = [
 
 const institutionalPaths = [
   {
+    engagement: "Desk",
+    structure: "$50,000 / year — one team, one strategy, standard universe",
+  },
+  {
+    engagement: "Firm",
+    structure: "$150,000 / year — unlimited internal use, full universe, named support",
+  },
+  {
+    engagement: "Production",
+    structure: "$250,000 / year — SLA, version pinning, deprecation policy",
+  },
+  {
     engagement: "Public-data proof-of-concept",
-    structure: "Starting at $15k–$25k",
-  },
-  {
-    engagement: "Historical manager skill review",
-    structure: "Custom project, typically starting at $50k",
-  },
-  {
-    engagement: "Institutional license",
-    structure: "Annual subscription, typically starting at $75k / year",
-  },
-  {
-    engagement: "Ongoing model interpretation & implementation support",
-    structure: "Included or scoped separately",
+    structure: "Scoped project, typically $25,000, credited toward a Desk or Firm license",
   },
 ];
 
 const faqs: PricingFaqItem[] = [
   {
     q: "What is the difference between Baseline and Premium?",
-    a: "Baseline features ($0.001–$0.005/call) power everyday risk checks and time series — metrics (full L1/L2/L3 snapshot), rankings, macro/correlation endpoints, ticker returns (L3 hedge ratios & explained risk in the daily series), and CLI access. Premium capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots, batch portfolio analysis, Plaid holdings sync, and the AI risk analyst chat. Same API key for both; each call is billed at the rate for that endpoint. See the comparison table and per-endpoint tables on this page.",
+    a: "Baseline features ($0.005–$0.02/call) power everyday risk checks and time series — metrics, rankings, macro/correlation endpoints, ticker returns ($0.02 for 1 year plus $0.01 per additional year), and CLI access. Premium capabilities unlock Lstar dispatch, L3 decomposition, portfolio-level risk indexing, PDF snapshots, batch portfolio analysis, Plaid holdings sync, and the AI risk analyst chat. Same API key for both; each call is billed at the rate for that endpoint.",
+  },
+  {
+    q: "I already have a key. Do my rates change?",
+    a: "Keys that recorded a paid call before 14 August 2026 keep the prior per-endpoint rates through 31 December 2026. After that date every key bills the current schedule. New keys are billed at the current schedule from the first call. Cached responses remain free.",
   },
   {
     q: "Do my free credits expire?",
@@ -193,16 +225,12 @@ const faqs: PricingFaqItem[] = [
     a: "Yes. Set a hard cap in your developer dashboard. Once hit, API calls are paused until the next billing cycle and you receive an email notification. You can raise the cap at any time. This prevents surprise bills from runaway scripts or unexpected traffic spikes.",
   },
   {
-    q: "Is there a volume discount?",
-    a: "If your monthly API spend consistently exceeds $100, email service@riskmodels.app — we can sharpen pricing for steady usage, raise rate limits (100+ req/min), and help you get integrated. We keep it straightforward.",
+    q: "When should I take a Desk, Firm, or Production license?",
+    a: "Pay-as-you-go is for research validation and agent workflows. Desk ($50k/year) is one team on the standard universe with named support. Firm ($150k/year) is unlimited internal use of the full universe. Production ($250k/year) adds SLA, version pinning, and a deprecation policy for systematic dependency. Email service@riskmodels.app to scope.",
   },
   {
     q: "Is my API data encrypted?",
     a: "Yes. API keys are SHA-256 hashed with timing-safe verification. Any sensitive user data you submit is encrypted per-portfolio with unique Data Encryption Keys (DEKs) wrapped by GCP KMS — the same zero-knowledge standard used across the RiskModels platform.",
-  },
-  {
-    q: "Can I use both the API and a Pro investor subscription?",
-    a: "Absolutely. Pro (investor dashboard) and Pay-as-You-Go (API access) are billed independently and can be used together or separately. They share the same underlying risk models and zero-knowledge encryption standards.",
   },
   {
     q: "What is the difference between hedge ratios (*_hr) and betas (l*_mkt_beta, l*_sec_beta, l*_sub_beta)?",
@@ -240,9 +268,9 @@ export default function PricingPage() {
           Baseline vs Premium — pay as you go
         </h1>
         <p className="text-base text-zinc-200 max-w-2xl mx-auto mb-3 leading-relaxed">
-          Baseline features ($0.001–$0.005/call) power everyday risk checks and time series. Premium
-          capabilities unlock deeper L3 decomposition, portfolio-level risk indexing, PDF snapshots,
-          and batch analytics — perfect for agents and power users.
+          Baseline features ($0.005–$0.02/call) power everyday risk checks and time series. Premium
+          capabilities unlock Lstar dispatch, L3 decomposition, portfolio-level risk indexing, PDF snapshots,
+          and batch analytics. A 500-name, one-year cross-section remains a small validation spend.
         </p>
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto mb-2 leading-snug">
           Built for{" "}
@@ -257,8 +285,8 @@ export default function PricingPage() {
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
           Start free with <span className="text-white font-semibold">$20 in credits</span> — then pay
           per successful call by tier. No subscription, no seat fees on self-serve API access. Teams
-          and allocators can also choose a flat-rate Research Desk plan or an institutional engagement
-          (below).
+          that need a named contact, SLA, or version pinning take Desk, Firm, or Production (below).
+          Keys billed before 14 August 2026 keep prior rates through 31 December 2026.
         </p>
       </section>
 
@@ -318,7 +346,7 @@ export default function PricingPage() {
                 <div className="space-y-0.5 mt-0.5">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-sm font-medium text-zinc-400">Baseline</span>
-                    <span className="text-2xl font-bold text-white tabular-nums">$0.001</span>
+                    <span className="text-2xl font-bold text-white tabular-nums">$0.005</span>
                     <span className="text-zinc-500 text-sm">/ request</span>
                   </div>
                   <div className="flex flex-wrap items-baseline gap-2">
@@ -428,7 +456,7 @@ export default function PricingPage() {
         <p className="text-sm text-zinc-400 mb-5 max-w-3xl leading-snug">
           Calls are either <span className="text-zinc-200 font-medium">Baseline</span> or{" "}
           <span className="text-blue-400 font-medium">Premium</span> — flat per successful request
-          (batch: per position, minimum $0.01). No token math on data endpoints. Use the estimator
+          (batch: per position, minimum $0.03). No token math on data endpoints. Use the estimator
           for a monthly rough cut, then use the tables for exact rates. Advanced users: install{" "}
           <code className="text-xs text-zinc-300 bg-zinc-800 px-1 rounded">riskmodels-py[xarray]</code>{" "}
           for multi-dimensional factor cube workflows (see{" "}
@@ -517,7 +545,8 @@ export default function PricingPage() {
 
         <p className="mt-2 text-xs text-zinc-500 max-w-4xl mx-auto leading-snug">
           All prices are per successful API call. Cached responses are free. Batch endpoints charge
-          per position with a $0.01 minimum.
+          per position with a $0.03 minimum. Ticker-returns, Lstar, and other history endpoints add
+          $0.01 (or the listed extra-year rate) for each year above one.
         </p>
       </section>
 
@@ -679,24 +708,61 @@ export default function PricingPage() {
 
       <SectionDivider />
 
-      {/* ── Research Desk (flat team tier) ── */}
+      {/* ── Desk / Firm / Production ── */}
       <section className="mx-auto max-w-4xl px-6 py-10">
-        <div className="rounded-xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md p-5 shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div className="flex-1">
-              <SectionLabel>Research Desk</SectionLabel>
-              <div className="flex flex-wrap items-baseline gap-2 mb-1">
-                <h2 className="text-xl font-bold text-white">Research Desk</h2>
-                <span className="text-2xl font-bold text-white tabular-nums">From $1,500</span>
-                <span className="text-zinc-500 text-sm">/ month</span>
-              </div>
-              <p className="text-sm text-zinc-400 mb-3 leading-snug">
-                For teams needing higher limits, priority support, expanded coverage, and workflow
-                support — a flat-rate alternative to managing pay-as-you-go balances at scale.
+        <SectionLabel>Institutional licenses</SectionLabel>
+        <h2 className="text-xl font-bold text-white mb-1">Desk, Firm, and Production</h2>
+        <p className="text-sm text-zinc-400 mb-5 max-w-3xl leading-snug">
+          Annual licenses for teams that need a named contact, onboarding, and version-stability
+          guarantees. Pay-as-you-go remains the research funnel; these tiers are the procurement
+          path for a risk-model budget line.
+        </p>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {[
+            {
+              name: "Desk",
+              price: "$50,000",
+              who: "One team, one strategy, standard universe",
+              items: researchDeskIncludes,
+              href: "mailto:service@riskmodels.app?subject=Desk%20license",
+              featured: false,
+            },
+            {
+              name: "Firm",
+              price: "$150,000",
+              who: "Unlimited internal use, full universe",
+              items: firmIncludes,
+              href: "mailto:service@riskmodels.app?subject=Firm%20license",
+              featured: true,
+            },
+            {
+              name: "Production",
+              price: "$250,000",
+              who: "Systematic dependency, SLA, version pinning",
+              items: productionIncludes,
+              href: "mailto:service@riskmodels.app?subject=Production%20license",
+              featured: false,
+            },
+          ].map((tier) => (
+            <div
+              key={tier.name}
+              className={`rounded-xl border bg-zinc-900/40 backdrop-blur-md p-4 flex flex-col ${
+                tier.featured
+                  ? "border-blue-500/50 ring-1 ring-blue-500/20 shadow-[0_0_40px_-12px_rgba(59,130,246,0.35)]"
+                  : "border-zinc-800/80"
+              }`}
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-400 mb-1">
+                {tier.name}
               </p>
-              <ul className="space-y-1.5 mb-3">
-                {researchDeskIncludes.map((item) => (
-                  <li key={item} className="flex items-start gap-1.5 text-sm text-zinc-300 leading-snug">
+              <p className="text-2xl font-bold text-white tabular-nums">
+                {tier.price}
+                <span className="text-sm font-medium text-zinc-500"> / year</span>
+              </p>
+              <p className="text-xs text-zinc-400 mt-1 mb-3 leading-snug">{tier.who}</p>
+              <ul className="space-y-1.5 mb-4 flex-1">
+                {tier.items.map((item) => (
+                  <li key={item} className="flex items-start gap-1.5 text-xs text-zinc-300 leading-snug">
                     <svg
                       className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0"
                       fill="currentColor"
@@ -712,37 +778,20 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-zinc-500 max-w-2xl leading-snug">
-                Research Desk does not include custom manager scorecards, private-data onboarding,
-                bespoke research projects, or investment recommendations. Those are scoped separately
-                under{" "}
-                <span className="text-zinc-300 font-medium">Institutional / Allocator Solutions</span>{" "}
-                below.
-              </p>
-            </div>
-            <div className="sm:shrink-0">
               <a
-                href="mailto:service@riskmodels.app?subject=Research%20Desk"
-                className="inline-flex items-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
+                href={tier.href}
+                className="inline-flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 text-sm transition-colors"
               >
                 Talk to us
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
               </a>
             </div>
-          </div>
+          ))}
         </div>
+        <p className="mt-4 text-xs text-zinc-500 max-w-3xl leading-snug">
+          Each license includes SLA terms, a named support contact, onboarding, and a deprecation
+          policy. Those are what the annual fee buys. Custom manager scorecards and private-data
+          onboarding are scoped separately.
+        </p>
       </section>
 
       <SectionDivider />
@@ -753,8 +802,8 @@ export default function PricingPage() {
         <h2 className="text-xl font-bold text-white mb-1">Apply RiskModels to manager research</h2>
         <p className="text-sm text-zinc-400 mb-4 max-w-3xl leading-snug">
           For pensions, endowments, consultants, OCIOs, asset owners, and institutional research
-          teams evaluating active equity managers. Institutional engagements are scoped separately
-          from self-serve API access.
+          teams evaluating active equity managers. Allocator work is scoped on top of a Desk, Firm,
+          or Production license.
         </p>
 
         <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
@@ -818,8 +867,8 @@ export default function PricingPage() {
         </div>
 
         <p className="mt-3 text-xs text-zinc-500 max-w-3xl leading-snug">
-          Institutional pricing depends on universe size, data availability, update frequency,
-          support needs, and whether custom research deliverables are required.
+          Institutional pricing is the Desk / Firm / Production schedule above. Scoped allocator
+          work (manager skill reviews, custom cohorts) is quoted against that schedule.
         </p>
 
         <div className="mt-5">

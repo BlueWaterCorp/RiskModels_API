@@ -80,7 +80,7 @@ df.nlargest(5, "beta_variance")[["fs_industry_code", "beta_mean", "beta_variance
 
 ## Pricing & cadence
 
-**{'$'}0.02/request** (`billing_code: industry_panel_v1`). Updated daily by the ERM3 pipeline; latest-available `teo` lags the close by the same window as `ds_erm3_betas_adjusted`. Use **`_metadata.data_source`** + **`_metadata.range`** on the JSON envelope to confirm what you got — see [Response metadata](/docs/response-metadata).
+**{'$'}0.04/request**. Updated daily by the ERM3 pipeline; latest-available `teo` lags the close by the same window as `ds_erm3_betas_adjusted`. Use **`_metadata.data_source`** + **`_metadata.range`** on the JSON envelope to confirm what you got — see [Response metadata](/docs/response-metadata).
 
 ## Where it sits in the stack
 

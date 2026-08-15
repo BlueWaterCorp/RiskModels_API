@@ -59,15 +59,30 @@ export interface ParameterSpec {
   };
 }
 
+export const PRICE_BOOK = {
+  version: "2026-08-14",
+  /** New keys are billed on this schedule from this date. */
+  effective: "2026-08-14",
+  /** Existing billed accounts keep legacy_* rates through this date (inclusive, UTC). */
+  grandfather_until: "2026-12-31",
+} as const;
+
 export interface PricingModel {
   model: "per_request" | "per_token" | "per_position" | "subscription";
   tier: "baseline" | "premium";
   cost_usd?: number;
+  /** Added to cost_usd for each year above 1 (years clamped 1–15). R3. */
+  cost_per_extra_year_usd?: number;
   currency: "USD";
   billing_code: string;
   input_cost_per_1k?: number;
   output_cost_per_1k?: number;
   min_charge?: number;
+  /** Prior schedule; used through PRICE_BOOK.grandfather_until for pre-cutover accounts. */
+  legacy_cost_usd?: number;
+  legacy_min_charge?: number;
+  legacy_input_cost_per_1k?: number;
+  legacy_output_cost_per_1k?: number;
 }
 
 export interface PerformanceSpec {
@@ -108,7 +123,8 @@ export const CAPABILITIES: Capability[] = [
     id: "ticker-returns",
     name: "Get Ticker Returns",
     description:
-      "Retrieve daily returns with L1/L2/L3 hedge ratios and risk decomposition for any stock ticker",
+      "Retrieve daily returns with L1/L2/L3 hedge ratios and risk decomposition for any stock ticker. " +
+      "Priced at $0.02 for 1 year plus $0.01 per additional year (years 1–15).",
     endpoint: "/api/ticker-returns",
     method: "GET",
     parameters: {
@@ -135,9 +151,11 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
+      cost_per_extra_year_usd: 0.01,
       currency: "USD",
-      billing_code: "ticker_returns_v2",
+      billing_code: "ticker_returns_v3",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 150,
@@ -183,9 +201,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0.005,
       currency: "USD",
-      billing_code: "metrics_v3",
+      billing_code: "metrics_v4",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       avg_latency_ms: 80,
@@ -232,9 +251,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0.005,
       currency: "USD",
-      billing_code: "rankings_v3",
+      billing_code: "rankings_v4",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       avg_latency_ms: 80,
@@ -272,9 +292,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.02,
+      cost_usd: 0.04,
       currency: "USD",
-      billing_code: "l3_decomp_v3",
+      billing_code: "l3_decomp_v4",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 120,
@@ -348,10 +369,12 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_token",
       tier: "premium",
-      input_cost_per_1k: 0.001,
-      output_cost_per_1k: 0.002,
+      input_cost_per_1k: 0.005,
+      output_cost_per_1k: 0.01,
       currency: "USD",
-      billing_code: "chat_risk_analyst_v2",
+      billing_code: "chat_risk_analyst_v3",
+      legacy_input_cost_per_1k: 0.001,
+      legacy_output_cost_per_1k: 0.002,
     },
     performance: {
       avg_latency_ms: 2000,
@@ -433,9 +456,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.02,
+      cost_usd: 0.1,
       currency: "USD",
-      billing_code: "plaid_holdings_v2",
+      billing_code: "plaid_holdings_v3",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 400,
@@ -482,10 +506,12 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_position",
       tier: "premium",
-      cost_usd: 0.005,
+      cost_usd: 0.015,
       currency: "USD",
-      min_charge: 0.01,
-      billing_code: "batch_analysis_v3",
+      min_charge: 0.03,
+      billing_code: "batch_analysis_v4",
+      legacy_cost_usd: 0.005,
+      legacy_min_charge: 0.01,
     },
     performance: {
       avg_latency_ms: 300,
@@ -529,9 +555,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0.005,
       currency: "USD",
-      billing_code: "peers_v1",
+      billing_code: "peers_v2",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       // Measured 2026-08-01: 12 live fetchPeersByTicker calls against prod
@@ -649,9 +676,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.002,
+      cost_usd: 0.01,
       currency: "USD",
-      billing_code: "telemetry_v2",
+      billing_code: "telemetry_v3",
+      legacy_cost_usd: 0.002,
     },
     performance: {
       avg_latency_ms: 100,
@@ -683,9 +711,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0.005,
       currency: "USD",
-      billing_code: "metrics_v3",
+      billing_code: "metrics_v4",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       avg_latency_ms: 80,
@@ -716,9 +745,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0.005,
       currency: "USD",
-      billing_code: "metrics_snapshot_v1",
+      billing_code: "metrics_snapshot_v2",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       avg_latency_ms: 80,
@@ -777,9 +807,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "fundamentals_v1",
+      billing_code: "fundamentals_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 250,
@@ -814,10 +845,11 @@ export const CAPABILITIES: Capability[] = [
     },
     pricing: {
       model: "per_request",
-      tier: "baseline",
-      cost_usd: 0.001,
+      tier: "premium",
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "hedge_basket_v1",
+      billing_code: "hedge_basket_v2",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       avg_latency_ms: 110,
@@ -854,9 +886,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.02,
+      cost_usd: 0.04,
       currency: "USD",
-      billing_code: "l3_decomposition_v2",
+      billing_code: "l3_decomposition_v3",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 120,
@@ -912,9 +945,11 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.02,
+      cost_usd: 0.04,
+      cost_per_extra_year_usd: 0.01,
       currency: "USD",
-      billing_code: "returns_decomposition_v1",
+      billing_code: "returns_decomposition_v2",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 140,
@@ -963,9 +998,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.02,
+      cost_usd: 0.04,
       currency: "USD",
-      billing_code: "industry_panel_v1",
+      billing_code: "industry_panel_v2",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 120,
@@ -1019,9 +1055,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.02,
+      cost_usd: 0.04,
       currency: "USD",
-      billing_code: "cohorts_v1",
+      billing_code: "cohorts_v2",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 150,
@@ -1083,9 +1120,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.03,
+      cost_usd: 0.15,
       currency: "USD",
-      billing_code: "cohorts_series_v1",
+      billing_code: "cohorts_series_v2",
+      legacy_cost_usd: 0.03,
     },
     performance: {
       avg_latency_ms: 260,
@@ -1177,9 +1215,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.05,
+      cost_usd: 0.25,
       currency: "USD",
-      billing_code: "cohorts_pnl_decomposition_v1",
+      billing_code: "cohorts_pnl_decomposition_v2",
+      legacy_cost_usd: 0.05,
     },
     performance: {
       avg_latency_ms: 600,
@@ -1248,9 +1287,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.05,
+      cost_usd: 0.25,
       currency: "USD",
-      billing_code: "rankings_screen_v1",
+      billing_code: "rankings_screen_v2",
+      legacy_cost_usd: 0.05,
     },
     performance: {
       avg_latency_ms: 180,
@@ -1302,8 +1342,10 @@ export const CAPABILITIES: Capability[] = [
       model: "per_request",
       tier: "premium",
       cost_usd: 0.02,
+      cost_per_extra_year_usd: 0.01,
       currency: "USD",
-      billing_code: "lstar_v1",
+      billing_code: "lstar_v2",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 130,
@@ -1361,10 +1403,13 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_position",
       tier: "premium",
-      cost_usd: 0.005,
+      cost_usd: 0.015,
+      cost_per_extra_year_usd: 0.0075,
       currency: "USD",
-      min_charge: 0.01,
-      billing_code: "batch_lstar_v1",
+      min_charge: 0.03,
+      billing_code: "batch_lstar_v2",
+      legacy_cost_usd: 0.005,
+      legacy_min_charge: 0.01,
     },
     performance: {
       avg_latency_ms: 350,
@@ -1405,7 +1450,8 @@ export const CAPABILITIES: Capability[] = [
       tier: "premium",
       cost_usd: 0.02,
       currency: "USD",
-      billing_code: "residual_signal_v1",
+      billing_code: "residual_signal_v2",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 140,
@@ -1453,7 +1499,8 @@ export const CAPABILITIES: Capability[] = [
       tier: "premium",
       cost_usd: 0.02,
       currency: "USD",
-      billing_code: "residual_signal_basket_v1",
+      billing_code: "residual_signal_basket_v2",
+      legacy_cost_usd: 0.02,
     },
     performance: {
       avg_latency_ms: 180,
@@ -1491,9 +1538,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "universe_members_v1",
+      billing_code: "universe_members_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 90,
@@ -1537,9 +1585,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "etf_factor_returns_v1",
+      billing_code: "etf_factor_returns_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 110,
@@ -1577,10 +1626,13 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_position",
       tier: "premium",
-      cost_usd: 0.004,
+      cost_usd: 0.01,
+      cost_per_extra_year_usd: 0.005,
       currency: "USD",
-      min_charge: 0.01,
-      billing_code: "portfolio_returns_v2",
+      min_charge: 0.02,
+      billing_code: "portfolio_returns_v3",
+      legacy_cost_usd: 0.004,
+      legacy_min_charge: 0.01,
     },
     performance: {
       avg_latency_ms: 200,
@@ -1624,9 +1676,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.03,
+      cost_usd: 0.15,
       currency: "USD",
-      billing_code: "portfolio_risk_index_v2",
+      billing_code: "portfolio_risk_index_v3",
+      legacy_cost_usd: 0.03,
     },
     performance: {
       avg_latency_ms: 300,
@@ -1682,9 +1735,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.25,
+      cost_usd: 1.25,
       currency: "USD",
-      billing_code: "risk_snapshot_pdf_v1",
+      billing_code: "risk_snapshot_pdf_v2",
+      legacy_cost_usd: 0.25,
     },
     performance: {
       avg_latency_ms: 800,
@@ -1756,9 +1810,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.05,
+      cost_usd: 0.25,
       currency: "USD",
-      billing_code: "artifact_render_v1",
+      billing_code: "artifact_render_v2",
+      legacy_cost_usd: 0.05,
     },
     performance: {
       avg_latency_ms: 1200,
@@ -1817,9 +1872,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.002,
+      cost_usd: 0.01,
       currency: "USD",
-      billing_code: "factor_correlation_v1",
+      billing_code: "factor_correlation_v2",
+      legacy_cost_usd: 0.002,
     },
     performance: {
       avg_latency_ms: 120,
@@ -1862,9 +1918,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.001,
+      cost_usd: 0.005,
       currency: "USD",
-      billing_code: "macro_factor_series_v1",
+      billing_code: "macro_factor_series_v2",
+      legacy_cost_usd: 0.001,
     },
     performance: {
       avg_latency_ms: 80,
@@ -1904,9 +1961,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.003,
+      cost_usd: 0.015,
       currency: "USD",
-      billing_code: "cli_query_v1",
+      billing_code: "cli_query_v2",
+      legacy_cost_usd: 0.003,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2012,9 +2070,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "fund_metrics_v1",
+      billing_code: "fund_metrics_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 80,
@@ -2060,9 +2119,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "fund_portfolio_history_v1",
+      billing_code: "fund_portfolio_history_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2110,9 +2170,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "fund_nav_history_v1",
+      billing_code: "fund_nav_history_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2157,9 +2218,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "fund_holdings_v1",
+      billing_code: "fund_holdings_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2195,9 +2257,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "fund_hedge_v1",
+      billing_code: "fund_hedge_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2235,9 +2298,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "style_cohort_metrics_v1",
+      billing_code: "style_cohort_metrics_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 80,
@@ -2305,9 +2369,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "style_cohort_rankings_v1",
+      billing_code: "style_cohort_rankings_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 80,
@@ -2339,9 +2404,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "style_cohort_portfolio_history_v1",
+      billing_code: "style_cohort_portfolio_history_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2387,9 +2453,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "style_cohort_holdings_v1",
+      billing_code: "style_cohort_holdings_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2455,9 +2522,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "bench_active_custom_v1",
+      billing_code: "bench_active_custom_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 800,
@@ -2493,9 +2561,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.01,
+      cost_usd: 0.05,
       currency: "USD",
-      billing_code: "fund_snapshot_json_v1",
+      billing_code: "fund_snapshot_json_v2",
+      legacy_cost_usd: 0.01,
     },
     performance: {
       avg_latency_ms: 300,
@@ -2539,9 +2608,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.25,
+      cost_usd: 1.25,
       currency: "USD",
-      billing_code: "fund_snapshot_pdf_v1",
+      billing_code: "fund_snapshot_pdf_v2",
+      legacy_cost_usd: 0.25,
     },
     performance: {
       avg_latency_ms: 1200,
@@ -2585,9 +2655,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "style_cohort_snapshot_json_v1",
+      billing_code: "style_cohort_snapshot_json_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 300,
@@ -2628,9 +2699,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.10,
+      cost_usd: 0.5,
       currency: "USD",
-      billing_code: "style_cohort_snapshot_pdf_v1",
+      billing_code: "style_cohort_snapshot_pdf_v2",
+      legacy_cost_usd: 0.1,
     },
     performance: {
       avg_latency_ms: 1200,
@@ -2739,9 +2811,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "filer_metrics_v1",
+      billing_code: "filer_metrics_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 80,
@@ -2783,9 +2856,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "filer_holdings_v1",
+      billing_code: "filer_holdings_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 250,
@@ -2831,9 +2905,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "filer_portfolio_history_v1",
+      billing_code: "filer_portfolio_history_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2878,9 +2953,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "baseline",
-      cost_usd: 0.005,
+      cost_usd: 0.02,
       currency: "USD",
-      billing_code: "filer_concentration_v1",
+      billing_code: "filer_concentration_v2",
+      legacy_cost_usd: 0.005,
     },
     performance: {
       avg_latency_ms: 200,
@@ -2918,9 +2994,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.01,
+      cost_usd: 0.05,
       currency: "USD",
-      billing_code: "filer_snapshot_json_v1",
+      billing_code: "filer_snapshot_json_v2",
+      legacy_cost_usd: 0.01,
     },
     performance: {
       avg_latency_ms: 350,
@@ -2961,9 +3038,10 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      cost_usd: 0.05,
+      cost_usd: 0.25,
       currency: "USD",
-      billing_code: "filer_snapshot_pdf_v1",
+      billing_code: "filer_snapshot_pdf_v2",
+      legacy_cost_usd: 0.05,
     },
     performance: {
       avg_latency_ms: 1200,
@@ -3007,29 +3085,55 @@ export function getCapabilityPricing(id: string): PricingModel {
   return capability.pricing;
 }
 
+function clampYears(years?: number): number {
+  if (years == null || !Number.isFinite(years)) return 1;
+  return Math.min(15, Math.max(1, Math.round(years)));
+}
+
+function unitCostUsd(pricing: PricingModel, years?: number, grandfathered?: boolean): number {
+  if (grandfathered && pricing.legacy_cost_usd != null) {
+    return pricing.legacy_cost_usd;
+  }
+  const base = pricing.cost_usd || 0;
+  const extra = pricing.cost_per_extra_year_usd;
+  if (extra == null || grandfathered) return base;
+  return base + extra * (clampYears(years) - 1);
+}
+
 export function calculateRequestCost(
   capabilityId: string,
   inputTokens?: number,
   outputTokens?: number,
   itemCount?: number,
+  years?: number,
+  grandfathered?: boolean,
 ): number {
   const pricing = getCapabilityPricing(capabilityId);
 
   switch (pricing.model) {
     case "per_request":
-      return pricing.cost_usd || 0;
+      return unitCostUsd(pricing, years, grandfathered);
 
-    case "per_token":
-      const inputCost =
-        ((inputTokens || 0) * (pricing.input_cost_per_1k || 0)) / 1000;
-      const outputCost =
-        ((outputTokens || 0) * (pricing.output_cost_per_1k || 0)) / 1000;
+    case "per_token": {
+      const inRate = grandfathered
+        ? (pricing.legacy_input_cost_per_1k ?? pricing.input_cost_per_1k ?? 0)
+        : (pricing.input_cost_per_1k || 0);
+      const outRate = grandfathered
+        ? (pricing.legacy_output_cost_per_1k ?? pricing.output_cost_per_1k ?? 0)
+        : (pricing.output_cost_per_1k || 0);
+      const inputCost = ((inputTokens || 0) * inRate) / 1000;
+      const outputCost = ((outputTokens || 0) * outRate) / 1000;
       return inputCost + outputCost;
+    }
 
-    case "per_position":
-      const baseCost = pricing.cost_usd || 0;
+    case "per_position": {
+      const baseCost = unitCostUsd(pricing, years, grandfathered);
       const itemCost = (itemCount || 1) * baseCost;
-      return Math.max(itemCost, pricing.min_charge || 0);
+      const minCharge = grandfathered
+        ? (pricing.legacy_min_charge ?? pricing.min_charge ?? 0)
+        : (pricing.min_charge || 0);
+      return Math.max(itemCost, minCharge);
+    }
 
     case "subscription":
       return 0; // Subscription-based capabilities are free per-request
@@ -3073,6 +3177,8 @@ export function calculateEstimatedCost(
     itemCount?: number;
     inputTokens?: number;
     outputTokens?: number;
+    years?: number;
+    grandfathered?: boolean;
   },
 ): number {
   return calculateRequestCost(
@@ -3080,5 +3186,7 @@ export function calculateEstimatedCost(
     options?.inputTokens,
     options?.outputTokens,
     options?.itemCount,
+    options?.years,
+    options?.grandfathered,
   );
 }

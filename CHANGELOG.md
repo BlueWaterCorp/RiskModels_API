@@ -5,6 +5,10 @@ All notable changes to the RiskModels API surface and public assets.
 
 ## [Unreleased]
 
+### Changed
+
+- **Price book 2026-08-14** — Catalogue reprice (not a flat multiplier). Lookups $0.005; ticker-returns **$0.02 + $0.01/extra year**; `batch-lstar` **$0.015/position** (restores the advertised 25% discount vs `GET /lstar`); decision products (`lstar`, `residual-signal`) held at $0.02. Institutional licenses: Desk $50k / Firm $150k / Production $250k per year. Existing keys that recorded a paid call before 14 Aug 2026 keep prior rates through **31 Dec 2026**. Source: `lib/agent/capabilities.ts`; public page `/pricing`. Brief: `Futures/docs/PRICING_REPRICE_BRIEF.md`.
+
 ### Added
 
 - **MCP `instructions` + loaded first prompts** — After OAuth connect, Claude/Smithery were listing catalog tools and never calling priced data routes. Initialize now carries server `instructions`; paste-prompts name `riskmodels_compare` / `GET /api/metrics/AAPL`. SSOT: `lib/mcp/activation.ts`.

@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
 import {
   Capability,
+  PRICE_BOOK,
   calculateRequestCost,
   getCapabilityById,
 } from "./capabilities";
@@ -625,6 +626,39 @@ export async function getBillingHistory(
   } catch (error) {
     console.error("[Billing] Error getting billing history:", error);
     throw error;
+  }
+}
+
+/**
+ * Accounts that recorded a paid call before PRICE_BOOK.effective keep the
+ * prior per-capability rates through PRICE_BOOK.grandfather_until (UTC date,
+ * inclusive). After that date every key bills the current schedule.
+ */
+export async function isGrandfathered(userId: string): Promise<boolean> {
+  const until = Date.parse(`${PRICE_BOOK.grandfather_until}T23:59:59.999Z`);
+  if (!Number.isFinite(until) || Date.now() > until) return false;
+
+  const cutover = Date.parse(`${PRICE_BOOK.effective}T00:00:00.000Z`);
+  if (!Number.isFinite(cutover)) return false;
+
+  try {
+    const { data, error } = await getSupabase()
+      .from("billing_events")
+      .select("id")
+      .eq("user_id", userId)
+      .gt("cost_usd", 0)
+      .lt("created_at", new Date(cutover).toISOString())
+      .limit(1)
+      .maybeSingle();
+
+    if (error && error.code !== NO_ROWS) {
+      console.error("[Billing] grandfather lookup failed:", error);
+      return false;
+    }
+    return !!data;
+  } catch (err) {
+    console.error("[Billing] grandfather lookup failed:", err);
+    return false;
   }
 }
 

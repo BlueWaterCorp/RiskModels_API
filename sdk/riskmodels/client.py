@@ -1153,7 +1153,7 @@ class RiskModelsClient:
         """Batch Lstar series for up to 100 tickers via POST /batch/lstar.
 
         Returns per-ticker Lstar level and Lstar-dispatched residual return per date.
-        Cheaper per ticker than repeated ``get_lstar`` calls ($0.005/ticker, min $0.01).
+        Cheaper per ticker than repeated ``get_lstar`` calls ($0.015/ticker, min $0.03).
 
         Args:
             tickers: List of ticker symbols (up to 100).

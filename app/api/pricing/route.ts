@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CAPABILITIES } from "@/lib/agent/capabilities";
+import { CAPABILITIES, PRICE_BOOK } from "@/lib/agent/capabilities";
 
 export async function GET() {
   const endpoints = CAPABILITIES.map((cap) => ({
@@ -10,6 +10,7 @@ export async function GET() {
     tier: cap.pricing.tier,
     pricing_model: cap.pricing.model,
     cost_usd: cap.pricing.cost_usd ?? null,
+    cost_per_extra_year_usd: cap.pricing.cost_per_extra_year_usd ?? null,
     input_cost_per_1k: cap.pricing.input_cost_per_1k ?? null,
     output_cost_per_1k: cap.pricing.output_cost_per_1k ?? null,
     min_charge: cap.pricing.min_charge ?? null,
@@ -18,9 +19,11 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      version: "2026-04-01",
+      version: PRICE_BOOK.version,
       currency: "USD",
       tiers: ["baseline", "premium"],
+      effective: PRICE_BOOK.effective,
+      grandfather_until: PRICE_BOOK.grandfather_until,
       endpoints,
       estimate_endpoint: "/api/estimate",
       docs: "https://riskmodels.app/pricing",

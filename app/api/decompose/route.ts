@@ -29,7 +29,7 @@ import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
  * SEMANTIC_ALIASES.md. Sign convention: `hedge[etf]` is the negative of the
  * layer `hr` (dollars of ETF short per $1 long stock).
  *
- * Same billing profile as `GET /metrics/{ticker}` ($0.001, baseline tier).
+ * Same billing profile as `GET /metrics/{ticker}` ($0.005, baseline tier).
  *
  * Optional `as_of` (YYYY-MM-DD) serves the latest stored row ≤ that date from
  * the date-indexed zarr (reality mode, report_date basis — ADR 2026-08-01),

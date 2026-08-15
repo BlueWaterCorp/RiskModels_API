@@ -6,7 +6,7 @@
  * template (`app/(print)/render-snapshot/funds/[bw_fund_id]/page.tsx`)
  * via the Playwright worker.
  *
- * Capability `fund-snapshot-pdf` @ $0.25 per request, content-keyed cache
+ * Capability `fund-snapshot-pdf` @ $1.25 per request, content-keyed cache
  * on `(bw_fund_id, report_date)` mirrors the per-stock metrics PDF route.
  */
 

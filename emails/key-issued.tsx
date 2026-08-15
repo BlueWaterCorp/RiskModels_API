@@ -421,7 +421,7 @@ export const KeyIssuedEmail = ({
             , <code style={inlineCode}>l3_subsector_hr</code>), explained-risk / variance shares (
             <code style={inlineCode}>l3_market_er</code>, <code style={inlineCode}>l3_sector_er</code>,{" "}
             <code style={inlineCode}>l3_subsector_er</code>, <code style={inlineCode}>l3_residual_er</code>), and
-            combined-factor return fields. Cost: ~$0.001 for that call, deducted from your $20 credit.
+            combined-factor return fields. Cost: ~$0.005 for that call, deducted from your $20 credit.
           </Text>
           <Text style={paragraph}>A handful more one-liners once that works:</Text>
           <CodeBlock theme={dracula} language="python" code={PYTHON_ONELINERS} />
@@ -632,7 +632,7 @@ export const KeyIssuedEmail = ({
             ET). History back to 2006.
             <br />
             <br />
-            • <strong>Billing.</strong> Per-request, from $0.001 per call. Every response carries an{" "}
+            • <strong>Billing.</strong> Per-request, from $0.005 per call. Every response carries an{" "}
             <code style={inlineCode}>_cost_usd</code> field. Low-balance emails at $1.
             <br />
             <br />
