@@ -204,6 +204,7 @@ export const IndustryPanelRequestSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "teo must be YYYY-MM-DD")
     .optional(),
   level: z.enum(["market", "sector", "subsector"]).optional(),
+  by: z.enum(["level", "fact"]).default("level"),
   min_peers: z.coerce
     .number()
     .int()

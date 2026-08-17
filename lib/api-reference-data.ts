@@ -199,19 +199,21 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         method: 'get',
         summary: 'Industry peer β cross-section',
         description:
-          'Vasicek peer-β cross-section from ds_erm3_industry zarr: beta_mean, beta_variance, n_companies, total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector). One teo per call (latest by default). The macro/sector-rotation surface. Cost: $0.04/call.',
+          'Vasicek peer-β cross-section from ds_erm3_industry zarr: beta_mean, beta_variance, n_companies, total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector). Default by=level is one row per (industry, level). by=fact is one row per (industry, fact). Multi-fact cells are historical (last L3 day 2021-06-22); latest teo is n_facts=1. Cost: $0.04/call.',
         operationId: 'getIndustryPanel',
         tag: 'Risk Metrics',
         params: [
           { name: 'market_factor_etf', in: 'query', type: 'string', required: false, description: 'Market factor ETF (default SPY).', default: 'SPY' },
           { name: 'teo', in: 'query', type: 'string', required: false, description: 'Observation date YYYY-MM-DD (default latest teo). Also accepts ?date=.' },
           { name: 'level', in: 'query', type: 'string', required: false, description: 'Optional cascade level filter: market | sector | subsector.' },
-          { name: 'min_peers', in: 'query', type: 'integer', required: false, description: 'Minimum n_companies filter (industries with fewer peers are dropped).' },
+          { name: 'min_peers', in: 'query', type: 'integer', required: false, description: 'Minimum n_companies filter (industries with fewer peers are dropped). Applied per fact before any by=level collapse.' },
+          { name: 'by', in: 'query', type: 'string', required: false, description: 'Grouping: level (default) or fact. fact is 409 on a level-keyed vintage.', default: 'level' },
         ],
         responses: [
           { status: 200, description: 'Per-industry rows with beta_mean / beta_variance / n_companies / total_log_mcap_weight.' },
           { status: 401, description: 'Missing or invalid Bearer token.' },
           { status: 404, description: 'Industry panel data unavailable.' },
+          { status: 409, description: 'by=fact requested against a level-keyed vintage.' },
           { status: 429, description: 'Rate limit exceeded.' },
         ],
       },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
-import { getIndustryPanelService } from "@/lib/risk/industry-panel-service";
+import { getIndustryPanelService, IndustryPanelFactAxisUnavailable } from "@/lib/risk/industry-panel-service";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { IndustryPanelRequestSchema } from "@/lib/api/schemas";
@@ -19,6 +19,7 @@ export const GET = withBilling(
       market_factor_etf: searchParams.get("market_factor_etf") || "SPY",
       teo: searchParams.get("teo") || searchParams.get("date") || undefined,
       level: searchParams.get("level") || undefined,
+      by: searchParams.get("by") || undefined,
       min_peers: searchParams.get("min_peers") || undefined,
     });
 
@@ -32,7 +33,7 @@ export const GET = withBilling(
       );
     }
 
-    const { market_factor_etf, teo, level, min_peers } = validation.data;
+    const { market_factor_etf, teo, level, by, min_peers } = validation.data;
 
     try {
       const fetchStart = performance.now();
@@ -41,6 +42,7 @@ export const GET = withBilling(
         teo,
         level,
         minPeers: min_peers,
+        by,
       });
 
       if (!result) {
@@ -87,6 +89,12 @@ export const GET = withBilling(
       addMetadataHeaders(response, metadata);
       return response;
     } catch (err) {
+      if (err instanceof IndustryPanelFactAxisUnavailable) {
+        return NextResponse.json(
+          { error: err.code, message: err.message },
+          { status: 409, headers: getCorsHeaders(origin) },
+        );
+      }
       const message = err instanceof Error ? err.message : "Internal error";
       return NextResponse.json(
         { error: "Internal error", message },

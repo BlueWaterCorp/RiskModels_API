@@ -15,6 +15,20 @@ describe("IndustryPanelRequestSchema", () => {
     expect(parsed.min_peers).toBe(10);
   });
 
+  it("defaults by to level and accepts by=fact", () => {
+    const parsed = IndustryPanelRequestSchema.parse({
+      market_factor_etf: "SPY",
+    });
+    expect(parsed.by).toBe("level");
+    const fact = IndustryPanelRequestSchema.parse({ by: "fact" });
+    expect(fact.by).toBe("fact");
+  });
+
+  it("rejects invalid by", () => {
+    const result = IndustryPanelRequestSchema.safeParse({ by: "industry" });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects invalid teo format", () => {
     const result = IndustryPanelRequestSchema.safeParse({
       teo: "05/22/2026",

@@ -1,20 +1,28 @@
 ---
 title: Industry peer-β panel (Vasicek cross-section)
-description: GET /api/industry-panel returns beta_mean, beta_variance, n_companies, and total_log_mcap_weight by EODHD industry code and cascade level (market / sector / subsector) from ds_erm3_industry. The macro / sector-rotation surface.
+description: GET /api/industry-panel returns beta_mean, beta_variance, n_companies, and total_log_mcap_weight by EODHD industry code and cascade level. Default by=level; by=fact for the per-fact axis. Multi-fact cells are historical.
 ---
 
 # Industry peer-β panel (`/api/industry-panel`)
 
-`GET /api/industry-panel` returns the **industry × level** cross-section from the `ds_erm3_industry` zarr — Vasicek peer-β statistics at one trading day (latest by default). One row per **(EODHD 4-digit industry code, cascade level)** with:
+`GET /api/industry-panel` returns the industry peer-β cross-section from the `ds_erm3_industry` zarr — Vasicek statistics at one trading day (latest by default).
+
+Default **`by=level`** is one row per **(EODHD 4-digit industry code, cascade level)**. **`by=fact`** is one row per **(industry, cascade fact)**. A leftover level-keyed vintage still returns **409** on `by=fact`; the published store (`panel_keying=fact`, 52 facts) does not.
+
+Multi-fact cells are historical. Assignments stabilised around mid-2021, so at the latest teo every industry has `n_facts=1`. The last L3 multi-fact day is **2021-06-22**, industry **4850** (`IAI` + `IYG`). `n_facts>1` is how those transitions are preserved, not a description of present-day ambiguity.
 
 | Field | Meaning |
 | --- | --- |
-| `fs_industry_code` | EODHD 4-digit industry code (e.g. `2510` = software, `3210` = semiconductors). |
+| `industry_code` | EODHD 4-digit industry code (e.g. `2510` = software, `3210` = semiconductors). |
 | `level` | Cascade level: **`market`** / **`sector`** / **`subsector`**. |
-| `beta_mean` | Log-mcap-weighted typical factor β for this industry at this level. |
+| `beta_mean` | Log-mcap-weighted typical factor β for this industry at this level (or fact). |
 | `beta_variance` | Cross-sectional variance of β within the industry — high values flag dispersion (idiosyncratic structure beneath the industry label). |
-| `n_companies` | How many tickers contributed to the aggregate at that teo (and cleared the universe gate). |
+| `n_companies` | How many tickers contributed (and cleared `min_peers`). On `by=level` after a fact-keyed store this is the sum across contributing facts. |
 | `total_log_mcap_weight` | Sum of `log(market_cap + 1)` weights — the Vasicek peer mean's denominator. |
+| `n_facts` | On `by=level` rows: how many cascade facts contributed after `min_peers`. Always 1 on a level-keyed vintage. |
+| `fact` | On `by=fact` rows: ETF ticker of the cascade fact. |
+
+Envelope fields **`by`** (requested grouping) and **`panel_key`** (`level` or `fact` store vintage) are on every JSON response.
 
 **Units:** β values are dimensionless regression coefficients (not hedge ratios). `n_companies` is an integer; weights are unitless log-mcap sums.
 
@@ -27,7 +35,7 @@ Use cases:
 - **Sector rotation** — rank subsector industries by month-over-month change in `beta_mean` at `level='subsector'` to surface industries quietly rotating beta.
 - **Dispersion screens** — high `beta_variance` at `level='subsector'` flags industries where the label hides real structural variation (idiosyncratic alpha hiding in plain sight).
 - **Macro hedge sizing** — for an allocator with sector exposure, the cap-weighted industry `beta_mean` is the right notional to assume per dollar of sector exposure when sizing macro overlays.
-- **Quality control** — `n_companies` per industry per teo is your sample-size guard. Industries with `n_companies < 5` should be treated as too thin to interpret.
+- **Quality control** — `n_companies` per industry per teo is your sample-size guard. Industries with `n_companies < 5` should be treated as too thin to interpret. `n_facts > 1` marks the 5.2% of L3 cells that are fed by more than one cascade fact.
 
 ## Request
 
@@ -37,8 +45,19 @@ Use cases:
 | --- | --- | --- | --- |
 | `market_factor_etf` | string | `SPY` | The primary market factor used in the cascade. |
 | `teo` (or `date`) | `YYYY-MM-DD` | latest teo | Observation date. |
-| `level` | string | all three | Restrict to `market` / `sector` / `subsector`. |
-| `min_peers` | integer | unset | Drop industries with `n_companies < min_peers`. |
+| `level` | string | all three | Restrict to `market` / `sector` / `subsector`. On a fact-keyed store this selects facts whose `fact_level` matches. |
+| `min_peers` | integer | store attr (usually 5) | Drop cells with `n_companies < min_peers`. Applied **per fact** before any `by=level` collapse. |
+| `by` | `level` \| `fact` | `level` | `level` keeps `(industry_code, level)` unique. `fact` emits the per-fact cells; **409** on a level-keyed vintage. |
+
+## Collapse (`by=level` on a fact-keyed store)
+
+`min_peers` is enforced per `(fact, industry)` in production shrinkage. After the rekey, a single industry at L3 can have several facts. The default response still returns one row per `(industry, level)`:
+
+- Filter each fact cell with `min_peers`, then aggregate survivors.
+- `n_companies` and `total_log_mcap_weight` are sums.
+- `beta_mean` is n-weighted.
+- `beta_variance` is the law of total variance, `Σ w_i (τ²_i + μ_i²) − μ²`. If any contributing τ² is missing, the aggregated variance is null.
+- Style (`fact_level == 4`) is omitted; the API never exposed a `style` level.
 
 ## Response shape
 
@@ -46,18 +65,20 @@ Use cases:
 {
   "teo": "2026-05-26",
   "market_factor_etf": "SPY",
+  "by": "level",
+  "panel_key": "level",
   "industries": [
     {
-      "fs_industry_code": 3210,
+      "industry_code": 3210,
       "level": "subsector",
       "beta_mean": 1.243,
       "beta_variance": 0.187,
       "n_companies": 32,
-      "total_log_mcap_weight": 712.4
-    },
-    ...
+      "total_log_mcap_weight": 712.4,
+      "n_facts": 1
+    }
   ],
-  "_metadata": { "data_source": "zarr", ... }
+  "_metadata": { "data_source": "zarr" }
 }
 ```
 
@@ -74,8 +95,8 @@ curl -sS "https://riskmodels.app/api/industry-panel?level=subsector&min_peers=20
 from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()
 
-df = client.get_industry_panel(level="subsector", min_peers=20, as_dataframe=True)
-df.nlargest(5, "beta_variance")[["fs_industry_code", "beta_mean", "beta_variance", "n_companies"]]
+df = client.get_industry_panel(level="subsector", min_peers=20)
+df.nlargest(5, "beta_variance")[["industry_code", "beta_mean", "beta_variance", "n_companies"]]
 ```
 
 ## Pricing & cadence
@@ -84,7 +105,7 @@ df.nlargest(5, "beta_variance")[["fs_industry_code", "beta_mean", "beta_variance
 
 ## Where it sits in the stack
 
-The industry panel is **derived** from the per-(stock, teo) Vasicek shrinkage that lives inside `ds_erm3_betas_adjusted`. The pipeline aggregates the per-stock β to the industry × level grid as a side product; this endpoint serves that aggregate. It does **not** expose per-stock β — for that use **`GET /metrics/{ticker}`** or **`GET /api/lstar`** (per-ticker hedge ratios) and **`POST /decompose`** (the four-bet breakdown).
+The industry panel is **derived** from the per-(stock, teo) Vasicek shrinkage that lives inside `ds_erm3_betas_adjusted`. The pipeline aggregates the per-stock β to the industry grid as a side product; this endpoint serves that aggregate. It does **not** expose per-stock β — for that use **`GET /metrics/{ticker}`** or **`GET /api/lstar`** (per-ticker hedge ratios) and **`POST /decompose`** (the four-bet breakdown). Production Vasicek never reads this panel; only API consumers do.
 
 ## Related
 

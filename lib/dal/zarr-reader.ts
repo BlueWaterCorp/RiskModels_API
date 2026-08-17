@@ -36,6 +36,18 @@ import {
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
+import {
+  aggregateFactsToLevel,
+  factCellsToFactRows,
+  factLevelToName,
+  IndustryPanelFactAxisUnavailable,
+  type IndustryPanelBy,
+  type IndustryPanelFactCell,
+  type IndustryPanelKey,
+  type IndustryPanelLevel,
+  type IndustryPanelRow,
+  INDUSTRY_PANEL_LEVELS,
+} from "@/lib/risk/industry-panel-aggregate";
 
 let _storage: Storage | null = null;
 
@@ -1380,11 +1392,19 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
 }
 
 // =====================================================================
-// Industry panel — cross-section at (teo × fs_industry_code × level)
+// Industry panel — cross-section at (teo × fs_industry_code × level|fact)
 // =====================================================================
 
-export const INDUSTRY_PANEL_LEVELS = ["market", "sector", "subsector"] as const;
-export type IndustryPanelLevel = (typeof INDUSTRY_PANEL_LEVELS)[number];
+export {
+  INDUSTRY_PANEL_LEVELS,
+  IndustryPanelFactAxisUnavailable,
+};
+export type {
+  IndustryPanelBy,
+  IndustryPanelKey,
+  IndustryPanelLevel,
+  IndustryPanelRow,
+};
 
 const INDUSTRY_PANEL_VARS = [
   "beta_mean",
@@ -1393,19 +1413,13 @@ const INDUSTRY_PANEL_VARS = [
   "total_log_mcap_weight",
 ] as const;
 
-export interface IndustryPanelRow {
-  industry_code: number;
-  level: IndustryPanelLevel;
-  beta_mean: number | null;
-  beta_variance: number | null;
-  n_companies: number | null;
-  total_log_mcap_weight: number | null;
-}
-
 export interface ReadIndustryPanelResult {
   teo: string | null;
   rows: IndustryPanelRow[];
   min_peers: number;
+  by: IndustryPanelBy;
+  /** Store vintage: `level` = pre-rekey collapse, `fact` = per-fact axis. */
+  panel_key: IndustryPanelKey;
 }
 
 async function readIndustryCodeInts(grp: Group<Readable>): Promise<number[] | null> {
@@ -1422,6 +1436,57 @@ async function readIndustryCodeInts(grp: Group<Readable>): Promise<number[] | nu
     }
     if (ArrayBuffer.isView(d) && !(d instanceof Uint8Array)) {
       return Array.from(d as unknown as ArrayLike<number>, (x) => Number(x));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function readStringCoord(
+  grp: Group<Readable>,
+  name: string,
+): Promise<string[] | null> {
+  try {
+    const loc = grp.resolve(name);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof UnicodeStringArray) {
+      return Array.from({ length: d.length }, (_, i) => String(d.get(i)).trim());
+    }
+    if (Array.isArray(d)) {
+      return d.map((x) => String(x).trim());
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function readIntCoord(
+  grp: Group<Readable>,
+  name: string,
+): Promise<number[] | null> {
+  try {
+    const loc = grp.resolve(name);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (
+      d instanceof Int8Array ||
+      d instanceof Int16Array ||
+      d instanceof Int32Array ||
+      d instanceof Uint8Array ||
+      d instanceof Uint16Array ||
+      d instanceof Uint32Array ||
+      d instanceof Float32Array ||
+      d instanceof Float64Array
+    ) {
+      return Array.from(d, (x) => Number(x));
+    }
+    if (Array.isArray(d)) {
+      return d.map((x) => Number(x));
     }
     return null;
   } catch {
@@ -1450,6 +1515,36 @@ async function readFloatRowAtTeoIndustryLevel(
   }
 }
 
+/** One teo × all industries × all k (level or fact). C-order: k fastest. */
+async function readFloatPlaneAtTeoIndustryK(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nIndustry: number,
+  nK: number,
+): Promise<(number | null)[][] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [teoIdx, slice(0, nIndustry), slice(0, nK)]);
+    const d = ch?.data;
+    if (!(d instanceof Float32Array || d instanceof Float64Array)) return null;
+    if (d.length !== nIndustry * nK) return null;
+    const out: (number | null)[][] = [];
+    for (let i = 0; i < nIndustry; i++) {
+      const row: (number | null)[] = [];
+      for (let k = 0; k < nK; k++) {
+        const v = d[i * nK + k];
+        row.push(v != null && Number.isFinite(v) ? v : null);
+      }
+      out.push(row);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 function resolveTeoIndex(teos: string[], teo?: string): number {
   if (!teo) return teos.length - 1;
   const exact = teos.indexOf(teo);
@@ -1471,35 +1566,127 @@ function readMinPeersAttr(grp: Group<Readable>): number {
   return 5;
 }
 
+function emptyIndustryPanel(
+  params: { minPeers?: number; by?: IndustryPanelBy },
+  panel_key: IndustryPanelKey,
+): ReadIndustryPanelResult {
+  return {
+    teo: null,
+    rows: [],
+    min_peers: params.minPeers ?? 5,
+    by: params.by ?? "level",
+    panel_key,
+  };
+}
+
+function collectFactCells(args: {
+  industryCodes: number[];
+  factTickers: string[];
+  factLevels: number[];
+  planes: ((number | null)[][] | null)[];
+  minPeers: number;
+  levelFilter?: IndustryPanelLevel;
+}): IndustryPanelFactCell[] {
+  const { industryCodes, factTickers, factLevels, planes, minPeers, levelFilter } = args;
+  const nIndustry = industryCodes.length;
+  const nFact = factTickers.length;
+  const cells: IndustryPanelFactCell[] = [];
+  const meanPlane = planes[0];
+  if (!meanPlane) return cells;
+
+  for (let k = 0; k < nFact; k++) {
+    const levelName = factLevelToName(factLevels[k] ?? NaN);
+    if (!levelName) continue;
+    if (levelFilter && levelName !== levelFilter) continue;
+    const fact = factTickers[k];
+    if (!fact) continue;
+
+    for (let i = 0; i < nIndustry; i++) {
+      const nCo = planes[2]?.[i]?.[k];
+      if (nCo == null || !Number.isFinite(nCo)) continue;
+      const peerCount = Math.round(nCo);
+      if (peerCount < minPeers) continue;
+      const betaMean = meanPlane[i]?.[k] ?? null;
+      if (betaMean == null) continue;
+      cells.push({
+        industry_code: industryCodes[i]!,
+        level: levelName,
+        fact,
+        beta_mean: betaMean,
+        beta_variance: planes[1]?.[i]?.[k] ?? null,
+        n_companies: peerCount,
+        total_log_mcap_weight: planes[3]?.[i]?.[k] ?? null,
+      });
+    }
+  }
+  return cells;
+}
+
 /**
- * Industry peer β cross-section at one teo. Chunk shape is typically
- * {teo: 500, fs_industry_code: 72, level: 3} — one teo × level slice
- * touches one chunk per variable.
+ * Industry peer β cross-section at one teo.
+ *
+ * Dual-shape: a level-keyed vintage (pre-rekey) is one row per
+ * (industry, level). A fact-keyed vintage keeps that contract on
+ * `by=level` via a documented n-weighted collapse, and emits one row
+ * per (industry, fact) on `by=fact`.
  */
 export async function readIndustryPanelSnapshot(params: {
   teo?: string;
   level?: IndustryPanelLevel;
   minPeers?: number;
+  by?: IndustryPanelBy;
 }): Promise<ReadIndustryPanelResult> {
+  const by: IndustryPanelBy = params.by ?? "level";
   const grp = await openZarrGroup(zarrIndustryBasename());
-  if (!grp) return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+  if (!grp) return emptyIndustryPanel(params, "level");
 
   const teos = await readTeoStrings(grp);
-  if (!teos?.length) return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+  if (!teos?.length) return emptyIndustryPanel(params, "level");
 
   const industryCodes = await readIndustryCodeInts(grp);
-  const levelMap = await readLevelIndexMap(grp);
-  if (!industryCodes?.length || !levelMap?.size) {
-    return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
-  }
+  if (!industryCodes?.length) return emptyIndustryPanel(params, "level");
 
   const teoIdx = resolveTeoIndex(teos, params.teo);
   const teoStr = teos[teoIdx] ?? null;
-  if (!teoStr) return { teo: null, rows: [], min_peers: params.minPeers ?? 5 };
+  if (!teoStr) return emptyIndustryPanel(params, "level");
 
   const defaultMinPeers = readMinPeersAttr(grp);
   const minPeers = params.minPeers ?? defaultMinPeers;
   const nIndustry = industryCodes.length;
+
+  const factTickers = await readStringCoord(grp, "fact");
+  const factLevels = factTickers ? await readIntCoord(grp, "fact_level") : null;
+  const factKeyed =
+    Boolean(factTickers?.length) &&
+    Boolean(factLevels?.length) &&
+    factTickers!.length === factLevels!.length;
+
+  if (factKeyed) {
+    const nFact = factTickers!.length;
+    const planes = await Promise.all(
+      INDUSTRY_PANEL_VARS.map((v) =>
+        readFloatPlaneAtTeoIndustryK(grp, v, teoIdx, nIndustry, nFact),
+      ),
+    );
+    const cells = collectFactCells({
+      industryCodes,
+      factTickers: factTickers!,
+      factLevels: factLevels!,
+      planes,
+      minPeers,
+      levelFilter: params.level,
+    });
+    const rows =
+      by === "fact" ? factCellsToFactRows(cells) : aggregateFactsToLevel(cells);
+    return { teo: teoStr, rows, min_peers: minPeers, by, panel_key: "fact" };
+  }
+
+  if (by === "fact") {
+    throw new IndustryPanelFactAxisUnavailable();
+  }
+
+  const levelMap = await readLevelIndexMap(grp);
+  if (!levelMap?.size) return emptyIndustryPanel(params, "level");
 
   const levels: IndustryPanelLevel[] = params.level
     ? [params.level]
@@ -1534,6 +1721,7 @@ export async function readIndustryPanelSnapshot(params: {
         beta_variance: planes[1]?.[i] ?? null,
         n_companies: peerCount,
         total_log_mcap_weight: planes[3]?.[i] ?? null,
+        n_facts: 1,
       });
     }
   }
@@ -1544,7 +1732,7 @@ export async function readIndustryPanelSnapshot(params: {
     return a.industry_code - b.industry_code;
   });
 
-  return { teo: teoStr, rows, min_peers: minPeers };
+  return { teo: teoStr, rows, min_peers: minPeers, by, panel_key: "level" };
 }
 
 // ============================================================================
