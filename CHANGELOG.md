@@ -11,6 +11,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **J.21 first-touch attribution at sign-in** — `POST /api/agent-accounts/attribution` writes `gclid` / UTM / `channel` onto `agent_accounts.signup_attribution` when the user authenticates, not only at key mint. A $0 account row is created only when a paid marker is present or `/get-key` asks; starter credits are not granted on that insert. Stripe checkout start and card-added timestamps stamp the same jsonb.
+
 - **MCP `instructions` + loaded first prompts** — After OAuth connect, Claude/Smithery were listing catalog tools and never calling priced data routes. Initialize now carries server `instructions`; paste-prompts name `riskmodels_compare` / `GET /api/metrics/AAPL`. SSOT: `lib/mcp/activation.ts`.
 - **`GET /api/stocks/{ticker}/commentary-bundle`** — One pull for stock-commentary evidence: latest metrics + `hedge_levels`, trailing return-record summary (sums of daily gross/factor/residual + drawdown), cohort standing, peer variance shares, and residual leadership for the name. Replaces the consumer's multi-endpoint fan-out under the 60/min ceiling. Thin cohorts / short windows null the affected piece and list a reason in `refusals` (200, not 422 for the whole bundle). Billed under `cohorts`. OpenAPI path documented; contract tests cover the return-record summary rules.
 - **`POST /api/chat` — `get_stock_commentary_bundle` tool** — Single-name risk notes call the commentary-bundle once (capability `cohorts`) instead of fanning `get_risk_metrics` + `get_ticker_returns` + `get_rankings`. Two or more names stay on `compare_tickers`. System-prompt Performance examples no longer tell the model to emit one `get_risk_metrics` per compared ticker.

@@ -261,6 +261,25 @@ function GetKeyPage() {
   }, [user, fetchAccountData]);
 
   useEffect(() => {
+    if (!user) return;
+    const signupUtm = getUTMData();
+    const gclid = getStoredGclid();
+    void fetch('/api/agent-accounts/attribution', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gclid,
+        utm: signupUtm,
+        landing_path: window.location.pathname,
+        create_if_missing: true,
+      }),
+    }).catch(() => {
+      /* ignore */
+    });
+  }, [user]);
+
+  useEffect(() => {
     if (!loading && !user) {
       gtmAnalytics.signupFormViewed('get_key_page');
     }
@@ -348,6 +367,7 @@ function GetKeyPage() {
     });
     if (res.ok) {
       const { url } = await res.json();
+      gtmAnalytics.stripeCheckoutStarted(amount);
       window.location.href = url;
     } else {
       let msg = 'Could not start Stripe checkout. Try again or sign out and back in.';
