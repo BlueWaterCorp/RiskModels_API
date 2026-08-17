@@ -14,6 +14,7 @@ import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAppUrl } from '@/lib/app-url';
+import { stampAttributionEvent } from '@/lib/agent/signup-attribution';
 
 /** Keep in sync with the tier selector on /get-key and setup-success crediting. */
 const ALLOWED_PREPAY_USD = new Set([0, 25, 50, 100]);
@@ -113,6 +114,10 @@ export async function POST(request: Request) {
             },
           },
     );
+
+    await stampAttributionEvent(admin, user.id, {
+      checkout_started_at: new Date().toISOString(),
+    });
 
     return NextResponse.json({ url: session.url });
   } catch (err) {

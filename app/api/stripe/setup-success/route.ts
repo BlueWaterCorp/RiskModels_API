@@ -13,6 +13,7 @@ import Stripe from 'stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 import { getAppUrl } from '@/lib/app-url';
+import { stampAttributionEvent } from '@/lib/agent/signup-attribution';
 
 const FREE_CREDIT_USD = 20;
 /** When the user enables auto-refill later, charges run when balance is below this (USD). */
@@ -203,6 +204,12 @@ export async function GET(req: NextRequest) {
         console.error('[setup-success] agent_accounts insert error:', insertErr);
         return NextResponse.redirect(`${appUrl}/get-key?stripe=account_error`);
       }
+    }
+
+    if (paymentMethodId) {
+      await stampAttributionEvent(admin, userId, {
+        card_added_at: new Date().toISOString(),
+      });
     }
 
     // ── Record ledger entries (best-effort; never block activation) ────────────────

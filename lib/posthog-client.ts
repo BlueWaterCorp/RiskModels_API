@@ -73,6 +73,8 @@ export const gtmAnalytics = {
   apiKeyCopied: (keyPrefix?: string) =>
     trackEvent('api_key_copied', { key_prefix: keyPrefix?.slice(0, 8), site: 'riskmodels.app' }),
   apiKeyRevoked: () => trackEvent('api_key_revoked', { site: 'riskmodels.app' }),
+  stripeCheckoutStarted: (prepayUsd: number) =>
+    trackEvent('stripe_checkout_started', { prepay_usd: prepayUsd, site: 'riskmodels.app' }),
 
   apiDocsPageViewed: (section?: string) =>
     trackEvent('api_docs_page_viewed', { section, site: 'riskmodels.app' }),
