@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openbb-riskmodels"
+version = "0.1.0"
+description = "OpenBB Platform commands for RiskModels ERM3 decomposition and point-in-time fundamentals"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "RiskModels" }]
+license = { text = "Proprietary" }
+dependencies = [
+    "openbb-core>=1.6.0",
+    "riskmodels-py>=0.4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.urls]
+Homepage = "https://riskmodels.app"
+Documentation = "https://riskmodels.app/docs"
+
+[project.entry-points."openbb_provider_extension"]
+riskmodels = "openbb_riskmodels.provider:riskmodels_provider"
+
+[project.entry-points."openbb_core_extension"]
+risk_models = "openbb_riskmodels.router:router"
+
+[tool.setuptools.packages.find]
+include = ["openbb_riskmodels*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["-q"]
