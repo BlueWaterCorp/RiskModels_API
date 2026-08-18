@@ -4,19 +4,17 @@ OpenBB **Platform** commands for RiskModels. Audience: a notebook that already u
 
 Install is free. Data access uses a RiskModels API key and the existing capability billing on `riskmodels-py`.
 
-Homebrew Python is PEP 668-managed; do not `pip install` into it. Use a venv (gitignored as `.venv/`):
+Homebrew Python is PEP 668-managed; do not `pip install` into it. From the RiskModels_API repo root, use a venv (gitignored as `.venv/`) and call its binaries directly so a shell `python` alias cannot leak in:
 
 ```bash
-cd /Users/conradgann/BW_Code/RiskModels_API/openbb-riskmodels
-/opt/homebrew/bin/python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e ../sdk -e .
-openbb-build
+cd openbb-riskmodels
+python3.12 -m venv .venv
+.venv/bin/pip install -e ../sdk -e .
+.venv/bin/openbb-build
+.venv/bin/python -c "from openbb import obb; print(obb.risk_models)"
 ```
 
 `openbb-build` is the console script from `openbb-core`. After a rebuild, `from openbb import obb` exposes `obb.risk_models.decompose`, `decompose_historical`, and `fundamentals`.
-
-If this machine aliases `python` to `BWMACRO/.venv` (common here), `activate` will not change the interpreter. Use `.venv/bin/python` (and `.venv/bin/openbb-build`) explicitly, or `unalias python python3` after activate.
 
 Set `RISKMODELS_API_KEY`, or save it as `riskmodels_api_key` in OpenBB's credential store (`obb.user.credentials.riskmodels_api_key`).
 
