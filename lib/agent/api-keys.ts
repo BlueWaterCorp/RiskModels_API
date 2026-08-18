@@ -62,6 +62,9 @@ export interface ApiKeyResult {
 export interface ValidatedKey {
   valid: boolean;
   userId?: string;
+  /** agent_api_keys / user_generated_api_keys row id (for per-key telemetry). */
+  keyId?: string;
+  keyPrefix?: string;
   scopes?: string[];
   rateLimit?: number;
   /** Tag describing the caller profile (e.g. 'mcp', 'cli'). Populated from agent_api_keys.key_scope. */
@@ -228,7 +231,7 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
 
     const { data: keyRecord, error } = await getSupabase()
       .from("user_generated_api_keys")
-      .select("user_id, scopes, rate_limit_per_minute, revoked_at, expires_at, last_used_at")
+      .select("id, user_id, key_prefix, scopes, rate_limit_per_minute, revoked_at, expires_at, last_used_at")
       .eq("key_hash", hashedKey)
       .single();
 
@@ -272,6 +275,8 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
     return {
       valid: true,
       userId: keyRecord.user_id,
+      keyId: keyRecord.id,
+      keyPrefix: keyRecord.key_prefix ?? undefined,
       scopes: keyRecord.scopes,
       rateLimit: keyRecord.rate_limit_per_minute ?? 30,
     };
@@ -287,7 +292,7 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
   const { data: keyRecord, error } = await getSupabase()
     .from("agent_api_keys")
     .select(
-      "user_id, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at",
+      "id, user_id, key_prefix, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at",
     )
     .eq("key_hash", hashedKey)
     .single();
@@ -339,6 +344,8 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
   return {
     valid: true,
     userId: keyRecord.user_id,
+    keyId: keyRecord.id,
+    keyPrefix: keyRecord.key_prefix ?? undefined,
     scopes: keyRecord.scopes,
     rateLimit: keyRecord.rate_limit_per_minute,
     keyScope: keyRecord.key_scope ?? null,

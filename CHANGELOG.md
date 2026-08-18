@@ -11,6 +11,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **Licensed (institutional) API keys** — `agent_accounts.billing_mode=licensed` skips prepaid 402/deduct; usage is `billing_events` telemetry with `metadata.list_price_usd`, `tickers`, and `key_id`. Response headers `X-Billing-Mode` and `X-License-Tier`. Admin monitor: BWMACRO `/admin/licensed-usage`. DDL: `BWMACRO/supabase/migrations/20260816010000_agent_accounts_licensed_billing.sql`.
+
 - **J.21 first-touch attribution at sign-in** — `POST /api/agent-accounts/attribution` writes `gclid` / UTM / `channel` onto `agent_accounts.signup_attribution` when the user authenticates, not only at key mint. A $0 account row is created only when a paid marker is present or `/get-key` asks; starter credits are not granted on that insert. Stripe checkout start and card-added timestamps stamp the same jsonb.
 
 - **MCP `instructions` + loaded first prompts** — After OAuth connect, Claude/Smithery were listing catalog tools and never calling priced data routes. Initialize now carries server `instructions`; paste-prompts name `riskmodels_compare` / `GET /api/metrics/AAPL`. SSOT: `lib/mcp/activation.ts`.
