@@ -21,6 +21,16 @@ import {
 import { createPaymentRequiredResponse, createMonthlyCapExceededResponse } from "./errors";
 import { generateRequestId, logTelemetry } from "./telemetry";
 import { extractApiKey, validateApiKey } from "./api-keys";
+import {
+  loadLicenseAccount,
+  licensedTelemetryMetadata,
+  shouldSkipCharge,
+  type BillingMode,
+} from "./licensed-billing";
+import {
+  extractRequestFacetsFromRequest,
+  type RequestFacets,
+} from "./request-facets";
 import { isPublicSampleKey } from "@/lib/data-license";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { Ratelimit } from "@upstash/ratelimit";
@@ -316,6 +326,11 @@ export interface BillingContext {
   freeTierStatus?: any;
   /** First-party gateway traffic — unlimited internal allowance (no 402/deduct). */
   internalUnlimited?: boolean;
+  /** Institutional license: skip deduct/402; meter via telemetry list_price_usd. */
+  billingMode?: BillingMode;
+  licenseTier?: string | null;
+  keyId?: string | null;
+  keyPrefix?: string | null;
   /**
    * Present only with `deferBillingToHandler`: the handler MUST call this once
    * when the request outcome is known (e.g. at the SSE `final`/`error` event).
@@ -496,6 +511,8 @@ export function withBilling(
       let apiKeyRateLimit: number | undefined;
       let apiKeyDailyCapOverride: number | null = null;
       let apiKeyScope: string | null = null;
+      let apiKeyId: string | null = null;
+      let apiKeyPrefix: string | null = null;
 
       const serviceKeyEnv = process.env.RISKMODELS_API_SERVICE_KEY?.trim();
       const isTrustedServiceGateway = Boolean(
@@ -570,6 +587,8 @@ export function withBilling(
           apiKeyRateLimit = validation.rateLimit ?? undefined;
           apiKeyDailyCapOverride = validation.dailySpendCapUsd ?? null;
           apiKeyScope = validation.keyScope ?? null;
+          apiKeyId = validation.keyId ?? null;
+          apiKeyPrefix = validation.keyPrefix ?? null;
         }
       }
 
@@ -604,6 +623,13 @@ export function withBilling(
         }
         userId = user.id;
       }
+
+      const license = await loadLicenseAccount(userId);
+      const skipCharge = shouldSkipCharge({
+        internalUnlimited,
+        billingMode: license.billingMode,
+      });
+      const requestFacets: RequestFacets = await extractRequestFacetsFromRequest(req);
 
       // 1b. Enforce per-key rate limit (API key requests only).
       // Capture rl result for later success-path headers so agents can self-throttle.
@@ -746,7 +772,7 @@ export function withBilling(
       }
 
       // 3.5. Ensure starter credits for first-time users (before balance check)
-      if (costUsd > 0) {
+      if (costUsd > 0 && !skipCharge) {
         await ensureStarterCredits(userId).catch(() => {});
         await ensureMinimumBalanceForUserKeyHolder(userId).catch(() => {});
       }
@@ -755,7 +781,7 @@ export function withBilling(
       // Early balance check — cheap read to give a fast 402 before running
       // the handler. The definitive atomic check happens at deduction time
       // below, so this is a best-effort short-circuit only.
-      if (costUsd > 0 && freeTierCheck?.tier !== "free" && !internalUnlimited) {
+      if (costUsd > 0 && freeTierCheck?.tier !== "free" && !skipCharge) {
         const currentBalance = await getUserBalance(userId);
         // Block if balance is negative (user is in debt) or insufficient
         if (currentBalance < 0 || currentBalance < costUsd) {
@@ -836,6 +862,10 @@ export function withBilling(
         tier: freeTierCheck?.tier,
         freeTierStatus: freeTierCheck,
         internalUnlimited,
+        billingMode: license.billingMode,
+        licenseTier: license.licenseTier,
+        keyId: apiKeyId,
+        keyPrefix: apiKeyPrefix,
       };
 
       // 4.5. Deferred billing (streaming handlers): expose a one-shot settle
@@ -846,7 +876,7 @@ export function withBilling(
         context.settleBilling = async (settleSuccess: boolean) => {
           if (settled) return;
           settled = true;
-          if (costUsd > 0 && settleSuccess && !internalUnlimited) {
+          if (costUsd > 0 && settleSuccess && !skipCharge) {
             try {
               await deductBalance(
                 settleUserId,
@@ -877,6 +907,15 @@ export function withBilling(
             success: settleSuccess,
             cost_usd: settleSuccess ? costUsd : 0,
             timestamp: new Date().toISOString(),
+            metadata: licensedTelemetryMetadata({
+              billingMode: license.billingMode,
+              licenseTier: license.licenseTier,
+              listPriceUsd: settleSuccess ? costUsd : 0,
+              keyId: apiKeyId,
+              keyPrefix: apiKeyPrefix,
+              originalUrl: req.url,
+              facets: requestFacets,
+            }),
           }).catch(console.error);
         };
       }
@@ -892,7 +931,7 @@ export function withBilling(
       // 6. Atomically deduct balance on success (only if cost > 0).
       //    The deduct_balance RPC uses FOR UPDATE — immune to race conditions.
       //    (Deferred mode: the handler settles via context.settleBilling.)
-      if (costUsd > 0 && success && !internalUnlimited && !options.deferBillingToHandler) {
+      if (costUsd > 0 && success && !skipCharge && !options.deferBillingToHandler) {
         try {
           await deductBalance(
             userId,
@@ -936,10 +975,19 @@ export function withBilling(
           success,
           cost_usd: success ? costUsd : 0, // Only charge on success
           timestamp: new Date().toISOString(),
-          metadata: {
-            fetch_latency_ms: fetchLatencyMs,
-            agent_decision_latency_ms: agentDecisionLatencyMs,
-          },
+          metadata: licensedTelemetryMetadata({
+            billingMode: license.billingMode,
+            licenseTier: license.licenseTier,
+            listPriceUsd: success ? costUsd : 0,
+            keyId: apiKeyId,
+            keyPrefix: apiKeyPrefix,
+            originalUrl: req.url,
+            facets: requestFacets,
+            extra: {
+              fetch_latency_ms: fetchLatencyMs,
+              agent_decision_latency_ms: agentDecisionLatencyMs,
+            },
+          }),
         }).catch(console.error);
       }
 
@@ -955,6 +1003,10 @@ export function withBilling(
         capability.pricing.billing_code,
       );
       response.headers.set("X-Pricing-Tier", capability.pricing.tier);
+      response.headers.set("X-Billing-Mode", license.billingMode);
+      if (license.billingMode === "licensed" && license.licenseTier) {
+        response.headers.set("X-License-Tier", license.licenseTier);
+      }
 
       // 8.1. Rate-limit headers on success so agents can self-throttle before 429.
       if (rateLimitResult) {
@@ -967,13 +1019,17 @@ export function withBilling(
       const TOKEN_PRICE_USD = 0.00002;
       const tokensConsumed = Math.ceil(costUsd / TOKEN_PRICE_USD);
       response.headers.set("X-Tokens-Consumed", String(tokensConsumed));
-      try {
-        const balanceRemaining = await getUserBalance(userId);
-        const tokensRemaining = Math.floor(balanceRemaining / TOKEN_PRICE_USD);
-        response.headers.set("X-Balance-Remaining", String(tokensRemaining));
-      } catch (balanceHeaderErr) {
-        // Never fail the response after a successful handler — balance read is best-effort for headers only
-        console.error("[Billing] Failed to read balance for response headers:", balanceHeaderErr);
+      if (license.billingMode === "licensed") {
+        response.headers.set("X-Balance-Remaining", "unlimited");
+      } else {
+        try {
+          const balanceRemaining = await getUserBalance(userId);
+          const tokensRemaining = Math.floor(balanceRemaining / TOKEN_PRICE_USD);
+          response.headers.set("X-Balance-Remaining", String(tokensRemaining));
+        } catch (balanceHeaderErr) {
+          // Never fail the response after a successful handler — balance read is best-effort for headers only
+          console.error("[Billing] Failed to read balance for response headers:", balanceHeaderErr);
+        }
       }
 
       // 8.6. Add monthly + daily spend cap headers (if user has caps set)
@@ -1205,8 +1261,15 @@ export async function finalizeBilling(
   const costUsd = actualCostUsd ?? context.costUsd;
   const success = res.status < 400;
 
-  // Deduct balance on success (skip for first-party unlimited internal traffic)
-  if (costUsd > 0 && success && !context.internalUnlimited) {
+  // Deduct balance on success (skip for first-party unlimited and licensed accounts)
+  if (
+    costUsd > 0 &&
+    success &&
+    !shouldSkipCharge({
+      internalUnlimited: context.internalUnlimited,
+      billingMode: context.billingMode,
+    })
+  ) {
     try {
       await deductBalance(
         context.userId,
@@ -1233,12 +1296,27 @@ export async function finalizeBilling(
     success,
     cost_usd: success ? costUsd : 0,
     timestamp: new Date().toISOString(),
+    metadata: licensedTelemetryMetadata({
+      billingMode: context.billingMode ?? "prepaid",
+      licenseTier: context.licenseTier ?? null,
+      listPriceUsd: success ? costUsd : 0,
+      keyId: context.keyId,
+      keyPrefix: context.keyPrefix,
+      originalUrl: req.url,
+      facets: await extractRequestFacetsFromRequest(req),
+    }),
   }).catch(console.error);
 
   // Add headers
   res.headers.set("X-Request-ID", context.requestId);
   res.headers.set("X-Response-Latency-Ms", String(latencyMs));
   res.headers.set("X-API-Cost-USD", String(success ? costUsd : 0));
+  if (context.billingMode) {
+    res.headers.set("X-Billing-Mode", context.billingMode);
+  }
+  if (context.billingMode === "licensed" && context.licenseTier) {
+    res.headers.set("X-License-Tier", context.licenseTier);
+  }
   const capMeta = getCapability(context.capabilityId);
   if (capMeta) {
     res.headers.set("X-Pricing-Tier", capMeta.pricing.tier);
