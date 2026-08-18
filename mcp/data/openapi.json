@@ -2009,12 +2009,20 @@
             "format": "float",
             "nullable": true,
             "description": "Sum of log(mcap+1) across peers."
+          },
+          "n_facts": {
+            "type": "integer",
+            "description": "Count of cascade facts that contributed to this level-row after min_peers. Present on by=level rows. Always 1 on a level-keyed vintage; >1 when a fact-keyed store collapsed multiple facts.\n"
+          },
+          "fact": {
+            "type": "string",
+            "description": "ETF ticker of the cascade fact. Present on by=fact rows."
           }
         }
       },
       "IndustryPanelResponse": {
         "type": "object",
-        "description": "Cross-section of Vasicek industry peer β statistics from ds_erm3_industry at one observation date (default latest teo).\n",
+        "description": "Cross-section of Vasicek industry peer β statistics from ds_erm3_industry at one observation date (default latest teo). Default by=level keeps one row per (industry_code, level). by=fact emits one row per (industry, fact). Multi-fact cells are historical (last L3 day 2021-06-22).\n",
         "properties": {
           "teo": {
             "type": "string",
@@ -2034,6 +2042,22 @@
               "subsector"
             ],
             "description": "Present when the request filtered to a single cascade level."
+          },
+          "by": {
+            "type": "string",
+            "enum": [
+              "level",
+              "fact"
+            ],
+            "description": "Requested grouping. Default level."
+          },
+          "panel_key": {
+            "type": "string",
+            "enum": [
+              "level",
+              "fact"
+            ],
+            "description": "Store vintage — level is the pre-rekey collapse; fact is the per-fact axis."
           },
           "min_peers": {
             "type": "integer",
@@ -8132,7 +8156,7 @@
     "/industry-panel": {
       "get": {
         "summary": "Industry peer β cross-section",
-        "description": "Cross-section from `ds_erm3_industry` zarr: log-mcap-weighted typical factor β,\ncross-sectional β dispersion, peer counts, and cohort weight mass by EODHD industry\ncode and cascade level (`market`, `sector`, `subsector`). Default observation date\nis the latest `teo` in the store; pass `teo=YYYY-MM-DD` for a historical slice.\n",
+        "description": "Cross-section from `ds_erm3_industry` zarr: log-mcap-weighted typical factor β,\ncross-sectional β dispersion, peer counts, and cohort weight mass by EODHD industry\ncode and cascade level (`market`, `sector`, `subsector`). Default `by=level` is one\nrow per (industry, level). `by=fact` is one row per (industry, fact). Multi-fact\ncells are historical (last L3 day 2021-06-22); the latest teo is `n_facts=1`.\n`by=fact` returns 409 only on a leftover level-keyed vintage. Default observation\ndate is the latest `teo` in the store; pass `teo=YYYY-MM-DD` for a historical slice.\n",
         "operationId": "getIndustryPanel",
         "tags": [
           "Risk Metrics"
@@ -8193,7 +8217,20 @@
               "minimum": 1,
               "maximum": 500
             },
-            "description": "Minimum n_companies (default from zarr min_peers attr, usually 5)."
+            "description": "Minimum n_companies (default from zarr min_peers attr, usually 5). Applied per fact before any by=level collapse."
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "level",
+                "fact"
+              ],
+              "default": "level"
+            },
+            "description": "Grouping. `level` (default) keeps one row per (industry_code, level). `fact` emits one row per (industry, fact) with a `fact` ticker field; 409 on a level-keyed vintage.\n"
           }
         ],
         "responses": {
@@ -8212,6 +8249,9 @@
           },
           "404": {
             "description": "Industry panel unavailable"
+          },
+          "409": {
+            "description": "by=fact requested against a level-keyed vintage"
           },
           "429": {
             "description": "Rate limit exceeded.",

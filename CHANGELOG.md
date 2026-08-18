@@ -11,6 +11,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Added
 
+- **`GET /api/industry-panel?by=fact`** — Dual-shape reader for ERM3 `ds_erm3_industry_*` rekeyed `level` → `fact` (ERM3 #158; `panel_keying=fact`, 52 facts). Default `by=level` keeps one row per `(industry_code, level)` (n-weighted mean, law-of-total-variance, `n_facts`). `by=fact` emits per-fact cells. Multi-fact cells are historical (last L3 day `2021-06-22`, industry `4850` = IAI+IYG); latest teo is `n_facts=1` everywhere. `by=fact` is 409 only on a leftover level-keyed vintage.
+
 - **Licensed (institutional) API keys** — `agent_accounts.billing_mode=licensed` skips prepaid 402/deduct; usage is `billing_events` telemetry with `metadata.list_price_usd`, `tickers`, and `key_id`. Response headers `X-Billing-Mode` and `X-License-Tier`. Admin monitor: BWMACRO `/admin/licensed-usage`. DDL: `BWMACRO/supabase/migrations/20260816010000_agent_accounts_licensed_billing.sql`.
 
 - **J.21 first-touch attribution at sign-in** — `POST /api/agent-accounts/attribution` writes `gclid` / UTM / `channel` onto `agent_accounts.signup_attribution` when the user authenticates, not only at key mint. A $0 account row is created only when a paid marker is present or `/get-key` asks; starter credits are not granted on that insert. Stripe checkout start and card-added timestamps stamp the same jsonb.

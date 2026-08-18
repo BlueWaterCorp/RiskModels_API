@@ -563,9 +563,9 @@ See **[returns-decomposition-metrics](/docs/returns-decomposition-metrics)** for
 
 ## GET /industry-panel — Vasicek peer-β cross-section
 
-`GET /api/industry-panel` returns the **industry × level** peer-β cross-section from the `ds_erm3_industry` zarr at one trading day (latest by default). Each row is one EODHD 4-digit industry at one cascade level (market / sector / subsector) with **`beta_mean`**, **`beta_variance`**, **`n_companies`**, and **`total_log_mcap_weight`**. This is the macro / sector-rotation surface — what the model thinks an industry's "typical" β is across its cap-weighted peer group.
+`GET /api/industry-panel` returns the **industry × level** peer-β cross-section from the `ds_erm3_industry` zarr at one trading day (latest by default). Each row is one EODHD 4-digit industry at one cascade level (market / sector / subsector) with **`beta_mean`**, **`beta_variance`**, **`n_companies`**, and **`total_log_mcap_weight`**. Default **`by=level`** keeps `(industry_code, level)` unique. **`by=fact`** is one row per cascade fact. Multi-fact cells are historical (last L3 day **2021-06-22**); the latest teo is `n_facts=1`. **409** only on a leftover level-keyed vintage.
 
-Filter with **`?level=`** (single level), **`?teo=YYYY-MM-DD`** (single day), or **`?min_peers=`** (drop thin industries). Billing: **{'$'}0.04/call**. Python SDK: **`client.get_industry_panel(level="subsector")`**.
+Filter with **`?level=`** (single level), **`?teo=YYYY-MM-DD`** (single day), **`?min_peers=`** (drop thin industries; applied per fact), or **`?by=fact`**. Billing: **{'$'}0.04/call** (`billing_code: industry_panel_v2`). Python SDK: **`client.get_industry_panel(level="subsector")`**.
 
 ```bash
 curl -sS "https://riskmodels.app/api/industry-panel?level=subsector&min_peers=20" \
@@ -573,7 +573,7 @@ curl -sS "https://riskmodels.app/api/industry-panel?level=subsector&min_peers=20
   | jq '.industries | sort_by(.beta_variance) | reverse | .[:5]'
 ```
 
-The full panel is small (~72 industries × 3 levels × 4 metrics) — a 1 KB response that answers "which industries dispersed the most in β this period?" without any per-ticker round-trips.
+The full panel is small (~115 industries × 3 levels on `by=level`; more rows on `by=fact`) — a compact response that answers "which industries dispersed the most in β this period?" without any per-ticker round-trips.
 
 ## POST /rankings/screen — universe-wide rank filter
 

@@ -1377,6 +1377,7 @@ class RiskModelsClient:
         teo: str | None = None,
         level: str | None = None,
         min_peers: int | None = None,
+        by: str | None = None,
     ) -> pd.DataFrame:
         """Cross-section of industry peer beta statistics from ds_erm3_industry.
 
@@ -1386,10 +1387,17 @@ class RiskModelsClient:
             level: Optional cascade leg filter: ``market``, ``sector``, or
                 ``subsector``. Omit for all three levels.
             min_peers: Minimum ``n_companies`` filter (default from zarr attr).
+                Applied per fact before any ``by=level`` collapse.
+            by: ``level`` (default) keeps one row per (industry, level).
+                ``fact`` emits one row per (industry, fact). Multi-fact cells
+                are historical (last L3 day 2021-06-22); latest teo is
+                ``n_facts=1``. 409 only on a leftover level-keyed vintage.
 
         Returns:
             DataFrame with ``industry_code``, ``level``, ``beta_mean``,
             ``beta_variance``, ``n_companies``, ``total_log_mcap_weight``.
+            ``by=level`` rows may include ``n_facts``; ``by=fact`` rows include
+            ``fact``. Envelope ``by`` and ``panel_key`` are on ``df.attrs``.
         """
         from .parsing import industry_panel_json_to_dataframe
 
@@ -1402,13 +1410,20 @@ class RiskModelsClient:
             params["level"] = level
         if min_peers is not None:
             params["min_peers"] = min_peers
+        if by:
+            params["by"] = by
         body, lineage, _ = self._transport.request(
             "GET", "/industry-panel", params=params or None
         )
         df = industry_panel_json_to_dataframe(body)
         attach_sdk_metadata(df, lineage, kind="industry_panel")
-        if isinstance(body, dict) and body.get("teo") is not None:
-            df.attrs["teo"] = body["teo"]
+        if isinstance(body, dict):
+            if body.get("teo") is not None:
+                df.attrs["teo"] = body["teo"]
+            if body.get("by") is not None:
+                df.attrs["by"] = body["by"]
+            if body.get("panel_key") is not None:
+                df.attrs["panel_key"] = body["panel_key"]
         return df
 
     def residual_signal(

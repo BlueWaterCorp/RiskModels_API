@@ -845,7 +845,9 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "summary": "Industry peer β cross-section (GET /industry-panel).",
         "description": (
             "Cross-section of Vasicek industry peer β statistics: beta_mean, beta_variance, "
-            "n_companies, total_log_mcap_weight by industry code and cascade level."
+            "n_companies, total_log_mcap_weight by industry code and cascade level. "
+            "Default by=level is one row per (industry, level); by=fact is one row per "
+            "(industry, fact). Multi-fact cells are historical (last L3 day 2021-06-22)."
         ),
         "scopes": ["industry", "macro", "stat-arb"],
         "parameters": [
@@ -872,12 +874,19 @@ _SDK_METHODS: list[dict[str, Any]] = [
                 "name": "min_peers",
                 "type": "integer",
                 "required": False,
-                "description": "Minimum n_companies filter.",
+                "description": "Minimum n_companies filter (applied per fact before any by=level collapse).",
+            },
+            {
+                "name": "by",
+                "type": "string",
+                "required": False,
+                "enum": ["level", "fact"],
+                "description": "Grouping. level (default) one row per industry×level; fact one row per industry×fact. 409 only on a leftover level-keyed vintage.",
             },
         ],
         "returns": {
             "type": "pandas.DataFrame",
-            "description": "Columns industry_code, level, beta_mean, beta_variance, n_companies, total_log_mcap_weight.",
+            "description": "Columns industry_code, level, beta_mean, beta_variance, n_companies, total_log_mcap_weight; n_facts on by=level, fact on by=fact. Envelope by/panel_key on df.attrs.",
         },
     },
     {
