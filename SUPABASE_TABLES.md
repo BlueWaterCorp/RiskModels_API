@@ -73,7 +73,9 @@ The metric keys below are the same ones the API exposes in range-history respons
 | `user_generated_api_keys` | User-generated API keys (dashboard) |
 | `user_email_preferences` | J.12 digest: per-user watch tickers (max 5), fund company slugs (max 2), `frequency`, `last_digest_sent_at`. RLS: users own row; cron uses service role. |
 
-`agent_accounts.signup_attribution` (jsonb, nullable): first-touch UTM + landing metadata (`utm_*`, `landing_path`, `referrer`, `timestamp`); written once on first `rm_agent_*` key creation from `/get-key` when the client sends validated `utm` in `POST /api/agent-keys`. Migration: `20260524120000_add_agent_accounts_signup_attribution.sql` (mirrored under `Risk_Models/riskmodels_net/supabase/migrations/` and `RiskModels_API/supabase/migrations/`).
+`agent_accounts.signup_attribution` (jsonb, nullable): first-touch UTM + landing metadata (`utm_*`, `landing_path`, `referrer`, `timestamp`); written once on first `rm_agent_*` key creation from `/get-key` when the client sends validated `utm` in `POST /api/agent-keys`. Migration: `20260524120000_add_agent_accounts_signup_attribution.sql`.
+
+`agent_accounts.billing_mode` (`prepaid` default | `licensed`) and `license_tier` (`desk` | `firm` | `production`, null on prepaid): institutional keys skip prepaid deduct/402; usage is `billing_events` `type=telemetry` with `metadata.list_price_usd`. Views: `licensed_usage_daily`, `licensed_usage_totals`, `licensed_usage_tickers_daily`. Migration: `BWMACRO/supabase/migrations/20260816010000_agent_accounts_licensed_billing.sql`. Admin: `/admin/licensed-usage`.
 
 ---
 

@@ -10,80 +10,8 @@ import {
   resolveRecipient,
 } from '@/lib/agent/notify-expiring-api-keys';
 import { API_TERMS_URL } from '@/emails/key-issued';
-import { parseValidatedSignupUtm, sanitizeGclid, type UTMData } from '@/lib/utm';
-
-/**
- * Merge the Google click id into agent_accounts.signup_attribution (jsonb) on first touch.
- * Stored alongside UTM data (no dedicated column — schema is governed in the private
- * BWMACRO/supabase repo). Powers Phase-2 offline activation upload. First-touch wins.
- */
-async function persistGclidIfVacant(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
-  gclid: string,
-): Promise<void> {
-  const { data: row, error: selErr } = await admin
-    .from('agent_accounts')
-    .select('id, signup_attribution')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (selErr) {
-    console.warn('[agent-keys] gclid select failed:', selErr.message);
-    return;
-  }
-  if (!row?.id) return;
-
-  const current = (row.signup_attribution ?? {}) as Record<string, unknown>;
-  if (current.gclid) return; // first-touch wins — don't overwrite
-
-  const { error: upErr } = await admin
-    .from('agent_accounts')
-    .update({
-      signup_attribution: { ...current, gclid, gclid_at: new Date().toISOString() },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', row.id);
-
-  if (upErr) {
-    console.warn('[agent-keys] gclid update failed:', upErr.message);
-  }
-}
-
-async function persistSignupAttributionIfVacant(
-  admin: ReturnType<typeof createAdminClient>,
-  userId: string,
-  attribution: UTMData,
-): Promise<void> {
-  const { data: row, error: selErr } = await admin
-    .from('agent_accounts')
-    .select('id')
-    .eq('user_id', userId)
-    .is('signup_attribution', null)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (selErr) {
-    console.warn('[agent-keys] signup_attribution select failed:', selErr.message);
-    return;
-  }
-  if (!row?.id) return;
-
-  const { error: upErr } = await admin
-    .from('agent_accounts')
-    .update({
-      signup_attribution: attribution as Record<string, unknown>,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', row.id);
-
-  if (upErr) {
-    console.warn('[agent-keys] signup_attribution update failed:', upErr.message);
-  }
-}
+import { parseValidatedSignupUtm, sanitizeGclid } from '@/lib/utm';
+import { persistFirstTouchAttribution } from '@/lib/agent/signup-attribution';
 
 export async function GET() {
   const supabase = await createClient();
@@ -199,11 +127,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create key' }, { status: 500 });
   }
 
-  if (validatedSignupUtm) {
-    await persistSignupAttributionIfVacant(admin, user.id, validatedSignupUtm);
-  }
-  if (gclid) {
-    await persistGclidIfVacant(admin, user.id, gclid);
+  if (validatedSignupUtm || gclid) {
+    await persistFirstTouchAttribution(
+      admin,
+      user.id,
+      user.email ?? null,
+      { gclid, utm: validatedSignupUtm },
+      { createIfMissing: false },
+    );
   }
 
   const expiresAt = newKey.expires_at as string | null;
