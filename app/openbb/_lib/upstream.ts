@@ -29,14 +29,28 @@ export function portalBase(): string {
 
 /**
  * The OpenBB user pastes their `rm_agent_live_*` key into the Workspace
- * "Add data" auth UI as an `X-API-KEY` header. We forward it as a standard
- * Bearer token. Returns null when absent so callers can 401 cleanly.
+ * "Add data" auth UI. Workspace's backend contract accepts a custom header
+ * (preferred: `X-API-KEY`) or a query parameter (`api_key`). We also take
+ * `Authorization: Bearer`. Forwarded upstream as a Bearer token. Returns
+ * null when absent so callers can 401 cleanly.
  */
 export function bearerFromRequest(req: Request): string | null {
   const raw =
     req.headers.get("x-api-key") || req.headers.get("authorization") || "";
-  if (!raw) return null;
-  return raw.startsWith("Bearer ") ? raw.slice(7).trim() : raw.trim();
+  if (raw) {
+    return raw.startsWith("Bearer ") ? raw.slice(7).trim() : raw.trim();
+  }
+  try {
+    const url = new URL(req.url);
+    const fromQuery =
+      url.searchParams.get("api_key") ||
+      url.searchParams.get("apikey") ||
+      url.searchParams.get("X-API-KEY");
+    if (fromQuery?.trim()) return fromQuery.trim();
+  } catch {
+    /* ignore malformed URL */
+  }
+  return null;
 }
 
 /** GET an upstream path with the forwarded key. Returns the parsed JSON + status. */

@@ -1,8 +1,19 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { openbbCors } from '@/app/openbb/_lib/cors';
 import { checkDataGatewayRateLimit } from '@/lib/ratelimit/data-gateway-rate-limit';
 
 export async function middleware(request: NextRequest) {
+  // OpenBB Workspace adapter: API-key auth, not cookies. Answer CORS
+  // preflight here so OPTIONS never waits on Supabase session refresh (a
+  // timeout there looks like a CORS failure in pro.openbb.co / .dev).
+  if (request.nextUrl.pathname.startsWith('/openbb')) {
+    if (request.method === 'OPTIONS') {
+      return new NextResponse(null, { status: 204, headers: openbbCors(request) });
+    }
+    return NextResponse.next({ request });
+  }
+
   // Internal render route used by Playwright — skip Supabase session refresh.
   // Forward pathname as a request header so the root layout can detect this route.
   if (request.nextUrl.pathname.startsWith('/render-snapshot')) {

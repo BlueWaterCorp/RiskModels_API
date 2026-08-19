@@ -1056,6 +1056,9 @@ function GetKeyPage() {
               <code className="text-zinc-400 font-mono">riskmodels.app</code>. It is not a second, separate “type” of key.
             </p>
             <p className="text-xs text-zinc-500 mt-2">
+              The list above shows a <em>prefix</em> only. Curl and OpenBB need the full key, copied when it was generated. OpenBB Workspace: backend URL <code className="text-zinc-400 font-mono">https://riskmodels.app/openbb</code>, header <code className="text-zinc-400 font-mono">X-API-KEY</code>.
+            </p>
+            <p className="text-xs text-zinc-500 mt-2">
               See the{' '}
               <Link href="/docs/authentication" className="text-blue-400 hover:text-blue-300">Authentication guide</Link>
               {' '}for OAuth2, scopes, and rate limits.
