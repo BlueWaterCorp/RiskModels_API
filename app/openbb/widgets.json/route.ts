@@ -681,6 +681,17 @@ const WIDGETS = {
         type: "text",
         description: "Historical quarters to include (default 8).",
       },
+      {
+        paramName: "file",
+        value: ["model_scaffold"],
+        label: "Document",
+        type: "endpoint",
+        optionsEndpoint: "widgets/model-scaffold-options",
+        optionsParams: { ticker: "$ticker" },
+        multiSelect: true,
+        roles: ["fileSelector"],
+        show: false,
+      },
     ],
   },
   rm_rankings_top: {

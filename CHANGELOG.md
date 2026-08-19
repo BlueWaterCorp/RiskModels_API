@@ -7,6 +7,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **OpenBB `rm_model_scaffold` fileSelector** — `multi_file_viewer` widgets require a params entry with `roles: ["fileSelector"]`. Tearsheet already had it; Model Scaffold (Excel) did not, so Connect Backend failed validation. Same contract as `rm_tearsheet`: hidden `file` param + `widgets/model-scaffold-options`.
+
 - **`/get-key` one-time reveal sits next to Generate** — the full secret used to render above Add credits, so clicking Generate at the bottom only showed the 16-character prefix list. The green copy box now appears in the Generate card and scrolls into view. The list is labeled as a prefix.
 
 - **OpenBB Workspace CORS** — Adapter at `/openbb` echoes `https://pro.openbb.co`, `https://pro.openbb.dev`, and `http://localhost:1420` (trailing slashes and nested `*.openbb.co` hosts included). OPTIONS preflight is answered in middleware so it never waits on a cookie session. Widget routes also accept `?api_key=` in addition to `X-API-KEY` / `Authorization`.
