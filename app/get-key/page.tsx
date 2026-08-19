@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -135,6 +135,7 @@ function GetKeyPage() {
   const [newKeyName, setNewKeyName] = useState('');
   const [generating, setGenerating] = useState(false);
   const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string } | null>(null);
+  const revealedKeyRef = useRef<HTMLDivElement>(null);
   const [genError, setGenError] = useState('');
 
   // Inline rename state
@@ -280,6 +281,12 @@ function GetKeyPage() {
   }, [user]);
 
   useEffect(() => {
+    if (revealedKey) {
+      revealedKeyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [revealedKey]);
+
+  useEffect(() => {
     if (!loading && !user) {
       gtmAnalytics.signupFormViewed('get_key_page');
     }
@@ -411,6 +418,9 @@ function GetKeyPage() {
     } else {
       gtmAnalytics.apiKeyCreated();
       setRevealedKey({ plainKey: data.key.plainKey, name: data.key.name });
+      void copyTextToClipboard(data.key.plainKey).then((copied) => {
+        if (copied) gtmAnalytics.apiKeyCopied(data.key.plainKey);
+      });
       setNewKeyName('');
       /** Backstop the Sign-up conversion: if the auth-state / code-exchange fire was
        *  missed (e.g. gtag not ready on the redirect return), creating the first key
@@ -782,30 +792,6 @@ function GetKeyPage() {
           </div>
         )}
 
-        {/* One-time key reveal */}
-        {revealedKey && (
-          <div className="mb-6 rounded-xl border border-green-700/40 bg-green-950/20 p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <Check size={15} className="text-green-400 flex-shrink-0" />
-              <span className="text-green-300 font-semibold text-sm">
-                {revealedKey.name} — copy it now
-              </span>
-            </div>
-            <p className="text-zinc-400 text-xs mb-3">
-              This is the only time the full key is shown. It cannot be recovered.
-            </p>
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
-              <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all">
-                {revealedKey.plainKey}
-              </code>
-              <CopyButton
-                text={revealedKey.plainKey}
-                onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Payment methods — list / add / remove saved cards */}
         {hasCard && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
@@ -941,12 +927,37 @@ function GetKeyPage() {
                   {generating ? 'Generating…' : 'Generate'}
                 </button>
               </div>
-              <p className="text-xs text-zinc-500">Leave blank to auto-name (API Key 1, 2, …)</p>
+              <p className="text-xs text-zinc-500">Leave blank to auto-name (API Key 1, 2, …). The full key appears in the green box below this button — the list is a prefix only.</p>
             </form>
             {genError && (
               <p className="text-red-400 text-xs mt-2 bg-red-950/30 border border-red-800/40 rounded px-3 py-1.5">
                 {genError}
               </p>
+            )}
+            {revealedKey && (
+              <div
+                ref={revealedKeyRef}
+                className="mt-4 rounded-xl border border-green-700/40 bg-green-950/20 p-5"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Check size={15} className="text-green-400 flex-shrink-0" />
+                  <span className="text-green-300 font-semibold text-sm">
+                    {revealedKey.name} — copy this full key now
+                  </span>
+                </div>
+                <p className="text-zinc-400 text-xs mb-3">
+                  This is the only time the full key is shown. The list below stores a prefix and cannot recover it.
+                </p>
+                <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
+                  <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all">
+                    {revealedKey.plainKey}
+                  </code>
+                  <CopyButton
+                    text={revealedKey.plainKey}
+                    onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
+                  />
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -1021,7 +1032,9 @@ function GetKeyPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap text-xs text-zinc-500">
-                      <code className="font-mono text-zinc-400">{k.key_prefix}…</code>
+                      <code className="font-mono text-zinc-400" title="Prefix only — the full key was shown once at generate">
+                        {k.key_prefix}… <span className="font-sans text-zinc-600">prefix</span>
+                      </code>
                       <span>Created {formatDate(k.created_at)}</span>
                       {k.last_used_at && <span>Last used {formatDate(k.last_used_at)}</span>}
                       {k.expires_at && <span>Expires {formatDate(k.expires_at)}</span>}

@@ -7,6 +7,8 @@ All notable changes to the RiskModels API surface and public assets.
 
 ### Changed
 
+- **`/get-key` one-time reveal sits next to Generate** — the full secret used to render above Add credits, so clicking Generate at the bottom only showed the 16-character prefix list. The green copy box now appears in the Generate card and scrolls into view. The list is labeled as a prefix.
+
 - **OpenBB Workspace CORS** — Adapter at `/openbb` echoes `https://pro.openbb.co`, `https://pro.openbb.dev`, and `http://localhost:1420` (trailing slashes and nested `*.openbb.co` hosts included). OPTIONS preflight is answered in middleware so it never waits on a cookie session. Widget routes also accept `?api_key=` in addition to `X-API-KEY` / `Authorization`.
 
 - **Price book 2026-08-14** — Catalogue reprice (not a flat multiplier). Lookups $0.005; ticker-returns **$0.02 + $0.01/extra year**; `batch-lstar` **$0.015/position** (restores the advertised 25% discount vs `GET /lstar`); decision products (`lstar`, `residual-signal`) held at $0.02. Institutional licenses: Desk $50k / Firm $150k / Production $250k per year. Existing keys that recorded a paid call before 14 Aug 2026 keep prior rates through **31 Dec 2026**. Source: `lib/agent/capabilities.ts`; public page `/pricing`. Brief: `Futures/docs/PRICING_REPRICE_BRIEF.md`.
