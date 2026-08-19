@@ -52,6 +52,8 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot PDF, legacy `pdf` widget type (kept for API; **not** registered as a widget — OpenBB's pdf.js viewer wouldn't render it, #194) | ⚠️ deprecated as widget |
 | `GET /openbb/widgets/tearsheet?ticker=&file=` | Risk-snapshot PDF via `multi_file_viewer` (retry of the above) | ✅ live |
 | `GET /openbb/widgets/tearsheet-options?ticker=` | fileSelector options for the tearsheet widget | ✅ live |
+| `GET /openbb/widgets/model-scaffold?ticker=&erp=&periods=&file=` | Valuation-model .xlsx via `multi_file_viewer` | ✅ live |
+| `GET /openbb/widgets/model-scaffold-options?ticker=` | fileSelector options for the model-scaffold widget | ✅ live |
 | `GET /openbb/widgets/returns-chart?ticker=&years=` | Cumulative total-return line chart | ✅ live |
 | `GET /openbb/widgets/risk-composition?ticker=&years=` | L3 explained-risk over time (line chart) | ✅ live |
 | `GET /openbb/widgets/rankings-top?metric=&cohort=&window=&limit=` | Top-ranked names table | ✅ live |
