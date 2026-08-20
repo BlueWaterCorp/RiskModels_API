@@ -5,7 +5,10 @@
  *
  * GET or POST /openbb/widgets/tearsheet
  * OpenBB Workspace POSTs the fileSelector list in the JSON body
- * (`{ file: ["risk_snapshot"], ticker: "AAPL" }`). GET query params still work.
+ * (`{ file: ["IBM_risk_snapshot"], ticker: "IBM" }`). The file id is
+ * ticker-scoped so Workspace does not keep serving a cached AAPL PDF after
+ * the grouped ticker changes. Bare `risk_snapshot` still works. GET query
+ * params still work.
  * Fetches the real server-rendered PDF from /metrics/{ticker}/snapshot.pdf,
  * base64-encodes it, and returns the multi_file_viewer array contract.
  */
@@ -13,17 +16,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest, upstreamGetBytes } from "../../_lib/upstream";
 import {
-  namesMatch,
+  isFileSelection,
   readWidgetInput,
   selectedNames,
+  WIDGET_NO_STORE,
 } from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
 
-const FILE_ALIASES = ["risk_snapshot", "Risk Snapshot Tearsheet"] as const;
-
 async function handle(req: NextRequest) {
-  const cors = openbbCors(req);
+  const cors = { ...openbbCors(req), ...WIDGET_NO_STORE };
   const sp = await readWidgetInput(req);
   const ticker = (sp.get("ticker") || "AAPL").trim().toUpperCase();
   const files = selectedNames(sp, "file", "risk_snapshot");
@@ -41,7 +43,7 @@ async function handle(req: NextRequest) {
     );
   }
 
-  if (!namesMatch(files, FILE_ALIASES)) {
+  if (!isFileSelection(files, "risk_snapshot", ["Risk Snapshot Tearsheet"])) {
     return NextResponse.json(
       files.map((name) => ({
         error_type: "not_found",

@@ -1,21 +1,29 @@
 /**
- * optionsEndpoint for the model-scaffold multi_file_viewer widget's
- * fileSelector param. There is exactly one document type today (the
- * valuation-model .xlsx); this list exists so the widget conforms to
- * OpenBB's multi_file_viewer contract (a param with roles: ["fileSelector"]
- * backed by optionsEndpoint).
+ * optionsEndpoint for the model-scaffold multi_file_viewer fileSelector.
  *
  * GET /openbb/widgets/model-scaffold-options?ticker=AAPL
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
+import {
+  tickerScopedFileValue,
+  WIDGET_NO_STORE,
+} from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const ticker = (req.nextUrl.searchParams.get("ticker") || "AAPL")
+    .trim()
+    .toUpperCase();
   return NextResponse.json(
-    [{ label: "Valuation Model Scaffold", value: "model_scaffold" }],
-    { headers: openbbCors(req) },
+    [
+      {
+        label: "Valuation Model Scaffold",
+        value: tickerScopedFileValue(ticker, "model_scaffold"),
+      },
+    ],
+    { headers: { ...openbbCors(req), ...WIDGET_NO_STORE } },
   );
 }
 

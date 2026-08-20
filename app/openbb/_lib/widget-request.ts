@@ -47,10 +47,36 @@ export function selectedNames(
   return raw.length > 0 ? raw : [fallback];
 }
 
-export function namesMatch(
-  requested: string[],
-  aliases: readonly string[],
-): boolean {
-  const allowed = new Set(aliases.map((a) => a.toLowerCase()));
-  return requested.some((name) => allowed.has(name.toLowerCase()));
+/** File-viewer cache key that changes when the grouped ticker changes. */
+export function tickerScopedFileValue(ticker: string, stem: string): string {
+  const t = ticker.trim().toUpperCase() || "AAPL";
+  return `${t}_${stem}`;
 }
+
+/**
+ * True when Workspace asked for this document, including ticker-scoped
+ * values (`IBM_risk_snapshot`) so a ticker change is a new file id.
+ * Content still follows the ticker param, not the prefix on the file name.
+ */
+export function isFileSelection(
+  requested: string[],
+  stem: string,
+  extra: readonly string[] = [],
+): boolean {
+  const stemL = stem.toLowerCase();
+  const extras = extra.map((s) => s.toLowerCase());
+  return requested.some((name) => {
+    const n = name.trim().toLowerCase();
+    if (!n) return false;
+    if (n === stemL || extras.includes(n)) return true;
+    return (
+      n.endsWith(`_${stemL}`) ||
+      n.endsWith(`_${stemL}.pdf`) ||
+      n.endsWith(`_${stemL}.xlsx`)
+    );
+  });
+}
+
+export const WIDGET_NO_STORE = {
+  "Cache-Control": "no-store, max-age=0",
+} as const;

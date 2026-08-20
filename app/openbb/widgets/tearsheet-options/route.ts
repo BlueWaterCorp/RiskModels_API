@@ -9,13 +9,25 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
+import {
+  tickerScopedFileValue,
+  WIDGET_NO_STORE,
+} from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const ticker = (req.nextUrl.searchParams.get("ticker") || "AAPL")
+    .trim()
+    .toUpperCase();
   return NextResponse.json(
-    [{ label: "Risk Snapshot Tearsheet", value: "risk_snapshot" }],
-    { headers: openbbCors(req) },
+    [
+      {
+        label: "Risk Snapshot Tearsheet",
+        value: tickerScopedFileValue(ticker, "risk_snapshot"),
+      },
+    ],
+    { headers: { ...openbbCors(req), ...WIDGET_NO_STORE } },
   );
 }
 
