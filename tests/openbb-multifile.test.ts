@@ -9,9 +9,10 @@ import { NextRequest } from "next/server";
 vi.mock("@/app/openbb/_lib/upstream", () => ({
   bearerFromRequest: vi.fn(() => "rm_agent_live_test"),
   upstreamGetBytes: vi.fn(),
+  upstreamGet: vi.fn(),
 }));
 
-import { bearerFromRequest, upstreamGetBytes } from "@/app/openbb/_lib/upstream";
+import { bearerFromRequest, upstreamGet, upstreamGetBytes } from "@/app/openbb/_lib/upstream";
 import { GET as widgetsGET } from "@/app/openbb/widgets.json/route";
 import { GET as tearsheetOptionsGET } from "@/app/openbb/widgets/tearsheet-options/route";
 import { GET as tearsheetGET, POST as tearsheetPOST } from "@/app/openbb/widgets/tearsheet/route";
@@ -21,16 +22,14 @@ import {
 } from "@/app/openbb/widgets/model-scaffold/route";
 
 const mockBytes = vi.mocked(upstreamGetBytes);
+const mockGet = vi.mocked(upstreamGet);
 const mockBearer = vi.mocked(bearerFromRequest);
 
 beforeEach(() => {
   mockBytes.mockReset();
+  mockGet.mockReset();
   mockBearer.mockReturnValue("rm_agent_live_test");
 });
-
-function pdfBytes(): ArrayBuffer {
-  return new TextEncoder().encode("%PDF-1.4 test").buffer;
-}
 
 function xlsxBytes(): ArrayBuffer {
   return new TextEncoder().encode("PK\u0003\u0004 test").buffer;
@@ -45,6 +44,7 @@ describe("widgets.json fileSelector", () => {
       { type: string; params: Array<{ paramName: string; roles?: string[] }> }
     >;
     expect(defs.rm_tearsheet.type).toBe("html");
+    expect((defs.rm_tearsheet as { raw?: boolean }).raw).toBe(true);
     expect(
       defs.rm_tearsheet.params.find((p) => p.roles?.includes("fileSelector")),
     ).toBeUndefined();
@@ -82,13 +82,27 @@ describe("tearsheet-options", () => {
 });
 
 describe("tearsheet html widget", () => {
-  it("GET ticker=IBM returns HTML that embeds that ticker's PDF", async () => {
-    mockBytes.mockResolvedValueOnce({
-      status: 200,
-      contentType: "application/pdf",
-      bytes: pdfBytes(),
-      error: null,
-    });
+  const ibmMetrics = {
+    ticker: "IBM",
+    teo: "2026-08-18",
+    metrics: {
+      price_close: 185.32,
+      l3_mkt_er: 0.12,
+      l3_sec_er: 0.08,
+      l3_sub_er: 0.05,
+      l3_res_er: 0.75,
+      vol_252d_ann: 0.22,
+      recommended_hedge_level: "L3",
+      lstar_level: "L3",
+      l3_mkt_hr: -0.41,
+      l3_sec_hr: 0.22,
+      l3_sub_hr: 0.11,
+    },
+    _data_health: { data_as_of: "2026-08-18" },
+  };
+
+  it("GET ticker=IBM returns HTML with that ticker's metrics, not a PDF embed", async () => {
+    mockGet.mockResolvedValueOnce({ status: 200, body: ibmMetrics });
     const res = await tearsheetGET(
       new NextRequest("http://localhost/openbb/widgets/tearsheet?ticker=IBM"),
     );
@@ -96,16 +110,27 @@ describe("tearsheet html widget", () => {
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     const html = await res.text();
     expect(html).toContain("IBM Risk Snapshot");
-    expect(html).toContain("data:application/pdf;base64,");
-    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM/snapshot.pdf");
+    expect(html).toContain("<h1>IBM</h1>");
+    expect(html).toContain("75.0%");
+    expect(html).not.toContain("application/pdf");
+    expect(mockGet.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM");
+  });
+
+  it("raw=true returns JSON rows for Copilot", async () => {
+    mockGet.mockResolvedValueOnce({ status: 200, body: ibmMetrics });
+    const res = await tearsheetGET(
+      new NextRequest(
+        "http://localhost/openbb/widgets/tearsheet?ticker=IBM&raw=true",
+      ),
+    );
+    const rows = (await res.json()) as Array<{ metric: string; value: string }>;
+    expect(rows[0]).toEqual({ metric: "Ticker", value: "IBM" });
   });
 
   it("POST with ticker still works if Workspace sends JSON", async () => {
-    mockBytes.mockResolvedValueOnce({
+    mockGet.mockResolvedValueOnce({
       status: 200,
-      contentType: "application/pdf",
-      bytes: pdfBytes(),
-      error: null,
+      body: { ...ibmMetrics, ticker: "NVDA" },
     });
     const res = await tearsheetPOST(
       new NextRequest("http://localhost/openbb/widgets/tearsheet", {
@@ -116,7 +141,7 @@ describe("tearsheet html widget", () => {
     );
     const html = await res.text();
     expect(html).toContain("NVDA Risk Snapshot");
-    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/NVDA/snapshot.pdf");
+    expect(mockGet.mock.calls.at(-1)?.[0]).toBe("/metrics/NVDA");
   });
 });
 
