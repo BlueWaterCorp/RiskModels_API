@@ -1,55 +1,55 @@
 /**
- * Live widget: institutional risk-snapshot tearsheet -> OpenBB
- * `multi_file_viewer` widget (retry of the `pdf` widget type, which OpenBB's
- * pdf.js viewer failed to render — see app/openbb/README.md, issue #194).
+ * Live widget: institutional risk-snapshot tearsheet -> OpenBB `html` widget.
  *
- * GET or POST /openbb/widgets/tearsheet
- * OpenBB Workspace POSTs the fileSelector list in the JSON body
- * (`{ file: ["IBM_risk_snapshot"], ticker: "IBM" }`). The file id is
- * ticker-scoped so Workspace does not keep serving a cached AAPL PDF after
- * the grouped ticker changes. Bare `risk_snapshot` still works. GET query
- * params still work.
- * Fetches the real server-rendered PDF from /metrics/{ticker}/snapshot.pdf,
- * base64-encodes it, and returns the multi_file_viewer array contract.
+ * multi_file_viewer caches by file id and does not refetch when the grouped
+ * ticker changes, so AAPL stayed on screen after IBM. An HTML widget is a
+ * normal data widget: GET ?ticker= follows the group like the tables.
+ *
+ * GET /openbb/widgets/tearsheet?ticker=IBM
+ * Fetches /metrics/{ticker}/snapshot.pdf and embeds it.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest, upstreamGetBytes } from "../../_lib/upstream";
-import {
-  isFileSelection,
-  readWidgetInput,
-  selectedNames,
-  WIDGET_NO_STORE,
-} from "../../_lib/widget-request";
+import { readWidgetInput, WIDGET_NO_STORE } from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function htmlPage(title: string, inner: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>html,body{margin:0;height:100%;background:#111}object,embed{width:100%;height:100%;border:0}p{color:#eee;font-family:Inter,Helvetica,sans-serif;padding:24px}</style></head><body>${inner}</body></html>`;
+}
+
+function htmlResponse(cors: Record<string, string>, html: string, status = 200) {
+  return new NextResponse(html, {
+    status,
+    headers: {
+      ...cors,
+      "Content-Type": "text/html; charset=utf-8",
+    },
+  });
+}
 
 async function handle(req: NextRequest) {
   const cors = { ...openbbCors(req), ...WIDGET_NO_STORE };
   const sp = await readWidgetInput(req);
   const ticker = (sp.get("ticker") || "AAPL").trim().toUpperCase();
-  const files = selectedNames(sp, "file", "risk_snapshot");
 
   const key = bearerFromRequest(req);
   if (!key) {
-    return NextResponse.json(
-      [
-        {
-          error_type: "unauthorized",
-          content: "Add X-API-KEY (rm_agent_live_*) in OpenBB Connections to load data",
-        },
-      ],
-      { headers: cors },
-    );
-  }
-
-  if (!isFileSelection(files, "risk_snapshot", ["Risk Snapshot Tearsheet"])) {
-    return NextResponse.json(
-      files.map((name) => ({
-        error_type: "not_found",
-        content: `File '${name}' is not a RiskModels tearsheet`,
-      })),
-      { headers: cors },
+    return htmlResponse(
+      cors,
+      htmlPage(
+        "Risk Snapshot",
+        "<p>Add X-API-KEY (rm_agent_live_*) in OpenBB Connections to load data</p>",
+      ),
     );
   }
 
@@ -63,24 +63,21 @@ async function handle(req: NextRequest) {
       (error as { error?: string; message?: string })?.error ||
       (error as { message?: string })?.message ||
       `Upstream returned ${status}`;
-    return NextResponse.json(
-      [{ error_type: "fetch_failed", content: message }],
-      { status, headers: cors },
+    return htmlResponse(
+      cors,
+      htmlPage(ticker, `<p>${escapeHtml(message)}</p>`),
+      status >= 400 ? status : 502,
     );
   }
 
   const content = Buffer.from(bytes).toString("base64");
-  return NextResponse.json(
-    [
-      {
-        data_format: {
-          data_type: "pdf",
-          filename: `${ticker}_risk_snapshot.pdf`,
-        },
-        content,
-      },
-    ],
-    { headers: cors },
+  const src = `data:application/pdf;base64,${content}`;
+  return htmlResponse(
+    cors,
+    htmlPage(
+      `${ticker} Risk Snapshot`,
+      `<object data="${src}" type="application/pdf" aria-label="${escapeHtml(ticker)} risk snapshot"><embed src="${src}" type="application/pdf"/></object>`,
+    ),
   );
 }
 
