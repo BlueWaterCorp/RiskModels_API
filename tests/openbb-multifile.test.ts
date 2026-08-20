@@ -37,24 +37,28 @@ function xlsxBytes(): ArrayBuffer {
 }
 
 describe("widgets.json fileSelector", () => {
-  it("requires a fileSelector param on both multi_file_viewer widgets", async () => {
+  it("serves the tearsheet as html so grouped ticker refetches like tables", async () => {
     const defs = (await (
       await widgetsGET(new NextRequest("http://localhost/openbb/widgets.json"))
     ).json()) as Record<
       string,
       { type: string; params: Array<{ paramName: string; roles?: string[] }> }
     >;
-    for (const id of ["rm_tearsheet", "rm_model_scaffold"]) {
-      expect(defs[id].type).toBe("multi_file_viewer");
-      const selector = defs[id].params.find((p) =>
-        p.roles?.includes("fileSelector"),
-      );
-      expect(selector, id).toBeDefined();
-      expect(selector!.paramName).toBe("file");
-    }
+    expect(defs.rm_tearsheet.type).toBe("html");
+    expect(
+      defs.rm_tearsheet.params.find((p) => p.roles?.includes("fileSelector")),
+    ).toBeUndefined();
+    expect(defs.rm_tearsheet.params.map((p) => p.paramName)).toEqual(["ticker"]);
+
+    expect(defs.rm_model_scaffold.type).toBe("multi_file_viewer");
+    const selector = defs.rm_model_scaffold.params.find((p) =>
+      p.roles?.includes("fileSelector"),
+    );
+    expect(selector).toBeDefined();
+    expect(selector!.paramName).toBe("file");
   });
 
-  it("marks file widgets immediately stale so a ticker change refetches", async () => {
+  it("marks ticker-dependent widgets immediately stale so a ticker change refetches", async () => {
     const defs = (await (
       await widgetsGET(new NextRequest("http://localhost/openbb/widgets.json"))
     ).json()) as Record<string, { staleTime?: number }>;
@@ -77,53 +81,8 @@ describe("tearsheet-options", () => {
   });
 });
 
-describe("tearsheet POST", () => {
-  it("returns a pdf payload when Workspace POSTs the fileSelector body", async () => {
-    mockBytes.mockResolvedValueOnce({
-      status: 200,
-      contentType: "application/pdf",
-      bytes: pdfBytes(),
-      error: null,
-    });
-    const res = await tearsheetPOST(
-      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ticker: "AAPL", file: ["risk_snapshot"] }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{
-      data_format?: { data_type: string; filename: string };
-      error_type?: string;
-    }>;
-    expect(body[0].error_type).toBeUndefined();
-    expect(body[0].data_format?.data_type).toBe("pdf");
-    expect(body[0].data_format?.filename).toBe("AAPL_risk_snapshot.pdf");
-  });
-
-  it("accepts a ticker-scoped file id and returns that ticker's pdf", async () => {
-    mockBytes.mockResolvedValueOnce({
-      status: 200,
-      contentType: "application/pdf",
-      bytes: pdfBytes(),
-      error: null,
-    });
-    const res = await tearsheetPOST(
-      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ticker: "IBM", file: ["IBM_risk_snapshot"] }),
-      }),
-    );
-    const body = (await res.json()) as Array<{
-      data_format?: { filename: string };
-    }>;
-    expect(body[0].data_format?.filename).toBe("IBM_risk_snapshot.pdf");
-    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM/snapshot.pdf");
-  });
-
-  it("GET still works", async () => {
+describe("tearsheet html widget", () => {
+  it("GET ticker=IBM returns HTML that embeds that ticker's PDF", async () => {
     mockBytes.mockResolvedValueOnce({
       status: 200,
       contentType: "application/pdf",
@@ -131,14 +90,33 @@ describe("tearsheet POST", () => {
       error: null,
     });
     const res = await tearsheetGET(
-      new NextRequest(
-        "http://localhost/openbb/widgets/tearsheet?ticker=NVDA&file=risk_snapshot",
-      ),
+      new NextRequest("http://localhost/openbb/widgets/tearsheet?ticker=IBM"),
     );
-    const body = (await res.json()) as Array<{
-      data_format?: { filename: string };
-    }>;
-    expect(body[0].data_format?.filename).toBe("NVDA_risk_snapshot.pdf");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/html/);
+    const html = await res.text();
+    expect(html).toContain("IBM Risk Snapshot");
+    expect(html).toContain("data:application/pdf;base64,");
+    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM/snapshot.pdf");
+  });
+
+  it("POST with ticker still works if Workspace sends JSON", async () => {
+    mockBytes.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/pdf",
+      bytes: pdfBytes(),
+      error: null,
+    });
+    const res = await tearsheetPOST(
+      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ticker: "NVDA" }),
+      }),
+    );
+    const html = await res.text();
+    expect(html).toContain("NVDA Risk Snapshot");
+    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/NVDA/snapshot.pdf");
   });
 });
 
@@ -194,17 +172,14 @@ describe("model-scaffold POST", () => {
 });
 
 describe("no key", () => {
-  it("returns unauthorized payload, not 401", async () => {
+  it("returns HTML asking for an API key, not 401", async () => {
     mockBearer.mockReturnValueOnce(null);
-    const res = await tearsheetPOST(
-      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ticker: "AAPL", file: ["risk_snapshot"] }),
-      }),
+    const res = await tearsheetGET(
+      new NextRequest("http://localhost/openbb/widgets/tearsheet?ticker=AAPL"),
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ error_type: string }>;
-    expect(body[0].error_type).toBe("unauthorized");
+    expect(res.headers.get("content-type")).toMatch(/text\/html/);
+    const html = await res.text();
+    expect(html).toContain("X-API-KEY");
   });
 });
