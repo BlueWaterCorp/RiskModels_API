@@ -8,6 +8,11 @@
  *
  * GET /openbb/widgets/tearsheet?ticker=IBM
  * GET /openbb/widgets/tearsheet?ticker=IBM&raw=true  → JSON rows
+ *
+ * raw-field-ok-file: the close price serves under Exhibit B(e) — no API key
+ * returns the connect-probe HTML instead of data (authenticated), the route
+ * takes a single ?ticker= (per-symbol, per-request), and the price sits
+ * alongside the derived decomposition rows (ancillary).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
