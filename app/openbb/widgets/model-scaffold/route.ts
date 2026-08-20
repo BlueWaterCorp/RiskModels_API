@@ -1,25 +1,32 @@
 /**
  * Live widget: valuation-model Excel scaffold -> OpenBB `multi_file_viewer`.
  *
- * GET /openbb/widgets/model-scaffold?ticker=AAPL&erp=0.05&periods=8
- * Fetches the real server-built .xlsx from /fundamentals/{ticker}/model-scaffold
- * (historical income/CF block + CAPM WACC build, SEC-sourced, PIT), base64-encodes
- * it, and returns the multi_file_viewer download contract. No synthetic content —
- * whatever the API builds is what downloads. Forward projections stay the user's
- * own assumptions (RiskModels serves realized data only).
+ * GET or POST /openbb/widgets/model-scaffold
+ * OpenBB Workspace POSTs the fileSelector list in the JSON body. GET query
+ * params still work. Fetches the real server-built .xlsx from
+ * /fundamentals/{ticker}/model-scaffold, base64-encodes it, and returns the
+ * multi_file_viewer array contract.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest, upstreamGetBytes } from "../../_lib/upstream";
+import {
+  namesMatch,
+  readWidgetInput,
+  selectedNames,
+} from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+const FILE_ALIASES = ["model_scaffold", "Valuation Model Scaffold"] as const;
+
+async function handle(req: NextRequest) {
   const cors = openbbCors(req);
-  const sp = req.nextUrl.searchParams;
+  const sp = await readWidgetInput(req);
   const ticker = (sp.get("ticker") || "AAPL").trim().toUpperCase();
   const erp = sp.get("erp") || "0.05";
   const periods = sp.get("periods") || "8";
+  const files = selectedNames(sp, "file", "model_scaffold");
 
   const key = bearerFromRequest(req);
   if (!key) {
@@ -30,6 +37,16 @@ export async function GET(req: NextRequest) {
           content: "Add X-API-KEY (rm_agent_live_*) in OpenBB Connections to load data",
         },
       ],
+      { headers: cors },
+    );
+  }
+
+  if (!namesMatch(files, FILE_ALIASES)) {
+    return NextResponse.json(
+      files.map((name) => ({
+        error_type: "not_found",
+        content: `File '${name}' is not a RiskModels model scaffold`,
+      })),
       { headers: cors },
     );
   }
@@ -64,6 +81,9 @@ export async function GET(req: NextRequest) {
     { headers: cors },
   );
 }
+
+export const GET = handle;
+export const POST = handle;
 
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, { status: 204, headers: openbbCors(req) });
