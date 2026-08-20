@@ -11,17 +11,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
 import { bearerFromRequest, upstreamGetBytes } from "../../_lib/upstream";
 import {
-  namesMatch,
+  isFileSelection,
   readWidgetInput,
   selectedNames,
+  WIDGET_NO_STORE,
 } from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
 
-const FILE_ALIASES = ["model_scaffold", "Valuation Model Scaffold"] as const;
-
 async function handle(req: NextRequest) {
-  const cors = openbbCors(req);
+  const cors = { ...openbbCors(req), ...WIDGET_NO_STORE };
   const sp = await readWidgetInput(req);
   const ticker = (sp.get("ticker") || "AAPL").trim().toUpperCase();
   const erp = sp.get("erp") || "0.05";
@@ -41,7 +40,7 @@ async function handle(req: NextRequest) {
     );
   }
 
-  if (!namesMatch(files, FILE_ALIASES)) {
+  if (!isFileSelection(files, "model_scaffold", ["Valuation Model Scaffold"])) {
     return NextResponse.json(
       files.map((name) => ({
         error_type: "not_found",

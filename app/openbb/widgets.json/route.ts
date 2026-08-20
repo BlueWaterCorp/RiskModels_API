@@ -253,6 +253,7 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/tearsheet",
     gridData: { w: 24, h: 18 },
+    staleTime: 0,
     params: [
       {
         paramName: "ticker",
@@ -659,6 +660,7 @@ const WIDGETS = {
     source: ["RiskModels API"],
     endpoint: "widgets/model-scaffold",
     gridData: { w: 24, h: 16 },
+    staleTime: 0,
     params: [
       {
         paramName: "ticker",

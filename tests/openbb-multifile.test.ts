@@ -13,6 +13,7 @@ vi.mock("@/app/openbb/_lib/upstream", () => ({
 
 import { bearerFromRequest, upstreamGetBytes } from "@/app/openbb/_lib/upstream";
 import { GET as widgetsGET } from "@/app/openbb/widgets.json/route";
+import { GET as tearsheetOptionsGET } from "@/app/openbb/widgets/tearsheet-options/route";
 import { GET as tearsheetGET, POST as tearsheetPOST } from "@/app/openbb/widgets/tearsheet/route";
 import {
   GET as scaffoldGET,
@@ -52,6 +53,28 @@ describe("widgets.json fileSelector", () => {
       expect(selector!.paramName).toBe("file");
     }
   });
+
+  it("marks file widgets immediately stale so a ticker change refetches", async () => {
+    const defs = (await (
+      await widgetsGET(new NextRequest("http://localhost/openbb/widgets.json"))
+    ).json()) as Record<string, { staleTime?: number }>;
+    expect(defs.rm_tearsheet.staleTime).toBe(0);
+    expect(defs.rm_model_scaffold.staleTime).toBe(0);
+  });
+});
+
+describe("tearsheet-options", () => {
+  it("scopes the file id to the ticker so Workspace cannot cache AAPL under IBM", async () => {
+    const res = await tearsheetOptionsGET(
+      new NextRequest(
+        "http://localhost/openbb/widgets/tearsheet-options?ticker=IBM",
+      ),
+    );
+    const body = (await res.json()) as Array<{ label: string; value: string }>;
+    expect(body).toEqual([
+      { label: "Risk Snapshot Tearsheet", value: "IBM_risk_snapshot" },
+    ]);
+  });
 });
 
 describe("tearsheet POST", () => {
@@ -77,6 +100,27 @@ describe("tearsheet POST", () => {
     expect(body[0].error_type).toBeUndefined();
     expect(body[0].data_format?.data_type).toBe("pdf");
     expect(body[0].data_format?.filename).toBe("AAPL_risk_snapshot.pdf");
+  });
+
+  it("accepts a ticker-scoped file id and returns that ticker's pdf", async () => {
+    mockBytes.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/pdf",
+      bytes: pdfBytes(),
+      error: null,
+    });
+    const res = await tearsheetPOST(
+      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ticker: "IBM", file: ["IBM_risk_snapshot"] }),
+      }),
+    );
+    const body = (await res.json()) as Array<{
+      data_format?: { filename: string };
+    }>;
+    expect(body[0].data_format?.filename).toBe("IBM_risk_snapshot.pdf");
+    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM/snapshot.pdf");
   });
 
   it("GET still works", async () => {

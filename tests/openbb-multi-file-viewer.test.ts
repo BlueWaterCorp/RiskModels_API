@@ -49,7 +49,7 @@ describe("openbb multi_file_viewer fileSelector", () => {
     expect(res.status).toBe(200);
     const rows = (await res.json()) as { label: string; value: string }[];
     expect(rows).toEqual([
-      { label: "Valuation Model Scaffold", value: "model_scaffold" },
+      { label: "Valuation Model Scaffold", value: "AAPL_model_scaffold" },
     ]);
   });
 });
