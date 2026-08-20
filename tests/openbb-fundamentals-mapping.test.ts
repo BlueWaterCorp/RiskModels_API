@@ -135,7 +135,7 @@ describe("wacc-grid mapping", () => {
     expect(rows[0]["1y"]).toBeNull(); // tenor absent from upstream grid
   });
 
-  it("renders economic profit in $B and falls back to wacc on a bad measure", async () => {
+  it("renders economic profit in $B and falls back to cost_of_equity on a bad measure", async () => {
     mockUpstream.mockResolvedValueOnce({
       status: 200,
       body: { sensitivity_grid: grid },
@@ -159,6 +159,6 @@ describe("wacc-grid mapping", () => {
       ),
     );
     const rows2 = await res2.json();
-    expect(rows2[0]["3m"]).toBe(6.1); // fell back to wacc
+    expect(rows2[0]["3m"]).toBe(7); // fell back to cost_of_equity
   });
 });

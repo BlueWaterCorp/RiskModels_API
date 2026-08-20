@@ -1,7 +1,7 @@
 /**
  * Live widget data endpoint: cost-of-capital sensitivity grid → OpenBB table.
  *
- * GET /openbb/widgets/wacc-grid?ticker=AAPL&measure=wacc&tax_rate=0.21
+ * GET /openbb/widgets/wacc-grid?ticker=AAPL&measure=cost_of_equity&tax_rate=0.21
  * Auth: X-API-KEY header, forwarded upstream as Bearer. Maps the real
  * /fundamentals/{ticker}?grid=true sensitivity_grid — the selected measure
  * (WACC / cost of equity / economic profit) across ERP rows x risk-free-tenor
@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
   const cors = openbbCors(req);
   const sp = req.nextUrl.searchParams;
   const ticker = (sp.get("ticker") || "AAPL").trim().toUpperCase();
-  const rawMeasure = (sp.get("measure") || "wacc").trim();
-  const measure = MEASURES.has(rawMeasure) ? rawMeasure : "wacc";
+  const rawMeasure = (sp.get("measure") || "cost_of_equity").trim();
+  const measure = MEASURES.has(rawMeasure) ? rawMeasure : "cost_of_equity";
   const taxRate = (sp.get("tax_rate") || "0.21").trim();
 
   const key = bearerFromRequest(req);

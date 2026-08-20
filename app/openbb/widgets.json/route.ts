@@ -595,7 +595,7 @@ const WIDGETS = {
   rm_wacc_grid: {
     name: "RiskModels — WACC Sensitivity Grid",
     description:
-      "Cost-of-capital sensitivity for the latest quarter: the selected measure across ERP rows (3–7%) and Treasury tenor columns (3m–30y). Rate measures in percent; economic profit in $B. Shows how the answer moves with YOUR assumptions — no stored ERP opinion.",
+      "Cost-of-capital sensitivity for the latest quarter: the selected measure across ERP rows (3–7%) and Treasury tenor columns (3m–30y). Rate measures in percent; economic profit in $B. Default measure is cost of equity (always formed from rf + beta × ERP). WACC is blank when cost of debt cannot be formed from interest/debt — AAPL is in that class.",
     category: "Fundamentals",
     type: "table",
     source: ["RiskModels API"],
@@ -611,7 +611,7 @@ const WIDGETS = {
       },
       {
         paramName: "measure",
-        value: "wacc",
+        value: "cost_of_equity",
         label: "Measure",
         type: "text",
         description: "Grid measure.",
