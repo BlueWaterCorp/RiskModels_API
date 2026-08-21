@@ -31,31 +31,35 @@ beforeEach(() => {
   mockBearer.mockReturnValue("rm_agent_live_test");
 });
 
+function pdfBytes(): ArrayBuffer {
+  return new TextEncoder().encode("%PDF-1.4 test").buffer;
+}
+
 function xlsxBytes(): ArrayBuffer {
   return new TextEncoder().encode("PK\u0003\u0004 test").buffer;
 }
 
 describe("widgets.json fileSelector", () => {
-  it("serves the tearsheet as html so grouped ticker refetches like tables", async () => {
+  it("serves the tearsheet as multi_file_viewer so placed OpenBB apps can load the PDF", async () => {
     const defs = (await (
       await widgetsGET(new NextRequest("http://localhost/openbb/widgets.json"))
     ).json()) as Record<
       string,
       { type: string; params: Array<{ paramName: string; roles?: string[] }> }
     >;
-    expect(defs.rm_tearsheet.type).toBe("html");
-    expect((defs.rm_tearsheet as { raw?: boolean }).raw).toBe(true);
-    expect(
-      defs.rm_tearsheet.params.find((p) => p.roles?.includes("fileSelector")),
-    ).toBeUndefined();
-    expect(defs.rm_tearsheet.params.map((p) => p.paramName)).toEqual(["ticker"]);
-
-    expect(defs.rm_model_scaffold.type).toBe("multi_file_viewer");
-    const selector = defs.rm_model_scaffold.params.find((p) =>
+    expect(defs.rm_tearsheet.type).toBe("multi_file_viewer");
+    const selector = defs.rm_tearsheet.params.find((p) =>
       p.roles?.includes("fileSelector"),
     );
     expect(selector).toBeDefined();
     expect(selector!.paramName).toBe("file");
+
+    expect(defs.rm_model_scaffold.type).toBe("multi_file_viewer");
+    const scaffold = defs.rm_model_scaffold.params.find((p) =>
+      p.roles?.includes("fileSelector"),
+    );
+    expect(scaffold).toBeDefined();
+    expect(scaffold!.paramName).toBe("file");
   });
 
   it("marks ticker-dependent widgets immediately stale so a ticker change refetches", async () => {
@@ -78,6 +82,54 @@ describe("tearsheet-options", () => {
     expect(body).toEqual([
       { label: "Risk Snapshot Tearsheet", value: "IBM_risk_snapshot" },
     ]);
+  });
+});
+
+describe("tearsheet file viewer", () => {
+  it("POST file + ticker returns the PDF JSON contract Workspace's file viewer needs", async () => {
+    mockBytes.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/pdf",
+      bytes: pdfBytes(),
+      error: null,
+    });
+    const res = await tearsheetPOST(
+      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ticker: "ibm", file: ["Risk Snapshot Tearsheet"] }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{
+      data_format?: { data_type: string; filename: string };
+      error_type?: string;
+    }>;
+    expect(body[0].error_type).toBeUndefined();
+    expect(body[0].data_format?.data_type).toBe("pdf");
+    expect(body[0].data_format?.filename).toBe("IBM_risk_snapshot.pdf");
+    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM/snapshot.pdf");
+  });
+
+  it("reads IBM from IBM_risk_snapshot when ticker is omitted", async () => {
+    mockBytes.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/pdf",
+      bytes: pdfBytes(),
+      error: null,
+    });
+    const res = await tearsheetPOST(
+      new NextRequest("http://localhost/openbb/widgets/tearsheet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file: ["IBM_risk_snapshot"] }),
+      }),
+    );
+    const body = (await res.json()) as Array<{
+      data_format?: { filename: string };
+    }>;
+    expect(body[0].data_format?.filename).toBe("IBM_risk_snapshot.pdf");
+    expect(mockBytes.mock.calls.at(-1)?.[0]).toBe("/metrics/IBM/snapshot.pdf");
   });
 });
 

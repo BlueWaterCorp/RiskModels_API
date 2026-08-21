@@ -77,6 +77,32 @@ export function isFileSelection(
   });
 }
 
+/** True when Workspace actually sent a fileSelector list (not a missing key). */
+export function hasFileParam(params: URLSearchParams): boolean {
+  return params.getAll("file").some((s) => s.trim().length > 0);
+}
+
+/**
+ * Ticker prefix on a ticker-scoped file id (`IBM_risk_snapshot`).
+ * Labels like "Risk Snapshot Tearsheet" do not match.
+ */
+export function tickerFromFileNames(
+  names: string[],
+  stem: string,
+): string | null {
+  const stemL = stem.toLowerCase();
+  for (const raw of names) {
+    const n = raw.trim();
+    const lower = n.toLowerCase();
+    for (const suffix of [`_${stemL}`, `_${stemL}.pdf`, `_${stemL}.xlsx`]) {
+      if (!lower.endsWith(suffix) || n.length <= suffix.length) continue;
+      const prefix = n.slice(0, n.length - suffix.length).trim();
+      if (/^[A-Z][A-Z0-9.]{0,9}$/i.test(prefix)) return prefix.toUpperCase();
+    }
+  }
+  return null;
+}
+
 export const WIDGET_NO_STORE = {
   "Cache-Control": "no-store, max-age=0",
 } as const;

@@ -50,8 +50,8 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/widgets/metrics?ticker=` | Single-name risk table | ✅ live |
 | `GET /openbb/widgets/snapshot-table?ticker=` | Risk snapshot as a table (L3 decomposition + hedge ratios) | ✅ live |
 | `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot PDF, legacy `pdf` widget type (kept for API; **not** registered as a widget — OpenBB's pdf.js viewer wouldn't render it, #194) | ⚠️ deprecated as widget |
-| `GET /openbb/widgets/tearsheet?ticker=` | Risk snapshot as an `html` widget (same metrics as snapshot-table; grouped ticker refetches like tables) | ✅ live |
-| `GET /openbb/widgets/tearsheet-options?ticker=` | leftover fileSelector options (unused by the html tearsheet) | ⚠️ unused |
+| `GET/POST /openbb/widgets/tearsheet?ticker=&file=` | Risk-snapshot PDF via `multi_file_viewer` (Workspace POSTs the fileSelector list). GET without `file` returns HTML metrics. | ✅ live |
+| `GET /openbb/widgets/tearsheet-options?ticker=` | fileSelector options for the tearsheet widget | ✅ live |
 | `GET/POST /openbb/widgets/model-scaffold?ticker=&erp=&periods=&file=` | Valuation-model .xlsx via `multi_file_viewer` (Workspace POSTs the fileSelector list) | ✅ live |
 | `GET /openbb/widgets/model-scaffold-options?ticker=` | fileSelector options for the model-scaffold widget | ✅ live |
 | `GET /openbb/widgets/returns-chart?ticker=&years=` | Cumulative total-return line chart | ✅ live |

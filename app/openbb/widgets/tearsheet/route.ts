@@ -1,13 +1,10 @@
 /**
- * Live widget: single-name risk snapshot → OpenBB `html` widget.
+ * Live widget: single-name risk snapshot for OpenBB.
  *
- * PDF `<object>`/`<embed>` data URIs do not paint in Workspace's HTML viewer
- * (sandboxed, JS off on pro.openbb.co). This route returns the same metrics
- * the snapshot table uses, as HTML, so the grouped ticker refetches like
- * the other data widgets.
- *
- * GET /openbb/widgets/tearsheet?ticker=IBM
- * GET /openbb/widgets/tearsheet?ticker=IBM&raw=true  → JSON rows
+ * Workspace apps placed while this widget was `multi_file_viewer` still POST
+ * `{ file: [...] }` and show "File Not Found" if we return HTML. A `file`
+ * param therefore returns the PDF JSON contract. GET `?ticker=` without `file`
+ * returns HTML metrics (same numbers as snapshot-table).
  *
  * raw-field-ok-file: the close price serves under Exhibit B(e) — no API key
  * returns the connect-probe HTML instead of data (authenticated), the route
@@ -16,8 +13,15 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
-import { bearerFromRequest, upstreamGet } from "../../_lib/upstream";
-import { readWidgetInput, WIDGET_NO_STORE } from "../../_lib/widget-request";
+import { bearerFromRequest, upstreamGet, upstreamGetBytes } from "../../_lib/upstream";
+import {
+  hasFileParam,
+  isFileSelection,
+  readWidgetInput,
+  selectedNames,
+  tickerFromFileNames,
+  WIDGET_NO_STORE,
+} from "../../_lib/widget-request";
 
 export const dynamic = "force-dynamic";
 
@@ -107,11 +111,79 @@ function htmlResponse(cors: Record<string, string>, html: string, status = 200) 
   });
 }
 
+async function fileViewerPdf(
+  cors: Record<string, string>,
+  ticker: string,
+  files: string[],
+  key: string | null,
+) {
+  if (!key) {
+    return NextResponse.json(
+      [
+        {
+          error_type: "unauthorized",
+          content: "Add X-API-KEY (rm_agent_live_*) in OpenBB Connections to load data",
+        },
+      ],
+      { headers: cors },
+    );
+  }
+  if (!isFileSelection(files, "risk_snapshot", ["Risk Snapshot Tearsheet"])) {
+    return NextResponse.json(
+      files.map((name) => ({
+        error_type: "not_found",
+        content: `File '${name}' is not a RiskModels tearsheet`,
+      })),
+      { headers: cors },
+    );
+  }
+  const { status, bytes, error } = await upstreamGetBytes(
+    `/metrics/${encodeURIComponent(ticker)}/snapshot.pdf`,
+    key,
+  );
+  if (!bytes) {
+    const message =
+      (error as { error?: string; message?: string })?.error ||
+      (error as { message?: string })?.message ||
+      `Upstream returned ${status}`;
+    return NextResponse.json(
+      [{ error_type: "fetch_failed", content: message }],
+      { status, headers: cors },
+    );
+  }
+  const content = Buffer.from(bytes).toString("base64");
+  return NextResponse.json(
+    [
+      {
+        data_format: {
+          data_type: "pdf",
+          filename: `${ticker}_risk_snapshot.pdf`,
+        },
+        content,
+      },
+    ],
+    { headers: cors },
+  );
+}
+
 async function handle(req: NextRequest) {
   const cors = { ...openbbCors(req), ...WIDGET_NO_STORE };
   const sp = await readWidgetInput(req);
-  const ticker = (sp.get("ticker") || "AAPL").trim().toUpperCase();
+  const files = selectedNames(sp, "file", "risk_snapshot");
+  const ticker = (
+    sp.get("ticker") ||
+    tickerFromFileNames(files, "risk_snapshot") ||
+    "AAPL"
+  )
+    .trim()
+    .toUpperCase();
   const raw = ["1", "true", "yes"].includes((sp.get("raw") || "").toLowerCase());
+
+  // Placed OpenBB apps still use multi_file_viewer (Search files sidebar).
+  // That client POSTs `{ file: [...] }` and shows "File Not Found" on HTML.
+  if (hasFileParam(sp)) {
+    return fileViewerPdf(cors, ticker, files, bearerFromRequest(req));
+  }
 
   const key = bearerFromRequest(req);
   if (!key) {
