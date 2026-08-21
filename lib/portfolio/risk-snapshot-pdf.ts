@@ -37,6 +37,15 @@ const usd = (x: unknown): string =>
     ? "—"
     : `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+export type PeerVarianceBar = {
+  /** e.g. "XLC subsector peers · 48 names" */
+  label: string;
+  market: number;
+  sector: number;
+  subsector: number;
+  residual: number;
+};
+
 /**
  * One-page Artifact-Light risk snapshot (pdf-lib, serverless-safe).
  *
@@ -45,13 +54,19 @@ const usd = (x: unknown): string =>
  * table (fills for portfolios). Standard PDF fonts proxy the design stack:
  * Times≈Newsreader (titles), Helvetica≈Inter (body), Courier≈IBM Plex Mono
  * (numbers). Every nullable field guards to "—" — no fabricated values.
+ *
+ * Single-name pages may pass `peerBar` — the equal-weighted mean of the same
+ * four L3 shares across the name's subsector (else sector) cohort, same
+ * construction as riskmodels.net /stocks/[ticker]. Absent when the cohort is
+ * missing or too thin; the PDF still renders.
  */
 export async function buildRiskSnapshotPdfBytes(params: {
   title: string;
   asOfLabel: string;
   data: PortfolioRiskComputationOk;
+  peerBar?: PeerVarianceBar | null;
 }): Promise<Uint8Array> {
-  const { asOfLabel, data } = params;
+  const { asOfLabel, data, peerBar } = params;
   const doc = await PDFDocument.create();
   const M = 48;
 
@@ -64,7 +79,8 @@ export async function buildRiskSnapshotPdfBytes(params: {
   // half-empty letter sheet. Header + hero ≈ 300, hedge block (single) ≈ 116,
   // one row ≈ 16 (capped), footer zone ≈ 96.
   const nRows = Math.min(tickers.length, 20);
-  const height = 300 + (isSingle ? 116 : 0) + nRows * 16 + 96;
+  const peerExtra = isSingle && peerBar ? 58 : 0;
+  const height = 300 + peerExtra + (isSingle ? 116 : 0) + nRows * 16 + 96;
   const width = 612;
   const page = doc.addPage([width, height]);
   const CW = width - M * 2;
@@ -127,24 +143,74 @@ export async function buildRiskSnapshotPdfBytes(params: {
     { label: "Subsector", frac: vd.subsector, color: COL.subsector },
     { label: "Residual", frac: vd.residual, color: COL.residual },
   ];
+
+  const drawBar = (
+    fracs: number[],
+    barY: number,
+    barH: number,
+    labelPct: boolean,
+  ) => {
+    const widths = fracs.map((f) => Math.max(0, f));
+    const wsum = widths.reduce((a, b) => a + b, 0) || 1;
+    let cx = M;
+    segs.forEach((s, i) => {
+      const frac = fracs[i] ?? 0;
+      const w = ((widths[i] ?? 0) / wsum) * CW;
+      if (w > 0.5) {
+        page.drawRectangle({ x: cx, y: barY, width: w, height: barH, color: s.color });
+        if (labelPct) {
+          const lbl = `${(frac * 100).toFixed(0)}%`;
+          if (w > wOf(lbl, 9, monoBold) + 8) {
+            text(
+              lbl,
+              cx + w / 2 - wOf(lbl, 9, monoBold) / 2,
+              barY + barH / 2 - 4,
+              9,
+              monoBold,
+              COL.white,
+            );
+          }
+        }
+      }
+      cx += w;
+    });
+    page.drawRectangle({
+      x: M,
+      y: barY,
+      width: CW,
+      height: barH,
+      borderColor: COL.border,
+      borderWidth: 0.5,
+    });
+  };
+
+  if (peerBar) {
+    text(isSingle ? headLabel : "This book", M, y, 8, sans, COL.inkFaint);
+    y -= 4;
+  }
   const barH = 30;
   const barY = y - barH;
-  const widths = segs.map((s) => Math.max(0, s.frac)); // clamp negatives for width
-  const wsum = widths.reduce((a, b) => a + b, 0) || 1;
-  let cx = M;
-  segs.forEach((s, i) => {
-    const w = (widths[i] / wsum) * CW;
-    if (w > 0.5) {
-      page.drawRectangle({ x: cx, y: barY, width: w, height: barH, color: s.color });
-      const lbl = `${(s.frac * 100).toFixed(0)}%`;
-      if (w > wOf(lbl, 9, monoBold) + 8) {
-        text(lbl, cx + w / 2 - wOf(lbl, 9, monoBold) / 2, barY + barH / 2 - 4, 9, monoBold, COL.white);
-      }
-    }
-    cx += w;
-  });
-  page.drawRectangle({ x: M, y: barY, width: CW, height: barH, borderColor: COL.border, borderWidth: 0.5 });
-  y = barY - 20;
+  drawBar(
+    segs.map((s) => s.frac),
+    barY,
+    barH,
+    true,
+  );
+  y = barY - 14;
+
+  if (peerBar) {
+    text(peerBar.label, M, y, 8, sans, COL.inkFaint);
+    y -= 4;
+    const peerH = 14;
+    const peerY = y - peerH;
+    drawBar(
+      [peerBar.market, peerBar.sector, peerBar.subsector, peerBar.residual],
+      peerY,
+      peerH,
+      false,
+    );
+    y = peerY - 16;
+  }
 
   // Legend (true signed %, even where the bar clamped a negative to zero width)
   let lx = M;
@@ -156,6 +222,19 @@ export async function buildRiskSnapshotPdfBytes(params: {
   });
   y -= 18;
   text(`Systematic (market + sector + subsector): ${pctOrDash(data.systematic)}`, M, y, 10, sans, COL.ink);
+  if (peerBar) {
+    y -= 14;
+    const nameRes = pctOrDash(vd.residual);
+    const peerRes = pctOrDash(peerBar.residual);
+    text(
+      `${headLabel} residual ${nameRes} vs peer average ${peerRes}`,
+      M,
+      y,
+      9,
+      sans,
+      COL.inkMuted,
+    );
+  }
   y -= 28;
 
   // ---- Hedge layering (single-name) ---------------------------------------
@@ -298,6 +377,7 @@ export async function buildRiskSnapshotPdf(params: {
   title: string;
   asOfLabel: string;
   data: PortfolioRiskComputationOk;
+  peerBar?: PeerVarianceBar | null;
 }): Promise<Uint8Array> {
   if (process.env.PLAYWRIGHT_PDF_ENABLED === "true") {
     const { renderSnapshotPdf } = await import("./playwright-pdf-worker");
