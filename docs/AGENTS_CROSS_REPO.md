@@ -46,6 +46,14 @@ or commit the key; delete the scratch file after. Deploy-scoped keys
 (`GCP_DEPLOY_SERVICE_ACCOUNT_JSON`) exist in the same config for CI use
 only.
 
+## Long compute in agents (all repos)
+
+The Bash tool auto-promotes commands exceeding its default timeout to
+background; a subagent that stops to wait dies and orphans the run. Pass
+an explicit `timeout` (up to 600000 ms) on compute commands, keep them
+foreground, checkpoint per unit of work, and never write aggregate
+summaries before all checkpoints exist.
+
 ## Cross-repo sync rules (always enforce)
 
 Plan cross-repo impact first and **list manual sync steps** when changing contracts.
