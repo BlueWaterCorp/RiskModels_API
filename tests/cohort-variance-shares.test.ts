@@ -146,10 +146,17 @@ describe("cohort variance shares", () => {
 
   it("refuses a thin cohort rather than reporting it", async () => {
     const { getCohortVarianceShares, ThinCohortError } = await svc();
-    seed(REAL, 5);
+    seed(REAL, 4);
     await expect(
       getCohortVarianceShares({ cohort: "XBI", level: "subsector" }),
     ).rejects.toThrow(ThinCohortError);
+  });
+
+  it("reports a five-name cohort", async () => {
+    const { getCohortVarianceShares } = await svc();
+    seed(REAL, 5);
+    const r = await getCohortVarianceShares({ cohort: "XBI", level: "subsector" });
+    expect(r.n_names).toBe(5);
   });
 
   it("skips names missing any leg rather than composing a partial bar", async () => {

@@ -224,7 +224,7 @@ describe("cohort residual leadership — response contract", () => {
       "@/lib/risk/cohort-residual-leadership-service"
     );
     const dates = makeDates(220);
-    const members: Member[] = Array.from({ length: 9 }, (_, i) => ({
+    const members: Member[] = Array.from({ length: 4 }, (_, i) => ({
       symbol: `BW-${i}`,
       ticker: `T${i}`,
       daily: 0.001,
