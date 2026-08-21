@@ -3,9 +3,12 @@
  *
  * Same construction as riskmodels.net /stocks: equal-weighted mean of the four
  * ER shares. Prefer the name's subsector ETF; if that cohort is too thin to
- * report (AAPL/RSPT was 19 names against a floor of 20), fall back to the
- * sector ETF and say so in the label. Do not silently keep the subsector name
- * on a sector mix.
+ * report, fall back to the sector ETF and say so in the label. Do not silently
+ * keep the subsector name on a sector mix.
+ *
+ * The stacked bar is equal-weighted. `membersLine` lists the ten largest
+ * names by market cap so the reader can see who is in the cohort; that ranking
+ * is not the bar's weights.
  */
 
 import type { PeerVarianceBar } from "@/lib/portfolio/risk-snapshot-pdf";
@@ -14,6 +17,8 @@ import {
   ThinCohortError,
   type CohortLevel,
 } from "@/lib/risk/cohort-variance-shares-service";
+
+export const LARGEST_PEER_N = 10;
 
 export function peerCohortAttempts(
   row: Record<string, unknown>,
@@ -26,6 +31,17 @@ export function peerCohortAttempts(
   if (sub) out.push({ cohort: sub, level: "subsector" });
   if (sec) out.push({ cohort: sec, level: "sector" });
   return out;
+}
+
+/** "MSFT · ORCL · NOW · ..." — ten largest, ellipsis when the cohort is bigger. */
+export function formatLargestPeerTickers(
+  tickers: string[],
+  nNames: number,
+): string {
+  const shown = tickers.slice(0, LARGEST_PEER_N);
+  if (shown.length === 0) return "";
+  const body = shown.join(" · ");
+  return nNames > shown.length ? `${body} · ...` : body;
 }
 
 export async function loadPeerVarianceBar(
@@ -43,7 +59,11 @@ export async function loadPeerVarianceBar(
       });
       const m = shares.equal_weighted_mean;
       return {
-        label: `${shares.cohort} ${shares.level} peers · ${shares.n_names} names`,
+        label: `${shares.cohort} ${shares.level} peers · ${shares.n_names} names · equal-weighted`,
+        membersLine: formatLargestPeerTickers(
+          shares.largest_tickers,
+          shares.n_names,
+        ),
         market: m.market_er_pct / 100,
         sector: m.sector_er_pct / 100,
         subsector: m.subsector_er_pct / 100,

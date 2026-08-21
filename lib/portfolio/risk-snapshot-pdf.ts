@@ -38,8 +38,10 @@ const usd = (x: unknown): string =>
     : `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export type PeerVarianceBar = {
-  /** e.g. "XLC subsector peers · 48 names" */
+  /** e.g. "XLC subsector peers · 48 names · equal-weighted" */
   label: string;
+  /** Ten largest tickers, e.g. "MSFT · ORCL · NOW · ..." */
+  membersLine?: string;
   market: number;
   sector: number;
   subsector: number;
@@ -79,7 +81,8 @@ export async function buildRiskSnapshotPdfBytes(params: {
   // half-empty letter sheet. Header + hero ≈ 300, hedge block (single) ≈ 116,
   // one row ≈ 16 (capped), footer zone ≈ 96.
   const nRows = Math.min(tickers.length, 20);
-  const peerExtra = isSingle && peerBar ? 58 : 0;
+  const peerMembers = isSingle && peerBar?.membersLine ? 22 : 0;
+  const peerExtra = isSingle && peerBar ? 58 + peerMembers : 0;
   const height = 300 + peerExtra + (isSingle ? 116 : 0) + nRows * 16 + 96;
   const width = 612;
   const page = doc.addPage([width, height]);
@@ -209,7 +212,37 @@ export async function buildRiskSnapshotPdfBytes(params: {
       peerH,
       false,
     );
-    y = peerY - 16;
+    y = peerY - 12;
+    if (peerBar.membersLine) {
+      const capSize = 8;
+      const prefix = "largest  ";
+      const maxW = CW - wOf(prefix, capSize, sans);
+      const wrap = (s: string): string[] => {
+        if (wOf(s, capSize, mono) <= maxW) return [s];
+        const parts = s.split(" · ");
+        const lines: string[] = [];
+        let cur = "";
+        for (const p of parts) {
+          const next = cur ? `${cur} · ${p}` : p;
+          if (wOf(next, capSize, mono) <= maxW) {
+            cur = next;
+          } else {
+            if (cur) lines.push(cur);
+            cur = p;
+          }
+        }
+        if (cur) lines.push(cur);
+        return lines;
+      };
+      wrap(peerBar.membersLine).forEach((line, i) => {
+        if (i === 0) text(prefix, M, y, capSize, sans, COL.inkFaint);
+        text(line, M + wOf(prefix, capSize, sans), y, capSize, mono, COL.inkMuted);
+        y -= 11;
+      });
+      y -= 4;
+    } else {
+      y -= 4;
+    }
   }
 
   // Legend (true signed %, even where the bar clamped a negative to zero width)
@@ -227,7 +260,7 @@ export async function buildRiskSnapshotPdfBytes(params: {
     const nameRes = pctOrDash(vd.residual);
     const peerRes = pctOrDash(peerBar.residual);
     text(
-      `${headLabel} residual ${nameRes} vs peer average ${peerRes}`,
+      `${headLabel} residual ${nameRes} vs equal-weighted peer average ${peerRes}`,
       M,
       y,
       9,

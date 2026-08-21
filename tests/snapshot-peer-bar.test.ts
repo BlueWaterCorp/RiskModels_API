@@ -14,6 +14,7 @@ vi.mock("@/lib/risk/cohort-variance-shares-service", async () => {
 });
 
 import {
+  formatLargestPeerTickers,
   loadPeerVarianceBar,
   peerCohortAttempts,
 } from "@/lib/portfolio/snapshot-peer-bar";
@@ -38,6 +39,21 @@ describe("peerCohortAttempts", () => {
   });
 });
 
+describe("formatLargestPeerTickers", () => {
+  it("joins ten names and ellipsizes the rest of the cohort", () => {
+    expect(
+      formatLargestPeerTickers(
+        ["MSFT", "ORCL", "NOW", "CRM", "ADBE", "INTU", "PANW", "SNPS", "CRWD", "CDNS"],
+        216,
+      ),
+    ).toBe("MSFT · ORCL · NOW · CRM · ADBE · INTU · PANW · SNPS · CRWD · CDNS · ...");
+  });
+
+  it("omits the ellipsis when the whole cohort is shown", () => {
+    expect(formatLargestPeerTickers(["XBI", "REGN"], 2)).toBe("XBI · REGN");
+  });
+});
+
 describe("loadPeerVarianceBar", () => {
   beforeEach(() => {
     mockShares.mockReset();
@@ -50,6 +66,18 @@ describe("loadPeerVarianceBar", () => {
         cohort: "XLK",
         level: "sector",
         n_names: 394,
+        largest_tickers: [
+          "MSFT",
+          "ORCL",
+          "NOW",
+          "CRM",
+          "ADBE",
+          "INTU",
+          "PANW",
+          "SNPS",
+          "CRWD",
+          "CDNS",
+        ],
         equal_weighted_mean: {
           market_er_pct: 12,
           sector_er_pct: 18,
@@ -65,7 +93,8 @@ describe("loadPeerVarianceBar", () => {
       sector_etf: "XLK",
       symbol: "AAPL-US",
     });
-    expect(bar?.label).toBe("XLK sector peers · 394 names");
+    expect(bar?.label).toBe("XLK sector peers · 394 names · equal-weighted");
+    expect(bar?.membersLine).toBe("MSFT · ORCL · NOW · CRM · ADBE · INTU · PANW · SNPS · CRWD · CDNS · ...");
     expect(bar?.residual).toBeCloseTo(0.6);
     expect(mockShares).toHaveBeenCalledTimes(2);
   });
