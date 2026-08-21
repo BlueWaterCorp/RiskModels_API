@@ -34,6 +34,18 @@ In **RiskModels_API**, see `.cursorrules` for “Email Templates & SVG Editing�
 
 ---
 
+## GCP/GCS auth for agents (all repos)
+
+Never `gcloud auth login` (interactive; fails headless — do not stop on
+"reauthentication required"). The read service account is in Doppler:
+`doppler secrets get GCP_SERVICE_ACCOUNT_JSON --project erm3 --config prd
+--plain` → mode-600 scratch file → `GOOGLE_APPLICATION_CREDENTIALS=<file>`
+with Python gcsfs / google-cloud-storage (env-scoped; never
+`activate-service-account`, which mutates global gcloud state). Never echo
+or commit the key; delete the scratch file after. Deploy-scoped keys
+(`GCP_DEPLOY_SERVICE_ACCOUNT_JSON`) exist in the same config for CI use
+only.
+
 ## Cross-repo sync rules (always enforce)
 
 Plan cross-repo impact first and **list manual sync steps** when changing contracts.
