@@ -25,8 +25,8 @@ function singleTickerPdfKey(userId: string, ticker: string) {
   const h = createHash("sha256")
     .update(JSON.stringify({ userId, ticker: ticker.toUpperCase() }))
     .digest("hex");
-  // _v4: fall back to sector peers when the subsector cohort is too thin.
-  return generateCacheKey("risk_snapshot_pdf_ticker_v4", h);
+  // _v5: peer floor is 5, so subsector bars that 20 refused now render.
+  return generateCacheKey("risk_snapshot_pdf_ticker_v5", h);
 }
 
 async function buildSingleTickerPdf(

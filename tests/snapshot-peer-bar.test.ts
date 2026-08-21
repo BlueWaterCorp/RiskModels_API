@@ -45,7 +45,7 @@ describe("loadPeerVarianceBar", () => {
 
   it("falls back to sector when the subsector cohort is one name below the floor", async () => {
     mockShares.mockImplementation(async (params: { cohort: string; level: string }) => {
-      if (params.cohort === "RSPT") throw new ThinCohortError("RSPT", 19);
+      if (params.cohort === "RSPT") throw new ThinCohortError("RSPT", 4);
       return {
         cohort: "XLK",
         level: "sector",

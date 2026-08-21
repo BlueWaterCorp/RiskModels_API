@@ -42,10 +42,10 @@ import { fetchBatchLatestSummary } from "@/lib/dal/risk-engine-v3";
 
 /**
  * Below this many peers with a usable decomposition, the statistic is refused
- * rather than returned. Mirrors the cohort store's own guidance that
- * "statistics on a cohort with few members are noise".
+ * rather than returned. Five is enough to draw a mean composition; twenty was
+ * refusing real subsectors (AAPL/RSPT had 19).
  */
-export const MIN_COHORT_MEMBERS = 20;
+export const MIN_COHORT_MEMBERS = 5;
 
 export type CohortLevel = "sector" | "subsector";
 
