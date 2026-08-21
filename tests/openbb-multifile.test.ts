@@ -62,12 +62,12 @@ describe("widgets.json fileSelector", () => {
     expect(scaffold!.paramName).toBe("file");
   });
 
-  it("marks ticker-dependent widgets immediately stale so a ticker change refetches", async () => {
+  it("does not set staleTime on file widgets — OpenBB rejects 0 at Connect", async () => {
     const defs = (await (
       await widgetsGET(new NextRequest("http://localhost/openbb/widgets.json"))
     ).json()) as Record<string, { staleTime?: number }>;
-    expect(defs.rm_tearsheet.staleTime).toBe(0);
-    expect(defs.rm_model_scaffold.staleTime).toBe(0);
+    expect(defs.rm_tearsheet.staleTime).toBeUndefined();
+    expect(defs.rm_model_scaffold.staleTime).toBeUndefined();
   });
 });
 
