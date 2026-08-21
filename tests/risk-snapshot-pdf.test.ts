@@ -54,7 +54,8 @@ describe("buildRiskSnapshotPdfBytes", () => {
       asOfLabel: "2026-08-18",
       data: mockComputationOk("NFLX"),
       peerBar: {
-        label: "XLC subsector peers · 48 names",
+        label: "XLC subsector peers · 48 names · equal-weighted",
+        membersLine: "NFLX · DIS · CMCSA · T · VZ · CHTR · EA · TTWO · LYV · FOXA · ...",
         market: 0.08,
         sector: 0.12,
         subsector: 0.19,
@@ -63,6 +64,9 @@ describe("buildRiskSnapshotPdfBytes", () => {
     });
     const raw = inflatedPdfText(bytes);
     expect(raw).toContain("XLC subsector peers");
+    expect(raw).toContain("equal-weighted");
+    expect(raw).toContain("NFLX");
+    expect(raw).toContain("...");
     expect(raw).toContain("peer average");
   });
 

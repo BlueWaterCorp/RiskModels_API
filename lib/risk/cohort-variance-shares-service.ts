@@ -96,6 +96,12 @@ export interface CohortVarianceShares {
   /** Equal-weighted mean; sums to 100. What a stacked peer bar should draw. */
   equal_weighted_mean: LegMeans;
 
+  /**
+   * Up to ten tickers, largest market cap first, among names that entered
+   * the equal-weighted mean. Size ranking only — not the bar's weights.
+   */
+  largest_tickers: string[];
+
   disclosures: {
     primary: string;
     marginal_quartiles: string;
@@ -118,6 +124,8 @@ export class ThinCohortError extends Error {
   }
 }
 
+const LARGEST_TICKERS_N = 10;
+
 /**
  * Symbols whose sector or subsector proxy is `etf`.
  *
@@ -125,11 +133,11 @@ export class ThinCohortError extends Error {
  * `resolveSectorSymbolSet` uses for ranking screens — so a cohort here and a
  * cohort there cannot disagree about who is in it.
  */
-async function resolveCohortSymbols(
+async function resolveCohortMembers(
   etf: string,
   level: CohortLevel,
   excludeSymbol?: string | null,
-): Promise<string[]> {
+): Promise<Array<{ symbol: string; ticker: string }>> {
   const upper = etf.trim().toUpperCase();
   if (!upper) return [];
   const column = level === "sector" ? "sector_etf" : "subsector_etf";
@@ -137,7 +145,7 @@ async function resolveCohortSymbols(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("symbols")
-    .select("symbol")
+    .select("symbol, ticker")
     .eq(column, upper);
 
   if (error) {
@@ -145,8 +153,13 @@ async function resolveCohortSymbols(
     return [];
   }
   return (data ?? [])
-    .map((r) => (r as { symbol: string }).symbol)
-    .filter((s): s is string => Boolean(s) && s !== excludeSymbol);
+    .map((r) => ({
+      symbol: (r as { symbol: string }).symbol,
+      ticker: String((r as { ticker?: string }).ticker ?? "")
+        .trim()
+        .toUpperCase(),
+    }))
+    .filter((r) => Boolean(r.symbol) && r.symbol !== excludeSymbol);
 }
 
 /**
@@ -163,16 +176,19 @@ export async function getCohortVarianceShares(params: {
 }): Promise<CohortVarianceShares> {
   const { cohort, level, excludeSymbol } = params;
 
-  const symbols = await resolveCohortSymbols(cohort, level, excludeSymbol);
-  if (symbols.length === 0) throw new ThinCohortError(cohort, 0);
+  const members = await resolveCohortMembers(cohort, level, excludeSymbol);
+  if (members.length === 0) throw new ThinCohortError(cohort, 0);
 
+  const tickerBySymbol = new Map(members.map((m) => [m.symbol, m.ticker]));
+  const symbols = members.map((m) => m.symbol);
   const batch = await fetchBatchLatestSummary(symbols, "daily");
 
   const legs: number[][] = [[], [], [], []];
   const weights: number[] = [];
+  const sized: Array<{ ticker: string; cap: number }> = [];
   let teo: string | null = null;
 
-  for (const [, row] of batch) {
+  for (const [sym, row] of batch) {
     const m = row.metrics;
     // All four legs must be present. A name contributing three of four would
     // silently shift the composition and break the identity the bar relies on.
@@ -192,7 +208,10 @@ export async function getCohortVarianceShares(params: {
     // and is skipped by the weighted one, rather than being dropped entirely
     // or silently given zero weight.
     const cap = m.market_cap;
-    weights.push(typeof cap === "number" && cap > 0 ? cap : 0);
+    const w = typeof cap === "number" && cap > 0 ? cap : 0;
+    weights.push(w);
+    const ticker = tickerBySymbol.get(sym);
+    if (ticker) sized.push({ ticker, cap: w });
     // Latest teo across contributors, so a consumer can check the peer row is
     // not a different date from the entity bar beside it.
     if (!teo || row.teo > teo) teo = row.teo;
@@ -276,6 +295,10 @@ export async function getCohortVarianceShares(params: {
     },
     aum_weighted_mean: weighted,
     equal_weighted_mean: equal,
+    largest_tickers: [...sized]
+      .sort((a, b) => b.cap - a.cap || a.ticker.localeCompare(b.ticker))
+      .slice(0, LARGEST_TICKERS_N)
+      .map((r) => r.ticker),
     disclosures: {
       primary:
         "Equal-weighted marginal quartiles are the primary statistic; the " +

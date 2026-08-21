@@ -39,7 +39,13 @@ function seed(
   mockFrom.mockReturnValue({
     select: () => ({
       eq: () =>
-        Promise.resolve({ data: symbols.map((symbol) => ({ symbol })), error: null }),
+        Promise.resolve({
+          data: symbols.map((symbol, i) => ({
+            symbol,
+            ticker: `${padded[i]!.s.replace(/-US$/, "")}${i}`,
+          })),
+          error: null,
+        }),
     }),
   });
   mockBatch.mockResolvedValue(
@@ -157,6 +163,16 @@ describe("cohort variance shares", () => {
     seed(REAL, 5);
     const r = await getCohortVarianceShares({ cohort: "XBI", level: "subsector" });
     expect(r.n_names).toBe(5);
+    expect(r.largest_tickers).toEqual(["INCY2", "MDGL0", "MDGL3", "ACAD1", "ACAD4"]);
+  });
+
+  it("lists the ten largest tickers by market cap", async () => {
+    const { getCohortVarianceShares } = await svc();
+    seed(REAL, 30);
+    const r = await getCohortVarianceShares({ cohort: "XBI", level: "subsector" });
+    expect(r.largest_tickers).toHaveLength(10);
+    expect(r.largest_tickers[0]).toBe("INCY11");
+    expect(r.largest_tickers.every((t) => t.startsWith("INCY"))).toBe(true);
   });
 
   it("skips names missing any leg rather than composing a partial bar", async () => {
