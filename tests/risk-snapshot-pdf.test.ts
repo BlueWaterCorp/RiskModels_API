@@ -1,7 +1,26 @@
+import { inflateSync } from "zlib";
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { buildRiskSnapshotPdfBytes } from "@/lib/portfolio/risk-snapshot-pdf";
 import type { PortfolioRiskComputationOk } from "@/lib/portfolio/portfolio-risk-core";
+
+/** pdf-lib Flate-compresses page content and hex-encodes WinAnsi strings. */
+function inflatedPdfText(bytes: Uint8Array): string {
+  const latin = Buffer.from(bytes).toString("latin1");
+  const chunks: string[] = [];
+  const re = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(latin))) {
+    try {
+      chunks.push(inflateSync(Buffer.from(m[1], "latin1")).toString("latin1"));
+    } catch {
+      /* not a zlib stream */
+    }
+  }
+  return chunks
+    .join("\n")
+    .replace(/<([0-9A-Fa-f]+)>/g, (_, hex: string) => Buffer.from(hex, "hex").toString("latin1"));
+}
 
 function mockComputationOk(titleTicker = "NVDA"): PortfolioRiskComputationOk {
   return {
@@ -29,6 +48,24 @@ function mockComputationOk(titleTicker = "NVDA"): PortfolioRiskComputationOk {
 }
 
 describe("buildRiskSnapshotPdfBytes", () => {
+  it("draws a cohort bar under the name when peerBar is provided", async () => {
+    const bytes = await buildRiskSnapshotPdfBytes({
+      title: "NFLX — risk snapshot",
+      asOfLabel: "2026-08-18",
+      data: mockComputationOk("NFLX"),
+      peerBar: {
+        label: "XLC subsector peers · 48 names",
+        market: 0.08,
+        sector: 0.12,
+        subsector: 0.19,
+        residual: 0.61,
+      },
+    });
+    const raw = inflatedPdfText(bytes);
+    expect(raw).toContain("XLC subsector peers");
+    expect(raw).toContain("peer average");
+  });
+
   it("produces a one-page PDF that loads with pdf-lib", async () => {
     const bytes = await buildRiskSnapshotPdfBytes({
       title: "Unit Test Portfolio",

@@ -11,7 +11,11 @@ import {
 import { isRasterSnapshotCacheHit } from "@/lib/cache/snapshot-payload-guards";
 import { TickerSchema } from "@/lib/api/schemas";
 import { runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
-import { buildRiskSnapshotPdfBytes } from "@/lib/portfolio/risk-snapshot-pdf";
+import { buildRiskSnapshotPdfBytes, type PeerVarianceBar } from "@/lib/portfolio/risk-snapshot-pdf";
+import {
+  getCohortVarianceShares,
+  ThinCohortError,
+} from "@/lib/risk/cohort-variance-shares-service";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders } from "@/lib/dal/response-headers";
 import { getCorsHeaders } from "@/lib/cors";
@@ -20,13 +24,44 @@ export const dynamic = "force-dynamic";
 
 type PdfCache = { base64: string };
 
+async function loadPeerBar(
+  ticker: string,
+  row: Record<string, unknown>,
+): Promise<PeerVarianceBar | null> {
+  const sub = typeof row.subsector_etf === "string" ? row.subsector_etf.trim() : "";
+  const sec = typeof row.sector_etf === "string" ? row.sector_etf.trim() : "";
+  const cohort = sub || sec;
+  if (!cohort) return null;
+  const level = sub ? "subsector" : "sector";
+  const exclude = typeof row.symbol === "string" ? row.symbol : null;
+  try {
+    const shares = await getCohortVarianceShares({
+      cohort,
+      level,
+      excludeSymbol: exclude,
+    });
+    const m = shares.equal_weighted_mean;
+    return {
+      label: `${shares.cohort} ${shares.level} peers · ${shares.n_names} names`,
+      market: m.market_er_pct / 100,
+      sector: m.sector_er_pct / 100,
+      subsector: m.subsector_er_pct / 100,
+      residual: m.residual_er_pct / 100,
+    };
+  } catch (err) {
+    if (!(err instanceof ThinCohortError)) {
+      console.error(`[snapshot.pdf] peer bar for ${ticker} failed:`, err);
+    }
+    return null;
+  }
+}
+
 function singleTickerPdfKey(userId: string, ticker: string) {
   const h = createHash("sha256")
     .update(JSON.stringify({ userId, ticker: ticker.toUpperCase() }))
     .digest("hex");
-  // _v2: Artifact-Light renderer (2026-06-30). Bumping the namespace invalidates
-  // the old minimal-text PDFs cached under the previous key.
-  return generateCacheKey("risk_snapshot_pdf_ticker_v2", h);
+  // _v3: stacked peer (cohort) bar under the name's L3 DNA.
+  return generateCacheKey("risk_snapshot_pdf_ticker_v3", h);
 }
 
 async function buildSingleTickerPdf(
@@ -70,6 +105,7 @@ async function buildSingleTickerPdf(
     title: `${ticker} — risk snapshot`,
     asOfLabel: String(asOf),
     data: core,
+    peerBar: await loadPeerBar(ticker, (core.perTicker[ticker] ?? {}) as Record<string, unknown>),
   });
 
   const res = new NextResponse(Buffer.from(pdfBytes), {
