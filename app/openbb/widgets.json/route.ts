@@ -247,14 +247,13 @@ const WIDGETS = {
   rm_tearsheet: {
     name: "RiskModels — Risk Snapshot Tearsheet",
     description:
-      "Single-name L3 risk snapshot for the grouped ticker (explained risk, hedge ratios, last close).",
+      "Single-name institutional risk-snapshot PDF for the grouped ticker.",
     category: "Risk",
-    type: "html",
+    type: "multi_file_viewer",
     source: ["RiskModels API"],
     endpoint: "widgets/tearsheet",
     gridData: { w: 24, h: 18 },
     staleTime: 0,
-    raw: true,
     params: [
       {
         paramName: "ticker",
@@ -262,6 +261,17 @@ const WIDGETS = {
         label: "Ticker",
         type: "text",
         description: "US equity ticker (e.g. AAPL, NVDA, BRK.B).",
+      },
+      {
+        paramName: "file",
+        value: ["risk_snapshot"],
+        label: "Document",
+        type: "endpoint",
+        optionsEndpoint: "widgets/tearsheet-options",
+        optionsParams: { ticker: "$ticker" },
+        multiSelect: true,
+        roles: ["fileSelector"],
+        show: false,
       },
     ],
   },
