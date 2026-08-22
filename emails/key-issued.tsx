@@ -3,6 +3,7 @@ import {
   Button,
   CodeBlock,
   Container,
+  dracula,
   Head,
   Heading,
   Hr,
@@ -714,8 +715,12 @@ export const KeyIssuedEmail = ({
 export default KeyIssuedEmail;
 
 const emailCodeTheme = {
-  plain: { color: "#1e293b", backgroundColor: "#f1f5f9" },
-  styles: [],
+  ...dracula,
+  plain: {
+    ...dracula.plain,
+    color: "#1e293b",
+    backgroundColor: "#f1f5f9",
+  },
 };
 
 const main = {
