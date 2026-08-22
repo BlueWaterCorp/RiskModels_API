@@ -150,12 +150,13 @@ export const SnapshotDigestEmail = ({
 export default SnapshotDigestEmail;
 
 const main = {
-  backgroundColor: "#09090b",
+  backgroundColor: "#f6f9fc",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
 const container = {
+  backgroundColor: "#ffffff",
   margin: "0 auto",
   padding: "32px 24px 48px",
   maxWidth: "560px",
@@ -164,7 +165,7 @@ const container = {
 const logo = { margin: "0 auto 16px", display: "block" as const };
 
 const heading = {
-  color: "#fafafa",
+  color: "#1a1a1a",
   fontSize: "22px",
   fontWeight: "600",
   lineHeight: "1.3",
@@ -172,14 +173,14 @@ const heading = {
 };
 
 const issueKicker = {
-  color: "#a1a1aa",
+  color: "#64748b",
   fontSize: "14px",
   lineHeight: "1.4",
   margin: "0 0 18px",
 };
 
 const subheading = {
-  color: "#e4e4e7",
+  color: "#1f2937",
   fontSize: "17px",
   fontWeight: "600",
   lineHeight: "1.35",
@@ -187,22 +188,22 @@ const subheading = {
 };
 
 const paragraph = {
-  color: "#a1a1aa",
+  color: "#4a5568",
   fontSize: "15px",
   lineHeight: "1.6",
   margin: "0 0 16px",
 };
 
 const summaryBox = {
-  backgroundColor: "#18181b",
+  backgroundColor: "#f8fafc",
   borderRadius: "8px",
-  border: "1px solid #3f3f46",
+  border: "1px solid #e2e8f0",
   padding: "14px 16px",
   margin: "0 0 22px",
 };
 
 const summaryText = {
-  color: "#e4e4e7",
+  color: "#1f2937",
   fontSize: "15px",
   lineHeight: "1.55",
   margin: "0",
@@ -213,25 +214,25 @@ const listSection = {
 };
 
 const bulletLine = {
-  color: "#d4d4d8",
+  color: "#374151",
   fontSize: "14px",
   lineHeight: "1.55",
   margin: "0 0 10px",
 };
 
 const bulletMark = {
-  color: "#71717a",
+  color: "#64748b",
   marginRight: "6px",
 };
 
 const bulletLink = {
-  color: "#60a5fa",
+  color: "#2563eb",
   fontSize: "14px",
   textDecoration: "underline",
 };
 
 const highlightInline = {
-  color: "#d4d4d8",
+  color: "#374151",
   fontSize: "14px",
 };
 
@@ -242,7 +243,7 @@ const itemBox = {
 };
 
 const itemKind = {
-  color: "#71717a",
+  color: "#64748b",
   fontSize: "12px",
   textTransform: "uppercase" as const,
   letterSpacing: "0.04em",
@@ -250,14 +251,14 @@ const itemKind = {
 };
 
 const itemTeaser = {
-  color: "#d4d4d8",
+  color: "#374151",
   fontSize: "14px",
   lineHeight: "1.55",
   margin: "0 0 8px",
 };
 
 const itemLink = {
-  color: "#60a5fa",
+  color: "#2563eb",
   fontSize: "14px",
   textDecoration: "underline",
 };
@@ -276,18 +277,18 @@ const button = {
   padding: "12px 24px",
 };
 
-const hr = { borderColor: "#27272a", margin: "24px 0" };
+const hr = { borderColor: "#e2e8f0", margin: "24px 0" };
 
 const codeBlock = {
-  backgroundColor: "#18181b",
+  backgroundColor: "#f1f5f9",
   borderRadius: "8px",
-  border: "1px solid #3f3f46",
+  border: "1px solid #e2e8f0",
   padding: "12px 14px",
   margin: "0 0 16px",
 };
 
 const codeText = {
-  color: "#e4e4e7",
+  color: "#1e293b",
   fontFamily: 'ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace',
   fontSize: "12px",
   lineHeight: "1.5",
@@ -295,6 +296,6 @@ const codeText = {
   whiteSpace: "pre-wrap" as const,
 };
 
-const small = { color: "#71717a", fontSize: "12px", lineHeight: "1.5", margin: "0" };
+const small = { color: "#64748b", fontSize: "12px", lineHeight: "1.5", margin: "0" };
 
-const link = { color: "#60a5fa", textDecoration: "underline" };
+const link = { color: "#2563eb", textDecoration: "underline" };

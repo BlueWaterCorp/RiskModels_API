@@ -97,12 +97,13 @@ export const KeyExpiringEmail = ({
 export default KeyExpiringEmail;
 
 const main = {
-  backgroundColor: "#09090b",
+  backgroundColor: "#f6f9fc",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
 const container = {
+  backgroundColor: "#ffffff",
   margin: "0 auto",
   padding: "32px 24px 48px",
   maxWidth: "560px",
@@ -111,7 +112,7 @@ const container = {
 const logo = { margin: "0 auto 16px", display: "block" as const };
 
 const heading = {
-  color: "#fafafa",
+  color: "#1a1a1a",
   fontSize: "22px",
   fontWeight: "600",
   lineHeight: "1.3",
@@ -119,22 +120,22 @@ const heading = {
 };
 
 const paragraph = {
-  color: "#a1a1aa",
+  color: "#4a5568",
   fontSize: "15px",
   lineHeight: "1.6",
   margin: "0 0 16px",
 };
 
 const alertContainer = {
-  backgroundColor: "#18181b",
+  backgroundColor: "#f8fafc",
   borderRadius: "8px",
-  border: "1px solid #3f3f46",
+  border: "1px solid #e2e8f0",
   padding: "14px 16px",
   margin: "0 0 20px",
 };
 
 const alertText = {
-  color: "#e4e4e7",
+  color: "#1f2937",
   fontSize: "14px",
   lineHeight: "1.55",
   margin: "0",
@@ -154,16 +155,16 @@ const button = {
   padding: "12px 24px",
 };
 
-const hr = { borderColor: "#27272a", margin: "24px 0" };
+const hr = { borderColor: "#e2e8f0", margin: "24px 0" };
 
-const small = { color: "#71717a", fontSize: "12px", lineHeight: "1.5", margin: "0" };
+const small = { color: "#64748b", fontSize: "12px", lineHeight: "1.5", margin: "0" };
 
-const link = { color: "#60a5fa", textDecoration: "underline" };
+const link = { color: "#2563eb", textDecoration: "underline" };
 
 const inlineCode = {
-  backgroundColor: "#27272a",
+  backgroundColor: "#f1f5f9",
   padding: "2px 6px",
   borderRadius: "4px",
   fontSize: "13px",
-  color: "#e4e4e7",
+  color: "#1e293b",
 };

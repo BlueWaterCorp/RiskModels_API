@@ -3,7 +3,6 @@ import {
   Button,
   CodeBlock,
   Container,
-  dracula,
   Head,
   Heading,
   Hr,
@@ -313,7 +312,7 @@ export const KeyIssuedEmail = ({
             </Link>
             ):
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.pathAInstaller} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.pathAInstaller} />
           <Text style={paragraph}>
             <strong>Manual / advanced:</strong> paste JSON for the hosted endpoint (below) or use{" "}
             <code style={inlineCode}>mcp-remote</code> if you prefer not to use the installer.
@@ -324,7 +323,7 @@ export const KeyIssuedEmail = ({
             Create or open <code style={inlineCode}>.cursor/mcp.json</code> in your project (or{" "}
             <code style={inlineCode}>~/.cursor/mcp.json</code> for a global install) and paste:
           </Text>
-          <CodeBlock theme={dracula} language="json" code={snippets.mcpCursorJson} />
+          <CodeBlock theme={emailCodeTheme} language="json" code={snippets.mcpCursorJson} />
           <Text style={paragraph}>
             Restart Cursor. Open a chat → the tools icon should list &quot;riskmodels&quot; with 9 SDK-backed tools.
             Test with: <em>What&apos;s NVDA&apos;s L3 subsector hedge ratio today?</em>
@@ -345,13 +344,13 @@ export const KeyIssuedEmail = ({
             ). Register RiskModels for Claude Code separately (your key is already in{" "}
             <code style={inlineCode}>~/.config/riskmodels/config.json</code> after install):
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeStdio} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.claudeCodeStdio} />
           <Text style={paragraph}>
             Restart <code style={inlineCode}>claude</code>, then run <code style={inlineCode}>claude mcp list</code>{" "}
             — <code style={inlineCode}>riskmodels</code> should show connected. If it shows failed, use the hosted
             transport instead:
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.claudeCodeRemote} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.claudeCodeRemote} />
 
           <Text style={h3}>Codex / Windsurf / Zed</Text>
           <Text style={paragraph}>
@@ -408,13 +407,13 @@ export const KeyIssuedEmail = ({
           </Heading>
 
           <Text style={h3}>B1. Python — 3 lines in a notebook</Text>
-          <CodeBlock theme={dracula} language="bash" code={PYTHON_PIP} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={PYTHON_PIP} />
           <Text style={paragraph}>
             <code style={inlineCode}>riskmodels-py</code> 0.3.4+ bundles matplotlib and plotly, so a plain{" "}
             <code style={inlineCode}>import riskmodels</code> works. Add <code style={inlineCode}>[viz]</code> for
             Kaleido static PNG + Seaborn; <code style={inlineCode}>[xarray]</code> for dataset helpers.
           </Text>
-          <CodeBlock theme={dracula} language="python" code={snippets.pythonSnippet} />
+          <CodeBlock theme={emailCodeTheme} language="python" code={snippets.pythonSnippet} />
           <Text style={paragraph}>
             You should get back a dict with NVDA&apos;s latest <code style={inlineCode}>teo</code>, L3 hedge
             ratios (<code style={inlineCode}>l3_market_hr</code>, <code style={inlineCode}>l3_sector_hr</code>
@@ -424,7 +423,7 @@ export const KeyIssuedEmail = ({
             combined-factor return fields. Cost: ~$0.005 for that call, deducted from your $20 credit.
           </Text>
           <Text style={paragraph}>A handful more one-liners once that works:</Text>
-          <CodeBlock theme={dracula} language="python" code={PYTHON_ONELINERS} />
+          <CodeBlock theme={emailCodeTheme} language="python" code={PYTHON_ONELINERS} />
 
           <Text style={h3}>B2. Google Colab — saving the key safely</Text>
           <Text style={paragraph}>
@@ -432,22 +431,22 @@ export const KeyIssuedEmail = ({
             Use Colab&apos;s secrets manager (key icon → Add new secret → name{" "}
             <code style={inlineCode}>RISKMODELS_API_KEY</code> → toggle Notebook access). Then:
           </Text>
-          <CodeBlock theme={dracula} language="python" code={COLAB_SNIPPET} />
+          <CodeBlock theme={emailCodeTheme} language="python" code={COLAB_SNIPPET} />
 
           <Text style={h3}>B3. Jupyter / VS Code / local Python — saving the key safely</Text>
           <Text style={paragraph}>
             Put the key in a local <code style={inlineCode}>.env</code> file and load it at runtime:
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.echoEnvForDotenv} />
-          <CodeBlock theme={dracula} language="python" code={DOTENV_SNIPPET} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.echoEnvForDotenv} />
+          <CodeBlock theme={emailCodeTheme} language="python" code={DOTENV_SNIPPET} />
           <Text style={paragraph}>
             Or set it once in your shell profile (<code style={inlineCode}>~/.zshrc</code>,{" "}
             <code style={inlineCode}>~/.bashrc</code>):
           </Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.exportShellProfile} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.exportShellProfile} />
 
           <Text style={h3}>B4. Terminal-only (CLI) — optional</Text>
-          <CodeBlock theme={dracula} language="bash" code={snippets.cliSnippet} />
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.cliSnippet} />
           <Text style={paragraph}>
             Other commands: <code style={inlineCode}>riskmodels l3 NVDA</code>,{" "}
             <code style={inlineCode}>riskmodels returns ticker NVDA</code>,{" "}
@@ -714,13 +713,19 @@ export const KeyIssuedEmail = ({
 
 export default KeyIssuedEmail;
 
+const emailCodeTheme = {
+  plain: { color: "#1e293b", backgroundColor: "#f1f5f9" },
+  styles: [],
+};
+
 const main = {
-  backgroundColor: "#09090b",
+  backgroundColor: "#f6f9fc",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
 const container = {
+  backgroundColor: "#ffffff",
   margin: "0 auto",
   padding: "32px 24px 48px",
   maxWidth: "600px",
@@ -729,7 +734,7 @@ const container = {
 const logo = { margin: "0 auto 16px", display: "block" as const };
 
 const heading = {
-  color: "#fafafa",
+  color: "#1a1a1a",
   fontSize: "20px",
   fontWeight: "600",
   lineHeight: "1.35",
@@ -737,7 +742,7 @@ const heading = {
 };
 
 const h2 = {
-  color: "#e4e4e7",
+  color: "#1f2937",
   fontSize: "17px",
   fontWeight: "600",
   lineHeight: "1.35",
@@ -745,14 +750,14 @@ const h2 = {
 };
 
 const h3 = {
-  color: "#d4d4d8",
+  color: "#374151",
   fontSize: "15px",
   fontWeight: "600",
   margin: "20px 0 8px",
 };
 
 const paragraph = {
-  color: "#a1a1aa",
+  color: "#4a5568",
   fontSize: "14px",
   lineHeight: "1.65",
   margin: "0 0 14px",
@@ -763,7 +768,7 @@ const tableWrap = { margin: "0 0 16px" };
 const dataTable = {
   width: "100%",
   borderCollapse: "collapse" as const,
-  border: "1px solid #3f3f46",
+  border: "1px solid #e2e8f0",
   borderRadius: "8px",
   overflow: "hidden" as const,
 };
@@ -771,30 +776,30 @@ const dataTable = {
 const th = {
   textAlign: "left" as const,
   padding: "10px 12px",
-  backgroundColor: "#18181b",
-  color: "#fafafa",
+  backgroundColor: "#f1f5f9",
+  color: "#1e293b",
   fontSize: "13px",
   fontWeight: "600",
-  borderBottom: "1px solid #3f3f46",
+  borderBottom: "1px solid #e2e8f0",
 };
 
 const td = {
   verticalAlign: "top" as const,
   padding: "10px 12px",
-  color: "#a1a1aa",
+  color: "#4a5568",
   fontSize: "13px",
   lineHeight: "1.55",
-  borderBottom: "1px solid #27272a",
+  borderBottom: "1px solid #e2e8f0",
 };
 
 const tdNarrow = {
   ...td,
   width: "32%",
-  color: "#d4d4d8",
+  color: "#374151",
   fontWeight: "500",
 };
 
-const hr = { borderColor: "#27272a", margin: "28px 0" };
+const hr = { borderColor: "#e2e8f0", margin: "28px 0" };
 
 const buttonContainer = { textAlign: "center" as const, margin: "24px 0" };
 
@@ -810,14 +815,14 @@ const button = {
   padding: "12px 24px",
 };
 
-const small = { color: "#71717a", fontSize: "12px", lineHeight: "1.5", margin: "0" };
+const small = { color: "#64748b", fontSize: "12px", lineHeight: "1.5", margin: "0" };
 
-const link = { color: "#60a5fa", textDecoration: "underline" };
+const link = { color: "#2563eb", textDecoration: "underline" };
 
 const inlineCode = {
-  backgroundColor: "#27272a",
+  backgroundColor: "#f1f5f9",
   padding: "2px 6px",
   borderRadius: "4px",
   fontSize: "12px",
-  color: "#e4e4e7",
+  color: "#1e293b",
 };
