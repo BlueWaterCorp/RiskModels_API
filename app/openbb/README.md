@@ -37,6 +37,26 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
   -H "X-API-KEY: rm_agent_live_..." | jq
 ```
 
+## Connect QA (CI)
+
+Workspace validates `widgets.json` when someone hits **Add / Test**. Do not
+learn those failures from Minh. `app/openbb/_lib/connect-qa.ts` encodes the
+documented widget constraints plus every Connect miss we have already shipped:
+
+| Case | What Connect showed |
+|------|---------------------|
+| #194 | `type: "pdf"` is not a widgets.json type |
+| #344 | `multi_file_viewer` missing `roles: ["fileSelector"]` |
+| #350 | file widget GET-only → 405 / File Not Found |
+| #355 | `staleTime: 0` → `[staleTime]: Invalid input` |
+
+`tests/openbb-connect-qa.test.ts` runs the live `GET /openbb/widgets.json`
+payload plus `apps.json` widget ids through that validator, checks that every
+endpoint/optionsEndpoint file exists, and that file widgets export POST.
+
+A new Connect error becomes a named case in that test file, then a rule in
+`connect-qa.ts`. `npm test` (GitHub Actions CI) is the gate.
+
 ## Endpoint layout
 
 | Path | Purpose | Status |
