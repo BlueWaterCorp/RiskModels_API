@@ -150,7 +150,8 @@ export const COHORT_BREADTH_VARS = [
 
 export const COHORT_FACTOR_VARS = [
   "linked_beta",
-  "linked_beta_se",
+  "link_fit_resid_sd",
+  "linked_beta_se", // deprecated alias of link_fit_resid_sd (H.147, 2026-08-25)
   "linked_beta_r2",
   "linked_beta_roll63",
   "cohort_factor_return",
@@ -166,6 +167,26 @@ export const COHORT_NUMERIC_VARS = [
 ] as const;
 
 export type CohortNumericVar = (typeof COHORT_NUMERIC_VARS)[number];
+
+/**
+ * H.147: `linked_beta_se` never was a standard error — it is the residual SD of
+ * the 252-day link regression. The store now writes it as `link_fit_resid_sd`
+ * and keeps `linked_beta_se` as a deprecated alias for one release. Either
+ * public name reads whichever plane the vintage carries, new name first.
+ */
+export const COHORT_DEPRECATED_VARS: Readonly<Record<string, { replacement: string; since: string }>> = {
+  linked_beta_se: { replacement: "link_fit_resid_sd", since: "2026-08-25" },
+};
+
+const PLANE_STORE_NAMES: Readonly<Record<string, readonly string[]>> = {
+  link_fit_resid_sd: ["link_fit_resid_sd", "linked_beta_se"],
+  linked_beta_se: ["link_fit_resid_sd", "linked_beta_se"],
+};
+
+/** Store array names to try, in order, for a public variable name. */
+export function storeNamesFor(v: string): readonly string[] {
+  return PLANE_STORE_NAMES[v] ?? [v];
+}
 
 const NUMERIC_VAR_SET = new Set<string>(COHORT_NUMERIC_VARS);
 
@@ -408,6 +429,20 @@ async function readNumericPlane(
   return promise;
 }
 
+/** Read a public variable's plane, falling back through its store-name aliases. */
+async function readPublicPlane(
+  grp: Group<Readable>,
+  publicVar: string,
+  nTeo: number,
+  nCohort: number,
+): Promise<Float64Array | null> {
+  for (const name of storeNamesFor(publicVar)) {
+    const plane = await readNumericPlane(grp, name, nTeo, nCohort);
+    if (plane) return plane;
+  }
+  return null;
+}
+
 /**
  * bw_sym_id → ticker for the ETF roster, built from `ds_etf`'s own `symbol` and
  * `ticker` coords.
@@ -577,7 +612,7 @@ export async function readCohortSeries(params: {
   const planes = new Map<string, Float64Array | null>();
   await Promise.all(
     needed.map(async (v) => {
-      planes.set(v, await readNumericPlane(grp, v, nTeo, nCohort));
+      planes.set(v, await readPublicPlane(grp, v, nTeo, nCohort));
     }),
   );
 
@@ -661,7 +696,7 @@ export async function readCohortCrossSection(params: {
   const planes = new Map<string, Float64Array | null>();
   await Promise.all(
     needed.map(async (v) => {
-      planes.set(v, await readNumericPlane(grp, v, nTeo, nCohort));
+      planes.set(v, await readPublicPlane(grp, v, nTeo, nCohort));
     }),
   );
 
