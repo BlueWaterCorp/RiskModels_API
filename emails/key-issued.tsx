@@ -714,12 +714,15 @@ export const KeyIssuedEmail = ({
 
 export default KeyIssuedEmail;
 
+// @react-email/code-block themes keep the block's colours under `base`
+// (prism-react-renderer's `plain` does not exist on this type — that key is
+// what broke `tsc` on main from 2026-08-22).
 const emailCodeTheme = {
   ...dracula,
-  plain: {
-    ...dracula.plain,
+  base: {
+    ...dracula.base,
     color: "#1e293b",
-    backgroundColor: "#f1f5f9",
+    background: "#f1f5f9",
   },
 };
 
