@@ -2392,9 +2392,16 @@
             "nullable": true,
             "description": "Beta of this cohort's factor to its parent's."
           },
+          "link_fit_resid_sd": {
+            "type": "number",
+            "nullable": true,
+            "description": "Residual standard deviation of the 252-day link regression (cohort factor on its parent), in daily-return units. A fit-quality / dispersion measure — NOT a standard error of `linked_beta`; do not build confidence intervals from it.\n"
+          },
           "linked_beta_se": {
             "type": "number",
-            "nullable": true
+            "nullable": true,
+            "deprecated": true,
+            "description": "Deprecated alias of `link_fit_resid_sd` (same numbers). Deprecated 2026-08-25; removed after the next release. It was never a standard error.\n"
           },
           "linked_beta_r2": {
             "type": "number",
