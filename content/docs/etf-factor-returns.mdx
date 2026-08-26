@@ -73,6 +73,30 @@ GET /api/etf/factor-returns?sleeve=sector&teo=2026-04-30
 - **`returns.{1d, 21d, 63d, 252d}`** — Trailing simple total returns, computed as `close[t] / close[t-N] - 1`. Returns `null` when the lookback extends past the ETF's start of history.
 - **`sleeve`** — Always `"market"` for SPY, `"sector"` for the 11 SPDRs.
 
+### These are raw ETF returns, not cleaned factor returns
+
+Despite the endpoint's name, `returns` here is the ETF's own total return. It is
+**not** net of SPY. The ERM3 cascade orthogonalizes each level against the ones
+above it, so the published sector and subsector **betas** multiply a *cleaned*
+factor return:
+
+```
+r*(XLK) = r(XLK) - lambda(XLK -> SPY) * r(SPY)
+```
+
+Multiplying `l2_sector_beta` by the raw `XLK` return from this endpoint
+double-counts the market. Two correct routes:
+
+| You have | Multiply it by | Get it from |
+|---|---|---|
+| raw ETF returns (this endpoint) | hedge ratios `l3_mkt_hr` / `l3_sec_hr` / `l3_sub_hr`, negated | `GET /api/metrics/{ticker}` |
+| cleaned factor returns (`cohort_residual_return`) | betas `l1_market_beta` / `l2_sector_beta` / `l3_subsector_beta` | `GET /api/cohorts` |
+
+Both give the same synthetic return. Do not mix them. The transform between the
+two coefficient sets is derived on the
+[methodology page](https://riskmodels.org/methodology); `SEMANTIC_ALIASES.md`
+carries the field-by-field basis table.
+
 ## Python SDK
 
 ```python

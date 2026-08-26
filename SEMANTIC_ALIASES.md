@@ -251,14 +251,24 @@ Cross-sectional shape of member residuals within the cohort on that day.
 
 The cohort's own factor return and its relationship to its parent's (sector → market).
 
+**`cohort_factor_return` is the RAW proxy return — it is not net of anything.** It is the cohort's proxy instrument's own dividend-adjusted total return, the same number `GET /api/etf/factor-returns` serves for the public sleeve. The market-cleaned series that the published sector and subsector **betas** multiply is `cohort_residual_return`. Three published quantities carry the words "factor return" and they are three different things:
+
+| Quantity | What it is | Net of the market? |
+|---|---|---|
+| `cohort_factor_return`, and `/api/etf/factor-returns` | the proxy instrument's own total return | no |
+| `cohort_residual_return` | that return, cleaned of every higher level | yes |
+| `l2_fr` / `l3_fr` (returns decomposition) | a **stock's** incremental contribution, `β × cleaned factor return` | yes, and already multiplied by β |
+
+Applying `l2_sector_beta` to `cohort_factor_return` double-counts the market. Applying a hedge ratio (`l3_sec_hr`) to it is correct — hedge ratios are defined against raw ETF returns. The transform between the two coefficient sets is derived on the [methodology page](https://riskmodels.org/methodology).
+
 | Field | Unit | Description |
 |---|---|---|
-| `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). |
+| `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). Orthogonal basis: it multiplies the **cleaned** parent level, never the raw parent instrument. Equal to `beta_parent_orth` at both levels. |
 | `link_fit_resid_sd` | decimal (daily) | Residual standard deviation of that 252-day link regression — how much of the cohort factor its parent does **not** explain, in return units. See the caution below. |
 | `linked_beta_r2` | decimal_fraction | R² of that regression — the **cohort factor's** fit on its parent. **Not** the same quantity as `cohort_ER`. |
 | `linked_beta_roll63` | dimensionless | 63-day variant of `linked_beta`. Divergence from `linked_beta` is beta *instability*, which is itself informative. |
-| `cohort_factor_return` | decimal (daily) | The cohort factor return itself. |
-| `cohort_residual_return` | decimal (daily) | Factor return net of `linked_beta` × parent factor return. |
+| `cohort_factor_return` | decimal (daily) | The cohort's proxy instrument's own total return, **raw** — not net of the market. See the note above. |
+| `cohort_residual_return` | decimal (daily) | The factor return cleaned of every higher level. **L2 (sector):** `cohort_factor_return − linked_beta × market factor return`. **L3 (subsector):** `cohort_factor_return − beta_market_orth × market factor return − linked_beta × parent's cohort_residual_return` — note the market term, and note the parent enters **cleaned**, not raw. |
 | `cohort_ER` | decimal_fraction | Mean **member's** explained risk attributed to this cohort's level. Incremental, can be slightly negative — see below. |
 | `factor_source` | integer code | Provenance of the factor return that day. `0` = native; non-zero means a substitute instrument backed it. |
 
