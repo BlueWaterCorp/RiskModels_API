@@ -29,7 +29,7 @@ import {
   type CohortSeries,
   type CohortCrossSectionRow,
   type CohortStoreMeta,
-  COHORT_DEPRECATED_VARS,
+  COHORT_REMOVED_VARS,
 } from "@/lib/dal/cohort-zarr-reader";
 import { ETF_FACTOR_REGISTRY } from "@/lib/risk/etf-factor-classification";
 import { getZarrFactorSetId } from "@/lib/zarr-config";
@@ -80,7 +80,7 @@ function buildDisclosures(meta: CohortStoreMeta | null): CohortDisclosures {
     dispersion_use:
       "residual_sd measures how much cross-sectional opportunity exists within a cohort. It is a conditioning and allocation variable, not an alpha source — it multiplies skill and cannot create it. Read it alongside mean_pairwise_corr, which separates idiosyncratic dispersion from common movement.",
     link_fit_resid_sd:
-      "link_fit_resid_sd is the residual standard deviation of the 252-day link regression (cohort factor on its parent): a fit-quality and dispersion measure, not a standard error of linked_beta and not a total-uncertainty measure. Do not build confidence intervals from it. linked_beta_se is a deprecated alias carrying the same numbers (deprecated 2026-08-25, removed after the next release).",
+      "link_fit_resid_sd is the residual standard deviation of the 252-day link regression (cohort factor on its parent): a fit-quality and dispersion measure, not a standard error of linked_beta and not a total-uncertainty measure. Do not build confidence intervals from it. The former name linked_beta_se was removed on 2026-08-25.",
     er_sign:
       "cohort_ER is an incremental attribution (er_level minus er_prev), not an R-squared share. It can be slightly negative and does not sum to 1. It is the mean member's explained risk at this level, which is a different quantity from linked_beta_r2 (the cohort factor's fit on its parent).",
     thin_cohorts:
@@ -221,8 +221,8 @@ export class CohortService {
       valid_to: string | null;
     }>;
     variables: { distribution: string[]; breadth: string[]; factor: string[] };
-    /** Requestable names that are deprecated aliases, with their replacement and date. */
-    deprecated: Readonly<Record<string, { replacement: string; since: string }>>;
+    /** Former variable names no longer requestable, with their replacement and removal date. */
+    removed: Readonly<Record<string, { replacement: string; removed: string }>>;
     disclosures: CohortDisclosures;
     universe: string;
     panel: [string, string] | null;
@@ -249,7 +249,6 @@ export class CohortService {
         factor: [
           "linked_beta",
           "link_fit_resid_sd",
-          "linked_beta_se",
           "linked_beta_r2",
           "linked_beta_roll63",
           "cohort_factor_return",
@@ -258,7 +257,7 @@ export class CohortService {
           "factor_source",
         ],
       },
-      deprecated: COHORT_DEPRECATED_VARS,
+      removed: COHORT_REMOVED_VARS,
       disclosures: buildDisclosures(meta),
       universe: meta?.universe ?? getZarrFactorSetId(),
       panel:

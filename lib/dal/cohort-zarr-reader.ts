@@ -151,7 +151,6 @@ export const COHORT_BREADTH_VARS = [
 export const COHORT_FACTOR_VARS = [
   "linked_beta",
   "link_fit_resid_sd",
-  "linked_beta_se", // deprecated alias of link_fit_resid_sd (H.147, 2026-08-25)
   "linked_beta_r2",
   "linked_beta_roll63",
   "cohort_factor_return",
@@ -170,17 +169,18 @@ export type CohortNumericVar = (typeof COHORT_NUMERIC_VARS)[number];
 
 /**
  * H.147: `linked_beta_se` never was a standard error — it is the residual SD of
- * the 252-day link regression. The store now writes it as `link_fit_resid_sd`
- * and keeps `linked_beta_se` as a deprecated alias for one release. Either
- * public name reads whichever plane the vintage carries, new name first.
+ * the 252-day link regression, now written as `link_fit_resid_sd`. The old
+ * public name shipped as a deprecated alias on 2026-08-25 and was removed the
+ * same day once the store carried the new plane; `COHORT_REMOVED_VARS` lets the
+ * catalogue explain a request for it. Reading still falls back to the old plane
+ * name for any store vintage that predates the rename.
  */
-export const COHORT_DEPRECATED_VARS: Readonly<Record<string, { replacement: string; since: string }>> = {
-  linked_beta_se: { replacement: "link_fit_resid_sd", since: "2026-08-25" },
+export const COHORT_REMOVED_VARS: Readonly<Record<string, { replacement: string; removed: string }>> = {
+  linked_beta_se: { replacement: "link_fit_resid_sd", removed: "2026-08-25" },
 };
 
 const PLANE_STORE_NAMES: Readonly<Record<string, readonly string[]>> = {
   link_fit_resid_sd: ["link_fit_resid_sd", "linked_beta_se"],
-  linked_beta_se: ["link_fit_resid_sd", "linked_beta_se"],
 };
 
 /** Store array names to try, in order, for a public variable name. */

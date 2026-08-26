@@ -255,7 +255,6 @@ The cohort's own factor return and its relationship to its parent's (sector → 
 |---|---|---|
 | `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). |
 | `link_fit_resid_sd` | decimal (daily) | Residual standard deviation of that 252-day link regression — how much of the cohort factor its parent does **not** explain, in return units. See the caution below. |
-| `linked_beta_se` | decimal (daily) | **Deprecated alias** of `link_fit_resid_sd` (same numbers; deprecated 2026-08-25, removed after the next release). It was never a standard error. |
 | `linked_beta_r2` | decimal_fraction | R² of that regression — the **cohort factor's** fit on its parent. **Not** the same quantity as `cohort_ER`. |
 | `linked_beta_roll63` | dimensionless | 63-day variant of `linked_beta`. Divergence from `linked_beta` is beta *instability*, which is itself informative. |
 | `cohort_factor_return` | decimal (daily) | The cohort factor return itself. |
@@ -263,7 +262,7 @@ The cohort's own factor return and its relationship to its parent's (sector → 
 | `cohort_ER` | decimal_fraction | Mean **member's** explained risk attributed to this cohort's level. Incremental, can be slightly negative — see below. |
 | `factor_source` | integer code | Provenance of the factor return that day. `0` = native; non-zero means a substitute instrument backed it. |
 
-**`link_fit_resid_sd` is not a standard error of `linked_beta`.** It is the residual SD of the link regression — a fit-quality / dispersion measure in daily-return units. Nothing in the store carries the sampling uncertainty of `linked_beta`; do not build confidence intervals from this field, and do not read the old name `linked_beta_se` as one either.
+**`link_fit_resid_sd` is not a standard error of `linked_beta`.** It is the residual SD of the link regression — a fit-quality / dispersion measure in daily-return units. Nothing in the store carries the sampling uncertainty of `linked_beta`; do not build confidence intervals from this field. (The former name `linked_beta_se` was removed on 2026-08-25; it was never a standard error.)
 
 **`cohort_ER` is an incremental attribution (`er_level − er_prev`), not an R² share.** It can be slightly negative and does **not** sum to 1 — do not clamp it to [0, 1] or render it as a percentage of a total. It is a different quantity from `linked_beta_r2` (measured correlation ≈ **−0.15**): `cohort_ER` is the *average member stock's* explained variance at this level, while `linked_beta_r2` is the *cohort factor's* explained variance against its parent factor. Never write "explained variance" for either without saying **whose**.
 
