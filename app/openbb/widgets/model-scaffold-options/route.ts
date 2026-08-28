@@ -1,11 +1,7 @@
 /**
- * optionsEndpoint for the tearsheet multi_file_viewer widget's fileSelector
- * param. There is exactly one document type today (the single-name risk
- * snapshot PDF); this list exists so the widget conforms to the
- * multi_file_viewer contract (fileSelector param backed by optionsEndpoint)
- * and can grow additional report types later without a schema change.
+ * optionsEndpoint for the model-scaffold multi_file_viewer fileSelector.
  *
- * GET /openbb/widgets/tearsheet-options?ticker=AAPL
+ * GET /openbb/widgets/model-scaffold-options?ticker=AAPL
  */
 import { NextRequest, NextResponse } from "next/server";
 import { openbbCors } from "../../_lib/cors";
@@ -23,8 +19,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     [
       {
-        label: "Risk Snapshot Tearsheet",
-        value: tickerScopedFileValue(ticker, "risk_snapshot"),
+        label: "Valuation Model Scaffold",
+        value: tickerScopedFileValue(ticker, "model_scaffold"),
       },
     ],
     { headers: { ...openbbCors(req), ...WIDGET_NO_STORE } },

@@ -241,7 +241,7 @@ export class CohortService {
         breadth: [...COHORT_BREADTH_VARS],
         factor: [
           "linked_beta",
-          "linked_beta_se",
+          "link_fit_resid_sd",
           "linked_beta_r2",
           "linked_beta_roll63",
           "cohort_factor_return",

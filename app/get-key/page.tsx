@@ -1,15 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Zap, Plus, Pencil } from 'lucide-react';
+import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Plus, Pencil, Bot } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 import { captureUTMFromURL, clearUTMData, getUTMData } from '@/lib/utm';
 import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
 import { gtmAnalytics } from '@/lib/posthog-client';
+import { FIRST_LIVE_PROMPT_MCP } from '@/lib/mcp/activation';
+
+const MCP_CONNECTOR_URL = 'https://riskmodels.app/api/mcp/sse';
+const MCP_INSTALL_CMD = 'npx -y riskmodels@latest install';
 
 interface ApiKey {
   id: string;
@@ -135,6 +139,7 @@ function GetKeyPage() {
   const [newKeyName, setNewKeyName] = useState('');
   const [generating, setGenerating] = useState(false);
   const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string } | null>(null);
+  const revealedKeyRef = useRef<HTMLDivElement>(null);
   const [genError, setGenError] = useState('');
 
   // Inline rename state
@@ -259,6 +264,31 @@ function GetKeyPage() {
   useEffect(() => {
     if (user) fetchAccountData();
   }, [user, fetchAccountData]);
+
+  useEffect(() => {
+    if (revealedKey) {
+      revealedKeyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [revealedKey]);
+
+  useEffect(() => {
+    if (!user) return;
+    const signupUtm = getUTMData();
+    const gclid = getStoredGclid();
+    void fetch('/api/agent-accounts/attribution', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gclid,
+        utm: signupUtm,
+        landing_path: window.location.pathname,
+        create_if_missing: true,
+      }),
+    }).catch(() => {
+      /* ignore */
+    });
+  }, [user]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -391,6 +421,9 @@ function GetKeyPage() {
     } else {
       gtmAnalytics.apiKeyCreated();
       setRevealedKey({ plainKey: data.key.plainKey, name: data.key.name });
+      void copyTextToClipboard(data.key.plainKey).then((copied) => {
+        if (copied) gtmAnalytics.apiKeyCopied(data.key.plainKey);
+      });
       setNewKeyName('');
       /** Backstop the Sign-up conversion: if the auth-state / code-exchange fire was
        *  missed (e.g. gtag not ready on the redirect return), creating the first key
@@ -482,8 +515,9 @@ function GetKeyPage() {
   const formatBalance = (usd: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usd);
 
-  // Show card CTA only if no Stripe customer yet AND zero balance
-  const hasCard = Boolean(account?.stripe_customer_id) || (account?.balance_usd ?? 0) > 0;
+  const hasBalance = (account?.balance_usd ?? 0) > 0;
+  const hasStripeCustomer = Boolean(account?.stripe_customer_id);
+  const hasPaymentMethod = Boolean(account?.stripe_payment_method_id);
 
   if (loading) {
     return (
@@ -507,8 +541,9 @@ function GetKeyPage() {
               Sign in with Google, GitHub, or email — no password needed.
             </p>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-              <span className="font-semibold text-zinc-100">$20 in free API credits</span> after card
-              verification — no charge at signup. Auto-refill is optional and off by default.
+              <span className="font-semibold text-zinc-100">$20 in free API credits</span> after
+              sign-in. Card is optional (auto-refill, off by default). Or connect Claude / Cursor
+              with the MCP URL — no API key required.
             </p>
           </div>
 
@@ -614,7 +649,7 @@ function GetKeyPage() {
             >
               Usage
             </Link>
-            {account && hasCard && (
+            {account && (
               <span className="text-sm text-zinc-300 font-medium">
                 Balance: <span className={account.balance_usd > 0 ? 'text-green-400' : 'text-red-400'}>
                   {formatBalance(account.balance_usd)}
@@ -625,6 +660,40 @@ function GetKeyPage() {
               <LogOut size={13} /> Sign out
             </button>
           </div>
+        </div>
+
+        {/* MCP first — OAuth connector, no card. Matches how most external accounts already arrive. */}
+        <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+          <h2 className="text-sm font-semibold text-zinc-200 mb-1 flex items-center gap-2">
+            <Bot size={14} /> Connect Claude, Cursor, or Smithery
+          </h2>
+          <p className="text-xs text-zinc-500 mb-3 leading-relaxed">
+            Add a custom connector, sign in once, done. No API key and no card.
+            After Connect, paste the first prompt so the model hits live data instead of the catalog.
+          </p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500 mb-1.5">
+            MCP connector URL
+          </p>
+          <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 mb-3">
+            <code className="flex-1 text-sm font-mono text-zinc-100 break-all">{MCP_CONNECTOR_URL}</code>
+            <CopyButton text={MCP_CONNECTOR_URL} />
+          </div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500 mb-1.5">
+            First prompt after Connect
+          </p>
+          <div className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 mb-3">
+            <p className="text-xs font-mono text-zinc-300 leading-snug">{FIRST_LIVE_PROMPT_MCP}</p>
+            <div className="mt-1 flex justify-end">
+              <CopyButton text={FIRST_LIVE_PROMPT_MCP} />
+            </div>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            CLI (needs a key from Generate below):{' '}
+            <code className="font-mono text-zinc-400">RISKMODELS_API_KEY=… {MCP_INSTALL_CMD}</code>
+            . OpenBB Workspace uses the same generated key as{' '}
+            <code className="font-mono text-zinc-400">X-API-KEY</code> at{' '}
+            <code className="font-mono text-zinc-400">https://riskmodels.app/openbb</code>.
+          </p>
         </div>
 
         {/* Stripe success banner */}
@@ -647,7 +716,7 @@ function GetKeyPage() {
         {stripeStatus === 'cancelled' && (
           <div className="mb-6 rounded-xl border border-zinc-700 bg-zinc-900 p-4 flex items-start gap-3">
             <AlertCircle size={16} className="text-zinc-400 flex-shrink-0 mt-0.5" />
-            <p className="text-zinc-400 text-sm">Card setup was cancelled. Add a card below to activate your $20 in free credits.</p>
+            <p className="text-zinc-400 text-sm">Card setup was cancelled. You can still generate a key; add a card later for auto-refill.</p>
           </div>
         )}
 
@@ -696,22 +765,78 @@ function GetKeyPage() {
           </div>
         )}
 
-        {/* Stripe CTA — shown if no card on file */}
-        {!dataLoading && !hasCard && (
-          <div className="mb-6 rounded-xl border border-blue-700/40 bg-blue-950/20 p-6">
+        {/* Generate — signed-in; $20 starter is granted on account load, no card required. */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
+            <h2 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
+              <Plus size={14} /> Generate new key
+            </h2>
+            <form onSubmit={generateKey} className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  maxLength={60}
+                  placeholder="Name — e.g. Production, Colab, CI, OpenBB"
+                  className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
+                />
+                <button type="submit" disabled={generating}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors whitespace-nowrap">
+                  {generating ? 'Generating…' : 'Generate'}
+                </button>
+              </div>
+              <p className="text-xs text-zinc-500">Leave blank to auto-name (API Key 1, 2, …). The full key is shown once, in the green box below — the list is a prefix only.</p>
+            </form>
+            {genError && (
+              <p className="text-red-400 text-xs mt-2 bg-red-950/30 border border-red-800/40 rounded px-3 py-1.5">
+                {genError}
+              </p>
+            )}
+          </div>
+
+        {revealedKey && (
+          <div
+            ref={revealedKeyRef}
+            className="mb-6 rounded-xl border border-green-700/40 bg-green-950/20 p-5"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Check size={15} className="text-green-400 flex-shrink-0" />
+              <span className="text-green-300 font-semibold text-sm">
+                {revealedKey.name} — copy this full key now
+              </span>
+            </div>
+            <p className="text-zinc-400 text-xs mb-3">
+              This is the only time the full key is shown. The list below stores a prefix and cannot recover it.
+            </p>
+            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
+              <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all">
+                {revealedKey.plainKey}
+              </code>
+              <CopyButton
+                text={revealedKey.plainKey}
+                onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Optional card — refill only. Generate and MCP work without it. */}
+        {!dataLoading && !hasPaymentMethod && !hasStripeCustomer && (
+          <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-900/60 border border-blue-700/40 flex items-center justify-center">
-                <Zap size={18} className="text-blue-400" />
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+                <CreditCard size={18} className="text-zinc-400" />
               </div>
               <div className="flex-1">
                 <h2 className="text-zinc-100 font-semibold text-base mb-1">
-                  Activate your API access
+                  Optional: add a card for auto-refill
                 </h2>
                 <p className="text-zinc-400 text-sm mb-4 leading-relaxed">
-                  Add a card to activate. <strong className="text-zinc-200">$20 in free credits</strong> is always included. Prepay now for convenience, or start free — auto-refill stays off until you turn it on.
+                  {hasBalance
+                    ? 'Credits are already on this account. A card is only needed for auto-refill or to prepay more. Auto-refill stays off until you turn it on.'
+                    : '$20 in free credits is granted on this page. A card is only needed for auto-refill or to prepay more.'}
                 </p>
 
-                {/* Prepay tier selector — $0 free start, then $25 / $50 / $100. */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                   {[0, 25, 50, 100].map((amount) => {
                     const selected = prepayUsd === amount;
@@ -728,10 +853,10 @@ function GetKeyPage() {
                         }`}
                       >
                         <div className="text-sm font-semibold text-zinc-100">
-                          {amount === 0 ? 'Free start' : `$${amount}`}
+                          {amount === 0 ? 'Card only' : `$${amount}`}
                         </div>
                         <div className="text-[11px] text-zinc-400 mt-0.5">
-                          {amount === 0 ? '$20 credits' : `$${amount + 20} credits`}
+                          {amount === 0 ? 'no charge now' : `+$${amount} prepaid`}
                         </div>
                       </button>
                     );
@@ -744,13 +869,13 @@ function GetKeyPage() {
                   </p>
                 )}
                 <button onClick={() => startStripeSetup(prepayUsd)} disabled={stripeLoading}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors">
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-50 text-zinc-100 font-semibold text-sm transition-colors">
                   <CreditCard size={15} />
                   {stripeLoading
                     ? 'Redirecting to Stripe…'
                     : prepayUsd > 0
-                    ? `Pay $${prepayUsd} & activate $${prepayUsd + 20} credits`
-                    : 'Add card & activate $20 credits'}
+                    ? `Pay $${prepayUsd} and save card`
+                    : 'Add card'}
                 </button>
                 <p className="text-xs text-zinc-500 mt-3">
                   {prepayUsd > 0
@@ -762,32 +887,8 @@ function GetKeyPage() {
           </div>
         )}
 
-        {/* One-time key reveal */}
-        {revealedKey && (
-          <div className="mb-6 rounded-xl border border-green-700/40 bg-green-950/20 p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <Check size={15} className="text-green-400 flex-shrink-0" />
-              <span className="text-green-300 font-semibold text-sm">
-                {revealedKey.name} — copy it now
-              </span>
-            </div>
-            <p className="text-zinc-400 text-xs mb-3">
-              This is the only time the full key is shown. It cannot be recovered.
-            </p>
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
-              <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all">
-                {revealedKey.plainKey}
-              </code>
-              <CopyButton
-                text={revealedKey.plainKey}
-                onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Payment methods — list / add / remove saved cards */}
-        {hasCard && (
+        {hasStripeCustomer && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
@@ -854,7 +955,7 @@ function GetKeyPage() {
         )}
 
         {/* Add credits — top up an already-activated account against the saved card */}
-        {hasCard && (
+        {hasPaymentMethod && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
             <h2 className="text-sm font-semibold text-zinc-200 mb-1 flex items-center gap-2">
               <CreditCard size={14} /> Add credits
@@ -900,42 +1001,11 @@ function GetKeyPage() {
           </div>
         )}
 
-        {/* Generate new key — only shown when card is on file */}
-        {hasCard && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
-            <h2 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
-              <Plus size={14} /> Generate new key
-            </h2>
-            <form onSubmit={generateKey} className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  maxLength={60}
-                  placeholder="Name — e.g. Production, Colab, CI"
-                  className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-                />
-                <button type="submit" disabled={generating}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors whitespace-nowrap">
-                  {generating ? 'Generating…' : 'Generate'}
-                </button>
-              </div>
-              <p className="text-xs text-zinc-500">Leave blank to auto-name (API Key 1, 2, …)</p>
-            </form>
-            {genError && (
-              <p className="text-red-400 text-xs mt-2 bg-red-950/30 border border-red-800/40 rounded px-3 py-1.5">
-                {genError}
-              </p>
-            )}
-          </div>
-        )}
-
         {/* API Keys list */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
           <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-200">
-              {hasCard ? 'Your API keys' : 'API keys (add card to activate)'}
+              Your API keys
             </h2>
             <div className="flex items-center gap-3">
               {keys.length > 0 && (
@@ -951,9 +1021,7 @@ function GetKeyPage() {
 
           {!dataLoading && keys.length === 0 ? (
             <div className="px-5 py-10 text-center text-zinc-500 text-sm">
-              {hasCard
-                ? 'No keys yet — one will appear here after card verification.'
-                : 'Add a card above to provision your API key with $20 free credits.'}
+              No keys yet — generate one above, or connect MCP without a key.
             </div>
           ) : (
             <ul className="divide-y divide-zinc-800">
@@ -1001,7 +1069,9 @@ function GetKeyPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap text-xs text-zinc-500">
-                      <code className="font-mono text-zinc-400">{k.key_prefix}…</code>
+                      <code className="font-mono text-zinc-400" title="Prefix only — the full key was shown once at generate">
+                        {k.key_prefix}… <span className="font-sans text-zinc-600">prefix</span>
+                      </code>
                       <span>Created {formatDate(k.created_at)}</span>
                       {k.last_used_at && <span>Last used {formatDate(k.last_used_at)}</span>}
                       {k.expires_at && <span>Expires {formatDate(k.expires_at)}</span>}
@@ -1021,7 +1091,7 @@ function GetKeyPage() {
         </div>
 
         {/* Usage hint */}
-        {hasCard && keys.length > 0 && (
+        {keys.length > 0 && (
           <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
             <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wide">Usage</p>
             <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
@@ -1034,6 +1104,9 @@ function GetKeyPage() {
               <strong className="text-zinc-300">agent</strong> means this key is in the prepaid / metered API program (scripts, SDK, CLI, and MCP all use the same shape — not “AI agents only”).{' '}
               <strong className="text-zinc-300">live</strong> means production data at{' '}
               <code className="text-zinc-400 font-mono">riskmodels.app</code>. It is not a second, separate “type” of key.
+            </p>
+            <p className="text-xs text-zinc-500 mt-2">
+              The list above shows a <em>prefix</em> only. Curl and OpenBB need the full key, copied when it was generated. OpenBB Workspace: backend URL <code className="text-zinc-400 font-mono">https://riskmodels.app/openbb</code>, header <code className="text-zinc-400 font-mono">X-API-KEY</code>.
             </p>
             <p className="text-xs text-zinc-500 mt-2">
               See the{' '}

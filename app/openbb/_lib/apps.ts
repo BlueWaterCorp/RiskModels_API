@@ -150,7 +150,7 @@ export const APPS: WorkspaceApp[] = [
             y: 26,
             w: 20,
             h: 14,
-            state: { params: { ticker: "AAPL", measure: "wacc" } },
+            state: { params: { ticker: "AAPL", measure: "cost_of_equity" } },
           },
           {
             i: "rm_model_scaffold",
@@ -360,7 +360,7 @@ export const APPS: WorkspaceApp[] = [
             y: 26,
             w: 20,
             h: 14,
-            state: { params: { ticker: "AAPL", measure: "wacc" } },
+            state: { params: { ticker: "AAPL", measure: "cost_of_equity" } },
           },
         ],
       },

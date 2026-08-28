@@ -251,18 +251,28 @@ Cross-sectional shape of member residuals within the cohort on that day.
 
 The cohort's own factor return and its relationship to its parent's (sector → market).
 
+**`cohort_factor_return` is the RAW ETF return — it is not net of anything.** It is the cohort proxy instrument's own dividend-adjusted total return, the same number `GET /api/etf/factor-returns` serves. The market-cleaned series that the published sector and subsector **betas** multiply is `cohort_residual_return`. Three published quantities carry the words "factor return" and they are three different things:
+
+| Quantity | What it is | Net of the market? |
+|---|---|---|
+| `cohort_factor_return`, and `/api/etf/factor-returns` | the ETF's own total return | no |
+| `cohort_residual_return` | that return cleaned of higher levels | yes |
+| `l2_fr` / `l3_fr` (returns decomposition) | a **stock's** incremental contribution, `β × cleaned factor return` | yes, and already multiplied by β |
+
+Applying a sector beta to `cohort_factor_return` double-counts the market. Applying a hedge ratio (`l3_sec_hr`) to it is correct — hedge ratios are defined against raw ETF returns. See the [methodology](https://riskmodels.org/methodology) for the transform between the two bases.
+
 | Field | Unit | Description |
 |---|---|---|
-| `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). |
-| `linked_beta_se` | dimensionless | Standard error of that estimate. See the caution below. |
+| `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). Orthogonal basis: it multiplies the **cleaned** parent level, not the raw parent ETF. Identical to `beta_parent_orth` at both levels. |
+| `link_fit_resid_sd` | dimensionless | Residual standard deviation of that 252-day regression — a fit-quality measure. See the caution below. Replaced `linked_beta_se`, removed 2026-08-25. |
 | `linked_beta_r2` | decimal_fraction | R² of that regression — the **cohort factor's** fit on its parent. **Not** the same quantity as `cohort_ER`. |
 | `linked_beta_roll63` | dimensionless | 63-day variant of `linked_beta`. Divergence from `linked_beta` is beta *instability*, which is itself informative. |
-| `cohort_factor_return` | decimal (daily) | The cohort factor return itself. |
-| `cohort_residual_return` | decimal (daily) | Factor return net of `linked_beta` × parent factor return. |
+| `cohort_factor_return` | decimal (daily) | The cohort's proxy instrument's own total return, **raw** — not net of the market. |
+| `cohort_residual_return` | decimal (daily) | The factor return cleaned of every higher level. **L2 (sector):** `cohort_factor_return − linked_beta × market factor return`. **L3 (subsector):** `cohort_factor_return − beta_market_orth × market factor return − linked_beta × parent's cohort_residual_return` — note the market term, and note the parent enters **cleaned**, not raw. |
 | `cohort_ER` | decimal_fraction | Mean **member's** explained risk attributed to this cohort's level. Incremental, can be slightly negative — see below. |
 | `factor_source` | integer code | Provenance of the factor return that day. `0` = native; non-zero means a substitute instrument backed it. |
 
-**`linked_beta_se` is a conditional, homoskedastic model SE.** It assumes iid residuals, so it is **understated for daily returns**, and it is unreliable wherever the rolling window is partial (early history). It is **not** a total-uncertainty measure — do not use it alone to build confidence intervals.
+**`link_fit_resid_sd` is a fit-quality measure, not a standard error.** It is the residual standard deviation of the 252-day link regression of the cohort factor on its parent. It is **not** the standard error of `linked_beta` and **not** a total-uncertainty measure — never build confidence intervals from it. It replaced `linked_beta_se`, removed 2026-08-25.
 
 **`cohort_ER` is an incremental attribution (`er_level − er_prev`), not an R² share.** It can be slightly negative and does **not** sum to 1 — do not clamp it to [0, 1] or render it as a percentage of a total. It is a different quantity from `linked_beta_r2` (measured correlation ≈ **−0.15**): `cohort_ER` is the *average member stock's* explained variance at this level, while `linked_beta_r2` is the *cohort factor's* explained variance against its parent factor. Never write "explained variance" for either without saying **whose**.
 

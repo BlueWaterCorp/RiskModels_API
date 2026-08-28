@@ -120,3 +120,6 @@ supabase/
 
 # API audit run outputs (scripts/audit + api_audits.sh)
 audit-reports/
+
+# Local OpenBB adapter dumps (may contain auth headers)
+.tmp_obb_check/

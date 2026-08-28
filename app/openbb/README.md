@@ -50,7 +50,7 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/widgets/metrics?ticker=` | Single-name risk table | ✅ live |
 | `GET /openbb/widgets/snapshot-table?ticker=` | Risk snapshot as a table (L3 decomposition + hedge ratios) | ✅ live |
 | `GET /openbb/widgets/snapshot?ticker=` | Risk-snapshot PDF, legacy `pdf` widget type (kept for API; **not** registered as a widget — OpenBB's pdf.js viewer wouldn't render it, #194) | ⚠️ deprecated as widget |
-| `GET /openbb/widgets/tearsheet?ticker=&file=` | Risk-snapshot PDF via `multi_file_viewer` (retry of the above) | ✅ live |
+| `GET/POST /openbb/widgets/tearsheet?ticker=&file=` | Risk-snapshot PDF via `multi_file_viewer` (Workspace POSTs the fileSelector list) | ✅ live |
 | `GET /openbb/widgets/tearsheet-options?ticker=` | fileSelector options for the tearsheet widget | ✅ live |
 | `GET /openbb/widgets/returns-chart?ticker=&years=` | Cumulative total-return line chart | ✅ live |
 | `GET /openbb/widgets/risk-composition?ticker=&years=` | L3 explained-risk over time (line chart) | ✅ live |
@@ -63,7 +63,9 @@ curl "http://localhost:3000/openbb/widgets/metrics?ticker=AAPL" \
 | `GET /openbb/widgets/fundamentals-history?ticker=&periods=&as_of=` | PIT quarterly fundamentals table (sec_facts raw columns + derived TTM ratios) | ✅ live |
 | `GET /openbb/widgets/fundamentals-ratios?ticker=&periods=&as_of=` | TTM capital-return ratios (line chart) | ✅ live |
 | `GET /openbb/widgets/cost-of-capital?ticker=&erp=&rf_tenor=&tax_rate=` | Latest-quarter cost of capital metric table | ✅ live |
-| `GET /openbb/widgets/wacc-grid?ticker=&measure=&tax_rate=` | ERP × rf-tenor sensitivity grid table | ✅ live |
+| `GET /openbb/widgets/wacc-grid?ticker=&measure=&tax_rate=` | ERP × rf-tenor sensitivity grid table (default measure: cost of equity) | ✅ live |
+| `GET/POST /openbb/widgets/model-scaffold?ticker=&erp=&periods=&file=` | Valuation-model .xlsx via `multi_file_viewer` | ✅ live |
+| `GET /openbb/widgets/model-scaffold-options?ticker=` | fileSelector options for the model-scaffold widget | ✅ live |
 
 Chart widgets use OpenBB's built-in table `chartView` (`data.table.chartView`,
 `chartType: "line"` or `"bar"`) — the endpoint returns plain row arrays, so

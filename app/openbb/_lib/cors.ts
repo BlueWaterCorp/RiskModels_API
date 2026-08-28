@@ -1,18 +1,27 @@
 /**
  * CORS for the OpenBB Workspace adapter.
  *
- * OpenBB Workspace (pro.openbb.co) calls a custom backend cross-origin, with
- * credentials, and attaches custom headers: the user's RiskModels key as
- * `X-API-KEY` plus `X-OpenBB-User` (the Workspace account email). The browser
- * preflights these, so EVERY header OpenBB sends must appear in
- * Access-Control-Allow-Headers or the browser blocks the real request — which
- * shows up as a generic 500 in the Connect dialog.
+ * OpenBB's backend contract requires at least these origins:
+ *   - https://pro.openbb.co
+ *   - https://pro.openbb.dev
+ *   - http://localhost:1420  (desktop Workspace)
  *
- * Credentialed CORS forbids the "*" wildcard for Allow-Headers, so we echo back
- * the browser's `Access-Control-Request-Headers` (the standard robust pattern)
- * and fall back to the known set for non-preflight calls. This way any header
- * OpenBB adds in future (telemetry, tracing, …) is permitted without a code
- * change.
+ * Workspace calls the adapter cross-origin, with credentials, and attaches
+ * custom headers: the user's RiskModels key as `X-API-KEY` plus
+ * `X-OpenBB-User` (the Workspace account email). The browser preflights
+ * these, so EVERY header OpenBB sends must appear in
+ * Access-Control-Allow-Headers or the browser blocks the real request —
+ * which shows up as a generic 500 in the Connect dialog.
+ *
+ * Credentialed CORS forbids the "*" wildcard for Allow-Origin, so we echo
+ * the request Origin when it is an OpenBB origin. We also echo the browser's
+ * `Access-Control-Request-Headers` (the standard robust pattern) and fall
+ * back to the known set for non-preflight calls. This way any header OpenBB
+ * adds in future (telemetry, tracing, …) is permitted without a code change.
+ *
+ * If Origin is present but not allowed, we omit Allow-Origin rather than
+ * falling back to pro.openbb.co — a mismatched Allow-Origin is a CORS
+ * failure (this used to break pro.openbb.dev whenever the matcher missed).
  *
  * Deliberately separate from the shared `@/lib/cors` (which gates the public
  * /api surface to riskmodels.app / .net origins) — the OpenBB origins have no
@@ -21,19 +30,27 @@
 
 const DEFAULT_ORIGIN = "https://pro.openbb.co";
 
+/** Origins named in OpenBB's backend contract. Trailing slashes stripped. */
+const REQUIRED_ORIGINS = new Set([
+  "https://pro.openbb.co",
+  "https://pro.openbb.dev",
+  "http://localhost:1420",
+]);
+
+export function normalizeOpenBBOrigin(o: string): string {
+  return o.trim().replace(/\/+$/, "");
+}
+
 /**
- * OpenBB Workspace serves widgets AND the copilot from several origins —
- * `pro.openbb.co`, `my.openbb.co`, `excel.openbb.co`, the `.dev` staging
- * variants, and `localhost:1420` in local dev. A fixed 2-origin allowlist made
- * the copilot fail CORS ("allow CORS from this app origin") when it ran from a
- * different `*.openbb.co` subdomain than the widgets. Echo any OpenBB origin
- * instead. Endpoints still require the user's API key, so this only widens the
- * credentialed-CORS handshake, not access.
+ * True for OpenBB Workspace (and local desktop) origins.
+ * Nested subdomains (`app.pro.openbb.co`) and trailing slashes are allowed.
  */
-function isOpenBBOrigin(o: string): boolean {
+export function isOpenBBOrigin(o: string): boolean {
+  const origin = normalizeOpenBBOrigin(o);
+  if (REQUIRED_ORIGINS.has(origin)) return true;
   return (
-    /^https:\/\/([a-z0-9-]+\.)?openbb\.(co|dev)$/.test(o) ||
-    /^http:\/\/localhost(:\d+)?$/.test(o)
+    /^https:\/\/([a-z0-9-]+\.)*openbb\.(co|dev)$/i.test(origin) ||
+    /^http:\/\/localhost(:\d+)?$/i.test(origin)
   );
 }
 
@@ -41,6 +58,8 @@ function isOpenBBOrigin(o: string): boolean {
 // Headers). Lists the headers OpenBB is known to send.
 const DEFAULT_ALLOW_HEADERS =
   "Content-Type, Authorization, X-API-KEY, X-OpenBB-User";
+
+const ALLOW_METHODS = "GET, POST, OPTIONS, PUT, PATCH, DELETE, HEAD";
 
 type HeaderBearing = { headers: { get(name: string): string | null } };
 
@@ -57,15 +76,25 @@ export function openbbCors(
     requestedHeaders = req.headers.get("access-control-request-headers");
   }
 
-  const origin =
-    requestOrigin && isOpenBBOrigin(requestOrigin) ? requestOrigin : DEFAULT_ORIGIN;
+  const normalized = requestOrigin ? normalizeOpenBBOrigin(requestOrigin) : null;
+  const allowed =
+    normalized && isOpenBBOrigin(normalized) ? normalized : null;
 
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": ALLOW_METHODS,
     "Access-Control-Allow-Headers": requestedHeaders || DEFAULT_ALLOW_HEADERS,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin, Access-Control-Request-Headers",
   };
+
+  if (allowed) {
+    headers["Access-Control-Allow-Origin"] = allowed;
+  } else if (!requestOrigin) {
+    // No Origin (curl / server-side). Advertise the production Workspace origin
+    // so a header dump still shows CORS is configured.
+    headers["Access-Control-Allow-Origin"] = DEFAULT_ORIGIN;
+  }
+
+  return headers;
 }

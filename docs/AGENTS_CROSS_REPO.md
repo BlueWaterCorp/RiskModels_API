@@ -6,6 +6,23 @@ When editing schemas, OpenAPI specs, MCP data, or tracking docs, follow the rule
 
 ---
 
+## Public vs private repos (secrets)
+
+**`RiskModels_API` is a public GitHub repository.** Every commit, PR, and file is world-readable.
+
+Do not put any of the following in that repo (including untracked files you later `git add`):
+
+- `rm_agent_live_*` / `rm_user_live_*` plaintext, checksums, or hashes
+- customer emails, balances, key prefixes as a mailing list
+- partner credential drafts, 1Password dumps, Doppler values
+- live curl captures under `.tmp_*` that might include `Authorization` / `X-API-KEY`
+
+Key mint, prefix-reissue, licensed billing ops, and cohort dumps live in **private `BWMACRO`** (`scripts/ops/`). Partner process notes live in **private `RiskModels_IP`** — still never commit a live key there; paste from the session or 1Password when sending.
+
+Product UX that explains the 16-character prefix (no secret) may land in `RiskModels_API`.
+
+---
+
 ## CRITICAL: Email template and SVG editing
 
 **Lesson learned (April 3, 2026):** Repeated SVG edit mistakes in one session.
@@ -127,6 +144,8 @@ The following are **pushed from BWMACRO** on push to `main` (when watched paths 
 - `.cursor/rules/repo-sync-enforcer.mdc`
 - `.agents/skills/repo-sync/SKILL.md`
 - **`docs/AGENTS_CROSS_REPO.md`** (this document)
+- `scripts/check-mcp-mirror.sh`
+- `.cursor/hooks.json` and `.cursor/hooks/mcp-drift-on-git.sh`
 
 **Not overwritten by sync:** each repo’s root **`AGENTS.md`** (product or portal brief) and **`CLAUDE.md`**.
 
@@ -153,6 +172,7 @@ Also runs **weekly (Monday 06:00 UTC)** and via **`workflow_dispatch`** for a ma
 
 - **Cursor rule:** `.cursor/rules/repo-sync-enforcer.mdc` — applies when editing `*.json`, `OPENAPI_SPEC.yaml`, `schema-paths.json`, `CHANGELOG.md`, `MASTER_BACKLOG.md`, `current_state.md`
 - **Skill:** `.agents/skills/repo-sync/SKILL.md` — invoke with `@repo-sync-enforcer` for step-by-step sync workflow
+- **Agent git gate:** `scripts/check-mcp-mirror.sh` — same four-file diff as `detect-drift`. Cursor `beforeShellExecution` and Claude Code `PreToolUse` run it on `git commit` / `git push` in RiskModels_API. `--copy` writes the portal worktree; `--against-main` is the CI check (Risk_Models `origin/main`). Merge the portal PR before pushing the API branch.
 
 ---
 
