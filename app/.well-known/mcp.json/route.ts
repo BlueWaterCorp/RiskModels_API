@@ -47,6 +47,8 @@ export async function GET() {
     client_setup: {
       claude_desktop_cursor:
         "Settings → Connectors → Add custom connector → paste MCP URL → OAuth sign-in (leave client id/secret blank)",
+      claude_code_plugin:
+        "claude plugin marketplace add BlueWaterCorp/riskmodels-plugin && claude plugin install riskmodels@riskmodels (set RISKMODELS_API_KEY for CLI Bearer, or use OAuth connector and keep one MCP connection)",
       chatgpt:
         "Settings → Apps & Connectors → Advanced → enable Developer mode → Create → paste MCP URL → OAuth sign-in (Plus+ web; not the Finances/Schwab connector)",
       grok:
@@ -59,6 +61,17 @@ export async function GET() {
         "Google Cloud admin: Custom MCP Server data store; Streamable HTTP URL + OAuth (Client ID/Secret may need POST /api/oauth/register)",
       cli: "RISKMODELS_API_KEY=… npx -y riskmodels@latest install",
     },
+    plugin: {
+      marketplace_github: "https://github.com/BlueWaterCorp/riskmodels-plugin",
+      install: [
+        "claude plugin marketplace add BlueWaterCorp/riskmodels-plugin",
+        "claude plugin install riskmodels@riskmodels",
+      ],
+      setup_md:
+        "https://github.com/BlueWaterCorp/riskmodels-plugin/blob/main/plugins/riskmodels/SETUP.md",
+    },
+    privacy_url: "https://riskmodels.app/privacy",
+    privacy_canonical_url: "https://riskmodels.net/privacy",
     _documentation: {
       note: "Use POST on the MCP Streamable HTTP endpoint with Accept: application/json, text/event-stream",
       sse_post: sseUrl,

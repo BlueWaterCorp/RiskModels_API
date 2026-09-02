@@ -32,6 +32,13 @@ const nextConfig = {
         destination: '/installation',
         permanent: true,
       },
+      // Anthropic Connectors / plugin directory forms need a stable privacy URL on .app;
+      // the canonical policy page lives on riskmodels.net.
+      {
+        source: '/privacy',
+        destination: 'https://riskmodels.net/privacy',
+        permanent: false,
+      },
     ];
   },
   async rewrites() {

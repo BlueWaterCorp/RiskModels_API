@@ -120,6 +120,10 @@ When API changes ship, run the **API Broadcast Checklist** in `BWMACRO/docs/api_
 
 ### 7. Re-validate the `riskmodels-plugin` (public Claude Code plugin) — new API-contract consumer
 
+**Edit SSOT:** `RiskModels_API/claude-plugin/` (marketplace + `plugins/riskmodels/`). Publish with
+`RiskModels_API/scripts/sync-claude-plugin.sh` → public `BlueWaterCorp/riskmodels-plugin`, then push
+the mirror. Do not edit the public repo as the long-term source.
+
 `BlueWaterCorp/riskmodels-plugin` (public) is a downstream consumer of the hosted MCP
 contract: its skills and cookbook name specific MCP tool ids (e.g. `riskmodels_get_fundamentals`)
 and describe response shapes (e.g. fundamentals `sec_facts` per-cell provenance). It has **no
@@ -130,14 +134,16 @@ decompose, hedge, rankings, lstar, residual-signal), **before each plugin releas
 
 1. Diff the referenced tool ids against **live** `riskmodels_list_endpoints` and the MCP tool
    surface (not repo source — E.29's lesson: served ≠ source).
-2. Update `plugins/riskmodels/skills/*/SKILL.md`, `agents/riskmodels-analyst.md`, `cookbook.md`,
-   and `README.md` for any renamed tool / changed shape. Keep skills thin (wrappers + prompts;
-   no logic that can drift).
+2. Update SSOT under `RiskModels_API/claude-plugin/plugins/riskmodels/skills/*/SKILL.md`,
+   `agents/riskmodels-analyst.md`, `commands/*.md`, `cookbook.md`, and `README.md` for any
+   renamed tool / changed shape. Keep skills thin (wrappers + prompts; no logic that can drift).
+   Sync + push the public mirror.
 3. Copy gates apply to **all content** (README, SKILL.md, cookbook): approved sourcing phrase
    *"PIT-normalized fundamentals derived from SEC filings and licensed sources"*; never "IP-free";
    no layered/decomposed cost-of-capital methodology (CAPM-mode only); no investment advice.
 
-Plan SSOT: `BWMACRO/docs/gtm/anthropic-agents-fundamentals-gtm.md` (E.30).
+Plan SSOT: `BWMACRO/docs/gtm/anthropic-agents-fundamentals-gtm.md` (E.30). Directory submit pack:
+`RiskModels_API/docs/gtm/anthropic-directory-submissions.md`.
 ---
 
 ## Cursor / sync automation (BWMACRO to API and portal)

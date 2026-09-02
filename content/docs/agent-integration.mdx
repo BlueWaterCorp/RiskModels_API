@@ -36,6 +36,26 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
       <p className="text-xs text-zinc-600 mt-2">Prefer a terminal, or need Codex / VS Code? <code className="text-zinc-500">npx -y riskmodels@latest install</code> wires every client in one command.</p>
     </div>
     <div className="px-5 pb-4 pt-2 border-t border-primary/20">
+      <span className="text-sm font-semibold text-zinc-100">Claude Code / Cowork — plugin (skills + commands)</span>
+      <p className="text-xs text-zinc-400 mt-1">
+        Workflow layer on top of the hosted MCP: slash commands (<code className="text-zinc-500">/risk-decompose</code>, <code className="text-zinc-500">/fundamentals-pit</code>, <code className="text-zinc-500">/cost-of-capital</code>, …), skills, and the <code className="text-zinc-500">riskmodels-analyst</code> agent.
+        Prefer the OAuth connector above for data, <strong className="font-normal text-zinc-300">or</strong> set <code className="text-zinc-500">RISKMODELS_API_KEY</code> for the Claude Code Bearer path — keep <strong className="font-normal text-zinc-300">one</strong> MCP connection (do not double-register).
+      </p>
+      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
+        <span>claude plugin marketplace add BlueWaterCorp/riskmodels-plugin</span>
+        <CopyInline value="claude plugin marketplace add BlueWaterCorp/riskmodels-plugin" />
+      </div>
+      <div className="flex items-center justify-between bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-200 mt-2">
+        <span>claude plugin install riskmodels@riskmodels</span>
+        <CopyInline value="claude plugin install riskmodels@riskmodels" />
+      </div>
+      <p className="text-xs text-zinc-600 mt-2">
+        Repo: <a href="https://github.com/BlueWaterCorp/riskmodels-plugin" className="text-primary hover:underline">BlueWaterCorp/riskmodels-plugin</a>
+        · Setup: <a href="https://github.com/BlueWaterCorp/riskmodels-plugin/blob/main/plugins/riskmodels/SETUP.md" className="text-primary hover:underline">SETUP.md</a>
+        · Plugin directory submit: <a href="https://platform.claude.com/plugins/submit" className="text-primary hover:underline">platform.claude.com/plugins/submit</a>
+      </p>
+    </div>
+    <div className="px-5 pb-4 pt-2 border-t border-primary/20">
       <span className="text-sm font-semibold text-zinc-100">ChatGPT — persistent MCP (Developer Mode)</span>
       <p className="text-xs text-zinc-400 mt-1">
         ChatGPT does <strong className="font-normal text-zinc-300">not</strong> expose RiskModels through the built-in Finances / Schwab connector — that is a separate data source.
