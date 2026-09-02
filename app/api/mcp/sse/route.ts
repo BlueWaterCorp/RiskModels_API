@@ -136,32 +136,33 @@ export async function POST(req: NextRequest): Promise<Response> {
   return handle(req);
 }
 
-// GET on a Streamable HTTP endpoint opens the "standalone SSE stream" used
-// for server-initiated notifications. We don't push notifications — every
-// tool call is a one-shot request/response handled by POST — and on Vercel
-// serverless that stream would just idle until the 60s function timeout
-// kills it (user-reported "SSE connection opens but drops after ~70s").
-// The MCP Streamable HTTP spec explicitly permits returning 405 here; MCP
-// clients (including Claude) fall back to POST-only when they see it.
+// Optional standalone GET SSE stream (server-initiated notifications).
+// Spec allows 405 when unsupported; we used to return 405 + a JSON-RPC error
+// body. Anthropic's Connectors / Desktop probes open GET first and surface that
+// body as a fatal toast even when POST initialize works (known client bugs:
+// anthropics/claude-code#78193, #67194). Return a brief valid SSE response and
+// close immediately so probes pass without holding a Vercel function open.
 export async function GET(): Promise<Response> {
-  return new Response(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message:
-          "Method Not Allowed: this endpoint does not provide a server-initiated SSE stream. Use POST for JSON-RPC requests.",
-      },
-      id: null,
-    }),
-    {
-      status: 405,
-      headers: {
-        "Content-Type": "application/json",
-        Allow: "POST, OPTIONS",
-      },
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          ": riskmodels MCP — Streamable HTTP; JSON-RPC over POST only\n\n",
+        ),
+      );
+      controller.close();
     },
-  );
+  });
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "close",
+      Allow: "GET, POST, DELETE, OPTIONS",
+    },
+  });
 }
 
 export async function DELETE(req: NextRequest): Promise<Response> {
