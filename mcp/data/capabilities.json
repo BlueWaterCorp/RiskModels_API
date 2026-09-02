@@ -1949,6 +1949,58 @@
     ]
   },
   {
+    "id": "artifact-as-of",
+    "name": "Artifact pre-rendered vintages",
+    "description": "Which as_of dates are pre-rendered for one (slug, subject_id), with the formats stored under each and their object URIs. Read-only discovery for pre-rendered subject kinds (BW-COHORT-*, BW-FILER-*): cohort as_of=latest resolves to the newest date listed here; filers must pass one of these dates explicitly. 404 when nothing is pre-rendered (body says unbuilt slug vs unknown subject). Companion to GET /api/artifacts/capability.",
+    "endpoint": "/artifacts/as-of",
+    "method": "GET",
+    "parameters": {
+      "slug": {
+        "type": "string",
+        "required": true,
+        "description": "Artifact slug (e.g. risk_dna_stacked, lag_erosion, entity_header)"
+      },
+      "subject_id": {
+        "type": "string",
+        "required": true,
+        "description": "BW-COHORT-…, BW-FILER-…, BW-FUND-…, or BW-STOCK-… (both filer id spellings are searched)"
+      },
+      "version": {
+        "type": "string",
+        "required": false,
+        "description": "Semantic version tag, default v1",
+        "default": "v1"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "tier": "baseline",
+      "cost_usd": 0,
+      "currency": "USD",
+      "billing_code": "artifact_as_of_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 300,
+      "p95_latency_ms": 1200,
+      "availability_sla": 99.5,
+      "rate_limit_per_minute": 60
+    },
+    "confidence": {
+      "data_quality_score": 1,
+      "update_frequency": "daily",
+      "sources": [
+        "render-svc"
+      ]
+    },
+    "tags": [
+      "artifact",
+      "registry",
+      "discovery",
+      "cohort",
+      "filer"
+    ]
+  },
+  {
     "id": "factor-correlation",
     "name": "Macro factor correlation",
     "description": "Measures exposure to macro-economic drivers like interest rates and volatility. Pearson or Spearman correlation between a stock return series (gross or ERM3 L1/L2/L3 residual) and daily macro factor returns from macro_factors. POST /api/correlation or GET /api/metrics/{ticker}/correlation. JSON Schema POST body: factor-correlation-request-v1.json; single-ticker success: factor-correlation-v1.json (MCP schema list).",

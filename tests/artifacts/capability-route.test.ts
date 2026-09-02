@@ -84,12 +84,18 @@ describe("buildArtifactCapability", () => {
     expect(strip?.params).toEqual(["window"]);
   });
 
-  it("marks pre-rendered pairs so a client does not send as_of=latest", () => {
+  it("marks pre-rendered pairs and says what as_of=latest does for each", () => {
     for (const pair of doc.pairs) {
       expect(pair.prerendered).toBe(
         PRERENDERED_SUBJECT_KINDS.includes(pair.subject_kind),
       );
+      expect(["loader", "newest_prerendered", "unsupported"]).toContain(pair.as_of_latest);
+      if (!pair.prerendered) expect(pair.as_of_latest).toBe("loader");
     }
+  });
+
+  it("names the as-of listing route so a caller can find the dates", () => {
+    expect(doc.discovery.as_of).toMatch(/^GET \/api\/artifacts\/as-of\?/);
   });
 
   it("narrows by subject_kind without hiding the unavailable list", () => {

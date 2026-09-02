@@ -11,12 +11,12 @@ import logging
 from typing import Any, Literal
 
 import xarray as xr
-from fastapi import Body, FastAPI, HTTPException, Response
+from fastapi import Body, FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from .artifacts import (
     ArtifactRenderRequest,
-    available_as_of,
+    available_vintages,
     coverage_fraction_for,
     evidence_class_for,
     render_artifact,
@@ -202,28 +202,39 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
 
     @app.get("/artifacts/as-of")
     def get_artifacts_as_of(
-        slug: str,
-        subject_id: str,
-        version: str = "v1",
+        slug: str = Query(..., min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$"),
+        subject_id: str = Query(..., min_length=1, max_length=128),
+        version: str = Query("v1", pattern=r"^v\d+$"),
     ) -> dict[str, Any]:
         """Which ``as_of`` values are pre-rendered for a ``(slug, subject)``.
 
         Subject kinds with no loader inside render-svc (``filer_13f``,
-        ``cohort``) reject ``as_of='latest'``, because there is nothing to
-        resolve "latest" against. Before this endpoint a caller who did not
-        already know the right quarter-end could not render one of those
-        artifacts at all, and had no way to find out — a wrong guess came
-        back indistinguishable from an unbuilt slug.
+        ``cohort``) cannot resolve "latest" against a loader. Cohorts resolve
+        it against this very listing (newest vintage); filers still need an
+        explicit date. Before this endpoint a caller who did not already know
+        the right quarter-end could not render one of those artifacts at all,
+        and had no way to find out — a wrong guess came back indistinguishable
+        from an unbuilt slug.
 
         Read-only listing of the artifact prefix. Both spellings of a filer
         id are searched and merged, so the answer does not depend on which
-        convention the caller happens to use.
+        convention the caller happens to use. ``vintages`` carries, per date,
+        the stored formats and their object URIs; ``as_of`` is the date-only
+        view; ``latest`` is the newest date or null. ``slug_populated`` says
+        whether the slug holds anything for ANY subject, so an empty answer
+        reads as "unknown subject" or "unbuilt slug" rather than just empty.
 
         This does NOT add live rendering for filers; it makes the already
         valid inputs discoverable.
         """
         resolution = resolve_filer_subject_id(subject_id)
-        values = available_as_of(store, settings.prefix, slug, version, subject_id)
+        vintages = available_vintages(store, settings.prefix, slug, version, subject_id)
+        values = [v.as_of for v in vintages]
+        slug_populated = bool(vintages) or bool(
+            store.list_prefix(
+                f"{settings.prefix.rstrip('/')}/artifacts/{slug}@{version}/"
+            )
+        )
         return {
             "slug": slug,
             "version": version,
@@ -231,7 +242,10 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
             "canonical_subject_id": resolution.canonical,
             "subject_id_spellings_searched": list(resolution.candidates),
             "as_of": values,
+            "latest": values[-1] if values else None,
+            "vintages": [v.as_json(settings.bucket) for v in vintages],
             "count": len(values),
+            "slug_populated": slug_populated,
         }
 
     @app.get("/portfolio-evolution/health")

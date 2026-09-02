@@ -54,7 +54,12 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
         as_of: z
           .string()
           .optional()
-          .describe("YYYY-MM-DD or latest; filers need explicit filing period end"),
+          .describe(
+            "YYYY-MM-DD or latest. Cohort subjects (BW-COHORT-*) resolve latest to " +
+              "the newest pre-rendered vintage; filers need an explicit filing period " +
+              "end — GET /api/artifacts/as-of?slug=&subject_id= (riskmodels_call_endpoint) " +
+              "lists the dates that exist.",
+          ),
         format: z
           .enum(["json", "png", "svg", "figure"])
           .optional()

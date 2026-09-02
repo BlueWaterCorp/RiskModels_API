@@ -871,10 +871,259 @@ class TestAvailableAsOfDiscovery:
         ).json()
 
         assert body["as_of"] == ["2025-12-31", "2026-04-30"]
+        assert body["latest"] == "2026-04-30"
         assert body["canonical_subject_id"] == self.BARE
         # The caller can see WHICH spellings were searched, so an empty result
         # is interpretable rather than just absent.
         assert body["subject_id_spellings_searched"] == [self.BARE, self.CIK]
+
+    def test_skips_non_date_alias_leaves(self, store):
+        """``latest.png`` (the dd-panel batch alias) is not a vintage."""
+        from render_svc.artifacts import available_as_of
+
+        for leaf in ("2026-05-07.png", "latest.png"):
+            store.write(
+                f"snapshots/artifacts/dd_peer_dna@v1/BW-STOCK-NVDA/{leaf}",
+                b"\x89PNG", content_type="image/png",
+            )
+        assert available_as_of(store, PREFIX, "dd_peer_dna", "v1", "BW-STOCK-NVDA") == [
+            "2026-05-07",
+        ]
+
+
+# ── cohort subjects — as_of=latest resolves from the store ────────────────
+
+
+def _as_of_client(store):
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    from render_svc.app import _make_app
+    from render_svc.settings import load_from_env
+
+    settings = replace(load_from_env(), prefix=PREFIX, persist_renders=False)
+    return TestClient(_make_app(settings, store)), settings
+
+
+class TestCohortLatestResolution:
+    """``as_of='latest'`` for a cohort subject is the newest pre-rendered
+    vintage under its prefix. No loader is needed to list a prefix, so the
+    old 400 ("no SDK loader to resolve latest") is wrong for this kind and
+    survives only when nothing is pre-rendered at all.
+
+    Fixture dates mirror the vintages that exist on prod as of 2026-09-01.
+    """
+
+    MAG7 = "BW-COHORT-RES-MAG7"
+    F13 = "BW-COHORT-RES-13F5"
+
+    def _seed(self, store, slug, subject_id, as_of, fmts=("json", "png")):
+        for fmt in fmts:
+            store.write(
+                f"snapshots/artifacts/{slug}@v1/{subject_id}/{as_of}.{fmt}",
+                f'{{"slug":"{slug}","as_of":"{as_of}","fmt":"{fmt}"}}'.encode(),
+                content_type="application/json" if fmt == "json" else "image/png",
+            )
+
+    def test_mag7_risk_dna_latest_resolves_to_2026_04_21(self, store):
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21")
+
+        data, mime, gcs_path, resolved_as_of, cache_control, receipt_id = render_artifact(
+            _req(slug="risk_dna_stacked", subject_id=self.MAG7, as_of="latest"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+
+        assert resolved_as_of == "2026-04-21"
+        assert gcs_path == (
+            f"snapshots/artifacts/risk_dna_stacked@v1/{self.MAG7}/2026-04-21.json"
+        )
+        assert data == store.read(gcs_path)
+        assert mime == "application/json"
+        # `latest` keeps the short TTL so a re-published vintage propagates.
+        assert cache_control == "public, max-age=3600"
+        assert receipt_id == _receipt_id(gcs_path)
+
+    def test_mag7_macro_correlation_arrows_latest(self, store):
+        self._seed(store, "macro_correlation_arrows", self.MAG7, "2026-04-22")
+        _, _, _, resolved_as_of, _, _ = render_artifact(
+            _req(slug="macro_correlation_arrows", subject_id=self.MAG7, as_of="latest"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert resolved_as_of == "2026-04-22"
+
+    def test_13f5_lag_erosion_latest_resolves_to_2026_04_30_png(self, store):
+        self._seed(store, "lag_erosion", self.F13, "2026-04-30")
+
+        data, mime, gcs_path, resolved_as_of, _, _ = render_artifact(
+            _req(slug="lag_erosion", subject_id=self.F13, as_of="latest", format="png"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+
+        assert resolved_as_of == "2026-04-30"
+        assert gcs_path.endswith(f"{self.F13}/2026-04-30.png")
+        assert mime == "image/png"
+
+    def test_latest_is_the_max_date_not_the_first_listed(self, store):
+        for d in ("2026-04-21", "2025-12-31", "2026-02-28"):
+            self._seed(store, "risk_dna_stacked", self.MAG7, d)
+        _, _, _, resolved_as_of, _, _ = render_artifact(
+            _req(slug="risk_dna_stacked", subject_id=self.MAG7, as_of="latest"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert resolved_as_of == "2026-04-21"
+
+    def test_latest_prefers_newest_vintage_holding_the_requested_format(self, store):
+        """A PNG that lags the JSON by one run still serves the newest PNG."""
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21", fmts=("json",))
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-03-31", fmts=("json", "png"))
+
+        _, _, gcs_path, resolved_as_of, _, _ = render_artifact(
+            _req(slug="risk_dna_stacked", subject_id=self.MAG7, as_of="latest", format="png"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert resolved_as_of == "2026-03-31"
+        assert gcs_path.endswith("2026-03-31.png")
+
+        _, _, _, resolved_json, _, _ = render_artifact(
+            _req(slug="risk_dna_stacked", subject_id=self.MAG7, as_of="latest"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert resolved_json == "2026-04-21"
+
+    def test_latest_with_no_vintage_in_requested_format_is_404_naming_dates(self, store):
+        """Vintages exist, none as SVG: not "latest unsupported" but a 404
+        that names the dates so the caller can see what exists."""
+        from fastapi import HTTPException
+
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21", fmts=("json",))
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(slug="risk_dna_stacked", subject_id=self.MAG7, as_of="latest", format="svg"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 404
+        assert "2026-04-21" in str(exc.value.detail)
+
+    def test_unknown_cohort_subject_still_400s(self, store):
+        from fastapi import HTTPException
+
+        # The slug is populated for MAG7; the requested subject has nothing.
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21")
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(slug="risk_dna_stacked", subject_id="BW-COHORT-RES-NOPE", as_of="latest"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+        msg = str(exc.value.detail)
+        assert "latest" in msg
+        assert "BW-COHORT-RES-NOPE" in msg
+        assert "/artifacts/as-of" in msg
+
+    def test_unbuilt_slug_for_cohort_still_400s(self, store):
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(slug="risk_dna_stacked", subject_id=self.MAG7, as_of="latest"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+
+    def test_filer_latest_is_still_refused_even_with_vintages(self, store):
+        """Filer 'latest' means newest FILING, which the store cannot vouch
+        for — the explicit-date contract stays."""
+        from fastapi import HTTPException
+
+        self._seed(store, "entity_header", "BW-FILER-0001067983", "2026-03-31", fmts=("json",))
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(
+                _req(slug="entity_header", subject_id="BW-FILER-0001067983", as_of="latest"),
+                store=store, prefix=PREFIX,
+            )
+        assert exc.value.status_code == 400
+        assert "/artifacts/as-of" in str(exc.value.detail)
+
+    def test_explicit_cohort_date_is_unchanged(self, store):
+        self._seed(store, "lag_erosion", self.F13, "2026-04-30")
+        _, _, gcs_path, resolved_as_of, cache_control, _ = render_artifact(
+            _req(slug="lag_erosion", subject_id=self.F13, as_of="2026-04-30"),
+            store=store, prefix=PREFIX, persist=False,
+        )
+        assert resolved_as_of == "2026-04-30"
+        assert "immutable" in cache_control
+
+    def test_as_of_endpoint_lists_vintages_with_formats_and_paths(self, store):
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21")
+        self._seed(store, "macro_correlation_arrows", self.MAG7, "2026-04-22")
+        self._seed(store, "lag_erosion", self.F13, "2026-04-30")
+        client, settings = _as_of_client(store)
+
+        expected = {
+            ("risk_dna_stacked", self.MAG7): "2026-04-21",
+            ("macro_correlation_arrows", self.MAG7): "2026-04-22",
+            ("lag_erosion", self.F13): "2026-04-30",
+        }
+        for (slug, subject_id), date in expected.items():
+            resp = client.get(
+                "/artifacts/as-of", params={"slug": slug, "subject_id": subject_id}
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["as_of"] == [date]
+            assert body["latest"] == date
+            assert body["count"] == 1
+            assert body["slug_populated"] is True
+            (vintage,) = body["vintages"]
+            assert vintage["as_of"] == date
+            assert vintage["formats"] == ["json", "png"]
+            assert vintage["params_variants"] == []
+            assert vintage["gcs_path"] == {
+                "json": f"gs://{settings.bucket}/snapshots/artifacts/{slug}@v1/{subject_id}/{date}.json",
+                "png": f"gs://{settings.bucket}/snapshots/artifacts/{slug}@v1/{subject_id}/{date}.png",
+            }
+
+    def test_as_of_endpoint_distinguishes_unbuilt_slug_from_unknown_subject(self, store):
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21")
+        client, _ = _as_of_client(store)
+
+        unknown_slug = client.get(
+            "/artifacts/as-of", params={"slug": "no_such_slug", "subject_id": self.MAG7}
+        ).json()
+        assert unknown_slug["count"] == 0
+        assert unknown_slug["latest"] is None
+        assert unknown_slug["vintages"] == []
+        assert unknown_slug["slug_populated"] is False
+
+        unknown_subject = client.get(
+            "/artifacts/as-of",
+            params={"slug": "risk_dna_stacked", "subject_id": "BW-COHORT-RES-NOPE"},
+        ).json()
+        assert unknown_subject["count"] == 0
+        assert unknown_subject["slug_populated"] is True
+
+    def test_as_of_endpoint_reports_params_variants_separately(self, store):
+        self._seed(store, "risk_dna_stacked", self.MAG7, "2026-04-21", fmts=("json",))
+        store.write(
+            f"snapshots/artifacts/risk_dna_stacked@v1/{self.MAG7}/2026-04-21.peer_n-5.json",
+            b"{}", content_type="application/json",
+        )
+        client, _ = _as_of_client(store)
+        (vintage,) = client.get(
+            "/artifacts/as-of",
+            params={"slug": "risk_dna_stacked", "subject_id": self.MAG7},
+        ).json()["vintages"]
+        assert vintage["formats"] == ["json"]
+        assert vintage["params_variants"] == ["peer_n-5"]
+        assert list(vintage["gcs_path"]) == ["json"]
+
+    def test_as_of_endpoint_rejects_malformed_slug(self, store):
+        client, _ = _as_of_client(store)
+        resp = client.get(
+            "/artifacts/as-of", params={"slug": "../x", "subject_id": self.MAG7}
+        )
+        assert resp.status_code == 422
 
 
 # ── _adapter_for routing — verifies filer_13f dispatches by slug ──────────

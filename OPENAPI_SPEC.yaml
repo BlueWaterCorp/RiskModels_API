@@ -1870,6 +1870,16 @@ components:
           type: string
           description: The source constant the response is computed from.
           example: lib/artifacts/render-client.ts::ARTIFACT_RENDER_CAPABILITY
+        discovery:
+          type: object
+          description: Routes to call before forming a render request.
+          properties:
+            capability:
+              type: string
+              example: "GET /api/artifacts/capability?subject_kind=&slug="
+            as_of:
+              type: string
+              example: "GET /api/artifacts/as-of?slug=&subject_id=&version="
         subject_kinds:
           type: array
           items:
@@ -1880,8 +1890,16 @@ components:
           items:
             type: string
           description: >
-            Kinds render-svc can only read from GCS. `as_of=latest` is refused
-            for these — pass an ISO date that already exists.
+            Kinds render-svc can only read from the store. See each pair's
+            `as_of_latest` for what `latest` does; `GET /api/artifacts/as-of`
+            lists the dates that exist.
+        store_resolved_latest_kinds:
+          type: array
+          items:
+            type: string
+          description: >
+            Pre-rendered kinds whose `as_of=latest` resolves to the newest
+            stored vintage (cohorts).
         unimplemented_subject_kinds:
           type: object
           additionalProperties:
@@ -1928,6 +1946,13 @@ components:
                   type: string
               prerendered:
                 type: boolean
+              as_of_latest:
+                type: string
+                enum: [loader, newest_prerendered, unsupported]
+                description: >
+                  How `as_of=latest` resolves for this pair. `newest_prerendered`
+                  reads the newest date from `GET /api/artifacts/as-of`;
+                  `unsupported` means pass one of those dates explicitly.
               notes:
                 type: string
         unavailable:
@@ -1957,6 +1982,76 @@ components:
               type: integer
             slugs:
               type: integer
+    ArtifactAsOfResponse:
+      type: object
+      required: [slug, version, subject_id, subject_kind, as_of_latest, latest, as_of, vintages, count]
+      properties:
+        slug:
+          type: string
+          example: risk_dna_stacked
+        version:
+          type: string
+          example: v1
+        subject_id:
+          type: string
+          description: The id as requested.
+          example: BW-COHORT-RES-MAG7
+        subject_kind:
+          type: string
+          example: cohort
+        canonical_subject_id:
+          type: string
+          description: The canonical spelling (differs from `subject_id` only for filers).
+        subject_id_spellings_searched:
+          type: array
+          items:
+            type: string
+        as_of_latest:
+          type: string
+          enum: [loader, newest_prerendered, unsupported]
+          description: >
+            What `as_of=latest` does on the render call for this subject kind:
+            `newest_prerendered` (cohorts — the newest date below),
+            `unsupported` (filers — pass a date from `as_of`), or `loader`
+            (live data; this listing is informational).
+        latest:
+          type: string
+          format: date
+          description: Newest pre-rendered date.
+          example: "2026-04-21"
+        as_of:
+          type: array
+          description: Date-only view of `vintages`, oldest first.
+          items:
+            type: string
+            format: date
+        vintages:
+          type: array
+          items:
+            type: object
+            required: [as_of, formats, params_variants, gcs_path]
+            properties:
+              as_of:
+                type: string
+                format: date
+              formats:
+                type: array
+                description: Formats stored for the default render (no params).
+                items:
+                  type: string
+                example: [json, png]
+              params_variants:
+                type: array
+                description: Params fragments stored alongside, e.g. `peer_n-5`.
+                items:
+                  type: string
+              gcs_path:
+                type: object
+                description: Object URI per default-render format.
+                additionalProperties:
+                  type: string
+        count:
+          type: integer
     PeersResponse:
       type: object
       required: [ticker, target, group_by, group_etf, peers, peer_count]
@@ -8940,6 +9035,87 @@ paths:
                 $ref: "#/components/schemas/ArtifactCapabilityResponse"
         "400":
           description: Unknown subject_kind.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /artifacts/as-of:
+    get:
+      summary: Artifact pre-rendered vintages
+      description: >
+        The pre-rendered `as_of` dates for one (slug, subject_id), with the
+        formats stored under each date and their object URIs. Read-only: no
+        render is triggered by asking.
+
+        Pre-rendered subject kinds (filers, cohorts) have no live loader, so a
+        caller must know which dates exist. For cohort subjects
+        `as_of=latest` on the render call resolves to the newest date listed
+        here; for filers pass one of these dates explicitly. Both spellings of
+        a filer id are searched and merged.
+
+        **Authentication:** API key or session. Unmetered.
+
+        **Billing:** Free.
+      operationId: getArtifactAsOf
+      tags: [Discovery]
+      x-pricing:
+        capability_id: artifact-as-of
+        tier: baseline
+        model: per_request
+        cost_usd: 0
+        currency: USD
+        billing_code: artifact_as_of_v1
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9_]*$"
+          description: Artifact slug.
+          example: risk_dna_stacked
+        - name: subject_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: >
+            Subject id with a known prefix (BW-COHORT-, BW-FILER-, BW-FUND-,
+            BW-STOCK-, BW-PORTFOLIO-, BW-ETF-).
+          example: BW-COHORT-RES-MAG7
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^v\\d+$"
+            default: v1
+          description: Artifact version tag.
+      responses:
+        "200":
+          description: At least one vintage is pre-rendered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactAsOfResponse"
+        "400":
+          description: Missing or malformed slug, subject_id, or version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: >
+            Nothing pre-rendered. `slug_populated` in the body distinguishes an
+            unbuilt slug (false) from an unknown subject on a populated slug
+            (true).
           content:
             application/json:
               schema:
