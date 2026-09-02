@@ -67,6 +67,17 @@ export async function GET() {
       llms_txt_url: `${base}/llms.txt`,
       for_agents_url: `${base}/for-agents`,
       docs_url: `${base}/docs/agent-integration`,
+      claude_plugin_marketplace_url: "https://github.com/BlueWaterCorp/riskmodels-plugin",
+      privacy_url: `${base}/privacy`,
+    },
+    claude_plugin: {
+      marketplace: "BlueWaterCorp/riskmodels-plugin",
+      install: [
+        "claude plugin marketplace add BlueWaterCorp/riskmodels-plugin",
+        "claude plugin install riskmodels@riskmodels",
+      ],
+      mcp_url: `${base}/api/mcp/sse`,
+      note: "Plugin adds skills/commands/analyst agent; keep one MCP connection (OAuth connector or plugin Bearer — not both).",
     },
     // Why a quant/finance agent can trust and cite a call.
     reproducibility: {

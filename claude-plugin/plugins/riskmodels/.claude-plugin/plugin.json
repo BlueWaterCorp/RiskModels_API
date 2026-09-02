@@ -1,0 +1,34 @@
+{
+  "name": "riskmodels",
+  "description": "L1/L2/L3 equity risk decomposition with tradeable hedge ratios, residual (Lstar) signal, cross-sectional rankings, and point-in-time quarterly fundamentals with a CAPM cost-of-capital layer. Wraps the hosted RiskModels MCP. Realized/historical data only; not investment advice.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Blue Water Macro Corp."
+  },
+  "homepage": "https://riskmodels.app",
+  "repository": "https://github.com/BlueWaterCorp/riskmodels-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "finance",
+    "equities",
+    "risk",
+    "hedging",
+    "factor-model",
+    "fundamentals",
+    "sec",
+    "valuation",
+    "mcp"
+  ],
+  "skills": ["./skills/"],
+  "commands": ["./commands/"],
+  "agents": ["./agents/riskmodels-analyst.md"],
+  "mcpServers": {
+    "riskmodels": {
+      "type": "http",
+      "url": "https://riskmodels.app/api/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${RISKMODELS_API_KEY}"
+      }
+    }
+  }
+}

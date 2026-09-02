@@ -1,0 +1,37 @@
+{
+  "name": "riskmodels",
+  "description": "RiskModels — institutional equity risk decomposition and point-in-time fundamentals as a data layer for Claude agents.",
+  "owner": {
+    "name": "Blue Water Macro Corp."
+  },
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "riskmodels",
+      "displayName": "RiskModels",
+      "description": "L1/L2/L3 equity risk decomposition with tradeable hedge ratios, residual (Lstar) signal, cross-sectional rankings, and point-in-time quarterly fundamentals with a CAPM cost-of-capital layer. Wraps the hosted RiskModels MCP. Realized/historical data only; not investment advice.",
+      "version": "0.2.0",
+      "source": "./plugins/riskmodels",
+      "author": {
+        "name": "Blue Water Macro Corp."
+      },
+      "homepage": "https://riskmodels.app",
+      "repository": "https://github.com/BlueWaterCorp/riskmodels-plugin",
+      "license": "Apache-2.0",
+      "keywords": [
+        "finance",
+        "equities",
+        "risk",
+        "hedging",
+        "factor-model",
+        "fundamentals",
+        "sec",
+        "valuation",
+        "mcp"
+      ],
+      "category": "finance"
+    }
+  ]
+}

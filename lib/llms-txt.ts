@@ -32,6 +32,12 @@ You are an AI assistant reading this because someone pointed you at riskmodels.a
 - **Claude Desktop / Cursor (recommended — no terminal, no API key):** **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave OAuth Client ID / Secret blank, **Add → Connect**. They sign in at riskmodels.app once (OAuth 2.0 + PKCE). After Connect, they should paste this into the chat (do not start with list_endpoints):
 
   ${FIRST_LIVE_PROMPT_MCP}
+- **Claude Code / Cowork plugin (skills + slash commands + analyst agent):** marketplace install (free). Prefer OAuth connector for data (above) **or** set \`RISKMODELS_API_KEY\` for the Claude Code CLI Bearer path — keep **one** MCP connection (do not double-register).
+
+  claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
+  claude plugin install riskmodels@riskmodels
+
+  Then: \`/risk-decompose AAPL\`, \`/fundamentals-pit NVDA\`, \`/cost-of-capital MSFT 0.05 10y\`. Setup: \`https://github.com/BlueWaterCorp/riskmodels-plugin\` · \`plugins/riskmodels/SETUP.md\`. Submit/status for the Claude plugin directory: \`https://platform.claude.com/plugins/submit\`.
 - **ChatGPT (Plus+ on web — Developer Mode):** **Settings → Apps & Connectors → Advanced settings → enable Developer mode**, then **Apps & Connectors → Create**, paste \`https://riskmodels.app/api/mcp/sse\`, choose **OAuth**, sign in at riskmodels.app. This is **not** the built-in Finances / Schwab connector. Guide: \`https://riskmodels.app/docs/agent-integration#chatgpt-mcp\`.
 - **Grok (web / iOS / Android):** **grok.com/connectors → New Connector → Custom**, paste \`https://riskmodels.app/api/mcp/sse\`, OAuth sign-in at riskmodels.app. No Developer Mode. Guide: \`https://riskmodels.app/docs/agent-integration#grok-mcp\`.
 - **Gemini consumer web (gemini.google.com):** no custom MCP UI — use case 1 (\`/llms.txt\` + REST in this chat). **Gemini CLI / Antigravity:** \`gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse\` then \`/mcp auth riskmodels\`. **Gemini Enterprise:** admin registers Custom MCP data store in Google Cloud (Streamable HTTP + OAuth; may need pre-registered Client ID/Secret). Guide: \`https://riskmodels.app/docs/agent-integration#gemini\`.
@@ -62,18 +68,27 @@ This is the developer path for case 2 above; non-technical humans should prefer 
 ## Claude Code (terminal \`claude\`) vs Claude Desktop
 
 \`riskmodels install\` updates Claude Desktop and Cursor configs. The **Claude Code** CLI uses a
-separate MCP store. After install, register RiskModels for Claude Code:
+separate MCP store **and** can install the workflow plugin (skills / commands / analyst):
+
+  claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
+  claude plugin install riskmodels@riskmodels
+
+For MCP-only (no plugin skills), after \`riskmodels install\` register:
 
   claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp
 
-Then restart \`claude\` and check \`claude mcp list\`. If the server does not connect, use the hosted
-MCP URL with \`mcp-remote\` and AUTHORIZATION=Bearer … (see Quickstart / MCP README).
+Or use the hosted URL with OAuth / \`mcp-remote\` + Bearer. Prefer **one** connection — if the
+plugin's bundled MCP is enabled, skip a second \`claude mcp add\` for the same server.
+
+Then restart \`claude\` and check \`claude mcp list\` / \`claude plugin list\`.
 
 ## Where to integrate without a local install
 
 - **MCP discovery manifest:** https://riskmodels.app/.well-known/mcp.json (public JSON — paste URL into Claude/Cursor/Grok/ChatGPT connectors, or Gemini Enterprise admin console)
-- **Agent integration guide:** https://riskmodels.app/docs/agent-integration (ChatGPT Developer Mode, Grok Connectors, Gemini CLI/Enterprise, Finances + holdings workflow)
+- **Claude Code / Cowork plugin marketplace:** https://github.com/BlueWaterCorp/riskmodels-plugin (\`claude plugin marketplace add BlueWaterCorp/riskmodels-plugin\`)
+- **Agent integration guide:** https://riskmodels.app/docs/agent-integration (ChatGPT Developer Mode, Grok Connectors, Gemini CLI/Enterprise, Claude plugin, Finances + holdings workflow)
 - Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — Bearer token, OAuth connector (Claude/Cursor/ChatGPT), or \`mcp-remote\` proxy. The MCP endpoint authenticates every call (including initialize); data tools bill per underlying REST route.
+- Privacy: https://riskmodels.app/privacy (redirects to https://riskmodels.net/privacy)
 - OpenAPI: https://riskmodels.app/openapi.json (or /api-reference in the portal)
 - Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/installation
 
