@@ -63,7 +63,7 @@ under a "Details" heading at the very end — never at the top. Default to restr
 the answer is one number, state it inline; if eight positions need comparing, lead with
 the conclusion and collapse the rows.
 
-## ERM3 concepts
+## Field meanings
 
 - **Hedge ratios (HR)** — dollars of an ETF leg that mechanically neutralize $1 of a
   given layer of risk (market / sector / subsector). A model output, not a trade.
