@@ -164,18 +164,48 @@ export type ArtifactSubjectKind = (typeof ARTIFACT_SUBJECT_KINDS)[number];
  * Subject kinds render-svc cannot render live — it only reads a pre-rendered
  * artifact out of GCS. Mirrors `_PRERENDERED_SUBJECT_KINDS` in artifacts.py.
  *
- * These reject `as_of="latest"` outright: render-svc has no SDK loader for
- * them, so it cannot resolve what "latest" means. A caller must pass an ISO
- * date matching an artifact that already exists, and gets a 501 naming the
- * exact GCS path on a miss. This is a property of the *subject kind*, not of
- * any one slug — the previous note here recorded it against
- * `cumulative_return_strip` alone, which read as a slug-specific caveat and
- * hid it from every other filer slug.
+ * render-svc has no SDK loader for these, so a miss is a 404/501 naming what
+ * exists rather than a live render. What `as_of="latest"` means differs by
+ * kind — see `STORE_RESOLVED_LATEST_KINDS`. This is a property of the
+ * *subject kind*, not of any one slug — the previous note here recorded it
+ * against `cumulative_return_strip` alone, which read as a slug-specific
+ * caveat and hid it from every other filer slug.
  */
 export const PRERENDERED_SUBJECT_KINDS: readonly ArtifactSubjectKind[] = [
   "filer_13f",
   "cohort",
 ];
+
+/**
+ * Pre-rendered kinds for which `as_of="latest"` resolves to the newest
+ * vintage in the store. Mirrors `_STORE_RESOLVED_LATEST_KINDS` in artifacts.py.
+ *
+ * A cohort research artifact is a publication, so its newest vintage is the
+ * latest one by definition. A filer's "latest" means the newest *filing*, which
+ * the store cannot vouch for (the pre-render job may lag a quarter), so filers
+ * keep the explicit-date contract and use `GET /api/artifacts/as-of` to find
+ * the dates.
+ */
+export const STORE_RESOLVED_LATEST_KINDS: readonly ArtifactSubjectKind[] = ["cohort"];
+
+/** How `as_of="latest"` is resolved for a (slug, subject_kind) pair. */
+export type ArtifactLatestResolution = "loader" | "newest_prerendered" | "unsupported";
+
+export function latestResolutionFor(kind: ArtifactSubjectKind): ArtifactLatestResolution {
+  if (STORE_RESOLVED_LATEST_KINDS.includes(kind)) return "newest_prerendered";
+  if (PRERENDERED_SUBJECT_KINDS.includes(kind)) return "unsupported";
+  return "loader";
+}
+
+/**
+ * The discovery routes a caller needs before forming a render request. Served
+ * on the capability document so an agent that only has `list_endpoints` output
+ * can find its way to the as-of listing without guessing a path.
+ */
+export const ARTIFACT_DISCOVERY_ROUTES = {
+  capability: "GET /api/artifacts/capability?subject_kind=&slug=",
+  as_of: "GET /api/artifacts/as-of?slug=&subject_id=&version=",
+} as const;
 
 /**
  * Subject kinds render-svc resolves from a prefix but has no way to serve.
@@ -448,6 +478,12 @@ export interface ArtifactCapabilityPair {
   params: readonly ArtifactParamKey[];
   /** True when render-svc can only read pre-rendered GCS content for this kind. */
   prerendered: boolean;
+  /**
+   * What `as_of="latest"` does for this pair: `loader` (live data), `newest_prerendered`
+   * (the newest vintage in the store — cohorts), or `unsupported` (pass an ISO
+   * date from `GET /api/artifacts/as-of` — filers).
+   */
+  as_of_latest: ArtifactLatestResolution;
   notes?: string;
 }
 
@@ -462,8 +498,12 @@ export interface ArtifactUnavailablePair {
 export interface ArtifactCapabilityDocument {
   /** Where every field below is computed from — never hand-maintained. */
   derived_from: string;
+  /** Routes to call before a render: this one, and the as-of vintage listing. */
+  discovery: typeof ARTIFACT_DISCOVERY_ROUTES;
   subject_kinds: readonly ArtifactSubjectKind[];
   prerendered_subject_kinds: readonly ArtifactSubjectKind[];
+  /** Pre-rendered kinds whose `as_of=latest` resolves to the newest stored vintage. */
+  store_resolved_latest_kinds: readonly ArtifactSubjectKind[];
   /** Kinds render-svc resolves but cannot serve, with the reason. */
   unimplemented_subject_kinds: Readonly<Partial<Record<ArtifactSubjectKind, string>>>;
   params: {
@@ -511,6 +551,7 @@ export function buildArtifactCapability(opts?: {
           subject_kind: kind,
           params: ARTIFACT_SLUG_PARAMS[slug] ?? [],
           prerendered: PRERENDERED_SUBJECT_KINDS.includes(kind),
+          as_of_latest: latestResolutionFor(kind),
           ...(cap.notes ? { notes: cap.notes } : {}),
         });
       } else {
@@ -536,8 +577,10 @@ export function buildArtifactCapability(opts?: {
 
   return {
     derived_from: "lib/artifacts/render-client.ts::ARTIFACT_RENDER_CAPABILITY",
+    discovery: ARTIFACT_DISCOVERY_ROUTES,
     subject_kinds: ARTIFACT_SUBJECT_KINDS,
     prerendered_subject_kinds: PRERENDERED_SUBJECT_KINDS,
+    store_resolved_latest_kinds: STORE_RESOLVED_LATEST_KINDS,
     unimplemented_subject_kinds: UNIMPLEMENTED_SUBJECT_KINDS,
     params: {
       vocabulary: ARTIFACT_PARAM_KEYS,
@@ -606,11 +649,15 @@ function appendPrerenderHint(
     `subject_kind='${kind}' is pre-rendered only: render-svc reads an existing artifact and cannot build one on demand.`,
   ];
   if (asOf === "latest") {
-    // render-svc's own 404 now lists the dates that do exist, and
-    // GET /artifacts/as-of answers the question directly, so point at that
-    // rather than repeating dates this side cannot know.
+    // render-svc's own 404 lists the dates that do exist, and the public
+    // as-of route answers the question directly, so point at that rather
+    // than repeating dates this side cannot know. The path named here is
+    // the one that serves on riskmodels.app — never render-svc's internal one.
+    const listing = `GET /api/artifacts/as-of?slug=${slug}&subject_id=${subjectId}`;
     hints.push(
-      `as_of='latest' is never valid here — call GET /artifacts/as-of?slug=${slug}&subject_id=${subjectId} for the dates that exist.`,
+      STORE_RESOLVED_LATEST_KINDS.includes(kind)
+        ? `as_of='latest' resolves to the newest pre-rendered vintage, so this subject has none for this slug — ${listing} lists what exists.`
+        : `as_of='latest' is never valid here — call ${listing} for the dates that exist.`,
     );
   }
   // Nothing about filer id spellings: render-svc resolves both and its 404
@@ -643,6 +690,119 @@ export function subjectKindOf(subjectId: string): ArtifactSubjectKind | null {
 function renderSvcUrl(): string | null {
   const raw = process.env.RENDER_SVC_URL?.trim();
   return raw ? raw.replace(/\/$/, "") : null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pre-rendered vintage listing                                                */
+/* -------------------------------------------------------------------------- */
+
+/** One pre-rendered date for a (slug, subject), with what is stored under it. */
+export interface ArtifactVintage {
+  as_of: string;
+  /** Formats stored without a params fragment (the default render). */
+  formats: string[];
+  /** Params fragments stored alongside, e.g. `peer_n-5`. */
+  params_variants: string[];
+  /** Object URI per default-render format. */
+  gcs_path: Record<string, string>;
+}
+
+export interface ArtifactVintagesSuccess {
+  ok: true;
+  slug: string;
+  version: string;
+  requested_subject_id: string;
+  canonical_subject_id: string;
+  subject_id_spellings_searched: string[];
+  /** Date-only view of `vintages`, oldest first. */
+  as_of: string[];
+  /** Newest date, or null when nothing is pre-rendered. */
+  latest: string | null;
+  vintages: ArtifactVintage[];
+  count: number;
+  /** False when the slug holds nothing for any subject (unbuilt slug). */
+  slug_populated: boolean;
+}
+
+export type ArtifactVintagesResult = ArtifactVintagesSuccess | ArtifactRenderFailure;
+
+/**
+ * List the pre-rendered vintages for a (slug, subject) via render-svc's
+ * `GET /artifacts/as-of`. Read-only; no render is triggered. This is what
+ * `as_of=latest` resolves against for cohort subjects and what a filer caller
+ * must consult to pick an explicit date.
+ */
+export async function listArtifactVintages(params: {
+  slug: string;
+  subject_id: string;
+  version?: string;
+}): Promise<ArtifactVintagesResult> {
+  const base = renderSvcUrl();
+  if (!base) {
+    return {
+      ok: false,
+      status: 503,
+      error:
+        "RENDER_SVC_URL is not configured. Artifact registry listings require the render-svc Cloud Run service (see services/render-svc/RUNBOOK.md).",
+    };
+  }
+
+  let authz: string | undefined;
+  try {
+    authz = await authorizationHeaderForCloudRun(base);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: 502, error: `Failed to mint Cloud Run ID token: ${msg}` };
+  }
+
+  const qs = new URLSearchParams({
+    slug: params.slug,
+    subject_id: params.subject_id,
+    version: params.version ?? "v1",
+  });
+  const headers: Record<string, string> = {};
+  if (authz) headers.Authorization = authz;
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}/artifacts/as-of?${qs.toString()}`, { headers });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: 502, error: `render-svc unreachable: ${msg}` };
+  }
+
+  const text = await res.text();
+  const body = parseJsonBody(text);
+  if (!res.ok) {
+    const detail =
+      body && typeof body === "object" && "detail" in body
+        ? (body as { detail: unknown }).detail
+        : body;
+    return {
+      ok: false,
+      status: res.status,
+      error:
+        typeof detail === "string" ? detail : `render-svc returned HTTP ${res.status}`,
+      detail,
+    };
+  }
+
+  const b = (body ?? {}) as Partial<ArtifactVintagesSuccess>;
+  const vintages = Array.isArray(b.vintages) ? b.vintages : [];
+  const asOf = Array.isArray(b.as_of) ? b.as_of : vintages.map((v) => v.as_of);
+  return {
+    ok: true,
+    slug: b.slug ?? params.slug,
+    version: b.version ?? params.version ?? "v1",
+    requested_subject_id: b.requested_subject_id ?? params.subject_id,
+    canonical_subject_id: b.canonical_subject_id ?? params.subject_id,
+    subject_id_spellings_searched: b.subject_id_spellings_searched ?? [params.subject_id],
+    as_of: asOf,
+    latest: b.latest ?? (asOf.length ? asOf[asOf.length - 1] : null),
+    vintages,
+    count: typeof b.count === "number" ? b.count : asOf.length,
+    slug_populated: Boolean(b.slug_populated ?? vintages.length > 0),
+  };
 }
 
 function parseJsonBody(text: string): unknown {

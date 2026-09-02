@@ -34,7 +34,9 @@ Phase 1B deliberately defers
 
 (Arbitrary historical ``as_of`` was deferred here until G.42/G.44
 landed it for the stock and fund loaders; subject kinds without a
-loader still serve only pre-rendered dates.)
+loader still serve only pre-rendered dates. For cohort subjects
+``as_of='latest'`` resolves to the newest pre-rendered vintage by listing
+the subject's prefix — ``newest_prerendered_as_of``.)
 """
 
 from __future__ import annotations
@@ -260,6 +262,98 @@ def _subject_dir(prefix: str, slug: str, version: str, subject_id: str) -> str:
     return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/"
 
 
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@dataclass(frozen=True)
+class ArtifactObject:
+    """One stored object of a vintage: ``{as_of}{.params}.{fmt}``."""
+
+    format: str
+    params: str  # params fragment without the leading dot; "" when none
+    path: str  # object name within the bucket
+
+
+@dataclass(frozen=True)
+class ArtifactVintage:
+    """Everything pre-rendered for one ``(slug, subject, as_of)``."""
+
+    as_of: str
+    objects: tuple[ArtifactObject, ...]
+
+    @property
+    def formats(self) -> tuple[str, ...]:
+        """Formats stored without a params fragment — the default render."""
+        return tuple(sorted({o.format for o in self.objects if not o.params}))
+
+    @property
+    def params_variants(self) -> tuple[str, ...]:
+        return tuple(sorted({o.params for o in self.objects if o.params}))
+
+    def has(self, fmt: str, params_fragment: str = "") -> bool:
+        params = params_fragment.lstrip(".")
+        return any(o.format == fmt and o.params == params for o in self.objects)
+
+    def as_json(self, bucket: str | None = None) -> dict[str, Any]:
+        def _uri(path: str) -> str:
+            return f"gs://{bucket}/{path}" if bucket else path
+
+        return {
+            "as_of": self.as_of,
+            "formats": list(self.formats),
+            "params_variants": list(self.params_variants),
+            "gcs_path": {
+                o.format: _uri(o.path) for o in self.objects if not o.params
+            },
+        }
+
+
+def available_vintages(
+    store: ObjectStore,
+    prefix: str,
+    slug: str,
+    version: str,
+    subject_id: str,
+) -> list[ArtifactVintage]:
+    """Pre-rendered vintages for this ``(slug, subject)``, oldest first.
+
+    Answers the question a caller of a loaderless subject kind cannot
+    otherwise answer: which dates exist, in which formats. It is also what
+    ``as_of='latest'`` resolves against for cohort subjects — the newest
+    vintage IS the latest thing the service can serve, and listing the prefix
+    needs no loader.
+
+    Both spellings of a filer id are searched and their results merged: the
+    corpus holds ``entity_header`` under the bare form and
+    ``nav_composition_dual`` under the CIK-infix form, so searching one
+    spelling reports an empty set for artifacts that plainly exist.
+
+    Object names are ``{as_of}{.params}.{fmt}``. ``as_of`` is an ISO date
+    containing dashes but no dots, so the first dot-delimited component is
+    the date and the last is the format; anything between is the params
+    fragment. Leaves that are not ISO dates (the ``latest.{fmt}`` alias some
+    batch jobs write) are not vintages and are skipped.
+    """
+    by_date: dict[str, list[ArtifactObject]] = {}
+    for candidate_id in resolve_filer_subject_id(subject_id).candidates:
+        base = _subject_dir(prefix, slug, version, candidate_id)
+        for name in store.list_prefix(base):
+            leaf = name[len(base) :]
+            if not leaf or "/" in leaf:
+                continue
+            parts = leaf.split(".")
+            if len(parts) < 2 or not _ISO_DATE_RE.match(parts[0]):
+                continue
+            by_date.setdefault(parts[0], []).append(
+                ArtifactObject(
+                    format=parts[-1], params=".".join(parts[1:-1]), path=name
+                )
+            )
+    return [
+        ArtifactVintage(as_of=d, objects=tuple(by_date[d])) for d in sorted(by_date)
+    ]
+
+
 def available_as_of(
     store: ObjectStore,
     prefix: str,
@@ -269,29 +363,28 @@ def available_as_of(
 ) -> list[str]:
     """Distinct ``as_of`` values pre-rendered for this ``(slug, subject)``.
 
-    Answers the question a caller of a loaderless subject kind cannot
-    otherwise answer. ``filer_13f`` rejects ``as_of='latest'`` because there
-    is no loader to resolve it, so without this the valid dates are known only
-    to whoever ran the pre-render job.
-
-    Both spellings of a filer id are searched and their results merged: the
-    corpus holds ``entity_header`` under the bare form and
-    ``nav_composition_dual`` under the CIK-infix form, so searching one
-    spelling reports an empty set for artifacts that plainly exist.
-
-    Object names are ``{as_of}{.params}.{fmt}``. ``as_of`` is an ISO date
-    containing dashes but no dots, so the first dot-delimited component is
-    the date regardless of which params fragment or format follows.
+    The date-only view of ``available_vintages`` — what the render path's
+    404 messages print.
     """
-    found: set[str] = set()
-    for candidate_id in resolve_filer_subject_id(subject_id).candidates:
-        base = _subject_dir(prefix, slug, version, candidate_id)
-        for name in store.list_prefix(base):
-            leaf = name[len(base) :]
-            if not leaf or "/" in leaf:
-                continue
-            found.add(leaf.split(".", 1)[0])
-    return sorted(found)
+    return [v.as_of for v in available_vintages(store, prefix, slug, version, subject_id)]
+
+
+def newest_prerendered_as_of(
+    vintages: list[ArtifactVintage], fmt: str, params_fragment: str = ""
+) -> str | None:
+    """The date ``as_of='latest'`` resolves to for a pre-rendered-only subject.
+
+    Prefers the newest vintage that actually holds the requested format and
+    params combination, so a subject whose PNG lags its JSON by a run still
+    serves the newest PNG. When no vintage holds that combination, the newest
+    vintage overall is returned so the render path's 404 can name what does
+    exist rather than answering "latest is unsupported". ``None`` only when
+    nothing is pre-rendered at all.
+    """
+    if not vintages:
+        return None
+    matching = [v for v in vintages if v.has(fmt, params_fragment)]
+    return (matching or vintages)[-1].as_of
 
 
 # Which params each slug honors (Phase 3). Keys must be a subset of the
@@ -600,9 +693,23 @@ def _resolve_client_portfolio(
 # ``stock`` was removed from this set 2026-07-14 (O.6): live decompose loader.
 _PRERENDERED_SUBJECT_KINDS: tuple[str, ...] = ("filer_13f", "cohort")
 
+# Pre-rendered kinds for which ``as_of='latest'`` resolves to the newest
+# vintage in the store. A cohort research artifact is a publication: the
+# newest vintage is, by definition, the latest one. A filer is different —
+# "latest" means the newest FILING, and the store cannot vouch that its newest
+# pre-render is that filing (the daily job may lag a quarter), so resolving
+# it from a listing would label a stale quarter as current. Filers keep the
+# explicit-date contract and the as-of listing to discover the dates.
+_STORE_RESOLVED_LATEST_KINDS: tuple[str, ...] = ("cohort",)
+
 
 def _resolve_prerendered_subject(
-    req: "ArtifactRenderRequest", subject_kind: str
+    req: "ArtifactRenderRequest",
+    subject_kind: str,
+    *,
+    store: ObjectStore,
+    prefix: str,
+    params_fragment: str = "",
 ) -> tuple[None, str, str]:
     """Validate + resolve a request for a loaderless subject kind.
 
@@ -616,24 +723,48 @@ def _resolve_prerendered_subject(
     501 — live-render requires the corresponding loader landing in
     render-svc (Phase 2 follow-on).
 
-    For LANDING's Berkshire anonymous preload: the daily refresh job
-    pre-renders the artifact to GCS at an explicit `as_of` date (e.g.
-    `2026-03-31` for Berkshire's Q1 2026 13F); the workspace then
-    requests that exact date and gets a cache hit. `as_of="latest"`
-    is rejected because the server has no way to resolve "latest"
-    without a loader.
+    ``as_of="latest"``:
+
+    - cohort → the newest pre-rendered vintage under the subject's prefix
+      (``newest_prerendered_as_of``). No loader is needed to list a prefix.
+      400 only when nothing is pre-rendered for the subject at all.
+    - filer_13f → still rejected; see ``_STORE_RESOLVED_LATEST_KINDS``. For
+      LANDING's Berkshire anonymous preload the daily refresh job
+      pre-renders at an explicit ``as_of`` (e.g. ``2026-03-31`` for the Q1
+      2026 13F) and the workspace requests that exact date.
     """
-    if req.as_of == "latest":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"as_of='latest' not supported for subject_kind={subject_kind!r} "
-                "(no SDK loader inside render-svc to resolve the latest "
-                "data date). Pass an explicit ISO date matching a "
-                "pre-rendered artifact."
-            ),
+    if req.as_of != "latest":
+        return None, req.subject_id, req.as_of
+
+    if subject_kind in _STORE_RESOLVED_LATEST_KINDS:
+        vintages = available_vintages(
+            store, prefix, req.slug, req.version, req.subject_id
         )
-    return None, req.subject_id, req.as_of
+        resolved = newest_prerendered_as_of(vintages, req.format, params_fragment)
+        if resolved is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"as_of='latest' cannot be resolved for "
+                    f"{req.subject_id!r}: no pre-rendered "
+                    f"{req.slug}@{req.version} vintage exists for this subject "
+                    f"(subject_kind={subject_kind!r} is pre-rendered only). "
+                    f"GET /artifacts/as-of?slug={req.slug}&subject_id=... "
+                    f"lists what exists."
+                ),
+            )
+        return None, req.subject_id, resolved
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"as_of='latest' not supported for subject_kind={subject_kind!r} "
+            "(no SDK loader inside render-svc to resolve the latest "
+            "data date). Pass an explicit ISO date matching a "
+            "pre-rendered artifact; GET /artifacts/as-of?slug=...&subject_id=... "
+            "lists the dates that exist."
+        ),
+    )
 
 
 def _load_subject_data(subject_id: str, subject_kind: str, as_of: str) -> Any:
@@ -1692,6 +1823,7 @@ def render_artifact(
     is_dd_panel = subject_kind == "stock" and req.slug.startswith("dd_")
     # Validate params against the slug before any loader work (422 fast).
     supplied_params = _supplied_params(req)
+    params_fragment = _params_key_fragment(supplied_params)
 
     # G.43 peer-group mode state; set only on the peer branch below.
     peer_group_ctx: PeerGroupContext | None = None
@@ -1751,8 +1883,10 @@ def render_artifact(
     elif subject_kind in _PRERENDERED_SUBJECT_KINDS:
         # No SDK loader in render-svc — cache-hit path works for pre-rendered
         # artifacts; cache miss raises 501 (live-render is Phase 2 follow-on).
+        # Cohort `latest` resolves to the newest vintage in the store.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_prerendered_subject(
-            req, subject_kind
+            req, subject_kind, store=store, prefix=prefix,
+            params_fragment=params_fragment,
         )
     else:
         # Loader-resolved path (fund + stock today; etf to follow).
@@ -1760,8 +1894,6 @@ def render_artifact(
             req.subject_id, subject_kind, req.as_of
         )
         resolved_subject_id = req.subject_id
-
-    params_fragment = _params_key_fragment(supplied_params)
 
     # A filer subject id has two production spellings and the corpus genuinely
     # holds artifacts under both (bare for entity_header, CIK-infix for
