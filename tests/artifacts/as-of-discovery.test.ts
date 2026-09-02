@@ -66,6 +66,26 @@ describe("artifact-as-of capability", () => {
   });
 });
 
+describe("artifact-capability capability", () => {
+  it("is registered as a free GET so list_endpoints advertises /artifacts/capability", () => {
+    const cap = CAPABILITIES.find((c) => c.id === "artifact-capability");
+    expect(cap).toBeDefined();
+    expect(cap!.method).toBe("GET");
+    expect(cap!.endpoint).toBe("/artifacts/capability");
+    expect(cap!.pricing.cost_usd).toBe(0);
+    // The OpenAPI path already carried this capability_id; the registry now matches it.
+    expect(cap!.pricing.billing_code).toBe("artifact_capability");
+  });
+
+  it("is present in the served capabilities.json and dispatchable through the passthrough", () => {
+    const served = servedCapabilities.find((c) => c.id === "artifact-capability");
+    expect(served).toBeDefined();
+    const allowlist = buildPassthroughAllowlist(servedCapabilities);
+    const norm = normalizeApiPath("/api/artifacts/capability?subject_kind=cohort");
+    expect(allowlist.some((a) => a.method === "GET" && a.re.test(norm))).toBe(true);
+  });
+});
+
 describe("capability document names the as-of route", () => {
   const doc = buildArtifactCapability();
 

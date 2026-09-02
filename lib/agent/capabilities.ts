@@ -1885,6 +1885,50 @@ export const CAPABILITIES: Capability[] = [
     tags: ["artifact", "registry", "discovery", "cohort", "filer"],
   },
   {
+    id: "artifact-capability",
+    name: "Artifact render capability",
+    description:
+      "The verified (slug, subject_kind) pairs the artifact registry can render, each slug's applicable " +
+      "params, the pairs measured and refused (with reasons), and how as_of=latest resolves per pair. " +
+      "Derived from the audited capability table on every request. Call before riskmodels_render_artifact " +
+      "to learn what renders for a subject kind; GET /api/artifacts/as-of lists the pre-rendered dates " +
+      "for one subject.",
+    endpoint: "/artifacts/capability",
+    method: "GET",
+    parameters: {
+      subject_kind: {
+        type: "string",
+        required: false,
+        description: "Narrow pairs to one kind",
+        enum: ["fund", "etf", "filer_13f", "cohort", "stock", "client_portfolio"],
+      },
+      slug: {
+        type: "string",
+        required: false,
+        description: "Narrow pairs to one artifact slug",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0,
+      currency: "USD",
+      billing_code: "artifact_capability",
+    },
+    performance: {
+      avg_latency_ms: 20,
+      p95_latency_ms: 80,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 1.0,
+      update_frequency: "daily",
+      sources: ["render-svc"],
+    },
+    tags: ["artifact", "registry", "discovery"],
+  },
+  {
     id: "factor-correlation",
     name: "Macro factor correlation",
     description:
