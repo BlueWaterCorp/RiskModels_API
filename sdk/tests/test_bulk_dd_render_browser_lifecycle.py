@@ -83,6 +83,13 @@ def test_initializer_starts_one_persistent_server(monkeypatch):
     assert fake.started == 1, "one browser per worker, not per export"
 
 
+def test_initializer_skips_kaleido_for_institutional(monkeypatch):
+    fake = _FakeKaleido()
+    _install(monkeypatch, fake)
+    B._init_render_worker("institutional")
+    assert fake.started == 0, "institutional DD must not launch Chrome"
+
+
 def test_initializer_forwards_the_configured_binary(monkeypatch):
     fake = _FakeKaleido()
     _install(monkeypatch, fake)
@@ -120,9 +127,21 @@ def test_shutdown_is_idempotent(monkeypatch):
     assert fake.stopped == 2  # safe to call twice; never raises
 
 
-# ---------------------------------------------------------------------------
-# SIGTERM teardown — the orphan class
-# ---------------------------------------------------------------------------
+def test_shutdown_does_not_block_when_stop_hangs(monkeypatch):
+    """kaleido stop_sync_server hanging must not hold pool join."""
+    import time as _time
+
+    fake = _FakeKaleido()
+
+    def _hang(**_k):
+        _time.sleep(30)
+
+    fake.stop_sync_server = _hang
+    _install(monkeypatch, fake)
+    t0 = _time.monotonic()
+    B._shutdown_render_worker(hang_s=0.15)
+    assert _time.monotonic() - t0 < 2.0
+
 
 class _FakeExecutor:
     def __init__(self):
@@ -130,6 +149,50 @@ class _FakeExecutor:
 
     def shutdown(self, wait=True, cancel_futures=False):
         self.shutdown_calls.append((wait, cancel_futures))
+
+
+class _WedgedProc:
+    def __init__(self):
+        self.pid = 99
+        self.terminated = 0
+        self.killed = 0
+        self._alive = True
+
+    def is_alive(self):
+        return self._alive
+
+    def join(self, timeout=None):
+        return None
+
+    def terminate(self):
+        self.terminated += 1
+        self._alive = False
+
+    def kill(self):
+        self.killed += 1
+        self._alive = False
+
+
+def test_shutdown_pool_terminates_wedged_worker(monkeypatch):
+    monkeypatch.setattr(B.time, "sleep", lambda *_a, **_k: None)
+    proc = _WedgedProc()
+    ex = _FakeExecutor()
+    ex._processes = {99: proc}
+    B._shutdown_pool(ex, join_s=0.01)
+    assert ex.shutdown_calls == [(False, True)]
+    assert proc.terminated == 1
+
+
+def test_pool_shutdown_is_deadline_not_context_manager():
+    """``with ProcessPoolExecutor`` joins with no timeout — that was the hang."""
+    src = Path(B.__file__).read_text()
+    assert "initializer=_init_render_worker" in src
+    assert "_shutdown_pool(ex)" in src
+    assert "ProcessPoolExecutor(" in src
+    # Context-manager join has no timeout; construction must stay explicit.
+    assert "with ProcessPoolExecutor(" not in src.replace(
+        "# Do not use ``with ProcessPoolExecutor``", ""
+    )
 
 
 def test_sigterm_handler_is_installed():
@@ -185,12 +248,6 @@ def test_sigterm_handler_without_an_open_pool(monkeypatch):
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.default_int_handler)
-
-
-def test_pool_is_created_with_the_initializer():
-    """Guard the wiring: a pool without it reverts to per-export browsers."""
-    src = Path(B.__file__).read_text()
-    assert "initializer=_init_render_worker" in src
 
 
 # ---------------------------------------------------------------------------

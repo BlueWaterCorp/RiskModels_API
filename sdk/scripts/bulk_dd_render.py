@@ -589,15 +589,17 @@ def _chrome_kwargs() -> dict:
     return {"path": path} if path else {}
 
 
-def _init_render_worker() -> None:
-    """ProcessPool initializer — one persistent browser for this worker's life.
+def _init_render_worker(renderer: str = "public") -> None:
+    """ProcessPool initializer — kaleido browser only when the public renderer needs it.
 
-    Best-effort: kaleido 0.x has no sync-server API and needs no such fix, and
-    a browser that cannot start here would fail identically at first export.
-    Either way we fall through to the per-call behaviour rather than killing
-    the worker before it renders anything.
+    Institutional DD pastes ratsgraph/matplotlib PNGs and never calls
+    ``fig.to_image``. Starting Chrome here is what stole ``com.google.Chrome``
+    from the interactive browser (2026-09-04). Public renderer still needs
+    one persistent kaleido server per worker.
     """
     _matplotlib.use("Agg")
+    if renderer == "institutional":
+        return
     try:
         import kaleido
     except ImportError:
@@ -613,8 +615,15 @@ def _init_render_worker() -> None:
     atexit.register(_shutdown_render_worker)
 
 
-def _shutdown_render_worker() -> None:
-    """Stop this worker's browser. Safe to call twice."""
+def _shutdown_render_worker(*, hang_s: float = 5.0) -> None:
+    """Stop this worker's browser. Safe to call twice.
+
+    ``stop_sync_server`` can block after Chrome has already died (SIGALRM /
+    SIGKILL path). Running it on a daemon thread with a deadline keeps
+    interpreter exit — and the parent's pool join — from waiting forever.
+    Observed 2026-09-04: 1000/1000 futures returned, then 40+ min at 0% CPU
+    inside ``ProcessPoolExecutor.__exit__``, so the batch upload never ran.
+    """
     try:
         import kaleido
     except ImportError:
@@ -622,10 +631,68 @@ def _shutdown_render_worker() -> None:
     stop = getattr(kaleido, "stop_sync_server", None)
     if stop is None:
         return
+    done = threading.Event()
+
+    def _stop() -> None:
+        try:
+            stop(silence_warnings=True)
+        except Exception:  # pragma: no cover - teardown is best-effort
+            pass
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_stop, name="kaleido-stop", daemon=True)
+    t.start()
+    done.wait(hang_s)
+
+
+def _shutdown_pool(ex: ProcessPoolExecutor, *, join_s: float = 20.0) -> None:
+    """Close the pool without blocking batch upload on a wedged worker.
+
+    ``ProcessPoolExecutor.__exit__`` joins with no timeout. A worker stuck in
+    kaleido atexit (or a zombie leftover) holds the run after every future has
+    already returned. Shut down without waiting, join briefly, then terminate.
+    """
+    procs = []
     try:
-        stop(silence_warnings=True)
-    except Exception:  # pragma: no cover - teardown is best-effort
+        procs = list((getattr(ex, "_processes", None) or {}).values())
+    except Exception:
+        procs = []
+    try:
+        ex.shutdown(wait=False, cancel_futures=True)
+    except Exception:
         pass
+    deadline = time.monotonic() + join_s
+    for proc in procs:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            proc.join(timeout=remaining)
+        except Exception:
+            pass
+    for proc in procs:
+        if not getattr(proc, "is_alive", lambda: False)():
+            continue
+        logging.warning(
+            "terminating wedged render worker pid %s", getattr(proc, "pid", "?")
+        )
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    time.sleep(0.4)
+    for proc in procs:
+        if not getattr(proc, "is_alive", lambda: False)():
+            continue
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        try:
+            proc.join(timeout=2)
+        except Exception:
+            pass
 
 
 def _install_sigterm_teardown(executor_box: dict) -> None:
@@ -1438,14 +1505,16 @@ def main() -> int:
             # shared state (logf/counts/pbar are main-process-only, updated as each
             # future completes below), so there's nothing to pickle across the
             # process boundary except _render_one's plain str/Path/bool arguments.
-            # initializer: one persistent browser per worker (see
-            # _init_render_worker) — without it kaleido spawns a Chrome per
-            # figure export, which is what flooded the Dock and leaked
-            # processes on 2026-07-29.
-            with ProcessPoolExecutor(
-                max_workers=workers, initializer=_init_render_worker
-            ) as ex:
-                _executor_box["executor"] = ex
+            # Do not use ``with ProcessPoolExecutor``: its ``__exit__`` joins
+            # with no timeout. Kaleido atexit on a worker can hold that join
+            # forever (2026-09-04) and skip the batch upload. Shut down with
+            # a deadline instead. Institutional workers skip kaleido entirely.
+            ex = ProcessPoolExecutor(
+                max_workers=workers, initializer=_init_render_worker,
+                initargs=(args.renderer,),
+            )
+            _executor_box["executor"] = ex
+            try:
                 for i, t in enumerate(tickers, start=1):
                     if t in fresh:
                         _log_result(_fingerprint_skip_row(args.out_dir, t), i, logf)
@@ -1497,6 +1566,9 @@ def main() -> int:
                             i,
                             logf,
                         )
+            finally:
+                _shutdown_pool(ex)
+                _executor_box.pop("executor", None)
 
     if pbar is not None:
         pbar.close()
