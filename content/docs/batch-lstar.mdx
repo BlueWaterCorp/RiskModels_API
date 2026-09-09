@@ -27,13 +27,12 @@ POST /api/batch/lstar
   "tickers":           ["AAPL","MSFT","NVDA","META","GOOG","AMZN","TSLA"],
   "market_factor_etf": "SPY",     // optional, default SPY
   "years":             5,         // optional, 1–15, default 1
-  "threshold":         0.01,      // optional, 0–0.5, default 1%
   "format":            "json"     // optional: json | parquet | csv
 }
 ```
 
 - **`tickers`** — 1 to 100 symbols. Aliases are resolved (GOOGL → GOOG).
-- **`threshold`** — marginal-ER bar for the L1/L2/L3 pick. Default 1% (the canonical value materialized in the returns zarr).
+- **`threshold`** — marginal-ER bar for the L1/L2/L3 pick. Omit for the materialized engine selection (including GBM). Any explicit value invokes the legacy threshold rule.
 - **`format`** —
   - **`json`** *(default)*: results map keyed by ticker; each entry mirrors the `GET /lstar` shape.
   - **`parquet`** / **`csv`**: long format, one row per (ticker, date) — ready for pandas / DuckDB / cross-sectional regressions.

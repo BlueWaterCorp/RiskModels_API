@@ -22,14 +22,9 @@ function classifyLstarError(message: string): string {
 /**
  * GET /api/lstar
  *
- * Per-(ticker, date) recommended hedge-level series with the chosen level's
- * dispatched hedge ratios. The selection rule:
- *
- *   if L3_subsector_ER >= θ → L3 (3-ETF hedge)
- *   elif L2_sector_ER  >= θ → L2 (2-ETF hedge)
- *   else                   → L1 (market hedge only)
- *
- * θ defaults to 1% (chat-safe). SDK callers can override via `?threshold=`.
+ * Per-(ticker, date) materialized engine selection and its complete hedge vector.
+ * Omit threshold for canonical LSTAR (including GBM). An explicit threshold
+ * requests the legacy marginal-ER rule instead.
  *
  * Response carries the lstar string per date, the chosen level's market /
  * sector / subsector HRs (nulls below the chosen level), the chosen level's

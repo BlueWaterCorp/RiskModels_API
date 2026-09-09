@@ -151,21 +151,21 @@ export const LstarAxisSchema = z
 /**
  * Schema for GET /api/lstar — per-(ticker, date) recommended hedge level.
  * `threshold` is accepted for SDK callers; chat / agentic surfaces should
- * leave it at the 1% default and treat the response as server-authoritative.
+ * omit it to use the materialized engine selection (including GBM).
  */
 export const LstarRequestSchema = z.object({
   ticker: TickerSchema,
   market_factor_etf: z.string().default("SPY"),
   years: YearsSchema,
   axis: LstarAxisSchema,
-  // z.coerce.number() turns null → 0; preprocess so omitted query params get .default(0.01).
+  // Preserve omission: a default of 0.01 would override the canonical engine selection.
   threshold: z.preprocess(
     (val) => (val === null || val === "" || val === undefined ? undefined : val),
     z.coerce
       .number()
       .min(0, "threshold must be >= 0")
       .max(0.5, "threshold must be <= 0.5 (50%)")
-      .default(0.01),
+      .optional(),
   ),
 });
 
@@ -572,7 +572,7 @@ export const BatchLstarRequestSchema = z.object({
       .number()
       .min(0, "threshold must be >= 0")
       .max(0.5, "threshold must be <= 0.5 (50%)")
-      .default(0.01),
+      .optional(),
   ),
   format: ResponseFormatSchema,
 });

@@ -42,6 +42,7 @@ const ER_SUM_TOLERANCE = 0.05;
 
 const DECOMPOSE_METRIC_KEYS: V3MetricKey[] = [
   // L1
+  "lstar_level",
   "l1_mkt_hr",
   "l1_mkt_er",
   "l1_res_er",
@@ -238,6 +239,7 @@ export const POST = withBilling(
         ? userSegmentRaw
         : DEFAULT_USER_SEGMENT;
       const hedgeRec = computeHedgeRecommendationSnapshot({
+        lstar_level: m.lstar_level,
         l1_mkt_hr: m.l1_mkt_hr ?? null,
         l2_mkt_hr: m.l2_mkt_hr ?? null,
         l2_sec_hr: m.l2_sec_hr ?? null,

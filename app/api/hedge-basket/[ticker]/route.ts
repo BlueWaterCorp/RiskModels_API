@@ -70,6 +70,7 @@ export const GET = withBilling(
       const latestData = await fetchLatestMetricsWithFallback(
         symbolRecord.symbol,
         [
+          "lstar_level",
           "l1_mkt_hr",
           "l1_mkt_er",
           "l1_res_er",
@@ -109,6 +110,7 @@ export const GET = withBilling(
       const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, market_factor_etf);
 
       const basket = buildHedgeBasket({
+        lstar_level: m.lstar_level,
         ticker,
         as_of: latestData.teo,
         l1_mkt_hr: m.l1_mkt_hr ?? null,

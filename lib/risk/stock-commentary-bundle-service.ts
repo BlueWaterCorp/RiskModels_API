@@ -387,6 +387,7 @@ export async function getStockCommentaryBundle(params: {
   const subsectorEtf = symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
 
   const hedgeRec = computeHedgeRecommendationSnapshot({
+    lstar_level: m.lstar_level,
     l1_mkt_hr: num(m.l1_mkt_hr),
     l2_mkt_hr: num(m.l2_mkt_hr),
     l2_sec_hr: num(m.l2_sec_hr),

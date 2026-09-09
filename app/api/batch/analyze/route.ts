@@ -480,6 +480,7 @@ async function analyzeTicker(
       let hedge_levelsBuilt: HedgeLevelsBlock | undefined;
       if (m) {
         const hedgeRec = computeHedgeRecommendationSnapshot({
+        lstar_level: m.lstar_level,
           l1_mkt_hr: m.l1_mkt_hr ?? null,
           l2_mkt_hr: m.l2_mkt_hr ?? null,
           l2_sec_hr: m.l2_sec_hr ?? null,

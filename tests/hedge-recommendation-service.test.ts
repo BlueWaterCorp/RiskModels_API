@@ -131,7 +131,7 @@ describe("computeHedgeRecommendationSnapshot — edge cases", () => {
     expect(snap.l3_hedge_gross).toBeCloseTo(0.8, 6);
   });
 
-  it("buildHedgeBasket for AAPL (live numbers, family_office) — 4 legs, L3→L1 downgrade trace", () => {
+  it("buildHedgeBasket for AAPL (live numbers, family_office) — L1 legs after L3→L1 downgrade", () => {
     const basket = buildHedgeBasket({
       ticker: "AAPL",
       as_of: "2026-05-18",
@@ -158,24 +158,10 @@ describe("computeHedgeRecommendationSnapshot — edge cases", () => {
     expect(basket.leverage_cap_applied).toBe(2.0);
     expect(basket.haircut_applied).toBe(0.7);
 
-    // Four legs: AAPL + SPY + XLK + SOXX
-    expect(basket.legs).toHaveLength(4);
-    expect(basket.legs[0]!.leg).toBe("AAPL");
-    expect(basket.legs[0]!.side).toBe("long");
-    expect(basket.legs[0]!.market_beta_contribution).toBeCloseTo(0.862, 3);
-    expect(basket.legs[1]!.leg).toBe("SPY");
-    expect(basket.legs[1]!.side).toBe("short");
-    expect(basket.legs[1]!.market_beta_contribution).toBeCloseTo(-2.002, 3);
-    expect(basket.legs[2]!.leg).toBe("XLK");
-    expect(basket.legs[2]!.market_beta_contribution).toBeCloseTo(-0.026 * 1.497, 3);
-    expect(basket.legs[3]!.leg).toBe("SOXX");
-    expect(basket.legs[3]!.side).toBe("long");
-    expect(basket.legs[3]!.market_beta_contribution).toBeCloseTo(0.410 * 1.478, 3);
-
-    // Net market β (the residual the methodology task #22 is investigating)
-    const expectedNet =
-      0.862 + (-2.002) * 1.0 + (-0.026) * 1.497 + 0.410 * 1.478;
-    expect(basket.net_market_beta_after_hedge).toBeCloseTo(expectedNet, 3);
+    // The recommended L1 basket must use L1 SPY, not the old L3 vector.
+    expect(basket.legs.map(l => l.leg)).toEqual(["AAPL", "SPY"]);
+    expect(basket.legs[1]!.position).toBeCloseTo(-0.862, 3);
+    expect(basket.net_market_beta_after_hedge).toBeCloseTo(0, 6);
 
     // Decision trace narrates the two downgrades + final.
     expect(basket.decision_trace.length).toBeGreaterThanOrEqual(3);

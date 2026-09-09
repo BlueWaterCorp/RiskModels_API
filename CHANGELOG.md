@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-09 — Canonical LSTAR and level-specific hedge dispatch
+
+- Preserve omitted thresholds in single and batch LSTAR requests so the engine’s materialized
+  selection is used. Explicit threshold overrides retain legacy marginal-ER behavior.
+- Propagate materialized LSTAR to metrics, batch analysis, decomposition, portfolio, commentary,
+  and hedge-basket recommendations. Keep the user-segment economic recommendation separate.
+- Build hedge-basket legs from the final recommended level, including its own SPY hedge ratio;
+  an L1/L2 recommendation no longer returns the L3 hedge vector.
+- Regression coverage checks L1/L2/L3 SPY and finer legs, canonical/custom-threshold dispatch,
+  missing recommendations, and economic downgrades.
+
+
 All notable changes to the RiskModels API surface and public assets.
 
 

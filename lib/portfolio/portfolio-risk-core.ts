@@ -331,6 +331,7 @@ export async function runPortfolioRiskComputation(
       row.l3_sub_hr = m.l3_sub_hr ?? null;
 
       const hedgeSnap = computeHedgeRecommendationSnapshot({
+        lstar_level: m.lstar_level,
         l1_mkt_hr: row.l1_mkt_hr as number | null,
         l2_mkt_hr: row.l2_mkt_hr as number | null,
         l2_sec_hr: row.l2_sec_hr as number | null,

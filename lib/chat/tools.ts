@@ -442,6 +442,7 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
   const latestData = await fetchLatestMetricsWithFallback(
     symbolRecord.symbol,
     [
+      "lstar_level",
       "l1_mkt_hr",
       "l1_mkt_er",
       "l1_res_er",
@@ -474,6 +475,7 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
   const segment = isValidUserSegment(user_segment) ? user_segment : DEFAULT_USER_SEGMENT;
 
   const basket = buildHedgeBasket({
+    lstar_level: m.lstar_level,
     ticker: symbolRecord.ticker,
     as_of: latestData.teo,
     l1_mkt_hr: m.l1_mkt_hr ?? null,

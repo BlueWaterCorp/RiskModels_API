@@ -162,7 +162,7 @@ describe("SnapshotRequestSchema", () => {
 });
 
 describe("LstarRequestSchema", () => {
-  it("defaults threshold to 0.01 when omitted or null (not z.coerce 0)", () => {
+  it("preserves omitted or null threshold for canonical LSTAR", () => {
     for (const input of [
       { ticker: "NFLX", years: "5" },
       { ticker: "NFLX", years: "5", threshold: null },
@@ -171,7 +171,7 @@ describe("LstarRequestSchema", () => {
       const r = LstarRequestSchema.safeParse(input);
       expect(r.success).toBe(true);
       if (r.success) {
-        expect(r.data.threshold).toBe(0.01);
+        expect(r.data.threshold).toBeUndefined();
       }
     }
   });

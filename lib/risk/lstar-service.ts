@@ -1,12 +1,9 @@
 /**
  * Lstar (L*) Selection Service
  *
- * Per-(ticker, teo) hedge-level recommendation. The simplest level whose
- * marginal explained-return (ER) clears a threshold:
- *
- *   if L3 marginal ER >= θ → L3
- *   elif L2 marginal ER >= θ → L2
- *   else                   → L1
+ * Per-(ticker, teo) hedge-level recommendation. Canonical requests use the
+ * engine's materialized selection, including cost-aware GBM. Explicit thresholds
+ * request the legacy marginal-ER rule.
  *
  * Industry axis: L2_sector_ER / L3_subsector_ER (market → sector → subsector).
  *
@@ -157,8 +154,23 @@ export function materializedLevelToLstar(
   lvl: number | null | undefined,
 ): LstarLevel | null {
   if (lvl == null) return null;
-  const r = Math.round(lvl);
-  return r >= 1 && r <= 3 ? (`L${r}` as LstarLevel) : null;
+  const r = lvl;
+  return Number.isInteger(r) && r >= 1 && r <= 3 ? (`L${r}` as LstarLevel) : null;
+}
+
+/** Canonical engine selection unless the caller explicitly requests a threshold.
+ * Undefined means an older store has no column; null/0 means no recommendation.
+ */
+export function selectLstar(
+  materialized: number | null | undefined,
+  l2: number | null,
+  l3: number | null,
+  threshold?: number,
+): LstarLevel | null {
+  if (threshold === undefined && materialized !== undefined) {
+    return materializedLevelToLstar(materialized);
+  }
+  return pickLstar(l2, l3, threshold ?? LSTAR_DEFAULT_THRESHOLD);
 }
 
 function processIndustryRow(
@@ -180,10 +192,9 @@ function processIndustryRow(
   // SSOT: when the materialized canonical level is present, it wins (carries the
   // shipped selector — GBM or 1%). Fall back to the live θ rule otherwise.
   const lvlRaw = p.lstar_level as number | null | undefined;
-  const fromMaterialized = useMaterialized && lvlRaw !== null && lvlRaw !== undefined;
-  const chosen = fromMaterialized
-    ? materializedLevelToLstar(lvlRaw)
-    : pickLstar(l2Marginal, l3Marginal, threshold);
+  const fromMaterialized = useMaterialized && lvlRaw !== undefined;
+  const chosen = selectLstar(lvlRaw, l2Marginal, l3Marginal,
+    useMaterialized ? undefined : threshold);
   // Materialized residual return is the dispatched lstar_rr (== l{level}_rr).
   const residualReturn = fromMaterialized
     ? ((p.lstar_rr as number | null) ?? dispatchLstarResidualReturn(chosen, p))

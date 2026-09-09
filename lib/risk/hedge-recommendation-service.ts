@@ -20,7 +20,7 @@ import {
   type LStar,
   type UserSegment,
 } from "@/lib/dal/hedge-recommendation";
-import { LSTAR_DEFAULT_THRESHOLD, pickLstar, type LstarLevel } from "./lstar-service";
+import { LSTAR_DEFAULT_THRESHOLD, selectLstar, type LstarLevel } from "./lstar-service";
 
 export const VALID_USER_SEGMENTS = Object.keys(SEGMENT_LEVERAGE_CAPS) as UserSegment[];
 
@@ -29,6 +29,8 @@ export function isValidUserSegment(v: string | null | undefined): v is UserSegme
 }
 
 export interface HedgeRecommendationSnapshotInputs {
+  /** Engine GBM/legacy materialized choice; null/0 means no recommendation. */
+  lstar_level?: number | null;
   l1_mkt_hr: number | null;
   l2_mkt_hr: number | null;
   l2_sec_hr: number | null;
@@ -44,7 +46,7 @@ export interface HedgeRecommendationSnapshotInputs {
 }
 
 export interface HedgeRecommendationSnapshot {
-  /** Statistical pick (1% marginal-ER rule on raw ERs). Null when both ERs missing. */
+  /** Canonical engine pick; legacy threshold only for explicit overrides or absent columns. */
   lstar: LstarLevel | null;
   /** Economic pick after leverage cap + haircut floor. Always concrete. */
   recommended_hedge_level: LStar;
@@ -74,9 +76,7 @@ export function computeHedgeRecommendationSnapshot(
   inp: HedgeRecommendationSnapshotInputs,
 ): HedgeRecommendationSnapshot {
   const userSegment: UserSegment = inp.user_segment ?? DEFAULT_USER_SEGMENT;
-  const threshold = inp.threshold ?? LSTAR_DEFAULT_THRESHOLD;
-
-  const lstar = pickLstar(inp.l2_sec_er ?? null, inp.l3_sub_er ?? null, threshold);
+  const lstar = selectLstar(inp.lstar_level, inp.l2_sec_er ?? null, inp.l3_sub_er ?? null, inp.threshold);
 
   const l1HedgeGross = hedgeGrossFromHrs(inp.l1_mkt_hr);
   const l2HedgeGross = hedgeGrossFromHrs(inp.l2_mkt_hr, inp.l2_sec_hr);
@@ -128,7 +128,7 @@ export interface HedgeBasketLeg {
 
 /**
  * Structured hedge-basket payload for `/api/hedge-basket/{ticker}` — what the
- * chat renders as a 4-row table with a net-market-β subtotal.
+ * chat renders as the recommended level’s stock + ETF legs with a net-market-β subtotal.
  *
  * `decision_trace` is the human-readable explanation of how recommended_hedge_level
  * was derived; the chat narrates it verbatim. Net market β residual is FYI per
@@ -190,9 +190,12 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const lambdaUM = subsectorIsSpy ? 1.0 : (inp.lambda_u_to_m ?? 0);
 
   const betaMAapl = inp.beta_m_aapl ?? 0;
-  const hrM = inp.l3_mkt_hr ?? 0;
-  const hrS = inp.l3_sec_hr ?? 0;
-  const hrU = inp.l3_sub_hr ?? 0;
+  // The basket implements the final recommendation, with that level's entire
+  // hedge vector. In particular SPY must not retain its L3 correction at L1/L2.
+  const chosen = snap.recommended_hedge_level;
+  const hrM = (chosen === "L1" ? inp.l1_mkt_hr : chosen === "L2" ? inp.l2_mkt_hr : inp.l3_mkt_hr) ?? 0;
+  const hrS = (chosen === "L1" ? 0 : chosen === "L2" ? inp.l2_sec_hr : inp.l3_sec_hr) ?? 0;
+  const hrU = chosen === "L3" ? (inp.l3_sub_hr ?? 0) : 0;
 
   const legs: HedgeBasketLeg[] = [
     {
@@ -210,7 +213,7 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
       market_beta_contribution: hrM * 1.0,
     },
   ];
-  if (inp.sector_etf_ticker && !sectorIsSpy) {
+  if (chosen !== "L1" && inp.sector_etf_ticker && !sectorIsSpy) {
     legs.push({
       leg: inp.sector_etf_ticker.toUpperCase(),
       side: hrS <= 0 ? "short" : "long",
@@ -219,7 +222,7 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
       market_beta_contribution: hrS * lambdaSM,
     });
   }
-  if (inp.subsector_etf_ticker && !subsectorIsSpy) {
+  if (chosen === "L3" && inp.subsector_etf_ticker && !subsectorIsSpy) {
     legs.push({
       leg: inp.subsector_etf_ticker.toUpperCase(),
       side: hrU <= 0 ? "short" : "long",
@@ -238,7 +241,9 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const lstar = snap.lstar;
   const subRawNn = inp.l3_sub_er ?? null;
   const secRawNn = inp.l2_sec_er ?? null;
-  if (lstar === null) {
+  if (inp.threshold === undefined && inp.lstar_level !== undefined) {
+    trace.push(`Lstar=${lstar ?? "null"} (materialized engine selection)`);
+  } else if (lstar === null) {
     trace.push(
       `Lstar=null (both L2 and L3 marginal ER unavailable — pre-IPO / delisted / masked); recommendation defaults to L1.`,
     );

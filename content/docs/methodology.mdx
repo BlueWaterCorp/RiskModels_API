@@ -30,9 +30,19 @@ The methodology page explains **why** the numbers are what they are. For **how t
 The L\* selection rule from the methodology page lands on three concrete API surfaces:
 
 - **`GET /api/lstar`** — per-ticker daily series of the dispatched level, hedge ratios, and residual return; supports a custom `?threshold=` override.
-- **`lstar_rr`** — the Lstar-dispatched residual return in MetricsV3 (`GET /api/metrics/{ticker}`, `POST /api/batch/analyze`, V3 history fetches), materialized at the canonical **1% marginal-ER threshold**.
+- **`lstar_rr`** — the Lstar-dispatched residual return in MetricsV3 (`GET /api/metrics/{ticker}`, `POST /api/batch/analyze`, V3 history fetches), materialized by the engine’s canonical selector, including the cost-aware walk-forward GBM.
 - **`lstar_level`** — the level the cascade picked: **`1`** (L1, market only) / **`2`** (L2, market + sector) / **`3`** (L3, market + sector + subsector) / **`null`** (no recommendation — both L2 and L3 ER missing).
 
 Prefer **`lstar_rr`** over a fixed-depth **`l3_rr`** for "best residual" queries — fixed-L3 subtracts a subsector layer even when the model would not have prescribed it, so it overstates residual cleanness on names where `lstar_level` is 1 or 2. The full derivation of the 1% threshold and the marginal-ER cascade rule is on the [methodology page](https://riskmodels.org/methodology).
 
 For the math behind the numbers those endpoints return, read the methodology on [riskmodels.org](https://riskmodels.org/methodology).
+
+Canonical requests omit `threshold`. Supplying it explicitly requests the legacy marginal-ER
+rule, even when its value is `0.01`. The selected level dispatches its **complete** hedge vector:
+L1 uses L1 market HR; L2 uses L2 market and sector HRs; L3 uses L3 market, sector, and subsector
+HRs. The market/SPY ratio changes with depth; do not truncate an L3 vector to construct L2.
+
+`recommended_hedge_level` additionally applies the existing user-segment economic gates and can
+differ from canonical LSTAR. `/hedge-basket/{ticker}` returns legs for this final recommendation.
+The legacy `threshold_used` response field remains the configured fallback/override threshold;
+it does not mean a canonical materialized GBM choice was derived from a 1% rule.

@@ -225,6 +225,7 @@ export const GET = withBilling(
       ? userSegmentRaw
       : DEFAULT_USER_SEGMENT;
     const hedgeRec = computeHedgeRecommendationSnapshot({
+        lstar_level: m.lstar_level,
       l1_mkt_hr: m.l1_mkt_hr ?? null,
       l2_mkt_hr: m.l2_mkt_hr ?? null,
       l2_sec_hr: m.l2_sec_hr ?? null,
