@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
+import { pickLiveRow } from "@/lib/dal/risk-engine-v3";
 
 export const dynamic = "force-dynamic";
 
@@ -52,9 +53,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 
-  // Key by ticker, normalize metadata fallback
-  const results: Record<string, unknown> = {};
+  // Key by ticker, normalize metadata fallback. Recycled tickers return >1 row
+  // per ticker (the sync never prunes closed identities); this used to be
+  // last-wins, disagreeing with the DAL. Pick the live identity first, then
+  // the lowest bw_sym_id — the same rule as resolveSymbolByTicker.
+  type SymbolRow = NonNullable<typeof data>[number];
+  const grouped = new Map<string, SymbolRow[]>();
   for (const row of data ?? []) {
+    const bucket = grouped.get(row.ticker) ?? [];
+    bucket.push(row);
+    grouped.set(row.ticker, bucket);
+  }
+  const results: Record<string, unknown> = {};
+  for (const rows of grouped.values()) {
+    const row = pickLiveRow(rows as unknown as Record<string, unknown>[]) as unknown as SymbolRow | null;
+    if (!row) continue;
     const metadata = (row.metadata as Record<string, unknown>) ?? {};
     results[row.ticker] = {
       symbol: row.symbol,

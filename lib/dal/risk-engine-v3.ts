@@ -366,6 +366,34 @@ async function resolveAliasesToCanonicalSymbols(
 }
 
 /**
+ * True when the ERM3 sync has flagged this `symbols` row as a closed /
+ * delisted identity (`metadata.is_delisted`). The sync never prunes, so a
+ * recycled ticker leaves the dead holder in the table beside the live one.
+ */
+export function isDeadSymbolRow(row: Record<string, unknown> | null | undefined): boolean {
+  const metadata = (row?.metadata as Record<string, unknown> | undefined) ?? {};
+  return metadata.is_delisted === true;
+}
+
+/**
+ * Deterministic pick among rows sharing one display ticker: a live identity
+ * beats a dead one, then the lowest bw_sym_id. Until 2026-09-08 the pick was
+ * lowest bw_sym_id alone, which for APC chose the 2019 Anadarko row
+ * (`BW-US0325111070`, closed) over the live ARKO row (`BW-US04124A1007#1`)
+ * and turned a covered name into a 404.
+ */
+export function pickLiveRow<T extends Record<string, unknown>>(rows: T[]): T | null {
+  if (rows.length === 0) return null;
+  const sorted = [...rows].sort((a, b) => {
+    const da = isDeadSymbolRow(a) ? 1 : 0;
+    const db = isDeadSymbolRow(b) ? 1 : 0;
+    if (da !== db) return da - db;
+    return String(a.symbol).localeCompare(String(b.symbol));
+  });
+  return sorted[0];
+}
+
+/**
  * Normalize symbol row: fall back to metadata JSONB for name/sector_etf when top-level columns are null.
  */
 function normalizeSymbolRow(row: Record<string, unknown> | null): SymbolRegistryRow | null {
@@ -400,29 +428,31 @@ export async function resolveSymbolByTicker(
   const tryResolve = async (t: string): Promise<SymbolRegistryRow | null> => {
     try {
       const admin = createAdminClient();
-      // Recycled tickers can leave >1 symbols row per display ticker (e.g. if a
-      // sync ever includes delisted rows). maybeSingle() would throw and turn a
-      // valid ticker into a 404 — instead fetch up to 2, warn on a collision,
-      // and pick deterministically (first by bw_sym_id).
+      // Recycled tickers leave >1 symbols row per display ticker (the sync
+      // never prunes closed identities). maybeSingle() would throw and turn a
+      // valid ticker into a 404 — instead fetch a handful, warn on a
+      // collision, and pick deterministically: live identity first, then
+      // lowest bw_sym_id (pickLiveRow).
       const { data, error } = await admin
         .from("symbols")
         .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
         .eq("ticker", t)
         .order("symbol", { ascending: true })
-        .limit(2);
+        .limit(5);
       if (error) {
         console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
         return null;
       }
-      const rows = data ?? [];
+      const rows = (data ?? []) as Record<string, unknown>[];
+      const picked = pickLiveRow(rows);
       if (rows.length > 1) {
         console.warn(
           `[V3 DAL] Ticker ${t} matches multiple symbols: ${rows
-            .map((r) => String((r as Record<string, unknown>).symbol))
-            .join(", ")} — picking first by bw_sym_id`,
+            .map((r) => `${String(r.symbol)}${isDeadSymbolRow(r) ? "(dead)" : ""}`)
+            .join(", ")} — picking ${String(picked?.symbol)} (live first, then bw_sym_id)`,
         );
       }
-      return normalizeSymbolRow((rows[0] as Record<string, unknown> | undefined) ?? null);
+      return normalizeSymbolRow(picked);
     } catch (error) {
       console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
       return null;
@@ -501,21 +531,27 @@ export async function resolveSymbolsByTickers(
       return result;
     }
 
-    // Recycled tickers can leave >1 row per display ticker. Sort by bw_sym_id
-    // and keep the first per ticker so a collision resolves deterministically
-    // (same pick as resolveSymbolByTicker), never silent last-wins.
-    const sortedRows = (data ?? [])
-      .map(row => normalizeSymbolRow(row as Record<string, unknown>))
-      .filter((r): r is SymbolRegistryRow => r !== null)
-      .sort((a, b) => a.symbol.localeCompare(b.symbol));
-    for (const normalized of sortedRows) {
-      const requestedKey = upperTickers.find(ut => ut === normalized.ticker) ?? normalized.ticker;
-      const existing = result.get(requestedKey);
-      if (existing) {
+    // Recycled tickers leave >1 row per display ticker. Group per ticker and
+    // keep pickLiveRow's choice (live identity first, then lowest bw_sym_id —
+    // the same pick as resolveSymbolByTicker), never silent last-wins.
+    const byTicker = new Map<string, Record<string, unknown>[]>();
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const t = String(row.ticker ?? "").toUpperCase();
+      const requestedKey = upperTickers.find(ut => ut === t) ?? t;
+      const bucket = byTicker.get(requestedKey) ?? [];
+      bucket.push(row);
+      byTicker.set(requestedKey, bucket);
+    }
+    for (const [requestedKey, rows] of byTicker) {
+      const picked = pickLiveRow(rows);
+      const normalized = normalizeSymbolRow(picked);
+      if (!normalized) continue;
+      if (rows.length > 1) {
         console.warn(
-          `[V3 DAL] Ticker ${requestedKey} matches multiple symbols: ${existing.symbol}, ${normalized.symbol} — keeping first by bw_sym_id`,
+          `[V3 DAL] Ticker ${requestedKey} matches multiple symbols: ${rows
+            .map(r => `${String(r.symbol)}${isDeadSymbolRow(r) ? "(dead)" : ""}`)
+            .join(", ")} — keeping ${normalized.symbol} (live first, then bw_sym_id)`,
         );
-        continue;
       }
       result.set(requestedKey, normalized);
     }
