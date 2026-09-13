@@ -1,3 +1,4 @@
+import { CHART_WIDGET_URI, registerChartWidget } from "@/lib/mcp/chart-widget";
 import { z } from "zod";
 import {
   renderArtifact,
@@ -25,20 +26,27 @@ import {
  * server (`mcp/src/server.ts`) never imports this module.
  */
 export function registerRiskModelsRenderTool(server: McpLikeServer): void {
+  registerChartWidget(server);
   server.registerTool(
     "riskmodels_render_artifact",
     {
       title: "RiskModels Artifact Registry Render",
       description:
-        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Use format png to display the original chart: returns MCP image content with dated provenance and receipt, not a chart to redraw. JSON returns chart/table/narrative data; SVG returns a base64 export. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use watchlist_er_stacked with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — the whole set is resolved to ONE shared date (the oldest latest-close in the set, or an explicit as_of), so it is a date-aligned comparison. Present it as of resolved_as_of, never today's date. Read as_of_alignment on the JSON payload: if excluded is non-empty, those tickers had no data at that date and are NOT on the chart — name them. Same contract as riskmodels.net workspace fetchArtifact.",
+        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Use format png to display the original chart: returns MCP image content with dated provenance and receipt, not a chart to redraw. JSON returns chart/table/narrative data; SVG returns a base64 export. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use risk_comparison (signed RMGraph grouped bars) with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — the whole set is resolved to ONE shared date (the oldest latest-close in the set, or an explicit as_of), so it is a date-aligned comparison. Present it as of resolved_as_of, never today's date. Read as_of_alignment on the JSON payload: if excluded is non-empty, those tickers had no data at that date and are NOT on the chart — name them. Same contract as riskmodels.net workspace fetchArtifact.",
       annotations: { readOnlyHint: true },
+      _meta: {
+        ui: { resourceUri: CHART_WIDGET_URI },
+        "openai/outputTemplate": CHART_WIDGET_URI,
+        "openai/toolInvocation/invoking": "Rendering RiskModels chart…",
+        "openai/toolInvocation/invoked": "RiskModels result ready",
+      },
       inputSchema: {
         slug: z
           .string()
           .min(1)
           .describe(
             "Artifact slug — stock subjects: l3_explained_risk_hbar, " +
-              "hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked; " +
+              "hedge_notionals_hbar, hedge_depth_retained, risk_comparison, watchlist_er_stacked; " +
               "fund/filer subjects: top_holdings_erm_stacked, entity_header, " +
               "risk_summary_panel",
           ),
@@ -140,7 +148,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
               ...textResult({
                 ...metadata,
                 chart_instruction:
-                  "Display the supplied RiskModels image directly; do not redraw it. " +
+                  "The attached chart component displays the original image. If the host cannot show it, say so; never claim a chart is visible without an image; do not redraw it. " +
                   "Retain resolved_as_of and receipt_id when explaining the chart. " +
                   "Request format json for exact numerical values.",
                 artifact: {

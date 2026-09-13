@@ -1,10 +1,16 @@
 # Changelog
 
-## Pending — Signed RMGraph stock comparison
+## Pending — Original chart component for MCP hosts
 
-- Prepare `risk_comparison@v1` for explicit lists of 1–12 stocks using the existing decomposition loader, common-date alignment and artifact store.
+- Link the hosted render tool to a self-contained MCP Apps component that displays original PNG content with its data date and receipt. Native image and text response shapes remain available to clients without UI support.
+- The component uses no external network requests, storage or chart library, and clears prior images for errors and cancelled requests. ChatGPT compatibility uses its full tool-result envelope.
+- A sandboxed browser check passed with the real production image at 600px chat width. Actual ChatGPT display and video capture remain release checks; the successful native image transport alone does not prove inline host display.
+
+## 2026-09-13 — Signed RMGraph stock comparison deployed
+
+- Serve `risk_comparison@v1` for explicit lists of 1–12 stocks using the existing decomposition loader, common-date alignment and artifact store.
 - Preserve signed factor contributions and pass date-alignment or exclusion notes to the RMGraph layout. Comparison cache identities distinguish stock order and disclosure context; existing watchlist artifacts retain their identities.
-- JSON, 300-DPI PNG and vector SVG require the companion BWMACRO renderer. Capability remains unavailable until a coordinated Cloud Run deployment and real-subject verification. MCP image delivery is tracked separately in PR #369.
+- JSON, 300-DPI PNG and vector SVG passed production qualification for NVDA/MSFT/AAPL at 2026-09-11. All 12 source values, including three negatives, are preserved; repeated PNG bytes and receipt are stable. The stock capability is now verified.
 
 ## 2026-09-13 — Display artifact PNGs directly in MCP hosts
 

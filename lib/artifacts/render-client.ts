@@ -355,8 +355,8 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   hedge_depth_retained: { stock: { status: "verified" } },
   risk_comparison: {
     stock: {
-      status: "unavailable",
-      reason: "Signed RMGraph comparison awaits coordinated renderer deployment and live verification.",
+      status: "verified",
+      notes: "Signed RMGraph comparison for 1–12 explicit tickers. JSON, 300-DPI PNG and vector SVG verified in production on 2026-09-13 with NVDA/MSFT/AAPL at the common model date 2026-09-11. No implicit peers; no Plotly figure output.",
     },
   },
   watchlist_er_stacked: {
