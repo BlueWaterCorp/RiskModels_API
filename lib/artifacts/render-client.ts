@@ -112,6 +112,7 @@ export const ARTIFACT_SLUG_PARAMS: Readonly<
   active_risk_composition: ["layers"],
   hedge_notionals_hbar: ["top_n"],
   watchlist_er_stacked: ["sort_by", "top_n"],
+  risk_comparison: ["sort_by", "top_n"],
   risk_dna_stacked: ["peer_n", "sort_by"],
   historical_risk_waterfall: ["date", "window"],
   holdings_active_panel: ["benchmark", "top_n"],
@@ -352,6 +353,12 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   l3_explained_risk_hbar: { stock: { status: "verified" } },
   hedge_notionals_hbar: { stock: { status: "verified" } },
   hedge_depth_retained: { stock: { status: "verified" } },
+  risk_comparison: {
+    stock: {
+      status: "unavailable",
+      reason: "Signed RMGraph comparison awaits coordinated renderer deployment and live verification.",
+    },
+  },
   watchlist_er_stacked: {
     stock: {
       status: "verified",

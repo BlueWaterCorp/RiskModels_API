@@ -418,6 +418,7 @@ _SLUG_PARAMS: dict[str, frozenset[str]] = {
     "active_risk_composition": frozenset({"layers"}),
     "hedge_notionals_hbar": frozenset({"top_n"}),
     "watchlist_er_stacked": frozenset({"top_n", "sort_by"}),
+    "risk_comparison": frozenset({"top_n", "sort_by"}),
     "risk_dna_stacked": frozenset({"peer_n", "sort_by"}),
     "historical_risk_waterfall": frozenset({"date", "window"}),
     "holdings_active_panel": frozenset({"benchmark", "top_n"}),
@@ -610,7 +611,7 @@ def _adapter_for(
             return adapters.stock_hedge_notionals_from_decompose
         if slug == "hedge_depth_retained":
             return adapters.stock_l3_exposure_from_decompose
-        if slug == "watchlist_er_stacked":
+        if slug in {"watchlist_er_stacked", "risk_comparison"}:
             return adapters.watchlist_er_stacked_from_decomposes
         raise HTTPException(
             status_code=501,
@@ -1283,7 +1284,7 @@ def _resolve_stock_watchlist(
         raise HTTPException(
             status_code=400,
             detail=(
-                "watchlist_er_stacked requires subject_payload.tickers "
+                f"{req.slug} requires subject_payload.tickers "
                 "(list of US equity tickers)"
             ),
         )
@@ -1296,6 +1297,8 @@ def _resolve_stock_watchlist(
     if len(tickers) > 12:
         raise HTTPException(status_code=400, detail="at most 12 watchlist tickers")
     normalized = [str(t).strip().upper() for t in tickers]
+    if req.slug == "risk_comparison" and len(set(normalized)) != len(normalized):
+        raise HTTPException(status_code=400, detail="risk_comparison requires unique tickers")
     # First pass defines the set, so a member the caller asked for that has
     # nothing at or before the requested date fails the render (404 naming
     # the ticker) rather than vanishing from a list the caller wrote. The
@@ -1307,8 +1310,15 @@ def _resolve_stock_watchlist(
     else:
         payloads = [_fetch_decompose(t, as_of=req.as_of) for t in normalized]
     payloads, alignment = _align_decompose_payloads(payloads, req.as_of)
-    # Stable subject id from ticker set
-    key = ",".join(sorted(normalized))
+    # Preserve issued legacy watchlist identities. RMGraph comparisons also
+    # distinguish input order and the dated disclosures drawn on the figure.
+    if req.slug == "risk_comparison":
+        key = json.dumps(
+            {"tickers": normalized, "as_of_alignment": alignment.as_json()},
+            sort_keys=True, separators=(",", ":"),
+        )
+    else:
+        key = ",".join(sorted(normalized))
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     resolved_subject_id = f"BW-STOCK-WATCHLIST-{digest}"
     return payloads, resolved_subject_id, alignment.resolved_as_of, alignment
@@ -1569,8 +1579,15 @@ class _DateAlignmentPresentation:
         return payload
 
     def render_figure(self, data: Any, **params: Any) -> Any:
-        fig = self._mod.render_figure(data, **params)
         notes = self._alignment.notes
+        if notes and "date_alignment_notes" in inspect.signature(
+            self._mod.render_figure
+        ).parameters:
+            # RMGraph lays out these notes with its footer before drawing.
+            return self._mod.render_figure(
+                data, date_alignment_notes=tuple(notes), **params
+            )
+        fig = self._mod.render_figure(data, **params)
         if not notes:
             return fig
         from riskmodels.snapshots._plotly_theme import PLOTLY_THEME
@@ -1901,6 +1918,12 @@ def render_artifact(
             req, supplied_params
         )
         resolved_subject_id = req.subject_id
+    elif subject_kind == "stock" and req.slug == "risk_comparison":
+        # Explicit ticker lists only. Reuse the established date alignment,
+        # source loader and content-derived watchlist identity.
+        subject_data, resolved_subject_id, resolved_as_of, date_alignment = (
+            _resolve_stock_watchlist(req)
+        )
     elif subject_kind == "stock" and req.slug == "watchlist_er_stacked":
         if _is_stock_peer_group_request(req):
             # Peer-group mode (G.43): BW-STOCK-{TICKER} with no inline
