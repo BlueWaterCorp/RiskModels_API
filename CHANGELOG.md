@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-12 — Cumulative charts start at an actual close
+
+- Fund daily/monthly charts emit the first observed close once at zero; later intervals compound over the same window as the layered contributions and waterfall.
+- Cumulative artifacts validate unique ascending dates, finite observations and a common zero baseline, including maximum history. Invalid inputs return an explicit error.
+- Corrected artifacts use a separate cache/receipt identity. Existing issued bytes are preserved. Filer images are regenerated from full numerical artifacts; image-only history remains unavailable until numerical data is published.
+- Coordinated Cloud Run renderer release required; this change does not qualify fund/filer portfolio histories or alter the underlying data stores.
+
+
 ## 2026-09-09 — Canonical LSTAR and level-specific hedge dispatch
 
 - Preserve omitted thresholds in single and batch LSTAR requests so the engine’s materialized
