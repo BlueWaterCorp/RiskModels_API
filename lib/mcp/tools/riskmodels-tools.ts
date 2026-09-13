@@ -4,7 +4,12 @@ import { RiskModelsClient, type PositionInput, type WhitepaperExampleId } from "
 import { z } from "zod";
 
 type McpContent = { type: "text"; text: string };
-export type McpToolResult = { content: McpContent[] };
+type McpImageContent = { type: "image"; data: string; mimeType: "image/png" };
+type McpTextResult = { content: McpContent[] };
+export type McpToolResult = {
+  content: Array<McpContent | McpImageContent>;
+  isError?: boolean;
+};
 type McpPromptResult = {
   description?: string;
   messages: Array<{ role: "user" | "assistant"; content: McpContent }>;
@@ -61,7 +66,7 @@ const WHITEPAPER_RESOURCES = [
 const CHART_INSTRUCTION =
   "If chart_data is present, render the suggested_chart. Use grouped bars for comparisons and bars for single-stock decomposition. Always explain the result in plain English.";
 
-export function textResult(payload: unknown): McpToolResult {
+export function textResult(payload: unknown): McpTextResult {
   return {
     content: [
       {
@@ -81,7 +86,7 @@ export function textResult(payload: unknown): McpToolResult {
   };
 }
 
-export function errorResult(error: unknown): McpToolResult {
+export function errorResult(error: unknown): McpTextResult {
   return textResult({
     error: error instanceof Error ? error.message : String(error),
   });
