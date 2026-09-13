@@ -225,9 +225,9 @@ def test_option_a_daily_style_return_wins_over_monthly(monkeypatch):
 
     assert fd.cum_style
     assert "style" in fd.layer_attribution
-    # Daily path: one anchor + one point per trading day in the stub.
-    assert len(fd.cum_nav_return) == 9  # anchor + 8 days
-    assert len(fd.cum_style) == 9
+    # One point per date; the first close is the zero anchor.
+    assert len(fd.cum_nav_return) == 8
+    assert len(fd.cum_style) == 8
 
 
 def test_four_leg_daily_clears_style_when_monthly_style_is_zero(monkeypatch):
@@ -251,4 +251,57 @@ def test_four_leg_daily_clears_style_when_monthly_style_is_zero(monkeypatch):
 
     assert fd.cum_style == []
     assert "style" not in fd.layer_attribution
-    assert len(fd.cum_nav_return) == 7  # daily override
+    assert len(fd.cum_nav_return) == 6  # daily override, unique close dates
+
+
+@pytest.mark.parametrize("daily_factory", [_daily_4leg, _daily_5leg])
+def test_daily_cascade_starts_at_first_close_once_and_reconciles(monkeypatch, daily_factory):
+    daily = daily_factory(n_days=5)
+    # A very different first interval makes accidental inclusion detectable.
+    daily._arrays["gross_return"]._data[0, 0] = 0.25
+    portfolio = _portfolio_v4_with_style(
+        ["2025-06-30", "2025-09-30", "2025-11-30"], style=0.0,
+    )
+    portfolio.attrs["adjusted_style_er"] = 0.0
+    _install(monkeypatch, portfolio=portfolio, daily=daily)
+    fd = _fund_data.get_data_for_f1("BW-FUND-BASELINE", enrich=False)
+    for series in (fd.cum_nav_return, fd.cum_l1_market, fd.cum_l2_sector,
+                   fd.cum_l3_subsector, fd.cum_l3_residual, fd.cum_style):
+        if not series:
+            continue
+        assert series[0] == ("2025-01-02", 0.0)
+        assert len(series) == 5
+        assert all(a[0] < b[0] for a, b in zip(series, series[1:]))
+    gross = fd.cum_nav_return[-1][1]
+    assert gross == pytest.approx(1.001 ** 4 - 1.0)
+    assert fd.cum_nav_return[1][1] == pytest.approx(0.001)
+    style = fd.cum_style[-1][1] if fd.cum_style else 0.0
+    assert fd.cum_l3_subsector[-1][1] + style + fd.cum_l3_residual[-1][1] == pytest.approx(gross)
+    assert fd.layer_attribution["residual"] * gross == pytest.approx(fd.cum_l3_residual[-1][1])
+
+
+def test_monthly_cascade_uses_common_unique_close_anchor(monkeypatch):
+    teos = ["2025-01-31", "2025-02-28", "2025-03-31", "2025-04-30"]
+    _install(monkeypatch, portfolio=_portfolio_v4_with_style(teos), daily=None, nav_teos=teos)
+    fd = _fund_data.get_data_for_f1("BW-FUND-MONTHLY-BASELINE", enrich=False)
+    for series in (fd.cum_nav_return, fd.cum_l1_market, fd.cum_l2_sector,
+                   fd.cum_l3_subsector, fd.cum_l3_residual, fd.cum_style):
+        assert series[0] == (teos[0], 0.0)
+        assert [d for d, _ in series] == teos
+    gross = fd.cum_nav_return[-1][1]
+    assert gross == pytest.approx(1.01 ** 3 - 1.0)
+    assert fd.cum_l3_subsector[-1][1] + fd.cum_style[-1][1] + fd.cum_l3_residual[-1][1] == pytest.approx(gross)
+
+
+def test_nav_only_starts_at_first_actual_close(monkeypatch):
+    nav = _nav_months(["2025-01-31", "2025-02-28", "2025-03-31"])
+    nav._arrays["nav_return_monthly"]._data[0] = -1.0
+    def fake_open(_fund_id, store):
+        if store == "ds_nav.zarr":
+            return nav
+        raise FileNotFoundError(store)
+    monkeypatch.setattr(_fund_data, "_open_fund_zarr", fake_open)
+    monkeypatch.setattr(_fund_data, "_fund_identity", lambda _id: {})
+    fd = _fund_data.get_data_for_f1("BW-FUND-NAV-BASELINE", enrich=False)
+    assert fd.cum_nav_return[0] == ("2025-01-31", 0.0)
+    assert fd.cum_nav_return[-1][1] == pytest.approx(1.01 ** 2 - 1.0)

@@ -246,6 +246,10 @@ def coverage_fraction_for(req: "ArtifactRenderRequest") -> float | None:
     return float(value)
 
 
+_CUMULATIVE_BASELINE_REVISION = "first-close-1"
+_CUMULATIVE_CACHE_SUFFIX = ".baseline-" + _CUMULATIVE_BASELINE_REVISION
+
+
 def _artifact_gcs_path(
     prefix: str,
     slug: str,
@@ -255,7 +259,10 @@ def _artifact_gcs_path(
     fmt: str,
     params_fragment: str = "",
 ) -> str:
-    return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}{params_fragment}.{fmt}"
+    # Corrected cumulative renders get a new object/receipt identity. Keep
+    # the old bytes intact for historical references; never overwrite them.
+    revision = _CUMULATIVE_CACHE_SUFFIX if (slug, version) == ("cumulative_return_strip", "v1") else ""
+    return f"{prefix.rstrip('/')}/artifacts/{slug}@{version}/{subject_id}/{resolved_as_of}{params_fragment}{revision}.{fmt}"
 
 
 def _subject_dir(prefix: str, slug: str, version: str, subject_id: str) -> str:
@@ -344,10 +351,16 @@ def available_vintages(
             parts = leaf.split(".")
             if len(parts) < 2 or not _ISO_DATE_RE.match(parts[0]):
                 continue
+            params = ".".join(parts[1:-1])
+            # Internal render revision is not a customer-selectable param.
+            if (slug, version) == ("cumulative_return_strip", "v1"):
+                suffix = _CUMULATIVE_CACHE_SUFFIX.lstrip(".")
+                if params == suffix:
+                    params = ""
+                elif params.endswith("." + suffix):
+                    params = params[:-(len(suffix) + 1)]
             by_date.setdefault(parts[0], []).append(
-                ArtifactObject(
-                    format=parts[-1], params=".".join(parts[1:-1]), path=name
-                )
+                ArtifactObject(format=parts[-1], params=params, path=name)
             )
     return [
         ArtifactVintage(as_of=d, objects=tuple(by_date[d])) for d in sorted(by_date)
@@ -1805,6 +1818,47 @@ def _cache_control_for(requested_as_of: str) -> str:
     return "public, max-age=31536000, immutable"
 
 
+def _legacy_filer_cumulative_data(raw: bytes) -> Any:
+    """Read the full numeric legacy contract, never infer values from an image.
+
+    The corrected renderer validates and rebases it. This lets loaderless
+    filers receive corrected JSON/PNG/SVG from their existing numerical
+    artifact without changing source stores or deleting an issued render.
+    """
+    from bwmacro.snapshots.artifacts import CumulativeReturnSeries
+
+    try:
+        payload = json.loads(raw)
+        if (payload.get("slug"), payload.get("version")) != ("cumulative_return_strip", "v1"):
+            raise ValueError("not a cumulative-return v1 numeric artifact")
+        if payload.get("window_requested", "max") != "max":
+            raise ValueError("a full-history numeric artifact is required")
+        if payload.get("axis", {}).get("y_unit") != "percent_cumulative_return":
+            raise ValueError("cumulative-return percentages are required")
+        label = payload.get("subject_label")
+        if not isinstance(label, str):
+            raise ValueError("subject label is missing")
+        layers = {}
+        for item in payload["series"]:
+            layer = item["layer"]
+            if layer not in {"gross", "market", "sector", "subsector", "residual"} or layer in layers:
+                raise ValueError("unknown or duplicate cumulative-return layer")
+            rows = []
+            for row in item["rows"]:
+                value = row["value_pct"]
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise ValueError("numeric cumulative-return observations are required")
+                if not isinstance(row["date"], str):
+                    raise ValueError("ISO observation dates are required")
+                rows.append((row["date"], value / 100.0))
+            layers[layer] = rows
+        if "gross" not in layers:
+            raise ValueError("gross cumulative-return series is missing")
+        return CumulativeReturnSeries(label_subject=label, **layers)
+    except (TypeError, KeyError, ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid cached cumulative-return data: {exc}") from exc
+
+
 def render_artifact(
     req: ArtifactRenderRequest,
     *,
@@ -1824,6 +1878,11 @@ def render_artifact(
     # Validate params against the slug before any loader work (422 fast).
     supplied_params = _supplied_params(req)
     params_fragment = _params_key_fragment(supplied_params)
+    cumulative_mod = None
+    if (req.slug, req.version) == ("cumulative_return_strip", "v1"):
+        cumulative_mod = _import_artifact_module(req.slug, req.version)
+        if getattr(cumulative_mod, "BASELINE_REVISION", None) != _CUMULATIVE_BASELINE_REVISION:
+            raise HTTPException(status_code=503, detail="Cumulative-return baseline renderer upgrade is required")
 
     # G.43 peer-group mode state; set only on the peer branch below.
     peer_group_ctx: PeerGroupContext | None = None
@@ -1926,6 +1985,30 @@ def render_artifact(
             )
 
     receipt_id = _receipt_id(gcs_path)
+
+    # A filer has no live loader here. Re-render only from its full numeric
+    # legacy contract, through the same baseline validator as fresh funds.
+    # Old PNG/SVG bytes are never used to assert numerical correctness.
+    if cumulative_mod is not None and subject_kind == "filer_13f":
+        for candidate_id in candidate_ids:
+            for legacy_params in ("", ".window-max"):
+                legacy_path = (
+                    f"{prefix.rstrip('/')}/artifacts/{req.slug}@{req.version}/"
+                    f"{candidate_id}/{resolved_as_of}{legacy_params}.json"
+                )
+                legacy_raw = store.read(legacy_path)
+                if legacy_raw is None:
+                    continue
+                normalized = _legacy_filer_cumulative_data(legacy_raw)
+                rendered = _render_bytes(cumulative_mod, normalized, req.format, supplied_params)
+                if persist:
+                    store.write(gcs_path, rendered, content_type=_FORMAT_MIME[req.format])
+                return (rendered, _FORMAT_MIME[req.format], gcs_path, resolved_as_of,
+                        _cache_control_for(req.as_of), receipt_id)
+        raise HTTPException(status_code=501, detail=(
+            "Cumulative-return baseline correction needs this filer's full numeric "
+            "artifact. Re-publish the max-window JSON; legacy images cannot be validated."
+        ))
 
     # Cache miss → live render.
     if is_dd_panel:

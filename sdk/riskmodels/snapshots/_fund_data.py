@@ -1395,8 +1395,11 @@ def get_data_for_f1(
     if nav_ret_all:
         start_idx = max(0, len(nav_ret_all) - nav_lookback_months)
         cum = 1.0
-        for d, r in zip(nav_teo_all[start_idx:], nav_ret_all[start_idx:]):
-            cum *= 1.0 + r
+        for i, (d, r) in enumerate(zip(nav_teo_all[start_idx:], nav_ret_all[start_idx:])):
+            # The first observed close is the baseline. Its return ended
+            # at that close and belongs to the preceding interval.
+            if i > 0:
+                cum *= 1.0 + r
             cum_nav.append((d, cum - 1.0))
 
 
@@ -1626,17 +1629,11 @@ def get_data_for_f1(
         if start_i is not None and end_i is not None and end_i >= start_i + 1:
             cum_nav = []
             cum = 1.0
-            for d, r in zip(nav_teo_all[start_i:end_i + 1],
-                            nav_ret_all[start_i:end_i + 1]):
-                cum *= 1.0 + r
+            for i, (d, r) in enumerate(zip(nav_teo_all[start_i:end_i + 1],
+                                           nav_ret_all[start_i:end_i + 1])):
+                if i > 0:
+                    cum *= 1.0 + r
                 cum_nav.append((d, cum - 1.0))
-            # Re-anchor to start at 0%.
-            if cum_nav:
-                anchor = cum_nav[0][1]
-                cum_nav = [
-                    (d, (1.0 + v) / (1.0 + anchor) - 1.0)
-                    for d, v in cum_nav
-                ]
 
     # ── Layered cumulative series (L1 / L2 / L3 / Residual) ──────────
     # Sequential-compounding through the ERM3 hierarchy, evaluated at
@@ -1659,6 +1656,10 @@ def get_data_for_f1(
         cum_res.append((anchor_d, 0.0))
         prod_l1 = prod_l2 = prod_l3 = prod_style = prod_g = 1.0
         for d, mkt, sec, sub, style, res in layer_series_chart:
+            # A layer interval ending at/before the common close is not
+            # part of this chart window. Never emit a same-date jump.
+            if d <= anchor_d:
+                continue
             prod_l1    *= 1.0 + mkt
             prod_l2    *= 1.0 + mkt + sec
             prod_l3    *= 1.0 + mkt + sec + sub
@@ -1801,10 +1802,11 @@ def get_data_for_f1(
             if style_d is not None:
                 style_d = style_d[first_nonzero:]
 
-        # Build cumulative series, anchored at 0% on day 0 (matches
-        # stock_deep_dive's series_with_zero_start). Sequential
-        # compounding through the ERM3 hierarchy gives the L*/Residual
-        # decomposition; gross is the all-in compound.
+        # Anchor at the first displayed close, then compound only later
+        # intervals. The anchor is a real observation date, emitted once;
+        # never prepend zero on the date of a compounded first return.
+        # Recompute the whole cascade on this basis so contribution
+        # differences and the waterfall retain the same window.
         if len(fr_teo) > 0:
             gross_d_safe = np.nan_to_num(np.asarray(gross_d, dtype=np.float64), nan=0.0)
             l1_safe = np.nan_to_num(np.asarray(l1_d, dtype=np.float64), nan=0.0)
@@ -1855,7 +1857,7 @@ def get_data_for_f1(
 
                 prod_g = prod_l1 = prod_l2 = prod_l3 = prod_style = 1.0
                 assert style_safe is not None  # for type checkers
-                for i in range(len(fr_teo)):
+                for i in range(1, len(fr_teo)):
                     d = str(fr_teo[i])
                     prod_l1 *= 1.0 + l1_safe[i]
                     prod_l2 *= 1.0 + (l1_safe[i] + l2_safe[i])
@@ -1906,7 +1908,7 @@ def get_data_for_f1(
                 cum_res_new.append((anchor_d, 0.0))
 
                 prod_g = prod_l1 = prod_l2 = prod_l3 = 1.0
-                for i in range(len(fr_teo)):
+                for i in range(1, len(fr_teo)):
                     d = str(fr_teo[i])
                     prod_g *= 1.0 + gross_d_safe[i]
                     prod_l1 *= 1.0 + l1_safe[i]

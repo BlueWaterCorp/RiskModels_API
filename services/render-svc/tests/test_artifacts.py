@@ -71,6 +71,8 @@ def _install_fake_bwmacro_artifact(monkeypatch, *, slug: str, version: str,
     mod = types.ModuleType(qualname)
     mod.ARTIFACT_SLUG = slug
     mod.ARTIFACT_VERSION = version
+    if slug == "cumulative_return_strip":
+        mod.BASELINE_REVISION = "first-close-1"
     mod.APPLICABLE_SUBJECT_KINDS = applicable
     mod.render_data = lambda data: render_data_result or {"ok": True, "n": len(getattr(data, "items", data) or [])}
 
@@ -1329,6 +1331,8 @@ def _install_params_fake_artifact(
     mod = types.ModuleType(qualname)
     mod.ARTIFACT_SLUG = slug
     mod.ARTIFACT_VERSION = "v1"
+    if slug == "cumulative_return_strip":
+        mod.BASELINE_REVISION = "first-close-1"
     mod.APPLICABLE_SUBJECT_KINDS = applicable
     mod.RENDER_PARAMS = render_params
 
@@ -1465,7 +1469,7 @@ class TestRenderArtifactWithParams:
             store=store, prefix=PREFIX,
         )
         assert capture["render_data_kwargs"] == {"window": "3m"}
-        assert gcs_path.endswith("/2025-11-30.window-3m.json")
+        assert gcs_path.endswith("/2025-11-30.window-3m.baseline-first-close-1.json")
 
     def test_module_without_render_params_501(self, store, monkeypatch):
         capture: dict = {}
