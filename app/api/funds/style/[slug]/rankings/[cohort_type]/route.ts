@@ -7,6 +7,7 @@ import {
   type Weighting,
 } from "@/lib/dal/funds-engine";
 import { styleSlugToName } from "@/lib/funds/style-slug";
+import { parseActiveFundQueryParams } from "@/lib/dal/fund-lifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,11 @@ const WEIGHTINGS = new Set<Weighting>(["ew", "mv"]);
  *
  * For cohort_type=fund, weighting is ignored (writer stores 'ew' placeholder
  * since fund returns are scalar).
+ *
+ * For cohort_type=fund, rows are restricted to funds active for listing
+ * (see lib/dal/fund-lifecycle.ts) unless ?include_inactive=true;
+ * ?include_etfs=false drops ETF-flagged funds. Stored ranks are returned
+ * unchanged, so filtered output can have rank gaps.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
@@ -85,12 +91,16 @@ export const GET = withBilling(
       limit = Math.min(Math.floor(parsed), 50);
     }
 
+    const { includeInactive, includeEtfs } = parseActiveFundQueryParams(sp);
+
     const rows = await fetchStyleRankings(cellName, {
       metric,
       cohortType,
       periodWindow,
       weighting: requestedWeighting,
       limit,
+      includeInactive,
+      includeEtfs,
     });
 
     if (rows.length === 0) {

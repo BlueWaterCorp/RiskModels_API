@@ -3438,6 +3438,28 @@ components:
           type: string
           format: date
           nullable: true
+        status:
+          type: string
+          nullable: true
+          enum: [active, delisted]
+          description: >
+            Fund lifecycle status. Null when not yet classified. Direct lookups
+            return dead funds; list and search endpoints filter to active funds
+            by default.
+        death_date:
+          type: string
+          format: date
+          nullable: true
+          description: Date the fund ceased operations; null for live funds.
+        is_etf:
+          type: boolean
+          nullable: true
+        is_etf_source:
+          type: string
+          nullable: true
+        is_money_market:
+          type: boolean
+          nullable: true
         metadata:
           type: object
           additionalProperties: true
@@ -4084,6 +4106,13 @@ components:
             n_funds_in_cell_at_report_date: { type: integer, nullable: true }
             morningstar_category: { type: string, nullable: true }
             primary_bw_fund_id: { type: string, nullable: true }
+            status: { type: string, enum: [active, delisted], nullable: true }
+            death_date: { type: string, format: date, nullable: true }
+            latest_report_date:
+              type: string
+              format: date
+              nullable: true
+              description: Period end of the fund's last reported holdings.
         _metadata:
           type: object
           properties:
@@ -5473,6 +5502,19 @@ paths:
           in: query
           required: false
           schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+        - name: include_inactive
+          in: query
+          required: false
+          schema: { type: string, enum: ["true", "false"], default: "false" }
+          description: >
+            `true` also returns funds that are not active for listing. By default
+            only funds with lifecycle status `active` whose last holdings report is
+            within 400 days of the latest active report date are returned.
+        - name: include_etfs
+          in: query
+          required: false
+          schema: { type: string, enum: ["true", "false"], default: "true" }
+          description: "`false` drops funds flagged `is_etf`."
       responses:
         "200":
           description: Matching funds
@@ -5502,6 +5544,10 @@ paths:
                         primary_bw_fund_id: { type: string, nullable: true }
                         latest_report_date: { type: string, format: date, nullable: true }
                         latest_filing_date: { type: string, format: date, nullable: true }
+                        status: { type: string, enum: [active, delisted], nullable: true }
+                        death_date: { type: string, format: date, nullable: true }
+                        is_etf: { type: boolean, nullable: true }
+                        is_money_market: { type: boolean, nullable: true }
         "429":
           description: Per-IP rate limit exceeded
 
@@ -10289,6 +10335,17 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - name: include_inactive
+          in: query
+          schema: { type: boolean, default: false }
+          description: >
+            When true, also returns funds that are not active for listing
+            (lifecycle status not `active`, or last holdings report older than
+            400 days before the latest active report date).
+        - name: include_etfs
+          in: query
+          schema: { type: boolean, default: true }
+          description: When false, drops funds flagged `is_etf`.
       responses:
         "200":
           description: Up to `limit` matching funds.
@@ -10331,6 +10388,17 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 20000, default: 5000 }
+        - name: include_inactive
+          in: query
+          schema: { type: boolean, default: false }
+          description: >
+            When true, also returns funds that are not active for listing
+            (lifecycle status not `active`, or last holdings report older than
+            400 days before the latest active report date).
+        - name: include_etfs
+          in: query
+          schema: { type: boolean, default: true }
+          description: When false, drops funds flagged `is_etf`.
       responses:
         "200":
           description: Fund id list for the cell.
@@ -11333,6 +11401,19 @@ paths:
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 50, default: 25 }
+        - name: include_inactive
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: >
+            cohort_type=fund only. When true, keeps funds that are not active
+            for listing. Stored ranks are returned unchanged, so filtered
+            output can have rank gaps.
+        - name: include_etfs
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+          description: cohort_type=fund only. When false, drops funds flagged `is_etf`.
       responses:
         "200":
           description: Top-N ranked rows.

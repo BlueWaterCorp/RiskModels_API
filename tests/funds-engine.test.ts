@@ -5,6 +5,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resetFundListingContextCache } from "@/lib/dal/fund-lifecycle";
 import {
   fetchFund,
   fetchFundLatest,
@@ -24,6 +25,8 @@ interface QueryStub {
   eq: () => QueryStub;
   in: () => QueryStub;
   is: () => QueryStub;
+  not: () => QueryStub;
+  gte: () => QueryStub;
   or: () => QueryStub;
   ilike: () => QueryStub;
   order: () => QueryStub;
@@ -41,6 +44,8 @@ function makeQuery(result: Result<unknown>): QueryStub {
   stub.eq = () => stub;
   stub.in = () => stub;
   stub.is = () => stub;
+  stub.not = () => stub;
+  stub.gte = () => stub;
   stub.or = () => stub;
   stub.ilike = () => stub;
   stub.order = () => stub;
@@ -110,6 +115,154 @@ const FUND_LATEST_VFINX = {
 
 beforeEach(() => {
   vi.mocked(createAdminClient).mockReset();
+  resetFundListingContextCache();
+});
+
+type FilterCall = [string, ...unknown[]];
+
+/**
+ * Per-call mock: each `from(table)` consumes the next queued result for that
+ * table and records the filter calls made on that query.
+ */
+function setSequencedClient(byTable: Record<string, Result<unknown>[]>) {
+  const queries: { table: string; calls: FilterCall[] }[] = [];
+  vi.mocked(createAdminClient).mockReturnValue({
+    from: (table: string) => {
+      const queue = byTable[table];
+      const result = queue?.shift();
+      if (!result) throw new Error(`unmocked call on table: ${table}`);
+      const rec = { table, calls: [] as FilterCall[] };
+      queries.push(rec);
+      const stub = makeQuery(result);
+      for (const m of ["select", "eq", "in", "is", "not", "gte", "or", "order", "limit"] as const) {
+        const orig = stub[m];
+        (stub as unknown as Record<string, (...a: unknown[]) => QueryStub>)[m] = (
+          ...a: unknown[]
+        ) => {
+          rec.calls.push([m, ...a]);
+          return (orig as () => QueryStub)();
+        };
+      }
+      return stub;
+    },
+  } as never);
+  return queries;
+}
+
+const PROBE_ACTIVE = { data: [{ status: "active", latest_report_date: "2026-06-30" }], error: null };
+const PROBE_NO_COLUMN = {
+  data: null,
+  error: { code: "42703", message: "column funds.status does not exist" },
+};
+
+describe("active-fund read filter", () => {
+  it("searchFunds applies status + report-date floor by default", async () => {
+    const q = setSequencedClient({
+      funds: [PROBE_ACTIVE, { data: [FUND_VFINX], error: null }],
+      funds_latest: [{ data: [], error: null }],
+    });
+    const r = await searchFunds({ q: "VFINX" });
+    expect(r).toHaveLength(1);
+    const main = q.filter((x) => x.table === "funds")[1]!;
+    expect(main.calls).toContainEqual(["eq", "status", "active"]);
+    expect(main.calls).toContainEqual(["gte", "latest_report_date", "2025-05-26"]);
+    expect(String(main.calls.find((c) => c[0] === "select")?.[1])).toContain("death_date");
+  });
+
+  it("searchFunds includeInactive skips the filter; includeEtfs=false drops ETFs", async () => {
+    const q = setSequencedClient({
+      funds: [PROBE_ACTIVE, { data: [], error: null }],
+    });
+    await searchFunds({ includeInactive: true, includeEtfs: false });
+    const main = q.filter((x) => x.table === "funds")[1]!;
+    expect(main.calls).not.toContainEqual(["eq", "status", "active"]);
+    expect(main.calls).toContainEqual(["not", "is_etf", "is", true]);
+  });
+
+  it("falls back to no filter and base columns when status column is absent", async () => {
+    const q = setSequencedClient({
+      funds: [PROBE_NO_COLUMN, { data: [FUND_VFINX], error: null }],
+      funds_latest: [{ data: [], error: null }],
+    });
+    const r = await searchFunds({ includeEtfs: false });
+    expect(r).toHaveLength(1);
+    const main = q.filter((x) => x.table === "funds")[1]!;
+    expect(main.calls.map((c) => c[0])).not.toContain("gte");
+    expect(main.calls.map((c) => c[0])).not.toContain("not");
+    expect(String(main.calls.find((c) => c[0] === "select")?.[1])).not.toContain("status");
+  });
+
+  it("falls back to no filter when no fund has status='active' yet", async () => {
+    const q = setSequencedClient({
+      funds: [{ data: [], error: null }, { data: [], error: null }],
+    });
+    await getStyleCellMembers("Large Blend");
+    const main = q.filter((x) => x.table === "funds")[1]!;
+    expect(main.calls).not.toContainEqual(["eq", "status", "active"]);
+  });
+
+  it("direct lookup by id is not filtered and carries lifecycle fields", async () => {
+    const dead = {
+      ...FUND_VFINX,
+      status: "delisted",
+      death_date: "2019-12-31",
+      latest_report_date: "2019-09-30",
+    };
+    const q = setSequencedClient({
+      funds: [PROBE_ACTIVE, { data: dead, error: null }],
+      funds_latest: [{ data: null, error: null }],
+    });
+    const r = await fetchFund("BW-FUND-S000004310");
+    expect(r?.status).toBe("delisted");
+    expect(r?.death_date).toBe("2019-12-31");
+    expect(r?.latest_report_date).toBe("2019-09-30");
+    const main = q.filter((x) => x.table === "funds")[1]!;
+    expect(main.calls).not.toContainEqual(["eq", "status", "active"]);
+  });
+
+  it("fetchStyleRankings(fund) drops inactive funds and keeps stored ranks", async () => {
+    const row = (rank: number, id: string) => ({
+      rank,
+      entity_id: id,
+      metric: "portfolio_gross_return",
+      value: 0.1,
+      cohort_size: 100,
+      period_window: "12m" as const,
+      weighting: "ew" as const,
+      report_date: "2026-04-30",
+      filing_date_max: "2026-07-14",
+    });
+    setSequencedClient({
+      funds: [
+        PROBE_ACTIVE,
+        { data: [{ bw_fund_id: "BW-FUND-A" }, { bw_fund_id: "BW-FUND-C" }], error: null },
+      ],
+      style_rankings_top: [
+        { data: [row(1, "BW-FUND-A"), row(2, "BW-FUND-DEAD"), row(3, "BW-FUND-C")], error: null },
+      ],
+    });
+    const r = await fetchStyleRankings("Large Blend", {
+      metric: "portfolio_gross_return",
+      cohortType: "fund",
+      periodWindow: "12m",
+      limit: 2,
+    });
+    expect(r.map((x) => [x.rank, x.entity_id])).toEqual([
+      [1, "BW-FUND-A"],
+      [3, "BW-FUND-C"],
+    ]);
+  });
+
+  it("fetchStyleRankings(symbol) never consults the funds table", async () => {
+    setSequencedClient({
+      style_rankings_top: [{ data: [], error: null }],
+    });
+    const r = await fetchStyleRankings("Large Blend", {
+      metric: "weight",
+      cohortType: "symbol",
+    });
+    expect(r).toEqual([]);
+  });
 });
 
 describe("fetchFund", () => {

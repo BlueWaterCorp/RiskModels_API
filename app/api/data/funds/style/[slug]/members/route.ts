@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getStyleCellMembers } from "@/lib/dal/funds-engine";
+import { parseActiveFundQueryParams } from "@/lib/dal/fund-lifecycle";
 import { styleSlugToName } from "@/lib/funds/style-slug";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
  * Query params:
  *   primary  — "true" filters to primary share class only (Q5 lock)
  *   limit    — max ids returned (default 5000, capped 20000)
+ *   include_inactive — "true" also returns dead / stale funds (default false)
+ *   include_etfs     — "false" drops funds flagged is_etf (default true)
  */
 export async function GET(
   request: NextRequest,
@@ -29,6 +32,8 @@ export async function GET(
 
   const { searchParams } = request.nextUrl;
   const primary = searchParams.get("primary") === "true";
+  const { includeInactive, includeEtfs } =
+    parseActiveFundQueryParams(searchParams);
   const limit = Math.min(
     Math.max(Number(searchParams.get("limit") ?? 5000), 1),
     20_000,
@@ -37,6 +42,8 @@ export async function GET(
   const members = await getStyleCellMembers(cellName, {
     primaryOnly: primary,
     limit,
+    includeInactive,
+    includeEtfs,
   });
 
   return NextResponse.json({

@@ -136,6 +136,8 @@ describe("GET /api/funds/style/[slug]/rankings/[cohort_type]", () => {
       periodWindow: "1m",
       weighting: "mv",
       limit: 25,
+      includeInactive: false,
+      includeEtfs: true,
     });
     const body = await res.json();
     expect(body.equity_style_9box).toBe("Large Blend");
@@ -160,7 +162,23 @@ describe("GET /api/funds/style/[slug]/rankings/[cohort_type]", () => {
       periodWindow: "12m",
       weighting: "ew",
       limit: 50,
+      includeInactive: false,
+      includeEtfs: true,
     });
+  });
+
+  it("forwards include_inactive / include_etfs for fund cohorts", async () => {
+    vi.mocked(fetchStyleRankings).mockResolvedValue([RANK_ROW]);
+    await rankingsGET(
+      req(
+        "/api/funds/style/large-blend/rankings/fund?metric=portfolio_gross_return&include_inactive=true&include_etfs=false",
+      ),
+      rankCtx,
+    );
+    const call = vi.mocked(fetchStyleRankings).mock.calls[0][1];
+    expect(call.cohortType).toBe("fund");
+    expect(call.includeInactive).toBe(true);
+    expect(call.includeEtfs).toBe(false);
   });
 
   it("rejects missing metric", async () => {
