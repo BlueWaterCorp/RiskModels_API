@@ -23,6 +23,7 @@ const ARTIFACT_RENDER_PARAM_APPLICABILITY: Record<string, string[]> = {
   active_risk_composition: ["layers"],
   hedge_notionals_hbar: ["top_n"],
   watchlist_er_stacked: ["sort_by", "top_n"],
+  risk_comparison: ["sort_by", "top_n"],
   risk_dna_stacked: ["peer_n", "sort_by"],
   historical_risk_waterfall: ["date", "window"],
   holdings_active_panel: ["benchmark", "top_n"],

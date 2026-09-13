@@ -1,5 +1,11 @@
 # Changelog
 
+## Pending — Signed RMGraph stock comparison
+
+- Prepare `risk_comparison@v1` for explicit lists of 1–12 stocks using the existing decomposition loader, common-date alignment and artifact store.
+- Preserve signed factor contributions and pass date-alignment or exclusion notes to the RMGraph layout. Comparison cache identities distinguish stock order and disclosure context; existing watchlist artifacts retain their identities.
+- JSON, 300-DPI PNG and vector SVG require the companion BWMACRO renderer. Capability remains unavailable until a coordinated Cloud Run deployment and real-subject verification. MCP image delivery is tracked separately in PR #369.
+
 ## 2026-09-13 — Display artifact PNGs directly in MCP hosts
 
 - Hosted `riskmodels_render_artifact` now returns PNG bytes as MCP image content, with the resolved data date, source, parameters and receipt in accompanying text.
