@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-13 — Display artifact PNGs directly in MCP hosts
+
+- Hosted `riskmodels_render_artifact` now returns PNG bytes as MCP image content, with the resolved data date, source, parameters and receipt in accompanying text.
+- PNG bytes are no longer duplicated as base64 inside the text payload. Consumers should read the image content block. JSON, SVG and Plotly figure responses retain their existing shape; REST rendering is unchanged.
+- Invalid PNG payloads return an explicit tool error. This delivery change does not migrate legacy chart renderers to RMGraph or establish a host recording.
+
 ## 2026-09-12 — Cumulative charts start at an actual close
 
 - Fund daily/monthly charts emit the first observed close once at zero; later intervals compound over the same window as the layered contributions and waterfall.

@@ -64,6 +64,15 @@ Data tools return the same numbers the REST API and CLI return — GCP zarr for 
 
 Whenever a tool response includes `chart_data`, clients should render the `suggested_chart` and explain the result in plain English.
 
+The hosted server also exposes `riskmodels_render_artifact`. Request `format: "png"`
+to display the original registry chart. The result contains provenance text and an
+MCP `image` content block (`data` holds the base64 PNG; `mimeType` is `image/png`).
+Display that image directly, retaining `resolved_as_of`, source and `receipt_id`.
+The text no longer duplicates PNG bytes in `artifact.base64`; use the image block.
+Request JSON separately when exact numerical values are needed. JSON, SVG export
+and Plotly figure response shapes are unchanged. This hosted-only tool is not
+part of the standalone stdio server and does not itself change chart styling.
+
 Every data-tool response includes a meter envelope so agents can self-throttle:
 
 ```json
