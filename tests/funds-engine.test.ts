@@ -238,6 +238,7 @@ describe("active-fund read filter", () => {
         { data: [{ bw_fund_id: "BW-FUND-A" }, { bw_fund_id: "BW-FUND-C" }], error: null },
       ],
       style_rankings_top: [
+        { data: [], error: null },
         { data: [row(1, "BW-FUND-A"), row(2, "BW-FUND-DEAD"), row(3, "BW-FUND-C")], error: null },
       ],
     });
@@ -251,6 +252,69 @@ describe("active-fund read filter", () => {
       [1, "BW-FUND-A"],
       [3, "BW-FUND-C"],
     ]);
+  });
+
+  it("fetchStyleRankings(fund) returns contiguous active ranks when populated", async () => {
+    const base = {
+      metric: "portfolio_gross_return",
+      value: 0.1,
+      cohort_size: 100,
+      period_window: "12m" as const,
+      weighting: "ew" as const,
+      report_date: "2026-04-30",
+      filing_date_max: "2026-07-14",
+    };
+    const q = setSequencedClient({
+      style_rankings_top: [
+        {
+          data: [
+            { ...base, rank: 1, entity_id: "BW-FUND-A", rank_active: 1, cohort_size_active: 40 },
+            { ...base, rank: 3, entity_id: "BW-FUND-C", rank_active: 2, cohort_size_active: 40 },
+          ],
+          error: null,
+        },
+      ],
+    });
+    const r = await fetchStyleRankings("Large Blend", {
+      metric: "portfolio_gross_return",
+      cohortType: "fund",
+      periodWindow: "12m",
+    });
+    expect(r.map((x) => [x.rank, x.entity_id, x.cohort_size])).toEqual([
+      [1, "BW-FUND-A", 40],
+      [2, "BW-FUND-C", 40],
+    ]);
+    expect(r[0]).not.toHaveProperty("rank_active");
+    expect(q[0]!.calls).toContainEqual(["order", "rank_active", { ascending: true }]);
+    expect(q.some((x) => x.table === "funds")).toBe(false);
+  });
+
+  it("fetchStyleRankings(fund, includeEtfs=false) orders by rank_active_ex_etf", async () => {
+    const q = setSequencedClient({
+      style_rankings_top: [
+        {
+          data: [{
+            rank: 2, entity_id: "BW-FUND-B", metric: "m", value: 0.2, cohort_size: 100,
+            period_window: "1m", weighting: "ew", report_date: "2026-04-30", filing_date_max: null,
+            rank_active_ex_etf: 1, cohort_size_active_ex_etf: 30,
+          }],
+          error: null,
+        },
+      ],
+    });
+    const r = await fetchStyleRankings("Large Blend", { metric: "m", cohortType: "fund", includeEtfs: false });
+    expect(r.map((x) => [x.rank, x.cohort_size])).toEqual([[1, 30]]);
+    expect(q[0]!.calls).toContainEqual(["not", "rank_active_ex_etf", "is", null]);
+  });
+
+  it("fetchStyleRankings(fund, includeInactive) keeps stored ranks", async () => {
+    const q = setSequencedClient({
+      funds: [PROBE_ACTIVE],
+      style_rankings_top: [{ data: [], error: null }],
+    });
+    await fetchStyleRankings("Large Blend", { metric: "m", cohortType: "fund", includeInactive: true });
+    const calls = q.filter((x) => x.table === "style_rankings_top")[0]!.calls;
+    expect(calls).toContainEqual(["order", "rank", { ascending: true }]);
   });
 
   it("fetchStyleRankings(symbol) never consults the funds table", async () => {

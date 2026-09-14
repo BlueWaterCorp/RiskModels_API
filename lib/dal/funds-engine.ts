@@ -503,6 +503,43 @@ export async function fetchStyleRankings(
 
   try {
     const admin = createAdminClient();
+
+    // Fund cohorts: prefer ranks computed over the active population
+    // (rank_active, or rank_active_ex_etf when ETFs are excluded), which are
+    // contiguous 1..n. Falls back to stored rank + read-time filter when the
+    // columns are absent or not yet populated.
+    if (cohortType === "fund" && !filterOpts.includeInactive) {
+      const exEtf = filterOpts.includeEtfs === false;
+      const rankCol = exEtf ? "rank_active_ex_etf" : "rank_active";
+      const sizeCol = exEtf ? "cohort_size_active_ex_etf" : "cohort_size_active";
+      const { data: activeRankData, error: activeRankErr } = await admin
+        .from("style_rankings_top")
+        .select(`${STYLE_RANKING_COLUMNS}, ${rankCol}, ${sizeCol}`)
+        .eq("equity_style_9box", equityStyle9Box)
+        .eq("cohort_type", cohortType)
+        .eq("metric", metric)
+        .eq("period_window", periodWindow)
+        .eq("weighting", effectiveWeighting)
+        .not(rankCol, "is", null)
+        .order(rankCol, { ascending: true })
+        .limit(safeLimit);
+      const ranked = activeRankErr
+        ? []
+        : ((activeRankData ?? []) as unknown as Array<StyleRankingRow & Record<string, unknown>>).filter(
+            (r) => typeof r[rankCol] === "number",
+          );
+      if (ranked.length > 0) {
+        return ranked.map((r) => {
+          const { [rankCol]: activeRank, [sizeCol]: activeSize, ...rest } = r;
+          return {
+            ...(rest as unknown as StyleRankingRow),
+            rank: activeRank as number,
+            cohort_size: (activeSize as number | null) ?? null,
+          };
+        });
+      }
+    }
+
     // Fund cohorts are filtered to active funds; symbol / sector cohorts are not.
     const ctx =
       cohortType === "fund" ? await getFundListingContext(admin) : null;

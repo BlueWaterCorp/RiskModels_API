@@ -30,8 +30,9 @@ const WEIGHTINGS = new Set<Weighting>(["ew", "mv"]);
  *
  * For cohort_type=fund, rows are restricted to funds active for listing
  * (see lib/dal/fund-lifecycle.ts) unless ?include_inactive=true;
- * ?include_etfs=false drops ETF-flagged funds. Stored ranks are returned
- * unchanged, so filtered output can have rank gaps.
+ * ?include_etfs=false drops ETF-flagged funds. Ranks come from the active
+ * population (contiguous) when available; otherwise stored ranks are returned
+ * and filtered output can have rank gaps.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
