@@ -2128,6 +2128,17 @@ export const CAPABILITIES: Capability[] = [
         required: false,
         description: "Max rows returned (default 50, max 500).",
       },
+      include_inactive: {
+        type: "boolean",
+        required: false,
+        description:
+          "If true, also returns funds not active for listing (default false: status active and last holdings report within 400 days of the latest active report).",
+      },
+      include_etfs: {
+        type: "boolean",
+        required: false,
+        description: "If false, drops funds flagged is_etf (default true).",
+      },
     },
     pricing: {
       model: "per_request",
@@ -2466,6 +2477,19 @@ export const CAPABILITIES: Capability[] = [
         default: 25,
         min: 1,
         max: 50,
+      },
+      include_inactive: {
+        type: "boolean",
+        required: false,
+        description:
+          "cohort_type=fund only. If true, keeps funds not active for listing (default false). Ranks are computed over the active population (contiguous) when available; otherwise stored ranks are returned and filtered output can have gaps.",
+        default: false,
+      },
+      include_etfs: {
+        type: "boolean",
+        required: false,
+        description: "cohort_type=fund only. If false, drops funds flagged is_etf (default true).",
+        default: true,
       },
     },
     pricing: {

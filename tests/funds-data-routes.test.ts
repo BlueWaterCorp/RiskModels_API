@@ -150,7 +150,8 @@ describe("GET /api/data/funds/style/[slug]/members", () => {
     expect(res.status).toBe(200);
     expect(vi.mocked(getStyleCellMembers)).toHaveBeenCalledWith("Large Blend", {
       primaryOnly: false,
-      limit: 5000,
+      limit: 5000,      includeInactive: false,
+      includeEtfs: true,
     });
     const body = await res.json();
     expect(body.equity_style_9box).toBe("Large Blend");
@@ -177,7 +178,8 @@ describe("GET /api/data/funds/style/[slug]/members", () => {
     );
     expect(vi.mocked(getStyleCellMembers)).toHaveBeenCalledWith("Small Value", {
       primaryOnly: true,
-      limit: 20_000,
+      limit: 20_000,      includeInactive: false,
+      includeEtfs: true,
     });
   });
 });
@@ -196,6 +198,8 @@ describe("GET /api/data/funds/search", () => {
       equityStyle9Box: "Large Blend",
       primaryOnly: true,
       limit: 10,
+      includeInactive: false,
+      includeEtfs: true,
     });
     const body = await res.json();
     expect(body.results.length).toBe(1);
@@ -210,6 +214,18 @@ describe("GET /api/data/funds/search", () => {
     );
     const call = vi.mocked(searchFunds).mock.calls[0][0]!;
     expect(call.equityStyle9Box).toBe("Large Blend");
+  });
+
+  it("forwards include_inactive / include_etfs to DAL", async () => {
+    vi.mocked(searchFunds).mockResolvedValue([]);
+    await getFundsSearch(
+      req(
+        "http://localhost/api/data/funds/search?include_inactive=true&include_etfs=false",
+      ),
+    );
+    const call = vi.mocked(searchFunds).mock.calls[0][0]!;
+    expect(call.includeInactive).toBe(true);
+    expect(call.includeEtfs).toBe(false);
   });
 
   it("clamps limit to 500", async () => {

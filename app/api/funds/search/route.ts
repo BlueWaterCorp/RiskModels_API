@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { searchFunds } from "@/lib/dal/funds-engine";
+import { parseActiveFundQueryParams } from "@/lib/dal/fund-lifecycle";
 import { isValidStyleSlug, styleSlugToName } from "@/lib/funds/style-slug";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export const dynamic = "force-dynamic";
  *   equity_style_9box — style slug ("large-blend") OR canonical name ("Large Blend")
  *   primary           — "true" filters to share-class primaries only
  *   limit             — max rows (default 50, capped 100)
+ *   include_inactive  — "true" also returns dead / stale funds (default false)
+ *   include_etfs      — "false" drops funds flagged is_etf (default true)
  *
  * Returns: { results: FundRow[] }
  */
@@ -43,6 +46,8 @@ export const GET = withBilling(
       MAX_PUBLIC_LIMIT,
     );
     const primary = searchParams.get("primary") === "true";
+    const { includeInactive, includeEtfs } =
+      parseActiveFundQueryParams(searchParams);
 
     const styleParam = searchParams.get("equity_style_9box")?.trim();
     let equityStyle9Box: string | null | undefined = undefined;
@@ -59,6 +64,8 @@ export const GET = withBilling(
       equityStyle9Box,
       primaryOnly: primary,
       limit,
+      includeInactive,
+      includeEtfs,
     });
 
     return NextResponse.json({ results });

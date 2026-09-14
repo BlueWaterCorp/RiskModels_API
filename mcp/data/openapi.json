@@ -4228,6 +4228,33 @@
             "format": "date",
             "nullable": true
           },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "active",
+              "delisted"
+            ],
+            "description": "Fund lifecycle status. Null when not yet classified. Direct lookups return dead funds; list and search endpoints filter to active funds by default.\n"
+          },
+          "death_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Date the fund ceased operations; null for live funds."
+          },
+          "is_etf": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "is_etf_source": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_money_market": {
+            "type": "boolean",
+            "nullable": true
+          },
           "metadata": {
             "type": "object",
             "additionalProperties": true,
@@ -5672,6 +5699,25 @@
               "primary_bw_fund_id": {
                 "type": "string",
                 "nullable": true
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "delisted"
+                ],
+                "nullable": true
+              },
+              "death_date": {
+                "type": "string",
+                "format": "date",
+                "nullable": true
+              },
+              "latest_report_date": {
+                "type": "string",
+                "format": "date",
+                "nullable": true,
+                "description": "Period end of the fund's last reported holdings."
               }
             }
           },
@@ -7543,6 +7589,34 @@
               "minimum": 1,
               "maximum": 100
             }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "description": "`true` also returns funds that are not active for listing. By default only funds with lifecycle status `active` whose last holdings report is within 400 days of the latest active report date are returned.\n"
+          },
+          {
+            "name": "include_etfs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "true"
+            },
+            "description": "`false` drops funds flagged `is_etf`."
           }
         ],
         "responses": {
@@ -7611,6 +7685,27 @@
                           "latest_filing_date": {
                             "type": "string",
                             "format": "date",
+                            "nullable": true
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "delisted"
+                            ],
+                            "nullable": true
+                          },
+                          "death_date": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "is_etf": {
+                            "type": "boolean",
+                            "nullable": true
+                          },
+                          "is_money_market": {
+                            "type": "boolean",
                             "nullable": true
                           }
                         }
@@ -14765,6 +14860,24 @@
               "maximum": 500,
               "default": 50
             }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, also returns funds that are not active for listing (lifecycle status not `active`, or last holdings report older than 400 days before the latest active report date).\n"
+          },
+          {
+            "name": "include_etfs",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "When false, drops funds flagged `is_etf`."
           }
         ],
         "responses": {
@@ -14832,6 +14945,24 @@
               "maximum": 20000,
               "default": 5000
             }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, also returns funds that are not active for listing (lifecycle status not `active`, or last holdings report older than 400 days before the latest active report date).\n"
+          },
+          {
+            "name": "include_etfs",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "When false, drops funds flagged `is_etf`."
           }
         ],
         "responses": {
@@ -16622,6 +16753,26 @@
               "maximum": 50,
               "default": 25
             }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "cohort_type=fund only. When true, keeps funds that are not active for listing. Stored ranks are returned unchanged, so filtered output can have rank gaps.\n"
+          },
+          {
+            "name": "include_etfs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "cohort_type=fund only. When false, drops funds flagged `is_etf`."
           }
         ],
         "responses": {

@@ -15,8 +15,17 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  FUND_LIFECYCLE_COLUMNS,
+  activeFilterIsNoop,
+  applyActiveFundFilter,
+  getFundListingContext,
+  type ActiveFundFilterOptions,
+  type FundLifecycleFields,
+  type FundListingContext,
+} from "@/lib/dal/fund-lifecycle";
 
-export interface FundRow {
+export interface FundRow extends FundLifecycleFields {
   bw_fund_id: string;
   series_id: string | null;
   ticker: string | null;
@@ -99,7 +108,7 @@ export interface FundWithLatest {
   latest: FundLatestRow | null;
 }
 
-export interface SearchFundsOptions {
+export interface SearchFundsOptions extends ActiveFundFilterOptions {
   q?: string;
   equityStyle9Box?: string | null;
   primaryOnly?: boolean;
@@ -108,6 +117,13 @@ export interface SearchFundsOptions {
 
 const FUND_COLUMNS =
   "bw_fund_id, series_id, ticker, cik, fund_name, morningstar_category, equity_style_9box, style_link_method, net_expense_ratio, net_expense_ratio_asof, primary_bw_fund_id, latest_report_date, latest_filing_date, latest_extracted_at, latest_total_adj_mv, latest_n_holdings, latest_effective_n, last_in_eligible_universe_at, metadata";
+
+/** Registry columns, plus lifecycle columns once the migration has landed. */
+function fundColumns(ctx: FundListingContext): string {
+  return ctx.lifecycleColumnsPresent
+    ? `${FUND_COLUMNS}, ${FUND_LIFECYCLE_COLUMNS}`
+    : FUND_COLUMNS;
+}
 
 const FUND_LATEST_COLUMNS =
   "bw_fund_id, report_date, filing_date, extracted_at, portfolio_gross_return, portfolio_market_return, portfolio_sector_return, portfolio_subsector_return, portfolio_style_return, portfolio_idiosyncratic_return, identity_residual, weight_sum, n_holdings_active, effective_n, top10_weight_sum, total_adj_mv, equity_style_9box, n_funds_in_cell_at_report_date, model_version, factor_set_id, last_synced_at, metadata, aum_erm3, coverage_in_erm3, variance_shares_full, variance_shares_recent, fit_beta_to_spy, fit_capm_r2, fit_nav_correlation, fit_residual_vol, fit_nav_vol_ann, fit_alpha_ann, fit_erm3_multifactor_r2, fit_n_months";
@@ -170,16 +186,18 @@ async function fetchFundRegistryRow(
 ): Promise<FundRow | null> {
   try {
     const admin = createAdminClient();
+    // Direct lookup: never filtered by the active rule (dead funds resolve).
+    const ctx = await getFundListingContext(admin);
     const { data, error } = await admin
       .from("funds")
-      .select(FUND_COLUMNS)
+      .select(fundColumns(ctx))
       .eq("bw_fund_id", bwFundId)
       .maybeSingle();
     if (error) {
       console.error(`[Funds DAL] Error fetching fund ${bwFundId}:`, error);
       return null;
     }
-    return (data as FundRow | null) ?? null;
+    return (data as unknown as FundRow | null) ?? null;
   } catch (error) {
     console.error(`[Funds DAL] Error fetching fund ${bwFundId}:`, error);
     return null;
@@ -238,8 +256,10 @@ export async function resolveFundsByIds(
 
   try {
     const admin = createAdminClient();
+    // Explicit id list: never filtered by the active rule.
+    const ctx = await getFundListingContext(admin);
     const [fundsRes, latestRes] = await Promise.all([
-      admin.from("funds").select(FUND_COLUMNS).in("bw_fund_id", bwFundIds),
+      admin.from("funds").select(fundColumns(ctx)).in("bw_fund_id", bwFundIds),
       admin
         .from("funds_latest")
         .select(FUND_LATEST_COLUMNS)
@@ -260,7 +280,7 @@ export async function resolveFundsByIds(
       console.error("[Funds DAL] Batch funds_latest error:", latestRes.error);
     }
 
-    for (const fund of (fundsRes.data ?? []) as FundRow[]) {
+    for (const fund of (fundsRes.data ?? []) as unknown as FundRow[]) {
       const latest = latestById.get(fund.bw_fund_id) ?? null;
       result.set(fund.bw_fund_id, {
         fund: mergeFundRegistryWithLatest(fund, latest),
@@ -277,12 +297,24 @@ export async function resolveFundsByIds(
 export async function searchFunds(
   options: SearchFundsOptions = {},
 ): Promise<FundRow[]> {
-  const { q, equityStyle9Box, primaryOnly, limit = 50 } = options;
+  const {
+    q,
+    equityStyle9Box,
+    primaryOnly,
+    limit = 50,
+    includeInactive = false,
+    includeEtfs = true,
+  } = options;
   const safeLimit = Math.min(Math.max(limit, 1), 500);
 
   try {
     const admin = createAdminClient();
-    let query = admin.from("funds").select(FUND_COLUMNS);
+    const ctx = await getFundListingContext(admin);
+    let query = applyActiveFundFilter(
+      admin.from("funds").select(fundColumns(ctx)),
+      ctx,
+      { includeInactive, includeEtfs },
+    );
 
     if (q && q.trim().length > 0) {
       const escaped = q.trim().replace(/[%,()]/g, " ");
@@ -306,7 +338,7 @@ export async function searchFunds(
       console.error("[Funds DAL] searchFunds error:", error);
       return [];
     }
-    const rows = (data ?? []) as FundRow[];
+    const rows = (data ?? []) as unknown as FundRow[];
     if (rows.length === 0) return [];
 
     const ids = rows.map((r) => r.bw_fund_id);
@@ -404,7 +436,7 @@ export interface StyleRankingRow {
   filing_date_max: string | null;
 }
 
-export interface FetchStyleRankingsOptions {
+export interface FetchStyleRankingsOptions extends ActiveFundFilterOptions {
   metric: string;
   cohortType: CohortType;
   periodWindow?: RankPeriodWindow;
@@ -461,12 +493,59 @@ export async function fetchStyleRankings(
     limit = 25,
   } = options;
   const safeLimit = Math.min(Math.max(limit, 1), 50);
+  const filterOpts: ActiveFundFilterOptions = {
+    includeInactive: options.includeInactive ?? false,
+    includeEtfs: options.includeEtfs ?? true,
+  };
   // For fund cohort: writer uses 'ew' as a NOT-NULL placeholder; ignore caller's choice.
   const effectiveWeighting: Weighting =
     cohortType === "fund" ? "ew" : options.weighting ?? "mv";
 
   try {
     const admin = createAdminClient();
+
+    // Fund cohorts: prefer ranks computed over the active population
+    // (rank_active, or rank_active_ex_etf when ETFs are excluded), which are
+    // contiguous 1..n. Falls back to stored rank + read-time filter when the
+    // columns are absent or not yet populated.
+    if (cohortType === "fund" && !filterOpts.includeInactive) {
+      const exEtf = filterOpts.includeEtfs === false;
+      const rankCol = exEtf ? "rank_active_ex_etf" : "rank_active";
+      const sizeCol = exEtf ? "cohort_size_active_ex_etf" : "cohort_size_active";
+      const { data: activeRankData, error: activeRankErr } = await admin
+        .from("style_rankings_top")
+        .select(`${STYLE_RANKING_COLUMNS}, ${rankCol}, ${sizeCol}`)
+        .eq("equity_style_9box", equityStyle9Box)
+        .eq("cohort_type", cohortType)
+        .eq("metric", metric)
+        .eq("period_window", periodWindow)
+        .eq("weighting", effectiveWeighting)
+        .not(rankCol, "is", null)
+        .order(rankCol, { ascending: true })
+        .limit(safeLimit);
+      const ranked = activeRankErr
+        ? []
+        : ((activeRankData ?? []) as unknown as Array<StyleRankingRow & Record<string, unknown>>).filter(
+            (r) => typeof r[rankCol] === "number",
+          );
+      if (ranked.length > 0) {
+        return ranked.map((r) => {
+          const { [rankCol]: activeRank, [sizeCol]: activeSize, ...rest } = r;
+          return {
+            ...(rest as unknown as StyleRankingRow),
+            rank: activeRank as number,
+            cohort_size: (activeSize as number | null) ?? null,
+          };
+        });
+      }
+    }
+
+    // Fund cohorts are filtered to active funds; symbol / sector cohorts are not.
+    const ctx =
+      cohortType === "fund" ? await getFundListingContext(admin) : null;
+    const filterFunds = ctx != null && !activeFilterIsNoop(ctx, filterOpts);
+    // When filtering, read up to the storage ceiling so dropped rows can be
+    // backfilled from lower ranks before trimming to the requested limit.
     const { data, error } = await admin
       .from("style_rankings_top")
       .select(STYLE_RANKING_COLUMNS)
@@ -476,12 +555,28 @@ export async function fetchStyleRankings(
       .eq("period_window", periodWindow)
       .eq("weighting", effectiveWeighting)
       .order("rank", { ascending: true })
-      .limit(safeLimit);
+      .limit(filterFunds ? 50 : safeLimit);
     if (error) {
       console.error("[Funds DAL] fetchStyleRankings error:", error);
       return [];
     }
-    return (data ?? []) as StyleRankingRow[];
+    const rows = (data ?? []) as StyleRankingRow[];
+    if (!filterFunds || rows.length === 0) return rows.slice(0, safeLimit);
+
+    const ids = [...new Set(rows.map((r) => r.entity_id))];
+    const { data: activeData, error: activeErr } = await applyActiveFundFilter(
+      admin.from("funds").select("bw_fund_id").in("bw_fund_id", ids),
+      ctx,
+      filterOpts,
+    );
+    if (activeErr) {
+      console.error("[Funds DAL] fetchStyleRankings active filter error:", activeErr);
+      return rows.slice(0, safeLimit);
+    }
+    const active = new Set(
+      ((activeData ?? []) as { bw_fund_id: string }[]).map((r) => r.bw_fund_id),
+    );
+    return rows.filter((r) => active.has(r.entity_id)).slice(0, safeLimit);
   } catch (error) {
     console.error("[Funds DAL] fetchStyleRankings error:", error);
     return [];
@@ -490,17 +585,27 @@ export async function fetchStyleRankings(
 
 export async function getStyleCellMembers(
   equityStyle9Box: string,
-  options: { primaryOnly?: boolean; limit?: number } = {},
+  options: { primaryOnly?: boolean; limit?: number } & ActiveFundFilterOptions = {},
 ): Promise<string[]> {
-  const { primaryOnly, limit = 5000 } = options;
+  const {
+    primaryOnly,
+    limit = 5000,
+    includeInactive = false,
+    includeEtfs = true,
+  } = options;
   const safeLimit = Math.min(Math.max(limit, 1), 20000);
 
   try {
     const admin = createAdminClient();
-    let query = admin
-      .from("funds")
-      .select("bw_fund_id")
-      .eq("equity_style_9box", equityStyle9Box);
+    const ctx = await getFundListingContext(admin);
+    let query = applyActiveFundFilter(
+      admin
+        .from("funds")
+        .select("bw_fund_id")
+        .eq("equity_style_9box", equityStyle9Box),
+      ctx,
+      { includeInactive, includeEtfs },
+    );
     if (primaryOnly) {
       query = query.is("primary_bw_fund_id", null);
     }

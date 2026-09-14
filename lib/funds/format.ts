@@ -40,6 +40,12 @@ export interface FundMetricsResponse {
     n_funds_in_cell_at_report_date: number | null;
     morningstar_category: string | null;
     primary_bw_fund_id: string | null;
+    /** Lifecycle status (`active` | `delisted`); null before the lifecycle columns land. */
+    status: string | null;
+    /** Date the fund ceased operations; null for live funds or when unknown. */
+    death_date: string | null;
+    /** Period end of the fund's last reported holdings ("last holdings as of"). */
+    latest_report_date: string | null;
   };
   _metadata: {
     model_version: string | null;
@@ -82,6 +88,9 @@ export function formatFundMetrics(
       n_funds_in_cell_at_report_date: latest.n_funds_in_cell_at_report_date,
       morningstar_category: fund.morningstar_category,
       primary_bw_fund_id: fund.primary_bw_fund_id,
+      status: fund.status ?? null,
+      death_date: fund.death_date ?? null,
+      latest_report_date: fund.latest_report_date,
     },
     _metadata: {
       model_version: latest.model_version,
