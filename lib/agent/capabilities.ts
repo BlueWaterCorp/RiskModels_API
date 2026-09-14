@@ -18,6 +18,7 @@
 const ARTIFACT_RENDER_PARAM_APPLICABILITY: Record<string, string[]> = {
   top_holdings_erm_stacked: ["top_n"],
   cumulative_return_strip: ["window"],
+  cumulative_return_paths: ["window"],
   position_cumulative_decomposition: ["window"],
   l3_explained_risk_hbar: ["layers"],
   active_risk_composition: ["layers"],

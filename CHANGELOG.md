@@ -1,5 +1,11 @@
 # Changelog
 
+## Pending — RMGraph cumulative stock return paths
+
+- Add `cumulative_return_paths@v1` using existing daily returns-decomposition data, with original RMGraph PNG/SVG exports and numerical JSON.
+- Use a common first-close zero baseline; compound gross, combined-factor and residual daily series separately. Reject missing or misaligned observations. Date cutoffs refer to observed returns, not historical knowledge-time availability.
+- Preserve existing artifact identities and reuse dated cached bytes. Production qualification and host display checks precede capability promotion.
+
 ## Pending — Original chart component for MCP hosts
 
 - Link the hosted render tool to a self-contained MCP Apps component that displays original PNG content with its data date and receipt. Native image and text response shapes remain available to clients without UI support.

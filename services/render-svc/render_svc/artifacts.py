@@ -413,6 +413,7 @@ def newest_prerendered_as_of(
 _SLUG_PARAMS: dict[str, frozenset[str]] = {
     "top_holdings_erm_stacked": frozenset({"top_n"}),
     "cumulative_return_strip": frozenset({"window"}),
+    "cumulative_return_paths": frozenset({"window"}),
     "position_cumulative_decomposition": frozenset({"window"}),
     "l3_explained_risk_hbar": frozenset({"layers"}),
     "active_risk_composition": frozenset({"layers"}),
@@ -536,6 +537,9 @@ def _adapter_for(
     Filer / ETF / cohort adapters land alongside their Phase 2 artifact
     rows in ``BWMACRO/src/bwmacro/snapshots/artifacts/adapters.py``.
     """
+    if slug == "cumulative_return_paths" and subject_kind == "stock":
+        return lambda payload: payload
+
     # SDK-hosted artifact (G.45): the loader already returns the fit
     # payload in the module's input shape, and the module lives in
     # riskmodels.snapshots.artifacts — resolve before touching bwmacro,
@@ -1907,7 +1911,25 @@ def render_artifact(
     # G.71 multi-name date alignment; set on both watchlist modes.
     date_alignment: DateAlignment | None = None
 
-    if subject_kind == "client_portfolio":
+    if subject_kind == "stock" and req.slug == "cumulative_return_paths":
+        from render_svc.stock_return_paths import load_return_paths
+        if req.subject_payload is not None:
+            raise HTTPException(status_code=422, detail="Stock return paths use stored observations; subject_payload is not accepted")
+        # Reuse issued dated bytes before making a source call. A weekend
+        # cutoff with no exact object resolves to the last observed close.
+        if req.as_of != "latest":
+            exact_path = _artifact_gcs_path(prefix, req.slug, req.version, req.subject_id,
+                                           req.as_of, req.format, params_fragment)
+            cached = store.read(exact_path)
+            if cached is not None:
+                return (cached, _FORMAT_MIME[req.format], exact_path, req.as_of,
+                        _cache_control_for(req.as_of), _receipt_id(exact_path))
+        subject_data, resolved_as_of = load_return_paths(
+            _ticker_from_stock_subject_id(req.subject_id), req.as_of,
+            supplied_params.get("window", "1y"),
+        )
+        resolved_subject_id = req.subject_id
+    elif subject_kind == "client_portfolio":
         # Subject data is supplied inline; cache key is payload-hash-derived.
         subject_data, resolved_subject_id, resolved_as_of = _resolve_client_portfolio(req)
     elif subject_kind == "fund" and req.slug == "holdings_active_panel":
