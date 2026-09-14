@@ -1,0 +1,210 @@
+{
+  "Berkshire": {
+    "name": "Berkshire",
+    "bw_filer_id": "BW-FILER-CIK0001067983",
+    "cik": "1067983.0",
+    "report_date": "2025-12-31",
+    "n_holdings": 22,
+    "gross_adj_mv": 176510883.98299998,
+    "hhi": 0.2555684933795371,
+    "top5": 0.9163212272823781,
+    "top10": 0.9758031805539463,
+    "top10_positions": [
+      {
+        "ticker": "AAPL",
+        "weight": 0.35103634339606854
+      },
+      {
+        "ticker": "AXP",
+        "weight": 0.3177615861376682
+      },
+      {
+        "ticker": "KO",
+        "weight": 0.15842649115446758
+      },
+      {
+        "ticker": "MCO",
+        "weight": 0.0713981812771034
+      },
+      {
+        "ticker": "KR",
+        "weight": 0.017698625317070404
+      },
+      {
+        "ticker": "V",
+        "weight": 0.01648624793743748
+      },
+      {
+        "ticker": "MA",
+        "weight": 0.012893808917863642
+      },
+      {
+        "ticker": "VRSN",
+        "weight": 0.01237369218665492
+      },
+      {
+        "ticker": "COF",
+        "weight": 0.009817377608096369
+      },
+      {
+        "ticker": "DPZ",
+        "weight": 0.007910826621515783
+      }
+    ],
+    "latest_report_date": null,
+    "aum_tier": "Mega"
+  },
+  "Pershing": {
+    "name": "Pershing",
+    "bw_filer_id": "BW-FILER-CIK0001336528",
+    "cik": "1336528.0",
+    "report_date": "2025-12-31",
+    "n_holdings": 7,
+    "gross_adj_mv": 11527339.222,
+    "hhi": 0.16983845707313786,
+    "top5": 0.862746423304658,
+    "top10": 1.0,
+    "top10_positions": [
+      {
+        "ticker": "UBER",
+        "weight": 0.21412347615217944
+      },
+      {
+        "ticker": "AMZN",
+        "weight": 0.19238420014286972
+      },
+      {
+        "ticker": "GOOG",
+        "weight": 0.16779437845539616
+      },
+      {
+        "ticker": "META",
+        "weight": 0.1530965756288212
+      },
+      {
+        "ticker": "QSR",
+        "weight": 0.13534779292539154
+      },
+      {
+        "ticker": "HHH",
+        "weight": 0.1304576117730562
+      },
+      {
+        "ticker": "HTZ",
+        "weight": 0.006795964922285688
+      }
+    ],
+    "latest_report_date": null,
+    "aum_tier": "Mega"
+  },
+  "Appaloosa": {
+    "name": "Appaloosa",
+    "bw_filer_id": "BW-FILER-CIK0001656456",
+    "cik": "1656456.0",
+    "report_date": "2025-12-31",
+    "n_holdings": 25,
+    "gross_adj_mv": 5495562638.0,
+    "hhi": 0.06614084916762174,
+    "top5": 0.4857567282891462,
+    "top10": 0.7191678224981625,
+    "top10_positions": [
+      {
+        "ticker": "BABA",
+        "weight": 0.1348726859272531
+      },
+      {
+        "ticker": "GOOG",
+        "weight": 0.10042035305475162
+      },
+      {
+        "ticker": "AMZN",
+        "weight": 0.09008855303584973
+      },
+      {
+        "ticker": "MU",
+        "weight": 0.08944751005484669
+      },
+      {
+        "ticker": "META",
+        "weight": 0.07092762621644501
+      },
+      {
+        "ticker": "NVDA",
+        "weight": 0.05677913590551766
+      },
+      {
+        "ticker": "WHR",
+        "weight": 0.0505142508724681
+      },
+      {
+        "ticker": "NRG",
+        "weight": 0.04676888738878788
+      },
+      {
+        "ticker": "MSFT",
+        "weight": 0.043304724344151474
+      },
+      {
+        "ticker": "PDD",
+        "weight": 0.03604409569809115
+      }
+    ],
+    "latest_report_date": null,
+    "aum_tier": "Large"
+  },
+  "Greenlight": {
+    "name": "Greenlight",
+    "bw_filer_id": "BW-FILER-CIK0001079114",
+    "cik": "1079114.0",
+    "report_date": "2023-12-31",
+    "n_holdings": 14,
+    "gross_adj_mv": 768756885.0,
+    "hhi": 0.17144877615993107,
+    "top5": 0.8419535091383279,
+    "top10": 0.980302735109813,
+    "top10_positions": [
+      {
+        "ticker": "BW-RESTRICTED",
+        "weight": 0.27534537788237173
+      },
+      {
+        "ticker": "BHF",
+        "weight": 0.20951816255928557
+      },
+      {
+        "ticker": "KD",
+        "weight": 0.17180869215890016
+      },
+      {
+        "ticker": "ALIT",
+        "weight": 0.10254405201196995
+      },
+      {
+        "ticker": "LIVN",
+        "weight": 0.08273722452580051
+      },
+      {
+        "ticker": "VTRS",
+        "weight": 0.04727501074673302
+      },
+      {
+        "ticker": "GPOR",
+        "weight": 0.0386332852160407
+      },
+      {
+        "ticker": "AER",
+        "weight": 0.024168889232127008
+      },
+      {
+        "ticker": "KVUE",
+        "weight": 0.015529187748347776
+      },
+      {
+        "ticker": "BW-BBG001LWHLJ8",
+        "weight": 0.012742853028236618
+      }
+    ],
+    "latest_report_date": null,
+    "aum_tier": "Large"
+  }
+}
