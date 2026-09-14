@@ -1,0 +1,11 @@
+# Regenerable API/response cache — ~599 MB as of 2026-09-07 (2,798 files: 1,325 daily-return
+# series, 1,323 decompositions, 127 holdings vintages, 5 portfolio series, plus stage/result
+# JSON). Rebuilt by build_lagged.py / deshaw_fetch.py / deshaw_fetch_history.py.
+#
+# Regenerable but NOT free: the D. E. Shaw history extension alone cost ~$46 (767 names).
+# Check what is already cached before re-fetching.
+cache/
+
+# Byte-compiled files
+__pycache__/
+*.py[cod]
