@@ -316,8 +316,8 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   },
   cumulative_return_paths: {
     stock: {
-      status: "unavailable",
-      reason: "RMGraph stock return paths are prepared; production qualification is pending.",
+      status: "verified",
+      notes: "Production JSON, 300-DPI PNG and vector SVG qualified for NVDA 3m/1y on 2026-09-14; common zero baseline and repeated bytes verified. Historical independently compounded paths, not additive contributions.",
     },
   },
   cumulative_return_strip: {
