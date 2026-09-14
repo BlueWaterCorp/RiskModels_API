@@ -522,7 +522,7 @@ curl -X POST https://riskmodels.app/api/decompose \
 
 ## GET /lstar — historical level dispatch + residual returns
 
-`GET /api/lstar` returns **daily** series for one ticker: the server picks **L1**, **L2**, or **L3** per date using marginal explained-return vs a threshold (default **1%**, override with `?threshold=`). Parallel arrays include **`lstar`**, dispatched **`market_hr` / `sector_hr` / `subsector_hr`** (nulls below the chosen level), **`total_er`**, and **`residual_return`** — the daily residual at the chosen level (`l1_rr`, `l2_rr`, or `l3_rr`). Raw **`l2_sector_er`** and **`l3_subsector_er`** are included for audit.
+`GET /api/lstar` returns **daily** series for one ticker: the recommended **L1**, **L2**, or **L3** per date. With `threshold` omitted, that is the level ERM3 publishes (`lstar_level`, including the cost-aware GBM selector); any explicit `?threshold=`, including `0.01`, applies the legacy marginal-ER rule instead and can pick a different level. Parallel arrays include **`lstar`**, dispatched **`market_hr` / `sector_hr` / `subsector_hr`** (nulls above the chosen level), **`total_er`**, and **`residual_return`** — the daily residual at the chosen level (`l1_rr`, `l2_rr`, or `l3_rr`). Raw **`l2_sector_er`** and **`l3_subsector_er`** are included for audit.
 
 Billing: **{'$'}0.02 + {'$'}0.01/extra year** (`billing_code: lstar_v2`). MCP capability id **`lstar`**; Python SDK: **`client.get_lstar(ticker, years=5)`**.
 

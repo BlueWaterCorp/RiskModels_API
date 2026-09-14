@@ -1398,7 +1398,7 @@ export const CAPABILITIES: Capability[] = [
       threshold: {
         type: "number",
         required: false,
-        description: "Marginal-ER threshold for Lstar selection (default 1%)",
+        description: "Optional marginal-ER threshold; omit for the canonical ERM3 level (an explicit value applies the legacy rule)",
         default: 0.01,
       },
       format: {

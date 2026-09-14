@@ -276,7 +276,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Lstar Recommended Hedge Level",
       annotations: { readOnlyHint: true },
       description:
-        "Per-(ticker, date) Lstar dispatch (GET /lstar): picks the simplest cascade level (L1/L2/L3) whose marginal explained-return clears the threshold (default 1%), then returns the chosen level's dispatched hedge ratios and daily residual_return[] aligned with dates[]. Use for stat-arb / manager-skill work on the idiosyncratic leg at the recommended hedge depth. Billing: $0.02/request.",
+        "Per-(ticker, date) Lstar dispatch (GET /lstar): returns the recommended cascade level (L1/L2/L3) as ERM3 publishes it when threshold is omitted (an explicit threshold switches to the legacy rule: simplest level whose marginal explained-return clears it), then returns the chosen level's dispatched hedge ratios and daily residual_return[] aligned with dates[]. Use for stat-arb / manager-skill work on the idiosyncratic leg at the recommended hedge depth. Billing: $0.02/request.",
       inputSchema: {
         ticker: z.string().min(1).describe("Ticker symbol, e.g. NVDA or AAPL"),
         years: z
@@ -321,7 +321,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Batch Lstar Residual Returns",
       annotations: { readOnlyHint: true },
       description:
-        "Batch Lstar-dispatched residual returns for up to 100 tickers (POST /batch/lstar). Same marginal-ER selection rule as GET /lstar. Returns per-ticker dates, lstar level, residual_return[], and dispatched HRs. Billing: $0.015/ticker + $0.0075/extra year, minimum $0.03/call.",
+        "Batch Lstar-dispatched residual returns for up to 100 tickers (POST /batch/lstar). Same level selection as GET /lstar (canonical ERM3 level when threshold is omitted). Returns per-ticker dates, lstar level, residual_return[], and dispatched HRs. Billing: $0.015/ticker + $0.0075/extra year, minimum $0.03/call.",
       inputSchema: {
         tickers: z.array(z.string().min(1)).min(1).max(100).describe("Ticker symbols (1-100)"),
         years: z
@@ -335,7 +335,7 @@ export function registerRiskModelsTools(
         threshold: z
           .number()
           .optional()
-          .describe("Marginal ER threshold for Lstar selection (default 0.01)"),
+          .describe("Optional marginal ER threshold; omit for the canonical ERM3 level (an explicit value applies the legacy rule)"),
         format: z
           .enum(["json", "parquet", "csv"])
           .optional()

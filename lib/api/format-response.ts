@@ -14,30 +14,45 @@ const parquet = require("parquetjs-lite"); // eslint-disable-line
 
 export type ResponseFormat = "json" | "parquet" | "csv";
 
-/** Infer Parquet schema from first row of data */
+/**
+ * Infer Parquet schema across all rows. A column's type comes from its first
+ * non-null value, so a column that is null in the first row (e.g. `sector_hr`
+ * on an L1 date) is not mistyped as UTF8. Numeric columns are INT64 only when
+ * every value is an integer.
+ */
 function inferParquetSchema(
-  sample: Record<string, unknown>,
+  rows: Record<string, unknown>[],
 ): Record<string, { type: string; optional?: boolean }> {
   const schema: Record<string, { type: string; optional?: boolean }> = {};
-  for (const [key, value] of Object.entries(sample)) {
-    if (value === null || value === undefined) {
-      schema[key] = { type: "UTF8", optional: true };
-    } else if (typeof value === "string") {
-      schema[key] = { type: "UTF8", optional: true };
-    } else if (typeof value === "number") {
-      schema[key] = {
-        type: Number.isInteger(value) ? "INT64" : "DOUBLE",
-        optional: true,
-      };
-    } else if (typeof value === "boolean") {
-      schema[key] = { type: "BOOLEAN", optional: true };
-    } else if (value instanceof Date) {
-      schema[key] = { type: "TIMESTAMP_MILLIS", optional: true };
-    } else {
-      schema[key] = { type: "UTF8", optional: true };
+  const typed = new Set<string>();
+  for (const row of rows) {
+    for (const [key, value] of Object.entries(row)) {
+      if (value === null || value === undefined) {
+        schema[key] ??= { type: "UTF8", optional: true };
+        continue;
+      }
+      if (typed.has(key)) {
+        if (
+          schema[key]!.type === "INT64" &&
+          typeof value === "number" &&
+          !Number.isInteger(value)
+        ) {
+          schema[key] = { type: "DOUBLE", optional: true };
+        }
+        continue;
+      }
+      typed.add(key);
+      schema[key] = { type: parquetType(value), optional: true };
     }
   }
   return schema;
+}
+
+function parquetType(value: unknown): string {
+  if (typeof value === "number") return Number.isInteger(value) ? "INT64" : "DOUBLE";
+  if (typeof value === "boolean") return "BOOLEAN";
+  if (value instanceof Date) return "TIMESTAMP_MILLIS";
+  return "UTF8";
 }
 
 /** Escape CSV value */
@@ -84,8 +99,7 @@ async function rowsToParquetBuffer(
     }
   }
 
-  const sample = rows[0] as Record<string, unknown>;
-  const schemaDef = inferParquetSchema(sample);
+  const schemaDef = inferParquetSchema(rows);
   const parquetSchema = new parquet.ParquetSchema(schemaDef);
 
   const tmpDir = os.tmpdir();
