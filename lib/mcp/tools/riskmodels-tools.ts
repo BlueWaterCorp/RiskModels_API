@@ -21,7 +21,7 @@ export type McpLikeServer = {
     name: string,
     uri: string,
     config: Record<string, unknown>,
-    handler: (uri: URL) => Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }>,
+    handler: (uri: URL) => Promise<{ contents: Array<{ uri: string; mimeType: string; text: string; _meta?: Record<string, unknown> }> }>,
   ) => void;
   registerPrompt?: (
     name: string,

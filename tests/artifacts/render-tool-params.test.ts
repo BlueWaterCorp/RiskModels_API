@@ -55,6 +55,7 @@ function captureRenderTool() {
     | null = null;
   let schema: Record<string, unknown> = {};
   registerRiskModelsRenderTool({
+    registerResource: () => {},
     registerTool: (
       _name: string,
       config: { inputSchema: Record<string, unknown> },

@@ -66,14 +66,14 @@ describe("buildArtifactCapability", () => {
     }
   });
 
-  it("holds the audited counts (21 verified / 10 unavailable)", () => {
+  it("holds the audited counts (22 verified / 9 unavailable)", () => {
     // A literal, not a computed echo: the point is that a silent capability
     // change trips a review, and re-deriving the number here would let one
     // through. Update deliberately, with the probe that justified it.
-    expect(doc.counts.verified).toBe(21);
-    // risk_comparison remains unavailable until the coordinated renderer
-    // deployment has been checked with a real production subject.
-    expect(doc.counts.unavailable).toBe(10);
+    expect(doc.counts.verified).toBe(22);
+    // risk_comparison: production JSON/PNG/SVG and signed source values
+    // qualified on 2026-09-13 for NVDA/MSFT/AAPL at 2026-09-11.
+    expect(doc.counts.unavailable).toBe(9);
   });
 
   it("attaches per-slug param applicability from the render-svc mirror", () => {

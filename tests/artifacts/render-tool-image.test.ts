@@ -20,6 +20,7 @@ const provenance = {
 function handler() {
   let captured!: (args: Record<string, unknown>) => Promise<McpToolResult>;
   registerRiskModelsRenderTool({
+    registerResource: () => {},
     registerTool: (_name, _config, callback) => { captured = callback; },
   } as McpLikeServer);
   return captured;
