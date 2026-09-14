@@ -2482,7 +2482,7 @@ export const CAPABILITIES: Capability[] = [
         type: "boolean",
         required: false,
         description:
-          "cohort_type=fund only. If true, keeps funds not active for listing (default false). Stored ranks are unchanged, so filtered output can have gaps.",
+          "cohort_type=fund only. If true, keeps funds not active for listing (default false). Ranks are computed over the active population (contiguous) when available; otherwise stored ranks are returned and filtered output can have gaps.",
         default: false,
       },
       include_etfs: {
