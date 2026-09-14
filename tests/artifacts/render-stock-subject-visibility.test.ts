@@ -73,6 +73,7 @@ function chatRenderArtifact(): Surface {
 function mcpRenderArtifact(): Surface {
   let captured: { description?: string; fields: Record<string, string> } | null = null;
   registerRiskModelsRenderTool({
+    registerResource: () => {},
     registerTool: (
       _name: string,
       config: {

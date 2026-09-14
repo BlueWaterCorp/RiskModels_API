@@ -66,11 +66,15 @@ describe("buildArtifactCapability", () => {
     }
   });
 
-  it("holds the audited counts (21 verified / 9 unavailable)", () => {
+  it("holds the audited counts (23 verified / 9 unavailable)", () => {
     // A literal, not a computed echo: the point is that a silent capability
     // change trips a review, and re-deriving the number here would let one
     // through. Update deliberately, with the probe that justified it.
-    expect(doc.counts.verified).toBe(21);
+    expect(doc.counts.verified).toBe(23);
+    // risk_comparison: production JSON/PNG/SVG and signed source values
+    // qualified on 2026-09-13 for NVDA/MSFT/AAPL at 2026-09-11.
+    // Return paths: NVDA 3m/1y production JSON/PNG/SVG qualified on
+    // 2026-09-14, with exact zero starts and stable dated receipts.
     expect(doc.counts.unavailable).toBe(9);
   });
 

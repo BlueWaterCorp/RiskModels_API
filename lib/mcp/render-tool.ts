@@ -1,3 +1,4 @@
+import { CHART_WIDGET_URI, registerChartWidget } from "@/lib/mcp/chart-widget";
 import { z } from "zod";
 import {
   renderArtifact,
@@ -25,20 +26,27 @@ import {
  * server (`mcp/src/server.ts`) never imports this module.
  */
 export function registerRiskModelsRenderTool(server: McpLikeServer): void {
+  registerChartWidget(server);
   server.registerTool(
     "riskmodels_render_artifact",
     {
       title: "RiskModels Artifact Registry Render",
       description:
-        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Returns JSON chart/table/narrative or base64 PNG/SVG. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use watchlist_er_stacked with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — the whole set is resolved to ONE shared date (the oldest latest-close in the set, or an explicit as_of), so it is a date-aligned comparison. Present it as of resolved_as_of, never today's date. Read as_of_alignment on the JSON payload: if excluded is non-empty, those tickers had no data at that date and are NOT on the chart — name them. Same contract as riskmodels.net workspace fetchArtifact.",
+        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Use format png to display the original chart: returns MCP image content with dated provenance and receipt, not a chart to redraw. JSON returns chart/table/narrative data; SVG returns a base64 export. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use risk_comparison (signed RMGraph grouped bars) with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — the whole set is resolved to ONE shared date (the oldest latest-close in the set, or an explicit as_of), so it is a date-aligned comparison. Present it as of resolved_as_of, never today's date. Read as_of_alignment on the JSON payload: if excluded is non-empty, those tickers had no data at that date and are NOT on the chart — name them. For a stock cumulative return chart in the original RMGraph style, use cumulative_return_paths, BW-STOCK-{TICKER}, format png, and params.window (3m, 6m, 1y, 2y, max; default 1y). All five historical paths start at zero at the first displayed close; fitted factor paths are not ETF returns and cumulative paths are not additive. Same contract as riskmodels.net workspace fetchArtifact.",
       annotations: { readOnlyHint: true },
+      _meta: {
+        ui: { resourceUri: CHART_WIDGET_URI },
+        "openai/outputTemplate": CHART_WIDGET_URI,
+        "openai/toolInvocation/invoking": "Rendering RiskModels chart…",
+        "openai/toolInvocation/invoked": "RiskModels result ready",
+      },
       inputSchema: {
         slug: z
           .string()
           .min(1)
           .describe(
             "Artifact slug — stock subjects: l3_explained_risk_hbar, " +
-              "hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked; " +
+              "hedge_notionals_hbar, hedge_depth_retained, risk_comparison, watchlist_er_stacked, cumulative_return_paths; " +
               "fund/filer subjects: top_holdings_erm_stacked, entity_header, " +
               "risk_summary_panel",
           ),
@@ -64,7 +72,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .enum(["json", "png", "svg", "figure"])
           .optional()
           .describe(
-            "Output format, default json. 'figure' = Plotly figure spec for " +
+            "Output format, default json. 'png' = original chart as MCP image content with provenance. 'figure' = Plotly figure spec for " +
               "client-side rendering (Plotly-backed slugs only).",
           ),
         subject_payload: z
@@ -102,7 +110,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
               "(slug, subject_kind) table plus per-slug param applicability.",
           });
         }
-        return textResult({
+        const metadata = {
           slug,
           subject_id,
           // Echoed so a caller can see which knobs were actually sent — a
@@ -113,8 +121,48 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           resolved_as_of: result.resolved_as_of,
           gcs_path: result.gcs_path,
           receipt_id: result.receipt_id,
-          artifact: result.data,
-        });
+        };
+        if (result.format === "png") {
+          const artifact = result.data as {
+            content_type?: unknown;
+            base64?: unknown;
+          } | null;
+          const mimeType = typeof artifact?.content_type === "string"
+            ? artifact.content_type.split(";")[0].trim().toLowerCase()
+            : "";
+          const base64 = typeof artifact?.base64 === "string" ? artifact.base64 : "";
+          const bytes = Buffer.from(base64, "base64");
+          const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+          if (
+            mimeType !== "image/png" ||
+            !bytes.subarray(0, 8).equals(pngSignature) ||
+            bytes.toString("base64") !== base64
+          ) {
+            return {
+              ...textResult({ ...metadata, error: "Render service returned an invalid PNG artifact." }),
+              isError: true,
+            };
+          }
+          return {
+            content: [
+              ...textResult({
+                ...metadata,
+                chart_instruction:
+                  "The attached chart component displays the original image. If the host cannot show it, say so; never claim a chart is visible without an image; do not redraw it. " +
+                  "Retain resolved_as_of and receipt_id when explaining the chart. " +
+                  "Request format json for exact numerical values.",
+                artifact: {
+                  format: "png",
+                  content_type: mimeType,
+                  byte_length: bytes.length,
+                  delivery: "mcp_image",
+                },
+              }).content,
+              { type: "image" as const, data: base64, mimeType: "image/png" as const },
+            ],
+          };
+        }
+        return textResult({ ...metadata, artifact: result.data });
       } catch (error) {
         return errorResult(error);
       }

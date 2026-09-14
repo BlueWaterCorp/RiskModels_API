@@ -71,6 +71,8 @@ def _install_fake_bwmacro_artifact(monkeypatch, *, slug: str, version: str,
     mod = types.ModuleType(qualname)
     mod.ARTIFACT_SLUG = slug
     mod.ARTIFACT_VERSION = version
+    if slug == "cumulative_return_strip":
+        mod.BASELINE_REVISION = "first-close-1"
     mod.APPLICABLE_SUBJECT_KINDS = applicable
     mod.render_data = lambda data: render_data_result or {"ok": True, "n": len(getattr(data, "items", data) or [])}
 
@@ -1329,6 +1331,8 @@ def _install_params_fake_artifact(
     mod = types.ModuleType(qualname)
     mod.ARTIFACT_SLUG = slug
     mod.ARTIFACT_VERSION = "v1"
+    if slug == "cumulative_return_strip":
+        mod.BASELINE_REVISION = "first-close-1"
     mod.APPLICABLE_SUBJECT_KINDS = applicable
     mod.RENDER_PARAMS = render_params
 
@@ -1465,7 +1469,7 @@ class TestRenderArtifactWithParams:
             store=store, prefix=PREFIX,
         )
         assert capture["render_data_kwargs"] == {"window": "3m"}
-        assert gcs_path.endswith("/2025-11-30.window-3m.json")
+        assert gcs_path.endswith("/2025-11-30.window-3m.baseline-first-close-1.json")
 
     def test_module_without_render_params_501(self, store, monkeypatch):
         capture: dict = {}
@@ -1740,11 +1744,10 @@ class _RecordingFigure:
         return b"\x89PNG\r\n\x1a\nFAKE" if format == "png" else b"<svg>FAKE</svg>"
 
 
-def _install_watchlist_fakes(monkeypatch, capture: dict | None = None):
+def _install_watchlist_fakes(monkeypatch, capture: dict | None = None, *, slug="watchlist_er_stacked"):
     """Fake watchlist_er_stacked@v1 module + pass-through decompose adapter."""
     capture = capture if capture is not None else {}
     pkg_root = "bwmacro.snapshots.artifacts"
-    slug = "watchlist_er_stacked"
     qualname = f"{pkg_root}.{slug}.v1"
     for p in ["bwmacro", "bwmacro.snapshots", pkg_root, f"{pkg_root}.{slug}"]:
         if p not in sys.modules:
@@ -2196,11 +2199,14 @@ import subprocess  # noqa: E402
 from render_svc.artifacts import _SLUG_PARAMS, ArtifactParams  # noqa: E402
 
 _PROBE = """
-import importlib, inspect, json, sys
+import inspect, json, sys
+from render_svc.artifacts import _import_artifact_module
 slugs = json.loads(sys.argv[1])
 out = {}
 for slug in slugs:
-    mod = importlib.import_module("bwmacro.snapshots.artifacts.%s.v1" % slug)
+    # The SDK owns holdings_active_panel; use the real service routing for
+    # both hosts so one missing BWMACRO path cannot skip every contract check.
+    mod = _import_artifact_module(slug, "v1")
     entry = {"declared": sorted(getattr(mod, "RENDER_PARAMS", ()) or ())}
     for form in ("render_data", "render_figure"):
         fn = getattr(mod, form, None)
@@ -2751,3 +2757,87 @@ class TestPeerGroupAlignmentDisclosure:
         assert body["peer_group"]["peers"] == ["MSFT"]
         assert "GAPPY" in body["as_of_alignment"]["excluded"]
         assert {p["ticker"] for p in capture["payloads"]} == {"AAPL", "MSFT"}
+
+
+class TestRMGraphComparison:
+    """Service wiring; the renderer's geometry/export tests live in BWMACRO."""
+
+    def test_explicit_stock_list_uses_common_date_and_keeps_signed_values(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch, slug="risk_comparison")
+        calls = _install_dated_decompose(
+            monkeypatch, latest={"AAPL": "2026-07-31", "MSFT": "2026-07-24"},
+            history={"AAPL": ["2026-07-24", "2026-07-31"]},
+        )
+        monkeypatch.setattr(artifacts_module, "_fetch_peers", lambda *a, **kw: pytest.fail("explicit comparison cannot fetch peers"))
+        data, _, path, resolved, _, receipt = render_artifact(
+            _watchlist_req(["AAPL", "MSFT"], slug="risk_comparison", params={"top_n": 2}),
+            store=store, prefix=PREFIX,
+        )
+        assert resolved == "2026-07-24"
+        assert path.startswith("snapshots/artifacts/risk_comparison@v1/BW-STOCK-WATCHLIST-")
+        assert receipt == _receipt_id(path)
+        assert capture["render_data_kwargs"] == {"top_n": 2}
+        assert {p["data_as_of"] for p in capture["payloads"]} == {resolved}
+        assert ("AAPL", resolved) in calls
+        assert json.loads(data)["as_of_alignment"]["pulled_back_from"] == {"AAPL": "2026-07-31"}
+
+    def test_signed_payload_is_passed_to_renderer_unchanged(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch, slug="risk_comparison")
+        payload = _decompose_payload("NVDA", residual=0.472733944654465, data_as_of="2026-09-11")
+        # Retained NVDA subsector contribution from the dated demo preflight.
+        payload["exposure"]["subsector"]["er"] = -0.00719702569767833
+        monkeypatch.setattr(artifacts_module, "_fetch_decompose", lambda *a, **kw: payload)
+        render_artifact(_watchlist_req(["NVDA"], slug="risk_comparison"), store=store, prefix=PREFIX)
+        assert capture["payloads"][0]["exposure"]["subsector"]["er"] == -0.00719702569767833
+
+    @pytest.mark.parametrize("payload", [None, {"tickers": ["AAPL", "aapl"]}])
+    def test_requires_explicit_unique_tickers_before_fetch(self, store, monkeypatch, payload):
+        monkeypatch.setattr(artifacts_module, "_fetch_decompose", lambda *a, **kw: pytest.fail("invalid request cannot fetch"))
+        with pytest.raises(HTTPException) as exc:
+            render_artifact(_peer_req(slug="risk_comparison", subject_payload=payload), store=store, prefix=PREFIX)
+        assert exc.value.status_code == 400
+
+    def test_input_order_and_disclosures_have_distinct_cache_entries(self, store, monkeypatch):
+        _install_watchlist_fakes(monkeypatch, slug="risk_comparison")
+        _install_dated_decompose(monkeypatch, latest={"AAPL": "2026-07-24", "MSFT": "2026-07-24"})
+        first = render_artifact(_watchlist_req(["AAPL", "MSFT"], slug="risk_comparison"), store=store, prefix=PREFIX)
+        reversed_order = render_artifact(_watchlist_req(["MSFT", "AAPL"], slug="risk_comparison"), store=store, prefix=PREFIX)
+        assert first[2] != reversed_order[2]
+        assert [r["ticker"] for r in json.loads(reversed_order[0])["rows"]] == ["MSFT", "AAPL"]
+        _install_dated_decompose(
+            monkeypatch, latest={"AAPL": "2026-07-31", "MSFT": "2026-07-24"},
+            history={"AAPL": ["2026-07-24", "2026-07-31"]},
+        )
+        pulled_back = render_artifact(_watchlist_req(["AAPL", "MSFT"], slug="risk_comparison"), store=store, prefix=PREFIX)
+        assert first[3] == pulled_back[3]
+        assert first[2] != pulled_back[2]
+        assert json.loads(pulled_back[0])["as_of_alignment"]["pulled_back_from"]
+        repeated = render_artifact(_watchlist_req(["AAPL", "MSFT"], slug="risk_comparison"), store=store, prefix=PREFIX)
+        assert repeated == pulled_back
+
+    def test_rmgraph_receives_exclusion_notes_before_layout(self, store, monkeypatch):
+        capture = _install_watchlist_fakes(monkeypatch, slug="risk_comparison")
+        mod = sys.modules["bwmacro.snapshots.artifacts.risk_comparison.v1"]
+
+        class ImageOnly:
+            # Deliberately has no Plotly mutation API.
+            def to_image(self, **kwargs):
+                return b"\x89PNG\r\n\x1a\nTEST"
+
+        def render_figure(payloads, *, date_alignment_notes=(), **params):
+            capture["notes"] = date_alignment_notes
+            return ImageOnly()
+
+        monkeypatch.setattr(mod, "render_figure", render_figure)
+        _install_dated_decompose(
+            monkeypatch, latest={"AAPL": "2026-07-31", "GAPPY": "2026-07-31", "MSFT": "2026-07-24"},
+            history={"AAPL": ["2026-07-24", "2026-07-31"], "GAPPY": ["2026-07-17", "2026-07-31"]},
+        )
+        data, mime, _, resolved, _, _ = render_artifact(
+            _watchlist_req(["AAPL", "GAPPY", "MSFT"], slug="risk_comparison", format="png"),
+            store=store, prefix=PREFIX,
+        )
+        assert mime == "image/png" and data.startswith(b"\x89PNG")
+        assert resolved == "2026-07-24"
+        assert any("GAPPY" in note and "Not shown" in note for note in capture["notes"])
+        assert any("AAPL" in note and "Aligned" in note for note in capture["notes"])

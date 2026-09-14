@@ -18,11 +18,13 @@
 const ARTIFACT_RENDER_PARAM_APPLICABILITY: Record<string, string[]> = {
   top_holdings_erm_stacked: ["top_n"],
   cumulative_return_strip: ["window"],
+  cumulative_return_paths: ["window"],
   position_cumulative_decomposition: ["window"],
   l3_explained_risk_hbar: ["layers"],
   active_risk_composition: ["layers"],
   hedge_notionals_hbar: ["top_n"],
   watchlist_er_stacked: ["sort_by", "top_n"],
+  risk_comparison: ["sort_by", "top_n"],
   risk_dna_stacked: ["peer_n", "sort_by"],
   historical_risk_waterfall: ["date", "window"],
   holdings_active_panel: ["benchmark", "top_n"],

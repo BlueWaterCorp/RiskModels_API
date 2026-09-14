@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-14 — RMGraph cumulative stock return paths deployed
+
+- Add `cumulative_return_paths@v1` using existing daily returns-decomposition data, with original RMGraph PNG/SVG exports and numerical JSON.
+- Use a common first-close zero baseline; compound gross, combined-factor and residual daily series separately. Reject missing or misaligned observations. Date cutoffs refer to observed returns, not historical knowledge-time availability.
+- Preserve existing artifact identities and reuse dated cached bytes. Production JSON, 300-DPI PNG and vector SVG passed for NVIDIA 3m/1y with exact zero starts and repeatable bytes; the stock capability is verified. ChatGPT display and the additional recording remain host checks.
+
+## Pending — Original chart component for MCP hosts
+
+- Link the hosted render tool to a self-contained MCP Apps component that displays original PNG content with its data date and receipt. Native image and text response shapes remain available to clients without UI support.
+- The component uses no external network requests, storage or chart library, and clears prior images for errors and cancelled requests. ChatGPT compatibility uses its full tool-result envelope.
+- A sandboxed browser check passed with the real production image at 600px chat width. Actual ChatGPT display and video capture remain release checks; the successful native image transport alone does not prove inline host display.
+
+## 2026-09-13 — Signed RMGraph stock comparison deployed
+
+- Serve `risk_comparison@v1` for explicit lists of 1–12 stocks using the existing decomposition loader, common-date alignment and artifact store.
+- Preserve signed factor contributions and pass date-alignment or exclusion notes to the RMGraph layout. Comparison cache identities distinguish stock order and disclosure context; existing watchlist artifacts retain their identities.
+- JSON, 300-DPI PNG and vector SVG passed production qualification for NVDA/MSFT/AAPL at 2026-09-11. All 12 source values, including three negatives, are preserved; repeated PNG bytes and receipt are stable. The stock capability is now verified.
+
+## 2026-09-13 — Display artifact PNGs directly in MCP hosts
+
+- Hosted `riskmodels_render_artifact` now returns PNG bytes as MCP image content, with the resolved data date, source, parameters and receipt in accompanying text.
+- PNG bytes are no longer duplicated as base64 inside the text payload. Consumers should read the image content block. JSON, SVG and Plotly figure responses retain their existing shape; REST rendering is unchanged.
+- Invalid PNG payloads return an explicit tool error. This delivery change does not migrate legacy chart renderers to RMGraph or establish a host recording.
+
+## 2026-09-12 — Cumulative charts start at an actual close
+
+- Fund daily/monthly charts emit the first observed close once at zero; later intervals compound over the same window as the layered contributions and waterfall.
+- Cumulative artifacts validate unique ascending dates, finite observations and a common zero baseline, including maximum history. Invalid inputs return an explicit error.
+- Corrected artifacts use a separate cache/receipt identity. Existing issued bytes are preserved. Filer images are regenerated from full numerical artifacts; image-only history remains unavailable until numerical data is published.
+- Coordinated Cloud Run renderer release required; this change does not qualify fund/filer portfolio histories or alter the underlying data stores.
+
+
 ## 2026-09-09 — Canonical LSTAR and level-specific hedge dispatch
 
 - Preserve omitted thresholds in single and batch LSTAR requests so the engine’s materialized

@@ -107,11 +107,13 @@ export const ARTIFACT_SLUG_PARAMS: Readonly<
 > = {
   top_holdings_erm_stacked: ["top_n"],
   cumulative_return_strip: ["window"],
+  cumulative_return_paths: ["window"],
   position_cumulative_decomposition: ["window"],
   l3_explained_risk_hbar: ["layers"],
   active_risk_composition: ["layers"],
   hedge_notionals_hbar: ["top_n"],
   watchlist_er_stacked: ["sort_by", "top_n"],
+  risk_comparison: ["sort_by", "top_n"],
   risk_dna_stacked: ["peer_n", "sort_by"],
   historical_risk_waterfall: ["date", "window"],
   holdings_active_panel: ["benchmark", "top_n"],
@@ -312,6 +314,12 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
         "never sufficient, even for a previously rendered portfolio.",
     },
   },
+  cumulative_return_paths: {
+    stock: {
+      status: "verified",
+      notes: "Production JSON, 300-DPI PNG and vector SVG qualified for NVDA 3m/1y on 2026-09-14; common zero baseline and repeated bytes verified. Historical independently compounded paths, not additive contributions.",
+    },
+  },
   cumulative_return_strip: {
     fund: { status: "verified" },
     filer_13f: {
@@ -352,6 +360,12 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
   l3_explained_risk_hbar: { stock: { status: "verified" } },
   hedge_notionals_hbar: { stock: { status: "verified" } },
   hedge_depth_retained: { stock: { status: "verified" } },
+  risk_comparison: {
+    stock: {
+      status: "verified",
+      notes: "Signed RMGraph comparison for 1–12 explicit tickers. JSON, 300-DPI PNG and vector SVG verified in production on 2026-09-13 with NVDA/MSFT/AAPL at the common model date 2026-09-11. No implicit peers; no Plotly figure output.",
+    },
+  },
   watchlist_er_stacked: {
     stock: {
       status: "verified",
