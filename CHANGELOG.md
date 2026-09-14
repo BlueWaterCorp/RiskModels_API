@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-14 — RMGraph cumulative stock return paths deployed
+
+- Add `cumulative_return_paths@v1` using existing daily returns-decomposition data, with original RMGraph PNG/SVG exports and numerical JSON.
+- Use a common first-close zero baseline; compound gross, combined-factor and residual daily series separately. Reject missing or misaligned observations. Date cutoffs refer to observed returns, not historical knowledge-time availability.
+- Preserve existing artifact identities and reuse dated cached bytes. Production JSON, 300-DPI PNG and vector SVG passed for NVIDIA 3m/1y with exact zero starts and repeatable bytes; the stock capability is verified. ChatGPT display and the additional recording remain host checks.
+
 ## Pending — Original chart component for MCP hosts
 
 - Link the hosted render tool to a self-contained MCP Apps component that displays original PNG content with its data date and receipt. Native image and text response shapes remain available to clients without UI support.

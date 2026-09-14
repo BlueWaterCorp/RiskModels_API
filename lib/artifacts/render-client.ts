@@ -107,6 +107,7 @@ export const ARTIFACT_SLUG_PARAMS: Readonly<
 > = {
   top_holdings_erm_stacked: ["top_n"],
   cumulative_return_strip: ["window"],
+  cumulative_return_paths: ["window"],
   position_cumulative_decomposition: ["window"],
   l3_explained_risk_hbar: ["layers"],
   active_risk_composition: ["layers"],
@@ -311,6 +312,12 @@ export const ARTIFACT_RENDER_CAPABILITY: Record<
         "carrying only ticker+weight therefore renders null segments — that is the contract " +
         "working, not a defect. Always requires subject_payload.positions; the id alone is " +
         "never sufficient, even for a previously rendered portfolio.",
+    },
+  },
+  cumulative_return_paths: {
+    stock: {
+      status: "verified",
+      notes: "Production JSON, 300-DPI PNG and vector SVG qualified for NVDA 3m/1y on 2026-09-14; common zero baseline and repeated bytes verified. Historical independently compounded paths, not additive contributions.",
     },
   },
   cumulative_return_strip: {
