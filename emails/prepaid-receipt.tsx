@@ -19,7 +19,8 @@ import {
   BASE_URL,
   LEGAL_ENTITY,
   LEGAL_ENTITY_JURISDICTION,
-  LOGO_MARK_URL,
+  BWM_LOGO_URL,
+  RISKMODELS_WORDMARK_URL,
   SUPPORT_EMAIL,
 } from "./constants";
 
@@ -93,19 +94,14 @@ export const PrepaidReceiptEmail = ({
           <Section style={masthead}>
             <Row>
               <Column style={mastLeft}>
-                <table cellPadding={0} cellSpacing={0} role="presentation" style={lockup}>
-                  <tbody>
-                    <tr>
-                      <td style={lockupMark}>
-                        <Img src={LOGO_MARK_URL} width="149" height="76" alt="" style={logo} />
-                      </td>
-                      <td style={lockupText}>
-                        <Text style={wordmark}>RiskModels</Text>
-                        <Text style={wordmarkSub}>by {LEGAL_ENTITY}</Text>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                <Img
+                  src={RISKMODELS_WORDMARK_URL}
+                  width="330"
+                  height="61"
+                  alt="RiskModels"
+                  style={wordmarkImg}
+                />
+                <Text style={wordmarkSub}>Institutional Risk Analysis via API</Text>
               </Column>
               <Column style={mastRight}>
                 <Text style={docTitle}>RECEIPT</Text>
@@ -125,6 +121,7 @@ export const PrepaidReceiptEmail = ({
             <Row>
               <Column style={partyCol}>
                 <Text style={partyLabel}>Issued by</Text>
+                <Img src={BWM_LOGO_URL} width="170" height="84" alt="Blue Water Macro" style={bwmImg} />
                 <Text style={partyText}>
                   <strong style={partyStrong}>{LEGAL_ENTITY}</strong>
                   <br />
@@ -330,30 +327,14 @@ const masthead = { padding: "28px 32px 20px" };
 const mastLeft = { width: "66%", verticalAlign: "middle" as const };
 const mastRight = { width: "34%", verticalAlign: "top" as const, textAlign: "right" as const };
 
-const lockup = { borderCollapse: "collapse" as const };
-const lockupMark = { verticalAlign: "middle" as const, padding: "0 14px 0 0" };
-const lockupText = {
-  verticalAlign: "middle" as const,
-  padding: "0 0 0 14px",
-  borderLeft: `1px solid ${RULE}`,
-};
-const logo = { display: "block" as const, margin: "0" };
-
-const wordmark = {
-  color: NAVY,
-  fontSize: "28px",
-  fontWeight: "700",
-  letterSpacing: "-0.015em",
-  lineHeight: "1.1",
-  margin: "0",
-};
+const wordmarkImg = { display: "block" as const, margin: "0" };
 
 const wordmarkSub = {
   color: MUTED,
   fontSize: "12px",
   letterSpacing: "0.02em",
   lineHeight: "1.4",
-  margin: "4px 0 0",
+  margin: "8px 0 0 2px",
   whiteSpace: "nowrap" as const,
 };
 
@@ -405,6 +386,7 @@ const partyLabel = {
   margin: "0 0 6px",
 };
 const partyText = { color: BODY, fontSize: "13px", lineHeight: "1.55", margin: "0" };
+const bwmImg = { display: "block" as const, margin: "0 0 8px -4px" };
 const partyStrong = { color: INK, fontWeight: "600" };
 const partyLink = { color: BODY, textDecoration: "none" };
 

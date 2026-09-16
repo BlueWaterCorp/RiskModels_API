@@ -9,8 +9,10 @@ export const BASE_URL =
 export const LOGO_URL = `${BASE_URL}/riskmodels-logo.svg`;
 /** Raster copy of the mark (512×301, mostly empty canvas). Gmail strips SVG <img>s — use a PNG for anything that must render there. */
 export const LOGO_PNG_URL = `${BASE_URL}/logo.png`;
-/** The mark cropped to its ink (≈2:1, transparent, hi-res) — size it by height next to text. */
-export const LOGO_MARK_URL = `${BASE_URL}/logo-mark.png`;
+/** Official RiskModels wordmark (gradient wave + navy text), tight-cropped for light backgrounds. Source: Logos/RiskModels_v2 snapshot_ready. ≈5.4:1. */
+export const RISKMODELS_WORDMARK_URL = `${BASE_URL}/riskmodels-wordmark.png`;
+/** Blue Water Macro lockup, tight-cropped, transparent. Source: Logos/BWM_Logo_kit. ≈2:1. */
+export const BWM_LOGO_URL = `${BASE_URL}/bwm-logo.png`;
 /** Operating entity named on receipts, terms and the legal page. */
 export const LEGAL_ENTITY = "Blue Water Macro Corp.";
 /** Jurisdiction line under the entity on documents (Delaware C-Corp; API Terms governing law). */
