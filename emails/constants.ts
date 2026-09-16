@@ -7,8 +7,10 @@ export const BASE_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://riskmodels.app";
 
 export const LOGO_URL = `${BASE_URL}/riskmodels-logo.svg`;
-/** Raster copy of the mark (512×301). Gmail strips SVG <img>s — use this for anything that must render there. */
+/** Raster copy of the mark (512×301, mostly empty canvas). Gmail strips SVG <img>s — use a PNG for anything that must render there. */
 export const LOGO_PNG_URL = `${BASE_URL}/logo.png`;
+/** The mark cropped to its ink (≈2:1, transparent, hi-res) — size it by height next to text. */
+export const LOGO_MARK_URL = `${BASE_URL}/logo-mark.png`;
 /** Operating entity named on receipts, terms and the legal page. */
 export const LEGAL_ENTITY = "Blue Water Macro Corp.";
 /** Jurisdiction line under the entity on documents (Delaware C-Corp; API Terms governing law). */

@@ -252,7 +252,7 @@ describe("PrepaidReceiptEmail render", () => {
     expect(html).toContain('href="https://pay.stripe.com/receipts/payment/abc"');
     expect(html).toContain("View Stripe receipt");
     expect(html).toContain('href="https://riskmodels.app/get-key"');
-    expect(html).toContain("https://riskmodels.app/logo.png");
+    expect(html).toContain("https://riskmodels.app/logo-mark.png");
     // No tax given → no Subtotal / Tax rows.
     expect(html).not.toContain("Subtotal");
   });

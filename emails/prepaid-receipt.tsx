@@ -19,7 +19,7 @@ import {
   BASE_URL,
   LEGAL_ENTITY,
   LEGAL_ENTITY_JURISDICTION,
-  LOGO_PNG_URL,
+  LOGO_MARK_URL,
   SUPPORT_EMAIL,
 } from "./constants";
 
@@ -97,7 +97,7 @@ export const PrepaidReceiptEmail = ({
                   <tbody>
                     <tr>
                       <td style={lockupMark}>
-                        <Img src={LOGO_PNG_URL} width="118" height="69" alt="" style={logo} />
+                        <Img src={LOGO_MARK_URL} width="149" height="76" alt="" style={logo} />
                       </td>
                       <td style={lockupText}>
                         <Text style={wordmark}>RiskModels</Text>
@@ -327,28 +327,34 @@ const container = {
 };
 
 const masthead = { padding: "28px 32px 20px" };
-const mastLeft = { width: "58%", verticalAlign: "top" as const };
-const mastRight = { width: "42%", verticalAlign: "top" as const, textAlign: "right" as const };
+const mastLeft = { width: "66%", verticalAlign: "middle" as const };
+const mastRight = { width: "34%", verticalAlign: "top" as const, textAlign: "right" as const };
 
 const lockup = { borderCollapse: "collapse" as const };
-const lockupMark = { verticalAlign: "middle" as const, padding: "0 6px 0 0" };
-const lockupText = { verticalAlign: "middle" as const, padding: "0" };
-const logo = { display: "block" as const, margin: "0 0 0 -14px" };
+const lockupMark = { verticalAlign: "middle" as const, padding: "0 14px 0 0" };
+const lockupText = {
+  verticalAlign: "middle" as const,
+  padding: "0 0 0 14px",
+  borderLeft: `1px solid ${RULE}`,
+};
+const logo = { display: "block" as const, margin: "0" };
 
 const wordmark = {
   color: NAVY,
-  fontSize: "22px",
+  fontSize: "28px",
   fontWeight: "700",
-  letterSpacing: "-0.01em",
-  lineHeight: "1.2",
+  letterSpacing: "-0.015em",
+  lineHeight: "1.1",
   margin: "0",
 };
 
 const wordmarkSub = {
   color: MUTED,
   fontSize: "12px",
+  letterSpacing: "0.02em",
   lineHeight: "1.4",
-  margin: "2px 0 0",
+  margin: "4px 0 0",
+  whiteSpace: "nowrap" as const,
 };
 
 const docTitle = {
