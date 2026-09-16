@@ -19,9 +19,11 @@ import { getAppUrl } from "@/lib/app-url";
 export interface PrepaidReceiptInput {
   userId: string;
   to: string;
-  /** Display name; falls back to the email local-part. */
+  /** Billing name from the card / account; email-shaped values are dropped. */
   name?: string | null;
   amountUsd: number;
+  /** Tax collected, USD; omit when unknown (no tax line is shown). */
+  taxUsd?: number;
   newBalanceUsd: number;
   paymentIntentId: string;
   /** Unix seconds (Stripe `created`) or ISO string. */
@@ -34,6 +36,8 @@ export interface ChargeReceiptFacts {
   paidAt: number;
   receiptUrl?: string;
   paymentMethodLabel?: string;
+  /** `billing_details.name` on the charge, when the buyer gave one. */
+  billingName?: string;
 }
 
 const BRAND_LABEL: Record<string, string> = {
@@ -86,6 +90,8 @@ export async function chargeFactsForPaymentIntent(
     if (charge.receipt_url) facts.receiptUrl = charge.receipt_url;
     const label = paymentMethodLabelFromCharge(charge.payment_method_details);
     if (label) facts.paymentMethodLabel = label;
+    const billingName = charge.billing_details?.name?.trim();
+    if (billingName) facts.billingName = billingName;
   } catch (err) {
     console.warn("[prepaid-receipt] charge lookup failed (sending without Stripe link):", err);
   }
@@ -103,25 +109,41 @@ export function formatPaidAt(paidAt: number | string): string {
   });
 }
 
-export function displayNameFor(name: string | null | undefined, email: string): string {
+/** A billing name worth printing: non-empty and not just the email address. */
+export function billedToNameFor(name: string | null | undefined): string | undefined {
   const n = name?.trim();
-  if (n && !n.includes("@")) return n;
-  const local = email.split("@")[0] ?? "";
-  return local || "Developer";
+  if (!n || n.includes("@")) return undefined;
+  return n;
 }
 
-export function prepaidReceiptSubject(amountUsd: number): string {
-  return `Receipt: $${amountUsd.toFixed(2)} RiskModels API credit`;
+/**
+ * Receipt number: RM-<UTC yyyymmdd>-<last 6 of the PaymentIntent, upper-cased>.
+ * Deterministic, so a re-send reproduces the number on the original.
+ */
+export function receiptNumberFor(paymentIntentId: string, paidAt: number | string): string {
+  const d = typeof paidAt === "number" ? new Date(paidAt * 1000) : new Date(paidAt);
+  const ymd = Number.isNaN(d.getTime())
+    ? "00000000"
+    : d.toISOString().slice(0, 10).replace(/-/g, "");
+  const tail = paymentIntentId.replace(/^pi_/, "").slice(-6).toUpperCase().padStart(6, "0");
+  return `RM-${ymd}-${tail}`;
+}
+
+export function prepaidReceiptSubject(amountUsd: number, receiptNumber: string): string {
+  return `Receipt ${receiptNumber}: $${amountUsd.toFixed(2)} RiskModels API credit`;
 }
 
 /** Template props for the receipt — pure, so tests and previews can build it without Stripe. */
 export function buildPrepaidReceiptData(input: PrepaidReceiptInput) {
   return {
-    firstName: displayNameFor(input.name, input.to),
+    receiptNumber: receiptNumberFor(input.paymentIntentId, input.paidAt),
+    paidAtFormatted: formatPaidAt(input.paidAt),
+    billedToName: billedToNameFor(input.name),
+    billedToEmail: input.to,
     amountUsd: input.amountUsd,
+    taxUsd: input.taxUsd,
     newBalanceUsd: input.newBalanceUsd,
     paymentIntentId: input.paymentIntentId,
-    paidAtFormatted: formatPaidAt(input.paidAt),
     paymentMethodLabel: input.paymentMethodLabel,
     receiptUrl: input.receiptUrl,
     balanceUrl: `${getAppUrl()}/get-key`,
@@ -139,11 +161,12 @@ export async function sendPrepaidReceipt(
   }
   // Lazy import: email-service pulls in every template; keep the Stripe route light.
   const { sendEmail } = await import("@/lib/email-service");
+  const data = buildPrepaidReceiptData(input);
   const result = await sendEmail({
     to: input.to,
-    subject: prepaidReceiptSubject(input.amountUsd),
+    subject: prepaidReceiptSubject(input.amountUsd, data.receiptNumber),
     template: "prepaid-receipt",
-    data: buildPrepaidReceiptData(input),
+    data,
     userId: input.userId,
   });
   if (result.success) {

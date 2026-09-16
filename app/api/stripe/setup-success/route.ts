@@ -262,12 +262,14 @@ export async function GET(req: NextRequest) {
       // re-issued via POST /api/admin/billing/receipt.
       if (email && paymentIntent) {
         try {
-          const facts = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+          const { billingName, ...facts } = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+          const amountTax = session.total_details?.amount_tax;
           await sendPrepaidReceipt({
             userId,
             to: email,
-            name: existingAccount?.agent_name as string | undefined,
+            name: billingName ?? (existingAccount?.agent_name as string | undefined),
             amountUsd: grantPrepaid,
+            taxUsd: typeof amountTax === 'number' ? amountTax / 100 : undefined,
             newBalanceUsd: newBalance,
             paymentIntentId,
             ...facts,

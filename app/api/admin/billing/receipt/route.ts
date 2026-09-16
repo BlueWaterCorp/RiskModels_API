@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     const { data: topUp, error: topUpErr } = await admin
       .from("balance_top_ups")
-      .select("user_id, amount_usd, status, created_at")
+      .select("user_id, amount_usd, status, created_at, metadata")
       .eq("stripe_payment_intent_id", paymentIntentId)
       .maybeSingle();
     if (topUpErr) {
@@ -121,13 +121,27 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-    const facts = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+    const { billingName, ...facts } = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+
+    // Tax line comes from the Checkout session (PaymentIntents do not carry it).
+    let taxUsd: number | undefined;
+    const sessionId = (topUp.metadata as { session_id?: string } | null)?.session_id;
+    if (sessionId) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        const amountTax = session.total_details?.amount_tax;
+        if (typeof amountTax === "number") taxUsd = amountTax / 100;
+      } catch (e) {
+        console.warn("[admin/billing/receipt] session lookup failed (no tax line):", e);
+      }
+    }
 
     const input: PrepaidReceiptInput = {
       userId,
       to,
-      name: account?.agent_name as string | undefined,
+      name: billingName ?? (account?.agent_name as string | undefined),
       amountUsd,
+      taxUsd,
       newBalanceUsd,
       paymentIntentId,
       ...facts,

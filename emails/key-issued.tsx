@@ -15,10 +15,9 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { BASE_URL, LOGO_URL, SUPPORT_EMAIL } from "./constants";
+import { API_TERMS_URL, BASE_URL, LOGO_URL, SUPPORT_EMAIL } from "./constants";
 
-/** Canonical API Terms (matches README / API_TERMS.md). */
-export const API_TERMS_URL = "https://riskmodels.net/terms/api";
+export { API_TERMS_URL };
 
 export interface KeyIssuedEmailProps {
   /** Display name / first name (from profile or email local-part). */
