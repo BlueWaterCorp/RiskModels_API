@@ -11,8 +11,6 @@ export const LOGO_URL = `${BASE_URL}/riskmodels-logo.svg`;
 export const LOGO_PNG_URL = `${BASE_URL}/logo.png`;
 /** Official RiskModels wordmark (gradient wave + navy text), tight-cropped for light backgrounds. Source: Logos/RiskModels_v2 snapshot_ready. ≈5.4:1. */
 export const RISKMODELS_WORDMARK_URL = `${BASE_URL}/riskmodels-wordmark.png`;
-/** Blue Water Macro lockup, tight-cropped, transparent. Source: Logos/BWM_Logo_kit. ≈2:1. */
-export const BWM_LOGO_URL = `${BASE_URL}/bwm-logo.png`;
 /** Operating entity named on receipts, terms and the legal page. */
 export const LEGAL_ENTITY = "Blue Water Macro Corp.";
 /** Jurisdiction line under the entity on documents (Delaware C-Corp; API Terms governing law). */

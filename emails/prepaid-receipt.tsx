@@ -19,7 +19,6 @@ import {
   BASE_URL,
   LEGAL_ENTITY,
   LEGAL_ENTITY_JURISDICTION,
-  BWM_LOGO_URL,
   RISKMODELS_WORDMARK_URL,
   SUPPORT_EMAIL,
 } from "./constants";
@@ -121,7 +120,6 @@ export const PrepaidReceiptEmail = ({
             <Row>
               <Column style={partyCol}>
                 <Text style={partyLabel}>Issued by</Text>
-                <Img src={BWM_LOGO_URL} width="170" height="84" alt="Blue Water Macro" style={bwmImg} />
                 <Text style={partyText}>
                   <strong style={partyStrong}>{LEGAL_ENTITY}</strong>
                   <br />
@@ -386,7 +384,6 @@ const partyLabel = {
   margin: "0 0 6px",
 };
 const partyText = { color: BODY, fontSize: "13px", lineHeight: "1.55", margin: "0" };
-const bwmImg = { display: "block" as const, margin: "0 0 8px -4px" };
 const partyStrong = { color: INK, fontWeight: "600" };
 const partyLink = { color: BODY, textDecoration: "none" };
 
