@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 import { getAppUrl } from '@/lib/app-url';
 import { stampAttributionEvent } from '@/lib/agent/signup-attribution';
+import { chargeFactsForPaymentIntent, resolveAccountName, sendPrepaidReceipt } from '@/lib/agent/prepaid-receipt';
 
 const FREE_CREDIT_USD = 20;
 /** When the user enables auto-refill later, charges run when balance is below this (USD). */
@@ -177,6 +178,9 @@ export async function GET(req: NextRequest) {
       };
       if (creditTotal > 0) {
         updates.balance_usd = newBalance;
+        // Re-arm the one-shot low-balance alert: it is deduped on this flag,
+        // and a top-up is the only event that should clear it.
+        updates.low_balance_notified_at = null;
       }
       const { error: updateErr } = await admin
         .from('agent_accounts')
@@ -252,6 +256,28 @@ export async function GET(req: NextRequest) {
         created_at: new Date().toISOString(),
       });
       if (paidEvtErr) console.error('[setup-success] prepaid_topup event error:', paidEvtErr);
+
+      // Receipt email — once per PaymentIntent (this branch only runs on first
+      // credit), best-effort: a failed send is logged in email_logs and can be
+      // re-issued via POST /api/admin/billing/receipt.
+      if (email && paymentIntent) {
+        try {
+          const facts = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+          const amountTax = session.total_details?.amount_tax;
+          await sendPrepaidReceipt({
+            userId,
+            to: email,
+            accountName: await resolveAccountName(admin, userId, user),
+            amountUsd: grantPrepaid,
+            taxUsd: typeof amountTax === 'number' ? amountTax / 100 : undefined,
+            newBalanceUsd: newBalance,
+            paymentIntentId,
+            ...facts,
+          });
+        } catch (receiptErr) {
+          console.error('[setup-success] receipt email failed (credit already applied):', receiptErr);
+        }
+      }
     }
 
     // ── Ensure the user has a key ──────────────────────────────────────────────────
