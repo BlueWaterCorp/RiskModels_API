@@ -297,7 +297,7 @@
       },
       "MetricsV3": {
         "type": "object",
-        "description": "V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property. Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual. Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1). Keys `l1_cfr`–`l3_rr` are daily simple returns from returns decomposition:\n  - `*_cfr` (combined factor return) is CUMULATIVE through the level: `l1_cfr = l1_fr`,\n    `l2_cfr = l1_fr + l2_fr`, `l3_cfr = l1_fr + l2_fr + l3_fr`.\n  - `*_fr`  (factor return, INCREMENTAL) is each level's own contribution —\n    `l2_fr` is what the sector factor adds on top of L1 alone, `l3_fr` is what\n    the subsector factor adds on top of L1+L2. Use these for stacked-bar decomposition\n    charts or for agent-side attribution (\"what drove today's return at each level?\").\n  - `*_rr`  (residual return) is what's left after factors through that level —\n    `gross_return ≈ l3_cfr + l3_rr`.\nKeys `lstar_rr` and `lstar_level` carry the Lstar-dispatched residual return and the level that was picked, per-(teo, symbol), at the canonical 1% threshold. Use these when you want \"the best residual\" — the idiosyncratic leg at the same hedge depth as production HR/ER. For a custom threshold, hit `GET /lstar`. None of these are ER fields and none come from hedge-weight explainability. Keys `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` are dimensionless hierarchical regression betas (one per level: 1 for L1, 2 for L2, 3 for L3 — though only the L*-introduced new factor is stored at each level). These are NOT the same as hedge ratios — betas are regression coefficients, hedge ratios are dollar-notional ratios.\n",
+        "description": "V3 metric keys as returned inside `GET /metrics/{ticker}` under the `metrics` property. Suffixes: `_mkt` market, `_sec` sector, `_sub` subsector, `_res` residual. Hedge ratios (HR) are dollars of ETF to trade per $1 of stock; explained risk (ER) are variance fractions (0–1). Keys `l1_cfr`–`l3_rr` are daily simple returns from returns decomposition:\n  - `*_cfr` (combined factor return) is CUMULATIVE through the level: `l1_cfr = l1_fr`,\n    `l2_cfr = l1_fr + l2_fr`, `l3_cfr = l1_fr + l2_fr + l3_fr`.\n  - `*_fr`  (factor return, INCREMENTAL) is each level's own contribution —\n    `l2_fr` is what the sector factor adds on top of L1 alone, `l3_fr` is what\n    the subsector factor adds on top of L1+L2. Use these for stacked-bar decomposition\n    charts or for agent-side attribution (\"what drove today's return at each level?\").\n  - `*_rr`  (residual return) is what's left after factors through that level —\n    `gross_return ≈ l3_cfr + l3_rr`.\nKeys `lstar_rr` and `lstar_level` carry the Lstar-dispatched residual return and the level that was picked, per-(teo, symbol), by ERM3's canonical selector. Use these when you want \"the best residual\" — the idiosyncratic leg at the same hedge depth as production HR/ER. For the legacy marginal-ER rule at a chosen threshold, hit `GET /lstar?threshold=`. None of these are ER fields and none come from hedge-weight explainability. Keys `l1_mkt_beta`, `l2_sec_beta`, `l3_sub_beta` are dimensionless hierarchical regression betas (one per level: 1 for L1, 2 for L2, 3 for L3 — though only the L*-introduced new factor is stored at each level). These are NOT the same as hedge ratios — betas are regression coefficients, hedge ratios are dollar-notional ratios.\n",
         "properties": {
           "vol_23d": {
             "type": "number",
@@ -460,7 +460,7 @@
             "type": "number",
             "format": "float",
             "nullable": true,
-            "description": "Daily simple residual return at the Lstar-dispatched level — L1→market, L2→sector, L3→subsector residual. Materialized as `residual_return.sel(level='lstar')` in `ds_erm3_returns` at the canonical 1% marginal-ER threshold. For a configurable threshold use `GET /lstar`.\n"
+            "description": "Daily simple residual return at the Lstar-dispatched level — L1→market, L2→sector, L3→subsector residual. Materialized as `residual_return.sel(level='lstar')` in `ds_erm3_returns` by ERM3's canonical selector. For the legacy marginal-ER rule at a chosen threshold use `GET /lstar?threshold=`.\n"
           },
           "lstar_level": {
             "type": "integer",
@@ -472,7 +472,7 @@
               3,
               null
             ],
-            "description": "Which cascade level Lstar dispatched to per (teo, symbol) at the canonical 1% threshold: 1 = L1 (market only), 2 = L2 (sector), 3 = L3 (subsector). `null` = no recommendation (both L2 and L3 ER are NaN — pre-IPO / delisted / masked). Maps from the uint8 `lstar_level` companion var in `ds_erm3_returns`, with 0 → null at the API boundary. For a custom threshold use `GET /lstar` which returns the level as a string.\n"
+            "description": "Which cascade level ERM3's canonical selector (the cost-aware GBM once enabled) dispatched to per (teo, symbol): 1 = L1 (market only), 2 = L2 (sector), 3 = L3 (subsector). `null` = no recommendation (both L2 and L3 ER are NaN — pre-IPO / delisted / masked). Maps from the uint8 `lstar_level` companion var in `ds_erm3_returns`, with 0 → null at the API boundary. For a custom threshold use `GET /lstar` which returns the level as a string.\n"
           },
           "l1_mkt_beta": {
             "type": "number",
@@ -9353,7 +9353,7 @@
     "/lstar": {
       "get": {
         "summary": "Recommended hedge level (L*) per date with dispatched HRs",
-        "description": "Per-(ticker, date) recommended hedge level — the simplest level whose marginal explained-return clears the threshold:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nDefault `θ = 0.01` (1%). The chat-facing default is server-authoritative; SDK callers can override via `?threshold=`. Response carries the chosen level's market / sector / subsector hedge ratios (nulls below the chosen level), the chosen level's total ER and daily residual return (`residual_return`), and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for why 1% is the default.\n**Billing:** $0.02 + $0.01 per extra year.\n",
+        "description": "Per-(ticker, date) recommended hedge level (L1/L2/L3).\n**Selection source.** With `threshold` omitted (the canonical request), each date's level is the `lstar_level` ERM3 publishes in `ds_erm3_returns` — whatever selector ERM3 ships (the cost-aware GBM once enabled). It is not re-derived from the marginal ERs and can differ from the 1% rule below. Passing any `threshold`, including `0.01`, switches to the legacy marginal-ER rule:\n\n  • if `L3_subsector_ER ≥ θ` → `L3` (3-ETF hedge: market + sector + subsector)\n  • elif `L2_sector_ER ≥ θ` → `L2` (2-ETF hedge: market + sector)\n  • else                    → `L1` (1-ETF hedge: market only)\n\nResponse carries the chosen level's market / sector / subsector hedge ratios (nulls above the chosen level), the chosen level's total ER and daily residual return (`residual_return`), and the raw `l2_sector_er` / `l3_subsector_er` inputs for audit. See the side study at `RM_ORG/content/Medium/series/drafts/lstar_selection/` for the 1% rule.\n**Billing:** $0.02 + $0.01 per extra year.\n",
         "operationId": "getLstar",
         "tags": [
           "Risk Metrics"
@@ -9409,7 +9409,7 @@
               "maximum": 0.5,
               "default": 0.01
             },
-            "description": "Marginal-ER threshold for the L*/L1/L2/L3 selection rule. Default 0.01 (1%). Chat / agentic surfaces should leave at the default; SDK callers may tune. Backtests across 275 tickers × 11 sectors found no compelling reason for per-sector thresholds.\n"
+            "description": "Optional marginal-ER threshold. Omit for the canonical level ERM3 publishes (`lstar_level`). Any explicit value, including 0.01, applies the legacy marginal-ER rule at that threshold and can select a different level. Chat / agentic surfaces should omit it. Backtests of the legacy rule across 275 tickers × 11 sectors found no compelling reason for per-sector thresholds.\n"
           },
           {
             "name": "axis",
@@ -11575,7 +11575,7 @@
     "/batch/lstar": {
       "post": {
         "summary": "Batch Lstar residual returns (up to 100 tickers)",
-        "description": "Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3) for up to 100 tickers in one call. Uses the same marginal-ER selection rule as `GET /lstar` (default θ = 1%). Response is a `results` map keyed by upper-case ticker; per-ticker failures use `status: error` or `not_found` without failing the whole batch.\n**Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.\n**Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with non-empty histories are included.\n",
+        "description": "Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3) for up to 100 tickers in one call. Uses the same level selection as `GET /lstar`: the canonical ERM3 `lstar_level` when `threshold` is omitted, the legacy marginal-ER rule when a threshold is passed. Response is a `results` map keyed by upper-case ticker; per-ticker failures use `status: error` or `not_found` without failing the whole batch.\n**Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.\n**Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with non-empty histories are included.\n",
         "operationId": "batchLstar",
         "tags": [
           "Risk Metrics"

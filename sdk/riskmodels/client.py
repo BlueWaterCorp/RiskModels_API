@@ -1063,16 +1063,20 @@ class RiskModelsClient:
     ) -> pd.DataFrame:
         """Historical Lstar selection with dispatched hedge ratios and residual returns.
 
-        Calls ``GET /lstar``. For each trading date, the API picks the simplest hedge
-        level (L1/L2/L3) whose marginal explained-return clears ``threshold`` (default
-        1%), then returns that level's market/sector/subsector hedge ratios, total ER,
-        and daily residual return.
+        Calls ``GET /lstar``. For each trading date, returns the recommended hedge level
+        (L1/L2/L3) with that level's market/sector/subsector hedge ratios, total ER, and
+        daily residual return.
+
+        Leave ``threshold`` unset for the canonical recommendation: the level ERM3
+        publishes (``lstar_level``). Passing any threshold, including 0.01, switches the
+        server to the legacy rule (simplest level whose marginal explained-return clears
+        the threshold), which can pick a different level.
 
         Args:
             ticker: Stock ticker symbol (e.g. ``"NVDA"``).
             market_factor_etf: Market factor ETF override (default SPY on server).
             years: Calendar years of daily history (1–15).
-            threshold: Marginal-ER threshold for Lstar selection (default 0.01).
+            threshold: Optional marginal-ER threshold; omit for the canonical level.
 
         Returns:
             DataFrame with columns: ``date``, ``lstar``, ``market_hr``, ``sector_hr``,
@@ -1159,7 +1163,8 @@ class RiskModelsClient:
             tickers: List of ticker symbols (up to 100).
             market_factor_etf: Market factor ETF (default SPY on server).
             years: Calendar years of daily history (default 1).
-            threshold: Marginal-ER threshold (default 1% on server).
+            threshold: Optional marginal-ER threshold; omit for the canonical level
+                ERM3 publishes (an explicit value applies the legacy rule).
             format: ``"json"`` (default), ``"parquet"``, or ``"csv"``.
             return_lineage: If True and ``format="json"``, return ``(body, lineage)``.
 
