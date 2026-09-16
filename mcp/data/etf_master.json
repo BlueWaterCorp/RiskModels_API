@@ -1,17 +1,80 @@
 {
   "schema_version": "etf-master/2.0",
-  "n_entries": 70,
+  "n_entries": 148,
   "aliases": {
+    "aaxj": "BW-ETF-AAXJ",
+    "acwx": "BW-ETF-ACWX",
+    "aia": "BW-ETF-AIA",
     "arkf": "BW-ETF-ARKF",
     "arkg": "BW-ETF-ARKG",
     "arkk": "BW-ETF-ARKK",
     "arkq": "BW-ETF-ARKQ",
     "arkw": "BW-ETF-ARKW",
     "arkx": "BW-ETF-ARKX",
+    "cnya": "BW-ETF-CNYA",
     "dia": "BW-ETF-DIA",
+    "ech": "BW-ETF-ECH",
+    "ecns": "BW-ETF-ECNS",
+    "eden": "BW-ETF-EDEN",
+    "eem": "BW-ETF-EEM",
+    "eema": "BW-ETF-EEMA",
+    "eems": "BW-ETF-EEMS",
+    "efa": "BW-ETF-EFA",
+    "efav": "BW-ETF-EFAV",
+    "efg": "BW-ETF-EFG",
+    "efnl": "BW-ETF-EFNL",
+    "efv": "BW-ETF-EFV",
+    "eido": "BW-ETF-EIDO",
+    "eirl": "BW-ETF-EIRL",
+    "eis": "BW-ETF-EIS",
+    "emif": "BW-ETF-EMIF",
+    "emxc": "BW-ETF-EMXC",
+    "enor": "BW-ETF-ENOR",
+    "enzl": "BW-ETF-ENZL",
+    "ephe": "BW-ETF-EPHE",
+    "epol": "BW-ETF-EPOL",
+    "epu": "BW-ETF-EPU",
+    "esgd": "BW-ETF-ESGD",
+    "eufn": "BW-ETF-EUFN",
+    "ewa": "BW-ETF-EWA",
+    "ewc": "BW-ETF-EWC",
+    "ewd": "BW-ETF-EWD",
+    "ewg": "BW-ETF-EWG",
+    "ewh": "BW-ETF-EWH",
+    "ewi": "BW-ETF-EWI",
+    "ewj": "BW-ETF-EWJ",
+    "ewjv": "BW-ETF-EWJV",
+    "ewk": "BW-ETF-EWK",
+    "ewl": "BW-ETF-EWL",
+    "ewm": "BW-ETF-EWM",
+    "ewn": "BW-ETF-EWN",
+    "ewo": "BW-ETF-EWO",
+    "ewp": "BW-ETF-EWP",
+    "ewq": "BW-ETF-EWQ",
+    "ews": "BW-ETF-EWS",
+    "ewt": "BW-ETF-EWT",
+    "ewu": "BW-ETF-EWU",
+    "ewus": "BW-ETF-EWUS",
+    "eww": "BW-ETF-EWW",
+    "ewy": "BW-ETF-EWY",
+    "ewz": "BW-ETF-EWZ",
+    "ewzs": "BW-ETF-EWZS",
+    "eza": "BW-ETF-EZA",
+    "fxi": "BW-ETF-FXI",
+    "hewj": "BW-ETF-HEWJ",
+    "idev": "BW-ETF-IDEV",
+    "iefa": "BW-ETF-IEFA",
+    "iemg": "BW-ETF-IEMG",
+    "ieur": "BW-ETF-IEUR",
+    "ieus": "BW-ETF-IEUS",
+    "iev": "BW-ETF-IEV",
     "igv": "BW-ETF-IGV",
     "ijh": "BW-ETF-IJH",
     "ijr": "BW-ETF-IJR",
+    "ilf": "BW-ETF-ILF",
+    "inda": "BW-ETF-INDA",
+    "indy": "BW-ETF-INDY",
+    "ipac": "BW-ETF-IPAC",
     "itot": "BW-ETF-ITOT",
     "ivv": "BW-ETF-IVV",
     "iwb": "BW-ETF-IWB",
@@ -23,13 +86,22 @@
     "iwp": "BW-ETF-IWP",
     "iwr": "BW-ETF-IWR",
     "iws": "BW-ETF-IWS",
+    "ixus": "BW-ETF-IXUS",
+    "jpxn": "BW-ETF-JPXN",
     "kbe": "BW-ETF-KBE",
     "kie": "BW-ETF-KIE",
     "kre": "BW-ETF-KRE",
+    "ksa": "BW-ETF-KSA",
+    "kwt": "BW-ETF-KWT",
+    "mchi": "BW-ETF-MCHI",
     "mdy": "BW-ETF-MDY",
+    "qat": "BW-ETF-QAT",
     "qqq": "BW-ETF-QQQ",
     "rsp": "BW-ETF-RSP",
+    "scj": "BW-ETF-SCJ",
+    "scz": "BW-ETF-SCZ",
     "smh": "BW-ETF-SMH",
+    "smin": "BW-ETF-SMIN",
     "soxx": "BW-ETF-SOXX",
     "splg": "BW-ETF-SPLG",
     "spmd": "BW-ETF-SPMD",
@@ -37,6 +109,11 @@
     "spy": "BW-ETF-SPY",
     "spyg": "BW-ETF-SPYG",
     "spyv": "BW-ETF-SPYV",
+    "tchi": "BW-ETF-TCHI",
+    "thd": "BW-ETF-THD",
+    "tok": "BW-ETF-TOK",
+    "tur": "BW-ETF-TUR",
+    "uae": "BW-ETF-UAE",
     "vb": "BW-ETF-VB",
     "vnq": "BW-ETF-VNQ",
     "vo": "BW-ETF-VO",
@@ -48,6 +125,7 @@
     "vug": "BW-ETF-VUG",
     "vv": "BW-ETF-VV",
     "vxf": "BW-ETF-VXF",
+    "wsml": "BW-ETF-WSML",
     "xar": "BW-ETF-XAR",
     "xbi": "BW-ETF-XBI",
     "xes": "BW-ETF-XES",
@@ -74,6 +152,21 @@
     "xtn": "BW-ETF-XTN"
   },
   "entries": {
+    "BW-ETF-AAXJ": {
+      "bw_etf_id": "BW-ETF-AAXJ",
+      "ticker": "AAXJ",
+      "name": "iShares MSCI All Country Asia ex Japan ETF"
+    },
+    "BW-ETF-ACWX": {
+      "bw_etf_id": "BW-ETF-ACWX",
+      "ticker": "ACWX",
+      "name": "iShares MSCI ACWI ex U.S. ETF"
+    },
+    "BW-ETF-AIA": {
+      "bw_etf_id": "BW-ETF-AIA",
+      "ticker": "AIA",
+      "name": "iShares Asia 50 ETF"
+    },
     "BW-ETF-ARKF": {
       "bw_etf_id": "BW-ETF-ARKF",
       "ticker": "ARKF",
@@ -104,10 +197,290 @@
       "ticker": "ARKX",
       "name": "ARK Space Exploration & Innovation ETF"
     },
+    "BW-ETF-CNYA": {
+      "bw_etf_id": "BW-ETF-CNYA",
+      "ticker": "CNYA",
+      "name": "iShares MSCI China A ETF"
+    },
     "BW-ETF-DIA": {
       "bw_etf_id": "BW-ETF-DIA",
       "ticker": "DIA",
       "name": "SPDR Dow Jones Industrial Average ETF Trust"
+    },
+    "BW-ETF-ECH": {
+      "bw_etf_id": "BW-ETF-ECH",
+      "ticker": "ECH",
+      "name": "iShares MSCI Chile ETF"
+    },
+    "BW-ETF-ECNS": {
+      "bw_etf_id": "BW-ETF-ECNS",
+      "ticker": "ECNS",
+      "name": "iShares MSCI China Small-Cap ETF"
+    },
+    "BW-ETF-EDEN": {
+      "bw_etf_id": "BW-ETF-EDEN",
+      "ticker": "EDEN",
+      "name": "iShares MSCI Denmark ETF"
+    },
+    "BW-ETF-EEM": {
+      "bw_etf_id": "BW-ETF-EEM",
+      "ticker": "EEM",
+      "name": "iShares MSCI Emerging Markets ETF"
+    },
+    "BW-ETF-EEMA": {
+      "bw_etf_id": "BW-ETF-EEMA",
+      "ticker": "EEMA",
+      "name": "iShares MSCI Emerging Markets Asia ETF"
+    },
+    "BW-ETF-EEMS": {
+      "bw_etf_id": "BW-ETF-EEMS",
+      "ticker": "EEMS",
+      "name": "iShares MSCI Emerging Markets Small-Cap ETF"
+    },
+    "BW-ETF-EFA": {
+      "bw_etf_id": "BW-ETF-EFA",
+      "ticker": "EFA",
+      "name": "iShares MSCI EAFE ETF"
+    },
+    "BW-ETF-EFAV": {
+      "bw_etf_id": "BW-ETF-EFAV",
+      "ticker": "EFAV",
+      "name": "iShares MSCI EAFE Min Vol Factor ETF"
+    },
+    "BW-ETF-EFG": {
+      "bw_etf_id": "BW-ETF-EFG",
+      "ticker": "EFG",
+      "name": "iShares MSCI EAFE Growth ETF"
+    },
+    "BW-ETF-EFNL": {
+      "bw_etf_id": "BW-ETF-EFNL",
+      "ticker": "EFNL",
+      "name": "iShares MSCI Finland ETF"
+    },
+    "BW-ETF-EFV": {
+      "bw_etf_id": "BW-ETF-EFV",
+      "ticker": "EFV",
+      "name": "iShares MSCI EAFE Value ETF"
+    },
+    "BW-ETF-EIDO": {
+      "bw_etf_id": "BW-ETF-EIDO",
+      "ticker": "EIDO",
+      "name": "iShares MSCI Indonesia ETF"
+    },
+    "BW-ETF-EIRL": {
+      "bw_etf_id": "BW-ETF-EIRL",
+      "ticker": "EIRL",
+      "name": "iShares MSCI Ireland ETF"
+    },
+    "BW-ETF-EIS": {
+      "bw_etf_id": "BW-ETF-EIS",
+      "ticker": "EIS",
+      "name": "iShares MSCI Israel ETF"
+    },
+    "BW-ETF-EMIF": {
+      "bw_etf_id": "BW-ETF-EMIF",
+      "ticker": "EMIF",
+      "name": "iShares Emerging Markets Infrastructure ETF"
+    },
+    "BW-ETF-EMXC": {
+      "bw_etf_id": "BW-ETF-EMXC",
+      "ticker": "EMXC",
+      "name": "iShares MSCI Emerging Markets ex China ETF"
+    },
+    "BW-ETF-ENOR": {
+      "bw_etf_id": "BW-ETF-ENOR",
+      "ticker": "ENOR",
+      "name": "iShares MSCI Norway ETF"
+    },
+    "BW-ETF-ENZL": {
+      "bw_etf_id": "BW-ETF-ENZL",
+      "ticker": "ENZL",
+      "name": "iShares MSCI New Zealand ETF"
+    },
+    "BW-ETF-EPHE": {
+      "bw_etf_id": "BW-ETF-EPHE",
+      "ticker": "EPHE",
+      "name": "iShares MSCI Philippines ETF"
+    },
+    "BW-ETF-EPOL": {
+      "bw_etf_id": "BW-ETF-EPOL",
+      "ticker": "EPOL",
+      "name": "iShares MSCI Poland ETF"
+    },
+    "BW-ETF-EPU": {
+      "bw_etf_id": "BW-ETF-EPU",
+      "ticker": "EPU",
+      "name": "iShares MSCI Peru and Global Exposure ETF"
+    },
+    "BW-ETF-ESGD": {
+      "bw_etf_id": "BW-ETF-ESGD",
+      "ticker": "ESGD",
+      "name": "iShares ESG Aware MSCI EAFE ETF"
+    },
+    "BW-ETF-EUFN": {
+      "bw_etf_id": "BW-ETF-EUFN",
+      "ticker": "EUFN",
+      "name": "iShares MSCI Europe Financials ETF"
+    },
+    "BW-ETF-EWA": {
+      "bw_etf_id": "BW-ETF-EWA",
+      "ticker": "EWA",
+      "name": "iShares MSCI Australia ETF"
+    },
+    "BW-ETF-EWC": {
+      "bw_etf_id": "BW-ETF-EWC",
+      "ticker": "EWC",
+      "name": "iShares MSCI Canada ETF"
+    },
+    "BW-ETF-EWD": {
+      "bw_etf_id": "BW-ETF-EWD",
+      "ticker": "EWD",
+      "name": "iShares MSCI Sweden ETF"
+    },
+    "BW-ETF-EWG": {
+      "bw_etf_id": "BW-ETF-EWG",
+      "ticker": "EWG",
+      "name": "iShares MSCI Germany ETF"
+    },
+    "BW-ETF-EWH": {
+      "bw_etf_id": "BW-ETF-EWH",
+      "ticker": "EWH",
+      "name": "iShares MSCI Hong Kong ETF"
+    },
+    "BW-ETF-EWI": {
+      "bw_etf_id": "BW-ETF-EWI",
+      "ticker": "EWI",
+      "name": "iShares MSCI Italy ETF"
+    },
+    "BW-ETF-EWJ": {
+      "bw_etf_id": "BW-ETF-EWJ",
+      "ticker": "EWJ",
+      "name": "iShares MSCI Japan ETF"
+    },
+    "BW-ETF-EWJV": {
+      "bw_etf_id": "BW-ETF-EWJV",
+      "ticker": "EWJV",
+      "name": "iShares MSCI Japan Value ETF"
+    },
+    "BW-ETF-EWK": {
+      "bw_etf_id": "BW-ETF-EWK",
+      "ticker": "EWK",
+      "name": "iShares MSCI Belgium ETF"
+    },
+    "BW-ETF-EWL": {
+      "bw_etf_id": "BW-ETF-EWL",
+      "ticker": "EWL",
+      "name": "iShares MSCI Switzerland ETF"
+    },
+    "BW-ETF-EWM": {
+      "bw_etf_id": "BW-ETF-EWM",
+      "ticker": "EWM",
+      "name": "iShares MSCI Malaysia ETF"
+    },
+    "BW-ETF-EWN": {
+      "bw_etf_id": "BW-ETF-EWN",
+      "ticker": "EWN",
+      "name": "iShares MSCI Netherlands ETF"
+    },
+    "BW-ETF-EWO": {
+      "bw_etf_id": "BW-ETF-EWO",
+      "ticker": "EWO",
+      "name": "iShares MSCI Austria ETF"
+    },
+    "BW-ETF-EWP": {
+      "bw_etf_id": "BW-ETF-EWP",
+      "ticker": "EWP",
+      "name": "iShares MSCI Spain ETF"
+    },
+    "BW-ETF-EWQ": {
+      "bw_etf_id": "BW-ETF-EWQ",
+      "ticker": "EWQ",
+      "name": "iShares MSCI France ETF"
+    },
+    "BW-ETF-EWS": {
+      "bw_etf_id": "BW-ETF-EWS",
+      "ticker": "EWS",
+      "name": "iShares MSCI Singapore ETF"
+    },
+    "BW-ETF-EWT": {
+      "bw_etf_id": "BW-ETF-EWT",
+      "ticker": "EWT",
+      "name": "iShares MSCI Taiwan ETF"
+    },
+    "BW-ETF-EWU": {
+      "bw_etf_id": "BW-ETF-EWU",
+      "ticker": "EWU",
+      "name": "iShares MSCI United Kingdom ETF"
+    },
+    "BW-ETF-EWUS": {
+      "bw_etf_id": "BW-ETF-EWUS",
+      "ticker": "EWUS",
+      "name": "iShares MSCI United Kingdom Small-Cap ETF"
+    },
+    "BW-ETF-EWW": {
+      "bw_etf_id": "BW-ETF-EWW",
+      "ticker": "EWW",
+      "name": "iShares MSCI Mexico ETF"
+    },
+    "BW-ETF-EWY": {
+      "bw_etf_id": "BW-ETF-EWY",
+      "ticker": "EWY",
+      "name": "iShares MSCI South Korea ETF"
+    },
+    "BW-ETF-EWZ": {
+      "bw_etf_id": "BW-ETF-EWZ",
+      "ticker": "EWZ",
+      "name": "iShares MSCI Brazil ETF"
+    },
+    "BW-ETF-EWZS": {
+      "bw_etf_id": "BW-ETF-EWZS",
+      "ticker": "EWZS",
+      "name": "iShares MSCI Brazil Small-Cap ETF"
+    },
+    "BW-ETF-EZA": {
+      "bw_etf_id": "BW-ETF-EZA",
+      "ticker": "EZA",
+      "name": "iShares MSCI South Africa ETF"
+    },
+    "BW-ETF-FXI": {
+      "bw_etf_id": "BW-ETF-FXI",
+      "ticker": "FXI",
+      "name": "iShares China Large-Cap ETF"
+    },
+    "BW-ETF-HEWJ": {
+      "bw_etf_id": "BW-ETF-HEWJ",
+      "ticker": "HEWJ",
+      "name": "iShares Currency Hedged MSCI Japan ETF"
+    },
+    "BW-ETF-IDEV": {
+      "bw_etf_id": "BW-ETF-IDEV",
+      "ticker": "IDEV",
+      "name": "iShares Core MSCI International Developed Markets ETF"
+    },
+    "BW-ETF-IEFA": {
+      "bw_etf_id": "BW-ETF-IEFA",
+      "ticker": "IEFA",
+      "name": "iShares Core MSCI EAFE ETF"
+    },
+    "BW-ETF-IEMG": {
+      "bw_etf_id": "BW-ETF-IEMG",
+      "ticker": "IEMG",
+      "name": "iShares Core MSCI Emerging Markets ETF"
+    },
+    "BW-ETF-IEUR": {
+      "bw_etf_id": "BW-ETF-IEUR",
+      "ticker": "IEUR",
+      "name": "iShares Core MSCI Europe ETF"
+    },
+    "BW-ETF-IEUS": {
+      "bw_etf_id": "BW-ETF-IEUS",
+      "ticker": "IEUS",
+      "name": "iShares MSCI Europe Small-Cap ETF"
+    },
+    "BW-ETF-IEV": {
+      "bw_etf_id": "BW-ETF-IEV",
+      "ticker": "IEV",
+      "name": "iShares Europe ETF"
     },
     "BW-ETF-IGV": {
       "bw_etf_id": "BW-ETF-IGV",
@@ -123,6 +496,26 @@
       "bw_etf_id": "BW-ETF-IJR",
       "ticker": "IJR",
       "name": "iShares Core S&P Small-Cap ETF"
+    },
+    "BW-ETF-ILF": {
+      "bw_etf_id": "BW-ETF-ILF",
+      "ticker": "ILF",
+      "name": "iShares Latin America 40 ETF"
+    },
+    "BW-ETF-INDA": {
+      "bw_etf_id": "BW-ETF-INDA",
+      "ticker": "INDA",
+      "name": "iShares MSCI India ETF"
+    },
+    "BW-ETF-INDY": {
+      "bw_etf_id": "BW-ETF-INDY",
+      "ticker": "INDY",
+      "name": "iShares India 50 ETF"
+    },
+    "BW-ETF-IPAC": {
+      "bw_etf_id": "BW-ETF-IPAC",
+      "ticker": "IPAC",
+      "name": "iShares Core MSCI Pacific ETF"
     },
     "BW-ETF-ITOT": {
       "bw_etf_id": "BW-ETF-ITOT",
@@ -179,6 +572,16 @@
       "ticker": "IWS",
       "name": "iShares Russell Mid-Cap Value ETF"
     },
+    "BW-ETF-IXUS": {
+      "bw_etf_id": "BW-ETF-IXUS",
+      "ticker": "IXUS",
+      "name": "iShares Core MSCI Total International Stock ETF"
+    },
+    "BW-ETF-JPXN": {
+      "bw_etf_id": "BW-ETF-JPXN",
+      "ticker": "JPXN",
+      "name": "iShares JPX-Nikkei 400 ETF"
+    },
     "BW-ETF-KBE": {
       "bw_etf_id": "BW-ETF-KBE",
       "ticker": "KBE",
@@ -194,10 +597,30 @@
       "ticker": "KRE",
       "name": "SPDR S&P Regional Banking ETF"
     },
+    "BW-ETF-KSA": {
+      "bw_etf_id": "BW-ETF-KSA",
+      "ticker": "KSA",
+      "name": "iShares MSCI Saudi Arabia ETF"
+    },
+    "BW-ETF-KWT": {
+      "bw_etf_id": "BW-ETF-KWT",
+      "ticker": "KWT",
+      "name": "iShares MSCI Kuwait ETF"
+    },
+    "BW-ETF-MCHI": {
+      "bw_etf_id": "BW-ETF-MCHI",
+      "ticker": "MCHI",
+      "name": "iShares MSCI China ETF"
+    },
     "BW-ETF-MDY": {
       "bw_etf_id": "BW-ETF-MDY",
       "ticker": "MDY",
       "name": "SPDR S&P MidCap 400 ETF Trust"
+    },
+    "BW-ETF-QAT": {
+      "bw_etf_id": "BW-ETF-QAT",
+      "ticker": "QAT",
+      "name": "iShares MSCI Qatar ETF"
     },
     "BW-ETF-QQQ": {
       "bw_etf_id": "BW-ETF-QQQ",
@@ -209,10 +632,25 @@
       "ticker": "RSP",
       "name": "Invesco S&P 500 Equal Weight ETF"
     },
+    "BW-ETF-SCJ": {
+      "bw_etf_id": "BW-ETF-SCJ",
+      "ticker": "SCJ",
+      "name": "iShares MSCI Japan Small-Cap ETF"
+    },
+    "BW-ETF-SCZ": {
+      "bw_etf_id": "BW-ETF-SCZ",
+      "ticker": "SCZ",
+      "name": "iShares MSCI EAFE Small-Cap ETF"
+    },
     "BW-ETF-SMH": {
       "bw_etf_id": "BW-ETF-SMH",
       "ticker": "SMH",
       "name": "VanEck Semiconductor ETF"
+    },
+    "BW-ETF-SMIN": {
+      "bw_etf_id": "BW-ETF-SMIN",
+      "ticker": "SMIN",
+      "name": "iShares MSCI India Small-Cap ETF"
     },
     "BW-ETF-SOXX": {
       "bw_etf_id": "BW-ETF-SOXX",
@@ -248,6 +686,31 @@
       "bw_etf_id": "BW-ETF-SPYV",
       "ticker": "SPYV",
       "name": "SPDR Portfolio S&P 500 Value ETF"
+    },
+    "BW-ETF-TCHI": {
+      "bw_etf_id": "BW-ETF-TCHI",
+      "ticker": "TCHI",
+      "name": "iShares MSCI China Multisector Tech ETF"
+    },
+    "BW-ETF-THD": {
+      "bw_etf_id": "BW-ETF-THD",
+      "ticker": "THD",
+      "name": "iShares MSCI Thailand ETF"
+    },
+    "BW-ETF-TOK": {
+      "bw_etf_id": "BW-ETF-TOK",
+      "ticker": "TOK",
+      "name": "iShares MSCI Kokusai ETF"
+    },
+    "BW-ETF-TUR": {
+      "bw_etf_id": "BW-ETF-TUR",
+      "ticker": "TUR",
+      "name": "iShares MSCI Turkey ETF"
+    },
+    "BW-ETF-UAE": {
+      "bw_etf_id": "BW-ETF-UAE",
+      "ticker": "UAE",
+      "name": "iShares MSCI UAE ETF"
     },
     "BW-ETF-VB": {
       "bw_etf_id": "BW-ETF-VB",
@@ -303,6 +766,11 @@
       "bw_etf_id": "BW-ETF-VXF",
       "ticker": "VXF",
       "name": "Vanguard Extended Market ETF"
+    },
+    "BW-ETF-WSML": {
+      "bw_etf_id": "BW-ETF-WSML",
+      "ticker": "WSML",
+      "name": "iShares MSCI World Small-Cap ETF"
     },
     "BW-ETF-XAR": {
       "bw_etf_id": "BW-ETF-XAR",
