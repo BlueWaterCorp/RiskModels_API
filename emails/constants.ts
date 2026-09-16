@@ -11,6 +11,8 @@ export const LOGO_URL = `${BASE_URL}/riskmodels-logo.svg`;
 export const LOGO_PNG_URL = `${BASE_URL}/logo.png`;
 /** Operating entity named on receipts, terms and the legal page. */
 export const LEGAL_ENTITY = "Blue Water Macro Corp.";
+/** Jurisdiction line under the entity on documents (Delaware C-Corp; API Terms governing law). */
+export const LEGAL_ENTITY_JURISDICTION = "A Delaware corporation";
 /** Canonical API Terms (matches README / API_TERMS.md). */
 export const API_TERMS_URL = "https://riskmodels.net/terms/api";
 export const SUPPORT_URL = `${BASE_URL}/support`;

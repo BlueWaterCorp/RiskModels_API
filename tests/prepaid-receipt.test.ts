@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "@react-email/render";
 import { PrepaidReceiptEmail } from "@/emails/prepaid-receipt";
 import {
-  billedToNameFor,
   buildPrepaidReceiptData,
   chargeFactsForPaymentIntent,
   formatPaidAt,
   paymentMethodLabelFromCharge,
   prepaidReceiptSubject,
+  printableName,
   receiptNumberFor,
+  resolveAccountName,
   sendPrepaidReceipt,
 } from "@/lib/agent/prepaid-receipt";
 
@@ -52,11 +53,28 @@ describe("prepaid receipt data", () => {
     expect(receiptNumberFor("pi_ab", "not a date")).toBe("RM-00000000-0000AB");
   });
 
-  it("prints a billing name only when it is a real name", () => {
-    expect(billedToNameFor("Molly Messenger")).toBe("Molly Messenger");
-    expect(billedToNameFor("lisa@example.com")).toBeUndefined();
-    expect(billedToNameFor("  ")).toBeUndefined();
-    expect(billedToNameFor(null)).toBeUndefined();
+  it("prints a name only when it is a real name, never the email", () => {
+    expect(printableName("Lisa Borland")).toBe("Lisa Borland");
+    expect(printableName("lisa@example.com")).toBeUndefined();
+    expect(printableName("  ")).toBeUndefined();
+    expect(printableName(null)).toBeUndefined();
+  });
+
+  it("account holder comes from profiles.full_name, then the sign-in name, never the email", async () => {
+    const adminWith = (fullName: string | null) =>
+      ({
+        from: () => ({
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: { full_name: fullName } }) }),
+          }),
+        }),
+      }) as never;
+    const authUser = { user_metadata: { full_name: "Lisa Borland", email: "lisa@example.com" } } as never;
+    expect(await resolveAccountName(adminWith("Profile Name"), "u1", authUser)).toBe("Profile Name");
+    expect(await resolveAccountName(adminWith(""), "u1", authUser)).toBe("Lisa Borland");
+    expect(await resolveAccountName(adminWith(null), "u1", null)).toBeUndefined();
+    const broken = { from: () => { throw new Error("db down"); } } as never;
+    expect(await resolveAccountName(broken, "u1", authUser)).toBe("Lisa Borland");
   });
 
   it("labels cards, Link and bank accounts; undefined when nothing usable", () => {
@@ -86,7 +104,9 @@ describe("prepaid receipt data", () => {
     const data = buildPrepaidReceiptData({
       userId: "u1",
       to: "lisa@example.com",
-      name: "Molly Messenger",
+      accountName: "Lisa Borland",
+      cardholderName: "Molly Messenger",
+      statementDescriptor: "RISKMODELS",
       amountUsd: 100,
       newBalanceUsd: 142.291,
       paymentIntentId: "pi_3UGNJ7IZr3LIUbdw0yplcdbA",
@@ -97,8 +117,10 @@ describe("prepaid receipt data", () => {
     expect(data).toEqual({
       receiptNumber: "RM-20260916-PLCDBA",
       paidAtFormatted: "September 16, 2026",
-      billedToName: "Molly Messenger",
-      billedToEmail: "lisa@example.com",
+      accountName: "Lisa Borland",
+      accountEmail: "lisa@example.com",
+      cardholderName: "Molly Messenger",
+      statementDescriptor: "RISKMODELS",
       amountUsd: 100,
       taxUsd: undefined,
       newBalanceUsd: 142.291,
@@ -111,7 +133,7 @@ describe("prepaid receipt data", () => {
 });
 
 describe("chargeFactsForPaymentIntent", () => {
-  it("reads receipt_url, method and billing name from an expanded latest_charge without calling Stripe", async () => {
+  it("reads receipt_url, method, cardholder and descriptor from an expanded latest_charge without calling Stripe", async () => {
     const retrieve = vi.fn();
     const stripe = { charges: { retrieve } } as never;
     const facts = await chargeFactsForPaymentIntent(stripe, {
@@ -120,6 +142,7 @@ describe("chargeFactsForPaymentIntent", () => {
         created: 2,
         receipt_url: "https://pay.stripe.com/receipts/abc",
         billing_details: { name: " Molly Messenger " },
+        calculated_statement_descriptor: "RISKMODELS",
         payment_method_details: { type: "card", card: { brand: "mastercard", last4: "1111" } },
       },
     } as never);
@@ -128,7 +151,8 @@ describe("chargeFactsForPaymentIntent", () => {
       paidAt: 2,
       receiptUrl: "https://pay.stripe.com/receipts/abc",
       paymentMethodLabel: "Mastercard •••• 1111",
-      billingName: "Molly Messenger",
+      cardholderName: "Molly Messenger",
+      statementDescriptor: "RISKMODELS",
     });
   });
 
@@ -190,14 +214,16 @@ describe("sendPrepaidReceipt", () => {
 });
 
 describe("PrepaidReceiptEmail render", () => {
-  it("shows issuer, billed-to, line item, total, payment record, balance and the Stripe link", async () => {
+  it("shows issuer, billed-to, cardholder, line item, total, payment record, balance and the Stripe link", async () => {
     const html = strip(
       await render(
         PrepaidReceiptEmail({
           receiptNumber: "RM-20260916-PLCDBA",
           paidAtFormatted: "September 16, 2026",
-          billedToName: "Molly Messenger",
-          billedToEmail: "lisa@example.com",
+          accountName: "Lisa Borland",
+          accountEmail: "lisa@example.com",
+          cardholderName: "Molly Messenger",
+          statementDescriptor: "RISKMODELS",
           amountUsd: 100,
           newBalanceUsd: 142.291,
           paymentIntentId: "pi_3UGNJ7IZr3LIUbdw0yplcdbA",
@@ -209,8 +235,13 @@ describe("PrepaidReceiptEmail render", () => {
     );
     expect(html).toContain("RM-20260916-PLCDBA");
     expect(html).toContain("Blue Water Macro Corp.");
-    expect(html).toContain("Molly Messenger");
+    expect(html).toContain("A Delaware corporation");
+    expect(html).toContain("Lisa Borland");
     expect(html).toContain("lisa@example.com");
+    expect(html).toContain("Cardholder");
+    expect(html).toContain("Molly Messenger");
+    expect(html).toContain("On your card statement as");
+    expect(html).toContain("RISKMODELS");
     expect(html).toContain("Prepaid API credit");
     expect(html).toContain("Total paid (USD)");
     expect(html).toContain("$100.00");
@@ -232,7 +263,7 @@ describe("PrepaidReceiptEmail render", () => {
         PrepaidReceiptEmail({
           receiptNumber: "RM-20260903-BTCY00",
           paidAtFormatted: "September 3, 2026",
-          billedToEmail: "lisa@example.com",
+          accountEmail: "lisa@example.com",
           amountUsd: 25,
           taxUsd: 0,
           newBalanceUsd: 45,
@@ -247,6 +278,8 @@ describe("PrepaidReceiptEmail render", () => {
     expect(html).toContain("$25.00");
     expect(html).not.toContain("View Stripe receipt");
     expect(html).not.toContain("Payment method");
+    expect(html).not.toContain("Cardholder");
+    expect(html).not.toContain("On your card statement as");
     expect(html).toContain("Billed to");
     expect(html).toContain("lisa@example.com");
   });

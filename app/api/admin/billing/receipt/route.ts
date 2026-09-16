@@ -32,6 +32,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   buildPrepaidReceiptData,
   chargeFactsForPaymentIntent,
+  resolveAccountName,
   sendPrepaidReceipt,
   type PrepaidReceiptInput,
 } from "@/lib/agent/prepaid-receipt";
@@ -91,17 +92,16 @@ export async function POST(request: NextRequest) {
 
     const { data: account } = await admin
       .from("agent_accounts")
-      .select("contact_email, agent_name, balance_usd")
+      .select("contact_email, balance_usd")
       .eq("user_id", userId)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
 
+    const { data: authData } = await admin.auth.admin.getUserById(userId);
+    const authUser = authData?.user ?? null;
     let to = body.to?.trim() || account?.contact_email?.trim() || "";
-    if (!to.includes("@")) {
-      const { data: authData } = await admin.auth.admin.getUserById(userId);
-      to = authData?.user?.email ?? "";
-    }
+    if (!to.includes("@")) to = authUser?.email ?? "";
     if (!to.includes("@")) {
       return NextResponse.json({ ok: false, error: "no recipient email on file" }, { status: 422 });
     }
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-    const { billingName, ...facts } = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+    const facts = await chargeFactsForPaymentIntent(stripe, paymentIntent);
 
     // Tax line comes from the Checkout session (PaymentIntents do not carry it).
     let taxUsd: number | undefined;
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     const input: PrepaidReceiptInput = {
       userId,
       to,
-      name: billingName ?? (account?.agent_name as string | undefined),
+      accountName: await resolveAccountName(admin, userId, authUser),
       amountUsd,
       taxUsd,
       newBalanceUsd,

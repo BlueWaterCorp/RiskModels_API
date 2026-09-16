@@ -18,6 +18,7 @@ import {
   API_TERMS_URL,
   BASE_URL,
   LEGAL_ENTITY,
+  LEGAL_ENTITY_JURISDICTION,
   LOGO_PNG_URL,
   SUPPORT_EMAIL,
 } from "./constants";
@@ -37,9 +38,14 @@ export interface PrepaidReceiptEmailProps {
   receiptNumber: string;
   /** Payment date, already formatted (e.g. "September 16, 2026"). */
   paidAtFormatted: string;
-  /** Billing name from the card, when Stripe has one. */
-  billedToName?: string;
-  billedToEmail: string;
+  /** Account holder (profile / sign-in name), when known. */
+  accountName?: string;
+  /** Account email — the address this receipt is sent to. */
+  accountEmail: string;
+  /** Name on the card / Link funding source, when it differs from or adds to the account holder. */
+  cardholderName?: string;
+  /** How the charge appears on the card statement (Stripe calculated descriptor). */
+  statementDescriptor?: string;
   /** Amount charged, USD. */
   amountUsd: number;
   /** Tax collected, USD — shown as its own line only when known. */
@@ -62,8 +68,10 @@ const fmtUsd = (n: number) =>
 export const PrepaidReceiptEmail = ({
   receiptNumber = "RM-20260916-000000",
   paidAtFormatted = "September 16, 2026",
-  billedToName,
-  billedToEmail = "developer@example.com",
+  accountName,
+  accountEmail = "developer@example.com",
+  cardholderName,
+  statementDescriptor,
   amountUsd = 100,
   taxUsd,
   newBalanceUsd = 120,
@@ -85,9 +93,19 @@ export const PrepaidReceiptEmail = ({
           <Section style={masthead}>
             <Row>
               <Column style={mastLeft}>
-                <Img src={LOGO_PNG_URL} width="150" height="88" alt="RiskModels" style={logo} />
-                <Text style={wordmark}>RiskModels</Text>
-                <Text style={wordmarkSub}>Institutional Risk Analysis via API</Text>
+                <table cellPadding={0} cellSpacing={0} role="presentation" style={lockup}>
+                  <tbody>
+                    <tr>
+                      <td style={lockupMark}>
+                        <Img src={LOGO_PNG_URL} width="118" height="69" alt="" style={logo} />
+                      </td>
+                      <td style={lockupText}>
+                        <Text style={wordmark}>RiskModels</Text>
+                        <Text style={wordmarkSub}>by {LEGAL_ENTITY}</Text>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </Column>
               <Column style={mastRight}>
                 <Text style={docTitle}>RECEIPT</Text>
@@ -110,6 +128,8 @@ export const PrepaidReceiptEmail = ({
                 <Text style={partyText}>
                   <strong style={partyStrong}>{LEGAL_ENTITY}</strong>
                   <br />
+                  {LEGAL_ENTITY_JURISDICTION}
+                  <br />
                   RiskModels
                   <br />
                   <Link href={BASE_URL} style={partyLink}>
@@ -124,13 +144,15 @@ export const PrepaidReceiptEmail = ({
               <Column style={partyCol}>
                 <Text style={partyLabel}>Billed to</Text>
                 <Text style={partyText}>
-                  {billedToName ? (
+                  {accountName ? (
                     <>
-                      <strong style={partyStrong}>{billedToName}</strong>
+                      <strong style={partyStrong}>{accountName}</strong>
                       <br />
                     </>
                   ) : null}
-                  {billedToEmail}
+                  {accountEmail}
+                  <br />
+                  <span style={tdMuted}>RiskModels API account</span>
                 </Text>
               </Column>
             </Row>
@@ -201,10 +223,24 @@ export const PrepaidReceiptEmail = ({
                     <td style={recordValue}>{paymentMethodLabel}</td>
                   </tr>
                 ) : null}
+                {cardholderName ? (
+                  <tr>
+                    <td style={recordLabel}>Cardholder</td>
+                    <td style={recordValue}>{cardholderName}</td>
+                  </tr>
+                ) : null}
                 <tr>
                   <td style={recordLabel}>Processor</td>
-                  <td style={recordValue}>Stripe</td>
+                  <td style={recordValue}>Stripe, on behalf of {LEGAL_ENTITY}</td>
                 </tr>
+                {statementDescriptor ? (
+                  <tr>
+                    <td style={recordLabel}>On your card statement as</td>
+                    <td style={recordValue}>
+                      <code style={inlineCode}>{statementDescriptor}</code>
+                    </td>
+                  </tr>
+                ) : null}
                 <tr>
                   <td style={recordLabel}>Transaction reference</td>
                   <td style={recordValue}>
@@ -294,7 +330,10 @@ const masthead = { padding: "28px 32px 20px" };
 const mastLeft = { width: "58%", verticalAlign: "top" as const };
 const mastRight = { width: "42%", verticalAlign: "top" as const, textAlign: "right" as const };
 
-const logo = { display: "block" as const, margin: "0 0 4px -10px" };
+const lockup = { borderCollapse: "collapse" as const };
+const lockupMark = { verticalAlign: "middle" as const, padding: "0 6px 0 0" };
+const lockupText = { verticalAlign: "middle" as const, padding: "0" };
+const logo = { display: "block" as const, margin: "0 0 0 -14px" };
 
 const wordmark = {
   color: NAVY,

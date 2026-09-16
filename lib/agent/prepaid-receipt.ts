@@ -14,13 +14,19 @@
  * Stripe cannot know — the balance after credit.
  */
 import type Stripe from "stripe";
+import type { User } from "@supabase/supabase-js";
 import { getAppUrl } from "@/lib/app-url";
+import type { createAdminClient } from "@/lib/supabase/admin";
 
 export interface PrepaidReceiptInput {
   userId: string;
   to: string;
-  /** Billing name from the card / account; email-shaped values are dropped. */
-  name?: string | null;
+  /** Account holder (profile / sign-in name); email-shaped values are dropped. */
+  accountName?: string | null;
+  /** Name on the card / Link funding source, from the charge's billing details. */
+  cardholderName?: string | null;
+  /** Stripe's calculated statement descriptor for the charge. */
+  statementDescriptor?: string | null;
   amountUsd: number;
   /** Tax collected, USD; omit when unknown (no tax line is shown). */
   taxUsd?: number;
@@ -36,8 +42,10 @@ export interface ChargeReceiptFacts {
   paidAt: number;
   receiptUrl?: string;
   paymentMethodLabel?: string;
-  /** `billing_details.name` on the charge, when the buyer gave one. */
-  billingName?: string;
+  /** `billing_details.name` on the charge — the cardholder, not necessarily the account holder. */
+  cardholderName?: string;
+  /** What the buyer sees on their card statement. */
+  statementDescriptor?: string;
 }
 
 const BRAND_LABEL: Record<string, string> = {
@@ -90,8 +98,10 @@ export async function chargeFactsForPaymentIntent(
     if (charge.receipt_url) facts.receiptUrl = charge.receipt_url;
     const label = paymentMethodLabelFromCharge(charge.payment_method_details);
     if (label) facts.paymentMethodLabel = label;
-    const billingName = charge.billing_details?.name?.trim();
-    if (billingName) facts.billingName = billingName;
+    const cardholderName = charge.billing_details?.name?.trim();
+    if (cardholderName) facts.cardholderName = cardholderName;
+    const descriptor = (charge.calculated_statement_descriptor ?? charge.statement_descriptor)?.trim();
+    if (descriptor) facts.statementDescriptor = descriptor;
   } catch (err) {
     console.warn("[prepaid-receipt] charge lookup failed (sending without Stripe link):", err);
   }
@@ -109,11 +119,38 @@ export function formatPaidAt(paidAt: number | string): string {
   });
 }
 
-/** A billing name worth printing: non-empty and not just the email address. */
-export function billedToNameFor(name: string | null | undefined): string | undefined {
+/** A person/company name worth printing: non-empty and not just an email address. */
+export function printableName(name: string | null | undefined): string | undefined {
   const n = name?.trim();
   if (!n || n.includes("@")) return undefined;
   return n;
+}
+
+/**
+ * Account holder name: profiles.full_name (the BWMACRO convention), else the
+ * sign-in provider's name on the auth user, else nothing. Never the email.
+ */
+export async function resolveAccountName(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  authUser?: User | null,
+): Promise<string | undefined> {
+  try {
+    const { data } = await admin
+      .from("profiles")
+      .select("full_name, company_name")
+      .eq("id", userId)
+      .maybeSingle();
+    const profileName = printableName(data?.full_name as string | undefined);
+    if (profileName) return profileName;
+  } catch (err) {
+    console.warn("[prepaid-receipt] profiles lookup failed:", err);
+  }
+  const meta = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
+  return (
+    printableName(typeof meta.full_name === "string" ? meta.full_name : undefined) ??
+    printableName(typeof meta.name === "string" ? meta.name : undefined)
+  );
 }
 
 /**
@@ -138,8 +175,10 @@ export function buildPrepaidReceiptData(input: PrepaidReceiptInput) {
   return {
     receiptNumber: receiptNumberFor(input.paymentIntentId, input.paidAt),
     paidAtFormatted: formatPaidAt(input.paidAt),
-    billedToName: billedToNameFor(input.name),
-    billedToEmail: input.to,
+    accountName: printableName(input.accountName),
+    accountEmail: input.to,
+    cardholderName: printableName(input.cardholderName),
+    statementDescriptor: input.statementDescriptor?.trim() || undefined,
     amountUsd: input.amountUsd,
     taxUsd: input.taxUsd,
     newBalanceUsd: input.newBalanceUsd,

@@ -14,7 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { generateUserApiKey } from '@/lib/user-api-keys';
 import { getAppUrl } from '@/lib/app-url';
 import { stampAttributionEvent } from '@/lib/agent/signup-attribution';
-import { chargeFactsForPaymentIntent, sendPrepaidReceipt } from '@/lib/agent/prepaid-receipt';
+import { chargeFactsForPaymentIntent, resolveAccountName, sendPrepaidReceipt } from '@/lib/agent/prepaid-receipt';
 
 const FREE_CREDIT_USD = 20;
 /** When the user enables auto-refill later, charges run when balance is below this (USD). */
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
 
     const { data: existingAccount, error: accountSelectErr } = await admin
       .from('agent_accounts')
-      .select('id, balance_usd, agent_name')
+      .select('id, balance_usd')
       .eq('user_id', userId)
       .order('created_at', { ascending: true })
       .limit(1)
@@ -262,12 +262,12 @@ export async function GET(req: NextRequest) {
       // re-issued via POST /api/admin/billing/receipt.
       if (email && paymentIntent) {
         try {
-          const { billingName, ...facts } = await chargeFactsForPaymentIntent(stripe, paymentIntent);
+          const facts = await chargeFactsForPaymentIntent(stripe, paymentIntent);
           const amountTax = session.total_details?.amount_tax;
           await sendPrepaidReceipt({
             userId,
             to: email,
-            name: billingName ?? (existingAccount?.agent_name as string | undefined),
+            accountName: await resolveAccountName(admin, userId, user),
             amountUsd: grantPrepaid,
             taxUsd: typeof amountTax === 'number' ? amountTax / 100 : undefined,
             newBalanceUsd: newBalance,
