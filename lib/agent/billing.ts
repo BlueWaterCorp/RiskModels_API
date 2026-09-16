@@ -1078,7 +1078,8 @@ async function getContactEmailForUser(
 /**
  * Send a one-time low-balance alert email when balance drops below the threshold.
  * Deduplicated via `low_balance_notified_at` — only fires once per balance crossing.
- * The flag is reset by the Stripe webhook when a top-up completes.
+ * The flag is cleared by `/api/stripe/setup-success` when a top-up is credited
+ * (redirect or `checkout.session.completed` webhook), re-arming the alert.
  */
 export async function checkAndNotifyLowBalance(
   userId: string,
@@ -1120,7 +1121,8 @@ export async function checkAndNotifyLowBalance(
       userName,
       balanceUsd: newBalance,
       thresholdUsd: LOW_BALANCE_THRESHOLD_USD,
-      topUpUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://riskmodels.net"}/settings/billing`,
+      // /get-key is the balance + top-up page on riskmodels.app (there is no /settings/billing).
+      topUpUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://riskmodels.app"}/get-key`,
     },
     userId,
   });

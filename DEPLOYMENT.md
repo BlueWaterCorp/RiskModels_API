@@ -120,7 +120,8 @@ The developer portal (`/get-key`) uses **Google** and **GitHub** OAuth plus emai
 Stripe Setup Mode uses `NEXT_PUBLIC_APP_URL` for success/cancel redirects. Ensure:
 
 - Production: `NEXT_PUBLIC_APP_URL=https://riskmodels.app`
-- Stripe Dashboard → Developers → Webhooks: Add endpoint if you use webhooks (optional for setup-only flow)
+- Stripe Dashboard → Developers → Webhooks: endpoint `https://riskmodels.app/api/stripe/webhook`, event `checkout.session.completed`; put its signing secret in `STRIPE_WEBHOOK_SECRET`. This is the crediting backstop for prepay purchases (buyer closes the tab before the redirect) — not optional once prepay is live.
+- Receipts: every prepay purchase emails a `prepaid-receipt` (Resend) from the crediting handler; re-send or backfill with `POST /api/admin/billing/receipt`. See [docs/PREPAID_RECEIPTS.md](docs/PREPAID_RECEIPTS.md).
 
 ## 5. Custom Domain (Optional)
 
