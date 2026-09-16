@@ -9,9 +9,9 @@
  *    PaymentIntent that was credited before receipts existed, or whose
  *    original send failed (`email_logs.status = 'failed'`).
  *
- * Stripe's hosted receipt (`charge.receipt_url`) carries the legal entity,
- * card and tax lines; this mail links it and adds the account-side facts
- * Stripe cannot know — the balance after credit.
+ * This is the receipt of record: what was paid, what it bought, the payment
+ * record (method, cardholder, statement descriptor, reference) and the
+ * account-side fact Stripe cannot know — the balance after credit.
  */
 import type Stripe from "stripe";
 import type { User } from "@supabase/supabase-js";
@@ -35,12 +35,10 @@ export interface PrepaidReceiptInput {
   /** Unix seconds (Stripe `created`) or ISO string. */
   paidAt: number | string;
   paymentMethodLabel?: string;
-  receiptUrl?: string;
 }
 
 export interface ChargeReceiptFacts {
   paidAt: number;
-  receiptUrl?: string;
   paymentMethodLabel?: string;
   /** `billing_details.name` on the charge — the cardholder, not necessarily the account holder. */
   cardholderName?: string;
@@ -78,7 +76,7 @@ export function paymentMethodLabelFromCharge(
 
 /**
  * Pull the receipt facts for a PaymentIntent from its latest charge.
- * Never throws — a receipt without the Stripe link is still worth sending.
+ * Never throws — a receipt without the charge details is still worth sending.
  */
 export async function chargeFactsForPaymentIntent(
   stripe: Stripe,
@@ -95,7 +93,6 @@ export async function chargeFactsForPaymentIntent(
           : null;
     if (!charge) return facts;
     if (charge.created) facts.paidAt = charge.created;
-    if (charge.receipt_url) facts.receiptUrl = charge.receipt_url;
     const label = paymentMethodLabelFromCharge(charge.payment_method_details);
     if (label) facts.paymentMethodLabel = label;
     const cardholderName = charge.billing_details?.name?.trim();
@@ -103,7 +100,7 @@ export async function chargeFactsForPaymentIntent(
     const descriptor = (charge.calculated_statement_descriptor ?? charge.statement_descriptor)?.trim();
     if (descriptor) facts.statementDescriptor = descriptor;
   } catch (err) {
-    console.warn("[prepaid-receipt] charge lookup failed (sending without Stripe link):", err);
+    console.warn("[prepaid-receipt] charge lookup failed (sending without charge details):", err);
   }
   return facts;
 }
@@ -184,7 +181,6 @@ export function buildPrepaidReceiptData(input: PrepaidReceiptInput) {
     newBalanceUsd: input.newBalanceUsd,
     paymentIntentId: input.paymentIntentId,
     paymentMethodLabel: input.paymentMethodLabel,
-    receiptUrl: input.receiptUrl,
     balanceUrl: `${getAppUrl()}/get-key`,
   };
 }

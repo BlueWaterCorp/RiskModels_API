@@ -19,9 +19,9 @@ Checkout (payment mode)
                       email_logs row (email_type = 'prepaid-receipt', status sent|failed)
 ```
 
-- Template: `emails/prepaid-receipt.tsx` (date, amount, payment method, balance after credit,
-  PaymentIntent reference, link to Stripe's hosted receipt).
-- Subject: `Receipt: $100.00 RiskModels API credit`.
+- Template: `emails/prepaid-receipt.tsx` (receipt number, issuer / billed-to, line item and total, payment method, cardholder, statement descriptor, balance after credit,
+  PaymentIntent reference). It is the receipt of record; Stripe's hosted page is not linked.
+- Subject: `Receipt RM-20260916-PLCDBA: $100.00 RiskModels API credit` (number = RM-<UTC date>-<PaymentIntent tail>, deterministic per purchase).
 - The send is best-effort and happens after the ledger writes; a failure never blocks
   crediting and is recorded in `email_logs` for re-issue.
 - Only one receipt per PaymentIntent: the send lives inside the branch that runs on the
@@ -64,4 +64,5 @@ order by t.created_at desc;
 - Resend dashboard → Emails, or the audit BCC mailbox (`resend@riskmodels.app`).
 - Stripe Dashboard → Payments → PaymentIntent → "Receipt history" stays empty: RiskModels,
   not Stripe, sends the receipt. Do not also turn on Stripe's "Successful payments" email,
-  or buyers get two.
+  or buyers get two. Card details and tax lines stay on Stripe's side; the receipt names the
+  cardholder and the statement descriptor so the buyer can match the charge.

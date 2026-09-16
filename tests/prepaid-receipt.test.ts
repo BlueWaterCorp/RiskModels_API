@@ -111,7 +111,6 @@ describe("prepaid receipt data", () => {
       newBalanceUsd: 142.291,
       paymentIntentId: "pi_3UGNJ7IZr3LIUbdw0yplcdbA",
       paidAt: 1789582305,
-      receiptUrl: "https://pay.stripe.com/receipts/x",
       paymentMethodLabel: "Link",
     });
     expect(data).toEqual({
@@ -126,21 +125,19 @@ describe("prepaid receipt data", () => {
       newBalanceUsd: 142.291,
       paymentIntentId: "pi_3UGNJ7IZr3LIUbdw0yplcdbA",
       paymentMethodLabel: "Link",
-      receiptUrl: "https://pay.stripe.com/receipts/x",
       balanceUrl: "https://riskmodels.app/get-key",
     });
   });
 });
 
 describe("chargeFactsForPaymentIntent", () => {
-  it("reads receipt_url, method, cardholder and descriptor from an expanded latest_charge without calling Stripe", async () => {
+  it("reads method, cardholder and descriptor from an expanded latest_charge without calling Stripe", async () => {
     const retrieve = vi.fn();
     const stripe = { charges: { retrieve } } as never;
     const facts = await chargeFactsForPaymentIntent(stripe, {
       created: 1,
       latest_charge: {
         created: 2,
-        receipt_url: "https://pay.stripe.com/receipts/abc",
         billing_details: { name: " Molly Messenger " },
         calculated_statement_descriptor: "RISKMODELS",
         payment_method_details: { type: "card", card: { brand: "mastercard", last4: "1111" } },
@@ -149,7 +146,6 @@ describe("chargeFactsForPaymentIntent", () => {
     expect(retrieve).not.toHaveBeenCalled();
     expect(facts).toEqual({
       paidAt: 2,
-      receiptUrl: "https://pay.stripe.com/receipts/abc",
       paymentMethodLabel: "Mastercard •••• 1111",
       cardholderName: "Molly Messenger",
       statementDescriptor: "RISKMODELS",
@@ -214,7 +210,7 @@ describe("sendPrepaidReceipt", () => {
 });
 
 describe("PrepaidReceiptEmail render", () => {
-  it("shows issuer, billed-to, cardholder, line item, total, payment record, balance and the Stripe link", async () => {
+  it("shows issuer, billed-to, cardholder, line item, total, payment record and balance", async () => {
     const html = strip(
       await render(
         PrepaidReceiptEmail({
@@ -228,7 +224,6 @@ describe("PrepaidReceiptEmail render", () => {
           newBalanceUsd: 142.291,
           paymentIntentId: "pi_3UGNJ7IZr3LIUbdw0yplcdbA",
           paymentMethodLabel: "Link",
-          receiptUrl: "https://pay.stripe.com/receipts/payment/abc",
           balanceUrl: "https://riskmodels.app/get-key",
         }),
       ),
@@ -249,15 +244,14 @@ describe("PrepaidReceiptEmail render", () => {
     expect(html).toContain("pi_3UGNJ7IZr3LIUbdw0yplcdbA");
     expect(html).toContain("September 16, 2026");
     expect(html).toContain("Link");
-    expect(html).toContain('href="https://pay.stripe.com/receipts/payment/abc"');
-    expect(html).toContain("View Stripe receipt");
+    expect(html).not.toContain("pay.stripe.com");
     expect(html).toContain('href="https://riskmodels.app/get-key"');
     expect(html).toContain("https://riskmodels.app/riskmodels-wordmark.png");
     // No tax given → no Subtotal / Tax rows.
     expect(html).not.toContain("Subtotal");
   });
 
-  it("adds subtotal and tax rows when tax is known, and omits Stripe pieces when absent", async () => {
+  it("adds subtotal and tax rows when tax is known, and omits optional rows when absent", async () => {
     const html = strip(
       await render(
         PrepaidReceiptEmail({
@@ -276,7 +270,6 @@ describe("PrepaidReceiptEmail render", () => {
     expect(html).toContain("Tax");
     expect(html).toContain("$0.00");
     expect(html).toContain("$25.00");
-    expect(html).not.toContain("View Stripe receipt");
     expect(html).not.toContain("Payment method");
     expect(html).not.toContain("Cardholder");
     expect(html).not.toContain("On your card statement as");

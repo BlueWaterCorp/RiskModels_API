@@ -30,8 +30,7 @@ import {
  * (`/api/stripe/setup-success`) right after the balance is credited, and on
  * demand from `/api/admin/billing/receipt` for backfills. Laid out as a
  * document rather than a notification: issuer / billed-to blocks, a line-item
- * table with totals, the payment record, and the account effect. Stripe's
- * hosted receipt (card details, tax lines) is linked rather than duplicated.
+ * table with totals, the payment record, and the account effect.
  */
 export interface PrepaidReceiptEmailProps {
   /** Deterministic per PaymentIntent, e.g. RM-20260916-PLCDBA. */
@@ -56,8 +55,6 @@ export interface PrepaidReceiptEmailProps {
   paymentIntentId: string;
   /** "Visa •••• 4242", "Link", … — omitted when Stripe did not expose it. */
   paymentMethodLabel?: string;
-  /** Stripe hosted receipt (pay.stripe.com/receipts/…). */
-  receiptUrl?: string;
   /** Where to top up / manage the balance. */
   balanceUrl: string;
 }
@@ -77,7 +74,6 @@ export const PrepaidReceiptEmail = ({
   newBalanceUsd = 120,
   paymentIntentId = "pi_…",
   paymentMethodLabel,
-  receiptUrl,
   balanceUrl = `${BASE_URL}/get-key`,
 }: PrepaidReceiptEmailProps) => {
   const subtotal = taxUsd !== undefined ? amountUsd - taxUsd : amountUsd;
@@ -252,21 +248,10 @@ export const PrepaidReceiptEmail = ({
 
           {/* ── Actions ──────────────────────────────────────────────── */}
           <Section style={actions}>
-            {receiptUrl ? (
-              <Button style={buttonPrimary} href={receiptUrl}>
-                View Stripe receipt
-              </Button>
-            ) : null}
             <Button style={buttonSecondary} href={balanceUrl}>
               Manage balance
             </Button>
           </Section>
-          {receiptUrl ? (
-            <Text style={smallCenter}>
-              The Stripe receipt carries the card details and any tax lines. Keep it with this
-              document for your records.
-            </Text>
-          ) : null}
 
           {/* ── Footer ───────────────────────────────────────────────── */}
           <Section style={footerRuleWrap}>
@@ -310,18 +295,18 @@ const main = {
   backgroundColor: "#f6f9fc",
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
-  padding: "24px 0",
+  padding: "16px 0",
 };
 
 const container = {
   backgroundColor: "#ffffff",
   margin: "0 auto",
-  padding: "0 0 32px",
+  padding: "0 0 24px",
   maxWidth: "640px",
   borderTop: `6px solid ${NAVY}`,
 };
 
-const masthead = { padding: "28px 32px 20px" };
+const masthead = { padding: "22px 32px 16px" };
 const mastLeft = { width: "66%", verticalAlign: "middle" as const };
 const mastRight = { width: "34%", verticalAlign: "top" as const, textAlign: "right" as const };
 
@@ -369,7 +354,7 @@ const paidPill = {
 };
 
 const parties = {
-  padding: "18px 32px",
+  padding: "14px 32px",
   borderTop: `1px solid ${RULE}`,
   borderBottom: `1px solid ${RULE}`,
   backgroundColor: PANEL,
@@ -387,7 +372,7 @@ const partyText = { color: BODY, fontSize: "13px", lineHeight: "1.55", margin: "
 const partyStrong = { color: INK, fontWeight: "600" };
 const partyLink = { color: BODY, textDecoration: "none" };
 
-const itemsWrap = { padding: "24px 32px 8px" };
+const itemsWrap = { padding: "18px 32px 4px" };
 const itemsTable = { width: "100%", borderCollapse: "collapse" as const };
 const th = {
   textAlign: "left" as const,
@@ -402,7 +387,7 @@ const th = {
 const thNum = { ...th, textAlign: "right" as const, whiteSpace: "nowrap" as const };
 const td = {
   verticalAlign: "top" as const,
-  padding: "14px 12px",
+  padding: "12px 12px",
   color: BODY,
   fontSize: "13px",
   lineHeight: "1.55",
@@ -419,7 +404,7 @@ const totalsLabel = {
 };
 const totalsValue = { ...totalsLabel, color: BODY, whiteSpace: "nowrap" as const };
 const grandLabel = {
-  padding: "12px 12px",
+  padding: "10px 12px",
   textAlign: "right" as const,
   color: INK,
   fontSize: "14px",
@@ -428,7 +413,7 @@ const grandLabel = {
 };
 const grandValue = { ...grandLabel, whiteSpace: "nowrap" as const };
 
-const recordWrap = { padding: "8px 32px 4px" };
+const recordWrap = { padding: "4px 32px 0" };
 const recordTable = {
   width: "100%",
   borderCollapse: "collapse" as const,
@@ -436,14 +421,14 @@ const recordTable = {
 };
 const recordLabel = {
   width: "40%",
-  padding: "9px 12px",
+  padding: "8px 12px",
   backgroundColor: PANEL,
   color: MUTED,
   fontSize: "12px",
   borderBottom: `1px solid ${RULE}`,
 };
 const recordValue = {
-  padding: "9px 12px",
+  padding: "8px 12px",
   color: BODY,
   fontSize: "13px",
   borderBottom: `1px solid ${RULE}`,
@@ -464,45 +449,30 @@ const inlineCode = {
   color: INK,
 };
 
-const actions = { padding: "20px 32px 4px", textAlign: "center" as const };
+const actions = { padding: "16px 32px 0", textAlign: "center" as const };
 
-const buttonPrimary = {
-  backgroundColor: NAVY,
+const buttonSecondary = {
+  backgroundColor: "#ffffff",
+  color: NAVY,
+  border: `1px solid ${NAVY}`,
   borderRadius: "4px",
-  color: "#ffffff",
   fontSize: "13px",
   fontWeight: "600",
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "11px 20px",
-  margin: "0 6px 8px",
-};
-
-const buttonSecondary = {
-  ...buttonPrimary,
-  backgroundColor: "#ffffff",
-  color: NAVY,
-  border: `1px solid ${NAVY}`,
-};
-
-const smallCenter = {
-  color: MUTED,
-  fontSize: "12px",
-  lineHeight: "1.5",
-  textAlign: "center" as const,
+  padding: "10px 20px",
   margin: "0",
-  padding: "0 32px",
 };
 
-const footerRuleWrap = { padding: "24px 32px 0" };
+const footerRuleWrap = { padding: "18px 32px 0" };
 const footerRule = { borderColor: RULE, margin: "0" };
 
 const footerText = {
   color: MUTED,
   fontSize: "11px",
   lineHeight: "1.6",
-  margin: "14px 0 0",
+  margin: "12px 0 0",
   padding: "0 32px",
 };
 
