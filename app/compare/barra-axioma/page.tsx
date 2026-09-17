@@ -108,24 +108,37 @@ export default function CompareBarraAxiomaPage() {
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* ── Hero ── */}
       <section className="mx-auto max-w-4xl px-6 pt-12 pb-8 text-center">
-        <SectionLabel>Compare</SectionLabel>
+        <SectionLabel>Barra &amp; Axioma alternative</SectionLabel>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-3">
-          Where RiskModels fits next to Barra and Axioma
+          Equity risk decomposition by API, next to Barra and Axioma
         </h1>
-        <p className="text-base text-zinc-300 max-w-2xl mx-auto mb-3 leading-relaxed">
-          Barra and Axioma are the institutional standard — enterprise risk
-          infrastructure for large risk teams. RiskModels is a different
-          delivery model for a different buyer:{" "}
+        <p className="text-base text-zinc-300 max-w-2xl mx-auto mb-4 leading-relaxed">
+          Decompose any US stock, fund, portfolio, or 13F into{" "}
           <span className="text-white font-semibold">
-            equity risk decomposition by API
+            market, sector, subsector, and residual risk
           </span>
-          , with ETF hedge ratios you can trade, for any US stock, fund,
-          portfolio, or 13F.
+          , with the ETF hedge ratios to act on it, in one API call. Pay per
+          call, $20 in free credits, no seats and no platform license.
         </p>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center mb-4">
+          <Link
+            href="/get-key"
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
+          >
+            Get free API key
+          </Link>
+          <Link
+            href="/docs/methodology"
+            className="inline-flex items-center justify-center rounded-md border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
+          >
+            Read the methodology
+          </Link>
+        </div>
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
-          It is not a replacement for an enterprise risk platform. It is the
-          API-native risk layer for teams that need holdings-level
-          decomposition without one.
+          Barra and Axioma are enterprise risk infrastructure for large risk
+          teams. RiskModels is the API-native risk layer for teams that need
+          holdings-level decomposition without standing up one of those
+          platforms.
         </p>
       </section>
 
