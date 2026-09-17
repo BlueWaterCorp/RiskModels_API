@@ -222,6 +222,10 @@ When ChatGPT already has your Schwab book via **Finances**, you do not need Risk
 
 Example tickers ChatGPT may already see: `VTI`, `GOOG`, `MS`, `AMZN`, `IEMG`, `NFLX`. RiskModels returns L1/L2/L3 explained risk and ETF hedge ratios per name; aggregate with `POST /api/portfolio/risk-snapshot` when you have weights.
 
+<h3 id="claude-alpaca">Claude + Alpaca holdings (Alpaca MCP + RiskModels)</h3>
+
+Alpaca publishes an official MCP server. Running it next to the RiskModels connector lets one Claude session read the book with `get_all_positions`, decompose it with `riskmodels_analyze_portfolio`, size ETF legs with `riskmodels_hedge_portfolio`, and place them with Alpaca's `place_stock_order`. Setup, environment variables and a step-by-step session are on [Alpaca + RiskModels](/docs/alpaca). For a link that keeps the book current in the web app without a local server, use Alpaca Connect in Settings, described on the same page.
+
 <h3 id="grok-mcp">Grok (Connectors)</h3>
 
 Grok ships a first-class **Bring Your Own MCP** flow — no hidden Developer Mode:
@@ -321,7 +325,7 @@ RiskModels is one specialized link in an agent's tool chain. Outputs are stable 
 
 2. **Scale to a dollar position.** Feed the same ticker + your notional to `riskmodels_hedge_position` (MCP) or `POST /api/hedge-basket/{ticker}` to turn ratios into share/dollar legs.
 
-3. **Roll up to a portfolio.** Pass a holdings list to `POST /api/portfolio/risk-snapshot` to get variance decomposition and diversification metrics across names — then hand the aggregated hedge legs to an **execution / brokerage API** to actually trade them.
+3. **Roll up to a portfolio.** Pass a holdings list to `POST /api/portfolio/risk-snapshot` to get variance decomposition and diversification metrics across names — then hand the aggregated hedge legs to an **execution / brokerage API** to actually trade them. With Alpaca's MCP server in the same session, that hand-off is a `place_stock_order` call; see [Alpaca + RiskModels](/docs/alpaca).
 
 **Why this chains cleanly:**
 

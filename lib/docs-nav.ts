@@ -60,7 +60,10 @@ export const DOCS_NAV: DocsNavGroup[] = [
   },
   {
     title: 'Account & data',
-    items: [{ href: '/docs/plaid-holdings', label: 'Plaid holdings' }],
+    items: [
+      { href: '/docs/plaid-holdings', label: 'Plaid holdings' },
+      { href: '/docs/alpaca', label: 'Alpaca' },
+    ],
   },
   {
     title: 'Releases',
