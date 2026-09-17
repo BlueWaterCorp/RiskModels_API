@@ -60,6 +60,13 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
     keywords: 'brokerage portfolio link',
   },
   {
+    title: 'Alpaca + RiskModels',
+    description:
+      'Alpaca Connect in the web app, or Alpaca MCP + RiskModels MCP in one Claude session for positions, decomposition and hedge legs.',
+    href: '/docs/alpaca',
+    keywords: 'alpaca brokerage mcp claude hedge legs paper trading',
+  },
+  {
     title: 'Macro factors and correlation',
     description:
       'Canonical macro keys, stock–macro correlation (gross and L1/L2/L3 residuals), and raw GET /macro-factors time series.',
