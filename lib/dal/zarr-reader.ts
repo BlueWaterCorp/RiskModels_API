@@ -27,6 +27,7 @@ import {
   zarrEtfBasename,
   zarrHedgeBasename,
   zarrLinkBetasBasename,
+  zarrWeeklyHedgeBasename,
   zarrMasksBasename,
   zarrRankingsBasename,
   zarrResidualSignalBasename,
@@ -1997,4 +1998,152 @@ export async function readEtfFactorReturnsSnapshot(params: {
   }
 
   return { teo: teoStr, rows };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Weekly pre-market hedge snapshot (bulk cross-section)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Numeric per-symbol fields in the weekly hedge snapshot. */
+const WEEKLY_HEDGE_NUMERIC = [
+  "L1_market_HR",
+  "L2_market_HR",
+  "L2_sector_HR",
+  "L3_market_HR",
+  "L3_sector_HR",
+  "L3_subsector_HR",
+  "lstar_market_HR",
+  "lstar_sector_HR",
+  "lstar_subsector_HR",
+  "beta_raw_market",
+  "beta_raw_sector",
+  "beta_raw_subsector",
+  "beta_adj_market",
+  "beta_adj_sector",
+  "beta_adj_subsector",
+] as const;
+
+export interface WeeklyHedgeMetadata {
+  /** First session the snapshot is valid for (the Monday). */
+  effective_from: string | null;
+  /** Last session that fed it (the prior Friday's close). */
+  computed_through: string | null;
+  refit_grid: string | null;
+  universe: string | null;
+  market_etf: string | null;
+  built_at_utc: string | null;
+  /**
+   * Hedge ratios and betas are on DIFFERENT bases. Carried in the payload
+   * rather than left to the docs: applying a dollar hedge ratio to an
+   * orthogonalized factor is silently wrong, not an error.
+   */
+  hr_basis: string | null;
+  beta_basis: string | null;
+}
+
+export interface WeeklyHedgeRow {
+  symbol: string;
+  ticker: string;
+  lstar_level: number | null;
+  sector_etf: string | null;
+  subsector_etf: string | null;
+  [field: string]: string | number | null;
+}
+
+export interface WeeklyHedgeSnapshot {
+  metadata: WeeklyHedgeMetadata;
+  rows: WeeklyHedgeRow[];
+}
+
+/** Read a whole 1-D numeric array (NaN → null). The store has no teo axis. */
+async function readNumericCoord1D(
+  grp: Group<Readable>,
+  name: string,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(name);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data as ArrayLike<number> | undefined;
+    if (!d || typeof d.length !== "number") return null;
+    return Array.from({ length: d.length }, (_, i) => {
+      const x = Number(d[i]);
+      return Number.isFinite(x) ? x : null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+function attrString(attrs: Record<string, unknown>, key: string): string | null {
+  const v = attrs[key];
+  return v === undefined || v === null ? null : String(v);
+}
+
+/**
+ * The full weekly pre-market hedge cross-section in one read.
+ *
+ * Deliberately returns EVERY symbol with no pagination: the store is a single
+ * ~7.9k-row snapshot (~400 KB), and the consumer is a quant pulling the whole
+ * book once a week before Monday's open. Slicing it would add round-trips to a
+ * payload that fits in one response.
+ *
+ * Returns null when the store is absent — the caller decides the status code.
+ * Never surfaces bucket names or object paths (see the note at the top of this
+ * file).
+ */
+export async function readWeeklyHedgeSnapshot(
+  factorSetId?: string,
+): Promise<WeeklyHedgeSnapshot | null> {
+  const grp = await openZarrGroup(zarrWeeklyHedgeBasename(factorSetId));
+  if (!grp) return null;
+
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const [symbols, tickers, sectorEtf, subsectorEtf, lstarLevel] = await Promise.all([
+    readStringCoord(grp, "symbol"),
+    readStringCoord(grp, "ticker"),
+    readStringCoord(grp, "sector_etf"),
+    readStringCoord(grp, "subsector_etf"),
+    readNumericCoord1D(grp, "lstar_level"),
+  ]);
+  if (!symbols?.length) return null;
+
+  const numeric = await Promise.all(
+    WEEKLY_HEDGE_NUMERIC.map((f) => readNumericCoord1D(grp, f)),
+  );
+
+  const metadata: WeeklyHedgeMetadata = {
+    effective_from: attrString(attrs, "effective_from"),
+    computed_through: attrString(attrs, "computed_through"),
+    refit_grid: attrString(attrs, "refit_grid"),
+    universe: attrString(attrs, "universe"),
+    market_etf: attrString(attrs, "market_etf"),
+    built_at_utc: attrString(attrs, "built_at_utc"),
+    hr_basis: attrString(attrs, "hr_basis"),
+    beta_basis: attrString(attrs, "beta_basis"),
+  };
+
+  const rows: WeeklyHedgeRow[] = symbols.map((sym, i) => {
+    const row: WeeklyHedgeRow = {
+      symbol: sym,
+      ticker: tickers?.[i] ?? sym,
+      lstar_level: lstarLevel?.[i] ?? null,
+      sector_etf: sectorEtf?.[i] || null,
+      subsector_etf: subsectorEtf?.[i] || null,
+    };
+    WEEKLY_HEDGE_NUMERIC.forEach((f, k) => {
+      row[f] = numeric[k]?.[i] ?? null;
+    });
+    // Repeated on EVERY row on purpose. Response headers do not survive
+    // `pd.read_parquet(saved_file)`, and "which week is this?" is the one
+    // question a consumer must be able to answer from the file alone —
+    // especially in a week when all history was restated.
+    row.effective_from = metadata.effective_from;
+    row.computed_through = metadata.computed_through;
+    row.refit_grid = metadata.refit_grid;
+    row.universe = metadata.universe;
+    return row;
+  });
+
+  return { metadata, rows };
 }
