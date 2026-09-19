@@ -13,21 +13,21 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isStale, expectedEffectiveFrom } from "@/app/api/weekly-hedge/route";
+import { isStale, expectedEffectiveFrom } from "@/lib/risk/weekly-hedge-freshness";
 
 const at = (iso: string) => new Date(`${iso}T12:00:00Z`);
 
 describe("expectedEffectiveFrom", () => {
   it("rolls a Friday close to the following Monday", () => {
-    expect(expectedEffectiveFrom("2026-09-18", at("2026-09-19"))).toBe("2026-09-21");
+    expect(expectedEffectiveFrom("2026-09-18")).toBe("2026-09-21");
   });
 
   it("rolls a Thursday close to the Friday", () => {
-    expect(expectedEffectiveFrom("2026-09-17", at("2026-09-18"))).toBe("2026-09-18");
+    expect(expectedEffectiveFrom("2026-09-17")).toBe("2026-09-18");
   });
 
   it("returns null on an unparseable date rather than guessing", () => {
-    expect(expectedEffectiveFrom("not-a-date", at("2026-09-19"))).toBeNull();
+    expect(expectedEffectiveFrom("not-a-date")).toBeNull();
   });
 });
 

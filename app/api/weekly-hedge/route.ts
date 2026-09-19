@@ -5,40 +5,10 @@ import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { getCorsHeaders } from "@/lib/cors";
 import { parseFormat, formatResponse } from "@/lib/api/format-response";
+import { isStale } from "@/lib/risk/weekly-hedge-freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Next session after `computed_through`, in UTC, as YYYY-MM-DD.
- * Weekend-aware only: the snapshot is always built from a Friday close for the
- * following Monday, so a calendar roll is enough to detect a stale week.
- */
-export function expectedEffectiveFrom(computedThrough: string, now: Date): string | null {
-  const ct = new Date(`${computedThrough}T00:00:00Z`);
-  if (Number.isNaN(ct.getTime())) return null;
-  const next = new Date(ct.getTime() + 86400000);
-  while (next.getUTCDay() === 0 || next.getUTCDay() === 6) {
-    next.setUTCDate(next.getUTCDate() + 1);
-  }
-  return next.toISOString().slice(0, 10);
-}
-
-/**
- * A snapshot is stale once the session it is effective for has passed.
- * Serving it anyway is the failure that costs money: last week's hedge ratios
- * are indistinguishable from this week's to a caller that does not check.
- */
-export function isStale(effectiveFrom: string | null, now: Date): boolean {
-  if (!effectiveFrom) return true;
-  const eff = new Date(`${effectiveFrom}T00:00:00Z`);
-  if (Number.isNaN(eff.getTime())) return true;
-  const today = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-  // Effective for a week: valid from its Monday through the following Friday.
-  return today.getTime() > eff.getTime() + 5 * 86400000;
-}
 
 export const GET = withBilling(
   async (request: NextRequest, context: BillingContext) => {
