@@ -20,8 +20,13 @@
  * Deliberately a constant rather than an env var: widening who receives the
  * subsector curation is an IP exposure decision and should go through review,
  * not a secrets change. Adding a tier here is a one-line PR.
+ *
+ * "trial" is time-boxed at the source: agent_accounts requires a
+ * license_expires_at for that tier, and loadLicenseAccount reverts an elapsed
+ * license to prepaid — so an expired trial stops matching here without anything
+ * needing to be remembered or cleaned up.
  */
-export const ENTITLED_LICENSE_TIERS: readonly string[] = ["firm"];
+export const ENTITLED_LICENSE_TIERS: readonly string[] = ["firm", "trial"];
 
 /** Comma- or space-separated account ids, for exceptions to the tier rule. */
 export function parseAllowlist(raw: string | undefined | null): Set<string> {

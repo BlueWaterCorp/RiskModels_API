@@ -74,8 +74,12 @@ describe("licensed clients", () => {
   });
 
   it("keeps the entitled tier list narrow", () => {
-    // Widening this is an IP decision; the test exists so it cannot widen quietly.
-    expect([...ENTITLED_LICENSE_TIERS]).toEqual(["firm"]);
+    // Widening this is an IP decision; the test exists so it cannot widen
+    // quietly. "trial" was added deliberately for time-boxed enterprise
+    // trials — it is safe to entitle because agent_accounts REQUIRES a
+    // license_expires_at for that tier and an elapsed license reverts to
+    // prepaid, so it cannot become permanent by being forgotten.
+    expect([...ENTITLED_LICENSE_TIERS].sort()).toEqual(["firm", "trial"]);
   });
 });
 
