@@ -967,6 +967,46 @@ export const CAPABILITIES: Capability[] = [
     tags: ["returns", "decomposition", "lstar", "macro"],
   },
   {
+    id: "weekly-hedge",
+    name: "Weekly Pre-Market Hedge Snapshot",
+    description:
+      "Entire weekly hedge cross-section in one call (~7,900 names), built from Friday's close and effective the following Monday. One row per security: hedge ratios at each cascade level (L1/L2/L3), the dispatched lstar_*_HR, raw and adjusted betas, lstar_level and the sector and subsector ETF legs. effective_from/computed_through/refit_grid/universe are repeated on every row so a saved file is self-describing. Returns 409 once the effective week has passed rather than serving stale ratios; pass allow_stale=true to override for reconciliation. format=json|csv|parquet.",
+    endpoint: "/api/weekly-hedge",
+    method: "GET",
+    parameters: {
+      format: {
+        type: "string",
+        required: false,
+        description: "json | csv | parquet (parquet recommended for bulk pulls)",
+        default: "json",
+      },
+      allow_stale: {
+        type: "string",
+        required: false,
+        description: "true to return a snapshot whose effective week has passed",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.04,
+      currency: "USD",
+      billing_code: "weekly_hedge_v1",
+    },
+    performance: {
+      avg_latency_ms: 400,
+      p95_latency_ms: 900,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 30,
+    },
+    confidence: {
+      data_quality_score: 0.99,
+      update_frequency: "weekly",
+      sources: ["ds_erm3_weekly_hedge"],
+    },
+    tags: ["hedge", "cross-section", "pre-market", "bulk"],
+  },
+  {
     id: "industry-panel",
     name: "Industry Panel",
     description:
