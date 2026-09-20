@@ -6,6 +6,7 @@ import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-header
 import { getCorsHeaders } from "@/lib/cors";
 import { parseFormat, formatResponse } from "@/lib/api/format-response";
 import { isStale } from "@/lib/risk/weekly-hedge-freshness";
+import { isWeeklyHedgeAuthorized } from "@/lib/api/weekly-hedge-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,24 @@ export const GET = withBilling(
     const fetchStart = performance.now();
 
     try {
+      // Entitlement before any data read. This feed is for named accounts, not
+      // a tier: one call returns the whole cross-section including the
+      // subsector ETF legs.
+      if (
+        !isWeeklyHedgeAuthorized({
+          userId: context.userId,
+          authHeader: request.headers.get("authorization"),
+        })
+      ) {
+        return NextResponse.json(
+          {
+            error: "Forbidden",
+            message: "This account is not entitled to the weekly hedge feed.",
+          },
+          { status: 403, headers: getCorsHeaders(origin) },
+        );
+      }
+
       const snapshot = await readWeeklyHedgeSnapshot();
 
       if (!snapshot || snapshot.rows.length === 0) {
