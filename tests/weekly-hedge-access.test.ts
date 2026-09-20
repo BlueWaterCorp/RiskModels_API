@@ -28,29 +28,29 @@ describe("parseAllowlist", () => {
 
 describe("isWeeklyHedgeAuthorized", () => {
   it("admits an allowlisted account", () => {
-    expect(isWeeklyHedgeAuthorized({ userId: "acct_hull", authHeader: null, env: ENV })).toBe(true);
+    expect(isWeeklyHedgeAuthorized({ userId: "acct_hull", adminSecret: null, env: ENV })).toBe(true);
   });
 
   it("refuses an account that is not allowlisted", () => {
-    expect(isWeeklyHedgeAuthorized({ userId: "acct_random", authHeader: null, env: ENV })).toBe(false);
+    expect(isWeeklyHedgeAuthorized({ userId: "acct_random", adminSecret: null, env: ENV })).toBe(false);
   });
 
-  it("admits the admin bearer with no account at all", () => {
+  it("admits the admin secret with no account at all", () => {
     expect(
-      isWeeklyHedgeAuthorized({ userId: undefined, authHeader: "Bearer s3cret", env: ENV }),
+      isWeeklyHedgeAuthorized({ userId: undefined, adminSecret: "s3cret", env: ENV }),
     ).toBe(true);
   });
 
-  it("refuses a wrong bearer", () => {
+  it("refuses a wrong admin secret", () => {
     expect(
-      isWeeklyHedgeAuthorized({ userId: "acct_random", authHeader: "Bearer nope", env: ENV }),
+      isWeeklyHedgeAuthorized({ userId: "acct_random", adminSecret: "nope", env: ENV }),
     ).toBe(false);
   });
 
   it("FAILS CLOSED when the allowlist is unset", () => {
     // The config-gap case. Unset must not mean everyone.
     expect(
-      isWeeklyHedgeAuthorized({ userId: "acct_hull", authHeader: null, env: { CRON_SECRET: "s3cret" } }),
+      isWeeklyHedgeAuthorized({ userId: "acct_hull", adminSecret: null, env: { CRON_SECRET: "s3cret" } }),
     ).toBe(false);
   });
 
@@ -58,37 +58,37 @@ describe("isWeeklyHedgeAuthorized", () => {
     expect(
       isWeeklyHedgeAuthorized({
         userId: "acct_hull",
-        authHeader: null,
+        adminSecret: null,
         env: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "  ", CRON_SECRET: "s3cret" },
       }),
     ).toBe(false);
   });
 
-  it("does not admit an empty bearer when CRON_SECRET is unset", () => {
+  it("does not admit an empty admin secret when CRON_SECRET is unset", () => {
     // Guards `auth === "Bearer undefined"` and `secret === ""` style holes.
     expect(
       isWeeklyHedgeAuthorized({
         userId: undefined,
-        authHeader: "Bearer ",
+        adminSecret: "  ",
         env: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "acct_hull" },
       }),
     ).toBe(false);
   });
 
-  it("does not admit the literal string \"Bearer undefined\" when CRON_SECRET is unset", () => {
+  it("does not admit the literal string \"undefined\" when CRON_SECRET is unset", () => {
     // Without the `secret &&` guard the comparison interpolates to
     // "Bearer undefined", which a caller can simply send. Config absence must
     // not mint a working credential.
     expect(
       isWeeklyHedgeAuthorized({
         userId: undefined,
-        authHeader: "Bearer undefined",
+        adminSecret: "undefined",
         env: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "acct_hull" },
       }),
     ).toBe(false);
   });
 
   it("refuses a missing userId against a populated allowlist", () => {
-    expect(isWeeklyHedgeAuthorized({ userId: undefined, authHeader: null, env: ENV })).toBe(false);
+    expect(isWeeklyHedgeAuthorized({ userId: undefined, adminSecret: null, env: ENV })).toBe(false);
   });
 });
