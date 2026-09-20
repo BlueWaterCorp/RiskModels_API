@@ -81,6 +81,17 @@ export function zarrResidualSignalBasename(factorSetId = getZarrFactorSetId()): 
  * Factor-set agnostic — link betas are SPY-rooted right now, so the basename
  * uses the market_factor_etf, not the universe.
  */
+/**
+ * Weekly pre-market hedge snapshot: a FLAT (symbol,) cross-section, not a time
+ * series. One store per effective week, overwritten each weekend run, carrying
+ * `effective_from` / `computed_through` in its attrs. Built after the Lstar
+ * retrain so the dispatched `lstar_*_HR` reflect the model that will be live
+ * during the week it is effective for.
+ */
+export function zarrWeeklyHedgeBasename(factorSetId = getZarrFactorSetId()): string {
+  return `ds_erm3_weekly_hedge_${factorSetId}.zarr`;
+}
+
 export function zarrLinkBetasBasename(marketFactorEtf = "SPY"): string {
   return `ds_erm3_link_betas_${marketFactorEtf}.zarr`;
 }
