@@ -19,11 +19,29 @@ export function shouldSkipCharge(opts: {
  * Licensed accounts skip prepaid deduct / 402. Missing columns (migration not
  * applied) fall back to prepaid so production does not 500.
  */
+/**
+ * Has a time-boxed license lapsed?
+ *
+ * NULL means open-ended (desk/firm/production) and never expires. An
+ * unparseable value is treated as EXPIRED: a date we cannot read is not
+ * evidence of a live entitlement, and failing open here would silently extend
+ * access to proprietary data.
+ */
+export function isLicenseExpired(
+  licenseExpiresAt: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (licenseExpiresAt == null) return false;
+  const t = new Date(licenseExpiresAt).getTime();
+  if (Number.isNaN(t)) return true;
+  return t <= now.getTime();
+}
+
 export async function loadLicenseAccount(userId: string): Promise<LicenseAccount> {
   try {
     const { data, error } = await createAdminClient()
       .from("agent_accounts")
-      .select("billing_mode, license_tier")
+      .select("billing_mode, license_tier, license_expires_at")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -31,6 +49,15 @@ export async function loadLicenseAccount(userId: string): Promise<LicenseAccount
       return { billingMode: "prepaid", licenseTier: null };
     }
     if (data?.billing_mode === "licensed") {
+      // An ELAPSED LICENSE IS NOT A LICENSE. A time-boxed tier (trial) that
+      // merely lost its entitlement to one feed would keep unmetered access to
+      // everything else, which is the opposite of what expiry means. Reverting
+      // to prepaid ends the trial in one place, for every capability.
+      //
+      // Open-ended commercial tiers carry NULL and are unaffected.
+      if (isLicenseExpired(data.license_expires_at)) {
+        return { billingMode: "prepaid", licenseTier: null };
+      }
       return {
         billingMode: "licensed",
         licenseTier:
