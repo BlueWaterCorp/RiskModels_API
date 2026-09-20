@@ -1,94 +1,109 @@
 /**
- * The weekly hedge feed is entitled per account, not per tier.
+ * The weekly hedge feed is entitled by the commercial relationship, not by tier.
  *
- * One call returns the entire cross-section including the subsector ETF legs,
- * so "premium" is the wrong control — it would admit anyone who upgrades. The
- * gate is an explicit allowlist plus the admin bearer, and it FAILS CLOSED: an
- * unset allowlist admits nobody. A config gap must never silently mean open.
+ * One call returns the whole cross-section including the subsector ETF legs,
+ * which are proprietary curation — so capability tier ("premium") is the wrong
+ * control, since it would admit anyone who upgrades. Institutional clients
+ * already carry billing_mode=licensed with a license tier; that is the real
+ * relationship and the gate keys off it.
+ *
+ * Everything not matched is refused. A config gap must never mean open.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   isWeeklyHedgeAuthorized,
   parseAllowlist,
+  ENTITLED_LICENSE_TIERS,
 } from "@/lib/api/weekly-hedge-access";
 
-const ENV = { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "acct_hull, acct_other", CRON_SECRET: "s3cret" };
+const ENV = { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "acct_exception", CRON_SECRET: "s3cret" };
+const base = {
+  userId: "acct_x",
+  billingMode: null,
+  licenseTier: null,
+  adminSecret: null,
+  env: ENV,
+};
 
 describe("parseAllowlist", () => {
   it("splits on commas and whitespace and drops blanks", () => {
     expect([...parseAllowlist("a, b  c,,  d ")]).toEqual(["a", "b", "c", "d"]);
   });
-  it("treats unset as empty", () => {
+  it("treats unset or blank as empty", () => {
     expect(parseAllowlist(undefined).size).toBe(0);
-    expect(parseAllowlist("").size).toBe(0);
     expect(parseAllowlist("   ").size).toBe(0);
   });
 });
 
-describe("isWeeklyHedgeAuthorized", () => {
-  it("admits an allowlisted account", () => {
-    expect(isWeeklyHedgeAuthorized({ userId: "acct_hull", adminSecret: null, env: ENV })).toBe(true);
-  });
-
-  it("refuses an account that is not allowlisted", () => {
-    expect(isWeeklyHedgeAuthorized({ userId: "acct_random", adminSecret: null, env: ENV })).toBe(false);
-  });
-
-  it("admits the admin secret with no account at all", () => {
-    expect(
-      isWeeklyHedgeAuthorized({ userId: undefined, adminSecret: "s3cret", env: ENV }),
-    ).toBe(true);
-  });
-
-  it("refuses a wrong admin secret", () => {
-    expect(
-      isWeeklyHedgeAuthorized({ userId: "acct_random", adminSecret: "nope", env: ENV }),
-    ).toBe(false);
-  });
-
-  it("FAILS CLOSED when the allowlist is unset", () => {
-    // The config-gap case. Unset must not mean everyone.
-    expect(
-      isWeeklyHedgeAuthorized({ userId: "acct_hull", adminSecret: null, env: { CRON_SECRET: "s3cret" } }),
-    ).toBe(false);
-  });
-
-  it("FAILS CLOSED when the allowlist is empty", () => {
+describe("licensed clients", () => {
+  it("admits a licensed firm-tier account with NO configuration", () => {
+    // Hull's shape. Works without any env var being set.
     expect(
       isWeeklyHedgeAuthorized({
         userId: "acct_hull",
+        billingMode: "licensed",
+        licenseTier: "firm",
         adminSecret: null,
-        env: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "  ", CRON_SECRET: "s3cret" },
+        env: {},
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not admit an empty admin secret when CRON_SECRET is unset", () => {
-    // Guards `auth === "Bearer undefined"` and `secret === ""` style holes.
+  it("is case- and whitespace-insensitive on the tier", () => {
     expect(
-      isWeeklyHedgeAuthorized({
-        userId: undefined,
-        adminSecret: "  ",
-        env: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "acct_hull" },
-      }),
-    ).toBe(false);
+      isWeeklyHedgeAuthorized({ ...base, billingMode: "licensed", licenseTier: " Firm " }),
+    ).toBe(true);
   });
 
-  it("does not admit the literal string \"undefined\" when CRON_SECRET is unset", () => {
-    // Without the `secret &&` guard the comparison interpolates to
-    // "Bearer undefined", which a caller can simply send. Config absence must
-    // not mint a working credential.
+  it("refuses a licensed account on a tier that is not entitled", () => {
+    // The other licensed account in the admin view is tier "production".
     expect(
-      isWeeklyHedgeAuthorized({
-        userId: undefined,
-        adminSecret: "undefined",
-        env: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS: "acct_hull" },
-      }),
+      isWeeklyHedgeAuthorized({ ...base, billingMode: "licensed", licenseTier: "production" }),
     ).toBe(false);
   });
 
-  it("refuses a missing userId against a populated allowlist", () => {
-    expect(isWeeklyHedgeAuthorized({ userId: undefined, adminSecret: null, env: ENV })).toBe(false);
+  it("refuses a prepaid account even on a firm tier value", () => {
+    expect(
+      isWeeklyHedgeAuthorized({ ...base, billingMode: "prepaid", licenseTier: "firm" }),
+    ).toBe(false);
+  });
+
+  it("refuses a licensed account with no tier", () => {
+    expect(isWeeklyHedgeAuthorized({ ...base, billingMode: "licensed", licenseTier: null })).toBe(false);
+  });
+
+  it("keeps the entitled tier list narrow", () => {
+    // Widening this is an IP decision; the test exists so it cannot widen quietly.
+    expect([...ENTITLED_LICENSE_TIERS]).toEqual(["firm"]);
+  });
+});
+
+describe("explicit exceptions and admin", () => {
+  it("admits an allowlisted account id", () => {
+    expect(isWeeklyHedgeAuthorized({ ...base, userId: "acct_exception" })).toBe(true);
+  });
+
+  it("refuses an account that is neither licensed nor allowlisted", () => {
+    expect(isWeeklyHedgeAuthorized({ ...base, userId: "acct_random" })).toBe(false);
+  });
+
+  it("admits the admin secret", () => {
+    expect(isWeeklyHedgeAuthorized({ ...base, adminSecret: "s3cret" })).toBe(true);
+  });
+
+  it("refuses a wrong admin secret", () => {
+    expect(isWeeklyHedgeAuthorized({ ...base, adminSecret: "nope" })).toBe(false);
+  });
+
+  it("does not admit the literal \"undefined\" when CRON_SECRET is unset", () => {
+    // Without the `secret &&` guard this string would compare equal.
+    expect(
+      isWeeklyHedgeAuthorized({ ...base, adminSecret: "undefined", env: {} }),
+    ).toBe(false);
+  });
+
+  it("FAILS CLOSED with no license, no allowlist and no secret", () => {
+    expect(isWeeklyHedgeAuthorized({ ...base, env: {} })).toBe(false);
   });
 });
