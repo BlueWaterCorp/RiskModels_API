@@ -24,7 +24,9 @@ export const GET = withBilling(
       if (
         !isWeeklyHedgeAuthorized({
           userId: context.userId,
-          authHeader: request.headers.get("authorization"),
+          billingMode: context.billingMode,
+          licenseTier: context.licenseTier,
+          adminSecret: request.headers.get("x-admin-secret"),
         })
       ) {
         return NextResponse.json(

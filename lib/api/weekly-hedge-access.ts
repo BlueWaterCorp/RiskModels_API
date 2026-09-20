@@ -1,18 +1,29 @@
 /**
  * Entitlement for the weekly pre-market hedge bulk feed.
  *
- * This is a bespoke feed for named accounts, not a general API capability: one
- * call returns the whole cross-section including the subsector ETF legs. Tier
- * is the wrong control — "premium" would hand it to anyone who upgrades — so
- * access is an explicit allowlist of account ids, plus the existing admin
- * bearer for internal checks.
+ * This is a bespoke feed, not a general capability: one call returns the whole
+ * cross-section including the subsector ETF legs, which are proprietary
+ * curation. Capability tier is the wrong control — "premium" would hand it to
+ * anyone who upgrades.
  *
- * FAILS CLOSED. An unset or empty allowlist admits nobody but admin. A config
- * gap must not silently mean "open to everyone"; that is the failure mode this
- * gate exists to prevent.
+ * The right control already exists. Institutional clients carry
+ * billing_mode=licensed with a license tier (lib/agent/licensed-billing.ts),
+ * which is the actual commercial relationship rather than a parallel list that
+ * has to be maintained by hand and can silently drift.
+ *
+ * FAILS CLOSED. Anything not matched below is refused.
  */
 
-/** Comma- or space-separated account ids entitled to the feed. */
+/**
+ * License tiers entitled to the feed.
+ *
+ * Deliberately a constant rather than an env var: widening who receives the
+ * subsector curation is an IP exposure decision and should go through review,
+ * not a secrets change. Adding a tier here is a one-line PR.
+ */
+export const ENTITLED_LICENSE_TIERS: readonly string[] = ["firm"];
+
+/** Comma- or space-separated account ids, for exceptions to the tier rule. */
 export function parseAllowlist(raw: string | undefined | null): Set<string> {
   if (!raw) return new Set();
   return new Set(
@@ -25,21 +36,45 @@ export function parseAllowlist(raw: string | undefined | null): Set<string> {
 
 export interface WeeklyHedgeAccessInput {
   userId: string | undefined;
-  /** Raw Authorization header, for the admin bearer path. */
-  authHeader: string | null;
-  /** Defaults to process.env; injectable for tests. */
+  /** From BillingContext — the account's billing mode. */
+  billingMode: string | null | undefined;
+  /** From BillingContext — e.g. "firm". */
+  licenseTier: string | null | undefined;
+  /**
+   * The `x-admin-secret` header, NOT Authorization.
+   *
+   * Authorization is already consumed by API-key auth: extractApiKey reads
+   * `Bearer ...` from it first, so an admin secret sent there is validated AS
+   * an api key, fails, and 401s before this gate runs — the override would be
+   * unreachable. A separate header keeps it usable alongside a normal key.
+   */
+  adminSecret: string | null;
   env?: { WEEKLY_HEDGE_ALLOWED_ACCOUNTS?: string; CRON_SECRET?: string };
 }
 
 export function isWeeklyHedgeAuthorized(input: WeeklyHedgeAccessInput): boolean {
   const env = input.env ?? process.env;
 
-  // Admin bearer — same idiom as the /api/admin/* routes.
-  const secret = env.CRON_SECRET?.trim();
-  if (secret && input.authHeader === `Bearer ${secret}`) return true;
+  // 1. Licensed institutional client on an entitled tier. This is the path
+  //    real clients take, and it needs no configuration.
+  if (
+    input.billingMode === "licensed" &&
+    typeof input.licenseTier === "string" &&
+    ENTITLED_LICENSE_TIERS.includes(input.licenseTier.trim().toLowerCase())
+  ) {
+    return true;
+  }
 
+  // 2. Explicit exception by account id, for anyone entitled outside the tier
+  //    rule. Empty or unset grants nothing.
   const allowed = parseAllowlist(env.WEEKLY_HEDGE_ALLOWED_ACCOUNTS);
-  if (allowed.size === 0) return false;
-  if (!input.userId) return false;
-  return allowed.has(input.userId);
+  if (input.userId && allowed.has(input.userId)) return true;
+
+  // 3. Admin override for internal verification. A SECOND factor: this runs
+  //    inside withBilling, after authentication, so a valid API key is still
+  //    required — the secret only bypasses entitlement.
+  const secret = env.CRON_SECRET?.trim();
+  if (secret && input.adminSecret?.trim() === secret) return true;
+
+  return false;
 }
