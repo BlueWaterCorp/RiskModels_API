@@ -2123,7 +2123,25 @@ export async function readWeeklyHedgeSnapshot(
     beta_basis: attrString(attrs, "beta_basis"),
   };
 
-  const rows: WeeklyHedgeRow[] = symbols.map((sym, i) => {
+  const rows: WeeklyHedgeRow[] = [];
+  symbols.forEach((sym, i) => {
+    // IN-MASK ONLY. The store is written across the full symbol axis, but only
+    // names modelled for the week carry hedge ratios — on 2026-09-21 that was
+    // 2,816 of 7,896. The other 5,080 rows are empty in every column that
+    // matters: no hedge ratios, no betas, no ETF legs, lstar_level 0.
+    //
+    // They are not worth shipping. The axis is rebuilt every week, so there is
+    // nothing stable to join them against, and a frame that is 64% nulls
+    // invites "is this broken?" as the consumer's first question.
+    //
+    // Presence of a hedge ratio is the test: it is exactly what the caller came
+    // for. Verified equivalent to lstar_level > 0 and to L1_market_HR being
+    // present — all three select the same 2,816 rows.
+    const hasAnyHedgeRatio = WEEKLY_HEDGE_NUMERIC.some(
+      (f, k) => f.endsWith("_HR") && numeric[k]?.[i] != null,
+    );
+    if (!hasAnyHedgeRatio) return;
+
     const row: WeeklyHedgeRow = {
       symbol: sym,
       ticker: tickers?.[i] ?? sym,
@@ -2142,7 +2160,7 @@ export async function readWeeklyHedgeSnapshot(
     row.computed_through = metadata.computed_through;
     row.refit_grid = metadata.refit_grid;
     row.universe = metadata.universe;
-    return row;
+    rows.push(row);
   });
 
   return { metadata, rows };
