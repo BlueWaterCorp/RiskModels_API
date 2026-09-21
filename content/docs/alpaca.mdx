@@ -9,7 +9,7 @@ Two paths bring an Alpaca account's positions to the RiskModels engine. The firs
 
 | Path | Where it runs | What it needs | What you get |
 | --- | --- | --- | --- |
-| **Alpaca Connect** | riskmodels.net, Settings → Alpaca | An Alpaca login. Access scope is `data` only. | Open equity positions synced into your default portfolio, with the portfolio risk snapshot and hedge ratios on the portfolio page. Recurring sync. |
+| **Alpaca Connect** | riskmodels.net, Settings → Alpaca | An Alpaca login. Access scope is `data` only. | Open equity positions synced into your default portfolio, with the portfolio risk snapshot and hedge ratios on the portfolio page. Re-sync from the card at any time. |
 | **MCP pairing** | Claude Desktop or Claude Code | An Alpaca API key pair, `uv`, and the RiskModels connector. | Positions, decomposition and hedge legs in one chat, with optional order placement through Alpaca's tools. |
 
 RiskModels is listed on the [Alpaca Connect marketplace](https://alpaca.markets/oauth) as a read-only app. RiskModels never receives your Alpaca API keys under either path.
@@ -23,7 +23,7 @@ RiskModels is listed on the [Alpaca Connect marketplace](https://alpaca.markets/
 3. Approve the request on Alpaca's consent screen. The requested scope is `data`; no trading permission is requested.
 4. You return to Settings with the account listed as **Connected**. Click **Sync positions** to pull the current book.
 
-The card reports each sync as a count of equity positions synced, covered and excluded. Crypto and options positions are excluded from the sync because the ERM3 model covers US equities. The linked account is also included in the scheduled position sync that runs the Plaid and ConnectTrade sources.
+The card reports each sync as a count of equity positions synced, covered and excluded. Crypto and options positions are excluded from the sync because the ERM3 model covers US equities. Syncs run when you click **Sync positions**; the same call also refreshes the Plaid and ConnectTrade sources. There is no background schedule, so re-sync after trading to bring the portfolio current.
 
 A paper-only Alpaca login is stored as a paper connection whichever option was selected, because Alpaca reports the account status as paper-only during the link. Live and paper accounts can be linked side by side.
 
