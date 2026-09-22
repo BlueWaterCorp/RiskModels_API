@@ -120,3 +120,4 @@ supabase/
 
 # API audit run outputs (scripts/audit + api_audits.sh)
 audit-reports/
+examples/python/regime_portfolio_global/Mapping.csv
