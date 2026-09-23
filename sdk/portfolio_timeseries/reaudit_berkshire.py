@@ -136,12 +136,16 @@ def stage1_audit():
     out = {"n_windows": len(r1),
            "n_multi_quarter": sum(1 for x in r1 if x["q_len"] > 1.4),
            "first_entry": r1[0]["entry_date"], "last_exit": r1[-1]["exit_date"]}
+    # q_len-normalised, matching the layer tables. Six windows span ~2 quarters (a book held
+    # across a missing quarter); counting those as single quarterly draws inflated the
+    # headline Sharpe relative to the layer table (0.99 vs 0.95). One basis now, both places.
     for key, lbl in (("gross_lagged", "lagged"),
                      ("gross_unlagged_rebuild", "unlagged_rebuild"),
                      ("gross_unlagged_endpoint", "unlagged_endpoint"),
                      ("spy_lagged_window", "spy_lagged"),
                      ("spy_unlagged_window", "spy_unlagged")):
-        out[lbl] = B.stats([x[key] for x in r1])
+        out[lbl] = B.stats_qnorm(r1, lambda x, k=key: x[k])
+        out[lbl + "_unnormalised"] = B.stats([x[key] for x in r1])   # kept for the bridge note
     out["survival_pct"] = out["lagged"]["mean_bps"] / out["unlagged_rebuild"]["mean_bps"] * 100
 
     # CAPM on the lagged and unlagged rebuilds
@@ -292,21 +296,21 @@ def stage2_audit():
     val_ex = stage2_validate_ex_terminal()
     r2 = B.stage2(NAME)
 
-    # q_len-normalised per-quarter contributions, matching the published convention
-    def norm(recs, key):
-        return [x[key] / x["q_len"] for x in recs
-                if x[key] is not None and not np.isnan(x[key])]
+    # Every series below goes through stats_qnorm: moments on the per-quarter contribution,
+    # annualisation on the SUMMED window length. Identical basis to the headline table.
+    def _sum(*cols):
+        def f(x):
+            if any(x[c] is None or np.isnan(x[c]) for c in cols):
+                return None
+            return sum(x[c] for c in cols)
+        return f
 
     lagged = {}
     for k, col in (("market", "market"), ("sector", "sector"),
                    ("subsector", "subsector"), ("idio", "idio"), ("gross", "gross")):
-        lagged[k] = B.stats(norm(r2, col))
-    lagged["sector_plus_subsector"] = B.stats(
-        [(x["sector"] + x["subsector"]) / x["q_len"] for x in r2
-         if x["sector"] is not None and not np.isnan(x["sector"])])
-    lagged["drop_idio"] = B.stats(
-        [(x["market"] + x["sector"] + x["subsector"]) / x["q_len"] for x in r2
-         if x["market"] is not None and not np.isnan(x["market"])])
+        lagged[k] = B.stats_qnorm(r2, _sum(col))
+    lagged["sector_plus_subsector"] = B.stats_qnorm(r2, _sum("sector", "subsector"))
+    lagged["drop_idio"] = B.stats_qnorm(r2, _sum("market", "sector", "subsector"))
 
     # unlagged twin, same books, same q_len convention
     rows = B.portfolio_rows(NAME)
@@ -325,12 +329,9 @@ def stage2_audit():
         unl_recs.append({"teo": rows[i]["teo"], "q_len": qlen, **lay})
     unlagged = {}
     for k in ("market", "sector", "subsector", "idiosyncratic"):
-        unlagged[k] = B.stats([x[k] / x["q_len"] for x in unl_recs if not np.isnan(x[k])])
-    unlagged["sector_plus_subsector"] = B.stats(
-        [(x["sector"] + x["subsector"]) / x["q_len"] for x in unl_recs if not np.isnan(x["sector"])])
-    unlagged["drop_idio"] = B.stats(
-        [(x["market"] + x["sector"] + x["subsector"]) / x["q_len"] for x in unl_recs
-         if not np.isnan(x["market"])])
+        unlagged[k] = B.stats_qnorm(unl_recs, _sum(k))
+    unlagged["sector_plus_subsector"] = B.stats_qnorm(unl_recs, _sum("sector", "subsector"))
+    unlagged["drop_idio"] = B.stats_qnorm(unl_recs, _sum("market", "sector", "subsector"))
 
     # SECOND unlagged construction: fixed teo -> teo+3mo forward quarter. This is the
     # endpoint's own window definition, so it -- not the lag twin above -- is what

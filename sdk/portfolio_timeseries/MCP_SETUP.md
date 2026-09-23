@@ -179,6 +179,12 @@ overlay = MarketNeutralOverlay(snap).construct(client)               # decompose
 overlay.etf_shorts        # dict[str, float] — {etf_ticker: signed dollars}, positive = short
 # → {'SPY': 44_243_759, 'XLF': 41_739_073, 'IYG': 41_498_692, 'XLP': 31_617_333,
 #    'RSPT': -12_619_183, ...}   # negative = a LONG ETF leg (see the long-ETF explainer chart)
+#
+# !! SIGN CAVEAT (2026-09-22) — the live API's hedge sign has since FLIPPED relative to what
+# !! this example shows. decompose()["hedge"] now matches the SDK docstring (hedge == -hr),
+# !! i.e. the opposite of the convention the overlay code assumes, so a long-only book now
+# !! yields a NEGATIVE SPY notional. The overlay has not yet been corrected (tracked as
+# !! D.8.57). Treat the signs in this example as historical. See DATA_ISSUES.md, newest entry.
 
 sum(overlay.etf_shorts.values())   # net overlay $ (Berkshire ≈ 89% of gross long → net short)
 # residual/idiosyncratic exposure is left in by construction — that's the manager's selection.

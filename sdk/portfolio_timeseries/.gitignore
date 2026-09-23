@@ -9,3 +9,15 @@ cache/
 # Byte-compiled files
 __pycache__/
 *.py[cod]
+
+# Derived/binary output — regenerable, and this is a public repo (PR #373 review).
+# charts/: every PNG is rebuilt by the chart_*.py scripts.
+# attribution_audit.xlsx: rebuilt by `python build_audit_xlsx.py`, verified by verify_audit_xlsx.py.
+charts/
+*.png
+*.xlsx
+*.pdf
+
+# Vendor factor-constituent map — an internal data artifact, not ours to redistribute.
+# Needed by rrg_classifier.py; see HANDOFF.md "Data sources" for how to obtain it.
+ffx_constituents_latest.csv

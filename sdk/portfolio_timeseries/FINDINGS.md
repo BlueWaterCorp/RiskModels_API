@@ -57,15 +57,21 @@ own per-quarter layer returns — median |diff| market 17, sector 4, subsector 1
 
 ### Headline — gross return
 
+All series below are **q_len-normalised**: six of the 42 windows span roughly two quarters
+(a book held across a missing quarter, one spans three), and counting those as single
+quarterly draws inflates the mean, t, Sharpe and the annualised figure. Annualisation uses the
+**summed** window length, 12.3 years, not n/4 = 10.5. *(Corrected 2026-09-22 — see the note
+under the layer table.)*
+
 | Series | mean bps/q | t | hit % | Sharpe | ann % |
 |---|---:|---:|---:|---:|---:|
-| **Lagged** (enter +45d) | **453.6** | 3.19 | 76 | **0.99** | 17.64 |
-| Unlagged rebuild | 506.6 | 2.94 | 71 | 0.91 | 19.18 |
-| Unlagged endpoint | 425.2 | 2.73 | 74 | 0.84 | 15.85 |
-| SPY over the lagged windows | 398.4 | 3.72 | 81 | **1.15** | 15.89 |
+| **Lagged** (enter +45d) | **412.2** | 3.07 | 76 | **0.95** | 14.92 |
+| Unlagged rebuild | 456.1 | 2.97 | 71 | 0.92 | 16.22 |
+| Unlagged endpoint | 409.3 | 2.77 | 74 | 0.86 | 13.43 |
+| SPY over the lagged windows | 315.6 | 3.45 | 81 | **1.06** | 13.46 |
 
-**90% of the gross mean survives the lag, and the Sharpe improves** (0.91 → 0.99). But note
-the last row: **SPY's Sharpe over the same windows is 1.15, higher than the book's 0.99.**
+**90% of the gross mean survives the lag, and the Sharpe improves** (0.92 → 0.95). But note
+the last row: **SPY's Sharpe over the same windows is 1.06, higher than the book's 0.95.**
 Berkshire delivered more return at more risk. That is not an edge.
 
 ### It is beta, not alpha
@@ -92,7 +98,13 @@ Per-quarter contributions, q_len-normalised, n=42:
 | **Sector + subsector** | **53.0** | 1.49 | **0.46** | | **65.2** | 1.78 | **0.55** | **81%** |
 | **Drop idio** (mkt+sec+sub) | **357.7** | 3.45 | **1.07** | | **402.8** | 3.31 | **1.02** | 89% |
 | Idiosyncratic | 48.7 | **0.73** | 0.22 | | 38.5 | **0.67** | 0.21 | — |
-| Gross book | 412.2 | 3.07 | 0.95 | | 456.1 | — | 0.92 | 90% |
+| Gross book | 412.2 | 3.07 | 0.95 | | 456.1 | 2.97 | 0.92 | 90% |
+
+> **One basis, both tables (corrected 2026-09-22).** The gross-book row here and the "Lagged"
+> row in the headline table are now the same number — 412.2 bps, Sharpe 0.95. They previously
+> disagreed (0.99 vs 0.95) because the headline series was fed in unnormalised while the layer
+> series was divided by `q_len`. **Quote 0.95 for the lagged gross book.** Found in PR review;
+> pinned by `tests/test_review_regressions.py`.
 
 Three reads:
 
@@ -234,18 +246,28 @@ size/sector universe — not of their selection.
 
 ### Does anything survive to the filing date? No.
 
+> **Corrected 2026-09-22.** Windows A–C are trading-day offsets from quarter end. The book goes
+> public at **calendar** teo+45, which is a median of **32 trading days** — so the previous
+> D (+35..+45) and E (+45..+55) *report-anchored* windows were both already post-public, with E
+> sitting 13–23 trading days after disclosure. **The commercial window had never been measured.**
+> D and E are now anchored at `entry_date(teo)`. The conclusion is unchanged; the numbers and
+> the old "coin flip" wording were wrong.
+
 | Window | Days | Port mean | t | hit | SPY | Excess | t(exc) |
 |---|---|---:|---:|---:|---:|---:|---:|
-| A | +1..+10 | +135 bps | 2.36 | 73% | +113 | +22 | 1.09 |
-| B | +1..+5 | +63 bps | 1.48 | 59% | +44 | +19 | 1.25 |
-| C | +1..+21 | +242 bps | 2.87 | 76% | +206 | +36 | 1.24 |
-| D | +35..+45 | +54 bps | 0.84 | 69% | +38 | +16 | 0.69 |
-| **E** | **+45..+55** | **−7 bps** | **−0.10** | **51%** | −35 | +28 | 1.35 |
+| A | report +1..+10 | +135 bps | 2.36 | 73% | +113 | +22 | 1.09 |
+| B | report +1..+5 | +63 bps | 1.48 | 59% | +44 | +19 | 1.25 |
+| C | report +1..+21 | +242 bps | 2.87 | 76% | +206 | +36 | 1.24 |
+| D | **entry −9..+0** (run-up to public) | +117 bps | 2.19 | 65% | +110 | +7 | 0.35 |
+| **E** | **entry +1..+10** (post-public) | **+75 bps** | **1.46** | **69%** | +44 | +32 | 1.59 |
 
-By the time the book is public the ten-day return is a coin flip. Regression alpha at window E
-is +34 bps, t=1.88 — below significance, and it *fell* when coverage rose from 82% to 93%
-(t was 2.12 at partial coverage). The matched control at window E also finds nothing
-(paired +15 bps, t=0.67). Nothing here is bankable.
+The book does keep drifting up after disclosure — +75 bps over the ten trading days, not the
+coin flip the mis-anchored window suggested — but **nothing about it is significant.** The
+excess over SPY is +32 bps (t=1.59); the regression alpha is +20.5 bps (t=1.17), *further* from
+significance than the old mis-anchored figure (t=1.88), not closer. And the size-matched
+placebo earns **more** over the same window — +115 bps against the book's +78, a paired
+difference of **−37 bps (t=−1.87)**. In the window you could actually trade, their book if
+anything slightly lags a random lookalike. Nothing here is bankable.
 
 ### Regime — a barbell, and the return split is beta
 

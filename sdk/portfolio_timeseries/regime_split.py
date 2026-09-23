@@ -61,8 +61,8 @@ def window_return_by_regime(holdings, teo, window_key, labels):
       ret     = bucket's own window return (contrib / weight).
     Buckets' `contrib` sum to the covered-book window return; `weight` sum to 1.0.
     """
-    ds, de = WINDOWS[window_key]
-    b = win_bounds(teo, ds, de)
+    ds, de, basis = WINDOWS[window_key]   # (start, end, anchor) — see deshaw_report_date.WINDOWS
+    b = win_bounds(teo, ds, de, basis)
     if b is None:
         return None
     start, end = b

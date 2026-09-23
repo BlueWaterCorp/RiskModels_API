@@ -96,7 +96,7 @@ def chart_layer_split(df, res):
         return
     layers = ["market", "sector", "subsector", "idio"]
     colors = [ck.NAVY, "#006f8e", "#2a7fbf", ck.ORANGE]
-    wins = [("A_1_10", "+1..+10 (ask)"), ("E_45_55", "+45..+55 (post-public)")]
+    wins = [("A_1_10", "+1..+10 (ask)"), ("E_post10", "entry+1..+10 (post-public)")]
     fig, ax = plt.subplots(figsize=(8, 4.5))
     xs = np.arange(len(wins))
     bottoms_pos = np.zeros(len(wins)); bottoms_neg = np.zeros(len(wins))

@@ -104,18 +104,25 @@ amendment-contaminated.
 
 | Series | mean bps/q | t | hit % | ann Sharpe | ann % | cum % |
 |---|---:|---:|---:|---:|---:|---:|
-| **Lagged** | **453.6** | 3.19 | 76 | **0.99** | **17.64** | 450.4 |
-| Unlagged (rebuild) | 506.6 | 2.94 | 71 | 0.91 | 19.18 | 531.3 |
-| Unlagged (endpoint) | 425.2 | 2.73 | 74 | 0.84 | 15.85 | 368.9 |
-| SPY (lagged windows) | 398.4 | 3.72 | 81 | **1.15** | 15.89 | 370.2 |
-| SPY (unlagged windows) | 424.1 | 3.35 | 83 | 1.04 | 16.59 | 401.0 |
+| **Lagged** | **412.2** | 3.07 | 76 | **0.95** | **14.92** | 450.4 |
+| Unlagged (rebuild) | 456.1 | 2.97 | 71 | 0.92 | 16.22 | 531.3 |
+| Unlagged (endpoint) | 409.3 | 2.77 | 74 | 0.86 | 13.43 | 368.9 |
+| SPY (lagged windows) | 315.6 | 3.45 | 81 | **1.06** | 13.46 | 370.2 |
+| SPY (unlagged windows) | 349.0 | 3.12 | 83 | 0.96 | 14.05 | 401.0 |
 
-**How much survives:** lagged 453.6 / unlagged 506.6 = **90% of the gross mean**. Risk-adjusted
-the lag *helps* — Sharpe 0.91 → 0.99, because the lag also trims beta (§2).
+> **Basis (corrected 2026-09-22).** Every row is **q_len-normalised** — window return divided
+> by its length in quarters — and annualised on the **summed** window length (12.3 years), not
+> n/4. Six of the 42 windows span ~2 quarters and one spans 3; counting those as single
+> quarterly draws inflated the mean, t, Sharpe and ann%. The headline previously read
+> Sharpe **0.99** here while the layer table in §6 read **0.95** for the same book — that gap
+> was this defect. **One basis now: 0.95.** Pinned by `tests/test_review_regressions.py`.
 
-**But read the SPY row.** Over the same lagged windows SPY returned less (398.4 vs 453.6 bps/q)
-at lower volatility, giving a **higher Sharpe (1.15 vs 0.99)**. Berkshire delivered more return
-at more risk. State this whenever the 0.99 is quoted.
+**How much survives:** lagged 412.2 / unlagged 456.1 = **90% of the gross mean**. Risk-adjusted
+the lag *helps* — Sharpe 0.92 → 0.95, because the lag also trims beta (§2).
+
+**But read the SPY row.** Over the same lagged windows SPY returned less (315.6 vs 412.2 bps/q)
+at lower volatility, giving a **higher Sharpe (1.06 vs 0.95)**. Berkshire delivered more return
+at more risk. State this whenever the 0.95 is quoted.
 
 ## 2. Market / alpha split (CAPM)
 

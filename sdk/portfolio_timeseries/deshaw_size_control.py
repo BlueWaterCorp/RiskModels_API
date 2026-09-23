@@ -49,7 +49,7 @@ B.CACHE_ONLY = True
 N_DRAWS = 500
 SEED = 20260907
 WINDOW = "A_1_10"
-CONTROL_WINDOW = "E_45_55"
+CONTROL_WINDOW = "E_post10"
 
 
 def sector_universe():
@@ -71,10 +71,10 @@ def sector_universe():
 
 def precompute_window_returns(teos, tickers, window):
     """{teo: {ticker: R}} for one window. Computed once; the draws are then lookups."""
-    ds, de = D.WINDOWS[window]
+    ds, de, basis = D.WINDOWS[window]
     table = {}
     for t in teos:
-        b = D.win_bounds(t, ds, de)
+        b = D.win_bounds(t, ds, de, basis)
         if b is None:
             continue
         start, end = b

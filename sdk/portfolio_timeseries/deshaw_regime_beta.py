@@ -29,7 +29,7 @@ import pandas as pd
 
 _HERE = Path(__file__).resolve().parent
 QUADS = ("Leading", "Improving", "Weakening", "Lagging")
-WINDOWS = ("A_1_10", "E_45_55")
+WINDOWS = ("A_1_10", "E_post10")
 
 
 def ols(y, x):

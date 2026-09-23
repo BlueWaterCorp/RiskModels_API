@@ -279,6 +279,50 @@ def entry_date(teo):
     return nxt[0] if len(nxt) else pd.NaT
 
 
+def book_public_date(rec, teo):
+    """Earliest date at which a holdings record is PROVABLY public. Timestamp or NaT.
+
+    Two sources, both consulted:
+      * the record's own ``filing_date``;
+      * ``as_of_requested`` when the fetch had to escalate past the tight teo+55 buffer.
+        Escalation is itself evidence: if teo+55 returned the prior book, this book was not
+        retrievable then, so an earlier ``filing_date`` in the record cannot be taken at
+        face value.
+
+    Used to floor the lagged entry so a book is never entered before it existed. Found in
+    review (2026-09-22): ``holdings_for_teo`` escalates as_of to teo+90/+120 for late
+    filings, but ``stage1`` entered every book at teo+45 regardless — look-ahead for any
+    quarter that needed the escalation.
+    """
+    cands = []
+    fd = rec.get("filing_date") if rec else None
+    if fd:
+        cands.append(pd.Timestamp(fd))
+    aor = rec.get("as_of_requested") if rec else None
+    if aor:
+        aor = pd.Timestamp(aor)
+        if (aor - pd.Timestamp(teo)).days > 55:
+            cands.append(aor)
+    return max(cands) if cands else pd.NaT
+
+
+def lagged_entry(teo, rec):
+    """Lagged-series entry: teo+45 calendar days, but never before the book is provably
+    public. Returns (entry, floored) where `floored` says the public date was binding."""
+    e = entry_date(teo)
+    pub = book_public_date(rec, teo)
+    if pd.isna(pub):
+        return e, False
+    td = trading_days()
+    nxt = td[td >= pub]
+    p = nxt[0] if len(nxt) else pd.NaT
+    if pd.isna(p):
+        return e, False
+    if pd.isna(e):
+        return p, True
+    return (p, True) if p > e else (e, False)
+
+
 def fwd_quarter_end(teo):
     """The endpoint's forward window ends one CALENDAR quarter later, not at the next
     teo in the series — the teo sequence has gaps (2015-06-30, 2021-06-30, 2023-09/12-30
@@ -303,6 +347,49 @@ def stats(x):
             "sharpe": (m / sd) * np.sqrt(4) if sd > 0 else float("nan"),
             "ann_pct": ((1 + cum) ** (1 / yrs) - 1) * 100 if yrs > 0 else float("nan"),
             "cum_pct": cum * 100}
+
+
+def stats_qnorm(recs, value_fn, qlen_key="q_len"):
+    """Statistics for a series of windows whose LENGTHS DIFFER.
+
+    A book held across a missing quarter produces a ~2-quarter window. Treating that as one
+    quarterly draw doubles its mean and inflates t, Sharpe and the annualised figure, and
+    `stats()` compounds the error by annualising with n/4 years.
+
+    Here the moments (mean, t, hit, Sharpe) are computed on the PER-QUARTER contribution
+    (window return / q_len), so every observation is a comparable quarterly draw, while the
+    cumulative and annualised figures use the TRUE compounded path over the SUMMED window
+    length in years.
+
+    Found in review (2026-09-22): the headline gross series was fed to `stats()`
+    unnormalised while the layer series was already divided by q_len — which is why the same
+    lagged book read Sharpe 0.99 in the headline table and 0.95 in the layer table.
+    `value_fn(rec)` returns the raw window return; `qlen_key` names the length column.
+    """
+    raw, qs = [], []
+    for r in recs:
+        v = value_fn(r)
+        q = r.get(qlen_key)
+        if v is None or q in (None, 0) or (isinstance(v, float) and np.isnan(v)):
+            continue
+        raw.append(float(v))
+        qs.append(float(q))
+    if not raw:
+        return {}
+    raw = np.asarray(raw)
+    qs = np.asarray(qs)
+    per_q = raw / qs                      # comparable quarterly draws
+    m, sd = per_q.mean(), per_q.std(ddof=1)
+    t = m / (sd / np.sqrt(len(per_q))) if sd > 0 else float("nan")
+    cum = float(np.prod(1 + raw) - 1)     # true compounded path, on the RAW returns
+    yrs = qs.sum() / 4.0                  # summed window length, not n/4
+    return {"n": len(per_q), "mean_bps": m * 1e4, "std_bps": sd * 1e4, "t": t,
+            "hit": float((per_q > 0).mean() * 100),
+            "sharpe": (m / sd) * np.sqrt(4) if sd > 0 else float("nan"),
+            "ann_pct": ((1 + cum) ** (1 / yrs) - 1) * 100 if yrs > 0 else float("nan"),
+            "cum_pct": cum * 100,
+            "years": yrs, "q_len_sum": float(qs.sum()),
+            "n_multi_quarter": int((qs > 1.25).sum())}
 
 
 # ---- the validation gate, as a function so the thresholds are explicit ----
@@ -378,17 +465,23 @@ def stage1(name="Berkshire"):
     with the SAME book, so lagged vs unlagged isolates the +45d entry shift only."""
     rows = portfolio_rows(name)
     teos = [pd.Timestamp(r["teo"]) for r in rows]
-    entries = [entry_date(t) for t in teos]
     valid = _valid_book_indices(name, rows, teos)
+    # Entry is floored at each book's provable public date, so a late-filed book is never
+    # entered before it existed. For Berkshire this is never binding (0 of 43 books escalate
+    # past teo+55); it bites for filers that file late, e.g. Pershing (10 of 77).
+    books = {i: holdings_for_teo(name, rows[i]["teo"]) for i in valid}
+    ent = {}
+    for i in valid:
+        ent[i] = lagged_entry(teos[i], books[i])
     tmax = trading_days().max()
     recs = []
     for k in range(len(valid) - 1):
         i, j = valid[k], valid[k + 1]
-        e_in, e_out = entries[i], entries[j]
+        (e_in, floored_in), (e_out, _) = ent[i], ent[j]
         teo_in, teo_out = teos[i], teos[j]
         if pd.isna(e_in) or pd.isna(e_out) or e_out > tmax:
             continue
-        h = holdings_for_teo(name, rows[i]["teo"])
+        h = books[i]
         lag, _, cov, n, missing = portfolio_window_return(h["holdings"], e_in, e_out)
         unlag, *_ = portfolio_window_return(h["holdings"], teo_in, teo_out)
         spy_lag = spy_window(e_in, e_out)
@@ -396,6 +489,8 @@ def stage1(name="Berkshire"):
         qlen = (e_out - e_in).days / 91.3125  # window length in quarters
         recs.append({"teo": rows[i]["teo"], "entry_date": str(e_in.date()), "exit_date": str(e_out.date()),
                      "q_len": qlen, "n_names": n, "covered_w": cov,
+                     "entry_floored": bool(floored_in),
+                     "as_of_requested": h.get("as_of_requested"),
                      "gross_lagged": lag, "gross_unlagged_rebuild": unlag,
                      "gross_unlagged_endpoint": rows[i]["portfolio_gross_return"],
                      "spy_lagged_window": spy_lag, "spy_unlagged_window": spy_unlag,
@@ -411,16 +506,17 @@ def stage2(name="Berkshire"):
     subsector/idio). Validated against the endpoint's unlagged layer returns (stage2_validate)."""
     rows = portfolio_rows(name)
     teos = [pd.Timestamp(r["teo"]) for r in rows]
-    entries = [entry_date(t) for t in teos]
     valid = _valid_book_indices(name, rows, teos)
+    books = {i: holdings_for_teo(name, rows[i]["teo"]) for i in valid}
+    ent = {i: lagged_entry(teos[i], books[i]) for i in valid}   # same flooring as stage1
     tmax = trading_days().max()
     recs = []
     for k in range(len(valid) - 1):
         i, j = valid[k], valid[k + 1]
-        e_in, e_out = entries[i], entries[j]
+        e_in, e_out = ent[i][0], ent[j][0]
         if pd.isna(e_in) or pd.isna(e_out) or e_out > tmax:
             continue
-        h = holdings_for_teo(name, rows[i]["teo"])
+        h = books[i]
         lag = portfolio_window_layers(h["holdings"], e_in, e_out)
         gross, *_ = portfolio_window_return(h["holdings"], e_in, e_out)
         qlen = (e_out - e_in).days / 91.3125

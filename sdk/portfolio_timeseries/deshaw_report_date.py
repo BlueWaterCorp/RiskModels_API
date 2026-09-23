@@ -34,16 +34,28 @@ B.CACHE_ONLY = True  # analysis never fetches uncached names — partial coverag
 NAME = "DEShaw"
 RETURNS_FLOOR = "2013-07-29"   # empirical get_ticker_returns floor (see Stage 0)
 
-# Trading-day offset windows after the report-date anchor (last trading day <= teo).
-# (d_start, d_end) inclusive in trading days; window covers days [+d_start .. +d_end].
+# Windows are trading-day offsets from an ANCHOR. Two anchors are in play and conflating
+# them was a real error in the first version of this study (found in review, 2026-09-22):
+#
+#   "report" — the last trading day <= teo (quarter end). Pre-disclosure windows hang off it.
+#   "entry"  — build_lagged.entry_date(teo) = teo + 45 CALENDAR days rolled to a trading day.
+#              This is the moment the book is public.
+#
+# Calendar +45 is a MEDIAN of 32 TRADING days (range 30-33), not 45. So the original
+# D (+35..+45) and E (+45..+55) report-anchored windows were both already post-public, with
+# E sitting 13-23 trading days after disclosure rather than the "10 days after filing" the
+# writeup claimed. The commercial window was never actually measured. D and E are now
+# anchored to entry, so they mean what their names say.
+#
+# (d_start, d_end, basis); window covers (anchor+d_start-1, anchor+d_end] in trading days.
 WINDOWS = {
-    "A_1_10":  (1, 10),   # Conrad's ask
-    "B_1_5":   (1, 5),    # is the effect front-loaded
-    "C_1_21":  (1, 21),   # does it persist a month
-    "D_35_45": (35, 45),  # run-up to becoming public
-    "E_45_55": (45, 55),  # the 10 days AFTER it is public (the commercial window)
+    "A_1_10":   (1, 10, "report"),   # Conrad's ask: first 10 trading days after quarter end
+    "B_1_5":    (1, 5, "report"),    # is the effect front-loaded
+    "C_1_21":   (1, 21, "report"),   # does it persist a month
+    "D_pre10":  (-9, 0, "entry"),    # the 10 trading days ENDING at disclosure (run-up)
+    "E_post10": (1, 10, "entry"),    # the 10 trading days AFTER disclosure (the commercial window)
 }
-WIN_ORDER = ["A_1_10", "B_1_5", "C_1_21", "D_35_45", "E_45_55"]
+WIN_ORDER = ["A_1_10", "B_1_5", "C_1_21", "D_pre10", "E_post10"]
 # Control windows: non-overlapping 10-day windows drawn from later in the SAME quarter,
 # day +11..+50. Matches window A's length so the comparison is like-for-like.
 CONTROL_STARTS = [11, 21, 31, 41]  # -> +11..20, +21..30, +31..40, +41..50
@@ -58,11 +70,23 @@ def anchor_pos(teo):
     return pos
 
 
-def win_bounds(teo, d_start, d_end):
-    """(start, end] date bounds for trading-day offsets [+d_start .. +d_end] after the anchor.
-    None if either endpoint falls outside the available calendar."""
+def entry_pos(teo):
+    """Integer position of the DISCLOSURE anchor — entry_date(teo), i.e. teo + 45 calendar
+    days rolled forward to a trading day — in the SPY calendar. -1 if unavailable."""
+    e = B.entry_date(teo)
+    if pd.isna(e):
+        return -1
     td = B.trading_days()
-    pos = anchor_pos(teo)
+    pos = int(td.searchsorted(pd.Timestamp(e), side="left"))
+    return pos if pos < len(td) else -1
+
+
+def win_bounds(teo, d_start, d_end, basis="report"):
+    """(start, end] date bounds for trading-day offsets [+d_start .. +d_end] from `basis`.
+    basis='report' anchors at the last trading day <= teo; basis='entry' anchors at the
+    disclosure date. None if either endpoint falls outside the available calendar."""
+    td = B.trading_days()
+    pos = entry_pos(teo) if basis == "entry" else anchor_pos(teo)
     if pos < 0:
         return None
     lo, hi = pos + d_start - 1, pos + d_end
@@ -82,7 +106,7 @@ def valid_teos():
         h = B.holdings_for_teo(NAME, t)
         if h.get("report_date") != t:
             continue
-        if win_bounds(t, 45, 55) is None:   # need the full E window to be in range
+        if win_bounds(t, *WINDOWS["E_post10"]) is None:  # need the full post-public window in range
             continue
         out.append(t)
     return out
@@ -111,8 +135,8 @@ def per_quarter_rows(teos):
         cov_a = np.nan
         n_a = 0
         for w in WIN_ORDER:
-            ds, de = WINDOWS[w]
-            b = win_bounds(t, ds, de)
+            ds, de, basis = WINDOWS[w]
+            b = win_bounds(t, ds, de, basis)
             if b is None:
                 rec[f"{w}_port"] = np.nan
                 rec[f"{w}_spy"] = np.nan
@@ -127,9 +151,9 @@ def per_quarter_rows(teos):
         rec["coverage"] = cov_a
         rec["n_names"] = n_a
         # layer split for the two headline windows (A = ask, E = commercial)
-        for w in ("A_1_10", "E_45_55"):
-            ds, de = WINDOWS[w]
-            b = win_bounds(t, ds, de)
+        for w in ("A_1_10", "E_post10"):
+            ds, de, basis = WINDOWS[w]
+            b = win_bounds(t, ds, de, basis)
             if b is None:
                 for k in ("market", "sector", "subsector", "idio"):
                     rec[f"{w}_{k}"] = np.nan
@@ -335,8 +359,8 @@ def main():
                else np.nan for p, s in zip(port, spy)]
         sp, ss, se = agg(port), agg(spy), agg(exc)
         win_stats[w] = {"port": sp, "spy": ss, "excess": se}
-        ds, de = WINDOWS[w]
-        print(f"  {w:8} (+{ds}..+{de}): port mean={sp['mean_bps']:7.1f}bps t={sp['t']:5.2f} "
+        ds, de, basis = WINDOWS[w]
+        print(f"  {w:9} ({basis[:3]}{ds:+d}..{de:+d}): port mean={sp['mean_bps']:7.1f}bps t={sp['t']:5.2f} "
               f"hit={sp['hit']:4.0f}% | SPY={ss['mean_bps']:7.1f} | "
               f"excess={se['mean_bps']:7.1f}bps t={se['t']:5.2f} hit={se['hit']:4.0f}% (n={sp['n']})")
 
@@ -352,7 +376,7 @@ def main():
 
     print("\n=== window regressions (book ~ SPY, per window) ===")
     regs = {}
-    for w in ("A_1_10", "E_45_55"):
+    for w in ("A_1_10", "E_post10"):
         r = window_regression(recs, w)
         regs[w] = r
         if "alpha_bps" in r:
@@ -367,13 +391,13 @@ def main():
     print(f"  validation: {'PASS (medians <50bps)' if val_ok else 'FAIL — layer figures NOT trusted'}")
     layer_stats = {}
     if val_ok:
-        for w in ("A_1_10", "E_45_55"):
+        for w in ("A_1_10", "E_post10"):
             row = {}
             for k in ("market", "sector", "subsector", "idio"):
                 row[k] = agg([r[f"{w}_{k}"] for r in recs])
             layer_stats[w] = row
-            ds, de = WINDOWS[w]
-            print(f"  {w} (+{ds}..+{de}) layer means bps: "
+            ds, de, basis = WINDOWS[w]
+            print(f"  {w} ({basis}{ds:+d}..{de:+d}) layer means bps: "
                   f"market={row['market']['mean_bps']:.1f} sector={row['sector']['mean_bps']:.1f} "
                   f"subsector={row['subsector']['mean_bps']:.1f} idio={row['idio']['mean_bps']:.1f}")
 
@@ -416,7 +440,7 @@ def _write_csv(recs):
     cols = ["report_date", "q", "n_names", "coverage"]
     for w in WIN_ORDER:
         cols += [f"{w}_port", f"{w}_spy"]
-    for w in ("A_1_10", "E_45_55"):
+    for w in ("A_1_10", "E_post10"):
         cols += [f"{w}_market", f"{w}_sector", f"{w}_subsector", f"{w}_idio"]
     df = pd.DataFrame(recs)[cols]
     # add excess columns next to each window pair

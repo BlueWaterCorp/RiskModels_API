@@ -2,7 +2,7 @@
 
 Uses Aman's ported classifier (rrg_classifier.py) with POINT-IN-TIME labels (verified causal) to
 tag each holding by the quadrant its SECTOR (primary) and SUBSECTOR (thin coverage) sat in AS OF
-the report date, then splits the +1..+10 (pre-disclosure) and +45..+55 (post-public) window
+the report date, then splits the +1..+10 (pre-disclosure) and entry+1..+10 (post-public) window
 returns by quadrant. Answers: does the post-report drift come from names whose factor was already
 Leading (momentum) or Lagging/Improving and recovering (mean reversion)?
 
@@ -30,7 +30,7 @@ B.CACHE_ONLY = True
 
 NAME = "DEShaw"
 QUADS = R.QUADRANTS  # ("Leading","Improving","Weakening","Lagging")
-WINDOWS = ("A_1_10", "E_45_55")
+WINDOWS = ("A_1_10", "E_post10")
 
 
 def _book_weight(holdings):

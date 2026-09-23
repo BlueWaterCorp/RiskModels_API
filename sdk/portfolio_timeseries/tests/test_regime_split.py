@@ -45,7 +45,10 @@ def test_name_labels_bridge():
 @pytest.fixture
 def patched(monkeypatch):
     # hermetic: fixed window bounds, dict-lookup returns — no cache, no API
-    monkeypatch.setattr(regime_split, "win_bounds", lambda teo, ds, de: ("2020-01-01", "2020-01-15"))
+    # win_bounds gained an anchor `basis` argument in the 2026-09-22 window re-anchoring
+    # (report-anchored vs entry-anchored); accept and ignore it here.
+    monkeypatch.setattr(regime_split, "win_bounds",
+                        lambda teo, ds, de, basis="report": ("2020-01-01", "2020-01-15"))
     monkeypatch.setattr(build_lagged, "window_return", lambda tk, s, e: _RET.get(tk))
 
 

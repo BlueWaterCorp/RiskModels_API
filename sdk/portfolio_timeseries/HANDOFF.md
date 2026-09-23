@@ -1,9 +1,14 @@
 # HANDOFF — 13F portfolio toolkit
 
-**This project was closed on 2026-09-07 because the author moved off it, not because it was
-finished.** Nothing here is abandoned mid-edit: every open thread is either completed or
-explicitly scoped out below with the reason. If you are picking this up cold, read this file
-first, then [FINDINGS.md](FINDINGS.md) for the results.
+**Status: active, under review.** An earlier draft of this file said the project was closed
+because the author had moved off it. **That was wrong and is withdrawn** — it was written when
+the work was being wrapped up for handover, and it was corrected in PR #373 review
+(2026-09-22): Nijat Aliyev still owns this. What remains true is the *discipline* behind it —
+nothing here is abandoned mid-edit, and every open thread is either completed or explicitly
+scoped out below with a reason, so the project stays inheritable either way.
+
+If you are picking this up cold, read this file first, then [FINDINGS.md](FINDINGS.md) for the
+results.
 
 Author: Nijat Aliyev (UCLA MFE intern, Blue Water Macro). Reviewer: Conrad Gann.
 Branch `feat/13f-attribution-toolkit`. SDK: `riskmodels-py` 0.3.11.
@@ -39,6 +44,16 @@ Full results with numbers: **[FINDINGS.md](FINDINGS.md)**.
 ---
 
 ## 2. Read in this order
+
+> **Updated 2026-09-22 after PR #373 review.** Three method defects were found in source by
+> Conrad and are now fixed, re-run and pinned by `tests/test_review_regressions.py`:
+> (1) D. E. Shaw's post-disclosure window was anchored at quarter end in trading days, so the
+> "commercial window" had never been measured — D and E are now anchored at `entry_date`;
+> (2) a latent look-ahead for late-filed books — entry is now floored at the book's provably
+> public date (**no effect on Berkshire: 0 of 42 windows floored**); (3) the headline and layer
+> gross series were on different normalisation bases — both now use `stats_qnorm`, and the
+> lagged gross Sharpe is **0.95** in both tables (it read 0.99 in one before). Full detail and
+> before/after figures in [DATA_ISSUES.md](DATA_ISSUES.md), newest entry.
 
 | Order | File | What it gives you |
 |---|---|---|
@@ -85,6 +100,9 @@ window_return(tk, start, end)      buy-and-hold over (start, end], NaN days drop
 portfolio_window_return(...)       Σ w·R renormalised to covered names
 name_layer_windows / portfolio_window_layers    the same, per layer
 entry_date(teo)                    teo + 45 CALENDAR days, rolled to next trading day
+book_public_date(rec, teo)         earliest date a book is PROVABLY public
+lagged_entry(teo, rec)             entry_date floored at book_public_date -> (entry, floored)
+stats_qnorm(recs, value_fn)        moments per QUARTER, annualised on summed window length
 fwd_quarter_end(teo)               teo + 3 calendar months
 gate_verdict(mean_abs_diff_bps)    CLEAN / PROCEED_WITH_FLAG / STOP
 stage0 / stage1 / stage2 / stage2_validate
@@ -474,7 +492,22 @@ modified, and `sdk/riskmodels/pair_trade.py` was not touched.
 | `get_ticker_returns(tk, years=13)` | daily gross returns | floor **2013-07-29** |
 | `get_returns_decomposition(tk, years=15)` | daily additive 4-layer split | floor 2011-07-27; ~$0.02/call |
 | `gs://rm_api_public/eodhd/ds_synth_factors.zarr` | 106 daily factor return series, 2000-01-04 → **2026-07-02** | anonymous; needs `gcsfs` + `zarr` |
-| `ffx_constituents_latest.csv` | ticker → FFX factor map with within-factor cap weights | from Aman; single snapshot dated 2026-07-02 |
+| `ffx_constituents_latest.csv` | ticker → FFX factor map with within-factor cap weights | from Aman; single snapshot dated 2026-07-02. **Not in the repo** — see below |
+
+### Files deliberately NOT committed (PR #373 review)
+
+This is a public repo, so derived binaries and internal data artifacts are gitignored. Nothing
+is lost — each is reproducible:
+
+| Not committed | How to get it back |
+|---|---|
+| `ffx_constituents_latest.csv` (259 KB) | An internal vendor artifact, not ours to redistribute. Ask Aman, or export it from the FFX constituents table. Needed only by `rrg_classifier.py` / the regime split; everything else runs without it. |
+| `attribution_audit.xlsx` | `python build_audit_xlsx.py && python verify_audit_xlsx.py` — rebuilt from `cache/reaudit_berkshire.json` in seconds. |
+| `charts/` (54 files, 3.6 MB) | `python chart_<name>.py` for each; they read the same `cache/` JSON the docs quote. |
+| `overlay_analysis.pdf` | `python build_presentation.py`. |
+
+The caveats that used to live in the chart `.md` captions are all in the six documents; the
+captions were a convenience, not a source.
 
 **Filer IDs** (resolve via the deterministic `BW-FILER-CIK{cik.zfill(10)}` form — `search_filers`
 does not match zero-padded CIK strings):

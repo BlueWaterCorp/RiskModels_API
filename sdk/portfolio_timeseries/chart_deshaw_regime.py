@@ -22,7 +22,7 @@ def main():
     sec = r["levels"]["sector"]
     cov = sec["map_coverage"]["median"]
     a = sec["windows"]["A_1_10"]["quadrants"]
-    e = sec["windows"]["E_45_55"]["quadrants"]
+    e = sec["windows"]["E_post10"]["quadrants"]
     weights = [a[q]["mean_weight"] * 100 for q in QUADS]
     aret = [a[q]["mean_ret_bps"] for q in QUADS]
     eret = [e[q]["mean_ret_bps"] for q in QUADS]

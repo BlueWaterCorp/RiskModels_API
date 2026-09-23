@@ -1,7 +1,52 @@
 # RiskModels API — Data Issues Digest
 
 _Running list of API / SDK discrepancies found while wiring the 13F portfolio
-toolkit. Newest first. Last updated 2026-09-07 (riskmodels-py 0.3.11)._
+toolkit. Newest first. Last updated 2026-09-22 (riskmodels-py 0.3.11)._
+
+### Added 2026-09-22 (live API — hedge sign flipped, and AAPL returns no hedge at all)
+
+Both found while re-running the suite after the review fixes. **Neither is caused by our
+changes** and neither is patched in this pass — the overlay correction is second-pass work
+(finding 9 / D.8.57).
+
+- **🔴 `decompose()["hedge"]` has flipped sign against the live API.** The overlay was built on
+  the convention that `hedge[etf]` is a **positive per-dollar SHORT ratio**, so a long-only 13F
+  book yields a positive SPY notional. Today the identical code path returns SPY **negative**.
+  **Evidence it is a behaviour change, not a regression we introduced:** `charts/overlay_data.json`
+  (built July) records Berkshire `etf_shorts["SPY"] = +44,722,536`; the same construction on
+  2026-09-22 returns ≈ **−1.5e10**. The sign reversed. (The magnitude gap is the separate,
+  already-documented `adj_mv` 1000× scale bug, not part of this finding.) **The live API now
+  agrees with its own documentation** — the SDK docstring and `sdk/tests/test_decompose.py`
+  fixture have always said `hedge[etf] == -hr` — so **our overlay is the side that is out of
+  step.** Consequence: every overlay number in this repo (beta reductions Pershing 96–103%,
+  Appaloosa 96–110%, Berkshire 76–88%) was measured in July under the old sign and **does not
+  reproduce today without flipping it.** The fix is one line; re-deriving and re-validating the
+  published figures is not, which is why it is scheduled rather than slipped in. The live
+  overlay test is `xfail(strict=False)` with the full rationale in its docstring, so it flips
+  back to green automatically if either side is corrected.
+- **🔴 `decompose("AAPL")` returns an EMPTY hedge dict and null exposures.** `hedge = {}`, every
+  `exposure.*.hr` / `.er` is `None`, and `_data_health.er_populated = False` — while AXP, KO,
+  NVDA, MSFT and BAC all return three populated legs on the same call, same `data_as_of`
+  (2026-09-22). This is a **per-ticker coverage gap, not a global outage.** It matters
+  disproportionately because **AAPL is Berkshire's largest position**, so any bottom-up overlay
+  built today silently drops the single biggest name and renormalises around it without
+  erroring. Anything consuming `decompose()` should treat an empty `hedge` as a hard failure for
+  that name rather than a zero exposure.
+- **🟡 Neither issue touches the lag study.** Strand A and Strand B run off
+  `get_returns_decomposition`, `get_ticker_returns` and `get_filer_*` — not `decompose()` — so no
+  Berkshire or D. E. Shaw figure in FINDINGS.md depends on either. The blast radius is the
+  market-neutral overlay work only.
+
+### Added 2026-09-22 (PR #373 review — three method defects, all found by Conrad in source)
+
+These are OUR defects, not the vendor's. Recording them here because two of the three are the
+same *class* of error as the NaN bug: a quantity that looked plausible flowing through a step
+that never checked it against an independent reference.
+
+- **🔴 Trading-day offsets were conflated with calendar days, so the "commercial window" was never measured.** `deshaw_report_date.WINDOWS` defined every window as a **trading-day** offset from quarter end, but the book goes public at **calendar** teo+45 — a median of **32 trading days** (range 30–33, n=51). The old D (+35..+45) and E (+45..+55) report-anchored windows were therefore *both already post-public*, with E sitting **13–23 trading days after disclosure** while the writeup described it as "the 10 days after the ~45-day filing". **Fix:** windows now carry an anchor basis (`report` or `entry`); D and E are anchored at `build_lagged.entry_date(teo)`. **Effect:** the post-public window goes from −7 bps / t=−0.10 ("a coin flip") to **+75 bps / t=1.46**, its regression alpha from +34 bps t=1.88 to **+20.5 bps t=1.17** (further from significance), and the size-matched placebo comparison flips to **−37 bps t=−1.87**. The *conclusion* — nothing bankable survives to disclosure — is unchanged on all three measures. Windows A/B/C, the same-quarter control and the A regressions are report-anchored and unaffected.
+- **🟡 Look-ahead was possible for late-filed books (latent; did not bite for Berkshire).** `holdings_for_teo` escalates `as_of` to teo+90/+120 when the tight teo+55 buffer returns the prior book — i.e. it accepts filings made *after* teo+55 — but `stage1` entered every book at `entry_date(teo)` = teo+45 regardless. **Fix:** `lagged_entry()` floors entry at the book's provably-public date (`book_public_date()`: the record's `filing_date`, and `as_of_requested` whenever the fetch had to escalate past teo+55). **Effect: zero.** All 43 Berkshire books return at the teo+55 buffer and none has a `filing_date` after its entry, so **0 of 42 windows are floored and no Berkshire figure moves.** It would bite elsewhere: **Pershing has 10 of 77 books escalating past teo+55** and 3 whose entry preceded the recorded filing date by up to 61 days. Fixed defensively so the next filer does not inherit it.
+- **🔴 Two gross Sharpes were quoted on different bases.** The Stage 1 headline series was fed to `stats()` **unnormalised** while the Stage 2 layer series was divided by `q_len` first — and `stats()` annualises with `n/4` years, which assumes every window is exactly one quarter. **Six of the 42 Berkshire windows span ~2 quarters and one spans 3** (a book held across a missing quarter). Counting those as single quarterly draws inflated the mean, t, Sharpe and the annualised return. That is why `FINDINGS.md` showed the same lagged book at **Sharpe 0.99** in the headline table and **0.95** in the layer table. **Fix:** `build_lagged.stats_qnorm()` — moments on the per-quarter contribution, cumulative/annualised on the **summed** window length. **Effect:** headline lagged gross **453.6 bps / 0.99 / 17.64% ann → 412.2 bps / 0.95 / 14.92% ann** over **12.3 years, not n/4 = 10.5**. The two tables now agree exactly. **Quote 0.95.** Layer, drop-idio and CAPM figures were already normalised and are unchanged.
+- **🟢 All three are pinned by `tests/test_review_regressions.py`** (9 hermetic tests): the calendar-vs-trading-day offset, the entry floor for escalated books, and the equivalence of the two bases when every window is one quarter.
 
 ### Added 2026-09-07 (Pershing — confidential-treatment rows make a filer unstudiable)
 
