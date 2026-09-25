@@ -5,6 +5,7 @@ import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import { getFundamentalsForTicker } from "@/lib/dal/fundamentals-zarr-reader";
 import { sanitizeFundamentalsRow } from "@/lib/api/fundamentals-contract";
 import { FundamentalsRequestSchema } from "@/lib/api/schemas";
+import { SERVED_HISTORY_START, historyAvailableFromError } from "@/lib/dal/served-history";
 
 /**
  * GET /api/fundamentals/{ticker}/model-scaffold — a valuation-model scaffold as
@@ -189,6 +190,13 @@ export const GET = withBilling(async (request: NextRequest, _context: BillingCon
   const { ticker, erp, tax_rate, rf_tenor } = validation.data;
   const periods = validation.data.periods ?? 8;
   const asOf = validation.data.as_of ?? new Date().toISOString().slice(0, 10);
+  const floorErr = historyAvailableFromError(
+    validation.data.as_of,
+    SERVED_HISTORY_START.cost_of_capital,
+  );
+  if (floorErr) {
+    return NextResponse.json(floorErr, { status: 404, headers: getCorsHeaders(origin) });
+  }
   const erpUsed = erp ?? 0.05;
   const taxUsed = tax_rate ?? 0.21;
 

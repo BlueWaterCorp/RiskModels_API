@@ -15,6 +15,7 @@ import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware
 import { getBillingUserId } from "@/lib/agent/billing-user";
 import { renderArtifact } from "@/lib/artifacts/render-client";
 import { getCorsHeaders } from "@/lib/cors";
+import { SERVED_HISTORY_START, historyAvailableFromError } from "@/lib/dal/served-history";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -115,6 +116,13 @@ async function buildPanelResponse(
   const format = formatParam as SnapshotFormat;
   const version = url.searchParams.get("version") ?? "v1";
   const asOf = url.searchParams.get("as_of") ?? "latest";
+  const floorErr = historyAvailableFromError(
+    asOf === "latest" ? undefined : asOf,
+    SERVED_HISTORY_START.explained_risk,
+  );
+  if (floorErr) {
+    return NextResponse.json(floorErr, { status: 404, headers: getCorsHeaders(origin) });
+  }
 
   if (slug === "_full") {
     if (entityKind !== "stock") {

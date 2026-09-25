@@ -37,6 +37,7 @@ import {
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
+import { SERVED_HISTORY_START, clampStart, servedHistoryStartForKeys } from "./served-history";
 import {
   aggregateFactsToLevel,
   factCellsToFactRows,
@@ -599,7 +600,7 @@ export async function readHistorySlice(
   // are disjoint from stock queries (no hedge/returns involvement), so
   // narrowing the stock window by the ETF store's coverage would needlessly
   // clip stock queries that don't touch any ETF.
-  let effStart = startDate ?? "";
+  let effStart = clampStart(startDate, servedHistoryStartForKeys(keys)) ?? "";
   let effEnd = endDate ?? "9999-12-31";
   const involvedTeos: string[][] = [dailyTeo];
   if (hedgeGrp && hedgeTeo?.length) involvedTeos.push(hedgeTeo);
@@ -1311,7 +1312,8 @@ export async function readResidualSignalSeries(
   const symIdx = tickerMap.get(ticker.trim().toUpperCase());
   if (symIdx === undefined) return null;
 
-  const t0 = startDate ? lowerBound(teos, startDate) : 0;
+  const effStart = clampStart(startDate, SERVED_HISTORY_START.residual_signal);
+  const t0 = effStart ? lowerBound(teos, effStart) : 0;
   const t1 = endDate ? upperBoundInclusive(teos, endDate) : teos.length;
   if (t1 <= t0) {
     return { ticker: ticker.toUpperCase(), points: [], range: ["", ""] };
