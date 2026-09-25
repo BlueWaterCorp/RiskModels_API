@@ -33,3 +33,18 @@ describe("served-history", () => {
     expect(clampStart("2000-01-03", "")).toBe("2000-01-03");
   });
 });
+
+describe("historyAvailableFromError", () => {
+  it("names the first available date for an as_of before the floor", async () => {
+    const { historyAvailableFromError } = await import("@/lib/dal/served-history");
+    const f = SERVED_HISTORY_START.explained_risk;
+    expect(historyAvailableFromError("2005-06-30", f)).toEqual({
+      error: `No data served for as_of=2005-06-30: history available from ${f}`,
+      as_of: "2005-06-30",
+      as_of_basis: "report_date",
+      history_available_from: f,
+    });
+    expect(historyAvailableFromError(f, f)).toBeNull();
+    expect(historyAvailableFromError(undefined, f)).toBeNull();
+  });
+});

@@ -27,6 +27,7 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { FundamentalsRequestSchema } from "@/lib/api/schemas";
+import { SERVED_HISTORY_START, historyAvailableFromError } from "@/lib/dal/served-history";
 
 /**
  * GET /api/fundamentals/{ticker} — PIT quarterly fundamentals, DERIVED-ONLY.
@@ -92,6 +93,13 @@ export const GET = withBilling(
     const { ticker, periods, erp, tax_rate, rf_tenor, grid, erp_grid, rf_tenor_grid } =
       validation.data;
     const asOf = validation.data.as_of ?? new Date().toISOString().slice(0, 10);
+    const floorErr = historyAvailableFromError(
+      validation.data.as_of,
+      SERVED_HISTORY_START.cost_of_capital,
+    );
+    if (floorErr) {
+      return NextResponse.json(floorErr, { status: 404, headers: getCorsHeaders(origin) });
+    }
 
     try {
       const fetchStart = performance.now();

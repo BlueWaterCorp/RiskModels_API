@@ -19,6 +19,7 @@ import {
 } from "@/lib/risk/hedge-recommendation-service";
 import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
+import { historyAvailableFromError, servedHistoryStartForKeys } from "@/lib/dal/served-history";
 
 /**
  * POST /api/decompose — simplified four-layer exposure + hedge map.
@@ -107,6 +108,14 @@ export const POST = withBilling(
     }
 
     const { ticker, as_of } = validation.data;
+
+    const floorErr = historyAvailableFromError(
+      as_of,
+      servedHistoryStartForKeys(DECOMPOSE_METRIC_KEYS),
+    );
+    if (floorErr) {
+      return NextResponse.json(floorErr, { status: 404, headers: corsHeaders });
+    }
 
     try {
       const symbolRecord = await resolveSymbolByTicker(ticker);
