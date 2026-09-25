@@ -1,0 +1,778 @@
+{
+  "Berkshire": {
+    "name": "Berkshire",
+    "bw_filer_id": "BW-FILER-CIK0001067983",
+    "report_date": "2025-12-31",
+    "gross_long": 176510883.98299998,
+    "n_positions": 22,
+    "n_decomposed": 22,
+    "positions": [
+      {
+        "ticker": "AAPL",
+        "dollars": 61961735.283,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "RSPT",
+        "market_er": 0.226804599165916,
+        "sector_er": 0.00872602686285973,
+        "subsector_er": 0.00571432709693909,
+        "residual_er": 0.758755028247833
+      },
+      {
+        "ticker": "AXP",
+        "dollars": 56088378.465,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IYG",
+        "market_er": 0.232032403349876,
+        "sector_er": 0.332898318767548,
+        "subsector_er": -0.00269402377307415,
+        "residual_er": 0.437763303518295
+      },
+      {
+        "ticker": "KO",
+        "dollars": 27964000.0,
+        "decomposed": true,
+        "sector_etf": "XLP",
+        "subsector_etf": "PBJ",
+        "market_er": 0.00296098040416837,
+        "sector_er": 0.466906428337097,
+        "subsector_er": -0.00764091592282057,
+        "residual_er": 0.537773489952087
+      },
+      {
+        "ticker": "MCO",
+        "dollars": 12602556.092,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IAI",
+        "market_er": 0.0777867361903191,
+        "sector_er": 0.205904871225357,
+        "subsector_er": 0.0409433245658875,
+        "residual_er": 0.675365090370178
+      },
+      {
+        "ticker": "KR",
+        "dollars": 3124000.0,
+        "decomposed": true,
+        "sector_etf": "XLP",
+        "subsector_etf": "IYK",
+        "market_er": 0.089293859899044,
+        "sector_er": 0.208417445421219,
+        "subsector_er": 0.0090136518701911,
+        "residual_er": 0.693275034427643
+      },
+      {
+        "ticker": "V",
+        "dollars": 2910002.197,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IYG",
+        "market_er": 0.0681737661361694,
+        "sector_er": 0.348279178142548,
+        "subsector_er": 0.0408092066645622,
+        "residual_er": 0.54273784160614
+      },
+      {
+        "ticker": "MA",
+        "dollars": 2275897.61,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IYG",
+        "market_er": 0.0524824149906635,
+        "sector_er": 0.38636589050293,
+        "subsector_er": 0.0466516800224781,
+        "residual_er": 0.514500021934509
+      },
+      {
+        "ticker": "VRSN",
+        "dollars": 2184091.346,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": 0.00377588905394077,
+        "sector_er": 0.027392664924264,
+        "subsector_er": 0.0531564056873322,
+        "residual_er": 0.915675044059753
+      },
+      {
+        "ticker": "COF",
+        "dollars": 1732874.0,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IYG",
+        "market_er": 0.297570556402206,
+        "sector_er": 0.278244227170944,
+        "subsector_er": -0.00535593461245298,
+        "residual_er": 0.429541170597076
+      },
+      {
+        "ticker": "DPZ",
+        "dollars": 1396347.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "PEJ",
+        "market_er": -0.0134435975924134,
+        "sector_er": 0.0351705178618431,
+        "subsector_er": 0.0639282464981079,
+        "residual_er": 0.914344847202301
+      },
+      {
+        "ticker": "AON",
+        "dollars": 1271424.876,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "KIE",
+        "market_er": 0.00501055270433426,
+        "sector_er": 0.271441996097565,
+        "subsector_er": 0.179073244333267,
+        "residual_er": 0.544474184513092
+      },
+      {
+        "ticker": "NUE",
+        "dollars": 1045167.939,
+        "decomposed": true,
+        "sector_etf": "XLB",
+        "subsector_etf": "XME",
+        "market_er": 0.156342223286629,
+        "sector_er": 0.178376331925392,
+        "subsector_er": -0.0284379981458187,
+        "residual_er": 0.693719446659088
+      },
+      {
+        "ticker": "AMZN",
+        "dollars": 525346.3200000001,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.330050647258759,
+        "sector_er": 0.162476927042007,
+        "subsector_er": 0.0231606364250183,
+        "residual_er": 0.484311789274216
+      },
+      {
+        "ticker": "LPX",
+        "dollars": 457488.683,
+        "decomposed": true,
+        "sector_etf": "XLI",
+        "subsector_etf": "IYJ",
+        "market_er": 0.130789741873741,
+        "sector_er": 0.0983990430831909,
+        "subsector_er": 0.0449860319495201,
+        "residual_er": 0.725825190544128
+      },
+      {
+        "ticker": "NYT",
+        "dollars": 351663.94800000003,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "GGME",
+        "market_er": 0.0112018790096045,
+        "sector_er": 0.0434678271412849,
+        "subsector_er": -0.000778878456912935,
+        "residual_er": 0.946109175682068
+      },
+      {
+        "ticker": "CHTR",
+        "dollars": 221459.11800000002,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "VOX",
+        "market_er": -0.00270128669217229,
+        "sector_er": 0.146133407950401,
+        "subsector_er": 0.0460246242582798,
+        "residual_er": 0.810543239116669
+      },
+      {
+        "ticker": "LAMR",
+        "dollars": 152201.058,
+        "decomposed": true,
+        "sector_etf": "XLRE",
+        "subsector_etf": "VNQ",
+        "market_er": 0.0508119985461235,
+        "sector_er": 0.181911081075668,
+        "subsector_er": 0.0673834756016731,
+        "residual_er": 0.699893474578857
+      },
+      {
+        "ticker": "ALLE",
+        "dollars": 124212.776,
+        "decomposed": true,
+        "sector_etf": "XLI",
+        "subsector_etf": "IYJ",
+        "market_er": 0.106320440769196,
+        "sector_er": 0.14964847266674,
+        "subsector_er": 0.050353329628706,
+        "residual_er": 0.69367778301239
+      },
+      {
+        "ticker": "NVR",
+        "dollars": 81037.26,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XHB",
+        "market_er": null,
+        "sector_er": null,
+        "subsector_er": null,
+        "residual_er": null
+      },
+      {
+        "ticker": "JEF",
+        "dollars": 26867.589,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IAI",
+        "market_er": 0.28677961230278,
+        "sector_er": 0.108564384281635,
+        "subsector_er": 0.0130843631923199,
+        "residual_er": 0.591571629047394
+      },
+      {
+        "ticker": "LILAK",
+        "dollars": 9578.789,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "VOX",
+        "market_er": -0.00742579577490687,
+        "sector_er": 0.0169800743460655,
+        "subsector_er": 0.00572066567838192,
+        "residual_er": 0.984725058078766
+      },
+      {
+        "ticker": "BATRK",
+        "dollars": 4553.634,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "GGME",
+        "market_er": 0.0661705434322357,
+        "sector_er": 0.0320404842495918,
+        "subsector_er": -0.0081059942021966,
+        "residual_er": 0.909894943237305
+      }
+    ]
+  },
+  "Pershing": {
+    "name": "Pershing",
+    "bw_filer_id": "BW-FILER-CIK0001336528",
+    "report_date": "2025-12-31",
+    "gross_long": 11527339.222,
+    "n_positions": 7,
+    "n_decomposed": 7,
+    "positions": [
+      {
+        "ticker": "UBER",
+        "dollars": 2468273.945,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": 0.132796362042427,
+        "sector_er": 0.0113899689167738,
+        "subsector_er": -0.000678264303132892,
+        "residual_er": 0.856491923332214
+      },
+      {
+        "ticker": "AMZN",
+        "dollars": 2217677.936,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.330050647258759,
+        "sector_er": 0.162476927042007,
+        "subsector_er": 0.0231606364250183,
+        "residual_er": 0.484311789274216
+      },
+      {
+        "ticker": "GOOG",
+        "dollars": 1934222.72,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "FDN",
+        "market_er": 0.301198750734329,
+        "sector_er": 0.0694479495286942,
+        "subsector_er": -0.00786668621003628,
+        "residual_er": 0.637219965457916
+      },
+      {
+        "ticker": "META",
+        "dollars": 1764796.161,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "FDN",
+        "market_er": 0.238426566123962,
+        "sector_er": 0.139290079474449,
+        "subsector_er": 0.0255244430154562,
+        "residual_er": 0.596758902072906
+      },
+      {
+        "ticker": "QSR",
+        "dollars": 1560199.922,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "PEJ",
+        "market_er": 0.00483454158529639,
+        "sector_er": 0.0105519443750381,
+        "subsector_er": 0.0486761592328548,
+        "residual_er": 0.935937345027924
+      },
+      {
+        "ticker": "HHH",
+        "dollars": 1503829.145,
+        "decomposed": true,
+        "sector_etf": "XLRE",
+        "subsector_etf": "ITB",
+        "market_er": 0.131563350558281,
+        "sector_er": 0.116399094462395,
+        "subsector_er": 0.0368471406400204,
+        "residual_er": 0.715190410614014
+      },
+      {
+        "ticker": "HTZ",
+        "dollars": 78339.393,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IYG",
+        "market_er": null,
+        "sector_er": null,
+        "subsector_er": null,
+        "residual_er": null
+      }
+    ]
+  },
+  "Appaloosa": {
+    "name": "Appaloosa",
+    "bw_filer_id": "BW-FILER-CIK0001656456",
+    "report_date": "2025-12-31",
+    "gross_long": 5495562638.0,
+    "n_positions": 25,
+    "n_decomposed": 25,
+    "positions": [
+      {
+        "ticker": "BABA",
+        "dollars": 753117926.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.115408338606358,
+        "sector_er": -0.0050507141277194,
+        "subsector_er": -0.00367571110837162,
+        "residual_er": 0.893318057060242
+      },
+      {
+        "ticker": "GOOG",
+        "dollars": 560738948.0,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "FDN",
+        "market_er": 0.301198750734329,
+        "sector_er": 0.0694479495286942,
+        "subsector_er": -0.00786668621003628,
+        "residual_er": 0.637219965457916
+      },
+      {
+        "ticker": "AMZN",
+        "dollars": 503047031.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.330050647258759,
+        "sector_er": 0.162476927042007,
+        "subsector_er": 0.0231606364250183,
+        "residual_er": 0.484311789274216
+      },
+      {
+        "ticker": "MU",
+        "dollars": 499467500.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "SMH",
+        "market_er": 0.270656079053879,
+        "sector_er": 0.236447900533676,
+        "subsector_er": 0.0752422362565994,
+        "residual_er": 0.417653799057007
+      },
+      {
+        "ticker": "META",
+        "dollars": 396054000.0,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "FDN",
+        "market_er": 0.238426566123962,
+        "sector_er": 0.139290079474449,
+        "subsector_er": 0.0255244430154562,
+        "residual_er": 0.596758902072906
+      },
+      {
+        "ticker": "NVDA",
+        "dollars": 317050000.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "SMH",
+        "market_er": 0.425739407539368,
+        "sector_er": 0.121248237788677,
+        "subsector_er": -0.0148112531751394,
+        "residual_er": 0.467823594808578
+      },
+      {
+        "ticker": "WHR",
+        "dollars": 282067400.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XHB",
+        "market_er": 0.0879958048462868,
+        "sector_er": 0.0628250688314438,
+        "subsector_er": 0.163436502218246,
+        "residual_er": 0.685742616653442
+      },
+      {
+        "ticker": "NRG",
+        "dollars": 261153600.0,
+        "decomposed": true,
+        "sector_etf": "XLU",
+        "subsector_etf": "PBW",
+        "market_er": 0.165610671043396,
+        "sector_er": 0.204108119010925,
+        "subsector_er": 0.0189761687070131,
+        "residual_er": 0.611305058002472
+      },
+      {
+        "ticker": "MSFT",
+        "dollars": 241810000.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": 0.137346774339676,
+        "sector_er": 0.0213174298405647,
+        "subsector_er": 0.321379572153091,
+        "residual_er": 0.519956231117249
+      },
+      {
+        "ticker": "PDD",
+        "dollars": 201267250.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.175126120448112,
+        "sector_er": -0.00674094492569566,
+        "subsector_er": -0.00269652693532407,
+        "residual_er": 0.834311366081238
+      },
+      {
+        "ticker": "QCOM",
+        "dollars": 195852250.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "SMH",
+        "market_er": 0.212029084563255,
+        "sector_er": 0.00845091510564089,
+        "subsector_er": 0.00243860320188105,
+        "residual_er": 0.777081429958344
+      },
+      {
+        "ticker": "VST",
+        "dollars": 152456850.0,
+        "decomposed": true,
+        "sector_etf": "XLU",
+        "subsector_etf": "PBW",
+        "market_er": 0.15140363574028,
+        "sector_er": 0.167707085609436,
+        "subsector_er": 0.0230162143707275,
+        "residual_er": 0.657873034477234
+      },
+      {
+        "ticker": "UBER",
+        "dollars": 151163500.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": 0.132796362042427,
+        "sector_er": 0.0113899689167738,
+        "subsector_er": -0.000678264303132892,
+        "residual_er": 0.856491923332214
+      },
+      {
+        "ticker": "DB",
+        "dollars": 121464000.0,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "IAI",
+        "market_er": 0.3624487221241,
+        "sector_er": 0.00626883422955871,
+        "subsector_er": 0.0178650915622711,
+        "residual_er": 0.613417387008667
+      },
+      {
+        "ticker": "JD",
+        "dollars": 119307220.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.115679033100605,
+        "sector_er": 0.00443024374544621,
+        "subsector_er": 0.00405860086902976,
+        "residual_er": 0.875832140445709
+      },
+      {
+        "ticker": "OC",
+        "dollars": 106314500.0,
+        "decomposed": true,
+        "sector_etf": "XLI",
+        "subsector_etf": "IYJ",
+        "market_er": 0.218415379524231,
+        "sector_er": 0.113009996712208,
+        "subsector_er": 0.0392157956957817,
+        "residual_er": 0.62935882806778
+      },
+      {
+        "ticker": "RTX",
+        "dollars": 91700000.0,
+        "decomposed": true,
+        "sector_etf": "XLI",
+        "subsector_etf": "PPA",
+        "market_er": 0.0495651550590992,
+        "sector_er": 0.209512338042259,
+        "subsector_er": 0.2823406457901,
+        "residual_er": 0.458581864833832
+      },
+      {
+        "ticker": "LHX",
+        "dollars": 86603150.0,
+        "decomposed": true,
+        "sector_etf": "XLI",
+        "subsector_etf": "PPA",
+        "market_er": 0.0120597165077925,
+        "sector_er": 0.169068053364754,
+        "subsector_er": 0.321196645498276,
+        "residual_er": 0.497675567865372
+      },
+      {
+        "ticker": "BIDU",
+        "dollars": 75129500.0,
+        "decomposed": true,
+        "sector_etf": "XLC",
+        "subsector_etf": "FDN",
+        "market_er": 0.140807092189789,
+        "sector_er": -0.00926591362804174,
+        "subsector_er": -0.0150162251666188,
+        "residual_er": 0.883475065231323
+      },
+      {
+        "ticker": "MHK",
+        "dollars": 73777500.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XHB",
+        "market_er": 0.197475165128708,
+        "sector_er": 0.115930534899235,
+        "subsector_er": 0.421153545379639,
+        "residual_er": 0.265440732240677
+      },
+      {
+        "ticker": "LYFT",
+        "dollars": 73606000.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": 0.10868463665247,
+        "sector_er": -0.00926690082997084,
+        "subsector_er": 0.0916781648993492,
+        "residual_er": 0.808904111385345
+      },
+      {
+        "ticker": "AMD",
+        "dollars": 69602000.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "SMH",
+        "market_er": 0.274776518344879,
+        "sector_er": 0.17198534309864,
+        "subsector_er": 0.0609506256878376,
+        "residual_er": 0.492287516593933
+      },
+      {
+        "ticker": "BALL",
+        "dollars": 63564000.0,
+        "decomposed": true,
+        "sector_etf": "XLB",
+        "subsector_etf": "IYM",
+        "market_er": -0.00607053283601999,
+        "sector_er": 0.260523438453674,
+        "subsector_er": 0.0447991117835045,
+        "residual_er": 0.700747966766357
+      },
+      {
+        "ticker": "IQV",
+        "dollars": 63114800.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "IHI",
+        "market_er": 0.0943372324109077,
+        "sector_er": 0.155390903353691,
+        "subsector_er": 0.00378487701527774,
+        "residual_er": 0.746487021446228
+      },
+      {
+        "ticker": "ET",
+        "dollars": 36133713.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": -0.102424785494804,
+        "sector_er": -0.00457695499062538,
+        "subsector_er": -0.0313643775880337,
+        "residual_er": 1.1383661031723
+      }
+    ]
+  },
+  "Greenlight": {
+    "name": "Greenlight",
+    "bw_filer_id": "BW-FILER-CIK0001079114",
+    "report_date": "2023-12-31",
+    "gross_long": 768756885.0,
+    "n_positions": 14,
+    "n_decomposed": 12,
+    "positions": [
+      {
+        "ticker": "BW-RESTRICTED",
+        "dollars": null,
+        "decomposed": false
+      },
+      {
+        "ticker": "BHF",
+        "dollars": 161068530.0,
+        "decomposed": true,
+        "sector_etf": "XLF",
+        "subsector_etf": "KIE",
+        "market_er": -0.0200468115508556,
+        "sector_er": 0.0299180019646883,
+        "subsector_er": 0.0281259547919035,
+        "residual_er": 0.962002873420715
+      },
+      {
+        "ticker": "KD",
+        "dollars": 132079115.0,
+        "decomposed": true,
+        "sector_etf": "XLK",
+        "subsector_etf": "IGV",
+        "market_er": 0.0282664820551872,
+        "sector_er": -0.00141746585723013,
+        "subsector_er": 0.0487208776175976,
+        "residual_er": 0.924430131912231
+      },
+      {
+        "ticker": "ALIT",
+        "dollars": 78831446.0,
+        "decomposed": true,
+        "sector_etf": "XLI",
+        "subsector_etf": "IYJ",
+        "market_er": null,
+        "sector_er": null,
+        "subsector_er": null,
+        "residual_er": null
+      },
+      {
+        "ticker": "LIVN",
+        "dollars": 63604811.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "IHI",
+        "market_er": 0.139011263847351,
+        "sector_er": 0.0380505174398422,
+        "subsector_er": 0.0910030752420425,
+        "residual_er": 0.731935143470764
+      },
+      {
+        "ticker": "VTRS",
+        "dollars": 36342990.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "XPH",
+        "market_er": 0.0836183503270149,
+        "sector_er": 0.0968183353543282,
+        "subsector_er": 0.0732490122318268,
+        "residual_er": 0.746314287185669
+      },
+      {
+        "ticker": "GPOR",
+        "dollars": 29699604.0,
+        "decomposed": true,
+        "sector_etf": "XLE",
+        "subsector_etf": "XOP",
+        "market_er": -0.0264873076230288,
+        "sector_er": 0.161414533853531,
+        "subsector_er": 0.166339263319969,
+        "residual_er": 0.698733508586884
+      },
+      {
+        "ticker": "AER",
+        "dollars": 18580000.0,
+        "decomposed": true,
+        "sector_etf": "XLY",
+        "subsector_etf": "XRT",
+        "market_er": 0.147362872958183,
+        "sector_er": 0.00516308611258864,
+        "subsector_er": -0.01579724624753,
+        "residual_er": 0.863271296024323
+      },
+      {
+        "ticker": "KVUE",
+        "dollars": 11938170.0,
+        "decomposed": true,
+        "sector_etf": "XLP",
+        "subsector_etf": "IYK",
+        "market_er": 0.000186848803423345,
+        "sector_er": 0.173584297299385,
+        "subsector_er": -0.00154741620644927,
+        "residual_er": 0.827776253223419
+      },
+      {
+        "ticker": "BW-BBG001LWHLJ8",
+        "dollars": null,
+        "decomposed": false
+      },
+      {
+        "ticker": "GLPG",
+        "dollars": 6608796.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "XBI",
+        "market_er": null,
+        "sector_er": null,
+        "subsector_er": null,
+        "residual_er": null
+      },
+      {
+        "ticker": "SHC",
+        "dollars": 5677944.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "IHI",
+        "market_er": 0.155703321099281,
+        "sector_er": 0.0837233737111092,
+        "subsector_er": 0.0203147158026695,
+        "residual_er": 0.740258574485779
+      },
+      {
+        "ticker": "TEVA",
+        "dollars": 2802826.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "XPH",
+        "market_er": 0.0593305043876171,
+        "sector_er": 0.0476789064705372,
+        "subsector_er": 0.0157945957034826,
+        "residual_er": 0.87719601392746
+      },
+      {
+        "ticker": "NUVB",
+        "dollars": 52842.0,
+        "decomposed": true,
+        "sector_etf": "XLV",
+        "subsector_etf": "XBI",
+        "market_er": 0.0543817430734634,
+        "sector_er": 0.012572037987411,
+        "subsector_er": 0.043542917817831,
+        "residual_er": 0.889503300189972
+      }
+    ]
+  }
+}
