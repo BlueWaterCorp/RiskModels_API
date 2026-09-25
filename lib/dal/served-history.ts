@@ -25,7 +25,7 @@ export const SERVED_HISTORY_START: Readonly<Record<ServedProduct, string>> = {
   hedge_ratio: "2010-12-08",
   explained_risk: "2011-12-07",
   returns_decomposition: "2011-12-07",
-  lstar: "2011-12-07",
+  lstar: "2013-01-01",
   residual_signal: "2011-12-07",
   cohort: "2011-12-07",
 };
