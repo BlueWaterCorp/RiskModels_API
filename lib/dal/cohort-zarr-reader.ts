@@ -53,6 +53,7 @@ import {
   getZarrFactorSetId,
 } from "@/lib/zarr-config";
 import { scrubBwSymId } from "@/lib/dal/sym-id-scrub";
+import { SERVED_HISTORY_START, clampStart } from "./served-history";
 
 let _storage: Storage | null = null;
 
@@ -601,7 +602,8 @@ export async function readCohortSeries(params: {
   const nTeo = teos.length;
   const nCohort = roster.entries.length;
 
-  const t0 = params.startDate ? lowerBound(teos, params.startDate) : 0;
+  const effStart = clampStart(params.startDate, SERVED_HISTORY_START.cohort);
+  const t0 = effStart ? lowerBound(teos, effStart) : 0;
   const t1 = params.endDate ? upperBoundInclusive(teos, params.endDate) : nTeo;
   if (t1 <= t0) return [];
 
