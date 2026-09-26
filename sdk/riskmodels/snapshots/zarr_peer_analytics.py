@@ -4,7 +4,7 @@ Mirrors the API path used by :mod:`riskmodels.peer_group.PeerGroupProxy` +
 the legacy ``compute_peer_analytics`` (now private to BWMACRO), but reads
 everything from the local ERM3 zarr stack:
 
-- Peer discovery  → ds_daily (fs_industry_code + market_cap at latest teo)
+- Peer discovery  → ds_daily (bw_industry_id + market_cap at latest teo)
 - Peer metrics    → ds_erm3_hedge_weights (latest teo L3 HR/ER per peer)
 - Historical returns for correlation/Sharpe → ds_daily + ds_erm3_returns
 
@@ -27,6 +27,7 @@ import xarray as xr
 from ..lineage import RiskLineage
 from ..peer_group import PeerComparison
 from ..portfolio_math import PortfolioAnalysis
+from ._taxonomy import INDUSTRY_VAR, SECTOR_VAR, clean_ids
 from .zarr_context import (
     _DEFAULT_ERM3,
     _sector_etf,
@@ -101,7 +102,7 @@ def build_peer_comparison_from_zarr(
 
     Cap-weighted by default (matching :meth:`PeerGroupProxy.from_ticker`
     behavior). Returns ``None`` if the target cannot be classified (no
-    ``fs_industry_code``) or has no peers in the universe mask.
+    ``bw_industry_id``) or has no peers in the universe mask.
     """
     erm3 = Path(erm3_root) if erm3_root is not None else _DEFAULT_ERM3
     ticker = ticker.upper()
@@ -113,9 +114,9 @@ def build_peer_comparison_from_zarr(
         return None
 
     d_last = _latest_daily_slice(ds_daily)
-    # Grab per-symbol fs_industry_code, bw_sector_code, market_cap at latest teo.
-    fs_ind_arr = np.asarray(d_last["fs_industry_code"].values).astype(float)
-    bw_arr = np.asarray(d_last["bw_sector_code"].values).astype(float)
+    # Grab per-symbol industry id, sector id, market_cap at latest teo (sentinels -> NaN).
+    fs_ind_arr = clean_ids(d_last[INDUSTRY_VAR].values, kind="industry")
+    bw_arr = clean_ids(d_last[SECTOR_VAR].values, kind="sector")
     mc_arr = np.asarray(d_last["market_cap"].values).astype(float)
     sym_arr = np.asarray(d_last.symbol.values)
     tkr_arr = np.asarray(d_last["ticker"].values)

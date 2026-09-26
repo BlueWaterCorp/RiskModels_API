@@ -108,7 +108,7 @@ export function zarrFundamentalsBasename(): string {
 }
 
 /**
- * Industry peer β panel — Vasicek stats at (teo × fs_industry_code × fact),
+ * Industry peer β panel — Vasicek stats at (teo × bw_industry_id × fact),
  * with a `fact_level` coord (1=market, 2=sector, 3=subsector). Older vintages
  * used a `level` dim; the reader accepts both.
  * Basename uses the same factor-set suffix as returns/rankings

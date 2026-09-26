@@ -4,7 +4,7 @@
  * The `metadata` JSONB stored in Supabase contains fields populated upstream
  * by `ERM3/scripts/python/sync_erm3_to_supabase.py` from the security_master
  * table — including licensed third-party identifiers (`isin`, `cusip`) and // licensed-id-ok: descriptive docstring naming the fields this helper strips; no values exposed
- * licensed industry codes (`industry_code` = FactSet `fs_industry_code`).
+ * licensed third-party industry codes (`industry_code`).
  *
  * Public API surfaces must NOT redistribute those fields. This helper
  * restricts whole-metadata passthrough to a small allowlist of fields that
@@ -17,7 +17,7 @@
 
 const SAFE_METADATA_KEYS = [
   "figi",          // Open identifier (Bloomberg OpenFIGI)
-  "sector",        // GICS sector NAME (e.g. "Technology") — non-sensitive label
+  "sector",        // sector NAME (e.g. "Technology") — non-sensitive label
   "company_name",  // Public company name
   "market_etf",    // BW-derived ETF mapping
   "sector_etf",    // BW-derived ETF mapping
