@@ -241,7 +241,6 @@ describe("snapshot loader — synthetic composite ids", () => {
         country: "US",
         status: "active",
         style_label: null,
-        factset_entity_id: null,
         latest_report_date: "2026-03-31",
         latest_filing_date: "2026-05-14",
         latest_extracted_at: null,
