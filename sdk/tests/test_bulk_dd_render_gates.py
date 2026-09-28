@@ -100,18 +100,18 @@ def test_bool_var_changes_digest(bdr, tmp_path):
 
 
 def _write_daily(root: Path, mc_overrides: dict[str, float] | None = None) -> None:
-    """Minimal ds_daily.zarr: two 4-name subsectors (fs 10 and fs 20)."""
+    """Minimal ds_daily.zarr: two 4-name industries (131 and 147)."""
     tickers = ("AAA", "BBB", "GGG", "HHH", "CCC", "DDD", "EEE", "FFF")
-    fs = np.array([10, 10, 10, 10, 20, 20, 20, 20], dtype=np.float32)
-    bw = np.array([1, 1, 1, 1, 2, 2, 2, 2], dtype=np.float32)
+    fs = np.array([131, 131, 131, 131, 147, 147, 147, 147], dtype=np.int16)
+    bw = np.array([76, 76, 76, 76, 78, 78, 78, 78], dtype=np.int16)
     mc = np.array([800, 700, 600, 500, 400, 300, 200, 100], dtype=np.float32)
     for t, v in (mc_overrides or {}).items():
         mc[tickers.index(t)] = v
     n_teo, n_sym = 4, len(tickers)
     ds = xr.Dataset(
         {
-            "fs_industry_code": (("teo", "symbol"), np.tile(fs, (n_teo, 1))),
-            "bw_sector_code": (("teo", "symbol"), np.tile(bw, (n_teo, 1))),
+            "bw_industry_id": (("teo", "symbol"), np.tile(fs, (n_teo, 1))),
+            "bw_sector_id": (("teo", "symbol"), np.tile(bw, (n_teo, 1))),
             "market_cap": (("teo", "symbol"), np.tile(mc, (n_teo, 1))),
         },
         coords={
@@ -127,8 +127,8 @@ def _write_daily(root: Path, mc_overrides: dict[str, float] | None = None) -> No
 def test_peer_repair_invalidates_cohort_but_not_others(bdr, tmp_path):
     base, peer_chg, other_chg = tmp_path / "base", tmp_path / "peer", tmp_path / "other"
     _write_daily(base)
-    _write_daily(peer_chg, {"BBB": 999.0})   # AAA's cohort-mate (fs 10)
-    _write_daily(other_chg, {"CCC": 999.0})  # unrelated cohort (fs 20)
+    _write_daily(peer_chg, {"BBB": 999.0})   # AAA's cohort-mate (industry 131)
+    _write_daily(other_chg, {"CCC": 999.0})  # unrelated cohort (industry 147)
     want = ["AAA", "DDD"]
     f_base = bdr.symbol_fingerprints(base, want)
     f_peer = bdr.symbol_fingerprints(peer_chg, want)
@@ -136,7 +136,7 @@ def test_peer_repair_invalidates_cohort_but_not_others(bdr, tmp_path):
     assert f_base and f_peer and f_other
     # A repair to peer BBB must re-render AAA even though AAA's own rows are identical.
     assert f_base["AAA"] != f_peer["AAA"]
-    # ...but must NOT degrade to a global digest: fs-20 names are untouched.
+    # ...but must NOT degrade to a global digest: industry-147 names are untouched.
     assert f_base["DDD"] == f_peer["DDD"]
     # And a repair in the other cohort flips DDD, not AAA.
     assert f_base["AAA"] == f_other["AAA"]
@@ -243,3 +243,23 @@ def test_snapshot_page_saves_through_a_tmp_suffix(tmp_path):
     plain = tmp_path / "X_DD_latest.png"
     SnapshotPage("X", "tmp-suffix save").save(plain)
     assert plain.exists() and plain.stat().st_size > 0
+
+
+def test_peer_cohorts_ignore_sentinel_and_old_numbering(bdr, tmp_path):
+    """-1 sentinels and values outside our id ranges form no cohort."""
+    tickers = ("AAA", "BBB", "CCC", "DDD")
+    ind = np.array([131, 131, -1, 2320], dtype=np.int16)
+    sec = np.array([76, 76, -1, 6], dtype=np.int16)
+    ds = xr.Dataset(
+        {
+            "bw_industry_id": (("teo", "symbol"), np.tile(ind, (2, 1))),
+            "bw_sector_id": (("teo", "symbol"), np.tile(sec, (2, 1))),
+            "market_cap": (("teo", "symbol"), np.ones((2, 4), dtype=np.float32)),
+        },
+        coords={"teo": np.arange(2, dtype=np.int64), "symbol": [f"S{i}" for i in range(4)],
+                "ticker": ("symbol", list(tickers))},
+    )
+    ds.to_zarr(tmp_path / "ds_daily.zarr", consolidated=True)
+    groups, _members = bdr._peer_cohorts(tmp_path, list(tickers))
+    assert "AAA" in groups and all(k.startswith(("ind:", "sec:")) for k in groups["AAA"])
+    assert "CCC" not in groups and "DDD" not in groups

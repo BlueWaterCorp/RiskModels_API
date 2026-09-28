@@ -1395,7 +1395,7 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
 }
 
 // =====================================================================
-// Industry panel — cross-section at (teo × fs_industry_code × level|fact)
+// Industry panel — cross-section at (teo × bw_industry_id × level|fact)
 // =====================================================================
 
 export {
@@ -1425,9 +1425,21 @@ export interface ReadIndustryPanelResult {
   panel_key: IndustryPanelKey;
 }
 
+// Industry dimension name. Current stores use `bw_industry_id` (101-159); stores built before
+// the taxonomy switch used the older name, read only until those vintages age out.
+const INDUSTRY_DIM_NAMES = ["bw_industry_id", "fs_industry_code"] as const;
+
 async function readIndustryCodeInts(grp: Group<Readable>): Promise<number[] | null> {
+  for (const name of INDUSTRY_DIM_NAMES) {
+    const got = await readIndustryCodeIntsNamed(grp, name);
+    if (got) return got;
+  }
+  return null;
+}
+
+async function readIndustryCodeIntsNamed(grp: Group<Readable>, name: string): Promise<number[] | null> {
   try {
-    const loc = grp.resolve("fs_industry_code");
+    const loc = grp.resolve(name);
     const arr = await open.v2(loc, { kind: "array" });
     const ch = await get(arr, null);
     const d = ch?.data;

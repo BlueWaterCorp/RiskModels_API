@@ -289,12 +289,12 @@ def _peer_cohorts(
 
     A DD page reads OTHER symbols' histories through the peer path:
     :func:`riskmodels.snapshots.zarr_peer_analytics.build_peer_comparison_from_zarr`
-    groups by ``fs_industry_code`` at the latest ``ds_daily`` teo (falling back
-    to ``bw_sector_code`` when a subsector has <3 peers) and keeps the top-15 by
+    groups by ``bw_industry_id`` at the latest ``ds_daily`` teo (falling back
+    to ``bw_sector_id`` when a subsector has <3 peers) and keeps the top-15 by
     market cap. A repair to peer XYZ therefore changes ABC's rendered page while
     leaving ABC's own rows byte-identical — a purely per-ticker digest calls ABC
     fresh forever (H.118). This reuses the exact same assignment source
-    (``ds_daily`` ``fs_industry_code``/``bw_sector_code`` at the latest teo) to
+    (``ds_daily`` ``bw_industry_id``/``bw_sector_id`` at the latest teo) to
     scope invalidation to the cohort: a change in one subsector re-renders that
     subsector, not the world.
 
@@ -307,8 +307,12 @@ def _peer_cohorts(
 
     ds = xr.open_zarr(Path(zarr_root) / "ds_daily.zarr", consolidated=True)
     d = ds.sel(teo=ds.teo.values[-1])
-    fs = np.asarray(d["fs_industry_code"].values).astype(float)
-    bw = np.asarray(d["bw_sector_code"].values).astype(float)
+    from riskmodels.snapshots._taxonomy import industry_keys, sector_ids, store_class_vars
+
+    # Stores published before the switch carry the older pair; store_class_vars picks it.
+    sector_var, industry_var, legacy_class = store_class_vars(d)
+    fs = industry_keys(d[industry_var].values, legacy=legacy_class)
+    bw = sector_ids(d[sector_var].values, legacy=legacy_class)
     mc = np.asarray(d["market_cap"].values).astype(float)
     tkr = np.array([
         (t.decode("utf-8") if isinstance(t, bytes) else str(t)).upper().strip()
@@ -349,14 +353,14 @@ def _peer_cohorts(
         groups: list[str] = []
         n_sub_peers = 0
         if np.isfinite(fs[i]):
-            key = f"fs:{fs[i]:g}"
+            key = f"ind:{fs[i]:g}"
             if key not in group_members:
                 group_members[key] = _top_members(fs_idx[fs[i]])
             groups.append(key)
             n_sub_peers = len(fs_idx[fs[i]]) - 1
         if n_sub_peers < 3 and np.isfinite(bw[i]):
             # Mirrors zarr_peer_analytics' same-sector fallback for thin subsectors.
-            key = f"bw:{bw[i]:g}"
+            key = f"sec:{bw[i]:g}"
             if key not in group_members:
                 group_members[key] = _top_members(bw_idx[bw[i]])
             groups.append(key)

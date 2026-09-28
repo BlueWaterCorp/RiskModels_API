@@ -130,49 +130,27 @@ def _resolve_company_name_local(ticker: str) -> str:
 
     return _TICKER_TO_NAME.get(ticker.upper(), ticker)
 
-BW_SECTOR_TO_ETF = {
-    1: "XLE",
-    2: "XLB",
-    3: "XLI",
-    4: "XLY",
-    5: "XLP",
-    6: "XLV",
-    7: "XLF",
-    8: "XLK",
-    9: "XLC",
-    10: "XLU",
-    11: "XLRE",
-}
-
-# GICS-style sector full names (parallel to BW_SECTOR_TO_ETF). Drives the
-# IDENTITY panel and header subtitle; renderers fall back to the ETF ticker
-# when this returns None.
-BW_SECTOR_TO_NAME = {
-    1: "Energy",
-    2: "Materials",
-    3: "Industrials",
-    4: "Consumer Discretionary",
-    5: "Consumer Staples",
-    6: "Health Care",
-    7: "Financials",
-    8: "Information Technology",
-    9: "Communication Services",
-    10: "Utilities",
-    11: "Real Estate",
-}
+# Sector ids (71-81) -> sector ETF / display name; industry ids (101-159) -> primary
+# subsector ETF. SDK-local table (``_taxonomy``) so the SDK needs no model-repo import.
+from riskmodels.snapshots._taxonomy import (  # noqa: E402
+    SECTOR_ID_TO_ETF as BW_SECTOR_TO_ETF,
+    SECTOR_ID_TO_NAME as BW_SECTOR_TO_NAME,
+    industry_keys as _industry_keys,
+    legacy_subsector_etf as _legacy_subsector_etf,
+    sector_etf as _taxonomy_sector_etf,
+    sector_ids as _sector_ids,
+    sector_name as _taxonomy_sector_name,
+    store_class_vars as _store_class_vars,
+    subsector_etf as _taxonomy_subsector_etf,
+)
 
 
-def _sector_name(bw_code: float | int | None) -> str | None:
-    if bw_code is None:
-        return None
-    try:
-        return BW_SECTOR_TO_NAME.get(int(bw_code))
-    except (TypeError, ValueError):
-        return None
+def _sector_name(bw_sector_id: float | int | None) -> str | None:
+    return _taxonomy_sector_name(bw_sector_id)
 
 
 # Reverse map for renderers that only carry the ETF ticker downstream
-# (e.g. P1Data.sector_etf without a separate bw_sector_code field).
+# (e.g. P1Data.sector_etf without a separate sector id field).
 _ETF_TO_BW_SECTOR_NAME = {
     etf: BW_SECTOR_TO_NAME[code] for code, etf in BW_SECTOR_TO_ETF.items()
 }
@@ -229,26 +207,24 @@ def _ensure_erm3_import(erm3_root: Path) -> None:
         sys.path.insert(0, str(erm3_root))
 
 
-def _subsector_etf(fs_industry: float | int | None, erm3_root: Path) -> str | None:
-    _ensure_erm3_import(erm3_root)
-    from erm3.shared.etf_register import FS_INDUSTRY_TO_SUBSECTOR_ETFS
-    if fs_industry is None:
-        return None
-    try:
-        ind = int(fs_industry)
-    except (TypeError, ValueError):
-        return None
-    etfs = FS_INDUSTRY_TO_SUBSECTOR_ETFS.get(ind, [])
-    return str(etfs[0]) if etfs else None
+def _subsector_etf(
+    bw_industry_id: float | int | None,
+    erm3_root: Path | None = None,
+    *,
+    legacy: bool = False,
+) -> str | None:
+    """Industry id (101-159) -> primary subsector ETF.
+
+    ``legacy=True`` reads an industry code from a store published before the switch; its ETF
+    comes from the model repo at ``erm3_root`` when importable, else None.
+    """
+    if legacy:
+        return _legacy_subsector_etf(bw_industry_id, erm3_root)
+    return _taxonomy_subsector_etf(bw_industry_id)
 
 
-def _sector_etf(bw_code: float | int | None) -> str | None:
-    if bw_code is None:
-        return None
-    try:
-        return BW_SECTOR_TO_ETF.get(int(bw_code))
-    except (TypeError, ValueError):
-        return None
+def _sector_etf(bw_sector_id: float | int | None) -> str | None:
+    return _taxonomy_sector_etf(bw_sector_id)
 
 
 def _ticker_coord_scalar_str(v: Any) -> str:
@@ -565,9 +541,10 @@ def fetch_stock_context_zarr(
         except Exception:
             # Any failure → fall back to legacy. No silent corruption.
             pass
+    sector_var, industry_var, legacy_class = _store_class_vars(ds_daily)
     merged = xr.merge(
         [
-            sub_d[["return", "close", "market_cap", "volatility", "bw_sector_code", "fs_industry_code"]],
+            sub_d[["return", "close", "market_cap", "volatility", sector_var, industry_var]],
             sub_e[
                 [
                     "L3_market_HR",
@@ -639,10 +616,12 @@ def fetch_stock_context_zarr(
 
     last = hist.iloc[-1]
     teo = str(last["date"])[:10]
-    bw = float(last["bw_sector_code"]) if pd.notna(last.get("bw_sector_code")) else None
-    fs_ind = float(last["fs_industry_code"]) if pd.notna(last.get("fs_industry_code")) else None
+    bw_v = float(_sector_ids([last.get(sector_var, np.nan)], legacy=legacy_class)[0])
+    ind_v = float(_industry_keys([last.get(industry_var, np.nan)], legacy=legacy_class)[0])
+    bw = bw_v if np.isfinite(bw_v) else None
+    fs_ind = ind_v if np.isfinite(ind_v) else None
     sector_etf = sector_etf_override or _sector_etf(bw)
-    subsector_etf = subsector_etf_override or _subsector_etf(fs_ind, erm3)
+    subsector_etf = subsector_etf_override or _subsector_etf(fs_ind, erm3, legacy=legacy_class)
 
     # API behavior: each ETF series uses its own latest date independently of the stock.
     # When matching the API, ETFs may have 1 day MORE than the stock if Supabase synced them
