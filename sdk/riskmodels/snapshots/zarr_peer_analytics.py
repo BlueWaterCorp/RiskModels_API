@@ -27,7 +27,7 @@ import xarray as xr
 from ..lineage import RiskLineage
 from ..peer_group import PeerComparison
 from ..portfolio_math import PortfolioAnalysis
-from ._taxonomy import INDUSTRY_VAR, SECTOR_VAR, clean_ids
+from ._taxonomy import industry_keys, sector_ids, store_class_vars
 from .zarr_context import (
     _DEFAULT_ERM3,
     _sector_etf,
@@ -115,8 +115,10 @@ def build_peer_comparison_from_zarr(
 
     d_last = _latest_daily_slice(ds_daily)
     # Grab per-symbol industry id, sector id, market_cap at latest teo (sentinels -> NaN).
-    fs_ind_arr = clean_ids(d_last[INDUSTRY_VAR].values, kind="industry")
-    bw_arr = clean_ids(d_last[SECTOR_VAR].values, kind="sector")
+    # Stores published before the switch carry the older pair; store_class_vars picks it.
+    sector_var, industry_var, legacy_class = store_class_vars(d_last)
+    fs_ind_arr = industry_keys(d_last[industry_var].values, legacy=legacy_class)
+    bw_arr = sector_ids(d_last[sector_var].values, legacy=legacy_class)
     mc_arr = np.asarray(d_last["market_cap"].values).astype(float)
     sym_arr = np.asarray(d_last.symbol.values)
     tkr_arr = np.asarray(d_last["ticker"].values)
@@ -128,7 +130,9 @@ def build_peer_comparison_from_zarr(
 
     t_fs_ind = fs_ind_arr[target_idx]
     t_bw = bw_arr[target_idx]
-    target_subsector_etf = _subsector_etf(t_fs_ind if np.isfinite(t_fs_ind) else None, erm3)
+    target_subsector_etf = _subsector_etf(
+        t_fs_ind if np.isfinite(t_fs_ind) else None, erm3, legacy=legacy_class
+    )
     target_sector_etf = _sector_etf(t_bw if np.isfinite(t_bw) else None)
     group_etf = target_subsector_etf or target_sector_etf
     if not np.isfinite(t_fs_ind) or not group_etf:

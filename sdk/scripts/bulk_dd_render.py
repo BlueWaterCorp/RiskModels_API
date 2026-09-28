@@ -307,10 +307,12 @@ def _peer_cohorts(
 
     ds = xr.open_zarr(Path(zarr_root) / "ds_daily.zarr", consolidated=True)
     d = ds.sel(teo=ds.teo.values[-1])
-    from riskmodels.snapshots._taxonomy import INDUSTRY_VAR, SECTOR_VAR, clean_ids
+    from riskmodels.snapshots._taxonomy import industry_keys, sector_ids, store_class_vars
 
-    fs = clean_ids(d[INDUSTRY_VAR].values, kind="industry")
-    bw = clean_ids(d[SECTOR_VAR].values, kind="sector")
+    # Stores published before the switch carry the older pair; store_class_vars picks it.
+    sector_var, industry_var, legacy_class = store_class_vars(d)
+    fs = industry_keys(d[industry_var].values, legacy=legacy_class)
+    bw = sector_ids(d[sector_var].values, legacy=legacy_class)
     mc = np.asarray(d["market_cap"].values).astype(float)
     tkr = np.array([
         (t.decode("utf-8") if isinstance(t, bytes) else str(t)).upper().strip()

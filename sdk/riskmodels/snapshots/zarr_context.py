@@ -133,12 +133,14 @@ def _resolve_company_name_local(ticker: str) -> str:
 # Sector ids (71-81) -> sector ETF / display name; industry ids (101-159) -> primary
 # subsector ETF. SDK-local table (``_taxonomy``) so the SDK needs no model-repo import.
 from riskmodels.snapshots._taxonomy import (  # noqa: E402
-    INDUSTRY_VAR,
     SECTOR_ID_TO_ETF as BW_SECTOR_TO_ETF,
     SECTOR_ID_TO_NAME as BW_SECTOR_TO_NAME,
-    SECTOR_VAR,
+    industry_keys as _industry_keys,
+    legacy_subsector_etf as _legacy_subsector_etf,
     sector_etf as _taxonomy_sector_etf,
+    sector_ids as _sector_ids,
     sector_name as _taxonomy_sector_name,
+    store_class_vars as _store_class_vars,
     subsector_etf as _taxonomy_subsector_etf,
 )
 
@@ -205,8 +207,19 @@ def _ensure_erm3_import(erm3_root: Path) -> None:
         sys.path.insert(0, str(erm3_root))
 
 
-def _subsector_etf(bw_industry_id: float | int | None, erm3_root: Path | None = None) -> str | None:
-    """Industry id (101-159) -> primary subsector ETF. ``erm3_root`` kept for call compatibility."""
+def _subsector_etf(
+    bw_industry_id: float | int | None,
+    erm3_root: Path | None = None,
+    *,
+    legacy: bool = False,
+) -> str | None:
+    """Industry id (101-159) -> primary subsector ETF.
+
+    ``legacy=True`` reads an industry code from a store published before the switch; its ETF
+    comes from the model repo at ``erm3_root`` when importable, else None.
+    """
+    if legacy:
+        return _legacy_subsector_etf(bw_industry_id, erm3_root)
     return _taxonomy_subsector_etf(bw_industry_id)
 
 
@@ -528,9 +541,10 @@ def fetch_stock_context_zarr(
         except Exception:
             # Any failure → fall back to legacy. No silent corruption.
             pass
+    sector_var, industry_var, legacy_class = _store_class_vars(ds_daily)
     merged = xr.merge(
         [
-            sub_d[["return", "close", "market_cap", "volatility", SECTOR_VAR, INDUSTRY_VAR]],
+            sub_d[["return", "close", "market_cap", "volatility", sector_var, industry_var]],
             sub_e[
                 [
                     "L3_market_HR",
@@ -602,10 +616,12 @@ def fetch_stock_context_zarr(
 
     last = hist.iloc[-1]
     teo = str(last["date"])[:10]
-    bw = float(last[SECTOR_VAR]) if pd.notna(last.get(SECTOR_VAR)) else None
-    fs_ind = float(last[INDUSTRY_VAR]) if pd.notna(last.get(INDUSTRY_VAR)) else None
+    bw_v = float(_sector_ids([last.get(sector_var, np.nan)], legacy=legacy_class)[0])
+    ind_v = float(_industry_keys([last.get(industry_var, np.nan)], legacy=legacy_class)[0])
+    bw = bw_v if np.isfinite(bw_v) else None
+    fs_ind = ind_v if np.isfinite(ind_v) else None
     sector_etf = sector_etf_override or _sector_etf(bw)
-    subsector_etf = subsector_etf_override or _subsector_etf(fs_ind, erm3)
+    subsector_etf = subsector_etf_override or _subsector_etf(fs_ind, erm3, legacy=legacy_class)
 
     # API behavior: each ETF series uses its own latest date independently of the stock.
     # When matching the API, ETFs may have 1 day MORE than the stock if Supabase synced them

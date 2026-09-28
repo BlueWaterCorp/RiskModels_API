@@ -3,6 +3,11 @@
 Store variables: ``bw_sector_id`` (71-81) and ``bw_industry_id`` (101-159). Generated from
 the model taxonomy, definitions version ``bw_taxonomy_v1_20260925``. Values outside the
 ranges are unclassified (-1 / 0 sentinels) and map to None.
+
+Stores published before the switch carry ``bw_sector_code`` (1-11, same order and sector
+ETFs as 71-81) and an older industry code instead. :func:`store_class_vars` picks whichever
+pair a store has, and the helpers below translate the older sector code to the new id, so
+readers work against both vintages during the cutover.
 """
 from __future__ import annotations
 
@@ -10,6 +15,12 @@ TAXONOMY_DEFINITIONS_VERSION = "bw_taxonomy_v1_20260925"
 
 SECTOR_VAR = "bw_sector_id"
 INDUSTRY_VAR = "bw_industry_id"
+
+# Variables of stores published before the switch (read-only compatibility).
+LEGACY_SECTOR_VAR = "bw_sector_code"
+LEGACY_INDUSTRY_VAR = "fs_industry_code"
+# Older sector codes 1-11 are the same sectors, in the same order, as ids 71-81.
+LEGACY_SECTOR_OFFSET = 70
 
 # sector id -> (code, name, sector ETF)
 SECTORS: dict[int, tuple[str, str, str]] = {
@@ -126,6 +137,7 @@ def industry_name(industry_id) -> str | None:
     k = _as_int(industry_id)
     return INDUSTRIES[k][1] if k in INDUSTRIES else None
 
+
 def clean_ids(values, *, kind: str):
     """Float array of ids with sentinels and out-of-range values set to NaN.
 
@@ -138,3 +150,68 @@ def clean_ids(values, *, kind: str):
     lo, hi = (71, 81) if kind == "sector" else (101, 159)
     a[~(np.isfinite(a) & (a >= lo) & (a <= hi))] = np.nan
     return a
+
+
+def store_class_vars(ds) -> tuple[str, str, bool]:
+    """``(sector_var, industry_var, legacy)`` for the classification pair ``ds`` carries.
+
+    ``legacy`` is True for a store published before the switch. Raises ``KeyError`` when
+    neither pair is present.
+    """
+    names = set(getattr(ds, "variables", ds))
+    if SECTOR_VAR in names and INDUSTRY_VAR in names:
+        return SECTOR_VAR, INDUSTRY_VAR, False
+    if LEGACY_SECTOR_VAR in names and LEGACY_INDUSTRY_VAR in names:
+        return LEGACY_SECTOR_VAR, LEGACY_INDUSTRY_VAR, True
+    raise KeyError(
+        f"store carries neither ({SECTOR_VAR}, {INDUSTRY_VAR}) nor "
+        f"({LEGACY_SECTOR_VAR}, {LEGACY_INDUSTRY_VAR})"
+    )
+
+
+def sector_ids(values, *, legacy: bool):
+    """Float array of sector ids (71-81); anything else NaN. Older codes 1-11 are translated."""
+    import numpy as np
+
+    a = np.asarray(values, dtype=float).copy()
+    if legacy:
+        ok = np.isfinite(a) & (a >= 1) & (a <= 11)
+        a = np.where(ok, a + LEGACY_SECTOR_OFFSET, np.nan)
+    return clean_ids(a, kind="sector")
+
+
+def industry_keys(values, *, legacy: bool):
+    """Float array of industry grouping keys; unclassified NaN.
+
+    New stores: ids 101-159. Older stores: the stored positive code, usable only as a peer
+    grouping key (it has no id in this table).
+    """
+    import numpy as np
+
+    if not legacy:
+        return clean_ids(values, kind="industry")
+    a = np.asarray(values, dtype=float).copy()
+    a[~(np.isfinite(a) & (a > 0))] = np.nan
+    return a
+
+
+def legacy_subsector_etf(code, erm3_root=None) -> str | None:
+    """Primary subsector ETF for an older-store industry code, from the model repo if importable."""
+    k = _as_int(code)
+    if k is None:
+        return None
+    import sys
+
+    if erm3_root is not None and str(erm3_root) not in sys.path:
+        sys.path.insert(0, str(erm3_root))
+    table = None
+    for mod in ("erm3.shared.legacy_taxonomy.vendor_etf_maps", "erm3.shared.etf_register"):
+        try:
+            m = __import__(mod, fromlist=["FS_INDUSTRY_TO_SUBSECTOR_ETFS"])
+            table = getattr(m, "FS_INDUSTRY_TO_SUBSECTOR_ETFS", None)
+        except Exception:
+            table = None
+        if table:
+            break
+    etfs = (table or {}).get(k) or []
+    return str(etfs[0]) if etfs else None
