@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyChannel,
   firstTouchPatch,
+  persistFirstTouchAttribution,
 } from "@/lib/agent/signup-attribution";
 
 describe("classifyChannel", () => {
@@ -53,5 +54,45 @@ describe("firstTouchPatch", () => {
     );
     expect(next.channel).toBe("organic");
     expect(next.utm_source).toBe("newsletter");
+  });
+});
+
+/** Minimal agent_accounts stand-in: one row, select-chain + update-chain. */
+function fakeAdmin(row: { id: string; created_at: string; signup_attribution: Record<string, unknown> }) {
+  const state = { row, updated: null as Record<string, unknown> | null };
+  const admin = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: state.row, error: null }) }) }) }),
+      }),
+      insert: () => ({ select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+      update: (patch: Record<string, unknown>) => ({
+        eq: async () => {
+          state.updated = patch.signup_attribution as Record<string, unknown>;
+          return { error: null };
+        },
+      }),
+    }),
+  };
+  return { admin, state };
+}
+
+describe("persistFirstTouchAttribution prior_account", () => {
+  it("a row created moments before by this sign-up is not a prior account", async () => {
+    const { admin, state } = fakeAdmin({
+      id: "a1", created_at: new Date(Date.now() - 400).toISOString(), signup_attribution: {},
+    });
+    await persistFirstTouchAttribution(admin, "u1", "x@example.com", { gclid: "TEST0929", landing_path: "/get-key" });
+    expect(state.updated?.prior_account).toBeUndefined();
+    expect(state.updated?.gclid).toBe("TEST0929");
+    expect(state.updated?.channel).toBe("ads");
+  });
+
+  it("a row older than the sign-up window without attribution is a prior account", async () => {
+    const { admin, state } = fakeAdmin({
+      id: "a2", created_at: new Date(Date.now() - 2 * 86400_000).toISOString(), signup_attribution: {},
+    });
+    await persistFirstTouchAttribution(admin, "u2", null, { landing_path: "/get-key" });
+    expect(state.updated?.prior_account).toBe(true);
   });
 });

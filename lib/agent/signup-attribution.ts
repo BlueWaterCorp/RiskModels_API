@@ -27,6 +27,21 @@ type Admin = {
 
 const MAX_LANDING_PATH_LEN = 512;
 
+/**
+ * A row created within this window of the first attribution write belongs to the
+ * same sign-up (POST /api/agent-keys and the /get-key page create the row a moment
+ * before they write attribution). Only an older row marks a returning user.
+ * 2026-09-29: without the window every new /get-key sign-up was prior_account=true.
+ */
+const SAME_SIGNUP_WINDOW_MS = 30 * 60 * 1000;
+
+function createdBeforeThisSignup(createdAt: string | null, nowMs = Date.now()): boolean {
+  if (!createdAt) return true;
+  const t = Date.parse(createdAt);
+  if (!Number.isFinite(t)) return true;
+  return nowMs - t > SAME_SIGNUP_WINDOW_MS;
+}
+
 export function classifyChannel(input: {
   gclid?: string | null;
   utm_source?: string | null;
@@ -84,10 +99,10 @@ function firstTouchPatch(
 async function loadOldestAccount(
   admin: Admin,
   userId: string,
-): Promise<{ id: string; signup_attribution: Record<string, unknown> } | null> {
+): Promise<{ id: string; signup_attribution: Record<string, unknown>; created_at: string | null } | null> {
   const { data, error } = await admin
     .from("agent_accounts")
-    .select("id, signup_attribution")
+    .select("id, signup_attribution, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -98,7 +113,11 @@ async function loadOldestAccount(
   }
   if (!data?.id) return null;
   const sa = (data.signup_attribution ?? {}) as Record<string, unknown>;
-  return { id: data.id as string, signup_attribution: sa };
+  return {
+    id: data.id as string,
+    signup_attribution: sa,
+    created_at: (data.created_at as string | null) ?? null,
+  };
 }
 
 /**
@@ -157,7 +176,8 @@ export async function persistFirstTouchAttribution(
     existing &&
     !current.channel &&
     !current.gclid &&
-    !current.first_api_use_at
+    !current.first_api_use_at &&
+    createdBeforeThisSignup(existing.created_at)
   ) {
     // Billing row existed before this first-touch write (returning user).
     next.prior_account = true;
@@ -208,4 +228,4 @@ export async function stampAttributionEvent(
   }
 }
 
-export { firstTouchPatch };
+export { firstTouchPatch, createdBeforeThisSignup };
