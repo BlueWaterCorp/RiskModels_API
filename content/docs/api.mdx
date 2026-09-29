@@ -210,10 +210,12 @@ description: Strategic hub for ERM3 — integration, methodology, field semantic
         <tr className="align-top">
           <td className="py-3 px-4 font-semibold text-zinc-100">Sign convention</td>
           <td className="py-3 px-4"><strong className="text-zinc-300">Model safety.</strong>{' '}
-            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_market_hr</code> is typically ≥ 0.{' '}
+            Each <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">*_hr</code> is the ETF dollar position per $1 long stock:
+            negative = short the ETF, positive = long it. A stock with positive market beta carries a negative{' '}
+            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l1_market_hr</code>;{' '}
             <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_sector_hr</code> and{' '}
-            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_hr</code> may be negative
-            from orthogonalization or a long subsector ETF hedge — see{' '}
+            <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">l3_subsector_hr</code> can take either sign
+            after orthogonalization — see{' '}
             <a href="/docs/methodology" className="text-primary hover:underline">Methodology</a>;{' '}
             <code className="text-zinc-300 bg-zinc-950 px-1 rounded text-xs">validate=&quot;warn&quot;</code> may flag edge cases.</td>
           <td className="py-3 px-4">
@@ -483,7 +485,7 @@ Pricing model: prepaid balance (Stripe). Cached responses are free. Minimum top-
 
 ## POST /decompose — one call, four bets
 
-`POST /decompose` is a semantic wrapper over the same L3 fields exposed by `GET /metrics/{'{ticker}'}`. It returns four additive layers — **market**, **sector**, **subsector**, and **residual** — each tradable layer carrying an `er` (explained-risk variance fraction), an `hr` (dollar-ratio hedge ratio), and a `hedge_etf`. A top-level `hedge` map flips the sign (negative of each layer `hr`) and sums across any duplicate ETFs, so you get ready-to-short notionals per instrument.
+`POST /decompose` is a semantic wrapper over the same L3 fields exposed by `GET /metrics/{'{ticker}'}`. It returns four additive layers — **market**, **sector**, **subsector**, and **residual** — each tradable layer carrying an `er` (explained-risk variance fraction), an `hr` (dollar-ratio hedge ratio), and a `hedge_etf`. A top-level `hedge` map carries each layer `hr` (the ETF dollar position per $1 long; negative = short) and sums across any duplicate ETFs, so you get one notional per instrument.
 
 Billing is identical to `GET /metrics/{'{ticker}'}` ({'$'}0.005/call, `billing_code: metrics_v4`). For the full L1/L2/L3 snapshot (all six HR names), keep using `GET /metrics/{'{ticker}'}`. For the plain-language intuition behind the four bets — and a worked NVIDIA example — see the [four-bets primer on riskmodels.org](https://riskmodels.org/primer?utm_source=riskmodels-app&utm_medium=docs-api-decompose&utm_campaign=cross-site).
 
@@ -503,16 +505,16 @@ curl -X POST https://riskmodels.app/api/decompose \
   "ticker": "NVDA",
   "data_as_of": "2026-04-21",
   "exposure": {
-    "market":    { "er": 0.45, "hr": 1.10, "hedge_etf": "SPY" },
-    "sector":    { "er": 0.22, "hr": 0.35, "hedge_etf": "XLK" },
-    "subsector": { "er": 0.20, "hr": 0.60, "hedge_etf": "SMH" },
+    "market":    { "er": 0.45, "hr": -1.10, "hedge_etf": "SPY" },
+    "sector":    { "er": 0.22, "hr": -0.35, "hedge_etf": "XLK" },
+    "subsector": { "er": 0.20, "hr": -0.60, "hedge_etf": "SMH" },
     "residual":  { "er": 0.13, "hr": null, "hedge_etf": null }
   },
   "hedge": { "SPY": -1.10, "XLK": -0.35, "SMH": -0.60 }
 }
 ```
 
-**Sign convention.** `hedge[etf]` is the **negative** of the layer `hr`. Positive stock `hr` → negative ETF dollar ratio (short the ETF per {'$'}1 long stock). Negative stock `hr` → positive ETF dollar ratio (long the ETF as the hedge leg). Residual has no tradable ETF, so its `hr` and `hedge_etf` are always `null`.
+**Sign convention.** Each layer `hr` is the ETF dollar position per {'$'}1 long stock: negative = short the ETF, positive = long the ETF as the hedge leg. `hedge[etf]` equals the layer `hr` (summed when two layers share an ETF), so `"SPY": -1.10` means short {'$'}1.10 of SPY per {'$'}1 long stock. Residual has no tradable ETF, so its `hr` and `hedge_etf` are always `null`.
 
 **ER invariant.** Across the four layers, `market_er + sector_er + subsector_er + residual_er ≈ 1` (variance fractions). The handler emits a warning when the sum deviates by more than 0.05.
 

@@ -29,7 +29,7 @@ _SDK_METHODS: list[dict[str, Any]] = [
         "summary": "Four additive bets: market, sector, subsector, residual + hedge map.",
         "description": (
             "Calls POST /decompose and returns the simplified four-layer ERM3 exposure with "
-            "tradable hedge ETFs. Sign convention: hedge[etf] == -exposure[layer].hr. "
+            "tradable hedge ETFs. Sign convention: hedge[etf] == exposure[layer].hr, the ETF dollar position per $1 long (negative = short). "
             "Same billing as get_metrics ($0.005)."
         ),
         "scopes": ["ticker-returns (OAuth)"],

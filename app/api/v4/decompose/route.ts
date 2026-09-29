@@ -44,10 +44,6 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Hedge notional per $1 long = negative of the layer hedge ratio. */
-function neg(v: number | null): number | null {
-  return v === null ? null : -v;
-}
 
 /** Sum that stays null only when every operand is null. */
 function sumDefined(...vals: (number | null)[]): number | null {
@@ -191,7 +187,7 @@ export const POST = withBilling(
           factor: MARKET_ETF,
           beta: num(m.l1_mkt_beta),
           explained_variance: marketEv,
-          hedge_notional_per_1_long: neg(num(m.l3_mkt_hr)),
+          hedge_notional_per_1_long: num(m.l3_mkt_hr),
           hedgeable: true,
         },
         industry: {
@@ -202,13 +198,13 @@ export const POST = withBilling(
               etf: sectorEtf,
               beta: num(m.l2_sec_beta),
               explained_variance: sectorEv,
-              hedge_notional_per_1_long: neg(num(m.l3_sec_hr)),
+              hedge_notional_per_1_long: num(m.l3_sec_hr),
             },
             subsector: {
               etf: subsectorEtf,
               beta: num(m.l3_sub_beta),
               explained_variance: subsectorEv,
-              hedge_notional_per_1_long: neg(num(m.l3_sub_hr)),
+              hedge_notional_per_1_long: num(m.l3_sub_hr),
             },
           },
         },

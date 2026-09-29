@@ -506,7 +506,7 @@ export type EtfFactorReturnsRequest = z.infer<typeof EtfFactorReturnsRequestSche
 /**
  * Schema for POST /api/decompose — simplified four-layer exposure + hedge map.
  * Returns market / sector / subsector / residual with each tradable layer's
- * hedge ETF and a `hedge` map of ETF → dollar ratio (negative of HR by convention).
+ * hedge ETF and a `hedge` map of ETF → dollar position per $1 long (the layer HR; negative = short).
  *
  * `as_of` (optional) requests a historical read: the latest stored row at or
  * before the date — reality mode, `report_date` basis, echoed back as
