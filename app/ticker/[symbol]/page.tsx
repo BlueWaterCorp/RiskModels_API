@@ -36,6 +36,9 @@ interface TickerMetrics {
   l3_mkt_hr: number | null;
   l3_sec_hr: number | null;
   l3_sub_hr: number | null;
+  l3_mkt_er: number | null;
+  l3_sec_er: number | null;
+  l3_sub_er: number | null;
   l3_res_er: number | null;
   /** Daily gross return (decimal), when present on latest row */
   returns_gross: number | null;
@@ -97,6 +100,9 @@ async function getTickerMetrics(ticker: string): Promise<TickerMetrics | null> {
       l3_mkt_hr: m.l3_mkt_hr ?? null,
       l3_sec_hr: m.l3_sec_hr ?? null,
       l3_sub_hr: m.l3_sub_hr ?? null,
+      l3_mkt_er: m.l3_mkt_er ?? null,
+      l3_sec_er: m.l3_sec_er ?? null,
+      l3_sub_er: m.l3_sub_er ?? null,
       l3_res_er: m.l3_res_er ?? null,
       returns_gross: m.returns_gross ?? null,
       l1_fr: m.l1_fr ?? null,
@@ -124,7 +130,7 @@ export async function generateMetadata({
   const snapshotPng = `${GCS_BASE}/${upper}/${upper}_DD_latest.png`;
   return {
     title: `${upper} — Stock Deep Dive | RiskModels`,
-    description: `L3 factor risk decomposition, residual alpha quality, and subsector peer comparison for ${upper}.`,
+    description: `How to hedge ${upper} with ETFs: dollars of SPY, sector and subsector ETF per $1 of stock, and the stock-specific share of risk that remains.`,
     openGraph: {
       title: `${upper} Deep Dive`,
       description: `Institutional risk analytics for ${upper} — powered by ERM3 V3.`,
@@ -142,6 +148,11 @@ export async function generateMetadata({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Hedge ratio = ETF dollar position per $1 long stock; negative = short. */
+function hedgeSide(hr: number): "short" | "long" {
+  return hr < 0 ? "short" : "long";
+}
 
 function fmtPct(v: unknown, decimals = 1): string {
   if (v == null) return "—";
@@ -196,19 +207,21 @@ export default async function TickerDashboard({
   ] as const;
   const sumAbsFr = frParts.reduce((acc, p) => acc + Math.abs(Number(p.v) || 0), 0) || 1e-12;
 
-  const sysPct =
-    resER != null
-      ? (
-          ((Math.abs(Number(metrics.l3_mkt_hr || 0)) +
-            Math.abs(Number(metrics.l3_sec_hr || 0)) +
-            Math.abs(Number(metrics.l3_sub_hr || 0))) /
-            (Math.abs(Number(metrics.l3_mkt_hr || 0)) +
-              Math.abs(Number(metrics.l3_sec_hr || 0)) +
-              Math.abs(Number(metrics.l3_sub_hr || 0)) +
-              Math.abs(Number(resER)))) *
-          100
-        ).toFixed(0)
+  // Share of risk explained by the three ETF layers: the sum of their explained-risk
+  // shares; 1 - residual only when those are missing.
+  const layerErs = [metrics.l3_mkt_er, metrics.l3_sec_er, metrics.l3_sub_er];
+  const explainedShare = layerErs.every((x) => x != null && Number.isFinite(Number(x)))
+    ? layerErs.reduce<number>((a, x) => a + Number(x), 0)
+    : resER != null
+      ? 1 - Number(resER)
       : null;
+
+  const hedgeRows = [
+    { layer: "Market", etf: "SPY", hr: metrics.l3_mkt_hr },
+    { layer: "Sector", etf: metrics.sector_etf, hr: metrics.l3_sec_hr },
+    { layer: "Subsector", etf: metrics.subsector_etf, hr: metrics.l3_sub_hr },
+  ].filter((r): r is { layer: string; etf: string; hr: number } =>
+    !!r.etf && r.hr != null && Number.isFinite(Number(r.hr)));
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -254,11 +267,49 @@ export default async function TickerDashboard({
       <section className="max-w-6xl mx-auto px-8 py-8">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <MetricCard label="Vol (23d)" value={fmtPct(vol)} />
-          <MetricCard label="L3 Res ER (α)" value={fmtPct(resER)} accent />
-          <MetricCard label="Subsector" value={subEtf} />
-          {sysPct && <MetricCard label="Systematic %" value={`${sysPct}%`} />}
+          <MetricCard label="Stock-specific share of risk" value={fmtPct(resER)} accent />
+          <MetricCard label="Explained by market, sector, subsector" value={fmtPct(explainedShare)} />
+          <MetricCard label="Subsector ETF" value={subEtf} />
         </div>
       </section>
+
+      {/* ── ETF hedge per $1 long ───────────────────────────────── */}
+      {hedgeRows.length > 0 && (
+        <section className="max-w-6xl mx-auto px-8 pb-8">
+          <h2 className="text-lg font-semibold text-slate-700 mb-1">
+            Hedge {upper} with ETFs — per $1 long, as of {teo}
+          </h2>
+          <p className="text-sm text-slate-500 mb-4 max-w-3xl">
+            ERM3 L3 hedge: the dollar position in each ETF per $1 of {upper}. What remains after all
+            three legs is the stock-specific risk shown above, which no ETF hedges.
+          </p>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100 max-w-2xl">
+            {hedgeRows.map((r) => (
+              <div key={r.layer} className="flex items-baseline justify-between px-4 py-3">
+                <span className="text-sm text-slate-500">{r.layer}</span>
+                <span className="font-mono text-lg font-semibold text-slate-800 tabular-nums">
+                  <span className="text-slate-500 font-normal">{hedgeSide(Number(r.hr))}</span>{" "}
+                  ${Math.abs(Number(r.hr)).toFixed(2)} {r.etf}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href="/get-key"
+              className="inline-flex items-center px-4 py-2 bg-[#002a5e] text-white text-sm font-medium rounded-lg hover:bg-[#003d7a] transition"
+            >
+              Get API Key — $20 credit
+            </Link>
+            <Link
+              href="/docs/agent-integration"
+              className="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition"
+            >
+              Ask Claude or ChatGPT for your hedge
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* ── Daily return attribution (returns decomposition) ─────── */}
       {showReturnDecomp && (
@@ -353,8 +404,7 @@ export default async function TickerDashboard({
 
       {/* ── Footer ──────────────────────────────────────────────── */}
       <footer className="border-t border-slate-200 py-4 px-8 text-center text-xs text-slate-400">
-        ERM3 V3 · riskmodels.app · BW Macro · Confidential · Not Investment
-        Advice
+        ERM3 V3 · riskmodels.app · BW Macro · Not Investment Advice
       </footer>
     </main>
   );
