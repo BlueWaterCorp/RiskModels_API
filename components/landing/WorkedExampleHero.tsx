@@ -86,7 +86,10 @@ export default function WorkedExampleHero() {
         </div>
 
         <p className="mt-5 text-center font-mono text-[11px] text-zinc-500">
-          Live decomposition from the ERM3 API · single call, no extrapolation · snapshot {SNAPSHOT_DATE}
+          Example output from the ERM3 API as of {SNAPSHOT_DATE} · single call, no extrapolation ·{' '}
+          <Link href="/ticker/MSFT" className="text-emerald-400 underline-offset-2 hover:underline">
+            today&rsquo;s MSFT hedge
+          </Link>
         </p>
 
         <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
