@@ -50,7 +50,13 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    console.error('[auth/callback] exchangeCodeForSession failed:', error.message);
+    // Cookie NAMES only (never values): tells a missing PKCE verifier cookie
+    // apart from one present under another name/domain (2026-09-29 sign-in failures).
+    console.error('[auth/callback] exchangeCodeForSession failed:', error.message, {
+      cookieNames: cookieStore.getAll().map((c) => c.name),
+      host: request.headers.get('host'),
+      referer: (request.headers.get('referer') || '').slice(0, 80),
+    });
     return NextResponse.redirect(new URL(`/get-key?error=auth`, origin));
   }
 
