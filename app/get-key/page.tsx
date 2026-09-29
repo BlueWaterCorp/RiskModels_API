@@ -311,7 +311,21 @@ function GetKeyPage() {
     const nextParam = searchParams.get('next');
     if (nextParam && nextParam.startsWith('/')) return nextParam;
     const ref = readPersistedReferralCode(searchParams);
-    return ref ? `/get-key?ref=${encodeURIComponent(ref)}` : '/get-key';
+    // Carry the click id and UTM through the auth round-trip: a magic link opened
+    // from a mail app lands in a browser context with empty localStorage, and the
+    // return to /get-key re-captures them from the URL (2026-09-29 test signup lost
+    // its gclid this way).
+    const params = new URLSearchParams();
+    if (ref) params.set('ref', ref);
+    const gclid = getStoredGclid();
+    if (gclid) params.set('gclid', gclid);
+    const utm = getUTMData();
+    for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'] as const) {
+      const v = utm?.[k];
+      if (typeof v === 'string' && v) params.set(k, v);
+    }
+    const qs = params.toString();
+    return qs ? `/get-key?${qs}` : '/get-key';
   };
 
   const signIn = async (e: React.FormEvent) => {
