@@ -20,6 +20,7 @@ import {
 import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
 import { historyAvailableFromError, servedHistoryStartForKeys } from "@/lib/dal/served-history";
+import { buildHedgeMap } from "@/lib/api/hedge-map";
 
 /**
  * POST /api/decompose — simplified four-layer exposure + hedge map.
@@ -27,8 +28,9 @@ import { historyAvailableFromError, servedHistoryStartForKeys } from "@/lib/dal/
  * Thin handler over the shared metrics DAL. Maps the abbreviated V3 wire keys
  * (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_sec_er`,
  * `l3_sub_er`, `l3_res_er`) into the semantic four-layer shape described in
- * SEMANTIC_ALIASES.md. Sign convention: `hedge[etf]` is the negative of the
- * layer `hr` (dollars of ETF short per $1 long stock).
+ * SEMANTIC_ALIASES.md. Sign convention: each layer `hr` is the ETF dollar
+ * position per $1 long stock (negative = short the ETF); `hedge[etf]` is that
+ * `hr`, summed across layers sharing one ETF.
  *
  * Same billing profile as `GET /metrics/{ticker}` ($0.005, baseline tier).
  *
@@ -205,18 +207,10 @@ export const POST = withBilling(
         },
       };
 
-      // Hedge map: negative of layer HR per tradable layer (market, sector,
-      // subsector). Residual is not tradable. If two layers share the same
-      // ETF (e.g. subsector falls back to sector ETF), sum the hedge ratios
-      // so the caller gets a single consolidated notional per instrument.
-      const hedge: Record<string, number> = {};
-      for (const name of ["market", "sector", "subsector"] as const) {
-        const layer = layers[name];
-        if (layer.hedge_etf && layer.hr !== null) {
-          hedge[layer.hedge_etf] =
-            (hedge[layer.hedge_etf] ?? 0) + -layer.hr;
-        }
-      }
+      // Hedge map: the layer HR is the ETF dollar position per $1 long stock
+      // (negative = short). Residual is not tradable. Layers sharing one ETF
+      // are summed into a single notional per instrument. See lib/api/hedge-map.ts.
+      const hedge = buildHedgeMap(layers);
 
       // ER sum sanity check (variance fractions sum to ~1 at L3).
       const erSum =

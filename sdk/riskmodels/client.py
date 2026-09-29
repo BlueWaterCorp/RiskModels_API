@@ -424,9 +424,9 @@ class RiskModelsClient:
             Raw JSON dict also includes ``hedge_levels`` (L1/L2/L3) when the route adds it —
             compare levels with :meth:`get_hedge_levels` which reads from ``GET /metrics``.
 
-            Sign convention: ``hedge[etf] == -exposure[layer].hr``. A positive
-            stock ``hr`` yields a negative ETF dollar ratio (short the ETF to
-            hedge a long position).
+            Sign convention: ``hedge[etf] == exposure[layer].hr``, the ETF dollar
+            position per $1 long stock. Negative = short the ETF (the usual case
+            for a positive-beta stock), positive = long the ETF.
 
         Example:
             >>> client = RiskModelsClient.from_env()

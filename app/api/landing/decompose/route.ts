@@ -7,6 +7,7 @@ import {
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { buildMetadataBody } from "@/lib/dal/response-headers";
 import { DecomposeRequestSchema } from "@/lib/api/schemas";
+import { buildHedgeMap } from "@/lib/api/hedge-map";
 
 /**
  * POST /api/landing/decompose — unauthenticated MAG7-only preview of
@@ -146,13 +147,7 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    const hedge: Record<string, number> = {};
-    for (const name of ["market", "sector", "subsector"] as const) {
-      const layer = layers[name];
-      if (layer.hedge_etf && layer.hr !== null) {
-        hedge[layer.hedge_etf] = (hedge[layer.hedge_etf] ?? 0) + -layer.hr;
-      }
-    }
+    const hedge = buildHedgeMap(layers);
 
     return NextResponse.json(
       {
