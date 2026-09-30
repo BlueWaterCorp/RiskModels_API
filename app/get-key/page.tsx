@@ -554,6 +554,11 @@ function GetKeyPage() {
             <p className="text-zinc-400 mt-2 text-sm">
               Sign in with Google, GitHub, or email — no password needed.
             </p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500" data-testid="key-holder-signin-hint">
+              Already hold a key we emailed you? Use the email link with that same address so you land on the
+              account that holds your key and credits. A different Google or GitHub address opens a separate,
+              empty account.
+            </p>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">
               <span className="font-semibold text-zinc-100">$20 in free API credits</span> after
               sign-in. Card is optional (auto-refill, off by default). Or connect Claude / Cursor
