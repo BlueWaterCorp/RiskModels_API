@@ -155,10 +155,11 @@ discovery tools (`riskmodels_list_endpoints`, `riskmodels_get_capability`,
    no ticker, so they carry **no returns and no decomposition** — drop them from any return
    series and note the dropped weight (Greenlight's top ~27.5% line is one of these).
 
-8. **The vendored `sdk/riskmodels/` in this repo is 0.3.10 and shadows pip 0.3.11 under
-   pytest** (because `sdk/` lands first on `sys.path`). Scripts here use an import-order
-   shim (`import riskmodels` *before* adding `sdk/` to the path) so the `as_of`-capable
-   0.3.11 client wins. If `as_of` raises `unexpected keyword argument`, you're on the shadow.
+8. **Import resolution is no longer a trap.** The in-tree `sdk/riskmodels/` is 0.4.0 and
+   carries every method this toolkit uses, and the toolkit now lives under `research/`, so
+   neither pytest nor the scripts put `sdk/` ahead of the installed wheel. The old
+   `import riskmodels`-before-`sys.path` shim and the conftest workaround are gone. If `as_of`
+   ever raises `unexpected keyword argument` you are on a pre-0.3.11 wheel — upgrade it.
 
 ---
 

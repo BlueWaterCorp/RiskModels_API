@@ -1,13 +1,22 @@
-"""Lagged 13F backtest pipeline — daily name-level rebuild.
+"""Lagged 13F backtest pipeline — daily name-level rebuild of a filer's disclosed book.
 
-Stages (gated; see the module docstring in LAGGED_RESULTS.md):
-  0  validate the daily buy-and-hold rebuild against the endpoint's gross return
-  1  lagged gross series (enter teo+45d rolled to next trading day, hold to next entry)
-  2  layer decomposition of the lagged series (needs per-name l3 ER shares, cached w/ holdings)
-  3  extend to Pershing / Appaloosa / Greenlight
+Stages, each gated before the next may be published (see LAGGED_RESULTS.md and
+HANDOFF.md §5):
+  0  validate the daily buy-and-hold rebuild against the endpoint's own gross return
+     (`gate_verdict`: mean |diff| <25 bps CLEAN / 25-75 PROCEED_WITH_FLAG / >75 STOP)
+  1  lagged gross series: enter at teo+45 CALENDAR days rolled to a trading day, floored at
+     the date the book is provably public (`lagged_entry`); hold to the next entry
+  2  additive market/sector/subsector/idio attribution from get_returns_decomposition,
+     validated against the endpoint's own per-quarter layer returns
+     (`layer_gate_verdict`: per-layer median |diff| < 50 bps)
 
-Everything caches to cache/ keyed by (filer, vintage) / ticker so a timeout never loses work.
-Re-run resumes from cache. Run in background:  python -m ... build_lagged all
+Filers run so far: Berkshire (passes), D. E. Shaw and Pershing (both STOP at Stage 0 and
+publish nothing downstream). Coverage is always reported; renormalising to covered names
+is an explicit imputation — see `portfolio_window_return`.
+
+Everything caches to cache/ keyed by (filer, vintage) / ticker, so a timeout never loses
+work and re-runs resume from cache. CLI:  python build_lagged.py {0|1|2|all} [Filer]
+Stages 1 and 2 refuse to run after a Stage 0 STOP unless `--force` is passed.
 """
 from __future__ import annotations
 import riskmodels  # import-order shim: real 0.3.11 before sdk/ on path
@@ -78,6 +87,34 @@ def portfolio_rows(name):
     return rows
 
 
+def terminal_teo(name):
+    """The teo of the endpoint's TERMINAL row — the one whose `portfolio_gross_return` is
+    measured over an open-ended window (quarter end → data horizon) instead of one quarter.
+    Documented in DATA_ISSUES.md (2026-09-07) and tracked upstream as BWMACRO D.8.56.
+
+    Detected by PROPERTY, not by position: it is the maximum teo of the RAW endpoint series,
+    taken before null-gross rows are filtered. Taking `[-1]` of the filtered list is what the
+    first version did, which breaks the moment the endpoint's last row has a null gross
+    (the terminal row would be a different, kept row) — PR #373 review, finding 5.
+
+    Note that the obvious alternative property — "the forward quarter is not complete in the
+    trading calendar" — does NOT fire for this defect: the calendar runs well past every
+    filer's last quarter end, yet the terminal row is still mis-measured. The implied-horizon
+    diagnostic in reaudit_berkshire.py is the evidence that the row is defective; this
+    function is the rule for which row it is.
+    """
+    fid = FILERS[name]
+    raw = _read(_CACHE / f"portfolio_{fid}.json")
+    if raw is None:
+        raw = client().get_filer_portfolio(fid)["rows"]
+        _write(_CACHE / f"portfolio_{fid}.json", raw)
+    return max(r["teo"] for r in raw)
+
+
+def is_terminal(name, teo):
+    return str(teo)[:10] == terminal_teo(name)
+
+
 # ---- holdings reported FOR teo_T, cached ----
 # get_filer_holdings(as_of=X) returns the latest book with filing_date <= X. To get the book
 # whose report_date == teo, as_of must be >= that book's true filing date. A tight teo+55d
@@ -112,6 +149,27 @@ def holdings_for_teo(name, teo):
             break
     _write(p, last)
     return last
+
+
+def book_truncation(rec):
+    """How much of the disclosed book the 1,000-row `get_filer_holdings` cap leaves unlisted.
+
+    The endpoint returns the top `_HOLDINGS_LIMIT` rows by weight, and the weights it returns
+    are weights OF THE FULL BOOK (they sum to < 1 when the book was truncated), so:
+      * `covered_w` from `portfolio_window_return` is already an ABSOLUTE share of the full
+        book — the unlisted tail is uncovered by construction;
+      * but that tail never appears in the `missing` list, because it was never returned.
+    This reports it explicitly so every coverage figure can state its basis (PR #373 review,
+    finding 6). For D. E. Shaw the tail is a median 0.4% of weight, max 3.2%, on 71 of 74
+    books; the SDK offers no paging, so the basis is stated rather than closed.
+    """
+    hs = rec.get("holdings") or []
+    wsum = float(sum((x.get("weight") or 0.0) for x in hs))
+    n_total = rec.get("n_total_holdings")
+    n_ret = rec.get("n_holdings_returned") or len(hs)
+    return {"n_total": n_total, "n_returned": n_ret,
+            "truncated": bool(n_total and n_total > n_ret),
+            "returned_w_sum": wsum, "tail_w": max(0.0, 1.0 - wsum)}
 
 
 # ---- daily gross returns per ticker (full 13y), cached ----
@@ -201,9 +259,16 @@ def name_layer_windows(ticker, start, end):
 
 def portfolio_window_layers(holdings, start, end):
     """Portfolio layer returns over a window = Σ w_i · (name's compounded layer return),
-    renormalised to covered names. Uses the additive get_returns_decomposition series."""
+    renormalised to covered names, from the additive get_returns_decomposition series.
+
+    Returns the four layers PLUS `covered_w` (absolute book weight with a decomposition
+    series) and `n_names`, so no layer figure is ever published without its coverage
+    (PR #373 review, finding 7). The renormalisation is the same explicit imputation as
+    `portfolio_window_return`: uncovered weight is assigned the covered book's layer return.
+    """
     layers = {"market": 0.0, "sector": 0.0, "subsector": 0.0, "idiosyncratic": 0.0}
     covered = 0.0
+    n = 0
     for x in holdings:
         tk = x.get("ticker"); w = x.get("weight") or 0.0
         if not tk:
@@ -214,9 +279,14 @@ def portfolio_window_layers(holdings, start, end):
         for k in layers:
             layers[k] += w * nl[k]
         covered += w
+        n += 1
     if covered <= 0:
-        return {k: float("nan") for k in layers}
-    return {k: v / covered for k, v in layers.items()}
+        out = {k: float("nan") for k in layers}
+    else:
+        out = {k: v / covered for k, v in layers.items()}
+    out["covered_w"] = float(covered)
+    out["n_names"] = n
+    return out
 
 
 def window_return(ticker, start, end):
@@ -226,7 +296,14 @@ def window_return(ticker, start, end):
     path (name_layer_windows). Without this, a single name with one NaN day returns NaN, which
     still counts toward `covered` in portfolio_window_return but poisons the whole portfolio sum
     (one 3bps freshly-IPO'd name nulled entire early D.E.Shaw quarters). If every day in the
-    window is NaN the name has no usable data -> None (skipped, not treated as 0)."""
+    window is NaN the name has no usable data -> None (skipped, not treated as 0).
+
+    Known limitation (PR #373 review, finding 8): dropping a NaN day is equivalent to a ZERO
+    return on that day. That is right when the vendor's next print spans the gap (the price
+    move is captured on the next printed day). It is WRONG for a NaN TAIL — a delisting with
+    no terminal print — where the loss after the last print is simply not seen: the name
+    compounds over its printed days only and still counts as covered. Pinned, as documented
+    behaviour rather than as a fix, in tests/test_window_primitives.py."""
     s = _ret(ticker)
     if s is None:
         return None
@@ -239,7 +316,15 @@ def window_return(ticker, start, end):
 
 def portfolio_window_return(holdings, start, end):
     """Buy-and-hold gross = Σ w_i R_i, renormalised to covered names.
-    Returns (gross_renorm, gross_asis, covered_weight, n_names, missing)."""
+    Returns (gross_renorm, gross_asis, covered_weight, n_names, missing).
+
+    `gross_renorm = Σ_covered w_i R_i / Σ_covered w_i` is an EXPLICIT IMPUTATION: the
+    uncovered weight is assumed to have earned the covered book's return. It is the
+    defensible choice for a partial universe, but it is a fill, which is why `covered_weight`
+    travels with every figure and is stated on every published result (PR #373, finding 7).
+    `covered_weight` is ABSOLUTE book weight: the endpoint's weights are of the full book, so
+    names past the 1,000-row cap count as uncovered by construction even though they never
+    appear in `missing` (see `book_truncation`)."""
     recon = 0.0
     covered = 0.0
     n = 0
@@ -392,13 +477,25 @@ def stats_qnorm(recs, value_fn, qlen_key="q_len"):
             "n_multi_quarter": int((qs > 1.25).sum())}
 
 
-# ---- the validation gate, as a function so the thresholds are explicit ----
-# Pre-registered before any lagged analysis was run, so a marginal result could not
-# retro-fit the bar. Applied to mean |rebuild - endpoint| in bps over the comparison
-# windows. The MEAN is the gate, not the median: the median hides exactly the tail
-# quarters where a rebuild diverges most.
+# ---- the validation gates, as functions so the thresholds are explicit and ENFORCED ----
+# Both pre-registered before any lagged analysis was run, so a marginal result could not
+# retro-fit the bar. Two gates, two statistics, deliberately:
+#
+#   Stage 0 (gross)  — gate_verdict on the MEAN |rebuild - endpoint| in bps. The mean, not
+#                      the median: the median hides exactly the tail quarters where a
+#                      rebuild diverges most, and a rebuild that is wrong in the tail is
+#                      wrong where it matters.
+#   Stage 2 (layers) — layer_gate_verdict on each layer's MEDIAN |diff| < 50 bps. Per-layer
+#                      distributions are tail-heavy from the SAME high-vol quarters the Stage
+#                      0 mean already penalised; the layer gate asks whether the typical
+#                      quarter's attribution reproduces, given the gross already passed.
+#
+# PR #373 review, finding 4: these constants existed but nothing in this module called them,
+# and the layer bar was a literal in three files. They now live here and every stage runs
+# through `enforce_gate` / `layer_gate_verdict`.
 GATE_CLEAN_BPS = 25.0
 GATE_STOP_BPS = 75.0
+LAYER_GATE_MEDIAN_BPS = 50.0
 
 
 def gate_verdict(mean_abs_diff_bps):
@@ -415,6 +512,53 @@ def gate_verdict(mean_abs_diff_bps):
     return "STOP"
 
 
+def layer_gate_verdict(validation, bar=LAYER_GATE_MEDIAN_BPS):
+    """Stage 2 gate. `validation` is {layer: {"median_bps": ..., ...}} as returned by
+    `stage2_validate`. PASS iff every layer's median |diff| is under `bar`; the failing
+    layers are returned so the reason is reportable, not just the verdict."""
+    failing = {k: v["median_bps"] for k, v in validation.items()
+               if v and v.get("median_bps") is not None and v["median_bps"] >= bar}
+    return ("PASS" if not failing else "FAIL"), failing
+
+
+def stage0_summary(name, recs=None, drop_terminal=True):
+    """Stage 0 statistics on buildable, non-terminal quarters — the numbers the gate is
+    applied to. Returns a dict with n / mean / median / max / verdict, and the terminal teo
+    that was excluded. Every caller that quotes a Stage 0 figure should use this."""
+    recs = stage0(name) if recs is None else recs
+    term = terminal_teo(name) if drop_terminal else None
+    ok = [x for x in recs if x["book_ok"] and x["diff_renorm_bps"] is not None
+          and (term is None or x["teo"] != term)]
+    if not ok:
+        return {"n": 0, "verdict": "STOP", "terminal_teo": term, "mean_bps": float("nan")}
+    d = np.array([x["diff_renorm_bps"] for x in ok], float)
+    cov = np.array([x["covered_w"] for x in ok], float)
+    return {"n": int(len(d)), "mean_bps": float(d.mean()), "median_bps": float(np.median(d)),
+            "max_bps": float(d.max()), "n_under_25": int((d < GATE_CLEAN_BPS).sum()),
+            "n_under_75": int((d < GATE_STOP_BPS).sum()),
+            "coverage_median": float(np.median(cov)), "coverage_min": float(cov.min()),
+            "verdict": gate_verdict(float(d.mean())), "terminal_teo": term,
+            "missing_book_teos": [x["teo"] for x in recs if not x["book_ok"]]}
+
+
+class GateStop(RuntimeError):
+    """Raised by `enforce_gate` when a stage's gate reads STOP and the caller did not force."""
+
+
+def enforce_gate(name, force=False):
+    """Run Stage 0 and REFUSE to continue on STOP. Returns the summary on pass/flag.
+    `force=True` only downgrades the refusal to a loud warning — for diagnostics, never for
+    publication. This is the single control point every downstream stage goes through."""
+    g = stage0_summary(name)
+    if g["verdict"] == "STOP":
+        msg = (f"[{name}] Stage 0 gate = STOP (mean {g['mean_bps']:.1f} bps > {GATE_STOP_BPS:.0f}). "
+               f"Downstream numbers are not to be published.")
+        if not force:
+            raise GateStop(msg)
+        print("!! " + msg + "  (--force: continuing for DIAGNOSTICS ONLY)")
+    return g
+
+
 # ============================ STAGE 0 ============================
 def stage0(name="Berkshire"):
     rows = portfolio_rows(name)
@@ -428,6 +572,7 @@ def stage0(name="Berkshire"):
     tickers = sorted({x["ticker"] for h in all_h for x in h["holdings"] if x.get("ticker")} | {"SPY"})
     for tk in tickers:
         _ret(tk)  # warm cache
+    term = terminal_teo(name)                            # dropped from the gate by property (F5)
     for i, r in enumerate(rows):
         teo_T = teos[i]
         end = fwd_quarter_end(teo_T)                     # fixed 1-quarter forward window
@@ -438,7 +583,9 @@ def stage0(name="Berkshire"):
         renorm, asis, cov, n, missing = portfolio_window_return(h["holdings"], teo_T, end)
         target = r["portfolio_gross_return"]
         recs.append({"teo": r["teo"], "window_end": str(end.date()),
+                     "is_terminal": bool(r["teo"] == term),
                      "report_date": h.get("report_date"), "book_ok": book_ok,
+                     **{f"book_{k}": v for k, v in book_truncation(h).items()},
                      "endpoint_gross": target, "rebuild_renorm": renorm, "rebuild_asis": asis,
                      "covered_w": cov, "n_names": n, "missing": missing,
                      "diff_renorm_bps": abs(renorm - target) * 1e4 if not np.isnan(renorm) else None,
@@ -524,7 +671,8 @@ def stage2(name="Berkshire"):
                      "exit_date": str(e_out.date()), "q_len": qlen,
                      "market": lag["market"], "sector": lag["sector"],
                      "subsector": lag["subsector"], "idio": lag["idiosyncratic"],
-                     "gross": gross})
+                     "gross": gross,
+                     "layer_covered_w": lag["covered_w"], "layer_n_names": lag["n_names"]})
     _write(_CACHE / f"stage2_{name}.json", recs)
     return recs
 
@@ -554,18 +702,19 @@ def stage2_validate(name="Berkshire"):
 
 
 if __name__ == "__main__":
-    stage = sys.argv[1] if len(sys.argv) > 1 else "0"
-    name = sys.argv[2] if len(sys.argv) > 2 else "Berkshire"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    force = "--force" in sys.argv
+    stage = args[0] if args else "0"
+    name = args[1] if len(args) > 1 else "Berkshire"
     if stage in ("0", "all"):
-        r0 = stage0(name)
-        alld = [x["diff_renorm_bps"] for x in r0 if x["diff_renorm_bps"] is not None]
-        ok = [x["diff_renorm_bps"] for x in r0 if x["book_ok"] and x["diff_renorm_bps"] is not None]
-        miss = [x["teo"] for x in r0 if not x["book_ok"]]
-        print(f"[stage0/{name}] rows={len(r0)}")
-        print(f"  ALL       n={len(alld)} mean={np.mean(alld):.1f} median={np.median(alld):.1f} max={np.max(alld):.1f}")
-        print(f"  BOOK_OK   n={len(ok)} mean={np.mean(ok):.1f} median={np.median(ok):.1f} max={np.max(ok):.1f} "
-              f"<25:{sum(d<25 for d in ok)} <75:{sum(d<75 for d in ok)}")
-        print(f"  missing-book quarters (report_date != teo): {miss}")
+        g = stage0_summary(name)
+        print(f"[stage0/{name}] n={g['n']} (terminal row {g['terminal_teo']} dropped by property)")
+        print(f"  mean={g['mean_bps']:.1f} median={g['median_bps']:.1f} max={g['max_bps']:.1f} "
+              f"<25:{g['n_under_25']} <75:{g['n_under_75']}  coverage median={g['coverage_median']:.1%}")
+        print(f"  missing-book quarters (report_date != teo): {g['missing_book_teos']}")
+        print(f"  >>> VERDICT: {g['verdict']}")
+    if stage in ("1", "2", "all"):
+        enforce_gate(name, force=force)          # STOP here means nothing below is published
     if stage in ("1", "all"):
         r1 = stage1(name)
         lag = [x["gross_lagged"] for x in r1]
@@ -580,12 +729,19 @@ if __name__ == "__main__":
         print(f"  survival: lagged mean {sL['mean_bps']:.0f} / unlagged {sU['mean_bps']:.0f} = {surv:.0f}% of gross")
     if stage in ("2", "all"):
         v = stage2_validate(name)
-        print(f"[stage2-validate/{name}] ER-share vs endpoint UNLAGGED layer returns:")
+        print(f"[stage2-validate/{name}] rebuild vs endpoint UNLAGGED layer returns:")
         for k, d in v.items():
             print(f"  {k:14} mean|diff|={d['mean_bps']:6.1f}bps median={d['median_bps']:6.1f} (n={d['n']})")
-        r2 = stage2(name)
-        for k in ("market", "sector", "subsector", "idio"):
-            s = stats([x[k] for x in r2])
-            print(f"  LAGGED {k:12} mean={s['mean_bps']:7.1f}bps t={s['t']:5.2f} hit={s['hit']:4.0f}% sharpe={s['sharpe']:5.2f}")
+        lv, failing = layer_gate_verdict(v)
+        print(f"  >>> LAYER GATE: {lv}" + (f"  failing={failing}" if failing else ""))
+        if lv == "FAIL" and not force:
+            print("  layer attribution withheld (pass --force for diagnostics only)")
+        else:
+            r2 = stage2(name)
+            for k in ("market", "sector", "subsector", "idio"):
+                s = stats_qnorm(r2, lambda x, k=k: x[k])
+                print(f"  LAGGED {k:12} mean={s['mean_bps']:7.1f}bps t={s['t']:5.2f} hit={s['hit']:4.0f}% "
+                      f"sharpe={s['sharpe']:5.2f}  (layer coverage median "
+                      f"{np.median([x['layer_covered_w'] for x in r2]):.1%})")
     print(f"[cache] hits={_hits['hit']} misses={_hits['miss']} "
           f"rate={_hits['hit']/(_hits['hit']+_hits['miss'])*100:.0f}%")

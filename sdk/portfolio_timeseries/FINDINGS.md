@@ -88,7 +88,9 @@ the gross mean falls.
 
 ### Layer attribution — the affirmative result
 
-Per-quarter contributions, q_len-normalised, n=42:
+Per-quarter contributions, q_len-normalised, n=42. Layer coverage (book weight with a decomposition
+series) is **98.8% median, 95.7% minimum** — stated per PR #373 finding 7; the renormalisation to
+covered names is an explicit imputation, see `HANDOFF.md` §5:
 
 | Layer | LAG mean | t | Sharpe | | UNL mean | t | Sharpe | survives |
 |---|---:|---:|---:|---|---:|---:|---:|---:|
@@ -226,7 +228,9 @@ looked at that happened to work.
 until ~45 days later. This characterises how the firm is positioned *into* quarter end. It is
 not a strategy.
 
-n=49 quarters, 2013-09-30 → 2026-03-31, coverage median 92.9% (min 75%).
+n=49 quarters, 2013-09-30 → 2026-03-31, coverage median 92.9% (min 75%) — an **absolute share of the
+full book**, with confidential-treatment rows (median 16.9% of weight) and the names past the
+endpoint's 1,000-row cap (median 0.4%, max 3.2%) both counted as uncovered.
 
 ### The raw effect, and three controls that kill it
 
@@ -241,7 +245,7 @@ The post-report window sits at roughly the 60th percentile of its own quarter's 
 Control 3 is the sharpest: 500 random books per report date, each name replaced by a different
 name from the same sector with a similar within-sector market-cap weight, D. E. Shaw's own
 weights retained. The matched placebo returns **+123 bps** against the book's **+131 bps** on
-the same names-with-matches basis. The rise is a property of the large, index-eligible
+the same names-with-matches basis (matched names are 82.3% of the full book, median). The rise is a property of the large, index-eligible
 size/sector universe — not of their selection.
 
 ### Does anything survive to the filing date? No.

@@ -3,15 +3,44 @@
 The overlay math is ``riskmodels.pair_trade``'s netting logic generalized from
 2 legs to N legs: portfolio exposure to factor ``j`` is ``Σ_i (D_i · β_i,j)``
 over positions ``i`` (with signed dollars ``D_i``), and the overlay shorts that
-amount of the ETF mapped to factor ``j``. The pure core is :func:`n_leg_hedge`
-(implemented in Step 3); :meth:`MarketNeutralOverlay.construct` wires it to a
-``PortfolioTimeSeries`` snapshot and the K=4 factor model in a later session.
+amount of the ETF mapped to factor ``j``. The pure core is :func:`n_leg_hedge`;
+:meth:`MarketNeutralOverlay.construct` wires it to a live ``PortfolioTimeSeries``
+snapshot, keying legs by the ETF ticker ``decompose()`` names for each position.
+
+HEDGE SIGN CONVENTION — read before trusting any overlay number.
+``decompose()["hedge"][etf]`` is converted to a per-dollar SHORT ratio by one
+function, :func:`hedge_short_ratio`, controlled by :data:`HEDGE_IS_SHORT_RATIO`.
+The SDK docstring (``client.py``) and fixture (``sdk/tests/test_decompose.py``)
+say ``hedge[etf] == -hr`` — a signed position where NEGATIVE means short — which
+is the opposite of the convention this module was built and validated on (the
+July 2026 realized-beta charts, 76-110% beta reduction across four filers, only
+reproduce if ``hedge`` is a positive short ratio). On 2026-09-22 the live API
+returned MIXED signs across names (SPY positive for AXP/KO/BAC, negative for
+NVDA; sector legs negative throughout), so neither convention could be confirmed
+empirically that day. The flag pins the convention in one place and the tests in
+``tests/test_hedge_sign.py`` pin its behaviour; flip the flag, not the call sites.
+Tracked upstream as BWMACRO D.8.57.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
+
+#: True  -> ``decompose()["hedge"][etf]`` is a POSITIVE per-dollar short ratio (what the
+#:          overlay was validated on in July 2026).
+#: False -> it is the SDK-documented signed position (``== -hr``, negative = short), and
+#:          the ratio must be negated to become a short ratio.
+#: This is the ONLY place the convention lives. See the module docstring and D.8.57.
+HEDGE_IS_SHORT_RATIO: bool = True
+
+
+def hedge_short_ratio(hedge_value: float) -> float:
+    """Convert one ``decompose()["hedge"]`` entry to a per-dollar SHORT ratio under the
+    convention selected by :data:`HEDGE_IS_SHORT_RATIO`. Every consumer of the hedge dict
+    in this package must go through here so a sign change is a one-line, tested edit."""
+    v = float(hedge_value)
+    return v if HEDGE_IS_SHORT_RATIO else -v
 
 import numpy as np
 
@@ -66,6 +95,9 @@ class MarketNeutralOverlay:
     def __init__(self, portfolio, factor_model=None):
         self.portfolio = portfolio
         self.factor_model = factor_model  # K=4 once available
+        #: tickers whose decompose() carried no hedge block — left OUT of the overlay and
+        #: reported here, so a vendor data gap is visible instead of silently filled.
+        self.unhedged_tickers: list[str] = []
 
     def construct(self, client) -> HedgeOverlay:
         """Build the ETF overlay for ``self.portfolio`` from live hedge ratios.
@@ -99,7 +131,13 @@ class MarketNeutralOverlay:
                 continue
             dec = client.decompose(tkr)
             hedge = dec.get("hedge", {}) or {}
-            loadings = {etf: float(r) for etf, r in hedge.items() if r is not None}
+            if not hedge:
+                # A name with no hedge block is a DATA GAP, not a zero exposure (e.g. AAPL on
+                # 2026-09-22 returned hedge={} with er_populated=False). Record it rather than
+                # silently renormalising the biggest position away.
+                self.unhedged_tickers.append(tkr)
+                continue
+            loadings = {etf: hedge_short_ratio(r) for etf, r in hedge.items() if r is not None}
             legs.append(LegExposure(tkr, float(d), loadings))
             etfs.update(loadings)
 

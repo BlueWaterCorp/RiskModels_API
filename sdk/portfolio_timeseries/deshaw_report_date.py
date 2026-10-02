@@ -387,8 +387,9 @@ def main():
     val = validate_layers()
     for k, d in val.items():
         print(f"  validate {k:12} mean|diff|={d['mean_bps']:6.1f}bps median={d['median_bps']:6.1f} (n={d['n']})")
-    val_ok = all(d["median_bps"] < 50 for d in val.values())
-    print(f"  validation: {'PASS (medians <50bps)' if val_ok else 'FAIL — layer figures NOT trusted'}")
+    lv, failing = B.layer_gate_verdict(val)   # the ONE layer gate (build_lagged.LAYER_GATE_MEDIAN_BPS)
+    val_ok = lv == "PASS"
+    print(f"  validation: {'PASS (medians <%.0f bps)' % B.LAYER_GATE_MEDIAN_BPS if val_ok else 'FAIL — layer figures NOT trusted: ' + str(failing)}")
     layer_stats = {}
     if val_ok:
         for w in ("A_1_10", "E_post10"):

@@ -94,8 +94,9 @@ def window_return_by_regime(holdings, teo, window_key, labels):
 def aggregate_by_regime(teos, label_fn, window_key="A_1_10", name=NAME):
     """Mean bucket contribution / return across studiable report dates.
 
-    label_fn(teo) -> {ticker: quadrant}. Wire Aman's classifier here; until it lands, pass a
-    synthetic labeler (see test_regime_split.py) to exercise the path end to end.
+    label_fn(teo) -> {ticker: quadrant}. In production this is Aman's RRG classifier bridged
+    to names (``rrg_classifier.label_fn`` + ``name_labels``), point-in-time at ``teo``; the
+    tests pass a synthetic labeler to exercise the path hermetically.
     """
     contribs = {q: [] for q in (*QUADRANTS, "unlabeled")}
     rets = {q: [] for q in (*QUADRANTS, "unlabeled")}

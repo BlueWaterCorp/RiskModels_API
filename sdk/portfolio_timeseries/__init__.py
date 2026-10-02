@@ -9,14 +9,18 @@ Follows named 13F filers in two forms:
   exposure (:class:`MarketNeutralOverlay`), generalizing ``riskmodels.pair_trade``
   netting from 2 legs to N legs (:func:`n_leg_hedge`).
 
-Build status (this scaffold): the N-leg netting math and the xarray schema /
-``as_of()`` logic are implemented offline against mock data. Live wiring is
-blocked upstream:
+Status: live-wired and validated against ``riskmodels-py`` 0.3.11 / in-tree 0.4.0.
+:meth:`PortfolioTimeSeries.from_cik` resolves any filer CIK and pulls historical
+vintages via ``get_filer_holdings(as_of=...)``; :meth:`MarketNeutralOverlay.construct`
+builds the ETF overlay from live ``decompose()`` hedge ratios. Two things remain
+deliberately unimplemented, both documented in HANDOFF.md §8:
 
-- :meth:`PortfolioTimeSeries.from_cik` — blocked on V4 API bi-temporal fields.
-- :meth:`PortfolioTimeSeries.factor_decomposition_series` and the K=4
-  residualization in :mod:`portfolio_timeseries.factor_model` — blocked on the
-  K=4 factor-model documentation (style block methodology).
+- the K=4 style block in :mod:`portfolio_timeseries.factor_model` (methodology never
+  delivered; a stub, not a bug);
+- the hedge SIGN convention is pinned behind a flag rather than resolved
+  (:data:`market_neutral_overlay.HEDGE_IS_SHORT_RATIO`, BWMACRO D.8.57).
+
+The lag study itself (``build_lagged.py``) does not use the overlay at all.
 
 Identifier note: identifiers are FIGI-resolved upstream. CUSIP is never used
 anywhere in this package (S&P Global proprietary — licensing).

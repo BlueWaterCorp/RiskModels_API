@@ -55,7 +55,9 @@ Fixed (drop NaN days before compounding, skip all-NaN names), **all 13 quarters 
 
 > ⚠️ **The same bug is in the shared `build_lagged.window_return`, so it also affected the prior Berkshire lagged results** (n 35→42 windows, lagged gross Sharpe 0.85→0.99 once fixed). That is a *separate* deliverable that has already been audited and presented; it is **flagged for a dedicated re-run, not silently rewritten here.** See [DATA_ISSUES.md](DATA_ISSUES.md).
 
-**Coverage caveat (carry it through).** D. E. Shaw's book is diffuse (~2,000 names, 1,000-row API cap; ~90% of weight in ~550 names). The illiquid tail is **intentionally excluded from the ERM3 3000 universe** (confirmed: by design), so those names have no returns. We renormalise to the covered book and report coverage on every result. **Characterisation figures, not validated performance.**
+**Coverage caveat (carry it through).** D. E. Shaw's book is diffuse (~2,000 names, 1,000-row API cap; ~90% of weight in ~550 names). The illiquid tail is **intentionally excluded from the ERM3 3000 universe** (confirmed: by design), so those names have no returns. We renormalise to the covered book — an **explicit imputation** (the uncovered weight is assigned the covered book's return) — and report coverage on every result. **Characterisation figures, not validated performance.**
+
+**Coverage basis (stated per PR #373 review, finding 6).** Every coverage figure here is an **absolute share of the full book**: the endpoint's weights are weights of the whole book and sum to <1 when the 1,000-row cap truncates it, so names past row 1,000 count as uncovered by construction. That cap bites on **71 of 74** D. E. Shaw books, leaving a median **0.4%** (max 3.2%) of weight unlisted — small, but it never appears in a `missing` list, which is why it is stated here. The SDK offers no paging. The ~93% window coverage is therefore ~93% of the whole book, with restricted (`BW-RESTRICTED`, median 16.9% of weight) and unlisted names both outside it.
 
 **Spend note.** The cache only reached back to 2021 (prior session fetched the last 20 quarters). Because the request was for the *full available history*, I extended the returns+decomposition cache back to the 2013 floor across the top-92%-weight union of names — **767 additional names, ≈ $46** (`deshaw_fetch_history.py`, resumable), lifting median coverage from ~82% to ~93%. Recording it here so it's read rather than encountered on a bill.
 
@@ -96,7 +98,7 @@ SPY is a cap-weighted index, not a book that looks like theirs. The sharper cont
 every held name with a *different* name from the same sector and a similar within-sector
 market-cap weight, keeps D. E. Shaw's own portfolio weights, and runs the identical
 measurement. 500 random matched books per report date (`deshaw_size_control.py`, seed
-20260907); matched-name coverage median 89.6%.
+20260907); matched-name coverage median **82.3% of the full book** *(re-stated 2026-10-02 on the absolute basis — an earlier 89.6% divided by the sum of ticker-bearing returned rows, i.e. it excluded the ~17% of weight under confidential treatment from the denominator)*.
 
 | Window | D. E. Shaw actual | matched placebo | paired difference | t | verdict |
 |---|---:|---:|---:|---:|---|

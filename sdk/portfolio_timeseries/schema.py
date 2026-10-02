@@ -92,12 +92,12 @@ def holdings_from_filing(
 ) -> xr.Dataset:
     """Build the bi-temporal Dataset from ONE live ``get_filer_holdings`` filing.
 
-    The live SDK (0.3.10) returns only the filer's *latest* disclosed snapshot, so
-    this produces a single-filing Dataset — one populated diagonal cell — with the
-    same dims/vars as :func:`make_mock_holdings`, letting :func:`as_of_snapshot`
-    and everything downstream treat mock and live data identically. Multiple
-    vintages can be concatenated on the paired date dims once the API exposes
-    historical holdings.
+    One call = one filing, so this produces a single-filing Dataset — one populated
+    diagonal cell — with the same dims/vars as :func:`make_mock_holdings`, letting
+    :func:`as_of_snapshot` and everything downstream treat mock and live data
+    identically. Historical vintages ARE available (``get_filer_holdings(as_of=...)``,
+    SDK >= 0.3.11); :meth:`PortfolioTimeSeries.from_cik` fetches the latest and
+    callers concatenate further vintages on the paired date dims as needed.
 
     Positions are keyed by ``ticker`` (dim) and carry their FIGI ``security_id``
     as a companion coord. No CUSIP is read or stored — identifiers are FIGI only

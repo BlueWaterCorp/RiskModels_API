@@ -54,6 +54,17 @@ Greenlight settles it — its last filing is 2.5 years stale and its "one quarte
 SPY over 9.2 quarters. **One corrupt row was the difference between passing and failing the
 gate.** Always drop the terminal row from quarter-aligned analysis.
 
+**How it is identified (corrected 2026-10-02, PR #373 finding 5).** By *property*, not position:
+`build_lagged.terminal_teo(name)` is the maximum teo of the **raw** endpoint series, read before
+null-gross rows are filtered. The first version took `[-1]` of the filtered list, which gives the
+wrong row the moment the endpoint's last row carries a null gross. `stage0` now tags and drops it
+itself (`is_terminal`), so the gate statistics never include it. Two tempting alternatives do
+*not* work and are recorded so nobody re-tries them: "forward quarter incomplete in the calendar"
+never fires (the SPY calendar runs to 2026-07-24, past every filer's last quarter end), and a
+market-vs-SPY deviation threshold at 5× the filer median catches the COVID quarter for every
+filer. The implied-horizon table above is the *evidence* the row is defective; the raw-max-teo
+rule is the *detector*. All five filers' terminal teos are unchanged under it.
+
 ### 0.2 Reconciliation — every teo accounted for
 
 | | count |
@@ -187,7 +198,9 @@ The robust claim is the comparison in §6, not the level.
 Per-day per-name additive decomposition (`l1_factor`=market, `l2_factor`=sector,
 `l3_factor`=subsector, `l3_residual`=idio; sums to gross daily to ~5e-10). Portfolio layer over
 a window = Σ wᵢ · (name's compounded layer return), renormalised to covered names.
-q_len-normalised, n=42, UNLT basis (§3):
+q_len-normalised, n=42, UNLT basis (§3). Layer coverage — book weight with a
+`get_returns_decomposition` series, carried on every Stage 2 record as `layer_covered_w` — is
+**98.8% median, 95.7% minimum** across the 42 windows (PR #373 finding 7):
 
 | Layer | LAG mean | t | hit % | Sharpe | | UNL mean | t | hit % | Sharpe |
 |---|---:|---:|---:|---:|---|---:|---:|---:|---:|

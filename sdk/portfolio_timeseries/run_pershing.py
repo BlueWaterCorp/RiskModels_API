@@ -83,21 +83,13 @@ def _gate():
     """Stage 0 with the terminal row dropped (see LAGGED_RESULTS §0.1)."""
     B.CACHE_ONLY = True
     r0 = B.stage0(NAME)
-    terminal = B.portfolio_rows(NAME)[-1]["teo"]
+    g = B.stage0_summary(NAME, recs=r0)       # one gate, one terminal rule, for every filer
     ok = [x for x in r0 if x["book_ok"] and x["diff_renorm_bps"] is not None
-          and x["teo"] != terminal]
-    d = np.array([x["diff_renorm_bps"] for x in ok])
-    cov = np.array([x["covered_w"] for x in ok])
-    return {
-        "n": len(d), "mean_bps": float(d.mean()), "median_bps": float(np.median(d)),
-        "max_bps": float(d.max()), "verdict": B.gate_verdict(float(d.mean())),
-        "coverage_median": float(np.median(cov)), "coverage_min": float(cov.min()),
-        "terminal_teo": terminal,
-        "missing_books": [x["teo"] for x in r0 if not x["book_ok"]],
-        "worst": sorted([{"teo": x["teo"], "diff_bps": x["diff_renorm_bps"],
-                          "cov": x["covered_w"]} for x in ok],
-                        key=lambda z: -z["diff_bps"])[:5],
-    }
+          and x["teo"] != g["terminal_teo"]]
+    g["missing_books"] = g.pop("missing_book_teos")
+    g["worst"] = sorted([{"teo": x["teo"], "diff_bps": x["diff_renorm_bps"], "cov": x["covered_w"]}
+                         for x in ok], key=lambda z: -z["diff_bps"])[:5]
+    return g
 
 
 def stage_analyse():
@@ -150,12 +142,11 @@ def stage_analyse():
 
     # Stage 2 layers
     v2 = B.stage2_validate(NAME)
-    print(f"\n  STAGE 2 layer validation (median |diff| vs endpoint, 50 bps bar):")
-    lay_ok = True
+    print(f"\n  STAGE 2 layer validation (median |diff| vs endpoint, {B.LAYER_GATE_MEDIAN_BPS:.0f} bps bar):")
+    lv, failing = B.layer_gate_verdict(v2)
+    lay_ok = lv == "PASS"
     for k, dd in v2.items():
-        flag = "PASS" if dd["median_bps"] < 50 else "FAIL"
-        if flag == "FAIL":
-            lay_ok = False
+        flag = "FAIL" if k in failing else "PASS"
         print(f"    {k:<15} mean={dd['mean_bps']:6.1f} median={dd['median_bps']:6.1f} "
               f"(n={dd['n']})  {flag}")
 

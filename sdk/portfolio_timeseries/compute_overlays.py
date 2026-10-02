@@ -26,6 +26,7 @@ from datetime import date
 
 import numpy as np
 
+from portfolio_timeseries.market_neutral_overlay import hedge_short_ratio  # noqa: E402
 from portfolio_timeseries import PortfolioTimeSeries
 
 _HERE = Path(__file__).parent
@@ -57,10 +58,11 @@ def compute(client, name, fid):
         except Exception:  # noqa: BLE001
             continue
         n_decomposed += 1
-        # ETF overlay: hedge dict is {etf: per-dollar short ratio}.
+        # ETF overlay: hedge dict -> per-dollar short ratio via the ONE pinned convention
+        # (market_neutral_overlay.hedge_short_ratio / HEDGE_IS_SHORT_RATIO; D.8.57).
         for etf, r in (dec.get("hedge", {}) or {}).items():
             if r is not None:
-                etf_shorts[etf] = etf_shorts.get(etf, 0.0) + d * float(r)
+                etf_shorts[etf] = etf_shorts.get(etf, 0.0) + d * hedge_short_ratio(r)
         # Per-layer exposure: exposure[layer].hr, dollar-weighted.
         exp = dec.get("exposure", {}) or {}
         for layer in LAYERS:

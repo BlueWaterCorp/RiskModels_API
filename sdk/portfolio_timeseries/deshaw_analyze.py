@@ -57,12 +57,13 @@ print(f"  n={len(diffs)} quarters | coverage median={np.median(covs):.1%} min={n
 print(f"  mean|diff|={diffs.mean():.1f}bps median={np.median(diffs):.1f} max={diffs.max():.1f} "
       f"<75bps={ (diffs<75).sum() }/{len(diffs)}")
 GATE = diffs.mean()
-if GATE > 75:
-    print(f"\n  STAGE 0 FAILED (mean {GATE:.0f}bps > 75). Coverage too thin / high turnover. STOP — not publishing lagged D.E.Shaw layers.")
+_v = B.gate_verdict(float(GATE))          # the ONE Stage 0 gate (build_lagged)
+if _v == "STOP":
+    print(f"\n  STAGE 0 FAILED (mean {GATE:.0f}bps > {B.GATE_STOP_BPS:.0f}). Coverage too thin / high turnover. STOP — not publishing lagged D.E.Shaw layers.")
     verdict = "FAILED"
 else:
-    print(f"\n  STAGE 0 {'PASS' if GATE<25 else 'PROCEED-WITH-FLAG'} (mean {GATE:.0f}bps).")
-    verdict = "PASS" if GATE < 25 else "FLAG"
+    print(f"\n  STAGE 0 {'PASS' if _v == 'CLEAN' else 'PROCEED-WITH-FLAG'} (mean {GATE:.0f}bps).")
+    verdict = "PASS" if _v == "CLEAN" else "FLAG"
 
 out = {"stage0_mean_bps": float(GATE), "stage0_median_bps": float(np.median(diffs)),
        "stage0_n": len(diffs), "coverage_median": float(np.median(covs)), "verdict": verdict}

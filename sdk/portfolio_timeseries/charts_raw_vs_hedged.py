@@ -77,7 +77,8 @@ def build_series(client):
     gross_long = float(np.nansum(dollars))
 
     overlay = MarketNeutralOverlay(snap).construct(client)
-    etf_shorts = overlay.etf_shorts  # etf -> signed dollars (positive = short)
+    etf_shorts = overlay.etf_shorts  # etf -> signed dollars (positive = short), under the
+    # convention pinned in market_neutral_overlay.HEDGE_IS_SHORT_RATIO (D.8.57)
 
     # --- fetch returns -------------------------------------------------------
     pos_ret, pos_missing = _returns_frame(client, tickers)

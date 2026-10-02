@@ -149,7 +149,7 @@ def run(n_draws=N_DRAWS):
 
         # --- actual D. E. Shaw book, restricted to names that HAVE a size match,
         #     so actual and placebo are measured on exactly the same footing ---
-        actual, placebo_draws, cov_list = [], [[] for _ in range(n_draws)], []
+        actual, placebo_draws, cov_list, tail_list = [], [[] for _ in range(n_draws)], [], []
         matchable_teos = []
         for t in teos:
             ret_row = table.get(t, {})
@@ -170,8 +170,14 @@ def run(n_draws=N_DRAWS):
             wts = np.array([held[tk] for tk in matched], float)
             wts = wts / wts.sum()
             actual.append(float(wts @ np.array([ret_row[tk] for tk in matched])))
-            full = sum((x.get("weight") or 0.0) for x in books[t] if x.get("ticker"))
-            cov_list.append(sum(held[tk] for tk in matched) / full if full else np.nan)
+            # Coverage on the ABSOLUTE book basis (PR #373 review, finding 6). The endpoint's
+            # weights are weights of the FULL book, so the matched names' raw weight is
+            # already "share of the book"; dividing by the sum of RETURNED weights (the old
+            # code) measured coverage of the top-1,000 rows, not of the book. The unlisted
+            # tail beyond the 1,000-row cap is recorded alongside so the basis is explicit.
+            cov_list.append(sum(held[tk] for tk in matched))
+            tail_list.append(B.book_truncation({"holdings": books[t],
+                                                "n_total_holdings": None})["tail_w"])
 
             # (n_names x CALIPER) matrix of candidate returns -> vectorised draws
             cand = np.vstack([nb[tk] for tk in matched])          # (n_names, CALIPER)
@@ -201,7 +207,10 @@ def run(n_draws=N_DRAWS):
         results[wkey] = {
             "n_report_dates": len(matchable_teos),
             "n_draws": n_draws,
-            "matched_coverage_median": float(np.nanmedian(cov_list)),
+            "matched_coverage_median": float(np.nanmedian(cov_list)),   # ABSOLUTE book basis
+            "coverage_basis": "absolute share of the full book (endpoint weights sum to <1 when "
+                              "the 1,000-row cap truncates); not share of returned rows",
+            "book_tail_w_median": float(np.nanmedian(tail_list)) if tail_list else float("nan"),
             "actual_mean_bps": float(a_mean * 1e4),
             "actual_t": float(a_mean / (actual.std(ddof=1) / np.sqrt(len(actual)))),
             "placebo_mean_bps": float(draws.mean() * 1e4),

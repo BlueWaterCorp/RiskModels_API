@@ -98,8 +98,7 @@ def terminal_row_evidence():
 # --------------------------------------------------------------------------
 def stage0_audit():
     r0 = B.stage0(NAME)
-    rows = B.portfolio_rows(NAME)
-    terminal_teo = rows[-1]["teo"]
+    terminal_teo = B.terminal_teo(NAME)      # by PROPERTY (max teo of the raw endpoint series), not [-1]
 
     ok = [x for x in r0 if x["book_ok"] and x["diff_renorm_bps"] is not None]
     ok_ex = [x for x in ok if x["teo"] != terminal_teo]
@@ -110,9 +109,8 @@ def stage0_audit():
             "label": label, "n": len(d), "mean_bps": float(d.mean()),
             "median_bps": float(np.median(d)), "max_bps": float(d.max()),
             "n_under_25": int((d < 25).sum()), "n_under_75": int((d < 75).sum()),
-            "verdict": ("CLEAN (<25)" if d.mean() < 25
-                        else "PROCEED WITH FLAG (25-75)" if d.mean() < 75
-                        else "STOP (>75)"),
+            "verdict": {"CLEAN": "CLEAN (<25)", "PROCEED_WITH_FLAG": "PROCEED WITH FLAG (25-75)",
+                        "STOP": "STOP (>75)"}[B.gate_verdict(float(d.mean()))],
         }
 
     return {
@@ -198,7 +196,7 @@ def stub_row_diagnostic():
     a property of Berkshire's book. The 1.003 Sharpe should not be quoted.
     """
     rows = B.portfolio_rows(NAME)
-    terminal_teo = rows[-1]["teo"]
+    terminal_teo = B.terminal_teo(NAME)   # by property, not position (finding 5)
     stubs, kept = [], []
     for r in rows:
         h = B.holdings_for_teo(NAME, r["teo"])
@@ -229,7 +227,7 @@ def stage2_validate_ex_terminal():
     """B.stage2_validate over every buildable teo EXCEPT the terminal row, whose
     endpoint layer returns are measured over the wrong window (see terminal_row_evidence)."""
     rows = B.portfolio_rows(NAME)
-    terminal_teo = rows[-1]["teo"]
+    terminal_teo = B.terminal_teo(NAME)   # by property, not position (finding 5)
     teos = [pd.Timestamp(r["teo"]) for r in rows]
     diffs = {k: [] for k in EP_COLS}
     tmax = B.trading_days().max()
@@ -260,7 +258,7 @@ def reconcile_teos():
 
     all_rows = sorted(raw, key=lambda r: r["teo"])
     with_gross = [r for r in all_rows if r.get("portfolio_gross_return") is not None]
-    terminal_teo = with_gross[-1]["teo"]
+    terminal_teo = B.terminal_teo(NAME)   # by property (max raw teo), not position (finding 5)
 
     book_ok, book_missing = [], []
     for r in with_gross:
@@ -339,7 +337,7 @@ def stage2_audit():
     fwd_recs = []
     for i, r in enumerate(rows):
         h = B.holdings_for_teo(NAME, r["teo"])
-        if h.get("report_date") != r["teo"] or r["teo"] == rows[-1]["teo"]:
+        if h.get("report_date") != r["teo"] or B.is_terminal(NAME, r["teo"]):
             continue
         end = B.fwd_quarter_end(teos[i])
         if end > tmax:
@@ -369,7 +367,7 @@ def sector_subsector_audit(stage2):
     the rebuild says the opposite. Test whether SAMPLE (which teos are included)
     explains it, exactly as the Sharpe bridge did."""
     rows = B.portfolio_rows(NAME)
-    terminal_teo = rows[-1]["teo"]
+    terminal_teo = B.terminal_teo(NAME)   # by property, not position (finding 5)
     rebuild_teos = {x["teo"] for x in stage2["records"]}
 
     def ep_stats(subset_teos, label):
@@ -460,7 +458,7 @@ def main():
         d, e = s2["validation"].get(k), s2["validation_ex_terminal"].get(k)
         if not d:
             continue
-        bar = "PASS" if e["median_bps"] < 50 else "FAIL"
+        bar = "PASS" if e["median_bps"] < B.LAYER_GATE_MEDIAN_BPS else "FAIL"
         print(f"    {k:<15} mean={d['mean_bps']:6.1f} med={d['median_bps']:5.1f} (n={d['n']:>2}) | "
               f"mean={e['mean_bps']:6.1f} med={e['median_bps']:5.1f} (n={e['n']:>2})  {bar}")
     print("\n    Layer attribution, q_len-normalised:")

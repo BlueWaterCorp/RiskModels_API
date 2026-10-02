@@ -53,7 +53,14 @@ Full results with numbers: **[FINDINGS.md](FINDINGS.md)**.
 > public date (**no effect on Berkshire: 0 of 42 windows floored**); (3) the headline and layer
 > gross series were on different normalisation bases — both now use `stats_qnorm`, and the
 > lagged gross Sharpe is **0.95** in both tables (it read 0.99 in one before). Full detail and
-> before/after figures in [DATA_ISSUES.md](DATA_ISSUES.md), newest entry.
+> before/after figures in [DATA_ISSUES.md](DATA_ISSUES.md).
+>
+> **Second pass (findings 4–9 and hygiene):** the gates are now enforced controls rather than
+> printed constants (§5); the terminal row is detected by property, not position; the 1,000-row
+> holdings cap is quantified and every coverage figure states its basis; layer figures carry
+> coverage; the NaN-tail limitation is pinned; the hedge sign convention is single-sourced
+> behind one flag (`market_neutral_overlay.HEDGE_IS_SHORT_RATIO`, D.8.57). The module moved from
+> `sdk/` to `research/` and the conftest import shim is gone. 80 tests pass, 1 xfail.
 
 | Order | File | What it gives you |
 |---|---|---|
@@ -104,7 +111,12 @@ book_public_date(rec, teo)         earliest date a book is PROVABLY public
 lagged_entry(teo, rec)             entry_date floored at book_public_date -> (entry, floored)
 stats_qnorm(recs, value_fn)        moments per QUARTER, annualised on summed window length
 fwd_quarter_end(teo)               teo + 3 calendar months
-gate_verdict(mean_abs_diff_bps)    CLEAN / PROCEED_WITH_FLAG / STOP
+terminal_teo(name) / is_terminal   the endpoint's open-ended last row, by PROPERTY (max raw teo)
+book_truncation(rec)               what the 1,000-row holdings cap left unlisted (tail_w)
+gate_verdict(mean_abs_diff_bps)    Stage 0: CLEAN / PROCEED_WITH_FLAG / STOP on the MEAN
+layer_gate_verdict(validation)     Stage 2: PASS / FAIL on each layer's MEDIAN < 50 bps
+stage0_summary(name)               the Stage 0 numbers the gate is applied to (terminal dropped)
+enforce_gate(name, force=False)    runs Stage 0 and RAISES GateStop on STOP — every stage's control point
 stage0 / stage1 / stage2 / stage2_validate
 ```
 
@@ -206,22 +218,45 @@ provides, from daily name-level data, and compare. `build_lagged.gate_verdict()`
 | > 75 bps | **STOP** | publish nothing downstream, in any form |
 
 The **mean** is the gate, not the median — the median hides exactly the tail quarters where a
-rebuild diverges most.
+rebuild diverges most. The statistics it is applied to come from `stage0_summary(name)`, which
+drops the endpoint's terminal row by property (`terminal_teo`, §7.6) before anything is judged.
 
-This gate is not advisory, and it has been enforced in both directions:
+**Since the PR #373 second pass this gate is a control, not a printed constant.**
+`enforce_gate(name)` runs Stage 0 and raises `GateStop` on STOP; `python build_lagged.py 1|2|all`
+goes through it and refuses to run the later stages (`--force` downgrades the refusal to a loud
+warning, for diagnostics only — never for publication). `reaudit_berkshire.py`,
+`run_pershing.py`, `deshaw_analyze.py` and `deshaw_report_date.py` all route through the same
+functions, so there is one bar and one place to read it.
+
+It has been enforced in both directions:
 - **Berkshire passes at 61 bps** (n=42) → results published, flagged.
-- **D. E. Shaw fails at 78 bps** → no lagged D. E. Shaw survival, Sharpe, or CAPM figure has
-  ever been published. The failure is structural, not fixable: coverage plateaus around 85%
-  because the remaining names are intentionally outside the ERM3 3000 universe and have no
-  daily data at any price.
+- **D. E. Shaw fails at 78 bps** and **Pershing fails at 195 bps** → no lagged survival,
+  Sharpe, or CAPM figure has ever been published for either. D. E. Shaw's failure is
+  structural: coverage plateaus around 85% because the remaining names are intentionally
+  outside the ERM3 3000 universe. Pershing's is confidential-treatment rows (§9).
 
 ### The layer-validation gate
 
 Before publishing a layer split, reproduce the endpoint's own unlagged per-quarter layer
-returns. Bar: median |diff| < 50 bps.
+returns. `build_lagged.layer_gate_verdict()`: PASS iff **every** layer's **median** |diff| is
+under `LAYER_GATE_MEDIAN_BPS` = 50; the failing layers are returned by name. The median here,
+not the mean, is deliberate: per-layer |diff| distributions are tail-heavy from the *same*
+high-vol quarters the Stage 0 mean has already penalised, so the layer gate asks whether the
+typical quarter's attribution reproduces, given that the gross already passed.
 - Berkshire passes on all four layers (market 17, sector 4, subsector 1, idio 29 bps).
 - **D. E. Shaw fails on the idiosyncratic layer** (median 59 bps) and its layer split is
   withheld entirely — including qualitatively, in either direction.
+
+### Coverage, and what "renormalised to covered names" means
+
+Every window return is `Σ_covered w·R / Σ_covered w`. That assigns the covered book's return to
+the uncovered weight — an **explicit imputation**, defensible for a partial universe, but a fill.
+It is never silent: `covered_w` travels with every gross figure, `portfolio_window_layers`
+returns `covered_w` / `n_names` with every layer figure, and the documents state coverage on
+every published result. Coverage is an **absolute share of the full book**: the endpoint's
+weights are of the full book (they sum to <1 when the 1,000-row cap truncates), so unlisted
+tail names count as uncovered by construction — they just never appear in `missing`.
+`book_truncation(rec)` quantifies that tail (D. E. Shaw: median 0.4%, max 3.2%).
 
 ### Point-in-time discipline
 
@@ -363,17 +398,17 @@ Each of these is a property of the data, not a defect in the code.
 5. **`adj_mv` scale bug** — dollar labels unreliable; weights and betas fine.
 6. **Statistical power is the binding constraint on every result.** Nothing clears
    significance on a single filer. See §9.
-7. **The vendored SDK is one release behind.** `sdk/riskmodels/` is the build source for the
-   `riskmodels-py` wheel and sits at 0.3.10 while the installed wheel is 0.3.11. Because
-   `sdk/portfolio_timeseries/tests/` and `portfolio_timeseries/` both have `__init__.py` but
-   `sdk/` does not, pytest computes the package root as `sdk/` and prepends it, so
-   `import riskmodels` used to resolve to 0.3.10 and skip the entire live test module.
-   **Worked around** in `tests/conftest.py` (drop `sdk/` from `sys.path`, import riskmodels so
-   the installed distribution wins and caches in `sys.modules`, restore). That is a workaround,
-   not a fix. **The real fix is to sync `sdk/riskmodels/` to 0.3.11, which is a cross-repo
-   release action outside this module's scope.** Related: `sdk/tests/` has no `__init__.py`, so
-   its 344 tests have been validating the *installed wheel*, not the checked-in source — the
-   0.3.10 source currently has no unit coverage.
+7. **The import-shadow workaround is gone; this is history, kept so nobody re-adds it.** When
+   this module lived under `sdk/`, pytest prepended `sdk/` to `sys.path` and `import riskmodels`
+   resolved to the in-tree source (then 0.3.10, behind the installed 0.3.11 wheel), skipping the
+   live test module. A `tests/conftest.py` shim dropped `sdk/` from the path to reach the wheel.
+   Two things made it unnecessary: the in-tree SDK is now **0.4.0**, ahead of any wheel and
+   carrying every method this module uses (`as_of` on `get_filer_holdings`,
+   `get_filer_concentration`, `get_returns_decomposition`); and the module now lives under
+   `research/`, so `sdk/` is never on pytest's path at all. The shim was deleted in PR #373's
+   second pass. Whatever `riskmodels` resolves to — installed wheel or editable in-tree — the
+   suite passes. Related, still true: `sdk/tests/` validates the *installed wheel*, not the
+   checked-in source.
 8. **Size matching in `deshaw_size_control.py` is not point-in-time.**
    `ffx_constituents_latest.csv` is a single 2026-07-02 snapshot, so sector membership and
    relative size are applied historically. Acceptable because it only defines a control group
