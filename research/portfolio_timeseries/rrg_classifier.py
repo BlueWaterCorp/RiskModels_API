@@ -204,7 +204,7 @@ def ticker_maps():
     fac = df["factor"].str.replace("FFX_", "")
     sector_map = df[~fac.str.isdigit()].set_index("ticker")["factor"]
     sub_all = df[fac.str.isdigit()].set_index("ticker")["factor"]
-    sub_map = sub_all[sub_all.isin(SUBSECTORS)]   # only the 8 with complete data
+    sub_map = sub_all[sub_all.isin(SUBSECTORS)]   # only the 8 with complete data  # licensed-id-ok: pandas Series.isin() method, not the ISIN identifier
     return sector_map.to_dict(), sub_map.to_dict()
 
 

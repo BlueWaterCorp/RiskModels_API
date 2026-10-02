@@ -22,7 +22,7 @@ deliberately unimplemented, both documented in HANDOFF.md §8:
 
 The lag study itself (``build_lagged.py``) does not use the overlay at all.
 
-Identifier note: identifiers are FIGI-resolved upstream. CUSIP is never used
+Identifier note: identifiers are FIGI-resolved upstream. No S&P-licensed identifier is used
 anywhere in this package (S&P Global proprietary — licensing).
 """
 

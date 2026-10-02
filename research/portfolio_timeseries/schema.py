@@ -100,7 +100,7 @@ def holdings_from_filing(
     callers concatenate further vintages on the paired date dims as needed.
 
     Positions are keyed by ``ticker`` (dim) and carry their FIGI ``security_id``
-    as a companion coord. No CUSIP is read or stored — identifiers are FIGI only
+    as a companion coord. No S&P-licensed identifier is read or stored — identifiers are FIGI only
     (S&P Global proprietary; licensing).
 
     Args:

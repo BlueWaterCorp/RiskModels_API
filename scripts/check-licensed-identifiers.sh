@@ -43,6 +43,7 @@ SCAN_PATHS=(
     app/api
     lib
     sdk/riskmodels
+    research/portfolio_timeseries
     packages
     OPENAPI_SPEC.yaml
     mcp/data/openapi.json

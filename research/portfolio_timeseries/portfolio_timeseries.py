@@ -22,7 +22,7 @@ History note: holdings vintages reach back to ``report_date`` 2013-09-30 (filed
 which :meth:`as_of` maps to an empty snapshot. The portfolio series starts one
 quarter earlier (2013-06-30) — see SESSION_NOTES.md.
 
-Identifiers are FIGI (``security_id`` like ``BW-BBG...``) — CUSIP is never used.
+Identifiers are FIGI (``security_id`` like ``BW-BBG...``) — no S&P-licensed identifier is used.
 """
 
 from __future__ import annotations
