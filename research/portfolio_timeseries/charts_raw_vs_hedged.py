@@ -11,7 +11,7 @@ Method:
 where short_j are the overlay's signed ETF shorts (positive = short) and r are
 daily gross returns from get_ticker_returns. Cumulative series compound daily.
 
-Run:  python sdk/portfolio_timeseries/charts_raw_vs_hedged.py
+Run:  python research/portfolio_timeseries/charts_raw_vs_hedged.py
 (imports riskmodels 0.3.11 from site-packages BEFORE adding sdk/ to the path, so
 the local 0.3.10 source can't shadow the as_of-capable client.)
 
@@ -27,7 +27,7 @@ from pathlib import Path
 
 _SDK = str(Path(__file__).resolve().parents[1])
 if _SDK not in sys.path:
-    sys.path.insert(0, _SDK)  # riskmodels already cached, so local 0.3.10 won't shadow
+    sys.path.insert(0, _SDK)  # the module's parent dir, so `import portfolio_timeseries` resolves
 # -----------------------------------------------------------------------------
 
 from datetime import date

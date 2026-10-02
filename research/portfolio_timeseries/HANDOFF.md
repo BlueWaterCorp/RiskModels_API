@@ -81,7 +81,7 @@ documents above. If a number is not in one of these six, do not quote it.
 
 ## 3. Architecture
 
-Everything is under `sdk/portfolio_timeseries/`. Two layers: a reusable pipeline, and
+Everything is under `research/portfolio_timeseries/`. Two layers: a reusable pipeline, and
 filer-specific analyses built on it.
 
 ### The pipeline (reusable)
@@ -151,12 +151,12 @@ Everything below runs **from cache and costs nothing**. Credentials come from th
 via `RiskModelsClient.from_env()` — never pass keys on a command line.
 
 ```bash
-cd "sdk/portfolio_timeseries"
+cd "research/portfolio_timeseries"
 ```
 
 **Tests** (56 tests, hermetic except the live module, which needs credentials):
 ```bash
-cd sdk && python -m pytest portfolio_timeseries/tests/ -q
+cd research && python -m pytest portfolio_timeseries/tests/ -q
 ```
 
 **The Berkshire re-audit — start here, it regenerates every headline number:**
@@ -513,7 +513,7 @@ straightforward for whoever owns the SDK; it should be done with the tests in
 `tests/test_window_primitives.py` moved alongside the code, and Stage 0 re-run on Berkshire
 afterwards to confirm 61 bps still reproduces.
 
-**Scope guardrail observed throughout:** nothing outside `sdk/portfolio_timeseries/` was
+**Scope guardrail observed throughout:** nothing outside `research/portfolio_timeseries/` was
 modified, and `sdk/riskmodels/pair_trade.py` was not touched.
 
 ---
