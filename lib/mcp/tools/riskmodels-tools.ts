@@ -2,6 +2,11 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { RiskModelsClient, type PositionInput, type WhitepaperExampleId } from "@riskmodels/sdk";
 import { z } from "zod";
+import {
+  EMPTY_BOOK_MESSAGE,
+  LINKED_BOOK_NEXT_STEP,
+  fetchLinkedBook,
+} from "./linked-book.js";
 
 type McpContent = { type: "text"; text: string };
 type McpImageContent = { type: "image"; data: string; mimeType: "image/png" };
@@ -177,7 +182,14 @@ export function registerRiskModelsTools(
     | "call"
   >,
   server: McpLikeServer,
-  opts: { capabilities?: Array<{ method?: string; endpoint?: string; [k: string]: unknown }> } = {},
+  opts: {
+    capabilities?: Array<{ method?: string; endpoint?: string; [k: string]: unknown }>;
+    /** Caller's RiskModels API key. The linked-book tool forwards it to riskmodels.net. */
+    apiKey?: string | null;
+    /** Override https://riskmodels.net for tests. */
+    portalBase?: string;
+    fetchPositions?: typeof fetch;
+  } = {},
 ): void {
   const passthroughAllowlist = buildPassthroughAllowlist(opts.capabilities ?? []);
 
@@ -413,6 +425,38 @@ export function registerRiskModelsTools(
     async ({ ticker, dollars }) => {
       try {
         return textResult(await sdk.hedgePosition({ ticker, dollars }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_get_my_positions",
+    {
+      title: "RiskModels linked brokerage positions",
+      annotations: { readOnlyHint: true },
+      description:
+        "Read the caller's linked brokerage book (Alpaca Connect, Connect Trade, or Plaid) from the default portfolio on riskmodels.net. Returns tickers, quantities, market values, and weights, plus for_analysis (positive weights) and for_hedge (positive dollar market values) to pass to riskmodels_analyze_portfolio and riskmodels_hedge_portfolio. One RiskModels server is enough to read the book. This tool does not place orders. If the book is empty, the user connects a brokerage in riskmodels.net Settings and clicks Sync positions.",
+      inputSchema: {},
+    },
+    async () => {
+      if (!opts.apiKey) {
+        return textResult({
+          error:
+            "RiskModels API key not found. Set RISKMODELS_API_KEY in the MCP client env, or connect the hosted server with a key.",
+        });
+      }
+      try {
+        const result = await fetchLinkedBook(opts.apiKey, {
+          portalBase: opts.portalBase,
+          fetchImpl: opts.fetchPositions,
+        });
+        if (!result.ok) return textResult({ error: result.error, status: result.status });
+        if (result.book.empty) {
+          return textResult({ ...result.book, message: EMPTY_BOOK_MESSAGE });
+        }
+        return textResult({ ...result.book, next_step: LINKED_BOOK_NEXT_STEP });
       } catch (error) {
         return errorResult(error);
       }
@@ -1173,7 +1217,7 @@ ${CHART_INSTRUCTION}`),
     },
     () =>
       promptText(
-        `Ask me for tickers and weights or dollar notionals, then call riskmodels_portfolio_decompose (L3 four-bet aggregation) or riskmodels_analyze_portfolio for holdings-weighted hedge_levels across L1/L2/L3. Render chart_data using suggested_chart and explain the layers.`,
+        `Call riskmodels_get_my_positions first. If it returns a book, pass for_analysis to riskmodels_analyze_portfolio and for_hedge to riskmodels_hedge_portfolio. If the book is empty, ask for tickers and weights or dollar notionals, then call riskmodels_portfolio_decompose or riskmodels_analyze_portfolio. Render chart_data using suggested_chart and explain the layers. Do not place orders.`,
       ),
   );
 }

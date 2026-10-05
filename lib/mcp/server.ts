@@ -312,6 +312,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
 
   registerRiskModelsTools(sdk, server, {
     capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
+    apiKey: opts.apiKey,
   });
   // Hosted-only: the render tool needs GCP Cloud Run auth, so it lives outside
   // lib/mcp/tools/ and is not compiled into the public stdio package.

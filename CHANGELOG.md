@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-05 — Linked brokerage book on the RiskModels MCP
+
+- `riskmodels_get_my_positions` reads the caller's synced book from riskmodels.net `GET /api/positions` (Alpaca Connect, Connect Trade, or Plaid) with the same API key the MCP session already holds.
+- The payload includes `for_analysis` and `for_hedge` for `riskmodels_analyze_portfolio` and `riskmodels_hedge_portfolio`. The tool does not place orders.
+- `/docs/alpaca` now treats one RiskModels server as the analysis path. Alpaca's own MCP remains optional order entry.
+
 ## 2026-09-14 — RMGraph cumulative stock return paths deployed
 
 - Add `cumulative_return_paths@v1` using existing daily returns-decomposition data, with original RMGraph PNG/SVG exports and numerical JSON.

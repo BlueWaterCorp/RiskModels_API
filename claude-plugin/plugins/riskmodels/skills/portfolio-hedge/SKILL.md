@@ -17,6 +17,10 @@ itself.
 
 ## What to call
 
+- **`riskmodels_get_my_positions`** — the caller's linked book (Alpaca Connect, Connect
+  Trade, or Plaid). Call this first when the user means their account and has not
+  pasted tickers. Pass `for_analysis` and `for_hedge` to the portfolio tools below.
+  This server does not place orders.
 - **`riskmodels_hedge_position`** — one ticker: scale the L-level ETF hedge ratios to
   a dollar position.
 - **`riskmodels_hedge_portfolio`** — a weighted book: hedge ratios at the chosen

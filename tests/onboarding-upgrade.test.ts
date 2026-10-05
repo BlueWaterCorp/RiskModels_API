@@ -245,6 +245,7 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_get_hedge_levels",
       "riskmodels_compare",
       "riskmodels_hedge_position",
+      "riskmodels_get_my_positions",
       "riskmodels_analyze_portfolio",
       "riskmodels_hedge_portfolio",
       "riskmodels_portfolio_decompose",
