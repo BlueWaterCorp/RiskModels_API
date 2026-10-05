@@ -62,7 +62,7 @@ export const PORTAL_SEARCH_INDEX: PortalSearchItem[] = [
   {
     title: 'Alpaca + RiskModels',
     description:
-      'Alpaca Connect in the web app, or Alpaca MCP + RiskModels MCP in one Claude session for positions, decomposition and hedge legs.',
+      'Alpaca Connect in the web app. The RiskModels MCP reads the synced book. The Alpaca MCP is optional and only for orders.',
     href: '/docs/alpaca',
     keywords: 'alpaca brokerage mcp claude hedge legs paper trading',
   },

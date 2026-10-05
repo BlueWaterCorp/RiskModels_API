@@ -372,6 +372,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
 
   registerRiskModelsTools(sdk, server, {
     capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
+    apiKey: credentials.apiKey,
   });
 
   server.registerTool(

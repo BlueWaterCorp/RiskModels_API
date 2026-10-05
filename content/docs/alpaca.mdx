@@ -1,18 +1,21 @@
 ---
 title: Alpaca + RiskModels
-description: Run RiskModels factor decomposition and ETF hedge ratios on an Alpaca book, either through Alpaca Connect in the web app or by pairing Alpaca's MCP server with the RiskModels MCP in one Claude session.
+description: Run RiskModels factor decomposition and ETF hedge ratios on a linked Alpaca book through one MCP server. Alpaca's own MCP is optional, and only for placing orders.
 ---
 
 # Alpaca + RiskModels
 
-Two paths bring an Alpaca account's positions to the RiskModels engine. The first is a read-only OAuth link inside the web app. The second runs Alpaca's own MCP server next to the RiskModels MCP connector in a Claude session, so one conversation can read positions, decompose them, and hand the ETF hedge legs back to Alpaca for execution.
+A linked Alpaca account reaches the RiskModels engine through one MCP server. Alpaca Connect stores the open equity positions. The RiskModels connector reads that book, decomposes it, and sizes the ETF hedge legs. RiskModels does not place orders.
 
 | Path | Where it runs | What it needs | What you get |
 | --- | --- | --- | --- |
-| **Alpaca Connect** | riskmodels.net, Settings → Alpaca | An Alpaca login. Access scope is `data` only. | Open equity positions synced into your default portfolio, readable by API callers through `GET /api/positions` and by the portfolio risk snapshot. Re-sync from the card at any time. |
-| **MCP pairing** | Claude Desktop or Claude Code | An Alpaca API key pair, `uv`, and the RiskModels connector. | Positions, decomposition and hedge legs in one chat, with optional order placement through Alpaca's tools. |
+| **Alpaca Connect** | riskmodels.net, Settings → Alpaca | An Alpaca login. Access scope is `data` only. | Open equity positions synced into the default portfolio. |
+| **RiskModels MCP** | Claude, or any MCP client | The RiskModels connector, after a sync. | `riskmodels_get_my_positions` returns the book. The same server decomposes it and sizes the ETF legs. |
+| **Alpaca MCP** (optional) | The same client, local stdio | An Alpaca API key pair and `uv`. | Order entry in the chat. Leave this out when the session is analysis only. |
 
-RiskModels is listed on the [Alpaca Connect marketplace](https://alpaca.markets/oauth) as a read-only app. RiskModels never receives your Alpaca API keys under either path.
+RiskModels is listed on the [Alpaca Connect marketplace](https://alpaca.markets/oauth) as a read-only app. The Connect path and the RiskModels MCP path do not receive Alpaca API keys. Keys used by the optional Alpaca MCP stay on that local process.
+
+Connect Trade and Plaid write into the same default portfolio. `riskmodels_get_my_positions` reads whichever of the three sources last synced.
 
 ---
 
@@ -20,10 +23,10 @@ RiskModels is listed on the [Alpaca Connect marketplace](https://alpaca.markets/
 
 1. Sign in at [riskmodels.net](https://riskmodels.net) and open **Settings**.
 2. In the **Alpaca** card, choose **Live account** or **Paper account** and click **Connect Alpaca**.
-3. Approve the request on Alpaca's consent screen. The requested scope is `data`; no trading permission is requested.
+3. Approve the request on Alpaca's consent screen. The requested scope is `data`. No trading permission is requested.
 4. You return to Settings with the account listed as **Connected**. Click **Sync positions** to pull the current book.
 
-The card reports each sync as a count of equity positions synced, covered and excluded. Crypto and options positions are excluded from the sync because the ERM3 model covers US equities. Syncs run when you click **Sync positions**; the same call also refreshes the Plaid and ConnectTrade sources. There is no background schedule, so re-sync after trading to bring the portfolio current.
+The card reports each sync as a count of equity positions synced, covered and excluded. Crypto and options positions are excluded from the sync because the ERM3 model covers US equities. Syncs run when you click **Sync positions**. The same call also refreshes the Plaid and ConnectTrade sources. There is no background schedule, so re-sync after trading to bring the portfolio current.
 
 A paper-only Alpaca login is stored as a paper connection whichever option was selected, because Alpaca reports the account status as paper-only during the link. Live and paper accounts can be linked side by side.
 
@@ -31,19 +34,40 @@ To disconnect, click the trash icon on the connection row. That removes the stor
 
 ---
 
-## Path 2: Alpaca MCP + RiskModels MCP in Claude
+## Path 2: One RiskModels MCP server
 
-Alpaca publishes an official MCP server ([alpacahq/alpaca-mcp-server](https://github.com/alpacahq/alpaca-mcp-server)) that exposes account, position, order and market-data tools to any MCP client. Running it alongside the RiskModels connector gives Claude both halves of a hedge workflow: the book from Alpaca and the factor decomposition from RiskModels.
+Add the RiskModels connector. In Claude Desktop, **Settings → Connectors → Add custom connector** with the URL `https://riskmodels.app/api/mcp/sse`, then **Connect** and sign in once. Details are in [Agent integration](/docs/agent-integration#mcp-setup).
 
-### Prerequisites
+For Claude Code, install the plugin, which wraps the hosted MCP:
 
-- An Alpaca API key and secret. Paper credentials come from the [paper dashboard](https://app.alpaca.markets/paper/dashboard/overview) and are free.
-- `uv` installed, which provides the `uvx` runner Alpaca's server uses.
-- The RiskModels connector added to the same client. In Claude Desktop, **Settings → Connectors → Add custom connector** with the URL `https://riskmodels.app/api/mcp/sse`, then **Connect** and sign in once. Details are in [Agent integration](/docs/agent-integration#mcp-setup).
+```bash
+claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
+claude plugin install riskmodels@riskmodels
+```
+
+Keep one RiskModels MCP connection per client. Registering both the plugin and a separate connector produces duplicate tools.
+
+### A hedge session
+
+The book has to be synced first (Path 1). Each step names the tool on the RiskModels server.
+
+1. **Read the book.** "Read my linked positions." The server calls `riskmodels_get_my_positions`. The payload includes `for_analysis` (ticker and weight) and `for_hedge` (ticker and dollars).
+2. **Decompose it.** "Analyze this book: explained risk by market, sector, subsector and stock-specific layer." The server passes `for_analysis` to `riskmodels_analyze_portfolio`.
+3. **Size the legs.** "Give me the ETF hedge legs for the current book." The server passes `for_hedge` to `riskmodels_hedge_portfolio`, which returns the ETF tickers, hedge ratios and dollar legs.
+
+An empty book means Settings has no synced positions yet. Connect a brokerage and click **Sync positions**, then call the tool again.
+
+The RiskModels calls are metered per underlying REST route and carry `_metadata.model_version`, `data_as_of` and `_agent.request_id`.
+
+---
+
+## Optional: Alpaca MCP for order entry
+
+Alpaca publishes an official MCP server ([alpacahq/alpaca-mcp-server](https://github.com/alpacahq/alpaca-mcp-server)) with account, position, order and market-data tools. Add it only when the same chat should place orders. Reading and analyzing the book does not require it.
 
 ### Claude Desktop
 
-Add the Alpaca server to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows). The RiskModels side is already handled by the connector, so only Alpaca goes in this file:
+Add the Alpaca server to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -61,7 +85,7 @@ Add the Alpaca server to `~/Library/Application Support/Claude/claude_desktop_co
 }
 ```
 
-Restart Claude Desktop. Both tool sets appear in a new conversation.
+Restart Claude Desktop.
 
 ### Claude Code
 
@@ -72,47 +96,23 @@ claude mcp add alpaca --scope user --transport stdio uvx alpaca-mcp-server \
   --env ALPACA_PAPER_TRADE=true
 ```
 
-For RiskModels in Claude Code, install the plugin, which wraps the hosted MCP with slash commands and the `riskmodels-analyst` agent:
-
-```bash
-claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
-claude plugin install riskmodels@riskmodels
-```
-
-Keep one RiskModels MCP connection per client. Registering both the plugin and a separate connector produces duplicate tools.
-
 ### Environment variables on the Alpaca side
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` | required | Alpaca credentials. Paper and live keys are separate pairs. |
 | `ALPACA_PAPER_TRADE` | `true` | `false` routes orders to the live account. |
-| `ALPACA_TOOLSETS` | all | Comma-separated tool groups to load. Omitting `trading` gives a read-only session that can still list positions. |
+| `ALPACA_TOOLSETS` | all | Comma-separated tool groups to load. Omitting `trading` leaves the session unable to place orders. |
 
-Alpaca's server runs locally over stdio and does not implement remote authentication. Alpaca's documentation states it should not be exposed to the public internet with API keys attached. For Claude on mobile or web, Alpaca publishes a [self-hosting guide](https://dev.to/alpaca/how-to-deploy-alpacas-mcp-server-remotely-on-claude-mobile-app-4im0).
+Alpaca's server runs locally over stdio. Alpaca's documentation states it should not be exposed to the public internet with API keys attached. For Claude on mobile or web, Alpaca publishes a [self-hosting guide](https://dev.to/alpaca/how-to-deploy-alpacas-mcp-server-remotely-on-claude-mobile-app-4im0).
 
-### A hedge session, step by step
-
-The sequence below is one conversation. Each step names the tool Claude calls.
-
-1. **Read the book.** "List my open Alpaca positions with quantity and market value." Claude calls `get_all_positions` on the Alpaca server.
-2. **Decompose it.** "Analyze this portfolio with RiskModels: explained risk by market, sector, subsector and stock-specific layer, and the recommended hedge level." Claude passes the tickers and market values to `riskmodels_analyze_portfolio`. The response carries L1/L2/L3 explained risk, portfolio volatility and the ETF hedge ratios at each level.
-3. **Size the legs.** "Give me the ETF hedge legs in shares at the recommended level for the current book." Claude calls `riskmodels_hedge_portfolio`, which returns the ETF tickers, hedge ratios and dollar legs for the aggregate position.
-4. **Execute, if wanted.** "Place the SPY leg as a day limit order in paper." Claude calls `place_stock_order` on the Alpaca server. Claude asks for confirmation before each order, and `ALPACA_PAPER_TRADE=true` keeps the order in the paper account.
-
-The RiskModels calls are metered per underlying REST route and carry `_metadata.model_version`, `data_as_of` and `_agent.request_id`, so the hedge legs sent to Alpaca can be traced to the exact model inputs that produced them. Alpaca's tools are free to call.
-
-### What each side sees
-
-- Alpaca's server holds your API keys locally. RiskModels receives tickers and weights or notionals, and nothing about the account.
-- RiskModels bills the signed-in account for data calls. Discovery tools are free.
-- Orders go through Alpaca's tools only. RiskModels has no order-placement capability under either path.
+To place a paper order after the hedge legs are sized: "Place the SPY leg as a day limit order in paper." Claude calls `place_stock_order` on the Alpaca server and asks for confirmation before each order. `ALPACA_PAPER_TRADE=true` keeps the order in the paper account.
 
 ---
 
 ## Choosing a path
 
-Use Alpaca Connect when you want the book to stay current in the web app without running anything locally. Use the MCP pairing when the analysis and the execution should happen in the same conversation, or when the account is a paper account used for testing hedge sizes before trading them live.
+Use Alpaca Connect plus the RiskModels MCP when the session should read the book and size hedge legs. Add Alpaca's MCP when that same session should also place orders.
 
 ## Related
 

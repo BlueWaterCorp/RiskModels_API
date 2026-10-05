@@ -222,9 +222,9 @@ When ChatGPT already has your Schwab book via **Finances**, you do not need Risk
 
 Example tickers ChatGPT may already see: `VTI`, `GOOG`, `MS`, `AMZN`, `IEMG`, `NFLX`. RiskModels returns L1/L2/L3 explained risk and ETF hedge ratios per name; aggregate with `POST /api/portfolio/risk-snapshot` when you have weights.
 
-<h3 id="claude-alpaca">Claude + Alpaca holdings (Alpaca MCP + RiskModels)</h3>
+<h3 id="claude-alpaca">Claude + a linked brokerage book</h3>
 
-Alpaca publishes an official MCP server. Running it next to the RiskModels connector lets one Claude session read the book with `get_all_positions`, decompose it with `riskmodels_analyze_portfolio`, size ETF legs with `riskmodels_hedge_portfolio`, and place them with Alpaca's `place_stock_order`. Setup, environment variables and a step-by-step session are on [Alpaca + RiskModels](/docs/alpaca). For a link that keeps the book current in the web app without a local server, use Alpaca Connect in Settings, described on the same page.
+Connect Alpaca, Connect Trade, or Plaid in Settings, then use the RiskModels connector alone. `riskmodels_get_my_positions` reads the synced book; `riskmodels_analyze_portfolio` and `riskmodels_hedge_portfolio` decompose it and size the ETF legs. RiskModels does not place orders. Alpaca's own MCP server is an optional extra for clients who want order entry in the same chat. Setup is on [Alpaca + RiskModels](/docs/alpaca).
 
 <h3 id="grok-mcp">Grok (Connectors)</h3>
 
@@ -325,7 +325,7 @@ RiskModels is one specialized link in an agent's tool chain. Outputs are stable 
 
 2. **Scale to a dollar position.** Feed the same ticker + your notional to `riskmodels_hedge_position` (MCP) or `POST /api/hedge-basket/{ticker}` to turn ratios into share/dollar legs.
 
-3. **Roll up to a portfolio.** Pass a holdings list to `POST /api/portfolio/risk-snapshot` to get variance decomposition and diversification metrics across names — then hand the aggregated hedge legs to an **execution / brokerage API** to actually trade them. With Alpaca's MCP server in the same session, that hand-off is a `place_stock_order` call; see [Alpaca + RiskModels](/docs/alpaca).
+3. **Roll up to a portfolio.** `riskmodels_get_my_positions` reads a book already synced from Alpaca, Connect Trade, or Plaid. Pass that book to `POST /api/portfolio/risk-snapshot` for variance decomposition across names. RiskModels returns the ETF legs and does not place orders. A client who wants order entry in the same chat can add the broker's own MCP; see [Alpaca + RiskModels](/docs/alpaca).
 
 **Why this chains cleanly:**
 
