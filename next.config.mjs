@@ -58,6 +58,12 @@ const nextConfig = {
       ...config.resolve.fallback,
       fs: false,
     };
+    // lib/mcp is compiled by Next and by the NodeNext stdio package. The stdio
+    // package requires a .js specifier; webpack must resolve that to the .ts source.
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".ts", ".tsx", ".js", ".jsx"],
+    };
     return config;
   },
 };
