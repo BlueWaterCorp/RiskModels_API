@@ -12018,7 +12018,8 @@ paths:
             Page past the first `limit` rows. Rows are ranked by `adj_mv`
             descending and a page is a slice of that ranking; follow
             `next_offset` until it is null to read the whole book (served to a
-            depth of 50,000 rows).
+            depth of 50,000 rows; `truncated_at_max_depth` says when a book is
+            deeper). Ties in `adj_mv` are ordered by `security_id`.
         - name: as_of
           in: query
           required: false
@@ -12101,6 +12102,11 @@ paths:
                     type: integer
                     nullable: true
                     description: Offset of the next page; null on the last page.
+                  truncated_at_max_depth:
+                    type: boolean
+                    description: >
+                      The book has more than 50,000 rows; pages stop at that
+                      depth and `next_offset` is null there.
                   holdings:
                     type: array
                     items:
@@ -12173,19 +12179,24 @@ paths:
         "200":
           description: >
             Portfolio history rows (each with `filing_date`). Additive quality
-            fields (2026-10-06): per row `original_filing_date` (first EDGAR
-            filing for the quarter; `filing_date` is the latest, an
-            amendment's when one exists), `filing_date_is_amendment`,
-            `n_amendments`, `accession_number`, `is_partial_period` (the last
-            row's forward-return window has not closed), `is_stub` (returns
-            with no holdings snapshot), `book_complete`, `mapped_share` (share
-            of reported value whose CUSIPs resolved to a security),
-            `erm3_universe_share` (= `coverage_in_erm3`), `repair_status`
-            (`none`, `units_repaired`, `rows_quarantined`, `reparsed`; null
-            when the repair ledger is unavailable) and `repair_rows_affected`;
-            at the root `missing_quarters` (quarter-ends inside the window
-            with no row), `aum_units` (`usd`) and `data_vintage` (store
-            schema version, CUSIP-window fingerprint, returns window end).
+            fields (2026-10-06), keyed on the book each row was built from
+            (`ds_ph`'s accession for the quarter): per row
+            `original_filing_date` (first EDGAR filing for the quarter),
+            `filing_date_is_amendment` (the row's book is not that first
+            filing), `n_amendments`, `accession_number`, `book_complete`,
+            `mapped_share` (share of the book's reported value whose CUSIPs
+            resolved), `erm3_universe_share` (= `coverage_in_erm3`),
+            `is_partial_period` (the row's teo → next quarter-end window ends
+            after the data's `returns_window_end`), `is_stub` (returns with no
+            holdings snapshot), `repair_status` (most severe of
+            `rows_quarantined` > `units_repaired` > `reparsed`, `none`, or null
+            when the repair ledger is unavailable), `repair_rows_affected` and
+            `repair_detail` (rows per repair kind). At the root:
+            `missing_quarters` (quarter-ends inside the window with no book),
+            `data_vintage` (store schema version, CUSIP-window fingerprint,
+            returns window end) and `quality_sources` (`ok` / `unpublished` /
+            `error` for the vintage store, repair ledger and store
+            attributes).
           content:
             application/json:
               schema:

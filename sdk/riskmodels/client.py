@@ -2599,7 +2599,9 @@ class RiskModelsClient:
             offset: Page past the first ``limit`` rows of the ``adj_mv``
                 ranking. The response carries ``offset`` and
                 ``next_offset`` (``None`` on the last page); loop until it
-                is ``None`` to read a book of more than 1,000 rows.
+                is ``None`` to read a book of more than 1,000 rows. Books
+                deeper than 50,000 rows stop there and carry
+                ``truncated_at_max_depth=True``.
 
         Bare or unpadded CIKs (``"1067983"``, ``"0001067983"``) resolve to
         the same filer as ``"BW-FILER-CIK0001067983"``.

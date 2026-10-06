@@ -383,7 +383,7 @@ describe("H.307: filer id normalisation, holdings paging, portfolio quality fiel
     expect(bad.status).toBe(400);
   });
 
-  it("portfolio rows carry the quality fields and the body carries missing_quarters, aum_units, data_vintage", async () => {
+  it("portfolio rows carry the quality fields and the body carries missing_quarters, data_vintage, quality_sources", async () => {
     vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
     vi.mocked(readFilerPortfolioSeries).mockResolvedValue([
       portfolioRow("2025-09-30", "2025-11-14"),
@@ -393,8 +393,9 @@ describe("H.307: filer id normalisation, holdings paging, portfolio quality fiel
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.missing_quarters).toEqual(["2025-12-31"]);
-    expect(body.aum_units).toBe("usd");
+    expect(body.aum_units).toBeUndefined();
     expect(body.data_vintage).toBeNull();
+    expect(body.quality_sources).toEqual({ vintages: "unpublished", repair_ledger: "unpublished", data_vintage: "unpublished" });
     const last = body.rows[body.rows.length - 1];
     for (const k of [
       "original_filing_date",
@@ -411,5 +412,19 @@ describe("H.307: filer id normalisation, holdings paging, portfolio quality fiel
     }
     expect(last.erm3_universe_share).toBe(0.9);
     expect(last.repair_status).toBeNull();
+  });
+});
+
+describe("H.307: a failing quality source is reported as error, not as unpublished", () => {
+  it("vintage read throws -> 200, fields null, quality_sources.vintages = error", async () => {
+    const zr = await import("@/lib/dal/funds-zarr-reader");
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerPortfolioSeries).mockResolvedValue([portfolioRow("2026-03-31", "2026-05-14")]);
+    vi.mocked(zr.readFilerVintageQuarters).mockRejectedValueOnce(new Error("gcs 503"));
+    const res = await portfolioGET(req("/api/13f/filers/BW-FILER-X/portfolio"), fakeContext);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.quality_sources.vintages).toBe("error");
+    expect(body.rows[0].original_filing_date).toBeNull();
   });
 });

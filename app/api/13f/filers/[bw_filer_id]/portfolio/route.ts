@@ -36,8 +36,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * `is_partial_period` (the last row's forward window has not closed),
  * `is_stub` (returns without a holdings snapshot), `book_complete`,
  * `mapped_share`, `erm3_universe_share`, `repair_status` and
- * `repair_rows_affected`; the body adds `missing_quarters`, `aum_units` and
- * `data_vintage`.
+ * `repair_rows_affected`, `repair_detail`; the body adds `missing_quarters`,
+ * `data_vintage` and `quality_sources` (`ok` / `unpublished` / `error` per source).
  *
  * Date params are inclusive and optional.
  */
@@ -89,6 +89,9 @@ export const GET = withBilling(
     }
 
     let rows = await readFilerPortfolioSeries(bwFilerId, { startDate, endDate });
+    // Quarter gaps are a property of the store, not of an as_of view: computed before the as_of filter, then
+    // restricted to the returned window.
+    const allTeos = rows.map((r) => r.teo);
 
     // D.8.39 knowledge mode: keep rows known by as_of. Basis is per-panel —
     // filing_date when the zarr carries it, report_date (teo) otherwise.
@@ -113,19 +116,31 @@ export const GET = withBilling(
       );
     }
 
-    // H.307 / researcher enhancements 1–2: correctness flags and per-quarter quality fields. Each source is optional:
-    // an unpublished vintage store or repair ledger leaves its fields null, it never fails the request.
-    const [vintages, repairs, dataVintage] = await Promise.all([
-      readFilerVintageQuarters(bwFilerId).catch(() => null),
-      readFilerBookRepairs(bwFilerId).catch(() => null),
-      readFilerDataVintage(bwFilerId).catch(() => null),
+    // H.307 / researcher enhancements 1–2: correctness flags and per-quarter quality fields. A source that is not
+    // published leaves its fields null (`unpublished`); a source that fails to read also leaves them null but is
+    // reported as `error`, so a client can tell the two apart. Neither fails the request.
+    const settle = async <T,>(p: Promise<T | null>): Promise<{ v: T | null; s: "ok" | "unpublished" | "error" }> => {
+      try {
+        const v = await p;
+        return { v, s: v == null ? "unpublished" : "ok" };
+      } catch (err) {
+        console.error(`[filer portfolio] quality source failed for ${bwFilerId}`, err);
+        return { v: null, s: "error" };
+      }
+    };
+    const [vint, rep, dv] = await Promise.all([
+      settle(readFilerVintageQuarters(bwFilerId)),
+      settle(readFilerBookRepairs(bwFilerId)),
+      settle(readFilerDataVintage(bwFilerId)),
     ]);
-    const annotated = annotatePortfolioRows(
-      rows,
-      vintages,
-      repairs,
-      new Date().toISOString().slice(0, 10),
-    );
+    const today = new Date().toISOString().slice(0, 10);
+    const windowEnd = dv.v?.returns_window_end ?? null;
+    // Returns cover through the store's window_end; a row is partial when its quarter window ends after that.
+    const coveredThrough = windowEnd && windowEnd < today ? windowEnd : today;
+    const annotated = annotatePortfolioRows(rows, vint.v, rep.v, coveredThrough);
+    const lo = rows[0]!.teo;
+    const hi = rows[rows.length - 1]!.teo;
+    const gaps = missingQuarters(allTeos).filter((q) => q > lo && q < hi);
 
     const lastRow = rows[rows.length - 1]!;
     const headers = new Headers({
@@ -148,11 +163,10 @@ export const GET = withBilling(
         n_periods: rows.length,
         start_teo: rows[0]!.teo,
         end_teo: lastRow.teo,
-        // Quarter-ends inside [start_teo, end_teo] with no row (no usable book that quarter).
-        missing_quarters: missingQuarters(rows.map((r) => r.teo)),
-        // total_aum_usd / aum_in_erm3 are whole US dollars in every row (13F value units repaired, 2026-10-03).
-        aum_units: "usd",
-        data_vintage: dataVintage,
+        // Quarter-ends strictly inside [start_teo, end_teo] with no book in the store.
+        missing_quarters: gaps,
+        data_vintage: dv.v,
+        quality_sources: { vintages: vint.s, repair_ledger: rep.s, data_vintage: dv.s },
         rows: annotated,
       },
       { headers },

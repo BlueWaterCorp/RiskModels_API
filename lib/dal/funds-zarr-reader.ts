@@ -71,6 +71,7 @@ import {
 } from "@/lib/funds/style-slug";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  compareHoldingsRank,
   summarizeVintages,
   type BookRepair,
   type VintageQuarter,
@@ -1371,6 +1372,8 @@ export interface FilerHoldingsSnapshot {
   offset?: number;
   /** Offset of the next page; null on the last page (set by readFilerHoldingsTopN). */
   next_offset?: number | null;
+  /** The book has more rows than FILER_HOLDINGS_MAX_DEPTH (50,000); pages stop there. */
+  truncated_at_max_depth?: boolean;
   /** Valid-time stamp (D.8.39): the 13F reporting period end. Equal to `teo`. */
   report_date: string;
   /**
@@ -1455,13 +1458,17 @@ export async function readFilerHoldingsTopN(
   const end = safeOffset + page.length;
   const nextOffset =
     end < Math.min(snapshot.n_total_holdings, FILER_HOLDINGS_MAX_DEPTH) ? end : null;
-  // Scrub outside the cache boundary — see readFundHoldingsTopN.
+  // Scrub outside the cache boundary — see readFundHoldingsTopN. Offsets stay in ranking space, so a scrubbed row
+  // shortens its page without shifting the next one.
+  const holdings = await applyScrubToFilerHoldings(page);
   return {
     ...snapshot,
-    n_holdings_returned: page.length,
-    holdings: await applyScrubToFilerHoldings(page),
+    n_holdings_returned: holdings.length,
+    holdings,
     offset: safeOffset,
     next_offset: nextOffset,
+    // A book deeper than FILER_HOLDINGS_MAX_DEPTH is served to that depth; this says so instead of a silent stop.
+    truncated_at_max_depth: snapshot.n_total_holdings > FILER_HOLDINGS_MAX_DEPTH,
   };
 }
 
@@ -1684,7 +1691,8 @@ async function computeFilerHoldingsTopN(
   }
   if (holdings.length === 0) return null;
 
-  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  // Ties broken by security_id so a page boundary is stable across recomputes (H.307 paging).
+  holdings.sort(compareHoldingsRank);
   const top = holdings.slice(0, safeN);
 
   return {
@@ -1860,7 +1868,10 @@ async function readBoolVar(
 async function computeFilerVintageQuarters(
   bwFilerId: string,
 ): Promise<Record<string, VintageQuarter> | null> {
-  const grp = await openFilerZarrGroup(bwFilerId, "ds_filing_vintages.zarr");
+  const [grp, ph] = await Promise.all([
+    openFilerZarrGroup(bwFilerId, "ds_filing_vintages.zarr"),
+    openFilerZarrGroup(bwFilerId, "ds_ph.zarr"),
+  ]);
   if (!grp) return null;
   const [reportDates, filingDates, accessions, complete] = await Promise.all([
     readDatetimeVarStrings(grp, "report_date"),
@@ -1868,31 +1879,47 @@ async function computeFilerVintageQuarters(
     readStringVarStrings(grp, "accession_number"),
     readBoolVar(grp, "state_complete"),
   ]);
-  if (!reportDates || !filingDates || !accessions) return null;
+  if (!reportDates || !filingDates || !accessions) {
+    throw new Error(`ds_filing_vintages for ${bwFilerId} lacks report_date/filing_date/accession_number`);
+  }
   const n = reportDates.length;
   const [reported, mapped] = await Promise.all([
     readFloatSlice1d(grp, "reported_aum_usd", 0, n),
     readFloatSlice1d(grp, "mapped_aum_usd", 0, n),
   ]);
-  const summary = summarizeVintages({
-    report_date: reportDates,
-    filing_date: filingDates,
-    accession_number: accessions,
-    state_complete: complete,
-    reported_aum_usd: reported,
-    mapped_aum_usd: mapped,
-  });
+  // The book each portfolio row was built from: ds_ph's accession per teo (same book as ds_portfolio's returns and
+  // filing_date). Without it the book-specific fields stay null rather than assuming the latest filing.
+  const governing = new Map<string, string | null>();
+  if (ph) {
+    const [teos, phAcc] = await Promise.all([readTeoStrings(ph), readStringVarStrings(ph, "accession_number")]);
+    if (teos && phAcc && phAcc.length === teos.length) {
+      teos.forEach((t, i) => governing.set(t, nonEmpty(phAcc[i])));
+    }
+  }
+  const summary = summarizeVintages(
+    {
+      report_date: reportDates,
+      filing_date: filingDates,
+      accession_number: accessions,
+      state_complete: complete,
+      reported_aum_usd: reported,
+      mapped_aum_usd: mapped,
+    },
+    governing,
+  );
+  if (!summary) throw new Error(`ds_filing_vintages for ${bwFilerId} has arrays of unequal length`);
   return Object.fromEntries(summary);
 }
 
 /**
- * Per report date: original filing date, amendment count, governing accession, completeness and mapped share
- * inputs, from `ds_filing_vintages.zarr`. Null when the store is not published for this filer.
+ * Per report date: original filing, amendment count and the row's own book (accession, completeness, mapped share
+ * inputs), from `ds_filing_vintages.zarr` joined on `ds_ph`'s accession. Null when the store is not published;
+ * throws when it is published but unreadable or malformed (the route reports that as `error`, not as absent).
  */
 export async function readFilerVintageQuarters(
   bwFilerId: string,
 ): Promise<Map<string, VintageQuarter> | null> {
-  const ck = generateCacheKey("funds_zarr", "filer_vintage_quarters", { filer: bwFilerId, v: 1 });
+  const ck = generateCacheKey("funds_zarr", "filer_vintage_quarters", { filer: bwFilerId, v: 2 });
   const obj = await withZarrCache(ck, () => computeFilerVintageQuarters(bwFilerId), { emptyValue: null });
   return obj ? new Map(Object.entries(obj)) : null;
 }
@@ -1936,19 +1963,21 @@ interface BookRepairsFile {
 
 async function loadBookRepairsFile(): Promise<BookRepairsFile | null> {
   const localRoot = process.env.ZARR_FUNDS_LOCAL_ROOT?.trim();
-  try {
-    if (localRoot) {
-      return JSON.parse(await readFile(`${localRoot}/${BOOK_REPAIRS_RELPATH}`, "utf8")) as BookRepairsFile;
+  if (localRoot) {
+    let txt: string;
+    try {
+      txt = await readFile(`${localRoot}/${BOOK_REPAIRS_RELPATH}`, "utf8");
+    } catch {
+      return null; // not published locally
     }
-    for (const prefix of domainZarrPrefixCandidates("ZARR_FILERS_GCS_PREFIX")) {
-      const file = getGcs().bucket(prefix.bucket).file(`${prefix.basePath}/${BOOK_REPAIRS_RELPATH}`);
-      const [exists] = await file.exists();
-      if (!exists) continue;
-      const [buf] = await file.download();
-      return JSON.parse(buf.toString("utf8")) as BookRepairsFile;
-    }
-  } catch (err) {
-    console.error("[funds-zarr] filer book-repair ledger unreadable", err);
+    return JSON.parse(txt) as BookRepairsFile;
+  }
+  for (const prefix of domainZarrPrefixCandidates("ZARR_FILERS_GCS_PREFIX")) {
+    const file = getGcs().bucket(prefix.bucket).file(`${prefix.basePath}/${BOOK_REPAIRS_RELPATH}`);
+    const [exists] = await file.exists();
+    if (!exists) continue;
+    const [buf] = await file.download();
+    return JSON.parse(buf.toString("utf8")) as BookRepairsFile;
   }
   return null;
 }
@@ -1958,7 +1987,8 @@ async function loadBookRepairsFile(): Promise<BookRepairsFile | null> {
  * `repair_status: null`, not "none"); an empty map when the ledger exists and lists nothing for this filer.
  */
 export async function readFilerBookRepairs(bwFilerId: string): Promise<Map<string, BookRepair> | null> {
-  const ck = generateCacheKey("funds_zarr", "filer_book_repairs", { filer: bwFilerId, v: 1 });
+  // Daily TTL: a re-published ledger is visible within a day; v bumps on schema changes.
+  const ck = generateCacheKey("funds_zarr", "filer_book_repairs", { filer: bwFilerId, v: 2 });
   const obj = await withZarrCache(
     ck,
     async () => {
@@ -1966,7 +1996,7 @@ export async function readFilerBookRepairs(bwFilerId: string): Promise<Map<strin
       if (!f || !f.filers) return null;
       return f.filers[bwFilerId] ?? {};
     },
-    { emptyValue: null },
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
   );
   return obj ? new Map(Object.entries(obj)) : null;
 }
