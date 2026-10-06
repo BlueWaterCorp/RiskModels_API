@@ -238,6 +238,11 @@ export function summarizeVintages(
     );
     const first = dated[0];
     const accs = new Set(idx.map((i) => ev.accession_number[i]).filter((a): a is string => !!a));
+    // Several accessions on the earliest date: which was "first" is not recorded, so the original accession (and
+    // with it the amendment flag) is unknown rather than decided by array order.
+    const earliest = first != null ? ev.filing_date[first]! : null;
+    const firstDayAccs = new Set(dated.filter((i) => ev.filing_date[i] === earliest).map((i) => ev.accession_number[i]));
+    const originalAcc = first != null && firstDayAccs.size === 1 ? ev.accession_number[first]! : null;
     const govAcc = governing.get(rd) ?? null;
     // The last event carrying that accession: the store's effective state for it (one row per accession today).
     let gov: number | undefined;
@@ -245,7 +250,7 @@ export function summarizeVintages(
     const sc = gov != null ? ev.state_complete?.[gov] : null;
     out.set(rd, {
       original_filing_date: first != null ? ev.filing_date[first]! : null,
-      original_accession_number: first != null ? ev.accession_number[first]! : null,
+      original_accession_number: originalAcc,
       n_amendments: Math.max(accs.size - 1, 0),
       accession_number: gov != null ? govAcc : null,
       book_filing_date: gov != null ? ev.filing_date[gov] ?? null : null,
@@ -253,6 +258,21 @@ export function summarizeVintages(
       book_complete: sc == null ? null : Boolean(sc),
       reported_aum_usd: gov != null ? ev.reported_aum_usd?.[gov] ?? null : null,
       mapped_aum_usd: gov != null ? ev.mapped_aum_usd?.[gov] ?? null : null,
+    });
+  }
+  // A quarter ds_ph names a book for, absent from the vintage store altogether, is a missing book too.
+  for (const [rd, acc] of governing) {
+    if (acc == null || out.has(rd)) continue;
+    out.set(rd, {
+      original_filing_date: null,
+      original_accession_number: null,
+      n_amendments: 0,
+      accession_number: null,
+      book_filing_date: null,
+      book_missing: true,
+      book_complete: null,
+      reported_aum_usd: null,
+      mapped_aum_usd: null,
     });
   }
   return out;
@@ -264,5 +284,8 @@ export function compareHoldingsRank(
   a: { adj_mv: number; security_id: string },
   b: { adj_mv: number; security_id: string },
 ): number {
-  return b.adj_mv - a.adj_mv || (a.security_id < b.security_id ? -1 : a.security_id > b.security_id ? 1 : 0);
+  const av = Number.isFinite(a.adj_mv) ? a.adj_mv : -Infinity;
+  const bv = Number.isFinite(b.adj_mv) ? b.adj_mv : -Infinity;
+  if (av !== bv) return bv > av ? 1 : -1;
+  return a.security_id < b.security_id ? -1 : a.security_id > b.security_id ? 1 : 0;
 }

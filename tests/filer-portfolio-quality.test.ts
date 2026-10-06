@@ -124,6 +124,40 @@ describe("summarizeVintages keys book fields on the row's own book", () => {
   });
 });
 
+describe("round 3: missing books and same-day order", () => {
+  it("a teo ds_ph names that the vintage store lacks entirely is a missing book, counted as a mismatch", () => {
+    const v = summarizeVintages(EV, new Map([...BOOKS, ["2026-12-31", "G"]]))!;
+    expect(v.get("2026-12-31")!.book_missing).toBe(true);
+    const out = annotatePortfolioRows([row("2026-12-31", { filing_date: "2027-02-14" })], v, null, "2027-03-31");
+    expect(out.book_mismatches).toBe(1);
+    expect(out.rows[0]!.accession_number).toBeNull();
+  });
+  it.each([
+    ["book-first", ["F", "E"]],
+    ["book-second", ["E", "F"]],
+  ])("same-day pair stored %s: amendment flag unknown, n_amendments 1", (_name, order) => {
+    const ev = {
+      ...EV,
+      accession_number: [...EV.accession_number.slice(0, 4), ...order],
+    };
+    const v = summarizeVintages(ev, BOOKS)!;
+    const q = v.get("2026-09-30")!;
+    expect(q.n_amendments).toBe(1);
+    expect(q.original_accession_number).toBeNull();
+    const out = annotatePortfolioRows([row("2026-09-30", { filing_date: "2026-11-13" })], v, null, "2027-06-01");
+    expect(out.rows[0]!.filing_date_is_amendment).toBeNull();
+    expect(out.rows[0]!.accession_number).toBe("F");
+  });
+  it("ranking puts non-finite adj_mv last and still breaks ties by id", () => {
+    const xs = [
+      { security_id: "B", adj_mv: Number.NaN },
+      { security_id: "A", adj_mv: 5 },
+      { security_id: "C", adj_mv: 5 },
+    ].sort(compareHoldingsRank);
+    expect(xs.map((x) => x.security_id)).toEqual(["A", "C", "B"]);
+  });
+});
+
 describe("annotatePortfolioRows", () => {
   const v = summarizeVintages(EV, BOOKS)!;
   it("publishes book fields only when the book's filing date equals the row's", () => {
@@ -138,9 +172,9 @@ describe("annotatePortfolioRows", () => {
     expect(bad.rows[0]!.mapped_share).toBeNull();
     expect(bad.rows[0]!.original_filing_date).toBe("2026-05-15");
   });
-  it("same-day amendment counts as an amendment", () => {
+  it("same-day pair: which filing came first is not recorded, so the amendment flag is unknown", () => {
     const { rows } = annotatePortfolioRows([row("2026-09-30", { filing_date: "2026-11-13" })], v, null, "2027-06-01");
-    expect(rows[0]!.filing_date_is_amendment).toBe(true);
+    expect(rows[0]!.filing_date_is_amendment).toBeNull();
   });
   it("(1) partial = the row's own window ends after the store's window_end; null when that was not read", () => {
     const { rows } = annotatePortfolioRows(

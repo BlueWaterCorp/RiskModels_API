@@ -33,7 +33,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  *
  * H.307 (2026-10-06), additive: each row also carries `original_filing_date`,
  * `filing_date_is_amendment`, `n_amendments`, `accession_number`,
- * `is_partial_period` (the last row's forward window has not closed),
+ * `is_partial_period` (the row's teo → next quarter-end window ends after the
+ * store's returns window_end; null when that was not read),
  * `is_stub` (returns without a holdings snapshot), `book_complete`,
  * `mapped_share`, `erm3_universe_share`, `repair_status` and
  * `repair_rows_affected`, `repair_detail`; the body adds `missing_quarters`,
@@ -89,7 +90,10 @@ export const GET = withBilling(
       return NextResponse.json({ error: "Filer not found" }, { status: 404 });
     }
 
-    let rows = await readFilerPortfolioSeries(bwFilerId, { startDate, endDate });
+    // Sorted by teo here so every bound published below (start/end teo, X-Data-As-Of, gaps) agrees.
+    let rows = [...(await readFilerPortfolioSeries(bwFilerId, { startDate, endDate }))].sort((a, b) =>
+      a.teo < b.teo ? -1 : a.teo > b.teo ? 1 : 0,
+    );
     // Quarter gaps are a property of the store, not of an as_of view: computed before the as_of filter, then
     // restricted to the returned window.
     const allTeos = rows.map((r) => r.teo);

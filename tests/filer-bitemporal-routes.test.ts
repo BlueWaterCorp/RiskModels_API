@@ -434,3 +434,59 @@ describe("H.307: a failing quality source is reported as error, not as unpublish
     expect(body.rows[0].original_filing_date).toBeNull();
   });
 });
+
+describe("H.307 round 3: quality_sources through the route", () => {
+  const vq = (over: Record<string, unknown> = {}) => ({
+    original_filing_date: "2026-05-14",
+    original_accession_number: "A",
+    n_amendments: 0,
+    accession_number: "A",
+    book_filing_date: "2026-05-14",
+    book_missing: false,
+    book_complete: true,
+    reported_aum_usd: 100,
+    mapped_aum_usd: 90,
+    ...over,
+  });
+  it("named book with a different filing date -> vintages 'mismatch', book fields null", async () => {
+    const zr = await import("@/lib/dal/funds-zarr-reader");
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerPortfolioSeries).mockResolvedValue([portfolioRow("2026-03-31", "2026-05-14")]);
+    vi.mocked(zr.readFilerVintageQuarters).mockResolvedValueOnce(
+      new Map([["2026-03-31", vq({ book_filing_date: "2026-06-01" })]]) as never,
+    );
+    const body = await (await portfolioGET(req("/api/13f/filers/BW-FILER-X/portfolio"), fakeContext)).json();
+    expect(body.quality_sources.vintages).toBe("mismatch");
+    expect(body.quality_sources.book_mismatches).toBe(1);
+    expect(body.rows[0].accession_number).toBeNull();
+    expect(body.rows[0].mapped_share).toBeNull();
+  });
+  it("teo named by ds_ph but absent from vintages -> not 'ok', mismatch counted", async () => {
+    const zr = await import("@/lib/dal/funds-zarr-reader");
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerPortfolioSeries).mockResolvedValue([portfolioRow("2026-03-31", "2026-05-14")]);
+    vi.mocked(zr.readFilerVintageQuarters).mockResolvedValueOnce(
+      new Map([["2026-03-31", vq({ accession_number: null, book_filing_date: null, book_missing: true })]]) as never,
+    );
+    const body = await (await portfolioGET(req("/api/13f/filers/BW-FILER-X/portfolio"), fakeContext)).json();
+    expect(body.quality_sources.vintages).not.toBe("ok");
+    expect(body.quality_sources.book_mismatches).toBe(1);
+  });
+  it("matching book -> 'ok', fields published; rows out of order are served sorted", async () => {
+    const zr = await import("@/lib/dal/funds-zarr-reader");
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerPortfolioSeries).mockResolvedValue([
+      portfolioRow("2026-03-31", "2026-05-14"),
+      portfolioRow("2025-09-30", "2025-11-14"),
+    ]);
+    vi.mocked(zr.readFilerVintageQuarters).mockResolvedValueOnce(new Map([["2026-03-31", vq()]]) as never);
+    const res = await portfolioGET(req("/api/13f/filers/BW-FILER-X/portfolio"), fakeContext);
+    const body = await res.json();
+    expect(body.quality_sources.vintages).toBe("ok");
+    expect(body.start_teo).toBe("2025-09-30");
+    expect(body.end_teo).toBe("2026-03-31");
+    expect(res.headers.get("X-Data-As-Of")).toBe("2026-03-31");
+    expect(body.rows[1].accession_number).toBe("A");
+    expect(body.rows[1].mapped_share).toBeCloseTo(0.9);
+  });
+});
