@@ -2205,6 +2205,9 @@ export async function readFilerReturnsDecomposition(
     filer: bwFilerId,
     start: options.startDate ?? "",
     end: options.endDate ?? "",
+    // v2 (2026-10-06): ds_returns_monthly was republished after the 10-04 rebuild (Funds_DAG #210); entries cached
+    // from the 2026-09-13 copy must not be served.
+    v: 2,
   });
   return withZarrCache(
     ck,
