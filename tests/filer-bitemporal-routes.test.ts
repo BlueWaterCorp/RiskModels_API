@@ -395,7 +395,13 @@ describe("H.307: filer id normalisation, holdings paging, portfolio quality fiel
     expect(body.missing_quarters).toEqual(["2025-12-31"]);
     expect(body.aum_units).toBeUndefined();
     expect(body.data_vintage).toBeNull();
-    expect(body.quality_sources).toEqual({ vintages: "unpublished", repair_ledger: "unpublished", data_vintage: "unpublished" });
+    expect(body.quality_sources).toEqual({
+      vintages: "unpublished",
+      repair_ledger: "unpublished",
+      data_vintage: "unpublished",
+      book_mismatches: 0,
+    });
+    expect(body.rows[body.rows.length - 1].is_partial_period).toBeNull();
     const last = body.rows[body.rows.length - 1];
     for (const k of [
       "original_filing_date",

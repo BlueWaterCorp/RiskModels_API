@@ -84,6 +84,7 @@ describe("summarizeVintages keys book fields on the row's own book", () => {
     const q = v.get("2026-03-31")!;
     expect(q.original_filing_date).toBe("2026-05-15");
     expect(q.accession_number).toBe("B");
+    expect(q.book_filing_date).toBe("2026-06-20");
     expect(q.n_amendments).toBe(1);
     expect(q.mapped_aum_usd).toBe(150);
   });
@@ -93,18 +94,29 @@ describe("summarizeVintages keys book fields on the row's own book", () => {
     expect(q.book_complete).toBe(true);
     expect(q.mapped_aum_usd).toBe(40);
   });
-  it("same-day filings: the book is the one ds_ph names, and it counts as an amendment", () => {
-    const q = v.get("2026-09-30")!;
+  it("same-day pair stored in reverse order: the book is the one ds_ph names", () => {
+    const rev = {
+      ...EV,
+      report_date: [...EV.report_date.slice(0, 4), "2026-09-30", "2026-09-30"],
+      accession_number: [...EV.accession_number.slice(0, 4), "F", "E"],
+      reported_aum_usd: [...EV.reported_aum_usd.slice(0, 4), 20, 10],
+      mapped_aum_usd: [...EV.mapped_aum_usd.slice(0, 4), 10, 9],
+    };
+    const q = summarizeVintages(rev, BOOKS)!.get("2026-09-30")!;
     expect(q.accession_number).toBe("F");
-    expect(q.original_accession_number).toBe("E");
-    const [r] = annotatePortfolioRows([row("2026-09-30", { filing_date: "2026-11-13" })], v, null, "2027-06-01");
-    expect(r!.filing_date_is_amendment).toBe(true);
+    expect(q.mapped_aum_usd).toBe(10);
+  });
+  it("a named book missing from the vintage store is flagged, its fields null", () => {
+    const q = summarizeVintages(EV, new Map([["2026-06-30", "ZZZ"]]))!.get("2026-06-30")!;
+    expect(q.book_missing).toBe(true);
+    expect(q.accession_number).toBeNull();
+    expect(q.mapped_aum_usd).toBeNull();
   });
   it("without a named book the book fields are null, never the latest filing", () => {
     const q = summarizeVintages(EV, new Map())!.get("2026-06-30")!;
     expect(q.accession_number).toBeNull();
     expect(q.book_complete).toBeNull();
-    expect(q.mapped_aum_usd).toBeNull();
+    expect(q.book_missing).toBe(false);
     expect(q.original_filing_date).toBe("2026-08-14");
   });
   it("arrays of unequal length are rejected as malformed", () => {
@@ -114,25 +126,47 @@ describe("summarizeVintages keys book fields on the row's own book", () => {
 
 describe("annotatePortfolioRows", () => {
   const v = summarizeVintages(EV, BOOKS)!;
-  it("(1) partial = the row's own window ends after the data covers — any row, not only the last", () => {
-    const rows = annotatePortfolioRows(
+  it("publishes book fields only when the book's filing date equals the row's", () => {
+    const ok = annotatePortfolioRows([row("2026-03-31", { filing_date: "2026-06-20" })], v, null, "2026-09-30");
+    expect(ok.book_mismatches).toBe(0);
+    expect(ok.rows[0]!.accession_number).toBe("B");
+    expect(ok.rows[0]!.filing_date_is_amendment).toBe(true);
+    expect(ok.rows[0]!.mapped_share).toBeCloseTo(0.75);
+    const bad = annotatePortfolioRows([row("2026-03-31", { filing_date: "2026-05-15" })], v, null, "2026-09-30");
+    expect(bad.book_mismatches).toBe(1);
+    expect(bad.rows[0]!.accession_number).toBeNull();
+    expect(bad.rows[0]!.mapped_share).toBeNull();
+    expect(bad.rows[0]!.original_filing_date).toBe("2026-05-15");
+  });
+  it("same-day amendment counts as an amendment", () => {
+    const { rows } = annotatePortfolioRows([row("2026-09-30", { filing_date: "2026-11-13" })], v, null, "2027-06-01");
+    expect(rows[0]!.filing_date_is_amendment).toBe(true);
+  });
+  it("(1) partial = the row's own window ends after the store's window_end; null when that was not read", () => {
+    const { rows } = annotatePortfolioRows(
       [row("2026-03-31"), row("2026-06-30"), row("2026-09-30")],
       v,
       null,
       "2026-09-15",
     );
     expect(rows.map((r) => r.is_partial_period)).toEqual([false, true, true]);
-    const closed = annotatePortfolioRows([row("2026-06-30")], v, null, "2026-09-30");
-    expect(closed[0]!.is_partial_period).toBe(false);
+    expect(annotatePortfolioRows([row("2026-06-30")], v, null, "2026-09-30").rows[0]!.is_partial_period).toBe(false);
+    expect(annotatePortfolioRows([row("2026-09-30")], v, null, "2026-12-31").rows[0]!.is_partial_period).toBe(false);
+    expect(annotatePortfolioRows([row("2026-06-30")], v, null, null).rows[0]!.is_partial_period).toBeNull();
   });
   it("(2) flags a stub row: returns with no holdings snapshot", () => {
-    const [r] = annotatePortfolioRows([row("2026-06-30", { n_holdings_active: 0 })], v, null, "2027-01-01");
-    expect(r!.is_stub).toBe(true);
-    expect(r!.mapped_share).toBeCloseTo(0.8);
+    const { rows } = annotatePortfolioRows(
+      [row("2026-06-30", { n_holdings_active: 0, filing_date: "2026-08-14" })],
+      v,
+      null,
+      "2027-01-01",
+    );
+    expect(rows[0]!.is_stub).toBe(true);
+    expect(rows[0]!.mapped_share).toBeCloseTo(0.8);
   });
   it("repair status: null without a ledger, 'none' when it lists nothing, else the entry with every kind", () => {
-    expect(annotatePortfolioRows([row("2026-06-30")], v, null, "2027-01-01")[0]!.repair_status).toBeNull();
-    const none = annotatePortfolioRows([row("2026-06-30")], v, new Map(), "2027-01-01")[0]!;
+    expect(annotatePortfolioRows([row("2026-06-30")], v, null, "2027-01-01").rows[0]!.repair_status).toBeNull();
+    const none = annotatePortfolioRows([row("2026-06-30")], v, new Map(), "2027-01-01").rows[0]!;
     expect(none.repair_status).toBe("none");
     expect(none.repair_rows_affected).toBe(0);
     const led = new Map([
@@ -145,17 +179,17 @@ describe("annotatePortfolioRows", () => {
         },
       ],
     ]);
-    const [r] = annotatePortfolioRows([row("2026-06-30")], v, led, "2027-01-01");
-    expect(r!.repair_status).toBe("rows_quarantined");
-    expect(r!.repair_rows_affected).toBe(2);
-    expect(r!.repair_detail).toEqual({ units_repaired: 100, rows_quarantined: 2 });
+    const r = annotatePortfolioRows([row("2026-06-30")], v, led, "2027-01-01").rows[0]!;
+    expect(r.repair_status).toBe("rows_quarantined");
+    expect(r.repair_rows_affected).toBe(2);
+    expect(r.repair_detail).toEqual({ units_repaired: 100, rows_quarantined: 2 });
   });
   it("without a vintage store the vintage fields are null, never invented", () => {
-    const [r] = annotatePortfolioRows([row("2026-06-30", { filing_date: "2026-08-14" })], null, null, "2027-01-01");
-    expect(r!.original_filing_date).toBeNull();
-    expect(r!.filing_date_is_amendment).toBeNull();
-    expect(r!.n_amendments).toBeNull();
-    expect(r!.mapped_share).toBeNull();
+    const r = annotatePortfolioRows([row("2026-06-30", { filing_date: "2026-08-14" })], null, null, null).rows[0]!;
+    expect(r.original_filing_date).toBeNull();
+    expect(r.filing_date_is_amendment).toBeNull();
+    expect(r.n_amendments).toBeNull();
+    expect(r.mapped_share).toBeNull();
   });
 });
 

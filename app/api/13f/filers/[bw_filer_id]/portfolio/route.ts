@@ -37,7 +37,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * `is_stub` (returns without a holdings snapshot), `book_complete`,
  * `mapped_share`, `erm3_universe_share`, `repair_status` and
  * `repair_rows_affected`, `repair_detail`; the body adds `missing_quarters`,
- * `data_vintage` and `quality_sources` (`ok` / `unpublished` / `error` per source).
+ * `data_vintage` and `quality_sources` (`ok` / `unpublished` / `error` per source;
+ * `mismatch` with a count when a named book did not match its row).
  *
  * Date params are inclusive and optional.
  */
@@ -133,14 +134,16 @@ export const GET = withBilling(
       settle(readFilerBookRepairs(bwFilerId)),
       settle(readFilerDataVintage(bwFilerId)),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
-    const windowEnd = dv.v?.returns_window_end ?? null;
-    // Returns cover through the store's window_end; a row is partial when its quarter window ends after that.
-    const coveredThrough = windowEnd && windowEnd < today ? windowEnd : today;
-    const annotated = annotatePortfolioRows(rows, vint.v, rep.v, coveredThrough);
-    const lo = rows[0]!.teo;
-    const hi = rows[rows.length - 1]!.teo;
-    const gaps = missingQuarters(allTeos).filter((q) => q > lo && q < hi);
+    // Partial = the row's quarter window ends after the store's returns window_end; null when that was not read.
+    const annotated = annotatePortfolioRows(rows, vint.v, rep.v, dv.v?.returns_window_end ?? null);
+    const teosSorted = rows.map((r) => r.teo).sort();
+    const lo = teosSorted[0]!;
+    const hi = teosSorted[teosSorted.length - 1]!;
+    const gaps = missingQuarters([...allTeos].sort()).filter((q) => q > lo && q < hi);
+    // A row whose named book is not in the vintage store, or whose dates disagree, has its book fields nulled; the
+    // source is then reported as `mismatch`, not `ok`.
+    const vintStatus =
+      vint.s === "ok" && annotated.book_mismatches > 0 ? ("mismatch" as const) : vint.s;
 
     const lastRow = rows[rows.length - 1]!;
     const headers = new Headers({
@@ -166,8 +169,13 @@ export const GET = withBilling(
         // Quarter-ends strictly inside [start_teo, end_teo] with no book in the store.
         missing_quarters: gaps,
         data_vintage: dv.v,
-        quality_sources: { vintages: vint.s, repair_ledger: rep.s, data_vintage: dv.s },
-        rows: annotated,
+        quality_sources: {
+          vintages: vintStatus,
+          repair_ledger: rep.s,
+          data_vintage: dv.s,
+          book_mismatches: annotated.book_mismatches,
+        },
+        rows: annotated.rows,
       },
       { headers },
     );

@@ -76,6 +76,10 @@ export interface VintageQuarter {
   n_amendments: number;
   /** Accession of the book the row was built from; null when `ds_ph` does not name one. */
   accession_number: string | null;
+  /** Filing date of that book in the vintage store (used to check it is the row's book). */
+  book_filing_date: string | null;
+  /** `ds_ph` named a book for this quarter but the vintage store has no event with that accession. */
+  book_missing: boolean;
   /** That book's state was complete. Null when the book is not identified. */
   book_complete: boolean | null;
   /** That book's reported value (USD) and the part whose CUSIPs resolved to a security. */
@@ -112,8 +116,9 @@ export interface PortfolioRowQuality {
   filing_date_is_amendment: boolean | null;
   n_amendments: number | null;
   accession_number: string | null;
-  /** The row's forward-return window (teo → next quarter-end) is not fully covered by the data. */
-  is_partial_period: boolean;
+  /** The row's forward-return window (teo → next quarter-end) ends after the store's returns window_end. Null when
+   *  the store's window_end was not read. */
+  is_partial_period: boolean | null;
   /** Returns are present but the quarter has no holdings snapshot. */
   is_stub: boolean;
   book_complete: boolean | null;
@@ -130,46 +135,64 @@ export interface PortfolioRowQuality {
 const ratio = (num: number | null, den: number | null): number | null =>
   num != null && den != null && Number.isFinite(num) && Number.isFinite(den) && den > 0 ? num / den : null;
 
+/** Result of annotating a series, with the count of rows whose named book did not match the row. */
+export interface AnnotatedSeries<R> {
+  rows: Array<R & PortfolioRowQuality>;
+  /** Rows where the vintage book's filing date differs from the row's `filing_date`, or ds_ph named an accession
+   *  the vintage store lacks. Their book fields are null. */
+  book_mismatches: number;
+}
+
 /**
  * Annotate portfolio rows.
- *  - `coveredThrough`: the last date the returns data covers (the store's `window_end`); falls back to `today`. A
- *    row is partial when its window teo → next quarter-end ends after that date — any row, not only the last.
- *  - `vintages` null: the vintage store is not published; its fields are null. `repairs` null: the ledger is
- *    unavailable; `repair_status` is null, never a guessed "none".
+ *  - `windowEnd`: the store's returns `window_end`. A row is partial when its window teo → next quarter-end ends
+ *    after it; null when it was not read.
+ *  - Book fields are published only when the vintage book is the row's book: its filing date equals the row's
+ *    `filing_date`. Otherwise they are null and the row counts in `book_mismatches`.
+ *  - `vintages` null: the store is not published; its fields are null. `repairs` null: the ledger is unavailable;
+ *    `repair_status` is null, never a guessed "none".
  */
 export function annotatePortfolioRows<R extends PortfolioRowLike>(
   rows: R[],
   vintages: Map<string, VintageQuarter> | null,
   repairs: Map<string, BookRepair> | null,
-  coveredThrough: string,
-): Array<R & PortfolioRowQuality> {
-  return rows.map((r) => {
-    const v = vintages?.get(r.teo) ?? null;
+  windowEnd: string | null,
+): AnnotatedSeries<R> {
+  let mismatches = 0;
+  const out = rows.map((r) => {
+    const q = vintages?.get(r.teo) ?? null;
+    const matched =
+      q != null &&
+      q.accession_number != null &&
+      !q.book_missing &&
+      q.book_filing_date != null &&
+      r.filing_date != null &&
+      q.book_filing_date === r.filing_date;
+    if (q && (q.book_missing || (q.accession_number != null && !matched))) mismatches++;
+    const v = matched ? q : null;
     const rep = repairs ? repairs.get(r.teo) ?? null : undefined;
     const hasReturn =
       r.portfolio_gross_return != null ||
       r.portfolio_market_return != null ||
       r.portfolio_idiosyncratic_return != null;
-    const isAmend =
-      v && v.accession_number && v.original_accession_number
-        ? v.accession_number !== v.original_accession_number
-        : null;
     return {
       ...r,
-      original_filing_date: v?.original_filing_date ?? null,
-      filing_date_is_amendment: isAmend,
-      n_amendments: v ? v.n_amendments : null,
+      original_filing_date: q?.original_filing_date ?? null,
+      filing_date_is_amendment:
+        v && v.original_accession_number ? v.accession_number !== v.original_accession_number : null,
+      n_amendments: q ? q.n_amendments : null,
       accession_number: v?.accession_number ?? null,
-      is_partial_period: nextQuarterEnd(r.teo) > coveredThrough,
+      is_partial_period: windowEnd ? nextQuarterEnd(r.teo) > windowEnd : null,
       is_stub: hasReturn && (r.n_holdings_active == null || r.n_holdings_active === 0),
       book_complete: v?.book_complete ?? null,
       mapped_share: v ? ratio(v.mapped_aum_usd, v.reported_aum_usd) : null,
       erm3_universe_share: r.coverage_in_erm3,
-      repair_status: rep === undefined ? null : rep ? rep.status : "none",
+      repair_status: rep === undefined ? null : rep ? rep.status : ("none" as const),
       repair_rows_affected: rep ? rep.rows_affected : rep === null ? 0 : null,
       repair_detail: rep ? rep.detail ?? { [rep.status]: rep.rows_affected } : rep === null ? {} : null,
     };
   });
+  return { rows: out, book_mismatches: mismatches };
 }
 
 /**
@@ -216,13 +239,17 @@ export function summarizeVintages(
     const first = dated[0];
     const accs = new Set(idx.map((i) => ev.accession_number[i]).filter((a): a is string => !!a));
     const govAcc = governing.get(rd) ?? null;
-    const gov = govAcc != null ? idx.find((i) => ev.accession_number[i] === govAcc) : undefined;
+    // The last event carrying that accession: the store's effective state for it (one row per accession today).
+    let gov: number | undefined;
+    if (govAcc != null) for (const i of idx) if (ev.accession_number[i] === govAcc) gov = i;
     const sc = gov != null ? ev.state_complete?.[gov] : null;
     out.set(rd, {
       original_filing_date: first != null ? ev.filing_date[first]! : null,
       original_accession_number: first != null ? ev.accession_number[first]! : null,
       n_amendments: Math.max(accs.size - 1, 0),
       accession_number: gov != null ? govAcc : null,
+      book_filing_date: gov != null ? ev.filing_date[gov] ?? null : null,
+      book_missing: govAcc != null && gov == null,
       book_complete: sc == null ? null : Boolean(sc),
       reported_aum_usd: gov != null ? ev.reported_aum_usd?.[gov] ?? null : null,
       mapped_aum_usd: gov != null ? ev.mapped_aum_usd?.[gov] ?? null : null,

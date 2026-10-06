@@ -1892,7 +1892,12 @@ async function computeFilerVintageQuarters(
   const governing = new Map<string, string | null>();
   if (ph) {
     const [teos, phAcc] = await Promise.all([readTeoStrings(ph), readStringVarStrings(ph, "accession_number")]);
-    if (teos && phAcc && phAcc.length === teos.length) {
+    // A ds_ph without a per-teo accession (pre-schema-v2) names no book: book fields stay null. One whose arrays
+    // disagree is malformed: an error, not "no book".
+    if (teos && phAcc) {
+      if (phAcc.length !== teos.length) {
+        throw new Error(`ds_ph for ${bwFilerId}: accession_number (${phAcc.length}) vs teo (${teos.length})`);
+      }
       teos.forEach((t, i) => governing.set(t, nonEmpty(phAcc[i])));
     }
   }
@@ -1919,8 +1924,11 @@ async function computeFilerVintageQuarters(
 export async function readFilerVintageQuarters(
   bwFilerId: string,
 ): Promise<Map<string, VintageQuarter> | null> {
-  const ck = generateCacheKey("funds_zarr", "filer_vintage_quarters", { filer: bwFilerId, v: 2 });
-  const obj = await withZarrCache(ck, () => computeFilerVintageQuarters(bwFilerId), { emptyValue: null });
+  const ck = generateCacheKey("funds_zarr", "filer_vintage_quarters", { filer: bwFilerId, v: 3 });
+  const obj = await withZarrCache(ck, () => computeFilerVintageQuarters(bwFilerId), {
+    emptyValue: null,
+    ttl: FUNDS_ZARR_DAILY_SURFACE_TTL,
+  });
   return obj ? new Map(Object.entries(obj)) : null;
 }
 
@@ -1934,7 +1942,7 @@ export interface FilerDataVintage {
 }
 
 export async function readFilerDataVintage(bwFilerId: string): Promise<FilerDataVintage | null> {
-  const ck = generateCacheKey("funds_zarr", "filer_data_vintage", { filer: bwFilerId, v: 1 });
+  const ck = generateCacheKey("funds_zarr", "filer_data_vintage", { filer: bwFilerId, v: 2 });
   return withZarrCache(
     ck,
     async () => {
@@ -1950,7 +1958,7 @@ export async function readFilerDataVintage(bwFilerId: string): Promise<FilerData
         report_date_max: str("report_date_max"),
       };
     },
-    { emptyValue: null },
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
   );
 }
 
