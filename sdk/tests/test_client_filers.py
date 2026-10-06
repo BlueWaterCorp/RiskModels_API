@@ -127,6 +127,28 @@ def test_get_filer_holdings_omits_params_when_defaults():
     assert captured["params"] == {}
 
 
+def test_get_filer_holdings_pages_with_offset():
+    """H.307 (8): read past 1,000 rows by following next_offset."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        seen.append(params)
+        off = int(params.get("offset", "0"))
+        nxt = off + 1000 if off < 2000 else None
+        return httpx.Response(200, json={"holdings": [], "offset": off, "next_offset": nxt})
+
+    client = _client(handler)
+    out = client.get_filer_holdings(FILER_ID, limit=1000)
+    offsets = [out["offset"]]
+    while out["next_offset"] is not None:
+        out = client.get_filer_holdings(FILER_ID, limit=1000, offset=out["next_offset"])
+        offsets.append(out["offset"])
+    assert offsets == [0, 1000, 2000]
+    assert seen[0] == {"limit": "1000"}
+    assert seen[1] == {"limit": "1000", "offset": "1000"}
+
+
 def test_get_filer_holdings_404_preserves_as_of_message():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeFilerId } from "@/lib/13f/filer-portfolio-quality";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { fetchFiler, type FilerRow } from "@/lib/dal/filers-engine";
 import {
@@ -41,7 +42,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * published before the accession-vintage stores, and `amendment_type` is
  * never inferred from a `/A` suffix.
  *
- * Default `limit = 25`; caller can request up to 1000.
+ * Default `limit = 25`; caller can request up to 1000 per page. `offset` pages
+ * past that (H.307): the response carries `offset` and `next_offset` (null on
+ * the last page); pages are disjoint slices of the adj_mv ranking.
  *
  * Composite entities (BW-SYNTH-*) are served by the same route; registry-only
  * fields (cik, filer_type, aum_tier) return null.
@@ -49,7 +52,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const segments = request.nextUrl.pathname.split("/");
-    const bwFilerId = segments[segments.length - 2];
+    // H.307 (7): accept BW-FILER-CIK1067983, CIK1067983, 0001067983 and 1067983 for the same filer.
+    const bwFilerId = normalizeFilerId(segments[segments.length - 2]);
     if (!bwFilerId) {
       return NextResponse.json(
         { error: "bw_filer_id is required" },
@@ -68,6 +72,20 @@ export const GET = withBilling(
         );
       }
       limit = Math.min(Math.floor(parsed), MAX_TOP_N);
+    }
+
+    // H.307 (8): page past 1,000 rows. Pages are slices of the adj_mv ranking; follow `next_offset` to the end.
+    const offsetParam = request.nextUrl.searchParams.get("offset");
+    let offset = 0;
+    if (offsetParam !== null) {
+      const parsed = Number(offsetParam);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return NextResponse.json(
+          { error: "offset must be a non-negative integer" },
+          { status: 400 },
+        );
+      }
+      offset = Math.floor(parsed);
     }
 
     const asOf = request.nextUrl.searchParams.get("as_of") ?? undefined;
@@ -96,7 +114,7 @@ export const GET = withBilling(
     }
 
     const snapshot = await enrichFilerHoldingsWithL3(
-      await readFilerHoldingsTopN(bwFilerId, limit, asOf),
+      await readFilerHoldingsTopN(bwFilerId, limit, asOf, offset),
     );
     if (!snapshot) {
       return NextResponse.json(

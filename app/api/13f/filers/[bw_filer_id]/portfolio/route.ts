@@ -1,7 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  annotatePortfolioRows,
+  missingQuarters,
+  normalizeFilerId,
+} from "@/lib/13f/filer-portfolio-quality";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { fetchFiler } from "@/lib/dal/filers-engine";
-import { readFilerPortfolioSeries } from "@/lib/dal/funds-zarr-reader";
+import {
+  readFilerBookRepairs,
+  readFilerDataVintage,
+  readFilerPortfolioSeries,
+  readFilerVintageQuarters,
+} from "@/lib/dal/funds-zarr-reader";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +31,21 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * `filing_date <= as_of` when per-teo filing dates exist, else
  * `teo <= as_of` (basis echoed as `as_of_basis`).
  *
+ * H.307 (2026-10-06), additive: each row also carries `original_filing_date`,
+ * `filing_date_is_amendment`, `n_amendments`, `accession_number`,
+ * `is_partial_period` (the last row's forward window has not closed),
+ * `is_stub` (returns without a holdings snapshot), `book_complete`,
+ * `mapped_share`, `erm3_universe_share`, `repair_status` and
+ * `repair_rows_affected`; the body adds `missing_quarters`, `aum_units` and
+ * `data_vintage`.
+ *
  * Date params are inclusive and optional.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const segments = request.nextUrl.pathname.split("/");
-    const bwFilerId = segments[segments.length - 2];
+    // H.307 (7): accept BW-FILER-CIK1067983, CIK1067983, 0001067983 and 1067983 for the same filer.
+    const bwFilerId = normalizeFilerId(segments[segments.length - 2]);
     if (!bwFilerId) {
       return NextResponse.json(
         { error: "bw_filer_id is required" },
@@ -94,6 +113,20 @@ export const GET = withBilling(
       );
     }
 
+    // H.307 / researcher enhancements 1–2: correctness flags and per-quarter quality fields. Each source is optional:
+    // an unpublished vintage store or repair ledger leaves its fields null, it never fails the request.
+    const [vintages, repairs, dataVintage] = await Promise.all([
+      readFilerVintageQuarters(bwFilerId).catch(() => null),
+      readFilerBookRepairs(bwFilerId).catch(() => null),
+      readFilerDataVintage(bwFilerId).catch(() => null),
+    ]);
+    const annotated = annotatePortfolioRows(
+      rows,
+      vintages,
+      repairs,
+      new Date().toISOString().slice(0, 10),
+    );
+
     const lastRow = rows[rows.length - 1]!;
     const headers = new Headers({
       "X-Data-As-Of": lastRow.teo,
@@ -115,7 +148,12 @@ export const GET = withBilling(
         n_periods: rows.length,
         start_teo: rows[0]!.teo,
         end_teo: lastRow.teo,
-        rows,
+        // Quarter-ends inside [start_teo, end_teo] with no row (no usable book that quarter).
+        missing_quarters: missingQuarters(rows.map((r) => r.teo)),
+        // total_aum_usd / aum_in_erm3 are whole US dollars in every row (13F value units repaired, 2026-10-03).
+        aum_units: "usd",
+        data_vintage: dataVintage,
+        rows: annotated,
       },
       { headers },
     );

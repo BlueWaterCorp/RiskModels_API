@@ -14,6 +14,10 @@ vi.mock("@/lib/dal/funds-zarr-reader", () => ({
   readSyntheticEntityMeta: vi.fn(),
   readFilerHoldingsTopN: vi.fn(),
   readFilerPortfolioSeries: vi.fn(),
+  // H.307 annotation sources: unpublished in these fixtures.
+  readFilerVintageQuarters: vi.fn(async () => null),
+  readFilerBookRepairs: vi.fn(async () => null),
+  readFilerDataVintage: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/13f/enrich-filer-holdings", () => ({
@@ -141,6 +145,7 @@ describe("GET /api/13f/filers/[bw_filer_id]/holdings (D.8.39)", () => {
       "BW-FILER-X",
       25,
       undefined,
+      0,
     );
   });
 
@@ -167,6 +172,7 @@ describe("GET /api/13f/filers/[bw_filer_id]/holdings (D.8.39)", () => {
       "BW-FILER-X",
       25,
       "2026-03-01",
+      0,
     );
   });
 
@@ -352,5 +358,58 @@ describe("GET /api/13f/filers/[bw_filer_id]/portfolio (D.8.39)", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toMatch(/as of the requested date/);
+  });
+});
+
+describe("H.307: filer id normalisation, holdings paging, portfolio quality fields", () => {
+  it("(7) resolves a bare or unpadded CIK to the canonical filer id", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerHoldingsTopN).mockResolvedValue(HOLDINGS_SNAPSHOT);
+    await holdingsGET(req("/api/13f/filers/1067983/holdings"), fakeContext);
+    expect(vi.mocked(fetchFiler)).toHaveBeenCalledWith("BW-FILER-CIK0001067983");
+    expect(vi.mocked(readFilerHoldingsTopN)).toHaveBeenCalledWith("BW-FILER-CIK0001067983", 25, undefined, 0);
+  });
+
+  it("(8) passes offset through and rejects a negative one", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerHoldingsTopN).mockResolvedValue({ ...HOLDINGS_SNAPSHOT, offset: 1000, next_offset: 2000 } as never);
+    const res = await holdingsGET(req("/api/13f/filers/BW-FILER-X/holdings?limit=1000&offset=1000"), fakeContext);
+    expect(res.status).toBe(200);
+    expect(vi.mocked(readFilerHoldingsTopN)).toHaveBeenCalledWith("BW-FILER-X", 1000, undefined, 1000);
+    const body = await res.json();
+    expect(body.offset).toBe(1000);
+    expect(body.next_offset).toBe(2000);
+    const bad = await holdingsGET(req("/api/13f/filers/BW-FILER-X/holdings?offset=-5"), fakeContext);
+    expect(bad.status).toBe(400);
+  });
+
+  it("portfolio rows carry the quality fields and the body carries missing_quarters, aum_units, data_vintage", async () => {
+    vi.mocked(fetchFiler).mockResolvedValue(FILER as never);
+    vi.mocked(readFilerPortfolioSeries).mockResolvedValue([
+      portfolioRow("2025-09-30", "2025-11-14"),
+      portfolioRow("2026-03-31", "2026-05-14"),
+    ]);
+    const res = await portfolioGET(req("/api/13f/filers/BW-FILER-X/portfolio"), fakeContext);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.missing_quarters).toEqual(["2025-12-31"]);
+    expect(body.aum_units).toBe("usd");
+    expect(body.data_vintage).toBeNull();
+    const last = body.rows[body.rows.length - 1];
+    for (const k of [
+      "original_filing_date",
+      "filing_date_is_amendment",
+      "n_amendments",
+      "is_partial_period",
+      "is_stub",
+      "book_complete",
+      "mapped_share",
+      "erm3_universe_share",
+      "repair_status",
+    ]) {
+      expect(last).toHaveProperty(k);
+    }
+    expect(last.erm3_universe_share).toBe(0.9);
+    expect(last.repair_status).toBeNull();
   });
 });
