@@ -2547,6 +2547,7 @@ class RiskModelsClient:
         *,
         limit: int | None = None,
         as_of: str | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         """Top-N filer holdings at the latest teo (``$0.005``).
 
@@ -2593,8 +2594,17 @@ class RiskModelsClient:
         Args:
             bw_filer_id: Canonical filer id (e.g.
                 ``"BW-FILER-CIK0001067983"``).
-            limit: Top-N holdings (server default 25, capped 1000).
+            limit: Rows per page (server default 25, capped 1000).
             as_of: Optional knowledge-mode date, ``YYYY-MM-DD``.
+            offset: Page past the first ``limit`` rows of the ``adj_mv``
+                ranking. The response carries ``offset`` and
+                ``next_offset`` (``None`` on the last page); loop until it
+                is ``None`` to read a book of more than 1,000 rows. Books
+                deeper than 50,000 rows stop there and carry
+                ``truncated_at_max_depth=True``.
+
+        Bare or unpadded CIKs (``"1067983"``, ``"0001067983"``) resolve to
+        the same filer as ``"BW-FILER-CIK0001067983"``.
 
         Raises:
             APIError: ``status_code=404`` when the filer is unknown, has
@@ -2607,6 +2617,8 @@ class RiskModelsClient:
             params["limit"] = str(limit)
         if as_of is not None:
             params["as_of"] = as_of
+        if offset is not None:
+            params["offset"] = str(int(offset))
         data, _lineage, _r = self._transport.request(
             "GET",
             f"/13f/filers/{quote(bw_filer_id, safe='')}/holdings",

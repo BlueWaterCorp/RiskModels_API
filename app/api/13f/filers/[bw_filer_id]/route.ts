@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeFilerId } from "@/lib/13f/filer-portfolio-quality";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { resolveFilerById } from "@/lib/dal/filers-engine";
 import { formatFilerMetrics } from "@/lib/13f/format";
@@ -24,7 +25,8 @@ export const dynamic = "force-dynamic";
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const segments = request.nextUrl.pathname.split("/");
-    const bwFilerId = segments[segments.length - 1];
+    // H.307 (7): accept BW-FILER-CIK1067983, CIK1067983, 0001067983 and 1067983 for the same filer.
+    const bwFilerId = normalizeFilerId(segments[segments.length - 1]);
     if (!bwFilerId) {
       return NextResponse.json(
         { error: "bw_filer_id is required" },

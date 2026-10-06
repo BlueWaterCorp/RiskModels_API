@@ -71,6 +71,12 @@ import {
 } from "@/lib/funds/style-slug";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  compareHoldingsRank,
+  summarizeVintages,
+  type BookRepair,
+  type VintageQuarter,
+} from "@/lib/13f/filer-portfolio-quality";
+import {
   getCache,
   setCache,
   CACHE_TTL,
@@ -1362,6 +1368,12 @@ export interface FilerHolding {
 
 export interface FilerHoldingsSnapshot {
   teo: string;
+  /** H.307 (8): first row of this page in the adj_mv ranking (set by readFilerHoldingsTopN). */
+  offset?: number;
+  /** Offset of the next page; null on the last page (set by readFilerHoldingsTopN). */
+  next_offset?: number | null;
+  /** The book has more rows than FILER_HOLDINGS_MAX_DEPTH (50,000); pages stop there. */
+  truncated_at_max_depth?: boolean;
   /** Valid-time stamp (D.8.39): the 13F reporting period end. Equal to `teo`. */
   report_date: string;
   /**
@@ -1416,28 +1428,47 @@ export interface FilerHoldingsSnapshot {
  * surfaces the security id under `security_id` (since pre-D.8.1 it may be
  * a raw security id rather than bw_sym_id).
  */
+/** Deepest row a page may reach (offset + limit); larger books are served to this depth. */
+export const FILER_HOLDINGS_MAX_DEPTH = 50_000;
+
 export async function readFilerHoldingsTopN(
   bwFilerId: string,
   n = 25,
   asOf?: string,
+  offset = 0,
 ): Promise<FilerHoldingsSnapshot | null> {
   const safeN = Math.min(Math.max(n, 1), 1000);
+  const safeOffset = Math.min(Math.max(Math.floor(offset), 0), FILER_HOLDINGS_MAX_DEPTH - 1);
+  const depth = Math.min(safeOffset + safeN, FILER_HOLDINGS_MAX_DEPTH);
   const ck = generateCacheKey("funds_zarr", "filer_holdings_top", {
     filer: bwFilerId,
-    n: safeN,
+    n: depth,
     as_of: asOf ?? "",
     v: 3, // + filing identity (accession_number/filing_type/amendment_type)
   });
   const snapshot = await withZarrCache(
     ck,
-    () => computeFilerHoldingsTopN(bwFilerId, safeN, asOf),
+    () => computeFilerHoldingsTopN(bwFilerId, depth, asOf),
     { emptyValue: null },
   );
   if (!snapshot) return null;
-  // Scrub outside the cache boundary — see readFundHoldingsTopN.
+  // H.307 (8): page past the first 1,000 holdings. Rows are ranked by adj_mv descending; a page is a slice of that
+  // ranking, so pages never overlap and their union is the whole book (to FILER_HOLDINGS_MAX_DEPTH).
+  const page = snapshot.holdings.slice(safeOffset, safeOffset + safeN);
+  const end = safeOffset + page.length;
+  const nextOffset =
+    end < Math.min(snapshot.n_total_holdings, FILER_HOLDINGS_MAX_DEPTH) ? end : null;
+  // Scrub outside the cache boundary — see readFundHoldingsTopN. Offsets stay in ranking space, so a scrubbed row
+  // shortens its page without shifting the next one.
+  const holdings = await applyScrubToFilerHoldings(page);
   return {
     ...snapshot,
-    holdings: await applyScrubToFilerHoldings(snapshot.holdings),
+    n_holdings_returned: holdings.length,
+    holdings,
+    offset: safeOffset,
+    next_offset: nextOffset,
+    // A book deeper than FILER_HOLDINGS_MAX_DEPTH is served to that depth; this says so instead of a silent stop.
+    truncated_at_max_depth: snapshot.n_total_holdings > FILER_HOLDINGS_MAX_DEPTH,
   };
 }
 
@@ -1660,7 +1691,8 @@ async function computeFilerHoldingsTopN(
   }
   if (holdings.length === 0) return null;
 
-  holdings.sort((a, b) => b.adj_mv - a.adj_mv);
+  // Ties broken by security_id so a page boundary is stable across recomputes (H.307 paging).
+  holdings.sort(compareHoldingsRank);
   const top = holdings.slice(0, safeN);
 
   return {
@@ -1803,6 +1835,178 @@ async function computeFilerPortfolioSeries(
     rows.push(row as unknown as FilerPortfolioRow);
   }
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Filer quality annotations (H.307; researcher API enhancements 1–2, 2026-10-06)
+// ---------------------------------------------------------------------------
+
+/** Boolean 1-D read: zarrita returns a BoolArray (indexable via .get) or a Uint8Array. */
+async function readBoolVar(
+  grp: Group<Readable>,
+  varName: string,
+): Promise<Array<boolean | null> | null> {
+  try {
+    const arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data as unknown;
+    if (d == null) return null;
+    const n = (d as { length: number }).length;
+    const getter = (d as { get?: (i: number) => unknown }).get;
+    const out: Array<boolean | null> = [];
+    for (let i = 0; i < n; i++) {
+      const v = typeof getter === "function" ? getter.call(d, i) : (d as ArrayLike<unknown>)[i];
+      out.push(v == null ? null : Boolean(v));
+    }
+    return out;
+  } catch (err) {
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) return null;
+    throw err;
+  }
+}
+
+async function computeFilerVintageQuarters(
+  bwFilerId: string,
+): Promise<Record<string, VintageQuarter> | null> {
+  const [grp, ph] = await Promise.all([
+    openFilerZarrGroup(bwFilerId, "ds_filing_vintages.zarr"),
+    openFilerZarrGroup(bwFilerId, "ds_ph.zarr"),
+  ]);
+  if (!grp) return null;
+  const [reportDates, filingDates, accessions, complete] = await Promise.all([
+    readDatetimeVarStrings(grp, "report_date"),
+    readDatetimeVarStrings(grp, "filing_date"),
+    readStringVarStrings(grp, "accession_number"),
+    readBoolVar(grp, "state_complete"),
+  ]);
+  if (!reportDates || !filingDates || !accessions) {
+    throw new Error(`ds_filing_vintages for ${bwFilerId} lacks report_date/filing_date/accession_number`);
+  }
+  const n = reportDates.length;
+  const [reported, mapped] = await Promise.all([
+    readFloatSlice1d(grp, "reported_aum_usd", 0, n),
+    readFloatSlice1d(grp, "mapped_aum_usd", 0, n),
+  ]);
+  // The book each portfolio row was built from: ds_ph's accession per teo (same book as ds_portfolio's returns and
+  // filing_date). Without it the book-specific fields stay null rather than assuming the latest filing.
+  const governing = new Map<string, string | null>();
+  if (ph) {
+    const [teos, phAcc] = await Promise.all([readTeoStrings(ph), readStringVarStrings(ph, "accession_number")]);
+    // A ds_ph without a per-teo accession (pre-schema-v2) names no book: book fields stay null. One whose arrays
+    // disagree is malformed: an error, not "no book".
+    if (teos && phAcc) {
+      if (phAcc.length !== teos.length) {
+        throw new Error(`ds_ph for ${bwFilerId}: accession_number (${phAcc.length}) vs teo (${teos.length})`);
+      }
+      teos.forEach((t, i) => governing.set(t, nonEmpty(phAcc[i])));
+    }
+  }
+  const summary = summarizeVintages(
+    {
+      report_date: reportDates,
+      filing_date: filingDates,
+      accession_number: accessions,
+      state_complete: complete,
+      reported_aum_usd: reported,
+      mapped_aum_usd: mapped,
+    },
+    governing,
+  );
+  if (!summary) throw new Error(`ds_filing_vintages for ${bwFilerId} has arrays of unequal length`);
+  return Object.fromEntries(summary);
+}
+
+/**
+ * Per report date: original filing, amendment count and the row's own book (accession, completeness, mapped share
+ * inputs), from `ds_filing_vintages.zarr` joined on `ds_ph`'s accession. Null when the store is not published;
+ * throws when it is published but unreadable or malformed (the route reports that as `error`, not as absent).
+ */
+export async function readFilerVintageQuarters(
+  bwFilerId: string,
+): Promise<Map<string, VintageQuarter> | null> {
+  const ck = generateCacheKey("funds_zarr", "filer_vintage_quarters", { filer: bwFilerId, v: 3 });
+  const obj = await withZarrCache(ck, () => computeFilerVintageQuarters(bwFilerId), {
+    emptyValue: null,
+    ttl: FUNDS_ZARR_DAILY_SURFACE_TTL,
+  });
+  return obj ? new Map(Object.entries(obj)) : null;
+}
+
+/** Provenance of the filer's portfolio store, for citing the exact build a result used. */
+export interface FilerDataVintage {
+  schema_version: string | null;
+  cusip_resolver: string | null;
+  cusip_windows_fingerprint: string | null;
+  returns_window_end: string | null;
+  report_date_max: string | null;
+}
+
+export async function readFilerDataVintage(bwFilerId: string): Promise<FilerDataVintage | null> {
+  const ck = generateCacheKey("funds_zarr", "filer_data_vintage", { filer: bwFilerId, v: 2 });
+  return withZarrCache(
+    ck,
+    async () => {
+      const grp = await openFilerZarrGroup(bwFilerId, "ds_portfolio.zarr");
+      if (!grp) return null;
+      const a = (grp.attrs ?? {}) as Record<string, unknown>;
+      const str = (k: string): string | null => (a[k] == null ? null : String(a[k]));
+      return {
+        schema_version: str("schema_version"),
+        cusip_resolver: str("cusip_resolver"),
+        cusip_windows_fingerprint: str("cusip_windows_fingerprint"),
+        returns_window_end: str("window_end"),
+        report_date_max: str("report_date_max"),
+      };
+    },
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
+  );
+}
+
+const BOOK_REPAIRS_RELPATH = "_metadata/filer_book_repairs.json";
+
+interface BookRepairsFile {
+  generated_at?: string;
+  filers?: Record<string, Record<string, BookRepair>>;
+}
+
+async function loadBookRepairsFile(): Promise<BookRepairsFile | null> {
+  const localRoot = process.env.ZARR_FUNDS_LOCAL_ROOT?.trim();
+  if (localRoot) {
+    let txt: string;
+    try {
+      txt = await readFile(`${localRoot}/${BOOK_REPAIRS_RELPATH}`, "utf8");
+    } catch {
+      return null; // not published locally
+    }
+    return JSON.parse(txt) as BookRepairsFile;
+  }
+  for (const prefix of domainZarrPrefixCandidates("ZARR_FILERS_GCS_PREFIX")) {
+    const file = getGcs().bucket(prefix.bucket).file(`${prefix.basePath}/${BOOK_REPAIRS_RELPATH}`);
+    const [exists] = await file.exists();
+    if (!exists) continue;
+    const [buf] = await file.download();
+    return JSON.parse(buf.toString("utf8")) as BookRepairsFile;
+  }
+  return null;
+}
+
+/**
+ * Repair ledger for one filer, keyed by report date. Null when the ledger is not published (callers then report
+ * `repair_status: null`, not "none"); an empty map when the ledger exists and lists nothing for this filer.
+ */
+export async function readFilerBookRepairs(bwFilerId: string): Promise<Map<string, BookRepair> | null> {
+  // Daily TTL: a re-published ledger is visible within a day; v bumps on schema changes.
+  const ck = generateCacheKey("funds_zarr", "filer_book_repairs", { filer: bwFilerId, v: 2 });
+  const obj = await withZarrCache(
+    ck,
+    async () => {
+      const f = await loadBookRepairsFile();
+      if (!f || !f.filers) return null;
+      return f.filers[bwFilerId] ?? {};
+    },
+    { emptyValue: null, ttl: FUNDS_ZARR_DAILY_SURFACE_TTL },
+  );
+  return obj ? new Map(Object.entries(obj)) : null;
 }
 
 function medianFinite(values: Array<number | null>): number | null {
@@ -2001,6 +2205,9 @@ export async function readFilerReturnsDecomposition(
     filer: bwFilerId,
     start: options.startDate ?? "",
     end: options.endDate ?? "",
+    // v2 (2026-10-06): ds_returns_monthly was republished after the 10-04 rebuild (Funds_DAG #210); entries cached
+    // from the 2026-09-13 copy must not be served.
+    v: 2,
   });
   return withZarrCache(
     ck,

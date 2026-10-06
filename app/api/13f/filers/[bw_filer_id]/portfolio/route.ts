@@ -1,7 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  annotatePortfolioRows,
+  missingQuarters,
+  normalizeFilerId,
+} from "@/lib/13f/filer-portfolio-quality";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { fetchFiler } from "@/lib/dal/filers-engine";
-import { readFilerPortfolioSeries } from "@/lib/dal/funds-zarr-reader";
+import {
+  readFilerBookRepairs,
+  readFilerDataVintage,
+  readFilerPortfolioSeries,
+  readFilerVintageQuarters,
+} from "@/lib/dal/funds-zarr-reader";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +31,23 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * `filing_date <= as_of` when per-teo filing dates exist, else
  * `teo <= as_of` (basis echoed as `as_of_basis`).
  *
+ * H.307 (2026-10-06), additive: each row also carries `original_filing_date`,
+ * `filing_date_is_amendment`, `n_amendments`, `accession_number`,
+ * `is_partial_period` (the row's teo → next quarter-end window ends after the
+ * store's returns window_end; null when that was not read),
+ * `is_stub` (returns without a holdings snapshot), `book_complete`,
+ * `mapped_share`, `erm3_universe_share`, `repair_status` and
+ * `repair_rows_affected`, `repair_detail`; the body adds `missing_quarters`,
+ * `data_vintage` and `quality_sources` (`ok` / `unpublished` / `error` per source;
+ * `mismatch` with a count when a named book did not match its row).
+ *
  * Date params are inclusive and optional.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
     const segments = request.nextUrl.pathname.split("/");
-    const bwFilerId = segments[segments.length - 2];
+    // H.307 (7): accept BW-FILER-CIK1067983, CIK1067983, 0001067983 and 1067983 for the same filer.
+    const bwFilerId = normalizeFilerId(segments[segments.length - 2]);
     if (!bwFilerId) {
       return NextResponse.json(
         { error: "bw_filer_id is required" },
@@ -69,7 +90,13 @@ export const GET = withBilling(
       return NextResponse.json({ error: "Filer not found" }, { status: 404 });
     }
 
-    let rows = await readFilerPortfolioSeries(bwFilerId, { startDate, endDate });
+    // Sorted by teo here so every bound published below (start/end teo, X-Data-As-Of, gaps) agrees.
+    let rows = [...(await readFilerPortfolioSeries(bwFilerId, { startDate, endDate }))].sort((a, b) =>
+      a.teo < b.teo ? -1 : a.teo > b.teo ? 1 : 0,
+    );
+    // Quarter gaps are a property of the store, not of an as_of view: computed before the as_of filter, then
+    // restricted to the returned window.
+    const allTeos = rows.map((r) => r.teo);
 
     // D.8.39 knowledge mode: keep rows known by as_of. Basis is per-panel —
     // filing_date when the zarr carries it, report_date (teo) otherwise.
@@ -94,6 +121,34 @@ export const GET = withBilling(
       );
     }
 
+    // H.307 / researcher enhancements 1–2: correctness flags and per-quarter quality fields. A source that is not
+    // published leaves its fields null (`unpublished`); a source that fails to read also leaves them null but is
+    // reported as `error`, so a client can tell the two apart. Neither fails the request.
+    const settle = async <T,>(p: Promise<T | null>): Promise<{ v: T | null; s: "ok" | "unpublished" | "error" }> => {
+      try {
+        const v = await p;
+        return { v, s: v == null ? "unpublished" : "ok" };
+      } catch (err) {
+        console.error(`[filer portfolio] quality source failed for ${bwFilerId}`, err);
+        return { v: null, s: "error" };
+      }
+    };
+    const [vint, rep, dv] = await Promise.all([
+      settle(readFilerVintageQuarters(bwFilerId)),
+      settle(readFilerBookRepairs(bwFilerId)),
+      settle(readFilerDataVintage(bwFilerId)),
+    ]);
+    // Partial = the row's quarter window ends after the store's returns window_end; null when that was not read.
+    const annotated = annotatePortfolioRows(rows, vint.v, rep.v, dv.v?.returns_window_end ?? null);
+    const teosSorted = rows.map((r) => r.teo).sort();
+    const lo = teosSorted[0]!;
+    const hi = teosSorted[teosSorted.length - 1]!;
+    const gaps = missingQuarters([...allTeos].sort()).filter((q) => q > lo && q < hi);
+    // A row whose named book is not in the vintage store, or whose dates disagree, has its book fields nulled; the
+    // source is then reported as `mismatch`, not `ok`.
+    const vintStatus =
+      vint.s === "ok" && annotated.book_mismatches > 0 ? ("mismatch" as const) : vint.s;
+
     const lastRow = rows[rows.length - 1]!;
     const headers = new Headers({
       "X-Data-As-Of": lastRow.teo,
@@ -115,7 +170,16 @@ export const GET = withBilling(
         n_periods: rows.length,
         start_teo: rows[0]!.teo,
         end_teo: lastRow.teo,
-        rows,
+        // Quarter-ends strictly inside [start_teo, end_teo] with no book in the store.
+        missing_quarters: gaps,
+        data_vintage: dv.v,
+        quality_sources: {
+          vintages: vintStatus,
+          repair_ledger: rep.s,
+          data_vintage: dv.s,
+          book_mismatches: annotated.book_mismatches,
+        },
+        rows: annotated.rows,
       },
       { headers },
     );

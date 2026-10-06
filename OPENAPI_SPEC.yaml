@@ -11994,9 +11994,11 @@ paths:
           schema:
             type: string
           description: >
-            Canonical filer id (BW-FILER-CIK{cik}). Composite entities
-            (BW-SYNTH-*) are served by the same route; registry-only fields
-            (cik, filer_type, aum_tier) return null.
+            Canonical filer id (BW-FILER-CIK{cik}). A bare or unpadded CIK
+            (`1067983`, `0001067983`, `CIK1067983`, `BW-FILER-CIK1067983`)
+            resolves to the same filer. Composite entities (BW-SYNTH-*) are
+            served by the same route; registry-only fields (cik, filer_type,
+            aum_tier) return null.
         - name: limit
           in: query
           required: false
@@ -12004,6 +12006,20 @@ paths:
             type: integer
             default: 25
             maximum: 1000
+          description: Rows per page (at most 1000).
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: >
+            Page past the first `limit` rows. Rows are ranked by `adj_mv`
+            descending and a page is a slice of that ranking; follow
+            `next_offset` until it is null to read the whole book (served to a
+            depth of 50,000 rows; `truncated_at_max_depth` says when a book is
+            deeper). Ties in `adj_mv` are ordered by `security_id`.
         - name: as_of
           in: query
           required: false
@@ -12079,6 +12095,18 @@ paths:
                       for this panel, which is *not* the same as `UNKNOWN`;
                       it is never inferred from a `/A` suffix.
                     example: "RESTATEMENT"
+                  offset:
+                    type: integer
+                    description: First row of this page in the adj_mv ranking.
+                  next_offset:
+                    type: integer
+                    nullable: true
+                    description: Offset of the next page; null on the last page.
+                  truncated_at_max_depth:
+                    type: boolean
+                    description: >
+                      The book has more than 50,000 rows; pages stop at that
+                      depth and `next_offset` is null there.
                   holdings:
                     type: array
                     items:
@@ -12149,7 +12177,26 @@ paths:
             public on or before this date. 404 when nothing was known yet.
       responses:
         "200":
-          description: Portfolio history rows (each with `filing_date`).
+          description: >
+            Portfolio history rows (each with `filing_date`). Additive quality
+            fields (2026-10-06), keyed on the book each row was built from
+            (`ds_ph`'s accession for the quarter): per row
+            `original_filing_date` (first EDGAR filing for the quarter),
+            `filing_date_is_amendment` (the row's book is not that first
+            filing), `n_amendments`, `accession_number`, `book_complete`,
+            `mapped_share` (share of the book's reported value whose security identifiers
+            resolved), `erm3_universe_share` (= `coverage_in_erm3`),
+            `is_partial_period` (the row's teo → next quarter-end window ends
+            after the data's `returns_window_end`), `is_stub` (returns with no
+            holdings snapshot), `repair_status` (most severe of
+            `rows_quarantined` > `units_repaired` > `reparsed`, `none`, or null
+            when the repair ledger is unavailable), `repair_rows_affected` and
+            `repair_detail` (rows per repair kind). At the root:
+            `missing_quarters` (quarter-ends inside the window with no book),
+            `data_vintage` (store schema version, identifier-window fingerprint,
+            returns window end) and `quality_sources` (`ok` / `unpublished` /
+            `error` for the vintage store, repair ledger and store
+            attributes).
           content:
             application/json:
               schema:
