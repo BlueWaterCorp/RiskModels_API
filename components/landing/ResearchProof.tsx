@@ -30,13 +30,13 @@ export default function ResearchProof() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
               The research behind the model
             </p>
-            <blockquote className="mt-4 border-l-2 border-emerald-500/60 pl-5 text-lg leading-relaxed text-zinc-200 sm:text-xl">
-              &ldquo;Much of what gets labeled as the &lsquo;factor zoo&rsquo; is already sitting in
-              plain sight — embedded in sector and subsector exposures as tradable risk. The
-              proliferation of factors is often a labeling exercise.&rdquo;
-            </blockquote>
-            <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-              — Part 1 · One Position, Four Bets
+            <h2 className="mt-3 text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Clarity should survive the math.
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-zinc-300 sm:text-base">
+              The factor definitions, hierarchical orthogonalization, hedge-ratio construction,
+              and capacity limits are published so the four-layer map can be examined rather than
+              taken on faith.
             </p>
           </div>
           <p className="text-sm leading-relaxed text-zinc-400">

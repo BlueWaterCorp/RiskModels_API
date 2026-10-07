@@ -16,8 +16,8 @@ export default function HeroLanding() {
           Your portfolio already has a benchmark. You just haven&rsquo;t seen it.
         </h1>
         <p className="mx-auto mt-5 max-w-3xl text-balance text-base font-medium leading-snug text-zinc-300 sm:text-lg md:text-xl">
-          Decompose every position into market, sector, subsector, and stock-specific layers —
-          with ETF hedge ratios you can use from one API call.
+          Decompose every position into market, sector, subsector, and residual (stock-specific)
+          risk — with model-derived ETF hedge ratios from one API call.
         </p>
         <p className="mx-auto mt-6 font-mono text-[12px] tracking-[0.04em] text-zinc-500 sm:text-[13px]">
           Numbers-first answers from live ERM3 data · hedge ratios in dollars of ETF per $1 of stock
