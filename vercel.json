@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/notify-expiring-keys",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/email-engagement",
+      "schedule": "0 16 * * 1-5"
     }
   ]
 }

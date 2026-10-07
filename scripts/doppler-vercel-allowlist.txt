@@ -66,3 +66,7 @@ MOONSHOT_BASE_URL
 # Shared secret for the Google Ads offline-conversion scheduled upload endpoint
 # (GET /api/internal/google-ads/offline-conversions). Used as Bearer / Basic password / ?token=.
 GOOGLE_ADS_OFFLINE_UPLOAD_TOKEN
+
+# Account activation: founder review digest, never unattended customer follow-ups.
+EMAIL_ENGAGEMENT_ENABLED
+ENGAGEMENT_ADMIN_URL

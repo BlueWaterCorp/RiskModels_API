@@ -10,6 +10,7 @@ import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 import { captureUTMFromURL, clearUTMData, getUTMData } from '@/lib/utm';
 import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
 import { gtmAnalytics } from '@/lib/posthog-client';
+import { WORKFLOWS, AGENT_CLIENTS, WORKFLOW_LABELS, parseWorkflow, parseAgentClient, type SetupWorkflow, type AgentClient } from '@/emails/engagement-content';
 import { FIRST_LIVE_PROMPT_MCP } from '@/lib/mcp/activation';
 
 const MCP_CONNECTOR_URL = 'https://riskmodels.app/api/mcp/sse';
@@ -137,10 +138,14 @@ function GetKeyPage() {
 
   // Key generation
   const [newKeyName, setNewKeyName] = useState('');
+  const [setupWorkflow, setSetupWorkflow] = useState<SetupWorkflow>('exploring');
+  const [setupClient, setSetupClient] = useState<AgentClient>('other');
   const [generating, setGenerating] = useState(false);
   const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string } | null>(null);
   const revealedKeyRef = useRef<HTMLDivElement>(null);
   const [genError, setGenError] = useState('');
+  const [setupSaved, setSetupSaved] = useState(false);
+  const [hasSetup, setHasSetup] = useState(false);
 
   // Inline rename state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -252,6 +257,9 @@ function GetKeyPage() {
     if (keysRes.ok) {
       const data = await keysRes.json();
       setKeys(data.keys ?? []);
+      setHasSetup(!!data.setup);
+      setSetupWorkflow(parseWorkflow(data.setup?.workflow) ?? 'exploring');
+      setSetupClient(parseAgentClient(data.setup?.agent_client) ?? 'other');
     }
     if (cardsRes.ok) {
       const data = await cardsRes.json();
@@ -417,6 +425,8 @@ function GetKeyPage() {
     const trimmed = newKeyName.trim();
     const referralCode = readPersistedReferralCode(searchParams);
     const payload: Record<string, unknown> = {};
+    payload.workflow = setupWorkflow;
+    payload.agent_client = setupWorkflow === 'agent' ? setupClient : null;
     if (trimmed) payload.name = trimmed;
     if (referralCode) payload.referral_code = referralCode;
     const signupUtm = getUTMData();
@@ -451,6 +461,16 @@ function GetKeyPage() {
       await fetchAccountData();
     }
     setGenerating(false);
+  };
+
+  const saveSetupChoice = async () => {
+    setSetupSaved(false);
+    try {
+      const res = await fetch('/api/agent-keys', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'setup', workflow: setupWorkflow, agent_client: setupClient }) });
+      if (!res.ok) throw new Error('Could not save setup choice.');
+      setSetupSaved(true);
+    } catch { setGenError('Could not save setup choice. Please try again.'); }
   };
 
   const revokeKey = async (id: string) => {
@@ -790,13 +810,25 @@ function GetKeyPage() {
               <Plus size={14} /> Generate new key
             </h2>
             <form onSubmit={generateKey} className="space-y-2">
+              <label htmlFor="setup-workflow" className="block text-sm text-zinc-300">How will you use RiskModels? <span className="text-zinc-500">(optional)</span></label>
+              <select id="setup-workflow" value={setupWorkflow} onChange={e=>{setSetupWorkflow(e.target.value as SetupWorkflow);setSetupSaved(false);}} className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100">
+                {WORKFLOWS.map(w=><option key={w} value={w}>{WORKFLOW_LABELS[w]}</option>)}
+              </select>
+              {setupWorkflow==='agent'&&<>
+                <label htmlFor="setup-client" className="block text-sm text-zinc-300">Which assistant?</label>
+                <select id="setup-client" value={setupClient} onChange={e=>{setSetupClient(e.target.value as AgentClient);setSetupSaved(false);}} className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100">
+                  {AGENT_CLIENTS.map(c=><option key={c} value={c}>{({claude:'Claude',chatgpt:'ChatGPT',codex:'Codex',cursor:'Cursor',other:'Other / not sure'})[c]}</option>)}
+                </select>
+              </>}
+              <p className="text-xs text-zinc-500">We will tailor your setup email. You can use the same key across tools.</p>
+              {(keys.length > 0 || hasSetup) && <div className="flex items-center gap-3"><button type="button" onClick={()=>void saveSetupChoice()} className="text-xs text-blue-300 underline">Save setup choice without creating a key</button>{setupSaved&&<span role="status" className="text-xs text-green-400">Saved</span>}</div>}
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newKeyName}
                   onChange={(e) => setNewKeyName(e.target.value)}
                   maxLength={60}
-                  placeholder="Name — e.g. Production, Colab, CI, OpenBB"
+                  placeholder="Name — e.g. Production, Colab, CI"
                   className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                 />
                 <button type="submit" disabled={generating}
