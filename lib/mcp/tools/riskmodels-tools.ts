@@ -799,12 +799,12 @@ export function registerRiskModelsTools(
       title: "RiskModels PIT Quarterly Fundamentals",
       annotations: { readOnlyHint: true },
       description:
-        "PIT quarterly fundamentals (GET /fundamentals/{ticker}): TTM profitability ratios (roe_ttm, roa_ttm, fcf_margin), capital-return ratios (payout, retention, buyback, total_payout, sustainable_growth), leverage_ratio, ERM3 cascade betas, the cost-of-capital layer (cost_of_equity, wacc, economic_profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of — never \"latest\". Realized historical only; no forecasts or analyst fields. Set grid=true for a cost-of-capital sensitivity table across erp_grid x rf_tenor_grid instead of a scalar wacc/cost_of_equity.",
+        "PIT quarterly fundamentals (GET /fundamentals/{ticker}): TTM profitability and capital-return ratios, leverage, long-window ERM3 valuation betas, strict reported-data cost_of_debt/wacc, and separately labeled cost_of_debt_imputed/wacc_imputed when a PIT-lagged high-quality-market proxy is available. The proxy uses the period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread and is not issuer-specific. Also returns equity-charge economic_profit, an equity-bridge decomposition, and SEC-sourced raw line items in sec_facts. Rows are visible iff filed_date <= as_of — never \"latest\". Realized historical only; no forecasts or analyst fields. Set grid=true for a latest-period ERP x rf-tenor table containing cost_of_equity, strict wacc, parallel wacc_imputed, and economic_profit.",
       inputSchema: {
         ticker: z.string().min(1).describe("Ticker symbol, e.g. AAPL"),
         as_of: z.string().optional().describe("Point-in-time date YYYY-MM-DD (default: today)"),
         periods: z.number().int().min(1).max(40).optional().describe("Quarterly rows returned, most recent last (default 8, max 40)"),
-        erp: z.number().min(0).max(0.5).optional().describe("Equity risk premium for cost-of-capital (default 0.05)"),
+        erp: z.number().min(0).max(0.5).optional().describe("Equity risk premium request parameter for cost-of-capital (default 0.05 when omitted)"),
         tax_rate: z.number().min(0).max(1).optional().describe("Tax rate applied to the WACC debt shield (default 0.21)"),
         rf_tenor: z
           .enum(["3m", "1y", "2y", "5y", "10y", "30y"])
@@ -813,7 +813,7 @@ export function registerRiskModelsTools(
         grid: z
           .boolean()
           .optional()
-          .describe("If true, response also carries sensitivity_grid: cost_of_equity/wacc/economic_profit across erp_grid x rf_tenor_grid for the latest PIT-visible period only"),
+          .describe("If true, response also carries sensitivity_grid: cost_of_equity, strict wacc, parallel wacc_imputed, and economic_profit across erp_grid x rf_tenor_grid for the latest PIT-visible period only"),
         erp_grid: z.string().optional().describe('Comma-separated ERP values for the grid, e.g. "0.03,0.04,0.05,0.06,0.07". Only used when grid=true'),
         rf_tenor_grid: z.string().optional().describe('Comma-separated tenor subset for the grid, e.g. "1y,10y,30y". Only used when grid=true'),
       },

@@ -91,7 +91,20 @@ const CLEAN_ROW = {
   rf_rate: null,
   cost_of_equity: null,
   cost_of_debt: null,
+  cost_of_debt_imputed: null,
+  cost_of_debt_imputation: {
+    status: "unavailable" as const,
+    method: "rf_10y_plus_treasury_hqm_10y_spread" as const,
+    risk_free_rate: null,
+    credit_spread: null,
+    hqm_spot_rate: null,
+    hqm_observation_date: null,
+    corporate_series: "HQMCB10YR" as const,
+    treasury_series: "GS10" as const,
+    rating_scope: "A/AA/AAA high-quality market; not issuer-specific" as const,
+  },
   wacc: null,
+  wacc_imputed: null,
   economic_profit: null,
   sec_facts: {},
 };
@@ -125,6 +138,8 @@ describe("GET /api/fundamentals/[ticker]", () => {
     expect(body.rows).toHaveLength(1);
     expect(body.rows[0].period_end_date).toBe("2025-09-30");
     expect(body.rows[0].roe_ttm).toBe(1.6);
+    expect(body.rows[0].cost_of_debt_imputed).toBeNull();
+    expect(body.rows[0].cost_of_debt_imputation.status).toBe("unavailable");
 
     // Reader receives the parsed params (PIT + cost-of-capital knobs).
     expect(getFundamentalsForTicker).toHaveBeenCalledWith("AAPL", {
@@ -257,7 +272,16 @@ describe("GET /api/fundamentals/[ticker]", () => {
       erp_values: [0.03, 0.04, 0.05, 0.06, 0.07],
       rf_tenor_values: ["3m", "1y", "2y", "5y", "10y", "30y"],
       tax_rate: 0.21,
-      cells: [],
+      cost_of_debt_imputed: 0.055,
+      cost_of_debt_imputation: {
+        ...CLEAN_ROW.cost_of_debt_imputation,
+        status: "used",
+        risk_free_rate: 0.04,
+        credit_spread: 0.015,
+        hqm_spot_rate: 0.055,
+        hqm_observation_date: "2025-08-01",
+      },
+      cells: [[{ cost_of_equity: 0.09, wacc: null, wacc_imputed: 0.081, economic_profit: 1 }]],
     });
     const withGrid = await fundamentalsGET(
       req("/api/fundamentals/AAPL?grid=true&erp_grid=0.04,0.06&rf_tenor_grid=1y,10y"),
@@ -266,6 +290,9 @@ describe("GET /api/fundamentals/[ticker]", () => {
     expect(withGrid.status).toBe(200);
     const withGridBody = await withGrid.json();
     expect(withGridBody.sensitivity_grid.period_end_date).toBe("2025-09-30");
+    expect(withGridBody.sensitivity_grid.cost_of_debt_imputed).toBe(0.055);
+    expect(withGridBody.sensitivity_grid.cost_of_debt_imputation.status).toBe("used");
+    expect(withGridBody.sensitivity_grid.cells[0][0].wacc_imputed).toBe(0.081);
     expect(getFundamentalsSensitivityGrid).toHaveBeenCalledWith("AAPL", {
       asOf: expect.any(String),
       erpGrid: [0.04, 0.06],

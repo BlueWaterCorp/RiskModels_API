@@ -1,6 +1,6 @@
 ---
 title: "Fundamentals — PIT quarterly, derived + SEC-sourced raw"
-description: "Point-in-time quarterly fundamentals for one US equity: TTM and capital-return ratios, ERM3 cascade betas, the cost-of-capital layer, an equity-bridge decomposition, and raw SEC-sourced line items per cell (sec_facts)."
+description: "Point-in-time quarterly fundamentals for one US equity: TTM and capital-return ratios, long-window ERM3 valuation betas, the cost-of-capital layer, an equity-bridge decomposition, and raw SEC-sourced line items per cell (sec_facts)."
 ---
 
 # Fundamentals — `GET /api/fundamentals/{ticker}`
@@ -16,53 +16,66 @@ Point-in-time (PIT) quarterly fundamentals for a single US equity. Each row carr
 | `period_end_date` / `filed_date` | Quarter end + the date the filing became public (the PIT key) |
 | `roe_ttm`, `roa_ttm`, `fcf_margin` | Trailing-twelve-month profitability ratios |
 | `leverage_ratio` | Balance-sheet leverage |
-| `beta_market`, `beta_sector`, `beta_subsector` | ERM3 cascade betas PIT-sampled at the quarter end (`beta_source` flags provenance) |
+| `beta_market`, `beta_sector`, `beta_subsector` | Long-window (~60-month monthly, Vasicek-shrunk) ERM3 valuation betas PIT-sampled at the quarter end (`beta_source` flags provenance) |
 | `rf_rate` | Treasury CMT yield at the selected tenor (`rf_tenor`, default 10y) |
 | `cost_of_equity` | `rf_rate + beta_market × erp` |
-| `wacc` | Book-weight WACC |
-| `economic_profit` | NOPAT less a capital charge (`NOPAT − WACC × invested capital`), in **absolute USD** |
+| `cost_of_debt` / `wacc` | Strict reported-data debt cost and book-weight WACC; never silently imputed |
+| `cost_of_debt_imputed` / `wacc_imputed` | Separately labeled PIT-lagged high-quality-market proxy values when strict debt cost is unavailable |
+| `cost_of_debt_imputation` | Proxy status, inputs, series identifiers, rating scope, and lagged reference month |
+| `economic_profit` | Equity-charge form: `(roe_ttm − cost_of_equity) × total_equity`, in **absolute USD** |
 
-**Units:** rates and ratios are **decimal fractions** — `roe_ttm` of `1.47` is ≈ 147% ROE, `wacc` of `0.05` is 5%. `economic_profit` is an **absolute USD** figure (not per-share, not millions). `market_cap` is a **current snapshot in USD**, not a per-quarter PIT value.
+**Units:** rates and ratios are **decimal fractions** — `roe_ttm` of `1.47` is ≈ 147% ROE, and a strict or imputed WACC of `0.05` is 5%. `economic_profit` is an **absolute USD** figure (not per-share, not millions). `market_cap` is a **current snapshot in USD**, not a per-quarter PIT value.
 
 ## Point-in-time
 
 A row is returned only where `filed_date <= as_of`. There is no "latest" shortcut — you always see the panel as it was known on `as_of` (default: today). `filed_date_source` is `exact` (vendor filing date) or `approx` (period end + 45 days, the 10-Q deadline) when the vendor date is missing.
 
-## Example response
+## Strict debt cost and the explicit proxy
+
+`cost_of_debt` is strictly TTM reported interest expense divided by trusted SEC debt. If debt is positive but reported interest expense is missing or non-positive, strict `cost_of_debt` and strict `wacc` remain `null` — never zero and never silently filled.
+
+In that case, `cost_of_debt_imputed` may expose a separate **PIT-lagged high-quality-market proxy**. Its stored `credit_spread` is the monthly Treasury HQM 10-year corporate spot yield (`HQMCB10YR`) minus the same-month 10-year Treasury monthly average (`GS10`). That monthly spread is then added to the separate period-end point-in-time 10-year Treasury rate. The two Treasury observations therefore need not make `cost_of_debt_imputed` equal `hqm_spot_rate`.
+
+Month M becomes eligible on day 10 of M+1. `hqm_observation_date` is the first-of-month **reference-month stamp**, not a publication timestamp. HQM covers the A/AA/AAA high-quality corporate market; this is not an AAA-only series, an issuer rating, or an issuer-specific bond yield. `wacc_imputed` uses the same book weights and tax shield as strict WACC. Inspect `cost_of_debt_imputation.status`: `used`, `not_needed`, or `unavailable`.
+
+For deposit-taking banks and similar financials, neither reported interest expense nor this broad proxy is a bank-specific wholesale-funding estimate.
+
+## Abridged example response
 
 ```json
 {
   "ticker": "AAPL",
-  "as_of": "2026-07-10",
-  "periods_returned": 8,
+  "as_of": "2026-10-07",
+  "periods_returned": 1,
   "rows": [
     {
-      "period_end_date": "2026-03-31",
-      "filed_date": "2026-05-01",
+      "period_end_date": "2026-06-30",
+      "filed_date": "2026-07-31",
       "filed_date_source": "exact",
-      "roe_ttm": 1.4669,
-      "roa_ttm": 0.3402,
-      "fcf_margin": 0.2965,
-      "leverage_ratio": 0.8499,
-      "beta_market": 1.0012,
-      "beta_sector": -0.3954,
-      "beta_subsector": -0.1920,
-      "beta_source": "in-universe",
-      "rf_rate": 0.0430,
-      "cost_of_equity": 0.0931,
+      "beta_market": 1.1184,
+      "rf_rate": 0.0444,
+      "cost_of_equity": 0.1003,
       "cost_of_debt": null,
-      "wacc": 0.0503,
-      "economic_profit": 146300933417.0,
-      "gross_margin": null,
-      "operating_margin": null,
-      "market_cap": null
+      "cost_of_debt_imputed": 0.0524,
+      "cost_of_debt_imputation": {
+        "status": "used",
+        "method": "rf_10y_plus_treasury_hqm_10y_spread",
+        "risk_free_rate": 0.0444,
+        "credit_spread": 0.0080,
+        "hqm_spot_rate": 0.0528,
+        "hqm_observation_date": "2026-05-01",
+        "corporate_series": "HQMCB10YR",
+        "treasury_series": "GS10",
+        "rating_scope": "A/AA/AAA high-quality market; not issuer-specific"
+      },
+      "wacc": null,
+      "wacc_imputed": 0.0744
     }
-  ],
-  "market_cap": { "value": 4596707098624, "basis": "current_snapshot" }
+  ]
 }
 ```
 
-`rows` is ordered oldest → newest (`rows[-1]` is the most recent PIT-visible quarter). Each row also carries `sec_facts` (raw SEC-sourced line items, per cell — see below), the capital-return ratios, and the equity-bridge fields. `gross_margin` / `operating_margin` and the per-row `market_cap` are `null` (see below); the top-level `market_cap` is the current snapshot.
+This abridged snapshot shows why the fields are parallel: AAPL's strict debt cost and WACC remain null while the explicitly labeled proxy is available. Full responses also include `sec_facts`, profitability and capital-return ratios, the equity bridge, and the top-level current `market_cap`. `rows` is ordered oldest → newest (`rows[-1]` is the most recent PIT-visible quarter).
 
 ## Parameters
 
@@ -70,7 +83,7 @@ A row is returned only where `filed_date <= as_of`. There is no "latest" shortcu
 | --- | --- | --- |
 | `periods` | 8 | Quarterly rows returned, most recent last (max 40) |
 | `as_of` | today | PIT cutoff — rows visible iff `filed_date <= as_of` |
-| `erp` | 0.05 | Equity risk premium for the cost-of-capital layer (always caller-supplied) |
+| `erp` | 0.05 | Equity-risk-premium request parameter; the documented default is used when omitted, and no ERP opinion is stored in the data |
 | `rf_tenor` | 10y | Treasury tenor backing `rf_rate` — `3m` / `1y` / `2y` / `5y` / `10y` / `30y` |
 | `tax_rate` | 0.21 | Applied to the WACC debt shield |
 | `grid` | false | If true, adds a cost-of-capital sensitivity grid across `erp_grid` × `rf_tenor_grid` for the latest PIT-visible period |
@@ -86,7 +99,10 @@ from riskmodels import RiskModelsClient
 client = RiskModelsClient.from_env()  # reads RISKMODELS_API_KEY
 resp = client.get_fundamentals("AAPL", periods=8, erp=0.05, rf_tenor="10y")
 latest = resp["rows"][-1]
-print(latest["period_end_date"], latest["cost_of_equity"], latest["economic_profit"])
+print(latest["period_end_date"], latest["cost_of_equity"])
+print("strict WACC:", latest["wacc"])
+print("proxy WACC:", latest["wacc_imputed"])
+print("proxy provenance:", latest["cost_of_debt_imputation"])
 
 # Or a tidy one-row-per-quarter DataFrame:
 df = client.get_fundamentals("AAPL", periods=8, as_dataframe=True)
@@ -96,25 +112,38 @@ Agents with the MCP server connected call the same data through the `get_fundame
 
 ## Cost-of-capital sensitivity grid (`grid=true`)
 
-Pass `grid=true` with `erp_grid` and `rf_tenor_grid` to get `cost_of_equity` / `wacc` / `economic_profit` across every (ERP × tenor) combination for the latest PIT-visible period — one read, no hardcoded ERP opinion:
+Pass `grid=true` with `erp_grid` and `rf_tenor_grid` to get `cost_of_equity`, strict `wacc`, parallel `wacc_imputed`, and equity-charge `economic_profit` across every (ERP × tenor) combination for the latest PIT-visible period. Grid-level `cost_of_debt_imputed` and its provenance are fixed 10-year inputs shared by every cell; the grid tenor changes the cost-of-equity leg, not the debt proxy.
 
 ```json
 "sensitivity_grid": {
-  "period_end_date": "2026-03-31",
-  "erp_values": [0.04, 0.05, 0.06],
+  "period_end_date": "2026-06-30",
+  "filed_date": "2026-07-31",
+  "erp_values": [0.04],
   "rf_tenor_values": ["1y", "10y", "30y"],
   "tax_rate": 0.21,
+  "cost_of_debt_imputed": 0.0524,
+  "cost_of_debt_imputation": {
+    "status": "used",
+    "method": "rf_10y_plus_treasury_hqm_10y_spread",
+    "risk_free_rate": 0.0444,
+    "credit_spread": 0.0080,
+    "hqm_spot_rate": 0.0528,
+    "hqm_observation_date": "2026-05-01",
+    "corporate_series": "HQMCB10YR",
+    "treasury_series": "GS10",
+    "rating_scope": "A/AA/AAA high-quality market; not issuer-specific"
+  },
   "cells": [
     [
-      { "cost_of_equity": 0.0768, "wacc": 0.0415, "economic_profit": 148027338416 },
-      { "cost_of_equity": 0.0830, "wacc": 0.0449, "economic_profit": 147367094129 },
-      { "cost_of_equity": 0.0888, "wacc": 0.0480, "economic_profit": 146749446568 }
+      { "cost_of_equity": 0.0845, "wacc": null, "wacc_imputed": 0.0656, "economic_profit": 138410457998 },
+      { "cost_of_equity": 0.0891, "wacc": null, "wacc_imputed": 0.0681, "economic_profit": 137915866038 },
+      { "cost_of_equity": 0.0938, "wacc": null, "wacc_imputed": 0.0708, "economic_profit": 137410521895 }
     ]
   ]
 }
 ```
 
-`cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]` (the example above shows the `erp=0.04` row across the three tenors).
+`cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]` (the example above shows the `erp=0.04` row across the three tenors). A strict-null company can therefore have `wacc: null` beside a non-null, separately labeled `wacc_imputed` in each cell.
 
 ## Raw SEC line items — `sec_facts`
 
@@ -147,10 +176,11 @@ Numeric line items are stored at **~7 significant figures** (float32) — suitab
 
 ## Caveats
 
-- **Conditional betas, not textbook CAPM.** `beta_market` is a **short-half-life conditional** beta from the ERM3 L3 cascade (see [ERM3 engine](/docs/erm3-engine)), so `cost_of_equity` is closer to a **current expected return** than a long-run Damodaran-style cost of equity. For defensive names the beta can be low or negative, so `cost_of_equity` can fall **below the risk-free rate** — a property of the conditional beta, not an error.
+- **Valuation beta.** `beta_market` in this endpoint is the long-window (~60-month monthly, Vasicek-shrunk) valuation beta used by the CAPM layer, not the short-half-life hedging beta on the daily risk surface (see [ERM3 engine](/docs/erm3-engine)). For defensive names it can still be low or negative, so `cost_of_equity` can fall below the risk-free rate.
 - **`market_cap` is current, not PIT.** The top-level `market_cap` is today's snapshot; the per-row `market_cap` is `null`. Do not read it as the market cap at that quarter end.
-- **Book-weight WACC.** WACC uses balance-sheet (book) weights. Market-value weights are the textbook convention; compute them yourself if you have market cap.
-- **ERP is never stored.** The endpoint has no house ERP opinion — you pass `erp` (and optionally `grid`) and own the assumption. Pair a short `rf_tenor` (3m/1y) with a bill-basis ERP or cost of capital is understated.
+- **Book-weight WACC.** Strict `wacc` and `wacc_imputed` use balance-sheet (book) weights. Market-value weights are the textbook convention; compute them yourself if you have market cap.
+- **Strict and proxy are not interchangeable.** Prefer strict reported-data fields when available. If you use `wacc_imputed`, label it as the PIT-lagged high-quality-market proxy and carry its provenance; do not present it as Apple's or any issuer's reported borrowing cost.
+- **ERP is a request assumption.** The endpoint has no stored house ERP opinion. It uses the documented 0.05 default if omitted; pass `erp` explicitly (or use `grid`) and state the value. Pair a short `rf_tenor` (3m/1y) with a bill-basis ERP or cost of capital is understated.
 - **Coverage** starts ~2009 for most filers; pre-2009, small-cap, and recently-IPO'd names are thin. Missing fields are `null`, not row-dropped.
 
 ## Error responses
@@ -171,5 +201,5 @@ Numeric line items are stored at **~7 significant figures** (float32) — suitab
 
 - [API guide](/docs/api) — endpoint map and workflow
 - [OpenAPI reference](/api-reference) — full request/response schema for `/fundamentals/{ticker}`
-- [ERM3 engine](/docs/erm3-engine) — where the cascade betas come from
+- [ERM3 engine](/docs/erm3-engine) — the model hierarchy behind the valuation betas
 - [Methodology](/docs/methodology) — the hierarchical model and factor set

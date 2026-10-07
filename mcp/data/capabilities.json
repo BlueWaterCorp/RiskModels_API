@@ -745,7 +745,7 @@
   {
     "id": "fundamentals",
     "name": "Quarterly Fundamentals",
-    "description": "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks, etc.); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
+    "description": "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, long-window ERM3 valuation betas with provenance, and a cost-of-capital layer with strict reported-data cost of debt/WACC plus separately labeled PIT-lagged high-quality-market proxy fields when strict debt cost is unavailable. The proxy uses the period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread and is not issuer-specific. Also returns equity-charge economic profit and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL; vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
     "endpoint": "/api/fundamentals",
     "method": "GET",
     "parameters": {
@@ -770,7 +770,7 @@
       "erp": {
         "type": "number",
         "required": false,
-        "description": "Equity risk premium for the cost-of-capital layer. Always caller-supplied; no ERP opinion is stored.",
+        "description": "Equity risk premium request parameter for the cost-of-capital layer. Default 0.05 when omitted; no ERP opinion is stored in the data.",
         "default": 0.05
       },
       "tax_rate": {
@@ -778,6 +778,36 @@
         "required": false,
         "description": "Tax rate applied to the WACC debt shield.",
         "default": 0.21
+      },
+      "rf_tenor": {
+        "type": "string",
+        "required": false,
+        "description": "Treasury CMT tenor backing rf_rate and cost_of_equity. Default 10y.",
+        "default": "10y",
+        "enum": [
+          "3m",
+          "1y",
+          "2y",
+          "5y",
+          "10y",
+          "30y"
+        ]
+      },
+      "grid": {
+        "type": "boolean",
+        "required": false,
+        "description": "When true, include a latest-period ERP-by-rf-tenor grid with cost_of_equity, strict wacc, parallel wacc_imputed, and economic_profit.",
+        "default": false
+      },
+      "erp_grid": {
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated ERP values used only when grid=true."
+      },
+      "rf_tenor_grid": {
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated Treasury tenor values used only when grid=true."
       }
     },
     "pricing": {
@@ -964,6 +994,52 @@
       "decomposition",
       "lstar",
       "macro"
+    ]
+  },
+  {
+    "id": "weekly-hedge",
+    "name": "Weekly Pre-Market Hedge Snapshot",
+    "description": "Entire weekly hedge cross-section in one call (~7,900 names), built from Friday's close and effective the following Monday. One row per security: hedge ratios at each cascade level (L1/L2/L3), the dispatched lstar_*_HR, raw and adjusted betas, lstar_level and the sector and subsector ETF legs. effective_from/computed_through/refit_grid/universe are repeated on every row so a saved file is self-describing. Returns 409 once the effective week has passed rather than serving stale ratios; pass allow_stale=true to override for reconciliation. format=json|csv|parquet.",
+    "endpoint": "/api/weekly-hedge",
+    "method": "GET",
+    "parameters": {
+      "format": {
+        "type": "string",
+        "required": false,
+        "description": "json | csv | parquet (parquet recommended for bulk pulls)",
+        "default": "json"
+      },
+      "allow_stale": {
+        "type": "string",
+        "required": false,
+        "description": "true to return a snapshot whose effective week has passed"
+      }
+    },
+    "pricing": {
+      "model": "per_request",
+      "tier": "premium",
+      "cost_usd": 0.04,
+      "currency": "USD",
+      "billing_code": "weekly_hedge_v1"
+    },
+    "performance": {
+      "avg_latency_ms": 400,
+      "p95_latency_ms": 900,
+      "availability_sla": 99.9,
+      "rate_limit_per_minute": 30
+    },
+    "confidence": {
+      "data_quality_score": 0.99,
+      "update_frequency": "weekly",
+      "sources": [
+        "ds_erm3_weekly_hedge"
+      ]
+    },
+    "tags": [
+      "hedge",
+      "cross-section",
+      "pre-market",
+      "bulk"
     ]
   },
   {
@@ -1438,7 +1514,7 @@
       "threshold": {
         "type": "number",
         "required": false,
-        "description": "Marginal-ER threshold for Lstar selection (default 1%)",
+        "description": "Optional marginal-ER threshold; omit for the canonical ERM3 level (an explicit value applies the legacy rule)",
         "default": 0.01
       },
       "format": {

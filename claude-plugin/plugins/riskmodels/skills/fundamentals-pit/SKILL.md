@@ -4,7 +4,8 @@ description: >
   Pull point-in-time quarterly fundamentals for a US equity — a row is visible only
   if its filing date is on or before the as-of date, so backtests never see numbers
   that had not been filed yet. Returns TTM profitability and capital-return ratios,
-  leverage, ERM3 cascade betas, a CAPM cost-of-capital layer, an equity-bridge
+  leverage, long-window ERM3 valuation betas, a CAPM cost-of-capital layer, an
+  equity-bridge
   decomposition, and SEC-sourced raw line items per cell. Use for PIT fundamentals,
   as-of history, and anti-look-ahead research.
 argument-hint: "[ticker] [as_of?]"
@@ -44,9 +45,9 @@ Each row carries:
   of the quarter-over-quarter change in equity. The residual is a **plug** that makes
   the roll-forward an identity by construction; it is frequently large. Report it as
   a decomposition, not truth. For modelling, anchor on `retained_earnings`.
-- **Cascade betas** — `beta_market` / `beta_sector` / `beta_subsector` with
-  `beta_source`. `beta_market` is a short-half-life conditional beta, not a textbook
-  long-run CAPM beta, so for defensive names it can be low or negative.
+- **Valuation betas** — `beta_market` / `beta_sector` / `beta_subsector` with
+  `beta_source`. These are the long-window monthly, Vasicek-shrunk betas used by
+  the cost-of-capital layer, distinct from the short-half-life hedging surface.
 
 ## Boundary
 

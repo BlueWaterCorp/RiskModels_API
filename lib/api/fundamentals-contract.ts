@@ -40,7 +40,7 @@ export const FUNDAMENTALS_ROW_ALLOWED_FIELDS = [
   // Equity bridge (Phase 3) — the residual that closes the roll-forward, + what backed it
   "equity_bridge_residual",
   "equity_bridge_inputs",
-  // Our own derived analytics (ERM3 cascade betas + provenance)
+  // Our own derived analytics (long-window ERM3 valuation betas + provenance)
   "beta_market",
   "beta_sector",
   "beta_subsector",
@@ -49,7 +49,12 @@ export const FUNDAMENTALS_ROW_ALLOWED_FIELDS = [
   "rf_rate",
   "cost_of_equity",
   "cost_of_debt",
+  // Explicit PIT-lagged high-quality-market proxy. The strict reported-data fields
+  // above never change or get silently filled.
+  "cost_of_debt_imputed",
+  "cost_of_debt_imputation",
   "wacc",
+  "wacc_imputed",
   "economic_profit",
   // Exhibit B(e)
   "market_cap",
@@ -148,6 +153,34 @@ export interface SecFact {
 export type SecFacts = Partial<Record<SecFactConcept, SecFact>>;
 
 /**
+ * Provenance for the PIT-lagged high-quality-market cost-of-debt proxy.
+ *
+ * This is deliberately not called an issuer rating or an AAA spread. The
+ * Treasury HQM series covers the high-quality A/AA/AAA corporate market and
+ * is a market proxy, not an issuer-specific credit assessment.
+ */
+export const COST_OF_DEBT_IMPUTATION_METHOD =
+  "rf_10y_plus_treasury_hqm_10y_spread" as const;
+export const COST_OF_DEBT_IMPUTATION_CORPORATE_SERIES = "HQMCB10YR" as const;
+export const COST_OF_DEBT_IMPUTATION_TREASURY_SERIES = "GS10" as const;
+export const COST_OF_DEBT_IMPUTATION_RATING_SCOPE =
+  "A/AA/AAA high-quality market; not issuer-specific" as const;
+
+export type CostOfDebtImputationStatus = "used" | "not_needed" | "unavailable";
+
+export interface CostOfDebtImputation {
+  status: CostOfDebtImputationStatus;
+  method: typeof COST_OF_DEBT_IMPUTATION_METHOD;
+  risk_free_rate: number | null;
+  credit_spread: number | null;
+  hqm_spot_rate: number | null;
+  hqm_observation_date: string | null;
+  corporate_series: typeof COST_OF_DEBT_IMPUTATION_CORPORATE_SERIES;
+  treasury_series: typeof COST_OF_DEBT_IMPUTATION_TREASURY_SERIES;
+  rating_scope: typeof COST_OF_DEBT_IMPUTATION_RATING_SCOPE;
+}
+
+/**
  * The per-cell licensing gate. Returns a SecFact iff the source plane says SEC (2=us-gaap,
  * 3=ifrs) and the value is finite and the concept is not denied. Any other case → undefined,
  * so the concept is simply absent from `sec_facts`. This is the ONLY door a raw value passes
@@ -215,7 +248,10 @@ export interface FundamentalsRow {
   rf_rate: number | null;
   cost_of_equity: number | null;
   cost_of_debt: number | null;
+  cost_of_debt_imputed: number | null;
+  cost_of_debt_imputation: CostOfDebtImputation;
   wacc: number | null;
+  wacc_imputed: number | null;
   economic_profit: number | null;
   market_cap: number | null;
 }
@@ -246,9 +282,62 @@ export function sanitizeFundamentalsRow(
       out[key] = Array.isArray(v) ? v.filter((x) => typeof x === "string" && known.has(x)) : [];
       continue;
     }
+    if (key === "cost_of_debt_imputation") {
+      out[key] = sanitizeCostOfDebtImputation(v);
+      continue;
+    }
     out[key] = v === undefined || (typeof v === "number" && !Number.isFinite(v)) ? null : v;
   }
   return out as unknown as FundamentalsRow;
+}
+
+/**
+ * Keep the imputation object stable and non-editorial at the wire boundary.
+ * Static provenance is canonicalized rather than trusted from an internal
+ * object, and non-finite numeric inputs become null.
+ */
+export function sanitizeCostOfDebtImputation(v: unknown): CostOfDebtImputation {
+  const raw = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const requestedStatus = raw.status;
+  let status: CostOfDebtImputationStatus =
+    requestedStatus === "used" ||
+    requestedStatus === "not_needed" ||
+    requestedStatus === "unavailable"
+      ? requestedStatus
+      : "unavailable";
+  const numberOrNull = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  const riskFreeRate = numberOrNull(raw.risk_free_rate);
+  const creditSpread = numberOrNull(raw.credit_spread);
+  const hqmSpotRate = numberOrNull(raw.hqm_spot_rate);
+  const hqmObservationDate =
+    typeof raw.hqm_observation_date === "string" &&
+    /^\d{4}-\d{2}-01$/.test(raw.hqm_observation_date)
+      ? raw.hqm_observation_date
+      : null;
+
+  // A `used` claim is valid only with the complete, inspectable input set.
+  if (
+    status === "used" &&
+    (riskFreeRate === null ||
+      creditSpread === null ||
+      hqmSpotRate === null ||
+      hqmObservationDate === null)
+  ) {
+    status = "unavailable";
+  }
+
+  return {
+    status,
+    method: COST_OF_DEBT_IMPUTATION_METHOD,
+    risk_free_rate: riskFreeRate,
+    credit_spread: creditSpread,
+    hqm_spot_rate: hqmSpotRate,
+    hqm_observation_date: hqmObservationDate,
+    corporate_series: COST_OF_DEBT_IMPUTATION_CORPORATE_SERIES,
+    treasury_series: COST_OF_DEBT_IMPUTATION_TREASURY_SERIES,
+    rating_scope: COST_OF_DEBT_IMPUTATION_RATING_SCOPE,
+  };
 }
 
 /** Re-assert the licensing invariant: keep only finite SEC-basis, non-denied entries. */
@@ -290,9 +379,11 @@ export function buildFundamentalsDisclosures(params: {
     wacc_book_weights:
       "WACC uses BOOK-value weights (balance-sheet equity and SEC component-sum debt via total_debt_sec = borrowings + finance leases + operating leases). EODHD total_debt is never used for Kd/WACC. Market-value weights are the textbook convention; compute them yourself if you have market-cap access. If book debt is positive but cost_of_debt cannot be formed (missing or non-positive TTM interest expense), wacc is null — never a partial equity-only fraction of ke.",
     cost_of_debt_null_policy:
-      "cost_of_debt is null (and wacc is null whenever book debt > 0) when TTM interest_expense is missing or non-positive beside positive total_debt_sec. That shape is a data gap — e.g. interest buried in Other income / net finance (AAPL-class) — not a free balance sheet. Do not treat a null Kd as 0%.",
+      "cost_of_debt is null (and wacc is null whenever book debt > 0) when TTM interest_expense is missing or non-positive beside positive total_debt_sec. That shape is a data gap — e.g. interest buried in Other income / net finance (AAPL-class) — not a free balance sheet. Do not treat a null Kd as 0%. The strict fields are never silently filled; consult cost_of_debt_imputed and wacc_imputed separately.",
+    cost_of_debt_imputation:
+      "When trusted SEC debt is positive and strict cost_of_debt is null, cost_of_debt_imputed may use a PIT-lagged high-quality-market proxy. The stored credit_spread is the monthly Treasury HQM 10-year spot yield minus the same-month GS10 monthly average; that spread is then added to the separate period-end point-in-time 10-year Treasury rate. HQM month M becomes eligible on day 10 of M+1. hqm_observation_date is a reference-month stamp, not a publication date. The proxy covers the A/AA/AAA high-quality market; it is not an issuer-specific rating, bond yield, recommendation, or reported company figure. cost_of_debt_imputation reports status, inputs, series, and reference month. wacc_imputed uses the same BOOK-value weights as strict wacc. Missing or future-dated proxy inputs leave the imputed fields null. The debt proxy always uses the 10-year Treasury even when rf_tenor selects a different rate for cost of equity.",
     cost_of_debt_bank_caveat:
-      "For deposit-taking banks and similar financials, reported interest expense is dominated by deposit interest, not the coupon on wholesale/borrowed debt. Realized interest_expense / total_debt_sec is therefore NOT a corporate cost of debt. Treat bank Kd/WACC from this endpoint as unreliable unless you substitute a credit-spread or peer-bond estimate; we do not invent one.",
+      "For deposit-taking banks and similar financials, reported interest expense is dominated by deposit interest, not the coupon on wholesale/borrowed debt. Realized interest_expense / total_debt_sec is therefore NOT a corporate cost of debt. The strict cost_of_debt field does not invent a replacement. cost_of_debt_imputed is a separate broad high-quality-market proxy, not a bank-specific wholesale-funding estimate; treat bank Kd/WACC from this endpoint as unreliable unless you supply an appropriate credit-spread or peer-bond estimate.",
     ttm_convention:
       "TTM aggregates sum flows over the trailing 4 reported quarters; stock quantities are point-in-time (ROE denominator uses the trailing-4-quarter average equity). Ratios need 4 finite quarters or they are null.",
     equity_bridge:
@@ -309,7 +400,7 @@ export function buildFundamentalsDisclosures(params: {
       as_of: params.as_of,
       erp: params.erp,
       erp_note:
-        "Equity risk premium is always caller-supplied (default 0.05); no ERP opinion is stored.",
+        "Equity risk premium request parameter; the documented default is 0.05 when omitted, and no ERP opinion is stored in the data.",
       tax_rate: params.tax_rate,
       tax_rate_note: "Tax rate applied to the WACC debt shield (default 0.21).",
       rf_tenor: params.rf_tenor,

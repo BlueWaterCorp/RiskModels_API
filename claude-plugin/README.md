@@ -68,7 +68,7 @@ commands, analyst agent, and cookbook. Keep **one** MCP connection.
 | --- | --- | --- |
 | `risk-decompose` | What's driving a name's risk; L1/L2/L3 cascade + ETF hedge legs | `riskmodels_get_hedge_levels`, `riskmodels_decompose`, `get_metrics` |
 | `fundamentals-pit` | Point-in-time quarterly fundamentals with `as_of` anti-look-ahead | `riskmodels_get_fundamentals` |
-| `cost-of-capital` | CAPM cost of equity, WACC, economic profit; caller ERP + rf-tenor grid | `riskmodels_get_fundamentals` |
+| `cost-of-capital` | CAPM cost of equity, strict + proxy WACC, economic profit; request ERP + rf-tenor grid | `riskmodels_get_fundamentals` |
 | `portfolio-hedge` | ETF hedge legs for a position or book; Lstar residual isolation | `riskmodels_hedge_portfolio`, `riskmodels_hedge_position`, `riskmodels_get_lstar` |
 | `residual-screen` | Peer/universe rankings and the residual mean-reversion signal | `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_residual_signal` |
 

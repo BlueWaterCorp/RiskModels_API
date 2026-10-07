@@ -414,21 +414,21 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
   {
     name: 'Fundamentals',
     description:
-      'Point-in-time quarterly fundamentals (TTM profitability + capital-return ratios, leverage, cascade betas, cost-of-capital layer, equity-bridge decomposition, and SEC-sourced raw line items in sec_facts). Realized historical data; no forecasts, no analyst fields.',
+      'Point-in-time quarterly fundamentals (TTM profitability + capital-return ratios, leverage, long-window valuation betas, strict and separately labeled proxy cost-of-capital fields, equity-bridge decomposition, and SEC-sourced raw line items in sec_facts). Realized historical data; no forecasts, no analyst fields.',
     endpoints: [
       {
         path: '/fundamentals/{ticker}',
         method: 'get',
         summary: 'Point-in-time quarterly fundamentals',
         description:
-          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names — a property of the beta, not an error. Per-symbol per-call only; JSON only. Cost: $0.02/request.',
+          'Quarterly fundamentals rows, point-in-time filtered: a row is visible only if its filed_date is on or before as_of (never "latest"). Rows carry TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, long-window ERM3 valuation betas with provenance, strict reported-data cost of debt/WACC, separately labeled PIT-lagged high-quality-market proxy fields, equity-charge economic profit, and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL; vendor-sourced cells are not exposed as raw. Coverage starts ~2009 for most filers. Per-symbol per-call only; JSON only. Cost: $0.02/request.',
         operationId: 'getFundamentals',
         tag: 'Fundamentals',
         params: [
           { name: 'ticker', in: 'path', type: 'string', required: true, description: 'Ticker symbol (case-insensitive, max 12 chars).' },
           { name: 'as_of', in: 'query', type: 'string', required: false, description: 'PIT date (YYYY-MM-DD). Rows visible iff filed_date <= as_of.', default: 'today' },
           { name: 'periods', in: 'query', type: 'integer', required: false, description: 'Quarterly rows returned (1–40).', default: '8' },
-          { name: 'erp', in: 'query', type: 'number', required: false, description: 'Equity risk premium for the cost-of-capital layer (caller-supplied; never stored).', default: '0.05' },
+          { name: 'erp', in: 'query', type: 'number', required: false, description: 'Equity-risk-premium request parameter (default 0.05 when omitted; no ERP opinion is stored).', default: '0.05' },
           { name: 'tax_rate', in: 'query', type: 'number', required: false, description: 'Tax rate applied to the WACC debt shield.', default: '0.21' },
           { name: 'rf_tenor', in: 'query', type: 'string', required: false, description: 'Treasury CMT tenor backing rf_rate (3m|1y|2y|5y|10y|30y). Default 10y, the valuation convention; pair a short tenor with a bill-basis ERP.', default: '10y' },
         ],

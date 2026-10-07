@@ -769,7 +769,7 @@ export const CAPABILITIES: Capability[] = [
     id: "fundamentals",
     name: "Quarterly Fundamentals",
     description:
-      "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks, etc.); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
+      "Point-in-time quarterly fundamentals for a single ticker: TTM profitability ratios (ROE, ROA, FCF margin), capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, long-window ERM3 valuation betas with provenance, and a cost-of-capital layer with strict reported-data cost of debt/WACC plus separately labeled PIT-lagged high-quality-market proxy fields when strict debt cost is unavailable. The proxy uses the period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread and is not issuer-specific. Also returns equity-charge economic profit and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL; vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only — no forecasts, no analyst fields. Coverage starts ~2009 for most filers. Per-symbol per-call only; no batch variant.",
     endpoint: "/api/fundamentals",
     method: "GET",
     parameters: {
@@ -796,7 +796,7 @@ export const CAPABILITIES: Capability[] = [
         type: "number",
         required: false,
         description:
-          "Equity risk premium for the cost-of-capital layer. Always caller-supplied; no ERP opinion is stored.",
+          "Equity risk premium request parameter for the cost-of-capital layer. Default 0.05 when omitted; no ERP opinion is stored in the data.",
         default: 0.05,
       },
       tax_rate: {
@@ -804,6 +804,30 @@ export const CAPABILITIES: Capability[] = [
         required: false,
         description: "Tax rate applied to the WACC debt shield.",
         default: 0.21,
+      },
+      rf_tenor: {
+        type: "string",
+        required: false,
+        description: "Treasury CMT tenor backing rf_rate and cost_of_equity. Default 10y.",
+        default: "10y",
+        enum: ["3m", "1y", "2y", "5y", "10y", "30y"],
+      },
+      grid: {
+        type: "boolean",
+        required: false,
+        description:
+          "When true, include a latest-period ERP-by-rf-tenor grid with cost_of_equity, strict wacc, parallel wacc_imputed, and economic_profit.",
+        default: false,
+      },
+      erp_grid: {
+        type: "string",
+        required: false,
+        description: "Comma-separated ERP values used only when grid=true.",
+      },
+      rf_tenor_grid: {
+        type: "string",
+        required: false,
+        description: "Comma-separated Treasury tenor values used only when grid=true.",
       },
     },
     pricing: {

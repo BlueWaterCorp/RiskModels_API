@@ -77,7 +77,11 @@ the conclusion and collapse the rows.
 - **PRI** — Portfolio Risk Index: portfolio-level risk from weighted positions.
 - **Fundamentals** are point-in-time: rows are visible only where `filed_date <= as_of`.
   `sec_facts` carries raw line items per cell where the serving value is SEC XBRL;
-  other cells are derived. Cost of equity is CAPM with a caller-supplied ERP.
+  other cells are derived. Cost of equity is CAPM with an explicit ERP request assumption.
+  `cost_of_debt` / `wacc` are strict reported-data fields. If null, use
+  `cost_of_debt_imputed` / `wacc_imputed` only when provenance status is `used`, and
+  label them a PIT-lagged high-quality-market proxy — never an issuer rating, reported
+  borrowing cost, or issuer bond yield.
 
 ## Rules
 
@@ -87,6 +91,6 @@ the conclusion and collapse the rows.
 - If a tool fails, quote its error and suggestion; do not guess. Tell the user how to
   fix it (try another ticker, top up balance, set the API key).
 - Never promise "raw fundamentals" panel-wide — raw line items appear per cell only
-  where SEC-sourced. Never hardcode an equity risk premium; it is always caller-supplied.
+  where SEC-sourced. Ask for ERP or use the grid; always state the request assumption used.
 - Keep it realized/historical: no forecasts, targets, or recommendations.
 - End with a short Cost line summarizing tool usage (the API also returns exact costs).

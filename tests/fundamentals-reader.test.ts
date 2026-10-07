@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFundamentalsRows,
+  buildCostOfDebtImputation,
   buildSensitivityGrid,
   costOfDebt,
   costOfEquity,
@@ -14,6 +15,7 @@ import {
   ttmAvg,
   ttmSum,
   waccBookWeights,
+  waccBookWeightsFromKd,
   type FundamentalsRowPack,
 } from "@/lib/dal/fundamentals-zarr-reader";
 
@@ -79,6 +81,17 @@ function syntheticPack(): FundamentalsRowPack {
       "10y": fill([0.04, 0.04, 0.04, 0.04, 0.04, 0.04]),
       "3m": fill([0.03, 0.03, 0.03, 0.03, 0.03, 0.03]),
     },
+    // Treasury HQM 10y high-quality-market proxy: 5.5% spot = 4.0% GS10 + 1.5% spread.
+    hqm10ySpotRate: fill([0.055, 0.055, 0.055, 0.055, 0.055, 0.055]),
+    hqm10yCreditSpread: fill([0.015, 0.015, 0.015, 0.015, 0.015, 0.015]),
+    hqm10yObservationDates: [
+      "2024-08-01",
+      "2024-11-01",
+      "2025-02-01",
+      "2025-05-01",
+      "2025-08-01",
+      "2025-11-01",
+    ],
     // satisfies the interface exactly
   } as FundamentalsRowPack;
 }
@@ -156,6 +169,10 @@ describe("TTM conventions (flow sum / stock avg-latest, 4 finite quarters requir
     expect(last.cost_of_equity).toBeCloseTo(0.1, 10);
     // cost_of_debt = 4 / 50
     expect(last.cost_of_debt).toBeCloseTo(0.08, 10);
+    // Strict reported-data Kd exists, so the parallel fallback stays unused.
+    expect(last.cost_of_debt_imputed).toBeNull();
+    expect(last.cost_of_debt_imputation.status).toBe("not_needed");
+    expect(last.wacc_imputed).toBeNull();
     // economic_profit = (0.4 - 0.1) * 100
     expect(last.economic_profit).toBeCloseTo(30, 10);
     // wacc book weights: E=100 D=50 → (100/150)*0.1 + (50/150)*0.08*(1-0.21)
@@ -215,6 +232,81 @@ describe("guards — equity <= 0, debt <= 0, missing betas (NaN, never clip)", (
     expect(waccBookWeights(0.04, 1.0, 4, -100, 0, 0.21)).toBeNaN();
     // missing beta → NaN even with clean legs
     expect(waccBookWeights(0.04, NaN, 4, 100, 50, 0.21)).toBeNaN();
+  });
+
+  it("keeps strict Kd/WACC null while surfacing an explicit HQM fallback", () => {
+    const pack = syntheticPack();
+    // AAPL-class shape: positive trusted debt, but interest expense is not
+    // separately reported, so strict Kd must remain null.
+    pack.vars.interest_expense = [null, null, null, null, null, null];
+    const rows = buildFundamentalsRows(pack, OPTS);
+    const last = rows[rows.length - 1]!;
+
+    expect(last.cost_of_debt).toBeNull();
+    expect(last.wacc).toBeNull();
+    expect(last.cost_of_debt_imputed).toBeCloseTo(0.055, 10);
+    expect(last.cost_of_debt_imputation).toMatchObject({
+      status: "used",
+      method: "rf_10y_plus_treasury_hqm_10y_spread",
+      risk_free_rate: 0.04,
+      credit_spread: 0.015,
+      hqm_spot_rate: 0.055,
+      hqm_observation_date: "2025-08-01",
+      corporate_series: "HQMCB10YR",
+      treasury_series: "GS10",
+      rating_scope: "A/AA/AAA high-quality market; not issuer-specific",
+    });
+    expect(last.wacc_imputed).toBeCloseTo(
+      waccBookWeightsFromKd(0.1, 0.055, 100, 50, 0.21),
+      10,
+    );
+  });
+
+  it("uses fixed 10y rf for imputed Kd even when the caller selects 3m for equity", () => {
+    const pack = syntheticPack();
+    pack.vars.interest_expense = [null, null, null, null, null, null];
+    const rows = buildFundamentalsRows(pack, { ...OPTS, rfTenor: "3m" });
+    const last = rows[rows.length - 1]!;
+
+    expect(last.rf_rate).toBeCloseTo(0.03, 10);
+    expect(last.cost_of_equity).toBeCloseTo(0.09, 10);
+    expect(last.cost_of_debt_imputed).toBeCloseTo(0.04 + 0.015, 10);
+    expect(last.cost_of_debt_imputation.risk_free_rate).toBeCloseTo(0.04, 10);
+  });
+
+  it("refuses missing or not-yet-eligible HQM inputs and honors the day-10 boundary", () => {
+    const base = {
+      strictCostOfDebt: NaN,
+      totalDebt: 50,
+      periodEndDate: "2025-09-30",
+      riskFree10y: 0.04,
+      hqmCreditSpread: 0.015,
+      hqmSpotRate: 0.055,
+      hqmObservationDate: "2025-09-01",
+    };
+    const sameMonth = buildCostOfDebtImputation(base);
+    expect(sameMonth.value).toBeNull();
+    expect(sameMonth.provenance.status).toBe("unavailable");
+
+    const missing = buildCostOfDebtImputation({ ...base, hqmObservationDate: null });
+    expect(missing.value).toBeNull();
+    expect(missing.provenance.status).toBe("unavailable");
+
+    const beforeRelease = buildCostOfDebtImputation({
+      ...base,
+      periodEndDate: "2025-09-09",
+      hqmObservationDate: "2025-08-01",
+    });
+    expect(beforeRelease.value).toBeNull();
+    expect(beforeRelease.provenance.status).toBe("unavailable");
+
+    const onRelease = buildCostOfDebtImputation({
+      ...base,
+      periodEndDate: "2025-09-10",
+      hqmObservationDate: "2025-08-01",
+    });
+    expect(onRelease.value).toBeCloseTo(0.055, 10);
+    expect(onRelease.provenance.status).toBe("used");
   });
 
   it("rows surface guard NaNs as nulls (equity<=0, debt<=0, missing betas)", () => {
@@ -324,6 +416,21 @@ describe("sensitivity grid (H.89.6) — erp x rf_tenor cost-of-capital grid", ()
       expect(row[1]!.cost_of_equity).toBeNull();
       expect(row[1]!.wacc).toBeNull();
       expect(row[1]!.economic_profit).toBeNull();
+    });
+  });
+
+  it("adds an imputed-WACC surface without changing strict grid cells", () => {
+    const pack = syntheticPack();
+    pack.vars.interest_expense = [null, null, null, null, null, null];
+    const grid = buildSensitivityGrid(pack, GRID_OPTS)!;
+
+    expect(grid.cost_of_debt_imputed).toBeCloseTo(0.055, 10);
+    expect(grid.cost_of_debt_imputation.status).toBe("used");
+    grid.cells.forEach((row) => {
+      row.forEach((cell) => {
+        expect(cell.wacc).toBeNull();
+        expect(cell.wacc_imputed).not.toBeNull();
+      });
     });
   });
 
