@@ -18,7 +18,7 @@ const ARTICLES = [
   },
   {
     label: 'Methodology · ERM3 Engine Design',
-    summary: 'Hierarchical orthogonalization, L-star, hedge ratios, signal-capacity limits.',
+    summary: 'Factor definitions, hierarchical orthogonalization, L-star, and hedge-ratio construction.',
     href: `https://riskmodels.org/methodology?${UTM}`,
     cta: 'Read the methodology',
   },
@@ -37,9 +37,9 @@ export default function ResearchProof() {
               Published method. Open evidence.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zinc-300 sm:text-base">
-              The factor definitions, hierarchical orthogonalization, hedge-ratio construction,
-              and signal-capacity limits are published so the four-layer map can be examined
-              rather than taken on faith.
+              The factor definitions, hierarchical orthogonalization, L-star, and hedge-ratio
+              construction are published so the four-layer map can be examined rather than taken
+              on faith.
             </p>
           </div>
           <p className="text-sm leading-relaxed text-zinc-400">
