@@ -24,12 +24,7 @@ const LAYER_COLORS = {
   residual: ATTRIBUTION_HEX.residual.up,
 } as const;
 
-// Right panel uses a slightly more saturated Residual to make it visually
-// pop as "this is what remains" — the key idea of the workflow.
-const RIGHT_LAYER_COLORS = {
-  ...LAYER_COLORS,
-  residual: "#34D399",
-} as const;
+const RIGHT_LAYER_COLORS = LAYER_COLORS;
 
 const LAYER_ORDER = ["market", "sector", "subsector", "residual"] as const;
 type LayerKey = (typeof LAYER_ORDER)[number];

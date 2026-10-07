@@ -5,19 +5,19 @@ const LAYERS = [
     key: 'market',
     number: '01',
     label: 'Market',
-    description: 'Broad-market exposure',
+    description: 'Broad benchmark risk',
   },
   {
     key: 'sector',
     number: '02',
     label: 'Sector',
-    description: 'Sector-level exposure',
+    description: 'Incremental sector exposure',
   },
   {
     key: 'subsector',
     number: '03',
     label: 'Subsector',
-    description: 'The more specific systematic bet',
+    description: 'Granular industry tilt',
   },
   {
     key: 'residual',
@@ -33,13 +33,13 @@ export default function RiskMapPhilosophy() {
       <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-14">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
-            Legible risk
+            A risk map, not a factor zoo.
           </p>
           <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            A map, not a zoo.
+            See that benchmark in four layers.
           </h2>
           <p className="mt-5 text-base leading-relaxed text-zinc-300 sm:text-lg">
-            The factor zoo adds labels. A map shows relationships: how a position&rsquo;s
+            A factor zoo adds labels. A risk map shows relationships: how a position&rsquo;s
             modeled risk divides, which exposures connect to ETF references, and what remains
             stock-specific.
           </p>
@@ -82,7 +82,7 @@ export default function RiskMapPhilosophy() {
 
           <div className="border-t border-zinc-800 px-5 py-5 sm:px-6">
             <p className="font-mono text-sm font-semibold tracking-tight text-zinc-200">
-              Four layers. Trading context. One API call.
+              Four layers. ETF hedge ratios. One API call.
             </p>
           </div>
         </div>

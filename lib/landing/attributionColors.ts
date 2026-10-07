@@ -1,23 +1,23 @@
 export const ATTRIBUTION_HEX = {
-  gross: "#94A3B8",
-  market: { up: "#64748B", down: "#475569" },
-  sector: { up: "#0D9488", down: "#134E4A" },
-  subsector: { up: "#8B5CF6", down: "#5B21B6" },
-  residual: { up: "#10B981", down: "#064E3B" },
+  gross: "#94a3b8",
+  market: { up: "#64748b", down: "#64748b99" },
+  sector: { up: "#0369a1", down: "#0369a199" },
+  subsector: { up: "#6d28d9", down: "#6d28d999" },
+  residual: { up: "#00aa00", down: "#00aa0099" },
 } as const;
 
 export const ATTRIBUTION_CLASSES = {
-  market: "bg-slate-500",
-  sector: "bg-teal-600",
-  subsector: "bg-violet-500",
-  residual: "bg-emerald-500",
+  market: "bg-[#64748b]",
+  sector: "bg-[#0369a1]",
+  subsector: "bg-[#6d28d9]",
+  residual: "bg-[#00aa00]",
 } as const;
 
 export const ATTRIBUTION_TEXT_CLASSES = {
-  market: "text-slate-400",
-  sector: "text-teal-400",
-  subsector: "text-violet-400",
-  residual: "text-emerald-400",
+  market: "text-[#64748b]",
+  sector: "text-[#0369a1]",
+  subsector: "text-[#6d28d9]",
+  residual: "text-[#00aa00]",
 } as const;
 
 export type SignedAttributionColors = {

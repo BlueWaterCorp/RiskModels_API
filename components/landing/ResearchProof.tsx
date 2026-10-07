@@ -8,16 +8,19 @@ const ARTICLES = [
     label: 'Part 1 · One Position, Four Bets',
     summary: 'AAPL vs NVDA, XOM vs KMI, MAG7 DNA.',
     href: `https://riskmodels.org/research/part-1-hidden-concentration?${UTM}`,
+    cta: 'Read on riskmodels.org',
   },
   {
     label: 'Part 2 · Risk Structure in 13F Filings',
     summary: 'Buffett, Ackman, Lone Pine, Tiger Global, Baupost.',
     href: `https://riskmodels.org/research/part-2-risk-structure-13f-filings?${UTM}`,
+    cta: 'Read on riskmodels.org',
   },
   {
     label: 'Methodology · ERM3 Engine Design',
-    summary: 'Hierarchical orthogonalization, L-star, hedge ratios, capacity.',
+    summary: 'Hierarchical orthogonalization, L-star, hedge ratios, signal-capacity limits.',
     href: `https://riskmodels.org/methodology?${UTM}`,
+    cta: 'Read the methodology',
   },
 ] as const;
 
@@ -31,12 +34,12 @@ export default function ResearchProof() {
               The research behind the model
             </p>
             <h2 className="mt-3 text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Clarity should survive the math.
+              Published method. Open evidence.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zinc-300 sm:text-base">
               The factor definitions, hierarchical orthogonalization, hedge-ratio construction,
-              and capacity limits are published so the four-layer map can be examined rather than
-              taken on faith.
+              and signal-capacity limits are published so the four-layer map can be examined
+              rather than taken on faith.
             </p>
           </div>
           <p className="text-sm leading-relaxed text-zinc-400">
@@ -57,7 +60,7 @@ export default function ResearchProof() {
               <p className="text-sm font-semibold text-white">{article.label}</p>
               <p className="mt-2 flex-1 text-sm leading-relaxed text-zinc-400">{article.summary}</p>
               <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 group-hover:text-emerald-300">
-                Read on riskmodels.org <ExternalLink className="h-3 w-3" />
+                {article.cta} <ExternalLink className="h-3 w-3" />
               </span>
             </a>
           ))}
