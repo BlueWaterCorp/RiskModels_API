@@ -535,7 +535,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     {
       title: "PIT Quarterly Fundamentals",
       description:
-        "Point-in-time quarterly fundamentals for a ticker: TTM ROE/ROA/FCF margin, capital-return ratios (payout, retention, buyback, total payout, sustainable growth), leverage, ERM3 cascade betas with provenance, the cost-of-capital layer (cost of equity, cost of debt, book-weight WACC, economic profit), and an equity-bridge decomposition. sec_facts carries raw line items per cell where the serving value is SEC XBRL (revenue, net income, equity, cash flows, dividends, buybacks); vendor-sourced cells are not exposed as raw. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical data only: no forecasts, no analyst fields. Coverage starts ~2009 for most filers. beta_market is a short-half-life conditional beta, so cost_of_equity can fall below the risk-free rate for defensive names. Per-symbol per-call only — no batch.",
+        "Point-in-time quarterly fundamentals for a ticker: TTM ROE/ROA/FCF margin, capital-return ratios, leverage, long-window ERM3 valuation betas, strict reported-data cost_of_debt/wacc, and separately labeled cost_of_debt_imputed/wacc_imputed when the PIT-lagged high-quality-market proxy is available. The proxy uses the period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread; it is not issuer-specific. Also returns equity-charge economic_profit, an equity-bridge decomposition, and SEC-sourced raw line items in sec_facts. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical only; no forecasts or analyst fields. Per-symbol per-call only — no batch.",
       inputSchema: z.object({
         ticker: z.string().describe("Stock ticker symbol, e.g. AAPL, NVDA"),
         as_of: z
@@ -552,7 +552,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
         erp: z
           .number()
           .optional()
-          .describe("Equity risk premium for the cost-of-capital layer (default 0.05, caller-supplied)."),
+          .describe("Equity risk premium request parameter for the cost-of-capital layer (default 0.05 when omitted)."),
         tax_rate: z
           .number()
           .optional()
@@ -563,15 +563,30 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
           .describe(
             "Treasury constant-maturity tenor backing rf_rate (default 10y — the valuation convention). Pair a short tenor with a bill-basis ERP or cost of capital is understated.",
           ),
+        grid: z
+          .boolean()
+          .optional()
+          .describe("If true, include the latest-period ERP x rf-tenor sensitivity grid with strict and imputed WACC fields."),
+        erp_grid: z
+          .string()
+          .optional()
+          .describe('Comma-separated ERP values for the grid, e.g. "0.03,0.04,0.05,0.06,0.07".'),
+        rf_tenor_grid: z
+          .string()
+          .optional()
+          .describe('Comma-separated tenor subset for the grid, e.g. "1y,10y,30y".'),
       }),
     },
-    async ({ ticker, as_of, periods, erp, tax_rate, rf_tenor }) => {
+    async ({ ticker, as_of, periods, erp, tax_rate, rf_tenor, grid, erp_grid, rf_tenor_grid }) => {
       const query: Record<string, string> = {};
       if (as_of) query.as_of = as_of;
       if (periods !== undefined) query.periods = String(periods);
       if (erp !== undefined) query.erp = String(erp);
       if (tax_rate !== undefined) query.tax_rate = String(tax_rate);
       if (rf_tenor !== undefined) query.rf_tenor = rf_tenor;
+      if (grid !== undefined) query.grid = String(grid);
+      if (erp_grid !== undefined) query.erp_grid = erp_grid;
+      if (rf_tenor_grid !== undefined) query.rf_tenor_grid = rf_tenor_grid;
       const { status, data, meter, error } = await apiCall(
         opts,
         "GET",

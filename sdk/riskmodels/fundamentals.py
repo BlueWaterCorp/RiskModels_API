@@ -65,7 +65,10 @@ FUNDAMENTALS_ROW_COLUMNS = [
     "rf_rate",
     "cost_of_equity",
     "cost_of_debt",
+    "cost_of_debt_imputed",
+    "cost_of_debt_imputation",
     "wacc",
+    "wacc_imputed",
     "economic_profit",
     "market_cap",
 ]
@@ -86,11 +89,22 @@ FUNDAMENTALS_COLUMN_HINTS: dict[str, str] = {
     "sustainable_growth": "retention_ratio * roe_ttm.",
     "equity_bridge_residual": "Plug that closes the equity roll-forward; a decomposition aid, not a measured line. Often large.",
     "equity_bridge_inputs": "List of components that backed the residual; a component absent means its movement is inside the residual.",
-    "beta_market": "Short-half-life conditional market beta — NOT a textbook long-run CAPM beta.",
+    "beta_market": "Long-window valuation beta used by the CAPM cost-of-equity layer.",
     "beta_source": "Provenance of the beta window: none | in-universe | out-of-universe | post-delisting.",
     "rf_rate": "Treasury CMT yield at the requested rf_tenor, sampled at/before this quarter's period end.",
-    "cost_of_equity": "CAPM: rf_rate + beta_market * erp (caller-supplied erp).",
-    "wacc": "BOOK-value-weighted WACC (balance-sheet equity/debt, not market-value weights).",
+    "cost_of_equity": "CAPM: rf_rate + beta_market * erp (request assumption; default 5% if omitted, with no ERP opinion stored in the data).",
+    "cost_of_debt": "Strict reported-data debt cost: TTM interest expense / trusted SEC debt; never silently imputed.",
+    "cost_of_debt_imputed": (
+        "Separate PIT-lagged proxy for positive trusted SEC debt when strict cost_of_debt is null: "
+        "period-end 10y Treasury plus the monthly HQMCB10YR-minus-GS10 spread; not issuer-specific."
+    ),
+    "cost_of_debt_imputation": (
+        "Inspectable provenance for cost_of_debt_imputed, including status, inputs, series, and "
+        "hqm_observation_date (the first-of-month reference stamp, not a publication timestamp; "
+        "month M becomes eligible on day 10 of M+1)."
+    ),
+    "wacc": "Strict BOOK-value-weighted WACC using the reported-data debt leg; never silently imputed.",
+    "wacc_imputed": "Parallel BOOK-value-weighted WACC using cost_of_debt_imputed; strict wacc remains unchanged.",
     "economic_profit": "(roe_ttm - cost_of_equity) * total_equity — equity-charge form.",
 }
 
@@ -104,6 +118,11 @@ def attach_fundamentals_semantic_hints(df: pd.DataFrame) -> None:
 
 def fundamentals_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
     """Rows from ``GET /fundamentals/{ticker}`` -> one-row-per-quarter DataFrame.
+
+    Strict ``cost_of_debt`` / ``wacc`` and the parallel
+    ``cost_of_debt_imputed`` / ``wacc_imputed`` proxy fields are preserved in
+    separate columns. ``cost_of_debt_imputation`` remains an object-valued
+    column so callers can inspect the server-supplied proxy provenance.
 
     Empty rows list -> empty DataFrame with the full column set (never a
     zero-column frame, so downstream ``df["roe_ttm"]`` reads are safe).
@@ -124,9 +143,10 @@ def sensitivity_grid_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
     """Flatten ``sensitivity_grid`` (erp x rf_tenor cells) into long form.
 
     One row per (erp, rf_tenor) combination: ``erp``, ``rf_tenor``,
-    ``cost_of_equity``, ``wacc``, ``economic_profit``, plus the anchor
-    ``period_end_date`` / ``filed_date`` repeated on every row for convenient
-    ``groupby`` / heatmap pivoting.
+    ``cost_of_equity``, strict ``wacc``, parallel ``wacc_imputed``, and
+    ``economic_profit``. The anchor dates and grid-level
+    ``cost_of_debt_imputed`` / ``cost_of_debt_imputation`` provenance are
+    repeated on every row for convenient ``groupby`` / heatmap pivoting.
     """
     grid = body.get("sensitivity_grid")
     cols = [
@@ -135,7 +155,10 @@ def sensitivity_grid_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
         "erp",
         "rf_tenor",
         "cost_of_equity",
+        "cost_of_debt_imputed",
+        "cost_of_debt_imputation",
         "wacc",
+        "wacc_imputed",
         "economic_profit",
     ]
     if not grid or not grid.get("cells"):
@@ -154,7 +177,10 @@ def sensitivity_grid_json_to_dataframe(body: dict[str, Any]) -> pd.DataFrame:
                     "erp": erp,
                     "rf_tenor": tenor,
                     "cost_of_equity": cell.get("cost_of_equity"),
+                    "cost_of_debt_imputed": grid.get("cost_of_debt_imputed"),
+                    "cost_of_debt_imputation": grid.get("cost_of_debt_imputation"),
                     "wacc": cell.get("wacc"),
+                    "wacc_imputed": cell.get("wacc_imputed"),
                     "economic_profit": cell.get("economic_profit"),
                 }
             )

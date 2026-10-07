@@ -2785,18 +2785,23 @@ class RiskModelsClient:
         rf_tenor: RfTenor = "10y",
         as_dataframe: bool = False,
     ) -> dict[str, Any] | pd.DataFrame:
-        """PIT quarterly fundamentals (H.89.5, ``$0.005``).
+        """PIT quarterly fundamentals (H.89.5, ``$0.02``).
 
         Calls ``GET /fundamentals/{ticker}``. Rows carry TTM profitability
         ratios (``roe_ttm``, ``roa_ttm``, ``fcf_margin``), capital-return
         ratios (payout, retention, buyback, total payout, sustainable growth),
-        ``leverage_ratio``, ERM3 cascade betas with provenance, the
-        cost-of-capital layer (``cost_of_equity``, ``cost_of_debt``, ``wacc``,
-        ``economic_profit``), and an equity-bridge decomposition. ``sec_facts``
-        carries raw line items per cell where the serving value is SEC XBRL
-        (revenue, net income, equity, cash flows, dividends, buybacks);
-        vendor-sourced cells are not exposed as raw — see the API's
-        ``lib/api/fundamentals-contract.ts`` allowlist.
+        ``leverage_ratio``, long-window ERM3 valuation betas with provenance, the
+        cost-of-capital layer (``cost_of_equity``, strict ``cost_of_debt`` /
+        ``wacc``, parallel ``cost_of_debt_imputed`` / ``wacc_imputed``, and
+        ``economic_profit``), and an equity-bridge decomposition. The imputed
+        debt cost is a separate PIT-lagged high-quality-market proxy: the
+        period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread.
+        ``cost_of_debt_imputation`` carries inspectable provenance and a lagged
+        reference-month stamp; it never overwrites the strict fields and is not
+        issuer-specific. ``sec_facts`` carries raw line items per cell
+        where the serving value is SEC XBRL (revenue, net income, equity, cash
+        flows, dividends, buybacks); vendor-sourced cells are not exposed as
+        raw — see the API's ``lib/api/fundamentals-contract.ts`` allowlist.
 
         PIT: a row is visible iff its ``filed_date`` is on or before
         ``as_of``. Never "latest".
@@ -2806,8 +2811,9 @@ class RiskModelsClient:
             as_of: Point-in-time date, ``YYYY-MM-DD`` (default: today).
             periods: Number of quarterly rows returned, most recent last
                 (server caps at 40).
-            erp: Equity risk premium for the cost-of-capital layer
-                (caller-supplied; no ERP opinion is stored server-side).
+            erp: Equity-risk-premium request assumption for the cost-of-capital
+                layer. The client sends 0.05 by default; no ERP opinion is stored
+                in the data.
             tax_rate: Tax rate applied to the WACC debt shield.
             rf_tenor: Treasury CMT tenor backing ``rf_rate``. Default
                 ``"10y"`` (the valuation convention — pair a shorter tenor
@@ -2822,7 +2828,7 @@ class RiskModelsClient:
 
         Example:
             >>> df = client.get_fundamentals("AAPL", as_dataframe=True)
-            >>> df[["period_end_date", "roe_ttm", "wacc"]].tail(1)
+            >>> df[["period_end_date", "roe_ttm", "wacc", "wacc_imputed"]].tail(1)
         """
         t, _ = resolve_ticker(ticker, self)
         params: dict[str, Any] = {
@@ -2852,13 +2858,18 @@ class RiskModelsClient:
         tax_rate: float = 0.21,
         as_dataframe: bool = False,
     ) -> dict[str, Any] | pd.DataFrame:
-        """Cost-of-capital sensitivity grid — ``erp_grid`` x ``rf_tenor_grid`` (H.89.6, ``$0.005``).
+        """Cost-of-capital sensitivity grid — ``erp_grid`` x ``rf_tenor_grid`` (H.89.6, ``$0.02``).
 
         Calls ``GET /fundamentals/{ticker}?grid=true``. Recomputes
-        ``cost_of_equity`` / ``wacc`` / ``economic_profit`` across every
-        combination of ERP and risk-free tenor for the latest PIT-visible
-        period only — a "what if my assumptions were different today" table,
-        not a time series. Same billing as :meth:`get_fundamentals`.
+        ``cost_of_equity`` / strict ``wacc`` / parallel ``wacc_imputed`` /
+        ``economic_profit`` across every combination of ERP and risk-free
+        tenor for the latest PIT-visible period only — a "what if my
+        assumptions were different today" table, not a time series. The
+        fixed PIT-lagged debt proxy (period-end 10-year Treasury plus the
+        monthly HQMCB10YR-minus-GS10 spread) and its provenance are repeated in
+        long-form DataFrame output. The HQM date is a lagged reference-month
+        stamp, not a publication timestamp. Same billing as
+        :meth:`get_fundamentals`.
 
         Args:
             ticker: Stock ticker symbol.
@@ -2882,7 +2893,7 @@ class RiskModelsClient:
             >>> grid = client.get_fundamentals_sensitivity_grid(
             ...     "AAPL", erp_grid=[0.04, 0.05, 0.06], as_dataframe=True
             ... )
-            >>> grid.pivot(index="erp", columns="rf_tenor", values="wacc")
+            >>> grid.pivot(index="erp", columns="rf_tenor", values="wacc_imputed")
         """
         t, _ = resolve_ticker(ticker, self)
         params: dict[str, Any] = {"grid": "true", "tax_rate": tax_rate}

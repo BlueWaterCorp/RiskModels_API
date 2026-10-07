@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-07 — Explicit PIT-lagged debt-cost proxy
+
+- `GET /api/fundamentals/{ticker}` keeps strict reported-data `cost_of_debt` and `wacc` unchanged, and adds separately labeled `cost_of_debt_imputed` / `wacc_imputed` fields when trusted SEC debt is positive but reported interest expense cannot form a strict debt cost.
+- The proxy adds the period-end point-in-time 10-year Treasury rate to a monthly `HQMCB10YR - GS10` spread. Treasury HQM covers the A/AA/AAA high-quality market; it is not issuer-specific. Provenance includes both inputs and the lagged reference month; month M becomes eligible on day 10 of M+1.
+- The latest-period ERP × Treasury-tenor sensitivity grid now carries parallel `wacc_imputed` cells while preserving strict `wacc`. Public docs, MCP discovery, plugin guidance, and SDK handling distinguish the two paths.
+
 ## 2026-10-05 — Linked brokerage book on the RiskModels MCP
 
 - `riskmodels_get_my_positions` reads the caller's synced book from riskmodels.net `GET /api/positions` (Alpaca Connect, Connect Trade, or Plaid) with the same API key the MCP session already holds.

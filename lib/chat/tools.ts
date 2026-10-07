@@ -245,7 +245,7 @@ async function execGetFundamentals(args: z.infer<typeof getFundamentalsArgs>) {
       ratios:
         "Capital-return ratios are TTM on a cash-dividend basis; null when trailing-4-quarter net income <= 0 (not meaningful, not zero).",
       cost_of_capital:
-        "ERP is caller-supplied (no stored opinion). beta_market is a short-half-life CONDITIONAL beta — cost_of_equity below the risk-free rate is possible for defensives and is not an error. WACC uses book-value weights. economic_profit = TTM net income − cost_of_equity × trailing-average book equity; quote THIS definition, never a textbook NOPAT/invested-capital formula.",
+        "ERP is a request parameter that defaults to 0.05 when omitted; no ERP opinion is stored. beta_market is the long-window valuation beta, not the short-half-life hedging beta. Strict reported-data cost_of_debt/wacc remain null when interest expense cannot form Kd; any cost_of_debt_imputed/wacc_imputed is a separate PIT-lagged high-quality-market proxy and must be labeled with its provenance. Both WACC fields use book weights. economic_profit = (roe_ttm - cost_of_equity) * total_equity (equity-charge form), not textbook NOPAT minus WACC times invested capital.",
     },
   };
 }
@@ -1065,7 +1065,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_fundamentals",
     openaiTool: fnTool(
       "get_fundamentals",
-      "Point-in-time quarterly fundamentals for a US equity: per-period sec_facts (raw line items served ONLY where the cell is SEC XBRL — a missing concept means vendor-sourced/unreported, never zero), derived TTM ratios (ROE, FCF margin, leverage), capital-return ratios (payout/retention/buyback/total-payout/sustainable-growth — null when trailing net income <= 0), the equity-bridge residual (a disclosed PLUG, not a measured line), and cost of capital (rf tenor + caller ERP -> cost_of_equity, book-weight WACC, TTM economic_profit). Rows are visible only where filed_date <= as_of — use as_of for anti-look-ahead backtests or 'what was known then' questions. Realized historical data ONLY: never present anything from this tool as a forecast or a buy/sell view, and quote usage_notes.cost_of_capital when discussing WACC or cost of equity (conditional beta; ERP is the user's assumption, not ours).",
+      "Point-in-time quarterly fundamentals for a US equity: per-period sec_facts (raw line items served ONLY where the cell is SEC XBRL — a missing concept means vendor-sourced/unreported, never zero), derived TTM ratios (ROE, FCF margin, leverage), capital-return ratios (payout/retention/buyback/total-payout/sustainable-growth — null when trailing net income <= 0), the equity-bridge residual (a disclosed PLUG, not a measured line), and cost of capital (rf tenor + request ERP -> cost_of_equity, strict reported-data book-weight WACC, separately labeled PIT-lagged high-quality-market proxy WACC, TTM economic_profit). Rows are visible only where filed_date <= as_of — use as_of for anti-look-ahead backtests or 'what was known then' questions. Realized historical data ONLY: never present anything from this tool as a forecast or a buy/sell view. ERP defaults to 0.05 when omitted, but no ERP opinion is stored; quote usage_notes.cost_of_capital and keep strict and proxy fields distinct.",
       {
         ticker: {
           type: "string",
@@ -1083,7 +1083,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
         erp: {
           type: "number",
           description:
-            "Equity risk premium for cost-of-capital fields (default 0.05). Always the caller's assumption.",
+            "Equity-risk-premium request parameter for cost-of-capital fields (default 0.05 when omitted; no ERP opinion is stored).",
         },
         rf_tenor: {
           type: "string",

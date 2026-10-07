@@ -985,7 +985,7 @@ components:
         beta_market:
           type: number
           nullable: true
-          description: ERM3 cascade market beta sampled at the last trade date <= period_end (conditional, short half-life).
+          description: Long-window (~60-month monthly, Vasicek-shrunk) ERM3 valuation beta sampled at the last month end <= period_end.
         beta_sector:
           type: number
           nullable: true
@@ -1000,19 +1000,33 @@ components:
         rf_rate:
           type: number
           nullable: true
-          description: 3-month T-bill rate (fraction) at the last observation <= period_end.
+          description: Treasury constant-maturity rate for the requested rf_tenor, sampled at the last observation <= period_end.
         cost_of_equity:
           type: number
           nullable: true
-          description: rf_rate + beta_market * erp. Can fall below rf_rate for defensive names (conditional beta).
+          description: rf_rate + beta_market * erp, using the long-window valuation beta. Can fall below rf_rate for defensive names.
         cost_of_debt:
           type: number
           nullable: true
-          description: TTM interest expense / total debt. Null if debt <= 0.
+          description: Strict reported-data value, TTM interest expense / trusted SEC debt. Never silently imputed.
+        cost_of_debt_imputed:
+          type: number
+          nullable: true
+          description: >
+            Separate PIT-lagged high-quality-market proxy for positive trusted
+            SEC debt when strict cost_of_debt is null: the period-end point-in-time
+            10-year Treasury rate plus a spread formed from
+            monthly Treasury HQM and GS10 observations. Not issuer-specific.
+        cost_of_debt_imputation:
+          $ref: "#/components/schemas/CostOfDebtImputation"
         wacc:
           type: number
           nullable: true
-          description: BOOK-value-weighted average cost of capital with tax-shielded debt leg.
+          description: Strict BOOK-value-weighted average cost of capital with tax-shielded reported-data debt leg.
+        wacc_imputed:
+          type: number
+          nullable: true
+          description: BOOK-value-weighted WACC using cost_of_debt_imputed. Strict wacc remains unchanged.
         economic_profit:
           type: number
           nullable: true
@@ -1021,6 +1035,63 @@ components:
           type: number
           nullable: true
           description: Reserved. Currently null per row; see the top-level market_cap snapshot.
+
+    CostOfDebtImputation:
+      type: object
+      description: >
+        Inspectable provenance for the parallel PIT-lagged high-quality-market
+        debt-cost proxy. The HQM series covers the A/AA/AAA high-quality corporate
+        market; it is not an issuer rating or issuer bond yield.
+      required:
+        - status
+        - method
+        - risk_free_rate
+        - credit_spread
+        - hqm_spot_rate
+        - hqm_observation_date
+        - corporate_series
+        - treasury_series
+        - rating_scope
+      properties:
+        status:
+          type: string
+          enum: [used, not_needed, unavailable]
+        method:
+          type: string
+          enum: [rf_10y_plus_treasury_hqm_10y_spread]
+        risk_free_rate:
+          type: number
+          nullable: true
+          description: Period-end point-in-time 10-year Treasury input used in cost_of_debt_imputed (fraction).
+        credit_spread:
+          type: number
+          nullable: true
+          description: >
+            Treasury HQM 10-year monthly spot yield minus the same-month GS10
+            monthly average used to form the stored spread. This is not
+            calculated from risk_free_rate, which is the separate period-end
+            point-in-time 10-year Treasury input.
+        hqm_spot_rate:
+          type: number
+          nullable: true
+          description: Treasury HQM 10-year monthly high-quality corporate spot yield (fraction).
+        hqm_observation_date:
+          type: string
+          format: date
+          nullable: true
+          description: >
+            Reference-month stamp for the monthly HQM/GS10 pair, represented as
+            the first day of that month. It is not a publication timestamp. The
+            sampler makes month M eligible on day 10 of M+1 to preserve PIT lag.
+        corporate_series:
+          type: string
+          enum: [HQMCB10YR]
+        treasury_series:
+          type: string
+          enum: [GS10]
+        rating_scope:
+          type: string
+          enum: ["A/AA/AAA high-quality market; not issuer-specific"]
 
     FundamentalsResponse:
       type: object
@@ -1069,8 +1140,8 @@ components:
           additionalProperties: true
           description: >
             Realized-historical-only statement, ~2009 coverage note,
-            conditional-beta cost-of-equity caveat, book-weight WACC note, TTM
-            convention, and the erp/tax_rate parameter echo.
+            long-window valuation-beta cost-of-equity caveat, strict-versus-proxy
+            book-weight WACC notes, TTM convention, and the request-parameter echo.
         _metadata:
           type: object
           additionalProperties: true
@@ -1079,16 +1150,20 @@ components:
       type: object
       description: >
         Cost-of-capital sensitivity grid for the latest PIT-visible period
-        only — `cost_of_equity` / `wacc` / `economic_profit` recomputed
-        across every combination of `erp_values` x `rf_tenor_values`. Pure
-        derived analytics (same fields as `FundamentalsRow`'s cost-of-capital
-        layer), just parameterized instead of single-valued. `cells` is
+        only — `cost_of_equity`, strict `wacc`, parallel `wacc_imputed`, and
+        `economic_profit` recomputed across every combination of `erp_values`
+        x `rf_tenor_values`. `cost_of_debt_imputed` and its provenance are
+        fixed 10-year proxy inputs shared by all cells; the chosen grid tenor
+        changes the cost-of-equity leg, not that debt proxy. Pure derived
+        analytics, parameterized instead of single-valued. `cells` is
         row-major: `cells[i][j]` pairs `erp_values[i]` with `rf_tenor_values[j]`.
       required:
         - period_end_date
         - erp_values
         - rf_tenor_values
         - tax_rate
+        - cost_of_debt_imputed
+        - cost_of_debt_imputation
         - cells
       properties:
         period_end_date:
@@ -1108,6 +1183,12 @@ components:
             enum: [3m, 1y, 2y, 5y, 10y, 30y]
         tax_rate:
           type: number
+        cost_of_debt_imputed:
+          type: number
+          nullable: true
+          description: Fixed 10-year debt-cost proxy shared by every grid cell.
+        cost_of_debt_imputation:
+          $ref: "#/components/schemas/CostOfDebtImputation"
         cells:
           type: array
           description: Row-major [erp_values.length][rf_tenor_values.length].
@@ -1118,6 +1199,7 @@ components:
               properties:
                 cost_of_equity: { type: number, nullable: true }
                 wacc: { type: number, nullable: true }
+                wacc_imputed: { type: number, nullable: true }
                 economic_profit: { type: number, nullable: true }
 
     MetricsSnapshotResponse:
@@ -4958,10 +5040,12 @@ paths:
         **Derived analytics + per-cell raw SEC exposure.** Rows carry TTM profitability
         ratios (`roe_ttm`, `roa_ttm`, `fcf_margin`), capital-return ratios (`payout_ratio`,
         `retention_ratio`, `buyback_ratio`, `total_payout_ratio`, `sustainable_growth`),
-        `leverage_ratio`, ERM3 cascade betas with provenance, the cost-of-capital layer
-        (`cost_of_equity`, `cost_of_debt`, `wacc`, `economic_profit`), and the equity-bridge
-        residual + inputs mask. `sec_facts` carries RAW line items for the cells whose serving
-        value is SEC XBRL (public); vendor-sourced cells are not included there.
+        `leverage_ratio`, long-window ERM3 valuation betas with provenance, the cost-of-capital layer
+        (`cost_of_equity`, strict `cost_of_debt` / `wacc`, parallel
+        `cost_of_debt_imputed` / `wacc_imputed`, and `economic_profit`), and the
+        equity-bridge residual + inputs mask. `sec_facts` carries RAW line items for the
+        cells whose serving value is SEC XBRL (public); vendor-sourced cells are not included
+        there.
 
 
         Numeric line items are stored at ~7 significant figures (float32) — suitable for
@@ -4978,20 +5062,29 @@ paths:
         - Coverage starts ~2009 for most filers; pre-2009 and small-cap or
           recently-IPO'd names are thin. Missing fields are null.
 
-        - `beta_market` is a short-half-life conditional market beta, not a textbook
-          long-run CAPM beta; for defensive names `cost_of_equity` can fall below the
-          risk-free rate. That is a property of the conditional beta, not an error.
+        - `beta_market` is the long-window valuation beta used by the CAPM layer,
+          not the short-half-life hedging beta on the daily risk surface. For defensive
+          names `cost_of_equity` can still fall below the risk-free rate.
 
         - WACC uses BOOK-value weights. Market-value weights are the textbook
           convention; compute them yourself if you have market-cap access.
+
+        - Strict `cost_of_debt` and `wacc` are never silently filled. When trusted
+          SEC debt is positive but TTM interest expense cannot form a strict debt
+          cost, the separate imputed fields may use a PIT-lagged high-quality-market
+          proxy. Its spread is the monthly Treasury HQM 10-year spot yield minus
+          the same-month GS10 monthly average; that stored spread is then added to
+          the separate period-end point-in-time 10-year Treasury rate. HQM month M
+          becomes eligible on day 10 of M+1. The proxy covers the A/AA/AAA market;
+          it is not issuer-specific.
 
         - TTM sums flows over the trailing 4 reported quarters; stock quantities are
           point-in-time (ROE denominator uses trailing-4-quarter average equity).
           Ratios need 4 finite quarters or they are null.
 
-        - `erp` (default 0.05) and `tax_rate` (default 0.21) are always
-          caller-supplied parameters, echoed in the response; no equity-risk-premium
-          opinion is stored.
+        - `erp` (default 0.05) and `tax_rate` (default 0.21) are request parameters
+          echoed in the response. The documented defaults are used when omitted;
+          no equity-risk-premium opinion is stored in the data.
 
         - `rf_rate` is the Treasury constant-maturity yield at the selected
           `rf_tenor` (3m|1y|2y|5y|10y|30y, default 10y — the valuation convention),
@@ -5055,7 +5148,7 @@ paths:
             minimum: 0
             maximum: 0.5
             default: 0.05
-          description: Equity risk premium for the cost-of-capital layer (caller-supplied).
+          description: Equity-risk-premium request parameter for the cost-of-capital layer; default 0.05 when omitted, with no ERP opinion stored in the data.
         - name: tax_rate
           in: query
           required: false
@@ -5084,8 +5177,9 @@ paths:
             default: false
           description: >-
             When true, the response also carries `sensitivity_grid` —
-            `cost_of_equity` / `wacc` / `economic_profit` across `erp_grid` x
-            `rf_tenor_grid` for the latest PIT-visible period only (not a time
+            `cost_of_equity`, strict `wacc`, parallel `wacc_imputed`, and
+            `economic_profit` across `erp_grid` x `rf_tenor_grid` for the latest
+            PIT-visible period only (not a time
             series — a "what if my assumptions were different today" table).
             Same billing as the base call; no extra cost.
         - name: erp_grid
@@ -5114,7 +5208,7 @@ paths:
           headers:
             X-API-Cost-USD:
               schema: { type: string }
-              description: Cost deducted for this request (e.g. "0.005").
+              description: Cost deducted for this request (e.g. "0.02").
             X-RateLimit-Limit:
               schema: { type: integer }
               description: Request limit per minute

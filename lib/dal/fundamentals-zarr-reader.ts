@@ -40,14 +40,19 @@ import {
   setCache,
 } from "@/lib/cache/redis";
 import {
+  COST_OF_DEBT_IMPUTATION_CORPORATE_SERIES,
+  COST_OF_DEBT_IMPUTATION_METHOD,
+  COST_OF_DEBT_IMPUTATION_RATING_SCOPE,
+  COST_OF_DEBT_IMPUTATION_TREASURY_SERIES,
   SEC_FACT_CONCEPTS,
   decodeEquityBridgeInputs,
   secCellValue,
+  type CostOfDebtImputation,
   type SecFactConcept,
   type SecFacts,
 } from "@/lib/api/fundamentals-contract";
 
-export const DEFAULT_ERP = 0.05; // suggested only; ERP is ALWAYS caller-supplied
+export const DEFAULT_ERP = 0.05; // documented request default; no ERP opinion is stored in the data
 export const DEFAULT_TAX_RATE = 0.21;
 export const MAX_FUNDAMENTALS_PERIODS = 40;
 
@@ -60,7 +65,7 @@ function finite(v: number | null | undefined): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
-/** CAPM cost of equity = rf + beta_market * erp. Conditional beta: may dip below rf. */
+/** CAPM cost of equity = rf + beta_market * erp. The long-window valuation beta may be negative. */
 export function costOfEquity(
   rfRate: number,
   betaMarket: number,
@@ -96,6 +101,22 @@ export function waccBookWeights(
 ): number {
   const ke = costOfEquity(rfRate, betaMarket, erp);
   const kd = costOfDebt(interestExpenseTtm, totalDebt);
+  return waccBookWeightsFromKd(ke, kd, totalEquity, totalDebt, taxRate);
+}
+
+/**
+ * Book-weight WACC from already-derived component costs. Exported so the HQM
+ * proxy can remain visibly separate from strict reported-data Kd.
+ */
+export function waccBookWeightsFromKd(
+  costOfEquityRate: number,
+  costOfDebtRate: number,
+  totalEquity: number,
+  totalDebt: number,
+  taxRate: number,
+): number {
+  const ke = costOfEquityRate;
+  const kd = costOfDebtRate;
   const E = finite(totalEquity) ? totalEquity : NaN;
   const D = finite(totalDebt) ? totalDebt : NaN;
   if (!(Number.isFinite(E) && Number.isFinite(D))) return NaN;
@@ -106,6 +127,102 @@ export function waccBookWeights(
   if (wD <= 0) return ke;
   if (!Number.isFinite(kd)) return NaN;
   return wE * ke + wD * kd * (1.0 - taxRate);
+}
+
+interface DebtImputationResult {
+  value: number | null;
+  provenance: CostOfDebtImputation;
+}
+
+/**
+ * Treasury HQM reference month M becomes usable on day 10 of M+1.
+ * Recheck that publication lag at read time so an upstream sampling regression
+ * cannot introduce look-ahead into a period-end valuation.
+ */
+function hqmReferenceMonthEligible(referenceMonth: string, periodEndDate: string): boolean {
+  const match = /^(\d{4})-(\d{2})-01$/.exec(referenceMonth);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || month < 1 || month > 12) return false;
+  const eligibleYear = month === 12 ? year + 1 : year;
+  const eligibleMonth = month === 12 ? 1 : month + 1;
+  const eligibleDate = `${String(eligibleYear).padStart(4, "0")}-${String(eligibleMonth).padStart(2, "0")}-10`;
+  return eligibleDate <= periodEndDate;
+}
+
+function debtImputationProvenance(
+  status: CostOfDebtImputation["status"],
+  riskFreeRate: number | null,
+  creditSpread: number | null,
+  hqmSpotRate: number | null,
+  hqmObservationDate: string | null,
+): CostOfDebtImputation {
+  return {
+    status,
+    method: COST_OF_DEBT_IMPUTATION_METHOD,
+    risk_free_rate: riskFreeRate,
+    credit_spread: creditSpread,
+    hqm_spot_rate: hqmSpotRate,
+    hqm_observation_date: hqmObservationDate,
+    corporate_series: COST_OF_DEBT_IMPUTATION_CORPORATE_SERIES,
+    treasury_series: COST_OF_DEBT_IMPUTATION_TREASURY_SERIES,
+    rating_scope: COST_OF_DEBT_IMPUTATION_RATING_SCOPE,
+  };
+}
+
+/**
+ * PIT-lagged high-quality-market proxy for an AAPL-class null Kd.
+ *
+ * It is used only when trusted SEC debt is positive and strict reported-data
+ * Kd is unavailable. The stored spread is monthly HQMCB10YR minus the
+ * same-month GS10 monthly average; it is added to the separate period-end
+ * point-in-time 10y Treasury strip. Month M becomes eligible on day 10 of M+1;
+ * the reader independently enforces that lag. A reference month that was not
+ * yet eligible at the row's period end leaves the proxy unavailable.
+ */
+export function buildCostOfDebtImputation(args: {
+  strictCostOfDebt: number;
+  totalDebt: number;
+  periodEndDate: string;
+  riskFree10y: number | null | undefined;
+  hqmCreditSpread: number | null | undefined;
+  hqmSpotRate: number | null | undefined;
+  hqmObservationDate: string | null | undefined;
+}): DebtImputationResult {
+  const rf = finite(args.riskFree10y) ? args.riskFree10y : null;
+  const spread = finite(args.hqmCreditSpread) ? args.hqmCreditSpread : null;
+  const spot = finite(args.hqmSpotRate) ? args.hqmSpotRate : null;
+  const observationDate = args.hqmObservationDate ?? null;
+
+  if (Number.isFinite(args.strictCostOfDebt) || (finite(args.totalDebt) && args.totalDebt <= 0)) {
+    return {
+      value: null,
+      provenance: debtImputationProvenance("not_needed", rf, spread, spot, observationDate),
+    };
+  }
+
+  const usable =
+    finite(args.totalDebt) &&
+    args.totalDebt > 0 &&
+    rf !== null &&
+    spread !== null &&
+    spread >= 0 &&
+    spot !== null &&
+    spot > 0 &&
+    observationDate !== null &&
+    hqmReferenceMonthEligible(observationDate, args.periodEndDate);
+  if (!usable) {
+    return {
+      value: null,
+      provenance: debtImputationProvenance("unavailable", rf, spread, spot, observationDate),
+    };
+  }
+
+  return {
+    value: rf + spread,
+    provenance: debtImputationProvenance("used", rf, spread, spot, observationDate),
+  };
 }
 
 /** ROE = net_income_ttm / avg trailing-4Q equity. Guard avg <= 0 → NaN, never clip. */
@@ -293,6 +410,12 @@ export interface FundamentalsRowPack {
   bridgeInputs: (number | null)[];
   /** 1-D rf strip per tenor over the shared period_end axis (fraction, e.g. 0.0448). */
   rfCurve: Partial<Record<RfTenor, (number | null)[]>>;
+  /** Treasury HQM 10y spot yield over the shared period_end axis. */
+  hqm10ySpotRate: (number | null)[];
+  /** Monthly HQMCB10YR spot less the same-month GS10 monthly average, PIT-lagged upstream. */
+  hqm10yCreditSpread: (number | null)[];
+  /** Reference-month stamp for each sampled HQM/GS10 pair, not its publication timestamp. */
+  hqm10yObservationDates: (string | null)[];
 }
 
 /** Internal (pre-sanitize) row: allowlist fields only, numbers may be NaN→null later. */
@@ -320,7 +443,10 @@ export interface FundamentalsInternalRow {
   rf_rate: number | null;
   cost_of_equity: number | null;
   cost_of_debt: number | null;
+  cost_of_debt_imputed: number | null;
+  cost_of_debt_imputation: CostOfDebtImputation;
   wacc: number | null;
+  wacc_imputed: number | null;
   economic_profit: number | null;
   /** SEC-sourced raw line items for this period, gated per cell (H.69 per-row rule). */
   sec_facts: SecFacts;
@@ -402,6 +528,35 @@ export function buildFundamentalsRows(
     const bsec = pack.vars.beta_sector[i] ?? NaN;
     const bsub = pack.vars.beta_subsector[i] ?? NaN;
     const bsrcRaw = pack.vars.beta_source[i];
+    const strictCostOfDebt = costOfDebt(ieTtm, debtLast);
+    const strictWacc = waccBookWeights(
+      rf,
+      bm,
+      ieTtm,
+      eqLast,
+      debtLast,
+      opts.taxRate,
+      opts.erp,
+    );
+    const debtImputation = buildCostOfDebtImputation({
+      strictCostOfDebt,
+      totalDebt: debtLast,
+      periodEndDate: pack.periodEndDates[i]!,
+      riskFree10y: pack.rfCurve["10y"]?.[i],
+      hqmCreditSpread: pack.hqm10yCreditSpread[i],
+      hqmSpotRate: pack.hqm10ySpotRate[i],
+      hqmObservationDate: pack.hqm10yObservationDates[i],
+    });
+    const imputedWacc =
+      debtImputation.value === null
+        ? NaN
+        : waccBookWeightsFromKd(
+            costOfEquity(rf, bm, opts.erp),
+            debtImputation.value,
+            eqLast,
+            debtLast,
+            opts.taxRate,
+          );
 
     const roa =
       Number.isFinite(niTtm) && Number.isFinite(assetsAvg) && assetsAvg > 0
@@ -458,8 +613,11 @@ export function buildFundamentalsRows(
       beta_source: finite(bsrcRaw) ? (BETA_SOURCE_LABELS[Math.round(bsrcRaw)] ?? null) : null,
       rf_rate: toNull(finite(rf) ? rf : NaN),
       cost_of_equity: toNull(costOfEquity(rf, bm, opts.erp)),
-      cost_of_debt: toNull(costOfDebt(ieTtm, debtLast)),
-      wacc: toNull(waccBookWeights(rf, bm, ieTtm, eqLast, debtLast, opts.taxRate, opts.erp)),
+      cost_of_debt: toNull(strictCostOfDebt),
+      cost_of_debt_imputed: debtImputation.value,
+      cost_of_debt_imputation: debtImputation.provenance,
+      wacc: toNull(strictWacc),
+      wacc_imputed: toNull(imputedWacc),
       economic_profit: toNull(economicProfit(niTtm, eqAvg, eqLast, rf, bm, opts.erp)),
       sec_facts: secFacts,
     });
@@ -475,6 +633,7 @@ export const DEFAULT_ERP_GRID: readonly number[] = [0.03, 0.04, 0.05, 0.06, 0.07
 export interface SensitivityGridCell {
   cost_of_equity: number | null;
   wacc: number | null;
+  wacc_imputed: number | null;
   economic_profit: number | null;
 }
 
@@ -484,6 +643,9 @@ export interface SensitivityGrid {
   erp_values: number[];
   rf_tenor_values: RfTenor[];
   tax_rate: number;
+  /** Fixed debt-cost proxy shared by every ERP/rf-tenor cell. */
+  cost_of_debt_imputed: number | null;
+  cost_of_debt_imputation: CostOfDebtImputation;
   /** [erp_idx][tenor_idx], row-major over erp_values × rf_tenor_values. */
   cells: SensitivityGridCell[][];
 }
@@ -525,13 +687,36 @@ export function buildSensitivityGrid(
   const debtEodhd = latestFinite(windowVals("total_debt", windowPos));
   const debtLast = trustSecDebt(debtSec, debtEodhd);
   const bm = pack.vars.beta_market[i] ?? NaN;
+  const strictCostOfDebt = costOfDebt(ieTtm, debtLast);
+  const debtImputation = buildCostOfDebtImputation({
+    strictCostOfDebt,
+    totalDebt: debtLast,
+    periodEndDate: pack.periodEndDates[i]!,
+    riskFree10y: pack.rfCurve["10y"]?.[i],
+    hqmCreditSpread: pack.hqm10yCreditSpread[i],
+    hqmSpotRate: pack.hqm10ySpotRate[i],
+    hqmObservationDate: pack.hqm10yObservationDates[i],
+  });
 
   const cells: SensitivityGridCell[][] = opts.erpGrid.map((erp) =>
     opts.rfTenorGrid.map((tenor) => {
       const rf = pack.rfCurve[tenor]?.[i] ?? NaN;
+      const ke = costOfEquity(rf, bm, erp);
       return {
-        cost_of_equity: toNull(costOfEquity(rf, bm, erp)),
+        cost_of_equity: toNull(ke),
         wacc: toNull(waccBookWeights(rf, bm, ieTtm, eqLast, debtLast, opts.taxRate, erp)),
+        wacc_imputed:
+          debtImputation.value === null
+            ? null
+            : toNull(
+                waccBookWeightsFromKd(
+                  ke,
+                  debtImputation.value,
+                  eqLast,
+                  debtLast,
+                  opts.taxRate,
+                ),
+              ),
         economic_profit: toNull(economicProfit(niTtm, eqAvg, eqLast, rf, bm, erp)),
       };
     }),
@@ -543,6 +728,8 @@ export function buildSensitivityGrid(
     erp_values: [...opts.erpGrid],
     rf_tenor_values: [...opts.rfTenorGrid],
     tax_rate: opts.taxRate,
+    cost_of_debt_imputed: debtImputation.value,
+    cost_of_debt_imputation: debtImputation.provenance,
     cells,
   };
 }
@@ -762,6 +949,20 @@ async function readVar1d(
   }
 }
 
+/** Whole 1-D CF-datetime variable on the period_end axis. */
+async function readDateVar1d(
+  grp: Group<Readable>,
+  name: string,
+): Promise<(string | null)[] | null> {
+  try {
+    const arr = await open.v2(grp.resolve(name), { kind: "array" });
+    const ch = (await get(arr, null)) as ZarrChunkLike | null;
+    return ch ? decodeDates(ch.data, unitsOf(arr)) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve ticker → (symbol-axis index, bw_sym_id) for cache keying. Recycled
  * display tickers map two companies onto one string, so the row-pack cache is
@@ -853,6 +1054,17 @@ async function computeRowPack(
     if (strip) rfCurve[tenor] = strip;
   }
 
+  // Treasury HQM 10y proxy strip. All three planes are optional at read so
+  // a rolling deploy against the pre-HQM store degrades to `unavailable`, not
+  // a request failure. Cache v7 below prevents old packs from masking them.
+  const nullNumbers = () => new Array<number | null>(periodEndDates.length).fill(null);
+  const nullDates = () => new Array<string | null>(periodEndDates.length).fill(null);
+  const hqm10ySpotRate = (await readVar1d(grp, "hqm_10y_spot_rate")) ?? nullNumbers();
+  const hqm10yCreditSpread =
+    (await readVar1d(grp, "hqm_10y_credit_spread")) ?? nullNumbers();
+  const hqm10yObservationDates =
+    (await readDateVar1d(grp, "hqm_10y_observation_date")) ?? nullDates();
+
   return {
     ticker,
     periodEndDates,
@@ -865,6 +1077,9 @@ async function computeRowPack(
     bridgeResidual,
     bridgeInputs,
     rfCurve,
+    hqm10ySpotRate,
+    hqm10yCreditSpread,
+    hqm10yObservationDates,
   };
 }
 
@@ -875,9 +1090,11 @@ async function readRowPackCached(ticker: string): Promise<FundamentalsRowPack | 
   // Bumping the key invalidates v2 packs that lack those fields.
   // v6: 2026-07-18 — SEC_FACT_CONCEPTS gained ebitda_sec / eps_basic / shares_outstanding_sec;
   // v5 packs lack those secRaw/secSource columns.
+  // v7: add Treasury HQM 10y spot/spread/observation-date strips for the
+  // explicit cost-of-debt proxy. v6 packs cannot support provenance.
   // Keyed by resolved bw_sym_id, not display ticker — recycled tickers alias
   // two companies onto one string and must not share a cache entry.
-  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v6", { symbol: identity.symbol });
+  const ck = generateCacheKey("fundamentals_zarr", "row_pack_v7", { symbol: identity.symbol });
   const hit = await getCache<FundamentalsRowPack | typeof EMPTY_SENTINEL>(ck);
   if (hit !== null && hit !== undefined) {
     return (hit as { __empty?: boolean }).__empty === true

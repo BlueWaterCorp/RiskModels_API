@@ -21,7 +21,8 @@ Calls `riskmodels_get_fundamentals` (`ticker=NVDA`, default `as_of=today`). Retu
 quarterly rows visible only where `filed_date <= as_of` — so the same query dated in the
 past reflects exactly what had been filed by then. Each row carries TTM ratios
 (`roe_ttm`, `fcf_margin`, …), the capital-return set (`payout_ratio`, `retention_ratio`,
-`buyback_ratio`, `total_payout_ratio`, `sustainable_growth`), the ERM3 cascade betas, an
+`buyback_ratio`, `total_payout_ratio`, `sustainable_growth`), the long-window ERM3
+valuation betas, an
 `equity_bridge_residual` + `equity_bridge_inputs` mask, and **`sec_facts`** — raw line
 items as `{value, source}` per cell **where the serving value is SEC XBRL** (`us_gaap`/
 `ifrs`); cells that are not SEC-sourced are absent, so this is not a "raw fundamentals"
@@ -34,13 +35,15 @@ it stood mid-2023, no restatement, no peeking.
 
 > `/cost-of-capital NVDA 0.05 10y`
 
-Same tool, now reading the cost-of-capital layer with a **caller-supplied** equity risk
-premium (`erp=0.05`) and risk-free tenor (`rf_tenor=10y`). Returns `cost_of_equity`
-(= `rf_rate` + `beta_market` × `erp`), book-weight `wacc`, and `economic_profit`. The ERP
-is never assumed — state it in the answer, or pass `grid=true` with `erp_grid` /
-`rf_tenor_grid` for the full ERP × tenor sensitivity table. Because `beta_market` is a
-short-half-life conditional beta, a defensive name's `cost_of_equity` can sit below the
-risk-free rate — a property of the beta, not an error.
+Same tool, now reading the cost-of-capital layer with an explicit equity-risk-premium
+request assumption (`erp=0.05`) and risk-free tenor (`rf_tenor=10y`). Returns
+`cost_of_equity` (= `rf_rate` + `beta_market` × `erp`), strict reported-data
+`cost_of_debt` / book-weight `wacc`, and equity-charge `economic_profit`. When strict
+debt cost is unavailable, separate `cost_of_debt_imputed` / `wacc_imputed` fields may
+carry a **PIT-lagged high-quality-market proxy** with inspectable provenance. Never
+collapse the strict and proxy fields or call the proxy an issuer borrowing cost. State
+the ERP in the answer, or pass `grid=true` with `erp_grid` / `rf_tenor_grid` for the
+full table, including parallel `wacc_imputed` cells.
 
 ## Step 3 — Risk decomposition (L1/L2/L3 cascade)
 
@@ -96,6 +99,6 @@ answer, and drops the per-leg tables into a collapsible block.
 ## Boundary (applies to every step)
 
 RiskModels is an analytical tool, not an investment adviser. These are model outputs from
-realized data and caller-supplied assumptions — decomposition, hedge ratios, ranks, and
+realized data and explicit request assumptions — decomposition, hedge ratios, ranks, and
 signals — **not** recommendations, price targets, or suitability assessments. No forecasts.
 Always let the tools produce the numbers; never fill them in from memory.

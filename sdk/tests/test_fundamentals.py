@@ -20,6 +20,18 @@ from riskmodels.fundamentals import (
 
 TICKER = "AAPL"
 
+IMPUTATION_USED = {
+    "status": "used",
+    "method": "rf_10y_plus_treasury_hqm_10y_spread",
+    "risk_free_rate": 0.04,
+    "credit_spread": 0.015,
+    "hqm_spot_rate": 0.055,
+    "hqm_observation_date": "2025-08-01",
+    "corporate_series": "HQMCB10YR",
+    "treasury_series": "GS10",
+    "rating_scope": "A/AA/AAA high-quality market; not issuer-specific",
+}
+
 ROWS = [
     {
         "period_end_date": "2025-06-30",
@@ -57,8 +69,11 @@ ROWS = [
         "beta_source": "in-universe",
         "rf_rate": 0.04,
         "cost_of_equity": 0.10,
-        "cost_of_debt": 0.03,
-        "wacc": 0.085,
+        "cost_of_debt": None,
+        "cost_of_debt_imputed": 0.055,
+        "cost_of_debt_imputation": IMPUTATION_USED,
+        "wacc": None,
+        "wacc_imputed": 0.081,
         "economic_profit": 13.0,
     },
 ]
@@ -139,7 +154,15 @@ def test_get_fundamentals_as_dataframe_carries_sdk_attrs():
     df = _client(handler).get_fundamentals(TICKER, as_dataframe=True)
     assert list(df["period_end_date"]) == ["2025-06-30", "2025-09-30"]
     assert (df["market_cap"] == 3.5e12).all()
+    assert df["cost_of_debt"].isna().iloc[-1]
+    assert df["cost_of_debt_imputed"].iloc[-1] == pytest.approx(0.055)
+    assert df["cost_of_debt_imputation"].iloc[-1] == IMPUTATION_USED
+    assert df["wacc"].isna().iloc[-1]
+    assert df["wacc_imputed"].iloc[-1] == pytest.approx(0.081)
     assert df.attrs.get("riskmodels_semantic_cheatsheet") is not None
+    hints = df.attrs.get("riskmodels_column_hints")
+    assert "not issuer-specific" in hints["cost_of_debt_imputed"]
+    assert "strict wacc remains unchanged" in hints["wacc_imputed"]
     assert df.attrs.get("riskmodels_fundamentals_disclosures") == {
         "realized_historical_only": "..."
     }
@@ -275,7 +298,13 @@ def test_fundamentals_json_to_dataframe_empty_rows_keeps_full_columns():
     df = fundamentals_json_to_dataframe({"rows": []})
     assert df.empty
     assert "roe_ttm" in df.columns
-    assert "wacc" in df.columns
+    assert {
+        "cost_of_debt",
+        "cost_of_debt_imputed",
+        "cost_of_debt_imputation",
+        "wacc",
+        "wacc_imputed",
+    } <= set(df.columns)
 
 
 def test_estimate_next_earnings_never_reconstructs_held_back_fields():
@@ -301,9 +330,45 @@ def test_sensitivity_grid_json_to_dataframe_handles_missing_grid():
         "erp",
         "rf_tenor",
         "cost_of_equity",
+        "cost_of_debt_imputed",
+        "cost_of_debt_imputation",
         "wacc",
+        "wacc_imputed",
         "economic_profit",
     ]
+
+
+def test_sensitivity_grid_dataframe_preserves_imputed_wacc_and_provenance():
+    df = sensitivity_grid_json_to_dataframe(
+        {
+            "sensitivity_grid": {
+                "period_end_date": "2025-09-30",
+                "filed_date": "2025-10-31",
+                "erp_values": [0.05],
+                "rf_tenor_values": ["10y"],
+                "tax_rate": 0.21,
+                "cost_of_debt_imputed": 0.055,
+                "cost_of_debt_imputation": IMPUTATION_USED,
+                "cells": [
+                    [
+                        {
+                            "cost_of_equity": 0.10,
+                            "wacc": None,
+                            "wacc_imputed": 0.081,
+                            "economic_profit": 13.0,
+                        }
+                    ]
+                ],
+            }
+        }
+    )
+
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert df["wacc"].isna().iloc[0]
+    assert row["wacc_imputed"] == pytest.approx(0.081)
+    assert row["cost_of_debt_imputed"] == pytest.approx(0.055)
+    assert row["cost_of_debt_imputation"] == IMPUTATION_USED
 
 
 def test_fundamentals_dataframe_carries_sec_facts_ratios_and_bridge():

@@ -4,6 +4,7 @@ import {
   FUNDAMENTALS_ROW_ALLOWED_FIELDS,
   SEC_FACT_CONCEPTS,
   SEC_FACT_DENY,
+  sanitizeCostOfDebtImputation,
   sanitizeFundamentalsRow,
   sanitizeSecFacts,
   secCellValue,
@@ -82,6 +83,53 @@ describe("fundamentals response allowlist", () => {
     expect(Object.keys(clean).sort()).toEqual([...FUNDAMENTALS_ROW_ALLOWED_FIELDS].sort());
     expect(clean.wacc).toBeNull();
     expect(clean.sec_facts).toEqual({});
+    expect(clean.cost_of_debt_imputation).toMatchObject({
+      status: "unavailable",
+      method: "rf_10y_plus_treasury_hqm_10y_spread",
+      corporate_series: "HQMCB10YR",
+      treasury_series: "GS10",
+    });
+  });
+});
+
+describe("cost-of-debt imputation provenance", () => {
+  it("canonicalizes static provenance and strips non-finite inputs", () => {
+    const clean = sanitizeCostOfDebtImputation({
+      status: "used",
+      method: "forged",
+      risk_free_rate: 0.04,
+      credit_spread: 0.015,
+      hqm_spot_rate: 0.055,
+      hqm_observation_date: "2025-08-01",
+      corporate_series: "forged",
+      treasury_series: "forged",
+      rating_scope: "AAA issuer",
+      extra: "leak",
+    });
+    expect(clean).toEqual({
+      status: "used",
+      method: "rf_10y_plus_treasury_hqm_10y_spread",
+      risk_free_rate: 0.04,
+      credit_spread: 0.015,
+      hqm_spot_rate: 0.055,
+      hqm_observation_date: "2025-08-01",
+      corporate_series: "HQMCB10YR",
+      treasury_series: "GS10",
+      rating_scope: "A/AA/AAA high-quality market; not issuer-specific",
+    });
+  });
+
+  it("downgrades an incomplete used claim to unavailable", () => {
+    const clean = sanitizeCostOfDebtImputation({
+      status: "used",
+      risk_free_rate: 0.04,
+      credit_spread: NaN,
+      hqm_spot_rate: 0.055,
+      hqm_observation_date: "not-a-date",
+    });
+    expect(clean.status).toBe("unavailable");
+    expect(clean.credit_spread).toBeNull();
+    expect(clean.hqm_observation_date).toBeNull();
   });
 });
 
@@ -160,5 +208,7 @@ describe("fundamentals Kd honesty disclosures", () => {
     });
     expect(String(d.cost_of_debt_null_policy)).toMatch(/Other income|null Kd as 0%/i);
     expect(String(d.cost_of_debt_bank_caveat)).toMatch(/deposit/i);
+    expect(String(d.cost_of_debt_imputation)).toMatch(/high-quality market/i);
+    expect(String(d.cost_of_debt_imputation)).toMatch(/not an issuer-specific rating/i);
   });
 });
