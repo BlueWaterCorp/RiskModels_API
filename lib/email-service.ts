@@ -13,7 +13,7 @@ import { AutoRefillSuccessEmail } from "@/emails/auto-refill-success";
 import { AutoRefillFailedEmail } from "@/emails/auto-refill-failed";
 import { MonthlySpendResetEmail } from "@/emails/monthly-spend-reset";
 import { KeyExpiringEmail } from "@/emails/key-expiring";
-import { KeyIssuedEmail } from "@/emails/key-issued";
+import { KeyIssuedEmail, type KeyIssuedEmailProps } from "@/emails/setup-key-issued";
 import { SnapshotDigestEmail } from "@/emails/snapshot-digest";
 import type { SnapshotDigestEmailProps } from "@/emails/snapshot-digest";
 import { PrepaidReceiptEmail } from "@/emails/prepaid-receipt";
@@ -120,16 +120,7 @@ interface EmailData {
     manageKeysUrl: string;
     docsUrl: string;
   };
-  "key-issued": {
-    firstName: string;
-    keyName: string;
-    keyPrefix: string;
-    createdDateFormatted: string;
-    expiresAtFormatted: string;
-    termsUrl: string;
-    /** Full key — embedded into copy-paste blocks; send when available (e.g. right after mint). */
-    plaintextKey?: string;
-  };
+  "key-issued": KeyIssuedEmailProps;
   "snapshot-digest": SnapshotDigestEmailProps;
   "prepaid-receipt": PrepaidReceiptEmailProps;
 }
@@ -236,6 +227,7 @@ export async function sendEmail<T extends EmailTemplate>({
       to,
       subject,
       html: emailHtml,
+      ...(template === "key-issued" ? { replyTo: "conrad@bwmacro.com" } : {}),
     });
     const messageId = sent.id;
 

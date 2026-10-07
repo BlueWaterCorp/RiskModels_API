@@ -11,6 +11,8 @@ import {
 } from '@/lib/agent/notify-expiring-api-keys';
 import { API_TERMS_URL } from '@/emails/key-issued';
 import { parseValidatedSignupUtm, sanitizeGclid } from '@/lib/utm';
+import { saveSetup } from '@/lib/email-engagement';
+import { greetingName, parseWorkflow, parseAgentClient, setupExample } from '@/emails/engagement-content';
 import { persistFirstTouchAttribution } from '@/lib/agent/signup-attribution';
 
 export async function GET() {
@@ -35,7 +37,9 @@ export async function GET() {
       : 'active',
   }));
 
-  return NextResponse.json({ keys: keysWithStatus });
+  const { data: setup } = await admin.from('api_email_engagement')
+    .select('workflow,agent_client,paused_at').eq('user_id', user.id).maybeSingle();
+  return NextResponse.json({ keys: keysWithStatus, setup });
 }
 
 export async function POST(request: NextRequest) {
@@ -137,19 +141,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Preference failures never invalidate an already-issued key. The next queue refresh enrolls it.
+  let setup: Awaited<ReturnType<typeof saveSetup>> = null;
+  try { setup = await saveSetup(user.id, body.workflow, body.agent_client); }
+  catch (e) { console.warn('[agent-keys] setup preference save failed', e instanceof Error ? e.message : 'unknown'); }
+  const workflow = parseWorkflow(body.workflow) ?? parseWorkflow(setup?.workflow) ?? 'exploring';
+  const agentClient = workflow === 'agent' ? (parseAgentClient(body.agent_client) ?? parseAgentClient(setup?.agent_client)) : null;
+  const isFirstKey = !!setup && Date.parse(setup.started_at) === Date.parse(newKey.created_at);
   const expiresAt = newKey.expires_at as string | null;
   if (expiresAt) {
     try {
       const recipient = await resolveRecipient(user.id);
+      const { data: profile } = await admin.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
       if (recipient?.email) {
         const createdAt = newKey.created_at as string | undefined;
         const sendResult = await sendEmail({
           to: recipient.email,
-          subject:
-            'RiskModels.app — 5-minute setup (whether you use Cursor/Claude or just Python)',
+          subject: isFirstKey ? `RiskModels — ${setupExample(workflow, agentClient).title}` : 'Your new RiskModels API key',
           template: 'key-issued',
           data: {
-            firstName: recipient.name,
+            firstName: greetingName(profile?.full_name),
+            workflow, agentClient, isFirstKey,
             keyName: newKey.name ?? 'API key',
             keyPrefix: newKey.key_prefix ?? 'rm_agent_',
             createdDateFormatted: createdAt
@@ -182,6 +194,14 @@ export async function PATCH(request: NextRequest) {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));
+  if (body.action === 'setup') {
+    const choice = parseWorkflow(body.workflow);
+    if (!choice) return NextResponse.json({ error: 'Invalid setup choice.' }, { status: 400 });
+    try {
+      const setup = await saveSetup(user.id, choice, body.agent_client);
+      return NextResponse.json({ success: true, setup });
+    } catch { return NextResponse.json({ error: 'Could not save setup choice.' }, { status: 500 }); }
+  }
   const id = typeof body.id === 'string' ? body.id : null;
   const rawName = typeof body.name === 'string' ? body.name : null;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });

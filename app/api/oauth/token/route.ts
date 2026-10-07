@@ -1,3 +1,4 @@
+import { welcomeOAuthUser } from '@/lib/email-engagement';
 /**
  * POST /api/oauth/token — OAuth token endpoint.
  *
@@ -11,7 +12,7 @@
  * Public clients (token_endpoint_auth_method "none") — no client_secret; the
  * authorization_code grant is bound to the client via PKCE.
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateUserApiKey } from "@/lib/user-api-keys";
 import { ensureStarterCredits } from "@/lib/agent/billing";
@@ -63,7 +64,7 @@ async function parseBody(req: NextRequest): Promise<Record<string, string>> {
 }
 
 /** Mint a scoped rm_user_* access token + a rotating refresh token. */
-async function issueTokens(userId: string, clientId: string, clientName: string | null, scope: string) {
+async function issueTokens(userId: string, clientId: string, clientName: string | null, scope: string, onboarding = false) {
   const admin = createAdminClient();
   try {
     await ensureStarterCredits(userId);
@@ -72,14 +73,14 @@ async function issueTokens(userId: string, clientId: string, clientName: string 
   }
 
   const { plainKey, hashedKey, prefix } = generateUserApiKey("live");
-  const { error: keyErr } = await admin.from("user_generated_api_keys").insert({
+  const { data: issued, error: keyErr } = await admin.from("user_generated_api_keys").insert({
     user_id: userId,
     key_hash: hashedKey,
     key_prefix: prefix,
     name: `MCP OAuth${clientName ? `: ${clientName}` : ""}`,
     scopes: KEY_SCOPES,
     expires_at: new Date(Date.now() + ACCESS_TOKEN_TTL_S * 1000).toISOString(),
-  });
+  }).select("created_at").single();
   if (keyErr) throw new Error(`access key insert: ${keyErr.message}`);
 
   const refresh = randomToken(32);
@@ -91,6 +92,10 @@ async function issueTokens(userId: string, clientId: string, clientName: string 
     expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
   });
   if (refErr) throw new Error(`refresh token insert: ${refErr.message}`);
+  if (onboarding && issued?.created_at) after(async () => {
+    try { await welcomeOAuthUser(userId, issued.created_at); }
+    catch (e) { console.warn('[oauth] welcome failed', e instanceof Error ? e.message : 'unknown'); }
+  });
 
   return NextResponse.json(
     {
@@ -154,7 +159,7 @@ export async function POST(req: NextRequest) {
 
     const client = await getClient(clientId);
     try {
-      return await issueTokens(codeRow.user_id, clientId, client?.client_name ?? null, codeRow.scope);
+      return await issueTokens(codeRow.user_id, clientId, client?.client_name ?? null, codeRow.scope, true);
     } catch (e) {
       console.error("[oauth/token] issue (code) failed:", e);
       return tokenError("server_error", undefined, 500);
