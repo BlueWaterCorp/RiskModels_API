@@ -4,7 +4,8 @@
  * Takes signed dollar positions (short < 0, up to 1000) and returns beta-dollars,
  * the ETF hedge trades at L1/L2/L3, and an L3 risk split: systematic risk from
  * the book's raw-ETF exposure × ETF covariance, plus a diagonal approximation of
- * residual risk. ETFs held in the book count as exposure to themselves.
+ * residual risk. ETFs held in the book count as exposure to themselves. By
+ * default each name is hedged at its own L* level (`hedge_level: "lstar"`).
  *
  * Math: lib/portfolio/signed-exposure.ts. Loading: lib/portfolio/signed-exposure-data.ts.
  * Unlike /portfolio/risk-index, nothing is normalised or weight-averaged.
@@ -44,11 +45,14 @@ export const POST = withBilling(
       );
     }
 
-    const { positions, lookback_days } = validation.data;
+    const { positions, lookback_days, hedge_level } = validation.data;
 
     try {
       const fetchStart = performance.now();
-      const result = await computePortfolioExposure(positions, { lookbackDays: lookback_days });
+      const result = await computePortfolioExposure(positions, {
+        lookbackDays: lookback_days,
+        basis: hedge_level,
+      });
 
       if ("error" in result) {
         // Nothing in the book resolved to a modelled name: a 4xx, so not billed.

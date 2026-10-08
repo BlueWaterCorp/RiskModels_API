@@ -19,6 +19,7 @@ import {
   type DirectEtfInput,
   type EtfCovariance,
   type StockInput,
+  type Basis,
 } from "./signed-exposure";
 
 const IN_CHUNK = 200;
@@ -39,9 +40,14 @@ const STOCK_KEYS: V3MetricKey[] = [
   "l3_sec_er",
   "l3_sub_er",
   "l3_res_er",
+  "l1_res_er",
+  "l2_res_er",
+  "lstar_level",
 ];
 /** Legs that can be 0/null in security_history_latest while Zarr has them. */
 const HR_OVERLAY_KEYS: V3MetricKey[] = ["l2_sec_hr", "l3_sec_hr", "l3_sub_hr"];
+/** L* can be absent from security_history_latest until the ERM3 sync backfills it. */
+const NULL_OVERLAY_KEYS: V3MetricKey[] = ["lstar_level"];
 
 export interface ExposurePosition {
   ticker: string;
@@ -145,7 +151,7 @@ export function buildEtfCovariance(
 
 export async function computePortfolioExposure(
   positions: ExposurePosition[],
-  opts: { lookbackDays: number },
+  opts: { lookbackDays: number; basis?: Basis },
 ) {
   const inputGross = positions.reduce((a, p) => a + Math.abs(p.value), 0);
   const tickers = [...new Set(positions.map((p) => p.ticker.toUpperCase()))];
@@ -207,10 +213,12 @@ export async function computePortfolioExposure(
     const l = latest.get(sym);
     if (!l) return true;
     if (l.teo !== snapshotTeo) return false;
-    return HR_OVERLAY_KEYS.some((k) => {
-      const v = l.metrics[k];
-      return v == null || v === 0;
-    });
+    return (
+      HR_OVERLAY_KEYS.some((k) => {
+        const v = l.metrics[k];
+        return v == null || v === 0;
+      }) || NULL_OVERLAY_KEYS.some((k) => l.metrics[k] == null)
+    );
   });
   const zarrAtSnapshot = new Map<string, Record<string, number | null>>();
   for (const part of chunks(needZarr, IN_CHUNK)) {
@@ -236,7 +244,9 @@ export async function computePortfolioExposure(
       metrics = {};
       for (const k of STOCK_KEYS) {
         const lv = l.metrics[k] ?? null;
-        metrics[k] = HR_OVERLAY_KEYS.includes(k) && (lv == null || lv === 0) ? (z?.[k] ?? lv) : lv;
+        if (HR_OVERLAY_KEYS.includes(k) && (lv == null || lv === 0)) metrics[k] = z?.[k] ?? lv;
+        else if (NULL_OVERLAY_KEYS.includes(k) && lv == null) metrics[k] = z?.[k] ?? null;
+        else metrics[k] = lv;
       }
     } else if (!l && z) {
       metrics = Object.fromEntries(STOCK_KEYS.map((k) => [k, z[k] ?? null]));
@@ -296,6 +306,7 @@ export async function computePortfolioExposure(
     directEtfs: [...direct.values()],
     inputGrossUsd: inputGross,
     cov,
+    basis: opts.basis ?? "lstar",
   });
 
   const long = positions.filter((p) => p.value > 0).reduce((a, p) => a + p.value, 0);
