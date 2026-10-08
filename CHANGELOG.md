@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-08 — Python SDK 0.5.0
+
+- `riskmodels-py` 0.5.0 on PyPI adds `client.exposure_history(tickers)` and `ExposureHistoryPack.exposure(holdings)`: download the month-end model history for a list of names and join it with dated holdings locally (holdings never leave the client).
+
 ## 2026-10-08 — Exposure history files move to a private bucket
 
 - Fix: `POST /portfolio/exposure/history` returned 500 on every live request because it uploaded Parquet to the public `reports` bucket, which accepts only PDF/PNG. Feed files now go to the private `exposure-history` bucket (BWMACRO migration `20261008220000_exposure_history_bucket`) and are served only via 1-hour signed URLs.
