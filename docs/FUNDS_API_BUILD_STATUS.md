@@ -44,13 +44,19 @@
 
 ## Cross-repo mirror convention
 
-`mcp/data/openapi.json` is canonical here. **Every** PR that touches
-`OPENAPI_SPEC.yaml` requires a paired byte-for-byte copy on
-`Risk_Models/riskmodels_net/mcp-server/data/openapi.json`. The
-`detect-drift` CI workflow blocks the RiskModels_API PR until the
-mirror is on Risk_Models main.
+> **Superseded 2026-10-08.** The Risk_Models mirror is now updated
+> automatically after merge (`sync-mcp-to-risk-models.yml`), and PR-time
+> CI only checks that generated files match their sources
+> (`drift-detection.yml` → `generated-artifacts`). No paired mirror PR is
+> needed. The convention below is kept as history.
 
-Convention used so far:
+`mcp/data/openapi.json` is canonical here. During the funds build, **every** PR
+that touched `OPENAPI_SPEC.yaml` required a paired byte-for-byte copy on
+`Risk_Models/riskmodels_net/mcp-server/data/openapi.json`, and the old
+`detect-drift` CI workflow blocked the RiskModels_API PR until the mirror
+was on Risk_Models main.
+
+Convention used then:
 
 ```
 1. RiskModels_API: feat/<branch> with code + spec changes

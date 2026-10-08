@@ -12,7 +12,8 @@
 #
 # REQUIRED SECRET (repo: RiskModels_API): REPO_ACCESS_TOKEN
 #   - contents: write on BlueWaterCorp/Risk_Models
-#   - Same token pattern as Cross-Repo Drift Detection.
+#   - Same token as the mirror job in drift-detection.yml, which re-checks the
+#     mirror against main after every run of this workflow.
 #
 name: Sync MCP data to Risk_Models
 
@@ -22,7 +23,9 @@ on:
     paths:
       - "OPENAPI_SPEC.yaml"
       - "mcp/data/**"
+      - "lib/agent/capabilities.ts"
       - "scripts/yaml-to-json.js"
+      - "scripts/generate-mcp-capabilities.mjs"
   schedule:
     # Monday 06:00 UTC — reconcile mirror if a commit omitted regen or copy
     - cron: "0 6 * * 1"
@@ -55,8 +58,10 @@ jobs:
       - name: Install dependencies (for openapi build)
         run: npm ci
 
-      - name: Regenerate OpenAPI JSON
-        run: npm run build:openapi
+      - name: Regenerate OpenAPI and capabilities JSON
+        run: |
+          npm run build:openapi
+          npm run build:capabilities
 
       - name: Clone Risk_Models
         env:
