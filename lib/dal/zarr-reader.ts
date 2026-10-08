@@ -2299,3 +2299,136 @@ export async function readExposureMonthEndPanel(params: {
 
   return { teos, bySymbol, etfs, cov, attrs: (grp.attrs ?? {}) as Record<string, unknown> };
 }
+
+// ---------------------------------------------------------------------------
+// Daily exposure history straight from the hedge-weights + returns stores
+// ---------------------------------------------------------------------------
+
+/** Panel variable → hedge-weights store variable (lstar_level comes from the returns store). */
+const DAILY_HEDGE_VARS: Record<Exclude<ExposurePanelVar, "lstar_level">, string> = {
+  l1_mkt_hr: "L1_market_HR",
+  l2_mkt_hr: "L2_market_HR",
+  l2_sec_hr: "L2_sector_HR",
+  l3_mkt_hr: "L3_market_HR",
+  l3_sec_hr: "L3_sector_HR",
+  l3_sub_hr: "L3_subsector_HR",
+  l1_res_er: "L1_residual_ER",
+  l2_res_er: "L2_residual_ER",
+  l3_res_er: "L3_residual_ER",
+  l3_mkt_er: "L3_market_ER",
+  l3_sec_er: "L3_sector_ER",
+  l3_sub_er: "L3_subsector_ER",
+  stock_var: "_stock_var",
+};
+
+export interface DailyExposureHistory {
+  /** Trading days in range, ascending. */
+  teos: string[];
+  /** symbol → variable → one value per teo (NaN where missing). */
+  bySymbol: Map<string, Record<ExposurePanelVar, Float32Array>>;
+}
+
+/**
+ * Read every requested name's daily values over [start, end] as typed arrays.
+ *
+ * The stores are chunked [all days, 64 symbols], so each needed symbol chunk
+ * is fetched once per variable and every requested column is copied out of it.
+ * Cost grows with the number of names, not the date range. Avoids the
+ * one-object-per-cell rows of readHistorySlice, which need gigabytes for a few
+ * hundred names of full history.
+ */
+const DAILY_READ_CONCURRENCY = 16;
+
+async function runPool(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      await tasks[i]!();
+    }
+  });
+  await Promise.all(workers);
+}
+
+export async function readDailyExposureHistory(params: {
+  symbols: string[];
+  start?: string;
+  end?: string;
+}): Promise<DailyExposureHistory | null> {
+  const hedge = await openZarrGroup(zarrHedgeBasename());
+  const rets = await openZarrGroup(zarrReturnsBasename());
+  if (!hedge || !rets) return null;
+  const teosAll = await readTeoStrings(hedge);
+  const retTeos = await readTeoStrings(rets);
+  const hSym = await readSymbolIndexMap(hedge);
+  const rSym = await readSymbolIndexMap(rets);
+  if (!teosAll?.length || !retTeos?.length || !hSym || !rSym) return null;
+
+  const t0 = params.start ? lowerBound(teosAll, params.start) : 0;
+  const t1 = params.end ? upperBoundInclusive(teosAll, params.end) : teosAll.length - 1;
+  if (t1 < t0) return { teos: [], bySymbol: new Map() };
+  const teos = teosAll.slice(t0, t1 + 1);
+  const T = teos.length;
+  // The returns store shares the hedge store's day axis; map by date to be safe.
+  const r0 = lowerBound(retTeos, teos[0]!);
+  const r1 = upperBoundInclusive(retTeos, teos[T - 1]!);
+
+  const bySymbol = new Map<string, Record<ExposurePanelVar, Float32Array>>();
+  for (const s of params.symbols) {
+    if (hSym.has(s)) bySymbol.set(s, {} as Record<ExposurePanelVar, Float32Array>);
+  }
+
+  async function readInto(
+    grp: Group<Readable>,
+    varName: string,
+    symIdx: Map<string, number>,
+    out: ExposurePanelVar,
+    rowStart: number,
+    rowEnd: number,
+    rowTeos: string[],
+  ): Promise<Array<() => Promise<void>>> {
+    const arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    const chunkW = (arr.chunks?.[1] as number | undefined) ?? 64;
+    const groups = new Map<number, Array<[string, number]>>();
+    for (const s of bySymbol.keys()) {
+      const j = symIdx.get(s);
+      if (j === undefined) continue;
+      const c = Math.floor(j / chunkW);
+      (groups.get(c) ?? groups.set(c, []).get(c)!).push([s, j]);
+    }
+    // Align the source rows to `teos` by date (identical axes in practice).
+    const pos = new Map(rowTeos.slice(rowStart, rowEnd + 1).map((d, i) => [d, i] as const));
+    const tasks = [...groups].map(([c, members]) => async () => {
+      const c0 = c * chunkW;
+      const c1 = Math.min(c0 + chunkW, (arr.shape?.[1] as number | undefined) ?? c0 + chunkW);
+      const ch = await get(arr, [slice(rowStart, rowEnd + 1), slice(c0, c1)]);
+      const d = ch.data as Float32Array;
+      const w = c1 - c0;
+      for (const [s, j] of members) {
+        const col = new Float32Array(T).fill(NaN);
+        for (let t = 0; t < T; t++) {
+          const r = pos.get(teos[t]!);
+          if (r !== undefined) col[t] = d[r * w + (j - c0)]!;
+        }
+        bySymbol.get(s)![out] = col;
+      }
+    });
+    return tasks;
+  }
+
+  // One task per (variable, symbol chunk); run them DAILY_READ_CONCURRENCY at a time.
+  // Sequential reads were ~0.2 s per chunk: 76 s for 25 names.
+  const taskLists = await Promise.all([
+    ...(Object.entries(DAILY_HEDGE_VARS) as Array<[ExposurePanelVar, string]>).map(([out, src]) =>
+      readInto(hedge, src, hSym, out, t0, t1, teosAll),
+    ),
+    readInto(rets, "lstar_level", rSym, "lstar_level", r0, r1, retTeos),
+  ]);
+  await runPool(taskLists.flat(), DAILY_READ_CONCURRENCY);
+  // lstar_level 0 = no recommendation.
+  for (const v of bySymbol.values()) {
+    const l = v.lstar_level;
+    if (l) for (let t = 0; t < l.length; t++) if (l[t] === 0) l[t] = NaN;
+  }
+  return { teos, bySymbol };
+}

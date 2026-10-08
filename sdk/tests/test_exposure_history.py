@@ -111,3 +111,40 @@ def test_load_pack_round_trips_parquet() -> None:
     again = load_pack(b1.getvalue(), b2.getvalue(), {"names_delivered": 1})
     assert again.teos == pack.teos
     assert again.meta["names_delivered"] == 1
+
+
+def test_daily_rows_use_the_latest_month_end_covariance() -> None:
+    days = ["2024-02-28", "2024-02-29", "2024-03-01", "2024-03-04"]
+    names = pd.DataFrame([
+        {"teo": d, "ticker": "NVDA", "symbol": "S-NVDA", "sector_etf": "XLK", "subsector_etf": "SMH",
+         "l1_mkt_beta": 1.5, "l1_mkt_hr": -1.5, "l1_res_er": 0.6, "stock_var": 9e-4, "lstar_level": 1.0}
+        for d in days
+    ])
+    cov = pd.DataFrame([
+        {"teo": "2024-01-31", "etf_i": "SPY", "etf_j": "SPY", "cov": 1e-4},
+        {"teo": "2024-02-29", "etf_i": "SPY", "etf_j": "SPY", "cov": 4e-4},
+    ])
+    pack = ExposureHistoryPack(names=names, cov=cov)
+    assert pack.covariance_at("2024-02-28")[1][0, 0] == pytest.approx(1e-4)  # January month-end
+    assert pack.covariance_at("2024-03-04")[1][0, 0] == pytest.approx(4e-4)  # February month-end
+    assert pack.covariance_at("2023-12-29") == ([], pytest.approx(np.zeros((0, 0))))
+
+    series = pack.exposure({"2024-02-01": {"NVDA": 100_000}})
+    assert series["teo"].tolist() == days
+    sys_vol = series.set_index("teo")["systematic_daily_vol_usd"]
+    # x = -H = 150k of SPY; vol = 150k * sqrt(cov)
+    assert sys_vol["2024-02-28"] == pytest.approx(150_000 * 1e-2)
+    assert sys_vol["2024-03-01"] == pytest.approx(150_000 * 2e-2)
+
+
+def test_load_pack_combines_yearly_files() -> None:
+    a = pd.DataFrame([{"teo": "2023-12-29", "ticker": "X"}])
+    b = pd.DataFrame([{"teo": "2024-01-02", "ticker": "X"}])
+    c = pd.DataFrame([{"teo": "2023-12-29", "etf_i": "SPY", "etf_j": "SPY", "cov": 1e-4}])
+    bufs = []
+    for df in (a, b, c):
+        buf = io.BytesIO()
+        df.to_parquet(buf)
+        bufs.append(buf.getvalue())
+    pack = load_pack([bufs[0], bufs[1]], bufs[2])
+    assert pack.teos == ["2023-12-29", "2024-01-02"]

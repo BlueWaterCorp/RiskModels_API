@@ -153,8 +153,27 @@ override, no L* fallback, diagonal residual approximation, √252
 annualisation) and is tested against the TypeScript implementation on the
 same inputs.
 
+## Daily history
+
+`POST /api/portfolio/exposure/history/daily` delivers the same columns for every
+trading day. It reads the ERM3 hedge-weights and returns stores directly — no
+extra stored data — because those stores are chunked `[all days, 64 symbols]`:
+fetching full history for a set of names is the access they are built for, and
+the cost grows with names, not dates. Each needed symbol chunk is read once per
+variable, 16 at a time, into typed arrays (`readDailyExposureHistory`).
+
+| Full daily history since 2006 | Read | Parquet write | Output |
+|---|---|---|---|
+| 25 names | 7 s | 1 s | 2.4 MB |
+| 1000 names | 18 s | 51 s | 95.5 MB in yearly files |
+
+Names arrive as one Parquet file per calendar year. The ETF covariance stays
+month-end (from the panel): a 252-day covariance barely moves day to day, and
+each day uses the latest month-end on or before it. Price: to be confirmed
+(placeholder at the month-end feed's prices).
+
 ## Not in scope
 
 - Size/value (L4) — backlog C.16.
-- Daily or weekly history.
+- Weekly history.
 - Point-in-time sector mapping.

@@ -15,7 +15,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomUUID } from "crypto";
-import { EXPOSURE_PANEL_VARS, type ExposurePanelSlice } from "@/lib/dal/zarr-reader";
+import {
+  EXPOSURE_PANEL_VARS,
+  type DailyExposureHistory,
+  type ExposurePanelSlice,
+} from "@/lib/dal/zarr-reader";
 const parquet = require("parquetjs-lite"); // eslint-disable-line
 
 export const MARKET_ETF = "SPY";
@@ -116,6 +120,66 @@ export function buildHistoryTables(
   return { names: rows, cov, delivered, noData, covEtfs: idx.map(([e]) => e) };
 }
 
+/** Symbols with at least one finite daily value (delivered) and those without. */
+export function dailyCoverage(daily: DailyExposureHistory, names: HistoryName[]) {
+  const delivered: string[] = [];
+  const noData: string[] = [];
+  for (const n of names) {
+    const cols = daily.bySymbol.get(n.symbol);
+    const any =
+      cols &&
+      EXPOSURE_PANEL_VARS.some((v) => {
+        const c = cols[v];
+        if (!c) return false;
+        for (let t = 0; t < c.length; t++) if (Number.isFinite(c[t])) return true;
+        return false;
+      });
+    (any ? delivered : noData).push(n.symbol);
+  }
+  return { delivered, noData };
+}
+
+/** Calendar years present in the daily axis. */
+export function dailyYears(daily: DailyExposureHistory): string[] {
+  return [...new Set(daily.teos.map((d) => d.slice(0, 4)))];
+}
+
+/**
+ * Daily rows for one calendar year (same columns as the month-end feed). Built
+ * a year at a time so a 1000-name, 20-year request never holds every row.
+ */
+export function buildDailyNameRows(
+  daily: DailyExposureHistory,
+  names: HistoryName[],
+  year: string,
+): HistoryTables["names"] {
+  const rows: HistoryTables["names"] = [];
+  const idx: number[] = [];
+  for (let t = 0; t < daily.teos.length; t++) if (daily.teos[t]!.startsWith(year)) idx.push(t);
+  for (const n of names) {
+    const cols = daily.bySymbol.get(n.symbol);
+    if (!cols) continue;
+    for (const t of idx) {
+      if (!EXPOSURE_PANEL_VARS.some((v) => Number.isFinite(cols[v]?.[t] ?? NaN))) continue;
+      const hr = cols.l1_mkt_hr?.[t];
+      const row: Record<string, string | number | null> = {
+        teo: daily.teos[t]!,
+        ticker: n.tickers[0] ?? n.symbol,
+        symbol: n.symbol,
+        sector_etf: n.sector_etf,
+        subsector_etf: n.subsector_etf,
+        l1_mkt_beta: finite(hr) ? (hr === 0 ? 0 : -hr) : null,
+      };
+      for (const v of EXPOSURE_PANEL_VARS) {
+        const x = cols[v]?.[t];
+        row[v] = finite(x) ? x : null;
+      }
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
 /**
  * Parquet with a fixed schema: strings UTF8, numbers FLOAT (the panel is
  * float32, so nothing is lost), every column GZIP-compressed.
@@ -149,4 +213,36 @@ export async function toParquet(
       /* ignore */
     }
   }
+}
+
+/** Resolve requested tickers into modelled names (netted by symbol), ETFs held, and drops. */
+export async function resolveHistoryNames(
+  tickers: string[],
+  resolve: (t: string[]) => Promise<Map<string, { symbol: string; ticker: string; asset_type: string | null; sector_etf: string | null; subsector_etf: string | null }>>,
+): Promise<{ names: HistoryName[]; directEtfs: string[]; dropped: Array<{ ticker: string; reason: string }> }> {
+  const upper = [...new Set(tickers.map((t) => t.toUpperCase()))];
+  const registry = await resolve(upper);
+  const dropped: Array<{ ticker: string; reason: string }> = [];
+  const bySymbol = new Map<string, HistoryName>();
+  const directEtfs: string[] = [];
+  for (const t of upper) {
+    const row = registry.get(t);
+    if (!row) {
+      dropped.push({ ticker: t, reason: "symbol_not_found" });
+      continue;
+    }
+    if ((row.asset_type ?? "").toLowerCase() === "etf") {
+      directEtfs.push(row.ticker.toUpperCase());
+      continue;
+    }
+    const cur = bySymbol.get(row.symbol) ?? {
+      symbol: row.symbol,
+      tickers: [],
+      sector_etf: row.sector_etf ?? null,
+      subsector_etf: row.subsector_etf ?? null,
+    };
+    cur.tickers.push(t);
+    bySymbol.set(row.symbol, cur);
+  }
+  return { names: [...bySymbol.values()], directEtfs, dropped };
 }

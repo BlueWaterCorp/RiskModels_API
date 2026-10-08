@@ -226,24 +226,40 @@ def compute_signed_exposure(
 
 @dataclass
 class ExposureHistoryPack:
-    """The downloaded feed: ``names`` (long, one row per name per month-end) and ``cov``."""
+    """The downloaded feed: ``names`` (long, one row per name per date) and ``cov``.
+
+    ``names`` is month-end or daily depending on the request; ``cov`` is always
+    month-end. Each date uses the latest covariance month-end on or before it.
+    """
 
     names: pd.DataFrame
     cov: pd.DataFrame
     meta: dict = field(default_factory=dict)
+    _cov_cache: dict = field(default_factory=dict, repr=False)
 
     @property
     def teos(self) -> list[str]:
         return sorted(self.names["teo"].unique().tolist()) if not self.names.empty else []
 
+    @property
+    def cov_teos(self) -> list[str]:
+        return sorted(self.cov["teo"].unique().tolist()) if not self.cov.empty else []
+
     def covariance_at(self, teo: str) -> tuple[list[str], np.ndarray]:
-        c = self.cov[self.cov["teo"] == teo]
-        etfs = sorted(set(c["etf_i"]) | set(c["etf_j"]))
-        k = {e: i for i, e in enumerate(etfs)}
-        S = np.full((len(etfs), len(etfs)), np.nan)
-        for i, j, v in zip(c["etf_i"], c["etf_j"], c["cov"]):
-            S[k[i], k[j]] = S[k[j], k[i]] = v
-        return etfs, S
+        """ETF covariance from the latest month-end on or before ``teo`` (empty if none)."""
+        eligible = [t for t in self.cov_teos if t <= teo]
+        if not eligible:
+            return [], np.zeros((0, 0))
+        key = eligible[-1]
+        if key not in self._cov_cache:
+            c = self.cov[self.cov["teo"] == key]
+            etfs = sorted(set(c["etf_i"]) | set(c["etf_j"]))
+            k = {e: i for i, e in enumerate(etfs)}
+            S = np.full((len(etfs), len(etfs)), np.nan)
+            for i, j, v in zip(c["etf_i"], c["etf_j"], c["cov"]):
+                S[k[i], k[j]] = S[k[j], k[i]] = v
+            self._cov_cache[key] = (etfs, S)
+        return self._cov_cache[key]
 
     def exposure(self, holdings: Any, *, basis: Basis = "lstar") -> pd.DataFrame:
         """Exposure at each month-end for the book held then.
@@ -263,12 +279,13 @@ class ExposureHistoryPack:
                 stacklevel=2,
             )
         etf_universe = set(self.cov["etf_i"]) | set(self.cov["etf_j"])
+        by_teo = {t: g.set_index("ticker") for t, g in self.names.groupby("teo", sort=True)}
         rows, detail = [], {}
         for teo in self.teos:
             book = _book_at(dated, teo)
             if book is None:
                 continue
-            panel = self.names[self.names["teo"] == teo].set_index("ticker")
+            panel = by_teo[teo]
             gross = float(sum(abs(v) for v in book.values()))
             stocks, direct, missing = [], {}, []
             for t, v in book.items():
@@ -326,10 +343,9 @@ def _book_at(dated: dict[str | None, dict[str, float]], teo: str) -> dict[str, f
     return dated[max(eligible)] if eligible else None
 
 
-def load_pack(names_bytes: bytes, cov_bytes: bytes, meta: dict | None = None) -> ExposureHistoryPack:
-    """Build a pack from the two Parquet payloads."""
-    return ExposureHistoryPack(
-        names=pd.read_parquet(io.BytesIO(names_bytes)),
-        cov=pd.read_parquet(io.BytesIO(cov_bytes)),
-        meta=meta or {},
-    )
+def load_pack(names_bytes: bytes | list[bytes], cov_bytes: bytes, meta: dict | None = None) -> ExposureHistoryPack:
+    """Build a pack from the Parquet payloads (daily names arrive as one file per year)."""
+    parts = names_bytes if isinstance(names_bytes, list) else [names_bytes]
+    frames = [pd.read_parquet(io.BytesIO(b)) for b in parts]
+    names = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return ExposureHistoryPack(names=names, cov=pd.read_parquet(io.BytesIO(cov_bytes)), meta=meta or {})

@@ -8422,6 +8422,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /portfolio/exposure/history/daily:
+    post:
+      summary: Exposure history feed, daily — every trading day for a list of names (join locally)
+      description: >
+        Daily version of `POST /portfolio/exposure/history`: the same columns for every trading
+        day since 2006 (or `start`), read directly from the ERM3 hedge-weights and returns stores.
+        Names are delivered as one Parquet file per calendar year (`files.names.parts`); the ETF
+        covariance stays month-end, and each day should use the latest month-end on or before it
+        (the Python SDK does this: `client.exposure_history(tickers, frequency="daily")`).
+        Tickers only; holdings never leave the client. Derived data only.
+
+
+        Large requests take longer: measured 2026-10-08, full history for 1000 names read in ~18 s
+        and wrote ~95 MB of Parquet in ~51 s. Identical requests reuse the stored files.
+
+
+        **Billing:** per successful call, by names delivered. Price to be confirmed; currently the
+        month-end feed's: $1.25 up to 25 names, $5.00 above.
+      operationId: postPortfolioExposureHistoryDaily
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-exposure-history-daily
+        tier: premium
+        model: per_request
+        cost_usd: 1.25
+        size_tiers:
+          - { min_items: 26, cost_usd: 5.0 }
+        currency: USD
+        billing_code: portfolio_exposure_history_daily_v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tickers]
+              properties:
+                tickers:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: { type: string }
+                start: { type: string, format: date, description: "First day. Default 2006-01-01." }
+                end: { type: string, format: date, description: "Last day. Default latest." }
+      responses:
+        "200":
+          description: Signed Parquet URLs (names per year, month-end covariance) plus coverage.
+        "400":
+          description: Invalid request.
+        "422":
+          description: Nothing to deliver. Not charged.
+        "503":
+          description: Daily stores or the month-end covariance panel unavailable.
   /portfolio/exposure/history:
     post:
       summary: Exposure history feed — month-end model history for a list of names (join locally)

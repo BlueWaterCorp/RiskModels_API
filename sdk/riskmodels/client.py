@@ -1796,8 +1796,12 @@ class RiskModelsClient:
         *,
         start: str | None = None,
         end: str | None = None,
+        frequency: Literal["month_end", "daily"] = "month_end",
     ) -> Any:
-        """Download the month-end model history for ``tickers`` (POST /portfolio/exposure/history).
+        """Download the model history for ``tickers`` (POST /portfolio/exposure/history[/daily]).
+
+        ``frequency="daily"`` returns every trading day (one file per year, downloaded and
+        combined here); the ETF covariance is month-end either way.
 
         Only tickers are sent — never position values — so holdings stay on this machine.
         Join the result with your dated holdings locally::
@@ -1819,15 +1823,20 @@ class RiskModelsClient:
             body["start"] = start
         if end:
             body["end"] = end
-        meta, _lineage, _r = self._transport.request("POST", "/portfolio/exposure/history", json=body)
+        path = "/portfolio/exposure/history/daily" if frequency == "daily" else "/portfolio/exposure/history"
+        meta, _lineage, _r = self._transport.request("POST", path, json=body)
         files = meta.get("files", {}) if isinstance(meta, dict) else {}
+        name_urls = [p["url"] for p in files["names"].get("parts", [])] or [files["names"]["url"]]
         # Signed storage URLs: fetched without the API key (storage rejects non-JWT bearers).
-        with httpx.Client(timeout=120.0, follow_redirects=True) as dl:
-            names = dl.get(files["names"]["url"])
-            names.raise_for_status()
+        with httpx.Client(timeout=300.0, follow_redirects=True) as dl:
+            names = []
+            for u in name_urls:
+                r = dl.get(u)
+                r.raise_for_status()
+                names.append(r.content)
             cov = dl.get(files["cov"]["url"])
             cov.raise_for_status()
-        return load_pack(names.content, cov.content, meta)
+        return load_pack(names, cov.content, meta)
 
     def pair_trade_neutralization(
         self,

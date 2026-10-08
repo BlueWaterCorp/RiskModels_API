@@ -64,6 +64,8 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "portfolio/exposure": "portfolio-exposure",
   "portfolio-exposure-history": "portfolio-exposure-history",
   "portfolio/exposure/history": "portfolio-exposure-history",
+  "portfolio-exposure-history-daily": "portfolio-exposure-history-daily",
+  "portfolio/exposure/history/daily": "portfolio-exposure-history-daily",
   "macro-factors": "macro-factor-series",
   "portfolio-risk-snapshot": "portfolio-risk-snapshot",
   "risk-snapshot": "portfolio-risk-snapshot",

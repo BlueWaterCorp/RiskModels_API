@@ -131,7 +131,7 @@ export async function listSnapshots(
  */
 export async function signExposureHistoryFile(
   cacheKey: string,
-  name: "names" | "cov",
+  name: string,
   expiresIn = 3600,
 ): Promise<string | null> {
   const supabase = createAdminClient();
@@ -170,7 +170,7 @@ export async function touchExposureHistoryFolder(
 /** Upload an exposure-history feed file (Parquet) and return its signed URL. */
 export async function uploadExposureHistoryFile(
   cacheKey: string,
-  name: "names" | "cov",
+  name: string,
   bytes: Buffer,
   expiresIn = 3600,
 ): Promise<string> {
