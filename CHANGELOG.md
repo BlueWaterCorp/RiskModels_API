@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-08 — `/portfolio/exposure` hedges each name at its L* level by default
+
+- New `hedge_level` parameter, default `"lstar"`: each name is hedged and its residual measured at its own L* level (`lstar_level`, 1–3). L* stops above a layer that adds no explanatory value, which is where negative incremental explained-risk shares come from. `"l1"`, `"l2"` and `"l3"` force one level for every name.
+- `hedges` now carries `lstar` alongside `l1`/`l2`/`l3`, with `names_by_level`. Names with no usable L* fall back to the deepest level with complete data and are listed in `coverage.lstar_fallback`.
+- On a 30-name sample of a real long/short book, L* needed 12 ETF legs and $1.99M of hedge trades against 28 legs and $3.18M at L3, for the same total risk.
+
 ## 2026-10-08 — `POST /portfolio/exposure`: long/short book exposure and L3 risk
 
 - New endpoint for signed books: up to 1000 positions as dollar values (short < 0), netted by security and never normalised. The existing portfolio endpoints require positive weights and average per-name shares, so they cannot represent a long/short book.

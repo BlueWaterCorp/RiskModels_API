@@ -305,6 +305,8 @@ export const PortfolioExposureRequestSchema = z.object({
     .min(1, "At least one position is required")
     .max(1000, "Maximum 1000 positions per request"),
   lookback_days: z.coerce.number().int().min(60).max(756).default(252),
+  /** "lstar" (default): each name at its own L* level. l1/l2/l3: one level for every name. */
+  hedge_level: z.enum(["lstar", "l1", "l2", "l3"]).default("lstar"),
 });
 
 export type PortfolioExposureRequest = z.infer<typeof PortfolioExposureRequestSchema>;

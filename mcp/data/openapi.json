@@ -11826,7 +11826,7 @@
     "/portfolio/exposure": {
       "post": {
         "summary": "Long/short portfolio exposure and L3 risk (signed dollar positions)",
-        "description": "Signed book of up to 1000 positions as dollar market values (short < 0). Nothing is normalised, so a book that nets to roughly zero is a valid input. Use this instead of `/portfolio/risk-index`, `/portfolio/risk-snapshot` or `/snapshot` for any book with shorts; those endpoints require positive weights. Repeated tickers and share classes of one security are netted before any squaring.\n\n**Returns** - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF). - `hedges.l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per\n  $1 long stock, negative = short), `direct_etf_exposure_usd` (the book's own ETF holdings),\n  and `total_neutralizing_trade_usd` = stock hedge − direct holdings.\n- `risk` (L3): systematic variance xᵀΣx, where x is the book's raw-ETF exposure (−stock hedge\n  + direct holdings) and Σ is the sample covariance of daily ETF returns over\n  `lookback_days` ending on `as_of.snapshot_teo`. Layer contributions xₗᵀΣx sum to the\n  systematic variance and can be negative. Residual variance is Σ value²·stock_var·l3_res_er,\n  a diagonal approximation that ignores residual covariance across names (including common\n  size/value exposure, which stays in the L3 residual); it is an approximation, not a bound.\n  Volatility is annualised with √252.\n- `risk.reconciliation`: per-name gap between the covariance-implied systematic variance and\n  the model's own split, stock_var·(1 − l3_res_er).\n- `coverage`: share of submitted gross used by each calculation, dropped positions\n  (`symbol_not_found`, `no_risk_metrics`, `stale_metrics`), and ETFs without covariance.\n\n\n**Model date.** Every name is read at one `snapshot_teo` (the most common latest date). Names whose latest row is on another date are dropped as `stale_metrics`. Missing L2/L3 sector and subsector hedge legs are filled from Zarr at that same date. ETF-to-sector mapping is the current registry, not point-in-time.\n\n**Billing:** $0.25 per successful call regardless of book size. A request with no modelled positions returns 422 and is not charged.\n",
+        "description": "Signed book of up to 1000 positions as dollar market values (short < 0). Nothing is normalised, so a book that nets to roughly zero is a valid input. Use this instead of `/portfolio/risk-index`, `/portfolio/risk-snapshot` or `/snapshot` for any book with shorts; those endpoints require positive weights. Repeated tickers and share classes of one security are netted before any squaring.\n\n**Returns** - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF). - `hedges.lstar|l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per\n  $1 long stock, negative = short), `direct_etf_exposure_usd` (the book's own ETF holdings),\n  and `total_neutralizing_trade_usd` = stock hedge − direct holdings.\n- `risk` (at `hedge_level`): systematic variance xᵀΣx, where x is the book's raw-ETF exposure (−stock hedge\n  + direct holdings) and Σ is the sample covariance of daily ETF returns over\n  `lookback_days` ending on `as_of.snapshot_teo`. Layer contributions xₗᵀΣx sum to the\n  systematic variance and can be negative. Residual variance is Σ value²·stock_var·l3_res_er,\n  using each name's residual share at its level (lK_res_er), a diagonal approximation that\n  ignores residual covariance across names (including common size/value exposure, which\n  stays in the residual); it is an approximation, not a bound.\n  Volatility is annualised with √252.\n- `risk.reconciliation`: per-name gap between the covariance-implied systematic variance and\n  the model's own split, stock_var·(1 − l3_res_er).\n- `coverage`: share of submitted gross used by each calculation, dropped positions\n  (`symbol_not_found`, `no_risk_metrics`, `stale_metrics`), and ETFs without covariance.\n\n\n**Hedge level.** Default `hedge_level: \"lstar\"` hedges and measures each name at its own L* level (`lstar_level`, 1–3). L* stops above a layer that adds no explanatory value, which is where negative incremental explained-risk shares come from. Names without an L* use the deepest level with complete data and are listed in `coverage.lstar_fallback`. `hedge_level: \"l1\" | \"l2\" | \"l3\"` forces one level for every name. `hedges` always carries all four so the levels can be compared.\n\n**Model date.** Every name is read at one `snapshot_teo` (the most common latest date). Names whose latest row is on another date are dropped as `stale_metrics`. Missing L2/L3 sector and subsector hedge legs are filled from Zarr at that same date. ETF-to-sector mapping is the current registry, not point-in-time.\n\n**Billing:** $0.25 per successful call regardless of book size. A request with no modelled positions returns 422 and is not charged.\n",
         "operationId": "postPortfolioExposure",
         "tags": [
           "Risk Metrics"
@@ -11876,6 +11876,17 @@
                     "maximum": 756,
                     "default": 252,
                     "description": "Trading days in the ETF covariance window. 252 matches the ERM3 estimation window."
+                  },
+                  "hedge_level": {
+                    "type": "string",
+                    "enum": [
+                      "lstar",
+                      "l1",
+                      "l2",
+                      "l3"
+                    ],
+                    "default": "lstar",
+                    "description": "Level each name is hedged and measured at. `lstar` uses each name's own L* level."
                   }
                 }
               },
@@ -11925,7 +11936,7 @@
                     },
                     "hedges": {
                       "type": "object",
-                      "description": "Keys l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD)."
+                      "description": "Keys lstar, l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD). `lstar` also carries names_by_level."
                     },
                     "risk": {
                       "type": "object",

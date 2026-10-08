@@ -14,17 +14,21 @@
  *   total ETF exposure  x = x_stock + d
  *   neutralising trade  T = -x = H - d
  *
- * Risk is L3 only (market + sector + subsector ETFs). Size/value style is not
- * modelled here; it lives in the L3 residual (see backlog C.16).
+ * Basis. By default each name is hedged at its own L* level (`lstar_level`,
+ * 1–3): L* stops above a layer that adds no explanatory value, which is where
+ * negative incremental ER shares come from. `l1` / `l2` / `l3` force one level
+ * for every name. Levels never go past L3: size/value style is not modelled
+ * here; it lives in the residual (see backlog C.16).
  *
  *   systematic daily variance  = xᵀ Σ x     (Σ = sample cov of raw ETF daily returns)
  *   layer contribution         C_L = x_Lᵀ Σ x, Σ_L C_L = xᵀ Σ x  (can be negative)
- *   residual daily variance    ≈ Σ_i v_i² · stock_var_i · l3_res_er_i
+ *   residual daily variance    ≈ Σ_i v_i² · stock_var_i · lK_res_er_i  (K = the name's level)
  *       — a diagonal approximation: it ignores residual covariance across
  *         names, including common size/value exposure. Not a bound.
  */
 
 export type Level = "l1" | "l2" | "l3";
+export type Basis = "lstar" | Level;
 export type Layer = "market" | "sector" | "subsector";
 
 export const MARKET_ETF = "SPY";
@@ -65,6 +69,8 @@ export interface ExposureInput {
   /** Σ|v| over the submitted rows — the coverage denominator. */
   inputGrossUsd: number;
   cov: EtfCovariance | null;
+  /** Default "lstar": each name at its own L* level. */
+  basis?: Basis;
   topContributors?: number;
 }
 
@@ -110,6 +116,31 @@ export function stockLegs(s: StockInput, level: Level): Array<[string, Layer, nu
     [s.sector_etf, "sector", m.l3_sec_hr],
     [sub, "subsector", m.l3_sub_hr],
   ];
+}
+
+const LEVELS: Level[] = ["l1", "l2", "l3"];
+const resKey = (level: Level) => `${level}_res_er`;
+
+function levelUsable(s: StockInput, level: Level): boolean {
+  return stockLegs(s, level) !== null && finite(s.metrics[resKey(level)]);
+}
+
+/**
+ * The level a name is hedged and measured at. Under "lstar" that is its own
+ * `lstar_level`; a name with no L* (or whose L* level lacks data) falls back to
+ * the deepest usable level and is reported as a fallback.
+ */
+export function resolveLevel(s: StockInput, basis: Basis): { level: Level | null; fallback: boolean } {
+  if (basis !== "lstar") return { level: basis, fallback: false };
+  const ls = s.metrics.lstar_level;
+  if (finite(ls) && ls >= 1 && ls <= 3) {
+    const level = `l${Math.round(ls)}` as Level;
+    if (levelUsable(s, level)) return { level, fallback: false };
+  }
+  for (const level of [...LEVELS].reverse()) {
+    if (levelUsable(s, level)) return { level, fallback: true };
+  }
+  return { level: null, fallback: true };
 }
 
 function quadForm(a: number[], S: number[][], b: number[]): number {
@@ -182,7 +213,7 @@ export function computeSignedExposure(input: ExposureInput) {
   const directExposure: Record<string, number> = {};
   for (const d of directEtfs) addTo(directExposure, d.ticker, d.value);
 
-  const hedges: Record<Level, unknown> = {} as Record<Level, unknown>;
+  const hedges: Record<Level | "lstar", unknown> = {} as Record<Level | "lstar", unknown>;
   const hedgeCovered: Record<Level, number> = { l1: 0, l2: 0, l3: 0 };
   for (const level of ["l1", "l2", "l3"] as Level[]) {
     const stockTrade: Record<string, number> = {};
@@ -202,6 +233,42 @@ export function computeSignedExposure(input: ExposureInput) {
     };
   }
 
+  // Per-name level for the selected basis (drives the "lstar" hedge and the risk split).
+  const basis: Basis = input.basis ?? "lstar";
+  const levelOf = new Map<string, Level>();
+  const levelCounts: Record<Level, number> = { l1: 0, l2: 0, l3: 0 };
+  const lstarFallback: Array<{ ticker: string; level: Level | null }> = [];
+  for (const s of stocks) {
+    const { level, fallback } = resolveLevel(s, basis);
+    if (level) {
+      levelOf.set(s.symbol, level);
+      levelCounts[level] += 1;
+    }
+    if (basis === "lstar" && fallback) lstarFallback.push({ ticker: s.tickers[0] ?? s.symbol, level });
+  }
+  let lstarCovered = 0;
+  {
+    const stockTrade: Record<string, number> = {};
+    let covered = 0;
+    for (const s of stocks) {
+      const level = levelOf.get(s.symbol);
+      const legs = level ? stockLegs(s, level) : null;
+      if (!legs) continue;
+      covered += Math.abs(s.value);
+      for (const [etf, , hr] of legs) addTo(stockTrade, etf, s.value * hr);
+    }
+    const total: Record<string, number> = { ...stockTrade };
+    for (const [etf, v] of Object.entries(directExposure)) addTo(total, etf, -v);
+    hedges.lstar = {
+      stock_hedge_trade_usd: roundMap(stockTrade),
+      direct_etf_exposure_usd: roundMap(directExposure),
+      total_neutralizing_trade_usd: roundMap(total),
+      stock_gross_covered_usd: round(covered),
+      names_by_level: levelCounts,
+    };
+    lstarCovered = covered;
+  }
+
   // ---- 3. L3 risk ---------------------------------------------------------------
   const uncoveredEtfs = new Set<string>();
   let risk: Record<string, unknown> | null = null;
@@ -215,8 +282,10 @@ export function computeSignedExposure(input: ExposureInput) {
   const residByName: Array<{ ticker: string; value: number; var: number }> = [];
   const residOk = new Set<string>();
   for (const s of stocks) {
+    const level = levelOf.get(s.symbol);
+    if (!level) continue;
     const sv = s.metrics.stock_var;
-    const res = s.metrics.l3_res_er;
+    const res = s.metrics[resKey(level)];
     const label = s.tickers[0] ?? s.symbol;
     if (!finite(sv) || !finite(res)) continue;
     if (sv < 0) {
@@ -224,7 +293,7 @@ export function computeSignedExposure(input: ExposureInput) {
       continue;
     }
     if (res < RES_ER_MIN || res > RES_ER_MAX) {
-      residualFlagged.push({ ticker: label, reason: `l3_res_er ${res} outside [${RES_ER_MIN}, ${RES_ER_MAX}]` });
+      residualFlagged.push({ ticker: label, reason: `${resKey(level)} ${res} outside [${RES_ER_MIN}, ${RES_ER_MAX}]` });
       continue;
     }
     const v = s.value * s.value * sv * res;
@@ -246,8 +315,9 @@ export function computeSignedExposure(input: ExposureInput) {
 
     const recon: number[] = [];
     for (const s of stocks) {
-      const legs = stockLegs(s, "l3");
-      if (!legs) continue;
+      const level = levelOf.get(s.symbol);
+      const legs = level ? stockLegs(s, level) : null;
+      if (!legs || !level) continue;
       if (legs.some(([etf]) => !covIdx.has(etf))) {
         for (const [etf] of legs) if (!covIdx.has(etf)) uncoveredEtfs.add(etf);
         continue;
@@ -264,7 +334,7 @@ export function computeSignedExposure(input: ExposureInput) {
       // Reconciliation: model-implied systematic variance of $1 of this stock
       // under the new covariance vs the model's own split stock_var·(1 - res).
       const sv = s.metrics.stock_var;
-      const res = s.metrics.l3_res_er;
+      const res = s.metrics[resKey(level)];
       if (finite(sv) && finite(res) && sv > 0) {
         const modelSys = sv * (1 - res);
         if (modelSys > 0) recon.push(Math.abs(quadForm(own, cov.S, own) - modelSys) / modelSys);
@@ -297,7 +367,8 @@ export function computeSignedExposure(input: ExposureInput) {
     const totalVar = sysVar + residVar;
     recon.sort((a, b) => a - b);
     risk = {
-      basis: "L3",
+      basis,
+      names_by_level: levelCounts,
       systematic: {
         ...volBlock(sysVar),
         exposure_usd: roundMap(Object.fromEntries(cov.etfs.map((e, i) => [e, x[i]!]))),
@@ -307,7 +378,7 @@ export function computeSignedExposure(input: ExposureInput) {
       residual: {
         ...volBlock(residVar),
         method: "l3_residual_variance_diagonal_approximation",
-        note: "Σ v²·stock_var·l3_res_er. Ignores residual covariance across names, including common size/value exposure that stays in the L3 residual. An approximation, not a bound.",
+        note: "Σ v²·stock_var·lK_res_er, K = each name's level under the basis. Ignores residual covariance across names, including common size/value exposure that stays in the residual. An approximation, not a bound.",
         top_contributors: residByName
           .sort((a, b) => b.var - a.var)
           .slice(0, input.topContributors ?? 15)
@@ -323,7 +394,7 @@ export function computeSignedExposure(input: ExposureInput) {
         residual_share: totalVar > 0 ? round(residVar / totalVar, 4) : null,
       },
       reconciliation: {
-        description: "Per name: |(-hr)ᵀ Σ (-hr) − stock_var·(1 − l3_res_er)| / stock_var·(1 − l3_res_er). Large values mean the new covariance and the model's own variance split disagree for that name.",
+        description: "Per name at its level K: |(-hr)ᵀ Σ (-hr) − stock_var·(1 − lK_res_er)| / stock_var·(1 − lK_res_er). Large values mean the new covariance and the model's own variance split disagree for that name.",
         names: recon.length,
         median_relative_error: quantile(recon, 0.5),
         p90_relative_error: quantile(recon, 0.9),
@@ -354,11 +425,13 @@ export function computeSignedExposure(input: ExposureInput) {
         hedge_l1: share(hedgeCovered.l1),
         hedge_l2: share(hedgeCovered.l2),
         hedge_l3: share(hedgeCovered.l3),
+        hedge_lstar: share(lstarCovered),
         residual: share(residualCovered),
         systematic: share(systematicCovered),
         total_risk: share(totalRiskCovered),
       },
       etfs_without_covariance: [...uncoveredEtfs].sort(),
+      lstar_fallback: lstarFallback,
       residual_flagged: residualFlagged,
     },
   };

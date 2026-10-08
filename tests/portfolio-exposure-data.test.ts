@@ -21,7 +21,8 @@ const registry: Record<string, Record<string, unknown>> = {
 const fullMetrics = (over: Record<string, number | null> = {}) => ({
   stock_var: 9e-4, l1_mkt_beta: 1.8, l1_mkt_hr: -1.8, l2_mkt_hr: -0.9, l2_sec_hr: -0.8,
   l3_mkt_hr: -0.5, l3_sec_hr: -0.4, l3_sub_hr: -0.7,
-  l3_mkt_er: 0.3, l3_sec_er: 0.1, l3_sub_er: 0.2, l3_res_er: 0.4, ...over,
+  l3_mkt_er: 0.3, l3_sec_er: 0.1, l3_sub_er: 0.2, l3_res_er: 0.4,
+  l1_res_er: 0.6, l2_res_er: 0.5, lstar_level: 3, ...over,
 });
 
 const latestRows: Record<string, { teo: string; metrics: Record<string, number | null> }> = {

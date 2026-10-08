@@ -8435,20 +8435,29 @@ paths:
 
         **Returns**
         - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF).
-        - `hedges.l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per
+        - `hedges.lstar|l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per
           $1 long stock, negative = short), `direct_etf_exposure_usd` (the book's own ETF holdings),
           and `total_neutralizing_trade_usd` = stock hedge − direct holdings.
-        - `risk` (L3): systematic variance xᵀΣx, where x is the book's raw-ETF exposure (−stock hedge
+        - `risk` (at `hedge_level`): systematic variance xᵀΣx, where x is the book's raw-ETF exposure (−stock hedge
           + direct holdings) and Σ is the sample covariance of daily ETF returns over
           `lookback_days` ending on `as_of.snapshot_teo`. Layer contributions xₗᵀΣx sum to the
           systematic variance and can be negative. Residual variance is Σ value²·stock_var·l3_res_er,
-          a diagonal approximation that ignores residual covariance across names (including common
-          size/value exposure, which stays in the L3 residual); it is an approximation, not a bound.
+          using each name's residual share at its level (lK_res_er), a diagonal approximation that
+          ignores residual covariance across names (including common size/value exposure, which
+          stays in the residual); it is an approximation, not a bound.
           Volatility is annualised with √252.
         - `risk.reconciliation`: per-name gap between the covariance-implied systematic variance and
           the model's own split, stock_var·(1 − l3_res_er).
         - `coverage`: share of submitted gross used by each calculation, dropped positions
           (`symbol_not_found`, `no_risk_metrics`, `stale_metrics`), and ETFs without covariance.
+
+
+        **Hedge level.** Default `hedge_level: "lstar"` hedges and measures each name at its own L*
+        level (`lstar_level`, 1–3). L* stops above a layer that adds no explanatory value, which is
+        where negative incremental explained-risk shares come from. Names without an L* use the
+        deepest level with complete data and are listed in `coverage.lstar_fallback`.
+        `hedge_level: "l1" | "l2" | "l3"` forces one level for every name. `hedges` always carries
+        all four so the levels can be compared.
 
 
         **Model date.** Every name is read at one `snapshot_teo` (the most common latest date).
@@ -8495,6 +8504,11 @@ paths:
                   maximum: 756
                   default: 252
                   description: Trading days in the ETF covariance window. 252 matches the ERM3 estimation window.
+                hedge_level:
+                  type: string
+                  enum: [lstar, l1, l2, l3]
+                  default: lstar
+                  description: Level each name is hedged and measured at. `lstar` uses each name's own L* level.
             example:
               positions:
                 - { ticker: DOCN, value: 219558 }
@@ -8520,7 +8534,7 @@ paths:
                     type: object
                   hedges:
                     type: object
-                    description: Keys l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD).
+                    description: Keys lstar, l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD). `lstar` also carries names_by_level.
                   risk:
                     type: object
                     nullable: true

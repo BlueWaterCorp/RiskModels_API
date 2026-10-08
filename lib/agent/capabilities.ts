@@ -1771,7 +1771,7 @@ export const CAPABILITIES: Capability[] = [
     id: "portfolio-exposure",
     name: "Long/Short Portfolio Exposure",
     description:
-      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector, the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and an L3 risk split. Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·l3_res_er, a diagonal approximation that ignores residual covariance across names (including common size/value). Positions are netted by security and never normalised. Use this instead of /portfolio/risk-index for books with shorts. One flat charge per successful call.",
+      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector, the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and a risk split at hedge_level (default lstar: each name at its own L* level, 1–3). Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·lK_res_er at each name's level, a diagonal approximation that ignores residual covariance across names (including common size/value). Positions are netted by security and never normalised. Use this instead of /portfolio/risk-index for books with shorts. One flat charge per successful call.",
     endpoint: "/api/portfolio/exposure",
     method: "POST",
     parameters: {
@@ -1792,6 +1792,13 @@ export const CAPABILITIES: Capability[] = [
         required: false,
         description: "Trading days in the ETF covariance window (60–756). Default 252, the ERM3 estimation window.",
         default: 252,
+      },
+      hedge_level: {
+        type: "string",
+        required: false,
+        description: "lstar (default): each name at its own L* level. l1 / l2 / l3: one level for every name.",
+        enum: ["lstar", "l1", "l2", "l3"],
+        default: "lstar",
       },
     },
     pricing: {

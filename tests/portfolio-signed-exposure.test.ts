@@ -23,7 +23,7 @@ const COV: EtfCovariance = {
 function stock(
   symbol: string,
   value: number,
-  m: Partial<Record<string, number>>,
+  m: Record<string, number | null | undefined>,
   sector = "XLK",
   sub: string | null = "SMH",
 ): StockInput {
@@ -141,7 +141,8 @@ describe("computeSignedExposure", () => {
     });
     const c = partial.coverage.by_calculation;
     expect(c.hedge_l3).toBeCloseTo(0.4, 4);
-    expect(c.residual).toBeCloseTo(0.6, 4);
+    // NOHR has no hedge legs, so it has no level and its residual is not used either.
+    expect(c.residual).toBeCloseTo(0.4, 4);
     expect(c.systematic).toBeCloseTo(0.4, 4);
     expect(partial.coverage.etfs_without_covariance).toEqual(["COPX"]);
   });
@@ -208,5 +209,62 @@ describe("buildEtfCovariance", () => {
     const spy = series((i) => i / 1000);
     const { cov } = buildEtfCovariance(new Map([["SPY", spy]]), dates[30]!, 252);
     expect(cov).toBeNull();
+  });
+});
+
+describe("L* basis (default)", () => {
+  const withLevels = (lstar: number | null) => ({ ...NVDA, l1_res_er: 0.6, l2_res_er: 0.5, lstar_level: lstar });
+
+  it("hedges and measures each name at its own L* level", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("A", 100_000, withLevels(1)), stock("B", -50_000, withLevels(3))],
+      directEtfs: [],
+      inputGrossUsd: 150_000,
+      cov: COV,
+    });
+    const lstar = out.hedges.lstar as any;
+    // A at L1: SPY only (100k × -1.8). B at L3: three legs.
+    expect(lstar.stock_hedge_trade_usd.SPY).toBeCloseTo(100_000 * -1.8 + -50_000 * -0.5, 2);
+    expect(lstar.stock_hedge_trade_usd.XLK).toBeCloseTo(-50_000 * -0.4, 2);
+    expect(lstar.names_by_level).toEqual({ l1: 1, l2: 0, l3: 1 });
+    const risk = out.risk as any;
+    expect(risk.basis).toBe("lstar");
+    // Residual uses each name's own level: A at l1_res_er, B at l3_res_er.
+    expect(risk.residual.daily_variance_usd2).toBeCloseTo(100_000 ** 2 * 9e-4 * 0.6 + 50_000 ** 2 * 9e-4 * 0.4, 4);
+  });
+
+  it("an explicit level overrides L* for every name", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("A", 100_000, withLevels(1))],
+      directEtfs: [],
+      inputGrossUsd: 100_000,
+      cov: COV,
+      basis: "l3",
+    });
+    expect((out.risk as any).basis).toBe("l3");
+    expect((out.risk as any).residual.daily_variance_usd2).toBeCloseTo(100_000 ** 2 * 9e-4 * 0.4, 4);
+    expect(out.coverage.lstar_fallback).toEqual([]);
+  });
+
+  it("falls back to the deepest usable level when a name has no L*, and reports it", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("NOL", 10_000, withLevels(null))],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+    });
+    expect(out.coverage.lstar_fallback).toEqual([{ ticker: "NOL", level: "l3" }]);
+    expect((out.hedges.lstar as any).names_by_level).toEqual({ l1: 0, l2: 0, l3: 1 });
+  });
+
+  it("falls back when the L* level lacks data", () => {
+    const { l2_mkt_hr: _drop, ...noL2 } = withLevels(2);
+    const out = computeSignedExposure({
+      stocks: [stock("GAP", 10_000, noL2)],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+    });
+    expect(out.coverage.lstar_fallback).toEqual([{ ticker: "GAP", level: "l3" }]);
   });
 });
