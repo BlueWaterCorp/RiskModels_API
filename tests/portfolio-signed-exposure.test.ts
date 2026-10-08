@@ -34,13 +34,13 @@ const NVDA = {
   l1_mkt_beta: 1.8, l1_mkt_hr: -1.8,
   l2_mkt_hr: -0.9, l2_sec_hr: -0.8,
   l3_mkt_hr: -0.5, l3_sec_hr: -0.4, l3_sub_hr: -0.7,
-  stock_var: 9e-4, l3_res_er: 0.4,
+  stock_var: 9e-4, l3_res_er: 0.4, lstar_level: 3,
 };
 const AMD = {
   l1_mkt_beta: 2.0, l1_mkt_hr: -2.0,
   l2_mkt_hr: -1.0, l2_sec_hr: -0.9,
   l3_mkt_hr: -0.6, l3_sec_hr: -0.3, l3_sub_hr: -0.9,
-  stock_var: 1.2e-3, l3_res_er: 0.5,
+  stock_var: 1.2e-3, l3_res_er: 0.5, lstar_level: 3,
 };
 
 function quad(a: number[], S: number[][], b: number[]) {
@@ -243,21 +243,25 @@ describe("L* basis (default)", () => {
     });
     expect((out.risk as any).basis).toBe("l3");
     expect((out.risk as any).residual.daily_variance_usd2).toBeCloseTo(100_000 ** 2 * 9e-4 * 0.4, 4);
-    expect(out.coverage.lstar_fallback).toEqual([]);
+    expect(out.coverage.excluded_from_lstar).toEqual([]);
   });
 
-  it("falls back to the deepest usable level when a name has no L*, and reports it", () => {
+  it("excludes a name with no L* instead of falling back, and reports it", () => {
     const out = computeSignedExposure({
-      stocks: [stock("NOL", 10_000, withLevels(null))],
+      stocks: [stock("A", 100_000, withLevels(3)), stock("NOL", 10_000, withLevels(null))],
       directEtfs: [],
-      inputGrossUsd: 10_000,
+      inputGrossUsd: 110_000,
       cov: COV,
     });
-    expect(out.coverage.lstar_fallback).toEqual([{ ticker: "NOL", level: "l3" }]);
+    expect(out.coverage.excluded_from_lstar).toEqual([{ ticker: "NOL", value_usd: 10_000, reason: "no_lstar" }]);
     expect((out.hedges.lstar as any).names_by_level).toEqual({ l1: 0, l2: 0, l3: 1 });
+    // NOL contributes to neither the hedge nor the residual.
+    expect((out.hedges.lstar as any).stock_hedge_trade_usd.SPY).toBeCloseTo(100_000 * -0.5, 2);
+    expect((out.risk as any).residual.daily_variance_usd2).toBeCloseTo(100_000 ** 2 * 9e-4 * 0.4, 4);
+    expect(out.coverage.by_calculation.hedge_lstar).toBeCloseTo(100_000 / 110_000, 4);
   });
 
-  it("falls back when the L* level lacks data", () => {
+  it("excludes a name whose L* level lacks data", () => {
     const { l2_mkt_hr: _drop, ...noL2 } = withLevels(2);
     const out = computeSignedExposure({
       stocks: [stock("GAP", 10_000, noL2)],
@@ -265,6 +269,19 @@ describe("L* basis (default)", () => {
       inputGrossUsd: 10_000,
       cov: COV,
     });
-    expect(out.coverage.lstar_fallback).toEqual([{ ticker: "GAP", level: "l3" }]);
+    expect(out.coverage.excluded_from_lstar).toEqual([{ ticker: "GAP", value_usd: 10_000, reason: "lstar_level_incomplete" }]);
+    expect(out.coverage.by_calculation.hedge_lstar).toBe(0);
+  });
+
+  it("an explicit level does not report L* exclusions", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("NOL", 10_000, withLevels(null))],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+      basis: "l3",
+    });
+    expect(out.coverage.excluded_from_lstar).toEqual([]);
+    expect(out.coverage.by_calculation.hedge_l3).toBeCloseTo(1, 4);
   });
 });

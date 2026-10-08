@@ -1793,6 +1793,11 @@ export const CAPABILITIES: Capability[] = [
         description: "Trading days in the ETF covariance window (60–756). Default 252, the ERM3 estimation window.",
         default: 252,
       },
+      as_of: {
+        type: "string",
+        required: false,
+        description: "Past model date YYYY-MM-DD (2006-01-01 or later). Omit for the latest. Same price.",
+      },
       hedge_level: {
         type: "string",
         required: false,

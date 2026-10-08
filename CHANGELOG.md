@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-08 — `/portfolio/exposure`: `as_of` history, L1 fallback, Zarr fill-in fix
+
+- New `as_of` (YYYY-MM-DD, 2006-01-01 or later): the same output at a past model date, read from Zarr. Each name uses its newest row on or before `as_of`; the ETF covariance ends on the resulting snapshot date. Same $0.25 price. Names with no model data on that date (e.g. not yet listed) are dropped as `no_data_at_as_of`.
+- L1 beta at past dates is `-l1_mkt_hr`. At L1 the only factor is SPY, so the hedge ratio is exactly `-beta`: verified against `ds_erm3_betas` at 2012-06-29, 2020-03-31, 2024-12-31 and 2026-09-30 (311 of 311 name-dates exact).
+- No L* fallback: names without an L*, or whose L* level lacks data, are excluded from hedges and risk and listed in `coverage.excluded_from_lstar`. Every level uses the same estimation window, so such names have no L1 either (all 350 on 2026-10-07). A name whose model row is entirely empty is dropped as `insufficient_history`: ERM3 needs at least 126 trading days within its 252-day window. The spec documents this.
+- Fix: the Zarr fill-in for empty L2/L3 sector and subsector legs and missing `lstar_level` never ran, because it requested `l1_mkt_beta`, which Zarr does not serve, so the whole read returned nothing. It now requests only Zarr keys and derives the L1 beta.
+
 ## 2026-10-08 — `/portfolio/exposure` hedges each name at its L* level by default
 
 - New `hedge_level` parameter, default `"lstar"`: each name is hedged and its residual measured at its own L* level (`lstar_level`, 1–3). L* stops above a layer that adds no explanatory value, which is where negative incremental explained-risk shares come from. `"l1"`, `"l2"` and `"l3"` force one level for every name.
