@@ -34,7 +34,7 @@ describe("daily rows", () => {
 
 // ---- route ---------------------------------------------------------------
 const billed: { count: number | null } = { count: null };
-const stored = new Map<string, Buffer>();
+const stored = new Map<string, Record<string, string>>();
 const panelCalls: Array<Record<string, unknown>> = [];
 
 vi.mock("@/lib/agent/billing-middleware", () => ({
@@ -74,10 +74,15 @@ vi.mock("@/lib/dal/zarr-reader", async (orig) => ({
   }),
 }));
 vi.mock("@/lib/supabase/storage", () => ({
-  signExposureHistoryFile: vi.fn(async (k: string, n: string) => (stored.has(`${k}/${n}`) ? `https://s/${k}/${n}` : null)),
-  uploadExposureHistoryFile: vi.fn(async (k: string, n: string, b: Buffer) => {
-    stored.set(`${k}/${n}`, b);
-    return `https://s/${k}/${n}`;
+  EXPOSURE_HISTORY_URL_TTL_SECONDS: 3600,
+  serveExposureHistorySet: vi.fn(async (k: string, _b: unknown, required: string[]) => {
+    const set = stored.get(k);
+    return set && required.every((n) => set[n]) ? set : null;
+  }),
+  writeExposureHistorySet: vi.fn(async (k: string, _b: unknown, files: Array<{ name: string }>) => {
+    const urls = Object.fromEntries(files.map((f) => [f.name, `https://s/${k}/${f.name}`]));
+    stored.set(k, urls);
+    return urls;
   }),
 }));
 
@@ -117,5 +122,17 @@ describe("POST /api/portfolio/exposure/history/daily", () => {
     await call({ tickers: ["NVDA"] });
     const again = await call({ tickers: ["NVDA"] });
     expect(again.body.files.cached).toBe(true);
+    expect(again.body.files.names.parts.map((p: any) => p.year)).toEqual(["2023", "2024"]);
+  });
+
+  it("does not reuse a stored set that lacks a year now required", async () => {
+    await call({ tickers: ["NVDA"] });
+    for (const [k, v] of stored) {
+      const { names_2024: _drop, ...rest } = v;
+      stored.set(k, rest);
+    }
+    const again = await call({ tickers: ["NVDA"] });
+    expect(again.body.files.cached).toBe(false);
+    expect(again.body.files.names.parts.map((p: any) => p.year)).toEqual(["2023", "2024"]);
   });
 });

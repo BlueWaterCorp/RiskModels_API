@@ -28,9 +28,8 @@ import {
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
 import {
   EXPOSURE_HISTORY_URL_TTL_SECONDS,
-  signExposureHistoryFile,
-  touchExposureHistoryFolder,
-  uploadExposureHistoryFile,
+  serveExposureHistorySet,
+  writeExposureHistorySet,
 } from "@/lib/supabase/storage";
 import { getCorsHeaders } from "@/lib/cors";
 
@@ -147,24 +146,28 @@ export const POST = withBilling(
         .digest("hex")
         .slice(0, 32);
 
-      // Mark the folder active before signing, so the daily cleanup
-      // (app/api/cron/exposure-history-cleanup) never deletes files behind a
-      // URL handed out here. If the marker cannot be written, rewrite the
-      // files instead: a fresh upload also resets the folder's age.
-      const touched = await touchExposureHistoryFolder(cacheKey, slice.attrs.built_utc);
-      let namesUrl = touched ? await signExposureHistoryFile(cacheKey, "names", URL_TTL_SECONDS) : null;
-      let covUrl = namesUrl ? await signExposureHistoryFile(cacheKey, "cov", URL_TTL_SECONDS) : null;
-      const cached = Boolean(namesUrl && covUrl);
+      // Cache rules shared with the daily route and the cleanup cron:
+      // lib/supabase/storage.ts, docs/EXPOSURE_HISTORY_FEED.md "Storage and cleanup".
+      const built = slice.attrs.built_utc;
+      let urls = await serveExposureHistorySet(cacheKey, built, ["names", "cov"], URL_TTL_SECONDS);
+      const cached = Boolean(urls?.names && urls?.cov);
       if (!cached) {
         const [namesBuf, covBuf] = await Promise.all([
           toParquet(tables.names, NAME_COLUMNS),
           toParquet(tables.cov, COV_COLUMNS),
         ]);
-        [namesUrl, covUrl] = await Promise.all([
-          uploadExposureHistoryFile(cacheKey, "names", namesBuf, URL_TTL_SECONDS),
-          uploadExposureHistoryFile(cacheKey, "cov", covBuf, URL_TTL_SECONDS),
-        ]);
+        urls = await writeExposureHistorySet(
+          cacheKey,
+          built,
+          [
+            { name: "names", bytes: namesBuf },
+            { name: "cov", bytes: covBuf },
+          ],
+          URL_TTL_SECONDS,
+        );
       }
+      const namesUrl = urls!.names;
+      const covUrl = urls!.cov;
 
       const metadata = await getRiskMetadata();
       const latency = Math.round(performance.now() - fetchStart);

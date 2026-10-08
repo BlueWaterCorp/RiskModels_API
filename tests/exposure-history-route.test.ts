@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EXPOSURE_PANEL_VARS } from "@/lib/dal/zarr-reader";
 
 const billed: { count: number | null } = { count: null };
-const stored = new Map<string, Buffer>();
 
 vi.mock("@/lib/agent/billing-middleware", () => ({
   withBilling:
@@ -45,24 +44,21 @@ vi.mock("@/lib/dal/zarr-reader", async (orig) => {
     })),
   };
 });
-const touch = { ok: true, calls: 0 };
+const sets = new Map<string, Record<string, string>>();
+const failWrite = { on: false };
 vi.mock("@/lib/supabase/storage", () => ({
   EXPOSURE_HISTORY_URL_TTL_SECONDS: 3600,
-  touchExposureHistoryFolder: vi.fn(async () => {
-    touch.calls += 1;
-    return touch.ok;
-  }),
-  signExposureHistoryFile: vi.fn(async (key: string, name: string) =>
-    stored.has(`${key}/${name}`) ? `https://signed/${key}/${name}` : null,
-  ),
-  uploadExposureHistoryFile: vi.fn(async (key: string, name: string, buf: Buffer) => {
-    stored.set(`${key}/${name}`, buf);
-    return `https://signed/${key}/${name}`;
+  serveExposureHistorySet: vi.fn(async (k: string) => sets.get(k) ?? null),
+  writeExposureHistorySet: vi.fn(async (k: string, _b: unknown, files: Array<{ name: string }>) => {
+    if (failWrite.on) throw new Error("upload failed");
+    const urls = Object.fromEntries(files.map((f) => [f.name, `https://signed/${k}/${f.name}`]));
+    sets.set(k, urls);
+    return urls;
   }),
 }));
 
 import { POST } from "@/app/api/portfolio/exposure/history/route";
-import { uploadExposureHistoryFile } from "@/lib/supabase/storage";
+import { writeExposureHistorySet } from "@/lib/supabase/storage";
 
 async function call(body: unknown) {
   const res = await (POST as unknown as (r: Request) => Promise<Response>)(
@@ -78,16 +74,15 @@ async function call(body: unknown) {
 describe("POST /api/portfolio/exposure/history", () => {
   beforeEach(() => {
     billed.count = null;
-    stored.clear();
-    touch.ok = true;
-    touch.calls = 0;
-    vi.mocked(uploadExposureHistoryFile).mockClear();
+    sets.clear();
+    failWrite.on = false;
+    vi.mocked(writeExposureHistorySet).mockClear();
   });
 
   it("delivers signed Parquet URLs, bills names delivered, and lists drops", async () => {
     const { status, body } = await call({ tickers: ["NVDA", "NEWCO", "NOPE", "SPY"] });
     expect(status).toBe(200);
-    expect(body.files.names.url).toMatch(/^https:\/\/signed\/.+\/names$/);
+    expect(body.files.names.url).toMatch(/^https:\/\/signed\/[0-9a-f]{32}\/names$/);
     expect(body.files.cov.url).toMatch(/\/cov$/);
     expect(body.files.names.rows).toBe(2);
     expect(body.files.cached).toBe(false);
@@ -105,18 +100,14 @@ describe("POST /api/portfolio/exposure/history", () => {
     await call({ tickers: ["NVDA"] });
     const again = await call({ tickers: ["nvda"] });
     expect(again.body.files.cached).toBe(true);
-    expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(2); // names + cov, once
+    expect(vi.mocked(writeExposureHistorySet)).toHaveBeenCalledTimes(1);
   });
 
-  it("marks the folder on every request, and rewrites the files if the marker write fails", async () => {
-    await call({ tickers: ["NVDA"] });
-    expect(touch.calls).toBe(1);
-    touch.ok = false;
-    const again = await call({ tickers: ["NVDA"] });
-    expect(touch.calls).toBe(2);
-    // No hit is served without a fresh activity time: the files are re-uploaded.
-    expect(again.body.files.cached).toBe(false);
-    expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(4);
+  it("returns 500 and no URLs when writing the set fails", async () => {
+    failWrite.on = true;
+    const r = await call({ tickers: ["NVDA"] });
+    expect(r.status).toBe(500);
+    expect(r.body.files).toBeUndefined();
   });
 
   it("returns 422 (not billed) when nothing has history", async () => {

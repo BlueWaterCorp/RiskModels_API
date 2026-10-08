@@ -8,6 +8,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import {
   cleanupExposureHistory,
+  prunableHits,
   guardMs,
   judgeFolder,
   maxAgeDaysFromEnv,
@@ -19,69 +20,115 @@ import { exposureHistoryBuildTag } from "@/lib/supabase/storage";
 const NOW = new Date("2026-10-20T12:00:00Z");
 const H = 3600 * 1000;
 const D = 24 * H;
-const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+const at = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
 const key = (c: string) => c.repeat(32);
 const BUILD = "2026-10-08T00:00:00Z";
 const OLD_BUILD = "2026-09-08T00:00:00Z";
+const cur = exposureHistoryBuildTag(BUILD);
+const old = exposureHistoryBuildTag(OLD_BUILD);
 
 function file(name: string, age: number): StorageEntry {
-  return { name, id: `id-${name}`, created_at: ago(age), updated_at: ago(age) };
+  return { name, id: `id-${name}`, created_at: at(age), updated_at: at(age) };
 }
+const parquet = (age: number) => [file("names.0123456789abcdef.parquet", age), file("cov.0123456789abcdef.parquet", age)];
 
-function fakeBucket(folders: Record<string, StorageEntry[]>, extraRoot: StorageEntry[] = []) {
-  const removed: string[][] = [];
+/** In-memory bucket with real offset pagination. */
+function memBucket(folders: Record<string, StorageEntry[]>, rootFiles: StorageEntry[] = [], pageCap = Infinity) {
+  const state = new Map(Object.entries(folders).map(([k, v]) => [k, [...v]]));
+  const log: string[] = [];
   const api: BucketApi = {
-    list: async (prefix, { offset }) => {
-      if (offset > 0) return { data: [], error: null };
+    list: async (prefix, { limit, offset }) => {
+      let all: StorageEntry[];
       if (prefix === "") {
-        return { data: [...Object.keys(folders).map((name) => ({ name, id: null })), ...extraRoot], error: null };
+        all = [...[...state.keys()].map((name) => ({ name, id: null })), ...rootFiles];
+      } else if (prefix.endsWith("/hits")) {
+        all = (state.get(prefix.slice(0, -5)) ?? [])
+          .filter((o) => o.name.startsWith("hits/"))
+          .map((o) => ({ ...o, name: o.name.slice(5) }));
+      } else {
+        const objs = state.get(prefix) ?? [];
+        all = objs.filter((o) => !o.name.startsWith("hits/"));
+        if (objs.some((o) => o.name.startsWith("hits/"))) all.push({ name: "hits", id: null });
+        all.sort((x, y) => x.name.localeCompare(y.name));
       }
-      return { data: folders[prefix] ?? [], error: null };
+      return { data: all.slice(offset, offset + Math.min(limit, pageCap)), error: null };
+    },
+    upload: async (path, _body) => {
+      log.push(`upload ${path}`);
+      const [k, ...rest] = path.split("/");
+      const n = rest.join("/");
+      state.set(k, [...(state.get(k) ?? []), { name: n, id: `id-${n}`, created_at: NOW.toISOString(), updated_at: NOW.toISOString() }]);
+      return { error: null };
     },
     remove: async (paths) => {
-      removed.push(paths);
+      log.push(`remove ${paths.join(",")}`);
+      for (const p of paths) {
+        const [k, ...rest] = p.split("/");
+        const n = rest.join("/");
+        state.set(k, (state.get(k) ?? []).filter((o) => o.name !== n));
+      }
       return { error: null };
     },
   };
-  return { api, removed };
+  return { api, state, log };
 }
 
 describe("judgeFolder", () => {
-  const cur = exposureHistoryBuildTag(BUILD);
-  const old = exposureHistoryBuildTag(OLD_BUILD);
+  const now = NOW.getTime();
 
-  it("never deletes a folder active within the URL TTL plus margin, whatever its build or creation date", () => {
-    const objs = [file("names.parquet", 30 * D), file("cov.parquet", 30 * D), file(`hit.${old}`, 30 * 60 * 1000)];
-    expect(judgeFolder(objs, NOW.getTime(), 7, cur)).toEqual({ delete: false, reason: "active" });
-    expect(guardMs()).toBeGreaterThan(3600 * 1000);
+  it("keeps a folder with activity inside the URL TTL plus margin, whatever its build or creation date", () => {
+    const objs = [...parquet(30 * D), file(`hits/${old}.1`, 30 * 60 * 1000)];
+    expect(judgeFolder(objs, now, 7, cur)).toEqual({ action: "keep", reason: "active" });
+    expect(guardMs()).toBe(3 * H);
   });
 
-  it("deletes by age past the max age", () => {
-    const objs = [file("names.parquet", 8 * D), file("cov.parquet", 8 * D), file(`hit.${cur}`, 8 * D)];
-    expect(judgeFolder(objs, NOW.getTime(), 7, cur)).toEqual({ delete: true, reason: "age" });
-    expect(judgeFolder(objs, NOW.getTime(), 10, cur)).toEqual({ delete: false, reason: "young" });
+  it("condemns past the max age, and for another panel build", () => {
+    expect(judgeFolder([...parquet(8 * D), file(`hits/${cur}.1`, 8 * D)], now, 7, cur)).toEqual({ action: "condemn", reason: "age" });
+    expect(judgeFolder([...parquet(8 * D)], now, 10, cur)).toEqual({ action: "keep", reason: "young" });
+    expect(judgeFolder([...parquet(2 * D), file(`hits/${old}.1`, 4 * H)], now, 7, cur)).toEqual({ action: "condemn", reason: "stale_build" });
+    expect(judgeFolder([...parquet(2 * D), file(`hits/${old}.1`, 4 * H)], now, 7, null)).toEqual({ action: "keep", reason: "young" });
   });
 
-  it("deletes a folder from another panel build once outside the guard", () => {
-    const objs = [file("names.parquet", 2 * D), file("cov.parquet", 2 * D), file(`hit.${old}`, 3 * H)];
-    expect(judgeFolder(objs, NOW.getTime(), 7, cur)).toEqual({ delete: true, reason: "stale_build" });
-    expect(judgeFolder(objs, NOW.getTime(), 7, null)).toEqual({ delete: false, reason: "young" });
+  it("keeps a folder that has any current-build marker, and an unmarked folder under the max age", () => {
+    expect(judgeFolder([...parquet(3 * D), file(`hits/${old}.1`, 3 * D), file(`hits/${cur}.2`, 3 * D)], now, 7, cur).action).toBe("keep");
+    expect(judgeFolder(parquet(3 * D), now, 7, cur).action).toBe("keep");
   });
 
-  it("keeps a current-build folder and a folder without a marker under the max age", () => {
-    expect(judgeFolder([file("names.parquet", 3 * D), file(`hit.${cur}`, 3 * D)], NOW.getTime(), 7, cur).delete).toBe(false);
-    expect(judgeFolder([file("names.parquet", 3 * D), file("cov.parquet", 3 * D)], NOW.getTime(), 7, cur).delete).toBe(false);
+  it("deletes a condemned folder only 12 h after condemnation and only with no activity since", () => {
+    const base = [...parquet(9 * D), file(`hits/${cur}.1`, 9 * D)];
+    expect(judgeFolder([...base, file("condemned", 1 * H)], now, 7, cur)).toEqual({ action: "keep", reason: "condemned_recently" });
+    expect(judgeFolder([...base, file("condemned", 11 * H)], now, 7, cur)).toEqual({ action: "keep", reason: "condemned_recently" });
+    expect(judgeFolder([...base, file("condemned", 1 * D)], now, 7, cur)).toEqual({ action: "delete" });
+    // A hit after condemnation reprieves the folder, even at the deletion run.
+    expect(judgeFolder([...base, file("condemned", 1 * D), file(`hits/${cur}.2`, 23 * H)], now, 7, cur)).toEqual({ action: "reprieve" });
   });
 
-  it("keeps a folder with an object lacking timestamps, and an empty folder", () => {
+  it("keeps folders with missing timestamps and empty folders", () => {
     const objs = [file("names.parquet", 30 * D), { name: "cov.parquet", id: "x", created_at: null, updated_at: null }];
-    expect(judgeFolder(objs, NOW.getTime(), 7, cur)).toEqual({ delete: false, reason: "no_timestamp" });
-    expect(judgeFolder([], NOW.getTime(), 7, cur)).toEqual({ delete: false, reason: "empty" });
+    expect(judgeFolder(objs, now, 7, cur)).toEqual({ action: "keep", reason: "no_timestamp" });
+    expect(judgeFolder([], now, 7, cur)).toEqual({ action: "keep", reason: "empty" });
   });
 
-  it("clamps the max age to at least one day", () => {
-    const objs = [file("names.parquet", 12 * H)];
-    expect(judgeFolder(objs, NOW.getTime(), 0, null).delete).toBe(false);
+  it("treats activity just inside the guard as active, and clamps max age to one day", () => {
+    expect(judgeFolder(parquet(guardMs() - 1), now, 7, cur).action).toBe("keep");
+    expect(judgeFolder(parquet(12 * H), now, 0, null).action).toBe("keep");
+    expect(judgeFolder(parquet(25 * H), now, 0, null).action).toBe("condemn");
+  });
+});
+
+describe("prunableHits", () => {
+  it("prunes markers older than the guard but keeps the newest per build tag", () => {
+    const objs = [
+      ...parquet(5 * D),
+      file(`hits/${cur}.1`, 2 * D),
+      file(`hits/${cur}.2`, 1 * D),
+      file(`hits/${cur}.3`, 4 * H),
+      file(`hits/${old}.1`, 9 * D),
+      file(`hits/${old}.2`, 8 * D),
+    ];
+    expect(prunableHits(objs, NOW.getTime()).sort()).toEqual([`hits/${cur}.1`, `hits/${cur}.2`, `hits/${old}.1`]);
+    // A marker inside the guard is never pruned even when a newer one exists.
+    expect(prunableHits([file(`hits/${cur}.1`, 1 * H), file(`hits/${cur}.2`, 0)], NOW.getTime())).toEqual([]);
   });
 });
 
@@ -95,55 +142,96 @@ describe("maxAgeDaysFromEnv", () => {
 });
 
 describe("cleanupExposureHistory", () => {
-  const cur = exposureHistoryBuildTag(BUILD);
-  const old = exposureHistoryBuildTag(OLD_BUILD);
-
-  it("deletes only expired cache-key folders and never root files or other prefixes", async () => {
-    const { api, removed } = fakeBucket(
+  it("condemns on one run and deletes on the next; never touches root files or other names", async () => {
+    const { api, state } = memBucket(
       {
-        [key("a")]: [file("names.parquet", 10 * D), file("cov.parquet", 10 * D)], // age
-        [key("b")]: [file("names.parquet", 2 * D), file("cov.parquet", 2 * D), file(`hit.${old}`, 2 * D)], // stale build
-        [key("c")]: [file("names.parquet", 10 * D), file("cov.parquet", 10 * D), file(`hit.${old}`, 10 * 60 * 1000)], // hit 10 min ago
-        [key("d")]: [file("names.parquet", 1 * D), file(`hit.${cur}`, 1 * D)], // current, young
-        "not-a-cache-key": [file("names.parquet", 100 * D)],
+        [key("a")]: parquet(10 * D), // age
+        [key("b")]: [...parquet(2 * D), file(`hits/${old}.1`, 2 * D)], // stale build
+        [key("c")]: [...parquet(10 * D), file(`hits/${old}.1`, 10 * 60 * 1000)], // hit 10 min ago
+        [key("d")]: [...parquet(1 * D), file(`hits/${cur}.1`, 1 * D)], // current, young
+        "not-a-cache-key": parquet(100 * D),
       },
       [file("stray.parquet", 100 * D)],
     );
-    const r = await cleanupExposureHistory(api, { now: NOW, currentBuiltUtc: BUILD });
-    expect(r.bucket).toBe("exposure-history");
-    expect(r.scanned).toBe(4);
-    expect(r.deleted).toBe(2);
-    expect(r.reasons).toEqual({ age: 1, stale_build: 1 });
-    expect(removed.flat().sort()).toEqual(
-      [`${key("a")}/cov.parquet`, `${key("a")}/names.parquet`, `${key("b")}/cov.parquet`, `${key("b")}/hit.${old}`, `${key("b")}/names.parquet`].sort(),
-    );
+    const r1 = await cleanupExposureHistory(api, { now: NOW, currentBuiltUtc: BUILD });
+    expect(r1).toMatchObject({ folders: 4, scanned: 4, condemned: 2, deleted: 0, reasons: { age: 1, stale_build: 1 }, complete: true });
+    expect(state.get(key("a"))!.map((o) => o.name)).toContain("condemned");
+
+    // Next day: the condemned markers are a day old, nothing touched since.
+    const r2 = await cleanupExposureHistory(api, { now: new Date(NOW.getTime() + D), currentBuiltUtc: BUILD });
+    expect(r2.deleted).toBe(2);
+    expect(state.get(key("a"))).toEqual([]);
+    expect(state.get(key("b"))).toEqual([]);
+    // c: hit 10 min before run 1, so it is a day idle at run 2 and only now condemned (old build).
+    expect(state.get(key("c"))!.map((o) => o.name)).toContain("condemned");
+    expect(state.get(key("c"))!.length).toBe(4);
+    expect(state.get(key("d"))!.length).toBe(3);
+    expect(state.get("not-a-cache-key")!.length).toBe(2);
   });
 
-  it("keeps a folder hit between the first listing and the delete", async () => {
-    const k = key("e");
-    let calls = 0;
-    const removed: string[][] = [];
-    const api: BucketApi = {
-      list: async (prefix) => {
-        if (prefix === "") return { data: [{ name: k, id: null }], error: null };
-        calls += 1;
-        const marker = calls === 1 ? file(`hit.${cur}`, 9 * D) : { ...file(`hit.${cur}`, 0), updated_at: NOW.toISOString() };
-        return { data: [file("names.parquet", 9 * D), marker], error: null };
-      },
-      remove: async (p) => {
-        removed.push(p);
-        return { error: null };
-      },
+  it("reads legacy names.parquet / hit.<tag> folders", async () => {
+    const legacy = [file("names.parquet", 2 * D), file("cov.parquet", 2 * D), file(`hit.${old}`, 2 * D)];
+    expect(judgeFolder(legacy, NOW.getTime(), 7, cur)).toEqual({ action: "condemn", reason: "stale_build" });
+  });
+
+  it("a file uploaded after the deletion listing survives the delete", async () => {
+    const k = key("9");
+    const { api, state } = memBucket({ [k]: [...parquet(9 * D), file(`hits/${cur}.1`, 9 * D), file("condemned", 1 * D)] });
+    const list = api.list.bind(api);
+    let injected = false;
+    api.list = async (prefix, o) => {
+      const r = await list(prefix, o);
+      if (prefix === `${k}/hits` && !injected) {
+        injected = true; // route uploads a new generation right after cleanup listed the folder
+        state.get(k)!.push(file("names.feedfacefeedface.parquet", 0), file("cov.feedfacefeedface.parquet", 0));
+      }
+      return r;
     };
     const r = await cleanupExposureHistory(api, { now: NOW, currentBuiltUtc: BUILD });
-    expect(r.deleted).toBe(0);
-    expect(removed).toEqual([]);
+    expect(r.deleted).toBe(1);
+    expect(state.get(k)!.map((o) => o.name).sort()).toEqual(["cov.feedfacefeedface.parquet", "names.feedfacefeedface.parquet"]);
   });
 
-  it("dry run reports without removing", async () => {
-    const { api, removed } = fakeBucket({ [key("f")]: [file("names.parquet", 10 * D)] });
+  it("reprieves a condemned folder that was hit before the deletion run", async () => {
+    const { api, state } = memBucket({ [key("e")]: [...parquet(9 * D), file("condemned", 1 * D), file(`hits/${cur}.9`, 2 * H)] });
+    const r = await cleanupExposureHistory(api, { now: NOW, currentBuiltUtc: BUILD });
+    expect(r).toMatchObject({ reprieved: 1, deleted: 0 });
+    expect(state.get(key("e"))!.map((o) => o.name)).not.toContain("condemned");
+  });
+
+  it("pages through more than one page of folders, including a server that caps pages below the limit", async () => {
+    const many = Object.fromEntries(Array.from({ length: 250 }, (_, i) => [i.toString(16).padStart(32, "0"), parquet(10 * D)]));
+    const r = await cleanupExposureHistory(memBucket(many).api, { now: NOW, dryRun: true });
+    expect(r.folders).toBe(250);
+    const capped = await cleanupExposureHistory(memBucket(many, [], 40).api, { now: NOW, dryRun: true });
+    expect(capped.folders).toBe(250);
+  });
+
+  it("stops at the time budget and reports an incomplete run", async () => {
+    const many = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [i.toString(16).padStart(32, "0"), parquet(10 * D)]));
+    const r = await cleanupExposureHistory(memBucket(many).api, { now: NOW, budgetMs: -1 });
+    expect(r).toMatchObject({ complete: false, scanned: 0 });
+  });
+
+  it("prunes old markers on kept folders during a run", async () => {
+    const k = key("7");
+    const { api, state } = memBucket({ [k]: [...parquet(2 * D), file(`hits/${cur}.1`, 2 * D), file(`hits/${cur}.2`, 1 * H)] });
+    const r = await cleanupExposureHistory(api, { now: NOW, currentBuiltUtc: BUILD });
+    expect(r).toMatchObject({ kept: 1, pruned_markers: 1 });
+    expect(state.get(k)!.map((o) => o.name)).not.toContain(`hits/${cur}.1`);
+  });
+
+  it("dry run reports without writing", async () => {
+    const { api, log } = memBucket({ [key("f")]: parquet(10 * D), [key("0")]: [...parquet(10 * D), file("condemned", 2 * D)] });
     const r = await cleanupExposureHistory(api, { now: NOW, dryRun: true });
-    expect(r.deleted).toBe(1);
-    expect(removed).toEqual([]);
+    expect(r).toMatchObject({ condemned: 1, deleted: 1 });
+    expect(log).toEqual([]);
+  });
+
+  it("records remove errors", async () => {
+    const { api } = memBucket({ [key("1")]: [...parquet(10 * D), file("condemned", 2 * D)] });
+    api.remove = async () => ({ error: { message: "boom" } });
+    const r = await cleanupExposureHistory(api, { now: NOW });
+    expect(r.errors[0]).toMatch(/boom/);
   });
 });

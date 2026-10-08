@@ -46,7 +46,14 @@ export async function GET(request: NextRequest) {
       dryRun,
     });
     if (result.errors.length) console.error("[cron/exposure-history-cleanup]", result.errors.slice(0, 5));
-    return NextResponse.json({ ok: result.errors.length === 0, current_built_utc: currentBuiltUtc, ...result });
+    // Errors return 500. A run cut short by the time budget returns 200 with
+    // complete: false; the next run starts at another random folder.
+    const ok = result.errors.length === 0;
+    if (!result.complete) console.warn("[cron/exposure-history-cleanup] incomplete", result.scanned, "/", result.folders);
+    return NextResponse.json(
+      { ok, current_built_utc: currentBuiltUtc, ...result },
+      { status: ok ? 200 : 500 },
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[cron/exposure-history-cleanup]", msg);
