@@ -14,6 +14,8 @@ import { createAdminClient } from "./admin";
 
 const BUCKET = "reports";
 const PREFIX = "tickers";
+/** Exposure history feed files: exposure-history/{cache key}/{names|cov}.parquet */
+const EXPOSURE_HISTORY_PREFIX = "exposure-history";
 
 /**
  * Upload a snapshot PDF to Supabase Storage.
@@ -101,4 +103,41 @@ export async function listSnapshots(
     name: f.name,
     created_at: f.created_at ?? "",
   }));
+}
+
+/**
+ * Signed URL for an exposure-history feed file, or null if it does not exist.
+ * The cache key covers the request and the panel build, so a hit is the same
+ * content and is safe to reuse.
+ */
+export async function signExposureHistoryFile(
+  cacheKey: string,
+  name: "names" | "cov",
+  expiresIn = 3600,
+): Promise<string | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(`${EXPOSURE_HISTORY_PREFIX}/${cacheKey}/${name}.parquet`, expiresIn);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
+/** Upload an exposure-history feed file (Parquet) and return its signed URL. */
+export async function uploadExposureHistoryFile(
+  cacheKey: string,
+  name: "names" | "cov",
+  bytes: Buffer,
+  expiresIn = 3600,
+): Promise<string> {
+  const supabase = createAdminClient();
+  const path = `${EXPOSURE_HISTORY_PREFIX}/${cacheKey}/${name}.parquet`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, bytes, {
+    contentType: "application/vnd.apache.parquet",
+    upsert: true,
+  });
+  if (error) throw new Error(`Failed to upload ${path}: ${error.message}`);
+  const url = await signExposureHistoryFile(cacheKey, name, expiresIn);
+  if (!url) throw new Error(`Failed to sign ${path}`);
+  return url;
 }

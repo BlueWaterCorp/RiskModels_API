@@ -25,6 +25,7 @@ import {
   getZarrFactorSetId,
   zarrDailyBasename,
   zarrEtfBasename,
+  zarrExposureMonthEndBasename,
   zarrHedgeBasename,
   zarrLinkBetasBasename,
   zarrWeeklyHedgeBasename,
@@ -2178,4 +2179,96 @@ export async function readWeeklyHedgeSnapshot(
   });
 
   return { metadata, rows };
+}
+
+// ---------------------------------------------------------------------------
+// Month-end exposure panel (POST /api/portfolio/exposure/history)
+// ---------------------------------------------------------------------------
+
+/** Per-name panel variables, in the order they are read. */
+export const EXPOSURE_PANEL_VARS = [
+  "l1_mkt_hr",
+  "l2_mkt_hr",
+  "l2_sec_hr",
+  "l3_mkt_hr",
+  "l3_sec_hr",
+  "l3_sub_hr",
+  "l1_res_er",
+  "l2_res_er",
+  "l3_res_er",
+  "l3_mkt_er",
+  "l3_sec_er",
+  "l3_sub_er",
+  "stock_var",
+  "lstar_level",
+] as const;
+export type ExposurePanelVar = (typeof EXPOSURE_PANEL_VARS)[number];
+
+export interface ExposurePanelSlice {
+  /** Month-end trading days in range, ascending. */
+  teos: string[];
+  /** symbol → variable → value per teo (NaN → null). Only requested symbols present in the panel. */
+  bySymbol: Map<string, Record<ExposurePanelVar, Array<number | null>>>;
+  /** ETF tickers of the covariance axes. */
+  etfs: string[];
+  /** Per teo, the ETF covariance as a flat row-major Float32Array (etfs × etfs), NaN where unavailable. */
+  cov: Float32Array[];
+  /** Panel build metadata. */
+  attrs: Record<string, unknown>;
+}
+
+/**
+ * Read the month-end panel for `symbols` over [start, end]. Each variable is
+ * read for the full symbol axis in the date range (the panel is small: about
+ * 240 months × 8k symbols), then subset in memory.
+ */
+export async function readExposureMonthEndPanel(params: {
+  symbols: string[];
+  start?: string;
+  end?: string;
+}): Promise<ExposurePanelSlice | null> {
+  const grp = await openZarrGroup(zarrExposureMonthEndBasename());
+  if (!grp) return null;
+  const allTeos = await readTeoStrings(grp);
+  const symIdx = await readSymbolIndexMap(grp);
+  const etfs = await readStringCoord(grp, "etf");
+  if (!allTeos?.length || !symIdx || !etfs) return null;
+
+  const t0 = params.start ? lowerBound(allTeos, params.start) : 0;
+  const t1 = params.end ? upperBoundInclusive(allTeos, params.end) : allTeos.length - 1;
+  if (t1 < t0) {
+    return { teos: [], bySymbol: new Map(), etfs, cov: [], attrs: (grp.attrs ?? {}) as Record<string, unknown> };
+  }
+  const teos = allTeos.slice(t0, t1 + 1);
+  const nSym = symIdx.size;
+  const wanted = params.symbols
+    .map((s) => [s, symIdx.get(s)] as const)
+    .filter((x): x is readonly [string, number] => x[1] !== undefined);
+
+  const bySymbol = new Map<string, Record<ExposurePanelVar, Array<number | null>>>();
+  for (const [s] of wanted) bySymbol.set(s, {} as Record<ExposurePanelVar, Array<number | null>>);
+
+  await Promise.all(
+    EXPOSURE_PANEL_VARS.map(async (v) => {
+      const arr = await open.v2(grp.resolve(v), { kind: "array" });
+      const ch = await get(arr, [slice(t0, t1 + 1), null]);
+      const d = ch.data as Float32Array;
+      for (const [s, j] of wanted) {
+        const col: Array<number | null> = new Array(teos.length);
+        for (let t = 0; t < teos.length; t++) {
+          const x = d[t * nSym + j]!;
+          col[t] = Number.isFinite(x) ? x : null;
+        }
+        bySymbol.get(s)![v] = col;
+      }
+    }),
+  );
+
+  const covArr = await open.v2(grp.resolve("etf_cov"), { kind: "array" });
+  const covCh = await get(covArr, [slice(t0, t1 + 1), null, null]);
+  const covData = covCh.data as Float32Array;
+  const block = etfs.length * etfs.length;
+  const cov = teos.map((_, t) => covData.subarray(t * block, (t + 1) * block));
+
+  return { teos, bySymbol, etfs, cov, attrs: (grp.attrs ?? {}) as Record<string, unknown> };
 }

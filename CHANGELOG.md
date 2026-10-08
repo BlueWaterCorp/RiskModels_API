@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-08 — Exposure history as a model data feed
+
+- New `POST /portfolio/exposure/history`: send tickers only (no values) and receive signed URLs to two Parquet files — each name's month-end ERM3 history since 2006 (hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta`) and the ETF covariance at each month-end. Holdings never leave the client.
+- Python SDK: `client.exposure_history(tickers)` downloads the feed; `pack.exposure(holdings_by_date)` joins it with dated holdings locally and returns the same quantities as `/portfolio/exposure` at each month-end (L* default). The port is pinned to the TypeScript by a shared parity fixture.
+- Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.
+- Served from a precomputed month-end panel (`scripts/build_exposure_month_end_panel.py` → `ds_exposure_month_end_<factor set>.zarr`), because the daily stores are chunked by full history. The endpoint returns 503 until the panel is published.
+- Derived data only; a test asserts no raw price, market cap or return column can be delivered. Design and licensing: `docs/EXPOSURE_HISTORY_FEED.md`.
+
 ## 2026-10-08 — `/portfolio/exposure` priced by book size
 
 - $0.25 per call up to 25 names, $1.00 above 25. Latest and `as_of` cost the same. Billing code `portfolio_exposure_v2`.

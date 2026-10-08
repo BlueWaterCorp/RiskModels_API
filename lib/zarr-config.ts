@@ -52,6 +52,15 @@ export function zarrHedgeBasename(factorSetId = getZarrFactorSetId()): string {
 }
 
 /**
+ * Month-end exposure panel (scripts/build_exposure_month_end_panel.py):
+ * per-name model values on the last trading day of each month plus the ETF
+ * covariance at each month-end. Serves POST /api/portfolio/exposure/history.
+ */
+export function zarrExposureMonthEndBasename(factorSetId = getZarrFactorSetId()): string {
+  return `ds_exposure_month_end_${factorSetId}.zarr`;
+}
+
+/**
  * Rankings store: flat (teo, symbol) layout with one variable per
  * (window, cohort, metric) combo, named exactly like the legacy Supabase
  * EAV `metric_key` (`rank_ord_*` and `cohort_size_*`). Chunked

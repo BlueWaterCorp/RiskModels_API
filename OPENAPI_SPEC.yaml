@@ -8422,6 +8422,102 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /portfolio/exposure/history:
+    post:
+      summary: Exposure history feed — month-end model history for a list of names (join locally)
+      description: >
+        Model data feed for long/short books. Send a list of tickers — no position values — and
+        receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history since
+        2006 (`names`: hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`,
+        `lstar_level`, `l1_mkt_beta` = −`l1_mkt_hr`, sector and subsector ETF) and the ETF covariance
+        over the 252 trading days ending each month-end (`cov`, upper triangle). Holdings never leave
+        the client: the Python SDK (`client.exposure_history(...).exposure(holdings_by_date)`) joins
+        the feed with dated holdings locally and returns the same quantities as
+        `POST /portfolio/exposure` at each month-end.
+
+
+        Each row is the last trading day of its month; the current month uses its latest model day.
+        Names with no model rows in range are dropped as `no_data_in_range`; ETFs stay in the
+        covariance universe. The ETF-to-sector mapping is today's registry, not point-in-time.
+        Derived data only: no prices, market caps or return series.
+
+
+        **Billing:** per successful call, by names delivered (stocks with rows plus ETFs in the
+        covariance): **$1.25** up to 25, **$5.00** above 25. A request with nothing to deliver
+        returns 422 and is not charged. Identical requests on the same panel build reuse the stored
+        files.
+      operationId: postPortfolioExposureHistory
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-exposure-history
+        tier: premium
+        model: per_request
+        cost_usd: 1.25
+        size_tiers:
+          - { min_items: 26, cost_usd: 5.0 }
+        currency: USD
+        billing_code: portfolio_exposure_history_v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tickers]
+              properties:
+                tickers:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: { type: string }
+                  description: Stocks and ETFs. No values.
+                start:
+                  type: string
+                  format: date
+                  description: First month-end to include. Default 2006.
+                end:
+                  type: string
+                  format: date
+                  description: Last month-end to include. Default latest.
+            example:
+              tickers: [NVDA, AMD, JPM, SPY]
+      responses:
+        "200":
+          description: Signed Parquet URLs plus coverage.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  as_of:
+                    type: object
+                    description: first_teo, last_teo, months, frequency, panel_built_utc, source_last_teo.
+                  files:
+                    type: object
+                    description: names and cov — each with url, format, rows, columns; expires_in_seconds; cached.
+                  names_delivered:
+                    type: integer
+                  etfs_in_covariance:
+                    type: array
+                    items: { type: string }
+                  dropped:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticker: { type: string }
+                        reason:
+                          type: string
+                          enum: [symbol_not_found, no_data_in_range, etf_without_covariance]
+        "400":
+          description: Invalid request (empty or more than 1000 tickers, bad date).
+        "422":
+          description: Nothing to deliver. Not charged.
+        "503":
+          description: The month-end panel is not available.
   /portfolio/exposure:
     post:
       summary: Long/short portfolio exposure and L3 risk (signed dollar positions)
