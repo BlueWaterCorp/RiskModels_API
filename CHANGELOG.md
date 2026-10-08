@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-08 — `POST /portfolio/exposure`: long/short book exposure and L3 risk
+
+- New endpoint for signed books: up to 1000 positions as dollar values (short < 0), netted by security and never normalised. The existing portfolio endpoints require positive weights and average per-name shares, so they cannot represent a long/short book.
+- Returns L1 beta-dollars by sector, the ETF hedge trades at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade, reported separately), and an L3 risk split. Systematic risk uses the book's raw-ETF exposure with one aligned 252-day ETF covariance ending on the model date; residual risk is a labelled diagonal approximation. ETFs held in the book count as exposure to themselves.
+- Every name is read at one model date (stale names are dropped and listed); missing L2/L3 hedge legs are filled from Zarr at that date. Coverage is reported per calculation against submitted gross.
+- $0.25 per successful call regardless of size; a book with no modelled names returns 422 and is not charged.
+- L3 only. A size/value (L4) overlay is backlog item C.16.
+- `SUPABASE_TABLES.md`: `stock_var` is the total 252-day daily variance, not stock-specific variance.
+
 ## 2026-10-08 — Correlation residual returns had the hedge sign reversed
 
 - `GET /metrics/{ticker}/correlation` and `POST /correlation` with `return_type` `l1`, `l2` or `l3_residual` built the residual as `r - hr·r_etf`. An ERM3 hedge ratio is the ETF position per $1 long stock (`l1_mkt_hr ≈ -beta`), so that added the market back instead of removing it; NVDA's "L1 residual" variance came out about 3.7× its gross variance. The residual is now `r + Σ hr·r_etf`, matching the raw-ETF-returns pairing in the ETF factor returns docs. `gross` correlations were unaffected.

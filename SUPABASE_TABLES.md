@@ -43,7 +43,7 @@ The metric keys below are the same ones the API exposes in range-history respons
 | `l1_cfr`, `l2_cfr`, `l3_cfr` | **Combined** (cumulative-through-level) factor return. `l1_cfr=l1_fr`, `l2_cfr=l1_fr+l2_fr`, `l3_cfr=l1_fr+l2_fr+l3_fr`. | `ds_erm3_returns_*.zarr` `combined_factor_return` |
 | `l1_fr`, `l2_fr`, `l3_fr` | **Incremental** per-level factor return. `l2_fr` is the sector factor's contribution on top of L1; `l3_fr` is the subsector factor on top of L1+L2. Use for stacked-bar decomposition and per-level attribution. | `ds_erm3_returns_*.zarr` `factor_return` |
 | `l1_rr`, `l2_rr`, `l3_rr` | Residual return at each level. `gross_return ≈ l3_cfr + l3_rr`. | `ds_erm3_returns_*.zarr` `residual_return` |
-| `stock_var` | Stock-specific variance | `ds_erm3_hedge_weights_*.zarr` |
+| `stock_var` | Total daily return variance, 252-day rolling window (ERM3 `_stock_var`; residual variance = `stock_var × l3_res_er`) | `ds_erm3_hedge_weights_*.zarr` |
 | `rank_ord_{window}_{cohort}_{metric}`, `cohort_size_{window}_{cohort}_{metric}` | Cross-sectional rankings | `ds_rankings_*.zarr` |
 
 ### security_history_latest schema

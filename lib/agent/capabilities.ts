@@ -1768,6 +1768,53 @@ export const CAPABILITIES: Capability[] = [
     tags: ["portfolio", "risk", "pri"],
   },
   {
+    id: "portfolio-exposure",
+    name: "Long/Short Portfolio Exposure",
+    description:
+      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector, the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and an L3 risk split. Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·l3_res_er, a diagonal approximation that ignores residual covariance across names (including common size/value). Positions are netted by security and never normalised. Use this instead of /portfolio/risk-index for books with shorts. One flat charge per successful call.",
+    endpoint: "/api/portfolio/exposure",
+    method: "POST",
+    parameters: {
+      positions: {
+        type: "array",
+        required: true,
+        description: "Array of { ticker, value } — signed dollar market value (short < 0). Max 1000.",
+        items: {
+          type: "object",
+          properties: {
+            ticker: { type: "string", required: true },
+            value: { type: "number", required: true },
+          },
+        },
+      },
+      lookback_days: {
+        type: "integer",
+        required: false,
+        description: "Trading days in the ETF covariance window (60–756). Default 252, the ERM3 estimation window.",
+        default: 252,
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 0.25,
+      currency: "USD",
+      billing_code: "portfolio_exposure_v1",
+    },
+    performance: {
+      avg_latency_ms: 2500,
+      p95_latency_ms: 8000,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 20,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "daily",
+      sources: ["security_history_latest", "ds_erm3_hedge_weights", "ds_etf", "symbols"],
+    },
+    tags: ["portfolio", "risk", "long-short", "hedge", "exposure"],
+  },
+  {
     id: "portfolio-risk-snapshot",
     name: "Snapshot — portfolio or ticker",
     description:
