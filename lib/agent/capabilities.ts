@@ -1894,9 +1894,9 @@ export const CAPABILITIES: Capability[] = [
     pricing: {
       model: "per_request",
       tier: "premium",
-      // PLACEHOLDER at the month-end prices until Conrad sets the daily price.
-      cost_usd: 1.25,
-      size_tiers: [{ min_items: 26, cost_usd: 5.0 }],
+      // Daily: 2x the month-end feed (Conrad, 2026-10-08).
+      cost_usd: 2.5,
+      size_tiers: [{ min_items: 26, cost_usd: 10.0 }],
       currency: "USD",
       billing_code: "portfolio_exposure_history_daily_v1",
     },

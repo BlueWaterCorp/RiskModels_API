@@ -2048,11 +2048,11 @@
     "pricing": {
       "model": "per_request",
       "tier": "premium",
-      "cost_usd": 1.25,
+      "cost_usd": 2.5,
       "size_tiers": [
         {
           "min_items": 26,
-          "cost_usd": 5
+          "cost_usd": 10
         }
       ],
       "currency": "USD",

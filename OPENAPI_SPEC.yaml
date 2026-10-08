@@ -8438,17 +8438,17 @@ paths:
         and wrote ~95 MB of Parquet in ~51 s. Identical requests reuse the stored files.
 
 
-        **Billing:** per successful call, by names delivered. Price to be confirmed; currently the
-        month-end feed's: $1.25 up to 25 names, $5.00 above.
+        **Billing:** per successful call, by names delivered: **$2.50** up to 25, **$10.00** above 25.
+        A request with nothing to deliver returns 422 and is not charged.
       operationId: postPortfolioExposureHistoryDaily
       tags: [Risk Metrics]
       x-pricing:
         capability_id: portfolio-exposure-history-daily
         tier: premium
         model: per_request
-        cost_usd: 1.25
+        cost_usd: 2.5
         size_tiers:
-          - { min_items: 26, cost_usd: 5.0 }
+          - { min_items: 26, cost_usd: 10.0 }
         currency: USD
         billing_code: portfolio_exposure_history_daily_v1
       requestBody:

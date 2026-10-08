@@ -67,3 +67,13 @@ describe("estimate for /portfolio/exposure", () => {
     expect(big?.size_tiers).toEqual([{ min_items: 26, cost_usd: 1.0 }]);
   });
 });
+
+describe("daily exposure history pricing", () => {
+  const price = (n: number) => calculateEstimatedCost("portfolio-exposure-history-daily", { itemCount: n });
+  it("is $2.50 up to 25 names and $10.00 above", () => {
+    expect(price(1)).toBe(2.5);
+    expect(price(25)).toBe(2.5);
+    expect(price(26)).toBe(10.0);
+    expect(price(1000)).toBe(10.0);
+  });
+});
