@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const cleanup = vi.fn(async (_api: unknown, opts: Record<string, unknown>) => ({ errors: [], deleted: 0, opts }));
+const cleanup = vi.fn(async (_api: unknown, _opts: Record<string, unknown>) => ({ errors: [] as string[], deleted: 0, complete: true }));
 vi.mock("@/lib/supabase/exposure-history-cleanup", () => ({
   cleanupExposureHistory: (api: unknown, opts: Record<string, unknown>) => cleanup(api, opts),
   maxAgeDaysFromEnv: () => 7,
@@ -35,5 +35,17 @@ describe("GET /api/cron/exposure-history-cleanup", () => {
     const res = await GET(req("Bearer s3cret", "?dry_run=1"));
     expect(res.status).toBe(200);
     expect(cleanup.mock.calls[0][1]).toMatchObject({ currentBuiltUtc: "2026-10-08T00:00:00Z", dryRun: true, maxAgeDays: 7 });
+  });
+
+  it("returns 200 with complete: false when the time budget cut the run short", async () => {
+    cleanup.mockResolvedValueOnce({ errors: [], deleted: 0, complete: false });
+    const res = await GET(req("Bearer s3cret"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).complete).toBe(false);
+  });
+
+  it("returns 500 when the run recorded errors", async () => {
+    cleanup.mockResolvedValueOnce({ errors: ["remove x: boom"], deleted: 0, complete: true });
+    expect((await GET(req("Bearer s3cret"))).status).toBe(500);
   });
 });

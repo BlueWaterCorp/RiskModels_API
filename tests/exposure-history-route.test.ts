@@ -45,19 +45,36 @@ vi.mock("@/lib/dal/zarr-reader", async (orig) => {
     })),
   };
 });
-const touch = { ok: true, calls: 0 };
+const touch = { ok: true, calls: [] as string[] };
+const folderState = { condemned: false, listError: false, oldGens: new Set<string>(), failCov: false };
 vi.mock("@/lib/supabase/storage", () => ({
   EXPOSURE_HISTORY_URL_TTL_SECONDS: 3600,
-  touchExposureHistoryFolder: vi.fn(async () => {
-    touch.calls += 1;
+  newExposureHistoryGen: (() => {
+    let n = 0;
+    return () => `gen${++n}`;
+  })(),
+  inspectExposureHistoryFolder: vi.fn(async (key: string) => {
+    const gens = [...stored.keys()].filter((p) => p.startsWith(`${key}/names.`)).map((p) => p.split(".")[1]);
+    // Like the real inspect: a pair older than `condemned` is not served.
+    const g = gens.find((x) => stored.has(`${key}/cov.${x}.parquet`) && !(folderState.condemned && folderState.oldGens.has(x)));
+    return {
+      error: folderState.listError,
+      condemned: folderState.condemned,
+      pair: g ? { names: `${key}/names.${g}.parquet`, cov: `${key}/cov.${g}.parquet` } : null,
+    };
+  }),
+  touchExposureHistoryFolder: vi.fn(async (folder: string) => {
+    touch.calls.push(folder);
     return touch.ok;
   }),
-  signExposureHistoryFile: vi.fn(async (key: string, name: string) =>
-    stored.has(`${key}/${name}`) ? `https://signed/${key}/${name}` : null,
-  ),
-  uploadExposureHistoryFile: vi.fn(async (key: string, name: string, buf: Buffer) => {
-    stored.set(`${key}/${name}`, buf);
-    return `https://signed/${key}/${name}`;
+  signExposureHistoryPath: vi.fn(async (path: string) => (stored.has(path) ? `https://signed/${path}` : null)),
+  removeExposureHistoryPaths: vi.fn(async (paths: string[]) => {
+    for (const p of paths) stored.delete(p);
+  }),
+  uploadExposureHistoryFile: vi.fn(async (key: string, name: string, gen: string, buf: Buffer) => {
+    if (name === "cov" && folderState.failCov) throw new Error("upload failed");
+    stored.set(`${key}/${name}.${gen}.parquet`, buf);
+    return `https://signed/${key}/${name}.${gen}.parquet`;
   }),
 }));
 
@@ -80,15 +97,19 @@ describe("POST /api/portfolio/exposure/history", () => {
     billed.count = null;
     stored.clear();
     touch.ok = true;
-    touch.calls = 0;
+    touch.calls = [];
+    folderState.condemned = false;
+    folderState.listError = false;
+    folderState.oldGens = new Set();
+    folderState.failCov = false;
     vi.mocked(uploadExposureHistoryFile).mockClear();
   });
 
   it("delivers signed Parquet URLs, bills names delivered, and lists drops", async () => {
     const { status, body } = await call({ tickers: ["NVDA", "NEWCO", "NOPE", "SPY"] });
     expect(status).toBe(200);
-    expect(body.files.names.url).toMatch(/^https:\/\/signed\/.+\/names$/);
-    expect(body.files.cov.url).toMatch(/\/cov$/);
+    expect(body.files.names.url).toMatch(/^https:\/\/signed\/[0-9a-f]{32}\/names\.gen\d+\.parquet$/);
+    expect(body.files.cov.url).toMatch(/\/cov\.gen\d+\.parquet$/);
     expect(body.files.names.rows).toBe(2);
     expect(body.files.cached).toBe(false);
     expect(body.etfs_in_covariance).toEqual(["SPY", "XLK", "SMH"]);
@@ -108,14 +129,48 @@ describe("POST /api/portfolio/exposure/history", () => {
     expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(2); // names + cov, once
   });
 
-  it("marks the folder on every request, and rewrites the files if the marker write fails", async () => {
-    await call({ tickers: ["NVDA"] });
-    expect(touch.calls).toBe(1);
+  it("writes a hit marker before serving a hit", async () => {
+    const first = await call({ tickers: ["NVDA"] });
+    const key = first.body.files.names.url.split("/")[3];
+    const again = await call({ tickers: ["NVDA"] });
+    expect(again.body.files.cached).toBe(true);
+    expect(again.body.files.names.url).toBe(first.body.files.names.url);
+    expect(touch.calls).toEqual([key, key]); // after upload, then before signing the hit
+  });
+
+  it("on a condemned folder, uploads one new generation and then serves it", async () => {
+    const first = await call({ tickers: ["NVDA"] });
+    folderState.condemned = true;
+    folderState.oldGens = new Set([first.body.files.names.url.split(".").at(-2)]);
+    const second = await call({ tickers: ["NVDA"] });
+    expect(second.body.files.cached).toBe(false);
+    expect(second.body.files.names.url).not.toBe(first.body.files.names.url);
+    const third = await call({ tickers: ["NVDA"] });
+    expect(third.body.files.cached).toBe(true);
+    expect(third.body.files.names.url).toBe(second.body.files.names.url);
+    expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(4); // two generations, not three
+  });
+
+  it("removes half a generation when one upload fails", async () => {
+    folderState.failCov = true;
+    const r = await call({ tickers: ["NVDA"] });
+    expect(r.status).toBe(500);
+    expect([...stored.keys()].filter((k) => k.includes("/names."))).toEqual([]);
+  });
+
+  it("does not serve a hit when the marker write fails", async () => {
+    const first = await call({ tickers: ["NVDA"] });
     touch.ok = false;
     const again = await call({ tickers: ["NVDA"] });
-    expect(touch.calls).toBe(2);
-    // No hit is served without a fresh activity time: the files are re-uploaded.
     expect(again.body.files.cached).toBe(false);
+    expect(again.body.files.names.url).not.toBe(first.body.files.names.url);
+  });
+
+  it("uploads a new generation when the folder listing fails", async () => {
+    await call({ tickers: ["NVDA"] });
+    folderState.listError = true;
+    const r = await call({ tickers: ["NVDA"] });
+    expect(r.body.files.cached).toBe(false);
     expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(4);
   });
 
