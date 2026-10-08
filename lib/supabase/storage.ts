@@ -14,8 +14,13 @@ import { createAdminClient } from "./admin";
 
 const BUCKET = "reports";
 const PREFIX = "tickers";
-/** Exposure history feed files: exposure-history/{cache key}/{names|cov}.parquet */
-const EXPOSURE_HISTORY_PREFIX = "exposure-history";
+/**
+ * Exposure history feed files: private bucket `exposure-history`, paths
+ * `{cache key}/{name}.parquet`, served only via signed URLs. Not `reports`:
+ * that bucket is public and accepts only PDF/PNG (BWMACRO migration
+ * 20261008220000_exposure_history_bucket).
+ */
+const EXPOSURE_HISTORY_BUCKET = "exposure-history";
 
 /**
  * Upload a snapshot PDF to Supabase Storage.
@@ -117,8 +122,8 @@ export async function signExposureHistoryFile(
 ): Promise<string | null> {
   const supabase = createAdminClient();
   const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(`${EXPOSURE_HISTORY_PREFIX}/${cacheKey}/${name}.parquet`, expiresIn);
+    .from(EXPOSURE_HISTORY_BUCKET)
+    .createSignedUrl(`${cacheKey}/${name}.parquet`, expiresIn);
   if (error) return null;
   return data?.signedUrl ?? null;
 }
@@ -131,8 +136,8 @@ export async function uploadExposureHistoryFile(
   expiresIn = 3600,
 ): Promise<string> {
   const supabase = createAdminClient();
-  const path = `${EXPOSURE_HISTORY_PREFIX}/${cacheKey}/${name}.parquet`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, bytes, {
+  const path = `${cacheKey}/${name}.parquet`;
+  const { error } = await supabase.storage.from(EXPOSURE_HISTORY_BUCKET).upload(path, bytes, {
     contentType: "application/vnd.apache.parquet",
     upsert: true,
   });
