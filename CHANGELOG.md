@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-08 — Exposure history files move to a private bucket
+
+- Fix: `POST /portfolio/exposure/history` returned 500 on every live request because it uploaded Parquet to the public `reports` bucket, which accepts only PDF/PNG. Feed files now go to the private `exposure-history` bucket (BWMACRO migration `20261008220000_exposure_history_bucket`) and are served only via 1-hour signed URLs.
+
 ## 2026-10-08 — Large history reads no longer try to cache themselves
 
 - `setCache` skips values over `CACHE_MAX_VALUE_BYTES` (default 5 MB) and values that cannot be serialized, instead of handing them to Upstash to reject.
