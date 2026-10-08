@@ -1790,6 +1790,45 @@ class RiskModelsClient:
 
     analyze = analyze_portfolio
 
+    def exposure_history(
+        self,
+        tickers: list[str] | tuple[str, ...],
+        *,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> Any:
+        """Download the month-end model history for ``tickers`` (POST /portfolio/exposure/history).
+
+        Only tickers are sent — never position values — so holdings stay on this machine.
+        Join the result with your dated holdings locally::
+
+            pack = client.exposure_history(["NVDA", "AMD", "SPY"])
+            series = pack.exposure({"2024-06-28": {"NVDA": 100_000, "AMD": -50_000}})
+
+        Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.
+
+        Returns:
+            :class:`riskmodels.exposure_history.ExposureHistoryPack`.
+        """
+        import httpx
+
+        from .exposure_history import load_pack
+
+        body: dict[str, Any] = {"tickers": [str(t).upper() for t in tickers]}
+        if start:
+            body["start"] = start
+        if end:
+            body["end"] = end
+        meta, _lineage, _r = self._transport.request("POST", "/portfolio/exposure/history", json=body)
+        files = meta.get("files", {}) if isinstance(meta, dict) else {}
+        # Signed storage URLs: fetched without the API key (storage rejects non-JWT bearers).
+        with httpx.Client(timeout=120.0, follow_redirects=True) as dl:
+            names = dl.get(files["names"]["url"])
+            names.raise_for_status()
+            cov = dl.get(files["cov"]["url"])
+            cov.raise_for_status()
+        return load_pack(names.content, cov.content, meta)
+
     def pair_trade_neutralization(
         self,
         long_ticker: str,

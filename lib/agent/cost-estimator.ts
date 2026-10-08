@@ -62,6 +62,8 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "portfolio-risk-index": "portfolio-risk-index",
   "portfolio-exposure": "portfolio-exposure",
   "portfolio/exposure": "portfolio-exposure",
+  "portfolio-exposure-history": "portfolio-exposure-history",
+  "portfolio/exposure/history": "portfolio-exposure-history",
   "macro-factors": "macro-factor-series",
   "portfolio-risk-snapshot": "portfolio-risk-snapshot",
   "risk-snapshot": "portfolio-risk-snapshot",

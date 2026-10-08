@@ -1836,6 +1836,45 @@ export const CAPABILITIES: Capability[] = [
     tags: ["portfolio", "risk", "long-short", "hedge", "exposure"],
   },
   {
+    id: "portfolio-exposure-history",
+    name: "Exposure History Feed",
+    description:
+      "Model data feed for long/short books: month-end ERM3 history since 2006 for up to 1000 names (hedge ratios at L1/L2/L3, explained-risk and residual shares, stock_var, L* level, L1 beta) plus the ETF covariance (252 trading days) at each month-end, delivered as two Parquet files via signed URLs. Takes tickers only — no position values — so holdings never leave the client; the SDK joins the feed with dated holdings locally and returns the same blocks as /portfolio/exposure at each month-end. Derived data only. Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.",
+    endpoint: "/api/portfolio/exposure/history",
+    method: "POST",
+    parameters: {
+      tickers: {
+        type: "array",
+        required: true,
+        description: "Tickers (stocks and ETFs), max 1000. No values.",
+        items: { type: "string" },
+      },
+      start: { type: "string", required: false, description: "First month-end YYYY-MM-DD. Default: 2006." },
+      end: { type: "string", required: false, description: "Last month-end YYYY-MM-DD. Default: latest." },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      cost_usd: 1.25,
+      // Over 25 names delivered: $5.00 for the full month-end history.
+      size_tiers: [{ min_items: 26, cost_usd: 5.0 }],
+      currency: "USD",
+      billing_code: "portfolio_exposure_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 8000,
+      p95_latency_ms: 30000,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 10,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "monthly",
+      sources: ["ds_exposure_month_end", "symbols"],
+    },
+    tags: ["portfolio", "risk", "long-short", "history", "feed"],
+  },
+  {
     id: "portfolio-risk-snapshot",
     name: "Snapshot — portfolio or ticker",
     description:

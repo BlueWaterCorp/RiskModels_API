@@ -316,6 +316,27 @@ export const PortfolioExposureRequestSchema = z.object({
     .optional(),
 });
 
+/**
+ * POST /api/portfolio/exposure/history — month-end model history for a list of
+ * names (no values: holdings never leave the client; the SDK joins locally).
+ */
+export const ExposureHistoryRequestSchema = z.object({
+  tickers: z
+    .array(TickerSchema)
+    .min(1, "At least one ticker is required")
+    .max(1000, "Maximum 1000 tickers per request"),
+  start: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "start must be YYYY-MM-DD")
+    .optional(),
+  end: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "end must be YYYY-MM-DD")
+    .optional(),
+});
+
+export type ExposureHistoryRequest = z.infer<typeof ExposureHistoryRequestSchema>;
+
 export type PortfolioExposureRequest = z.infer<typeof PortfolioExposureRequestSchema>;
 
 /**

@@ -110,7 +110,8 @@ function mode(values: string[]): string | null {
   return best;
 }
 
-async function resolveAll(tickers: string[]): Promise<Map<string, SymbolRegistryRow>> {
+/** Bulk ticker → registry row, with per-ticker retries for notation variants. */
+export async function resolveAll(tickers: string[]): Promise<Map<string, SymbolRegistryRow>> {
   const out = new Map<string, SymbolRegistryRow>();
   for (const part of chunks(tickers, IN_CHUNK)) {
     const m = await resolveSymbolsByTickers(part);
