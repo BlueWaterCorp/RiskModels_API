@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-08 — Large history reads no longer try to cache themselves
+
+- `setCache` skips values over `CACHE_MAX_VALUE_BYTES` (default 5 MB) and values that cannot be serialized, instead of handing them to Upstash to reject.
+- History slices over 50,000 rows skip the cache write and lookup. A 300-name full daily history (14.3M rows) used to crash with "Invalid array length" after failed Redis writes; it now completes in 52 s. 25 names: 20 s → 10 s.
+
 ## 2026-10-08 — Exposure history as a model data feed
 
 - New `POST /portfolio/exposure/history`: send tickers only (no values) and receive signed URLs to two Parquet files — each name's month-end ERM3 history since 2006 (hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta`) and the ETF covariance at each month-end. Holdings never leave the client.

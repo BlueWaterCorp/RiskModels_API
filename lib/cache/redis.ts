@@ -100,11 +100,41 @@ export async function getCache<T>(key: string): Promise<T | null> {
 /**
  * Set value in cache
  */
+/**
+ * Largest value (serialized JSON bytes) worth caching. Upstash rejects requests
+ * over its plan limit, and a multi-million-row history slice cannot even be
+ * serialized (V8 string limit) — attempting it cost seconds and gigabytes per
+ * request before failing. Override with CACHE_MAX_VALUE_BYTES.
+ */
+export const CACHE_MAX_VALUE_BYTES = (() => {
+  const n = Number(process.env.CACHE_MAX_VALUE_BYTES);
+  return Number.isFinite(n) && n > 0 ? n : 5_000_000;
+})();
+
+/** Serialized size, or null when the value cannot be serialized at all. */
+function serializedBytes(value: unknown): number | null {
+  try {
+    const s = JSON.stringify(value);
+    return s === undefined ? 0 : Buffer.byteLength(s);
+  } catch {
+    return null;
+  }
+}
+
 export async function setCache<T>(
   key: string,
   value: T,
   ttlSeconds: number = CACHE_TTL.DAILY,
 ): Promise<void> {
+  const bytes = serializedBytes(value);
+  if (bytes === null || bytes > CACHE_MAX_VALUE_BYTES) {
+    console.warn(
+      `[Cache] skip set for ${key}: ${bytes === null ? "not serializable" : `${bytes} bytes`} ` +
+        `(limit ${CACHE_MAX_VALUE_BYTES})`,
+    );
+    return;
+  }
+
   // When Redis is configured it is the only store: a rejected write
   // (oversized value vs Upstash request limits, transient network error) is
   // logged and dropped. Falling through to the in-process Map here would park
