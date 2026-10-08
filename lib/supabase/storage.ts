@@ -31,7 +31,7 @@ export const EXPOSURE_HISTORY_CONDEMNED = "condemned";
 
 /**
  * Short tag for a panel build, used in hit-marker names
- * (`{folder}/hit.{tag}.{ms}`) so cleanup can tell the build from a folder
+ * (`{folder}/hits/{tag}.{window}`) so cleanup can tell the build from a folder
  * listing without downloading anything.
  */
 export function exposureHistoryBuildTag(builtUtc: unknown): string {
@@ -161,8 +161,8 @@ export interface ExposureHistoryFolderState {
   set: Record<string, string> | null;
 }
 
-const INSPECT_PAGE = 1000;
-const INSPECT_MAX_PAGES = 20;
+const INSPECT_PAGE = 100;
+const INSPECT_MAX_PAGES = 200;
 
 function entryTime(o: { created_at?: string | null; updated_at?: string | null }): number | null {
   const v = [o.created_at, o.updated_at].map((x) => (x ? Date.parse(x) : NaN)).filter((x) => Number.isFinite(x));
@@ -217,6 +217,10 @@ export async function inspectExposureHistoryFolder(cacheKey: string): Promise<Ex
 
 /** Signed URL for an object in the exposure-history bucket, or null. */
 export async function signExposureHistoryPath(path: string, expiresIn = EXPOSURE_HISTORY_URL_TTL_SECONDS): Promise<string | null> {
+  // Cleanup's delays are sized against this TTL; a longer URL could outlive its file.
+  if (expiresIn > EXPOSURE_HISTORY_URL_TTL_SECONDS) {
+    throw new Error(`exposure-history URLs may not outlive ${EXPOSURE_HISTORY_URL_TTL_SECONDS}s`);
+  }
   const supabase = createAdminClient();
   const { data, error } = await supabase.storage.from(EXPOSURE_HISTORY_BUCKET).createSignedUrl(path, expiresIn);
   if (error) return null;
@@ -279,19 +283,25 @@ export async function uploadExposureHistoryFile(
 
 /**
  * Signed URLs for a cached set under `cacheKey`, or null on a miss. Serves only
- * a complete set written after any `condemned` marker, and only after the hit
- * marker is written, so the daily cleanup sees the activity.
+ * the newest complete set written after any `condemned` marker, and only if
+ * it holds every name in `required`. Writes the window hit marker first so
+ * the daily cleanup sees the activity; if that write fails the hit is still
+ * served (logged): a valid URL never depends on the marker, because cleanup
+ * deletes a folder no sooner than 12 h after condemning it and URLs live 1 h.
  */
 export async function serveExposureHistorySet(
   cacheKey: string,
   builtUtc: unknown,
+  required: string[],
   expiresIn = EXPOSURE_HISTORY_URL_TTL_SECONDS,
 ): Promise<Record<string, string> | null> {
   const state = await inspectExposureHistoryFolder(cacheKey);
   if (state.error || !state.set) return null;
-  if (!(await touchExposureHistoryFolder(cacheKey, builtUtc))) return null;
+  const set = state.set;
+  if (!required.every((n) => set[n])) return null;
+  await touchExposureHistoryFolder(cacheKey, builtUtc);
   const urls: Record<string, string> = {};
-  for (const [name, path] of Object.entries(state.set)) {
+  for (const [name, path] of Object.entries(set)) {
     const url = await signExposureHistoryPath(path, expiresIn);
     if (!url) return null;
     urls[name] = url;

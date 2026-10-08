@@ -75,7 +75,10 @@ vi.mock("@/lib/dal/zarr-reader", async (orig) => ({
 }));
 vi.mock("@/lib/supabase/storage", () => ({
   EXPOSURE_HISTORY_URL_TTL_SECONDS: 3600,
-  serveExposureHistorySet: vi.fn(async (k: string) => stored.get(k) ?? null),
+  serveExposureHistorySet: vi.fn(async (k: string, _b: unknown, required: string[]) => {
+    const set = stored.get(k);
+    return set && required.every((n) => set[n]) ? set : null;
+  }),
   writeExposureHistorySet: vi.fn(async (k: string, _b: unknown, files: Array<{ name: string }>) => {
     const urls = Object.fromEntries(files.map((f) => [f.name, `https://s/${k}/${f.name}`]));
     stored.set(k, urls);
@@ -119,6 +122,17 @@ describe("POST /api/portfolio/exposure/history/daily", () => {
     await call({ tickers: ["NVDA"] });
     const again = await call({ tickers: ["NVDA"] });
     expect(again.body.files.cached).toBe(true);
+    expect(again.body.files.names.parts.map((p: any) => p.year)).toEqual(["2023", "2024"]);
+  });
+
+  it("does not reuse a stored set that lacks a year now required", async () => {
+    await call({ tickers: ["NVDA"] });
+    for (const [k, v] of stored) {
+      const { names_2024: _drop, ...rest } = v;
+      stored.set(k, rest);
+    }
+    const again = await call({ tickers: ["NVDA"] });
+    expect(again.body.files.cached).toBe(false);
     expect(again.body.files.names.parts.map((p: any) => p.year)).toEqual(["2023", "2024"]);
   });
 });

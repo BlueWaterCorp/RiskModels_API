@@ -92,7 +92,7 @@ describe("inspect / serve / write", () => {
     const first = await writeExposureHistorySet(K, BUILD, files());
     expect(Object.keys(first).sort()).toEqual(["cov", "names"]);
     clock.t += 60_000;
-    const hit = await serveExposureHistorySet(K, BUILD);
+    const hit = await serveExposureHistorySet(K, BUILD, ["cov"]);
     expect(hit).toEqual(first);
     const hits = [...store.keys()].filter((p) => p.startsWith(`${K}/hits/`));
     // One marker per 10-minute window (the window id comes from the server clock).
@@ -103,29 +103,52 @@ describe("inspect / serve / write", () => {
 
   it("does not serve an incomplete set (no cov) or a set older than condemned", async () => {
     put(`${K}/names.1111111111111111.parquet`, 1 * D);
-    expect(await serveExposureHistorySet(K, BUILD)).toBeNull();
+    expect(await serveExposureHistorySet(K, BUILD, ["cov"])).toBeNull();
     put(`${K}/cov.1111111111111111.parquet`, 1 * D);
-    expect(await serveExposureHistorySet(K, BUILD)).not.toBeNull();
+    expect(await serveExposureHistorySet(K, BUILD, ["cov"])).not.toBeNull();
     put(`${K}/condemned`, 1 * H);
-    expect(await serveExposureHistorySet(K, BUILD)).toBeNull();
+    expect(await serveExposureHistorySet(K, BUILD, ["cov"])).toBeNull();
   });
 
   it("on a condemned folder: one miss writes a new generation, then hits serve it", async () => {
     put(`${K}/names.parquet`, 9 * D);
     put(`${K}/cov.parquet`, 9 * D);
     put(`${K}/condemned`, 2 * H);
-    expect(await serveExposureHistorySet(K, BUILD)).toBeNull();
+    expect(await serveExposureHistorySet(K, BUILD, ["cov"])).toBeNull();
     const fresh = await writeExposureHistorySet(K, BUILD, files());
     clock.t += 1000;
-    expect(await serveExposureHistorySet(K, BUILD)).toEqual(fresh);
+    expect(await serveExposureHistorySet(K, BUILD, ["cov"])).toEqual(fresh);
   });
 
   it("serves daily sets with many files and a legacy set", async () => {
     put(`${K}/names_2023.parquet`, 1 * D);
     put(`${K}/names_2024.parquet`, 1 * D);
     put(`${K}/cov.parquet`, 1 * D);
-    const hit = await serveExposureHistorySet(K, BUILD);
+    const hit = await serveExposureHistorySet(K, BUILD, ["cov"]);
     expect(Object.keys(hit!).sort()).toEqual(["cov", "names_2023", "names_2024"]);
+  });
+
+  it("misses when a required file is absent from the newest set", async () => {
+    put(`${K}/names_2023.parquet`, 1 * D);
+    put(`${K}/cov.parquet`, 1 * D);
+    expect(await serveExposureHistorySet(K, BUILD, ["names_2023", "names_2024", "cov"])).toBeNull();
+  });
+
+  it("still serves a hit when the marker write fails, without writing a new generation", async () => {
+    put(`${K}/names.parquet`, 1 * D);
+    put(`${K}/cov.parquet`, 1 * D);
+    const orig = fakeBucket.upload;
+    fakeBucket.upload = async (path, body, opts) => (path.includes("/hits/") ? { error: { message: "down" } } : orig(path, body, opts));
+    const hit = await serveExposureHistorySet(K, BUILD, ["names", "cov"]);
+    fakeBucket.upload = orig;
+    expect(Object.keys(hit!).sort()).toEqual(["cov", "names"]);
+    expect([...store.keys()].length).toBe(2);
+  });
+
+  it("refuses URLs longer than the cleanup is sized for", async () => {
+    put(`${K}/names.parquet`, 1 * D);
+    put(`${K}/cov.parquet`, 1 * D);
+    await expect(serveExposureHistorySet(K, BUILD, ["cov"], 7200)).rejects.toThrow(/outlive/);
   });
 
   it("removes the files of a set whose write failed", async () => {
@@ -163,7 +186,7 @@ describe("cleanup with the route rules", () => {
       if (calls !== 1) return;
       // Paused after the first remove chunk: a request arrives.
       clock.t += 1000;
-      let urls = await serveExposureHistorySet(K, BUILD);
+      let urls = await serveExposureHistorySet(K, BUILD, ["cov"]);
       if (!urls) urls = await writeExposureHistorySet(K, BUILD, files());
       served.push(...Object.values(urls));
     };
@@ -178,7 +201,7 @@ describe("cleanup with the route rules", () => {
     put(`${K}/names.1111111111111111.parquet`, 9 * D);
     put(`${K}/cov.1111111111111111.parquet`, 9 * D);
     // Hit now; cleanup runs 4 h later (no condemn), then 8 days later (condemn only).
-    const urls = (await serveExposureHistorySet(K, BUILD))!;
+    const urls = (await serveExposureHistorySet(K, BUILD, ["cov"]))!;
     clock.t += 4 * H;
     const r1 = await cleanupExposureHistory(supabaseBucketApi(), { now: new Date(clock.t), currentBuiltUtc: BUILD });
     expect(r1.condemned).toBe(0); // last activity is the hit marker, 4 h old: under the 7-day age
@@ -186,6 +209,22 @@ describe("cleanup with the route rules", () => {
     const r2 = await cleanupExposureHistory(supabaseBucketApi(), { now: new Date(clock.t), currentBuiltUtc: BUILD });
     expect(r2.condemned).toBe(1);
     expect(Object.values(urls).every(exists)).toBe(true);
+  });
+
+  it("a served set survives until a newer set has been complete for longer than the guard", async () => {
+    put(`${K}/names.1111111111111111.parquet`, 5 * D);
+    put(`${K}/cov.1111111111111111.parquet`, 5 * D);
+    const g = (await serveExposureHistorySet(K, BUILD, ["names", "cov"]))!; // set G served at t0
+    // H written just after, e.g. by a request that saw G as incomplete.
+    clock.t += 1000;
+    const h = await writeExposureHistorySet(K, BUILD, files());
+    clock.t += 3600 * 1000 - 1000; // H.newest + TTL - 1 s
+    await cleanupExposureHistory(supabaseBucketApi(), { now: new Date(clock.t), currentBuiltUtc: BUILD });
+    expect(Object.values(g).every(exists)).toBe(true);
+    clock.t += 2 * H + 2000; // past H.newest + guard
+    await cleanupExposureHistory(supabaseBucketApi(), { now: new Date(clock.t), currentBuiltUtc: BUILD });
+    expect(Object.values(g).some(exists)).toBe(false);
+    expect(Object.values(h).every(exists)).toBe(true);
   });
 
   it("prunes superseded generations on a live folder but never the one being served", async () => {

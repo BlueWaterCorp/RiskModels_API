@@ -141,25 +141,25 @@ export const POST = withBilling(
       const built = panel.attrs.built_utc;
       const parts: Array<{ year: string; url: string; rows: number }> = [];
       let covUrl: string;
-      const hit = await serveExposureHistorySet(cacheKey, built, URL_TTL_SECONDS);
-      const cached = Boolean(hit?.cov);
-      if (hit && cached) {
-        for (const name of Object.keys(hit).filter((n) => n.startsWith("names_")).sort()) {
-          parts.push({ year: name.slice("names_".length), url: hit[name], rows: -1 }); // rows unknown on a hit
-        }
+      // Every non-empty year must be in a served set (a set from before a new
+      // year had rows is not reused).
+      const yearRows = new Map<string, ReturnType<typeof buildDailyNameRows>>();
+      for (const year of dailyYears(daily)) {
+        const rows = buildDailyNameRows(daily, deliveredNames, year);
+        if (rows.length > 0) yearRows.set(year, rows);
+      }
+      const required = [...[...yearRows.keys()].map((y) => `names_${y}`), "cov"];
+      const hit = await serveExposureHistorySet(cacheKey, built, required, URL_TTL_SECONDS);
+      const cached = Boolean(hit);
+      if (hit) {
+        for (const [year, rows] of yearRows) parts.push({ year, url: hit[`names_${year}`], rows: rows.length });
         covUrl = hit.cov;
       } else {
         const files: Array<{ name: string; bytes: Buffer }> = [];
-        const rowsByYear = new Map<string, number>();
-        for (const year of dailyYears(daily)) {
-          const yearRows = buildDailyNameRows(daily, deliveredNames, year);
-          if (yearRows.length === 0) continue;
-          rowsByYear.set(year, yearRows.length);
-          files.push({ name: `names_${year}`, bytes: await toParquet(yearRows, NAME_COLUMNS) });
-        }
+        for (const [year, rows] of yearRows) files.push({ name: `names_${year}`, bytes: await toParquet(rows, NAME_COLUMNS) });
         files.push({ name: "cov", bytes: await toParquet(cov.cov, COV_COLUMNS) });
         const urls = await writeExposureHistorySet(cacheKey, built, files, URL_TTL_SECONDS);
-        for (const [year, rows] of rowsByYear) parts.push({ year, url: urls[`names_${year}`], rows });
+        for (const [year, rows] of yearRows) parts.push({ year, url: urls[`names_${year}`], rows: rows.length });
         covUrl = urls.cov;
       }
 

@@ -43,6 +43,12 @@ export const MIN_MAX_AGE_DAYS = 1;
 export const SAFETY_MARGIN_MS = 2 * HOUR_MS;
 /** A condemned folder is deleted only once its marker is at least this old. */
 export const DELETE_AFTER_MS = 12 * HOUR_MS;
+/** Longest a route request can run (Vercel maxDuration on both routes). */
+const MAX_REQUEST_MS = 300 * 1000;
+// URL safety rests on these orderings; fail at load if a constant is changed past them.
+if (!(SAFETY_MARGIN_MS > MAX_REQUEST_MS && DELETE_AFTER_MS > EXPOSURE_HISTORY_URL_TTL_SECONDS * 1000 + SAFETY_MARGIN_MS)) {
+  throw new Error("exposure-history cleanup: DELETE_AFTER_MS / SAFETY_MARGIN_MS too small for the URL TTL");
+}
 const CACHE_KEY_RE = /^[0-9a-f]{32}$/;
 /** `hits/{tag}.{ms}` (current) or `hit.{tag}` (legacy, top level). */
 const MARKER_RE = /^(?:hits\/|hit\.)([0-9a-f]{12})(?:\.|$)/;

@@ -149,7 +149,7 @@ export const POST = withBilling(
       // Cache rules shared with the daily route and the cleanup cron:
       // lib/supabase/storage.ts, docs/EXPOSURE_HISTORY_FEED.md "Storage and cleanup".
       const built = slice.attrs.built_utc;
-      let urls = await serveExposureHistorySet(cacheKey, built, URL_TTL_SECONDS);
+      let urls = await serveExposureHistorySet(cacheKey, built, ["names", "cov"], URL_TTL_SECONDS);
       const cached = Boolean(urls?.names && urls?.cov);
       if (!cached) {
         const [namesBuf, covBuf] = await Promise.all([

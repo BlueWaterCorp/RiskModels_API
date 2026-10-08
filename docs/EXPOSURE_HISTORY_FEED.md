@@ -152,18 +152,29 @@ build cannot be read, only the age rule runs. Deletion happens one run after
 condemnation, so files are removed about N+1 days after their last request.
 A folder that keeps getting requests stays until the panel is rebuilt.
 
-**Why a valid URL is never deleted.** A hit URL is signed at time T only
-after its window's marker is written, so the marker shows a time no earlier
-than T − 10 min. If that is after the `condemned` marker C, the folder is
-reprieved. If it is before C, then T < C + 10 min, and deletion happens no
-earlier than C + 12 h, long after T + 1 h. A hit on a condemned folder serves
-only a set newer than C: a delete run that lists it reprieves, and one that
-listed earlier does not contain its paths. Because `condemned` is removed
-after the data files, a request during a delete still sees the marker. A URL
-for a new upload points at paths that no earlier listing contains. A pruned
-generation was superseded by a set complete for longer than the guard, so
-every hit since then has served the newer set. Comparisons between objects use Storage's own timestamps; the
-margins cover clock skew between Vercel and Storage.
+**Why a valid URL is never deleted.** URLs live 1 h
+(`EXPOSURE_HISTORY_URL_TTL_SECONDS`; signing with a longer TTL throws). Every
+delete path waits longer than that after the last moment a URL could have been
+issued for the files it removes:
+
+| Delete path | Bound |
+|---|---|
+| Folder delete | Runs at least 12 h after `condemned` was written. Routes serve only sets newer than the marker; `condemned` is removed after the data files, so a request during a delete still sees it. A set signed before the marker existed is deleted at least 12 h later. |
+| Superseded generation | A newer complete set has existed for longer than the guard (3 h); every request since then served the newer set (requests run at most 300 s). |
+| Incomplete generation | Never returned: a set's URLs are returned only after `cov` is uploaded. |
+| Hit markers | Not data; the newest per build tag is kept, so last activity does not move. |
+
+`lib/supabase/exposure-history-cleanup.ts` refuses to load if
+`DELETE_AFTER_MS` or the margin is reduced below these bounds. The hit marker
+serves retention (it keeps requested folders from being condemned), not URL
+safety: if writing it fails, the hit is still served. Cleanup assumes no writer
+overwrites a path; writers from before this change did (`upsert`), so they
+must not run alongside it (Vercel replaces all instances on deploy; the cron
+runs at 07:30 UTC).
+
+The month-end route requires `names` and `cov` in a served set; the daily
+route requires `cov` and `names_<year>` for every year with rows, so a set
+written before a new year had rows is not reused.
 
 The run stops after 240 s (checked before every listing page) and starts at a random
 folder, so a run cut short covers different folders next time; it then returns
