@@ -17,9 +17,9 @@
 #   cp Risk_Models/riskmodels_net/src/lib/workspace/workspace-action-contract.json \
 #      RiskModels_API/lib/chat/workspace-action-contract.mirror.json
 #
-# NOTE: like drift-detection.yml, this check is red by construction while the
-# canonical file only exists on a not-yet-merged Risk_Models branch. It heals
-# once both sides are on main.
+# NOTE: because Risk_Models is canonical here, comparing this PR's mirror with
+# Risk_Models main is the right check. It is red only while the canonical
+# change sits on an unmerged Risk_Models branch, and heals once that merges.
 #
 # REQUIRED SECRET: REPO_ACCESS_TOKEN (read access to BlueWaterCorp/Risk_Models)
 #

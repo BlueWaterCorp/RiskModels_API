@@ -1,43 +1,106 @@
 # =============================================================================
-# Cross-Repo Drift Detection
+# MCP data drift
 # =============================================================================
 #
-# This workflow detects drift between canonical files in RiskModels_API and
-# their copies in Risk_Models. It fails PRs if files are out of sync.
+# Two separate questions, two jobs:
 #
-# TRIGGERS: PRs touching schema files, OpenAPI spec, or generated MCP openapi.json
+# 1. generated-artifacts (every PR / push to main)
+#    Are the committed generated files current? Regenerates
+#    mcp/data/openapi.json (from OPENAPI_SPEC.yaml) and mcp/data/capabilities.json
+#    (from lib/agent/capabilities.ts) and fails if they differ from what is
+#    committed. This is the mistake a PR author can make and fix, so a failure
+#    here always means "run the generators and commit".
 #
-# REQUIRED SECRET: REPO_ACCESS_TOKEN
-#   - Read access to BlueWaterCorp/Risk_Models (private repo)
+# 2. mirror (after the sync workflow, daily, or on demand)
+#    Does the Risk_Models copy match RiskModels_API main? The mirror is only
+#    updated after merge (sync-mcp-to-risk-models.yml), so comparing it to a PR
+#    branch fails on every spec change by construction. Comparing it to main
+#    catches the real problems: a broken sync, or a hand edit in Risk_Models.
 #
-name: Cross-Repo Drift Detection
+# REQUIRED SECRET (mirror job only): REPO_ACCESS_TOKEN — read on BlueWaterCorp/Risk_Models.
+#
+name: MCP Data Drift
 
 on:
   pull_request:
     paths:
-      - "mcp/data/schema-paths.json"
-      - "mcp/data/schemas/**"
-      - "mcp/data/openapi.json"
-      - "mcp/data/capabilities.json"
       - "OPENAPI_SPEC.yaml"
+      - "mcp/data/**"
+      - "lib/agent/capabilities.ts"
+      - "scripts/yaml-to-json.js"
+      - "scripts/generate-mcp-capabilities.mjs"
+      - ".github/workflows/drift-detection.yml"
+  push:
+    branches: [main]
+    paths:
+      - "OPENAPI_SPEC.yaml"
+      - "mcp/data/**"
+      - "lib/agent/capabilities.ts"
+      - "scripts/yaml-to-json.js"
+      - "scripts/generate-mcp-capabilities.mjs"
+  workflow_run:
+    workflows: ["Sync MCP data to Risk_Models"]
+    types: [completed]
+  schedule:
+    # Daily 07:00 UTC — catches hand edits in Risk_Models between syncs.
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  detect-drift:
-    # Fork PRs do not receive REPO_ACCESS_TOKEN; skip instead of failing checkout of Risk_Models.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+  generated-artifacts:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-
     steps:
-      - name: Checkout RiskModels_API
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Regenerate MCP artifacts
+        run: |
+          npm run build:openapi
+          npm run build:capabilities
+
+      - name: Fail if committed artifacts are stale
+        run: |
+          if git diff --quiet -- mcp/data; then
+            echo "✅ mcp/data/openapi.json and capabilities.json match their sources"
+            exit 0
+          fi
+          echo "❌ Generated MCP files are out of date with their sources:"
+          git diff --stat -- mcp/data
+          echo ""
+          git diff -- mcp/data | head -120
+          echo ""
+          echo "Fix: npm run build:openapi && npm run build:capabilities, then commit mcp/data/."
+          exit 1
+
+  mirror:
+    # Only main is compared with the mirror. Skip if the sync run itself failed
+    # (that failure is already red) and skip fork contexts without the secret.
+    if: >-
+      github.repository == 'BlueWaterCorp/RiskModels_API' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout RiskModels_API main
         uses: actions/checkout@v6
         with:
+          ref: main
           fetch-depth: 1
 
       - name: Checkout Risk_Models (private)
@@ -48,194 +111,34 @@ jobs:
           path: risk_models
           fetch-depth: 1
 
-      - name: Check schema-paths.json drift
-        id: schema_paths
+      - name: Compare mirror with main
         run: |
-          echo "Comparing schema-paths.json..."
-
-          LOCAL="mcp/data/schema-paths.json"
-          REMOTE="risk_models/riskmodels_net/mcp-server/data/schema-paths.json"
-
-          if [ ! -f "$LOCAL" ]; then
-            echo "❌ Local schema-paths.json not found at $LOCAL"
-            exit 1
-          fi
-
-          if [ ! -f "$REMOTE" ]; then
-            echo "❌ Remote schema-paths.json not found at $REMOTE"
-            exit 1
-          fi
-
-          if diff -q "$LOCAL" "$REMOTE" > /dev/null 2>&1; then
-            echo "✅ schema-paths.json is in sync"
-            echo "drift_detected=false" >> $GITHUB_OUTPUT
-          else
-            echo "❌ DRIFT DETECTED: schema-paths.json differs between repos"
-            echo ""
-            echo "=== Canonical (RiskModels_API) ==="
-            cat "$LOCAL"
-            echo ""
-            echo "=== Risk_Models Copy ==="
-            cat "$REMOTE"
-            echo ""
-            echo "=== Diff ==="
-            diff "$LOCAL" "$REMOTE" || true
-            echo "drift_detected=true" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      - name: Check schema files drift
-        id: schemas
-        if: always()
-        run: |
-          echo "Comparing schema files..."
-
-          LOCAL_SCHEMAS="mcp/data/schemas"
-          REMOTE_SCHEMAS="risk_models/riskmodels_net/mcp-server/data/schemas"
-
-          if [ ! -d "$LOCAL_SCHEMAS" ]; then
-            echo "❌ Local schemas directory not found"
-            exit 1
-          fi
-
-          if [ ! -d "$REMOTE_SCHEMAS" ]; then
-            echo "❌ Remote schemas directory not found"
-            exit 1
-          fi
-
-          DRIFT_FOUND=0
-
-          # Get all schema files from local
-          for local_file in "$LOCAL_SCHEMAS"/*.json; do
-            if [ -f "$local_file" ]; then
-              filename=$(basename "$local_file")
-              remote_file="$REMOTE_SCHEMAS/$filename"
-
-              if [ ! -f "$remote_file" ]; then
-                echo "❌ Schema missing in Risk_Models: $filename"
-                DRIFT_FOUND=1
-                continue
-              fi
-
-              if ! diff -q "$local_file" "$remote_file" > /dev/null 2>&1; then
-                echo "❌ Schema drift: $filename"
-                DRIFT_FOUND=1
-              fi
+          SRC="mcp/data"
+          DST="risk_models/riskmodels_net/mcp-server/data"
+          DRIFT=0
+          for f in schema-paths.json openapi.json capabilities.json; do
+            if [ ! -f "$SRC/$f" ]; then continue; fi
+            if [ ! -f "$DST/$f" ]; then
+              echo "❌ Missing in Risk_Models: $f"; DRIFT=1; continue
+            fi
+            if ! diff -q "$SRC/$f" "$DST/$f" > /dev/null; then
+              echo "❌ Differs from main: $f"
+              diff "$SRC/$f" "$DST/$f" | head -60 || true
+              DRIFT=1
             fi
           done
-
-          # Check for extra files in remote
-          for remote_file in "$REMOTE_SCHEMAS"/*.json; do
-            if [ -f "$remote_file" ]; then
-              filename=$(basename "$remote_file")
-              local_file="$LOCAL_SCHEMAS/$filename"
-
-              if [ ! -f "$local_file" ]; then
-                echo "❌ Extra schema in Risk_Models (not in canonical): $filename"
-                DRIFT_FOUND=1
-              fi
+          if [ -d "$SRC/schemas" ]; then
+            if ! diff -rq "$SRC/schemas" "$DST/schemas"; then
+              echo "❌ schemas/ differs from main"
+              DRIFT=1
             fi
-          done
-
-          if [ $DRIFT_FOUND -eq 0 ]; then
-            echo "✅ All schema files are in sync"
-            echo "drift_detected=false" >> $GITHUB_OUTPUT
-          else
-            echo "drift_detected=true" >> $GITHUB_OUTPUT
-            exit 1
           fi
-
-      - name: Check openapi.json drift
-        id: openapi
-        if: always()
-        run: |
-          echo "Comparing mcp/data/openapi.json (canonical) to Risk_Models copy..."
-
-          LOCAL="mcp/data/openapi.json"
-          REMOTE="risk_models/riskmodels_net/mcp-server/data/openapi.json"
-
-          if [ ! -f "$LOCAL" ]; then
-            echo "❌ Local openapi.json not found at $LOCAL (regenerate from OPENAPI_SPEC.yaml if needed)"
-            exit 1
+          if [ "$DRIFT" -eq 0 ]; then
+            echo "✅ Risk_Models mirror matches RiskModels_API main"
+            exit 0
           fi
-
-          if [ ! -f "$REMOTE" ]; then
-            echo "❌ Remote openapi.json not found at $REMOTE"
-            exit 1
-          fi
-
-          if diff -q "$LOCAL" "$REMOTE" > /dev/null 2>&1; then
-            echo "✅ openapi.json is in sync"
-            echo "drift_detected=false" >> $GITHUB_OUTPUT
-          else
-            echo "❌ DRIFT DETECTED: openapi.json differs between repos"
-            echo ""
-            echo "=== Diff (first 120 lines) ==="
-            diff "$LOCAL" "$REMOTE" | head -120 || true
-            echo "drift_detected=true" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      - name: Check capabilities.json drift
-        id: capabilities
-        if: always()
-        run: |
-          echo "Comparing mcp/data/capabilities.json (canonical) to Risk_Models copy..."
-
-          LOCAL="mcp/data/capabilities.json"
-          REMOTE="risk_models/riskmodels_net/mcp-server/data/capabilities.json"
-
-          if [ ! -f "$LOCAL" ]; then
-            echo "❌ Local capabilities.json not found at $LOCAL"
-            exit 1
-          fi
-
-          if [ ! -f "$REMOTE" ]; then
-            echo "❌ Remote capabilities.json not found at $REMOTE"
-            exit 1
-          fi
-
-          if diff -q "$LOCAL" "$REMOTE" > /dev/null 2>&1; then
-            echo "✅ capabilities.json is in sync"
-            echo "drift_detected=false" >> $GITHUB_OUTPUT
-          else
-            echo "❌ DRIFT DETECTED: capabilities.json differs between repos"
-            echo ""
-            echo "=== Diff (first 120 lines) ==="
-            diff "$LOCAL" "$REMOTE" | head -120 || true
-            echo "drift_detected=true" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "========================================"
-          echo "Drift Detection Summary"
-          echo "========================================"
-
-          if [ "${{ steps.schema_paths.outcome }}" == "success" ] && [ "${{ steps.schemas.outcome }}" == "success" ] && [ "${{ steps.openapi.outcome }}" == "success" ] && [ "${{ steps.capabilities.outcome }}" == "success" ]; then
-            echo "✅ All checks passed - no drift detected"
-          else
-            echo "❌ Drift detected! Please sync files:"
-            echo ""
-            echo "Manual sync steps:"
-            echo "1. Copy schemas from RiskModels_API to Risk_Models:"
-            echo "   cp RiskModels_API/mcp/data/schemas/*.json \\"
-            echo "      Risk_Models/riskmodels_net/mcp-server/data/schemas/"
-            echo ""
-            echo "2. Copy schema-paths.json:"
-            echo "   cp RiskModels_API/mcp/data/schema-paths.json \\"
-            echo "      Risk_Models/riskmodels_net/mcp-server/data/schema-paths.json"
-            echo ""
-            echo "3. Copy openapi.json (generated from OPENAPI_SPEC.yaml):"
-            echo "   cp RiskModels_API/mcp/data/openapi.json \\"
-            echo "      Risk_Models/riskmodels_net/mcp-server/data/openapi.json"
-            echo ""
-            echo "4. Copy capabilities.json:"
-            echo "   cp RiskModels_API/mcp/data/capabilities.json \\"
-            echo "      Risk_Models/riskmodels_net/mcp-server/data/capabilities.json"
-            echo ""
-            echo "Or after merge to main: run Actions -> \"Sync MCP data to Risk_Models\" (workflow_dispatch)."
-            echo "See AGENTS.md for full sync rules."
-          fi
+          echo ""
+          echo "The mirror does not match main. Either the sync workflow did not push"
+          echo "(check 'Sync MCP data to Risk_Models'), or the Risk_Models copy was edited"
+          echo "by hand. Re-run the sync with workflow_dispatch; edit sources here, not there."
+          exit 1

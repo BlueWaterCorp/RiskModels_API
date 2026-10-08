@@ -28,7 +28,8 @@ CORS already allows `http://localhost:3000` for browser clients ([`lib/cors.ts`]
 
 ## Cross-repo drift (RiskModels_API vs Risk_Models)
 
-- CI: [`.github/workflows/drift-detection.yml`](./.github/workflows/drift-detection.yml) compares canonical schemas and OpenAPI when relevant paths change (requires `REPO_ACCESS_TOKEN` for the private Risk_Models checkout).
+- CI: [`.github/workflows/drift-detection.yml`](./.github/workflows/drift-detection.yml) has two jobs. `generated-artifacts` runs on every PR that touches the spec, `mcp/data/` or `lib/agent/capabilities.ts`: it regenerates `mcp/data/openapi.json` and `capabilities.json` and fails if the committed copies are stale (fix: `npm run build:openapi && npm run build:capabilities`). `mirror` runs after each sync, daily and on demand: it compares the Risk_Models copy with **main** (not with a PR) and fails if the sync did not land or the mirror was edited by hand (requires `REPO_ACCESS_TOKEN`).
+- The mirror is updated automatically after merge by [`.github/workflows/sync-mcp-to-risk-models.yml`](./.github/workflows/sync-mcp-to-risk-models.yml). No paired Risk_Models PR is needed.
 - When you change `mcp/data/schemas/*`, `schema-paths.json`, or `OPENAPI_SPEC.yaml`, follow [.cursor/rules/repo-sync-enforcer.mdc](./.cursor/rules/repo-sync-enforcer.mdc) and update Risk_Models copies as documented in the skill.
 
 ## MCP data sync from Risk_Models
