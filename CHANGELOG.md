@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-08 — Email links, top-up URL and batch pricing text
+
+- Email links to docs, quickstart, key and usage pages always use riskmodels.app. They were built from `NEXT_PUBLIC_APP_URL`, which is riskmodels.net in production, so `/api-docs` and `/quickstart` returned 404.
+- Account settings and support links in emails point at riskmodels.net, where those pages live. The low-balance email's default top-up link moves from `/settings/billing`, which exists on neither host, to `/get-key`.
+- The 402 `top_up_url` / `X-Top-Up-URL` and the low-balance top-up link use riskmodels.app.
+- The key-issued email names the `X-API-Cost-USD` header instead of a `_cost_usd` body field that responses never carried, and links `/openapi.json` and `/api/health` in place of `/schemas` and `/status`, which returned 404.
+- `POST /batch/analyze` description now matches its `x-pricing`: $0.015/position, minimum $0.03/call.
+
 ## 2026-10-07 — Explicit PIT-lagged debt-cost proxy
 
 - `GET /api/fundamentals/{ticker}` keeps strict reported-data `cost_of_debt` and `wacc` unchanged, and adds separately labeled `cost_of_debt_imputed` / `wacc_imputed` fields when trusted SEC debt is positive but reported interest expense cannot form a strict debt cost.

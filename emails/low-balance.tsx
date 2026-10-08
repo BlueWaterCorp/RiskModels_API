@@ -26,7 +26,7 @@ export const LowBalanceEmail = ({
   userName = "Developer",
   balanceUsd = 4.5,
   thresholdUsd = 5.0,
-  topUpUrl = `${BASE_URL}/settings/billing`,
+  topUpUrl = `${BASE_URL}/get-key`,
 }: LowBalanceEmailProps) => (
   <Html>
     <Head />

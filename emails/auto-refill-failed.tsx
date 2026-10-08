@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL } from './constants';
+import { BASE_URL, ACCOUNT_SITE_URL, LOGO_URL } from './constants';
 
 interface AutoRefillFailedEmailProps {
   userName: string;
@@ -26,7 +26,7 @@ export const AutoRefillFailedEmail = ({
   userName = 'Developer',
   errorMessage = 'Payment method declined',
   balanceUsd = 2.5,
-  updatePaymentUrl = `${BASE_URL}/settings?tab=billing`,
+  updatePaymentUrl = `${ACCOUNT_SITE_URL}/settings?tab=billing`,
 }: AutoRefillFailedEmailProps) => (
   <Html>
     <Head />

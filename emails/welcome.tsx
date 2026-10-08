@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL, HOW_IT_WORKS_URL } from './constants';
+import { BASE_URL, ACCOUNT_SITE_URL, LOGO_URL, HOW_IT_WORKS_URL } from './constants';
 
 interface WelcomeEmailProps {
   userName: string;
@@ -22,7 +22,7 @@ interface WelcomeEmailProps {
 
 export const WelcomeEmail = ({
   userName = 'there',
-  dashboardUrl = `${BASE_URL}/settings`,
+  dashboardUrl = `${ACCOUNT_SITE_URL}/settings`,
 }: WelcomeEmailProps) => (
   <Html>
     <Head />

@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL, SUPPORT_URL } from './constants';
+import { BASE_URL, ACCOUNT_SITE_URL, LOGO_URL, SUPPORT_URL } from './constants';
 
 interface PaymentFailedEmailProps {
   userName: string;
@@ -25,7 +25,7 @@ interface PaymentFailedEmailProps {
 export const PaymentFailedEmail = ({
   userName = 'there',
   amount = 49,
-  updatePaymentUrl = `${BASE_URL}/settings`,
+  updatePaymentUrl = `${ACCOUNT_SITE_URL}/settings`,
   gracePeriodDays = 3,
 }: PaymentFailedEmailProps) => (
   <Html>

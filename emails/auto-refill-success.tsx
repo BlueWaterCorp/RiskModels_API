@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL } from './constants';
+import { BASE_URL, ACCOUNT_SITE_URL, LOGO_URL } from './constants';
 
 interface AutoRefillSuccessEmailProps {
   userName: string;
@@ -29,7 +29,7 @@ export const AutoRefillSuccessEmail = ({
   amountUsd = 20,
   tokenAmount = 1_000_000,
   newBalance = 24.5,
-  topUpUrl = `${BASE_URL}/settings?tab=billing`,
+  topUpUrl = `${ACCOUNT_SITE_URL}/settings?tab=billing`,
 }: AutoRefillSuccessEmailProps) => (
   <Html>
     <Head />

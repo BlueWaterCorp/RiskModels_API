@@ -8162,7 +8162,7 @@ paths:
         Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity
         (`L*_ER` / `L*_HR`), request `["full_metrics","hedge_ratios"]` and see docs/ERM3_ZARR_API_PARITY.md.
         The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost:
-        $0.005/position, minimum $0.01/call.
+        $0.015/position, minimum $0.03/call.
 
         ## Status code semantics (clients must read `summary` to detect partial / total failure)
 
