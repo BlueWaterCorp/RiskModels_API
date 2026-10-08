@@ -1875,6 +1875,45 @@ export const CAPABILITIES: Capability[] = [
     tags: ["portfolio", "risk", "long-short", "history", "feed"],
   },
   {
+    id: "portfolio-exposure-history-daily",
+    name: "Exposure History Feed (daily)",
+    description:
+      "Daily version of the exposure history feed: every trading day since 2006 for up to 1000 names (same columns as /portfolio/exposure/history), read straight from the ERM3 stores and delivered as one Parquet file per calendar year plus the month-end ETF covariance, via signed URLs. Tickers only — holdings never leave the client; the SDK joins locally using the latest covariance month-end on or before each day. Derived data only.",
+    endpoint: "/api/portfolio/exposure/history/daily",
+    method: "POST",
+    parameters: {
+      tickers: {
+        type: "array",
+        required: true,
+        description: "Tickers (stocks and ETFs), max 1000. No values.",
+        items: { type: "string" },
+      },
+      start: { type: "string", required: false, description: "First day YYYY-MM-DD. Default 2006-01-01." },
+      end: { type: "string", required: false, description: "Last day YYYY-MM-DD. Default latest." },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "premium",
+      // PLACEHOLDER at the month-end prices until Conrad sets the daily price.
+      cost_usd: 1.25,
+      size_tiers: [{ min_items: 26, cost_usd: 5.0 }],
+      currency: "USD",
+      billing_code: "portfolio_exposure_history_daily_v1",
+    },
+    performance: {
+      avg_latency_ms: 30000,
+      p95_latency_ms: 150000,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 5,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "daily",
+      sources: ["ds_erm3_hedge_weights", "ds_erm3_returns", "ds_exposure_month_end", "symbols"],
+    },
+    tags: ["portfolio", "risk", "long-short", "history", "feed", "daily"],
+  },
+  {
     id: "portfolio-risk-snapshot",
     name: "Snapshot — portfolio or ticker",
     description:
