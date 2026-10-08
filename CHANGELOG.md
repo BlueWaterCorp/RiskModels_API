@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-08 — `/portfolio/exposure` priced by book size
+
+- $0.25 per call up to 25 names, $1.00 above 25. Latest and `as_of` cost the same. Billing code `portfolio_exposure_v2`.
+- The tier counts names actually modelled (stocks plus ETFs held): the up-front balance check uses names submitted, and the charge drops to the lower tier if enough names fail to resolve.
+- New pricing option `size_tiers` for per-request capabilities; `/api/pricing` and `/api/estimate` report it, and `/api/estimate` now knows `portfolio-exposure`.
+
 ## 2026-10-08 — `/portfolio/exposure`: `as_of` history, L1 fallback, Zarr fill-in fix
 
 - New `as_of` (YYYY-MM-DD, 2006-01-01 or later): the same output at a past model date, read from Zarr. Each name uses its newest row on or before `as_of`; the ETF covariance ends on the resulting snapshot date. Same $0.25 price. Names with no model data on that date (e.g. not yet listed) are dropped as `no_data_at_as_of`.

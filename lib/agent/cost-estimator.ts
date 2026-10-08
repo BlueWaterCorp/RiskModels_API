@@ -27,6 +27,8 @@ export interface EstimateResult {
   pricing_model: string;
   unit_cost_usd?: number;
   min_charge?: number;
+  /** per_request size tiers ({ min_items, cost_usd }), when the capability has them. */
+  size_tiers?: Array<{ min_items: number; cost_usd: number }>;
   note: string;
   /** POST /chat — per-tool reference prices (actual usage depends on the model). */
   available_tools?: Array<{
@@ -58,6 +60,8 @@ const ENDPOINT_TO_CAPABILITY: Record<string, string> = {
   "etf/factor-returns": "etf-factor-returns",
   "portfolio-returns": "portfolio-returns",
   "portfolio-risk-index": "portfolio-risk-index",
+  "portfolio-exposure": "portfolio-exposure",
+  "portfolio/exposure": "portfolio-exposure",
   "macro-factors": "macro-factor-series",
   "portfolio-risk-snapshot": "portfolio-risk-snapshot",
   "risk-snapshot": "portfolio-risk-snapshot",
@@ -188,6 +192,7 @@ export async function estimateCost(req: EstimateRequest): Promise<EstimateResult
     pricing_model: pricingModel,
     unit_cost_usd: pricing.cost_usd,
     min_charge: pricing.min_charge,
+    ...(pricing.size_tiers ? { size_tiers: pricing.size_tiers } : {}),
     note:
       capabilityId === "chat-risk-analyst"
         ? "LLM token estimate only; each tool call is billed separately (see available_tools). search_tickers is free."

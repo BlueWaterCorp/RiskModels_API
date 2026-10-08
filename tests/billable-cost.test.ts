@@ -34,3 +34,36 @@ describe("billableCostUsd", () => {
     expect(billableCostUsd({ capabilityId: CAP, preflightCostUsd: preflight100, billableItems: -3 })).toBe(0);
   });
 });
+
+describe("portfolio-exposure size tiers", () => {
+  const CAP2 = "portfolio-exposure";
+  const price = (n: number) => calculateEstimatedCost(CAP2, { itemCount: n });
+
+  it("charges $0.25 up to 25 names and $1.00 above", () => {
+    expect(price(1)).toBe(0.25);
+    expect(price(25)).toBe(0.25);
+    expect(price(26)).toBe(1.0);
+    expect(price(1000)).toBe(1.0);
+  });
+
+  it("drops to the lower tier when fewer names are modelled than submitted", () => {
+    // 30 submitted (pre-flight $1.00), 24 modelled.
+    expect(billableCostUsd({ capabilityId: CAP2, preflightCostUsd: price(30), billableItems: 24 })).toBe(0.25);
+    expect(billableCostUsd({ capabilityId: CAP2, preflightCostUsd: price(30), billableItems: 30 })).toBe(1.0);
+  });
+
+  it("never charges the higher tier when the pre-flight estimate was the lower one", () => {
+    expect(billableCostUsd({ capabilityId: CAP2, preflightCostUsd: price(10), billableItems: 40 })).toBe(0.25);
+  });
+});
+
+describe("estimate for /portfolio/exposure", () => {
+  it("quotes the size tier from the submitted positions", async () => {
+    const { estimateCost } = await import("@/lib/agent/cost-estimator");
+    const pos = (n: number) => Array.from({ length: n }, (_, i) => ({ ticker: `T${i}`, value: 1 }));
+    expect((await estimateCost({ endpoint: "portfolio-exposure", params: { positions: pos(10) } }))?.estimated_cost_usd).toBe(0.25);
+    const big = await estimateCost({ endpoint: "portfolio/exposure", params: { positions: pos(490) } });
+    expect(big?.estimated_cost_usd).toBe(1.0);
+    expect(big?.size_tiers).toEqual([{ min_items: 26, cost_usd: 1.0 }]);
+  });
+});

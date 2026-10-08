@@ -8474,7 +8474,7 @@ paths:
         beta exactly (L1 has one factor, SPY). The ETF-to-sector mapping is today's, and tickers
         resolve against today's registry, so names delisted since `as_of` are dropped as
         `symbol_not_found`, and names with no model data on that date (e.g. not yet listed) as
-        `no_data_at_as_of`. Same price as a latest call.
+        `no_data_at_as_of`. Same price as a latest call (see Billing).
 
 
         **Model date.** Every name is read at one `snapshot_teo` (the most common date).
@@ -8483,8 +8483,10 @@ paths:
         mapping is the current registry, not point-in-time.
 
 
-        **Billing:** $0.25 per successful call regardless of book size. A request with no modelled
-        positions returns 422 and is not charged.
+        **Billing:** per successful call, by book size: **$0.25** up to 25 names, **$1.00** above 25.
+        The tier counts names actually modelled (stocks plus ETFs held), so dropped tickers never
+        raise it. Latest and `as_of` cost the same. A request with no modelled positions returns 422
+        and is not charged.
       operationId: postPortfolioExposure
       tags: [Risk Metrics]
       x-pricing:
@@ -8492,8 +8494,10 @@ paths:
         tier: premium
         model: per_request
         cost_usd: 0.25
+        size_tiers:
+          - { min_items: 26, cost_usd: 1.0 }
         currency: USD
-        billing_code: portfolio_exposure_v1
+        billing_code: portfolio_exposure_v2
       requestBody:
         required: true
         content:
