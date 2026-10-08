@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/email-engagement",
       "schedule": "0 16 * * 1-5"
+    },
+    {
+      "path": "/api/cron/exposure-history-cleanup",
+      "schedule": "30 7 * * *"
     }
   ]
 }

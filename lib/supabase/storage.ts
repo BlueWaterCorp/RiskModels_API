@@ -10,6 +10,7 @@
  *   const url = await getLatestSnapshotUrl("NVDA");
  */
 
+import { createHash } from "crypto";
 import { createAdminClient } from "./admin";
 
 const BUCKET = "reports";
@@ -20,7 +21,20 @@ const PREFIX = "tickers";
  * that bucket is public and accepts only PDF/PNG (BWMACRO migration
  * 20261008220000_exposure_history_bucket).
  */
-const EXPOSURE_HISTORY_BUCKET = "exposure-history";
+export const EXPOSURE_HISTORY_BUCKET = "exposure-history";
+
+/** Lifetime of signed exposure-history URLs (seconds). Cleanup keeps a margin above it. */
+export const EXPOSURE_HISTORY_URL_TTL_SECONDS = 3600;
+
+/**
+ * Short tag for a panel build, used in the hit-marker object name
+ * (`{cache key}/hit.{tag}`) so cleanup can tell the build from a folder
+ * listing without downloading anything.
+ */
+export function exposureHistoryBuildTag(builtUtc: unknown): string {
+  const v = typeof builtUtc === "string" && builtUtc.trim() ? builtUtc : "none";
+  return createHash("sha256").update(v).digest("hex").slice(0, 12);
+}
 
 /**
  * Upload a snapshot PDF to Supabase Storage.
@@ -126,6 +140,31 @@ export async function signExposureHistoryFile(
     .createSignedUrl(`${cacheKey}/${name}.parquet`, expiresIn);
   if (error) return null;
   return data?.signedUrl ?? null;
+}
+
+/**
+ * Record a request for `cacheKey` by upserting the tiny marker
+ * `{cache key}/hit.{build tag}`. Its `updated_at` is the folder's last
+ * activity, which cleanup uses so that a cache hit is never deleted while
+ * its signed URL is valid. Returns false if the write failed.
+ */
+export async function touchExposureHistoryFolder(
+  cacheKey: string,
+  builtUtc: unknown,
+): Promise<boolean> {
+  const supabase = createAdminClient();
+  const path = `${cacheKey}/hit.${exposureHistoryBuildTag(builtUtc)}`;
+  const { error } = await supabase.storage
+    .from(EXPOSURE_HISTORY_BUCKET)
+    .upload(path, Buffer.from(new Date().toISOString()), {
+      contentType: "text/plain",
+      upsert: true,
+    });
+  if (error) {
+    console.warn(`[exposure-history] touch ${path} failed: ${error.message}`);
+    return false;
+  }
+  return true;
 }
 
 /** Upload an exposure-history feed file (Parquet) and return its signed URL. */

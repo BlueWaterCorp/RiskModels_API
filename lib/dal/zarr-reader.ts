@@ -2234,6 +2234,17 @@ export interface ExposurePanelSlice {
 }
 
 /**
+ * `built_utc` of the month-end panel currently published, or null if the panel
+ * or the attribute is unavailable. Reads group attributes only.
+ */
+export async function readExposureMonthEndBuiltUtc(): Promise<string | null> {
+  const grp = await openZarrGroup(zarrExposureMonthEndBasename());
+  if (!grp) return null;
+  const v = ((grp.attrs ?? {}) as Record<string, unknown>).built_utc;
+  return typeof v === "string" && v.trim() ? v : null;
+}
+
+/**
  * Read the month-end panel for `symbols` over [start, end]. Each variable is
  * read for the full symbol axis in the date range (the panel is small: about
  * 240 months × 8k symbols), then subset in memory.

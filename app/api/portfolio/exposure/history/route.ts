@@ -26,14 +26,19 @@ import {
   type HistoryName,
 } from "@/lib/portfolio/exposure-history";
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
-import { signExposureHistoryFile, uploadExposureHistoryFile } from "@/lib/supabase/storage";
+import {
+  EXPOSURE_HISTORY_URL_TTL_SECONDS,
+  signExposureHistoryFile,
+  touchExposureHistoryFolder,
+  uploadExposureHistoryFile,
+} from "@/lib/supabase/storage";
 import { getCorsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const URL_TTL_SECONDS = 3600;
+const URL_TTL_SECONDS = EXPOSURE_HISTORY_URL_TTL_SECONDS;
 
 /** Distinct tickers submitted: sets the price tier for the pre-flight balance check. */
 async function getItemCount(req: NextRequest): Promise<number | undefined> {
@@ -142,7 +147,12 @@ export const POST = withBilling(
         .digest("hex")
         .slice(0, 32);
 
-      let namesUrl = await signExposureHistoryFile(cacheKey, "names", URL_TTL_SECONDS);
+      // Mark the folder active before signing, so the daily cleanup
+      // (app/api/cron/exposure-history-cleanup) never deletes files behind a
+      // URL handed out here. If the marker cannot be written, rewrite the
+      // files instead: a fresh upload also resets the folder's age.
+      const touched = await touchExposureHistoryFolder(cacheKey, slice.attrs.built_utc);
+      let namesUrl = touched ? await signExposureHistoryFile(cacheKey, "names", URL_TTL_SECONDS) : null;
       let covUrl = namesUrl ? await signExposureHistoryFile(cacheKey, "cov", URL_TTL_SECONDS) : null;
       const cached = Boolean(namesUrl && covUrl);
       if (!cached) {
