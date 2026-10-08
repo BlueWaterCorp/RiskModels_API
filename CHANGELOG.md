@@ -5,7 +5,7 @@
 - New `POST /portfolio/exposure/history/daily`: every trading day since 2006 for up to 1000 names, read straight from the ERM3 stores (no extra stored data), delivered as one Parquet file per year plus the month-end ETF covariance. Full history for 1000 names: ~18 s to read, ~51 s to write.
 - `readDailyExposureHistory` reads each symbol chunk once per variable into typed arrays, 16 at a time (76 s → 7 s for 25 names), instead of one object per cell.
 - SDK: `client.exposure_history(tickers, frequency="daily")` downloads and combines the yearly files; each day uses the latest covariance month-end on or before it.
-- Price is a placeholder at the month-end feed's ($1.25 / $5.00) until confirmed.
+- Priced at $2.50 up to 25 names delivered, $10.00 above (2x the month-end feed).
 
 ## 2026-10-08 — Python SDK 0.5.0
 

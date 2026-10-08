@@ -44,10 +44,10 @@ commercial restriction on customers, not a licence limit on us.
 
 ## Pricing
 
-| Names requested | Full month-end history since 2006 |
-|---|---|
-| up to 25 | $1.25 |
-| over 25 | $5.00 |
+| Names requested | Full month-end history since 2006 | Full daily history since 2006 |
+|---|---|---|
+| up to 25 | $1.25 | $2.50 |
+| over 25 | $5.00 | $10.00 |
 
 Counted on names actually delivered. Single-date calls on
 `/api/portfolio/exposure` are $0.25 (up to 25 names) and $1.00 (over 25).
@@ -169,8 +169,8 @@ variable, 16 at a time, into typed arrays (`readDailyExposureHistory`).
 
 Names arrive as one Parquet file per calendar year. The ETF covariance stays
 month-end (from the panel): a 252-day covariance barely moves day to day, and
-each day uses the latest month-end on or before it. Price: to be confirmed
-(placeholder at the month-end feed's prices).
+each day uses the latest month-end on or before it. Price: $2.50 up to 25 names
+delivered, $10.00 above (2x the month-end feed).
 
 ## Not in scope
 

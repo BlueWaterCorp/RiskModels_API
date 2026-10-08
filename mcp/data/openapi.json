@@ -11826,7 +11826,7 @@
     "/portfolio/exposure/history/daily": {
       "post": {
         "summary": "Exposure history feed, daily — every trading day for a list of names (join locally)",
-        "description": "Daily version of `POST /portfolio/exposure/history`: the same columns for every trading day since 2006 (or `start`), read directly from the ERM3 hedge-weights and returns stores. Names are delivered as one Parquet file per calendar year (`files.names.parts`); the ETF covariance stays month-end, and each day should use the latest month-end on or before it (the Python SDK does this: `client.exposure_history(tickers, frequency=\"daily\")`). Tickers only; holdings never leave the client. Derived data only.\n\nLarge requests take longer: measured 2026-10-08, full history for 1000 names read in ~18 s and wrote ~95 MB of Parquet in ~51 s. Identical requests reuse the stored files.\n\n**Billing:** per successful call, by names delivered. Price to be confirmed; currently the month-end feed's: $1.25 up to 25 names, $5.00 above.\n",
+        "description": "Daily version of `POST /portfolio/exposure/history`: the same columns for every trading day since 2006 (or `start`), read directly from the ERM3 hedge-weights and returns stores. Names are delivered as one Parquet file per calendar year (`files.names.parts`); the ETF covariance stays month-end, and each day should use the latest month-end on or before it (the Python SDK does this: `client.exposure_history(tickers, frequency=\"daily\")`). Tickers only; holdings never leave the client. Derived data only.\n\nLarge requests take longer: measured 2026-10-08, full history for 1000 names read in ~18 s and wrote ~95 MB of Parquet in ~51 s. Identical requests reuse the stored files.\n\n**Billing:** per successful call, by names delivered: **$2.50** up to 25, **$10.00** above 25. A request with nothing to deliver returns 422 and is not charged.\n",
         "operationId": "postPortfolioExposureHistoryDaily",
         "tags": [
           "Risk Metrics"
@@ -11835,11 +11835,11 @@
           "capability_id": "portfolio-exposure-history-daily",
           "tier": "premium",
           "model": "per_request",
-          "cost_usd": 1.25,
+          "cost_usd": 2.5,
           "size_tiers": [
             {
               "min_items": 26,
-              "cost_usd": 5
+              "cost_usd": 10
             }
           ],
           "currency": "USD",
