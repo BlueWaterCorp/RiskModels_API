@@ -647,7 +647,7 @@
       },
       "DecomposeResponse": {
         "type": "object",
-        "description": "Wire response for `POST /decompose`. Semantic four-layer shape; each tradable layer maps to one ETF. The top-level `hedge` map is the negative of each layer's `hr` keyed by ETF (ready to convert into short notionals).\n",
+        "description": "Wire response for `POST /decompose`. Semantic four-layer shape; each tradable layer maps to one ETF. The top-level `hedge` map is the layer `hr` keyed by ETF: the ETF dollar position per $1 long stock (negative = short the ETF), summed when two layers share one ETF.\n",
         "required": [
           "ticker",
           "symbol",
@@ -703,7 +703,7 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Map of hedge-ETF → dollar ratio (= negative of the layer `hr`). If two layers share the same ETF (e.g. subsector falls back to the sector ETF), the values are summed so each ETF appears once.\n",
+            "description": "Map of hedge-ETF → dollar ratio (= the layer `hr`: ETF dollars per $1 long stock, negative = short the ETF). If two layers share the same ETF (e.g. subsector falls back to the sector ETF), the values are summed so each ETF appears once.\n",
             "example": {
               "SPY": -1.1,
               "XLK": -0.35,
@@ -1414,7 +1414,7 @@
             "type": "number",
             "format": "float",
             "nullable": true,
-            "description": "Subsector variance share at L3 (explained risk, 0–1). Null when the rolling window has insufficient data.\n"
+            "description": "Subsector variance share at L3 (explained risk). Usually 0–1, but can be slightly negative: see the note on incremental shares under `/batch/analyze`. Null when the rolling window has insufficient data.\n"
           },
           "l3_res_er": {
             "type": "number",
@@ -1765,6 +1765,15 @@
           "error": {
             "type": "string",
             "description": "Present when status is `error`."
+          },
+          "error_code": {
+            "type": "string",
+            "enum": [
+              "symbol_not_found",
+              "no_risk_metrics",
+              "internal_error"
+            ],
+            "description": "Present when status is `error`. `no_risk_metrics` means the symbol resolved but has no ERM3 decomposition (ETFs, including the hedge instruments). Failed tickers are not billed.\n"
           },
           "returns": {
             "$ref": "#/components/schemas/BatchReturnsPayload"
@@ -7965,7 +7974,7 @@
     "/decompose": {
       "post": {
         "summary": "(internal/legacy) Decompose a position into four additive bets with hedge ratios",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio (negative of the layer hedge ratio by convention, so a positive stock HR yields a negative ETF notional: short the ETF to offset long stock exposure).\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio. Each value is the layer hedge ratio itself: the ETF dollar position per $1 long stock, negative = short the ETF. A stock with positive market beta carries a negative market `hr` (e.g. `l1_mkt_hr` ≈ -`l1_mkt_beta`), so the hedge shorts SPY.\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "decomposePosition",
         "tags": [
           "Risk Metrics"
@@ -11481,7 +11490,7 @@
     "/batch/analyze": {
       "post": {
         "summary": "(internal/legacy) Multi-ticker batch analysis",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` for new clients.** This endpoint remains callable as an internal building block (cohort scans, parity checks, zarr alignment).\nFetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.015/position, minimum $0.03/call.\n## Status code semantics (clients must read `summary` to detect partial / total failure)\nThis endpoint **always returns HTTP 200** as long as the request is well-formed and authentication passes. Per-ticker failures are reported in `results[ticker].status = \"error\"` with a human-readable `error` string, and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**: you cannot infer success from the HTTP code alone.\nRecommended client logic: - `summary.errors == 0` → all ok - `0 < summary.errors < summary.total` → partial; retry only the failed tickers (see `results[ticker].error`) - `summary.errors == summary.total` → total failure; surface or escalate (do **not** loop-retry the whole batch — the failure is likely structural, e.g. all tickers unresolvable or upstream zarr gap)\n4xx is reserved for malformed requests (`tickers` empty, > 100, unknown `metrics` flags, bad auth).\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` for new clients.** This endpoint remains callable as an internal building block (cohort scans, parity checks, zarr alignment).\nFetch data for up to 100 tickers in one JSON response (`results` map keyed by ticker). Supported `metrics` flags: `returns` (daily arrays with `l1`/`l2`/`l3` columns — see operation schema for semantics), `hedge_ratios` (latest six hedge ratios with **short** keys `l1_market`, …), `full_metrics` (flat L1/L2/L3 ER/HR snapshot with **long** keys `l1_market_hr`, `l1_market_er`, …). Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity (`L*_ER` / `L*_HR`), request `[\"full_metrics\",\"hedge_ratios\"]` and see docs/ERM3_ZARR_API_PARITY.md. The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost: $0.015 per ticker that returns data, minimum $0.03/call. Tickers that fail (`symbol_not_found`, `no_risk_metrics`) are not billed, and a batch where every ticker fails costs nothing.\n**ETFs.** ETFs, including the SPY / sector / subsector hedge instruments, have no ERM3 decomposition. With `full_metrics` or `hedge_ratios` they return `status: \"error\"` with `error_code: \"no_risk_metrics\"`. Use `/etf-returns` for ETF return series.\n**Explained-risk shares.** Incremental shares (sector, subsector) can be slightly negative: after orthogonalization an added layer can explain less than nothing over the window. The residual is defined as 1 minus the systematic shares, so the four L3 shares still sum to 1. Do not clip a negative share to 0 without re-deriving the residual.\n## Status code semantics (clients must read `summary` to detect partial / total failure)\nThis endpoint **always returns HTTP 200** as long as the request is well-formed and authentication passes. Per-ticker failures are reported in `results[ticker].status = \"error\"` with a human-readable `error` string and a machine-readable `error_code` (`symbol_not_found`, `no_risk_metrics`, `internal_error`), and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**: you cannot infer success from the HTTP code alone.\nRecommended client logic: - `summary.errors == 0` → all ok - `0 < summary.errors < summary.total` → partial; retry only the failed tickers (see `results[ticker].error`) - `summary.errors == summary.total` → total failure; surface or escalate (do **not** loop-retry the whole batch — the failure is likely structural, e.g. all tickers unresolvable or upstream zarr gap)\n4xx is reserved for malformed requests (`tickers` empty, > 100, unknown `metrics` flags, bad auth).\n**Parquet/CSV:** When `format` is `parquet` or `csv`, the response is a single long-format table of daily rows (`ticker`, `date`, `gross_return`, `l1`, `l2`, `l3`) per `#/components/schemas/BatchAnalyzeExportRow`. Only tickers with successful `returns` payloads are included; `full_metrics`, `hedge_ratios`, and `l3_decomposition` are not exported in tabular form. Ensure `metrics` includes `returns` or the table may be empty.\n",
         "operationId": "batchAnalyze",
         "tags": [
           "Risk Metrics"

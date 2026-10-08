@@ -670,8 +670,8 @@ components:
       description: >
         Wire response for `POST /decompose`. Semantic four-layer shape; each
         tradable layer maps to one ETF. The top-level `hedge` map is the
-        negative of each layer's `hr` keyed by ETF (ready to convert into
-        short notionals).
+        layer `hr` keyed by ETF: the ETF dollar position per $1 long stock
+        (negative = short the ETF), summed when two layers share one ETF.
       required:
         - ticker
         - symbol
@@ -711,7 +711,8 @@ components:
           additionalProperties:
             type: number
           description: >
-            Map of hedge-ETF → dollar ratio (= negative of the layer `hr`).
+            Map of hedge-ETF → dollar ratio (= the layer `hr`: ETF dollars per
+            $1 long stock, negative = short the ETF).
             If two layers share the same ETF (e.g. subsector falls back to
             the sector ETF), the values are summed so each ETF appears once.
           example:
@@ -1316,8 +1317,9 @@ components:
           format: float
           nullable: true
           description: >
-            Subsector variance share at L3 (explained risk, 0–1). Null when the rolling window has
-            insufficient data.
+            Subsector variance share at L3 (explained risk). Usually 0–1, but can be slightly
+            negative: see the note on incremental shares under `/batch/analyze`. Null when the
+            rolling window has insufficient data.
         l3_res_er:
           type: number
           format: float
@@ -1615,6 +1617,12 @@ components:
         error:
           type: string
           description: Present when status is `error`.
+        error_code:
+          type: string
+          enum: [symbol_not_found, no_risk_metrics, internal_error]
+          description: >
+            Present when status is `error`. `no_risk_metrics` means the symbol resolved but has
+            no ERM3 decomposition (ETFs, including the hedge instruments). Failed tickers are not billed.
         returns:
           $ref: "#/components/schemas/BatchReturnsPayload"
         hedge_ratios:
@@ -5775,9 +5783,10 @@ paths:
         `market`, `sector`, `subsector`, and `residual`. Each tradable layer
         (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`;
         `residual` is stock-specific and not tradable. The response also includes
-        a top-level `hedge` map of ETF → dollar ratio (negative of the layer
-        hedge ratio by convention, so a positive stock HR yields a negative ETF
-        notional: short the ETF to offset long stock exposure).
+        a top-level `hedge` map of ETF → dollar ratio. Each value is the layer
+        hedge ratio itself: the ETF dollar position per $1 long stock, negative
+        = short the ETF. A stock with positive market beta carries a negative
+        market `hr` (e.g. `l1_mkt_hr` ≈ -`l1_mkt_beta`), so the hedge shorts SPY.
 
 
         The response also carries `style` and `stock_specific`: a diagnostic FF2
@@ -8162,13 +8171,21 @@ paths:
         Request every block you need: `metrics` is a whitelist (no silent backfill). For ERM3 zarr parity
         (`L*_ER` / `L*_HR`), request `["full_metrics","hedge_ratios"]` and see docs/ERM3_ZARR_API_PARITY.md.
         The `l3_decomposition` flag is accepted but may be unpopulated depending on deployment. Cost:
-        $0.015/position, minimum $0.03/call.
+        $0.015 per ticker that returns data, minimum $0.03/call. Tickers that fail (`symbol_not_found`,
+        `no_risk_metrics`) are not billed, and a batch where every ticker fails costs nothing.
+
+        **ETFs.** ETFs, including the SPY / sector / subsector hedge instruments, have no ERM3
+        decomposition. With `full_metrics` or `hedge_ratios` they return `status: "error"` with
+        `error_code: "no_risk_metrics"`. Use `/etf-returns` for ETF return series.
+
+        **Explained-risk shares.** Incremental shares (sector, subsector) can be slightly negative: after orthogonalization an added layer can explain less than nothing over the window. The residual is defined as 1 minus the systematic shares, so the four L3 shares still sum to 1. Do not clip a negative share to 0 without re-deriving the residual.
 
         ## Status code semantics (clients must read `summary` to detect partial / total failure)
 
         This endpoint **always returns HTTP 200** as long as the request is well-formed and authentication
         passes. Per-ticker failures are reported in `results[ticker].status = "error"` with a human-readable
-        `error` string, and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**:
+        `error` string and a machine-readable `error_code` (`symbol_not_found`, `no_risk_metrics`,
+        `internal_error`), and counted in `summary.errors`. **Treat this as a 207 Multi-Status conceptually**:
         you cannot infer success from the HTTP code alone.
 
         Recommended client logic:

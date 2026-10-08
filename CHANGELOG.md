@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-08 — Batch: ETFs report an error, failed lookups are free
+
+- `POST /batch/analyze` reports ETFs (including SPY and the sector / subsector hedge instruments) as `status: "error"` with `error_code: "no_risk_metrics"` when `full_metrics` or `hedge_ratios` are requested. They used to return `success` with every metric null.
+- Each failed ticker carries an `error_code`: `symbol_not_found`, `no_risk_metrics` or `internal_error`.
+- Batch billing counts only tickers that return data. A batch where every ticker fails costs nothing; the $0.03 minimum applies only when something was served. The billing middleware gains `context.setBillableItemCount()` for any per-item route.
+- Docs: the `/decompose` `hedge` map is the layer `hr` itself (negative = short the ETF), not its negative; the OpenAPI spec and SEMANTIC_ALIASES.md now match the code and `docs/api.mdx`.
+- Docs: incremental explained-risk shares (`l3_sec_er`, `l3_sub_er`) can be slightly negative; the residual is 1 minus the systematic shares, so the four still sum to 1.
+
 ## 2026-10-08 — Email links, top-up URL and batch pricing text
 
 - Email links to docs, quickstart, key and usage pages always use riskmodels.app. They were built from `NEXT_PUBLIC_APP_URL`, which is riskmodels.net in production, so `/api-docs` and `/quickstart` returned 404.
