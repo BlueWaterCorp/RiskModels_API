@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-08 — Correlation residual returns had the hedge sign reversed
+
+- `GET /metrics/{ticker}/correlation` and `POST /correlation` with `return_type` `l1`, `l2` or `l3_residual` built the residual as `r - hr·r_etf`. An ERM3 hedge ratio is the ETF position per $1 long stock (`l1_mkt_hr ≈ -beta`), so that added the market back instead of removing it; NVDA's "L1 residual" variance came out about 3.7× its gross variance. The residual is now `r + Σ hr·r_etf`, matching the raw-ETF-returns pairing in the ETF factor returns docs. `gross` correlations were unaffected.
+
 ## 2026-10-08 — Batch: ETFs report an error, failed lookups are free
 
 - `POST /batch/analyze` reports ETFs (including SPY and the sector / subsector hedge instruments) as `status: "error"` with `error_code: "no_risk_metrics"` when `full_metrics` or `hedge_ratios` are requested. They used to return `success` with every metric null.

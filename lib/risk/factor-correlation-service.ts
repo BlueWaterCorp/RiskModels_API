@@ -157,7 +157,14 @@ function overlayTeoMaps(preferred: Map<string, number>, base: Map<string, number
   return out;
 }
 
-function computeDailyStockReturns(
+/**
+ * Daily stock return series for correlation. Residual types subtract the ETF
+ * hedge's systematic return. An ERM3 hedge ratio is the ETF dollar position per
+ * $1 long stock (`l1_mkt_hr ≈ -beta`), so the systematic return is
+ * Σ(-hr)·r_etf and the residual is r + Σ hr·r_etf (raw ETF returns pair with
+ * negated HRs — see content/docs/etf-factor-returns.mdx).
+ */
+export function computeDailyStockReturns(
   returnType: StockReturnType,
   stock: Map<string, PivotedHistoryRow>,
   spy: Map<string, PivotedHistoryRow>,
@@ -183,7 +190,7 @@ function computeDailyStockReturns(
     if (returnType === "l1") {
       const hm = s.l1_mkt_hr;
       if (typeof hm !== "number") continue;
-      out.push({ teo, r: rg - hm * rSpy });
+      out.push({ teo, r: rg + hm * rSpy });
       continue;
     }
 
@@ -195,7 +202,7 @@ function computeDailyStockReturns(
       const hm = s.l2_mkt_hr;
       const hs = s.l2_sec_hr;
       if (typeof hm !== "number" || typeof hs !== "number") continue;
-      out.push({ teo, r: rg - (hm * rSpy + hs * rSec) });
+      out.push({ teo, r: rg + (hm * rSpy + hs * rSec) });
       continue;
     }
 
@@ -207,7 +214,7 @@ function computeDailyStockReturns(
     const hs = s.l3_sec_hr;
     const hu = s.l3_sub_hr;
     if (typeof hm !== "number" || typeof hs !== "number" || typeof hu !== "number") continue;
-    out.push({ teo, r: rg - (hm * rSpy + hs * rSec + hu * rSub) });
+    out.push({ teo, r: rg + (hm * rSpy + hs * rSec + hu * rSub) });
   }
   return out;
 }
