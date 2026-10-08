@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL } from './constants';
+import { BASE_URL, ACCOUNT_SITE_URL, LOGO_URL } from './constants';
 
 interface MonthlySpendResetEmailProps {
   monthName: string;
@@ -24,7 +24,7 @@ interface MonthlySpendResetEmailProps {
 export const MonthlySpendResetEmail = ({
   monthName = 'March',
   year = 2026,
-  settingsUrl = `${BASE_URL}/settings?tab=billing`,
+  settingsUrl = `${ACCOUNT_SITE_URL}/settings?tab=billing`,
 }: MonthlySpendResetEmailProps) => (
   <Html>
     <Head />

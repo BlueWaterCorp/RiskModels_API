@@ -6,6 +6,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CANONICAL_SITE_URL } from "@/lib/constants";
 import Stripe from "stripe";
 import {
   Capability,
@@ -1122,7 +1123,7 @@ export async function checkAndNotifyLowBalance(
       balanceUsd: newBalance,
       thresholdUsd: LOW_BALANCE_THRESHOLD_USD,
       // /get-key is the balance + top-up page on riskmodels.app (there is no /settings/billing).
-      topUpUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://riskmodels.app"}/get-key`,
+      topUpUrl: `${CANONICAL_SITE_URL}/get-key`,
     },
     userId,
   });

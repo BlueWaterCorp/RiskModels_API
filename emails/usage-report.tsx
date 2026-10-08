@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL } from './constants';
+import { ACCOUNT_SITE_URL, LOGO_URL } from './constants';
 
 interface UsageReportEmailProps {
   userName: string;
@@ -113,7 +113,7 @@ export const UsageReportEmail = ({
         </Section>
 
         <Section style={buttonContainer}>
-          <Button style={button} href={`${BASE_URL}/settings`}>
+          <Button style={button} href={`${ACCOUNT_SITE_URL}/settings`}>
             View Full Report
           </Button>
         </Section>
@@ -122,7 +122,7 @@ export const UsageReportEmail = ({
 
         <Text style={paragraph}>
           Want to improve your risk protection?{' '}
-          <Link href={`${BASE_URL}/settings`} style={link}>
+          <Link href={`${ACCOUNT_SITE_URL}/settings`} style={link}>
             Review your hedge recommendations
           </Link>{' '}
           in the dashboard.
@@ -130,7 +130,7 @@ export const UsageReportEmail = ({
 
         <Text style={footer}>
           RiskModels - Institutional Risk Management for Individual Investors<br />
-          <Link href={`${BASE_URL}/settings`} style={footerLink}>
+          <Link href={`${ACCOUNT_SITE_URL}/settings`} style={footerLink}>
             Manage email preferences
           </Link>
         </Text>

@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { calculateRequestCost, getCapabilityById } from './capabilities';
 import { generateRequestId } from './telemetry';
+import { CANONICAL_SITE_URL } from '@/lib/constants';
 
 export interface AgentMetadata {
   cost_usd: number;
@@ -223,7 +224,8 @@ export function createPaymentRequiredResponse(
   requestId?: string
 ): NextResponse {
   const requestIdFinal = requestId || generateRequestId();
-  const topUpUrl = `${process.env.NEXT_PUBLIC_APP_URL}/get-key`;
+  // /get-key only exists on .app; NEXT_PUBLIC_APP_URL is .net in some envs.
+  const topUpUrl = `${CANONICAL_SITE_URL}/get-key`;
 
   return NextResponse.json(
     {

@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL } from './constants';
+import { BASE_URL, ACCOUNT_SITE_URL, LOGO_URL } from './constants';
 
 interface SubscriptionConfirmedEmailProps {
   userName: string;
@@ -28,7 +28,7 @@ export const SubscriptionConfirmedEmail = ({
   tier = 'Professional',
   amount = 49,
   nextBillingDate = 'January 1, 2025',
-  invoiceUrl = `${BASE_URL}/settings`,
+  invoiceUrl = `${ACCOUNT_SITE_URL}/settings`,
 }: SubscriptionConfirmedEmailProps) => (
   <Html>
     <Head />
@@ -94,7 +94,7 @@ export const SubscriptionConfirmedEmail = ({
         </Text>
 
         <Section style={buttonContainer}>
-          <Button style={button} href={`${BASE_URL}/settings`}>
+          <Button style={button} href={`${ACCOUNT_SITE_URL}/settings`}>
             Go to Dashboard
           </Button>
         </Section>
@@ -103,7 +103,7 @@ export const SubscriptionConfirmedEmail = ({
 
         <Text style={paragraph}>
           Questions about your subscription? Visit{' '}
-          <Link href={`${BASE_URL}/settings`} style={link}>
+          <Link href={`${ACCOUNT_SITE_URL}/settings`} style={link}>
             Account Settings
           </Link>{' '}
           or reply to this email.

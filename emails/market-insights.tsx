@@ -13,7 +13,7 @@ import {
   Text,
 } from '@react-email/components';
 import * as React from 'react';
-import { BASE_URL, LOGO_URL } from './constants';
+import { ACCOUNT_SITE_URL, LOGO_URL } from './constants';
 
 interface MarketInsightsEmailProps {
   userName: string;
@@ -114,7 +114,7 @@ export const MarketInsightsEmail = ({
         </Section>
 
         <Section style={buttonContainer}>
-          <Button style={button} href={`${BASE_URL}/settings`}>
+          <Button style={button} href={`${ACCOUNT_SITE_URL}/settings`}>
             View Full Analysis
           </Button>
         </Section>
@@ -128,7 +128,7 @@ export const MarketInsightsEmail = ({
 
         <Text style={footer}>
           RiskModels - Institutional Risk Management for Individual Investors<br />
-          <Link href={`${BASE_URL}/settings`} style={footerLink}>
+          <Link href={`${ACCOUNT_SITE_URL}/settings`} style={footerLink}>
             Manage email preferences
           </Link>
         </Text>

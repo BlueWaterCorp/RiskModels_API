@@ -180,8 +180,8 @@ export const KeyIssuedEmail = ({
   const apiDocsUrl = `${BASE_URL}/api-docs`;
   const quickstartUrl = `${BASE_URL}/quickstart`;
   const pythonSdkUrl = `${BASE_URL}/installation`;
-  const schemasUrl = `${BASE_URL}/schemas`;
-  const statusUrl = `${BASE_URL}/status`;
+  const schemasUrl = `${BASE_URL}/openapi.json`;
+  const statusUrl = `${BASE_URL}/api/health`;
   const authDocsUrl = `${BASE_URL}/docs/authentication`;
 
   return (
@@ -534,7 +534,7 @@ export const KeyIssuedEmail = ({
               {pythonSdkUrl.replace(/^https?:\/\//, "")}
             </Link>
             <br />
-            • <strong>Response schemas (every field typed):</strong>{" "}
+            • <strong>OpenAPI spec (every field typed):</strong>{" "}
             <Link href={schemasUrl} style={link}>
               {schemasUrl.replace(/^https?:\/\//, "")}
             </Link>
@@ -632,7 +632,8 @@ export const KeyIssuedEmail = ({
             <br />
             <br />
             • <strong>Billing.</strong> Per-request, from $0.005 per call. Every response carries an{" "}
-            <code style={inlineCode}>_cost_usd</code> field. Low-balance emails at $1.
+            <code style={inlineCode}>X-API-Cost-USD</code> header with the amount charged. Low-balance emails at
+            $1.
             <br />
             <br />
             • <strong>Expiry.</strong> Each key is valid <strong>1 year</strong> from issue. Reminder emails go
@@ -669,7 +670,7 @@ export const KeyIssuedEmail = ({
             <Link href={usageUrl} style={link}>
               {usageUrl.replace(/^https?:\/\//, "")}
             </Link>
-            <br />• Status &amp; known issues →{" "}
+            <br />• Live service status →{" "}
             <Link href={statusUrl} style={link}>
               {statusUrl.replace(/^https?:\/\//, "")}
             </Link>
