@@ -97,6 +97,47 @@ ETF Zarr stores and writes
 - ETF-to-sector mapping is today's registry, not point-in-time (stated in the
   response).
 
+### Storage and cleanup
+
+Files live in the private Supabase Storage bucket `exposure-history` (BWMACRO
+migration `20261008220000_exposure_history_bucket`), one folder per distinct
+request:
+
+```
+<cache key>/names.parquet
+<cache key>/cov.parquet
+<cache key>/hit.<build tag>      # tiny marker, rewritten on every request
+```
+
+The cache key is a hash of the resolved names, ETFs, range and the panel's
+`built_utc`, so a rebuilt panel never reuses older files. The build tag is the
+first 12 hex characters of `sha256(built_utc)`; it puts the build in the
+listing so cleanup can read it without downloading anything.
+
+On every request the route rewrites the marker **before** signing URLs. A
+folder's last activity is the latest created/updated time of any object in
+it, so it moves forward on each cache hit. If the marker write fails, the
+route uploads the files again instead of serving the hit, which also moves
+the last activity forward.
+
+`GET /api/cron/exposure-history-cleanup` (Vercel Cron, daily 07:30 UTC,
+`Authorization: Bearer $CRON_SECRET`, same pattern as the other
+`app/api/cron/*` routes; `?dry_run=1` reports without deleting) applies, per
+top-level folder whose name is a 32-hex cache key:
+
+| Rule | Condition |
+|---|---|
+| Guard (always) | Keep if last activity is within the URL TTL (1 h) plus a 2 h margin. |
+| Age | Delete if last activity is older than `EXPOSURE_HISTORY_MAX_AGE_DAYS` (default 7, minimum 1). |
+| Panel build | Delete if the folder's marker names a build other than the current panel's `built_utc`. Folders without a marker (written before markers existed) fall under the age rule only. If the current build cannot be read, only the age rule runs. |
+| Missing timestamps | Keep. |
+
+Each folder is re-listed immediately before deletion and judged again, so a
+request arriving during the run keeps its folder. The code
+(`lib/supabase/exposure-history-cleanup.ts`) is bound to the
+`exposure-history` bucket only and ignores root-level files and any folder
+whose name is not a cache key.
+
 ### SDK
 
 ```python

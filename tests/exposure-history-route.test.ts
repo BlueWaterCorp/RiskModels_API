@@ -45,7 +45,13 @@ vi.mock("@/lib/dal/zarr-reader", async (orig) => {
     })),
   };
 });
+const touch = { ok: true, calls: 0 };
 vi.mock("@/lib/supabase/storage", () => ({
+  EXPOSURE_HISTORY_URL_TTL_SECONDS: 3600,
+  touchExposureHistoryFolder: vi.fn(async () => {
+    touch.calls += 1;
+    return touch.ok;
+  }),
   signExposureHistoryFile: vi.fn(async (key: string, name: string) =>
     stored.has(`${key}/${name}`) ? `https://signed/${key}/${name}` : null,
   ),
@@ -73,6 +79,8 @@ describe("POST /api/portfolio/exposure/history", () => {
   beforeEach(() => {
     billed.count = null;
     stored.clear();
+    touch.ok = true;
+    touch.calls = 0;
     vi.mocked(uploadExposureHistoryFile).mockClear();
   });
 
@@ -98,6 +106,17 @@ describe("POST /api/portfolio/exposure/history", () => {
     const again = await call({ tickers: ["nvda"] });
     expect(again.body.files.cached).toBe(true);
     expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(2); // names + cov, once
+  });
+
+  it("marks the folder on every request, and rewrites the files if the marker write fails", async () => {
+    await call({ tickers: ["NVDA"] });
+    expect(touch.calls).toBe(1);
+    touch.ok = false;
+    const again = await call({ tickers: ["NVDA"] });
+    expect(touch.calls).toBe(2);
+    // No hit is served without a fresh activity time: the files are re-uploaded.
+    expect(again.body.files.cached).toBe(false);
+    expect(vi.mocked(uploadExposureHistoryFile)).toHaveBeenCalledTimes(4);
   });
 
   it("returns 422 (not billed) when nothing has history", async () => {
