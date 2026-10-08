@@ -23,6 +23,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** Distinct tickers submitted: sets the price tier for the pre-flight balance check. */
+async function getItemCount(req: NextRequest): Promise<number | undefined> {
+  try {
+    const body = await req.clone().json();
+    if (!Array.isArray(body?.positions)) return undefined;
+    return new Set(
+      body.positions.map((p: { ticker?: unknown }) => String(p?.ticker ?? "").toUpperCase()),
+    ).size;
+  } catch {
+    return undefined;
+  }
+}
+
 export const POST = withBilling(
   async (request: NextRequest, context: BillingContext) => {
     const origin = request.headers.get("origin");
@@ -67,6 +80,10 @@ export const POST = withBilling(
         );
       }
 
+      // Bill the tier for names actually modelled (stocks plus ETFs held), not
+      // names submitted: dropped tickers never push a book into the higher tier.
+      context.setBillableItemCount?.(result.book.modelled_stocks + result.book.direct_etfs);
+
       const metadata = await getRiskMetadata();
       const latency = Math.round(performance.now() - fetchStart);
       const response = NextResponse.json(
@@ -96,7 +113,7 @@ export const POST = withBilling(
       );
     }
   },
-  { capabilityId: "portfolio-exposure" },
+  { capabilityId: "portfolio-exposure", getItemCount },
 );
 
 export async function OPTIONS(request: NextRequest) {

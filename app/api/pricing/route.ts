@@ -14,6 +14,7 @@ export async function GET() {
     input_cost_per_1k: cap.pricing.input_cost_per_1k ?? null,
     output_cost_per_1k: cap.pricing.output_cost_per_1k ?? null,
     min_charge: cap.pricing.min_charge ?? null,
+    size_tiers: cap.pricing.size_tiers ?? null,
     billing_code: cap.pricing.billing_code,
   }));
 

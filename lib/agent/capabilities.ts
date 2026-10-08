@@ -75,6 +75,13 @@ export interface PricingModel {
   cost_usd?: number;
   /** Added to cost_usd for each year above 1 (years clamped 1–15). R3. */
   cost_per_extra_year_usd?: number;
+  /**
+   * per_request only: flat price by request size. The tier with the largest
+   * `min_items` not above the item count replaces `cost_usd`; below every tier,
+   * `cost_usd` applies. Item count comes from the route's getItemCount (and can
+   * be lowered after the call via setBillableItemCount).
+   */
+  size_tiers?: Array<{ min_items: number; cost_usd: number }>;
   currency: "USD";
   billing_code: string;
   input_cost_per_1k?: number;
@@ -1771,7 +1778,7 @@ export const CAPABILITIES: Capability[] = [
     id: "portfolio-exposure",
     name: "Long/Short Portfolio Exposure",
     description:
-      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector, the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and a risk split at hedge_level (default lstar: each name at its own L* level, 1–3). Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·lK_res_er at each name's level, a diagonal approximation that ignores residual covariance across names (including common size/value). Positions are netted by security and never normalised. Use this instead of /portfolio/risk-index for books with shorts. One flat charge per successful call.",
+      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector, the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and a risk split at hedge_level (default lstar: each name at its own L* level, 1–3). Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·lK_res_er at each name's level, a diagonal approximation that ignores residual covariance across names (including common size/value). Positions are netted by security and never normalised. Use this instead of /portfolio/risk-index for books with shorts. Priced per successful call by book size: $0.25 up to 25 names, $1.00 above 25 (counting names actually modelled).",
     endpoint: "/api/portfolio/exposure",
     method: "POST",
     parameters: {
@@ -1810,8 +1817,10 @@ export const CAPABILITIES: Capability[] = [
       model: "per_request",
       tier: "premium",
       cost_usd: 0.25,
+      // Books over 25 names: $1.00 per date (latest or as_of).
+      size_tiers: [{ min_items: 26, cost_usd: 1.0 }],
       currency: "USD",
-      billing_code: "portfolio_exposure_v1",
+      billing_code: "portfolio_exposure_v2",
     },
     performance: {
       avg_latency_ms: 2500,
@@ -3349,6 +3358,15 @@ function unitCostUsd(pricing: PricingModel, years?: number, grandfathered?: bool
   return base + extra * (clampYears(years) - 1);
 }
 
+function sizeTierCost(pricing: PricingModel, itemCount?: number): number | null {
+  if (!pricing.size_tiers?.length || itemCount == null) return null;
+  let best: { min_items: number; cost_usd: number } | null = null;
+  for (const t of pricing.size_tiers) {
+    if (itemCount >= t.min_items && (!best || t.min_items > best.min_items)) best = t;
+  }
+  return best ? best.cost_usd : null;
+}
+
 export function calculateRequestCost(
   capabilityId: string,
   inputTokens?: number,
@@ -3360,8 +3378,10 @@ export function calculateRequestCost(
   const pricing = getCapabilityPricing(capabilityId);
 
   switch (pricing.model) {
-    case "per_request":
-      return unitCostUsd(pricing, years, grandfathered);
+    case "per_request": {
+      const tier = sizeTierCost(pricing, itemCount);
+      return tier ?? unitCostUsd(pricing, years, grandfathered);
+    }
 
     case "per_token": {
       const inRate = grandfathered
