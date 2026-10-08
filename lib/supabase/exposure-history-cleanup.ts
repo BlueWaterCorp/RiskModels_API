@@ -2,8 +2,8 @@
  * Daily cleanup of the private `exposure-history` Storage bucket
  * (docs/EXPOSURE_HISTORY_FEED.md, "Storage and cleanup").
  *
- * Folder layout (a 32-hex cache key): `names.{gen}.parquet` / `cov.{gen}.parquet`
- * (one pair per upload, never overwritten), hit markers
+ * Folder layout (a 32-hex cache key): `{file}.{gen}.parquet` (one set per
+ * upload, never overwritten; `cov` last marks it complete), hit markers
  * `hits/{build tag}.{10-min window}` (legacy `hit.{tag}` at the top level),
  * and, once cleanup has chosen the folder, `condemned`.
  *
@@ -16,9 +16,10 @@
  *      DELETE_AFTER_MS, with nothing newer than the marker, has the objects it
  *      listed removed; if something is newer, the marker is removed instead.
  *
- * The route serves only a pair written after any `condemned` marker and
- * writes a hit marker before signing a URL. Kept folders have hit markers
- * older than the guard pruned, keeping the newest per build tag. Uploads always use new paths, so a delete of
+ * The routes serve only a complete set written after any `condemned` marker
+ * and write a hit marker before signing a URL. On kept folders, cleanup
+ * prunes hit markers older than the guard (keeping the newest per build tag)
+ * and superseded generations. Uploads always use new paths, so a delete of
  * listed paths cannot remove a file uploaded after the listing. Only this
  * bucket is touched, and only top-level folders whose name is a cache key.
  */
@@ -27,6 +28,7 @@ import { createAdminClient } from "./admin";
 import {
   EXPOSURE_HISTORY_BUCKET,
   EXPOSURE_HISTORY_CONDEMNED,
+  EXPOSURE_HISTORY_FILE_RE,
   EXPOSURE_HISTORY_URL_TTL_SECONDS,
   exposureHistoryBuildTag,
 } from "./storage";
@@ -205,6 +207,41 @@ export function supabaseBucketApi(): BucketApi {
   };
 }
 
+/**
+ * Data files of superseded generations on a kept folder. A generation can go
+ * when a newer complete set (has `cov`) has existed for longer than the guard:
+ * since then every hit has served that newer set, so no valid URL points at
+ * the older one. Incomplete generations (no `cov`, never served) go once all
+ * their files are older than the guard. Gen "" (legacy names) is treated the
+ * same way.
+ */
+export function prunableGenerations(objects: StorageEntry[], nowMs: number): string[] {
+  const gens = new Map<string, { names: string[]; oldest: number; newest: number; complete: boolean; bad: boolean }>();
+  for (const o of objects) {
+    if (!o.id || o.name.includes("/")) continue;
+    const m = EXPOSURE_HISTORY_FILE_RE.exec(o.name);
+    if (!m) continue;
+    const g = gens.get(m[2] ?? "") ?? { names: [], oldest: Infinity, newest: -Infinity, complete: false, bad: false };
+    const t = ts(o);
+    if (t === null) g.bad = true;
+    else {
+      g.oldest = Math.min(g.oldest, t);
+      g.newest = Math.max(g.newest, t);
+    }
+    if (m[1] === "cov") g.complete = true;
+    g.names.push(o.name);
+    gens.set(m[2] ?? "", g);
+  }
+  const all = [...gens.values()].filter((g) => !g.bad);
+  const out: string[] = [];
+  for (const g of all) {
+    if (nowMs - g.newest <= guardMs()) continue;
+    const superseded = all.some((h) => h !== g && h.complete && h.oldest > g.newest && nowMs - h.newest > guardMs());
+    if (superseded || !g.complete) out.push(...g.names);
+  }
+  return out;
+}
+
 export async function cleanupExposureHistory(
   api: BucketApi,
   opts: CleanupOptions = {},
@@ -235,9 +272,14 @@ export async function cleanupExposureHistory(
 
   const deadline = started + budgetMs;
   // Top-level entries without an id are folders; only cache-key folders are considered.
-  const folders = (await listAll(api, ""))
-    .filter((e) => !e.id && CACHE_KEY_RE.test(e.name))
-    .map((e) => e.name);
+  let root: StorageEntry[];
+  try {
+    root = await listAll(api, "", deadline);
+  } catch (e) {
+    if (e instanceof BudgetExceeded) return { ...result, complete: false };
+    throw e;
+  }
+  const folders = root.filter((e) => !e.id && CACHE_KEY_RE.test(e.name)).map((e) => e.name);
   result.folders = folders.length;
   const startAt = opts.startAt ?? Math.floor(Math.random() * Math.max(1, folders.length));
   const start = folders.length ? ((startAt % folders.length) + folders.length) % folders.length : 0;
@@ -255,7 +297,7 @@ export async function cleanupExposureHistory(
       if (v.action === "keep") {
         result.kept += 1;
         if (v.reason === "active" || v.reason === "young") {
-          const prune = prunableHits(objects, nowMs).map((n) => `${key}/${n}`);
+          const prune = [...prunableHits(objects, nowMs), ...prunableGenerations(objects, nowMs)].map((n) => `${key}/${n}`);
           for (let j = 0; j < prune.length && !opts.dryRun; j += REMOVE_CHUNK) {
             const { error } = await api.remove(prune.slice(j, j + REMOVE_CHUNK));
             if (error) throw new Error(`prune ${key}: ${error.message}`);
@@ -276,14 +318,20 @@ export async function cleanupExposureHistory(
         }
         result.reprieved += 1;
       } else {
-        const paths = objects.filter((o) => o.id).map((o) => `${key}/${o.name}`);
+        // Only the paths listed above (uploads never reuse a path, so a file
+        // written after the listing survives), and `condemned` last: while any
+        // listed file remains, the marker stays and the route serves only
+        // sets newer than it, which are not in this list.
+        const marker = `${key}/${EXPOSURE_HISTORY_CONDEMNED}`;
+        const data = objects.filter((o) => o.id).map((o) => `${key}/${o.name}`).filter((p) => p !== marker);
+        const paths = [...data, marker];
         if (!opts.dryRun) {
-          // Only the paths listed above. Uploads never reuse a path, so a file
-          // written after the listing survives.
-          for (let j = 0; j < paths.length; j += REMOVE_CHUNK) {
-            const { error } = await api.remove(paths.slice(j, j + REMOVE_CHUNK));
+          for (let j = 0; j < data.length; j += REMOVE_CHUNK) {
+            const { error } = await api.remove(data.slice(j, j + REMOVE_CHUNK));
             if (error) throw new Error(`remove ${key}: ${error.message}`);
           }
+          const { error } = await api.remove([marker]);
+          if (error) throw new Error(`remove ${key}: ${error.message}`);
         }
         result.deleted += 1;
         result.deleted_objects += paths.length;

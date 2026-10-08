@@ -99,36 +99,40 @@ ETF Zarr stores and writes
 
 ### Storage and cleanup
 
-Files live in the private Supabase Storage bucket `exposure-history` (BWMACRO
+Both `POST /api/portfolio/exposure/history` and `.../history/daily` store their
+files in the private Supabase Storage bucket `exposure-history` (BWMACRO
 migration `20261008220000_exposure_history_bucket`), one folder per distinct
-request:
+request, through the same helpers (`serveExposureHistorySet`,
+`writeExposureHistorySet` in `lib/supabase/storage.ts`):
 
 ```
-<cache key>/names.<gen>.parquet           # one pair per upload; never overwritten
-<cache key>/cov.<gen>.parquet
+<cache key>/<file>.<gen>.parquet          # one set per upload; never overwritten
 <cache key>/hits/<build tag>.<window>     # tiny marker per 10-minute window with requests
 <cache key>/condemned                     # written by cleanup, see below
 ```
 
-The cache key is a hash of the resolved names, ETFs, range and the panel's
-`built_utc`, so a rebuilt panel never reuses older files. `<gen>` is a random
-16-hex id per upload. The build tag is the first 12 hex characters of
-`sha256(built_utc)`; it puts the build in the listing so cleanup can read it
-without downloading anything. Folders written before 2026-10-09 hold
-`names.parquet`, `cov.parquet` and `hit.<build tag>`; both route and cleanup
-read that layout. A folder's **last activity** is the latest created/updated
-time of any object in it (including `hits/`) other than `condemned`.
+`<file>` is `names` and `cov` (month-end) or `names_<year>` and `cov` (daily).
+`<gen>` is a random 16-hex id per upload; `cov` is written last and marks the
+set complete. The cache key is a hash of the request and the panel's
+`built_utc`, so a rebuilt panel never reuses older files. The build tag is the
+first 12 hex characters of `sha256(built_utc)`; it puts the build in the
+listing so cleanup can read it without downloading anything. Folders written
+before 2026-10-09 hold `<file>.parquet` (no gen) and `hit.<build tag>`; the
+routes and cleanup read that layout. A folder's **last activity** is the
+latest created/updated time of any object in it (including `hits/`) other
+than `condemned`.
 
-**Route.** The route lists the folder (all pages; an unfinished listing counts
-as a failure). It serves a cache hit only from a complete pair written after
-any `condemned` marker, and only after upserting the hit marker for the
-current 10-minute window (the first request in a window creates it, so its
-timestamp is at most 10 minutes old even if upserts do not refresh
-`updated_at`). Otherwise (no such pair, listing or marker failure) it uploads
-a new generation; on a condemned folder the next request then hits that new
-pair. If one of the two uploads fails, the other is removed. Uploads never
-reuse a path, so a cleanup delete, which removes only the paths it listed,
-cannot remove a file uploaded after that listing.
+**Routes.** A route lists the folder (all pages; an unfinished listing counts
+as a failure). It serves a cache hit only from the newest complete set whose
+files were all written after any `condemned` marker, and only after upserting
+the hit marker for the current 10-minute window (the first request in a
+window creates it, so its timestamp is at most 10 minutes old even if upserts
+do not refresh `updated_at`). Otherwise (no such set, listing or marker
+failure) it writes a new generation; on a condemned folder the next request
+then hits that new set. If any upload fails, the files of that generation are
+removed and no URL is returned. Uploads never reuse a path, so a cleanup
+delete, which removes only the paths it listed, cannot remove a file uploaded
+after that listing.
 
 **Cleanup.** `GET /api/cron/exposure-history-cleanup` (Vercel Cron, daily
 07:30 UTC, `Authorization: Bearer $CRON_SECRET`, same pattern as the other
@@ -139,9 +143,9 @@ one per run. Guard = URL TTL (1 h) + 2 h margin.
 | Phase | Condition | Action |
 |---|---|---|
 | Condemn | No marker; last activity older than the guard; and either older than `EXPOSURE_HISTORY_MAX_AGE_DAYS` (default 7, minimum 1), or the folder has hit markers and none names the current panel build | Write `condemned` |
-| Delete | `condemned` at least 12 h old and no activity since it | Remove the objects listed in this run |
+| Delete | `condemned` at least 12 h old and no activity since it | Remove the objects listed in this run, `condemned` last |
 | Reprieve | `condemned` present and activity since it | Remove `condemned` |
-| Keep | Anything else, including any object without timestamps | Prune hit markers older than the guard, except the newest per build tag |
+| Keep | Anything else, including any object without timestamps | Prune hit markers older than the guard (except the newest per build tag), superseded generations (a newer complete set has existed for longer than the guard) and incomplete generations older than the guard |
 
 Folders without hit markers fall under the age rule only; if the current
 build cannot be read, only the age rule runs. Deletion happens one run after
@@ -153,12 +157,15 @@ after its window's marker is written, so the marker shows a time no earlier
 than T − 10 min. If that is after the `condemned` marker C, the folder is
 reprieved. If it is before C, then T < C + 10 min, and deletion happens no
 earlier than C + 12 h, long after T + 1 h. A hit on a condemned folder serves
-only a pair newer than C: a delete run that lists it reprieves, and one that
-listed earlier does not contain its paths. A URL for a new upload points at
-paths that no earlier listing contains. Comparisons between objects use Storage's own timestamps; the
+only a set newer than C: a delete run that lists it reprieves, and one that
+listed earlier does not contain its paths. Because `condemned` is removed
+after the data files, a request during a delete still sees the marker. A URL
+for a new upload points at paths that no earlier listing contains. A pruned
+generation was superseded by a set complete for longer than the guard, so
+every hit since then has served the newer set. Comparisons between objects use Storage's own timestamps; the
 margins cover clock skew between Vercel and Storage.
 
-The run stops after 240 s (checked inside paging too) and starts at a random
+The run stops after 240 s (checked before every listing page) and starts at a random
 folder, so a run cut short covers different folders next time; it then returns
 HTTP 200 with `complete: false`. Any folder error returns HTTP 500. The code (`lib/supabase/exposure-history-cleanup.ts`) is
 bound to the `exposure-history` bucket and ignores root-level files.

@@ -28,12 +28,8 @@ import {
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
 import {
   EXPOSURE_HISTORY_URL_TTL_SECONDS,
-  inspectExposureHistoryFolder,
-  newExposureHistoryGen,
-  removeExposureHistoryPaths,
-  signExposureHistoryPath,
-  touchExposureHistoryFolder,
-  uploadExposureHistoryFile,
+  serveExposureHistorySet,
+  writeExposureHistorySet,
 } from "@/lib/supabase/storage";
 import { getCorsHeaders } from "@/lib/cors";
 
@@ -150,41 +146,28 @@ export const POST = withBilling(
         .digest("hex")
         .slice(0, 32);
 
-      // Cleanup safety (docs/EXPOSURE_HISTORY_FEED.md, "Storage and cleanup"):
-      // serve a hit only from a pair written after any `condemned` marker
-      // (inspect enforces this), and only after writing a hit marker so the
-      // daily cleanup sees the activity. Otherwise upload a new generation:
-      // new paths that no pending delete can target.
+      // Cache rules shared with the daily route and the cleanup cron:
+      // lib/supabase/storage.ts, docs/EXPOSURE_HISTORY_FEED.md "Storage and cleanup".
       const built = slice.attrs.built_utc;
-      const state = await inspectExposureHistoryFolder(cacheKey);
-      let namesUrl: string | null = null;
-      let covUrl: string | null = null;
-      if (!state.error && state.pair) {
-        if (await touchExposureHistoryFolder(cacheKey, built)) {
-          namesUrl = await signExposureHistoryPath(state.pair.names, URL_TTL_SECONDS);
-          covUrl = namesUrl ? await signExposureHistoryPath(state.pair.cov, URL_TTL_SECONDS) : null;
-        }
-      }
-      const cached = Boolean(namesUrl && covUrl);
+      let urls = await serveExposureHistorySet(cacheKey, built, URL_TTL_SECONDS);
+      const cached = Boolean(urls?.names && urls?.cov);
       if (!cached) {
-        const gen = newExposureHistoryGen();
         const [namesBuf, covBuf] = await Promise.all([
           toParquet(tables.names, NAME_COLUMNS),
           toParquet(tables.cov, COV_COLUMNS),
         ]);
-        const up = await Promise.allSettled([
-          uploadExposureHistoryFile(cacheKey, "names", gen, namesBuf, URL_TTL_SECONDS),
-          uploadExposureHistoryFile(cacheKey, "cov", gen, covBuf, URL_TTL_SECONDS),
-        ]);
-        if (up[0].status === "rejected" || up[1].status === "rejected") {
-          // Do not leave half a generation behind; nothing was handed out.
-          await removeExposureHistoryPaths([`${cacheKey}/names.${gen}.parquet`, `${cacheKey}/cov.${gen}.parquet`]);
-          throw up[0].status === "rejected" ? up[0].reason : (up[1] as PromiseRejectedResult).reason;
-        }
-        [namesUrl, covUrl] = [up[0].value, up[1].value];
-        // Build tag for the stale-build rule.
-        await touchExposureHistoryFolder(cacheKey, built);
+        urls = await writeExposureHistorySet(
+          cacheKey,
+          built,
+          [
+            { name: "names", bytes: namesBuf },
+            { name: "cov", bytes: covBuf },
+          ],
+          URL_TTL_SECONDS,
+        );
       }
+      const namesUrl = urls!.names;
+      const covUrl = urls!.cov;
 
       const metadata = await getRiskMetadata();
       const latency = Math.round(performance.now() - fetchStart);

@@ -31,14 +31,18 @@ import {
   toParquet,
 } from "@/lib/portfolio/exposure-history";
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
-import { signExposureHistoryFile, uploadExposureHistoryFile } from "@/lib/supabase/storage";
+import {
+  EXPOSURE_HISTORY_URL_TTL_SECONDS,
+  serveExposureHistorySet,
+  writeExposureHistorySet,
+} from "@/lib/supabase/storage";
 import { getCorsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const URL_TTL_SECONDS = 3600;
+const URL_TTL_SECONDS = EXPOSURE_HISTORY_URL_TTL_SECONDS;
 const DEFAULT_START = "2006-01-01";
 
 async function getItemCount(req: NextRequest): Promise<number | undefined> {
@@ -132,26 +136,31 @@ export const POST = withBilling(
         .digest("hex")
         .slice(0, 32);
 
-      const years = dailyYears(daily);
+      // Cache rules shared with the month-end route and the cleanup cron:
+      // lib/supabase/storage.ts, docs/EXPOSURE_HISTORY_FEED.md "Storage and cleanup".
+      const built = panel.attrs.built_utc;
       const parts: Array<{ year: string; url: string; rows: number }> = [];
-      let cached = true;
-      for (const year of years) {
-        const name = `names_${year}`;
-        let url = await signExposureHistoryFile(cacheKey, name, URL_TTL_SECONDS);
-        let rows = -1; // unknown on a cache hit
-        if (!url) {
-          cached = false;
-          const yearRows = buildDailyNameRows(daily, deliveredNames, year);
-          rows = yearRows.length;
-          if (rows === 0) continue;
-          url = await uploadExposureHistoryFile(cacheKey, name, await toParquet(yearRows, NAME_COLUMNS), URL_TTL_SECONDS);
+      let covUrl: string;
+      const hit = await serveExposureHistorySet(cacheKey, built, URL_TTL_SECONDS);
+      const cached = Boolean(hit?.cov);
+      if (hit && cached) {
+        for (const name of Object.keys(hit).filter((n) => n.startsWith("names_")).sort()) {
+          parts.push({ year: name.slice("names_".length), url: hit[name], rows: -1 }); // rows unknown on a hit
         }
-        parts.push({ year, url, rows });
-      }
-      let covUrl = await signExposureHistoryFile(cacheKey, "cov", URL_TTL_SECONDS);
-      if (!covUrl) {
-        cached = false;
-        covUrl = await uploadExposureHistoryFile(cacheKey, "cov", await toParquet(cov.cov, COV_COLUMNS), URL_TTL_SECONDS);
+        covUrl = hit.cov;
+      } else {
+        const files: Array<{ name: string; bytes: Buffer }> = [];
+        const rowsByYear = new Map<string, number>();
+        for (const year of dailyYears(daily)) {
+          const yearRows = buildDailyNameRows(daily, deliveredNames, year);
+          if (yearRows.length === 0) continue;
+          rowsByYear.set(year, yearRows.length);
+          files.push({ name: `names_${year}`, bytes: await toParquet(yearRows, NAME_COLUMNS) });
+        }
+        files.push({ name: "cov", bytes: await toParquet(cov.cov, COV_COLUMNS) });
+        const urls = await writeExposureHistorySet(cacheKey, built, files, URL_TTL_SECONDS);
+        for (const [year, rows] of rowsByYear) parts.push({ year, url: urls[`names_${year}`], rows });
+        covUrl = urls.cov;
       }
 
       const metadata = await getRiskMetadata();

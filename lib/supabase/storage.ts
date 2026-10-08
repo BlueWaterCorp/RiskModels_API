@@ -130,16 +130,17 @@ export async function listSnapshots(
 /**
  * Exposure-history folder layout (docs/EXPOSURE_HISTORY_FEED.md, "Storage and cleanup"):
  *
- *   {cache key}/names.{gen}.parquet, {cache key}/cov.{gen}.parquet   one pair per upload
- *   {cache key}/hits/{build tag}.{10-min window}                     one marker per window
- *   {cache key}/condemned                                            written by cleanup
+ *   {cache key}/{file}.{gen}.parquet      one set per upload, never overwritten;
+ *                                         `cov` is written last and marks the set complete
+ *   {cache key}/hits/{build tag}.{window} one marker per 10-minute window with requests
+ *   {cache key}/condemned                 written by cleanup
  *
- * Every upload uses a new `gen`, so no upload ever reuses a path that a
- * cleanup delete (which removes the paths it listed) could still target.
- * Folders written before generations existed hold `names.parquet` /
- * `cov.parquet` (gen ""), and `hit.{tag}` markers.
+ * `{file}` is `names`, `names_{year}` (daily feed) or `cov`. Every upload uses
+ * a new `gen`, so no upload reuses a path that a cleanup delete (which
+ * removes only the paths it listed) could still target. Folders written
+ * before generations existed hold `{file}.parquet` (gen "") and `hit.{tag}`.
  */
-const PAIR_RE = /^(names|cov)(?:\.([0-9a-f]{8,32}))?\.parquet$/;
+export const EXPOSURE_HISTORY_FILE_RE = /^([a-z0-9_]+?)(?:\.([0-9a-f]{8,32}))?\.parquet$/;
 
 /** Generation id for a new upload. */
 export function newExposureHistoryGen(): string {
@@ -152,15 +153,16 @@ export interface ExposureHistoryFolderState {
   /** Cleanup has marked the folder for deletion. */
   condemned: boolean;
   /**
-   * Paths of a pair safe to serve: the newest complete pair, and only if it
-   * was written after `condemned` (a delete run removes only paths it listed,
-   * and a listing that includes a pair newer than the marker reprieves).
+   * The newest complete set (has `cov`) whose files were all written after
+   * `condemned`, if any: file name (without gen) -> object path. A delete run
+   * removes only paths it listed, and a listing that includes files newer
+   * than the marker reprieves the folder.
    */
-  pair: { names: string; cov: string } | null;
+  set: Record<string, string> | null;
 }
 
-const INSPECT_PAGE = 100;
-const INSPECT_MAX_PAGES = 100;
+const INSPECT_PAGE = 1000;
+const INSPECT_MAX_PAGES = 20;
 
 function entryTime(o: { created_at?: string | null; updated_at?: string | null }): number | null {
   const v = [o.created_at, o.updated_at].map((x) => (x ? Date.parse(x) : NaN)).filter((x) => Number.isFinite(x));
@@ -169,10 +171,10 @@ function entryTime(o: { created_at?: string | null; updated_at?: string | null }
 
 /**
  * List `{cache key}/` (all pages, name order). Markers live in `hits/`, so the
- * top level stays small: the pairs, `condemned` and the `hits` sub-folder.
+ * top level holds only data files, `condemned` and the `hits` sub-folder.
  */
 export async function inspectExposureHistoryFolder(cacheKey: string): Promise<ExposureHistoryFolderState> {
-  const fail = { error: true, condemned: false, pair: null };
+  const fail = { error: true, condemned: false, set: null };
   const supabase = createAdminClient();
   const bucket = supabase.storage.from(EXPOSURE_HISTORY_BUCKET);
   const rows: Array<{ name: string; id: string | null; created_at?: string | null; updated_at?: string | null }> = [];
@@ -194,27 +196,23 @@ export async function inspectExposureHistoryFolder(cacheKey: string): Promise<Ex
   const files = rows.filter((o) => o.id);
   const marker = files.find((f) => f.name === EXPOSURE_HISTORY_CONDEMNED);
   const condemnedAt = marker ? entryTime(marker) : null;
-  if (marker && condemnedAt === null) return { error: false, condemned: true, pair: null };
-  const gens = new Map<string, { names?: string; cov?: string; at: number }>();
+  if (marker && condemnedAt === null) return { error: false, condemned: true, set: null };
+  const gens = new Map<string, { files: Record<string, string>; at: number; bad: boolean }>();
   for (const f of files) {
-    const m = PAIR_RE.exec(f.name);
+    const m = EXPOSURE_HISTORY_FILE_RE.exec(f.name);
     if (!m) continue;
+    const g = gens.get(m[2] ?? "") ?? { files: {}, at: Infinity, bad: false };
     const t = entryTime(f);
-    if (t === null) continue;
-    const g = gens.get(m[2] ?? "") ?? { at: Infinity };
-    g[m[1] as "names" | "cov"] = `${cacheKey}/${f.name}`;
-    g.at = Math.min(g.at, t); // a pair is as old as its older file
+    if (t === null) g.bad = true;
+    else g.at = Math.min(g.at, t); // a set is as old as its oldest file
+    g.files[m[1]] = `${cacheKey}/${f.name}`;
     gens.set(m[2] ?? "", g);
   }
   const complete = [...gens.values()]
-    .filter((g) => g.names && g.cov)
+    .filter((g) => !g.bad && g.files.cov)
     .filter((g) => condemnedAt === null || g.at > condemnedAt)
     .sort((x, y) => y.at - x.at);
-  return {
-    error: false,
-    condemned: Boolean(marker),
-    pair: complete[0] ? { names: complete[0].names!, cov: complete[0].cov! } : null,
-  };
+  return { error: false, condemned: Boolean(marker), set: complete[0]?.files ?? null };
 }
 
 /** Signed URL for an object in the exposure-history bucket, or null. */
@@ -258,11 +256,11 @@ export async function removeExposureHistoryPaths(paths: string[]): Promise<void>
 
 /**
  * Upload `{folder}/{name}.{gen}.parquet` (a new path; never overwrites) and
- * return its signed URL.
+ * return its signed URL. Callers upload `cov` last: it marks the set complete.
  */
 export async function uploadExposureHistoryFile(
   folder: string,
-  name: "names" | "cov",
+  name: string,
   gen: string,
   bytes: Buffer,
   expiresIn = EXPOSURE_HISTORY_URL_TTL_SECONDS,
@@ -277,4 +275,56 @@ export async function uploadExposureHistoryFile(
   const url = await signExposureHistoryPath(path, expiresIn);
   if (!url) throw new Error(`Failed to sign ${path}`);
   return url;
+}
+
+/**
+ * Signed URLs for a cached set under `cacheKey`, or null on a miss. Serves only
+ * a complete set written after any `condemned` marker, and only after the hit
+ * marker is written, so the daily cleanup sees the activity.
+ */
+export async function serveExposureHistorySet(
+  cacheKey: string,
+  builtUtc: unknown,
+  expiresIn = EXPOSURE_HISTORY_URL_TTL_SECONDS,
+): Promise<Record<string, string> | null> {
+  const state = await inspectExposureHistoryFolder(cacheKey);
+  if (state.error || !state.set) return null;
+  if (!(await touchExposureHistoryFolder(cacheKey, builtUtc))) return null;
+  const urls: Record<string, string> = {};
+  for (const [name, path] of Object.entries(state.set)) {
+    const url = await signExposureHistoryPath(path, expiresIn);
+    if (!url) return null;
+    urls[name] = url;
+  }
+  return urls;
+}
+
+/**
+ * Write a new generation under `cacheKey`: every file except `cov` first, then
+ * `cov` (which marks the set complete). On any failure the files written are
+ * removed and the error is rethrown; no URL is returned. Returns name -> URL.
+ */
+export async function writeExposureHistorySet(
+  cacheKey: string,
+  builtUtc: unknown,
+  files: Array<{ name: string; bytes: Buffer }>,
+  expiresIn = EXPOSURE_HISTORY_URL_TTL_SECONDS,
+): Promise<Record<string, string>> {
+  const cov = files.find((f) => f.name === "cov");
+  if (!cov) throw new Error("exposure-history set needs a cov file");
+  const gen = newExposureHistoryGen();
+  const rest = files.filter((f) => f !== cov);
+  const pathOf = (name: string) => `${cacheKey}/${name}.${gen}.parquet`;
+  try {
+    const urls: Record<string, string> = {};
+    const up = await Promise.all(rest.map((f) => uploadExposureHistoryFile(cacheKey, f.name, gen, f.bytes, expiresIn)));
+    rest.forEach((f, i) => (urls[f.name] = up[i]));
+    urls.cov = await uploadExposureHistoryFile(cacheKey, "cov", gen, cov.bytes, expiresIn);
+    // Build tag for the stale-build rule; the new files' own timestamps are the activity.
+    await touchExposureHistoryFolder(cacheKey, builtUtc);
+    return urls;
+  } catch (e) {
+    await removeExposureHistoryPaths(files.map((f) => pathOf(f.name)));
+    throw e;
+  }
 }
