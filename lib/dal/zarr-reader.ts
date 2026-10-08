@@ -519,6 +519,18 @@ function logSliceTelemetry(
   );
 }
 
+/** History slices above this many rows (~5 MB serialized) are not cached. */
+export const MAX_CACHED_SLICE_ROWS = 50_000;
+
+/** Upper-bound row estimate for a slice request: symbols × keys × trading days. */
+export function estimateSliceRows(params: ReadHistorySliceParams): number {
+  const end = params.endDate ? Date.parse(`${params.endDate}T00:00:00Z`) : Date.now();
+  const start = params.startDate ? Date.parse(`${params.startDate}T00:00:00Z`) : Date.parse("2000-01-01T00:00:00Z");
+  const calendarDays = Number.isFinite(end - start) ? Math.max(1, (end - start) / 86_400_000 + 1) : 7_300;
+  const tradingDays = Math.ceil((calendarDays * 252) / 365);
+  return params.symbols.length * params.keys.length * tradingDays;
+}
+
 export async function readHistorySlice(
   params: ReadHistorySliceParams,
 ): Promise<ReadHistorySliceResult> {
@@ -542,7 +554,8 @@ export async function readHistorySlice(
   }
 
   const ck = cacheKeyForZarr(params);
-  const hit = await getCache<ReadHistorySliceResult>(ck);
+  // A request this large was never cached (see the write below); skip the lookup.
+  const hit = estimateSliceRows(params) > MAX_CACHED_SLICE_ROWS ? null : await getCache<ReadHistorySliceResult>(ck);
   // `[]` is truthy in JS — only treat cache as a hit when we stored real rows.
   if (hit?.rows?.length) {
     logSliceTelemetry(params, "cache_hit", hit.rows.length, Date.now() - _tStart);
@@ -880,7 +893,10 @@ export async function readHistorySlice(
     range: [rangeStart, rangeEnd],
   };
 
-  if (rows.length > 0) {
+  // Large slices (multi-year history for many names) are not cached: they would
+  // exceed the cache's value limit, and serializing them just to be refused
+  // costs seconds and gigabytes per request.
+  if (rows.length > 0 && rows.length <= MAX_CACHED_SLICE_ROWS) {
     await setCache(ck, result, CACHE_TTL.FREQUENT).catch(() => {});
   }
 
