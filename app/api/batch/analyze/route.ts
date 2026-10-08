@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
+import { hasRiskMetrics } from "@/lib/risk/has-risk-metrics";
 import {
   resolveSymbolByTicker,
   fetchHistory,
@@ -64,6 +65,8 @@ interface PositionAnalysis {
   ticker: string;
   status: "success" | "error";
   error?: string;
+  /** Machine-readable reason when `status` is `"error"`. */
+  error_code?: "symbol_not_found" | "no_risk_metrics" | "internal_error";
   /** Ticker exactly as requested (uppercased). */
   requested_ticker?: string;
   /**
@@ -186,6 +189,8 @@ export const POST = withBilling(
     );
 
     const successCount = results.filter((r) => r.status === "success").length;
+    // Bill only tickers that returned data; failed lookups are free.
+    context.setBillableItemCount?.(successCount);
     const errorCount = results.filter((r) => r.status === "error").length;
     const metadata = await getRiskMetadata();
 
@@ -368,6 +373,7 @@ async function analyzeTicker(
         `[Batch/analyzeTicker] Symbol not found for ticker ${ticker} (tried: ${variations.join(", ")})`,
       );
       result.status = "error";
+      result.error_code = "symbol_not_found";
       result.error = `Symbol not found for ticker ${ticker}`;
       return result;
     }
@@ -474,6 +480,19 @@ async function analyzeTicker(
       const m = latestData?.metrics;
       const teo = latestData?.teo ?? null;
 
+      // ETFs (including the SPY / sector / subsector hedge instruments) resolve
+      // in the symbol registry but carry no ERM3 decomposition. Report that as
+      // an error rather than a "success" full of nulls, and do not bill it.
+      if (!hasRiskMetrics(m)) {
+        const isEtf = (symbolRecord.asset_type ?? "").toLowerCase() === "etf";
+        result.status = "error";
+        result.error_code = "no_risk_metrics";
+        result.error = isEtf
+          ? `${ticker} is an ETF. ETFs are hedge instruments, not modelled names, so there is no risk decomposition; use /etf-returns for its return series.`
+          : `No risk metrics are available for ${ticker}.`;
+        return result;
+      }
+
       const sectorEtf = symbolRecord.sector_etf || null;
       const subsectorEtf =
         symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
@@ -566,6 +585,7 @@ async function analyzeTicker(
   } catch (error) {
     console.error(`[Batch/analyzeTicker] Error for ${ticker}:`, error);
     result.status = "error";
+    result.error_code = "internal_error";
     result.error = "Internal error analyzing this ticker.";
   }
   return result;

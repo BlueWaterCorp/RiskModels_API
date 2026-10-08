@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCapability, calculateEstimatedCost } from "./capabilities";
+import { billableCostUsd } from "./billable-cost";
 import {
   checkBalance,
   deductBalance,
@@ -337,6 +338,13 @@ export interface BillingContext {
    * Idempotent; deducts + increments free tier + logs telemetry on success.
    */
   settleBilling?: (success: boolean) => Promise<void>;
+  /**
+   * Per-item routes (`getItemCount`): lower the charge to the items that
+   * actually returned data, e.g. a batch where some tickers failed. Call before
+   * reading `costUsd` for the response body. The charge never rises above the
+   * pre-flight estimate, and zero billable items cost nothing (no minimum).
+   */
+  setBillableItemCount?: (count: number) => void;
 }
 
 async function resolveYearsFromRequest(
@@ -867,6 +875,21 @@ export function withBilling(
         keyId: apiKeyId,
         keyPrefix: apiKeyPrefix,
       };
+
+      if (options.getItemCount || options.itemCount !== undefined) {
+        context.setBillableItemCount = (count: number) => {
+          costUsd = billableCostUsd({
+            capabilityId: options.capabilityId,
+            preflightCostUsd: costUsd,
+            billableItems: count,
+            inputTokens,
+            outputTokens,
+            years,
+            grandfathered,
+          });
+          context.costUsd = costUsd;
+        };
+      }
 
       // 4.5. Deferred billing (streaming handlers): expose a one-shot settle
       // callback instead of deducting at handler-return (see BillingOptions).

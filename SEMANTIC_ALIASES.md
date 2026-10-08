@@ -21,10 +21,11 @@ To compute hedge notional: `hedge_notional_usd = position_size_usd × hr_field`
 
 ### `POST /decompose` — agent-friendly semantic wrapper
 
-`POST /decompose` returns the **four-bet** shape (`market`, `sector`, `subsector`, `residual`) under `exposure.<layer>.{er, hr, hedge_etf}`, plus a top-level `hedge` map of ETF → dollar ratio (= **negative** of each tradable layer's `hr`, summed across duplicate ETFs). This is a thin semantic re-projection of the same `l3_*_hr` / `l3_*_er` fields documented above — no new math, same billing as `GET /metrics/{ticker}`. Use it when an agent only needs the additive bet breakdown + ready-to-short hedge notionals.
+`POST /decompose` returns the **four-bet** shape (`market`, `sector`, `subsector`, `residual`) under `exposure.<layer>.{er, hr, hedge_etf}`, plus a top-level `hedge` map of ETF → dollar ratio (= each tradable layer's `hr` itself, summed across duplicate ETFs; negative = short the ETF). This is a thin semantic re-projection of the same `l3_*_hr` / `l3_*_er` fields documented above — no new math, same billing as `GET /metrics/{ticker}`. Use it when an agent only needs the additive bet breakdown + ready-to-short hedge notionals.
 
 ### Sign convention (hedge ratios)
 
+- **An HR is the ETF dollar position per $1 long stock.** Negative = short the ETF. A stock with positive market beta carries a negative market HR (`l1_mkt_hr` ≈ -`l1_mkt_beta`), so the ETF notional for a signed position is `position_value × hr`.
 - **Any HR field may be negative** (orthogonalization / factor neutralization, or a long ETF leg when the economic hedge is expressed that way). A negative value is not automatically a data or sign error.
 - **Most often**, negative HRs show up on the **market factor** (`l2_market_hr`, `l3_market_hr`) at L2 or L3; subsector and other components can also be negative depending on the name and window.
 
@@ -52,6 +53,8 @@ Unit: **`decimal_fraction`** — fraction of stock variance explained by the fac
 ```
 l3_market_er + l3_sector_er + l3_subsector_er + l3_residual_er ≈ 1.0
 ```
+
+**Negative shares.** Incremental shares (sector, subsector) can be slightly negative: after orthogonalization an added layer can explain less than nothing over the window. The residual is defined as 1 minus the systematic shares, so the four L3 shares still sum to 1. Do not clip a negative share to 0 without re-deriving the residual.
 
 | Field | Description | Typical Range |
 |---|---|---|
