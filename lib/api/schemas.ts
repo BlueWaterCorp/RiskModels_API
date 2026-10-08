@@ -287,6 +287,29 @@ export const CohortSeriesRequestSchema = z
 export type CohortSeriesRequest = z.infer<typeof CohortSeriesRequestSchema>;
 
 /**
+ * POST /api/portfolio/exposure — signed long/short book, dollar values.
+ * Shorts are negative. Values are not normalised (a book netting to ~0 is valid).
+ * Repeated tickers are netted before any squaring.
+ */
+export const PortfolioExposureRequestSchema = z.object({
+  positions: z
+    .array(
+      z.object({
+        ticker: TickerSchema,
+        value: z
+          .number()
+          .finite("value must be a finite number")
+          .refine((v) => v !== 0, "value must be non-zero (signed dollars; short < 0)"),
+      }),
+    )
+    .min(1, "At least one position is required")
+    .max(1000, "Maximum 1000 positions per request"),
+  lookback_days: z.coerce.number().int().min(60).max(756).default(252),
+});
+
+export type PortfolioExposureRequest = z.infer<typeof PortfolioExposureRequestSchema>;
+
+/**
  * Schema for POST /api/cohorts/pnl-decomposition — split a book's realized
  * residual return into within-cohort selection and net-exposure drift.
  *

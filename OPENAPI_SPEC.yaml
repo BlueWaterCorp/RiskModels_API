@@ -8422,6 +8422,115 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /portfolio/exposure:
+    post:
+      summary: Long/short portfolio exposure and L3 risk (signed dollar positions)
+      description: >
+        Signed book of up to 1000 positions as dollar market values (short < 0). Nothing is
+        normalised, so a book that nets to roughly zero is a valid input. Use this instead of
+        `/portfolio/risk-index`, `/portfolio/risk-snapshot` or `/snapshot` for any book with shorts;
+        those endpoints require positive weights. Repeated tickers and share classes of one
+        security are netted before any squaring.
+
+
+        **Returns**
+        - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF).
+        - `hedges.l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per
+          $1 long stock, negative = short), `direct_etf_exposure_usd` (the book's own ETF holdings),
+          and `total_neutralizing_trade_usd` = stock hedge − direct holdings.
+        - `risk` (L3): systematic variance xᵀΣx, where x is the book's raw-ETF exposure (−stock hedge
+          + direct holdings) and Σ is the sample covariance of daily ETF returns over
+          `lookback_days` ending on `as_of.snapshot_teo`. Layer contributions xₗᵀΣx sum to the
+          systematic variance and can be negative. Residual variance is Σ value²·stock_var·l3_res_er,
+          a diagonal approximation that ignores residual covariance across names (including common
+          size/value exposure, which stays in the L3 residual); it is an approximation, not a bound.
+          Volatility is annualised with √252.
+        - `risk.reconciliation`: per-name gap between the covariance-implied systematic variance and
+          the model's own split, stock_var·(1 − l3_res_er).
+        - `coverage`: share of submitted gross used by each calculation, dropped positions
+          (`symbol_not_found`, `no_risk_metrics`, `stale_metrics`), and ETFs without covariance.
+
+
+        **Model date.** Every name is read at one `snapshot_teo` (the most common latest date).
+        Names whose latest row is on another date are dropped as `stale_metrics`. Missing L2/L3
+        sector and subsector hedge legs are filled from Zarr at that same date. ETF-to-sector
+        mapping is the current registry, not point-in-time.
+
+
+        **Billing:** $0.25 per successful call regardless of book size. A request with no modelled
+        positions returns 422 and is not charged.
+      operationId: postPortfolioExposure
+      tags: [Risk Metrics]
+      x-pricing:
+        capability_id: portfolio-exposure
+        tier: premium
+        model: per_request
+        cost_usd: 0.25
+        currency: USD
+        billing_code: portfolio_exposure_v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positions]
+              properties:
+                positions:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required: [ticker, value]
+                    properties:
+                      ticker:
+                        type: string
+                      value:
+                        type: number
+                        description: Signed dollar market value; negative for a short. Must be non-zero.
+                lookback_days:
+                  type: integer
+                  minimum: 60
+                  maximum: 756
+                  default: 252
+                  description: Trading days in the ETF covariance window. 252 matches the ERM3 estimation window.
+            example:
+              positions:
+                - { ticker: DOCN, value: 219558 }
+                - { ticker: NOW, value: -129736 }
+                - { ticker: SPY, value: -50000 }
+      responses:
+        "200":
+          description: Exposure, hedge trades, L3 risk split and coverage.
+          headers:
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  as_of:
+                    type: object
+                    description: snapshot_teo, covariance_start, covariance_end, requested and effective observation counts, vintage_aligned.
+                  book:
+                    type: object
+                  beta:
+                    type: object
+                  hedges:
+                    type: object
+                    description: Keys l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD).
+                  risk:
+                    type: object
+                    nullable: true
+                    description: Null when no ETF covariance could be built.
+                  coverage:
+                    type: object
+        "400":
+          description: Invalid request (empty, more than 1000 positions, zero or non-finite value).
+        "422":
+          description: No submitted position has ERM3 risk metrics. Not charged.
   /portfolio/risk-index:
     post:
       summary: Portfolio risk index (L3 variance decomposition)
