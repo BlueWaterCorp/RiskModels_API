@@ -45,13 +45,14 @@ export const POST = withBilling(
       );
     }
 
-    const { positions, lookback_days, hedge_level } = validation.data;
+    const { positions, lookback_days, hedge_level, as_of } = validation.data;
 
     try {
       const fetchStart = performance.now();
       const result = await computePortfolioExposure(positions, {
         lookbackDays: lookback_days,
         basis: hedge_level,
+        asOf: as_of,
       });
 
       if ("error" in result) {

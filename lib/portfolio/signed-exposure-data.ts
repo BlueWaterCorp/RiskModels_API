@@ -26,6 +26,8 @@ const IN_CHUNK = 200;
 /** Unresolved tickers retried one by one (notation variants like BRK.B). */
 const MAX_FALLBACK_RESOLVES = 100;
 const MIN_COV_OBS = 60;
+/** as_of: how far back to look for each name's newest row (covers holidays and gaps). */
+const AS_OF_SEARCH_DAYS = 10;
 
 const STOCK_KEYS: V3MetricKey[] = [
   "stock_var",
@@ -44,6 +46,22 @@ const STOCK_KEYS: V3MetricKey[] = [
   "l2_res_er",
   "lstar_level",
 ];
+/**
+ * Zarr has no `l1_mkt_beta` (it lives in ds_erm3_betas, chunked by full history),
+ * and `fetchBatchHistory` returns nothing if any requested key is unsupported.
+ * At L1 the only factor is SPY, so the L1 hedge ratio is exactly -beta
+ * (verified 2026-10-08 against ds_erm3_betas at four dates, 311/311 exact).
+ */
+const ZARR_KEYS: V3MetricKey[] = STOCK_KEYS.filter((k) => k !== "l1_mkt_beta");
+
+function withL1Beta(m: Record<string, number | null>): Record<string, number | null> {
+  const hr = m.l1_mkt_hr;
+  if (m.l1_mkt_beta == null && typeof hr === "number" && Number.isFinite(hr)) {
+    return { ...m, l1_mkt_beta: hr === 0 ? 0 : -hr };
+  }
+  return m;
+}
+
 /** Legs that can be 0/null in security_history_latest while Zarr has them. */
 const HR_OVERLAY_KEYS: V3MetricKey[] = ["l2_sec_hr", "l3_sec_hr", "l3_sub_hr"];
 /** L* can be absent from security_history_latest until the ERM3 sync backfills it. */
@@ -57,7 +75,12 @@ export interface ExposurePosition {
 export interface DroppedPosition {
   ticker: string;
   value_usd: number;
-  reason: "symbol_not_found" | "no_risk_metrics" | "stale_metrics";
+  reason:
+    | "symbol_not_found"
+    | "no_risk_metrics"
+    | "stale_metrics"
+    | "no_data_at_as_of"
+    | "insufficient_history";
   teo?: string | null;
 }
 
@@ -151,7 +174,7 @@ export function buildEtfCovariance(
 
 export async function computePortfolioExposure(
   positions: ExposurePosition[],
-  opts: { lookbackDays: number; basis?: Basis },
+  opts: { lookbackDays: number; basis?: Basis; asOf?: string },
 ) {
   const inputGross = positions.reduce((a, p) => a + Math.abs(p.value), 0);
   const tickers = [...new Set(positions.map((p) => p.ticker.toUpperCase()))];
@@ -196,11 +219,42 @@ export async function computePortfolioExposure(
     stocksBySymbol.set(row.symbol, cur);
   }
 
-  // ---- latest metrics, one model date ------------------------------------------
+  // ---- metrics at one model date --------------------------------------------------
+  // Latest: security_history_latest, with Zarr filling empty legs below.
+  // as_of: Zarr directly, each name's newest row on or before the requested date.
   const symbols = [...stocksBySymbol.keys()];
   const latest = new Map<string, { teo: string; metrics: Record<string, number | null> }>();
-  for (const part of chunks(symbols, IN_CHUNK)) {
-    for (const [k, v] of await fetchBatchLatestSummary(part)) latest.set(k, v);
+  if (opts.asOf) {
+    const start = isoMinusDays(opts.asOf, AS_OF_SEARCH_DAYS);
+    for (const part of chunks(symbols, IN_CHUNK)) {
+      const rows = await fetchBatchHistory(part, ZARR_KEYS, {
+        periodicity: "daily",
+        startDate: start,
+        endDate: opts.asOf,
+      });
+      const bySym = new Map<string, Map<string, Record<string, number | null>>>();
+      for (const r of rows) {
+        const teo = r.teo.slice(0, 10);
+        if (teo > opts.asOf) continue;
+        const byTeo = bySym.get(r.symbol) ?? new Map<string, Record<string, number | null>>();
+        const m = byTeo.get(teo) ?? {};
+        m[r.metric_key] = r.metric_value;
+        byTeo.set(teo, m);
+        bySym.set(r.symbol, byTeo);
+      }
+      for (const [sym, byTeo] of bySym) {
+        const teos = [...byTeo.keys()].sort().reverse();
+        const teo = teos.find((t) => {
+          const m = byTeo.get(t)!;
+          return typeof m.l1_mkt_hr === "number" && Number.isFinite(m.l1_mkt_hr);
+        });
+        if (teo) latest.set(sym, { teo, metrics: withL1Beta(byTeo.get(teo)!) });
+      }
+    }
+  } else {
+    for (const part of chunks(symbols, IN_CHUNK)) {
+      for (const [k, v] of await fetchBatchLatestSummary(part)) latest.set(k, v);
+    }
   }
   const snapshotTeo = mode([...latest.values()].map((v) => v.teo));
   if (!snapshotTeo) {
@@ -209,7 +263,7 @@ export async function computePortfolioExposure(
 
   // Fill hedge legs (and whole rows missing from the latest table) from Zarr at
   // exactly the snapshot date, never a neighbouring one.
-  const needZarr = symbols.filter((sym) => {
+  const needZarr = opts.asOf ? [] : symbols.filter((sym) => {
     const l = latest.get(sym);
     if (!l) return true;
     if (l.teo !== snapshotTeo) return false;
@@ -222,7 +276,7 @@ export async function computePortfolioExposure(
   });
   const zarrAtSnapshot = new Map<string, Record<string, number | null>>();
   for (const part of chunks(needZarr, IN_CHUNK)) {
-    const rows = await fetchBatchHistory(part, STOCK_KEYS, {
+    const rows = await fetchBatchHistory(part, ZARR_KEYS, {
       periodicity: "daily",
       startDate: snapshotTeo,
       endDate: snapshotTeo,
@@ -248,23 +302,26 @@ export async function computePortfolioExposure(
         else if (NULL_OVERLAY_KEYS.includes(k) && lv == null) metrics[k] = z?.[k] ?? null;
         else metrics[k] = lv;
       }
+      metrics = withL1Beta(metrics);
     } else if (!l && z) {
-      metrics = Object.fromEntries(STOCK_KEYS.map((k) => [k, z[k] ?? null]));
+      metrics = withL1Beta(Object.fromEntries(STOCK_KEYS.map((k) => [k, z[k] ?? null])));
     }
     if (!metrics) {
       for (const t of s.tickers) {
         dropped.push({
           ticker: t,
           value_usd: valueByTicker.get(t) ?? 0,
-          reason: l ? "stale_metrics" : "no_risk_metrics",
+          reason: l ? "stale_metrics" : opts.asOf ? "no_data_at_as_of" : "no_risk_metrics",
           teo: l?.teo ?? null,
         });
       }
       continue;
     }
+    // A model row with every estimate empty: the name has fewer than the 126
+    // trading days ERM3 needs (MIN_PERIODS within its 252-day window).
     if (!STOCK_KEYS.some((k) => finite(metrics![k]))) {
       for (const t of s.tickers) {
-        dropped.push({ ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "no_risk_metrics" });
+        dropped.push({ ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "insufficient_history" });
       }
       continue;
     }
@@ -313,6 +370,8 @@ export async function computePortfolioExposure(
   const short = positions.filter((p) => p.value < 0).reduce((a, p) => a + p.value, 0);
   return {
     as_of: {
+      requested_as_of: opts.asOf ?? null,
+      metrics_source: opts.asOf ? "zarr" : "security_history_latest (Zarr fills empty hedge legs)",
       snapshot_teo: snapshotTeo,
       covariance_start: cov?.start ?? null,
       covariance_end: cov?.end ?? null,

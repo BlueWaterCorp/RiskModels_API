@@ -118,29 +118,30 @@ export function stockLegs(s: StockInput, level: Level): Array<[string, Layer, nu
   ];
 }
 
-const LEVELS: Level[] = ["l1", "l2", "l3"];
 const resKey = (level: Level) => `${level}_res_er`;
 
 function levelUsable(s: StockInput, level: Level): boolean {
   return stockLegs(s, level) !== null && finite(s.metrics[resKey(level)]);
 }
 
+export type ExclusionReason = "no_lstar" | "lstar_level_incomplete";
+
 /**
  * The level a name is hedged and measured at. Under "lstar" that is its own
- * `lstar_level`; a name with no L* (or whose L* level lacks data) falls back to
- * the deepest usable level and is reported as a fallback.
+ * `lstar_level`. There is no fallback: every level uses the same estimation
+ * window, so a name without an L* (too little history) has no L1 either
+ * (checked 2026-10-08: 350 of 350 such names had no L1 data). Such names are
+ * excluded and reported.
  */
-export function resolveLevel(s: StockInput, basis: Basis): { level: Level | null; fallback: boolean } {
-  if (basis !== "lstar") return { level: basis, fallback: false };
+export function resolveLevel(
+  s: StockInput,
+  basis: Basis,
+): { level: Level | null; reason: ExclusionReason | null } {
+  if (basis !== "lstar") return { level: basis, reason: null };
   const ls = s.metrics.lstar_level;
-  if (finite(ls) && ls >= 1 && ls <= 3) {
-    const level = `l${Math.round(ls)}` as Level;
-    if (levelUsable(s, level)) return { level, fallback: false };
-  }
-  for (const level of [...LEVELS].reverse()) {
-    if (levelUsable(s, level)) return { level, fallback: true };
-  }
-  return { level: null, fallback: true };
+  if (!finite(ls) || ls < 1 || ls > 3) return { level: null, reason: "no_lstar" };
+  const level = `l${Math.round(ls)}` as Level;
+  return levelUsable(s, level) ? { level, reason: null } : { level: null, reason: "lstar_level_incomplete" };
 }
 
 function quadForm(a: number[], S: number[][], b: number[]): number {
@@ -237,14 +238,14 @@ export function computeSignedExposure(input: ExposureInput) {
   const basis: Basis = input.basis ?? "lstar";
   const levelOf = new Map<string, Level>();
   const levelCounts: Record<Level, number> = { l1: 0, l2: 0, l3: 0 };
-  const lstarFallback: Array<{ ticker: string; level: Level | null }> = [];
+  const lstarExcluded: Array<{ ticker: string; value_usd: number; reason: ExclusionReason }> = [];
   for (const s of stocks) {
-    const { level, fallback } = resolveLevel(s, basis);
+    const { level, reason } = resolveLevel(s, basis);
     if (level) {
       levelOf.set(s.symbol, level);
       levelCounts[level] += 1;
     }
-    if (basis === "lstar" && fallback) lstarFallback.push({ ticker: s.tickers[0] ?? s.symbol, level });
+    if (reason) lstarExcluded.push({ ticker: s.tickers[0] ?? s.symbol, value_usd: round(s.value), reason });
   }
   let lstarCovered = 0;
   {
@@ -431,7 +432,7 @@ export function computeSignedExposure(input: ExposureInput) {
         total_risk: share(totalRiskCovered),
       },
       etfs_without_covariance: [...uncoveredEtfs].sort(),
-      lstar_fallback: lstarFallback,
+      excluded_from_lstar: lstarExcluded,
       residual_flagged: residualFlagged,
     },
   };

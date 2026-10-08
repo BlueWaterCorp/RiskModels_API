@@ -12,6 +12,7 @@ const registry: Record<string, Record<string, unknown>> = {
   NVDA: { symbol: "S-NVDA", ticker: "NVDA", asset_type: "stock", sector_etf: "XLK", subsector_etf: "SMH" },
   AMD: { symbol: "S-AMD", ticker: "AMD", asset_type: "stock", sector_etf: "XLK", subsector_etf: "SMH" },
   OLD: { symbol: "S-OLD", ticker: "OLD", asset_type: "stock", sector_etf: "XLF", subsector_etf: null },
+  NEWCO: { symbol: "S-NEW", ticker: "NEWCO", asset_type: "stock", sector_etf: "XLK", subsector_etf: null },
   SPY: { symbol: "E-SPY", ticker: "SPY", asset_type: "etf", sector_etf: null, subsector_etf: null },
   XLK: { symbol: "E-XLK", ticker: "XLK", asset_type: "etf", sector_etf: null, subsector_etf: null },
   SMH: { symbol: "E-SMH", ticker: "SMH", asset_type: "etf", sector_etf: null, subsector_etf: null },
@@ -30,6 +31,8 @@ const latestRows: Record<string, { teo: string; metrics: Record<string, number |
   "S-NVDA": { teo: SNAP, metrics: fullMetrics() },
   "S-AMD": { teo: SNAP, metrics: fullMetrics({ l3_sub_hr: 0, l1_mkt_beta: 2.0 }) },
   "S-OLD": { teo: "2026-09-30", metrics: fullMetrics() },
+  // Listed recently: in the model at the snapshot date, but every estimate empty.
+  "S-NEW": { teo: SNAP, metrics: Object.fromEntries(Object.keys(fullMetrics()).map((k) => [k, null])) },
 };
 
 const historyCalls: Array<{ symbols: string[]; keys: string[]; opts: Record<string, unknown> }> = [];
@@ -48,6 +51,8 @@ vi.mock("@/lib/dal/risk-engine-v3", () => ({
   }),
   fetchBatchHistory: vi.fn(async (symbols: string[], keys: string[], opts: Record<string, unknown>) => {
     historyCalls.push({ symbols, keys, opts });
+    // The real DAL serves nothing when any key is outside Zarr (isZarrHistoryPath).
+    if (keys.some((k) => ["l1_mkt_beta", "l2_sec_beta", "l3_sub_beta"].includes(k))) return [];
     if (keys.includes("returns_gross")) {
       return symbols.flatMap((s, k) =>
         days.map((d, i) => ({
@@ -55,6 +60,20 @@ vi.mock("@/lib/dal/risk-engine-v3", () => ({
           metric_value: Math.sin(i * (k + 1)) / 100,
         })),
       );
+    }
+    // Historical read (as_of): two dates for NVDA and AMD, newest after the requested date.
+    if (opts.startDate !== opts.endDate) {
+      const row = (symbol: string, teo: string, key: string, value: number) => ({
+        symbol, teo, periodicity: "daily", metric_key: key, metric_value: value,
+      });
+      const out = [];
+      for (const [sym, hr] of [["S-NVDA", -1.5], ["S-AMD", -2.2]] as const) {
+        for (const teo of ["2024-06-27", "2024-06-28", "2024-07-01"]) {
+          const m = fullMetrics({ l1_mkt_hr: teo === "2024-06-28" ? hr : -9 });
+          for (const [k, v] of Object.entries(m)) if (k !== "l1_mkt_beta" && v != null) out.push(row(sym, teo, k, v as number));
+        }
+      }
+      return out.filter((r) => r.teo <= String(opts.endDate) && r.teo >= String(opts.startDate));
     }
     // Zarr overlay read: AMD's real subsector leg at the snapshot date only.
     return symbols.includes("S-AMD")
@@ -111,9 +130,41 @@ describe("computePortfolioExposure (loader)", () => {
     expect(out.risk.systematic.daily_vol_usd).toBeGreaterThan(0);
   });
 
+  it("drops a name with too little history as insufficient_history", async () => {
+    const out: any = await computePortfolioExposure(
+      [
+        { ticker: "NVDA", value: 100_000 },
+        { ticker: "NEWCO", value: 20_000 },
+      ],
+      { lookbackDays: 252 },
+    );
+    expect(out.coverage.dropped).toEqual([{ ticker: "NEWCO", value_usd: 20_000, reason: "insufficient_history" }]);
+    expect(out.book.modelled_stocks).toBe(1);
+  });
+
   it("returns an error when nothing in the book is modelled", async () => {
     const out: any = await computePortfolioExposure([{ ticker: "NOPE", value: 1_000 }], { lookbackDays: 252 });
     expect(out.error).toBe("no_risk_metrics");
     expect(out.dropped[0].reason).toBe("symbol_not_found");
+  });
+  it("as_of reads Zarr at the newest row on or before the date, with L1 beta = -l1_mkt_hr", async () => {
+    const out: any = await computePortfolioExposure(
+      [
+        { ticker: "NVDA", value: 100_000 },
+        { ticker: "AMD", value: -50_000 },
+      ],
+      { lookbackDays: 252, asOf: "2024-06-30" },
+    );
+    // 2024-07-01 is after as_of and must not be used; 2024-06-28 is the newest on or before it.
+    expect(out.as_of.requested_as_of).toBe("2024-06-30");
+    expect(out.as_of.snapshot_teo).toBe("2024-06-28");
+    expect(out.beta.stock_beta_usd).toBeCloseTo(100_000 * 1.5 + -50_000 * 2.2, 2);
+
+    const stockReads = historyCalls.filter((c) => !c.keys.includes("returns_gross"));
+    expect(stockReads).toHaveLength(1);
+    expect(stockReads[0]!.keys).not.toContain("l1_mkt_beta");
+    expect(stockReads[0]!.opts.endDate).toBe("2024-06-30");
+    const covRead = historyCalls.find((c) => c.keys.includes("returns_gross"))!;
+    expect(covRead.opts.endDate).toBe("2024-06-28");
   });
 });
