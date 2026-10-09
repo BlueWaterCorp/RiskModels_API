@@ -44,7 +44,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         sidebarLabel: 'Understanding the decomposition',
         summary: 'Core outputs: Hedge Ratios, Explained Risk, and Residuals',
         description:
-          'RiskModels decomposes every position into four additive layers: Market (L1), Sector (L2), Subsector (L3), and Residual. Each layer produces two key numbers you will use constantly:\n\n• Hedge Ratio (HR): Dollar amount of the layer’s ETF to trade per $1 of the stock to neutralize that exposure.\n• Explained Risk (ER): Fraction of the stock’s variance explained by that layer (adds to 1.0 across layers).\n\nResidual return is what remains after removing the three systematic layers — the part most closely associated with manager/stock-specific judgment.',
+          'RiskModels decomposes every position into four additive layers: Market (L1), Sector (L2), Subsector (L3), and Residual. Each layer produces two key numbers you will use constantly:\n\n• Hedge Ratio (HR): Dollar amount of the layer’s ETF to trade per $1 of the stock to neutralize that exposure.\n• Explained Risk (ER): Fraction of the stock’s variance removed by hedging that layer. The layers plus residual add to exactly 1.0; a single layer can be slightly negative when its hedge added variance over the window, and the residual is then above 1.0.\n\nResidual return is what remains after removing the three systematic layers — the part most closely associated with manager/stock-specific judgment.',
         operationId: 'coreConcepts',
         tag: 'Core Concepts',
         params: [],

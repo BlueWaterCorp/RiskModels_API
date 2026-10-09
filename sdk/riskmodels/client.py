@@ -1809,7 +1809,8 @@ class RiskModelsClient:
             pack = client.exposure_history(["NVDA", "AMD", "SPY"])
             series = pack.exposure({"2024-06-28": {"NVDA": 100_000, "AMD": -50_000}})
 
-        Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.
+        Priced per call by names delivered: month-end $1.25 up to 25, $5.00 above 25;
+        ``frequency="daily"`` $2.50 up to 25, $10.00 above 25.
 
         Returns:
             :class:`riskmodels.exposure_history.ExposureHistoryPack`.
