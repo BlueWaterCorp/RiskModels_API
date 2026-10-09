@@ -83,7 +83,28 @@ export interface DroppedPosition {
     | "no_data_at_as_of"
     | "insufficient_history";
   teo?: string | null;
+  /** Plain-English explanation of `reason`, for people reading the response. */
+  detail?: string;
 }
+
+/** One sentence per drop reason; `not_at_snapshot_teo` names both dates. */
+export function dropDetail(d: DroppedPosition, snapshotTeo: string | null): string {
+  switch (d.reason) {
+    case "symbol_not_found":
+      return "Ticker not found in the RiskModels universe. Check the notation (e.g. BRK.B) and that it is a covered US stock or ETF.";
+    case "no_risk_metrics":
+      return "In the universe, but the risk model has no estimates for this name.";
+    case "not_at_snapshot_teo":
+      return `Model data for this name is dated ${d.teo ?? "another day"}, not the common model date ${snapshotTeo ?? ""}; every name in a request is read at one date.`;
+    case "no_data_at_as_of":
+      return "No model data in the ten days up to as_of (for example, not yet listed or not trading then).";
+    case "insufficient_history":
+      return "Fewer than 126 trading days of returns, so the risk model has no estimate for this name yet.";
+  }
+}
+
+const explain = (dropped: DroppedPosition[], snapshotTeo: string | null) =>
+  dropped.map((d) => ({ ...d, detail: dropDetail(d, snapshotTeo) }));
 
 function chunks<T>(xs: T[], n: number): T[][] {
   const out: T[][] = [];
@@ -274,7 +295,7 @@ export async function computePortfolioExposure(
     snapshotTeo = await latestMarketTeo(opts.asOf ?? new Date().toISOString().slice(0, 10));
   }
   if (!snapshotTeo) {
-    return { error: "no_risk_metrics" as const, dropped };
+    return { error: "no_risk_metrics" as const, dropped: explain(dropped, null) };
   }
 
   // Fill hedge legs (and whole rows missing from the latest table) from Zarr at
@@ -376,7 +397,7 @@ export async function computePortfolioExposure(
 
   // Nothing to compute: no stock with metrics and no ETF held with returns.
   if (stocks.length === 0 && ![...direct.keys()].some((e) => cov?.etfs.includes(e))) {
-    return { error: "no_risk_metrics" as const, dropped };
+    return { error: "no_risk_metrics" as const, dropped: explain(dropped, snapshotTeo) };
   }
 
   const result = computeSignedExposure({
@@ -438,7 +459,7 @@ export async function computePortfolioExposure(
     ...result,
     coverage: {
       ...result.coverage,
-      dropped,
+      dropped: explain(dropped, snapshotTeo),
       etfs_excluded_from_covariance: [...new Set([...excluded, ...noReturns])].sort(),
     },
     warnings,

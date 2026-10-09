@@ -74,7 +74,7 @@ export const POST = withBilling(
           {
             error: "No modelled positions",
             message:
-              "None of the submitted positions could be modelled: no stock has risk metrics at the model date and no ETF held has return history. See dropped for each ticker's reason.",
+              "None of the submitted positions could be modelled: no stock has risk metrics at the model date and no ETF held has return history. Each entry in dropped gives the ticker's reason and a one-line detail.",
             dropped: result.dropped,
           },
           { status: 422, headers: getCorsHeaders(origin) },

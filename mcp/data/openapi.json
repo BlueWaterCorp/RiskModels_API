@@ -12329,6 +12329,10 @@
                                 "nullable": true,
                                 "description": "For not_at_snapshot_teo",
                                 "the name's own model date.": null
+                              },
+                              "detail": {
+                                "type": "string",
+                                "description": "One plain-English sentence explaining the reason."
                               }
                             }
                           }
@@ -12350,6 +12354,10 @@
                                   "no_lstar",
                                   "lstar_level_incomplete"
                                 ]
+                              },
+                              "detail": {
+                                "type": "string",
+                                "description": "One plain-English sentence explaining the reason."
                               }
                             }
                           }
@@ -12426,7 +12434,7 @@
             "description": "Insufficient balance or daily spend cap reached."
           },
           "422": {
-            "description": "No stock has risk metrics at the model date and no ETF held has return history. Body lists `dropped` with each ticker's reason. Not charged."
+            "description": "No stock has risk metrics at the model date and no ETF held has return history. Body: `error`, a plain-English `message`, and `dropped` with each ticker's `reason` code and a one-sentence `detail`. Not charged.\n"
           },
           "429": {
             "description": "Rate limit exceeded."

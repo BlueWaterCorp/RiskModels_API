@@ -292,7 +292,8 @@ describe("L* basis (default)", () => {
       inputGrossUsd: 110_000,
       cov: COV,
     });
-    expect(out.coverage.excluded_from_lstar).toEqual([{ ticker: "NOL", value_usd: 10_000, reason: "no_lstar" }]);
+    expect(out.coverage.excluded_from_lstar).toMatchObject([{ ticker: "NOL", value_usd: 10_000, reason: "no_lstar" }]);
+    expect(out.coverage.excluded_from_lstar[0]!.detail).toMatch(/No L\* level/);
     expect((out.hedges.lstar as any).names_by_level).toEqual({ l1: 0, l2: 0, l3: 1 });
     // NOL contributes to neither the hedge nor the residual.
     expect((out.hedges.lstar as any).stock_hedge_trade_usd.SPY).toBeCloseTo(100_000 * -0.5, 2);
@@ -308,7 +309,7 @@ describe("L* basis (default)", () => {
       inputGrossUsd: 10_000,
       cov: COV,
     });
-    expect(out.coverage.excluded_from_lstar).toEqual([{ ticker: "GAP", value_usd: 10_000, reason: "lstar_level_incomplete" }]);
+    expect(out.coverage.excluded_from_lstar).toMatchObject([{ ticker: "GAP", value_usd: 10_000, reason: "lstar_level_incomplete" }]);
     expect(out.coverage.by_calculation.hedge_lstar).toBe(0);
   });
 

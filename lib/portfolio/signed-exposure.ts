@@ -140,6 +140,11 @@ function levelUsable(s: StockInput, level: Level): boolean {
 
 export type ExclusionReason = "no_lstar" | "lstar_level_incomplete";
 
+const EXCLUSION_DETAIL: Record<ExclusionReason, string> = {
+  no_lstar: "No L* level for this name (too little history), so it is left out of hedges and risk under hedge_level lstar.",
+  lstar_level_incomplete: "The name's L* level is missing a hedge leg or residual share, so it is left out under hedge_level lstar. A fixed hedge_level (l1, l2 or l3) may include it.",
+};
+
 /**
  * The level a name is hedged and measured at. Under "lstar" that is its own
  * `lstar_level`. There is no fallback: every level uses the same estimation
@@ -252,14 +257,16 @@ export function computeSignedExposure(input: ExposureInput) {
   const basis: Basis = input.basis ?? "lstar";
   const levelOf = new Map<string, Level>();
   const levelCounts: Record<Level, number> = { l1: 0, l2: 0, l3: 0 };
-  const lstarExcluded: Array<{ ticker: string; value_usd: number; reason: ExclusionReason }> = [];
+  const lstarExcluded: Array<{ ticker: string; value_usd: number; reason: ExclusionReason; detail: string }> = [];
   for (const s of stocks) {
     const { level, reason } = resolveLevel(s, basis);
     if (level) {
       levelOf.set(s.symbol, level);
       levelCounts[level] += 1;
     }
-    if (reason) lstarExcluded.push({ ticker: s.tickers[0] ?? s.symbol, value_usd: round(s.value), reason });
+    if (reason) {
+      lstarExcluded.push({ ticker: s.tickers[0] ?? s.symbol, value_usd: round(s.value), reason, detail: EXCLUSION_DETAIL[reason] });
+    }
   }
   let lstarCovered = 0;
   {

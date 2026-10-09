@@ -115,7 +115,10 @@ describe("computePortfolioExposure (loader)", () => {
 
     const reasons = Object.fromEntries(out.coverage.dropped.map((d: any) => [d.ticker, d.reason]));
     expect(reasons).toEqual({ OLD: "not_at_snapshot_teo", NOPE: "symbol_not_found" });
-    expect(out.coverage.dropped.find((d: any) => d.ticker === "OLD").teo).toBe("2026-09-30");
+    const old = out.coverage.dropped.find((d: any) => d.ticker === "OLD");
+    expect(old.teo).toBe("2026-09-30");
+    expect(old.detail).toContain("dated 2026-09-30, not the common model date 2026-10-07");
+    expect(out.coverage.dropped.find((d: any) => d.ticker === "NOPE").detail).toMatch(/not found/);
     const codes = out.warnings.map((w: any) => w.code);
     expect(codes).toContain("not_at_snapshot_teo");
     expect(codes).not.toContain("share_class_netted");
@@ -142,7 +145,14 @@ describe("computePortfolioExposure (loader)", () => {
       ],
       { lookbackDays: 252 },
     );
-    expect(out.coverage.dropped).toEqual([{ ticker: "NEWCO", value_usd: 20_000, reason: "insufficient_history" }]);
+    expect(out.coverage.dropped).toEqual([
+      {
+        ticker: "NEWCO",
+        value_usd: 20_000,
+        reason: "insufficient_history",
+        detail: "Fewer than 126 trading days of returns, so the risk model has no estimate for this name yet.",
+      },
+    ]);
     expect(out.book.modelled_stocks).toBe(1);
   });
 
@@ -155,7 +165,8 @@ describe("computePortfolioExposure (loader)", () => {
   it("returns an error when every stock lacks history and no ETF is held", async () => {
     const out: any = await computePortfolioExposure([{ ticker: "NEWCO", value: 20_000 }], { lookbackDays: 252 });
     expect(out.error).toBe("no_risk_metrics");
-    expect(out.dropped).toEqual([{ ticker: "NEWCO", value_usd: 20_000, reason: "insufficient_history" }]);
+    expect(out.dropped).toMatchObject([{ ticker: "NEWCO", value_usd: 20_000, reason: "insufficient_history" }]);
+    expect(out.dropped[0].detail).toMatch(/126 trading days/);
   });
 
   it("models an ETF-only book at the latest market date", async () => {

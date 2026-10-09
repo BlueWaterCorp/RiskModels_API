@@ -8796,6 +8796,7 @@ paths:
                             value_usd: { type: number }
                             reason: { type: string, enum: [symbol_not_found, no_risk_metrics, not_at_snapshot_teo, no_data_at_as_of, insufficient_history] }
                             teo: { type: string, nullable: true, description: For not_at_snapshot_teo, the name's own model date. }
+                            detail: { type: string, description: One plain-English sentence explaining the reason. }
                       excluded_from_lstar:
                         type: array
                         items:
@@ -8804,6 +8805,7 @@ paths:
                             ticker: { type: string }
                             value_usd: { type: number }
                             reason: { type: string, enum: [no_lstar, lstar_level_incomplete] }
+                            detail: { type: string, description: One plain-English sentence explaining the reason. }
                       residual_flagged:
                         type: array
                         description: Names left out of the residual because their stock_var is negative.
@@ -8827,7 +8829,10 @@ paths:
         "402":
           description: Insufficient balance or daily spend cap reached.
         "422":
-          description: No stock has risk metrics at the model date and no ETF held has return history. Body lists `dropped` with each ticker's reason. Not charged.
+          description: >
+            No stock has risk metrics at the model date and no ETF held has return history. Body:
+            `error`, a plain-English `message`, and `dropped` with each ticker's `reason` code and a
+            one-sentence `detail`. Not charged.
         "429":
           description: Rate limit exceeded.
         "500":
