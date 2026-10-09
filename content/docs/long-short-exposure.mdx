@@ -107,8 +107,8 @@ The two use different estimators: end-of-window hedge ratios against a sample co
 
 - `input_gross_usd`, `modelled_stock_gross_usd`, `direct_etf_gross_usd`.
 - `by_calculation`: the share of submitted gross used by `beta`, `hedge_l1`, `hedge_l2`, `hedge_l3`, `hedge_lstar`, `residual`, `systematic` and `total_risk`. Dropped names still count in the denominator, so a share below 1 is the part of the book a number does not describe.
-- `dropped`: each removed position with `ticker`, `value_usd` and `reason`.
-- `excluded_from_lstar`: names with no L\* (`no_lstar`) or whose L\* level is incomplete (`lstar_level_incomplete`).
+- `dropped`: each removed position with `ticker`, `value_usd`, a `reason` code and `detail`, one plain-English sentence explaining it. A 422 response carries the same `dropped` list.
+- `excluded_from_lstar`: names with no L\* (`no_lstar`) or whose L\* level is incomplete (`lstar_level_incomplete`), each with a `detail` sentence.
 - `residual_flagged`: names left out of the residual because their `stock_var` is negative.
 - `etfs_without_covariance`, `etfs_excluded_from_covariance`.
 
@@ -212,7 +212,7 @@ if out["risk"]:
     print("annual vol $:", out["risk"]["total"]["annual_vol_usd"])
 print("coverage:", out["coverage"]["by_calculation"])
 for d in out["coverage"]["dropped"]:
-    print("dropped:", d["ticker"], d["reason"])
+    print("dropped:", d["ticker"], d["reason"], "-", d["detail"])
 for w in out["warnings"]:
     print("warning:", w["code"], w["tickers"])
 print("cost:", r.headers.get("X-API-Cost-USD"))
