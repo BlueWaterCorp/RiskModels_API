@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   annotatePortfolioRows,
+  BOOK_REPAIR_KINDS,
   compareHoldingsRank,
   missingQuarters,
   nextQuarterEnd,
@@ -217,6 +218,25 @@ describe("annotatePortfolioRows", () => {
     expect(r.repair_status).toBe("rows_quarantined");
     expect(r.repair_rows_affected).toBe(2);
     expect(r.repair_detail).toEqual({ units_repaired: 100, rows_quarantined: 2 });
+  });
+  it("repair status passes amendment_restated through with its detail (Funds_DAG ledger, vintages 2.4)", () => {
+    const led = new Map([
+      [
+        "2026-06-30",
+        {
+          status: "amendment_restated" as const,
+          rows_affected: 3,
+          detail: { amendment_restated: 3, units_repaired: 5 },
+        },
+      ],
+    ]);
+    const r = annotatePortfolioRows([row("2026-06-30")], v, led, "2027-01-01").rows[0]!;
+    expect(r.repair_status).toBe("amendment_restated");
+    expect(r.repair_rows_affected).toBe(3);
+    expect(r.repair_detail).toEqual({ amendment_restated: 3, units_repaired: 5 });
+  });
+  it("repair kinds match the Funds_DAG ledger's severity order", () => {
+    expect(BOOK_REPAIR_KINDS).toEqual(["rows_quarantined", "amendment_restated", "units_repaired", "reparsed"]);
   });
   it("without a vintage store the vintage fields are null, never invented", () => {
     const r = annotatePortfolioRows([row("2026-06-30", { filing_date: "2026-08-14" })], null, null, null).rows[0]!;

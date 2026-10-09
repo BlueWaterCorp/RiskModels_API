@@ -12597,7 +12597,7 @@ paths:
             `is_partial_period` (the row's teo → next quarter-end window ends
             after the data's `returns_window_end`), `is_stub` (returns with no
             holdings snapshot), `repair_status` (most severe of
-            `rows_quarantined` > `units_repaired` > `reparsed`, `none`, or null
+            `rows_quarantined` > `amendment_restated` > `units_repaired` > `reparsed`, `none`, or null
             when the repair ledger is unavailable), `repair_rows_affected` and
             `repair_detail` (rows per repair kind). At the root:
             `missing_quarters` (quarter-ends inside the window with no book),
