@@ -149,6 +149,26 @@
      "l3_res_er": 1.3,
      "lstar_level": 1
     }
+   },
+   {
+    "symbol": "S-NEG",
+    "tickers": [
+     "NEG"
+    ],
+    "value": 30000,
+    "sector_etf": "XLF",
+    "subsector_etf": "KBE",
+    "metrics": {
+     "l1_mkt_beta": 0.9,
+     "l1_mkt_hr": -0.9,
+     "l3_mkt_hr": -0.4,
+     "l3_sec_hr": -0.3,
+     "l3_sub_hr": -0.2,
+     "stock_var": 0.0003,
+     "l1_res_er": -0.02,
+     "l3_res_er": 0.3,
+     "lstar_level": 1
+    }
    }
   ],
   "direct_etfs": [
@@ -161,26 +181,26 @@
     "value": 25000
    }
   ],
-  "input_gross_usd": 580000
+  "input_gross_usd": 610000
  },
  "expected": {
   "lstar": {
-   "stock_beta_usd": 253000,
+   "stock_beta_usd": 280000,
    "direct_etf_beta_usd": -37500,
-   "total_beta_usd": 215500,
+   "total_beta_usd": 242500,
    "stock_hedge_trade_usd": {
     "SMH": -154000,
-    "SPY": -97000,
+    "SPY": -124000,
     "XLK": 29000
    },
    "total_neutralizing_trade_usd": {
     "SMH": -154000,
-    "SPY": -37000,
+    "SPY": -64000,
     "XLK": 29000,
     "XLF": -25000
    },
    "names_by_level": {
-    "l1": 2,
+    "l1": 3,
     "l2": 1,
     "l3": 1
    },
@@ -190,88 +210,103 @@
      "no_lstar"
     ]
    ],
-   "residual_flagged": [
-    "BAD"
+   "residual_flagged": [],
+   "hedge_added_variance": [
+    [
+     "BAD",
+     "l1",
+     1.4
+    ]
    ],
-   "systematic_daily_variance": 7854920,
-   "residual_daily_variance": 30198000,
+   "systematic_daily_variance": 9157940,
+   "residual_daily_variance": 30355500,
    "layer_contributions": {
-    "market": 2209660.0000000005,
-    "sector": -845350.0000000001,
-    "subsector": 7398160,
-    "direct_etf": -907550
+    "market": 3159520.0000000005,
+    "sector": -931480.0000000001,
+    "subsector": 7938700,
+    "direct_etf": -1008799.9999999999
    },
-   "total_annual_vol_usd": 97925.15,
-   "coverage_total_risk": 0.9052
+   "total_annual_vol_usd": 99786.71,
+   "coverage_total_risk": 0.9344
   },
   "l1": {
-   "stock_beta_usd": 253000,
+   "stock_beta_usd": 280000,
    "direct_etf_beta_usd": -37500,
-   "total_beta_usd": 215500,
+   "total_beta_usd": 242500,
    "stock_hedge_trade_usd": {
-    "SPY": -253000
+    "SPY": -280000
    },
    "total_neutralizing_trade_usd": {
-    "SPY": -193000,
+    "SPY": -220000,
     "XLF": -25000
    },
    "names_by_level": {
-    "l1": 5,
+    "l1": 6,
     "l2": 0,
     "l3": 0
    },
    "excluded_from_lstar": [],
-   "residual_flagged": [
-    "BAD"
+   "residual_flagged": [],
+   "hedge_added_variance": [
+    [
+     "BAD",
+     "l1",
+     1.4
+    ]
    ],
-   "systematic_daily_variance": 4680900,
-   "residual_daily_variance": 41952000,
+   "systematic_daily_variance": 5917500,
+   "residual_daily_variance": 42109500,
    "layer_contributions": {
-    "market": 5452150,
+    "market": 6790000,
     "sector": 0,
     "subsector": 0,
-    "direct_etf": -771250
+    "direct_etf": -872500
    },
-   "total_annual_vol_usd": 108404.29,
-   "coverage_total_risk": 0.9052
+   "total_annual_vol_usd": 110012.74,
+   "coverage_total_risk": 0.9344
   },
   "l3": {
-   "stock_beta_usd": 253000,
+   "stock_beta_usd": 280000,
    "direct_etf_beta_usd": -37500,
-   "total_beta_usd": 215500,
+   "total_beta_usd": 242500,
    "stock_hedge_trade_usd": {
-    "SPY": -87500,
+    "SPY": -99500,
     "XLK": -56500,
     "SMH": -37000,
-    "KBE": -27000,
-    "XLF": -18000
+    "KBE": -33000,
+    "XLF": -27000
    },
    "total_neutralizing_trade_usd": {
     "XLK": -56500,
-    "XLF": -43000,
+    "XLF": -52000,
+    "SPY": -39500,
     "SMH": -37000,
-    "SPY": -27500,
-    "KBE": -27000
+    "KBE": -33000
    },
    "names_by_level": {
     "l1": 0,
     "l2": 0,
-    "l3": 5
+    "l3": 6
    },
    "excluded_from_lstar": [],
-   "residual_flagged": [
-    "BAD"
+   "residual_flagged": [],
+   "hedge_added_variance": [
+    [
+     "BAD",
+     "l3",
+     1.3
+    ]
    ],
-   "systematic_daily_variance": 4657640,
-   "residual_daily_variance": 28860000,
+   "systematic_daily_variance": 5894930,
+   "residual_daily_variance": 29087250,
    "layer_contributions": {
-    "market": 1780187.5,
-    "sector": 1724695.0000000002,
-    "subsector": 1856832.5,
-    "direct_etf": -704075
+    "market": 2284022.5,
+    "sector": 2141680,
+    "subsector": 2247402.5,
+    "direct_etf": -778174.9999999999
    },
-   "total_annual_vol_usd": 91904.54,
-   "coverage_total_risk": 0.9052
+   "total_annual_vol_usd": 93890.94,
+   "coverage_total_risk": 0.9344
   }
  }
 }
