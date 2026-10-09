@@ -13,7 +13,7 @@
 
 ## 2026-10-08 — Exposure history files move to a private bucket
 
-- Fix: `POST /portfolio/exposure/history` returned 500 on every live request because it uploaded Parquet to the public `reports` bucket, which accepts only PDF/PNG. Feed files now go to the private `exposure-history` bucket (BWMACRO migration `20261008220000_exposure_history_bucket`) and are served only via 1-hour signed URLs.
+- Fix: `POST /portfolio/exposure/history` returned 500 on every live request because it uploaded Parquet to the public `reports` bucket, which accepts only PDF/PNG. Feed files now go to a private storage bucket and are served only via 1-hour signed URLs.
 
 ## 2026-10-08 — Large history reads no longer try to cache themselves
 
@@ -25,7 +25,7 @@
 - New `POST /portfolio/exposure/history`: send tickers only (no values) and receive signed URLs to two Parquet files — each name's month-end ERM3 history since 2006 (hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta`) and the ETF covariance at each month-end. Holdings never leave the client.
 - Python SDK: `client.exposure_history(tickers)` downloads the feed; `pack.exposure(holdings_by_date)` joins it with dated holdings locally and returns the same quantities as `/portfolio/exposure` at each month-end (L* default). The port is pinned to the TypeScript by a shared parity fixture.
 - Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.
-- Served from a precomputed month-end panel (`scripts/build_exposure_month_end_panel.py` → `ds_exposure_month_end_<factor set>.zarr`), because the daily stores are chunked by full history. The endpoint returns 503 until the panel is published.
+- Served from a precomputed month-end panel, because the daily stores are chunked by full history. The endpoint returns 503 until the panel is published.
 - Derived data only; a test asserts no raw price, market cap or return column can be delivered. Design and licensing: `docs/EXPOSURE_HISTORY_FEED.md`.
 
 ## 2026-10-08 — `/portfolio/exposure` priced by book size
@@ -36,7 +36,7 @@
 
 ## 2026-10-08 — `/portfolio/exposure`: `as_of` history, L1 fallback, Zarr fill-in fix
 
-- New `as_of` (YYYY-MM-DD, 2006-01-01 or later): the same output at a past model date, read from Zarr. Each name uses its newest row on or before `as_of`; the ETF covariance ends on the resulting snapshot date. Same $0.25 price. Names with no model data on that date (e.g. not yet listed) are dropped as `no_data_at_as_of`.
+- New `as_of` (YYYY-MM-DD, 2006-01-01 or later): the same output at a past model date, read from Zarr. Each name uses its newest row on or before `as_of`; the ETF covariance ends on the resulting snapshot date. Same price as a latest call. Names with no model data on that date (e.g. not yet listed) are dropped as `no_data_at_as_of`.
 - L1 beta at past dates is `-l1_mkt_hr`. At L1 the only factor is SPY, so the hedge ratio is exactly `-beta`: verified against `ds_erm3_betas` at 2012-06-29, 2020-03-31, 2024-12-31 and 2026-09-30 (311 of 311 name-dates exact).
 - No L* fallback: names without an L*, or whose L* level lacks data, are excluded from hedges and risk and listed in `coverage.excluded_from_lstar`. Every level uses the same estimation window, so such names have no L1 either (all 350 on 2026-10-07). A name whose model row is entirely empty is dropped as `insufficient_history`: ERM3 needs at least 126 trading days within its 252-day window. The spec documents this.
 - Fix: the Zarr fill-in for empty L2/L3 sector and subsector legs and missing `lstar_level` never ran, because it requested `l1_mkt_beta`, which Zarr does not serve, so the whole read returned nothing. It now requests only Zarr keys and derives the L1 beta.
@@ -49,11 +49,11 @@
 
 ## 2026-10-08 — `POST /portfolio/exposure`: long/short book exposure and L3 risk
 
-- New endpoint for signed books: up to 1000 positions as dollar values (short < 0), netted by security and never normalised. The existing portfolio endpoints require positive weights and average per-name shares, so they cannot represent a long/short book.
+- New endpoint for signed books: up to 1000 positions as dollar values (short < 0), netted by security and never normalised. The other portfolio endpoints take positive weights; this one takes signed dollar values so a long/short book can be sent as held.
 - Returns L1 beta-dollars by sector, the ETF hedge trades at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade, reported separately), and an L3 risk split. Systematic risk uses the book's raw-ETF exposure with one aligned 252-day ETF covariance ending on the model date; residual risk is a labelled diagonal approximation. ETFs held in the book count as exposure to themselves.
 - Every name is read at one model date (stale names are dropped and listed); missing L2/L3 hedge legs are filled from Zarr at that date. Coverage is reported per calculation against submitted gross.
-- $0.25 per successful call regardless of size; a book with no modelled names returns 422 and is not charged.
-- L3 only. A size/value (L4) overlay is backlog item C.16.
+- Priced per successful call (replaced the same day by size-based pricing, above); a book with no modelled names returns 422 and is not charged.
+- Hedges go no deeper than L3. Size and value exposure is not modelled as a separate layer and stays in the residual.
 - `SUPABASE_TABLES.md`: `stock_var` is the total 252-day daily variance, not stock-specific variance.
 
 ## 2026-10-08 — Correlation residual returns had the hedge sign reversed

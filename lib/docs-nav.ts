@@ -38,6 +38,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
       { href: '/docs/etf-factor-returns', label: 'ETF factor returns' },
       { href: '/docs/universe-members', label: 'Universe members' },
       { href: '/docs/residual-signal-basket', label: 'Residual signal basket' },
+      { href: '/docs/long-short-exposure', label: 'Long/short exposure' },
       { href: '/docs/macro-factors', label: 'Factor correlation' },
       { href: '/docs/fundamentals', label: 'Fundamentals' },
       { href: '/docs/response-metadata', label: 'Response metadata' },

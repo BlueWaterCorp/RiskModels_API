@@ -25,6 +25,10 @@ The methodology page explains **why** the numbers are what they are. For **how t
 - **[API Reference](/api-reference)** — the live decomposition and metrics endpoints, with wire field names and response schemas.
 - **[API Docs](/docs/api)** — coverage, the endpoint map, pricing, and the main research workflow.
 
+### Explained-risk shares
+
+The explained-risk (ER) fields (`l1_mkt_er`, `l3_sec_er`, `l3_res_er` and so on) are realised variance-reduction shares: each is the share of the stock's variance that the held hedge at that layer removed over the estimation window. At each level the shares, including the residual, sum to 1. Because they are realised rather than constrained, an individual layer's share can be below 0 when that hedge leg added variance over the window, and the residual share can then be above 1. [Long/short exposure](/docs/long-short-exposure#residual-shares) shows how `POST /api/portfolio/exposure` uses and flags such names.
+
 ### L\* selection in the API
 
 The L\* selection rule from the methodology page lands on three concrete API surfaces:

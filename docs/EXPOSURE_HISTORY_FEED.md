@@ -1,6 +1,6 @@
 # Exposure history: model data feed
 
-Status: built 2026-10-08; live once the panel is published to GCS. Owner: Conrad.
+Status: built 2026-10-08; live once the panel is published to GCS.
 
 ## Decision
 
@@ -32,7 +32,7 @@ locally.
 Everything in the feed is **derived data**: betas, hedge ratios, explained-risk
 and residual shares, `stock_var`, L* level and ETF covariance matrices. EODHD
 Exhibit B(c) and B(d) authorise redistributing derived data through our API;
-it is the product (BWMACRO `docs/ceo/MASTER_BACKLOG.md` section V).
+it is the product.
 
 The feed carries **no raw fields** (B(e)): no closing prices, no market cap, no
 bulk raw daily return series. That is why it ships the ETF covariance at each
@@ -217,6 +217,6 @@ delivered, $10.00 above (2x the month-end feed).
 
 ## Not in scope
 
-- Size/value (L4) — backlog C.16.
+- Size/value (L4).
 - Weekly history.
 - Point-in-time sector mapping.

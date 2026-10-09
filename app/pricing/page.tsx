@@ -74,6 +74,24 @@ const premiumRows = [
     tier: "premium" as const,
   },
   {
+    endpoint: "Long/short portfolio exposure (up to 25 names / above 25)",
+    cost: "$0.25 / $1.00",
+    callsPer20: "80 / 20",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "Exposure history feed, month-end (up to 25 names / above 25)",
+    cost: "$1.25 / $5.00",
+    callsPer20: "16 / 4",
+    tier: "premium" as const,
+  },
+  {
+    endpoint: "Exposure history feed, daily (up to 25 names / above 25)",
+    cost: "$2.50 / $10.00",
+    callsPer20: "8 / 2",
+    tier: "premium" as const,
+  },
+  {
     endpoint: "Batch portfolio analysis",
     cost: "$0.015/pos",
     callsPer20: "varies",
@@ -103,7 +121,7 @@ const tierComparisonRows = [
     aspect: "What you get",
     baseline:
       "Metrics (L1/L2/L3 snapshot), rankings, search, macro factors, correlations, returns (L3 HR/ER history), CLI",
-    premium: "Lstar dispatch, L3 decomposition, Portfolio Risk Index, Plaid sync, batch analytics, chat agent, PDF reports",
+    premium: "Lstar dispatch, L3 decomposition, Portfolio Risk Index, long/short exposure and history feeds, Plaid sync, batch analytics, chat agent, PDF reports",
   },
   {
     aspect: "Best for",
@@ -546,7 +564,9 @@ export default function PricingPage() {
         <p className="mt-2 text-xs text-zinc-500 max-w-4xl mx-auto leading-snug">
           All prices are per successful API call. Cached responses are free. Batch endpoints charge
           per position with a $0.03 minimum. Ticker-returns, Lstar, and other history endpoints add
-          $0.01 (or the listed extra-year rate) for each year above one.
+          $0.01 (or the listed extra-year rate) for each year above one. Portfolio exposure is priced
+          by names modelled and the exposure history feeds by names delivered, with the higher rate
+          above 25 names.
         </p>
       </section>
 
