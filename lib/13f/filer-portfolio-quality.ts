@@ -87,16 +87,22 @@ export interface VintageQuarter {
   mapped_aum_usd: number | null;
 }
 
+/** Repair kinds written by the Funds_DAG repair ledger, most severe first. */
+export const BOOK_REPAIR_KINDS = ["rows_quarantined", "amendment_restated", "units_repaired", "reparsed"] as const;
+export type BookRepairKind = (typeof BOOK_REPAIR_KINDS)[number];
+
 /** Repair ledger entry per report date (published sidecar). */
 export interface BookRepair {
   /** The most severe repair in the quarter: `rows_quarantined` (rows whose units could not be established carry no
-   *  value) > `units_repaired` (value units rescaled against the ERM3 close) > `reparsed` (re-parsed after a parser
-   *  fix). */
-  status: "units_repaired" | "rows_quarantined" | "reparsed";
+   *  value) > `amendment_restated` (a 13F-HR/A filed as NEW HOLDINGS that repeats the prior book, applied as a
+   *  restatement; rows = the amendment's rows) > `units_repaired` (value units rescaled against the ERM3 close) >
+   *  `reparsed` (re-parsed after a parser fix). Order and meanings follow Funds_DAG
+   *  `scripts/build_filer_book_repairs.py`. */
+  status: BookRepairKind;
   /** Rows carrying the winning status. */
   rows_affected: number | null;
   /** Rows per repair kind in the quarter, every kind that occurred (a quarter can have several). */
-  detail?: Partial<Record<"units_repaired" | "rows_quarantined" | "reparsed", number | null>>;
+  detail?: Partial<Record<BookRepairKind, number | null>>;
 }
 
 export interface PortfolioRowLike {
