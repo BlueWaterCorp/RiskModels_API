@@ -220,7 +220,7 @@ print("cost:", r.headers.get("X-API-Cost-USD"))
 
 ### MCP
 
-An MCP tool for this endpoint, `riskmodels_portfolio_exposure`, is being added to the RiskModels MCP server.
+The RiskModels MCP server exposes this endpoint as `riskmodels_portfolio_exposure`, taking the same signed `{ticker, value}` positions. For a linked brokerage book, `riskmodels_get_my_positions` returns `for_exposure` (every position, signed) and `has_shorts`; an agent passes `for_exposure` to `riskmodels_portfolio_exposure` whenever the book has a short or more than 100 names. `riskmodels_analyze_portfolio` and `riskmodels_hedge_portfolio` take long-only books of up to 100 names.
 
 ## History feeds
 
