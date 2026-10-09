@@ -3384,11 +3384,13 @@ components:
             - `riskmodels_get_hedge_levels` — GET /metrics/{ticker} narrowed to the canonical `hedge_levels` block.
             - `riskmodels_get_my_positions` — reads the linked brokerage book (Alpaca Connect, Connect Trade, or Plaid)
               from riskmodels.net `GET /api/positions` with the caller's key. Returns `for_analysis` and `for_hedge`
-              for the portfolio tools. Does not place orders.
+              for the long-only portfolio tools, `for_exposure` (signed dollars) and `has_shorts`. Does not place orders.
             - `riskmodels_compare` / `riskmodels_analyze_portfolio` — POST /batch/analyze for multiple tickers; portfolio path
               renormalizes weights and surfaces aggregated `portfolio_hedge_levels` in the MCP wrapper output.
             - `riskmodels_hedge_portfolio` — Uses batch `/batch/analyze` per-ticker `hedge_levels` at the chosen cascade level and
               scales to `notional_usd` positions (sums hedge notionals across ETFs).
+            - `riskmodels_portfolio_exposure` — POST /portfolio/exposure for a signed long/short book (short < 0, up to 1000
+              names). Use when any position is short or the book has more than 100 names.
             - `riskmodels_list_endpoints` / `riskmodels_get_capability` / `riskmodels_get_schema` — discovery.
 
             Hosted-only tools (`mcp/src/server.ts`):

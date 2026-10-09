@@ -35,9 +35,16 @@ export type LinkedBook = {
   positions: LinkedPosition[];
   for_analysis: Array<{ ticker: string; weight: number }>;
   for_hedge: Array<{ ticker: string; dollars: number }>;
+  /** Every position with a finite non-zero market value, signed (short < 0). For riskmodels_portfolio_exposure. */
+  for_exposure: Array<{ ticker: string; value: number }>;
   excluded: Array<{ ticker: string; reason: string }>;
+  /** True when any position has a negative market value. */
+  has_shorts: boolean;
   empty: boolean;
 };
+
+const SHORT_REASON =
+  "short position; riskmodels_analyze_portfolio and riskmodels_hedge_portfolio take long positions only. Pass for_exposure to riskmodels_portfolio_exposure for the signed book.";
 
 export function portalPositionsUrl(portalBase?: string): string {
   const base = (portalBase || process.env.RISKMODELS_NET_URL || "https://riskmodels.net").replace(
@@ -52,6 +59,7 @@ export function shapeLinkedBook(body: PortalPositionsBody | null): LinkedBook {
   const positions: LinkedPosition[] = [];
   const for_analysis: Array<{ ticker: string; weight: number }> = [];
   const for_hedge: Array<{ ticker: string; dollars: number }> = [];
+  const for_exposure: Array<{ ticker: string; value: number }> = [];
   const excluded: Array<{ ticker: string; reason: string }> = [];
 
   for (const row of rows) {
@@ -63,6 +71,8 @@ export function shapeLinkedBook(body: PortalPositionsBody | null): LinkedBook {
     positions.push({ ticker, quantity, market_value, weight });
     if (weight != null && weight > 0) {
       for_analysis.push({ ticker, weight });
+    } else if ((weight != null && weight < 0) || (market_value != null && market_value < 0)) {
+      excluded.push({ ticker, reason: SHORT_REASON });
     } else if (weight != null && weight <= 0) {
       excluded.push({
         ticker,
@@ -74,6 +84,9 @@ export function shapeLinkedBook(body: PortalPositionsBody | null): LinkedBook {
     if (market_value != null && market_value > 0) {
       for_hedge.push({ ticker, dollars: market_value });
     }
+    if (market_value != null && Number.isFinite(market_value) && market_value !== 0) {
+      for_exposure.push({ ticker, value: market_value });
+    }
   }
 
   return {
@@ -84,7 +97,9 @@ export function shapeLinkedBook(body: PortalPositionsBody | null): LinkedBook {
     positions,
     for_analysis,
     for_hedge,
+    for_exposure,
     excluded,
+    has_shorts: for_exposure.some((row) => row.value < 0),
     empty: positions.length === 0,
   };
 }
@@ -132,3 +147,13 @@ export const EMPTY_BOOK_MESSAGE =
 
 export const LINKED_BOOK_NEXT_STEP =
   "Pass for_analysis to riskmodels_analyze_portfolio. Pass for_hedge to riskmodels_hedge_portfolio. This server does not place orders.";
+
+export const LINKED_BOOK_NEXT_STEP_EXPOSURE =
+  "The book has short positions or more than 100 names. Pass for_exposure to riskmodels_portfolio_exposure, which takes the signed book. This server does not place orders.";
+
+/** Next-step text for a non-empty book: signed books and books over 100 names go to riskmodels_portfolio_exposure. */
+export function linkedBookNextStep(book: LinkedBook): string {
+  return book.has_shorts || book.for_exposure.length > 100
+    ? LINKED_BOOK_NEXT_STEP_EXPOSURE
+    : LINKED_BOOK_NEXT_STEP;
+}
