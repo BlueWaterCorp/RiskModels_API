@@ -114,7 +114,14 @@ describe("computePortfolioExposure (loader)", () => {
     expect(l3.SMH).toBeCloseTo(100_000 * -0.7 + -50_000 * -0.9, 2);
 
     const reasons = Object.fromEntries(out.coverage.dropped.map((d: any) => [d.ticker, d.reason]));
-    expect(reasons).toEqual({ OLD: "stale_metrics", NOPE: "symbol_not_found" });
+    expect(reasons).toEqual({ OLD: "not_at_snapshot_teo", NOPE: "symbol_not_found" });
+    const old = out.coverage.dropped.find((d: any) => d.ticker === "OLD");
+    expect(old.teo).toBe("2026-09-30");
+    expect(old.detail).toContain("dated 2026-09-30, not the common model date 2026-10-07");
+    expect(out.coverage.dropped.find((d: any) => d.ticker === "NOPE").detail).toMatch(/not found/);
+    const codes = out.warnings.map((w: any) => w.code);
+    expect(codes).toContain("not_at_snapshot_teo");
+    expect(codes).not.toContain("share_class_netted");
 
     // The Zarr overlay read is pinned to the snapshot date.
     const overlay = historyCalls.find((c) => !c.keys.includes("returns_gross"))!;
@@ -138,7 +145,14 @@ describe("computePortfolioExposure (loader)", () => {
       ],
       { lookbackDays: 252 },
     );
-    expect(out.coverage.dropped).toEqual([{ ticker: "NEWCO", value_usd: 20_000, reason: "insufficient_history" }]);
+    expect(out.coverage.dropped).toEqual([
+      {
+        ticker: "NEWCO",
+        value_usd: 20_000,
+        reason: "insufficient_history",
+        detail: "Fewer than 126 trading days of returns, so the risk model has no estimate for this name yet.",
+      },
+    ]);
     expect(out.book.modelled_stocks).toBe(1);
   });
 
@@ -146,6 +160,52 @@ describe("computePortfolioExposure (loader)", () => {
     const out: any = await computePortfolioExposure([{ ticker: "NOPE", value: 1_000 }], { lookbackDays: 252 });
     expect(out.error).toBe("no_risk_metrics");
     expect(out.dropped[0].reason).toBe("symbol_not_found");
+  });
+
+  it("returns an error when every stock lacks history and no ETF is held", async () => {
+    const out: any = await computePortfolioExposure([{ ticker: "NEWCO", value: 20_000 }], { lookbackDays: 252 });
+    expect(out.error).toBe("no_risk_metrics");
+    expect(out.dropped).toMatchObject([{ ticker: "NEWCO", value_usd: 20_000, reason: "insufficient_history" }]);
+    expect(out.dropped[0].detail).toMatch(/126 trading days/);
+  });
+
+  it("models an ETF-only book at the latest market date", async () => {
+    const out: any = await computePortfolioExposure(
+      [
+        { ticker: "SPY", value: -50_000 },
+        { ticker: "XLK", value: 50_000 },
+      ],
+      { lookbackDays: 252 },
+    );
+    expect(out.error).toBeUndefined();
+    expect(out.as_of.snapshot_teo).toBe(SNAP);
+    expect(out.book.modelled_stocks).toBe(0);
+    expect(out.book.direct_etfs).toBe(2);
+    expect(out.risk.systematic.daily_vol_usd).toBeGreaterThan(0);
+    expect(out.coverage.by_calculation.systematic).toBe(1);
+  });
+
+  it("warns when two tickers net into one model security", async () => {
+    registry.GOOG = { symbol: "S-GOOG", ticker: "GOOG", asset_type: "stock", sector_etf: "XLK", subsector_etf: "SMH" };
+    registry.GOOGL = { ...registry.GOOG, ticker: "GOOGL" };
+    latestRows["S-GOOG"] = { teo: SNAP, metrics: fullMetrics({ l3_sub_hr: -0.5 }) };
+    try {
+      const out: any = await computePortfolioExposure(
+        [
+          { ticker: "GOOGL", value: 100_000 },
+          { ticker: "GOOG", value: -100_000 },
+          { ticker: "NVDA", value: 50_000 },
+        ],
+        { lookbackDays: 252 },
+      );
+      const w = out.warnings.find((x: any) => x.code === "share_class_netted");
+      expect(w.tickers).toEqual(["GOOGL", "GOOG"]);
+      expect(out.book.modelled_stocks).toBe(2);
+    } finally {
+      delete registry.GOOG;
+      delete registry.GOOGL;
+      delete latestRows["S-GOOG"];
+    }
   });
   it("as_of reads Zarr at the newest row on or before the date, with L1 beta = -l1_mkt_hr", async () => {
     const out: any = await computePortfolioExposure(

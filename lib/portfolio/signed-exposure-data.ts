@@ -20,6 +20,7 @@ import {
   type EtfCovariance,
   type StockInput,
   type Basis,
+  type ExposureWarning,
 } from "./signed-exposure";
 
 const IN_CHUNK = 200;
@@ -78,11 +79,32 @@ export interface DroppedPosition {
   reason:
     | "symbol_not_found"
     | "no_risk_metrics"
-    | "stale_metrics"
+    | "not_at_snapshot_teo"
     | "no_data_at_as_of"
     | "insufficient_history";
   teo?: string | null;
+  /** Plain-English explanation of `reason`, for people reading the response. */
+  detail?: string;
 }
+
+/** One sentence per drop reason; `not_at_snapshot_teo` names both dates. */
+export function dropDetail(d: DroppedPosition, snapshotTeo: string | null): string {
+  switch (d.reason) {
+    case "symbol_not_found":
+      return "Ticker not found in the RiskModels universe. Check the notation (e.g. BRK.B) and that it is a covered US stock or ETF.";
+    case "no_risk_metrics":
+      return "In the universe, but the risk model has no estimates for this name.";
+    case "not_at_snapshot_teo":
+      return `Model data for this name is dated ${d.teo ?? "another day"}, not the common model date ${snapshotTeo ?? ""}; every name in a request is read at one date.`;
+    case "no_data_at_as_of":
+      return "No model data in the ten days up to as_of (for example, not yet listed or not trading then).";
+    case "insufficient_history":
+      return "Fewer than 126 trading days of returns, so the risk model has no estimate for this name yet.";
+  }
+}
+
+const explain = (dropped: DroppedPosition[], snapshotTeo: string | null) =>
+  dropped.map((d) => ({ ...d, detail: dropDetail(d, snapshotTeo) }));
 
 function chunks<T>(xs: T[], n: number): T[][] {
   const out: T[][] = [];
@@ -110,14 +132,22 @@ function mode(values: string[]): string | null {
   return best;
 }
 
-/** Bulk ticker → registry row, with per-ticker retries for notation variants. */
-export async function resolveAll(tickers: string[]): Promise<Map<string, SymbolRegistryRow>> {
+/**
+ * Bulk ticker → registry row, with per-ticker retries for notation variants.
+ * Unresolved tickers past the retry limit are appended to `notRetried`.
+ */
+export async function resolveAll(
+  tickers: string[],
+  notRetried?: string[],
+): Promise<Map<string, SymbolRegistryRow>> {
   const out = new Map<string, SymbolRegistryRow>();
   for (const part of chunks(tickers, IN_CHUNK)) {
     const m = await resolveSymbolsByTickers(part);
     for (const [k, v] of m) out.set(k.toUpperCase(), v);
   }
-  const missing = tickers.filter((t) => !out.has(t)).slice(0, MAX_FALLBACK_RESOLVES);
+  const unresolved = tickers.filter((t) => !out.has(t));
+  notRetried?.push(...unresolved.slice(MAX_FALLBACK_RESOLVES));
+  const missing = unresolved.slice(0, MAX_FALLBACK_RESOLVES);
   const retried = await Promise.all(missing.map((t) => resolveSymbolByTicker(t)));
   missing.forEach((t, i) => {
     const row = retried[i];
@@ -179,7 +209,8 @@ export async function computePortfolioExposure(
 ) {
   const inputGross = positions.reduce((a, p) => a + Math.abs(p.value), 0);
   const tickers = [...new Set(positions.map((p) => p.ticker.toUpperCase()))];
-  const registry = await resolveAll(tickers);
+  const notRetried: string[] = [];
+  const registry = await resolveAll(tickers, notRetried);
 
   const dropped: DroppedPosition[] = [];
   const valueByTicker = new Map<string, number>();
@@ -257,9 +288,14 @@ export async function computePortfolioExposure(
       for (const [k, v] of await fetchBatchLatestSummary(part)) latest.set(k, v);
     }
   }
-  const snapshotTeo = mode([...latest.values()].map((v) => v.teo));
+  // One common model date for the whole book: the date most names share.
+  let snapshotTeo = mode([...latest.values()].map((v) => v.teo));
+  if (!snapshotTeo && direct.size > 0) {
+    // ETF-only book: the newest SPY return on or before as_of (or today).
+    snapshotTeo = await latestMarketTeo(opts.asOf ?? new Date().toISOString().slice(0, 10));
+  }
   if (!snapshotTeo) {
-    return { error: "no_risk_metrics" as const, dropped };
+    return { error: "no_risk_metrics" as const, dropped: explain(dropped, null) };
   }
 
   // Fill hedge legs (and whole rows missing from the latest table) from Zarr at
@@ -312,7 +348,7 @@ export async function computePortfolioExposure(
         dropped.push({
           ticker: t,
           value_usd: valueByTicker.get(t) ?? 0,
-          reason: l ? "stale_metrics" : opts.asOf ? "no_data_at_as_of" : "no_risk_metrics",
+          reason: l ? "not_at_snapshot_teo" : opts.asOf ? "no_data_at_as_of" : "no_risk_metrics",
           teo: l?.teo ?? null,
         });
       }
@@ -359,6 +395,11 @@ export async function computePortfolioExposure(
   const { cov, excluded } = buildEtfCovariance(returnsByEtf, snapshotTeo, opts.lookbackDays);
   const noReturns = [...etfUniverse].filter((e) => !returnsByEtf.has(e));
 
+  // Nothing to compute: no stock with metrics and no ETF held with returns.
+  if (stocks.length === 0 && ![...direct.keys()].some((e) => cov?.etfs.includes(e))) {
+    return { error: "no_risk_metrics" as const, dropped: explain(dropped, snapshotTeo) };
+  }
+
   const result = computeSignedExposure({
     stocks,
     directEtfs: [...direct.values()],
@@ -366,6 +407,31 @@ export async function computePortfolioExposure(
     cov,
     basis: opts.basis ?? "lstar",
   });
+
+  const warnings: ExposureWarning[] = [...result.warnings];
+  const netted = stocks.filter((s) => s.tickers.length > 1);
+  if (netted.length) {
+    warnings.push({
+      code: "share_class_netted",
+      message: "These tickers map to one model security and were netted into one position before risk was computed. A long in one and a short in the other shows only the net value, with no spread risk between them.",
+      tickers: netted.flatMap((s) => s.tickers),
+    });
+  }
+  const offSnapshot = dropped.filter((d) => d.reason === "not_at_snapshot_teo");
+  if (offSnapshot.length) {
+    warnings.push({
+      code: "not_at_snapshot_teo",
+      message: `Every name is read at one common model date (${snapshotTeo}). These names have no row on that date (see coverage.dropped for each name's own date) and are left out.`,
+      tickers: offSnapshot.map((d) => d.ticker),
+    });
+  }
+  if (notRetried.length) {
+    warnings.push({
+      code: "ticker_retry_limit",
+      message: `More than ${MAX_FALLBACK_RESOLVES} tickers did not match directly; these were not retried under alternative notations (e.g. BRK.B / BRK-B) and are reported as symbol_not_found.`,
+      tickers: notRetried,
+    });
+  }
 
   const long = positions.filter((p) => p.value > 0).reduce((a, p) => a + p.value, 0);
   const short = positions.filter((p) => p.value < 0).reduce((a, p) => a + p.value, 0);
@@ -393,8 +459,26 @@ export async function computePortfolioExposure(
     ...result,
     coverage: {
       ...result.coverage,
-      dropped,
+      dropped: explain(dropped, snapshotTeo),
       etfs_excluded_from_covariance: [...new Set([...excluded, ...noReturns])].sort(),
     },
+    warnings,
   };
+}
+
+/** Newest date on or before `end` with a SPY return: the snapshot for a book with no stocks. */
+async function latestMarketTeo(end: string): Promise<string | null> {
+  const spy = (await resolveAll([MARKET_ETF])).get(MARKET_ETF);
+  if (!spy) return null;
+  const rows = await fetchBatchHistory([spy.symbol], ["returns_gross"], {
+    periodicity: "daily",
+    startDate: isoMinusDays(end, AS_OF_SEARCH_DAYS),
+    endDate: end,
+  });
+  const teos = rows
+    .filter((r) => finite(r.metric_value))
+    .map((r) => r.teo.slice(0, 10))
+    .filter((t) => t <= end)
+    .sort();
+  return teos.at(-1) ?? null;
 }

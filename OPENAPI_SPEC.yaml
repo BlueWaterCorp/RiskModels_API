@@ -8573,33 +8573,50 @@ paths:
           description: The month-end panel is not available.
   /portfolio/exposure:
     post:
-      summary: Long/short portfolio exposure and L3 risk (signed dollar positions)
+      summary: Long/short portfolio exposure, ETF hedges and risk (signed dollar positions)
       description: >
         Signed book of up to 1000 positions as dollar market values (short < 0). Nothing is
         normalised, so a book that nets to roughly zero is a valid input. Use this instead of
         `/portfolio/risk-index`, `/portfolio/risk-snapshot` or `/snapshot` for any book with shorts;
-        those endpoints require positive weights. Repeated tickers and share classes of one
-        security are netted before any squaring.
+        those endpoints require positive weights. A book of ETFs only (for example an overlay) is
+        valid. Repeated tickers, and tickers that map to one model security (some share classes),
+        are netted into one position before any squaring; a `share_class_netted` warning names them.
 
 
         **Returns**
-        - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF).
+        - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF). Stock
+          betas are ERM3 L1 market betas; ETFs held are measured against SPY over the covariance window.
         - `hedges.lstar|l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per
           $1 long stock, negative = short), `direct_etf_exposure_usd` (the book's own ETF holdings),
           and `total_neutralizing_trade_usd` = stock hedge − direct holdings.
         - `risk` (at `hedge_level`): systematic variance xᵀΣx, where x is the book's raw-ETF exposure (−stock hedge
           + direct holdings) and Σ is the sample covariance of daily ETF returns over
           `lookback_days` ending on `as_of.snapshot_teo`. Layer contributions xₗᵀΣx sum to the
-          systematic variance and can be negative. Residual variance is Σ value²·stock_var·l3_res_er,
-          using each name's residual share at its level (lK_res_er), a diagonal approximation that
-          ignores residual covariance across names (including common size/value exposure, which
-          stays in the residual); it is an approximation, not a bound.
-          Volatility is annualised with √252.
-        - `risk.reconciliation`: per-name gap between the covariance-implied systematic variance and
-          the model's own split, stock_var·(1 − l3_res_er).
+          systematic variance and can be negative. Residual variance is Σ value²·stock_var·max(lK_res_er, 0),
+          where K is each name's level under `hedge_level`: a diagonal approximation that ignores
+          residual covariance across names (including common size/value exposure, which stays in the
+          residual); it is an approximation, not a bound. Volatility is annualised with √252.
+        - `risk.reconciliation`: per name at its level K, the relative gap between the
+          covariance-implied systematic variance and the model's own split, stock_var·(1 − lK_res_er).
+          The two use different estimators (end-of-window hedge ratios against a sample covariance,
+          versus the model's time-varying, decay-weighted betas), so a gap is expected; large values
+          say the two views disagree for that name.
         - `coverage`: share of submitted gross used by each calculation, dropped positions
-          (`symbol_not_found`, `insufficient_history`, `no_risk_metrics`, `stale_metrics`,
-          `no_data_at_as_of`), and ETFs without covariance.
+          (`symbol_not_found`, `insufficient_history`, `no_risk_metrics`, `not_at_snapshot_teo`,
+          `no_data_at_as_of`), names excluded from L*, and ETFs without covariance.
+        - `warnings`: machine-readable `{code, message, tickers}` for anything that changes how the
+          result should be read: `share_class_netted`, `not_at_snapshot_teo`, `hedge_added_variance`,
+          `residual_share_extreme`, `residual_share_floored`, `ticker_retry_limit`. Report them with the result.
+
+
+        **Residual shares.** ERM3's explained-risk shares at a level (market, sector, subsector,
+        residual) always sum to 1. Each is the variance the held hedge removed over the estimation
+        window, so a share can be negative when a hedge leg added variance, and the residual share
+        can then exceed 1. That is used as is: the name's residual variance is larger than its
+        unhedged variance, and it is listed in `risk.residual.hedge_added_variance` with a
+        `hedge_added_variance` warning. A residual share above 2 is still used and also raises
+        `residual_share_extreme`. A residual share below 0 is taken as 0 in the variance term
+        (`residual_share_floored`). The shares themselves are never altered.
 
 
         **History needed.** ERM3 estimates a name only after at least 126 trading days of returns
@@ -8617,25 +8634,34 @@ paths:
         all four so the levels can be compared.
 
 
-        **History.** `as_of` (YYYY-MM-DD) computes the same output at a past model date, read from
-        Zarr: each name uses its newest row on or before `as_of`, and the covariance window ends on
-        the resulting `snapshot_teo`. L1 beta at past dates is −`l1_mkt_hr`, which equals the L1
-        beta exactly (L1 has one factor, SPY). The ETF-to-sector mapping is today's, and tickers
-        resolve against today's registry, so names delisted since `as_of` are dropped as
-        `symbol_not_found`, and names with no model data on that date (e.g. not yet listed) as
-        `no_data_at_as_of`. Same price as a latest call (see Billing).
+        **Model date.** Every name is read at one common `snapshot_teo`: the date most names in the
+        book share (for a book of ETFs only, the latest SPY return date). Names whose row is on
+        another date are dropped as `not_at_snapshot_teo`, with their own date in `teo`, and a
+        `not_at_snapshot_teo` warning lists them. Missing L2/L3 sector and subsector hedge legs are
+        filled from the point-in-time model history at that same date. ETF-to-sector mapping is the
+        current registry, not point-in-time.
 
 
-        **Model date.** Every name is read at one `snapshot_teo` (the most common date).
-        Names whose latest row is on another date are dropped as `stale_metrics`. Missing L2/L3
-        sector and subsector hedge legs are filled from Zarr at that same date. ETF-to-sector
-        mapping is the current registry, not point-in-time.
+        **History.** `as_of` (YYYY-MM-DD, a real calendar date) computes the same output at a past
+        model date from the point-in-time model history. For each name the newest row in the ten
+        calendar days up to `as_of` is found; `snapshot_teo` is the date most names share, and the
+        covariance window ends on it. L1 beta at past dates is −`l1_mkt_hr`, which equals the L1
+        beta exactly (L1 has one factor, SPY). Tickers resolve against today's registry, so names
+        delisted since `as_of` are dropped as `symbol_not_found`, and names with no model data in
+        that window (e.g. not yet listed) as `no_data_at_as_of`. Same price as a latest call.
+
+
+        **Ticker notation.** Tickers that do not match directly are retried under alternative
+        notations (BRK.B / BRK-B). Only the first 100 unmatched tickers are retried; any beyond that
+        are reported as `symbol_not_found` with a `ticker_retry_limit` warning.
 
 
         **Billing:** per successful call, by book size: **$0.25** up to 25 names, **$1.00** above 25.
         The tier counts names actually modelled (stocks plus ETFs held), so dropped tickers never
-        raise it. Latest and `as_of` cost the same. A request with no modelled positions returns 422
-        and is not charged.
+        raise the charge. The balance check before the call uses the tier for the number of distinct
+        tickers submitted, so a book of more than 25 tickers needs $1.00 of balance even if fewer
+        names end up modelled. Latest and `as_of` cost the same. A request in which no stock has
+        risk metrics and no ETF held has return history returns 422 and is not charged.
       operationId: postPortfolioExposure
       tags: [Risk Metrics]
       x-pricing:
@@ -8690,7 +8716,7 @@ paths:
                 - { ticker: SPY, value: -50000 }
       responses:
         "200":
-          description: Exposure, hedge trades, L3 risk split and coverage.
+          description: Exposure, hedge trades, risk split, coverage and warnings.
           headers:
             X-API-Cost-USD:
               schema: { type: string }
@@ -8701,24 +8727,116 @@ paths:
                 properties:
                   as_of:
                     type: object
-                    description: snapshot_teo, covariance_start, covariance_end, requested and effective observation counts, vintage_aligned.
+                    properties:
+                      requested_as_of: { type: string, nullable: true, description: The as_of sent, or null for latest. }
+                      metrics_source: { type: string }
+                      snapshot_teo: { type: string, format: date, description: The one model date every name is read at. }
+                      covariance_start: { type: string, format: date, nullable: true }
+                      covariance_end: { type: string, format: date, nullable: true }
+                      covariance_requested_n: { type: integer }
+                      covariance_effective_n: { type: integer }
+                      vintage_aligned: { type: boolean, description: True when the covariance window ends on snapshot_teo. }
+                      etf_mapping: { type: string }
                   book:
                     type: object
+                    properties:
+                      positions_submitted: { type: integer }
+                      gross_usd: { type: number }
+                      net_usd: { type: number }
+                      long_usd: { type: number }
+                      short_usd: { type: number }
+                      modelled_stocks: { type: integer }
+                      direct_etfs: { type: integer }
                   beta:
                     type: object
+                    properties:
+                      stock_beta_usd: { type: number }
+                      direct_etf_beta_usd: { type: number }
+                      total_beta_usd: { type: number }
+                      total_beta_pct_of_gross: { type: number, nullable: true }
+                      by_sector_usd: { type: object, additionalProperties: { type: number } }
+                      direct_etf_betas: { type: object, additionalProperties: { type: number, nullable: true } }
                   hedges:
                     type: object
-                    description: Keys lstar, l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD). `lstar` also carries names_by_level.
+                    description: Keys lstar, l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD) and stock_gross_covered_usd. `lstar` also carries names_by_level.
                   risk:
                     type: object
                     nullable: true
                     description: Null when no ETF covariance could be built.
+                    properties:
+                      basis: { type: string, enum: [lstar, l1, l2, l3] }
+                      names_by_level: { type: object, properties: { l1: { type: integer }, l2: { type: integer }, l3: { type: integer } } }
+                      systematic:
+                        type: object
+                        description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, exposure_usd (ETF → USD), layer_contributions (market, sector, subsector, direct_etf → daily_variance_usd2, share_of_systematic).
+                      residual:
+                        type: object
+                        description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, method, level_basis, top_contributors, and hedge_added_variance (ticker, level, residual_share) for names whose residual share exceeds 1.
+                      total:
+                        type: object
+                        description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, systematic_share, residual_share.
+                      reconciliation:
+                        type: object
+                        description: names, median_relative_error, p90_relative_error.
                   coverage:
                     type: object
+                    properties:
+                      input_gross_usd: { type: number }
+                      modelled_stock_gross_usd: { type: number }
+                      direct_etf_gross_usd: { type: number }
+                      by_calculation:
+                        type: object
+                        description: Share of submitted gross used by beta, hedge_l1, hedge_l2, hedge_l3, hedge_lstar, residual, systematic, total_risk.
+                      dropped:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ticker: { type: string }
+                            value_usd: { type: number }
+                            reason: { type: string, enum: [symbol_not_found, no_risk_metrics, not_at_snapshot_teo, no_data_at_as_of, insufficient_history] }
+                            teo: { type: string, nullable: true, description: For not_at_snapshot_teo, the name's own model date. }
+                            detail: { type: string, description: One plain-English sentence explaining the reason. }
+                      excluded_from_lstar:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ticker: { type: string }
+                            value_usd: { type: number }
+                            reason: { type: string, enum: [no_lstar, lstar_level_incomplete] }
+                            detail: { type: string, description: One plain-English sentence explaining the reason. }
+                      residual_flagged:
+                        type: array
+                        description: Names left out of the residual because their stock_var is negative.
+                        items: { type: object, properties: { ticker: { type: string }, reason: { type: string } } }
+                      etfs_without_covariance: { type: array, items: { type: string } }
+                      etfs_excluded_from_covariance: { type: array, items: { type: string } }
+                  warnings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          enum: [share_class_netted, not_at_snapshot_teo, hedge_added_variance, residual_share_extreme, residual_share_floored, ticker_retry_limit]
+                        message: { type: string }
+                        tickers: { type: array, items: { type: string } }
         "400":
-          description: Invalid request (empty, more than 1000 positions, zero or non-finite value).
+          description: Invalid request (empty, more than 1000 positions, zero or non-finite value, malformed or impossible as_of).
+        "401":
+          description: Missing or invalid API key.
+        "402":
+          description: Insufficient balance or daily spend cap reached.
         "422":
-          description: No submitted position has ERM3 risk metrics. Not charged.
+          description: >
+            No stock has risk metrics at the model date and no ETF held has return history. Body:
+            `error`, a plain-English `message`, and `dropped` with each ticker's `reason` code and a
+            one-sentence `detail`. Not charged.
+        "429":
+          description: Rate limit exceeded.
+        "500":
+          description: Exposure computation failed. Not charged.
   /portfolio/risk-index:
     post:
       summary: Portfolio risk index (L3 variance decomposition)

@@ -18,13 +18,20 @@
  * 1–3): L* stops above a layer that adds no explanatory value, which is where
  * negative incremental ER shares come from. `l1` / `l2` / `l3` force one level
  * for every name. Levels never go past L3: size/value style is not modelled
- * here; it lives in the residual (see backlog C.16).
+ * here; it stays in the residual.
  *
  *   systematic daily variance  = xᵀ Σ x     (Σ = sample cov of raw ETF daily returns)
  *   layer contribution         C_L = x_Lᵀ Σ x, Σ_L C_L = xᵀ Σ x  (can be negative)
- *   residual daily variance    ≈ Σ_i v_i² · stock_var_i · lK_res_er_i  (K = the name's level)
+ *   residual daily variance    ≈ Σ_i v_i² · stock_var_i · max(lK_res_er_i, 0)  (K = the name's level)
  *       — a diagonal approximation: it ignores residual covariance across
  *         names, including common size/value exposure. Not a bound.
+ *
+ * lK_res_er is ERM3's residual share: 1 minus the variance the held (time-
+ * varying) hedge removed over the window. The shares at a level sum to 1, but
+ * one can be negative when a hedge leg added variance, so the residual share
+ * can exceed 1. That is a real result and is used as is (and reported); only a
+ * negative residual share, which would subtract variance, is floored at 0 for
+ * the variance term. The stored shares are never altered.
  */
 
 export type Level = "l1" | "l2" | "l3";
@@ -34,9 +41,16 @@ export type Layer = "market" | "sector" | "subsector";
 export const MARKET_ETF = "SPY";
 export const TRADING_DAYS = 252;
 
-/** Residual ER outside this band is treated as bad data, not a share. */
-const RES_ER_MIN = -0.05;
-const RES_ER_MAX = 1.05;
+/** Residual share above 1 by more than this: the hedge added variance. */
+const HEDGE_ADDED_EPS = 1e-6;
+/** Residual share above this is used but reported as a data-quality warning. */
+const RES_ER_EXTREME = 2;
+
+export interface ExposureWarning {
+  code: string;
+  message: string;
+  tickers: string[];
+}
 
 export interface StockInput {
   symbol: string;
@@ -125,6 +139,11 @@ function levelUsable(s: StockInput, level: Level): boolean {
 }
 
 export type ExclusionReason = "no_lstar" | "lstar_level_incomplete";
+
+const EXCLUSION_DETAIL: Record<ExclusionReason, string> = {
+  no_lstar: "No L* level for this name (too little history), so it is left out of hedges and risk under hedge_level lstar.",
+  lstar_level_incomplete: "The name's L* level is missing a hedge leg or residual share, so it is left out under hedge_level lstar. A fixed hedge_level (l1, l2 or l3) may include it.",
+};
 
 /**
  * The level a name is hedged and measured at. Under "lstar" that is its own
@@ -238,14 +257,16 @@ export function computeSignedExposure(input: ExposureInput) {
   const basis: Basis = input.basis ?? "lstar";
   const levelOf = new Map<string, Level>();
   const levelCounts: Record<Level, number> = { l1: 0, l2: 0, l3: 0 };
-  const lstarExcluded: Array<{ ticker: string; value_usd: number; reason: ExclusionReason }> = [];
+  const lstarExcluded: Array<{ ticker: string; value_usd: number; reason: ExclusionReason; detail: string }> = [];
   for (const s of stocks) {
     const { level, reason } = resolveLevel(s, basis);
     if (level) {
       levelOf.set(s.symbol, level);
       levelCounts[level] += 1;
     }
-    if (reason) lstarExcluded.push({ ticker: s.tickers[0] ?? s.symbol, value_usd: round(s.value), reason });
+    if (reason) {
+      lstarExcluded.push({ ticker: s.tickers[0] ?? s.symbol, value_usd: round(s.value), reason, detail: EXCLUSION_DETAIL[reason] });
+    }
   }
   let lstarCovered = 0;
   {
@@ -277,6 +298,9 @@ export function computeSignedExposure(input: ExposureInput) {
   let residualCovered = 0;
   let totalRiskCovered = 0;
   const residualFlagged: Array<{ ticker: string; reason: string }> = [];
+  const hedgeAddedVariance: Array<{ ticker: string; level: Level; residual_share: number }> = [];
+  const floored: string[] = [];
+  const extreme: string[] = [];
 
   // Residual (diagonal approximation) — independent of the covariance.
   let residVar = 0;
@@ -293,11 +317,10 @@ export function computeSignedExposure(input: ExposureInput) {
       residualFlagged.push({ ticker: label, reason: "negative stock_var" });
       continue;
     }
-    if (res < RES_ER_MIN || res > RES_ER_MAX) {
-      residualFlagged.push({ ticker: label, reason: `${resKey(level)} ${res} outside [${RES_ER_MIN}, ${RES_ER_MAX}]` });
-      continue;
-    }
-    const v = s.value * s.value * sv * res;
+    if (res < 0) floored.push(label);
+    if (res > 1 + HEDGE_ADDED_EPS) hedgeAddedVariance.push({ ticker: label, level, residual_share: round(res, 4) });
+    if (res > RES_ER_EXTREME) extreme.push(label);
+    const v = s.value * s.value * sv * Math.max(res, 0);
     residVar += v;
     residualCovered += Math.abs(s.value);
     residOk.add(s.symbol);
@@ -378,8 +401,10 @@ export function computeSignedExposure(input: ExposureInput) {
       },
       residual: {
         ...volBlock(residVar),
-        method: "l3_residual_variance_diagonal_approximation",
-        note: "Σ v²·stock_var·lK_res_er, K = each name's level under the basis. Ignores residual covariance across names, including common size/value exposure that stays in the residual. An approximation, not a bound.",
+        method: "residual_variance_diagonal_approximation",
+        level_basis: basis,
+        note: "Σ v²·stock_var·max(lK_res_er, 0), K = each name's level under the basis. lK_res_er is the model's residual share at that level (the shares at a level sum to 1); above 1 means the hedge added variance over the window, and it is used as is. Ignores residual covariance across names, including common size/value exposure that stays in the residual. An approximation, not a bound.",
+        hedge_added_variance: hedgeAddedVariance,
         top_contributors: residByName
           .sort((a, b) => b.var - a.var)
           .slice(0, input.topContributors ?? 15)
@@ -401,6 +426,29 @@ export function computeSignedExposure(input: ExposureInput) {
         p90_relative_error: quantile(recon, 0.9),
       },
     };
+  }
+
+  const warnings: ExposureWarning[] = [];
+  if (hedgeAddedVariance.length) {
+    warnings.push({
+      code: "hedge_added_variance",
+      message: "For these names the model's hedge at their level added variance over the window (residual share above 1). Their residual risk is larger than their unhedged variance and is used as is.",
+      tickers: hedgeAddedVariance.map((h) => h.ticker),
+    });
+  }
+  if (extreme.length) {
+    warnings.push({
+      code: "residual_share_extreme",
+      message: `Residual share above ${RES_ER_EXTREME} (the hedge more than doubled variance). Used as is; check these names before relying on the residual total.`,
+      tickers: extreme,
+    });
+  }
+  if (floored.length) {
+    warnings.push({
+      code: "residual_share_floored",
+      message: "Residual share below 0 for these names; their residual variance is taken as 0.",
+      tickers: floored,
+    });
   }
 
   const stockGross = absSum(stocks);
@@ -435,5 +483,6 @@ export function computeSignedExposure(input: ExposureInput) {
       excluded_from_lstar: lstarExcluded,
       residual_flagged: residualFlagged,
     },
+    warnings,
   };
 }

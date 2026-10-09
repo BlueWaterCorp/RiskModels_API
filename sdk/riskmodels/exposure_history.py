@@ -12,8 +12,10 @@ by a shared fixture (``tests/fixtures/signed_exposure_parity.json``):
 - hedge ratio ``hr`` = ETF dollars per $1 long stock; stock hedge trade
   ``H_e = Σ v·hr``; ETF exposure ``x = -H + d`` (``d`` = ETFs held directly);
 - systematic daily variance ``xᵀΣx``; layer contributions ``x_Lᵀ Σ x`` sum to it;
-- residual daily variance ``Σ v²·stock_var·lK_res_er`` at each name's level K —
-  a diagonal approximation that ignores residual covariance across names;
+- residual daily variance ``Σ v²·stock_var·max(lK_res_er, 0)`` at each name's
+  level K — a diagonal approximation that ignores residual covariance across
+  names. A residual share above 1 (the hedge added variance) is used as is and
+  reported in ``hedge_added_variance``;
 - default basis ``"lstar"`` (each name at its own L* level, no fallback);
   ``"l1"`` / ``"l2"`` / ``"l3"`` force one level;
 - volatility annualised with √252.
@@ -34,7 +36,7 @@ Basis = Literal["lstar", "l1", "l2", "l3"]
 LEVELS = ("l1", "l2", "l3")
 MARKET_ETF = "SPY"
 TRADING_DAYS = 252
-RES_ER_MIN, RES_ER_MAX = -0.05, 1.05
+HEDGE_ADDED_EPS = 1e-6
 
 
 def _finite(v: Any) -> bool:
@@ -138,6 +140,7 @@ def compute_signed_exposure(
     resid_cov = 0.0
     resid_ok: set[int] = set()
     flagged = []
+    hedge_added = []
     contrib = []
     for i, s in enumerate(stocks):
         lv = level_of.get(i)
@@ -149,10 +152,9 @@ def compute_signed_exposure(
         if sv < 0:
             flagged.append({"ticker": s["ticker"], "reason": "negative stock_var"})
             continue
-        if not RES_ER_MIN <= res <= RES_ER_MAX:
-            flagged.append({"ticker": s["ticker"], "reason": f"{lv}_res_er {res} outside [{RES_ER_MIN}, {RES_ER_MAX}]"})
-            continue
-        v = s["value"] ** 2 * float(sv) * float(res)
+        if res > 1 + HEDGE_ADDED_EPS:
+            hedge_added.append({"ticker": s["ticker"], "level": lv, "residual_share": round(float(res), 4)})
+        v = s["value"] ** 2 * float(sv) * max(float(res), 0.0)
         resid += v
         resid_cov += abs(s["value"])
         resid_ok.add(i)
@@ -168,6 +170,7 @@ def compute_signed_exposure(
         "excluded_from_lstar": excluded if basis == "lstar" else [],
         "residual_daily_variance": resid,
         "residual_flagged": flagged,
+        "hedge_added_variance": hedge_added,
         "top_residual": sorted(contrib, key=lambda r: -r[2])[:15],
     }
 

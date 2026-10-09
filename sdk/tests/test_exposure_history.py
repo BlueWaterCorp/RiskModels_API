@@ -57,6 +57,7 @@ def test_parity_with_typescript(basis: str) -> None:
         for k, v in exp["total_neutralizing_trade_usd"].items():
             assert got["total_neutralizing_trade_usd"][k] == pytest.approx(v, abs=0.01)
     assert [f["ticker"] for f in got["residual_flagged"]] == exp["residual_flagged"]
+    assert [[h["ticker"], h["level"], h["residual_share"]] for h in got["hedge_added_variance"]] == exp["hedge_added_variance"]
 
 
 def _pack() -> ExposureHistoryPack:

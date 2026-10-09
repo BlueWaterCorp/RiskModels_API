@@ -31,6 +31,9 @@ const STOCKS: StockInput[] = [
     metrics: m({ l1_mkt_beta: null, l1_mkt_hr: null, stock_var: null, lstar_level: null }) },
   { symbol: "S-BAD", tickers: ["BAD"], value: 15_000, sector_etf: "XLK", subsector_etf: null,
     metrics: m({ l1_mkt_beta: 1.2, l1_mkt_hr: -1.2, l3_mkt_hr: -0.7, l3_sec_hr: -0.4, l3_sub_hr: -0.1, stock_var: 5e-4, l1_res_er: 1.4, l3_res_er: 1.3, lstar_level: 1 }) },
+  // Residual share below 0: floored at 0 in the variance term.
+  { symbol: "S-NEG", tickers: ["NEG"], value: 30_000, sector_etf: "XLF", subsector_etf: "KBE",
+    metrics: m({ l1_mkt_beta: 0.9, l1_mkt_hr: -0.9, l3_mkt_hr: -0.4, l3_sec_hr: -0.3, l3_sub_hr: -0.2, stock_var: 3e-4, l1_res_er: -0.02, l3_res_er: 0.3, lstar_level: 1 }) },
 ];
 const DIRECT = [{ ticker: "SPY", value: -60_000 }, { ticker: "XLF", value: 25_000 }];
 const GROSS = [...STOCKS, ...DIRECT].reduce((a, s) => a + Math.abs(s.value), 0);
@@ -50,6 +53,7 @@ function expectedFor(basis: Basis) {
     names_by_level: out.risk.names_by_level,
     excluded_from_lstar: out.coverage.excluded_from_lstar.map((e: any) => [e.ticker, e.reason]),
     residual_flagged: out.coverage.residual_flagged.map((e: any) => e.ticker),
+    hedge_added_variance: out.risk.residual.hedge_added_variance.map((e: any) => [e.ticker, e.level, e.residual_share]),
     systematic_daily_variance: out.risk.systematic.daily_variance_usd2,
     residual_daily_variance: out.risk.residual.daily_variance_usd2,
     layer_contributions: Object.fromEntries(

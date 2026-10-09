@@ -311,6 +311,10 @@ export const PortfolioExposureRequestSchema = z.object({
   as_of: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of must be YYYY-MM-DD")
+    .refine((d) => {
+      const t = new Date(`${d}T00:00:00Z`);
+      return !Number.isNaN(t.getTime()) && t.toISOString().startsWith(d);
+    }, "as_of must be a real calendar date")
     .refine((d) => d >= "2006-01-01", "as_of must be on or after 2006-01-01")
     .refine((d) => d <= new Date().toISOString().slice(0, 10), "as_of cannot be in the future")
     .optional(),

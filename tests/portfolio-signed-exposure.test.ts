@@ -76,11 +76,12 @@ describe("computeSignedExposure", () => {
     expect(sum).toBeCloseTo(risk.systematic.daily_variance_usd2, 6);
   });
 
-  it("residual is the diagonal Σ v²·stock_var·l3_res_er", () => {
+  it("residual is the diagonal Σ v²·stock_var·lK_res_er", () => {
     const expected = 100_000 ** 2 * 9e-4 * 0.4 + 60_000 ** 2 * 1.2e-3 * 0.5;
     const risk = out.risk as any;
     expect(risk.residual.daily_variance_usd2).toBeCloseTo(expected, 4);
-    expect(risk.residual.method).toBe("l3_residual_variance_diagonal_approximation");
+    expect(risk.residual.method).toBe("residual_variance_diagonal_approximation");
+    expect(risk.residual.level_basis).toBe("lstar");
   });
 
   it("annualises volatility with √252, not ×252", () => {
@@ -147,15 +148,53 @@ describe("computeSignedExposure", () => {
     expect(partial.coverage.etfs_without_covariance).toEqual(["COPX"]);
   });
 
-  it("flags out-of-range residual shares instead of using them", () => {
-    const bad = computeSignedExposure({
-      stocks: [stock("BAD", 10_000, { ...NVDA, l3_res_er: 1.4 })],
+  it("uses a residual share above 1 as is and reports that the hedge added variance", () => {
+    // BRK.B-like: the market leg removed less than nothing, so l1_res_er = 1.052.
+    const r = computeSignedExposure({
+      stocks: [stock("BRK", 10_000, { ...NVDA, l1_res_er: 1.052, lstar_level: 1 })],
       directEtfs: [],
       inputGrossUsd: 10_000,
       cov: COV,
     });
-    expect(bad.coverage.residual_flagged).toHaveLength(1);
-    expect((bad.risk as any).residual.daily_variance_usd2).toBe(0);
+    const risk = r.risk as any;
+    expect(r.coverage.residual_flagged).toEqual([]);
+    expect(risk.residual.daily_variance_usd2).toBeCloseTo(10_000 ** 2 * 9e-4 * 1.052, 4);
+    expect(risk.residual.hedge_added_variance).toEqual([{ ticker: "BRK", level: "l1", residual_share: 1.052 }]);
+    expect(r.coverage.by_calculation.residual).toBe(1);
+    expect(r.warnings.map((w) => w.code)).toEqual(["hedge_added_variance"]);
+  });
+
+  it("warns on an extreme residual share but still uses it", () => {
+    const r = computeSignedExposure({
+      stocks: [stock("ODD", 10_000, { ...NVDA, l3_res_er: 2.5 })],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+    });
+    expect((r.risk as any).residual.daily_variance_usd2).toBeCloseTo(10_000 ** 2 * 9e-4 * 2.5, 4);
+    expect(r.warnings.map((w) => w.code)).toEqual(["hedge_added_variance", "residual_share_extreme"]);
+  });
+
+  it("floors a negative residual share at 0 so it never subtracts variance", () => {
+    const r = computeSignedExposure({
+      stocks: [stock("NEG", 10_000, { ...NVDA, l3_res_er: -0.03 }), stock("NVDA", 10_000, NVDA)],
+      directEtfs: [],
+      inputGrossUsd: 20_000,
+      cov: COV,
+    });
+    expect((r.risk as any).residual.daily_variance_usd2).toBeCloseTo(10_000 ** 2 * 9e-4 * 0.4, 4);
+    expect(r.warnings.find((w) => w.code === "residual_share_floored")?.tickers).toEqual(["NEG"]);
+  });
+
+  it("still excludes a name with negative stock_var from the residual", () => {
+    const r = computeSignedExposure({
+      stocks: [stock("BAD", 10_000, { ...NVDA, stock_var: -1e-4 })],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+    });
+    expect(r.coverage.residual_flagged).toEqual([{ ticker: "BAD", reason: "negative stock_var" }]);
+    expect((r.risk as any).residual.daily_variance_usd2).toBe(0);
   });
 
   it("reconciliation is ~0 when the covariance reproduces the model's own split", () => {
@@ -253,7 +292,8 @@ describe("L* basis (default)", () => {
       inputGrossUsd: 110_000,
       cov: COV,
     });
-    expect(out.coverage.excluded_from_lstar).toEqual([{ ticker: "NOL", value_usd: 10_000, reason: "no_lstar" }]);
+    expect(out.coverage.excluded_from_lstar).toMatchObject([{ ticker: "NOL", value_usd: 10_000, reason: "no_lstar" }]);
+    expect(out.coverage.excluded_from_lstar[0]!.detail).toMatch(/No L\* level/);
     expect((out.hedges.lstar as any).names_by_level).toEqual({ l1: 0, l2: 0, l3: 1 });
     // NOL contributes to neither the hedge nor the residual.
     expect((out.hedges.lstar as any).stock_hedge_trade_usd.SPY).toBeCloseTo(100_000 * -0.5, 2);
@@ -269,7 +309,7 @@ describe("L* basis (default)", () => {
       inputGrossUsd: 10_000,
       cov: COV,
     });
-    expect(out.coverage.excluded_from_lstar).toEqual([{ ticker: "GAP", value_usd: 10_000, reason: "lstar_level_incomplete" }]);
+    expect(out.coverage.excluded_from_lstar).toMatchObject([{ ticker: "GAP", value_usd: 10_000, reason: "lstar_level_incomplete" }]);
     expect(out.coverage.by_calculation.hedge_lstar).toBe(0);
   });
 

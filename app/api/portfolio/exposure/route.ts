@@ -69,11 +69,12 @@ export const POST = withBilling(
       });
 
       if ("error" in result) {
-        // Nothing in the book resolved to a modelled name: a 4xx, so not billed.
+        // No stock with metrics and no ETF held with returns: a 4xx, so not billed.
         return NextResponse.json(
           {
             error: "No modelled positions",
-            message: "None of the submitted positions has ERM3 risk metrics.",
+            message:
+              "None of the submitted positions could be modelled: no stock has risk metrics at the model date and no ETF held has return history. Each entry in dropped gives the ticker's reason and a one-line detail.",
             dropped: result.dropped,
           },
           { status: 422, headers: getCorsHeaders(origin) },

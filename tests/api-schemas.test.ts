@@ -3,6 +3,7 @@ import {
   FactorCorrelationRequestSchema,
   LSTAR_STYLE_AXIS_REMOVED_MESSAGE,
   LstarRequestSchema,
+  PortfolioExposureRequestSchema,
   PortfolioRiskSnapshotRequestSchema,
   SnapshotRequestSchema,
 } from "@/lib/api/schemas";
@@ -251,5 +252,26 @@ describe("parseMacroFactorsSeriesQuery", () => {
       // (vs "volatility" which is the VXX futures-based factor).
       expect(r.factorStrings).toContain("vix_spot");
     }
+  });
+});
+
+describe("PortfolioExposureRequestSchema", () => {
+  const base = { positions: [{ ticker: "NVDA", value: 100_000 }, { ticker: "AMD", value: -50_000 }] };
+
+  it("accepts a signed book and defaults to L* over 252 days", () => {
+    const r = PortfolioExposureRequestSchema.parse(base);
+    expect(r.hedge_level).toBe("lstar");
+    expect(r.lookback_days).toBe(252);
+  });
+
+  it("rejects a zero value", () => {
+    expect(PortfolioExposureRequestSchema.safeParse({ positions: [{ ticker: "NVDA", value: 0 }] }).success).toBe(false);
+  });
+
+  it("rejects an as_of that is not a real calendar date, without throwing", () => {
+    for (const as_of of ["2026-02-30", "2026-13-01", "2025-00-10"]) {
+      expect(PortfolioExposureRequestSchema.safeParse({ ...base, as_of }).success).toBe(false);
+    }
+    expect(PortfolioExposureRequestSchema.safeParse({ ...base, as_of: "2024-02-29" }).success).toBe(true);
   });
 });
