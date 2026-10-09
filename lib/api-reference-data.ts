@@ -412,6 +412,104 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
     ],
   },
   {
+    name: 'Portfolio',
+    description:
+      'Signed long/short books in dollars: beta-dollars, ETF hedge trades at L*, L1, L2 and L3, a systematic and residual risk split, and model history feeds that keep holdings on the client. Guide: /docs/long-short-exposure.',
+    endpoints: [
+      {
+        path: '/portfolio/exposure',
+        method: 'post',
+        sidebarLabel: 'Long/short exposure',
+        summary: 'Long/short portfolio exposure, ETF hedges and risk (signed dollar positions)',
+        description:
+          "Signed book of up to 1000 positions as dollar market values (short negative), stocks and ETFs. Nothing is normalised, so a book that nets to roughly zero is valid; a book of ETFs only is valid. Use this for any book with shorts or more than 100 names; /portfolio/risk-index and /portfolio/risk-snapshot take positive weights. Repeated tickers and share classes that map to one model security are netted (share_class_netted warning). Returns: beta (L1 beta-dollars: stocks, ETFs held, total, by sector ETF); hedges.lstar|l1|l2|l3 (per ETF: stock_hedge_trade_usd = Σ value × hr, where hr is ETF dollars per $1 long stock; direct_etf_exposure_usd; total_neutralizing_trade_usd = stock hedge − ETFs held); risk at hedge_level (systematic xᵀΣx from the book's raw-ETF exposure and the sample ETF covariance over lookback_days; residual Σ value²·stock_var·max(lK_res_er, 0), a diagonal approximation that ignores residual covariance across names; total; reconciliation of the two systematic estimators); coverage (share of submitted gross per calculation, dropped names with reasons, excluded_from_lstar); warnings ({code, message, tickers}: share_class_netted, not_at_snapshot_teo, hedge_added_variance, residual_share_extreme, residual_share_floored, ticker_retry_limit). Every name is read at one common model date. A residual share above 1 (the hedge added variance over the window) is used as is and flagged. Cost: $0.25/call up to 25 names modelled, $1.00 above 25; latest and as_of cost the same; 422 responses are not charged.",
+        operationId: 'postPortfolioExposure',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'positions', in: 'body', type: 'array', required: true, description: 'Positions as [{ticker, value}]: signed dollar market value, negative for a short, non-zero. Max 1000.' },
+          { name: 'hedge_level', in: 'body', type: 'string', required: false, description: 'lstar (each name at its own L* level) | l1 | l2 | l3.', default: 'lstar' },
+          { name: 'lookback_days', in: 'body', type: 'integer', required: false, description: 'Trading days in the ETF covariance window (60–756). 252 matches the ERM3 estimation window.', default: '252' },
+          { name: 'as_of', in: 'body', type: 'string', required: false, description: 'Past model date YYYY-MM-DD (2006-01-01 or later). Omit for the latest. Same price.' },
+        ],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify(
+            {
+              positions: [
+                { ticker: 'NVDA', value: 2000000 },
+                { ticker: 'MSFT', value: 1500000 },
+                { ticker: 'AMD', value: -1200000 },
+                { ticker: 'XOM', value: -700000 },
+                { ticker: 'SPY', value: -1500000 },
+              ],
+            },
+            null,
+            2,
+          ),
+        },
+        responses: [
+          { status: 200, description: 'as_of (snapshot_teo, covariance window), book, beta, hedges (lstar, l1, l2, l3), risk (systematic, residual, total, reconciliation), coverage (by_calculation, dropped, excluded_from_lstar) and warnings. Report warnings and coverage.dropped with the result.' },
+          { status: 400, description: 'Invalid request (empty, more than 1000 positions, zero or non-finite value, malformed or impossible as_of).' },
+          { status: 401, description: 'Missing or invalid Bearer token.' },
+          { status: 402, description: 'Insufficient balance or daily spend cap reached.' },
+          { status: 422, description: 'No stock has risk metrics at the model date and no ETF held has return history. Body lists dropped with reasons. Not charged.' },
+          { status: 429, description: 'Rate limit exceeded.' },
+          { status: 500, description: 'Exposure computation failed. Not charged.' },
+        ],
+      },
+      {
+        path: '/portfolio/exposure/history',
+        method: 'post',
+        sidebarLabel: 'Exposure history (month-end)',
+        summary: 'Exposure history feed: month-end model history for a list of names (join locally)',
+        description:
+          "Send tickers only, no position values, and receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history since 2006 (names: hedge ratios at L1/L2/L3, explained-risk and residual shares, stock_var, lstar_level, l1_mkt_beta, sector and subsector ETF) and the ETF covariance over the 252 trading days ending each month-end (cov). Holdings never leave the client: the Python SDK (client.exposure_history(tickers).exposure(holdings_by_date)) joins the feed with dated holdings locally and returns the same quantities as /portfolio/exposure at each month-end. The ETF-to-sector mapping is the current registry. Derived data only: no prices, market caps or return series. Cost: $1.25/call up to 25 names delivered, $5.00 above 25; 422 responses are not charged.",
+        operationId: 'postPortfolioExposureHistory',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'tickers', in: 'body', type: 'array', required: true, description: 'Stocks and ETFs, max 1000. No values.' },
+          { name: 'start', in: 'body', type: 'string', required: false, description: 'First month-end YYYY-MM-DD. Default 2006.' },
+          { name: 'end', in: 'body', type: 'string', required: false, description: 'Last month-end YYYY-MM-DD. Default latest.' },
+        ],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify({ tickers: ['NVDA', 'MSFT', 'AMD', 'XOM', 'SPY'] }, null, 2),
+        },
+        responses: [
+          { status: 200, description: 'as_of, files (names and cov: url, format, rows, columns), names_delivered, etfs_in_covariance, dropped (symbol_not_found, no_data_in_range, etf_without_covariance).' },
+          { status: 400, description: 'Invalid request (empty or more than 1000 tickers, bad date).' },
+          { status: 422, description: 'Nothing to deliver. Not charged.' },
+          { status: 503, description: 'The month-end panel is not available.' },
+        ],
+      },
+      {
+        path: '/portfolio/exposure/history/daily',
+        method: 'post',
+        sidebarLabel: 'Exposure history (daily)',
+        summary: 'Exposure history feed, daily: every trading day for a list of names (join locally)',
+        description:
+          "Daily version of /portfolio/exposure/history: the same columns for every trading day since 2006 (or start), delivered as one Parquet file per calendar year (files.names.parts). The ETF covariance stays month-end; each day uses the latest month-end on or before it (the Python SDK does this: client.exposure_history(tickers, frequency=\"daily\")). Tickers only; holdings never leave the client. Derived data only. Cost: $2.50/call up to 25 names delivered, $10.00 above 25; 422 responses are not charged.",
+        operationId: 'postPortfolioExposureHistoryDaily',
+        tag: 'Risk Metrics',
+        params: [
+          { name: 'tickers', in: 'body', type: 'array', required: true, description: 'Stocks and ETFs, max 1000. No values.' },
+          { name: 'start', in: 'body', type: 'string', required: false, description: 'First day YYYY-MM-DD. Default 2006-01-01.' },
+          { name: 'end', in: 'body', type: 'string', required: false, description: 'Last day YYYY-MM-DD. Default latest.' },
+        ],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify({ tickers: ['NVDA', 'MSFT', 'AMD', 'XOM', 'SPY'], start: '2020-01-01' }, null, 2),
+        },
+        responses: [
+          { status: 200, description: 'Signed Parquet URLs (names per year, month-end covariance) plus coverage.' },
+          { status: 400, description: 'Invalid request.' },
+          { status: 422, description: 'Nothing to deliver. Not charged.' },
+          { status: 503, description: 'Daily stores or the month-end covariance panel unavailable.' },
+        ],
+      },
+    ],
+  },
+  {
     name: 'Fundamentals',
     description:
       'Point-in-time quarterly fundamentals (TTM profitability + capital-return ratios, leverage, long-window valuation betas, strict and separately labeled proxy cost-of-capital fields, equity-bridge decomposition, and SEC-sourced raw line items in sec_facts). Realized historical data; no forecasts, no analyst fields.',

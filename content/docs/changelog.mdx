@@ -11,6 +11,28 @@ in the repository.
 
 ---
 
+## October 2026 — long/short portfolio exposure
+
+**New: `POST /api/portfolio/exposure`.** Send a signed book of dollar positions (shorts
+negative, up to 1000 names, ETFs allowed). Nothing is normalised. The response carries L1
+beta-dollars by sector, ETF hedge trades at L\*, L1, L2 and L3 (stock hedge, ETFs already held,
+and the net neutralising trade), a systematic and residual risk split, coverage of the submitted
+gross by each calculation, and a `warnings` array. `as_of` computes the same output at a past
+model date. {'$'}0.25 per call up to 25 names modelled, {'$'}1.00 above.
+
+**New: exposure history feeds.** `POST /api/portfolio/exposure/history` (month-end) and
+`POST /api/portfolio/exposure/history/daily` take tickers only and return Parquet files with each
+name's model history since 2006 and the ETF covariance at each month-end. Holdings stay on the
+client; `client.exposure_history(...)` in `riskmodels-py` joins them locally. {'$'}1.25 / {'$'}5.00
+(month-end) and {'$'}2.50 / {'$'}10.00 (daily), split at 25 names delivered.
+
+**Residual shares above 1.** Explained-risk shares at a level sum to 1, but an individual share
+can be negative when a hedge leg added variance over the window, and the residual share can then
+exceed 1. `/portfolio/exposure` uses such a share as is and reports a `hedge_added_variance`
+warning. Guide: [Long/short exposure](/docs/long-short-exposure).
+
+---
+
 ## August 2026 — catalogue reprice
 
 Self-serve rates moved on **14 August 2026**. Lookups are **$0.005**; ticker-returns is

@@ -432,6 +432,27 @@ For the mathematical detail behind L1/L2/L3 decomposition and hedge construction
         <td className="py-3 px-3 text-zinc-500">{'$'}0.02/call</td>
         <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().get_residual_signal_basket(["AAPL","MSFT","NVDA"], signal_quality_min_quintile=4)' /></td>
       </tr>
+      <tr id="portfolio-exposure" className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/portfolio/exposure</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Signed long/short book in dollars (shorts negative, up to 1000 positions, ETFs allowed, never normalised): L1 beta-dollars, ETF hedge trades at L*, L1, L2 and L3, systematic and residual risk, coverage and <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">warnings</code>. Optional <code className="text-zinc-400 bg-zinc-950 px-1 rounded text-[10px]">as_of</code> for a past model date. <a href="/docs/long-short-exposure" className="text-primary hover:underline">Guide</a></td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}0.25 (≤25 names) / {'$'}1.00</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='import os, requests; requests.post("https://riskmodels.app/api/portfolio/exposure", headers={"Authorization": "Bearer " + os.environ["RISKMODELS_API_KEY"]}, json={"positions": [{"ticker": "NVDA", "value": 2000000}, {"ticker": "AMD", "value": -1200000}, {"ticker": "SPY", "value": -1500000}]}, timeout=60).json()' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/portfolio/exposure/history</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Month-end model history since 2006 for up to 1000 names plus the ETF covariance at each month-end, as Parquet via signed URLs. Tickers only; holdings stay on the client and the SDK joins them locally.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}1.25 (≤25 names) / {'$'}5.00</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().exposure_history(["NVDA","AMD","SPY"]).exposure({"2024-06-28": {"NVDA": 2000000, "AMD": -1200000, "SPY": -1500000}})' /></td>
+      </tr>
+      <tr className="border-b border-zinc-800 align-top">
+        <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/portfolio/exposure/history/daily</td>
+        <td className="py-3 px-3">POST</td>
+        <td className="py-3 px-3">Daily version of the exposure history feed: every trading day since 2006, one Parquet file per year, month-end ETF covariance. Tickers only.</td>
+        <td className="py-3 px-3 text-zinc-500">{'$'}2.50 (≤25 names) / {'$'}10.00</td>
+        <td className="py-3 px-3"><CopyPythonSnippet code='from riskmodels import RiskModelsClient; RiskModelsClient.from_env().exposure_history(["NVDA","AMD","SPY"], frequency="daily")' /></td>
+      </tr>
       <tr className="border-b border-zinc-800 align-top">
         <td className="py-3 px-3 font-mono text-xs text-zinc-300">/api/tickers</td>
         <td className="py-3 px-3">GET</td>
