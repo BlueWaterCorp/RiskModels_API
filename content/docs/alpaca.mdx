@@ -51,7 +51,7 @@ Keep one RiskModels MCP connection per client. Registering both the plugin and a
 
 The book has to be synced first (Path 1). Each step names the tool on the RiskModels server.
 
-1. **Read the book.** "Read my linked positions." The server calls `riskmodels_get_my_positions`. The payload includes `for_analysis` (ticker and weight) and `for_hedge` (ticker and dollars).
+1. **Read the book.** "Read my linked positions." The server calls `riskmodels_get_my_positions`. The payload includes `for_analysis` (ticker and weight), `for_hedge` (ticker and dollars), and `for_exposure` (ticker and signed dollars, short < 0). When the book has a short position (`has_shorts`) or more than 100 names, the agent passes `for_exposure` to `riskmodels_portfolio_exposure` instead of steps 2 and 3.
 2. **Decompose it.** "Analyze this book: explained risk by market, sector, subsector and stock-specific layer." The server passes `for_analysis` to `riskmodels_analyze_portfolio`.
 3. **Size the legs.** "Give me the ETF hedge legs for the current book." The server passes `for_hedge` to `riskmodels_hedge_portfolio`, which returns the ETF tickers, hedge ratios and dollar legs.
 

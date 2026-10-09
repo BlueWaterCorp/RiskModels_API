@@ -26,7 +26,9 @@ Default first call when the user has not named a ticker: riskmodels_compare with
 Single name: riskmodels_decompose.
 Returns history: riskmodels_get_returns.
 Dollar hedge: riskmodels_hedge_position.
-Linked brokerage book (Alpaca Connect, Connect Trade, or Plaid): riskmodels_get_my_positions, then riskmodels_analyze_portfolio or riskmodels_hedge_portfolio on the arrays it returns. One RiskModels server reads the book. This server does not place orders.
+Linked brokerage book (Alpaca Connect, Connect Trade, or Plaid): riskmodels_get_my_positions. One RiskModels server reads the book. This server does not place orders.
+Long-only book, up to 100 names: riskmodels_analyze_portfolio (for_analysis) or riskmodels_hedge_portfolio (for_hedge).
+Any short position, or more than 100 names: riskmodels_portfolio_exposure with for_exposure (signed dollars, short < 0).
 
 Skip riskmodels_list_endpoints, riskmodels_get_capability, riskmodels_get_schema, and riskmodels_get_openapi_spec unless the user is implementing a client or asks which REST routes exist. Those tools do not return live numbers.
 

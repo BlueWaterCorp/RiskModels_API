@@ -4,8 +4,8 @@ import { RiskModelsClient, type PositionInput, type WhitepaperExampleId } from "
 import { z } from "zod";
 import {
   EMPTY_BOOK_MESSAGE,
-  LINKED_BOOK_NEXT_STEP,
   fetchLinkedBook,
+  linkedBookNextStep,
 } from "./linked-book.js";
 
 type McpContent = { type: "text"; text: string };
@@ -437,7 +437,7 @@ export function registerRiskModelsTools(
       title: "RiskModels linked brokerage positions",
       annotations: { readOnlyHint: true },
       description:
-        "Read the caller's linked brokerage book (Alpaca Connect, Connect Trade, or Plaid) from the default portfolio on riskmodels.net. Returns tickers, quantities, market values, and weights, plus for_analysis (positive weights) and for_hedge (positive dollar market values) to pass to riskmodels_analyze_portfolio and riskmodels_hedge_portfolio. One RiskModels server is enough to read the book. This tool does not place orders. If the book is empty, the user connects a brokerage in riskmodels.net Settings and clicks Sync positions.",
+        "Read the caller's linked brokerage book (Alpaca Connect, Connect Trade, or Plaid) from the default portfolio on riskmodels.net. Returns tickers, quantities, market values, and weights, plus for_analysis (positive weights) and for_hedge (positive dollar market values) for the long-only tools riskmodels_analyze_portfolio and riskmodels_hedge_portfolio, and for_exposure (every position, signed dollars, short < 0) for riskmodels_portfolio_exposure. When has_shorts is true or the book has more than 100 names, pass for_exposure to riskmodels_portfolio_exposure instead. One RiskModels server is enough to read the book. This tool does not place orders. If the book is empty, the user connects a brokerage in riskmodels.net Settings and clicks Sync positions.",
       inputSchema: {},
     },
     async () => {
@@ -456,7 +456,7 @@ export function registerRiskModelsTools(
         if (result.book.empty) {
           return textResult({ ...result.book, message: EMPTY_BOOK_MESSAGE });
         }
-        return textResult({ ...result.book, next_step: LINKED_BOOK_NEXT_STEP });
+        return textResult({ ...result.book, next_step: linkedBookNextStep(result.book) });
       } catch (error) {
         return errorResult(error);
       }
@@ -469,7 +469,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Portfolio hedge_levels aggregate",
       annotations: { readOnlyHint: true },
       description:
-        "Holdings-weighted L1/L2/L3 hedge_levels across names via POST /batch/analyze (hedge_ratios). Returns normalized portfolio.portfolio_hedge_levels and per-ticker blocks when present.",
+        "Long-only books of up to 100 names: holdings-weighted L1/L2/L3 hedge_levels across names via POST /batch/analyze (hedge_ratios). Returns normalized portfolio.portfolio_hedge_levels and per-ticker blocks when present. Weights must be positive. For a book with any short position or more than 100 names, call riskmodels_portfolio_exposure.",
       inputSchema: {
         positions: z
           .array(
@@ -500,7 +500,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Portfolio ETF hedge notionals",
       annotations: { readOnlyHint: true },
       description:
-        "Batch hedge_ratios at a chosen cascade level (L1/L2/L3), scale HRs by dollar notionals per ticker, and aggregate ETF USD hedge legs.",
+        "Long-only books of up to 100 names: batch hedge_ratios at a chosen cascade level (L1/L2/L3), scale HRs by dollar notionals per ticker, and aggregate ETF USD hedge legs. Dollars must be positive. For a book with any short position or more than 100 names, call riskmodels_portfolio_exposure.",
       inputSchema: {
         positions: z
           .array(
@@ -528,6 +528,64 @@ export function registerRiskModelsTools(
             years,
           }),
         );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_portfolio_exposure",
+    {
+      title: "RiskModels Long/Short Portfolio Exposure",
+      annotations: { readOnlyHint: true },
+      description:
+        "Signed long/short book exposure (POST /portfolio/exposure). Use this whenever any position is short (negative value) or the book has more than 100 names; riskmodels_analyze_portfolio and riskmodels_hedge_portfolio take long positions only. Positions are { ticker, value } in signed dollars (short < 0), up to 1000, netted by security and never normalised; pass for_exposure from riskmodels_get_my_positions unchanged. Returns L1 beta-dollars by sector, the ETF trades that neutralise the book at L1/L2/L3, and a systematic vs residual risk split at hedge_level (default lstar: each name at its own L* level). If coverage.dropped or warnings are non-empty, tell the user which positions were not modelled; do not present the result as covering the whole book. Billing: $0.25 per call up to 25 modelled names, $1.00 above 25.",
+      inputSchema: {
+        positions: z
+          .array(
+            z.object({
+              ticker: z.string().min(1),
+              value: z
+                .number()
+                .finite()
+                .refine((v) => v !== 0, "value must be non-zero (signed dollars; short < 0)")
+                .describe("Signed dollar market value; short < 0"),
+            }),
+          )
+          .min(1)
+          .max(1000)
+          .describe("Signed book: { ticker, value } in dollars, short < 0 (1-1000)"),
+        hedge_level: z
+          .enum(["lstar", "l1", "l2", "l3"])
+          .optional()
+          .describe("lstar (default): each name at its own L* level. l1/l2/l3: one level for every name"),
+        lookback_days: z
+          .number()
+          .int()
+          .min(60)
+          .max(756)
+          .optional()
+          .describe("Trading days in the ETF covariance window (default 252)"),
+        as_of: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .describe("Past model date YYYY-MM-DD (2006-01-01 or later); omit for the latest"),
+      },
+    },
+    async ({ positions, hedge_level, lookback_days, as_of }) => {
+      try {
+        const body: Record<string, unknown> = {
+          positions: positions.map((row: { ticker: string; value: number }) => ({
+            ticker: row.ticker.trim().toUpperCase(),
+            value: row.value,
+          })),
+        };
+        if (hedge_level !== undefined) body.hedge_level = hedge_level;
+        if (lookback_days !== undefined) body.lookback_days = lookback_days;
+        if (as_of !== undefined) body.as_of = as_of;
+        return textResult(await sdk.call("POST", "/portfolio/exposure", { body }));
       } catch (error) {
         return errorResult(error);
       }
@@ -1217,7 +1275,7 @@ ${CHART_INSTRUCTION}`),
     },
     () =>
       promptText(
-        `Call riskmodels_get_my_positions first. If it returns a book, pass for_analysis to riskmodels_analyze_portfolio and for_hedge to riskmodels_hedge_portfolio. If the book is empty, ask for tickers and weights or dollar notionals, then call riskmodels_portfolio_decompose or riskmodels_analyze_portfolio. Render chart_data using suggested_chart and explain the layers. Do not place orders.`,
+        `Call riskmodels_get_my_positions first. If it returns a book with has_shorts true or more than 100 names, pass for_exposure to riskmodels_portfolio_exposure. Otherwise pass for_analysis to riskmodels_analyze_portfolio and for_hedge to riskmodels_hedge_portfolio. If the book is empty, ask for tickers and weights or dollar notionals, then call riskmodels_portfolio_decompose or riskmodels_analyze_portfolio, or riskmodels_portfolio_exposure with signed dollar values if any position is short. Render chart_data using suggested_chart and explain the layers. Do not place orders.`,
       ),
   );
 }

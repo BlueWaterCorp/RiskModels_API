@@ -248,6 +248,7 @@ describe("RiskModels MCP live-paper tools", () => {
       "riskmodels_get_my_positions",
       "riskmodels_analyze_portfolio",
       "riskmodels_hedge_portfolio",
+      "riskmodels_portfolio_exposure",
       "riskmodels_portfolio_decompose",
       "riskmodels_whitepaper_example",
       "riskmodels_search_tickers",

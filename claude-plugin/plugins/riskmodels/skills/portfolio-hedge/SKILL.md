@@ -19,14 +19,21 @@ itself.
 
 - **`riskmodels_get_my_positions`** — the caller's linked book (Alpaca Connect, Connect
   Trade, or Plaid). Call this first when the user means their account and has not
-  pasted tickers. Pass `for_analysis` and `for_hedge` to the portfolio tools below.
-  This server does not place orders.
+  pasted tickers. Pass `for_analysis` and `for_hedge` to the long-only portfolio tools
+  below; when `has_shorts` is true or the book has more than 100 names, pass
+  `for_exposure` to `riskmodels_portfolio_exposure`. This server does not place orders.
 - **`riskmodels_hedge_position`** — one ticker: scale the L-level ETF hedge ratios to
   a dollar position.
 - **`riskmodels_hedge_portfolio`** — a weighted book: hedge ratios at the chosen
   cascade level (L1/L2/L3), scaled by notionals and aggregated into ETF USD hedge legs.
 - **`riskmodels_analyze_portfolio`** — holdings-weighted L1/L2/L3 hedge-level
   aggregate when the user wants the whole-book view across depths.
+- **`riskmodels_portfolio_exposure`** — a signed long/short book (dollar values,
+  short < 0, up to 1000 names): beta-dollars by sector, the ETF trades that neutralise
+  the book at L1/L2/L3, and the systematic vs residual risk split. Use it whenever any
+  position is short or the book has more than 100 names; `riskmodels_hedge_portfolio`
+  and `riskmodels_analyze_portfolio` take long positions only (up to 100). Report any
+  `coverage.dropped` names or `warnings` to the user.
 - **`riskmodels_get_lstar`** / **`riskmodels_batch_lstar`** — dispatch the simplest
   cascade level that clears the marginal-ER threshold for a name (or basket) and
   return the residual-return series after that hedge.
