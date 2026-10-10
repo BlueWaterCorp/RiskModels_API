@@ -17,7 +17,7 @@ import {
  * - get_benchmark_fit offers only benchmarks that are live.
  */
 
-type Registered = { description?: string; inputSchema?: { shape?: Record<string, unknown> } };
+type Registered = { title?: string; description?: string; annotations?: { title?: string; readOnlyHint?: boolean }; inputSchema?: { shape?: Record<string, unknown> } };
 
 function hostedTools(): Record<string, Registered> {
   const server = createMcpServer({ apiKey: "rm_agent_live_test" });
@@ -37,6 +37,19 @@ describe("MCP directory compliance", () => {
     for (const [name, t] of Object.entries(tools)) {
       expect(t.description, name).toBeTruthy();
       expect(t.description!, name).not.toMatch(steering);
+    }
+  });
+
+  it("every tool carries annotations.title and readOnlyHint", () => {
+    for (const [name, t] of Object.entries(tools)) {
+      expect(t.annotations?.title, name).toBeTruthy();
+      expect(t.annotations?.readOnlyHint, name).toBe(true);
+    }
+  });
+
+  it("the catalog tools link the API reference", () => {
+    for (const name of ["riskmodels_list_endpoints", "riskmodels_get_capability", "riskmodels_get_schema"]) {
+      expect(tools[name]!.description, name).toContain("https://riskmodels.app/docs/api");
     }
   });
 
