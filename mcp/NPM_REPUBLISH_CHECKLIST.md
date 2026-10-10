@@ -83,6 +83,26 @@ npm publish --dry-run
 
 ---
 
+## Step 4b: Smoke-test the packed tarball
+
+A clean build is not enough: files compiled from `../lib/` take their module
+format from the nearest `package.json`, and a CommonJS file inside this
+`"type": "module"` package crashes at startup. Install the tarball in an empty
+directory and list the tools before publishing:
+
+```bash
+npm pack                                  # writes riskmodels-mcp-<version>.tgz
+cd "$(mktemp -d)" && npm init -y >/dev/null && npm i <path-to>.tgz
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | RISKMODELS_API_KEY=... npx riskmodels-mcp
+# Expect a tools/list result, not a SyntaxError.
+```
+
+---
+
 ## Step 5: Publish
 
 ```bash
