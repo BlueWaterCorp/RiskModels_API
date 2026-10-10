@@ -391,7 +391,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
       if (yaml) {
         return { content: [{ type: "text", text: yaml }] };
       }
-      return { content: [{ type: "text", text: JSON.stringify({ error: "OpenAPI spec not found in mcp/data/" }) }] };
+      return { content: [{ type: "text", text: JSON.stringify({ error: "OpenAPI spec not found in mcp/data/" }) }], isError: true };
     }
   );
 
@@ -405,7 +405,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     async () => {
       const capabilities = loadJson<Array<{ id: string; name: string; method: string; endpoint: string; description: string }>>("capabilities.json");
       if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "capabilities.json not found" }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: "capabilities.json not found" }) }], isError: true };
       }
       const list = capabilities.map((c) => ({
         id: c.id,
@@ -430,11 +430,11 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     async ({ id }) => {
       const capabilities = loadJson<Array<{ id: string; [k: string]: unknown }>>("capabilities.json");
       if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "Capabilities not loaded" }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: "Capabilities not loaded" }) }], isError: true };
       }
       const cap = capabilities.find((c) => c.id === id);
       if (!cap) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Unknown capability: ${id}`, available: capabilities.map((c) => c.id) }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `Unknown capability: ${id}`, available: capabilities.map((c) => c.id) }) }], isError: true };
       }
       return { content: [{ type: "text", text: JSON.stringify(cap, null, 2) }] };
     }
@@ -455,7 +455,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
       const data = loadJson<unknown>(join("schemas", filename));
       if (!data) {
         const paths = loadJson<string[]>("schema-paths.json") || [];
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Schema not found: ${filename}`, available: paths }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `Schema not found: ${filename}`, available: paths }) }], isError: true };
       }
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
@@ -495,10 +495,10 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
         },
       });
       if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
       }
       if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       }
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
@@ -521,10 +521,10 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
         `/metrics/${encodeURIComponent(ticker.toUpperCase())}`,
       );
       if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
       }
       if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       }
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
@@ -594,10 +594,10 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
         { query },
       );
       if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
       }
       if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       }
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
@@ -649,10 +649,10 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
       if (window_days) body.window_days = window_days;
       const { status, data, meter, error } = await apiCall(opts, "POST", "/portfolio/risk-snapshot", { body });
       if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
       }
       if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       }
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
@@ -713,10 +713,10 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
       if (benchmark) body.benchmark = benchmark;
       const { status, data, meter, error } = await apiCall(opts, "POST", "/snapshot", { body });
       if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
       }
       if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       }
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },

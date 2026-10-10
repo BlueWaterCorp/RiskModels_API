@@ -313,11 +313,16 @@ export class RiskModelsClient {
     }
 
     if (!response.ok) {
-      const message =
-        raw && typeof raw === "object" && "message" in raw
-          ? String((raw as { message: unknown }).message)
-          : `RiskModels API request failed with HTTP ${response.status}`;
-      throw new Error(message);
+      // Carry the API's own reason: error bodies use `message`, `error` or `detail`.
+      const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      const reason = [body.message, body.error, body.detail].find(
+        (v): v is string => typeof v === "string" && v.trim() !== "",
+      );
+      throw new Error(
+        reason
+          ? `RiskModels API HTTP ${response.status}: ${reason}`
+          : `RiskModels API request failed with HTTP ${response.status}`,
+      );
     }
 
     return {

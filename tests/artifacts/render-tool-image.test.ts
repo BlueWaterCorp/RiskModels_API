@@ -53,7 +53,7 @@ describe("registry PNG delivery through MCP", () => {
       artifact: { content_type: "image/png", byte_length: Buffer.from(png, "base64").length, delivery: "mcp_image" },
     });
     expect(textPayload(result).artifact).not.toHaveProperty("base64");
-    expect(textPayload(result).chart_instruction).toContain("do not redraw");
+    expect(textPayload(result).chart_instruction).toBeUndefined();
     expect(renderArtifact).toHaveBeenCalledOnce();
   });
 

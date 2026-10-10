@@ -10,7 +10,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-type ToolHandler = (args: unknown) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
+type ToolHandler = (args: unknown) => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
 
 function registerAll(opts: {
   apiKey?: string | null;
@@ -171,12 +171,12 @@ describe("riskmodels_get_my_positions", () => {
     expect(calls).toEqual(["https://portal.test/api/positions"]);
     expect(payload.for_analysis).toEqual([{ ticker: "AAPL", weight: 1 }]);
     expect(payload.for_hedge).toEqual([{ ticker: "AAPL", dollars: 1000 }]);
-    expect(payload.next_step).toContain("riskmodels_analyze_portfolio");
-    expect(payload.next_step).toContain("does not place orders");
+    // Factual output only: no instructions to call other tools (MCP directory policy).
+    expect(payload.next_step).toBeUndefined();
     expect(payload.has_shorts).toBe(false);
   });
 
-  it("routes a book with shorts to riskmodels_portfolio_exposure", async () => {
+  it("returns a book with shorts as a signed for_exposure list", async () => {
     const handler = toolHarness({
       apiKey: "rm_agent_live_test",
       fetchPositions: async () =>
@@ -193,7 +193,7 @@ describe("riskmodels_get_my_positions", () => {
       { ticker: "AAPL", value: 1000 },
       { ticker: "TSLA", value: -500 },
     ]);
-    expect(payload.next_step).toContain("riskmodels_portfolio_exposure");
+    expect(payload.next_step).toBeUndefined();
   });
 
   it("tells the caller to sync when the book is empty", async () => {
@@ -215,8 +215,10 @@ describe("riskmodels_get_my_positions", () => {
         return jsonResponse(200, { positions: [] });
       },
     });
-    const payload = JSON.parse((await handler({})).content[0].text);
+    const result = await handler({});
+    const payload = JSON.parse(result.content[0].text);
     expect(called).toBe(false);
+    expect(result.isError).toBe(true);
     expect(payload.error).toContain("RISKMODELS_API_KEY");
   });
 
@@ -225,7 +227,9 @@ describe("riskmodels_get_my_positions", () => {
       apiKey: "rm_agent_live_test",
       fetchPositions: async () => jsonResponse(401, { error: "Unauthorized" }),
     });
-    const payload = JSON.parse((await handler({})).content[0].text);
+    const result = await handler({});
+    const payload = JSON.parse(result.content[0].text);
+    expect(result.isError).toBe(true);
     expect(payload.status).toBe(401);
     expect(payload.error).toContain("rejected");
   });

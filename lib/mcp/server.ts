@@ -328,7 +328,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     async () => {
       const capabilities = loadJson<Array<{ id: string; name: string; method: string; endpoint: string; description: string }>>("capabilities.json");
       if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "capabilities.json not found" }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: "capabilities.json not found" }) }], isError: true };
       }
       const list = capabilities.map((c) => ({
         id: c.id,
@@ -354,11 +354,11 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     async ({ id }) => {
       const capabilities = loadJson<Array<{ id: string; [k: string]: unknown }>>("capabilities.json");
       if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "Capabilities not loaded" }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: "Capabilities not loaded" }) }], isError: true };
       }
       const cap = capabilities.find((c) => c.id === id);
       if (!cap) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Unknown capability: ${id}`, available: capabilities.map((c) => c.id) }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `Unknown capability: ${id}`, available: capabilities.map((c) => c.id) }) }], isError: true };
       }
       return { content: [{ type: "text", text: JSON.stringify(cap, null, 2) }] };
     }
@@ -380,7 +380,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       const data = loadJson<unknown>(join("schemas", filename));
       if (!data) {
         const paths = loadJson<string[]>("schema-paths.json") || [];
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Schema not found: ${filename}`, available: paths }) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ error: `Schema not found: ${filename}`, available: paths }) }], isError: true };
       }
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
@@ -394,7 +394,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       title: "L3 Hierarchical Risk Decomposition",
       annotations: { readOnlyHint: true },
       description:
-        "Daily EOD hierarchical orthogonal decomposition for a single ticker: market → sector → subsector → residual. Returns parallel time-series arrays plus hedge ratios. Data freshness: daily after US market close.",
+        "Daily hierarchical risk decomposition for one ticker (GET /l3-decomposition): market, sector, subsector and residual as parallel daily time series, plus hedge ratios. Inputs: ticker; market factor ETF (default SPY); years of history (1-15, default 1). Updated daily after the US close.",
       inputSchema: {
         ticker: z.string().describe("Stock ticker symbol, e.g. NVDA, AAPL"),
         market_factor_etf: z.string().optional().default("SPY"),
@@ -409,8 +409,8 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
           years: String(years ?? 1),
         },
       });
-      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
-      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
+      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
   );
@@ -421,7 +421,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       title: "Latest Risk Metrics Snapshot",
       annotations: { readOnlyHint: true },
       description:
-        "Latest daily EOD risk metrics for a ticker: L1/L2/L3 hedge ratios (SPY, sector ETF, subsector ETF), explained-risk fractions, daily volatility, price close, market cap.",
+        "Latest end-of-day risk metrics for one ticker (GET /metrics/{ticker}): L1, L2 and L3 hedge ratios to SPY and the sector and subsector ETFs, explained-risk shares, daily volatility, closing price and market cap.",
       inputSchema: {
         ticker: z.string().describe("Stock ticker symbol, e.g. NVDA, AAPL"),
       },
@@ -432,8 +432,8 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
         "GET",
         `/metrics/${encodeURIComponent(ticker.toUpperCase())}`,
       );
-      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
-      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
+      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
   );
@@ -444,7 +444,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       title: "Portfolio Risk Snapshot",
       annotations: { readOnlyHint: true },
       description:
-        "Bundled portfolio risk report for up to 100 positions: variance decomposition, 23-day volatility, optional diversification analytics. Response is cached per-user per-portfolio for 1 hour.",
+        "Risk report for a long-only portfolio of up to 100 positions with positive weights (POST /portfolio/risk-snapshot): variance decomposition into market, sector, subsector and residual, 23-day volatility, and optional diversification analytics. Results are cached for one hour per user and portfolio.",
       inputSchema: {
         positions: z
           .array(
@@ -468,8 +468,8 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       if (include_diversification) body.include_diversification = include_diversification;
       if (window_days) body.window_days = window_days;
       const { status, data, meter, error } = await apiCall(opts, "POST", "/portfolio/risk-snapshot", { body });
-      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }] };
-      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }] };
+      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
+      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
       return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
     },
   );
