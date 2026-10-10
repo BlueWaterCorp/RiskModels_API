@@ -5492,15 +5492,18 @@
             "format": "float",
             "nullable": true
           },
+          "net_assets": {
+            "type": "number",
+            "nullable": true,
+            "description": "Net assets from the filing's own N-PORT header. Null when the filing has none (then `aum_reported` is only the sum of positions).\n"
+          },
           "weight_basis": {
             "type": "string",
-            "nullable": true,
             "enum": [
-              "aum_reported",
-              "aum_erm3",
-              null
+              "net_assets",
+              "gross"
             ],
-            "description": "Denominator of each holding's `weight`."
+            "description": "Denominator of each holding's `weight`: `net_assets` when the filing reports them, else the book's gross value. Never the net in-model value, which for a long/short fund would inflate weights.\n"
           },
           "book": {
             "type": "object",
@@ -5529,6 +5532,30 @@
               "gross_mv": {
                 "type": "number",
                 "example": 1130435663
+              },
+              "long_pct_nav": {
+                "type": "number",
+                "nullable": true,
+                "example": 0.969,
+                "description": "long_mv / net_assets"
+              },
+              "short_pct_nav": {
+                "type": "number",
+                "nullable": true,
+                "example": -0.924,
+                "description": "short_mv / net_assets"
+              },
+              "net_pct_nav": {
+                "type": "number",
+                "nullable": true,
+                "example": 0.045,
+                "description": "net_mv / net_assets"
+              },
+              "gross_pct_nav": {
+                "type": "number",
+                "nullable": true,
+                "example": 1.893,
+                "description": "gross_mv / net_assets"
               }
             }
           },
@@ -17754,7 +17781,7 @@
     "/funds/{bw_fund_id}/holdings": {
       "get": {
         "summary": "Fund holdings, full book with shorts",
-        "description": "The fund's full book at its latest filed report (SEC N-PORT), shorts included as negative `adj_mv`, ranked by |adj_mv|. Each holding has `ticker`, `bw_sym_id`, `adj_mv` and a signed `weight` against reported net assets. `book` gives long/short/net/gross totals over every position. Ask for `limit=5000` to get the whole book; the positions can go straight into `POST /portfolio/exposure`. A fund with no holdings panel falls back to its 25 largest longs (`source: top_25_longs`).\n",
+        "description": "The fund's full book at its latest filed report (SEC N-PORT), shorts included as negative `adj_mv`, ranked by |adj_mv|. Each holding has `ticker`, `bw_sym_id`, `adj_mv` and a signed `weight` against filed net assets (gross when a filing reports none; see `weight_basis`). `book` gives long/short/net/gross totals over every position, in dollars and as a fraction of net assets. Ask for `limit=5000` to get the whole book; the positions can go straight into `POST /portfolio/exposure`. A fund with no holdings panel falls back to its 25 largest longs (`source: top_25_longs`).\n",
         "operationId": "getFundHoldings",
         "tags": [
           "Funds"
