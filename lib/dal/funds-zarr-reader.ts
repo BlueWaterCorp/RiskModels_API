@@ -436,7 +436,7 @@ async function readFloatSlice1d(
     if (d instanceof Float32Array || d instanceof Float64Array) {
       return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
     }
-    if (d instanceof Int32Array || d instanceof Int16Array) {
+    if (d instanceof Int32Array || d instanceof Int16Array || d instanceof Int8Array) {
       return Array.from(d, (x) => x);
     }
     if (d instanceof BigInt64Array) {
@@ -849,7 +849,11 @@ export async function readFundHoldingsTopN(
   };
 }
 
-/** Long/short totals of a fund's full book (USD; short_mv is negative). */
+/**
+ * Long/short totals of a fund's full book (USD; short_mv is negative), and
+ * the same four as a fraction of filed net assets (null when the filing has
+ * no net-assets figure).
+ */
 export interface FundBookSummary {
   n_long: number;
   n_short: number;
@@ -857,6 +861,10 @@ export interface FundBookSummary {
   short_mv: number;
   net_mv: number;
   gross_mv: number;
+  long_pct_nav: number | null;
+  short_pct_nav: number | null;
+  net_pct_nav: number | null;
+  gross_pct_nav: number | null;
 }
 
 /**
@@ -876,8 +884,14 @@ export interface FundBookCoverage {
 export interface FundHoldingsBook extends FundHoldingsSnapshot {
   /** SEC filing date of the report the book comes from; null when not stamped. */
   filing_date: string | null;
-  /** Denominator of `weight`: reported net assets, else the in-model net value. */
-  weight_basis: "aum_reported" | "aum_erm3" | null;
+  /** Net assets from the filing's own header; null when the filing lacks one. */
+  net_assets: number | null;
+  /**
+   * Denominator of `weight`: filed net assets, else the book's gross value.
+   * Never the net in-model value, which for a long/short book is a sliver
+   * of capital and would inflate every weight.
+   */
+  weight_basis: "net_assets" | "gross";
   book: FundBookSummary;
   coverage: FundBookCoverage;
 }
@@ -888,9 +902,10 @@ export interface FundHoldingsBook extends FundHoldingsSnapshot {
  * Months after a filing carry the same positions forward, so the book is
  * dated by the newest teo with reported AUM, not the newest teo. Ranked by
  * |adj_mv| descending, then bw_sym_id, and cut to `n`; `book` totals cover
- * every position. `weight = adj_mv / aum_reported` (net assets) and keeps its
- * sign: for a long/short fund `aum_erm3` is the small net exposure, which
- * would inflate weights. Each holding carries `ticker`, and `coverage` says
+ * every position. `weight` keeps its sign and is adj_mv over filed net assets
+ * (`aum_source == 1`, the N-PORT header). When the filing has no header,
+ * `aum_reported` is only Σ adj_mv, which for a long/short book is the net,
+ * so weights fall back to the book's gross value instead. Each holding carries `ticker`, and `coverage` says
  * how much of the book has one. Returns null when the
  * fund has no ds_ph.zarr or no non-zero holdings.
  *
@@ -901,7 +916,7 @@ export async function readFundHoldingsBook(
   bwFundId: string,
   n = 25,
 ): Promise<FundHoldingsBook | null> {
-  const ck = generateCacheKey("funds_zarr", "fund_holdings_book_v3", { fund: bwFundId });
+  const ck = generateCacheKey("funds_zarr", "fund_holdings_book_v4", { fund: bwFundId });
   let labelsFailed = false;
   const full = await withZarrCache<FundHoldingsBook | null>(
     ck,
@@ -912,9 +927,10 @@ export async function readFundHoldingsBook(
       const symbols = await readSymbolStrings(grp);
       if (!teos || teos.length === 0 || !symbols || symbols.length === 0) return null;
 
-      const [aumReported, aumErm3, droppedMv, filingDates] = await Promise.all([
+      const [aumReported, aumErm3, aumSource, droppedMv, filingDates] = await Promise.all([
         readFloatSlice1d(grp, "aum_reported", 0, teos.length),
         readFloatSlice1d(grp, "aum_erm3", 0, teos.length),
+        readFloatSlice1d(grp, "aum_source", 0, teos.length),
         readFloatSlice1d(grp, "identity_dropped_mv", 0, teos.length),
         readDatetimeVarStrings(grp, "filing_date"),
       ]);
@@ -928,20 +944,20 @@ export async function readFundHoldingsBook(
 
       const adjMv = await readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length);
       if (!adjMv) return null;
-      const nav = aumReported?.[teoIdx] ?? null;
+      const aumRep = aumReported?.[teoIdx] ?? null;
       const netErm3 = aumErm3?.[teoIdx] ?? null;
-      const weightBasis: FundHoldingsBook["weight_basis"] =
-        nav != null && nav > 0 ? "aum_reported" : netErm3 != null && netErm3 > 0 ? "aum_erm3" : null;
-      const denom = weightBasis === "aum_reported" ? nav : weightBasis === "aum_erm3" ? netErm3 : null;
+      // aum_source 1 = N-PORT NET_ASSETS header; 0 = Σ adj_mv fallback.
+      const netAssets = aumSource?.[teoIdx] === 1 && aumRep != null && aumRep > 0 ? aumRep : null;
 
       const holdings: FundHolding[] = [];
       const book: FundBookSummary = {
         n_long: 0, n_short: 0, long_mv: 0, short_mv: 0, net_mv: 0, gross_mv: 0,
+        long_pct_nav: null, short_pct_nav: null, net_pct_nav: null, gross_pct_nav: null,
       };
       for (let i = 0; i < adjMv.length; i++) {
         const v = adjMv[i];
         if (v == null || v === 0) continue;
-        holdings.push({ bw_sym_id: symbols[i]!, adj_mv: v, weight: denom ? v / denom : null });
+        holdings.push({ bw_sym_id: symbols[i]!, adj_mv: v, weight: null });
         if (v > 0) {
           book.n_long++;
           book.long_mv += v;
@@ -953,6 +969,15 @@ export async function readFundHoldingsBook(
       if (holdings.length === 0) return null;
       book.net_mv = book.long_mv + book.short_mv;
       book.gross_mv = book.long_mv - book.short_mv;
+      if (netAssets != null) {
+        book.long_pct_nav = book.long_mv / netAssets;
+        book.short_pct_nav = book.short_mv / netAssets;
+        book.net_pct_nav = book.net_mv / netAssets;
+        book.gross_pct_nav = book.gross_mv / netAssets;
+      }
+      const weightBasis: FundHoldingsBook["weight_basis"] = netAssets != null ? "net_assets" : "gross";
+      const denom = netAssets ?? book.gross_mv;
+      for (const h of holdings) h.weight = denom > 0 ? h.adj_mv / denom : null;
       holdings.sort(
         (a, b) =>
           Math.abs(b.adj_mv) - Math.abs(a.adj_mv) ||
@@ -974,8 +999,9 @@ export async function readFundHoldingsBook(
       return {
         teo: teos[teoIdx]!,
         filing_date: filingDates?.[teoIdx] ?? null,
-        aum_reported: nav,
+        aum_reported: aumRep,
         aum_erm3: netErm3,
+        net_assets: netAssets,
         weight_basis: weightBasis,
         n_holdings_returned: holdings.length,
         n_total_holdings: holdings.length,
