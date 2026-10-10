@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
 import { pickLiveRow } from "@/lib/dal/risk-engine-v3";
+import { resolveSymIdsToTickers } from "@/lib/dal/symbols-batch";
 
 export const dynamic = "force-dynamic";
 
@@ -11,21 +12,52 @@ export const dynamic = "force-dynamic";
  *
  * Resolve multiple tickers to symbol registry rows in one call.
  * Body: { tickers: ["AAPL", "MSFT", ...] }
- *
  * Returns: { results: { [ticker]: SymbolRegistryRow } }
+ *
+ * Reverse mode, for ids returned by the holdings endpoints:
+ * Body: { symbols: ["BW-BBG000B9XRY4", "BW-TICKER-XYZ", ...] }
+ * Returns: { results: { [bw_sym_id]: { ticker, name } }, unresolved: [...] }
  */
 export async function POST(request: NextRequest) {
-  let body: { tickers?: string[] };
+  let body: { tickers?: string[]; symbols?: unknown[] };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Reverse mode: bw_sym_ids from a holdings response → tickers.
+  if (body.symbols !== undefined && body.tickers === undefined) {
+    const symbols = body.symbols;
+    if (
+      !Array.isArray(symbols) ||
+      symbols.length === 0 ||
+      !symbols.every((s): s is string => typeof s === "string" && s.length > 0)
+    ) {
+      return NextResponse.json(
+        { error: "symbols must be a non-empty array of bw_sym_id strings" },
+        { status: 400 },
+      );
+    }
+    if (symbols.length > 1000) {
+      return NextResponse.json(
+        { error: "Max 1000 symbols per request" },
+        { status: 400 },
+      );
+    }
+    const resolved = await resolveSymIdsToTickers(symbols);
+    const results: Record<string, { ticker: string; name: string | null }> = {};
+    for (const [id, label] of resolved) {
+      if (label.ticker) results[id] = { ticker: label.ticker, name: label.name };
+    }
+    const unresolved = Array.from(new Set(symbols)).filter((s) => !(s in results));
+    return NextResponse.json({ results, unresolved });
+  }
+
   const tickers = body.tickers;
   if (!Array.isArray(tickers) || tickers.length === 0) {
     return NextResponse.json(
-      { error: "tickers array is required" },
+      { error: "tickers or symbols array is required" },
       { status: 400 },
     );
   }

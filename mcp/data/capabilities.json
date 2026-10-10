@@ -2743,7 +2743,7 @@
   {
     "id": "fund-holdings",
     "name": "Fund Top-N Holdings",
-    "description": "Top-N current holdings for a mutual fund at the latest teo. Reads adj_mv (symbol, teo) and aum_erm3 (teo,) from Slice 5's per-fund ds_ph.zarr on GCS, sorts symbols by adj_mv descending, and returns the top N with weight = adj_mv / aum_erm3. Default 25; caller may request up to 1000 via ?limit=. Symbols are bw_sym_id; resolve to ticker via /api/data/symbols/batch if needed.",
+    "description": "Largest current holdings for a mutual fund at its latest report date: at most the 25 largest long (positive) positions, ranked by adj_mv descending, with weight = adj_mv / aum_erm3. Short positions are not included, and ?limit= above 25 still returns at most 25 rows. Symbols are bw_sym_id; resolve to ticker via POST /api/data/symbols/batch with {\"symbols\": [...]}.",
     "endpoint": "/api/funds/{bw_fund_id}/holdings",
     "method": "GET",
     "parameters": {

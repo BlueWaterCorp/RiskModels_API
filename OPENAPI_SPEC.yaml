@@ -3868,7 +3868,7 @@ components:
       properties:
         bw_sym_id:
           type: string
-          description: Internal symbol id. Resolve via /api/data/symbols/batch.
+          description: 'Internal symbol id. Resolve to ticker via POST /api/data/symbols/batch with {"symbols": [...]}.'
         weight:
           type: number
           format: float
@@ -4026,7 +4026,7 @@ components:
       properties:
         bw_sym_id:
           type: string
-          description: Internal symbol id. Resolve to ticker via /api/data/symbols/batch.
+          description: 'Internal symbol id. Resolve to ticker via POST /api/data/symbols/batch with {"symbols": [...]}.'
           example: BW-BBG000B9XRY4
         adj_mv:
           type: number
@@ -11076,7 +11076,7 @@ paths:
         `PortfolioSurface` zarr (Funds_DAG `etf_holdings_zarr` — `source_kind=etf`,
         `teo_frequency=daily`). Only the in-ERM3 sleeve is materialized, so every
         holding carries a `bw_sym_id` (resolve to ticker/name via
-        `/api/data/symbols/batch`). `report_date` (the sponsor's "Fund Holdings
+        `POST /api/data/symbols/batch` with `{"symbols": [...]}`). `report_date` (the sponsor's "Fund Holdings
         as of" date) and `availability_date` (when that file was first observed)
         are surfaced distinctly — never collapsed — and also as headers
         `X-Data-As-Of` (= `report_date`) and `X-Data-Availability`
@@ -12042,11 +12042,14 @@ paths:
     get:
       summary: Top-N current fund holdings
       description: >
-        Top-N holdings for a fund at the latest teo. Reads `adj_mv (symbol, teo)`
-        and `aum_erm3 (teo,)` from Slice 5's per-fund `ds_ph.zarr` on GCS,
-        sorts by `adj_mv` descending, and returns `bw_sym_id` + `adj_mv` +
-        `weight = adj_mv / aum_erm3`. Resolve `bw_sym_id` to ticker via
-        `/api/data/symbols/batch` if needed.
+        Largest current holdings for a fund at its latest report date, read
+        from the precomputed `fund_holdings_top` table: at most the fund's 25
+        largest long (positive) positions, ranked by `adj_mv` descending, each
+        with `bw_sym_id` + `adj_mv` + `weight = adj_mv / aum_erm3`. Short
+        positions are not included, so this is not a full book for a
+        long/short fund, and `limit` above 25 still returns at most 25 rows.
+        Resolve `bw_sym_id` to ticker via `POST /api/data/symbols/batch` with
+        `{"symbols": [...]}`.
       operationId: getFundHoldings
       tags: [Funds]
       x-pricing:
