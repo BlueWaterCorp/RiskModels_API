@@ -2513,13 +2513,13 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "fund-holdings",
-    name: "Fund Top-N Holdings",
+    name: "Fund Holdings (full book)",
     description:
-      "Top-N current holdings for a mutual fund at the latest teo. Reads adj_mv (symbol, teo) " +
-      "and aum_erm3 (teo,) from Slice 5's per-fund ds_ph.zarr on GCS, sorts symbols by adj_mv " +
-      "descending, and returns the top N with weight = adj_mv / aum_erm3. Default 25; caller " +
-      "may request up to 1000 via ?limit=. Symbols are bw_sym_id; resolve to ticker via " +
-      "/api/data/symbols/batch if needed.",
+      "A mutual fund's full book at its latest filed report (SEC N-PORT), shorts included as " +
+      "negative adj_mv, ranked by |adj_mv|. Each holding has ticker, bw_sym_id, adj_mv and a " +
+      "signed weight against reported net assets; book gives long/short/net/gross totals and " +
+      "coverage gives the share of the book with a ticker plus the value of unmatched filings. " +
+      "Use ?limit=5000 for the whole book; positions feed POST /portfolio/exposure directly.",
     endpoint: "/api/funds/{bw_fund_id}/holdings",
     method: "GET",
     parameters: {
@@ -2532,10 +2532,10 @@ export const CAPABILITIES: Capability[] = [
       limit: {
         type: "integer",
         required: false,
-        description: "Max holdings to return (default 25, capped 1000)",
+        description: "Max holdings to return, largest |adj_mv| first (default 25; 5000 returns the whole book)",
         default: 25,
         min: 1,
-        max: 1000,
+        max: 5000,
       },
     },
     pricing: {

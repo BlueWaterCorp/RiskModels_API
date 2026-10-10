@@ -1,23 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { fetchFund } from "@/lib/dal/funds-engine";
-import { readFundHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
+import {
+  readFundHoldingsBook,
+  readFundHoldingsTopN,
+} from "@/lib/dal/funds-zarr-reader";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_TOP_N = 25;
-const MAX_TOP_N = 1000;
+const MAX_TOP_N = 5000;
 
 /**
  * GET /api/funds/{bw_fund_id}/holdings?limit=25
  *
- * Top-N current holdings at the fund's latest teo. Reads `ds_ph.zarr`
- * (Slice 5) on GCS — `adj_mv (symbol, teo)` and `aum_erm3 (teo,)`. Each
- * holding includes `bw_sym_id`, `adj_mv`, and `weight = adj_mv / aum_erm3`
- * (null when AUM is null/0).
+ * The fund's full book at its latest report date, shorts included (negative
+ * `adj_mv`), from the per-fund `ds_ph.zarr` on GCS. Ranked by |adj_mv|; each
+ * holding has `bw_sym_id`, `ticker`, `adj_mv` and a signed
+ * `weight = adj_mv / aum_erm3`. `book` gives long/short/net/gross totals over
+ * every position, whatever `limit` is. Default `limit = 25`, max 5000.
  *
- * Default `limit = 25` (a page-friendly default per Stage B scope);
- * caller can request up to 1000.
+ * Falls back to the precomputed top-25 longs (`fund_holdings_top`) when the
+ * fund has no ds_ph.zarr; `source` says which one answered.
  */
 export const GET = withBilling(
   async (request: NextRequest, _context: BillingContext) => {
@@ -48,7 +52,8 @@ export const GET = withBilling(
       return NextResponse.json({ error: "Fund not found" }, { status: 404 });
     }
 
-    const snapshot = await readFundHoldingsTopN(bwFundId, limit);
+    const book = await readFundHoldingsBook(bwFundId, limit);
+    const snapshot = book ?? (await readFundHoldingsTopN(bwFundId, limit));
     if (!snapshot) {
       return NextResponse.json(
         {
@@ -60,8 +65,9 @@ export const GET = withBilling(
     }
 
     const headers = new Headers({ "X-Data-As-Of": snapshot.teo });
-    if (fund.latest_filing_date) {
-      headers.set("X-Data-Filing-Date", fund.latest_filing_date);
+    const filingDate = book?.filing_date ?? fund.latest_filing_date;
+    if (filingDate) {
+      headers.set("X-Data-Filing-Date", filingDate);
     }
 
     return NextResponse.json(
@@ -70,6 +76,7 @@ export const GET = withBilling(
         ticker: fund.ticker,
         fund_name: fund.fund_name,
         equity_style_9box: fund.equity_style_9box,
+        source: book ? "full_book" : "top_25_longs",
         ...snapshot,
       },
       { headers },

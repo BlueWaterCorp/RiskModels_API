@@ -3868,7 +3868,7 @@ components:
       properties:
         bw_sym_id:
           type: string
-          description: Internal symbol id. Resolve via /api/data/symbols/batch.
+          description: 'Internal symbol id. Resolve to ticker via POST /api/data/symbols/batch with {"symbols": [...]}.'
         weight:
           type: number
           format: float
@@ -4021,41 +4021,97 @@ components:
 
     FundHolding:
       type: object
-      description: One holding (security) within a fund's top-N snapshot.
+      description: One holding (security) within a fund's holdings list.
       required: [bw_sym_id, adj_mv]
       properties:
+        ticker:
+          type: string
+          nullable: true
+          description: >
+            Ticker from the symbol registry. Null for the few holdings whose
+            symbol is not in the registry; `bw_sym_id` still identifies them.
+          example: AAPL
         bw_sym_id:
           type: string
-          description: Internal symbol id. Resolve to ticker via /api/data/symbols/batch.
+          description: 'Internal symbol id. Resolve to ticker via POST /api/data/symbols/batch with {"symbols": [...]}.'
           example: BW-BBG000B9XRY4
         adj_mv:
           type: number
           format: float
-          description: Adjusted market value of this position at the snapshot teo.
+          description: Adjusted market value (USD) of this position at the report date. Negative for a short.
         weight:
           type: number
           format: float
           nullable: true
-          description: Fraction of `aum_erm3`. Null when aum_erm3 is null/0.
+          description: >
+            Signed fraction of the denominator named by the response's
+            `weight_basis` (reported net assets on `/funds/{bw_fund_id}/holdings`;
+            `aum_erm3` in fund snapshots). Null when that denominator is null/0.
 
     FundHoldingsResponse:
       type: object
       description: >
-        Top-N current holdings for a fund at the latest teo. Sourced from
-        per-fund `ds_ph.zarr` (Slice 5). `aum_reported` is sum(adj_mv)
-        BEFORE universe filter; `aum_erm3` is sum AFTER (ERM3-mapped
-        symbols only — the denominator for `weight`).
+        A fund's book at its latest filed report, shorts included, ranked by
+        |adj_mv|. `aum_reported` is the fund's reported net assets;
+        `aum_erm3` is the net value of its in-model positions (for a
+        long/short fund this is small, so weights use `aum_reported`).
       required: [bw_fund_id, teo, n_holdings_returned, n_total_holdings, holdings]
       properties:
         bw_fund_id: { type: string }
         ticker: { type: string, nullable: true }
         fund_name: { type: string, nullable: true }
         equity_style_9box: { type: string, nullable: true }
-        teo: { type: string, format: date }
+        source:
+          type: string
+          enum: [full_book, top_25_longs]
+          description: >
+            `full_book`: every position from the fund's holdings panel.
+            `top_25_longs`: fallback for a fund with no panel, holding only its
+            25 largest long positions.
+        teo:
+          type: string
+          format: date
+          description: Report date of the filing the book comes from.
+        filing_date: { type: string, format: date, nullable: true, description: SEC filing date of that report. }
         aum_reported: { type: number, format: float, nullable: true }
         aum_erm3: { type: number, format: float, nullable: true }
+        weight_basis:
+          type: string
+          nullable: true
+          enum: [aum_reported, aum_erm3, null]
+          description: Denominator of each holding's `weight`.
+        book:
+          type: object
+          description: Totals over every position, whatever `limit` is. Present when `source` is `full_book`.
+          properties:
+            n_long: { type: integer, example: 313 }
+            n_short: { type: integer, example: 292 }
+            long_mv: { type: number, example: 578631588 }
+            short_mv: { type: number, example: -551804076 }
+            net_mv: { type: number, example: 26827512 }
+            gross_mv: { type: number, example: 1130435663 }
+        coverage:
+          type: object
+          description: >
+            How much of the filed book the response covers, over every
+            position. Small caps outside the symbol registry come back with
+            `ticker: null`; filed positions that could not be matched to any
+            security are not in `holdings` at all. Present when `source` is
+            `full_book`.
+          properties:
+            n_positions: { type: integer, example: 605 }
+            n_with_ticker: { type: integer, example: 590 }
+            gross_with_ticker:
+              type: number
+              example: 0.9895
+              description: Share of `book.gross_mv` in positions that have a ticker (0–1).
+            unmatched_mv:
+              type: number
+              nullable: true
+              example: -10222472
+              description: Net (signed) adj_mv of filed positions not matched to any security.
         n_holdings_returned: { type: integer, example: 25 }
-        n_total_holdings: { type: integer, example: 503 }
+        n_total_holdings: { type: integer, example: 605 }
         holdings:
           type: array
           items:
@@ -11076,7 +11132,7 @@ paths:
         `PortfolioSurface` zarr (Funds_DAG `etf_holdings_zarr` — `source_kind=etf`,
         `teo_frequency=daily`). Only the in-ERM3 sleeve is materialized, so every
         holding carries a `bw_sym_id` (resolve to ticker/name via
-        `/api/data/symbols/batch`). `report_date` (the sponsor's "Fund Holdings
+        `POST /api/data/symbols/batch` with `{"symbols": [...]}`). `report_date` (the sponsor's "Fund Holdings
         as of" date) and `availability_date` (when that file was first observed)
         are surfaced distinctly — never collapsed — and also as headers
         `X-Data-As-Of` (= `report_date`) and `X-Data-Availability`
@@ -12040,13 +12096,16 @@ paths:
 
   /funds/{bw_fund_id}/holdings:
     get:
-      summary: Top-N current fund holdings
+      summary: Fund holdings, full book with shorts
       description: >
-        Top-N holdings for a fund at the latest teo. Reads `adj_mv (symbol, teo)`
-        and `aum_erm3 (teo,)` from Slice 5's per-fund `ds_ph.zarr` on GCS,
-        sorts by `adj_mv` descending, and returns `bw_sym_id` + `adj_mv` +
-        `weight = adj_mv / aum_erm3`. Resolve `bw_sym_id` to ticker via
-        `/api/data/symbols/batch` if needed.
+        The fund's full book at its latest filed report (SEC N-PORT), shorts
+        included as negative `adj_mv`, ranked by |adj_mv|. Each holding has
+        `ticker`, `bw_sym_id`, `adj_mv` and a signed `weight` against reported
+        net assets. `book` gives long/short/net/gross totals over every
+        position. Ask for `limit=5000` to get the whole book; the positions
+        can go straight into `POST /portfolio/exposure`. A fund with no
+        holdings panel falls back to its 25 largest longs (`source:
+        top_25_longs`).
       operationId: getFundHoldings
       tags: [Funds]
       x-pricing:
@@ -12063,11 +12122,11 @@ paths:
         - name: limit
           in: query
           required: false
-          schema: { type: integer, minimum: 1, maximum: 1000, default: 25 }
-          description: Max holdings to return (default 25).
+          schema: { type: integer, minimum: 1, maximum: 5000, default: 25 }
+          description: Max holdings to return, largest |adj_mv| first (default 25; 5000 returns any fund's whole book).
       responses:
         "200":
-          description: Top-N holdings snapshot.
+          description: The fund's book (or the top-25 fallback).
           headers:
             X-Data-As-Of:
               schema: { type: string, format: date }

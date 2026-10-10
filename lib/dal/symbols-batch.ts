@@ -167,3 +167,81 @@ export async function resolveDisplayLabels(
   }
   return out;
 }
+
+/**
+ * Reverse lookup `bw_sym_id` → ticker for ids a caller got back from a
+ * holdings endpoint (`/funds/{id}/holdings`, filer and ETF holdings).
+ *
+ * Accepts every form the public scrub emits:
+ *   • native ids (`BW-BBG000B9XRY4`) — matched on `symbols.symbol`;
+ *   • `BW-TICKER-{TICKER}` — the ticker is the id itself, no lookup;
+ *   • `BW-{FIGI}` substituted for an ISIN-flavored id — matched on
+ *     `symbols.metadata->>figi` when the native match misses.
+ * Results are keyed by the id as the caller sent it. Unresolved ids are
+ * absent. Never throws.
+ */
+const REVERSE_CHUNK = 150;
+
+export async function resolveSymIdsToTickers(
+  ids: readonly string[],
+): Promise<Map<string, SymbolDisplayLabel>> {
+  const out = new Map<string, SymbolDisplayLabel>();
+  const unique = Array.from(new Set(ids.filter((s) => !!s)));
+  const lookup: string[] = [];
+  for (const id of unique) {
+    if (id.startsWith("BW-TICKER-")) {
+      const t = id.slice("BW-TICKER-".length).trim();
+      if (t) out.set(id, { ticker: t, name: null });
+    } else {
+      lookup.push(id);
+    }
+  }
+  if (lookup.length === 0) return out;
+
+  // `.in()` goes in the GET query string; ~900 ids overflow the request
+  // headers, so look up in chunks.
+  const chunks = (xs: string[]) =>
+    Array.from({ length: Math.ceil(xs.length / REVERSE_CHUNK) }, (_, i) =>
+      xs.slice(i * REVERSE_CHUNK, (i + 1) * REVERSE_CHUNK),
+    );
+  try {
+    const admin = createAdminClient();
+    for (const part of chunks(lookup)) {
+      const { data, error } = await admin
+        .from("symbols")
+        .select("symbol, ticker, name")
+        .in("symbol", part);
+      if (error) {
+        console.error("[symbols-batch] reverse resolve error:", error);
+        return out;
+      }
+      for (const row of data ?? []) {
+        const r = row as { symbol?: string; ticker?: string | null; name?: string | null };
+        if (!r.symbol || !r.ticker?.trim()) continue;
+        out.set(r.symbol, { ticker: r.ticker.trim(), name: r.name?.trim() || null });
+      }
+    }
+
+    const figiIds = lookup.filter((id) => !out.has(id) && /^BW-BBG[A-Z0-9]{9}$/.test(id));
+    const byFigi = new Map(figiIds.map((id) => [id.slice(3), id]));
+    for (const part of chunks(Array.from(byFigi.keys()))) {
+      const { data: figiRows, error: figiErr } = await admin
+        .from("symbols")
+        .select("ticker, name, metadata->>figi")
+        .in("metadata->>figi", part);
+      if (figiErr) {
+        console.error("[symbols-batch] reverse resolve (figi) error:", figiErr);
+        return out;
+      }
+      for (const row of figiRows ?? []) {
+        const r = row as { figi?: string; ticker?: string | null; name?: string | null };
+        const id = r.figi ? byFigi.get(r.figi) : undefined;
+        if (!id || out.has(id) || !r.ticker?.trim()) continue;
+        out.set(id, { ticker: r.ticker.trim(), name: r.name?.trim() || null });
+      }
+    }
+  } catch (e) {
+    console.error("[symbols-batch] reverse resolve exception:", e);
+  }
+  return out;
+}
