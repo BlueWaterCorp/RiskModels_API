@@ -21,6 +21,7 @@ import {
 import { z } from "zod";
 import {
   createRiskModelsSdk,
+  withAnnotationTitles,
   registerRiskModelsPrompts,
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
@@ -225,6 +226,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     },
     { instructions: MCP_SERVER_INSTRUCTIONS },
   );
+  withAnnotationTitles(server);
   const credentials = resolveCredentials(opts);
   const sdk = createRiskModelsSdk({
     apiKey: credentials.apiKey,

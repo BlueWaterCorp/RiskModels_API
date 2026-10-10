@@ -27,13 +27,13 @@ All data is end-of-day and historical. Tools do not forecast and do not place or
 API reference: https://riskmodels.app/docs/api`;
 
 export const LIST_ENDPOINTS_DESCRIPTION =
-  "Lists the RiskModels REST catalog: capability id, HTTP method, path and a one-line description for each endpoint. Reads a static catalog and returns no market data. Free.";
+  "Lists the RiskModels REST catalog: capability id, HTTP method, path and a one-line description for each endpoint. Reads a static catalog and returns no market data. Free. API reference: https://riskmodels.app/docs/api";
 
 export const GET_CAPABILITY_DESCRIPTION =
-  "Returns one REST capability's full definition by id: parameters, pricing and examples. Reads a static catalog and returns no market data. Free.";
+  "Returns one REST capability's full definition by id: parameters, pricing and examples. Reads a static catalog and returns no market data. Free. API reference: https://riskmodels.app/docs/api";
 
 export const GET_SCHEMA_DESCRIPTION =
-  "Returns the JSON response schema for one REST endpoint by schema filename (for example ticker-returns-v2.json). Static; free.";
+  "Returns the JSON response schema for one REST endpoint by schema filename (for example ticker-returns-v2.json). Static; free. API reference: https://riskmodels.app/docs/api";
 
 export const GET_OPENAPI_SPEC_DESCRIPTION =
-  "Returns the full OpenAPI 3 specification of the RiskModels REST API. Static; free.";
+  "Returns the full OpenAPI 3 specification of the RiskModels REST API. Static; free. API reference: https://riskmodels.app/docs/api";

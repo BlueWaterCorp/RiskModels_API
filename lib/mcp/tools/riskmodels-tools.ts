@@ -115,6 +115,23 @@ function promptText(text: string): McpPromptResult {
   };
 }
 
+/**
+ * Copy each tool's `title` into `annotations.title`, the field the MCP
+ * directory reads for the listing name. Must run before any registerTool.
+ */
+export function withAnnotationTitles(server: { registerTool: (...a: any[]) => unknown }): void {
+  const register = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
+  (server as unknown as { registerTool: (...a: unknown[]) => unknown }).registerTool = (
+    name: unknown,
+    config: unknown,
+    cb: unknown,
+  ) => {
+    const c = (config ?? {}) as { title?: string; annotations?: Record<string, unknown> };
+    const annotations = c.title ? { title: c.title, ...(c.annotations ?? {}) } : c.annotations;
+    return register(name, { ...c, annotations }, cb);
+  };
+}
+
 export function createRiskModelsSdk(opts: { apiKey?: string | null; apiBase?: string }): RiskModelsClient {
   const base = (opts.apiBase || "https://riskmodels.app").replace(/\/$/, "");
   return new RiskModelsClient({

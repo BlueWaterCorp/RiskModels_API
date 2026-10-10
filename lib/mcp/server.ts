@@ -23,6 +23,7 @@ import {
 import { z } from "zod";
 import {
   createRiskModelsSdk,
+  withAnnotationTitles,
   registerRiskModelsPrompts,
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
@@ -179,6 +180,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     apiKey: opts.apiKey,
     apiBase: opts.apiBase || "https://riskmodels.app",
   });
+  withAnnotationTitles(server);
 
   // --- Resources ---
 
