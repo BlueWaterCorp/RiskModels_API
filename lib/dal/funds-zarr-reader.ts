@@ -60,6 +60,7 @@ import { lookupBenchmarkAlias } from "@/lib/dal/benchmark-catalog";
 import {
   applyScrubToFilerHoldings,
   applyScrubToHoldings,
+  resolveSymIdsToTickers,
 } from "@/lib/dal/symbols-batch";
 import { parseZarrGcsPrefix } from "@/lib/zarr-config";
 import { isBenchLive } from "@/lib/benchmark-registry";
@@ -846,6 +847,156 @@ export async function readFundHoldingsTopN(
     ...snapshot,
     holdings: await applyScrubToHoldings(snapshot.holdings),
   };
+}
+
+/** Long/short totals of a fund's full book (USD; short_mv is negative). */
+export interface FundBookSummary {
+  n_long: number;
+  n_short: number;
+  long_mv: number;
+  short_mv: number;
+  net_mv: number;
+  gross_mv: number;
+}
+
+/**
+ * How much of the filed book the response covers. Small caps outside the
+ * symbol registry come back without a ticker; filed positions the identity
+ * gate could not match to a security are not in the book at all.
+ */
+export interface FundBookCoverage {
+  n_positions: number;
+  n_with_ticker: number;
+  /** Share of `book.gross_mv` in positions that have a ticker (0–1). */
+  gross_with_ticker: number;
+  /** Net (signed) adj_mv of filed positions not matched to any security; absent from `holdings`. */
+  unmatched_mv: number | null;
+}
+
+export interface FundHoldingsBook extends FundHoldingsSnapshot {
+  /** SEC filing date of the report the book comes from; null when not stamped. */
+  filing_date: string | null;
+  /** Denominator of `weight`: reported net assets, else the in-model net value. */
+  weight_basis: "aum_reported" | "aum_erm3" | null;
+  book: FundBookSummary;
+  coverage: FundBookCoverage;
+}
+
+/**
+ * The fund's full book from its latest filed report, shorts included, from
+ * the per-fund `ds_ph.zarr` (`adj_mv (symbol, teo)`, negative = short).
+ * Months after a filing carry the same positions forward, so the book is
+ * dated by the newest teo with reported AUM, not the newest teo. Ranked by
+ * |adj_mv| descending, then bw_sym_id, and cut to `n`; `book` totals cover
+ * every position. `weight = adj_mv / aum_reported` (net assets) and keeps its
+ * sign: for a long/short fund `aum_erm3` is the small net exposure, which
+ * would inflate weights. Each holding carries `ticker`, and `coverage` says
+ * how much of the book has one. Returns null when the
+ * fund has no ds_ph.zarr or no non-zero holdings.
+ *
+ * `readFundHoldingsTopN` (the precomputed top-25 longs) stays the tearsheet
+ * path; this is the client-facing full portfolio.
+ */
+export async function readFundHoldingsBook(
+  bwFundId: string,
+  n = 25,
+): Promise<FundHoldingsBook | null> {
+  const ck = generateCacheKey("funds_zarr", "fund_holdings_book_v3", { fund: bwFundId });
+  let labelsFailed = false;
+  const full = await withZarrCache<FundHoldingsBook | null>(
+    ck,
+    async () => {
+      const grp = await openFundZarrGroup(bwFundId, "ds_ph.zarr");
+      if (!grp) return null;
+      const teos = await readTeoStrings(grp);
+      const symbols = await readSymbolStrings(grp);
+      if (!teos || teos.length === 0 || !symbols || symbols.length === 0) return null;
+
+      const [aumReported, aumErm3, droppedMv, filingDates] = await Promise.all([
+        readFloatSlice1d(grp, "aum_reported", 0, teos.length),
+        readFloatSlice1d(grp, "aum_erm3", 0, teos.length),
+        readFloatSlice1d(grp, "identity_dropped_mv", 0, teos.length),
+        readDatetimeVarStrings(grp, "filing_date"),
+      ]);
+      let teoIdx = teos.length - 1;
+      for (let i = teos.length - 1; i >= 0; i--) {
+        if (aumReported?.[i] != null || aumErm3?.[i] != null) {
+          teoIdx = i;
+          break;
+        }
+      }
+
+      const adjMv = await readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length);
+      if (!adjMv) return null;
+      const nav = aumReported?.[teoIdx] ?? null;
+      const netErm3 = aumErm3?.[teoIdx] ?? null;
+      const weightBasis: FundHoldingsBook["weight_basis"] =
+        nav != null && nav > 0 ? "aum_reported" : netErm3 != null && netErm3 > 0 ? "aum_erm3" : null;
+      const denom = weightBasis === "aum_reported" ? nav : weightBasis === "aum_erm3" ? netErm3 : null;
+
+      const holdings: FundHolding[] = [];
+      const book: FundBookSummary = {
+        n_long: 0, n_short: 0, long_mv: 0, short_mv: 0, net_mv: 0, gross_mv: 0,
+      };
+      for (let i = 0; i < adjMv.length; i++) {
+        const v = adjMv[i];
+        if (v == null || v === 0) continue;
+        holdings.push({ bw_sym_id: symbols[i]!, adj_mv: v, weight: denom ? v / denom : null });
+        if (v > 0) {
+          book.n_long++;
+          book.long_mv += v;
+        } else {
+          book.n_short++;
+          book.short_mv += v;
+        }
+      }
+      if (holdings.length === 0) return null;
+      book.net_mv = book.long_mv + book.short_mv;
+      book.gross_mv = book.long_mv - book.short_mv;
+      holdings.sort(
+        (a, b) =>
+          Math.abs(b.adj_mv) - Math.abs(a.adj_mv) ||
+          (a.bw_sym_id < b.bw_sym_id ? -1 : a.bw_sym_id > b.bw_sym_id ? 1 : 0),
+      );
+
+      // Label every position (not just the page) so coverage covers the book.
+      const labels = await resolveSymIdsToTickers(holdings.map((h) => h.bw_sym_id));
+      labelsFailed = labels.size === 0;
+      let nWithTicker = 0;
+      let grossWithTicker = 0;
+      for (const h of holdings) {
+        h.ticker = labels.get(h.bw_sym_id)?.ticker ?? null;
+        if (h.ticker) {
+          nWithTicker++;
+          grossWithTicker += Math.abs(h.adj_mv);
+        }
+      }
+      return {
+        teo: teos[teoIdx]!,
+        filing_date: filingDates?.[teoIdx] ?? null,
+        aum_reported: nav,
+        aum_erm3: netErm3,
+        weight_basis: weightBasis,
+        n_holdings_returned: holdings.length,
+        n_total_holdings: holdings.length,
+        holdings,
+        book,
+        coverage: {
+          n_positions: holdings.length,
+          n_with_ticker: nWithTicker,
+          gross_with_ticker: book.gross_mv > 0 ? grossWithTicker / book.gross_mv : 0,
+          unmatched_mv: droppedMv?.[teoIdx] ?? null,
+        },
+      };
+    },
+    // A failed ticker lookup must not pin an unlabelled book for the TTL.
+    { emptyValue: null, cacheable: () => !labelsFailed },
+  );
+  if (!full) return null;
+
+  // Scrub outside the cache boundary (see readFundHoldingsTopN).
+  const top = await applyScrubToHoldings(full.holdings.slice(0, Math.max(1, n)));
+  return { ...full, n_holdings_returned: top.length, holdings: top };
 }
 
 // ---------------------------------------------------------------------------

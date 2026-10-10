@@ -180,6 +180,8 @@ export async function resolveDisplayLabels(
  * Results are keyed by the id as the caller sent it. Unresolved ids are
  * absent. Never throws.
  */
+const REVERSE_CHUNK = 150;
+
 export async function resolveSymIdsToTickers(
   ids: readonly string[],
 ): Promise<Map<string, SymbolDisplayLabel>> {
@@ -196,29 +198,37 @@ export async function resolveSymIdsToTickers(
   }
   if (lookup.length === 0) return out;
 
+  // `.in()` goes in the GET query string; ~900 ids overflow the request
+  // headers, so look up in chunks.
+  const chunks = (xs: string[]) =>
+    Array.from({ length: Math.ceil(xs.length / REVERSE_CHUNK) }, (_, i) =>
+      xs.slice(i * REVERSE_CHUNK, (i + 1) * REVERSE_CHUNK),
+    );
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin
-      .from("symbols")
-      .select("symbol, ticker, name")
-      .in("symbol", lookup);
-    if (error) {
-      console.error("[symbols-batch] reverse resolve error:", error);
-      return out;
-    }
-    for (const row of data ?? []) {
-      const r = row as { symbol?: string; ticker?: string | null; name?: string | null };
-      if (!r.symbol || !r.ticker?.trim()) continue;
-      out.set(r.symbol, { ticker: r.ticker.trim(), name: r.name?.trim() || null });
+    for (const part of chunks(lookup)) {
+      const { data, error } = await admin
+        .from("symbols")
+        .select("symbol, ticker, name")
+        .in("symbol", part);
+      if (error) {
+        console.error("[symbols-batch] reverse resolve error:", error);
+        return out;
+      }
+      for (const row of data ?? []) {
+        const r = row as { symbol?: string; ticker?: string | null; name?: string | null };
+        if (!r.symbol || !r.ticker?.trim()) continue;
+        out.set(r.symbol, { ticker: r.ticker.trim(), name: r.name?.trim() || null });
+      }
     }
 
     const figiIds = lookup.filter((id) => !out.has(id) && /^BW-BBG[A-Z0-9]{9}$/.test(id));
-    if (figiIds.length > 0) {
-      const byFigi = new Map(figiIds.map((id) => [id.slice(3), id]));
+    const byFigi = new Map(figiIds.map((id) => [id.slice(3), id]));
+    for (const part of chunks(Array.from(byFigi.keys()))) {
       const { data: figiRows, error: figiErr } = await admin
         .from("symbols")
         .select("ticker, name, metadata->>figi")
-        .in("metadata->>figi", Array.from(byFigi.keys()));
+        .in("metadata->>figi", part);
       if (figiErr) {
         console.error("[symbols-batch] reverse resolve (figi) error:", figiErr);
         return out;

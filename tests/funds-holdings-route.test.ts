@@ -10,11 +10,12 @@ vi.mock("@/lib/dal/funds-engine", () => ({
 }));
 
 vi.mock("@/lib/dal/funds-zarr-reader", () => ({
+  readFundHoldingsBook: vi.fn(),
   readFundHoldingsTopN: vi.fn(),
 }));
 
 import { fetchFund } from "@/lib/dal/funds-engine";
-import { readFundHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
+import { readFundHoldingsBook, readFundHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
 import type { BillingContext } from "@/lib/agent/billing-middleware";
 import { GET as wrappedGET } from "@/app/api/funds/[bw_fund_id]/holdings/route";
 
@@ -58,6 +59,24 @@ const SNAPSHOT = {
   ],
 };
 
+/** Full-book read: shorts included, dated by its own filing. */
+const BOOK = {
+  teo: "2026-06-30",
+  filing_date: "2026-08-28",
+  aum_reported: 1_000_000,
+  aum_erm3: 25_000,
+  weight_basis: "aum_reported" as const,
+  n_holdings_returned: 3,
+  n_total_holdings: 605,
+  holdings: [
+    { bw_sym_id: "BW-A", ticker: "AAA", adj_mv: 100_000, weight: 0.1 },
+    { bw_sym_id: "BW-B", ticker: "BBB", adj_mv: -90_000, weight: -0.09 },
+    { bw_sym_id: "BW-C", ticker: null, adj_mv: 15_000, weight: 0.015 },
+  ],
+  book: { n_long: 313, n_short: 292, long_mv: 578e6, short_mv: -552e6, net_mv: 26e6, gross_mv: 1130e6 },
+  coverage: { n_positions: 605, n_with_ticker: 590, gross_with_ticker: 0.987, unmatched_mv: 0 },
+};
+
 const fakeContext: BillingContext = {
   userId: "test-user",
   requestId: "test-req",
@@ -74,10 +93,28 @@ function req(path: string): NextRequest {
 beforeEach(() => {
   vi.mocked(fetchFund).mockReset();
   vi.mocked(readFundHoldingsTopN).mockReset();
+  vi.mocked(readFundHoldingsBook).mockReset();
+  vi.mocked(readFundHoldingsBook).mockResolvedValue(null);
 });
 
 describe("GET /api/funds/[bw_fund_id]/holdings", () => {
-  it("returns 200 with snapshot + bitemporal headers; default limit 25", async () => {
+  it("serves the full book with shorts, dated by its own filing", async () => {
+    vi.mocked(fetchFund).mockResolvedValue(FUND);
+    vi.mocked(readFundHoldingsBook).mockResolvedValue(BOOK);
+    const res = await GET(req("/api/funds/BW-FUND-X/holdings?limit=5000"), fakeContext);
+    expect(res.status).toBe(200);
+    expect(vi.mocked(readFundHoldingsBook)).toHaveBeenCalledWith("BW-FUND-X", 5000);
+    expect(vi.mocked(readFundHoldingsTopN)).not.toHaveBeenCalled();
+    expect(res.headers.get("X-Data-As-Of")).toBe("2026-06-30");
+    expect(res.headers.get("X-Data-Filing-Date")).toBe("2026-08-28");
+    const body = await res.json();
+    expect(body.source).toBe("full_book");
+    expect(body.book.n_short).toBe(292);
+    expect(body.coverage).toMatchObject({ n_positions: 605, n_with_ticker: 590 });
+    expect(body.holdings[1]).toMatchObject({ ticker: "BBB", adj_mv: -90_000 });
+  });
+
+  it("falls back to the top-25 table with headers; default limit 25", async () => {
     vi.mocked(fetchFund).mockResolvedValue(FUND);
     vi.mocked(readFundHoldingsTopN).mockResolvedValue(SNAPSHOT);
     const res = await GET(
@@ -92,6 +129,7 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
       25,
     );
     const body = await res.json();
+    expect(body.source).toBe("top_25_longs");
     expect(body.bw_fund_id).toBe("BW-FUND-X");
     expect(body.holdings).toHaveLength(3);
     expect(body.aum_erm3).toBe(950_000);
@@ -111,7 +149,7 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
     );
   });
 
-  it("clamps limit at 1000", async () => {
+  it("clamps limit at 5000", async () => {
     vi.mocked(fetchFund).mockResolvedValue(FUND);
     vi.mocked(readFundHoldingsTopN).mockResolvedValue(SNAPSHOT);
     await GET(
@@ -120,7 +158,7 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
     );
     expect(vi.mocked(readFundHoldingsTopN)).toHaveBeenCalledWith(
       "BW-FUND-X",
-      1000,
+      5000,
     );
   });
 
@@ -143,7 +181,7 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
     expect(vi.mocked(readFundHoldingsTopN)).not.toHaveBeenCalled();
   });
 
-  it("returns 404 when zarr returns null (no holdings panel)", async () => {
+  it("returns 404 when neither the book nor the table has holdings", async () => {
     vi.mocked(fetchFund).mockResolvedValue(FUND);
     vi.mocked(readFundHoldingsTopN).mockResolvedValue(null);
     const res = await GET(
