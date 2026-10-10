@@ -56,6 +56,7 @@ SSOT edits: `RiskModels_API/claude-plugin/`. Publish: `scripts/sync-claude-plugi
 - [x] Tool `title` + `readOnlyHint` on hosted MCP tools (audited 2026-09-02 — no missing titles)
 - [x] OAuth AS + protected-resource well-knowns live (`/.well-known/oauth-authorization-server` 200)
 - [x] Custom connector path CEO-verified historically (E.20)
+- [x] Every tool executed via MCP Inspector CLI against the hosted server: 37/37 succeeded 2026-10-10 ([record](./mcp-tool-test-2026-10-10.md))
 - [x] `/privacy` on `.app` redirects to `.net` (next.config — deploy with this change)
 - [ ] CEO: Team/Enterprise org + Directory permission
 - [ ] CEO: populated reviewer account (MAG7 or paid key) + Connect → tools load
