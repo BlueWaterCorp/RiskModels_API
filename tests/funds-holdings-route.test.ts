@@ -65,7 +65,8 @@ const BOOK = {
   filing_date: "2026-08-28",
   aum_reported: 1_000_000,
   aum_erm3: 25_000,
-  weight_basis: "aum_reported" as const,
+  net_assets: 1_000_000,
+  weight_basis: "net_assets" as const,
   n_holdings_returned: 3,
   n_total_holdings: 605,
   holdings: [
@@ -73,7 +74,10 @@ const BOOK = {
     { bw_sym_id: "BW-B", ticker: "BBB", adj_mv: -90_000, weight: -0.09 },
     { bw_sym_id: "BW-C", ticker: null, adj_mv: 15_000, weight: 0.015 },
   ],
-  book: { n_long: 313, n_short: 292, long_mv: 578e6, short_mv: -552e6, net_mv: 26e6, gross_mv: 1130e6 },
+  book: {
+    n_long: 313, n_short: 292, long_mv: 578e6, short_mv: -552e6, net_mv: 26e6, gross_mv: 1130e6,
+    long_pct_nav: 0.97, short_pct_nav: -0.92, net_pct_nav: 0.04, gross_pct_nav: 1.89,
+  },
   coverage: { n_positions: 605, n_with_ticker: 590, gross_with_ticker: 0.987, unmatched_mv: 0 },
 };
 

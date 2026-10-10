@@ -2517,7 +2517,8 @@ export const CAPABILITIES: Capability[] = [
     description:
       "A mutual fund's full book at its latest filed report (SEC N-PORT), shorts included as " +
       "negative adj_mv, ranked by |adj_mv|. Each holding has ticker, bw_sym_id, adj_mv and a " +
-      "signed weight against reported net assets; book gives long/short/net/gross totals and " +
+      "signed weight against filed net assets (gross if none); book gives long/short/net/gross " +
+      "totals in dollars and % of net assets, and " +
       "coverage gives the share of the book with a ticker plus the value of unmatched filings. " +
       "Use ?limit=5000 for the whole book; positions feed POST /portfolio/exposure directly.",
     endpoint: "/api/funds/{bw_fund_id}/holdings",
