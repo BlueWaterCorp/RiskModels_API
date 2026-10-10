@@ -12,6 +12,7 @@ import {
 import {
   textResult,
   errorResult,
+  toolErrorResult,
   type McpLikeServer,
 } from "@/lib/mcp/tools/riskmodels-tools";
 
@@ -32,7 +33,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
     {
       title: "RiskModels Artifact Registry Render",
       description:
-        "Render a deterministic registry artifact (stock, multi-ticker watchlist, fund, filer, or client portfolio). Use format png to display the original chart: returns MCP image content with dated provenance and receipt, not a chart to redraw. JSON returns chart/table/narrative data; SVG returns a base64 export. Stock subjects are BW-STOCK-{TICKER}, formed from the ticker with no lookup. To put several named tickers on ONE shared risk-composition axis, use risk_comparison (signed RMGraph grouped bars) with subject_id BW-STOCK-WATCHLIST and subject_payload { tickers: [...] } (up to 12) — the whole set is resolved to ONE shared date (the oldest latest-close in the set, or an explicit as_of), so it is a date-aligned comparison. Present it as of resolved_as_of, never today's date. Read as_of_alignment on the JSON payload: if excluded is non-empty, those tickers had no data at that date and are NOT on the chart — name them. For a stock cumulative return chart in the original RMGraph style, use cumulative_return_paths, BW-STOCK-{TICKER}, format png, and params.window (3m, 6m, 1y, 2y, max; default 1y). All five historical paths start at zero at the first displayed close; fitted factor paths are not ETF returns and cumulative paths are not additive. Same contract as riskmodels.net workspace fetchArtifact.",
+        "Renders a chart or table from the RiskModels artifact registry for a stock (BW-STOCK-{TICKER}), a watchlist of up to 12 tickers (BW-STOCK-WATCHLIST with subject_payload.tickers), a mutual fund (BW-FUND-…), a 13F filer (BW-FILER-…) or a client portfolio (BW-PORTFOLIO-… with subject_payload.positions). format json returns the chart's data, table and narrative; png returns the rendered image as MCP image content with its resolved date and receipt id; svg returns a base64 SVG; figure returns a Plotly figure spec (Plotly-backed slugs only). risk_comparison puts several tickers on one shared risk-composition axis. A watchlist is resolved to ONE shared date (the oldest latest close in the set, or an explicit as_of), returned as resolved_as_of; tickers with no data on that date are listed in as_of_alignment.excluded. cumulative_return_paths accepts params.window (3m, 6m, 1y, 2y or max; default 1y); its fitted factor paths are not ETF returns.",
       annotations: { readOnlyHint: true },
       _meta: {
         ui: { resourceUri: CHART_WIDGET_URI },
@@ -65,8 +66,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .describe(
             "YYYY-MM-DD or latest. Cohort subjects (BW-COHORT-*) resolve latest to " +
               "the newest pre-rendered vintage; filers need an explicit filing period " +
-              "end — GET /api/artifacts/as-of?slug=&subject_id= (riskmodels_call_endpoint) " +
-              "lists the dates that exist.",
+              "end; GET /api/artifacts/as-of?slug=&subject_id= lists the dates that exist.",
           ),
         format: z
           .enum(["json", "png", "svg", "figure"])
@@ -100,14 +100,11 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           params: compactParams(params),
         });
         if (!result.ok) {
-          return textResult({
+          return toolErrorResult({
             error: result.error,
             status: result.status,
             detail: result.detail,
             wired_slugs: WIRED_ARTIFACT_RENDER_MATRIX,
-            capability_endpoint:
-              "GET /api/artifacts/capability?subject_kind=… — the full verified " +
-              "(slug, subject_kind) table plus per-slug param applicability.",
           });
         }
         const metadata = {
@@ -139,18 +136,13 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
             bytes.toString("base64") !== base64
           ) {
             return {
-              ...textResult({ ...metadata, error: "Render service returned an invalid PNG artifact." }),
-              isError: true,
+              ...toolErrorResult({ ...metadata, error: "Render service returned an invalid PNG artifact." }),
             };
           }
           return {
             content: [
               ...textResult({
                 ...metadata,
-                chart_instruction:
-                  "The attached chart component displays the original image. If the host cannot show it, say so; never claim a chart is visible without an image; do not redraw it. " +
-                  "Retain resolved_as_of and receipt_id when explaining the chart. " +
-                  "Request format json for exact numerical values.",
                 artifact: {
                   format: "png",
                   content_type: mimeType,

@@ -144,16 +144,3 @@ export async function fetchLinkedBook(
 
 export const EMPTY_BOOK_MESSAGE =
   "No linked brokerage positions. In riskmodels.net Settings, connect Alpaca, Connect Trade, or Plaid, then click Sync positions. This server reads that book. It does not place orders.";
-
-export const LINKED_BOOK_NEXT_STEP =
-  "Pass for_analysis to riskmodels_analyze_portfolio. Pass for_hedge to riskmodels_hedge_portfolio. This server does not place orders.";
-
-export const LINKED_BOOK_NEXT_STEP_EXPOSURE =
-  "The book has short positions or more than 100 names. Pass for_exposure to riskmodels_portfolio_exposure, which takes the signed book. This server does not place orders.";
-
-/** Next-step text for a non-empty book: signed books and books over 100 names go to riskmodels_portfolio_exposure. */
-export function linkedBookNextStep(book: LinkedBook): string {
-  return book.has_shorts || book.for_exposure.length > 100
-    ? LINKED_BOOK_NEXT_STEP_EXPOSURE
-    : LINKED_BOOK_NEXT_STEP;
-}

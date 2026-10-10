@@ -20,28 +20,20 @@ export const FIRST_LIVE_PROMPT_REST =
  * MCP InitializeResult.instructions — Claude/Cursor/Smithery fold this into
  * the model context after connect. Keep it short.
  */
-export const MCP_SERVER_INSTRUCTIONS = `RiskModels serves live US-equity factor risk. After this server connects, answer ticker and portfolio questions by calling data tools. Do not answer from training data.
+export const MCP_SERVER_INSTRUCTIONS = `RiskModels returns US-equity factor risk from the ERM3 model: market, sector, subsector and residual risk decomposition; ETF hedge ratios and hedge notionals; long-only and long/short portfolio exposure; cross-sectional rankings and cohort statistics; 13F filer, mutual fund and ETF holdings; and point-in-time quarterly fundamentals.
 
-Default first call when the user has not named a ticker: riskmodels_compare with tickers ["AAPL","NVDA"].
-Single name: riskmodels_decompose.
-Returns history: riskmodels_get_returns.
-Dollar hedge: riskmodels_hedge_position.
-Linked brokerage book (Alpaca Connect, Connect Trade, or Plaid): riskmodels_get_my_positions. One RiskModels server reads the book. This server does not place orders.
-Long-only book, up to 100 names: riskmodels_analyze_portfolio (for_analysis) or riskmodels_hedge_portfolio (for_hedge).
-Any short position, or more than 100 names: riskmodels_portfolio_exposure with for_exposure (signed dollars, short < 0).
+All data is end-of-day and historical. Tools do not forecast and do not place orders. Tools that call billed REST endpoints charge the connected RiskModels account; each such tool's description states its price. The catalog tools (riskmodels_list_endpoints, riskmodels_get_capability, riskmodels_get_schema) read a static catalog and return no market data.
 
-Skip riskmodels_list_endpoints, riskmodels_get_capability, riskmodels_get_schema, and riskmodels_get_openapi_spec unless the user is implementing a client or asks which REST routes exist. Those tools do not return live numbers.
-
-If a tool errors, show the error. Do not invent hedge ratios or explained-risk.`;
+API reference: https://riskmodels.app/docs/api`;
 
 export const LIST_ENDPOINTS_DESCRIPTION =
-  "Catalog of REST capabilities (id, method, path, one-line description). Skip this for stock or portfolio questions — call riskmodels_decompose, riskmodels_compare, or riskmodels_get_returns instead. Use only when implementing a client or looking up an endpoint that has no dedicated tool.";
+  "Lists the RiskModels REST catalog: capability id, HTTP method, path and a one-line description for each endpoint. Reads a static catalog and returns no market data. Free.";
 
 export const GET_CAPABILITY_DESCRIPTION =
-  "Full REST capability detail (parameters, pricing, examples) by id from the catalog. Skip this for live ticker analysis — call the dedicated data tools. Use after list_endpoints when wiring a new client.";
+  "Returns one REST capability's full definition by id: parameters, pricing and examples. Reads a static catalog and returns no market data. Free.";
 
 export const GET_SCHEMA_DESCRIPTION =
-  "JSON response schema by filename. Skip this for live ticker analysis. Use when implementing a client against a REST path.";
+  "Returns the JSON response schema for one REST endpoint by schema filename (for example ticker-returns-v2.json). Static; free.";
 
 export const GET_OPENAPI_SPEC_DESCRIPTION =
-  "Full OpenAPI 3.x spec. Skip this for stock or portfolio questions — call riskmodels_decompose or riskmodels_compare. Use only when implementing a client and you need exact path/query shapes.";
+  "Returns the full OpenAPI 3 specification of the RiskModels REST API. Static; free.";

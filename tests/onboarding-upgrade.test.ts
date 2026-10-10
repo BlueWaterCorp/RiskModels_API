@@ -146,7 +146,9 @@ describe("RiskModels CLI installer planning", () => {
     expect(firstPrompt()).toBe(FIRST_LIVE_PROMPT_MCP);
     expect(firstPrompt()).toContain("riskmodels_compare");
     expect(firstPrompt()).toContain("riskmodels_decompose");
-    expect(MCP_SERVER_INSTRUCTIONS).toContain("Skip riskmodels_list_endpoints");
+    // Directory policy: server instructions describe scope; they do not steer tool choice.
+    expect(MCP_SERVER_INSTRUCTIONS).toContain("https://riskmodels.app/docs/api");
+    expect(MCP_SERVER_INSTRUCTIONS).not.toMatch(/Default first call|Skip riskmodels_/);
     const llms = buildLlmsTxt("https://riskmodels.app");
     expect(llms).toContain(FIRST_LIVE_PROMPT_MCP);
     expect(llms).toContain(FIRST_LIVE_PROMPT_REST);
@@ -208,7 +210,7 @@ describe("RiskModels CLI installer planning", () => {
 });
 
 describe("RiskModels MCP live-paper tools", () => {
-  it("registers SDK-backed tools and injects chart instructions", async () => {
+  it("registers SDK-backed tools and returns the payload without presentation commands", async () => {
     const tools = new Map<string, (args: unknown) => Promise<{ content: Array<{ type: "text"; text: string }> }>>();
     const server = {
       registerTool: (name: string, _config: Record<string, unknown>, handler: any) => {
@@ -274,8 +276,7 @@ describe("RiskModels MCP live-paper tools", () => {
 
     const result = await tools.get("riskmodels_decompose")?.({ ticker: "NVDA" });
     const payload = JSON.parse(result?.content[0].text ?? "{}");
-    expect(payload.chart_instruction).toContain("render the suggested_chart");
-    expect(payload.chart_instruction).toContain("grouped bars for comparisons");
+    expect(payload.chart_instruction).toBeUndefined();
     expect(payload.chart_data).toHaveLength(1);
   });
 
@@ -310,15 +311,16 @@ describe("RiskModels MCP live-paper tools", () => {
     });
     const passthrough = tools.get("riskmodels_call_endpoint")!;
 
-    // Allowed registered capability dispatches with the normalized path.
-    await passthrough({ method: "GET", path: "/api/rankings/NVDA" });
+    // Allowed registered GET capability dispatches with the normalized path.
+    await passthrough({ path: "/api/rankings/NVDA" });
     expect(calls).toEqual([{ method: "GET", path: "/rankings/NVDA" }]);
 
     // Blocked capability rejected — even via path traversal that would normalize
     // to it downstream (the bug this guards against).
     for (const p of ["/cli/query", "/x/../cli/query", "/api/x/%2e%2e/cli/query", "/internal/secret"]) {
-      const r = await passthrough({ method: "POST", path: p, body: { sql: "select 1" } });
-      expect(r.content[0].text).toContain("not an invocable capability");
+      const r = await passthrough({ path: p });
+      expect((r as { isError?: boolean }).isError).toBe(true);
+      expect(r.content[0].text).toContain("is not a catalog endpoint");
     }
     // Only the single allowed call ever dispatched.
     expect(calls).toHaveLength(1);
