@@ -29,7 +29,12 @@ export const GET = withBilling(
     const result = await loadFundSnapshot(bwFundId);
     if (!result.ok) {
       return NextResponse.json(
-        { error: result.error, bw_fund_id: bwFundId },
+        {
+        error: result.error,
+        bw_fund_id: bwFundId,
+        ...(result.code ? { code: result.code } : {}),
+        ...(result.detail ? { detail: result.detail } : {}),
+      },
         { status: result.status },
       );
     }

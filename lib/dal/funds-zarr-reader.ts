@@ -72,6 +72,11 @@ import {
 } from "@/lib/funds/style-slug";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  latestFiledColumn,
+  totalBookColumn,
+  type FundBookShape,
+} from "@/lib/funds/long-short-guard";
+import {
   compareHoldingsRank,
   summarizeVintages,
   type BookRepair,
@@ -436,7 +441,7 @@ async function readFloatSlice1d(
     if (d instanceof Float32Array || d instanceof Float64Array) {
       return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
     }
-    if (d instanceof Int32Array || d instanceof Int16Array) {
+    if (d instanceof Int32Array || d instanceof Int16Array || d instanceof Int8Array) {
       return Array.from(d, (x) => x);
     }
     if (d instanceof BigInt64Array) {
@@ -997,6 +1002,38 @@ export async function readFundHoldingsBook(
   // Scrub outside the cache boundary (see readFundHoldingsTopN).
   const top = await applyScrubToHoldings(full.holdings.slice(0, Math.max(1, n)));
   return { ...full, n_holdings_returned: top.length, holdings: top };
+}
+
+/**
+ * Long/short totals of the latest filed ds_ph column, for the F1 long-short
+ * guard (`lib/funds/long-short-guard.ts`). Reads the four (teo,) vectors and
+ * one adj_mv column; no symbol labels. Null when the fund has no ds_ph.zarr
+ * or no filed column.
+ */
+export async function readFundBookShape(bwFundId: string): Promise<FundBookShape | null> {
+  const ck = generateCacheKey("funds_zarr", "fund_book_shape_v1", { fund: bwFundId });
+  return withZarrCache<FundBookShape | null>(
+    ck,
+    async () => {
+      const grp = await openFundZarrGroup(bwFundId, "ds_ph.zarr");
+      if (!grp) return null;
+      const teos = await readTeoStrings(grp);
+      const symbols = await readSymbolStrings(grp);
+      if (!teos || teos.length === 0 || !symbols || symbols.length === 0) return null;
+      const [aumErm3, aumReported, aumSource] = await Promise.all([
+        readFloatSlice1d(grp, "aum_erm3", 0, teos.length),
+        readFloatSlice1d(grp, "aum_reported", 0, teos.length),
+        readFloatSlice1d(grp, "aum_source", 0, teos.length),
+      ]);
+      if (!aumErm3) return null;
+      const idx = latestFiledColumn(aumErm3);
+      if (idx < 0) return null;
+      const adjMv = await readFloatAtTeo(grp, "adj_mv", idx, symbols.length);
+      if (!adjMv) return null;
+      return totalBookColumn(teos[idx]!, adjMv, aumReported?.[idx] ?? null, aumSource?.[idx] ?? null);
+    },
+    { emptyValue: null },
+  );
 }
 
 // ---------------------------------------------------------------------------

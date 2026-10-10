@@ -11,6 +11,7 @@ import {
   resolveFundById,
 } from "@/lib/dal/funds-engine";
 import {
+  readFundBookShape,
   readFundHedgeLatest,
   readFundHoldingsTopN,
   readFundNavSeries,
@@ -22,6 +23,11 @@ import {
   type FundSnapshot,
 } from "@/lib/funds/snapshot-composer";
 import { enrichFundHoldingsWithL3 } from "@/lib/funds/enrich-fund-holdings";
+import {
+  classifyFundBook,
+  LONG_SHORT_UNAVAILABLE_CODE,
+  LONG_SHORT_UNAVAILABLE_MESSAGE,
+} from "@/lib/funds/long-short-guard";
 
 const HOLDINGS_TOP_N = 25;
 const FUND_LOOKBACK_MONTHS = 12;
@@ -34,7 +40,44 @@ export type LoadFundSnapshotResult =
       filingDate: string;
       modelVersion: string | null;
     }
-  | { ok: false; status: number; error: string };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      /** Machine-readable reason, set for refusals such as the long-short guard. */
+      code?: string;
+      detail?: Record<string, unknown>;
+    };
+
+/**
+ * Refuse the F1 composition for long-short books (see
+ * `lib/funds/long-short-guard.ts`). 422, so the billing middleware does not
+ * charge and the PDF route refuses before its cache lookup.
+ */
+export async function checkLongShortGuard(
+  bwFundId: string,
+): Promise<Extract<LoadFundSnapshotResult, { ok: false }> | null> {
+  const shape = await readFundBookShape(bwFundId);
+  if (!shape) return null;
+  const verdict = classifyFundBook(shape);
+  if (!verdict.refuse) return null;
+  return {
+    ok: false,
+    status: 422,
+    error: LONG_SHORT_UNAVAILABLE_MESSAGE,
+    code: LONG_SHORT_UNAVAILABLE_CODE,
+    detail: {
+      rule: verdict.rule,
+      reason: verdict.reason,
+      book_as_of: shape.teo,
+      long_to_net_assets: verdict.long_nav,
+      short_to_net_assets: verdict.short_nav,
+      net_to_net_assets: verdict.net_nav,
+      n_long: shape.n_long,
+      n_short: shape.n_short,
+    },
+  };
+}
 
 /**
  * Load + compose a full `FundSnapshot` for the given `bw_fund_id`. Pure
@@ -55,6 +98,8 @@ export async function loadFundSnapshot(
       error: "No funds_latest row for this fund",
     };
   }
+  const refused = await checkLongShortGuard(bwFundId);
+  if (refused) return refused;
   const { fund, latest } = resolved;
 
   const reportDate = new Date(`${latest.report_date}T12:00:00Z`);

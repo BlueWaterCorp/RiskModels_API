@@ -54,7 +54,12 @@ async function buildFundPdf(
   const result = await loadFundSnapshot(bwFundId);
   if (!result.ok) {
     return NextResponse.json(
-      { error: result.error, bw_fund_id: bwFundId },
+      {
+        error: result.error,
+        bw_fund_id: bwFundId,
+        ...(result.code ? { code: result.code } : {}),
+        ...(result.detail ? { detail: result.detail } : {}),
+      },
       { status: result.status, headers: getCorsHeaders(origin) },
     );
   }
@@ -110,7 +115,12 @@ export async function GET(
   const peek = await loadFundSnapshot(bwFundId);
   if (!peek.ok) {
     return NextResponse.json(
-      { error: peek.error, bw_fund_id: bwFundId },
+      {
+        error: peek.error,
+        bw_fund_id: bwFundId,
+        ...(peek.code ? { code: peek.code } : {}),
+        ...(peek.detail ? { detail: peek.detail } : {}),
+      },
       { status: peek.status, headers: getCorsHeaders(origin) },
     );
   }
