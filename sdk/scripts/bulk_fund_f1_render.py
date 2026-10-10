@@ -5,6 +5,14 @@ Writes flat filenames for CDN probing (`riskmodels.app/snapshots/{bw_fund_id}_f1
 
     {out_dir}/BW-FUND-..._f1.png
 
+Long-short books are refused, not rendered: when BWMACRO's guard
+(``bwmacro.snapshots.funds._ls_guard``; short leg >= 5% of N-PORT net assets,
+or net book < 50% of net assets with a short leg >= 1%, or, without a
+NET_ASSETS header, short leg >= 5% of gross) fires, the run log row
+has status ``unavailable_long_short`` ("long-short fund: sheet not available"),
+no PNG is written, and a stale local ``{id}_f1.png`` is deleted so ``--resume``
+and the batch rsync cannot ship it. These rows do not count as errors.
+
 Prerequisites
 -------------
 - BWMACRO monorepo venv (imports ``bwmacro.snapshots.funds``).
@@ -103,6 +111,24 @@ def _rsync_out_dir_to_gcs(out_dir: Path, gcs_bucket: str) -> tuple[bool, str]:
         return False, f"gcloud not found: {e}"
 
 
+UNAVAILABLE_STATUS = "unavailable_long_short"
+
+
+def _long_short_refusal(bw_fund_id: str) -> dict | None:
+    """Status row when BWMACRO's long-short guard refuses F1 for this fund.
+
+    Older BWMACRO checkouts without the guard module render as before.
+    """
+    try:
+        from bwmacro.snapshots.funds._ls_guard import LongShortSheetUnavailable, check_f1_renderable
+    except ImportError:
+        return None
+    shape, verdict = check_f1_renderable(bw_fund_id)
+    if not verdict.refuse or shape is None:
+        return None
+    return LongShortSheetUnavailable(shape, verdict).as_dict()
+
+
 def _render_one(
     bw_fund_id: str,
     out_dir: Path,
@@ -113,11 +139,35 @@ def _render_one(
     resume: bool,
     force: bool,
 ) -> dict:
+    t0 = time.perf_counter()
+
+    png = out_dir / f"{bw_fund_id}_f1.png"
+
+    prev_root = os.environ.get("FUNDS_DAG_ZARR_ROOT")
+    os.environ["FUNDS_DAG_ZARR_ROOT"] = str(funds_dag_zarr_parent.resolve())
+    try:
+        # Long-short guard first, so --resume cannot keep serving a stale page
+        # rendered before the guard existed (BWMACRO _ls_guard: R1-R3).
+        refusal = _long_short_refusal(bw_fund_id)
+    finally:
+        if prev_root is None:
+            os.environ.pop("FUNDS_DAG_ZARR_ROOT", None)
+        else:
+            os.environ["FUNDS_DAG_ZARR_ROOT"] = prev_root
+    if refusal is not None:
+        removed = False
+        if png.is_file():
+            png.unlink()  # local stale page; it must not reach the batch rsync
+            removed = True
+        return {
+            "bw_fund_id": bw_fund_id,
+            "duration_s": round(time.perf_counter() - t0, 2),
+            "stale_png_removed": removed,
+            **refusal,
+        }
+
     from bwmacro.snapshots.funds._data import get_data_for_f1
     from bwmacro.snapshots.funds.f1_tearsheet import render_f1_to_png
-
-    t0 = time.perf_counter()
-    png = out_dir / f"{bw_fund_id}_f1.png"
 
     if resume and not force and png.is_file():
         return {
@@ -165,6 +215,9 @@ def _render_one(
             "uploaded": uploaded,
         }
     except Exception as exc:
+        if getattr(exc, "sheet_unavailable", False) and hasattr(exc, "as_dict"):
+            return {"bw_fund_id": bw_fund_id, "duration_s": round(time.perf_counter() - t0, 2),
+                    **exc.as_dict()}
         return {
             "bw_fund_id": bw_fund_id,
             "status": "error",
@@ -268,7 +321,9 @@ def main() -> int:
 
     log_path = args.out_dir / "_bulk_run_log.jsonl"
     summary_path = args.out_dir / "_bulk_summary.json"
-    counts: dict[str, int] = {"ok": 0, "skipped_resume": 0, "error": 0, "uploaded_partial": 0}
+    counts: dict[str, int] = {
+        "ok": 0, "skipped_resume": 0, "error": 0, "uploaded_partial": 0, UNAVAILABLE_STATUS: 0,
+    }
 
     t_start = time.perf_counter()
 
@@ -288,7 +343,8 @@ def main() -> int:
             counts[row["status"]] = counts.get(row["status"], 0) + 1
             logf.write(json.dumps(row) + "\n")
             logf.flush()
-            tag = {"ok": "ok", "skipped_resume": "skip", "error": "err", "uploaded_partial": "partial"}.get(
+            tag = {"ok": "ok", "skipped_resume": "skip", "error": "err", "uploaded_partial": "partial",
+                   UNAVAILABLE_STATUS: "long-short: sheet not available"}.get(
                 row["status"], "?"
             )
             print(f"  [{i:>4}/{len(funds)}] {tag} {fid}", flush=True)

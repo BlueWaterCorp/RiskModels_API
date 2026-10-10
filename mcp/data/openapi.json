@@ -16785,6 +16785,16 @@
               }
             }
           },
+          "422": {
+            "description": "Long-short fund; the F1 sheet is not available and nothing is billed. Returned when the latest filed book has a short leg of at least 5% of N-PORT net assets, a net book under 50% of net assets with a short leg of at least 1%, or (no NET_ASSETS header) a short leg of at least 5% of gross. Body: `error` = \"long-short fund: sheet not available\", `code` = `long_short_sheet_unavailable`, `detail` with the rule and the book ratios. Use `/api/funds/{bw_fund_id}/holdings` for the signed book.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limit exceeded.",
             "content": {
@@ -16885,6 +16895,16 @@
           },
           "404": {
             "description": "Fund not found, or no funds_latest row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Long-short fund; the F1 sheet is not available and nothing is billed. Returned when the latest filed book has a short leg of at least 5% of N-PORT net assets, a net book under 50% of net assets with a short leg of at least 1%, or (no NET_ASSETS header) a short leg of at least 5% of gross. Body: `error` = \"long-short fund: sheet not available\", `code` = `long_short_sheet_unavailable`, `detail` with the rule and the book ratios. Use `/api/funds/{bw_fund_id}/holdings` for the signed book.\n",
             "content": {
               "application/json": {
                 "schema": {

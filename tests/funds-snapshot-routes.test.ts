@@ -15,6 +15,7 @@ vi.mock("@/lib/dal/funds-engine", () => ({
 }));
 
 vi.mock("@/lib/dal/funds-zarr-reader", () => ({
+  readFundBookShape: vi.fn(),
   readFundHoldingsTopN: vi.fn(),
   readFundHedgeLatest: vi.fn(),
   readFundPortfolioSeries: vi.fn(),
@@ -31,6 +32,7 @@ import {
   resolveFundById,
 } from "@/lib/dal/funds-engine";
 import {
+  readFundBookShape,
   readFundHedgeLatest,
   readFundHoldingsTopN,
   readFundNavSeries,
@@ -94,6 +96,8 @@ beforeEach(() => {
   vi.mocked(readFundNavSeries).mockReset();
   vi.mocked(readStyleCohortHoldingsTopN).mockReset();
   vi.mocked(readStyleCohortPortfolioSeries).mockReset();
+  vi.mocked(readFundBookShape).mockReset();
+  vi.mocked(readFundBookShape).mockResolvedValue(null);
 });
 
 describe("GET /api/funds/snapshot/[bw_fund_id]", () => {
@@ -139,6 +143,58 @@ describe("GET /api/funds/snapshot/[bw_fund_id]", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBe("No funds_latest row for this fund");
+  });
+});
+
+describe("GET /api/funds/snapshot/[bw_fund_id] — long-short guard", () => {
+  // VMNFX book totals at its 2026-06-30 N-PORT filing (ds_ph.zarr)
+  const VMNFX_BOOK = {
+    teo: "2026-06-30",
+    long_mv: 578631587.8,
+    short_mv: -551804075.51,
+    nav: 597170714.63,
+    n_long: 313,
+    n_short: 292,
+  };
+
+  it("refuses a long-short fund with 422 before reading any other store", async () => {
+    vi.mocked(resolveFundById).mockResolvedValue({ fund: FUND, latest: LATEST });
+    vi.mocked(readFundBookShape).mockResolvedValue(VMNFX_BOOK);
+    const res = await fundSnapshotGET(
+      req(`/api/funds/snapshot/${FUND.bw_fund_id}`),
+      fakeContext,
+    );
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toBe("long-short fund: sheet not available");
+    expect(body.code).toBe("long_short_sheet_unavailable");
+    expect(body.detail.rule).toBe("R1");
+    expect(body.detail.short_to_net_assets).toBeCloseTo(0.924, 3);
+    expect(vi.mocked(readFundHoldingsTopN)).not.toHaveBeenCalled();
+    expect(vi.mocked(readFundNavSeries)).not.toHaveBeenCalled();
+  });
+
+  it("serves a long-only book (AGTHX totals) as before", async () => {
+    vi.mocked(resolveFundById).mockResolvedValue({ fund: FUND, latest: LATEST });
+    vi.mocked(readFundBookShape).mockResolvedValue({
+      teo: "2026-06-30",
+      long_mv: 266790417746.46,
+      short_mv: 0,
+      nav: 328047650672.35,
+      n_long: 300,
+      n_short: 0,
+    });
+    vi.mocked(readFundHoldingsTopN).mockResolvedValue(null);
+    vi.mocked(readFundHedgeLatest).mockResolvedValue(null);
+    vi.mocked(readFundPortfolioSeries).mockResolvedValue([]);
+    vi.mocked(readFundNavSeries).mockResolvedValue([]);
+    vi.mocked(fetchFundCohortRanks).mockResolvedValue(FUND_COHORT_RANKS);
+    vi.mocked(fetchStyleCohortLatest).mockResolvedValue(COHORT_METRICS);
+    const res = await fundSnapshotGET(
+      req(`/api/funds/snapshot/${FUND.bw_fund_id}`),
+      fakeContext,
+    );
+    expect(res.status).toBe(200);
   });
 });
 
