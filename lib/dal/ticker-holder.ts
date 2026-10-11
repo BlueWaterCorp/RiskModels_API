@@ -23,10 +23,12 @@
  * holders.
  *
  * HELD_THROUGH is scoped to the requested ticker: the end of closed
- * security_master rows whose `ticker` / `unique_ticker` is the request, the
- * day before a closed alias's (half-open) end, and — for a dead identity
- * whose ds_daily display ticker or listing code is the request, i.e. the
- * label it last traded under — the identity's own end date.
+ * security_master rows whose `ticker` / `unique_ticker` is the request, and
+ * the day before a closed alias's (half-open) end. ds_daily labels never
+ * date a candidate (a label can lag an in-place rename).
+ *
+ * REGISTRY VETO: any candidate whose `symbols` row (under any ticker) is
+ * flagged delisted is never live, and is ranked as a former holder.
  *
  * Ranking (rankHolderCandidates): live first; then latest `held_through`
  * (unknown last); then present in ds_daily; then lowest bw_sym_id.
@@ -208,6 +210,39 @@ async function fetchSecurityMasterOnce(
   return { rows, failedRequests };
 }
 
+/**
+ * Ids whose `symbols` row (under any ticker) is flagged delisted. Chunked,
+ * count-checked, retried one key at a time; ids still unread are `failed`.
+ */
+async function fetchRegistryDeadIds(
+  ids: string[],
+): Promise<{ dead: Set<string>; failed: Set<string> }> {
+  const dead = new Set<string>();
+  const failed = new Set<string>();
+  if (!ids.length) return { dead, failed };
+  const admin = createAdminClient();
+  const once = async (keys: string[]): Promise<boolean> => {
+    try {
+      const { data, error, count } = (await admin
+        .from("symbols")
+        .select("symbol, metadata", { count: "exact" })
+        .in("symbol", keys)) as { data: unknown; error: unknown; count?: number | null };
+      const rows = (data ?? []) as { symbol?: string; metadata?: { is_delisted?: boolean } | null }[];
+      if (error || (typeof count === "number" && rows.length < count)) return false;
+      for (const r of rows) if (r.symbol && r.metadata?.is_delisted === true) dead.add(r.symbol);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (let i = 0; i < ids.length; i += SM_CHUNK) {
+    const slice = ids.slice(i, i + SM_CHUNK);
+    if (await once(slice)) continue;
+    for (const k of slice) if (slice.length === 1 || !(await once([k]))) failed.add(k);
+  }
+  return { dead, failed };
+}
+
 function chunked(col: SmRequest["col"], values: string[]): SmRequest[] {
   const out: SmRequest[] = [];
   for (let i = 0; i < values.length; i += SM_CHUNK) {
@@ -336,10 +371,14 @@ async function findMostRecentHoldersUncached(
       }
     }
 
-    // Pass 2: every row of every candidate id (liveness + windows).
+    // Pass 2: every security_master row of every candidate id (liveness +
+    // windows), and every candidate's registry flag (veto before ranking).
     const allIds = [...new Set([...idsByTicker.values()].flatMap((s) => [...s]))];
-    const pass2 = await fetchSecurityMasterRows(chunked("bw_sym_id", allIds));
-    const failedIds = new Set(pass2.failedRequests.flatMap((r) => r.values));
+    const [pass2, registry] = await Promise.all([
+      fetchSecurityMasterRows(chunked("bw_sym_id", allIds)),
+      fetchRegistryDeadIds(allIds),
+    ]);
+    const failedIds = new Set([...pass2.failedRequests.flatMap((r) => r.values), ...registry.failed]);
     for (const [t, ids] of idsByTicker) {
       if ([...ids].some((id) => failedIds.has(id))) failed.add(t);
     }
@@ -366,7 +405,7 @@ async function findMostRecentHoldersUncached(
       for (const id of ids) {
         const sm = smById.get(id) ?? [];
         const extras = extraByKey.get(`${t}\u0000${id}`) ?? [];
-        const registryDead = extras.some((e) => e.dead === true);
+        const registryDead = extras.some((e) => e.dead === true) || registry.dead.has(id);
         const identityOpen = sm.some(smIsOpen);
         const forT = sm.filter((r) => label(r.ticker) === t || label(r.unique_ticker) === t);
         const live = !registryDead && sm.some((r) => smIsOpen(r) && label(r.ticker) === t);
@@ -390,7 +429,7 @@ async function findMostRecentHoldersUncached(
         const pricedUnderT =
           (index?.byDisplayTicker.get(t)?.includes(id) ?? false) &&
           (index?.byListingTicker.get(t)?.includes(id) ?? false);
-        if (identityOpen && !live && held === null && !registryDead && !pricedUnderT) continue;
+        if (identityOpen && !live && held === null && !pricedUnderT) continue;
 
         const representative =
           forT.find(smIsOpen) ??

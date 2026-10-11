@@ -348,14 +348,21 @@ async function resolveAliasesToCanonicalSymbols(
   if (uppers.length === 0) return out;
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin
+    const { data, error, count } = await admin
       .from("security_aliases")
-      .select("bw_sym_id, alias_type, alias_value, valid_to, confidence_score")
+      .select("bw_sym_id, alias_type, alias_value, valid_to, confidence_score", { count: "exact" })
       .in("alias_value", uppers)
       .in("alias_type", TICKER_ALIAS_TYPES as unknown as string[]);
-    if (error) {
-      console.error("[V3 DAL] Error batch querying security_aliases:", error);
-      status.failed = true;
+    if (error || (typeof count === "number" && (data ?? []).length < count)) {
+      // Fall back to the single-ticker query (same pick as resolveSymbolByTicker);
+      // a ticker whose own query fails marks the whole status failed.
+      console.error("[V3 DAL] Batch security_aliases read failed or short:", error ?? count);
+      for (const u of uppers) {
+        const one = { failed: false };
+        const hit = await resolveAliasToCanonicalSymbol(u, one);
+        if (one.failed) status.failed = true;
+        if (hit) out.set(u, hit);
+      }
       return out;
     }
     type Row = {
@@ -549,30 +556,11 @@ async function resolveMostRecentHolderRows(
 
   const ids = [...new Set([...lookup.holders.values()].map((h) => h.bw_sym_id))];
   const symbolsById = new Map<string, Record<string, unknown>>();
-  // Read per chunk of 100 ids with an exact count; a failed or short chunk
-  // fails only the tickers whose holder id is in it.
-  const unreadIds = new Set<string>();
-  for (let i = 0; i < ids.length; i += 100) {
-    const chunk = ids.slice(i, i + 100);
-    let data: unknown = null;
-    let error: unknown = null;
-    let count: number | null | undefined = null;
-    try {
-      ({ data, error, count } = await createAdminClient()
-        .from("symbols")
-        .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
-        .in("symbol", chunk));
-    } catch (e) {
-      error = e;
-    }
-    const rows = (data ?? []) as Record<string, unknown>[];
-    if (error || (typeof count === "number" && rows.length < count)) {
-      console.error("[V3 DAL] Holder symbols rows unreadable or incomplete:", error ?? count);
-      for (const id of chunk) unreadIds.add(id);
-      continue;
-    }
-    for (const r of rows) symbolsById.set(String(r.symbol), r);
-  }
+  // Count-checked with per-key retry; an id still unread fails only the
+  // tickers it holds.
+  const holderRead = await readSymbolRowsChecked("symbol", ids);
+  const unreadIds = holderRead.failed;
+  for (const r of holderRead.rows) symbolsById.set(String(r.symbol), r);
 
   for (const t of tickers) {
     const holderId = lookup.holders.get(t)?.bw_sym_id;
@@ -616,16 +604,18 @@ async function resolveMostRecentHolderRows(
       }
       // Unservable live holder: keep main's answer (if any) but say the
       // ticker now belongs to someone else. Decision recorded for Conrad.
+      // When ds_daily could not be read (in_daily_store null) servability is
+      // unknown: keep main's answer without the flag.
       const kept = keep(t);
       out.set(
         t,
-        kept
+        kept && h.in_daily_store === false
           ? {
               ...kept,
               ticker_reassigned: true,
               current_holder: { symbol: h.bw_sym_id, name: h.security_master?.company_name ?? null },
             }
-          : null,
+          : kept,
       );
       continue;
     }
@@ -717,6 +707,7 @@ export async function resolveSymbolByTicker(
       return picked;
     } catch (error) {
       console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
+      if (t === upper) directReadFailed = true;
       return null;
     }
   };

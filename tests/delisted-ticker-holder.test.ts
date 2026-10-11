@@ -102,6 +102,8 @@ let SYM_FAIL_KEYS: Set<string>;
 let SYM_TRUNCATE: boolean;
 /** security_aliases reads fail. */
 let ALIAS_FAIL: boolean;
+/** symbols queries throw (client / network failure). */
+let SYM_THROW: boolean;
 
 function resetFixtures() {
   SYMBOLS = [
@@ -166,6 +168,7 @@ function resetFixtures() {
   SYM_FAIL_KEYS = new Set();
   SYM_TRUNCATE = false;
   ALIAS_FAIL = false;
+  SYM_THROW = false;
 }
 
 function dailyIndex() {
@@ -268,8 +271,10 @@ function stubSupabase() {
         }
         return { data: rows, error: null, count: rows.length };
       };
-      (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
-        Promise.resolve(respond()).then(resolve);
+      (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+        table === "symbols" && SYM_THROW
+          ? Promise.reject(new Error("stub network failure")).then(resolve, reject)
+          : Promise.resolve(respond()).then(resolve);
       return query;
     },
   };
@@ -532,6 +537,15 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     SECURITY_MASTER.push(sm("BW-DEADREG", "TDR"));
     DAILY!.RENAMED = ["BW-DEADREG"];
     expect(await both("TDR")).toBeNull();
+    // Vetoed before ranking, so a dated former holder still answers.
+    SECURITY_MASTER.push(sm("BW-TDR-A", "TDR", { live: false, valid_to: "2024-01-01" }));
+    DAILY!.TDR_A = ["BW-TDR-A"];
+    expect(await both("TDR")).toMatchObject({ symbol: "BW-TDR-A", delisted: true });
+    // ...and a second, servable live holder wins over the vetoed one.
+    SYMBOLS.push(sym("BW-TDR-C", "TDRC"));
+    SECURITY_MASTER.push(sm("BW-TDR-C", "TDR"));
+    DAILY!.TDRC = ["BW-TDR-C"];
+    expect(await both("TDR")).toMatchObject({ symbol: "BW-TDR-C", delisted: false });
   });
 
   it("an open identity renamed in place is never served for its old display label", async () => {
@@ -557,6 +571,24 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     ALIAS_FAIL = false;
     SYM_FAIL_KEYS = new Set(["FB"]);
     expect(await both("FB")).toBeNull();
+  });
+
+  it("a registry read that throws fails closed in both resolvers", async () => {
+    SECURITY_MASTER.push(sm("BW-OLD-WM", "WM", { live: false, valid_to: "2001-01-01" }));
+    DAILY!.WM_OLD = ["BW-OLD-WM"];
+    SYM_THROW = true;
+    expect(await both("WM")).toBeNull();
+    SYM_THROW = false;
+  });
+
+  it("an unreadable ds_daily index never sets ticker_reassigned", async () => {
+    SYMBOLS.push(sym("BW-BBG000MM2P62", "META"));
+    ALIASES.push(alias("BW-BBG000MM2P62", "FB", "EODHD_TICKER", "2022-06-09"));
+    SECURITY_MASTER.push(sm("BW-BBG01VRMNFB1", "FB", { name: "PROSHARES TR" }));
+    DAILY = null;
+    const rec = await both("FB");
+    expect(rec?.symbol).toBe("BW-BBG000MM2P62");
+    expect(rec?.ticker_reassigned).toBeUndefined();
   });
 
   it("every dead registry row is vetoed, not only the pick", async () => {

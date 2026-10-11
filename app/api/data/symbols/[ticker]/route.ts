@@ -59,7 +59,12 @@ export async function GET(
   // answered before, or its most recent former holder (delisted CTRA).
   // Disclosure fields (resolved_via / delisted / ticker_reassigned) come
   // from the DAL via resolutionDisclosure.
-  const deadRow = data && isDeadSymbolRow(data as Record<string, unknown>) && !resolution.projected;
+  // Same predicate as the batch route: only a dead row under the requested
+  // ticker itself (no notation rewrite, no share-class projection) defers.
+  const deadRow =
+    data &&
+    isDeadSymbolRow(data as Record<string, unknown>) &&
+    resolution.canonical === resolution.requested.trim().toUpperCase();
   let holder: Awaited<ReturnType<typeof resolveSymbolByTicker>> = null;
   if (!data || deadRow) {
     holder = await resolveSymbolByTicker(ticker);
