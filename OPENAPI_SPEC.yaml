@@ -11073,6 +11073,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /data/risk-calendar:
+    get:
+      summary: Risk Calendar (retired)
+      description: >
+        Retired. The Risk Calendar (earnings, ex-dividend, macro and filing-deadline events) no
+        longer returns events. Every request answers HTTP 410 Gone with error code
+        `risk_calendar_retired`. SEC filing deadlines remain available at
+        `GET /api/data/filing-calendar`.
+      operationId: getRiskCalendarRetired
+      deprecated: true
+      tags: [Utility]
+      security: []
+      responses:
+        "410":
+          description: The endpoint is retired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: risk_calendar_retired
+                message: >-
+                  The Risk Calendar endpoint has been retired and no longer returns events. SEC filing
+                  deadlines remain available at /api/data/filing-calendar.
+                code: 410
+
   /data/funds/search:
     get:
       summary: Search funds by ticker or name
