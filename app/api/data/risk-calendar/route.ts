@@ -13,17 +13,19 @@ export const dynamic = "force-dynamic";
  * The chat tool `get_risk_calendar` and lib/risk/risk-calendar-service.ts are
  * removed. Filing deadlines remain available at GET /api/data/filing-calendar.
  */
-function gone() {
+/** Same headers for GET and HEAD (a HEAD is a GET without the body). */
+const RETIRED_HEADERS = {
+  "Cache-Control": "public, max-age=3600",
+  "Content-Type": "application/json",
+} as const;
+
+export async function GET() {
   return NextResponse.json(RISK_CALENDAR_RETIRED_BODY, {
     status: 410,
-    headers: { "Cache-Control": "public, max-age=3600" },
+    headers: RETIRED_HEADERS,
   });
 }
 
-export async function GET() {
-  return gone();
-}
-
 export async function HEAD() {
-  return new NextResponse(null, { status: 410 });
+  return new NextResponse(null, { status: 410, headers: RETIRED_HEADERS });
 }
