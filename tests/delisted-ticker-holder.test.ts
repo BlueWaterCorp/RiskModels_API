@@ -490,7 +490,8 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     SYMBOLS.push(sym("BW-DEAD-ONLY", "DEAD", { dead: true }));
     expect(await both("CTRA")).toBeNull();
     const dead = await both("DEAD");
-    expect(dead).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true });
+    // main's answer, marked as unchecked.
+    expect(dead).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true, resolution_degraded: true });
     expect(dead?.resolved_via).toBeUndefined();
     // Live symbols rows never touch the holder pass.
     expect((await both("WM"))?.symbol).toBe("BW-BBG000BWVSR1");
@@ -589,6 +590,16 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     const rec = await both("FB");
     expect(rec?.symbol).toBe("BW-BBG000MM2P62");
     expect(rec?.ticker_reassigned).toBeUndefined();
+  });
+
+  it("among undated candidates, display + listing evidence beats a single stale label", async () => {
+    // BW-A (lower id) is dead, linked only by its display label; BW-Z is open
+    // and priced under ZZ on display and listing code. Neither is dated.
+    SECURITY_MASTER.push(sm("BW-A-ZZ", "OTHERA", { live: false, valid_to: "2020-01-01" }));
+    SECURITY_MASTER.push(sm("BW-Z-ZZ", "OTHERZ"));
+    DAILY!.ZZ = ["BW-A-ZZ", "BW-Z-ZZ"];
+    DAILY_LISTING.ZZ = ["BW-Z-ZZ"];
+    expect((await both("ZZ"))?.symbol).toBe("BW-Z-ZZ");
   });
 
   it("every dead registry row is vetoed, not only the pick", async () => {

@@ -71,6 +71,12 @@ export interface HolderCandidate {
   held_through: string | null;
   /** True / false when ds_daily was readable; null when it was not. */
   in_daily_store: boolean | null;
+  /**
+   * Strength of the ds_daily label evidence for T, used only to break ties
+   * among undated candidates: 2 = display ticker AND listing code are T,
+   * 1 = one of them, 0 = neither (unique_ticker / caller evidence only).
+   */
+  label_score?: number;
 }
 
 /** A candidate the caller already found (dead `symbols` row, alias hit). */
@@ -97,6 +103,7 @@ export interface MostRecentHolderLookup {
 
 /**
  * Deterministic pick: live first, then latest held_through (unknown last),
+ * then stronger ds_daily label evidence (display + listing over one label),
  * then present in ds_daily, then lowest bw_sym_id.
  */
 export function rankHolderCandidates<T extends HolderCandidate>(candidates: T[]): T | null {
@@ -106,6 +113,9 @@ export function rankHolderCandidates<T extends HolderCandidate>(candidates: T[])
     const ah = a.held_through ?? "";
     const bh = b.held_through ?? "";
     if (ah !== bh) return ah > bh ? -1 : 1;
+    const al = a.label_score ?? 0;
+    const bl = b.label_score ?? 0;
+    if (al !== bl) return bl - al;
     const ad = a.in_daily_store === true ? 1 : 0;
     const bd = b.in_daily_store === true ? 1 : 0;
     if (ad !== bd) return bd - ad;
@@ -426,9 +436,9 @@ async function findMostRecentHoldersUncached(
         // BBQDH7 → BBBY.US while security_master still says BYON). A display
         // label alone can lag an in-place rename; a stale unique_ticker never
         // qualifies.
-        const pricedUnderT =
-          (index?.byDisplayTicker.get(t)?.includes(id) ?? false) &&
-          (index?.byListingTicker.get(t)?.includes(id) ?? false);
+        const onDisplay = index?.byDisplayTicker.get(t)?.includes(id) ?? false;
+        const onListing = index?.byListingTicker.get(t)?.includes(id) ?? false;
+        const pricedUnderT = onDisplay && onListing;
         if (identityOpen && !live && held === null && !pricedUnderT) continue;
 
         const representative =
@@ -441,6 +451,7 @@ async function findMostRecentHoldersUncached(
           live,
           held_through: live ? null : held,
           in_daily_store: index ? index.symbols.has(id) : null,
+          label_score: (onDisplay ? 1 : 0) + (onListing ? 1 : 0),
           identity_delisted: registryDead || !identityOpen,
           security_master: representative,
         });

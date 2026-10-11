@@ -1410,7 +1410,7 @@ components:
           description: >
             `true` when the answering security is closed in the security master or flagged
             delisted in the registry; `false` when the most-recent-holder pass found it open.
-            Absent when neither source was consulted (ordinary answers).
+            Absent on ordinary answers and on answers kept unchanged from earlier releases whose registry row is not flagged delisted.
         ticker_reassigned:
           type: boolean
           description: >
@@ -1427,6 +1427,12 @@ components:
             name:
               type: string
               nullable: true
+        resolution_degraded:
+          type: boolean
+          description: >
+            `true` when the most-recent-holder check could not read its evidence (security
+            master or registry outage) and the previous answer was returned unchecked; a later
+            request may answer a different security. Absent otherwise.
         periodicity:
           type: string
           example: daily
@@ -1667,7 +1673,7 @@ components:
           description: >
             `true` when the answering security is closed in the security master or flagged
             delisted in the registry; `false` when the most-recent-holder pass found it open.
-            Absent when neither source was consulted (ordinary answers).
+            Absent on ordinary answers and on answers kept unchanged from earlier releases whose registry row is not flagged delisted.
         ticker_reassigned:
           type: boolean
           description: >
@@ -1684,6 +1690,12 @@ components:
             name:
               type: string
               nullable: true
+        resolution_degraded:
+          type: boolean
+          description: >
+            `true` when the most-recent-holder check could not read its evidence (security
+            master or registry outage) and the previous answer was returned unchecked; a later
+            request may answer a different security. Absent otherwise.
         returns:
           $ref: "#/components/schemas/BatchReturnsPayload"
         hedge_ratios:
@@ -6112,6 +6124,11 @@ paths:
               schema:
                 type: string
               description: With `X-Ticker-Reassigned`, the `symbol` of JSON `current_holder`.
+            X-Ticker-Resolution-Degraded:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Sent when JSON `resolution_degraded` is `true`.
           content:
             application/vnd.apache.parquet:
               schema:
@@ -9925,8 +9942,7 @@ paths:
                     description: >
                       `true` when the answering security is closed in the security master or
                       flagged delisted in the registry; `false` when the most-recent-holder pass
-                      found it open. Absent when neither source was consulted (ordinary
-                      answers).
+                      found it open. Absent on ordinary answers and on answers kept unchanged from earlier releases whose registry row is not flagged delisted.
                   ticker_reassigned:
                     type: boolean
                     description: >
@@ -9944,6 +9960,12 @@ paths:
                       name:
                         type: string
                         nullable: true
+                  resolution_degraded:
+                    type: boolean
+                    description: >
+                      `true` when the most-recent-holder check could not read its evidence (security
+                      master or registry outage) and the previous answer was returned unchecked; a later
+                      request may answer a different security. Absent otherwise.
                   tickers:
                     type: array
                     items:

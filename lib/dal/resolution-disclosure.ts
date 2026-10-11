@@ -10,6 +10,7 @@ export interface ResolutionDisclosure {
   delisted?: boolean;
   ticker_reassigned?: boolean;
   current_holder?: { symbol: string; name: string | null };
+  resolution_degraded?: boolean;
 }
 
 /**
@@ -26,6 +27,7 @@ export function resolutionDisclosure(row: ResolutionDisclosure | null | undefine
     out.ticker_reassigned = true;
     if (row.current_holder) out.current_holder = row.current_holder;
   }
+  if (row.resolution_degraded) out.resolution_degraded = true;
   return out;
 }
 
@@ -41,5 +43,6 @@ export function resolutionDisclosureHeaders(
     h["X-Ticker-Reassigned"] = "true";
     if (d.current_holder) h["X-Ticker-Current-Holder"] = d.current_holder.symbol;
   }
+  if (d.resolution_degraded) h["X-Ticker-Resolution-Degraded"] = "true";
   return h;
 }
