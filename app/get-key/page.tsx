@@ -130,6 +130,8 @@ function GetKeyPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [password, setPassword] = useState('');
+  const [usePassword, setUsePassword] = useState(false);
 
   // Account + keys
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -356,6 +358,29 @@ function GetKeyPage() {
       gtmAnalytics.signupSuccess('magic_link');
     }
     setAuthLoading(false);
+  };
+
+  /**
+   * Email + password, for accounts that were issued a password (e.g. MCP
+   * directory reviewers, who cannot receive a magic link). Supabase sets the
+   * session cookie client-side; an internal `next` (the OAuth authorize page)
+   * is then loaded so the connector flow continues. Never creates accounts.
+   */
+  const signInWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setAuthLoading(false);
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    setPassword('');
+    const nextParam = searchParams.get('next');
+    if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
+      window.location.href = nextParam;
+    }
   };
 
   /** Build at click time only — `window` is undefined during SSR. */
@@ -634,8 +659,8 @@ function GetKeyPage() {
                 <div className="flex-1 border-t border-zinc-700" />
               </div>
 
-              {/* Email magic link — fallback */}
-              <form onSubmit={signIn} className="space-y-3">
+              {/* Email magic link — fallback; or email + password for issued accounts */}
+              <form onSubmit={usePassword ? signInWithPassword : signIn} className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Email address</label>
                   <input
@@ -645,9 +670,29 @@ function GetKeyPage() {
                     className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
                   />
                 </div>
+                {usePassword && (
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-1.5">Password</label>
+                    <input
+                      type="password" required value={password} autoComplete="current-password"
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
+                    />
+                  </div>
+                )}
                 <button type="submit" disabled={authLoading}
                   className="w-full py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-50 text-zinc-100 font-semibold text-sm transition-colors">
-                  {authLoading ? 'Sending…' : 'Send magic link'}
+                  {usePassword
+                    ? authLoading ? 'Signing in…' : 'Sign in'
+                    : authLoading ? 'Sending…' : 'Send magic link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUsePassword((v) => !v); setAuthError(''); setPassword(''); }}
+                  className="w-full text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  data-testid="toggle-password-sign-in"
+                >
+                  {usePassword ? 'Email me a magic link instead' : 'Sign in with a password instead'}
                 </button>
               </form>
 
