@@ -36,6 +36,7 @@ import {
   zarrIndustryBasename,
 } from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
+import { indexFromCoords, type DailyTickerHolderIndex } from "./daily-ticker-index";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
 import { SERVED_HISTORY_START, clampStart, servedHistoryStartForKeys } from "./served-history";
@@ -1409,6 +1410,71 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
   }
 
   return { teo: teoStr, rows };
+}
+
+// =====================================================================
+// ds_daily ticker holders — delisted-ticker recall
+// =====================================================================
+
+export type { DailyTickerHolderIndex } from "./daily-ticker-index";
+
+const DAILY_HOLDER_TTL_MS = 30 * 60 * 1000;
+/** A failed build is retried after a minute, not on every miss. */
+const DAILY_HOLDER_NEGATIVE_TTL_MS = 60 * 1000;
+let dailyHolderIndexCache: {
+  /** Entry expires at this epoch ms. */
+  until: number;
+  promise: Promise<DailyTickerHolderIndex | null>;
+} | null = null;
+
+/** Raw coord cells (strings, or whatever an object-dtype array decodes to). */
+async function readRawCoord(grp: Group<Readable>, name: string): Promise<unknown[] | null> {
+  try {
+    const loc = grp.resolve(name);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof UnicodeStringArray) {
+      return Array.from({ length: d.length }, (_, i) => d.get(i));
+    }
+    if (Array.isArray(d)) return d as unknown[];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | null> {
+  const grp = await openZarrGroup(zarrDailyBasename());
+  if (!grp) return null;
+  // Four independent object reads; indexFromCoords fails closed on any gap.
+  const [symbols, display, unique, eodhd] = await Promise.all([
+    readRawCoord(grp, "symbol"),
+    readRawCoord(grp, "ticker"),
+    readRawCoord(grp, "unique_ticker"),
+    readRawCoord(grp, "eodhd_code"),
+  ]);
+  return indexFromCoords(symbols, display, unique, eodhd);
+}
+
+/**
+ * Cached ds_daily ticker-holder index (null when the store or a coord is
+ * unavailable). Built once per instance per 30 min; a null build is cached
+ * for 60 s so a persistently broken coord does not cost every miss a rebuild.
+ */
+export async function readDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | null> {
+  const now = Date.now();
+  if (dailyHolderIndexCache && now < dailyHolderIndexCache.until) {
+    return dailyHolderIndexCache.promise;
+  }
+  const promise = buildDailyTickerHolderIndex().catch(() => null);
+  dailyHolderIndexCache = { until: now + DAILY_HOLDER_TTL_MS, promise };
+  promise.then((v) => {
+    if (v === null && dailyHolderIndexCache?.promise === promise) {
+      dailyHolderIndexCache.until = Date.now() + DAILY_HOLDER_NEGATIVE_TTL_MS;
+    }
+  });
+  return promise;
 }
 
 // =====================================================================

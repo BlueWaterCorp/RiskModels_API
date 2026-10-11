@@ -23,6 +23,7 @@ import {
   isRestrictedSourceSymbol,
   RESTRICTED_SOURCE_NOTE,
 } from "@/lib/data-license";
+import { resolutionDisclosure, resolutionDisclosureHeaders } from "@/lib/dal/resolution-disclosure";
 
 export const runtime = "nodejs";
 
@@ -49,7 +50,7 @@ export const GET = withBilling(
 
     const { ticker, years, format } = validation.data;
 
-    const symbolRecord = await resolveSymbolByTicker(ticker);
+    const symbolRecord = await resolveSymbolByTicker(ticker, { disclosing: true });
     if (!symbolRecord) {
       return NextResponse.json({ error: "Ticker not found" }, { status: 404, headers: getCorsHeaders(origin) });
     }
@@ -195,11 +196,18 @@ export const GET = withBilling(
         ...getCorsHeaders(origin),
         ETag: etag,
         "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+        // csv / parquet carry no JSON envelope, so the most-recent-holder
+        // disclosure also rides on headers.
+        ...resolutionDisclosureHeaders(symbolRecord),
       } as Record<string, string>,
       jsonPayload: {
         symbol: symbolRecord.symbol,
         ticker: symbolRecord.ticker,
         asset_type: symbolRecord.asset_type,
+        // Present only when no live registry row carries the ticker and the
+        // series belongs to the security that holds it outside the modelled
+        // universe or held it most recently (lib/dal/ticker-holder).
+        ...resolutionDisclosure(symbolRecord),
         periodicity: "daily",
         data,
         meta: isEtf

@@ -7,6 +7,47 @@
     "data"
   ],
   "properties": {
+    "resolved_via": {
+      "type": "string",
+      "enum": [
+        "most_recent_holder"
+      ],
+      "description": "Present only when the modelled registry has no live row for the requested ticker and the most-recent-holder check chose the answer: the security that holds the ticker today (possibly under another registry ticker) or the one that held it most recently (e.g. delisted CTRA). Omitted for live registry rows and for answers unchanged from earlier releases."
+    },
+    "modelled_ticker": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "With resolved_via: the answering security's own ticker (registry or security master) when it differs from the requested ticker, e.g. BYON for a BBBY request answered by a listing pin."
+    },
+    "delisted": {
+      "type": "boolean",
+      "description": "true when the answering security is closed in the security master or flagged delisted in the registry; false when the most-recent-holder pass found it open. Absent on ordinary answers and on answers kept unchanged from earlier releases whose registry row is not flagged delisted."
+    },
+    "ticker_reassigned": {
+      "type": "boolean",
+      "description": "true when the security master shows a different security holding the ticker today that the API cannot serve (no registry row under the ticker, no daily history), so the answer is still the previous holder's series (e.g. FB keeps answering Meta while another security holds FB). Absent otherwise."
+    },
+    "current_holder": {
+      "type": "object",
+      "description": "With ticker_reassigned: the security holding the ticker today.",
+      "properties": {
+        "symbol": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "resolution_degraded": {
+      "type": "boolean",
+      "description": "true when the most-recent-holder check could not read its evidence (security master, registry or daily index) and the previous answer was returned unchecked. Absent otherwise."
+    },
     "meta": {
       "type": "object",
       "required": [

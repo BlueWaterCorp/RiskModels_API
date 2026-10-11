@@ -141,11 +141,14 @@ export async function resolveAll(
   notRetried?: string[],
 ): Promise<Map<string, SymbolRegistryRow>> {
   const out = new Map<string, SymbolRegistryRow>();
+  // Tickers the batch already ran through the most-recent-holder pass are
+  // decided; retrying them one by one would only repeat that pass.
+  const holderPassed = new Set<string>();
   for (const part of chunks(tickers, IN_CHUNK)) {
-    const m = await resolveSymbolsByTickers(part);
+    const m = await resolveSymbolsByTickers(part, { holderPassed });
     for (const [k, v] of m) out.set(k.toUpperCase(), v);
   }
-  const unresolved = tickers.filter((t) => !out.has(t));
+  const unresolved = tickers.filter((t) => !out.has(t) && !holderPassed.has(t.toUpperCase()));
   notRetried?.push(...unresolved.slice(MAX_FALLBACK_RESOLVES));
   const missing = unresolved.slice(0, MAX_FALLBACK_RESOLVES);
   const retried = await Promise.all(missing.map((t) => resolveSymbolByTicker(t)));

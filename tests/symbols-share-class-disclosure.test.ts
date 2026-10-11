@@ -4,6 +4,13 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
 }));
 
+// The 404 path falls back to the DAL's most-recent-holder pass, which reads
+// ds_daily from GCS; keep tests offline.
+vi.mock("@/lib/dal/zarr-reader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/dal/zarr-reader")>()),
+  readDailyTickerHolderIndex: vi.fn(async () => null),
+}));
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import { GET } from "@/app/api/data/symbols/[ticker]/route";
 
@@ -71,6 +78,16 @@ function stubSupabase() {
     data: lookedUp ? (ROWS[lookedUp] ?? null) : null,
     error: null,
   });
+  // The route now reads every row for the ticker (ordered) and picks one.
+  query.order = () => query;
+  query.limit = () => query;
+  query.in = () => query;
+  (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
+    Promise.resolve({
+      data: lookedUp && ROWS[lookedUp] ? [ROWS[lookedUp]] : [],
+      error: null,
+      count: lookedUp && ROWS[lookedUp] ? 1 : 0,
+    }).then(resolve);
   return { from: () => query };
 }
 

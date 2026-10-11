@@ -22,6 +22,7 @@ import {
   type HedgeLevelsBlock,
 } from "@/lib/risk/hedge-levels";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 function getSupabase() {
   return createAdminClient();
@@ -82,6 +83,19 @@ interface PositionAnalysis {
   share_class?: string | null;
   /** Share class of the modelled ticker, when projected. */
   modelled_share_class?: string | null;
+  /**
+   * Present only when no live registry row carries the ticker and the
+   * position was answered by the security that holds or most recently held
+   * it (see GET /ticker-returns `resolved_via`).
+   */
+  resolved_via?: "most_recent_holder";
+  /** Closed in security_master or flagged delisted in the registry. */
+  delisted?: boolean;
+  /** The ticker now belongs to a security the API cannot serve. */
+  ticker_reassigned?: boolean;
+  current_holder?: { symbol: string; name: string | null };
+  /** The resolution check could not read its evidence; answer unchecked. */
+  resolution_degraded?: boolean;
   returns?: {
     dates: string[];
     values: number[];
@@ -357,7 +371,7 @@ async function analyzeTicker(
 
     // Try each variation with V3 DAL
     for (const variation of variations) {
-      const resolved = await resolveSymbolByTicker(variation);
+      const resolved = await resolveSymbolByTicker(variation, { disclosing: true });
       if (resolved) {
         symbolRecord = resolved;
         foundVariation = variation;
@@ -403,6 +417,7 @@ async function analyzeTicker(
       result.share_class = null;
       result.modelled_share_class = null;
     }
+    Object.assign(result, resolutionDisclosure(symbolRecord));
 
     if (metrics.includes("returns")) {
       const startDate = new Date();

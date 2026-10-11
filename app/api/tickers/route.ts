@@ -3,6 +3,7 @@ import { getCorsHeaders } from "@/lib/cors";
 import { searchTickers } from "@/lib/dal/ticker-search";
 import { fetchTradingCalendar } from "@/lib/dal/risk-engine-v3";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 // Enrich metadata with company_name from security_master when symbols lacks it
 async function enrichMetadataFromSecurityMaster(
@@ -54,9 +55,15 @@ export async function GET(request: NextRequest) {
       const upperSearch = searchQuery.toUpperCase().trim();
       const rows = await searchTickers(searchQuery, true);
 
-      if (rows.some((r) => r.ticker === upperSearch)) {
+      const exact = rows.find((r) => r.ticker === upperSearch);
+      if (exact) {
         return NextResponse.json(
-          { ticker: upperSearch },
+          {
+            ticker: upperSearch,
+            // Disclosed only when the ticker's most recent holder answers
+            // (no live security holds it) — see TickerSearchRow.
+            ...resolutionDisclosure(exact),
+          },
           {
             headers: {
               ...getCorsHeaders(origin),

@@ -4,6 +4,12 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
 }));
 
+// The most-recent-holder pass reads ds_daily from GCS; keep tests offline.
+vi.mock("@/lib/dal/zarr-reader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/dal/zarr-reader")>()),
+  readDailyTickerHolderIndex: vi.fn(async () => null),
+}));
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   isDeadSymbolRow,
@@ -76,7 +82,7 @@ function stubSupabase() {
       query.limit = () => query;
       query.maybeSingle = async () => ({ data: null, error: null });
       (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
-        Promise.resolve(respond()).then(resolve);
+        Promise.resolve(respond()).then((r) => ({ ...r, count: Array.isArray(r.data) ? r.data.length : 0 })).then(resolve);
       return query;
     },
   };

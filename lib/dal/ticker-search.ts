@@ -4,6 +4,8 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export type TickerSearchRow = {
   /** FactSet-style symbol when available; otherwise same as ticker */
@@ -11,7 +13,48 @@ export type TickerSearchRow = {
   ticker: string;
   name?: string;
   sector?: string;
+  /**
+   * Set when no live security holds the ticker and the match is its most
+   * recent (possibly delisted) holder — same disclosure as /ticker-returns.
+   */
+  resolved_via?: "most_recent_holder";
+  /** With resolved_via: the answering security's own ticker when it differs. */
+  modelled_ticker?: string | null;
+  delisted?: boolean;
+  /** The ticker now belongs to a security the API cannot serve (FB). */
+  ticker_reassigned?: boolean;
+  current_holder?: { symbol: string; name: string | null };
+  resolution_degraded?: boolean;
 };
+
+/**
+ * Ticker-shaped query (no spaces, 2-10 chars of A-Z / 0-9 / . / -). One-
+ * letter queries (typeahead's first keystroke) never pay the holder pass.
+ */
+const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.-]{1,9}$/;
+
+/**
+ * Exact-ticker match from the shared DAL resolver's most-recent-holder pass
+ * (delisted names such as CTRA that the live `symbols` mirror no longer
+ * carries). Null for ordinary tickers, which the symbols queries already
+ * answer, and for non-ticker-shaped queries.
+ */
+async function mostRecentHolderRow(upperSearch: string): Promise<TickerSearchRow | null> {
+  if (!TICKER_SHAPE.test(upperSearch)) return null;
+  try {
+    const rec = await resolveSymbolByTicker(upperSearch, { disclosing: true });
+    if (!rec?.resolved_via && !rec?.ticker_reassigned) return null;
+    return {
+      symbol: upperSearch,
+      ticker: upperSearch,
+      name: rec.name ?? upperSearch,
+      sector: rec.sector_etf ?? undefined,
+      ...resolutionDisclosure(rec),
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function enrichFromSecurityMaster(
   rows: TickerSearchRow[],
@@ -80,8 +123,24 @@ export async function searchTickers(
         ? m.metadata?.sector || m.metadata?.gics_sector_name
         : undefined,
     }));
+    const exactLive = (metadataMatches as { ticker: string; metadata?: { is_delisted?: boolean } }[]).some(
+      (m) => m.ticker.toUpperCase() === upperSearch && m.metadata?.is_delisted !== true,
+    );
+    if (!exactLive) {
+      // Fuzzy hits (CTRA → nothing, MF → MFA, MFC, …) or only a dead exact
+      // row: lead with the resolver's holder when the most-recent-holder pass
+      // chose one (it replaces the dead row only for a live holder).
+      const holder = await mostRecentHolderRow(upperSearch);
+      if (holder) {
+        const rest = rows.filter((r) => r.ticker.toUpperCase() !== upperSearch);
+        return enrichFromSecurityMaster([holder, ...rest].slice(0, 10));
+      }
+    }
     return enrichFromSecurityMaster(rows);
   }
+
+  const holder = await mostRecentHolderRow(upperSearch);
+  if (holder) return [holder];
 
   try {
     const { data: smMatches } = await admin

@@ -2,8 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { pickLiveRow } from "@/lib/dal/risk-engine-v3";
+import {
+  isDeadSymbolRow,
+  pickLiveRow,
+  resolveSymbolsByTickers,
+} from "@/lib/dal/risk-engine-v3";
 import { resolveSymIdsToTickers } from "@/lib/dal/symbols-batch";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -97,9 +102,13 @@ export async function POST(request: NextRequest) {
     grouped.set(row.ticker, bucket);
   }
   const results: Record<string, unknown> = {};
+  // Registry tickers whose only rows are dead: the DAL resolver decides them
+  // below, so this route and /ticker-returns name the same security.
+  const deadTickers = new Set<string>();
   for (const rows of grouped.values()) {
     const row = pickLiveRow(rows as unknown as Record<string, unknown>[]) as unknown as SymbolRow | null;
     if (!row) continue;
+    if (isDeadSymbolRow(row as unknown as Record<string, unknown>)) deadTickers.add(row.ticker);
     const metadata = (row.metadata as Record<string, unknown>) ?? {};
     results[row.ticker] = {
       symbol: row.symbol,
@@ -115,6 +124,77 @@ export async function POST(request: NextRequest) {
       latest_vol: row.latest_vol,
       latest_teo: row.latest_teo,
     };
+  }
+
+  // Tickers no live registry row carries (delisted holders such as CTRA, or
+  // dead-only rows): answer from the shared DAL resolver's most-recent-holder
+  // pass, keyed by the requested ticker and disclosed via resolutionDisclosure.
+  // A dead row the resolver keeps gains the flags; one it
+  // replaces with a live holder is swapped out.
+  const missing = Array.from(
+    new Set(
+      tickers
+        .map((t, i) => ({ requested: String(t).toUpperCase(), canonical: canonicalTickers[i] }))
+        .filter(
+          ({ requested, canonical }) =>
+            !canonical ||
+            !(canonical in results) ||
+            (canonical === requested && deadTickers.has(canonical)),
+        )
+        .map(({ requested }) => requested),
+    ),
+  );
+  if (missing.length > 0) {
+    const holders = await resolveSymbolsByTickers(missing, { disclosing: true });
+    // Swapped-in ids keep their own registry metadata and latest metrics
+    // (same as GET /api/data/symbols/{ticker}).
+    const swapIds = [...new Set(missing.map((t) => holders.get(t)?.symbol).filter((x): x is string => !!x))];
+    const ownById = new Map<string, Record<string, unknown>>();
+    if (swapIds.length) {
+      const { data: own } = await supabase
+        .from("symbols")
+        .select("symbol, metadata, latest_metrics, latest_vol, latest_teo")
+        .in("symbol", swapIds);
+      for (const r of (own ?? []) as Record<string, unknown>[]) ownById.set(String(r.symbol), r);
+    }
+    for (const t of missing) {
+      const h = holders.get(t);
+      if (!h) {
+        // Same as GET: a kept dead registry row whose DAL check returned
+        // nothing is marked delisted and unchecked.
+        if (deadTickers.has(t) && results[t]) {
+          results[t] = { ...(results[t] as object), delisted: true, resolution_degraded: true };
+        }
+        continue;
+      }
+      const existing = results[t] as { symbol?: string } | undefined;
+      const flags = resolutionDisclosure(h);
+      if (existing && existing.symbol === h.symbol) {
+        results[t] = { ...existing, ...flags };
+        continue;
+      }
+      if (existing && !deadTickers.has(t)) continue;
+      results[t] = {
+        symbol: h.symbol,
+        ticker: h.ticker,
+        // Same identity fields as GET /api/data/symbols/{ticker}.
+        requested_ticker: t,
+        is_modelled_class: h.is_modelled_class,
+        modelled_ticker: h.modelled_ticker,
+        share_class: h.share_class,
+        modelled_share_class: h.modelled_share_class,
+        name: h.name,
+        asset_type: h.asset_type,
+        sector_etf: h.sector_etf,
+        subsector_etf: h.subsector_etf,
+        is_adr: h.is_adr,
+        metadata: ownById.has(h.symbol) ? filterSafeMetadata(ownById.get(h.symbol)!.metadata) : {},
+        latest_metrics: ownById.get(h.symbol)?.latest_metrics ?? null,
+        latest_vol: ownById.get(h.symbol)?.latest_vol ?? null,
+        latest_teo: ownById.get(h.symbol)?.latest_teo ?? null,
+        ...flags,
+      };
+    }
   }
 
   return NextResponse.json({ results });
