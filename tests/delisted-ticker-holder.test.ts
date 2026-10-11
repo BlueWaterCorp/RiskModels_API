@@ -100,6 +100,8 @@ let SM_TRUNCATE: boolean;
 let SYM_FAIL_KEYS: Set<string>;
 /** symbols `.in()` responses report one row more than they return. */
 let SYM_TRUNCATE: boolean;
+/** security_aliases reads fail. */
+let ALIAS_FAIL: boolean;
 
 function resetFixtures() {
   SYMBOLS = [
@@ -163,6 +165,7 @@ function resetFixtures() {
   SM_TRUNCATE = false;
   SYM_FAIL_KEYS = new Set();
   SYM_TRUNCATE = false;
+  ALIAS_FAIL = false;
 }
 
 function dailyIndex() {
@@ -242,7 +245,8 @@ function stubSupabase() {
         return query;
       };
       query.maybeSingle = async () =>
-        table === "symbols" && filters.some((f) => f.values.some((v) => SYM_FAIL_KEYS.has(String(v))))
+        (table === "symbols" && filters.some((f) => f.values.some((v) => SYM_FAIL_KEYS.has(String(v))))) ||
+        (table === "security_aliases" && ALIAS_FAIL)
           ? { data: null, error: { message: "stub outage" } }
           : { data: rowsFor()[0] ?? null, error: null };
       const respond = () => {
@@ -252,6 +256,9 @@ function stubSupabase() {
             return { data: null, error: { message: "stub outage" }, count: null };
           }
           return { data: rows, error: null, count: rows.length + (SM_TRUNCATE ? 1 : 0) };
+        }
+        if (table === "security_aliases" && ALIAS_FAIL) {
+          return { data: null, error: { message: "stub outage" }, count: null };
         }
         if (table === "symbols") {
           if (filters.some((f) => f.values.some((v) => SYM_FAIL_KEYS.has(String(v))))) {
@@ -335,15 +342,20 @@ describe("delisted tickers resolve to their most recent holder", () => {
     });
   });
 
-  it("BBBY → BW-BBG000BBQDH7 (Overstock lineage), not the 2023 Bed Bath & Beyond", async () => {
+  it("BBBY → BW-BBG000BBQDH7 when ds_daily prices it under BBBY on display and listing code", async () => {
+    // Production 2026-10-11 after the ERM3 republish: display BBBY, eodhd_code
+    // BBBY.US, unique_ticker BYON; security_master still says BYON (open).
+    DAILY!.BBBY = ["BW-BBG000BBQDH7"];
     const rec = await resolveSymbolByTicker("BBBY");
     expect(rec).toMatchObject({
       symbol: "BW-BBG000BBQDH7",
       ticker: "BBBY",
       resolved_via: "most_recent_holder",
+      delisted: false,
     });
-    // security_master still marks the id active, so the flag follows the data.
-    expect(rec?.delisted).toBe(false);
+    // One label alone (listing code only) does not serve an open identity.
+    delete DAILY!.BBBY;
+    expect(await resolveSymbolByTicker("BBBY")).toBeNull();
   });
 
   it("COG (Cabot → Coterra) picks the holder with the latest validity, not the 2021 id", async () => {
@@ -515,6 +527,38 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     expect(await both("FB")).toBeNull();
   });
 
+  it("a holder whose registry row is flagged dead under another ticker is not live", async () => {
+    SYMBOLS.push(sym("BW-DEADREG", "RENAMED", { dead: true }));
+    SECURITY_MASTER.push(sm("BW-DEADREG", "TDR"));
+    DAILY!.RENAMED = ["BW-DEADREG"];
+    expect(await both("TDR")).toBeNull();
+  });
+
+  it("an open identity renamed in place is never served for its old display label", async () => {
+    SECURITY_MASTER.push(sm("BW-INPLACE", "NEWT"));
+    DAILY!.OLDT = ["BW-INPLACE"];
+    expect(await both("OLDT")).toBeNull();
+  });
+
+  it("a dead identity renamed in place loses to a T-dated holder", async () => {
+    SECURITY_MASTER.push(sm("BW-IP-B", "NEWD", { live: false, valid_to: "2024-06-01" }));
+    SECURITY_MASTER.push(sm("BW-IP-A", "OLDD", { live: false, valid_to: "2023-01-01" }));
+    DAILY!.OLDD = ["BW-IP-B"];
+    DAILY!.OLDD_A = ["BW-IP-A"];
+    expect((await both("OLDD"))?.symbol).toBe("BW-IP-A");
+  });
+
+  it("security_aliases or the registry read failing yields not-found, never a former holder", async () => {
+    SECURITY_MASTER.push(sm("BW-OLD-FB", "FB", { live: false, valid_to: "2010-01-01" }));
+    DAILY!.FB_OLD = ["BW-OLD-FB"];
+    expect((await both("FB"))?.symbol).toBe("BW-OLD-FB");
+    ALIAS_FAIL = true;
+    expect(await both("FB")).toBeNull();
+    ALIAS_FAIL = false;
+    SYM_FAIL_KEYS = new Set(["FB"]);
+    expect(await both("FB")).toBeNull();
+  });
+
   it("every dead registry row is vetoed, not only the pick", async () => {
     // Two dead rows for VET; security_master says the second is open under VET.
     SYMBOLS.push(sym("BW-VET-A", "VET", { dead: true }));
@@ -529,8 +573,10 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
   it("registry reads that error or come back short drop only their tickers", async () => {
     SYM_FAIL_KEYS = new Set(["CTRA"]);
     const map = await resolveSymbolsByTickers(["CTRA", "WM"]);
-    // CTRA shares the direct-read chunk with WM: both chunk keys are unread.
-    expect(map.size).toBe(0);
+    // The shared chunk fails; the per-key retry recovers WM, CTRA stays unread.
+    expect(map.get("WM")?.symbol).toBe("BW-BBG000BWVSR1");
+    expect(map.has("CTRA")).toBe(false);
+    expect(await resolveSymbolByTicker("CTRA")).toBeNull();
     SYM_FAIL_KEYS = new Set(["BW-BBG000C3GN47"]);
     // Holder symbols read for Coterra's id fails: CTRA stays unanswered, WM fine.
     const map2 = await resolveSymbolsByTickers(["CTRA", "WM"]);
@@ -779,10 +825,13 @@ describe("indexFromCoords (pure ds_daily index builder)", () => {
     expect(idx.byTicker.get("C")).toEqual(["BW-3"]);
   });
 
-  it("fails closed on a duplicate or blank symbol, a missing or misaligned coord", () => {
+  it("fails closed on a duplicate symbol or a missing / misaligned coord; skips a blank symbol", () => {
     const ok = ["A", "B", "C", "D"];
     expect(indexFromCoords(["BW-1", "BW-1", "BW-3", "BW-4"], ok, ok, ok)).toBeNull();
-    expect(indexFromCoords(["BW-1", "", "BW-3", "BW-4"], ok, ok, ok)).toBeNull();
+    // A blank id drops only its own position.
+    const partial = indexFromCoords(["BW-1", "", "BW-3", "BW-4"], ok, ok, ok)!;
+    expect(partial.byDisplayTicker.get("B")).toBeUndefined();
+    expect(partial.byDisplayTicker.get("C")).toEqual(["BW-3"]);
     expect(indexFromCoords(syms, ok, null, ok)).toBeNull();
     expect(indexFromCoords(syms, ok, ok, ["A", "B"])).toBeNull();
     expect(indexFromCoords(null, ok, ok, ok)).toBeNull();

@@ -33,9 +33,10 @@ function cellLabel(x: unknown): string {
 }
 
 /**
- * Builds the index, or null (fail closed) when the symbol axis is missing,
- * holds duplicates or blanks, or any of the three label coords is missing or
- * misaligned with it — a partial index would change which holder wins.
+ * Builds the index, or null (fail closed) when the symbol axis is missing or
+ * holds duplicate ids, or any of the three label coords is missing or
+ * misaligned with it — a partial index would change which holder wins. A
+ * blank id only drops its own position.
  */
 export function indexFromCoords(
   symbols: readonly unknown[] | null,
@@ -45,8 +46,11 @@ export function indexFromCoords(
 ): DailyTickerHolderIndex | null {
   if (!symbols?.length) return null;
   const syms = symbols.map((s) => (s === null || s === undefined ? "" : String(s).trim()));
-  const symSet = new Set(syms);
-  if (symSet.size !== syms.length || symSet.has("")) return null;
+  const named = syms.filter(Boolean);
+  const symSet = new Set(named);
+  // Duplicate ids make the axis ambiguous: fail closed. A blank id only
+  // loses its own position (skipped below).
+  if (symSet.size !== named.length || symSet.size === 0) return null;
   for (const coord of [display, unique, eodhd]) {
     if (!coord || coord.length !== syms.length) return null;
   }
@@ -62,6 +66,7 @@ export function indexFromCoords(
   };
   for (let i = 0; i < syms.length; i++) {
     const sym = syms[i]!;
+    if (!sym) continue;
     const d = cellLabel(display![i]);
     const u = cellLabel(unique![i]);
     // eodhd_code carries the listing exchange ("CTRA.US"); the ticker is the

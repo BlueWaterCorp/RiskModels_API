@@ -309,6 +309,7 @@ const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER"] as const;
  */
 async function resolveAliasToCanonicalSymbol(
   upper: string,
+  status: { failed: boolean } = { failed: false },
 ): Promise<{ bw_sym_id: string; valid_to: string | null } | null> {
   try {
     const admin = createAdminClient();
@@ -323,12 +324,14 @@ async function resolveAliasToCanonicalSymbol(
       .maybeSingle();
     if (error) {
       console.error(`[V3 DAL] Error querying security_aliases for ${upper}:`, error);
+      status.failed = true;
       return null;
     }
     const hit = data as { bw_sym_id?: string; valid_to?: string | null } | null;
     return hit?.bw_sym_id ? { bw_sym_id: hit.bw_sym_id, valid_to: hit.valid_to ?? null } : null;
   } catch (error) {
     console.error(`[V3 DAL] Error querying security_aliases for ${upper}:`, error);
+    status.failed = true;
     return null;
   }
 }
@@ -339,6 +342,7 @@ async function resolveAliasToCanonicalSymbol(
  */
 async function resolveAliasesToCanonicalSymbols(
   uppers: string[],
+  status: { failed: boolean } = { failed: false },
 ): Promise<Map<string, { bw_sym_id: string; valid_to: string | null }>> {
   const out = new Map<string, { bw_sym_id: string; valid_to: string | null }>();
   if (uppers.length === 0) return out;
@@ -351,6 +355,7 @@ async function resolveAliasesToCanonicalSymbols(
       .in("alias_type", TICKER_ALIAS_TYPES as unknown as string[]);
     if (error) {
       console.error("[V3 DAL] Error batch querying security_aliases:", error);
+      status.failed = true;
       return out;
     }
     type Row = {
@@ -389,6 +394,7 @@ async function resolveAliasesToCanonicalSymbols(
     return out;
   } catch (error) {
     console.error("[V3 DAL] Error batch querying security_aliases:", error);
+    status.failed = true;
     return out;
   }
 }
@@ -577,6 +583,12 @@ async function resolveMostRecentHolderRows(
     const h: TickerHolder | undefined = lookup.holders.get(t);
     const symRow = h ? symbolsById.get(h.bw_sym_id) : undefined;
 
+    // The registry's own flag vetoes liveness too: a holder whose `symbols`
+    // row (under any ticker) is flagged delisted is not a live holder.
+    if (h?.live && symRow && isDeadSymbolRow(symRow)) {
+      out.set(t, keep(t));
+      continue;
+    }
     if (h?.live) {
       // The live holder answers when the API can serve it: its own live
       // registry row under this ticker (as is), else — when ds_daily carries
@@ -672,6 +684,7 @@ export async function resolveSymbolByTicker(
   // Every registry row seen for the requested ticker (all dead rows feed the
   // holder pass, not only the pick).
   let directRows: Record<string, unknown>[] = [];
+  let directReadFailed = false;
   const tryResolveRaw = async (t: string): Promise<Record<string, unknown> | null> => {
     try {
       const admin = createAdminClient();
@@ -688,6 +701,7 @@ export async function resolveSymbolByTicker(
         .order("symbol", { ascending: true });
       if (error) {
         console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
+        if (t === upper) directReadFailed = true;
         return null;
       }
       const rows = (data ?? []) as Record<string, unknown>[];
@@ -710,6 +724,9 @@ export async function resolveSymbolByTicker(
   // 1. A live `symbols` row always wins.
   const direct = await tryResolveRaw(upper);
   if (direct && !isDeadSymbolRow(direct)) return normalizeSymbolRow(direct);
+  // The registry read failed: whatever it holds is unknown, so nothing else
+  // may stand in for it (fail closed; the next request retries).
+  if (directReadFailed) return null;
 
   if (!direct) {
     // 2. Route notation aliases and share-class projections through the
@@ -740,7 +757,9 @@ export async function resolveSymbolByTicker(
   // renamed tickers (e.g. FB → META: BW-BBG000MM2P62) resolve to the
   // canonical bw_sym_id. The alias row (open or closed) is the previous
   // answer: it stands unless the holder pass finds a servable live holder.
-  const alias = await resolveAliasToCanonicalSymbol(upper);
+  const aliasStatus = { failed: false };
+  const alias = await resolveAliasToCanonicalSymbol(upper, aliasStatus);
+  if (aliasStatus.failed && !direct) return null;
   let aliasRaw: Record<string, unknown> | null = null;
   let aliasReadFailed = false;
   if (alias) {
@@ -781,6 +800,46 @@ export async function resolveSymbolByTicker(
   return (await resolveMostRecentHolderRows([upper], extra, previous)).get(upper) ?? null;
 }
 
+/**
+ * `symbols` rows where `col` is in `values`: chunks of 200 with an exact
+ * count; a chunk that errors or comes back short is retried one key at a
+ * time, and only keys that still fail are reported (never a partial set).
+ */
+async function readSymbolRowsChecked(
+  col: "ticker" | "symbol",
+  values: string[],
+): Promise<{ rows: Record<string, unknown>[]; failed: Set<string> }> {
+  const admin = createAdminClient();
+  const rows: Record<string, unknown>[] = [];
+  const failed = new Set<string>();
+  const once = async (keys: string[]): Promise<boolean> => {
+    try {
+      const { data, error, count } = await admin
+        .from("symbols")
+        .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
+        .in(col, keys);
+      const got = (data ?? []) as Record<string, unknown>[];
+      if (error || (typeof count === "number" && got.length < count)) {
+        console.error(`[V3 DAL] symbols ${col} read failed or short:`, error ?? count);
+        return false;
+      }
+      rows.push(...got);
+      return true;
+    } catch (e) {
+      console.error(`[V3 DAL] symbols ${col} read failed:`, e);
+      return false;
+    }
+  };
+  for (let i = 0; i < values.length; i += 200) {
+    const slice = values.slice(i, i + 200);
+    if (await once(slice)) continue;
+    for (const k of slice) {
+      if (slice.length === 1 || !(await once([k]))) failed.add(k);
+    }
+  }
+  return { rows, failed };
+}
+
 export async function resolveSymbolsByTickers(
   tickers: string[],
   options: {
@@ -798,23 +857,14 @@ export async function resolveSymbolsByTickers(
     // A chunk that errors or comes back shorter than its exact count drops
     // only its own tickers (no answer, as main gave none on error), never the
     // whole call, and never lets a partial row set reach pickLiveRow.
-    const data: Record<string, unknown>[] = [];
-    const unreadTickers = new Set<string>();
-    const uniqueTickers = [...new Set(upperTickers)];
-    for (let i = 0; i < uniqueTickers.length; i += 200) {
-      const slice = uniqueTickers.slice(i, i + 200);
-      const { data: chunk, error, count } = await admin
-        .from("symbols")
-        .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
-        .in("ticker", slice);
-      const rows = (chunk ?? []) as Record<string, unknown>[];
-      if (error || (typeof count === "number" && rows.length < count)) {
-        console.error("[V3 DAL] Error batch resolving tickers:", error ?? count);
-        for (const t of slice) unreadTickers.add(t);
-        continue;
-      }
-      data.push(...rows);
-    }
+    // Per-key retry: only a ticker whose own read keeps failing is dropped
+    // (main dropped the whole call on any error).
+    const direct = await readSymbolRowsChecked("ticker", [...new Set(upperTickers)]);
+    const data = direct.rows;
+    const unreadTickers = new Set<string>(direct.failed);
+    // Tickers whose seam canonical could not be read: alias answers (main's
+    // next step) still apply, but no new holder is chosen for them.
+    const seamUnread = new Set<string>();
 
     // Recycled tickers leave >1 row per display ticker. Group per ticker and
     // keep pickLiveRow's choice (live identity first, then lowest bw_sym_id —
@@ -877,21 +927,10 @@ export async function resolveSymbolsByTickers(
     if (canonicalToRequested.size > 0) {
       // Chunked and count-checked like the direct read; a failed chunk
       // leaves its requesters unanswered here (single would also miss).
-      const aliasData: Record<string, unknown>[] = [];
-      const canonicals = Array.from(canonicalToRequested.keys());
-      for (let i = 0; i < canonicals.length; i += 200) {
-        const slice = canonicals.slice(i, i + 200);
-        const { data: chunk, error, count } = await admin
-          .from("symbols")
-          .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
-          .in("ticker", slice);
-        const rows = (chunk ?? []) as Record<string, unknown>[];
-        if (error || (typeof count === "number" && rows.length < count)) {
-          console.error("[V3 DAL] Error reading seam canonicals:", error ?? count);
-          for (const c of slice) for (const r of canonicalToRequested.get(c) ?? []) unreadTickers.add(r);
-          continue;
-        }
-        aliasData.push(...rows);
+      const seamRead = await readSymbolRowsChecked("ticker", Array.from(canonicalToRequested.keys()));
+      const aliasData = seamRead.rows;
+      for (const c of seamRead.failed) {
+        for (const r of canonicalToRequested.get(c) ?? []) seamUnread.add(r);
       }
 
       // Same pick as resolveSymbolByTicker's tryResolve: live first, then
@@ -931,37 +970,39 @@ export async function resolveSymbolsByTickers(
     const aliasRawBySymbol = new Map<string, Record<string, unknown>>();
     let canonicalMap = new Map<string, { bw_sym_id: string; valid_to: string | null }>();
     if (stillMissing.length > 0) {
-      canonicalMap = await resolveAliasesToCanonicalSymbols(stillMissing);
+      const aliasStatus = { failed: false };
+      canonicalMap = await resolveAliasesToCanonicalSymbols(stillMissing, aliasStatus);
+      if (aliasStatus.failed) {
+        // main's alias answers are unknown: no former holder stands in.
+        for (const t of stillMissing) if (!deadDirect.has(t)) unreadTickers.add(t);
+      }
       const canonicalIds = Array.from(new Set([...canonicalMap.values()].map(v => v.bw_sym_id)));
       if (canonicalIds.length > 0) {
         // Chunked and count-checked; a failed chunk leaves its tickers
         // unanswered (single returns not-found too) so a former holder never
         // stands in for an alias answer that could not be read.
-        for (let i = 0; i < canonicalIds.length; i += 200) {
-          const slice = canonicalIds.slice(i, i + 200);
-          const { data: histData, error, count } = await admin
-            .from("symbols")
-            .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
-            .in("symbol", slice);
-          const rows = (histData ?? []) as Record<string, unknown>[];
-          if (error || (typeof count === "number" && rows.length < count)) {
-            console.error("[V3 DAL] Error reading alias symbols rows:", error ?? count);
-            const ids = new Set(slice);
-            for (const t of stillMissing) {
-              const hit = canonicalMap.get(t);
-              if (hit && ids.has(hit.bw_sym_id) && !deadDirect.has(t)) unreadTickers.add(t);
-            }
-            continue;
-          }
-          for (const row of rows) {
-            if (row?.symbol) aliasRawBySymbol.set(String(row.symbol), row);
-          }
+        const aliasRead = await readSymbolRowsChecked("symbol", canonicalIds);
+        for (const t of stillMissing) {
+          const hit = canonicalMap.get(t);
+          if (hit && aliasRead.failed.has(hit.bw_sym_id) && !deadDirect.has(t)) unreadTickers.add(t);
+        }
+        for (const row of aliasRead.rows) {
+          if (row?.symbol) aliasRawBySymbol.set(String(row.symbol), row);
         }
       }
     }
 
     // Most-recent-holder pass (same rules as resolveSymbolByTicker step 4).
-    const unresolved = upperTickers.filter(t => !result.has(t) && !unreadTickers.has(t));
+    // Seam-unread tickers keep main's alias answer (if any) and get no new holder.
+    for (const t of seamUnread) {
+      if (result.has(t) || unreadTickers.has(t)) continue;
+      const hit = canonicalMap.get(t);
+      const row = normalizeSymbolRow(hit ? aliasRawBySymbol.get(hit.bw_sym_id) ?? null : null);
+      if (row) result.set(t, { ...row, ticker: t });
+    }
+    const unresolved = upperTickers.filter(
+      t => !result.has(t) && !unreadTickers.has(t) && !seamUnread.has(t),
+    );
     for (const t of unresolved) options.holderPassed?.add(t);
     if (unresolved.length > 0) {
       const extra: ExtraHolderCandidate[] = [];

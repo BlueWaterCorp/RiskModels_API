@@ -376,22 +376,21 @@ async function findMostRecentHoldersUncached(
           if (!smIsOpen(r)) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
         }
         for (const e of extras) held = maxDay(held, dayBefore(e.alias_valid_to));
-        const lastLabel =
-          (index?.byDisplayTicker.get(t)?.includes(id) ?? false) ||
+        // An id linked to T only by a ds_daily label (display / unique /
+        // listing code) gets no date: a label can lag an in-place rename, and
+        // nothing says when it held T. It ranks behind every T-dated former
+        // holder and answers only when no candidate is dated (CTRA: the only
+        // security_master row still says COG). An OPEN identity needs more
+        // than one label: an open security_master row naming T (LIVE), a
+        // closed T-dated window, or ds_daily pricing it under T on BOTH its
+        // display ticker and its listing code (a listing pin such as
+        // BBQDH7 → BBBY.US while security_master still says BYON). A display
+        // label alone can lag an in-place rename; a stale unique_ticker never
+        // qualifies.
+        const pricedUnderT =
+          (index?.byDisplayTicker.get(t)?.includes(id) ?? false) &&
           (index?.byListingTicker.get(t)?.includes(id) ?? false);
-        // The display ticker / listing code is the label ds_daily last priced
-        // the id under, so a DEAD identity held T until it ended (CTRA: the
-        // security_master row still says COG, so no row names T). An open
-        // identity linked only by such a label gets no date: it is not LIVE
-        // and ranks behind every T-dated former holder, since the label may
-        // lag a rename.
-        // Only when no security_master row names T: then the ds_daily label
-        // is the sole evidence and it labels the identity's final period.
-        // When rows name T, their own dates rule (a lagging label must not
-        // stretch an old T window with a later row for another ticker).
-        if (lastLabel && !identityOpen && forT.length === 0) {
-          for (const r of sm) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
-        }
+        if (identityOpen && !live && held === null && !registryDead && !pricedUnderT) continue;
 
         const representative =
           forT.find(smIsOpen) ??
