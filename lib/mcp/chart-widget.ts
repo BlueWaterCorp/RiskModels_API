@@ -111,7 +111,21 @@ figcaption{padding:10px 4px 2px;color:#475569;overflow-wrap:anywhere}
 })();
 </script></body></html>`;
 
+/** Earlier widget URI. Hosts that cached the old tool list still request it, so it serves the current HTML. */
+export const CHART_WIDGET_LEGACY_URIS = ["ui://riskmodels/chart-v1.html"] as const;
+
 export function registerChartWidget(server: McpLikeServer): void {
+  for (const [i, uri] of CHART_WIDGET_LEGACY_URIS.entries()) {
+    server.registerResource(`riskmodels-chart-legacy-${i + 1}`, uri,
+      { title: "Original RiskModels chart", mimeType: "text/html;profile=mcp-app" },
+      async () => ({ contents: [{
+        uri,
+        mimeType: "text/html;profile=mcp-app",
+        text: CHART_WIDGET_HTML,
+        _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } },
+      }] }),
+    );
+  }
   server.registerResource("riskmodels-chart", CHART_WIDGET_URI,
     { title: "Original RiskModels chart", mimeType: "text/html;profile=mcp-app" },
     async () => ({ contents: [{
