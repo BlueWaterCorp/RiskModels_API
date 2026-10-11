@@ -24,9 +24,10 @@
  *
  * HELD_THROUGH is scoped to the requested ticker: the end of closed
  * security_master rows whose `ticker` / `unique_ticker` is the request, the
- * day before a closed alias's (half-open) end, and — for a dead identity
- * whose ds_daily display ticker or listing code is the request, i.e. the
- * label it last traded under — the identity's own end date.
+ * day before a closed alias's (half-open) end, and — for an identity whose
+ * ds_daily display ticker or listing code is the request, i.e. the label it
+ * last traded under — the identity's own end date, or today while the
+ * identity is open.
  *
  * Ranking (rankHolderCandidates): live first; then latest `held_through`
  * (unknown last); then present in ds_daily; then lowest bw_sym_id.
@@ -126,6 +127,10 @@ export function dayBefore(raw: string | null | undefined): string | null {
   const t = Date.parse(`${d}T00:00:00Z`);
   if (!Number.isFinite(t)) return null;
   return new Date(t - 86_400_000).toISOString().slice(0, 10);
+}
+
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function maxDay(a: string | null, b: string | null): string | null {
@@ -311,8 +316,15 @@ export async function findMostRecentHolders(
         const lastLabel =
           (index?.byDisplayTicker.get(t)?.includes(id) ?? false) ||
           (index?.byListingTicker.get(t)?.includes(id) ?? false);
-        if (lastLabel && !identityOpen) {
-          for (const r of sm) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
+        // The display ticker / listing code is the label the id last traded
+        // under (ds_daily prices it under that code), so the id held T until
+        // the identity ended — or still trades under it when the identity is
+        // open (e.g. BBQDH7 under BBBY.US while security_master still says
+        // BYON). Such an id is not LIVE (security_master does not confirm it)
+        // but outranks every dated former holder.
+        if (lastLabel) {
+          if (identityOpen) held = maxDay(held, todayUtc());
+          else for (const r of sm) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
         }
 
         const representative =

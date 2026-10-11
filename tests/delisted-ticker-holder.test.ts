@@ -350,20 +350,26 @@ describe("delisted tickers resolve to their most recent holder", () => {
     expect(await resolveSymbolByTicker("NOPE")).toBeNull();
   });
 
-  it("ds_daily unreadable: no new answers, and the live MF holder still blocks the former one", async () => {
+  it("ds_daily unreadable: no new answers; MF keeps main's answer (the former holder's alias row)", async () => {
     DAILY = null;
     expect(await resolveSymbolByTicker("CTRA")).toBeNull();
-    // MindForge's history cannot be confirmed, so MF is not found — never the
-    // former holder's dead registry row that main used to serve.
-    expect(await resolveSymbolByTicker("MF")).toBeNull();
-    expect((await resolveSymbolsByTickers(["MF", "CTRA"])).size).toBe(0);
+    const mf = await resolveSymbolByTicker("MF");
+    expect(mf).toMatchObject({ symbol: "BW-SSJAPHMGNNGW5", ticker: "MF" });
+    expect(mf?.resolved_via).toBeUndefined();
+    const map = await resolveSymbolsByTickers(["MF", "CTRA"]);
+    expect(map.get("MF")?.symbol).toBe("BW-SSJAPHMGNNGW5");
+    expect(map.has("CTRA")).toBe(false);
   });
 
-  it("a live holder with no history here answers not-found, never a former holder", async () => {
-    // MindForge leaves ds_daily: its live claim on MF must still block the
-    // former holder's dead registry row.
+  it("a live holder the API cannot serve does not veto the previous answer; with none, not found", async () => {
+    // MindForge leaves ds_daily: main's answer (a dead MF registry row) stays.
     DAILY!.MF = [];
     SYMBOLS.push(sym("BW-SSJAPHMGNNGW5-B", "MF", { dead: true }));
+    expect((await resolveSymbolByTicker("MF"))?.symbol).toBe("BW-SSJAPHMGNNGW5-B");
+    expect((await resolveSymbolsByTickers(["MF"])).get("MF")?.symbol).toBe("BW-SSJAPHMGNNGW5-B");
+    // No previous answer at all: not found, never a synthetic row.
+    SYMBOLS = SYMBOLS.filter((r) => r.ticker !== "MF");
+    ALIASES = ALIASES.filter((r) => r.alias_value !== "MF");
     expect(await resolveSymbolByTicker("MF")).toBeNull();
     expect((await resolveSymbolsByTickers(["MF"])).has("MF")).toBe(false);
   });
@@ -465,7 +471,7 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     expect(rec?.resolved_via).toBeUndefined();
   });
 
-  it("FB: a closed alias still answers META (unchanged) until another security holds FB; then live wins", async () => {
+  it("FB: a closed alias answers META (unchanged) until a live FB holder can be served", async () => {
     // Production 2026-10-10: alias FB → BW-BBG000MM2P62 (META) closed 2022-06-09;
     // security_master BW-BBG01VRMNFB1 (ProShares ETF) holds FB since 2025-10-01,
     // outside ds_daily.
@@ -476,8 +482,43 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     const meta = await both("FB");
     expect(meta).toMatchObject({ symbol: "BW-BBG000MM2P62", ticker: "FB" });
     expect(meta?.resolved_via).toBeUndefined();
+    // The ProShares holder cannot be served here, so it does not veto META.
     SECURITY_MASTER.push(sm("BW-BBG01VRMNFB1", "FB", { name: "PROSHARES TR" }));
-    expect(await both("FB")).toBeNull();
+    const kept = await both("FB");
+    expect(kept?.symbol).toBe("BW-BBG000MM2P62");
+    expect(kept?.resolved_via).toBeUndefined();
+    // Once ds_daily carries it, the live holder wins.
+    DAILY!.FB = ["BW-BBG01VRMNFB1"];
+    expect(await both("FB")).toMatchObject({
+      symbol: "BW-BBG01VRMNFB1",
+      resolved_via: "most_recent_holder",
+      delisted: false,
+    });
+  });
+
+  it("BBBY after the listing pin outranks an older dated BBBY holder", async () => {
+    SECURITY_MASTER.push(sm("BW-OLD-BBBY", "BBBY", { live: false, valid_to: "2023-07-10" }));
+    DAILY!.BBBY_X = ["BW-OLD-BBBY"];
+    expect((await both("BBBY"))?.symbol).toBe("BW-BBG000BBQDH7");
+  });
+
+  it("an open alias does not beat a servable live holder", async () => {
+    SYMBOLS.push(sym("BW-ALIAS-A", "AOLD"));
+    ALIASES.push(alias("BW-ALIAS-A", "OPN", "TICKER", null));
+    SECURITY_MASTER.push(sm("BW-LIVE-B", "OPN"));
+    DAILY!.OPN = ["BW-LIVE-B"];
+    expect(await both("OPN")).toMatchObject({ symbol: "BW-LIVE-B", resolved_via: "most_recent_holder" });
+    // Without a live holder the open alias answers as before.
+    SECURITY_MASTER = SECURITY_MASTER.filter((r) => r.bw_sym_id !== "BW-LIVE-B");
+    const aliasAnswer = await both("OPN");
+    expect(aliasAnswer?.symbol).toBe("BW-ALIAS-A");
+    expect(aliasAnswer?.resolved_via).toBeUndefined();
+  });
+
+  it("51 registry rows, live row last by id: single and batch agree", async () => {
+    for (let i = 0; i < 50; i++) SYMBOLS.push(sym(`BW-A${String(i).padStart(2, "0")}`, "MANY", { dead: true }));
+    SYMBOLS.push(sym("BW-Z-LIVE", "MANY"));
+    expect((await both("MANY"))?.symbol).toBe("BW-Z-LIVE");
   });
 });
 

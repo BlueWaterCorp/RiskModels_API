@@ -78,6 +78,16 @@ function stubSupabase() {
     data: lookedUp ? (ROWS[lookedUp] ?? null) : null,
     error: null,
   });
+  // The route now reads every row for the ticker (ordered) and picks one.
+  query.order = () => query;
+  query.limit = () => query;
+  query.in = () => query;
+  (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
+    Promise.resolve({
+      data: lookedUp && ROWS[lookedUp] ? [ROWS[lookedUp]] : [],
+      error: null,
+      count: lookedUp && ROWS[lookedUp] ? 1 : 0,
+    }).then(resolve);
   return { from: () => query };
 }
 

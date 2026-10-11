@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTicker } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { isDeadSymbolRow, resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
+import { isDeadSymbolRow, pickLiveRow, resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 
 export const dynamic = "force-dynamic";
 
@@ -28,18 +28,25 @@ export async function GET(
   const resolution = await resolveTicker(ticker);
   const canonicalTicker = resolution.canonical;
 
-  const { data, error } = await supabase
+  // Every row for the ticker (recycled tickers keep their dead holders), then
+  // the DAL's pick — live first, then lowest bw_sym_id. maybeSingle() 500'd
+  // on the second row.
+  const { data: rows, error } = await supabase
     .from("symbols")
     .select(
       "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata, latest_metrics, latest_vol, latest_teo",
     )
     .eq("ticker", canonicalTicker)
-    .maybeSingle();
+    .order("symbol", { ascending: true });
 
   if (error) {
     console.error(`[data/symbols] Error resolving ${canonicalTicker}:`, error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
+  type SymbolRow = NonNullable<typeof rows>[number];
+  const data = pickLiveRow((rows ?? []) as unknown as Record<string, unknown>[]) as unknown as
+    | SymbolRow
+    | null;
 
   // No live registry row carries the ticker: defer to the shared DAL
   // resolver so this route and /ticker-returns name the same security: the

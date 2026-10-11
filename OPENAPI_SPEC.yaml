@@ -1404,7 +1404,7 @@ components:
             held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row,
             including recycled ones, resolve to today's company and omit this field, as do
             answers unchanged from earlier releases (an alias rename such as `FB` → META, or a
-            delisted registry row) when no live holder of the ticker exists.
+            delisted registry row) unless a live holder of the ticker that the API can serve exists.
         delisted:
           type: boolean
           description: >
