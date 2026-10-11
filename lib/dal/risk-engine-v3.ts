@@ -324,8 +324,12 @@ async function resolveAliasToCanonicalSymbol(
       .select("bw_sym_id, alias_type, valid_from, valid_to, confidence_score")
       .eq("alias_value", upper)
       .in("alias_type", TICKER_ALIAS_TYPES as unknown as string[])
+      // Total order shared with resolveAliasesToCanonicalSymbols: open first,
+      // then latest valid_to, then highest confidence (null = highest, as
+      // Postgres DESC sorts NULLS FIRST), then lowest bw_sym_id.
       .order("valid_to", { ascending: false, nullsFirst: true })
-      .order("confidence_score", { ascending: false })
+      .order("confidence_score", { ascending: false, nullsFirst: true })
+      .order("bw_sym_id", { ascending: true })
       .limit(1)
       .maybeSingle();
     if (error) {
@@ -408,7 +412,12 @@ async function resolveAliasesToCanonicalSymbols(
         candidates.set(key, r);
         continue;
       }
-      if (bTo === aTo && (r.confidence_score ?? 0) > (existing.confidence_score ?? 0)) {
+      if (bTo !== aTo) continue;
+      // Same order as the single query: null confidence first, then higher,
+      // then lowest bw_sym_id.
+      const aConf = existing.confidence_score ?? Number.POSITIVE_INFINITY;
+      const bConf = r.confidence_score ?? Number.POSITIVE_INFINITY;
+      if (bConf > aConf || (bConf === aConf && r.bw_sym_id < existing.bw_sym_id)) {
         candidates.set(key, r);
       }
     }
@@ -482,7 +491,7 @@ function assetTypeFromSecurityMaster(raw: string | null): string | null {
   const t = raw.trim().toUpperCase();
   if (t === "ETF") return "etf";
   if (t === "EQUITY" || t === "COMMON" || t === "STOCK") return "stock";
-  return raw.toLowerCase();
+  return null;
 }
 
 /** First subsector ETF from security_master's JSON-array text column. */
@@ -625,6 +634,12 @@ async function resolveMostRecentHolderRows(
       // When ds_daily could not be read (in_daily_store null) servability is
       // unknown: keep main's answer without the flag.
       const kept = keep(t);
+      if (kept && h.in_daily_store === null) {
+        // ds_daily unreadable: a live holder exists but servability is
+        // unknown, so main's answer is returned unchecked.
+        out.set(t, { ...kept, resolution_degraded: true });
+        continue;
+      }
       out.set(
         t,
         kept && h.in_daily_store === false
@@ -693,6 +708,7 @@ export async function resolveSymbolByTicker(
   // holder pass, not only the pick).
   let directRows: Record<string, unknown>[] = [];
   let directReadFailed = false;
+  let canonicalReadFailed = false;
   const tryResolveRaw = async (t: string): Promise<Record<string, unknown> | null> => {
     try {
       const admin = createAdminClient();
@@ -710,6 +726,7 @@ export async function resolveSymbolByTicker(
       if (error) {
         console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
         if (t === upper) directReadFailed = true;
+        else canonicalReadFailed = true;
         return null;
       }
       const rows = (data ?? []) as Record<string, unknown>[];
@@ -726,6 +743,7 @@ export async function resolveSymbolByTicker(
     } catch (error) {
       console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
       if (t === upper) directReadFailed = true;
+      else canonicalReadFailed = true;
       return null;
     }
   };
@@ -746,6 +764,8 @@ export async function resolveSymbolByTicker(
     const resolution = await resolveTicker(upper);
     if (resolution.canonical !== upper) {
       const result = await tryResolve(resolution.canonical);
+      // The canonical row is unknown: nothing may stand in for it.
+      if (canonicalReadFailed) return null;
       if (result) {
         if (!resolution.projected) {
           return result;
@@ -935,9 +955,11 @@ export async function resolveSymbolsByTickers(
       // leaves its requesters unanswered here (single would also miss).
       const seamRead = await readSymbolRowsChecked("ticker", Array.from(canonicalToRequested.keys()));
       const aliasData = seamRead.rows;
-      // A canonical that cannot be read leaves its requesters missing, like
-      // single's tryResolve returning null: they continue to aliases and the
-      // holder pass.
+      // A canonical that cannot be read (after per-key retry) leaves its
+      // requesters unanswered, like the single resolver: nothing stands in.
+      for (const c of seamRead.failed) {
+        for (const r of canonicalToRequested.get(c) ?? []) unreadTickers.add(r);
+      }
 
       // Same pick as resolveSymbolByTicker's tryResolve: live first, then
       // lowest bw_sym_id, per canonical ticker.

@@ -61,7 +61,7 @@
     },
     "resolution_degraded": {
       "type": "boolean",
-      "description": "true when the most-recent-holder check could not read its evidence and the previous answer was returned unchecked. Absent otherwise."
+      "description": "true when the most-recent-holder check could not read its evidence (security master, registry or daily index) and the previous answer was returned unchecked. Absent otherwise."
     },
     "suggestions": {
       "type": "array",

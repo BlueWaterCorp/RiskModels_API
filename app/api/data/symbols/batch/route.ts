@@ -170,6 +170,12 @@ export async function POST(request: NextRequest) {
       results[t] = {
         symbol: h.symbol,
         ticker: h.ticker,
+        // Same identity fields as GET /api/data/symbols/{ticker}.
+        requested_ticker: t,
+        is_modelled_class: h.is_modelled_class,
+        modelled_ticker: h.modelled_ticker,
+        share_class: h.share_class,
+        modelled_share_class: h.modelled_share_class,
         name: h.name,
         asset_type: h.asset_type,
         sector_etf: h.sector_etf,

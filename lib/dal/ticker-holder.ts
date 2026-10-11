@@ -31,7 +31,8 @@
  * flagged delisted is never live, and is ranked as a former holder.
  *
  * Ranking (rankHolderCandidates): live first; then latest `held_through`
- * (unknown last); then present in ds_daily; then lowest bw_sym_id.
+ * (unknown last); then ds_daily label strength (`label_score`); then present
+ * in ds_daily; then lowest bw_sym_id.
  *
  * Fail-closed per ticker: a security_master request that errors or returns
  * fewer rows than its exact count is retried one key at a time; a key that
@@ -399,7 +400,13 @@ async function findMostRecentHoldersUncached(
       const list = smById.get(r.bw_sym_id) ?? [];
       if (
         !list.some(
-          (x) => x.valid_to === r.valid_to && x.ticker === r.ticker && x.unique_ticker === r.unique_ticker,
+          (x) =>
+            x.valid_to === r.valid_to &&
+            x.ticker === r.ticker &&
+            x.unique_ticker === r.unique_ticker &&
+            x.is_active === r.is_active &&
+            x.is_delisted === r.is_delisted &&
+            x.delisted_date === r.delisted_date,
         )
       ) {
         list.push(r);

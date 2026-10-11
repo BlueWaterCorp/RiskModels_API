@@ -1400,8 +1400,9 @@ components:
           enum: [most_recent_holder]
           description: >
             Present only when the modelled registry has no live row for the requested ticker and the
-            series belongs to the security that holds it today outside the modelled universe, or else
-            held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row,
+            most-recent-holder check chose the answer: the security that holds the ticker today (it
+            may have a registry row under another ticker, then disclosed in `modelled_ticker`) or,
+            failing that, the one that held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row,
             including recycled ones, resolve to today's company and omit this field, as do
             answers unchanged from earlier releases (an alias rename such as `FB` → META, or a
             delisted registry row) unless a live holder of the ticker that the API can serve exists.
@@ -1431,7 +1432,7 @@ components:
           type: boolean
           description: >
             `true` when the most-recent-holder check could not read its evidence (security
-            master or registry outage) and the previous answer was returned unchecked; a later
+            master, registry or daily index outage) and the previous answer was returned unchecked; a later
             request may answer a different security. Absent otherwise.
         periodicity:
           type: string
@@ -1694,7 +1695,7 @@ components:
           type: boolean
           description: >
             `true` when the most-recent-holder check could not read its evidence (security
-            master or registry outage) and the previous answer was returned unchecked; a later
+            master, registry or daily index outage) and the previous answer was returned unchecked; a later
             request may answer a different security. Absent otherwise.
         returns:
           $ref: "#/components/schemas/BatchReturnsPayload"
@@ -9964,7 +9965,7 @@ paths:
                     type: boolean
                     description: >
                       `true` when the most-recent-holder check could not read its evidence (security
-                      master or registry outage) and the previous answer was returned unchecked; a later
+                      master, registry or daily index outage) and the previous answer was returned unchecked; a later
                       request may answer a different security. Absent otherwise.
                   tickers:
                     type: array

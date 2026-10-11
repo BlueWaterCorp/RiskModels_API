@@ -212,13 +212,20 @@ function stubSupabase() {
         if (table === "security_aliases") {
           rows = rows.filter((r) => TICKER_ALIAS_TYPES.has(String(r.alias_type)));
           // Mirror the DAL's ordering: open aliases first, then latest close.
+          // Mirror the SQL order: valid_to DESC NULLS FIRST, confidence_score
+          // DESC NULLS FIRST, bw_sym_id ASC.
           rows = [...rows].sort((a, b) => {
             const av = a.valid_to as string | null;
             const bv = b.valid_to as string | null;
-            if (av === bv) return 0;
-            if (av === null) return -1;
-            if (bv === null) return 1;
-            return av > bv ? -1 : 1;
+            if (av !== bv) {
+              if (av === null) return -1;
+              if (bv === null) return 1;
+              return av > bv ? -1 : 1;
+            }
+            const ac = (a.confidence_score as number | null) ?? Number.POSITIVE_INFINITY;
+            const bc = (b.confidence_score as number | null) ?? Number.POSITIVE_INFINITY;
+            if (ac !== bc) return bc - ac;
+            return String(a.bw_sym_id).localeCompare(String(b.bw_sym_id));
           });
         }
         if (table === "symbols") {
@@ -602,6 +609,29 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     expect((await both("ZZ"))?.symbol).toBe("BW-Z-ZZ");
   });
 
+  it("a share-class canonical whose registry read fails yields not-found, never a former holder", async () => {
+    SYMBOLS.push(sym("BW-BBG009S3NB30", "GOOG"));
+    SECURITY_MASTER.push(sm("BW-OLD-GOOGL", "GOOGL", { live: false, valid_to: "2015-01-01" }));
+    DAILY!.GOOGL_OLD = ["BW-OLD-GOOGL"];
+    expect((await both("GOOGL"))?.symbol).toBe("BW-BBG009S3NB30");
+    SYM_FAIL_KEYS = new Set(["GOOG"]);
+    expect(await both("GOOGL")).toBeNull();
+  });
+
+  it("both resolvers pick the same alias on equal windows (null confidence first, then id)", async () => {
+    SYMBOLS.push(sym("BW-AL-1", "AL1"), sym("BW-AL-2", "AL2"));
+    ALIASES.push({ bw_sym_id: "BW-AL-2", alias_type: "TICKER", alias_value: "ALQ", valid_to: null, confidence_score: 0.9 });
+    ALIASES.push({ bw_sym_id: "BW-AL-1", alias_type: "TICKER", alias_value: "ALQ", valid_to: null, confidence_score: null });
+    expect((await both("ALQ"))?.symbol).toBe("BW-AL-1");
+  });
+
+  it("security_master rows that differ only in status are both kept (an open copy stays open)", async () => {
+    SECURITY_MASTER.push({ ...sm("BW-DUP", "DUPT"), is_active: false });
+    SECURITY_MASTER.push(sm("BW-DUP", "DUPT"));
+    DAILY!.DUPX = ["BW-DUP"];
+    expect(await both("DUPT")).toMatchObject({ symbol: "BW-DUP", delisted: false });
+  });
+
   it("every dead registry row is vetoed, not only the pick", async () => {
     // Two dead rows for VET; security_master says the second is open under VET.
     SYMBOLS.push(sym("BW-VET-A", "VET", { dead: true }));
@@ -800,7 +830,12 @@ describe("search and registry routes surface the fallback", () => {
     expect(body.results.WM?.resolved_via).toBeUndefined();
     expect(body.results.DEAD).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true });
     expect(body.results.DEAD?.resolved_via).toBeUndefined();
-    expect(body.results.CTRA).toMatchObject({ symbol: "BW-BBG000C3GN47", delisted: true });
+    expect(body.results.CTRA).toMatchObject({
+      symbol: "BW-BBG000C3GN47",
+      delisted: true,
+      requested_ticker: "CTRA",
+      is_modelled_class: true,
+    });
     expect(body.results.NOPE).toBeUndefined();
   });
 });
