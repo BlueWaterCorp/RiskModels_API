@@ -48,6 +48,8 @@ describe("registry PNG delivery through MCP", () => {
     expect(CallToolResultSchema.safeParse(result).success).toBe(true);
     expect(result.content).toHaveLength(2);
     expect(result.content[1]).toEqual({ type: "image", data: png, mimeType: "image/png" });
+    // claude.ai does not forward image blocks to the MCP App; the widget reads _meta.
+    expect((result as { _meta?: Record<string, unknown> })._meta?.["riskmodels/png_base64"]).toBe(png);
     expect(textPayload(result)).toMatchObject({
       ...provenance, subject_id: "BW-STOCK-NVDA", params: { layers: "subsector,residual" },
       artifact: { content_type: "image/png", byte_length: Buffer.from(png, "base64").length, delivery: "mcp_image" },

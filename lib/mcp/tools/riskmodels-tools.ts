@@ -10,6 +10,8 @@ type McpTextResult = { content: McpContent[] };
 export type McpToolResult = {
   content: Array<McpContent | McpImageContent>;
   isError?: boolean;
+  /** Passed to MCP Apps; not shown to the model. */
+  _meta?: Record<string, unknown>;
 };
 type McpPromptResult = {
   description?: string;
