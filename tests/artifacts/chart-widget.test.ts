@@ -1,7 +1,8 @@
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { ReadResourceResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { CHART_WIDGET_HTML, CHART_WIDGET_URI, registerChartWidget } from "@/lib/mcp/chart-widget";
+import { CHART_WIDGET_HTML, CHART_WIDGET_URI,
+  CHART_WIDGET_LEGACY_URIS, registerChartWidget } from "@/lib/mcp/chart-widget";
 import type { McpLikeServer } from "@/lib/mcp/tools/riskmodels-tools";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOncAAAAASUVORK5CYII=";
@@ -32,14 +33,18 @@ function host(openai?: unknown) {
 
 describe("original-chart MCP Apps component", () => {
   it("registers a valid self-contained UI resource without external network access", async () => {
-    let read!: Parameters<McpLikeServer["registerResource"]>[3];
+    const reads = new Map<string, Parameters<McpLikeServer["registerResource"]>[3]>();
     registerChartWidget({ registerResource: (_name, uri, _config, callback) => {
-      expect(uri).toBe(CHART_WIDGET_URI); read = callback;
+      reads.set(uri, callback);
     } } as McpLikeServer);
-    const resource = await read(new URL(CHART_WIDGET_URI));
-    expect(ReadResourceResultSchema.safeParse(resource).success).toBe(true);
-    expect(resource.contents[0]).toMatchObject({ mimeType: "text/html;profile=mcp-app", text: CHART_WIDGET_HTML,
-      _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } });
+    // Current URI plus the legacy one hosts with a cached tool list still request.
+    expect([...reads.keys()].sort()).toEqual([CHART_WIDGET_URI, ...CHART_WIDGET_LEGACY_URIS].sort());
+    for (const [uri, read] of reads) {
+      const resource = await read(new URL(uri));
+      expect(ReadResourceResultSchema.safeParse(resource).success).toBe(true);
+      expect(resource.contents[0]).toMatchObject({ uri, mimeType: "text/html;profile=mcp-app", text: CHART_WIDGET_HTML,
+        _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } } });
+    }
   });
 
   it("initializes, displays exact supplied PNG bytes and provenance, and reports size", () => {
