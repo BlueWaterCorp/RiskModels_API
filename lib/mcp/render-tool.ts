@@ -1,4 +1,4 @@
-import { CHART_WIDGET_URI, registerChartWidget } from "@/lib/mcp/chart-widget";
+import { CHART_WIDGET_PNG_META_KEY, CHART_WIDGET_URI, registerChartWidget } from "@/lib/mcp/chart-widget";
 import { z } from "zod";
 import {
   renderArtifact,
@@ -152,6 +152,9 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
               }).content,
               { type: "image" as const, data: base64, mimeType: "image/png" as const },
             ],
+            // For the MCP App: hosts may not forward image blocks to the widget.
+            // _meta reaches the app without entering the model's context.
+            _meta: { [CHART_WIDGET_PNG_META_KEY]: base64 },
           };
         }
         return textResult({ ...metadata, artifact: result.data });

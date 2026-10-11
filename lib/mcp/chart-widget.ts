@@ -1,7 +1,10 @@
 import type { McpLikeServer } from "@/lib/mcp/tools/riskmodels-tools";
 
 // Bump the URI when the widget contract changes: hosts cache UI resources by URI.
-export const CHART_WIDGET_URI = "ui://riskmodels/chart-v1.html";
+export const CHART_WIDGET_URI = "ui://riskmodels/chart-v2.html";
+
+/** `_meta` key carrying the PNG for the app: hosts may not forward image content blocks to an MCP App. */
+export const CHART_WIDGET_PNG_META_KEY = "riskmodels/png_base64";
 
 /** Displays the original tool image. No chart reconstruction, fetches or storage. */
 export const CHART_WIDGET_HTML = String.raw`<!doctype html>
@@ -42,7 +45,8 @@ figcaption{padding:10px 4px 2px;color:#475569;overflow-wrap:anywhere}
   }
   function render(result) {
     clear('This result has no displayable PNG. Request format png to view the original chart.');
-    if (!result || !Array.isArray(result.content)) return;
+    if (!result || (!Array.isArray(result.content) && !result._meta)) return;
+    if (!Array.isArray(result.content)) result = {...result, content: []};
     let metadata = {};
     for (const block of result.content) {
       if (block.type === 'text') {
@@ -50,8 +54,12 @@ figcaption{padding:10px 4px 2px;color:#475569;overflow-wrap:anywhere}
       }
     }
     if (result.isError || metadata.error) { clear('The chart could not be loaded. See the tool response for details.'); return; }
-    const image = result.content.find(block => block.type === 'image' && block.mimeType === 'image/png');
-    if (!image || typeof image.data !== 'string' || !/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(image.data)) return;
+    // Some hosts (claude.ai) forward text, structuredContent and _meta to the app but
+    // not image blocks, so the PNG also travels in result._meta.
+    const block = result.content.find(b => b.type === 'image' && b.mimeType === 'image/png');
+    const data = typeof block?.data === 'string' ? block.data : result._meta?.['riskmodels/png_base64'];
+    if (typeof data !== 'string' || !/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(data)) return;
+    const image = {data};
     const date = typeof metadata.resolved_as_of === 'string' ? metadata.resolved_as_of : 'unavailable';
     const receipt = typeof metadata.receipt_id === 'string' ? metadata.receipt_id : 'unavailable';
     chart.alt = 'Original RiskModels chart. Data date: ' + date + '. Receipt: ' + receipt + '.';
