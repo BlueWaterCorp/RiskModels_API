@@ -216,6 +216,35 @@ function chunked(col: SmRequest["col"], values: string[]): SmRequest[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Per-instance result cache. Misses (options lines, uncovered ETFs, typeahead
+// keystrokes) repeat; each would otherwise pay up to four Supabase round
+// trips. Keyed by ticker plus the caller's candidates for it; failed lookups
+// are never cached. TTL from TICKER_HOLDER_CACHE_TTL_MS (0 disables).
+// ---------------------------------------------------------------------------
+
+const HOLDER_CACHE_MAX = 2000;
+const holderCache = new Map<string, { at: number; holder: TickerHolder | null }>();
+
+function holderCacheTtlMs(): number {
+  const raw = process.env.TICKER_HOLDER_CACHE_TTL_MS;
+  const n = raw === undefined || raw === "" ? 5 * 60 * 1000 : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function holderCacheKey(t: string, extra: ExtraHolderCandidate[]): string {
+  const parts = extra
+    .filter((e) => label(e.ticker) === t)
+    .map((e) => `${e.bw_sym_id}:${e.dead ? 1 : 0}:${e.alias_valid_to ?? ""}`)
+    .sort();
+  return `${t}|${parts.join(",")}`;
+}
+
+/** Test hook: clear the per-instance holder cache. */
+export function _resetHolderCache(): void {
+  holderCache.clear();
+}
+
 /**
  * For each requested (upper-cased) ticker, the security that holds it today
  * or held it most recently. Tickers with no candidate get no entry; tickers
@@ -228,16 +257,56 @@ export async function findMostRecentHolders(
   const holders = new Map<string, TickerHolder>();
   const failed = new Set<string>();
   const wanted = [...new Set(tickers.map(label).filter(Boolean))];
+  const ttl = holderCacheTtlMs();
+  const now = Date.now();
+  const toFetch: string[] = [];
+  for (const t of wanted) {
+    const hit = ttl > 0 ? holderCache.get(holderCacheKey(t, extra)) : undefined;
+    if (hit && now - hit.at < ttl) {
+      if (hit.holder) holders.set(t, hit.holder);
+    } else {
+      toFetch.push(t);
+    }
+  }
+  if (!toFetch.length) return { failed, holders };
+  const fresh = await findMostRecentHoldersUncached(toFetch, extra);
+  for (const t of toFetch) {
+    if (fresh.failed.has(t)) {
+      failed.add(t);
+      continue;
+    }
+    const h = fresh.holders.get(t) ?? null;
+    if (h) holders.set(t, h);
+    if (ttl > 0) {
+      const key = holderCacheKey(t, extra);
+      holderCache.delete(key);
+      holderCache.set(key, { at: now, holder: h });
+      if (holderCache.size > HOLDER_CACHE_MAX) {
+        const oldest = holderCache.keys().next().value;
+        if (oldest !== undefined) holderCache.delete(oldest);
+      }
+    }
+  }
+  return { failed, holders };
+}
+
+async function findMostRecentHoldersUncached(
+  tickers: string[],
+  extra: ExtraHolderCandidate[],
+): Promise<MostRecentHolderLookup> {
+  const holders = new Map<string, TickerHolder>();
+  const failed = new Set<string>();
+  const wanted = [...new Set(tickers.map(label).filter(Boolean))];
   if (!wanted.length) return { failed, holders };
   const wantedSet = new Set(wanted);
 
   try {
-    let index: Awaited<ReturnType<typeof readDailyTickerHolderIndex>> = null;
-    try {
-      index = await readDailyTickerHolderIndex();
-    } catch {
-      index = null;
-    }
+    // The ds_daily index and security_master pass 1 are independent.
+    const labelReqs = [...chunked("ticker", wanted), ...chunked("unique_ticker", wanted)];
+    const [index, pass1] = await Promise.all([
+      readDailyTickerHolderIndex().catch(() => null),
+      fetchSecurityMasterRows(labelReqs),
+    ]);
 
     const idsByTicker = new Map<string, Set<string>>();
     const addTo = (t: string, id: string) => {
@@ -257,9 +326,7 @@ export async function findMostRecentHolders(
       extraByKey.set(key, [...(extraByKey.get(key) ?? []), e]);
     }
 
-    // Pass 1: rows by ticker label (finds security_master-only holders).
-    const labelReqs = [...chunked("ticker", wanted), ...chunked("unique_ticker", wanted)];
-    const pass1 = await fetchSecurityMasterRows(labelReqs);
+    // Pass 1 (above): rows by ticker label (finds security_master-only holders).
     for (const req of pass1.failedRequests) for (const t of req.values) failed.add(t);
     for (const r of pass1.rows) {
       for (const l of [r.ticker, r.unique_ticker]) {

@@ -5,6 +5,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export type TickerSearchRow = {
   /** FactSet-style symbol when available; otherwise same as ticker */
@@ -18,10 +19,16 @@ export type TickerSearchRow = {
    */
   resolved_via?: "most_recent_holder";
   delisted?: boolean;
+  /** The ticker now belongs to a security the API cannot serve (FB). */
+  ticker_reassigned?: boolean;
+  current_holder?: { symbol: string; name: string | null };
 };
 
-/** Ticker-shaped query (no spaces, ≤ 10 chars of A-Z / 0-9 / . / -). */
-const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
+/**
+ * Ticker-shaped query (no spaces, 2-10 chars of A-Z / 0-9 / . / -). One-
+ * letter queries (typeahead's first keystroke) never pay the holder pass.
+ */
+const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.-]{1,9}$/;
 
 /**
  * Exact-ticker match from the shared DAL resolver's most-recent-holder pass
@@ -33,14 +40,13 @@ async function mostRecentHolderRow(upperSearch: string): Promise<TickerSearchRow
   if (!TICKER_SHAPE.test(upperSearch)) return null;
   try {
     const rec = await resolveSymbolByTicker(upperSearch);
-    if (!rec?.resolved_via) return null;
+    if (!rec?.resolved_via && !rec?.ticker_reassigned) return null;
     return {
       symbol: upperSearch,
       ticker: upperSearch,
       name: rec.name ?? upperSearch,
       sector: rec.sector_etf ?? undefined,
-      resolved_via: rec.resolved_via,
-      delisted: rec.delisted ?? false,
+      ...resolutionDisclosure(rec),
     };
   } catch {
     return null;

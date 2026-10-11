@@ -23,6 +23,7 @@ import {
   isRestrictedSourceSymbol,
   RESTRICTED_SOURCE_NOTE,
 } from "@/lib/data-license";
+import { resolutionDisclosure, resolutionDisclosureHeaders } from "@/lib/dal/resolution-disclosure";
 
 export const runtime = "nodejs";
 
@@ -197,12 +198,7 @@ export const GET = withBilling(
         "X-Data-Fetch-Latency-Ms": String(fetchLatency),
         // csv / parquet carry no JSON envelope, so the most-recent-holder
         // disclosure also rides on headers.
-        ...(symbolRecord.resolved_via
-          ? {
-              "X-Ticker-Resolved-Via": symbolRecord.resolved_via,
-              "X-Ticker-Delisted": String(symbolRecord.delisted ?? false),
-            }
-          : {}),
+        ...resolutionDisclosureHeaders(symbolRecord),
       } as Record<string, string>,
       jsonPayload: {
         symbol: symbolRecord.symbol,
@@ -211,9 +207,7 @@ export const GET = withBilling(
         // Present only when no live registry row carries the ticker and the
         // series belongs to the security that holds it outside the modelled
         // universe or held it most recently (lib/dal/ticker-holder).
-        ...(symbolRecord.resolved_via
-          ? { resolved_via: symbolRecord.resolved_via, delisted: symbolRecord.delisted ?? false }
-          : {}),
+        ...resolutionDisclosure(symbolRecord),
         periodicity: "daily",
         data,
         meta: isEtf

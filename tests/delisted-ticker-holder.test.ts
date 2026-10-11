@@ -12,7 +12,8 @@ vi.mock("@/lib/dal/zarr-reader", async (importOriginal) => ({
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readDailyTickerHolderIndex } from "@/lib/dal/zarr-reader";
 import { resolveSymbolByTicker, resolveSymbolsByTickers } from "@/lib/dal/risk-engine-v3";
-import { rankHolderCandidates } from "@/lib/dal/ticker-holder";
+import { _resetHolderCache, rankHolderCandidates } from "@/lib/dal/ticker-holder";
+import { indexFromCoords } from "@/lib/dal/daily-ticker-index";
 import { searchTickers } from "@/lib/dal/ticker-search";
 import { GET as getSymbol } from "@/app/api/data/symbols/[ticker]/route";
 import { POST as postSymbolsBatch } from "@/app/api/data/symbols/batch/route";
@@ -95,6 +96,10 @@ let DAILY_LISTING: Record<string, string[]>;
 let SM_FAIL_KEYS: Set<string>;
 /** security_master responses report one row more than they return. */
 let SM_TRUNCATE: boolean;
+/** symbols requests whose `.in()` values include any of these fail. */
+let SYM_FAIL_KEYS: Set<string>;
+/** symbols `.in()` responses report one row more than they return. */
+let SYM_TRUNCATE: boolean;
 
 function resetFixtures() {
   SYMBOLS = [
@@ -156,6 +161,8 @@ function resetFixtures() {
   };
   SM_FAIL_KEYS = new Set();
   SM_TRUNCATE = false;
+  SYM_FAIL_KEYS = new Set();
+  SYM_TRUNCATE = false;
 }
 
 function dailyIndex() {
@@ -173,7 +180,6 @@ function dailyIndex() {
     symbols: new Set(
       [...Object.values(DAILY), ...Object.values(DAILY_UNIQUE), ...Object.values(DAILY_LISTING)].flat(),
     ),
-    complete: true,
   };
 }
 
@@ -244,6 +250,12 @@ function stubSupabase() {
           }
           return { data: rows, error: null, count: rows.length + (SM_TRUNCATE ? 1 : 0) };
         }
+        if (table === "symbols") {
+          if (filters.some((f) => f.values.some((v) => SYM_FAIL_KEYS.has(String(v))))) {
+            return { data: null, error: { message: "stub outage" }, count: null };
+          }
+          if (SYM_TRUNCATE) return { data: rows, error: null, count: rows.length + 1 };
+        }
         return { data: rows, error: null, count: rows.length };
       };
       (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
@@ -258,6 +270,9 @@ beforeEach(() => {
   _resetClassProjectionsCache();
   vi.mocked(createAdminClient).mockReturnValue(stubSupabase() as never);
   vi.mocked(readDailyTickerHolderIndex).mockImplementation(async () => dailyIndex());
+  // Fixtures change inside tests; the per-instance holder cache is tested on its own.
+  process.env.TICKER_HOLDER_CACHE_TTL_MS = "0";
+  _resetHolderCache();
   process.env.NEXT_PUBLIC_SUPABASE_URL = "http://stub.local";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "stub-key";
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -354,7 +369,8 @@ describe("delisted tickers resolve to their most recent holder", () => {
     DAILY = null;
     expect(await resolveSymbolByTicker("CTRA")).toBeNull();
     const mf = await resolveSymbolByTicker("MF");
-    expect(mf).toMatchObject({ symbol: "BW-SSJAPHMGNNGW5", ticker: "MF" });
+    // main's alias row; its registry row is flagged dead, so delisted: true.
+    expect(mf).toMatchObject({ symbol: "BW-SSJAPHMGNNGW5", ticker: "MF", delisted: true });
     expect(mf?.resolved_via).toBeUndefined();
     const map = await resolveSymbolsByTickers(["MF", "CTRA"]);
     expect(map.get("MF")?.symbol).toBe("BW-SSJAPHMGNNGW5");
@@ -365,8 +381,15 @@ describe("delisted tickers resolve to their most recent holder", () => {
     // MindForge leaves ds_daily: main's answer (a dead MF registry row) stays.
     DAILY!.MF = [];
     SYMBOLS.push(sym("BW-SSJAPHMGNNGW5-B", "MF", { dead: true }));
-    expect((await resolveSymbolByTicker("MF"))?.symbol).toBe("BW-SSJAPHMGNNGW5-B");
-    expect((await resolveSymbolsByTickers(["MF"])).get("MF")?.symbol).toBe("BW-SSJAPHMGNNGW5-B");
+    const kept = {
+      symbol: "BW-SSJAPHMGNNGW5-B",
+      delisted: true,
+      // ...but the response says the ticker now belongs to MindForge.
+      ticker_reassigned: true,
+      current_holder: { symbol: "BW-BBG014Z5WMH8", name: "MindForge Inc." },
+    };
+    expect(await resolveSymbolByTicker("MF")).toMatchObject(kept);
+    expect((await resolveSymbolsByTickers(["MF"])).get("MF")).toMatchObject(kept);
     // No previous answer at all: not found, never a synthetic row.
     SYMBOLS = SYMBOLS.filter((r) => r.ticker !== "MF");
     ALIASES = ALIASES.filter((r) => r.alias_value !== "MF");
@@ -374,12 +397,12 @@ describe("delisted tickers resolve to their most recent holder", () => {
     expect((await resolveSymbolsByTickers(["MF"])).has("MF")).toBe(false);
   });
 
-  it("a dead-only registry row with no other holder still answers, unchanged from main", async () => {
+  it("a dead-only registry row with no other holder still answers as on main, plus delisted: true", async () => {
     SYMBOLS.push(sym("BW-DEAD-ONLY", "DEAD", { dead: true }));
     const rec = await resolveSymbolByTicker("DEAD");
-    expect(rec).toMatchObject({ symbol: "BW-DEAD-ONLY", ticker: "DEAD" });
+    expect(rec).toMatchObject({ symbol: "BW-DEAD-ONLY", ticker: "DEAD", delisted: true });
     expect(rec?.resolved_via).toBeUndefined();
-    expect(rec?.delisted).toBeUndefined();
+    expect(rec?.ticker_reassigned).toBeUndefined();
   });
 
   it("today's production ds_daily (BBQDH7 still labelled BYON) leaves BBBY unresolved", async () => {
@@ -435,7 +458,7 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     SECURITY_MASTER.push(sm("BW-B", "STK", { live: false, valid_to: "2026-01-01" }));
     DAILY!.STK = ["BW-B"];
     const rec = await both("STK");
-    expect(rec).toMatchObject({ symbol: "BW-A", ticker: "STK" });
+    expect(rec).toMatchObject({ symbol: "BW-A", ticker: "STK", delisted: true });
     expect(rec?.resolved_via).toBeUndefined();
   });
 
@@ -444,7 +467,7 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     SYMBOLS.push(sym("BW-DEAD-ONLY", "DEAD", { dead: true }));
     expect(await both("CTRA")).toBeNull();
     const dead = await both("DEAD");
-    expect(dead).toMatchObject({ symbol: "BW-DEAD-ONLY" });
+    expect(dead).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true });
     expect(dead?.resolved_via).toBeUndefined();
     // Live symbols rows never touch the holder pass.
     expect((await both("WM"))?.symbol).toBe("BW-BBG000BWVSR1");
@@ -461,6 +484,32 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
   it("a security_master response shorter than its exact count fails closed", async () => {
     SM_TRUNCATE = true;
     expect(await both("CTRA")).toBeNull();
+  });
+
+  it("every dead registry row is vetoed, not only the pick", async () => {
+    // Two dead rows for VET; security_master says the second is open under VET.
+    SYMBOLS.push(sym("BW-VET-A", "VET", { dead: true }));
+    SYMBOLS.push(sym("BW-VET-B", "VET", { dead: true }));
+    SECURITY_MASTER.push(sm("BW-VET-B", "VET"));
+    DAILY!.VET = ["BW-VET-B"];
+    const rec = await both("VET");
+    expect(rec).toMatchObject({ symbol: "BW-VET-A", delisted: true });
+    expect(rec?.resolved_via).toBeUndefined();
+  });
+
+  it("registry reads that error or come back short drop only their tickers", async () => {
+    SYM_FAIL_KEYS = new Set(["CTRA"]);
+    const map = await resolveSymbolsByTickers(["CTRA", "WM"]);
+    // CTRA shares the direct-read chunk with WM: both chunk keys are unread.
+    expect(map.size).toBe(0);
+    SYM_FAIL_KEYS = new Set(["BW-BBG000C3GN47"]);
+    // Holder symbols read for Coterra's id fails: CTRA stays unanswered, WM fine.
+    const map2 = await resolveSymbolsByTickers(["CTRA", "WM"]);
+    expect(map2.has("CTRA")).toBe(false);
+    expect(map2.get("WM")?.symbol).toBe("BW-BBG000BWVSR1");
+    SYM_FAIL_KEYS = new Set();
+    SYM_TRUNCATE = true;
+    expect((await resolveSymbolsByTickers(["WM"])).size).toBe(0);
   });
 
   it("six registry rows for one ticker, live row last by id: single and batch both return it", async () => {
@@ -482,11 +531,22 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     const meta = await both("FB");
     expect(meta).toMatchObject({ symbol: "BW-BBG000MM2P62", ticker: "FB" });
     expect(meta?.resolved_via).toBeUndefined();
-    // The ProShares holder cannot be served here, so it does not veto META.
+    // The ProShares holder cannot be served here: META stays (main's answer)
+    // and the response discloses that FB now belongs to someone else.
     SECURITY_MASTER.push(sm("BW-BBG01VRMNFB1", "FB", { name: "PROSHARES TR" }));
     const kept = await both("FB");
-    expect(kept?.symbol).toBe("BW-BBG000MM2P62");
+    expect(kept).toMatchObject({
+      symbol: "BW-BBG000MM2P62",
+      ticker_reassigned: true,
+      current_holder: { symbol: "BW-BBG01VRMNFB1", name: "PROSHARES TR" },
+    });
     expect(kept?.resolved_via).toBeUndefined();
+    expect(kept?.delisted).toBeUndefined();
+    expect((await searchTickers("FB"))[0]).toMatchObject({
+      ticker: "FB",
+      ticker_reassigned: true,
+      current_holder: { symbol: "BW-BBG01VRMNFB1" },
+    });
     // Once ds_daily carries it, the live holder wins.
     DAILY!.FB = ["BW-BBG01VRMNFB1"];
     expect(await both("FB")).toMatchObject({
@@ -514,6 +574,7 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     expect(await both("RTK")).toMatchObject({
       symbol: "BW-LIVE-REG",
       ticker: "RTK",
+      modelled_ticker: "RENAMED",
       resolved_via: "most_recent_holder",
       delisted: false,
     });
@@ -530,6 +591,7 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     const aliasAnswer = await both("OPN");
     expect(aliasAnswer?.symbol).toBe("BW-ALIAS-A");
     expect(aliasAnswer?.resolved_via).toBeUndefined();
+    expect(aliasAnswer?.delisted).toBeUndefined();
   });
 
   it("51 registry rows, live row last by id: single and batch agree", async () => {
@@ -618,9 +680,70 @@ describe("search and registry routes surface the fallback", () => {
     const body = (await res.json()) as { results: Record<string, Record<string, unknown>> };
     expect(body.results.WM).toMatchObject({ symbol: "BW-BBG000BWVSR1" });
     expect(body.results.WM?.resolved_via).toBeUndefined();
-    expect(body.results.DEAD).toMatchObject({ symbol: "BW-DEAD-ONLY" });
+    expect(body.results.DEAD).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true });
     expect(body.results.DEAD?.resolved_via).toBeUndefined();
     expect(body.results.CTRA).toMatchObject({ symbol: "BW-BBG000C3GN47", delisted: true });
     expect(body.results.NOPE).toBeUndefined();
+  });
+});
+
+describe("per-instance holder cache", () => {
+  it("serves a repeated miss from cache within the TTL; failed lookups are not cached", async () => {
+    process.env.TICKER_HOLDER_CACHE_TTL_MS = "60000";
+    _resetHolderCache();
+    expect((await resolveSymbolByTicker("CTRA"))?.symbol).toBe("BW-BBG000C3GN47");
+    // The holder disappears from every source; the cached decision still answers.
+    DAILY = {};
+    DAILY_LISTING = {};
+    expect((await resolveSymbolByTicker("CTRA"))?.symbol).toBe("BW-BBG000C3GN47");
+    _resetHolderCache();
+    expect(await resolveSymbolByTicker("CTRA")).toBeNull();
+    // A failed lookup is retried, not cached.
+    resetFixtures();
+    _resetHolderCache();
+    SM_FAIL_KEYS = new Set(["CTRA"]);
+    expect(await resolveSymbolByTicker("CTRA")).toBeNull();
+    SM_FAIL_KEYS = new Set();
+    expect((await resolveSymbolByTicker("CTRA"))?.symbol).toBe("BW-BBG000C3GN47");
+    process.env.TICKER_HOLDER_CACHE_TTL_MS = "0";
+  });
+});
+
+describe("indexFromCoords (pure ds_daily index builder)", () => {
+  const syms = ["BW-1", "BW-2", "BW-3", "BW-4"];
+
+  it("indexes display / unique / listing labels and strips only .US", () => {
+    const idx = indexFromCoords(
+      syms,
+      ["CTRA", "BYON", "NAN", "X"],
+      ["COG", "BYON", "NAN#1", "X"],
+      ["CTRA.US", "BBBY.US", "NAN.US", "X.LSE"],
+    )!;
+    expect(idx.byTicker.get("CTRA")).toEqual(["BW-1"]);
+    expect(idx.byTicker.get("COG")).toEqual(["BW-1"]);
+    expect(idx.byDisplayTicker.get("COG")).toBeUndefined();
+    expect(idx.byListingTicker.get("BBBY")).toEqual(["BW-2"]);
+    // A real ticker spelled NAN is kept.
+    expect(idx.byDisplayTicker.get("NAN")).toEqual(["BW-3"]);
+    // Non-US listing codes pass through unchanged.
+    expect(idx.byListingTicker.get("X.LSE")).toEqual(["BW-4"]);
+    expect(idx.byListingTicker.get("X")).toBeUndefined();
+    expect(idx.symbols.size).toBe(4);
+  });
+
+  it("drops NaN / null fills at the raw value", () => {
+    const idx = indexFromCoords(syms, ["A", Number.NaN, null, undefined], ["A", null, "C", "D"], ["", "", "", ""])!;
+    expect(idx.byDisplayTicker.get("A")).toEqual(["BW-1"]);
+    expect([...idx.byDisplayTicker.keys()]).toEqual(["A"]);
+    expect(idx.byTicker.get("C")).toEqual(["BW-3"]);
+  });
+
+  it("fails closed on a duplicate or blank symbol, a missing or misaligned coord", () => {
+    const ok = ["A", "B", "C", "D"];
+    expect(indexFromCoords(["BW-1", "BW-1", "BW-3", "BW-4"], ok, ok, ok)).toBeNull();
+    expect(indexFromCoords(["BW-1", "", "BW-3", "BW-4"], ok, ok, ok)).toBeNull();
+    expect(indexFromCoords(syms, ok, null, ok)).toBeNull();
+    expect(indexFromCoords(syms, ok, ok, ["A", "B"])).toBeNull();
+    expect(indexFromCoords(null, ok, ok, ok)).toBeNull();
   });
 });

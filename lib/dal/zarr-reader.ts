@@ -36,6 +36,7 @@ import {
   zarrIndustryBasename,
 } from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
+import { indexFromCoords, type DailyTickerHolderIndex } from "./daily-ticker-index";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
 import { SERVED_HISTORY_START, clampStart, servedHistoryStartForKeys } from "./served-history";
@@ -1415,104 +1416,63 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
 // ds_daily ticker holders — delisted-ticker recall
 // =====================================================================
 
-/**
- * Upper-cased ticker → bw_sym_ids in ds_daily.zarr. `byTicker` matches the
- * display `ticker`, the collision-free `unique_ticker`, or the listing
- * `eodhd_code` minus a trailing ".US"; `byDisplayTicker` matches the display
- * `ticker` alone. lib/dal/ticker-holder never derives liveness from these labels (security_master decides); it uses them for recall and dates.
- * ds_daily keeps every identity the pipeline ever priced, delisted ones
- * included, so this is where a ticker whose holder left the live `symbols`
- * mirror (CTRA → Coterra, BW-BBG000C3GN47) is still found. `symbols` is every
- * bw_sym_id on the store's symbol axis (data presence check).
- */
-export interface DailyTickerHolderIndex {
-  byTicker: Map<string, string[]>;
-  byDisplayTicker: Map<string, string[]>;
-  /** `eodhd_code` minus ".US" — the listing the id was last priced under. */
-  byListingTicker: Map<string, string[]>;
-  symbols: Set<string>;
-  /** Always true on a returned index (a partial read yields null). */
-  complete: boolean;
-}
+export type { DailyTickerHolderIndex } from "./daily-ticker-index";
 
 const DAILY_HOLDER_TTL_MS = 30 * 60 * 1000;
+/** A failed build is retried after a minute, not on every miss. */
+const DAILY_HOLDER_NEGATIVE_TTL_MS = 60 * 1000;
 let dailyHolderIndexCache: {
-  at: number;
+  /** Entry expires at this epoch ms. */
+  until: number;
   promise: Promise<DailyTickerHolderIndex | null>;
 } | null = null;
 
-// String(null) / String(undefined) from object-dtype coords, and NaN fills.
-const EMPTY_COORD_LABELS = new Set(["", "NAN", "NONE", "NULL", "UNDEFINED"]);
+/** Raw coord cells (strings, or whatever an object-dtype array decodes to). */
+async function readRawCoord(grp: Group<Readable>, name: string): Promise<unknown[] | null> {
+  try {
+    const loc = grp.resolve(name);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data;
+    if (d instanceof UnicodeStringArray) {
+      return Array.from({ length: d.length }, (_, i) => d.get(i));
+    }
+    if (Array.isArray(d)) return d as unknown[];
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | null> {
   const grp = await openZarrGroup(zarrDailyBasename());
   if (!grp) return null;
-  const symMap = await readSymbolIndexMap(grp);
-  if (!symMap?.size) return null;
-  const symByIndex: string[] = new Array(symMap.size);
-  for (const [sym, idx] of symMap) symByIndex[idx] = sym;
-
-  // The display ticker is required and must align with the symbol axis; a
-  // duplicate-collapsed or misaligned axis yields no index (fail closed)
-  // rather than a partial one that would be cached for the TTL.
-  const display = await readStringCoord(grp, "ticker");
-  if (!display || display.length !== symByIndex.length) return null;
-
-  const byTicker = new Map<string, string[]>();
-  const byDisplayTicker = new Map<string, string[]>();
-  const byListingTicker = new Map<string, string[]>();
-  let complete = true;
-  const add = (m: Map<string, string[]>, raw: string | undefined, sym: string) => {
-    const t = (raw ?? "").trim().toUpperCase();
-    if (EMPTY_COORD_LABELS.has(t)) return;
-    const list = m.get(t) ?? [];
-    if (!list.includes(sym)) list.push(sym);
-    m.set(t, list);
-  };
-  for (let i = 0; i < display.length; i++) {
-    const sym = symByIndex[i];
-    if (!sym) continue;
-    add(byTicker, display[i], sym);
-    add(byDisplayTicker, display[i], sym);
-  }
-  for (const coord of ["unique_ticker", "eodhd_code"] as const) {
-    const values = await readStringCoord(grp, coord);
-    if (!values || values.length !== symByIndex.length) {
-      complete = false;
-      continue;
-    }
-    for (let i = 0; i < values.length; i++) {
-      const sym = symByIndex[i];
-      if (!sym) continue;
-      // eodhd_code carries the listing exchange ("CTRA.US"); the ticker is
-      // the code minus that US suffix. Other codes pass through unchanged.
-      const v = coord === "eodhd_code" ? values[i]!.replace(/\.US$/i, "") : values[i];
-      add(byTicker, v, sym);
-      if (coord === "eodhd_code") add(byListingTicker, v, sym);
-    }
-  }
-  // Fail closed: a missing recall coord would change which holder wins, so
-  // no index at all (not cached; retried on the next request).
-  if (!complete) return null;
-  return {
-    byTicker,
-    byDisplayTicker,
-    byListingTicker,
-    symbols: new Set(symByIndex.filter(Boolean)),
-    complete,
-  };
+  // Four independent object reads; indexFromCoords fails closed on any gap.
+  const [symbols, display, unique, eodhd] = await Promise.all([
+    readRawCoord(grp, "symbol"),
+    readRawCoord(grp, "ticker"),
+    readRawCoord(grp, "unique_ticker"),
+    readRawCoord(grp, "eodhd_code"),
+  ]);
+  return indexFromCoords(symbols, display, unique, eodhd);
 }
 
-/** Cached ds_daily ticker-holder index (null when the store is unavailable). */
+/**
+ * Cached ds_daily ticker-holder index (null when the store or a coord is
+ * unavailable). Built once per instance per 30 min; a null build is cached
+ * for 60 s so a persistently broken coord does not cost every miss a rebuild.
+ */
 export async function readDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | null> {
-  if (dailyHolderIndexCache && Date.now() - dailyHolderIndexCache.at < DAILY_HOLDER_TTL_MS) {
+  const now = Date.now();
+  if (dailyHolderIndexCache && now < dailyHolderIndexCache.until) {
     return dailyHolderIndexCache.promise;
   }
   const promise = buildDailyTickerHolderIndex().catch(() => null);
-  dailyHolderIndexCache = { at: Date.now(), promise };
-  // A failed or partial open (null) must not pin for the whole TTL.
+  dailyHolderIndexCache = { until: now + DAILY_HOLDER_TTL_MS, promise };
   promise.then((v) => {
-    if (v === null && dailyHolderIndexCache?.promise === promise) dailyHolderIndexCache = null;
+    if (v === null && dailyHolderIndexCache?.promise === promise) {
+      dailyHolderIndexCache.until = Date.now() + DAILY_HOLDER_NEGATIVE_TTL_MS;
+    }
   });
   return promise;
 }

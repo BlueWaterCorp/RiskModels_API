@@ -1408,8 +1408,25 @@ components:
         delisted:
           type: boolean
           description: >
-            Present with `resolved_via`: `true` when the answering security is not a live listing in
-            the security master (delisted, inactive, or not listed there).
+            `true` when the answering security is closed in the security master or flagged
+            delisted in the registry; `false` when the most-recent-holder pass found it open.
+            Absent when neither source was consulted (ordinary answers).
+        ticker_reassigned:
+          type: boolean
+          description: >
+            `true` when the security master shows a different security holding the ticker today
+            that the API cannot serve (no registry row under the ticker, no daily history), so
+            the answer is still the previous holder's series (e.g. `FB` keeps answering Meta
+            while another security holds FB). Absent otherwise.
+        current_holder:
+          type: object
+          description: "With `ticker_reassigned`, the security holding the ticker today."
+          properties:
+            symbol:
+              type: string
+            name:
+              type: string
+              nullable: true
         periodicity:
           type: string
           example: daily
@@ -1648,8 +1665,25 @@ components:
         delisted:
           type: boolean
           description: >
-            Present with `resolved_via`; `true` when that security is not a live listing in the
-            security master.
+            `true` when the answering security is closed in the security master or flagged
+            delisted in the registry; `false` when the most-recent-holder pass found it open.
+            Absent when neither source was consulted (ordinary answers).
+        ticker_reassigned:
+          type: boolean
+          description: >
+            `true` when the security master shows a different security holding the ticker today
+            that the API cannot serve (no registry row under the ticker, no daily history), so
+            the answer is still the previous holder's series (e.g. `FB` keeps answering Meta
+            while another security holds FB). Absent otherwise.
+        current_holder:
+          type: object
+          description: "With `ticker_reassigned`, the security holding the ticker today."
+          properties:
+            symbol:
+              type: string
+            name:
+              type: string
+              nullable: true
         returns:
           $ref: "#/components/schemas/BatchReturnsPayload"
         hedge_ratios:
@@ -6068,7 +6102,12 @@ paths:
               schema:
                 type: string
                 enum: ["true", "false"]
-              description: Sent with `X-Ticker-Resolved-Via`; mirrors JSON `delisted`.
+              description: Sent whenever JSON `delisted` is present; mirrors it.
+            X-Ticker-Reassigned:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Sent when JSON `ticker_reassigned` is `true`.
           content:
             application/vnd.apache.parquet:
               schema:
@@ -9880,8 +9919,27 @@ paths:
                   delisted:
                     type: boolean
                     description: >
-                      Present with `resolved_via`; `true` when that security is not a live listing
-                      in the security master.
+                      `true` when the answering security is closed in the security master or
+                      flagged delisted in the registry; `false` when the most-recent-holder pass
+                      found it open. Absent when neither source was consulted (ordinary
+                      answers).
+                  ticker_reassigned:
+                    type: boolean
+                    description: >
+                      `true` when the security master shows a different security holding the
+                      ticker today that the API cannot serve (no registry row under the ticker,
+                      no daily history), so the answer is still the previous holder's series
+                      (e.g. `FB` keeps answering Meta while another security holds FB). Absent
+                      otherwise.
+                  current_holder:
+                    type: object
+                    description: "With `ticker_reassigned`, the security holding the ticker today."
+                    properties:
+                      symbol:
+                        type: string
+                      name:
+                        type: string
+                        nullable: true
                   tickers:
                     type: array
                     items:

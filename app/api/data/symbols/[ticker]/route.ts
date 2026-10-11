@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTicker } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { isDeadSymbolRow, pickLiveRow, resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
+import {
+  isDeadSymbolRow,
+  pickLiveRow,
+  resolveSymbolByTicker,
+} from "@/lib/dal/risk-engine-v3";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +57,8 @@ export async function GET(
   // resolver so this route and /ticker-returns name the same security: the
   // ticker's live holder outside the registry, the dead row or alias row it
   // answered before, or its most recent former holder (delisted CTRA).
-  // Answers the most-recent-holder pass chose carry `resolved_via` /
-  // `delisted`.
+  // Disclosure fields (resolved_via / delisted / ticker_reassigned) come
+  // from the DAL via resolutionDisclosure.
   const deadRow = data && isDeadSymbolRow(data as Record<string, unknown>) && !resolution.projected;
   let holder: Awaited<ReturnType<typeof resolveSymbolByTicker>> = null;
   if (!data || deadRow) {
@@ -62,9 +67,7 @@ export async function GET(
       return NextResponse.json({ error: "Ticker not found" }, { status: 404 });
     }
   }
-  const holderFlags = holder?.resolved_via
-    ? { resolved_via: holder.resolved_via, delisted: holder.delisted ?? false }
-    : {};
+  const holderFlags = resolutionDisclosure(holder);
 
   if (holder && (!data || holder.symbol !== data.symbol)) {
     // The answering id's own registry row (if any) supplies metadata and the

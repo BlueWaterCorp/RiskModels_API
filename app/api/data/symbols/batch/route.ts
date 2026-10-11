@@ -2,8 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { isDeadSymbolRow, pickLiveRow, resolveSymbolsByTickers } from "@/lib/dal/risk-engine-v3";
+import {
+  isDeadSymbolRow,
+  pickLiveRow,
+  resolveSymbolsByTickers,
+} from "@/lib/dal/risk-engine-v3";
 import { resolveSymIdsToTickers } from "@/lib/dal/symbols-batch";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -123,8 +128,8 @@ export async function POST(request: NextRequest) {
 
   // Tickers no live registry row carries (delisted holders such as CTRA, or
   // dead-only rows): answer from the shared DAL resolver's most-recent-holder
-  // pass, keyed by the requested ticker and disclosed via `resolved_via` /
-  // `delisted`. A dead row the resolver keeps gains the flags; one it
+  // pass, keyed by the requested ticker and disclosed via resolutionDisclosure.
+  // A dead row the resolver keeps gains the flags; one it
   // replaces with a live holder is swapped out.
   const missing = Array.from(
     new Set(
@@ -145,9 +150,7 @@ export async function POST(request: NextRequest) {
       const h = holders.get(t);
       if (!h) continue;
       const existing = results[t] as { symbol?: string } | undefined;
-      const flags = h.resolved_via
-        ? { resolved_via: h.resolved_via, delisted: h.delisted ?? false }
-        : {};
+      const flags = resolutionDisclosure(h);
       if (existing && existing.symbol === h.symbol) {
         results[t] = { ...existing, ...flags };
         continue;

@@ -22,6 +22,7 @@ import {
   type HedgeLevelsBlock,
 } from "@/lib/risk/hedge-levels";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
+import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 function getSupabase() {
   return createAdminClient();
@@ -88,8 +89,11 @@ interface PositionAnalysis {
    * it (see GET /ticker-returns `resolved_via`).
    */
   resolved_via?: "most_recent_holder";
-  /** With `resolved_via`: true when that security is not a live listing. */
+  /** Closed in security_master or flagged delisted in the registry. */
   delisted?: boolean;
+  /** The ticker now belongs to a security the API cannot serve. */
+  ticker_reassigned?: boolean;
+  current_holder?: { symbol: string; name: string | null };
   returns?: {
     dates: string[];
     values: number[];
@@ -411,10 +415,7 @@ async function analyzeTicker(
       result.share_class = null;
       result.modelled_share_class = null;
     }
-    if (symbolRecord.resolved_via) {
-      result.resolved_via = symbolRecord.resolved_via;
-      result.delisted = symbolRecord.delisted ?? false;
-    }
+    Object.assign(result, resolutionDisclosure(symbolRecord));
 
     if (metrics.includes("returns")) {
       const startDate = new Date();
