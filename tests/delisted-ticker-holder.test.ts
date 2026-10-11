@@ -632,6 +632,34 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     expect(await both("DUPT")).toMatchObject({ symbol: "BW-DUP", delisted: false });
   });
 
+  it("a closed row that carries T only as unique_ticker never dates a holding of T", async () => {
+    SECURITY_MASTER.push(sm("BW-UQ-A", "UQOLD", { live: false, valid_to: "2022-01-01" }));
+    SECURITY_MASTER.push(sm("BW-UQ-B", "UQNEW", { unique: "UQOLD", live: false, valid_to: "2024-06-01" }));
+    DAILY!.UQA = ["BW-UQ-A"];
+    DAILY!.UQB = ["BW-UQ-B"];
+    expect((await both("UQOLD"))?.symbol).toBe("BW-UQ-A");
+  });
+
+  it("ds_daily unreadable: a former holder with a registry row is not a new answer", async () => {
+    SYMBOLS.push(sym("BW-FH-REG", "FHNEW", { dead: true }));
+    SECURITY_MASTER.push(sm("BW-FH-REG", "FHOLD", { live: false, valid_to: "2023-01-01" }));
+    DAILY!.FHNEW = ["BW-FH-REG"];
+    expect((await both("FHOLD"))?.symbol).toBe("BW-FH-REG");
+    DAILY = null;
+    expect(await both("FHOLD")).toBeNull();
+  });
+
+  it("accepted: ds_daily pricing an open id under T on display AND listing is served for T", async () => {
+    // Documented decision (memo §2.1): ds_daily is the price source; when it
+    // prices the id under T on both labels and nothing is dated for T, the id
+    // answers T. A coordinated two-label lag after an in-place rename is the
+    // accepted failure of this rule.
+    SECURITY_MASTER.push(sm("BW-CL", "CLNEW"));
+    DAILY!.CLOLD = ["BW-CL"];
+    DAILY_LISTING.CLOLD = ["BW-CL"];
+    expect(await both("CLOLD")).toMatchObject({ symbol: "BW-CL", resolved_via: "most_recent_holder", delisted: false });
+  });
+
   it("every dead registry row is vetoed, not only the pick", async () => {
     // Two dead rows for VET; security_master says the second is open under VET.
     SYMBOLS.push(sym("BW-VET-A", "VET", { dead: true }));

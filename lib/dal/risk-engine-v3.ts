@@ -377,7 +377,7 @@ async function resolveAliasesToCanonicalSymbols(
       .select("bw_sym_id, alias_type, alias_value, valid_to, confidence_score", { count: "exact" })
       .in("alias_value", uppers)
       .in("alias_type", TICKER_ALIAS_TYPES as unknown as string[]);
-    if (error || (typeof count === "number" && (data ?? []).length < count)) {
+    if (error || typeof count !== "number" || (data ?? []).length < count) {
       // Fall back to the single-ticker query (same pick as resolveSymbolByTicker);
       // a ticker whose own query fails marks the whole status failed.
       console.error("[V3 DAL] Batch security_aliases read failed or short:", error ?? count);
@@ -662,6 +662,12 @@ async function resolveMostRecentHolderRows(
       continue;
     }
 
+    // ds_daily unreadable: no new former-holder answer (servability and
+    // label evidence unknown).
+    if (h.in_daily_store === null) {
+      out.set(t, null);
+      continue;
+    }
     const normalized = symRow ? normalizeSymbolRow(symRow) : null;
     if (normalized) {
       out.set(
@@ -718,12 +724,16 @@ export async function resolveSymbolByTicker(
       // cap, so the pick matches resolveSymbolsByTickers), warn on a
       // collision, and pick deterministically: live identity first, then
       // lowest bw_sym_id (pickLiveRow).
-      const { data, error } = await admin
+      const { data, error, count } = await admin
         .from("symbols")
-        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
+        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata", {
+          count: "exact",
+        })
         .eq("ticker", t)
         .order("symbol", { ascending: true });
-      if (error) {
+      // Same completeness rule as the batch read: missing count or a short
+      // body is a failed read.
+      if (error || typeof count !== "number" || ((data ?? []) as unknown[]).length < count) {
         console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
         if (t === upper) directReadFailed = true;
         else canonicalReadFailed = true;
@@ -848,7 +858,7 @@ async function readSymbolRowsChecked(
         .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
         .in(col, keys);
       const got = (data ?? []) as Record<string, unknown>[];
-      if (error || (typeof count === "number" && got.length < count)) {
+      if (error || typeof count !== "number" || got.length < count) {
         console.error(`[V3 DAL] symbols ${col} read failed or short:`, error ?? count);
         return false;
       }

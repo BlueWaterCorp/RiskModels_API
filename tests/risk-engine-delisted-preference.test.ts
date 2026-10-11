@@ -82,7 +82,7 @@ function stubSupabase() {
       query.limit = () => query;
       query.maybeSingle = async () => ({ data: null, error: null });
       (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
-        Promise.resolve(respond()).then(resolve);
+        Promise.resolve(respond()).then((r) => ({ ...r, count: Array.isArray(r.data) ? r.data.length : 0 })).then(resolve);
       return query;
     },
   };

@@ -6,8 +6,8 @@
  * the collision-free `unique_ticker`, or the listing `eodhd_code` minus a
  * trailing ".US"; `byDisplayTicker` matches the display `ticker` alone;
  * `byListingTicker` the stripped `eodhd_code` alone. lib/dal/ticker-holder
- * never derives liveness from these labels (security_master decides); it uses
- * them for recall and dates. ds_daily keeps every identity the pipeline ever
+ * never derives liveness or dates from these labels (security_master
+ * decides); it uses them for recall, eligibility and tie-breaks. ds_daily keeps every identity the pipeline ever
  * priced, delisted ones included, so this is where a ticker whose holder left
  * the live `symbols` mirror (CTRA → Coterra, BW-BBG000C3GN47) is still found.
  * `symbols` is every bw_sym_id on the store's symbol axis (data presence).

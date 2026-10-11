@@ -23,7 +23,8 @@
  * holders.
  *
  * HELD_THROUGH is scoped to the requested ticker: the end of closed
- * security_master rows whose `ticker` / `unique_ticker` is the request, and
+ * security_master rows whose `ticker` is the request (a `unique_ticker` match
+ * recalls but never dates), and
  * the day before a closed alias's (half-open) end. ds_daily labels never
  * date a candidate (a label can lag an in-place rename).
  *
@@ -209,7 +210,8 @@ async function fetchSecurityMasterOnce(
   const failedRequests: SmRequest[] = [];
   for (const { req, data, error, count } of results) {
     const got = (data ?? []) as SecurityMasterHolderRow[];
-    if (error || (typeof count === "number" && got.length < count)) {
+    // A missing count is treated as incomplete (fail closed).
+    if (error || typeof count !== "number" || got.length < count) {
       console.error(
         `[ticker-holder] security_master ${req.col} read ${error ? "failed" : "incomplete"} (${got.length}/${count})`,
       );
@@ -239,7 +241,7 @@ async function fetchRegistryDeadIds(
         .select("symbol, metadata", { count: "exact" })
         .in("symbol", keys)) as { data: unknown; error: unknown; count?: number | null };
       const rows = (data ?? []) as { symbol?: string; metadata?: { is_delisted?: boolean } | null }[];
-      if (error || (typeof count === "number" && rows.length < count)) return false;
+      if (error || typeof count !== "number" || rows.length < count) return false;
       for (const r of rows) if (r.symbol && r.metadata?.is_delisted === true) dead.add(r.symbol);
       return true;
     } catch {
@@ -424,7 +426,10 @@ async function findMostRecentHoldersUncached(
         const extras = extraByKey.get(`${t}\u0000${id}`) ?? [];
         const registryDead = extras.some((e) => e.dead === true) || registry.dead.has(id);
         const identityOpen = sm.some(smIsOpen);
-        const forT = sm.filter((r) => label(r.ticker) === t || label(r.unique_ticker) === t);
+        // Rows whose ticker IS T date a holding of T. A row that only carries
+        // T as unique_ticker (another ticker's window with a stale unique)
+        // recalls the id but never dates it.
+        const forT = sm.filter((r) => label(r.ticker) === t);
         const live = !registryDead && sm.some((r) => smIsOpen(r) && label(r.ticker) === t);
 
         let held: string | null = null;
