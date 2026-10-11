@@ -7,6 +7,15 @@
     "data"
   ],
   "properties": {
+    "resolved_via": {
+      "type": "string",
+      "enum": ["most_recent_holder"],
+      "description": "Present only when no live security holds the requested ticker and the series belongs to the security that held it most recently (e.g. delisted CTRA). A live holder always wins."
+    },
+    "delisted": {
+      "type": "boolean",
+      "description": "Present with resolved_via; true when that most recent holder is delisted."
+    },
     "meta": {
       "type": "object",
       "required": [

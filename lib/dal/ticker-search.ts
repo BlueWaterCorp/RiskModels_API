@@ -4,6 +4,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 
 export type TickerSearchRow = {
   /** FactSet-style symbol when available; otherwise same as ticker */
@@ -11,7 +12,40 @@ export type TickerSearchRow = {
   ticker: string;
   name?: string;
   sector?: string;
+  /**
+   * Set when no live security holds the ticker and the match is its most
+   * recent (possibly delisted) holder — same disclosure as /ticker-returns.
+   */
+  resolved_via?: "most_recent_holder";
+  delisted?: boolean;
 };
+
+/** Ticker-shaped query (no spaces, ≤ 10 chars of A-Z / 0-9 / . / -). */
+const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
+
+/**
+ * Exact-ticker match from the shared DAL resolver's most-recent-holder pass
+ * (delisted names such as CTRA that the live `symbols` mirror no longer
+ * carries). Null for ordinary tickers, which the symbols queries already
+ * answer, and for non-ticker-shaped queries.
+ */
+async function mostRecentHolderRow(upperSearch: string): Promise<TickerSearchRow | null> {
+  if (!TICKER_SHAPE.test(upperSearch)) return null;
+  try {
+    const rec = await resolveSymbolByTicker(upperSearch);
+    if (!rec?.resolved_via) return null;
+    return {
+      symbol: upperSearch,
+      ticker: upperSearch,
+      name: rec.name ?? upperSearch,
+      sector: rec.sector_etf ?? undefined,
+      resolved_via: rec.resolved_via,
+      delisted: rec.delisted ?? false,
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function enrichFromSecurityMaster(
   rows: TickerSearchRow[],
@@ -80,8 +114,17 @@ export async function searchTickers(
         ? m.metadata?.sector || m.metadata?.gics_sector_name
         : undefined,
     }));
-    return enrichFromSecurityMaster(rows);
+    if (!rows.some((r) => r.ticker.toUpperCase() === upperSearch)) {
+      // Fuzzy hits (CTRA → nothing, MF → MFA, MFC, …) but no exact live
+      // ticker: lead with the ticker's most recent holder when there is one.
+      const holder = await mostRecentHolderRow(upperSearch);
+      if (holder) rows.unshift(holder);
+    }
+    return enrichFromSecurityMaster(rows.slice(0, 10));
   }
+
+  const holder = await mostRecentHolderRow(upperSearch);
+  if (holder) return [holder];
 
   try {
     const { data: smMatches } = await admin

@@ -29,6 +29,15 @@
     "ticker": {
       "type": "string"
     },
+    "resolved_via": {
+      "type": "string",
+      "enum": ["most_recent_holder"],
+      "description": "With search: present only when no live security holds the searched ticker and it resolves to the security that held it most recently (e.g. delisted CTRA)."
+    },
+    "delisted": {
+      "type": "boolean",
+      "description": "Present with resolved_via; true when that holder is delisted."
+    },
     "suggestions": {
       "type": "array",
       "items": {

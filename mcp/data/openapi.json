@@ -1501,6 +1501,17 @@
             ],
             "description": "Returned for every response. ETF responses populate `date`, `returns_gross`, and `price_close` only; all L1/L2/L3 columns are `null` because ETFs are not factor-decomposed.\n"
           },
+          "resolved_via": {
+            "type": "string",
+            "enum": [
+              "most_recent_holder"
+            ],
+            "description": "Present only when no live security holds the requested ticker and the series belongs to the security that held it most recently (e.g. a delisted name such as `CTRA`). A live holder always wins: recycled tickers resolve to today's company and omit this field.\n"
+          },
+          "delisted": {
+            "type": "boolean",
+            "description": "Present with `resolved_via`: `true` when that most recent holder is delisted / no longer holds the ticker.\n"
+          },
           "periodicity": {
             "type": "string",
             "example": "daily"
@@ -8325,6 +8336,25 @@
                 "schema": {
                   "type": "integer"
                 }
+              },
+              "X-Ticker-Resolved-Via": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "most_recent_holder"
+                  ]
+                },
+                "description": "Sent only when no live security holds the requested ticker and the series belongs to the security that held it most recently (same value as JSON `resolved_via`).\n"
+              },
+              "X-Ticker-Delisted": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true",
+                    "false"
+                  ]
+                },
+                "description": "Sent with `X-Ticker-Resolved-Via`; mirrors JSON `delisted`."
               }
             },
             "content": {
@@ -13939,6 +13969,22 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "ticker": {
+                      "type": "string",
+                      "description": "With `search`: the exact ticker match, or the best match when there is none.\n",
+                      "example": "NVDA"
+                    },
+                    "resolved_via": {
+                      "type": "string",
+                      "enum": [
+                        "most_recent_holder"
+                      ],
+                      "description": "With `search`, present only when no live security holds the searched ticker and it resolves to the security that held it most recently (e.g. a delisted name such as `CTRA`). Same rule as `GET /ticker-returns`.\n"
+                    },
+                    "delisted": {
+                      "type": "boolean",
+                      "description": "Present with `resolved_via`; `true` when that holder is delisted."
+                    },
                     "tickers": {
                       "type": "array",
                       "items": {

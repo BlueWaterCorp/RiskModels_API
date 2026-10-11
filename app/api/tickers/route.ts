@@ -54,9 +54,17 @@ export async function GET(request: NextRequest) {
       const upperSearch = searchQuery.toUpperCase().trim();
       const rows = await searchTickers(searchQuery, true);
 
-      if (rows.some((r) => r.ticker === upperSearch)) {
+      const exact = rows.find((r) => r.ticker === upperSearch);
+      if (exact) {
         return NextResponse.json(
-          { ticker: upperSearch },
+          {
+            ticker: upperSearch,
+            // Disclosed only when the ticker's most recent holder answers
+            // (no live security holds it) — see TickerSearchRow.
+            ...(exact.resolved_via
+              ? { resolved_via: exact.resolved_via, delisted: exact.delisted ?? false }
+              : {}),
+          },
           {
             headers: {
               ...getCorsHeaders(origin),

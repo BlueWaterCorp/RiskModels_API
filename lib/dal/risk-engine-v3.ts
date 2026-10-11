@@ -26,6 +26,12 @@ import {
 } from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
+  findMostRecentHolders,
+  type ExtraHolderCandidate,
+  type SecurityMasterHolderRow,
+  type TickerHolder,
+} from "@/lib/dal/ticker-holder";
+import {
   getZarrSpec,
   isRankingMetricKey,
   ZARR_UNSUPPORTED_DAILY_KEYS,
@@ -163,6 +169,14 @@ export interface SymbolRegistryRow {
   share_class: string | null;
   /** Share class actually modelled, when a projection applied. */
   modelled_share_class: string | null;
+  /**
+   * Set only when no live `symbols` row held the ticker and resolution fell
+   * back to the security that held it most recently (lib/dal/ticker-holder).
+   * Absent on ordinary resolutions.
+   */
+  resolved_via?: "most_recent_holder";
+  /** With `resolved_via`: true when that holder is delisted / no longer holds the ticker. */
+  delisted?: boolean;
 }
 
 // Fetch options
@@ -282,7 +296,7 @@ const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER"] as const;
  */
 async function resolveAliasToCanonicalSymbol(
   upper: string,
-): Promise<string | null> {
+): Promise<{ bw_sym_id: string; valid_to: string | null } | null> {
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -298,7 +312,8 @@ async function resolveAliasToCanonicalSymbol(
       console.error(`[V3 DAL] Error querying security_aliases for ${upper}:`, error);
       return null;
     }
-    return ((data as { bw_sym_id?: string } | null)?.bw_sym_id) ?? null;
+    const hit = data as { bw_sym_id?: string; valid_to?: string | null } | null;
+    return hit?.bw_sym_id ? { bw_sym_id: hit.bw_sym_id, valid_to: hit.valid_to ?? null } : null;
   } catch (error) {
     console.error(`[V3 DAL] Error querying security_aliases for ${upper}:`, error);
     return null;
@@ -311,8 +326,8 @@ async function resolveAliasToCanonicalSymbol(
  */
 async function resolveAliasesToCanonicalSymbols(
   uppers: string[],
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+): Promise<Map<string, { bw_sym_id: string; valid_to: string | null }>> {
+  const out = new Map<string, { bw_sym_id: string; valid_to: string | null }>();
   if (uppers.length === 0) return out;
   try {
     const admin = createAdminClient();
@@ -357,7 +372,7 @@ async function resolveAliasesToCanonicalSymbols(
         candidates.set(key, r);
       }
     }
-    for (const [k, v] of candidates) out.set(k, v.bw_sym_id);
+    for (const [k, v] of candidates) out.set(k, { bw_sym_id: v.bw_sym_id, valid_to: v.valid_to });
     return out;
   } catch (error) {
     console.error("[V3 DAL] Error batch querying security_aliases:", error);
@@ -416,6 +431,126 @@ function normalizeSymbolRow(row: Record<string, unknown> | null): SymbolRegistry
   };
 }
 
+const SYMBOL_ROW_COLUMNS =
+  "symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata";
+
+/** security_master asset_type ("EQUITY", "ETF") → symbols vocabulary ("stock", "etf"). */
+function assetTypeFromSecurityMaster(raw: string | null): string | null {
+  if (!raw) return null;
+  const t = raw.trim().toUpperCase();
+  if (t === "ETF") return "etf";
+  if (t === "EQUITY" || t === "COMMON" || t === "STOCK") return "stock";
+  return raw.toLowerCase();
+}
+
+/** First subsector ETF from security_master's JSON-array text column. */
+function firstSubsectorEtf(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed) && typeof parsed[0] === "string") return parsed[0];
+  } catch {
+    // not JSON — treat as a bare ticker
+  }
+  return /^[A-Z0-9.-]+$/i.test(raw.trim()) ? raw.trim().toUpperCase() : null;
+}
+
+function registryRowFromSecurityMaster(
+  bwSymId: string,
+  requestedTicker: string,
+  sm: SecurityMasterHolderRow | null,
+): SymbolRegistryRow {
+  return {
+    symbol: bwSymId,
+    ticker: requestedTicker,
+    name: sm?.company_name ?? null,
+    asset_type: assetTypeFromSecurityMaster(sm?.asset_type ?? null) ?? "stock",
+    sector_etf: sm?.sector_etf ?? null,
+    subsector_etf: firstSubsectorEtf(sm?.subsector_etfs ?? null),
+    is_adr: sm?.is_adr ?? null,
+    is_modelled_class: true,
+    modelled_ticker: null,
+    share_class: null,
+    modelled_share_class: null,
+  };
+}
+
+/**
+ * Outcome of the most-recent-holder pass for one ticker:
+ *   row      — answer with this row (flagged resolved_via / delisted)
+ *   uncovered — the winning holder is LIVE but has no data here; answer
+ *               "not found" rather than a former holder's history
+ *   none     — no usable holder; caller keeps its pre-existing fallback
+ */
+type HolderOutcome =
+  | { kind: "row"; row: SymbolRegistryRow }
+  | { kind: "uncovered" }
+  | { kind: "none" };
+
+/**
+ * Most-recent-holder recall (lib/dal/ticker-holder) for tickers no live
+ * `symbols` row holds. The winner's own `symbols` row is used when it has
+ * one; otherwise the row is built from security_master. The requested ticker
+ * labels the row, and `resolved_via` / `delisted` disclose the fallback.
+ */
+async function resolveMostRecentHolderRows(
+  tickers: string[],
+  extra: ExtraHolderCandidate[],
+): Promise<Map<string, HolderOutcome>> {
+  const out = new Map<string, HolderOutcome>();
+  if (!tickers.length) return out;
+  let holders: Map<string, TickerHolder>;
+  try {
+    holders = await findMostRecentHolders(tickers, extra);
+  } catch {
+    return out;
+  }
+  const ids = [...new Set([...holders.values()].map((h) => h.bw_sym_id))];
+  const symbolsById = new Map<string, Record<string, unknown>>();
+  if (ids.length) {
+    try {
+      const { data, error } = await createAdminClient()
+        .from("symbols")
+        .select(SYMBOL_ROW_COLUMNS)
+        .in("symbol", ids);
+      if (error) console.error("[V3 DAL] Error reading holder symbols rows:", error);
+      for (const r of (data ?? []) as Record<string, unknown>[]) {
+        symbolsById.set(String(r.symbol), r);
+      }
+    } catch (error) {
+      console.error("[V3 DAL] Error reading holder symbols rows:", error);
+    }
+  }
+  for (const t of tickers) {
+    const h = holders.get(t);
+    if (!h) {
+      out.set(t, { kind: "none" });
+      continue;
+    }
+    const flags = { resolved_via: "most_recent_holder" as const, delisted: !h.live };
+    const symRow = symbolsById.get(h.bw_sym_id);
+    if (symRow) {
+      const normalized = normalizeSymbolRow(symRow);
+      if (normalized) {
+        out.set(t, { kind: "row", row: { ...normalized, ticker: t, ...flags } });
+        continue;
+      }
+    }
+    // No symbols row: only answer when ds_daily carries the identity (or
+    // could not be read). An identity with no history would turn a 404 into
+    // an empty 200 — and a live one must still not lose to a former holder.
+    if (h.in_daily_store === false) {
+      out.set(t, h.live ? { kind: "uncovered" } : { kind: "none" });
+      continue;
+    }
+    out.set(t, {
+      kind: "row",
+      row: { ...registryRowFromSecurityMaster(h.bw_sym_id, t, h.security_master), ...flags },
+    });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Symbol resolution
 // ---------------------------------------------------------------------------
@@ -425,7 +560,10 @@ export async function resolveSymbolByTicker(
 ): Promise<SymbolRegistryRow | null> {
   const upper = ticker.toUpperCase();
 
-  const tryResolve = async (t: string): Promise<SymbolRegistryRow | null> => {
+  const tryResolve = async (t: string): Promise<SymbolRegistryRow | null> =>
+    normalizeSymbolRow(await tryResolveRaw(t));
+
+  const tryResolveRaw = async (t: string): Promise<Record<string, unknown> | null> => {
     try {
       const admin = createAdminClient();
       // Recycled tickers leave >1 symbols row per display ticker (the sync
@@ -452,65 +590,92 @@ export async function resolveSymbolByTicker(
             .join(", ")} — picking ${String(picked?.symbol)} (live first, then bw_sym_id)`,
         );
       }
-      return normalizeSymbolRow(picked);
+      return picked;
     } catch (error) {
       console.error(`[V3 DAL] Error resolving ticker ${t}:`, error);
       return null;
     }
   };
 
-  let result = await tryResolve(upper);
-  if (result) return result;
+  // 1. A live `symbols` row always wins.
+  const direct = await tryResolveRaw(upper);
+  if (direct && !isDeadSymbolRow(direct)) return normalizeSymbolRow(direct);
 
-  // Route notation aliases and share-class projections through the single
-  // resolveTicker seam (C.13). Notation (BRK.B → BRK-B) is the same security
-  // and stays silent; a projection (GOOGL → GOOG) answers with a sibling
-  // class's series and is carried on the row so renderers can disclose it —
-  // relabelling without those fields is the G.35 defect.
-  const resolution = await resolveTicker(upper);
-  if (resolution.canonical !== upper) {
-    result = await tryResolve(resolution.canonical);
-    if (result) {
-      if (!resolution.projected) {
-        return result;
+  if (!direct) {
+    // 2. Route notation aliases and share-class projections through the
+    // single resolveTicker seam (C.13). Notation (BRK.B → BRK-B) is the same
+    // security and stays silent; a projection (GOOGL → GOOG) answers with a
+    // sibling class's series and is carried on the row so renderers can
+    // disclose it — relabelling without those fields is the G.35 defect.
+    const resolution = await resolveTicker(upper);
+    if (resolution.canonical !== upper) {
+      const result = await tryResolve(resolution.canonical);
+      if (result) {
+        if (!resolution.projected) {
+          return result;
+        }
+        return {
+          ...result,
+          ticker: upper,
+          is_modelled_class: false,
+          modelled_ticker: result.ticker,
+          share_class: resolution.requestedClass,
+          modelled_share_class: resolution.modelledClass,
+        };
       }
-      return {
-        ...result,
-        ticker: upper,
-        is_modelled_class: false,
-        modelled_ticker: result.ticker,
-        share_class: resolution.requestedClass,
-        modelled_share_class: resolution.modelledClass,
-      };
     }
   }
 
-  // Historical-ticker recall (C.1'): query the security_aliases mirror so
+  // 3. Historical-ticker recall (C.1'): query the security_aliases mirror so
   // renamed tickers (e.g. FB → META: BW-BBG000MM2P62) resolve to the
-  // canonical bw_sym_id. We then look up the symbols row by that bw_sym_id.
-  const canonicalId = await resolveAliasToCanonicalSymbol(upper);
-  if (canonicalId) {
+  // canonical bw_sym_id. An OPEN alias (valid_to null) names today's holder
+  // and answers directly, as before.
+  const alias = await resolveAliasToCanonicalSymbol(upper);
+  const aliasRow = async (): Promise<SymbolRegistryRow | null> => {
+    if (!alias) return null;
     try {
       const admin = createAdminClient();
       const { data, error } = await admin
         .from("symbols")
-        .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
-        .eq("symbol", canonicalId)
+        .select(SYMBOL_ROW_COLUMNS)
+        .eq("symbol", alias.bw_sym_id)
         .maybeSingle();
       if (!error && data) {
         const normalized = normalizeSymbolRow(data as Record<string, unknown>);
-        if (normalized) {
-          // Surface the requested ticker label to the caller; the canonical
-          // bw_sym_id lookup keeps the zarr loader happy.
-          return { ...normalized, ticker: upper };
-        }
+        // Surface the requested ticker label to the caller; the canonical
+        // bw_sym_id lookup keeps the zarr loader happy.
+        if (normalized) return { ...normalized, ticker: upper };
       }
     } catch (err) {
-      console.error(`[V3 DAL] Error resolving alias canonical id ${canonicalId}:`, err);
+      console.error(`[V3 DAL] Error resolving alias canonical id ${alias.bw_sym_id}:`, err);
     }
+    return null;
+  };
+  if (!direct && alias && alias.valid_to === null) {
+    const hit = await aliasRow();
+    if (hit) return hit;
   }
 
-  return null;
+  // 4. Most-recent-holder recall: no live symbols row holds the ticker, so
+  // answer with the security that held it most recently (a live holder
+  // outside the modelled universe still beats every former holder). The dead
+  // symbols row and the alias hit compete as candidates.
+  const extra: ExtraHolderCandidate[] = [];
+  if (direct) extra.push({ ticker: upper, bw_sym_id: String(direct.symbol), live: false });
+  if (alias) {
+    extra.push({
+      ticker: upper,
+      bw_sym_id: alias.bw_sym_id,
+      ...(alias.valid_to !== null ? { live: false, held_through: alias.valid_to } : {}),
+    });
+  }
+  const outcome = (await resolveMostRecentHolderRows([upper], extra)).get(upper);
+  if (outcome?.kind === "row") return outcome.row;
+  if (outcome?.kind === "uncovered") return null;
+
+  // 5. Holder lookup found nothing usable: pre-existing behaviour.
+  if (direct) return normalizeSymbolRow(direct);
+  return aliasRow();
 }
 
 export async function resolveSymbolsByTickers(
@@ -542,16 +707,24 @@ export async function resolveSymbolsByTickers(
       bucket.push(row);
       byTicker.set(requestedKey, bucket);
     }
+    // A dead pick (every row for the ticker is delisted) does not answer
+    // yet: like resolveSymbolByTicker it competes in the most-recent-holder
+    // pass below, so a live holder outside `symbols` still wins.
+    const deadDirect = new Map<string, Record<string, unknown>>();
     for (const [requestedKey, rows] of byTicker) {
       const picked = pickLiveRow(rows);
       const normalized = normalizeSymbolRow(picked);
-      if (!normalized) continue;
+      if (!normalized || !picked) continue;
       if (rows.length > 1) {
         console.warn(
           `[V3 DAL] Ticker ${requestedKey} matches multiple symbols: ${rows
             .map(r => `${String(r.symbol)}${isDeadSymbolRow(r) ? "(dead)" : ""}`)
             .join(", ")} — keeping ${normalized.symbol} (live first, then bw_sym_id)`,
         );
+      }
+      if (isDeadSymbolRow(picked)) {
+        deadDirect.set(requestedKey, picked);
+        continue;
       }
       result.set(requestedKey, normalized);
     }
@@ -560,8 +733,8 @@ export async function resolveSymbolsByTickers(
     // share-class projections both come from resolveTicker, never a local
     // pair list. Projections carry the disclosure fields; notation stays
     // silent (same security).
-    const missing = upperTickers.filter(t => !result.has(t));
-    if (missing.length === 0) return result;
+    const missing = upperTickers.filter(t => !result.has(t) && !deadDirect.has(t));
+    if (missing.length === 0 && deadDirect.size === 0) return result;
 
     const resolutions = new Map<string, TickerResolution>();
     for (const requested of missing) {
@@ -607,26 +780,65 @@ export async function resolveSymbolsByTickers(
 
     // Historical-ticker recall (C.1'): for any tickers still missing after
     // direct + hardcoded alias passes, consult the security_aliases mirror.
+    // An OPEN alias (valid_to null) names today's holder and answers
+    // directly; a closed one competes in the most-recent-holder pass.
     const stillMissing = upperTickers.filter(t => !result.has(t));
+    const aliasBySymbol = new Map<string, SymbolRegistryRow>();
+    let canonicalMap = new Map<string, { bw_sym_id: string; valid_to: string | null }>();
     if (stillMissing.length > 0) {
-      const canonicalMap = await resolveAliasesToCanonicalSymbols(stillMissing);
-      const canonicalIds = Array.from(new Set(canonicalMap.values()));
+      canonicalMap = await resolveAliasesToCanonicalSymbols(stillMissing);
+      const canonicalIds = Array.from(new Set([...canonicalMap.values()].map(v => v.bw_sym_id)));
       if (canonicalIds.length > 0) {
         const { data: histData } = await admin
           .from("symbols")
-          .select("symbol, ticker, name, asset_type, sector_etf, subsector_etf, is_adr, metadata")
+          .select(SYMBOL_ROW_COLUMNS)
           .in("symbol", canonicalIds);
-        const bySymbol = new Map<string, SymbolRegistryRow>();
         for (const row of histData ?? []) {
           const normalized = normalizeSymbolRow(row as Record<string, unknown>);
-          if (normalized) bySymbol.set(normalized.symbol, normalized);
+          if (normalized) aliasBySymbol.set(normalized.symbol, normalized);
         }
         for (const requested of stillMissing) {
-          const canonicalId = canonicalMap.get(requested);
-          if (!canonicalId) continue;
-          const row = bySymbol.get(canonicalId);
+          const hit = canonicalMap.get(requested);
+          if (!hit || hit.valid_to !== null || deadDirect.has(requested)) continue;
+          const row = aliasBySymbol.get(hit.bw_sym_id);
           if (row) result.set(requested, { ...row, ticker: requested });
         }
+      }
+    }
+
+    // Most-recent-holder recall (same rules as resolveSymbolByTicker step 4).
+    const unresolved = upperTickers.filter(t => !result.has(t));
+    if (unresolved.length > 0) {
+      const extra: ExtraHolderCandidate[] = [];
+      for (const t of unresolved) {
+        const dead = deadDirect.get(t);
+        if (dead) extra.push({ ticker: t, bw_sym_id: String(dead.symbol), live: false });
+        const hit = canonicalMap.get(t);
+        if (hit) {
+          extra.push({
+            ticker: t,
+            bw_sym_id: hit.bw_sym_id,
+            ...(hit.valid_to !== null ? { live: false, held_through: hit.valid_to } : {}),
+          });
+        }
+      }
+      const outcomes = await resolveMostRecentHolderRows(unresolved, extra);
+      for (const t of unresolved) {
+        const outcome = outcomes.get(t);
+        if (outcome?.kind === "row") {
+          result.set(t, outcome.row);
+          continue;
+        }
+        if (outcome?.kind === "uncovered") continue;
+        // Holder lookup found nothing usable: pre-existing behaviour.
+        const dead = normalizeSymbolRow(deadDirect.get(t) ?? null);
+        if (dead) {
+          result.set(t, dead);
+          continue;
+        }
+        const hit = canonicalMap.get(t);
+        const row = hit ? aliasBySymbol.get(hit.bw_sym_id) : undefined;
+        if (row) result.set(t, { ...row, ticker: t });
       }
     }
 

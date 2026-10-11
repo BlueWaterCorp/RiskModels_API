@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { pickLiveRow } from "@/lib/dal/risk-engine-v3";
+import { pickLiveRow, resolveSymbolsByTickers } from "@/lib/dal/risk-engine-v3";
 import { resolveSymIdsToTickers } from "@/lib/dal/symbols-batch";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +115,40 @@ export async function POST(request: NextRequest) {
       latest_vol: row.latest_vol,
       latest_teo: row.latest_teo,
     };
+  }
+
+  // Tickers no registry row carries today (delisted holders such as CTRA):
+  // answer from the shared DAL resolver's most-recent-holder pass, keyed by
+  // the requested ticker and disclosed via `resolved_via` / `delisted`.
+  const missing = Array.from(
+    new Set(
+      tickers
+        .map((t, i) => ({ requested: String(t).toUpperCase(), canonical: canonicalTickers[i] }))
+        .filter(({ canonical }) => !canonical || !(canonical in results))
+        .map(({ requested }) => requested),
+    ),
+  );
+  if (missing.length > 0) {
+    const holders = await resolveSymbolsByTickers(missing);
+    for (const t of missing) {
+      const h = holders.get(t);
+      if (!h?.resolved_via || t in results) continue;
+      results[t] = {
+        symbol: h.symbol,
+        ticker: h.ticker,
+        name: h.name,
+        asset_type: h.asset_type,
+        sector_etf: h.sector_etf,
+        subsector_etf: h.subsector_etf,
+        is_adr: h.is_adr,
+        metadata: {},
+        latest_metrics: null,
+        latest_vol: null,
+        latest_teo: null,
+        resolved_via: h.resolved_via,
+        delisted: h.delisted ?? false,
+      };
+    }
   }
 
   return NextResponse.json({ results });

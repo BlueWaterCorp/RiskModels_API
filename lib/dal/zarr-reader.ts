@@ -1412,6 +1412,78 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
 }
 
 // =====================================================================
+// ds_daily ticker holders — delisted-ticker recall
+// =====================================================================
+
+/**
+ * Upper-cased ticker → bw_sym_ids in ds_daily.zarr whose display `ticker`,
+ * collision-free `unique_ticker`, or listing `eodhd_code` (exchange suffix
+ * dropped) equals it. ds_daily keeps every identity the pipeline ever priced,
+ * delisted ones included, so this is where a ticker whose holder left the
+ * live `symbols` mirror (CTRA → Coterra, BW-BBG000C3GN47) is still found.
+ * `symbols` is the set of every bw_sym_id on the store's symbol axis (data
+ * presence check for candidates found elsewhere).
+ */
+export interface DailyTickerHolderIndex {
+  byTicker: Map<string, string[]>;
+  symbols: Set<string>;
+}
+
+const DAILY_HOLDER_TTL_MS = 30 * 60 * 1000;
+let dailyHolderIndexCache: {
+  at: number;
+  promise: Promise<DailyTickerHolderIndex | null>;
+} | null = null;
+
+// String(null) / String(undefined) from object-dtype coords, and NaN fills.
+const EMPTY_COORD_LABELS = new Set(["", "NAN", "NONE", "NULL", "UNDEFINED"]);
+
+async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | null> {
+  const grp = await openZarrGroup(zarrDailyBasename());
+  if (!grp) return null;
+  const symMap = await readSymbolIndexMap(grp);
+  if (!symMap?.size) return null;
+  const symByIndex: string[] = new Array(symMap.size);
+  for (const [sym, idx] of symMap) symByIndex[idx] = sym;
+
+  const byTicker = new Map<string, string[]>();
+  const add = (raw: string | undefined, sym: string) => {
+    const t = (raw ?? "").trim().toUpperCase();
+    if (EMPTY_COORD_LABELS.has(t)) return;
+    const list = byTicker.get(t) ?? [];
+    if (!list.includes(sym)) list.push(sym);
+    byTicker.set(t, list);
+  };
+  for (const coord of ["ticker", "unique_ticker", "eodhd_code"] as const) {
+    const values = await readStringCoord(grp, coord);
+    if (!values || values.length !== symByIndex.length) continue;
+    for (let i = 0; i < values.length; i++) {
+      const sym = symByIndex[i];
+      if (!sym) continue;
+      // eodhd_code carries the listing exchange ("CTRA.US"); the ticker is
+      // the code minus that US suffix. Other codes pass through unchanged.
+      const v = coord === "eodhd_code" ? values[i]!.replace(/\.US$/i, "") : values[i];
+      add(v, sym);
+    }
+  }
+  return { byTicker, symbols: new Set(symByIndex.filter(Boolean)) };
+}
+
+/** Cached ds_daily ticker-holder index (null when the store is unavailable). */
+export async function readDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | null> {
+  if (dailyHolderIndexCache && Date.now() - dailyHolderIndexCache.at < DAILY_HOLDER_TTL_MS) {
+    return dailyHolderIndexCache.promise;
+  }
+  const promise = buildDailyTickerHolderIndex().catch(() => null);
+  dailyHolderIndexCache = { at: Date.now(), promise };
+  // A failed open must not pin a null index for the whole TTL.
+  promise.then((v) => {
+    if (v === null && dailyHolderIndexCache?.promise === promise) dailyHolderIndexCache = null;
+  });
+  return promise;
+}
+
+// =====================================================================
 // Industry panel — cross-section at (teo × bw_industry_id × level|fact)
 // =====================================================================
 

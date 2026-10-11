@@ -4,6 +4,12 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
 }));
 
+// The most-recent-holder pass reads ds_daily from GCS; keep tests offline.
+vi.mock("@/lib/dal/zarr-reader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/dal/zarr-reader")>()),
+  readDailyTickerHolderIndex: vi.fn(async () => null),
+}));
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   isDeadSymbolRow,

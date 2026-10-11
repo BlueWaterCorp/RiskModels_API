@@ -195,11 +195,24 @@ export const GET = withBilling(
         ...getCorsHeaders(origin),
         ETag: etag,
         "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+        // csv / parquet carry no JSON envelope, so the most-recent-holder
+        // disclosure also rides on headers.
+        ...(symbolRecord.resolved_via
+          ? {
+              "X-Ticker-Resolved-Via": symbolRecord.resolved_via,
+              "X-Ticker-Delisted": String(symbolRecord.delisted ?? false),
+            }
+          : {}),
       } as Record<string, string>,
       jsonPayload: {
         symbol: symbolRecord.symbol,
         ticker: symbolRecord.ticker,
         asset_type: symbolRecord.asset_type,
+        // Present only when no live holder carries the ticker and the series
+        // belongs to its most recent (possibly delisted) holder.
+        ...(symbolRecord.resolved_via
+          ? { resolved_via: symbolRecord.resolved_via, delisted: symbolRecord.delisted ?? false }
+          : {}),
         periodicity: "daily",
         data,
         meta: isEtf
