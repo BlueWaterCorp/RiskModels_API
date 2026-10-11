@@ -6108,6 +6108,10 @@ paths:
                 type: string
                 enum: ["true"]
               description: Sent when JSON `ticker_reassigned` is `true`.
+            X-Ticker-Current-Holder:
+              schema:
+                type: string
+              description: With `X-Ticker-Reassigned`, the `symbol` of JSON `current_holder`.
           content:
             application/vnd.apache.parquet:
               schema:

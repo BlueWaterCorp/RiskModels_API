@@ -146,6 +146,17 @@ export async function POST(request: NextRequest) {
   );
   if (missing.length > 0) {
     const holders = await resolveSymbolsByTickers(missing);
+    // Swapped-in ids keep their own registry metadata and latest metrics
+    // (same as GET /api/data/symbols/{ticker}).
+    const swapIds = [...new Set(missing.map((t) => holders.get(t)?.symbol).filter((x): x is string => !!x))];
+    const ownById = new Map<string, Record<string, unknown>>();
+    if (swapIds.length) {
+      const { data: own } = await supabase
+        .from("symbols")
+        .select("symbol, metadata, latest_metrics, latest_vol, latest_teo")
+        .in("symbol", swapIds);
+      for (const r of (own ?? []) as Record<string, unknown>[]) ownById.set(String(r.symbol), r);
+    }
     for (const t of missing) {
       const h = holders.get(t);
       if (!h) continue;
@@ -164,10 +175,10 @@ export async function POST(request: NextRequest) {
         sector_etf: h.sector_etf,
         subsector_etf: h.subsector_etf,
         is_adr: h.is_adr,
-        metadata: {},
-        latest_metrics: null,
-        latest_vol: null,
-        latest_teo: null,
+        metadata: ownById.has(h.symbol) ? filterSafeMetadata(ownById.get(h.symbol)!.metadata) : {},
+        latest_metrics: ownById.get(h.symbol)?.latest_metrics ?? null,
+        latest_vol: ownById.get(h.symbol)?.latest_vol ?? null,
+        latest_teo: ownById.get(h.symbol)?.latest_teo ?? null,
         ...flags,
       };
     }

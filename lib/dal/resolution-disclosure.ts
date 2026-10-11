@@ -37,6 +37,9 @@ export function resolutionDisclosureHeaders(
   const h: Record<string, string> = {};
   if (d.resolved_via) h["X-Ticker-Resolved-Via"] = d.resolved_via;
   if (d.delisted !== undefined) h["X-Ticker-Delisted"] = String(d.delisted);
-  if (d.ticker_reassigned) h["X-Ticker-Reassigned"] = "true";
+  if (d.ticker_reassigned) {
+    h["X-Ticker-Reassigned"] = "true";
+    if (d.current_holder) h["X-Ticker-Current-Holder"] = d.current_holder.symbol;
+  }
   return h;
 }

@@ -742,6 +742,7 @@ export async function resolveSymbolByTicker(
   // answer: it stands unless the holder pass finds a servable live holder.
   const alias = await resolveAliasToCanonicalSymbol(upper);
   let aliasRaw: Record<string, unknown> | null = null;
+  let aliasReadFailed = false;
   if (alias) {
     try {
       const { data, error } = await createAdminClient()
@@ -749,11 +750,16 @@ export async function resolveSymbolByTicker(
         .select(SYMBOL_ROW_COLUMNS)
         .eq("symbol", alias.bw_sym_id)
         .maybeSingle();
-      if (!error && data) aliasRaw = data as Record<string, unknown>;
+      if (error) aliasReadFailed = true;
+      else if (data) aliasRaw = data as Record<string, unknown>;
     } catch (err) {
+      aliasReadFailed = true;
       console.error(`[V3 DAL] Error resolving alias canonical id ${alias.bw_sym_id}:`, err);
     }
   }
+  // main's answer is unknown when the alias row could not be read: never
+  // let a former holder stand in for it.
+  if (aliasReadFailed && !direct) return null;
   // Surface the requested ticker label to the caller; the canonical
   // bw_sym_id lookup keeps the zarr loader happy.
   const aliasNormalized = aliasRaw ? normalizeSymbolRow(aliasRaw) : null;
@@ -928,12 +934,28 @@ export async function resolveSymbolsByTickers(
       canonicalMap = await resolveAliasesToCanonicalSymbols(stillMissing);
       const canonicalIds = Array.from(new Set([...canonicalMap.values()].map(v => v.bw_sym_id)));
       if (canonicalIds.length > 0) {
-        const { data: histData } = await admin
-          .from("symbols")
-          .select(SYMBOL_ROW_COLUMNS)
-          .in("symbol", canonicalIds);
-        for (const row of (histData ?? []) as Record<string, unknown>[]) {
-          if (row?.symbol) aliasRawBySymbol.set(String(row.symbol), row);
+        // Chunked and count-checked; a failed chunk leaves its tickers
+        // unanswered (single returns not-found too) so a former holder never
+        // stands in for an alias answer that could not be read.
+        for (let i = 0; i < canonicalIds.length; i += 200) {
+          const slice = canonicalIds.slice(i, i + 200);
+          const { data: histData, error, count } = await admin
+            .from("symbols")
+            .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
+            .in("symbol", slice);
+          const rows = (histData ?? []) as Record<string, unknown>[];
+          if (error || (typeof count === "number" && rows.length < count)) {
+            console.error("[V3 DAL] Error reading alias symbols rows:", error ?? count);
+            const ids = new Set(slice);
+            for (const t of stillMissing) {
+              const hit = canonicalMap.get(t);
+              if (hit && ids.has(hit.bw_sym_id) && !deadDirect.has(t)) unreadTickers.add(t);
+            }
+            continue;
+          }
+          for (const row of rows) {
+            if (row?.symbol) aliasRawBySymbol.set(String(row.symbol), row);
+          }
         }
       }
     }

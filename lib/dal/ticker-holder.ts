@@ -277,7 +277,8 @@ export async function findMostRecentHolders(
     }
     const h = fresh.holders.get(t) ?? null;
     if (h) holders.set(t, h);
-    if (ttl > 0) {
+    // A decision made without the ds_daily index is degraded: not cached.
+    if (ttl > 0 && fresh.indexAvailable) {
       const key = holderCacheKey(t, extra);
       holderCache.delete(key);
       holderCache.set(key, { at: now, holder: h });
@@ -293,7 +294,7 @@ export async function findMostRecentHolders(
 async function findMostRecentHoldersUncached(
   tickers: string[],
   extra: ExtraHolderCandidate[],
-): Promise<MostRecentHolderLookup> {
+): Promise<MostRecentHolderLookup & { indexAvailable?: boolean }> {
   const holders = new Map<string, TickerHolder>();
   const failed = new Set<string>();
   const wanted = [...new Set(tickers.map(label).filter(Boolean))];
@@ -384,14 +385,18 @@ async function findMostRecentHoldersUncached(
         // identity linked only by such a label gets no date: it is not LIVE
         // and ranks behind every T-dated former holder, since the label may
         // lag a rename.
-        if (lastLabel && !identityOpen) {
+        // Only when no security_master row names T: then the ds_daily label
+        // is the sole evidence and it labels the identity's final period.
+        // When rows name T, their own dates rule (a lagging label must not
+        // stretch an old T window with a later row for another ticker).
+        if (lastLabel && !identityOpen && forT.length === 0) {
           for (const r of sm) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
         }
 
         const representative =
           forT.find(smIsOpen) ??
           sm.find(smIsOpen) ??
-          [...sm].sort((a, b) => ((a.valid_to ?? "") > (b.valid_to ?? "") ? -1 : 1))[0] ??
+          [...sm].sort((a, b) => (b.valid_to ?? "").localeCompare(a.valid_to ?? ""))[0] ??
           null;
         candidates.push({
           bw_sym_id: id,
@@ -405,7 +410,7 @@ async function findMostRecentHoldersUncached(
       const winner = rankHolderCandidates(candidates);
       if (winner) holders.set(t, winner);
     }
-    return { failed, holders };
+    return { failed, holders, indexAvailable: index !== null };
   } catch (error) {
     console.error("[ticker-holder] most-recent-holder lookup failed", error);
     return { failed: new Set(wanted), holders: new Map() };

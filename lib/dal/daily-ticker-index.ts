@@ -22,12 +22,14 @@ export interface DailyTickerHolderIndex {
 }
 
 /**
- * Label of one coord cell. Only real strings count: NaN / null / undefined
- * fills from object-dtype coords become "" (so a real ticker spelled "NAN"
- * or "NULL" is kept, unlike a String(x) round-trip).
+ * Label of one coord cell, stringified the way readSymbolIndexMap does.
+ * NaN / null / undefined fills from object-dtype coords become "" at the raw
+ * value, so a real ticker spelled "NAN" or "NULL" is kept.
  */
 function cellLabel(x: unknown): string {
-  return typeof x === "string" ? x.trim().toUpperCase() : "";
+  if (x === null || x === undefined) return "";
+  if (typeof x === "number" && Number.isNaN(x)) return "";
+  return String(x).trim().toUpperCase();
 }
 
 /**
@@ -42,7 +44,7 @@ export function indexFromCoords(
   eodhd: readonly unknown[] | null,
 ): DailyTickerHolderIndex | null {
   if (!symbols?.length) return null;
-  const syms = symbols.map((s) => (typeof s === "string" ? s.trim() : ""));
+  const syms = symbols.map((s) => (s === null || s === undefined ? "" : String(s).trim()));
   const symSet = new Set(syms);
   if (symSet.size !== syms.length || symSet.has("")) return null;
   for (const coord of [display, unique, eodhd]) {

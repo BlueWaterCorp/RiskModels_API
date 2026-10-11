@@ -241,7 +241,10 @@ function stubSupabase() {
         limit = n;
         return query;
       };
-      query.maybeSingle = async () => ({ data: rowsFor()[0] ?? null, error: null });
+      query.maybeSingle = async () =>
+        table === "symbols" && filters.some((f) => f.values.some((v) => SYM_FAIL_KEYS.has(String(v))))
+          ? { data: null, error: { message: "stub outage" } }
+          : { data: rowsFor()[0] ?? null, error: null };
       const respond = () => {
         const rows = rowsFor();
         if (table === "security_master") {
@@ -418,6 +421,9 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     expect(batch?.symbol ?? null, `batch ${t}`).toBe(single?.symbol ?? null);
     expect(batch?.resolved_via, `batch resolved_via ${t}`).toBe(single?.resolved_via);
     expect(batch?.delisted, `batch delisted ${t}`).toBe(single?.delisted);
+    expect(batch?.ticker, `batch ticker ${t}`).toBe(single?.ticker);
+    expect(batch?.ticker_reassigned, `batch ticker_reassigned ${t}`).toBe(single?.ticker_reassigned);
+    expect(batch?.current_holder, `batch current_holder ${t}`).toEqual(single?.current_holder);
     return single;
   }
 
@@ -484,6 +490,29 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
   it("a security_master response shorter than its exact count fails closed", async () => {
     SM_TRUNCATE = true;
     expect(await both("CTRA")).toBeNull();
+  });
+
+  it("a dead id whose ds_daily label lags a rename cannot stretch its old window with a later row", async () => {
+    // B held OLD to 2019, then NEW to 2024 (dead); ds_daily still labels it OLD.
+    // A held OLD to 2022. A is the most recent holder of OLD.
+    SECURITY_MASTER.push(sm("BW-LAG-B", "OLD", { live: false, valid_to: "2019-01-01" }));
+    SECURITY_MASTER.push(sm("BW-LAG-B", "NEW", { live: false, valid_to: "2024-01-01" }));
+    SECURITY_MASTER.push(sm("BW-LAG-A", "OLD", { live: false, valid_to: "2022-01-01" }));
+    DAILY!.OLD = ["BW-LAG-B"];
+    DAILY!.OLD_A = ["BW-LAG-A"];
+    expect((await both("OLD"))?.symbol).toBe("BW-LAG-A");
+  });
+
+  it("an alias registry row that cannot be read never lets a former holder stand in", async () => {
+    // FB → META alias; reading META's row fails; a dead former FB holder exists.
+    SYMBOLS.push(sym("BW-BBG000MM2P62", "META"));
+    ALIASES.push(alias("BW-BBG000MM2P62", "FB", "EODHD_TICKER", "2022-06-09"));
+    // A dated former FB holder that would outrank the alias candidate.
+    SECURITY_MASTER.push(sm("BW-OLD-FB", "FB", { live: false, valid_to: "2025-01-01" }));
+    DAILY!.FB_OLD = ["BW-OLD-FB"];
+    expect((await both("FB"))?.symbol).toBe("BW-BBG000MM2P62");
+    SYM_FAIL_KEYS = new Set(["BW-BBG000MM2P62"]);
+    expect(await both("FB")).toBeNull();
   });
 
   it("every dead registry row is vetoed, not only the pick", async () => {
@@ -698,6 +727,13 @@ describe("per-instance holder cache", () => {
     expect((await resolveSymbolByTicker("CTRA"))?.symbol).toBe("BW-BBG000C3GN47");
     _resetHolderCache();
     expect(await resolveSymbolByTicker("CTRA")).toBeNull();
+    // A decision made while the ds_daily index is unreadable is not cached.
+    resetFixtures();
+    _resetHolderCache();
+    DAILY = null;
+    expect(await resolveSymbolByTicker("CTRA")).toBeNull();
+    resetFixtures();
+    expect((await resolveSymbolByTicker("CTRA"))?.symbol).toBe("BW-BBG000C3GN47");
     // A failed lookup is retried, not cached.
     resetFixtures();
     _resetHolderCache();
@@ -729,6 +765,11 @@ describe("indexFromCoords (pure ds_daily index builder)", () => {
     expect(idx.byListingTicker.get("X.LSE")).toEqual(["BW-4"]);
     expect(idx.byListingTicker.get("X")).toBeUndefined();
     expect(idx.symbols.size).toBe(4);
+  });
+
+  it("stringifies non-string cells like readSymbolIndexMap", () => {
+    const idx = indexFromCoords(["BW-1", "BW-2"], [7, "B"], ["X", "Y"], ["", ""])!;
+    expect(idx.byDisplayTicker.get("7")).toEqual(["BW-1"]);
   });
 
   it("drops NaN / null fills at the raw value", () => {

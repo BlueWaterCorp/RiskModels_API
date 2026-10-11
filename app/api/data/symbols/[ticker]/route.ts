@@ -63,7 +63,9 @@ export async function GET(
   let holder: Awaited<ReturnType<typeof resolveSymbolByTicker>> = null;
   if (!data || deadRow) {
     holder = await resolveSymbolByTicker(ticker);
-    if (!holder) {
+    // DAL found nothing: 404 only when there is no registry row either; a
+    // loaded dead row stays (same as the batch route).
+    if (!holder && !data) {
       return NextResponse.json({ error: "Ticker not found" }, { status: 404 });
     }
   }
