@@ -7,6 +7,12 @@
 /** The ticker-resolution disclosure fields a row carries (only those set). */
 export interface ResolutionDisclosure {
   resolved_via?: "most_recent_holder";
+  /**
+   * With `resolved_via`: the answering security's own ticker (registry or
+   * security_master) when it differs from the request — e.g. BYON for a
+   * pinned BBBY answer.
+   */
+  modelled_ticker?: string | null;
   delisted?: boolean;
   ticker_reassigned?: boolean;
   current_holder?: { symbol: string; name: string | null };
@@ -21,7 +27,10 @@ export interface ResolutionDisclosure {
 export function resolutionDisclosure(row: ResolutionDisclosure | null | undefined): ResolutionDisclosure {
   const out: ResolutionDisclosure = {};
   if (!row) return out;
-  if (row.resolved_via) out.resolved_via = row.resolved_via;
+  if (row.resolved_via) {
+    out.resolved_via = row.resolved_via;
+    if (row.modelled_ticker) out.modelled_ticker = row.modelled_ticker;
+  }
   if (row.delisted !== undefined) out.delisted = row.delisted;
   if (row.ticker_reassigned) {
     out.ticker_reassigned = true;
@@ -38,6 +47,7 @@ export function resolutionDisclosureHeaders(
   const d = resolutionDisclosure(row);
   const h: Record<string, string> = {};
   if (d.resolved_via) h["X-Ticker-Resolved-Via"] = d.resolved_via;
+  if (d.modelled_ticker) h["X-Ticker-Holder-Ticker"] = d.modelled_ticker;
   if (d.delisted !== undefined) h["X-Ticker-Delisted"] = String(d.delisted);
   if (d.ticker_reassigned) {
     h["X-Ticker-Reassigned"] = "true";

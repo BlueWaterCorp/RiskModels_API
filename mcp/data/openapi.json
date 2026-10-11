@@ -1508,6 +1508,11 @@
             ],
             "description": "Present only when the modelled registry has no live row for the requested ticker and the most-recent-holder check chose the answer: the security that holds the ticker today (it may have a registry row under another ticker, then disclosed in `modelled_ticker`) or, failing that, the one that held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row, including recycled ones, resolve to today's company and omit this field, as do answers unchanged from earlier releases (an alias rename such as `FB` → META, or a delisted registry row) unless a live holder of the ticker that the API can serve exists.\n"
           },
+          "modelled_ticker": {
+            "type": "string",
+            "nullable": true,
+            "description": "With `resolved_via`: the answering security's own ticker (registry or security master) when it differs from the requested ticker, e.g. `BYON` for a `BBBY` request answered by a listing pin.\n"
+          },
           "delisted": {
             "type": "boolean",
             "description": "`true` when the answering security is closed in the security master or flagged delisted in the registry; `false` when the most-recent-holder pass found it open. Absent on ordinary answers and on answers kept unchanged from earlier releases whose registry row is not flagged delisted.\n"
@@ -1813,6 +1818,11 @@
               "most_recent_holder"
             ],
             "description": "Present only when the modelled registry has no live row for the ticker and the position was answered by the security that holds or most recently held it. Same rule as `GET /ticker-returns`.\n"
+          },
+          "modelled_ticker": {
+            "type": "string",
+            "nullable": true,
+            "description": "With `resolved_via`: the answering security's own ticker (registry or security master) when it differs from the requested ticker, e.g. `BYON` for a `BBBY` request answered by a listing pin.\n"
           },
           "delisted": {
             "type": "boolean",
@@ -8409,6 +8419,12 @@
                 },
                 "description": "Sent whenever JSON `delisted` is present; mirrors it."
               },
+              "X-Ticker-Holder-Ticker": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Sent when JSON `modelled_ticker` accompanies `resolved_via`; mirrors it."
+              },
               "X-Ticker-Reassigned": {
                 "schema": {
                   "type": "string",
@@ -14057,6 +14073,11 @@
                         "most_recent_holder"
                       ],
                       "description": "With `search`, present only when the modelled registry has no live row for the searched ticker and it resolves to the security that holds or most recently held it (e.g. the delisted `CTRA`). Same rule as `GET /ticker-returns`.\n"
+                    },
+                    "modelled_ticker": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "With `resolved_via`: the answering security's own ticker (registry or security master) when it differs from the requested ticker, e.g. `BYON` for a `BBBY` request answered by a listing pin.\n"
                     },
                     "delisted": {
                       "type": "boolean",
