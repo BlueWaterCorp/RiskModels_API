@@ -31,12 +31,14 @@
     },
     "resolved_via": {
       "type": "string",
-      "enum": ["most_recent_holder"],
-      "description": "With search: present only when no live security holds the searched ticker and it resolves to the security that held it most recently (e.g. delisted CTRA)."
+      "enum": [
+        "most_recent_holder"
+      ],
+      "description": "With search: present only when the modelled registry has no live row for the searched ticker and it resolves to the security that holds or most recently held it (e.g. delisted CTRA)."
     },
     "delisted": {
       "type": "boolean",
-      "description": "Present with resolved_via; true when that holder is delisted."
+      "description": "Present with resolved_via; true when that security is not a live listing in the security master."
     },
     "suggestions": {
       "type": "array",

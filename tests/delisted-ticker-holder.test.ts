@@ -15,6 +15,7 @@ import { resolveSymbolByTicker, resolveSymbolsByTickers } from "@/lib/dal/risk-e
 import { rankHolderCandidates } from "@/lib/dal/ticker-holder";
 import { searchTickers } from "@/lib/dal/ticker-search";
 import { GET as getSymbol } from "@/app/api/data/symbols/[ticker]/route";
+import { POST as postSymbolsBatch } from "@/app/api/data/symbols/batch/route";
 import { _resetClassProjectionsCache } from "@/lib/ticker-aliases";
 
 /**
@@ -84,7 +85,12 @@ function alias(bw_sym_id: string, value: string, type: string, valid_to: string 
 let SYMBOLS: Row[];
 let SECURITY_MASTER: Row[];
 let ALIASES: Row[];
+/** ds_daily display `ticker` coord (null = store unreadable). */
 let DAILY: Record<string, string[]> | null;
+/** ds_daily `unique_ticker` / stripped `eodhd_code` labels (recall only). */
+let DAILY_RECALL: Record<string, string[]>;
+let SM_ERROR: boolean;
+let SM_PAD: number;
 
 function resetFixtures() {
   SYMBOLS = [
@@ -130,18 +136,34 @@ function resetFixtures() {
     WB_OLD: ["BW-SWJ6P4NFN986C", "BW-C0000036995"],
     MF: ["BW-BBG014Z5WMH8"],
     CTRA: ["BW-BBG000C3GN47"],
-    COG: ["BW-BBG000C3GN47"],
     CTRA_OLD: ["BW-S0QGJVBGAXE65"],
-    BBBY: ["BW-BBG000BBQDH7"],
+    // Today's store: BBQDH7 still displayed as BYON.
     BYON: ["BW-BBG000BBQDH7"],
     BBBY_OLD: ["BW-BBG0087LHFY9"],
   };
+  DAILY_RECALL = {
+    // Coterra's unique_ticker is its pre-2021 symbol.
+    COG: ["BW-BBG000C3GN47"],
+    // Post-pin eodhd_code BBBY.US (ERM3 listing_code_pins republish).
+    BBBY: ["BW-BBG000BBQDH7"],
+  };
+  SM_ERROR = false;
+  SM_PAD = 0;
 }
 
 function dailyIndex() {
   if (!DAILY) return null;
-  const byTicker = new Map(Object.entries(DAILY));
-  return { byTicker, symbols: new Set(Object.values(DAILY).flat()) };
+  const byTicker = new Map<string, string[]>();
+  for (const src of [DAILY, DAILY_RECALL]) {
+    for (const [t, ids] of Object.entries(src)) {
+      byTicker.set(t, [...new Set([...(byTicker.get(t) ?? []), ...ids])]);
+    }
+  }
+  return {
+    byTicker,
+    byDisplayTicker: new Map(Object.entries(DAILY)),
+    symbols: new Set([...Object.values(DAILY), ...Object.values(DAILY_RECALL)].flat()),
+  };
 }
 
 const TICKER_ALIAS_TYPES = new Set(["TICKER", "EODHD_TICKER", "FINRA_TICKER"]);
@@ -203,8 +225,21 @@ function stubSupabase() {
         return query;
       };
       query.maybeSingle = async () => ({ data: rowsFor()[0] ?? null, error: null });
+      const respond = () => {
+        if (table === "security_master" && SM_ERROR) {
+          return { data: null, error: { message: "stub outage" } };
+        }
+        const rows = rowsFor();
+        if (table === "security_master" && SM_PAD > 0) {
+          const pad = Array.from({ length: SM_PAD }, (_, i) =>
+            sm(`BW-PAD-${i}`, `PAD${i}`, { live: false, valid_to: "2001-01-01" }),
+          );
+          return { data: [...rows, ...pad], error: null };
+        }
+        return { data: rows, error: null };
+      };
       (query as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
-        Promise.resolve({ data: rowsFor(), error: null }).then(resolve);
+        Promise.resolve(respond()).then(resolve);
       return query;
     },
   };
@@ -307,10 +342,13 @@ describe("delisted tickers resolve to their most recent holder", () => {
     expect(await resolveSymbolByTicker("NOPE")).toBeNull();
   });
 
-  it("ds_daily unreadable: degrades to security_master-only candidates, never throws", async () => {
+  it("ds_daily unreadable: no new answers, and the live MF holder still blocks the former one", async () => {
     DAILY = null;
     expect(await resolveSymbolByTicker("CTRA")).toBeNull();
-    expect((await resolveSymbolByTicker("MF"))?.symbol).toBe("BW-BBG014Z5WMH8");
+    // MindForge's history cannot be confirmed, so MF is not found — never the
+    // former holder's dead registry row that main used to serve.
+    expect(await resolveSymbolByTicker("MF")).toBeNull();
+    expect((await resolveSymbolsByTickers(["MF", "CTRA"])).size).toBe(0);
   });
 
   it("a live holder with no history here answers not-found, never a former holder", async () => {
@@ -329,8 +367,84 @@ describe("delisted tickers resolve to their most recent holder", () => {
   });
 
   it("today's production ds_daily (BBQDH7 still labelled BYON) leaves BBBY unresolved", async () => {
-    delete DAILY!.BBBY;
+    delete DAILY_RECALL.BBBY;
     expect(await resolveSymbolByTicker("BBBY")).toBeNull();
+  });
+});
+
+describe("adversarial holder cases (Grok review, 2026-10-10)", () => {
+  async function both(t: string) {
+    const single = await resolveSymbolByTicker(t);
+    const batch = (await resolveSymbolsByTickers([t])).get(t) ?? null;
+    expect(batch?.symbol ?? null, `batch ${t}`).toBe(single?.symbol ?? null);
+    expect(batch?.delisted, `batch delisted ${t}`).toBe(single?.delisted);
+    return single;
+  }
+
+  it("a live id linked only by unique_ticker / eodhd_code is not the holder; the later former holder is", async () => {
+    // L is live under LIVEX; its stale recall label says FOO. D held FOO until 2025-06-30.
+    SECURITY_MASTER.push(sm("BW-L", "LIVEX", { unique: "FOO" }));
+    SECURITY_MASTER.push(sm("BW-D", "FOO", { live: false, valid_to: "2025-06-30" }));
+    DAILY!.LIVEX = ["BW-L"];
+    DAILY!.FOO_OLD = ["BW-D"];
+    DAILY_RECALL.FOO = ["BW-L"];
+    const rec = await both("FOO");
+    expect(rec).toMatchObject({ symbol: "BW-D", ticker: "FOO", delisted: true });
+  });
+
+  it("a closed alias on the open security_master holder does not demote it below an older dead id", async () => {
+    SECURITY_MASTER.push(sm("BW-X", "REQ"));
+    SECURITY_MASTER.push(sm("BW-Y", "REQ", { live: false, valid_to: "2025-08-29" }));
+    ALIASES.push(alias("BW-X", "REQ", "TICKER", "2024-01-01"));
+    DAILY!.REQX = ["BW-X"];
+    DAILY!.REQ_OLD = ["BW-Y"];
+    const rec = await both("REQ");
+    expect(rec).toMatchObject({ symbol: "BW-X", ticker: "REQ", delisted: false });
+  });
+
+  it("a ticker that resolved before keeps its identity unless a LIVE holder exists", async () => {
+    SYMBOLS.push(sym("BW-A", "STK", { dead: true }));
+    SECURITY_MASTER.push(sm("BW-B", "STK", { live: false, valid_to: "2026-01-01" }));
+    DAILY!.STK = ["BW-B"];
+    const rec = await both("STK");
+    expect(rec).toMatchObject({
+      symbol: "BW-A",
+      ticker: "STK",
+      resolved_via: "most_recent_holder",
+      delisted: true,
+    });
+  });
+
+  it("security_master outage: no new holder, previous answers kept", async () => {
+    SM_ERROR = true;
+    SYMBOLS.push(sym("BW-DEAD-ONLY", "DEAD", { dead: true }));
+    expect(await both("CTRA")).toBeNull();
+    expect(await both("DEAD")).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true });
+    // Live symbols rows never touch the holder pass.
+    expect((await both("WM"))?.symbol).toBe("BW-BBG000BWVSR1");
+  });
+
+  it("FB: a closed alias still answers META until another security holds FB; then live wins", async () => {
+    // Production 2026-10-10: alias FB → BW-BBG000MM2P62 (META) closed 2022-06-09;
+    // security_master BW-BBG01VRMNFB1 (ProShares ETF) holds FB since 2025-10-01,
+    // outside ds_daily.
+    SYMBOLS.push(sym("BW-BBG000MM2P62", "META", { name: "Meta Platforms" }));
+    SECURITY_MASTER.push(sm("BW-BBG000MM2P62", "META"));
+    ALIASES.push(alias("BW-BBG000MM2P62", "FB", "EODHD_TICKER", "2022-06-09"));
+    DAILY!.META = ["BW-BBG000MM2P62"];
+    expect(await both("FB")).toMatchObject({
+      symbol: "BW-BBG000MM2P62",
+      ticker: "FB",
+      resolved_via: "most_recent_holder",
+      delisted: false,
+    });
+    SECURITY_MASTER.push(sm("BW-BBG01VRMNFB1", "FB", { name: "PROSHARES TR" }));
+    expect(await both("FB")).toBeNull();
+  });
+
+  it("a possibly truncated security_master response fails closed", async () => {
+    SM_PAD = 1000;
+    expect(await both("CTRA")).toBeNull();
   });
 });
 
@@ -386,5 +500,35 @@ describe("search and registry routes surface the fallback", () => {
       params: Promise.resolve({ ticker: "NOPE" }),
     });
     expect(miss.status).toBe(404);
+  });
+
+  it("GET /api/data/symbols/MF swaps a dead registry row for the live holder, as the DAL does", async () => {
+    SYMBOLS.push(sym("BW-OLD-MF", "MF", { dead: true }));
+    const res = await getSymbol(new Request("http://test") as never, {
+      params: Promise.resolve({ ticker: "MF" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      symbol: "BW-BBG014Z5WMH8",
+      resolved_via: "most_recent_holder",
+      delisted: false,
+    });
+    expect((await resolveSymbolByTicker("MF"))?.symbol).toBe("BW-BBG014Z5WMH8");
+  });
+
+  it("POST /api/data/symbols/batch: live rows untouched, dead row flagged, delisted holder added", async () => {
+    SYMBOLS.push(sym("BW-DEAD-ONLY", "DEAD", { dead: true }));
+    const res = await postSymbolsBatch(
+      new Request("http://test", {
+        method: "POST",
+        body: JSON.stringify({ tickers: ["WM", "DEAD", "CTRA", "NOPE"] }),
+      }) as never,
+    );
+    const body = (await res.json()) as { results: Record<string, Record<string, unknown>> };
+    expect(body.results.WM).toMatchObject({ symbol: "BW-BBG000BWVSR1" });
+    expect(body.results.WM?.resolved_via).toBeUndefined();
+    expect(body.results.DEAD).toMatchObject({ symbol: "BW-DEAD-ONLY", delisted: true });
+    expect(body.results.CTRA).toMatchObject({ symbol: "BW-BBG000C3GN47", delisted: true });
+    expect(body.results.NOPE).toBeUndefined();
   });
 });

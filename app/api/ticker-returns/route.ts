@@ -208,8 +208,9 @@ export const GET = withBilling(
         symbol: symbolRecord.symbol,
         ticker: symbolRecord.ticker,
         asset_type: symbolRecord.asset_type,
-        // Present only when no live holder carries the ticker and the series
-        // belongs to its most recent (possibly delisted) holder.
+        // Present only when no live registry row carries the ticker and the
+        // series belongs to the security that holds it outside the modelled
+        // universe or held it most recently (lib/dal/ticker-holder).
         ...(symbolRecord.resolved_via
           ? { resolved_via: symbolRecord.resolved_via, delisted: symbolRecord.delisted ?? false }
           : {}),

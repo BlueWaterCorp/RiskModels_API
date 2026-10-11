@@ -1399,14 +1399,15 @@ components:
           type: string
           enum: [most_recent_holder]
           description: >
-            Present only when no live security holds the requested ticker and the series belongs to
-            the security that held it most recently (e.g. a delisted name such as `CTRA`). A live
-            holder always wins: recycled tickers resolve to today's company and omit this field.
+            Present only when the modelled registry has no live row for the requested ticker and the
+            series belongs to the security that holds it today outside the modelled universe, or else
+            held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row,
+            including recycled ones, resolve to today's company and omit this field.
         delisted:
           type: boolean
           description: >
-            Present with `resolved_via`: `true` when that most recent holder is delisted / no longer
-            holds the ticker.
+            Present with `resolved_via`: `true` when the answering security is not a live listing in
+            the security master (delisted, inactive, or not listed there).
         periodicity:
           type: string
           example: daily
@@ -1635,6 +1636,18 @@ components:
           description: >
             Present when status is `error`. `no_risk_metrics` means the symbol resolved but has
             no ERM3 decomposition (ETFs, including the hedge instruments). Failed tickers are not billed.
+        resolved_via:
+          type: string
+          enum: [most_recent_holder]
+          description: >
+            Present only when the modelled registry has no live row for the ticker and the position
+            was answered by the security that holds or most recently held it. Same rule as
+            `GET /ticker-returns`.
+        delisted:
+          type: boolean
+          description: >
+            Present with `resolved_via`; `true` when that security is not a live listing in the
+            security master.
         returns:
           $ref: "#/components/schemas/BatchReturnsPayload"
         hedge_ratios:
@@ -6046,8 +6059,9 @@ paths:
                 type: string
                 enum: [most_recent_holder]
               description: >
-                Sent only when no live security holds the requested ticker and the series belongs to
-                the security that held it most recently (same value as JSON `resolved_via`).
+                Sent only when JSON `resolved_via` would be present (the modelled registry has no live
+                row for the ticker; the series belongs to the security that holds or most recently
+                held it). Same value as JSON `resolved_via`.
             X-Ticker-Delisted:
               schema:
                 type: string
@@ -9858,12 +9872,14 @@ paths:
                     type: string
                     enum: [most_recent_holder]
                     description: >
-                      With `search`, present only when no live security holds the searched ticker
-                      and it resolves to the security that held it most recently (e.g. a delisted
-                      name such as `CTRA`). Same rule as `GET /ticker-returns`.
+                      With `search`, present only when the modelled registry has no live row for
+                      the searched ticker and it resolves to the security that holds or most
+                      recently held it (e.g. the delisted `CTRA`). Same rule as `GET /ticker-returns`.
                   delisted:
                     type: boolean
-                    description: Present with `resolved_via`; `true` when that holder is delisted.
+                    description: >
+                      Present with `resolved_via`; `true` when that security is not a live listing
+                      in the security master.
                   tickers:
                     type: array
                     items:

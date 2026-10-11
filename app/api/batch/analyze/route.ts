@@ -82,6 +82,14 @@ interface PositionAnalysis {
   share_class?: string | null;
   /** Share class of the modelled ticker, when projected. */
   modelled_share_class?: string | null;
+  /**
+   * Present only when no live registry row carries the ticker and the
+   * position was answered by the security that holds or most recently held
+   * it (see GET /ticker-returns `resolved_via`).
+   */
+  resolved_via?: "most_recent_holder";
+  /** With `resolved_via`: true when that security is not a live listing. */
+  delisted?: boolean;
   returns?: {
     dates: string[];
     values: number[];
@@ -402,6 +410,10 @@ async function analyzeTicker(
       result.modelled_ticker = null;
       result.share_class = null;
       result.modelled_share_class = null;
+    }
+    if (symbolRecord.resolved_via) {
+      result.resolved_via = symbolRecord.resolved_via;
+      result.delisted = symbolRecord.delisted ?? false;
     }
 
     if (metrics.includes("returns")) {

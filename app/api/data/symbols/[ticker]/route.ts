@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTicker } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
+import { isDeadSymbolRow, resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +41,24 @@ export async function GET(
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 
-  if (!data) {
-    // No registry row carries the ticker today: fall back to the shared DAL
-    // resolver, which answers with the most recent holder (delisted names
-    // such as CTRA) and discloses that via `resolved_via` / `delisted`.
-    const holder = await resolveSymbolByTicker(ticker);
+  // No live registry row carries the ticker: defer to the shared DAL
+  // resolver so this route and /ticker-returns name the same security. It
+  // answers with the ticker's live holder outside the registry, else the
+  // previous answer (the dead row), else its most recent former holder
+  // (delisted names such as CTRA), disclosed via `resolved_via` / `delisted`.
+  const deadRow = data && isDeadSymbolRow(data as Record<string, unknown>) && !resolution.projected;
+  let holder: Awaited<ReturnType<typeof resolveSymbolByTicker>> = null;
+  if (!data || deadRow) {
+    holder = await resolveSymbolByTicker(ticker);
     if (!holder?.resolved_via) {
       return NextResponse.json({ error: "Ticker not found" }, { status: 404 });
     }
+  }
+  const holderFlags = holder?.resolved_via
+    ? { resolved_via: holder.resolved_via, delisted: holder.delisted ?? false }
+    : {};
+
+  if (holder && (!data || holder.symbol !== data.symbol)) {
     return NextResponse.json({
       symbol: holder.symbol,
       ticker: holder.ticker,
@@ -66,9 +76,11 @@ export async function GET(
       latest_metrics: null,
       latest_vol: null,
       latest_teo: null,
-      resolved_via: holder.resolved_via,
-      delisted: holder.delisted ?? false,
+      ...holderFlags,
     });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Ticker not found" }, { status: 404 });
   }
 
   // Normalize: fall back to metadata JSONB for name/sector_etf
@@ -95,6 +107,7 @@ export async function GET(
     latest_metrics: data.latest_metrics,
     latest_vol: data.latest_vol,
     latest_teo: data.latest_teo,
+    ...holderFlags,
   };
 
   return NextResponse.json(normalized);

@@ -9,12 +9,14 @@
   "properties": {
     "resolved_via": {
       "type": "string",
-      "enum": ["most_recent_holder"],
-      "description": "Present only when no live security holds the requested ticker and the series belongs to the security that held it most recently (e.g. delisted CTRA). A live holder always wins."
+      "enum": [
+        "most_recent_holder"
+      ],
+      "description": "Present only when the modelled registry has no live row for the requested ticker and the series belongs to the security that holds it outside the modelled universe or held it most recently (e.g. delisted CTRA). Tickers with a live registry row omit it."
     },
     "delisted": {
       "type": "boolean",
-      "description": "Present with resolved_via; true when that most recent holder is delisted."
+      "description": "Present with resolved_via; true when the answering security is not a live listing in the security master."
     },
     "meta": {
       "type": "object",

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTickerAliases } from "@/lib/ticker-aliases";
 import { filterSafeMetadata } from "@/lib/dal/symbol-metadata";
-import { pickLiveRow, resolveSymbolsByTickers } from "@/lib/dal/risk-engine-v3";
+import { isDeadSymbolRow, pickLiveRow, resolveSymbolsByTickers } from "@/lib/dal/risk-engine-v3";
 import { resolveSymIdsToTickers } from "@/lib/dal/symbols-batch";
 
 export const dynamic = "force-dynamic";
@@ -97,9 +97,13 @@ export async function POST(request: NextRequest) {
     grouped.set(row.ticker, bucket);
   }
   const results: Record<string, unknown> = {};
+  // Registry tickers whose only rows are dead: the DAL resolver decides them
+  // below, so this route and /ticker-returns name the same security.
+  const deadTickers = new Set<string>();
   for (const rows of grouped.values()) {
     const row = pickLiveRow(rows as unknown as Record<string, unknown>[]) as unknown as SymbolRow | null;
     if (!row) continue;
+    if (isDeadSymbolRow(row as unknown as Record<string, unknown>)) deadTickers.add(row.ticker);
     const metadata = (row.metadata as Record<string, unknown>) ?? {};
     results[row.ticker] = {
       symbol: row.symbol,
@@ -117,14 +121,21 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  // Tickers no registry row carries today (delisted holders such as CTRA):
-  // answer from the shared DAL resolver's most-recent-holder pass, keyed by
-  // the requested ticker and disclosed via `resolved_via` / `delisted`.
+  // Tickers no live registry row carries (delisted holders such as CTRA, or
+  // dead-only rows): answer from the shared DAL resolver's most-recent-holder
+  // pass, keyed by the requested ticker and disclosed via `resolved_via` /
+  // `delisted`. A dead row the resolver keeps gains the flags; one it
+  // replaces with a live holder is swapped out.
   const missing = Array.from(
     new Set(
       tickers
         .map((t, i) => ({ requested: String(t).toUpperCase(), canonical: canonicalTickers[i] }))
-        .filter(({ canonical }) => !canonical || !(canonical in results))
+        .filter(
+          ({ requested, canonical }) =>
+            !canonical ||
+            !(canonical in results) ||
+            (canonical === requested && deadTickers.has(canonical)),
+        )
         .map(({ requested }) => requested),
     ),
   );
@@ -132,7 +143,13 @@ export async function POST(request: NextRequest) {
     const holders = await resolveSymbolsByTickers(missing);
     for (const t of missing) {
       const h = holders.get(t);
-      if (!h?.resolved_via || t in results) continue;
+      if (!h?.resolved_via) continue;
+      const existing = results[t] as { symbol?: string } | undefined;
+      if (existing && existing.symbol === h.symbol) {
+        results[t] = { ...existing, resolved_via: h.resolved_via, delisted: h.delisted ?? false };
+        continue;
+      }
+      if (existing && !deadTickers.has(t)) continue;
       results[t] = {
         symbol: h.symbol,
         ticker: h.ticker,

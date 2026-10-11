@@ -4,25 +4,30 @@
  * `public.symbols` mirrors the modelled universe only (~3.4k rows), so a
  * ticker whose holder was delisted drops out of it even though the holder's
  * history is still in ds_daily.zarr: CTRA (Coterra, BW-BBG000C3GN47, last bar
- * 2026-05-07) and BBBY (Overstock → Beyond → Bed Bath & Beyond,
- * BW-BBG000BBQDH7) answered "Ticker not found". This module finds, for a
- * requested ticker, the security that held it most recently.
+ * 2026-05-07) answered "Ticker not found". This module finds, for a requested
+ * ticker, the security that holds it today or held it most recently.
  *
  * Candidate sources (every one is data the API already reads):
  *   1. ds_daily.zarr `ticker` / `unique_ticker` / `eodhd_code` coords — the
- *      pipeline's own label for every priced identity, delisted ones included.
+ *      pipeline's own labels for every priced identity, delisted included.
  *   2. `public.security_master` rows whose `ticker` or `unique_ticker` equals
- *      the request (liveness + validity window per bw_sym_id).
+ *      the request.
  *   3. Caller-supplied candidates: a dead `symbols` row for the ticker, a
  *      `security_aliases` hit.
  *
- * Ranking (rankHolderCandidates): a LIVE holder always wins — a recycled
- * ticker must never answer with a former holder's history while someone
- * holds it today. Among non-live holders the latest `held_through` wins,
- * then presence in ds_daily, then lowest bw_sym_id.
+ * LIVE means "holds this ticker today", not "the identity is listed": the id
+ * has an open security_master row (not delisted, not inactive, valid_to null)
+ * AND either a security_master row whose `ticker` equals the request or a
+ * ds_daily display `ticker` equal to it. A `unique_ticker` / `eodhd_code`
+ * match never makes a candidate live — those labels can be stale (Coterra
+ * still carries unique_ticker `COG`), so they only recall former holders.
  *
- * Never throws: on any read failure it returns what resolved (possibly
- * nothing) and resolution falls back to the pre-existing behaviour.
+ * Ranking (rankHolderCandidates): live first; then latest `held_through`
+ * (unknown last); then present in ds_daily; then lowest bw_sym_id.
+ *
+ * Fail-closed: a security_master read error or a possibly truncated result
+ * returns `ok: false`, and the caller keeps its pre-existing answer — the
+ * pass never invents a holder from a partial read.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -46,11 +51,16 @@ export interface SecurityMasterHolderRow {
 const SM_COLUMNS =
   "bw_sym_id, ticker, unique_ticker, company_name, sector_etf, subsector_etfs, asset_type, is_adr, is_active, is_delisted, valid_to, delisted_date";
 
+/** Ids per security_master `.in()` request; keeps every response far below PostgREST's row cap. */
+const SM_CHUNK = 200;
+/** PostgREST's default max-rows. A response this long may be truncated. */
+const POSTGREST_MAX_ROWS = 1000;
+
 export interface HolderCandidate {
   bw_sym_id: string;
-  /** Holds the ticker today (not delisted, open validity window). */
+  /** Holds the requested ticker today (see module doc). */
   live: boolean;
-  /** Last date the identity held / traded the ticker (YYYY-MM-DD); null = unknown. */
+  /** Last date the identity held the ticker (YYYY-MM-DD, inclusive); null = unknown. */
   held_through: string | null;
   /** True / false when ds_daily was readable; null when it was not. */
   in_daily_store: boolean | null;
@@ -60,13 +70,22 @@ export interface HolderCandidate {
 export interface ExtraHolderCandidate {
   ticker: string;
   bw_sym_id: string;
-  /** Liveness known to the caller; undefined = decide from security_master. */
-  live?: boolean;
-  held_through?: string | null;
+  /** The registry flags this id delisted: it can never be live. */
+  dead?: boolean;
+  /** Alias window end (half-open, exclusive), when the alias is closed. */
+  alias_valid_to?: string | null;
 }
 
 export interface TickerHolder extends HolderCandidate {
+  /** No open security_master row: delisted, inactive, or unknown to it. */
+  identity_delisted: boolean;
   security_master: SecurityMasterHolderRow | null;
+}
+
+export interface MostRecentHolderLookup {
+  /** False when security_master could not be read completely. */
+  ok: boolean;
+  holders: Map<string, TickerHolder>;
 }
 
 /**
@@ -88,74 +107,104 @@ export function rankHolderCandidates<T extends HolderCandidate>(candidates: T[])
   return sorted[0] ?? null;
 }
 
-function maxDate(a: string | null | undefined, b: string | null | undefined): string | null {
-  const x = a ?? null;
-  const y = b ?? null;
-  if (!x) return y;
-  if (!y) return x;
-  return x > y ? x : y;
+/** YYYY-MM-DD prefix of a date or timestamp string; null when unparseable. */
+function isoDay(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(raw.trim());
+  return m ? m[1]! : null;
 }
 
-function smIsLive(r: SecurityMasterHolderRow): boolean {
+/** Inclusive last day of a half-open window ending on `raw` (exclusive). */
+export function dayBefore(raw: string | null | undefined): string | null {
+  const d = isoDay(raw);
+  if (!d) return null;
+  const t = Date.parse(`${d}T00:00:00Z`);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t - 86_400_000).toISOString().slice(0, 10);
+}
+
+function maxDay(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+function smIsOpen(r: SecurityMasterHolderRow): boolean {
   return r.is_delisted !== true && r.is_active !== false && r.valid_to == null;
 }
+
+class SecurityMasterReadError extends Error {}
 
 async function fetchSecurityMasterRows(
   tickers: string[],
   ids: string[],
 ): Promise<SecurityMasterHolderRow[]> {
   const admin = createAdminClient();
-  const queries: PromiseLike<{ data: unknown; error: unknown }>[] = [];
-  if (tickers.length) {
-    queries.push(admin.from("security_master").select(SM_COLUMNS).in("ticker", tickers));
-    queries.push(admin.from("security_master").select(SM_COLUMNS).in("unique_ticker", tickers));
+  const requests: { col: string; values: string[] }[] = [];
+  for (let i = 0; i < tickers.length; i += SM_CHUNK) {
+    const chunk = tickers.slice(i, i + SM_CHUNK);
+    requests.push({ col: "ticker", values: chunk }, { col: "unique_ticker", values: chunk });
   }
-  if (ids.length) {
-    queries.push(admin.from("security_master").select(SM_COLUMNS).in("bw_sym_id", ids));
+  for (let i = 0; i < ids.length; i += SM_CHUNK) {
+    requests.push({ col: "bw_sym_id", values: ids.slice(i, i + SM_CHUNK) });
   }
-  const results = await Promise.all(queries);
+  const results = await Promise.all(
+    requests.map(({ col, values }) =>
+      admin.from("security_master").select(SM_COLUMNS).in(col, values),
+    ),
+  );
   const out: SecurityMasterHolderRow[] = [];
-  for (const { data, error } of results) {
-    if (error) {
-      console.error("[ticker-holder] security_master read failed", error);
-      continue;
+  for (const { data, error } of results as { data: unknown; error: unknown }[]) {
+    if (error) throw new SecurityMasterReadError("security_master read failed");
+    const rows = (data ?? []) as SecurityMasterHolderRow[];
+    if (rows.length >= POSTGREST_MAX_ROWS) {
+      throw new SecurityMasterReadError("security_master response may be truncated");
     }
-    out.push(...(((data ?? []) as SecurityMasterHolderRow[]) ?? []));
+    out.push(...rows);
   }
   return out;
 }
 
 /**
- * For each requested (upper-cased) ticker, the security that held it most
- * recently. Tickers with no candidate get no entry.
+ * For each requested (upper-cased) ticker, the security that holds it today
+ * or held it most recently. Tickers with no candidate get no entry.
  */
 export async function findMostRecentHolders(
   tickers: string[],
   extra: ExtraHolderCandidate[] = [],
-): Promise<Map<string, TickerHolder>> {
-  const out = new Map<string, TickerHolder>();
+): Promise<MostRecentHolderLookup> {
+  const holders = new Map<string, TickerHolder>();
   const wanted = [...new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))];
-  if (!wanted.length) return out;
+  if (!wanted.length) return { ok: true, holders };
+  const wantedSet = new Set(wanted);
 
   try {
-    const index = await readDailyTickerHolderIndex().catch(() => null);
+    let index: Awaited<ReturnType<typeof readDailyTickerHolderIndex>> = null;
+    try {
+      index = await readDailyTickerHolderIndex();
+    } catch {
+      index = null;
+    }
 
-    // ticker → candidate ids, with caller-known liveness / held_through.
+    // ticker → candidate ids; ticker → ids whose ds_daily DISPLAY ticker is it.
     const idsByTicker = new Map<string, Set<string>>();
-    const extraById = new Map<string, ExtraHolderCandidate>();
-    const addId = (t: string, id: string) => {
-      const set = idsByTicker.get(t) ?? new Set<string>();
+    const displayIdsByTicker = new Map<string, Set<string>>();
+    const addTo = (m: Map<string, Set<string>>, t: string, id: string) => {
+      const set = m.get(t) ?? new Set<string>();
       set.add(id);
-      idsByTicker.set(t, set);
+      m.set(t, set);
     };
     for (const t of wanted) {
-      for (const id of index?.byTicker.get(t) ?? []) addId(t, id);
+      for (const id of index?.byTicker.get(t) ?? []) addTo(idsByTicker, t, id);
+      for (const id of index?.byDisplayTicker.get(t) ?? []) addTo(displayIdsByTicker, t, id);
     }
+    const extraByKey = new Map<string, ExtraHolderCandidate[]>();
     for (const e of extra) {
       const t = e.ticker.trim().toUpperCase();
-      if (!wanted.includes(t) || !e.bw_sym_id) continue;
-      addId(t, e.bw_sym_id);
-      extraById.set(`${t}\u0000${e.bw_sym_id}`, e);
+      if (!wantedSet.has(t) || !e.bw_sym_id) continue;
+      addTo(idsByTicker, t, e.bw_sym_id);
+      const key = `${t}\u0000${e.bw_sym_id}`;
+      extraByKey.set(key, [...(extraByKey.get(key) ?? []), e]);
     }
 
     const allIds = [...new Set([...idsByTicker.values()].flatMap((s) => [...s]))];
@@ -169,7 +218,7 @@ export async function findMostRecentHolders(
       smById.set(r.bw_sym_id, list);
       for (const label of [r.ticker, r.unique_ticker]) {
         const t = (label ?? "").trim().toUpperCase();
-        if (wanted.includes(t)) addId(t, r.bw_sym_id);
+        if (wantedSet.has(t)) addTo(idsByTicker, t, r.bw_sym_id);
       }
     }
 
@@ -179,15 +228,22 @@ export async function findMostRecentHolders(
       const candidates: TickerHolder[] = [];
       for (const id of ids) {
         const sm = smById.get(id) ?? [];
-        const e = extraById.get(`${t}\u0000${id}`);
-        const smLive = sm.length ? sm.some(smIsLive) : undefined;
-        // Caller-known deadness (a delisted symbols row, a closed alias)
-        // overrides; otherwise security_master decides; unknown = not live.
-        const live = e?.live === false ? false : smLive ?? e?.live ?? false;
-        let held: string | null = e?.held_through ?? null;
-        for (const r of sm) held = maxDate(held, r.valid_to ?? r.delisted_date);
+        const extras = extraByKey.get(`${t}\u0000${id}`) ?? [];
+        const registryDead = extras.some((e) => e.dead === true);
+        const identityOpen = sm.some(smIsOpen);
+        const holdsLabel =
+          sm.some((r) => smIsOpen(r) && (r.ticker ?? "").trim().toUpperCase() === t) ||
+          (identityOpen && (displayIdsByTicker.get(t)?.has(id) ?? false));
+        const live = !registryDead && identityOpen && holdsLabel;
+
+        let held: string | null = null;
+        for (const r of sm) {
+          if (!smIsOpen(r)) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
+        }
+        for (const e of extras) held = maxDay(held, dayBefore(e.alias_valid_to));
+
         const representative =
-          sm.find(smIsLive) ??
+          sm.find(smIsOpen) ??
           [...sm].sort((a, b) => ((a.valid_to ?? "") > (b.valid_to ?? "") ? -1 : 1))[0] ??
           null;
         candidates.push({
@@ -195,15 +251,16 @@ export async function findMostRecentHolders(
           live,
           held_through: live ? null : held,
           in_daily_store: index ? index.symbols.has(id) : null,
+          identity_delisted: registryDead || !identityOpen,
           security_master: representative,
         });
       }
       const winner = rankHolderCandidates(candidates);
-      if (winner) out.set(t, winner);
+      if (winner) holders.set(t, winner);
     }
-    return out;
+    return { ok: true, holders };
   } catch (error) {
     console.error("[ticker-holder] most-recent-holder lookup failed", error);
-    return out;
+    return { ok: false, holders: new Map() };
   }
 }
