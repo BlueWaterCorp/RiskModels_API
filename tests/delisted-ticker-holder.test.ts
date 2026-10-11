@@ -496,10 +496,27 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     });
   });
 
-  it("BBBY after the listing pin outranks an older dated BBBY holder", async () => {
+  it("a security_master row naming the ticker outranks an open id linked only by a ds_daily label", async () => {
+    // The listing label may lag a rename, so it never beats T-dated evidence.
+    // Production has no security_master row with ticker BBBY, so post-pin
+    // BBBY still resolves to BBQDH7 (test above).
     SECURITY_MASTER.push(sm("BW-OLD-BBBY", "BBBY", { live: false, valid_to: "2023-07-10" }));
     DAILY!.BBBY_X = ["BW-OLD-BBBY"];
-    expect((await both("BBBY"))?.symbol).toBe("BW-BBG000BBQDH7");
+    expect((await both("BBBY"))?.symbol).toBe("BW-OLD-BBBY");
+  });
+
+  it("a servable live holder with a registry row under another ticker is served, relabelled", async () => {
+    SYMBOLS.push(sym("BW-LIVE-REG", "RENAMED"));
+    SECURITY_MASTER.push(sm("BW-LIVE-REG", "RTK"));
+    ALIASES.push(alias("BW-OLD-RTK", "RTK", "TICKER", "2020-01-01"));
+    SYMBOLS.push(sym("BW-OLD-RTK", "RTK_OLD", { dead: true }));
+    DAILY!.RENAMED = ["BW-LIVE-REG"];
+    expect(await both("RTK")).toMatchObject({
+      symbol: "BW-LIVE-REG",
+      ticker: "RTK",
+      resolved_via: "most_recent_holder",
+      delisted: false,
+    });
   });
 
   it("an open alias does not beat a servable live holder", async () => {

@@ -67,6 +67,19 @@ export async function GET(
     : {};
 
   if (holder && (!data || holder.symbol !== data.symbol)) {
+    // The answering id's own registry row (if any) supplies metadata and the
+    // latest metrics, so a relabelled registry holder is not served blank.
+    const { data: own } = await supabase
+      .from("symbols")
+      .select("symbol, metadata, latest_metrics, latest_vol, latest_teo")
+      .eq("symbol", holder.symbol)
+      .maybeSingle();
+    const ownRow = own as {
+      metadata?: unknown;
+      latest_metrics?: unknown;
+      latest_vol?: unknown;
+      latest_teo?: unknown;
+    } | null;
     return NextResponse.json({
       symbol: holder.symbol,
       ticker: holder.ticker,
@@ -80,10 +93,10 @@ export async function GET(
       sector_etf: holder.sector_etf,
       subsector_etf: holder.subsector_etf,
       is_adr: holder.is_adr,
-      metadata: {},
-      latest_metrics: null,
-      latest_vol: null,
-      latest_teo: null,
+      metadata: ownRow ? filterSafeMetadata(ownRow.metadata) : {},
+      latest_metrics: ownRow?.latest_metrics ?? null,
+      latest_vol: ownRow?.latest_vol ?? null,
+      latest_teo: ownRow?.latest_teo ?? null,
       ...holderFlags,
     });
   }

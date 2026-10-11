@@ -1419,7 +1419,7 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
  * Upper-cased ticker → bw_sym_ids in ds_daily.zarr. `byTicker` matches the
  * display `ticker`, the collision-free `unique_ticker`, or the listing
  * `eodhd_code` minus a trailing ".US"; `byDisplayTicker` matches the display
- * `ticker` alone (the only label lib/dal/ticker-holder trusts for liveness).
+ * `ticker` alone. lib/dal/ticker-holder never derives liveness from these labels (security_master decides); it uses them for recall and dates.
  * ds_daily keeps every identity the pipeline ever priced, delisted ones
  * included, so this is where a ticker whose holder left the live `symbols`
  * mirror (CTRA → Coterra, BW-BBG000C3GN47) is still found. `symbols` is every
@@ -1431,13 +1431,11 @@ export interface DailyTickerHolderIndex {
   /** `eodhd_code` minus ".US" — the listing the id was last priced under. */
   byListingTicker: Map<string, string[]>;
   symbols: Set<string>;
-  /** False when `unique_ticker` or `eodhd_code` could not be read. */
+  /** Always true on a returned index (a partial read yields null). */
   complete: boolean;
 }
 
 const DAILY_HOLDER_TTL_MS = 30 * 60 * 1000;
-/** An index missing a recall coord is retried after a minute, not the full TTL. */
-const DAILY_HOLDER_PARTIAL_TTL_MS = 60 * 1000;
 let dailyHolderIndexCache: {
   at: number;
   promise: Promise<DailyTickerHolderIndex | null>;
@@ -1493,6 +1491,9 @@ async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | n
       if (coord === "eodhd_code") add(byListingTicker, v, sym);
     }
   }
+  // Fail closed: a missing recall coord would change which holder wins, so
+  // no index at all (not cached; retried on the next request).
+  if (!complete) return null;
   return {
     byTicker,
     byDisplayTicker,
@@ -1509,14 +1510,9 @@ export async function readDailyTickerHolderIndex(): Promise<DailyTickerHolderInd
   }
   const promise = buildDailyTickerHolderIndex().catch(() => null);
   dailyHolderIndexCache = { at: Date.now(), promise };
-  // A failed open must not pin a null index for the whole TTL, and a partial
-  // one (a recall coord unreadable) is retried after a minute.
+  // A failed or partial open (null) must not pin for the whole TTL.
   promise.then((v) => {
-    if (dailyHolderIndexCache?.promise !== promise) return;
-    if (v === null) dailyHolderIndexCache = null;
-    else if (!v.complete) {
-      dailyHolderIndexCache.at = Date.now() - DAILY_HOLDER_TTL_MS + DAILY_HOLDER_PARTIAL_TTL_MS;
-    }
+    if (v === null && dailyHolderIndexCache?.promise === promise) dailyHolderIndexCache = null;
   });
   return promise;
 }

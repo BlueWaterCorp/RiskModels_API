@@ -492,16 +492,16 @@ function withHolderFlags(row: SymbolRegistryRow, delisted: boolean): SymbolRegis
  *      invents or replaces a holder.
  *   2. A LIVE holder exists (open security_master row with this ticker) →
  *      its own live `symbols` row under this ticker if it has one (a row the
- *      direct lookup missed); else a row built from security_master when
- *      ds_daily carries it; else not found. A live holder never loses to a
- *      former holder's series.
+ *      direct lookup missed); else, when ds_daily carries it, its registry
+ *      row relabelled or a row built from security_master; else (the API
+ *      cannot serve it) fall through to 3 — it does not veto main's answer.
  *   3. A previous answer exists → it stays, unchanged. Tickers that resolved
- *      before keep their identity unless a live holder exists.
+ *      before keep their identity unless a servable live holder exists.
  *   4. The ranked former holder answers when it has a registry row or
  *      ds_daily history (CTRA → Coterra); otherwise not found.
  *
  * `resolved_via: "most_recent_holder"` marks exactly the answers this pass
- * chose (2 from security_master, 4); `delisted` is true when the answering
+ * chose and built (2 relabelled / from security_master, 4); `delisted` is true when the answering
  * identity is not a live listing in security_master or the registry.
  * Returns null for "not found".
  */
@@ -518,7 +518,11 @@ async function resolveMostRecentHolderRows(
 
   const ids = [...new Set([...lookup.holders.values()].map((h) => h.bw_sym_id))];
   const symbolsById = new Map<string, Record<string, unknown>>();
-  if (ids.length) {
+  // Read per chunk of 100 ids with an exact count; a failed or short chunk
+  // fails only the tickers whose holder id is in it.
+  const unreadIds = new Set<string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
     let data: unknown = null;
     let error: unknown = null;
     let count: number | null | undefined = null;
@@ -526,21 +530,22 @@ async function resolveMostRecentHolderRows(
       ({ data, error, count } = await createAdminClient()
         .from("symbols")
         .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
-        .in("symbol", ids));
+        .in("symbol", chunk));
     } catch (e) {
       error = e;
     }
     const rows = (data ?? []) as Record<string, unknown>[];
-    if (error || typeof count !== "number" || rows.length < count) {
+    if (error || (typeof count === "number" && rows.length < count)) {
       console.error("[V3 DAL] Holder symbols rows unreadable or incomplete:", error ?? count);
-      for (const t of tickers) out.set(t, keep(t));
-      return out;
+      for (const id of chunk) unreadIds.add(id);
+      continue;
     }
     for (const r of rows) symbolsById.set(String(r.symbol), r);
   }
 
   for (const t of tickers) {
-    if (lookup.failed.has(t)) {
+    const holderId = lookup.holders.get(t)?.bw_sym_id;
+    if (lookup.failed.has(t) || (holderId !== undefined && unreadIds.has(holderId))) {
       out.set(t, keep(t));
       continue;
     }
@@ -549,17 +554,24 @@ async function resolveMostRecentHolderRows(
 
     if (h?.live) {
       // The live holder answers when the API can serve it: its own live
-      // registry row under this ticker, or ds_daily history. A live holder
-      // the API cannot serve does not veto the previous answer (main's
-      // answer is kept unchanged; with none, not found).
-      if (symRow && !isDeadSymbolRow(symRow) && String(symRow.ticker ?? "").toUpperCase() === t) {
-        out.set(t, normalizeSymbolRow(symRow));
+      // registry row under this ticker (as is), else — when ds_daily carries
+      // it — its registry row relabelled, or a row built from
+      // security_master, flagged. A live holder the API cannot serve does not
+      // veto the previous answer (main's answer kept unchanged; else not found).
+      const symLive = symRow && !isDeadSymbolRow(symRow) ? normalizeSymbolRow(symRow) : null;
+      if (symLive && symLive.ticker.toUpperCase() === t) {
+        out.set(t, symLive);
         continue;
       }
-      if (!symRow && h.in_daily_store === true) {
+      if (h.in_daily_store === true) {
         out.set(
           t,
-          withHolderFlags(registryRowFromSecurityMaster(h.bw_sym_id, t, h.security_master), false),
+          withHolderFlags(
+            symLive
+              ? { ...symLive, ticker: t }
+              : registryRowFromSecurityMaster(h.bw_sym_id, t, h.security_master),
+            false,
+          ),
         );
         continue;
       }
@@ -721,18 +733,25 @@ export async function resolveSymbolsByTickers(
     const admin = createAdminClient();
     // Chunked so no response approaches PostgREST's row cap (a dropped live
     // row would otherwise look like a missing ticker).
+    // A chunk that errors or comes back shorter than its exact count drops
+    // only its own tickers (no answer, as main gave none on error), never the
+    // whole call, and never lets a partial row set reach pickLiveRow.
     const data: Record<string, unknown>[] = [];
+    const unreadTickers = new Set<string>();
     const uniqueTickers = [...new Set(upperTickers)];
     for (let i = 0; i < uniqueTickers.length; i += 200) {
-      const { data: chunk, error } = await admin
+      const slice = uniqueTickers.slice(i, i + 200);
+      const { data: chunk, error, count } = await admin
         .from("symbols")
-        .select(SYMBOL_ROW_COLUMNS)
-        .in("ticker", uniqueTickers.slice(i, i + 200));
-      if (error) {
-        console.error("[V3 DAL] Error batch resolving tickers:", error);
-        return result;
+        .select(SYMBOL_ROW_COLUMNS, { count: "exact" })
+        .in("ticker", slice);
+      const rows = (chunk ?? []) as Record<string, unknown>[];
+      if (error || (typeof count === "number" && rows.length < count)) {
+        console.error("[V3 DAL] Error batch resolving tickers:", error ?? count);
+        for (const t of slice) unreadTickers.add(t);
+        continue;
       }
-      data.push(...((chunk ?? []) as Record<string, unknown>[]));
+      data.push(...rows);
     }
 
     // Recycled tickers leave >1 row per display ticker. Group per ticker and
@@ -772,7 +791,9 @@ export async function resolveSymbolsByTickers(
     // share-class projections both come from resolveTicker, never a local
     // pair list. Projections carry the disclosure fields; notation stays
     // silent (same security).
-    const missing = upperTickers.filter(t => !result.has(t) && !deadDirect.has(t));
+    const missing = upperTickers.filter(
+      t => !result.has(t) && !deadDirect.has(t) && !unreadTickers.has(t),
+    );
     if (missing.length === 0 && deadDirect.size === 0) return result;
 
     const resolutions = new Map<string, TickerResolution>();
@@ -828,7 +849,7 @@ export async function resolveSymbolsByTickers(
     // direct + hardcoded alias passes, consult the security_aliases mirror.
     // The alias row (open or closed) is the previous answer that the
     // most-recent-holder pass keeps unless a servable live holder exists.
-    const stillMissing = upperTickers.filter(t => !result.has(t));
+    const stillMissing = upperTickers.filter(t => !result.has(t) && !unreadTickers.has(t));
     const aliasRawBySymbol = new Map<string, Record<string, unknown>>();
     let canonicalMap = new Map<string, { bw_sym_id: string; valid_to: string | null }>();
     if (stillMissing.length > 0) {
@@ -846,7 +867,7 @@ export async function resolveSymbolsByTickers(
     }
 
     // Most-recent-holder pass (same rules as resolveSymbolByTicker step 4).
-    const unresolved = upperTickers.filter(t => !result.has(t));
+    const unresolved = upperTickers.filter(t => !result.has(t) && !unreadTickers.has(t));
     if (unresolved.length > 0) {
       const extra: ExtraHolderCandidate[] = [];
       const previous = new Map<string, SymbolRegistryRow>();
