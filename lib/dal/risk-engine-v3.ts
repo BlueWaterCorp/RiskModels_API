@@ -510,8 +510,9 @@ function registryRowFromSecurityMaster(
   bwSymId: string,
   requestedTicker: string,
   sm: SecurityMasterHolderRow | null,
+  discloseSmTicker = true,
 ): SymbolRegistryRow {
-  const smTicker = (sm?.ticker ?? "").trim().toUpperCase();
+  const smTicker = discloseSmTicker ? (sm?.ticker ?? "").trim().toUpperCase() : "";
   return {
     symbol: bwSymId,
     ticker: requestedTicker,
@@ -693,7 +694,15 @@ async function resolveMostRecentHolderRows(
       t,
       h.in_daily_store === true
         ? withHolderFlags(
-            registryRowFromSecurityMaster(h.bw_sym_id, t, h.security_master),
+            // A closed identity whose final ds_daily labels (display and
+            // listing) both name T: security_master's ticker is the older
+            // one (CTRA's row still says COG), so it is not disclosed.
+            registryRowFromSecurityMaster(
+              h.bw_sym_id,
+              t,
+              h.security_master,
+              !(h.identity_delisted && (h.label_score ?? 0) === 2),
+            ),
             h.identity_delisted,
           )
         : null,

@@ -18,10 +18,13 @@ export type TickerSearchRow = {
    * recent (possibly delisted) holder — same disclosure as /ticker-returns.
    */
   resolved_via?: "most_recent_holder";
+  /** With resolved_via: the answering security's own ticker when it differs. */
+  modelled_ticker?: string | null;
   delisted?: boolean;
   /** The ticker now belongs to a security the API cannot serve (FB). */
   ticker_reassigned?: boolean;
   current_holder?: { symbol: string; name: string | null };
+  resolution_degraded?: boolean;
 };
 
 /**

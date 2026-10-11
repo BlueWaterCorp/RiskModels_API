@@ -352,6 +352,9 @@ describe("delisted tickers resolve to their most recent holder", () => {
       resolved_via: "most_recent_holder",
       delisted: true,
     });
+    // security_master still says COG (the pre-2021 ticker); ds_daily's final
+    // labels say CTRA, so no stale holder ticker is disclosed.
+    expect(rec?.modelled_ticker).toBeNull();
   });
 
   it("BBBY → BW-BBG000BBQDH7 when ds_daily prices it under BBBY on display and listing code", async () => {
