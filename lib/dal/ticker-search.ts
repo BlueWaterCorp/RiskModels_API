@@ -39,7 +39,7 @@ const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.-]{1,9}$/;
 async function mostRecentHolderRow(upperSearch: string): Promise<TickerSearchRow | null> {
   if (!TICKER_SHAPE.test(upperSearch)) return null;
   try {
-    const rec = await resolveSymbolByTicker(upperSearch);
+    const rec = await resolveSymbolByTicker(upperSearch, { disclosing: true });
     if (!rec?.resolved_via && !rec?.ticker_reassigned) return null;
     return {
       symbol: upperSearch,

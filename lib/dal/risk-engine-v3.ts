@@ -511,6 +511,7 @@ function registryRowFromSecurityMaster(
   requestedTicker: string,
   sm: SecurityMasterHolderRow | null,
 ): SymbolRegistryRow {
+  const smTicker = (sm?.ticker ?? "").trim().toUpperCase();
   return {
     symbol: bwSymId,
     ticker: requestedTicker,
@@ -521,7 +522,9 @@ function registryRowFromSecurityMaster(
     subsector_etf: firstSubsectorEtf(sm?.subsector_etfs ?? null),
     is_adr: sm?.is_adr ?? null,
     is_modelled_class: true,
-    modelled_ticker: null,
+    // security_master's own ticker for the id when it differs from the
+    // request (BBQDH7 answers BBBY while security_master still says BYON).
+    modelled_ticker: smTicker && smTicker !== requestedTicker.toUpperCase() ? smTicker : null,
     share_class: null,
     modelled_share_class: null,
   };
@@ -567,6 +570,7 @@ async function resolveMostRecentHolderRows(
   tickers: string[],
   extra: ExtraHolderCandidate[],
   previous: Map<string, PreviousAnswer>,
+  allowPinned = false,
 ): Promise<Map<string, SymbolRegistryRow | null>> {
   const out = new Map<string, SymbolRegistryRow | null>();
   if (!tickers.length) return out;
@@ -578,7 +582,7 @@ async function resolveMostRecentHolderRows(
     return p.dead ? { ...p.row, delisted: true } : p.row;
   };
 
-  const lookup = await findMostRecentHolders(tickers, extra);
+  const lookup = await findMostRecentHolders(tickers, extra, { allowPinned });
 
   const ids = [...new Set([...lookup.holders.values()].map((h) => h.bw_sym_id))];
   const symbolsById = new Map<string, Record<string, unknown>>();
@@ -702,8 +706,20 @@ async function resolveMostRecentHolderRows(
 // Symbol resolution
 // ---------------------------------------------------------------------------
 
+export interface ResolveTickerOptions {
+  /**
+   * The caller surfaces resolutionDisclosure (resolved_via, delisted,
+   * modelled_ticker): only then may a pinned open identity — ds_daily prices
+   * it under the ticker on display and listing code while security_master
+   * still names another ticker (BBBY today) — answer. Non-disclosing callers
+   * (metrics, decompose, portfolio, chat, ...) never get such an answer.
+   */
+  disclosing?: boolean;
+}
+
 export async function resolveSymbolByTicker(
   ticker: string,
+  options: ResolveTickerOptions = {},
 ): Promise<SymbolRegistryRow | null> {
   const upper = ticker.toUpperCase();
 
@@ -836,7 +852,10 @@ export async function resolveSymbolByTicker(
   const directRow = direct ? normalizeSymbolRow(direct) : null;
   if (directRow) previous.set(upper, { row: directRow, dead: true });
   else if (aliasRow) previous.set(upper, { row: aliasRow, dead: isDeadSymbolRow(aliasRaw) });
-  return (await resolveMostRecentHolderRows([upper], extra, previous)).get(upper) ?? null;
+  return (
+    (await resolveMostRecentHolderRows([upper], extra, previous, options.disclosing === true)).get(upper) ??
+    null
+  );
 }
 
 /**
@@ -881,13 +900,16 @@ async function readSymbolRowsChecked(
 
 export async function resolveSymbolsByTickers(
   tickers: string[],
-  options: {
+  options: ResolveTickerOptions & {
     /** Filled with the tickers this call already ran through the holder pass. */
     holderPassed?: Set<string>;
   } = {},
 ): Promise<Map<string, SymbolRegistryRow>> {
   const upperTickers = tickers.map(t => t.toUpperCase());
   const result = new Map<string, SymbolRegistryRow>();
+  // Declared outside the try so an unexpected throw still returns main's
+  // dead-row answers (main stored them before anything that can throw).
+  const deadDirect = new Map<string, Record<string, unknown>>();
 
   try {
     const admin = createAdminClient();
@@ -916,7 +938,6 @@ export async function resolveSymbolsByTickers(
     // A dead pick (every row for the ticker is delisted) does not answer
     // yet: like resolveSymbolByTicker it competes in the most-recent-holder
     // pass below, so a live holder outside `symbols` still wins.
-    const deadDirect = new Map<string, Record<string, unknown>>();
     const deadRowsByTicker = new Map<string, Record<string, unknown>[]>();
     for (const [requestedKey, rows] of byTicker) {
       const picked = pickLiveRow(rows);
@@ -1050,7 +1071,12 @@ export async function resolveSymbolsByTickers(
           previous.set(t, { row: { ...aliasRow, ticker: t }, dead: isDeadSymbolRow(aliasRaw) });
         }
       }
-      const answers = await resolveMostRecentHolderRows(unresolved, extra, previous);
+      const answers = await resolveMostRecentHolderRows(
+        unresolved,
+        extra,
+        previous,
+        options.disclosing === true,
+      );
       for (const t of unresolved) {
         const row = answers.get(t);
         if (row) result.set(t, row);
@@ -1060,6 +1086,11 @@ export async function resolveSymbolsByTickers(
     return result;
   } catch (error) {
     console.error("[V3 DAL] Error batch resolving tickers:", error);
+    for (const [t, raw] of deadDirect) {
+      if (result.has(t)) continue;
+      const row = normalizeSymbolRow(raw);
+      if (row) result.set(t, { ...row, delisted: true, resolution_degraded: true });
+    }
     return result;
   }
 }

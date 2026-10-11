@@ -79,6 +79,12 @@ export interface HolderCandidate {
    * 1 = one of them, 0 = neither (unique_ticker / caller evidence only).
    */
   label_score?: number;
+  /**
+   * Open identity that ds_daily prices under T on display AND listing code
+   * (a listing pin). Ranks after live holders and before every dated former
+   * holder: it trades under T now, by the price source.
+   */
+  pinned?: boolean;
 }
 
 /** A candidate the caller already found (dead `symbols` row, alias hit). */
@@ -104,7 +110,8 @@ export interface MostRecentHolderLookup {
 }
 
 /**
- * Deterministic pick: live first, then latest held_through (unknown last),
+ * Deterministic pick: live first, then pinned (display + listing price the
+ * open id under T), then latest held_through (unknown last),
  * then stronger ds_daily label evidence (display + listing over one label),
  * then present in ds_daily, then lowest bw_sym_id.
  */
@@ -112,6 +119,9 @@ export function rankHolderCandidates<T extends HolderCandidate>(candidates: T[])
   if (candidates.length === 0) return null;
   const sorted = [...candidates].sort((a, b) => {
     if (a.live !== b.live) return a.live ? -1 : 1;
+    const ap = a.pinned === true;
+    const bp = b.pinned === true;
+    if (ap !== bp) return ap ? -1 : 1;
     const ah = a.held_through ?? "";
     const bh = b.held_through ?? "";
     if (ah !== bh) return ah > bh ? -1 : 1;
@@ -301,7 +311,16 @@ export function _resetHolderCache(): void {
 export async function findMostRecentHolders(
   tickers: string[],
   extra: ExtraHolderCandidate[] = [],
+  options: {
+    /**
+     * Admit pinned open identities (display + listing code under T, no
+     * security_master row naming T). Only callers that disclose
+     * `resolved_via` / `delisted` / `modelled_ticker` pass true.
+     */
+    allowPinned?: boolean;
+  } = {},
 ): Promise<MostRecentHolderLookup> {
+  const allowPinned = options.allowPinned === true;
   const holders = new Map<string, TickerHolder>();
   const failed = new Set<string>();
   const wanted = [...new Set(tickers.map(label).filter(Boolean))];
@@ -309,7 +328,7 @@ export async function findMostRecentHolders(
   const now = Date.now();
   const toFetch: string[] = [];
   for (const t of wanted) {
-    const hit = ttl > 0 ? holderCache.get(holderCacheKey(t, extra)) : undefined;
+    const hit = ttl > 0 ? holderCache.get(`${allowPinned ? "P" : "-"}${holderCacheKey(t, extra)}`) : undefined;
     if (hit && now - hit.at < ttl) {
       if (hit.holder) holders.set(t, hit.holder);
     } else {
@@ -317,7 +336,7 @@ export async function findMostRecentHolders(
     }
   }
   if (!toFetch.length) return { failed, holders };
-  const fresh = await findMostRecentHoldersUncached(toFetch, extra);
+  const fresh = await findMostRecentHoldersUncached(toFetch, extra, allowPinned);
   for (const t of toFetch) {
     if (fresh.failed.has(t)) {
       failed.add(t);
@@ -327,7 +346,7 @@ export async function findMostRecentHolders(
     if (h) holders.set(t, h);
     // A decision made without the ds_daily index is degraded: not cached.
     if (ttl > 0 && fresh.indexAvailable) {
-      const key = holderCacheKey(t, extra);
+      const key = `${allowPinned ? "P" : "-"}${holderCacheKey(t, extra)}`;
       holderCache.delete(key);
       holderCache.set(key, { at: now, holder: h });
       if (holderCache.size > HOLDER_CACHE_MAX) {
@@ -342,6 +361,7 @@ export async function findMostRecentHolders(
 async function findMostRecentHoldersUncached(
   tickers: string[],
   extra: ExtraHolderCandidate[],
+  allowPinned: boolean,
 ): Promise<MostRecentHolderLookup & { indexAvailable?: boolean }> {
   const holders = new Map<string, TickerHolder>();
   const failed = new Set<string>();
@@ -451,7 +471,8 @@ async function findMostRecentHoldersUncached(
         const onDisplay = index?.byDisplayTicker.get(t)?.includes(id) ?? false;
         const onListing = index?.byListingTicker.get(t)?.includes(id) ?? false;
         const pricedUnderT = onDisplay && onListing;
-        if (identityOpen && !live && held === null && !pricedUnderT) continue;
+        const pinned = identityOpen && !live && !registryDead && pricedUnderT && allowPinned;
+        if (identityOpen && !live && held === null && !pinned) continue;
 
         const representative =
           forT.find(smIsOpen) ??
@@ -464,6 +485,7 @@ async function findMostRecentHoldersUncached(
           held_through: live ? null : held,
           in_daily_store: index ? index.symbols.has(id) : null,
           label_score: (onDisplay ? 1 : 0) + (onListing ? 1 : 0),
+          pinned,
           identity_delisted: registryDead || !identityOpen,
           security_master: representative,
         });

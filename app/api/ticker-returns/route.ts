@@ -50,7 +50,7 @@ export const GET = withBilling(
 
     const { ticker, years, format } = validation.data;
 
-    const symbolRecord = await resolveSymbolByTicker(ticker);
+    const symbolRecord = await resolveSymbolByTicker(ticker, { disclosing: true });
     if (!symbolRecord) {
       return NextResponse.json({ error: "Ticker not found" }, { status: 404, headers: getCorsHeaders(origin) });
     }

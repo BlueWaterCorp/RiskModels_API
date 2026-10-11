@@ -358,16 +358,26 @@ describe("delisted tickers resolve to their most recent holder", () => {
     // Production 2026-10-11 after the ERM3 republish: display BBBY, eodhd_code
     // BBBY.US, unique_ticker BYON; security_master still says BYON (open).
     DAILY!.BBBY = ["BW-BBG000BBQDH7"];
-    const rec = await resolveSymbolByTicker("BBBY");
+    const rec = await resolveSymbolByTicker("BBBY", { disclosing: true });
     expect(rec).toMatchObject({
       symbol: "BW-BBG000BBQDH7",
       ticker: "BBBY",
+      // security_master's own ticker for the id is disclosed.
+      modelled_ticker: "BYON",
       resolved_via: "most_recent_holder",
       delisted: false,
     });
+    // Callers that do not disclose resolution fields never get a pinned answer.
+    expect(await resolveSymbolByTicker("BBBY")).toBeNull();
+    expect((await resolveSymbolsByTickers(["BBBY"])).has("BBBY")).toBe(false);
+    // A pin outranks an older dated BBBY holder (it trades under BBBY now).
+    SECURITY_MASTER.push(sm("BW-OLD-BBBY2", "BBBY", { live: false, valid_to: "2023-07-10" }));
+    DAILY!.OLDB = ["BW-OLD-BBBY2"];
+    expect((await resolveSymbolByTicker("BBBY", { disclosing: true }))?.symbol).toBe("BW-BBG000BBQDH7");
+    expect((await resolveSymbolByTicker("BBBY"))?.symbol).toBe("BW-OLD-BBBY2");
     // One label alone (listing code only) does not serve an open identity.
     delete DAILY!.BBBY;
-    expect(await resolveSymbolByTicker("BBBY")).toBeNull();
+    expect((await resolveSymbolByTicker("BBBY", { disclosing: true }))?.symbol).toBe("BW-OLD-BBBY2");
   });
 
   it("COG (Cabot → Coterra) picks the holder with the latest validity, not the 2021 id", async () => {
@@ -439,9 +449,9 @@ describe("delisted tickers resolve to their most recent holder", () => {
 });
 
 describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
-  async function both(t: string) {
-    const single = await resolveSymbolByTicker(t);
-    const batch = (await resolveSymbolsByTickers([t])).get(t) ?? null;
+  async function both(t: string, opts: { disclosing?: boolean } = {}) {
+    const single = await resolveSymbolByTicker(t, opts);
+    const batch = (await resolveSymbolsByTickers([t], opts)).get(t) ?? null;
     expect(batch?.symbol ?? null, `batch ${t}`).toBe(single?.symbol ?? null);
     expect(batch?.resolved_via, `batch resolved_via ${t}`).toBe(single?.resolved_via);
     expect(batch?.delisted, `batch delisted ${t}`).toBe(single?.delisted);
@@ -606,7 +616,9 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     SECURITY_MASTER.push(sm("BW-Z-ZZ", "OTHERZ"));
     DAILY!.ZZ = ["BW-A-ZZ", "BW-Z-ZZ"];
     DAILY_LISTING.ZZ = ["BW-Z-ZZ"];
-    expect((await both("ZZ"))?.symbol).toBe("BW-Z-ZZ");
+    expect((await both("ZZ", { disclosing: true }))?.symbol).toBe("BW-Z-ZZ");
+    // Without disclosure the pin is not admitted; the dead label-only id answers.
+    expect((await both("ZZ"))?.symbol).toBe("BW-A-ZZ");
   });
 
   it("a share-class canonical whose registry read fails yields not-found, never a former holder", async () => {
@@ -657,7 +669,36 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     SECURITY_MASTER.push(sm("BW-CL", "CLNEW"));
     DAILY!.CLOLD = ["BW-CL"];
     DAILY_LISTING.CLOLD = ["BW-CL"];
-    expect(await both("CLOLD")).toMatchObject({ symbol: "BW-CL", resolved_via: "most_recent_holder", delisted: false });
+    expect(await both("CLOLD", { disclosing: true })).toMatchObject({
+      symbol: "BW-CL",
+      modelled_ticker: "CLNEW",
+      resolved_via: "most_recent_holder",
+      delisted: false,
+    });
+    expect(await both("CLOLD")).toBeNull();
+  });
+
+  it("a pin beats a closed alias date (disclosing callers)", async () => {
+    SYMBOLS.push(sym("BW-PA-OLD", "PAOLDX", { dead: true }));
+    ALIASES.push(alias("BW-PA-OLD", "PAT", "TICKER", "2020-01-01"));
+    SECURITY_MASTER.push(sm("BW-PA-NEW", "PANEW"));
+    DAILY!.PAT = ["BW-PA-NEW"];
+    DAILY_LISTING.PAT = ["BW-PA-NEW"];
+    // main's answer (the alias row) is kept: a pin is not a live holder.
+    expect((await both("PAT", { disclosing: true }))?.symbol).toBe("BW-PA-OLD");
+    ALIASES = ALIASES.filter((r) => r.alias_value !== "PAT");
+    SECURITY_MASTER.push(sm("BW-PA-OLD", "PAT", { live: false, valid_to: "2020-01-01" }));
+    expect((await both("PAT", { disclosing: true }))?.symbol).toBe("BW-PA-NEW");
+  });
+
+  it("a failing index read after the dead/live split still returns main's dead rows", async () => {
+    SYMBOLS.push(sym("BW-DEAD-ONLY", "DEAD", { dead: true }));
+    vi.mocked(readDailyTickerHolderIndex).mockImplementation(async () => {
+      throw new Error("boom");
+    });
+    const map = await resolveSymbolsByTickers(["DEAD", "WM"]);
+    expect(map.get("WM")?.symbol).toBe("BW-BBG000BWVSR1");
+    expect(map.get("DEAD")?.symbol).toBe("BW-DEAD-ONLY");
   });
 
   it("every dead registry row is vetoed, not only the pick", async () => {

@@ -67,14 +67,17 @@ export async function GET(
     resolution.canonical === resolution.requested.trim().toUpperCase();
   let holder: Awaited<ReturnType<typeof resolveSymbolByTicker>> = null;
   if (!data || deadRow) {
-    holder = await resolveSymbolByTicker(ticker);
+    holder = await resolveSymbolByTicker(ticker, { disclosing: true });
     // DAL found nothing: 404 only when there is no registry row either; a
     // loaded dead row stays (same as the batch route).
     if (!holder && !data) {
       return NextResponse.json({ error: "Ticker not found" }, { status: 404 });
     }
   }
-  const holderFlags = resolutionDisclosure(holder);
+  // DAL returned nothing for a dead registry row (its checks could not run):
+  // serve the row as main did, marked delisted and unchecked.
+  const holderFlags =
+    !holder && deadRow ? { delisted: true, resolution_degraded: true } : resolutionDisclosure(holder);
 
   if (holder && (!data || holder.symbol !== data.symbol)) {
     // The answering id's own registry row (if any) supplies metadata and the

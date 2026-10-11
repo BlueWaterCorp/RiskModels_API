@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
     ),
   );
   if (missing.length > 0) {
-    const holders = await resolveSymbolsByTickers(missing);
+    const holders = await resolveSymbolsByTickers(missing, { disclosing: true });
     // Swapped-in ids keep their own registry metadata and latest metrics
     // (same as GET /api/data/symbols/{ticker}).
     const swapIds = [...new Set(missing.map((t) => holders.get(t)?.symbol).filter((x): x is string => !!x))];
@@ -159,7 +159,14 @@ export async function POST(request: NextRequest) {
     }
     for (const t of missing) {
       const h = holders.get(t);
-      if (!h) continue;
+      if (!h) {
+        // Same as GET: a kept dead registry row whose DAL check returned
+        // nothing is marked delisted and unchecked.
+        if (deadTickers.has(t) && results[t]) {
+          results[t] = { ...(results[t] as object), delisted: true, resolution_degraded: true };
+        }
+        continue;
+      }
       const existing = results[t] as { symbol?: string } | undefined;
       const flags = resolutionDisclosure(h);
       if (existing && existing.symbol === h.symbol) {

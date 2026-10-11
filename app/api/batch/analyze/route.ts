@@ -94,6 +94,8 @@ interface PositionAnalysis {
   /** The ticker now belongs to a security the API cannot serve. */
   ticker_reassigned?: boolean;
   current_holder?: { symbol: string; name: string | null };
+  /** The resolution check could not read its evidence; answer unchecked. */
+  resolution_degraded?: boolean;
   returns?: {
     dates: string[];
     values: number[];
@@ -369,7 +371,7 @@ async function analyzeTicker(
 
     // Try each variation with V3 DAL
     for (const variation of variations) {
-      const resolved = await resolveSymbolByTicker(variation);
+      const resolved = await resolveSymbolByTicker(variation, { disclosing: true });
       if (resolved) {
         symbolRecord = resolved;
         foundVariation = variation;
