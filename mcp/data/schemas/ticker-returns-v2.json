@@ -12,7 +12,7 @@
       "enum": [
         "most_recent_holder"
       ],
-      "description": "Present only when the modelled registry has no live row for the requested ticker and the series belongs to the security that holds it outside the modelled universe or held it most recently (e.g. delisted CTRA). Tickers with a live registry row omit it."
+      "description": "Present only when the modelled registry has no live row for the requested ticker and the series belongs to the security that holds it outside the modelled universe or held it most recently (e.g. delisted CTRA). Omitted for live registry rows and for answers unchanged from earlier releases (alias renames, delisted registry rows)."
     },
     "delisted": {
       "type": "boolean",

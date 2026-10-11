@@ -114,13 +114,20 @@ export async function searchTickers(
         ? m.metadata?.sector || m.metadata?.gics_sector_name
         : undefined,
     }));
-    if (!rows.some((r) => r.ticker.toUpperCase() === upperSearch)) {
-      // Fuzzy hits (CTRA → nothing, MF → MFA, MFC, …) but no exact live
-      // ticker: lead with the ticker's most recent holder when there is one.
+    const exactLive = (metadataMatches as { ticker: string; metadata?: { is_delisted?: boolean } }[]).some(
+      (m) => m.ticker.toUpperCase() === upperSearch && m.metadata?.is_delisted !== true,
+    );
+    if (!exactLive) {
+      // Fuzzy hits (CTRA → nothing, MF → MFA, MFC, …) or only a dead exact
+      // row: lead with the resolver's holder when the most-recent-holder pass
+      // chose one (it replaces the dead row only for a live holder).
       const holder = await mostRecentHolderRow(upperSearch);
-      if (holder) rows.unshift(holder);
+      if (holder) {
+        const rest = rows.filter((r) => r.ticker.toUpperCase() !== upperSearch);
+        return enrichFromSecurityMaster([holder, ...rest].slice(0, 10));
+      }
     }
-    return enrichFromSecurityMaster(rows.slice(0, 10));
+    return enrichFromSecurityMaster(rows);
   }
 
   const holder = await mostRecentHolderRow(upperSearch);

@@ -143,10 +143,13 @@ export async function POST(request: NextRequest) {
     const holders = await resolveSymbolsByTickers(missing);
     for (const t of missing) {
       const h = holders.get(t);
-      if (!h?.resolved_via) continue;
+      if (!h) continue;
       const existing = results[t] as { symbol?: string } | undefined;
+      const flags = h.resolved_via
+        ? { resolved_via: h.resolved_via, delisted: h.delisted ?? false }
+        : {};
       if (existing && existing.symbol === h.symbol) {
-        results[t] = { ...existing, resolved_via: h.resolved_via, delisted: h.delisted ?? false };
+        results[t] = { ...existing, ...flags };
         continue;
       }
       if (existing && !deadTickers.has(t)) continue;
@@ -162,8 +165,7 @@ export async function POST(request: NextRequest) {
         latest_metrics: null,
         latest_vol: null,
         latest_teo: null,
-        resolved_via: h.resolved_via,
-        delisted: h.delisted ?? false,
+        ...flags,
       };
     }
   }

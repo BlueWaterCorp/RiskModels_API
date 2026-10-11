@@ -1402,7 +1402,9 @@ components:
             Present only when the modelled registry has no live row for the requested ticker and the
             series belongs to the security that holds it today outside the modelled universe, or else
             held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row,
-            including recycled ones, resolve to today's company and omit this field.
+            including recycled ones, resolve to today's company and omit this field, as do
+            answers unchanged from earlier releases (an alias rename such as `FB` → META, or a
+            delisted registry row) when no live holder of the ticker exists.
         delisted:
           type: boolean
           description: >

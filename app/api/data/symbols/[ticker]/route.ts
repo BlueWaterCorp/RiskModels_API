@@ -42,15 +42,16 @@ export async function GET(
   }
 
   // No live registry row carries the ticker: defer to the shared DAL
-  // resolver so this route and /ticker-returns name the same security. It
-  // answers with the ticker's live holder outside the registry, else the
-  // previous answer (the dead row), else its most recent former holder
-  // (delisted names such as CTRA), disclosed via `resolved_via` / `delisted`.
+  // resolver so this route and /ticker-returns name the same security: the
+  // ticker's live holder outside the registry, the dead row or alias row it
+  // answered before, or its most recent former holder (delisted CTRA).
+  // Answers the most-recent-holder pass chose carry `resolved_via` /
+  // `delisted`.
   const deadRow = data && isDeadSymbolRow(data as Record<string, unknown>) && !resolution.projected;
   let holder: Awaited<ReturnType<typeof resolveSymbolByTicker>> = null;
   if (!data || deadRow) {
     holder = await resolveSymbolByTicker(ticker);
-    if (!holder?.resolved_via) {
+    if (!holder) {
       return NextResponse.json({ error: "Ticker not found" }, { status: 404 });
     }
   }
@@ -63,10 +64,10 @@ export async function GET(
       symbol: holder.symbol,
       ticker: holder.ticker,
       requested_ticker: resolution.requested,
-      is_modelled_class: true,
-      modelled_ticker: null,
-      share_class: null,
-      modelled_share_class: null,
+      is_modelled_class: holder.is_modelled_class,
+      modelled_ticker: holder.modelled_ticker,
+      share_class: holder.share_class,
+      modelled_share_class: holder.modelled_share_class,
       name: holder.name,
       asset_type: holder.asset_type,
       sector_etf: holder.sector_etf,

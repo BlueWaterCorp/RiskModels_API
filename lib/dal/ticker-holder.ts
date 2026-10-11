@@ -8,26 +8,33 @@
  * ticker, the security that holds it today or held it most recently.
  *
  * Candidate sources (every one is data the API already reads):
- *   1. ds_daily.zarr `ticker` / `unique_ticker` / `eodhd_code` coords — the
- *      pipeline's own labels for every priced identity, delisted included.
+ *   1. ds_daily.zarr `ticker` (display), `unique_ticker`, `eodhd_code` coords
+ *      — the pipeline's labels for every priced identity, delisted included.
  *   2. `public.security_master` rows whose `ticker` or `unique_ticker` equals
  *      the request.
  *   3. Caller-supplied candidates: a dead `symbols` row for the ticker, a
  *      `security_aliases` hit.
  *
- * LIVE means "holds this ticker today", not "the identity is listed": the id
- * has an open security_master row (not delisted, not inactive, valid_to null)
- * AND either a security_master row whose `ticker` equals the request or a
- * ds_daily display `ticker` equal to it. A `unique_ticker` / `eodhd_code`
- * match never makes a candidate live — those labels can be stale (Coterra
- * still carries unique_ticker `COG`), so they only recall former holders.
+ * LIVE means "holds this ticker today": the id has an OPEN security_master
+ * row (not delisted, not inactive, valid_to null) whose `ticker` equals the
+ * request, and the registry does not flag it dead. ds_daily labels never make
+ * a candidate live — a display coord can lag a rename and `unique_ticker`
+ * can be stale (Coterra still carries `COG`) — they only recall former
+ * holders.
+ *
+ * HELD_THROUGH is scoped to the requested ticker: the end of closed
+ * security_master rows whose `ticker` / `unique_ticker` is the request, the
+ * day before a closed alias's (half-open) end, and — for a dead identity
+ * whose ds_daily display ticker or listing code is the request, i.e. the
+ * label it last traded under — the identity's own end date.
  *
  * Ranking (rankHolderCandidates): live first; then latest `held_through`
  * (unknown last); then present in ds_daily; then lowest bw_sym_id.
  *
- * Fail-closed: a security_master read error or a possibly truncated result
- * returns `ok: false`, and the caller keeps its pre-existing answer — the
- * pass never invents a holder from a partial read.
+ * Fail-closed per ticker: a security_master request that errors or returns
+ * fewer rows than its exact count is retried one key at a time; a key that
+ * still fails marks the tickers depending on it as `failed`. Those tickers
+ * get no holder and the caller keeps its pre-existing answer.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -51,16 +58,14 @@ export interface SecurityMasterHolderRow {
 const SM_COLUMNS =
   "bw_sym_id, ticker, unique_ticker, company_name, sector_etf, subsector_etfs, asset_type, is_adr, is_active, is_delisted, valid_to, delisted_date";
 
-/** Ids per security_master `.in()` request; keeps every response far below PostgREST's row cap. */
-const SM_CHUNK = 200;
-/** PostgREST's default max-rows. A response this long may be truncated. */
-const POSTGREST_MAX_ROWS = 1000;
+/** Keys per security_master `.in()` request (each response is count-checked). */
+const SM_CHUNK = 100;
 
 export interface HolderCandidate {
   bw_sym_id: string;
   /** Holds the requested ticker today (see module doc). */
   live: boolean;
-  /** Last date the identity held the ticker (YYYY-MM-DD, inclusive); null = unknown. */
+  /** Last date the identity held the requested ticker (YYYY-MM-DD, inclusive); null = unknown. */
   held_through: string | null;
   /** True / false when ds_daily was readable; null when it was not. */
   in_daily_store: boolean | null;
@@ -83,8 +88,8 @@ export interface TickerHolder extends HolderCandidate {
 }
 
 export interface MostRecentHolderLookup {
-  /** False when security_master could not be read completely. */
-  ok: boolean;
+  /** Tickers whose security_master evidence could not be read completely. */
+  failed: Set<string>;
   holders: Map<string, TickerHolder>;
 }
 
@@ -133,49 +138,97 @@ function smIsOpen(r: SecurityMasterHolderRow): boolean {
   return r.is_delisted !== true && r.is_active !== false && r.valid_to == null;
 }
 
-class SecurityMasterReadError extends Error {}
+function label(raw: string | null | undefined): string {
+  return (raw ?? "").trim().toUpperCase();
+}
 
+interface SmRequest {
+  col: "ticker" | "unique_ticker" | "bw_sym_id";
+  values: string[];
+}
+
+/**
+ * Runs the security_master requests; returns the rows of complete responses
+ * and the requests that failed (error, or fewer rows than the exact count).
+ */
 async function fetchSecurityMasterRows(
-  tickers: string[],
-  ids: string[],
-): Promise<SecurityMasterHolderRow[]> {
-  const admin = createAdminClient();
-  const requests: { col: string; values: string[] }[] = [];
-  for (let i = 0; i < tickers.length; i += SM_CHUNK) {
-    const chunk = tickers.slice(i, i + SM_CHUNK);
-    requests.push({ col: "ticker", values: chunk }, { col: "unique_ticker", values: chunk });
-  }
-  for (let i = 0; i < ids.length; i += SM_CHUNK) {
-    requests.push({ col: "bw_sym_id", values: ids.slice(i, i + SM_CHUNK) });
-  }
-  const results = await Promise.all(
-    requests.map(({ col, values }) =>
-      admin.from("security_master").select(SM_COLUMNS).in(col, values),
-    ),
+  requests: SmRequest[],
+): Promise<{ rows: SecurityMasterHolderRow[]; failedRequests: SmRequest[] }> {
+  const first = await fetchSecurityMasterOnce(requests);
+  // A failed multi-key request is retried one key at a time, so one bad or
+  // oversized key fails only the tickers that depend on it.
+  const retry = first.failedRequests.flatMap((r) =>
+    r.values.length > 1 ? r.values.map((v) => ({ col: r.col, values: [v] })) : [],
   );
-  const out: SecurityMasterHolderRow[] = [];
-  for (const { data, error } of results as { data: unknown; error: unknown }[]) {
-    if (error) throw new SecurityMasterReadError("security_master read failed");
-    const rows = (data ?? []) as SecurityMasterHolderRow[];
-    if (rows.length >= POSTGREST_MAX_ROWS) {
-      throw new SecurityMasterReadError("security_master response may be truncated");
+  if (!retry.length) return first;
+  const second = await fetchSecurityMasterOnce(retry);
+  return {
+    rows: [...first.rows, ...second.rows],
+    failedRequests: [
+      ...first.failedRequests.filter((r) => r.values.length <= 1),
+      ...second.failedRequests,
+    ],
+  };
+}
+
+async function fetchSecurityMasterOnce(
+  requests: SmRequest[],
+): Promise<{ rows: SecurityMasterHolderRow[]; failedRequests: SmRequest[] }> {
+  const admin = createAdminClient();
+  const results = await Promise.all(
+    requests.map(async (req) => {
+      try {
+        const res = (await admin
+          .from("security_master")
+          .select(SM_COLUMNS, { count: "exact" })
+          .in(req.col, req.values)) as {
+          data: unknown;
+          error: unknown;
+          count?: number | null;
+        };
+        return { req, ...res };
+      } catch (error) {
+        return { req, data: null, error, count: null };
+      }
+    }),
+  );
+  const rows: SecurityMasterHolderRow[] = [];
+  const failedRequests: SmRequest[] = [];
+  for (const { req, data, error, count } of results) {
+    const got = (data ?? []) as SecurityMasterHolderRow[];
+    if (error || typeof count !== "number" || got.length < count) {
+      console.error(
+        `[ticker-holder] security_master ${req.col} read ${error ? "failed" : "incomplete"} (${got.length}/${count})`,
+      );
+      failedRequests.push(req);
+      continue;
     }
-    out.push(...rows);
+    rows.push(...got);
+  }
+  return { rows, failedRequests };
+}
+
+function chunked(col: SmRequest["col"], values: string[]): SmRequest[] {
+  const out: SmRequest[] = [];
+  for (let i = 0; i < values.length; i += SM_CHUNK) {
+    out.push({ col, values: values.slice(i, i + SM_CHUNK) });
   }
   return out;
 }
 
 /**
  * For each requested (upper-cased) ticker, the security that holds it today
- * or held it most recently. Tickers with no candidate get no entry.
+ * or held it most recently. Tickers with no candidate get no entry; tickers
+ * whose evidence could not be read completely are listed in `failed`.
  */
 export async function findMostRecentHolders(
   tickers: string[],
   extra: ExtraHolderCandidate[] = [],
 ): Promise<MostRecentHolderLookup> {
   const holders = new Map<string, TickerHolder>();
-  const wanted = [...new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))];
-  if (!wanted.length) return { ok: true, holders };
+  const failed = new Set<string>();
+  const wanted = [...new Set(tickers.map(label).filter(Boolean))];
+  if (!wanted.length) return { failed, holders };
   const wantedSet = new Set(wanted);
 
   try {
@@ -186,43 +239,59 @@ export async function findMostRecentHolders(
       index = null;
     }
 
-    // ticker → candidate ids; ticker → ids whose ds_daily DISPLAY ticker is it.
     const idsByTicker = new Map<string, Set<string>>();
-    const displayIdsByTicker = new Map<string, Set<string>>();
-    const addTo = (m: Map<string, Set<string>>, t: string, id: string) => {
-      const set = m.get(t) ?? new Set<string>();
+    const addTo = (t: string, id: string) => {
+      const set = idsByTicker.get(t) ?? new Set<string>();
       set.add(id);
-      m.set(t, set);
+      idsByTicker.set(t, set);
     };
     for (const t of wanted) {
-      for (const id of index?.byTicker.get(t) ?? []) addTo(idsByTicker, t, id);
-      for (const id of index?.byDisplayTicker.get(t) ?? []) addTo(displayIdsByTicker, t, id);
+      for (const id of index?.byTicker.get(t) ?? []) addTo(t, id);
     }
     const extraByKey = new Map<string, ExtraHolderCandidate[]>();
     for (const e of extra) {
-      const t = e.ticker.trim().toUpperCase();
+      const t = label(e.ticker);
       if (!wantedSet.has(t) || !e.bw_sym_id) continue;
-      addTo(idsByTicker, t, e.bw_sym_id);
+      addTo(t, e.bw_sym_id);
       const key = `${t}\u0000${e.bw_sym_id}`;
       extraByKey.set(key, [...(extraByKey.get(key) ?? []), e]);
     }
 
-    const allIds = [...new Set([...idsByTicker.values()].flatMap((s) => [...s]))];
-    const smRows = await fetchSecurityMasterRows(wanted, allIds);
-
-    const smById = new Map<string, SecurityMasterHolderRow[]>();
-    for (const r of smRows) {
-      if (!r?.bw_sym_id) continue;
-      const list = smById.get(r.bw_sym_id) ?? [];
-      if (!list.some((x) => x.valid_to === r.valid_to && x.ticker === r.ticker)) list.push(r);
-      smById.set(r.bw_sym_id, list);
-      for (const label of [r.ticker, r.unique_ticker]) {
-        const t = (label ?? "").trim().toUpperCase();
-        if (wantedSet.has(t)) addTo(idsByTicker, t, r.bw_sym_id);
+    // Pass 1: rows by ticker label (finds security_master-only holders).
+    const labelReqs = [...chunked("ticker", wanted), ...chunked("unique_ticker", wanted)];
+    const pass1 = await fetchSecurityMasterRows(labelReqs);
+    for (const req of pass1.failedRequests) for (const t of req.values) failed.add(t);
+    for (const r of pass1.rows) {
+      for (const l of [r.ticker, r.unique_ticker]) {
+        const t = label(l);
+        if (wantedSet.has(t) && r.bw_sym_id) addTo(t, r.bw_sym_id);
       }
     }
 
+    // Pass 2: every row of every candidate id (liveness + windows).
+    const allIds = [...new Set([...idsByTicker.values()].flatMap((s) => [...s]))];
+    const pass2 = await fetchSecurityMasterRows(chunked("bw_sym_id", allIds));
+    const failedIds = new Set(pass2.failedRequests.flatMap((r) => r.values));
+    for (const [t, ids] of idsByTicker) {
+      if ([...ids].some((id) => failedIds.has(id))) failed.add(t);
+    }
+
+    const smById = new Map<string, SecurityMasterHolderRow[]>();
+    for (const r of [...pass1.rows, ...pass2.rows]) {
+      if (!r?.bw_sym_id) continue;
+      const list = smById.get(r.bw_sym_id) ?? [];
+      if (
+        !list.some(
+          (x) => x.valid_to === r.valid_to && x.ticker === r.ticker && x.unique_ticker === r.unique_ticker,
+        )
+      ) {
+        list.push(r);
+      }
+      smById.set(r.bw_sym_id, list);
+    }
+
     for (const t of wanted) {
+      if (failed.has(t)) continue;
       const ids = idsByTicker.get(t);
       if (!ids?.size) continue;
       const candidates: TickerHolder[] = [];
@@ -231,18 +300,23 @@ export async function findMostRecentHolders(
         const extras = extraByKey.get(`${t}\u0000${id}`) ?? [];
         const registryDead = extras.some((e) => e.dead === true);
         const identityOpen = sm.some(smIsOpen);
-        const holdsLabel =
-          sm.some((r) => smIsOpen(r) && (r.ticker ?? "").trim().toUpperCase() === t) ||
-          (identityOpen && (displayIdsByTicker.get(t)?.has(id) ?? false));
-        const live = !registryDead && identityOpen && holdsLabel;
+        const forT = sm.filter((r) => label(r.ticker) === t || label(r.unique_ticker) === t);
+        const live = !registryDead && sm.some((r) => smIsOpen(r) && label(r.ticker) === t);
 
         let held: string | null = null;
-        for (const r of sm) {
+        for (const r of forT) {
           if (!smIsOpen(r)) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
         }
         for (const e of extras) held = maxDay(held, dayBefore(e.alias_valid_to));
+        const lastLabel =
+          (index?.byDisplayTicker.get(t)?.includes(id) ?? false) ||
+          (index?.byListingTicker.get(t)?.includes(id) ?? false);
+        if (lastLabel && !identityOpen) {
+          for (const r of sm) held = maxDay(held, isoDay(r.valid_to ?? r.delisted_date));
+        }
 
         const representative =
+          forT.find(smIsOpen) ??
           sm.find(smIsOpen) ??
           [...sm].sort((a, b) => ((a.valid_to ?? "") > (b.valid_to ?? "") ? -1 : 1))[0] ??
           null;
@@ -258,9 +332,9 @@ export async function findMostRecentHolders(
       const winner = rankHolderCandidates(candidates);
       if (winner) holders.set(t, winner);
     }
-    return { ok: true, holders };
+    return { failed, holders };
   } catch (error) {
     console.error("[ticker-holder] most-recent-holder lookup failed", error);
-    return { ok: false, holders: new Map() };
+    return { failed: new Set(wanted), holders: new Map() };
   }
 }

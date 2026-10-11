@@ -1428,10 +1428,16 @@ export async function readResidualSignalLatest(): Promise<ResidualSignalSnapshot
 export interface DailyTickerHolderIndex {
   byTicker: Map<string, string[]>;
   byDisplayTicker: Map<string, string[]>;
+  /** `eodhd_code` minus ".US" — the listing the id was last priced under. */
+  byListingTicker: Map<string, string[]>;
   symbols: Set<string>;
+  /** False when `unique_ticker` or `eodhd_code` could not be read. */
+  complete: boolean;
 }
 
 const DAILY_HOLDER_TTL_MS = 30 * 60 * 1000;
+/** An index missing a recall coord is retried after a minute, not the full TTL. */
+const DAILY_HOLDER_PARTIAL_TTL_MS = 60 * 1000;
 let dailyHolderIndexCache: {
   at: number;
   promise: Promise<DailyTickerHolderIndex | null>;
@@ -1456,6 +1462,8 @@ async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | n
 
   const byTicker = new Map<string, string[]>();
   const byDisplayTicker = new Map<string, string[]>();
+  const byListingTicker = new Map<string, string[]>();
+  let complete = true;
   const add = (m: Map<string, string[]>, raw: string | undefined, sym: string) => {
     const t = (raw ?? "").trim().toUpperCase();
     if (EMPTY_COORD_LABELS.has(t)) return;
@@ -1471,7 +1479,10 @@ async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | n
   }
   for (const coord of ["unique_ticker", "eodhd_code"] as const) {
     const values = await readStringCoord(grp, coord);
-    if (!values || values.length !== symByIndex.length) continue;
+    if (!values || values.length !== symByIndex.length) {
+      complete = false;
+      continue;
+    }
     for (let i = 0; i < values.length; i++) {
       const sym = symByIndex[i];
       if (!sym) continue;
@@ -1479,9 +1490,16 @@ async function buildDailyTickerHolderIndex(): Promise<DailyTickerHolderIndex | n
       // the code minus that US suffix. Other codes pass through unchanged.
       const v = coord === "eodhd_code" ? values[i]!.replace(/\.US$/i, "") : values[i];
       add(byTicker, v, sym);
+      if (coord === "eodhd_code") add(byListingTicker, v, sym);
     }
   }
-  return { byTicker, byDisplayTicker, symbols: new Set(symByIndex.filter(Boolean)) };
+  return {
+    byTicker,
+    byDisplayTicker,
+    byListingTicker,
+    symbols: new Set(symByIndex.filter(Boolean)),
+    complete,
+  };
 }
 
 /** Cached ds_daily ticker-holder index (null when the store is unavailable). */
@@ -1491,9 +1509,14 @@ export async function readDailyTickerHolderIndex(): Promise<DailyTickerHolderInd
   }
   const promise = buildDailyTickerHolderIndex().catch(() => null);
   dailyHolderIndexCache = { at: Date.now(), promise };
-  // A failed open must not pin a null index for the whole TTL.
+  // A failed open must not pin a null index for the whole TTL, and a partial
+  // one (a recall coord unreadable) is retried after a minute.
   promise.then((v) => {
-    if (v === null && dailyHolderIndexCache?.promise === promise) dailyHolderIndexCache = null;
+    if (dailyHolderIndexCache?.promise !== promise) return;
+    if (v === null) dailyHolderIndexCache = null;
+    else if (!v.complete) {
+      dailyHolderIndexCache.at = Date.now() - DAILY_HOLDER_TTL_MS + DAILY_HOLDER_PARTIAL_TTL_MS;
+    }
   });
   return promise;
 }
