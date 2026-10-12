@@ -16,7 +16,7 @@ import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { PortfolioExposureRequestSchema } from "@/lib/api/schemas";
-import { computePortfolioExposure } from "@/lib/portfolio/signed-exposure-data";
+import { asOfBeforeEarliest, computePortfolioExposure } from "@/lib/portfolio/signed-exposure-data";
 import { getCorsHeaders } from "@/lib/cors";
 
 export const runtime = "nodejs";
@@ -59,6 +59,12 @@ export const POST = withBilling(
     }
 
     const { positions, lookback_days, hedge_level, as_of } = validation.data;
+
+    const earliestErr = asOfBeforeEarliest(as_of);
+    if (earliestErr) {
+      // Before any model data is read: a 4xx, so not billed.
+      return NextResponse.json(earliestErr, { status: 422, headers: getCorsHeaders(origin) });
+    }
 
     try {
       const fetchStart = performance.now();

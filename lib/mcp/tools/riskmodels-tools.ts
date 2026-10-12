@@ -602,7 +602,7 @@ export function registerRiskModelsTools(
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional()
-          .describe("Past model date YYYY-MM-DD (2006-01-01 or later); omit for the latest"),
+          .describe("Past model date YYYY-MM-DD (2011-12-07 or later; before 2013-01-01 lstar uses L3); omit for the latest"),
       },
     },
     async ({ positions, hedge_level, lookback_days, as_of }) => {

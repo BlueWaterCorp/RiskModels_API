@@ -1906,7 +1906,7 @@
       "as_of": {
         "type": "string",
         "required": false,
-        "description": "Past model date YYYY-MM-DD (2006-01-01 or later). Omit for the latest. Same price."
+        "description": "Past model date YYYY-MM-DD (2011-12-07 or later; earlier dates return 422). Omit for the latest. Same price. Before 2013-01-01, hedge_level lstar uses L3 for every name."
       },
       "hedge_level": {
         "type": "string",

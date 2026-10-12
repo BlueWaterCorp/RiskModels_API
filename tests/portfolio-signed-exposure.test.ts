@@ -285,9 +285,46 @@ describe("L* basis (default)", () => {
     expect(out.coverage.excluded_from_lstar).toEqual([]);
   });
 
-  it("excludes a name with no L* instead of falling back, and reports it", () => {
+  it("uses L3 for a name with no L* (pre-2013 dates), counts it under l3 and warns", () => {
     const out = computeSignedExposure({
-      stocks: [stock("A", 100_000, withLevels(3)), stock("NOL", 10_000, withLevels(null))],
+      stocks: [stock("A", 100_000, withLevels(1)), stock("NOL", 10_000, withLevels(null))],
+      directEtfs: [],
+      inputGrossUsd: 110_000,
+      cov: COV,
+    });
+    expect(out.coverage.excluded_from_lstar).toEqual([]);
+    expect((out.hedges.lstar as any).names_by_level).toEqual({ l1: 1, l2: 0, l3: 1 });
+    // A at L1 (SPY only); NOL at L3 (three legs).
+    const trade = (out.hedges.lstar as any).stock_hedge_trade_usd;
+    expect(trade.SPY).toBeCloseTo(100_000 * -1.8 + 10_000 * -0.5, 2);
+    expect(trade.XLK).toBeCloseTo(10_000 * -0.4, 2);
+    expect(trade.SMH).toBeCloseTo(10_000 * -0.7, 2);
+    // Residual: A at l1_res_er, NOL at l3_res_er.
+    expect((out.risk as any).residual.daily_variance_usd2).toBeCloseTo(
+      100_000 ** 2 * 9e-4 * 0.6 + 10_000 ** 2 * 9e-4 * 0.4,
+      4,
+    );
+    expect(out.coverage.by_calculation.hedge_lstar).toBeCloseTo(1, 4);
+    const w = out.warnings.find((x) => x.code === "lstar_unavailable_l3_fallback")!;
+    expect(w.tickers).toEqual(["NOL"]);
+    expect(w.message).toBe(
+      "L* hedge levels are published from 2013-01-01. 1 name has no L* level at this date and uses L3 instead (counted under l3 in names_by_level).",
+    );
+  });
+
+  it("the L3 fallback matches an explicit l3 request when no name has L*", () => {
+    const stocks = [stock("A", 100_000, withLevels(null)), stock("B", -40_000, { ...AMD, lstar_level: null })];
+    const fb = computeSignedExposure({ stocks, directEtfs: [], inputGrossUsd: 140_000, cov: COV });
+    const l3 = computeSignedExposure({ stocks, directEtfs: [], inputGrossUsd: 140_000, cov: COV, basis: "l3" });
+    expect((fb.hedges.lstar as any).stock_hedge_trade_usd).toEqual((l3.hedges.l3 as any).stock_hedge_trade_usd);
+    expect((fb.risk as any).total).toEqual((l3.risk as any).total);
+    expect(fb.warnings.find((w) => w.code === "lstar_unavailable_l3_fallback")!.message).toMatch(/2 names have no L\* level/);
+  });
+
+  it("excludes a name with neither L* nor complete L3 data, without a fallback warning", () => {
+    const { l3_sub_hr: _drop, ...noL3 } = withLevels(null);
+    const out = computeSignedExposure({
+      stocks: [stock("A", 100_000, withLevels(3)), stock("NOL", 10_000, noL3)],
       directEtfs: [],
       inputGrossUsd: 110_000,
       cov: COV,
@@ -295,10 +332,19 @@ describe("L* basis (default)", () => {
     expect(out.coverage.excluded_from_lstar).toMatchObject([{ ticker: "NOL", value_usd: 10_000, reason: "no_lstar" }]);
     expect(out.coverage.excluded_from_lstar[0]!.detail).toMatch(/No L\* level/);
     expect((out.hedges.lstar as any).names_by_level).toEqual({ l1: 0, l2: 0, l3: 1 });
-    // NOL contributes to neither the hedge nor the residual.
     expect((out.hedges.lstar as any).stock_hedge_trade_usd.SPY).toBeCloseTo(100_000 * -0.5, 2);
-    expect((out.risk as any).residual.daily_variance_usd2).toBeCloseTo(100_000 ** 2 * 9e-4 * 0.4, 4);
     expect(out.coverage.by_calculation.hedge_lstar).toBeCloseTo(100_000 / 110_000, 4);
+    expect(out.warnings.map((w) => w.code)).not.toContain("lstar_unavailable_l3_fallback");
+  });
+
+  it("names with L* get no fallback warning", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("A", 100_000, withLevels(2))],
+      directEtfs: [],
+      inputGrossUsd: 100_000,
+      cov: COV,
+    });
+    expect(out.warnings.map((w) => w.code)).not.toContain("lstar_unavailable_l3_fallback");
   });
 
   it("excludes a name whose L* level lacks data", () => {
