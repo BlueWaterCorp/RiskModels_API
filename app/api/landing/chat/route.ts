@@ -37,6 +37,8 @@ import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
  */
 
 export const dynamic = "force-dynamic";
+// Two tool rounds plus synthesis on a reasoning model take ~55s; match /api/chat.
+export const maxDuration = 120;
 
 const MAG7_ALLOWLIST = new Set([
   "AAPL",
