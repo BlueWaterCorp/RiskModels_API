@@ -11,7 +11,21 @@ Manifest: [`server.json`](./server.json) (schema `2025-12-11`).
 production, so listing it requires **no npm publish, no build, no `mcpName`** —
 just GitHub auth. The stdio npm package is a fast-follow (see below).
 
-### Steps (require GitHub auth as a BlueWaterCorp org member)
+## Automated: GitHub Actions (preferred)
+
+`.github/workflows/publish-mcp-registry.yml` publishes `mcp/server.json` with
+`mcp-publisher login github-oidc`, authenticating as this repository, so no
+personal login is needed. It runs on every push to `main` that changes
+`mcp/server.json`, and on demand (`gh workflow run publish-mcp-registry.yml`).
+Release order: publish `@riskmodels/mcp` to npm by hand (2FA), then merge the
+version bump in `mcp/server.json`; the workflow checks that the npm version
+exists before publishing.
+
+Manual `mcp-publisher login github` only works if the "MCP Registry Login"
+GitHub App can see your BlueWaterCorp membership (it is not installed on the
+org), so it grants `io.github.<your-user>/*` only and the publish returns 403.
+
+### Manual steps (require GitHub auth as a BlueWaterCorp org member)
 
 1. **Install the publisher CLI** (`mcp-publisher`):
    download from https://github.com/modelcontextprotocol/registry/releases
