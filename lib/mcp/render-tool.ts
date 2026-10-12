@@ -13,6 +13,7 @@ import {
   textResult,
   errorResult,
   toolErrorResult,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type McpLikeServer,
 } from "@/lib/mcp/tools/riskmodels-tools";
 
@@ -34,7 +35,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
       title: "RiskModels Artifact Registry Render",
       description:
         "Renders a chart or table from the RiskModels artifact registry for a stock (BW-STOCK-{TICKER}), a watchlist of up to 12 tickers (BW-STOCK-WATCHLIST with subject_payload.tickers), a mutual fund (BW-FUND-…), a 13F filer (BW-FILER-…) or a client portfolio (BW-PORTFOLIO-… with subject_payload.positions). format json returns the chart's data, table and narrative; png returns the rendered image as MCP image content with its resolved date and receipt id; svg returns a base64 SVG; figure returns a Plotly figure spec (Plotly-backed slugs only). risk_comparison puts several tickers on one shared risk-composition axis. A watchlist is resolved to ONE shared date (the oldest latest close in the set, or an explicit as_of), returned as resolved_as_of; tickers with no data on that date are listed in as_of_alignment.excluded. cumulative_return_paths accepts params.window (3m, 6m, 1y, 2y or max; default 1y); its fitted factor paths are not ETF returns.",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       _meta: {
         ui: { resourceUri: CHART_WIDGET_URI },
         "openai/outputTemplate": CHART_WIDGET_URI,

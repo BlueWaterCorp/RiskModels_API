@@ -24,6 +24,7 @@ import { z } from "zod";
 import {
   createRiskModelsSdk,
   withAnnotationTitles,
+  READ_ONLY_TOOL_ANNOTATIONS,
   registerRiskModelsPrompts,
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
@@ -324,7 +325,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "riskmodels_list_endpoints",
     {
       title: "List RiskModels API Endpoints",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: LIST_ENDPOINTS_DESCRIPTION,
     },
     async () => {
@@ -347,7 +348,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "riskmodels_get_capability",
     {
       title: "Get RiskModels Capability Details",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: GET_CAPABILITY_DESCRIPTION,
       inputSchema: {
         id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
@@ -370,7 +371,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "riskmodels_get_schema",
     {
       title: "Get RiskModels Response Schema",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: GET_SCHEMA_DESCRIPTION,
       inputSchema: {
         path: z.string().describe("Schema path or filename"),
@@ -394,7 +395,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "get_l3_decomposition",
     {
       title: "L3 Hierarchical Risk Decomposition",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Daily hierarchical risk decomposition for one ticker (GET /l3-decomposition): market, sector, subsector and residual as parallel daily time series, plus hedge ratios. Inputs: ticker; market factor ETF (default SPY); years of history (1-15, default 1). Updated daily after the US close.",
       inputSchema: {
@@ -421,7 +422,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "get_metrics",
     {
       title: "Latest Risk Metrics Snapshot",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Latest end-of-day risk metrics for one ticker (GET /metrics/{ticker}): L1, L2 and L3 hedge ratios to SPY and the sector and subsector ETFs, explained-risk shares, daily volatility, closing price and market cap.",
       inputSchema: {
@@ -444,7 +445,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
     "get_portfolio_risk_snapshot",
     {
       title: "Portfolio Risk Snapshot",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Risk report for a long-only portfolio of up to 100 positions with positive weights (POST /portfolio/risk-snapshot): variance decomposition into market, sector, subsector and residual, 23-day volatility, and optional diversification analytics. Results are cached for one hour per user and portfolio.",
       inputSchema: {
