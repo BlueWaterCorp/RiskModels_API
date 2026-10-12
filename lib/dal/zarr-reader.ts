@@ -19,7 +19,7 @@ import {
   tryWithConsolidated,
   UnicodeStringArray,
 } from "zarrita";
-import type { Group } from "zarrita";
+import type { Array as ZarrArray, DataType, Group } from "zarrita";
 import {
   parseZarrGcsPrefix,
   getZarrFactorSetId,
@@ -152,7 +152,35 @@ class GcsZarrStore {
     promise.catch(() => zarrChunkCache.delete(objectName));
     return promise;
   }
+
+  /** Bytes [start, end) of one object (fewer at its end); undefined if it does not exist. */
+  async getByteRange(key: AbsolutePath, start: number, end: number): Promise<Uint8Array | undefined> {
+    const rel = key.startsWith("/") ? key.slice(1) : key;
+    const objectName = `${this.zarrObjectPrefix}/${rel}`.replace(/\/+/g, "/");
+    const cacheKey = `${objectName}#${start}-${end}`;
+    const cached = zarrChunkCacheGet(cacheKey);
+    if (cached) return cached;
+    const promise = (async () => {
+      try {
+        const [buf] = await this.bucket
+          .file(objectName)
+          .download({ start, end: end - 1, validation: false });
+        return new Uint8Array(buf);
+      } catch (e: unknown) {
+        const err = e as { code?: number };
+        if (err?.code === 404 || err?.code === 416) return undefined;
+        console.error("[zarr-internal] storage range read failed");
+        throw new Error("Zarr read failed");
+      }
+    })();
+    zarrChunkCacheSet(cacheKey, promise);
+    promise.catch(() => zarrChunkCache.delete(cacheKey));
+    return promise;
+  }
 }
+
+/** Group → its raw GCS store, for byte-range reads that bypass zarrita. */
+const rawStoreByGroup = new WeakMap<object, GcsZarrStore>();
 
 async function openZarrGroupUncached(
   objectPrefix: string,
@@ -164,7 +192,9 @@ async function openZarrGroupUncached(
     const raw = new GcsZarrStore(bucket, fullPrefix);
     const consolidated = await tryWithConsolidated(raw);
     const store = consolidated as unknown as Readable;
-    return (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
+    const grp = (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
+    rawStoreByGroup.set(grp, raw);
+    return grp;
   } catch {
     console.error("[zarr-internal] open group failed");
     if (
@@ -391,62 +421,324 @@ async function readFloatRowAtTeo(
   }
 }
 
-/** Read a single (teo-slice, symIdx) column from a flat 2D array. Handles
- *  Float32/Float64 (with NaN→null) AND integer typed arrays (Uint8/Int8/
- *  Uint16/Int16/Int32) for companion vars like `lstar_level`. */
-async function readNumericSeriesTeoSymbol(
+// ---------------------------------------------------------------------
+// Partial chunk reads: only the blosc blocks a short date window needs.
+// ---------------------------------------------------------------------
+//
+// The ERM3 stores are chunked [whole teo axis, 64 symbols] (~1.7 MB raw,
+// ~1 MB compressed), and a blosc-1 chunk is a sequence of independently
+// compressed blocks (512 KB raw here) with a table of their offsets in the
+// header. A read of a few dates (POST /portfolio/exposure with as_of) needs
+// one block of four, so it fetches the header and that block by byte range
+// and decodes only them. Anything this reader does not recognise returns
+// null and the caller decodes the whole chunk through zarrita as before.
+
+/** Raw LZ4 block decode of src[sStart, sEnd) into exactly dst[dStart, dStart + dLen). */
+function lz4DecodeInto(
+  src: Uint8Array,
+  sStart: number,
+  sEnd: number,
+  dst: Uint8Array,
+  dStart: number,
+  dLen: number,
+): boolean {
+  let ip = sStart;
+  let op = dStart;
+  const oEnd = dStart + dLen;
+  while (ip < sEnd) {
+    const token = src[ip++]!;
+    let lit = token >>> 4;
+    if (lit === 15) {
+      let b: number;
+      do {
+        if (ip >= sEnd) return false;
+        b = src[ip++]!;
+        lit += b;
+      } while (b === 255);
+    }
+    if (ip + lit > sEnd || op + lit > oEnd) return false;
+    dst.set(src.subarray(ip, ip + lit), op);
+    ip += lit;
+    op += lit;
+    if (ip === sEnd) break; // the last sequence carries literals only
+    if (ip + 2 > sEnd) return false;
+    const off = src[ip]! | (src[ip + 1]! << 8);
+    ip += 2;
+    if (off === 0 || op - off < dStart) return false;
+    let ml = token & 15;
+    if (ml === 15) {
+      let b: number;
+      do {
+        if (ip >= sEnd) return false;
+        b = src[ip++]!;
+        ml += b;
+      } while (b === 255);
+    }
+    ml += 4;
+    if (op + ml > oEnd) return false;
+    const mp = op - off;
+    if (off >= ml) dst.copyWithin(op, mp, mp + ml);
+    else for (let k = 0; k < ml; k++) dst[op + k] = dst[mp + k]!;
+    op += ml;
+  }
+  return op === oEnd;
+}
+
+/** One blosc-1 block (lz4, optional byte shuffle) from comp[cs, ce); null if it does not parse exactly. */
+function decodeBloscBlock(
+  comp: Uint8Array,
+  cs: number,
+  ce: number,
+  bsize: number,
+  typesize: number,
+  flags: number,
+  leftover: boolean,
+): Uint8Array | null {
+  const dv = new DataView(comp.buffer, comp.byteOffset, comp.byteLength);
+  const preferred = !(flags & 0x10) && !leftover ? typesize : 1;
+  for (const nsplits of preferred === 1 ? [1] : [preferred, 1]) {
+    if (bsize % nsplits !== 0) continue;
+    const neblock = bsize / nsplits;
+    const tmp = new Uint8Array(bsize);
+    let pos = cs;
+    let ok = true;
+    for (let k = 0; k < nsplits && ok; k++) {
+      if (pos + 4 > ce) {
+        ok = false;
+        break;
+      }
+      const csize = dv.getInt32(pos, true);
+      pos += 4;
+      if (csize <= 0 || pos + csize > ce) {
+        ok = false;
+      } else if (csize === neblock) {
+        tmp.set(comp.subarray(pos, pos + csize), k * neblock);
+      } else {
+        ok = lz4DecodeInto(comp, pos, pos + csize, tmp, k * neblock, neblock);
+      }
+      pos += csize;
+    }
+    if (!ok || pos !== ce) continue;
+    if (!(flags & 0x1) || typesize <= 1) return tmp;
+    // Byte unshuffle: element i's byte j sits at j * n + i.
+    const out = new Uint8Array(bsize);
+    const n = Math.floor(bsize / typesize);
+    for (let j = 0; j < typesize; j++) {
+      const base = j * n;
+      for (let i = 0; i < n; i++) out[i * typesize + j] = tmp[base + i]!;
+    }
+    out.set(tmp.subarray(n * typesize), n * typesize);
+    return out;
+  }
+  return null;
+}
+
+/**
+ * Uncompressed bytes [byteStart, byteEnd) of one blosc-1 chunk object,
+ * fetching only the header and the blocks that cover them. undefined: the
+ * object does not exist (fill value). null: not a layout handled here, or the
+ * range spans every block anyway — decode the whole chunk instead.
+ */
+async function readBloscByteRange(
+  raw: GcsZarrStore,
+  key: AbsolutePath,
+  byteStart: number,
+  byteEnd: number,
+): Promise<Uint8Array | null | undefined> {
+  let head = await raw.getByteRange(key, 0, 256);
+  if (head === undefined) return undefined;
+  if (head.length < 16) return null;
+  let dv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  const version = head[0]!;
+  const flags = head[2]!;
+  const typesize = head[3]!;
+  const nbytes = dv.getInt32(4, true);
+  const blocksize = dv.getInt32(8, true);
+  const cbytes = dv.getInt32(12, true);
+  // blosc-1 format 2, lz4 (compformat 1), not memcpyed, no bit-shuffle.
+  if (version !== 2 || flags & 0x2 || flags & 0x4 || flags >> 5 !== 1) return null;
+  if (typesize < 1 || blocksize <= 0 || nbytes <= 0 || byteEnd > nbytes || byteStart >= byteEnd) {
+    return null;
+  }
+  const nblocks = Math.ceil(nbytes / blocksize);
+  const b0 = Math.floor(byteStart / blocksize);
+  const b1 = Math.floor((byteEnd - 1) / blocksize);
+  if (b1 - b0 + 1 >= nblocks) return null;
+  const hdrLen = 16 + 4 * nblocks;
+  if (hdrLen > head.length) {
+    const h = await raw.getByteRange(key, 0, hdrLen);
+    if (!h || h.length < hdrLen) return null;
+    head = h;
+    dv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  }
+  // Blocks are written in completion order when blosc compresses with several
+  // threads, so offsets are not monotonic: a block ends where the next-higher
+  // offset (or the chunk) begins.
+  const starts: number[] = [];
+  for (let b = 0; b < nblocks; b++) starts.push(dv.getInt32(16 + 4 * b, true));
+  const sorted = [...starts].sort((a, b) => a - b);
+  if (sorted[0]! < hdrLen || sorted[nblocks - 1]! >= cbytes) return null;
+  for (let k = 1; k < nblocks; k++) if (sorted[k]! <= sorted[k - 1]!) return null;
+  const blockEnd = (start: number) => {
+    const k = sorted.indexOf(start);
+    return k + 1 < nblocks ? sorted[k + 1]! : cbytes;
+  };
+
+  const out = new Uint8Array((b1 - b0 + 1) * blocksize);
+  for (let b = b0; b <= b1; b++) {
+    const from = starts[b]!;
+    const to = blockEnd(from);
+    const comp = await raw.getByteRange(key, from, to);
+    if (!comp || comp.length !== to - from) return null;
+    const leftover = b === nblocks - 1 && nbytes % blocksize !== 0;
+    const bsize = leftover ? nbytes % blocksize : blocksize;
+    const block = decodeBloscBlock(comp, 0, comp.length, bsize, typesize, flags, leftover);
+    if (!block) return null;
+    out.set(block, (b - b0) * blocksize);
+  }
+  return out.subarray(byteStart - b0 * blocksize, byteEnd - b0 * blocksize);
+}
+
+interface ZArrayMeta {
+  chunks: number[];
+  dtype: string;
+  order: string;
+  compressor: { id?: string } | null;
+  filters: unknown[] | null;
+  dimension_separator?: string;
+}
+
+const zarrayMetaCache = new WeakMap<object, Map<string, Promise<ZArrayMeta | null>>>();
+
+/** `.zarray` of one variable, from the group's consolidated metadata. */
+function readZArrayMeta(grp: Group<Readable>, varName: string): Promise<ZArrayMeta | null> {
+  let byVar = zarrayMetaCache.get(grp);
+  if (!byVar) {
+    byVar = new Map();
+    zarrayMetaCache.set(grp, byVar);
+  }
+  let p = byVar.get(varName);
+  if (!p) {
+    p = (async () => {
+      try {
+        const bytes = await grp.store.get(`${grp.resolve(varName).path}/.zarray` as AbsolutePath);
+        return bytes ? (JSON.parse(new TextDecoder().decode(bytes)) as ZArrayMeta) : null;
+      } catch {
+        return null;
+      }
+    })();
+    byVar.set(varName, p);
+  }
+  return p;
+}
+
+/**
+ * Partial-read path of readColumnBlock: little-endian float32, C order,
+ * blosc compressor and no filters; the rows inside one teo chunk. Returns
+ * null whenever the full-chunk path should be used instead.
+ */
+async function readColumnBlockPartial(
   grp: Group<Readable>,
   varName: string,
-  t0: number,
-  t1: number,
-  symIdx: number,
-): Promise<(number | null)[] | null> {
-  try {
-    const loc = grp.resolve(varName);
-    const arr = await open.v2(loc, { kind: "array" });
-    const ch = await get(arr, [slice(t0, t1), symIdx]);
-    const d = ch?.data;
-    if (d instanceof Float32Array || d instanceof Float64Array) {
-      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+  sel: { t0: number; t1: number; levelIdx?: number },
+  symIdxs: number[],
+): Promise<(number | null)[][] | null> {
+  // Ops kill switch: ZARR_PARTIAL_READS=0 always decodes whole chunks.
+  if (process.env.ZARR_PARTIAL_READS === "0") return null;
+  const raw = rawStoreByGroup.get(grp);
+  if (!raw || sel.t1 <= sel.t0) return null;
+  const meta = await readZArrayMeta(grp, varName);
+  if (
+    !meta ||
+    meta.dtype !== "<f4" ||
+    meta.order !== "C" ||
+    meta.compressor?.id !== "blosc" ||
+    (meta.filters != null && meta.filters.length > 0)
+  ) {
+    return null;
+  }
+  const nd = sel.levelIdx === undefined ? 2 : 3;
+  if (meta.chunks.length !== nd) return null;
+  const [CT, CW] = meta.chunks as [number, number];
+  const CL = nd === 3 ? meta.chunks[2]! : 1;
+  const l = sel.levelIdx ?? 0;
+  if (nd === 3 && l >= CL) return null; // level axis split across chunks
+  const tc = Math.floor(sel.t0 / CT);
+  if (Math.floor((sel.t1 - 1) / CT) !== tc) return null;
+  const c0 = Math.min(...symIdxs);
+  const c1 = Math.max(...symIdxs) + 1;
+  const sc = Math.floor(c0 / CW);
+  if (Math.floor((c1 - 1) / CW) !== sc) return null;
+
+  // Element offset inside the (full-size, C-order) chunk.
+  const at = (t: number, s: number) => ((t - tc * CT) * CW + (s - sc * CW)) * CL + l;
+  const e0 = at(sel.t0, c0);
+  const e1 = at(sel.t1 - 1, c1 - 1) + 1;
+  const sep = meta.dimension_separator ?? ".";
+  const coords = nd === 3 ? [tc, sc, 0] : [tc, sc];
+  const key = `${grp.resolve(varName).path}/${coords.join(sep)}` as AbsolutePath;
+  const bytes = await readBloscByteRange(raw, key, e0 * 4, e1 * 4);
+  if (!bytes) return null;
+  const f32 = new Float32Array(bytes.slice().buffer);
+  const T = sel.t1 - sel.t0;
+  return symIdxs.map((j) => {
+    const out = new Array<number | null>(T);
+    for (let i = 0; i < T; i++) {
+      const x = f32[at(sel.t0 + i, j) - e0]!;
+      out[i] = Number.isFinite(x) ? x : null;
     }
-    if (
+    return out;
+  });
+}
+
+/**
+ * Columns `symIdxs` (all inside one symbol chunk) of a (teo, symbol) or
+ * (teo, symbol, level) array over rows [t0, t1), in one get: one chunk
+ * decode however many names it serves. Values convert exactly as the
+ * per-(symbol, key) readers this replaced did: float mode reads Float32/Float64
+ * only (NaN → null); numeric mode also passes integer arrays through.
+ */
+async function readColumnBlock(
+  grp: Group<Readable>,
+  varName: string,
+  arr: ZarrArray<DataType, Readable>,
+  sel: { t0: number; t1: number; levelIdx?: number; mode: "float" | "numeric" },
+  symIdxs: number[],
+): Promise<(number | null)[][] | null> {
+  try {
+    const partial = await readColumnBlockPartial(grp, varName, sel, symIdxs).catch(() => null);
+    if (partial) return partial;
+    const c0 = Math.min(...symIdxs);
+    const c1 = Math.max(...symIdxs) + 1;
+    const ch = await get(
+      arr,
+      sel.levelIdx === undefined
+        ? [slice(sel.t0, sel.t1), slice(c0, c1)]
+        : [slice(sel.t0, sel.t1), slice(c0, c1), sel.levelIdx],
+    );
+    const d = ch?.data;
+    const isFloat = d instanceof Float32Array || d instanceof Float64Array;
+    const isInt =
       d instanceof Uint8Array ||
       d instanceof Int8Array ||
       d instanceof Uint16Array ||
       d instanceof Int16Array ||
       d instanceof Int32Array ||
-      d instanceof Uint32Array
-    ) {
-      return Array.from(d, (x) => x as number);
-    }
-    return null;
+      d instanceof Uint32Array;
+    if (!isFloat && !(sel.mode === "numeric" && isInt)) return null;
+    const vals = d as ArrayLike<number>;
+    const [s0, s1] = ch.stride as number[];
+    const T = sel.t1 - sel.t0;
+    return symIdxs.map((j) => {
+      const out = new Array<number | null>(T);
+      const off = (j - c0) * s1!;
+      for (let i = 0; i < T; i++) {
+        const x = vals[i * s0! + off]!;
+        out[i] = isFloat ? (Number.isFinite(x) ? x : null) : x;
+      }
+      return out;
+    });
   } catch {
-    return null;
-  }
-}
-
-async function readFloatSeriesTeoSymbolLevel(
-  grp: Group<Readable>,
-  varName: string,
-  t0: number,
-  t1: number,
-  symIdx: number,
-  levelIdx: number,
-): Promise<(number | null)[] | null> {
-  try {
-    const loc = grp.resolve(varName);
-    const arr = await open.v2(loc, { kind: "array" });
-    const ch = await get(arr, [slice(t0, t1), symIdx, levelIdx]);
-    const d = ch?.data;
-    if (d instanceof Float32Array) {
-      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
-    }
-    if (d instanceof Float64Array) {
-      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
-    }
-    return null;
-  } catch {
-    // Try alternate dimension order (symbol, teo, level) — unlikely; ignore.
     return null;
   }
 }
@@ -519,6 +811,9 @@ function logSliceTelemetry(
     }),
   );
 }
+
+/** Windows up to this many trading days use the wider short-window read pool. */
+const SHORT_WINDOW_ROWS = 64;
 
 /** History slices above this many rows (~5 MB serialized) are not cached. */
 export const MAX_CACHED_SLICE_ROWS = 50_000;
@@ -664,11 +959,28 @@ export async function readHistorySlice(
   const rangeStart = validWindow ? (dailyTeo[dt0] ?? effStart) : "";
   const rangeEnd = validWindow ? (dailyTeo[Math.max(0, dt1 - 1)] ?? effEnd) : "";
 
-  // One independent read per (symbol, key) pair. The body is unchanged from
-  // the old sequential loop — only `continue` became `return rows` and the
-  // pair's rows collect into a local array.
-  const readOne = async (
-    symbol: string,
+  // Reads are grouped by (store variable, symbol chunk). Every store here is
+  // chunked [whole teo axis, 64 symbols], and zarrita decodes the whole chunk
+  // (~1.7 MB) on every get, however few cells are selected. One get per
+  // (symbol, key) decoded each chunk once per name in it: ~13k decodes for a
+  // 925-name, 14-key book (~160 s, a 504 on POST /portfolio/exposure with
+  // as_of). One get per (variable, chunk) decodes each chunk once. The
+  // routing below (which store, which variable, how a value maps) is the same
+  // as the old per-pair reader; only the read is shared.
+  interface ReadTarget {
+    grp: Group<Readable>;
+    varName: string;
+    levelIdx?: number;
+    t0: number;
+    t1: number;
+    teo: string[];
+    /** float: Float32/64 only, NaN → null. numeric: also integer arrays. */
+    mode: "float" | "numeric";
+    toValue: (v: number | null) => number | null;
+  }
+  const same = (v: number | null) => v;
+
+  const route = (
     key: V3MetricKey,
     idxs: {
       dailyIdx: number | undefined;
@@ -676,199 +988,167 @@ export async function readHistorySlice(
       hedgeIdx: number | undefined;
       returnsIdx: number | undefined;
     },
-  ): Promise<SecurityHistoryRow[]> => {
-    const rows: SecurityHistoryRow[] = [];
+  ): { store: string; idx: number; target: ReadTarget } | null => {
     const { dailyIdx, etfIdx, hedgeIdx, returnsIdx } = idxs;
     const spec = getZarrSpec(key);
-    if (!spec) return rows;
+    if (!spec) return null;
 
     if (spec.role === "daily") {
       // Stock path first.
-      if (dailyIdx !== undefined && dt1 > dt0) {
-        const vals = await readFloatSeriesTeoSymbol(
-          dailyGrp,
-          spec.zarrVar,
-          dt0,
-          dt1,
-          dailyIdx,
-        );
-        if (vals) {
-          for (let i = 0; i < vals.length; i++) {
-            const teoStr = dailyTeo[dt0 + i];
-            if (!teoStr) continue;
-            rows.push({
-              symbol,
-              teo: teoStr,
-              periodicity: "daily",
-              metric_key: key,
-              metric_value: vals[i] ?? null,
-            });
-          }
-          return rows;
-        }
+      if (dailyIdx !== undefined) {
+        if (dt1 <= dt0) return null;
+        return {
+          store: "daily",
+          idx: dailyIdx,
+          target: { grp: dailyGrp, varName: spec.zarrVar, t0: dt0, t1: dt1, teo: dailyTeo, mode: "float", toValue: same },
+        };
       }
-      // ETF path fallback: only if the symbol wasn't in ds_daily at all
-      // (so we don't double-read for a symbol that just happens to have
-      // an empty daily series for some reason).
-      if (
-        dailyIdx === undefined &&
-        etfGrp &&
-        etfIdx !== undefined &&
-        etfTeo?.length &&
-        etfT1 > etfT0
-      ) {
-        const vals = await readFloatSeriesTeoSymbol(
-          etfGrp,
-          spec.zarrVar,
-          etfT0,
-          etfT1,
-          etfIdx,
-        );
-        if (vals) {
-          for (let i = 0; i < vals.length; i++) {
-            const teoStr = etfTeo[etfT0 + i];
-            if (!teoStr) continue;
-            rows.push({
-              symbol,
-              teo: teoStr,
-              periodicity: "daily",
-              metric_key: key,
-              metric_value: vals[i] ?? null,
-            });
-          }
-        }
+      // ETF path: only if the symbol isn't in ds_daily at all.
+      if (etfGrp && etfIdx !== undefined && etfTeo?.length && etfT1 > etfT0) {
+        return {
+          store: "etf",
+          idx: etfIdx,
+          target: { grp: etfGrp, varName: spec.zarrVar, t0: etfT0, t1: etfT1, teo: etfTeo, mode: "float", toValue: same },
+        };
       }
-      return rows;
+      return null;
     }
 
     if (spec.role === "hedge") {
-      if (!hedgeGrp || hedgeIdx === undefined || !hedgeTeo || ht1 <= ht0) return rows;
+      if (!hedgeGrp || hedgeIdx === undefined || !hedgeTeo || ht1 <= ht0) return null;
       const isVolDerived = "derivedVol23d" in spec && spec.derivedVol23d;
       const isStockVarRaw = "asStockVar" in spec && spec.asStockVar;
       const zarrVar = isVolDerived || isStockVarRaw ? "_stock_var" : spec.zarrVar;
-      const raw = await readFloatSeriesTeoSymbol(
-        hedgeGrp,
-        zarrVar,
-        ht0,
-        ht1,
-        hedgeIdx,
-      );
-      if (!raw) return rows;
-      for (let i = 0; i < raw.length; i++) {
-        const teoStr = hedgeTeo[ht0 + i];
-        if (!teoStr) continue;
-        const sv = raw[i];
-        let mv: number | null;
-        if (isVolDerived) {
-          mv = sv != null && Number.isFinite(sv) && sv >= 0 ? Math.sqrt(sv * 252) : null;
-        } else {
-          mv = sv ?? null;
-        }
-        rows.push({
-          symbol,
-          teo: teoStr,
-          periodicity: "daily",
-          metric_key: key,
-          metric_value: mv,
-        });
-      }
-      return rows;
+      const toValue = isVolDerived
+        ? (sv: number | null) =>
+            sv != null && Number.isFinite(sv) && sv >= 0 ? Math.sqrt(sv * 252) : null
+        : same;
+      return {
+        store: "hedge",
+        idx: hedgeIdx,
+        target: { grp: hedgeGrp, varName: zarrVar, t0: ht0, t1: ht1, teo: hedgeTeo, mode: "float", toValue },
+      };
     }
 
     if (spec.role === "returns") {
-      if (
-        !returnsGrp ||
-        returnsIdx === undefined ||
-        !returnsTeo ||
-        !levelMaps ||
-        rt1 <= rt0
-      ) return rows;
-      const li = levelMaps.get(spec.level);
-      if (li === undefined) return rows;
-      const vals = await readFloatSeriesTeoSymbolLevel(
-        returnsGrp,
-        spec.zarrVar,
-        rt0,
-        rt1,
-        returnsIdx,
-        li,
-      );
-      if (!vals) return rows;
-      for (let i = 0; i < vals.length; i++) {
-        const teoStr = returnsTeo[rt0 + i];
-        if (!teoStr) continue;
-        rows.push({
-          symbol,
-          teo: teoStr,
-          periodicity: "daily",
-          metric_key: key,
-          metric_value: vals[i] ?? null,
-        });
+      if (!returnsGrp || returnsIdx === undefined || !returnsTeo || !levelMaps || rt1 <= rt0) {
+        return null;
       }
-      return rows;
+      const li = levelMaps.get(spec.level);
+      if (li === undefined) return null;
+      return {
+        store: "returns",
+        idx: returnsIdx,
+        target: { grp: returnsGrp, varName: spec.zarrVar, levelIdx: li, t0: rt0, t1: rt1, teo: returnsTeo, mode: "float", toValue: same },
+      };
     }
 
     if (spec.role === "returnsFlat") {
-      if (
-        !returnsGrp ||
-        returnsIdx === undefined ||
-        !returnsTeo ||
-        rt1 <= rt0
-      ) return rows;
-      const vals = await readNumericSeriesTeoSymbol(
-        returnsGrp,
-        spec.zarrVar,
-        rt0,
-        rt1,
-        returnsIdx,
-      );
-      if (!vals) return rows;
+      if (!returnsGrp || returnsIdx === undefined || !returnsTeo || rt1 <= rt0) return null;
       const sentinel = spec.nullSentinel;
-      for (let i = 0; i < vals.length; i++) {
-        const teoStr = returnsTeo[rt0 + i];
-        if (!teoStr) continue;
-        const v = vals[i];
-        const mv = (v != null && sentinel !== undefined && v === sentinel) ? null : v ?? null;
-        rows.push({
-          symbol,
-          teo: teoStr,
-          periodicity: "daily",
-          metric_key: key,
-          metric_value: mv,
-        });
-      }
+      return {
+        store: "returns",
+        idx: returnsIdx,
+        target: {
+          grp: returnsGrp,
+          varName: spec.zarrVar,
+          t0: rt0,
+          t1: rt1,
+          teo: returnsTeo,
+          mode: "numeric",
+          toValue: (v) => (v != null && sentinel !== undefined && v === sentinel ? null : v),
+        },
+      };
     }
-    return rows;
+    return null;
   };
 
-  const tasks: Array<() => Promise<SecurityHistoryRow[]>> = [];
+  // (key, store) → the read target and the symbols that read it.
+  const groups = new Map<
+    string,
+    { key: V3MetricKey; target: ReadTarget; members: Array<{ symbol: string; idx: number }> }
+  >();
   for (const symbol of symbols) {
     // Each store has its OWN symbol roster and ordering. Resolve per store.
-    // ETFs live in ds_etf.zarr and are NOT present in ds_daily — the daily-
-    // role branch below falls through to the ETF store when `dailyIdx` is
-    // undefined but `etfIdx` resolves. Hedge/returns branches intentionally
-    // skip ETFs (they don't decompose into factor exposures).
-    const dailyIdx = dailySymMap.get(symbol);
-    const etfIdx = etfSymMap?.get(symbol);
-    const hedgeIdx = hedgeSymMap?.get(symbol);
-    const returnsIdx = returnsSymMap?.get(symbol);
-
+    // ETFs live in ds_etf.zarr and are NOT present in ds_daily — the daily
+    // role falls through to the ETF store when `dailyIdx` is undefined but
+    // `etfIdx` resolves. Hedge/returns roles intentionally skip ETFs (they
+    // don't decompose into factor exposures).
+    const idxs = {
+      dailyIdx: dailySymMap.get(symbol),
+      etfIdx: etfSymMap?.get(symbol),
+      hedgeIdx: hedgeSymMap?.get(symbol),
+      returnsIdx: returnsSymMap?.get(symbol),
+    };
     for (const key of keys) {
-      tasks.push(() =>
-        readOne(symbol, key, { dailyIdx, etfIdx, hedgeIdx, returnsIdx }),
-      );
+      const r = route(key, idxs);
+      if (!r) continue;
+      const gk = `${key}\u0000${r.store}`;
+      const g = groups.get(gk) ?? { key, target: r.target, members: [] };
+      g.members.push({ symbol, idx: r.idx });
+      groups.set(gk, g);
     }
   }
 
-  // Bounded-parallel chunk reads: 20 tickers × 6 keys = 120 independent
-  // GCS round-trips that used to run strictly sequentially — the dominant
-  // /api/snapshot latency. A small worker pool keeps GCS pressure bounded;
-  // the rows.sort below makes output order deterministic regardless of
-  // task completion order. Env-tunable for ops (1 = old sequential behavior).
-  const ZARR_READ_CONCURRENCY = Math.max(
-    1,
-    Number(process.env.ZARR_READ_CONCURRENCY ?? 8) || 8,
+  const tasks: Array<() => Promise<SecurityHistoryRow[]>> = [];
+  await Promise.all(
+    [...groups.values()].map(async ({ key, target, members }) => {
+      let arr: ZarrArray<DataType, Readable>;
+      try {
+        arr = await open.v2(target.grp.resolve(target.varName), { kind: "array" });
+      } catch {
+        return;
+      }
+      const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1);
+      const byChunk = new Map<number, Array<{ symbol: string; idx: number }>>();
+      for (const m of members) {
+        const c = Math.floor(m.idx / chunkW);
+        const list = byChunk.get(c) ?? [];
+        list.push(m);
+        byChunk.set(c, list);
+      }
+      for (const list of byChunk.values()) {
+        tasks.push(async () => {
+          const cols = await readColumnBlock(
+            target.grp,
+            target.varName,
+            arr,
+            target,
+            list.map((m) => m.idx),
+          );
+          const rows: SecurityHistoryRow[] = [];
+          if (!cols) return rows;
+          list.forEach((m, k) => {
+            const vals = cols[k]!;
+            for (let i = 0; i < vals.length; i++) {
+              const teoStr = target.teo[target.t0 + i];
+              if (!teoStr) continue;
+              rows.push({
+                symbol: m.symbol,
+                teo: teoStr,
+                periodicity: "daily",
+                metric_key: key,
+                metric_value: target.toValue(vals[i] ?? null),
+              });
+            }
+          });
+          return rows;
+        });
+      }
+    }),
   );
+
+  // Bounded-parallel chunk reads. A small worker pool keeps GCS pressure
+  // bounded; the rows.sort below makes output order deterministic regardless
+  // of task completion order. A short window (as_of, a single date) reads two
+  // small byte ranges per chunk, so its reads are latency-bound and run wider;
+  // a long window downloads whole chunks (1–10 MB) and stays narrow.
+  // Env-tunable for ops (1 = sequential).
+  const windowRows = Math.max(dt1 - dt0, ht1 - ht0, rt1 - rt0, etfT1 - etfT0);
+  const ZARR_READ_CONCURRENCY =
+    windowRows <= SHORT_WINDOW_ROWS
+      ? Math.max(1, Number(process.env.ZARR_SHORT_READ_CONCURRENCY ?? 48) || 48)
+      : Math.max(1, Number(process.env.ZARR_READ_CONCURRENCY ?? 8) || 8);
   const rows: SecurityHistoryRow[] = [];
   let cursor = 0;
   await Promise.all(
@@ -883,10 +1163,14 @@ export async function readHistorySlice(
     ),
   );
 
+  // Ties (same teo and key) keep the caller's symbol order.
+  const symbolPos = new Map(symbols.map((s, i) => [s, i] as const));
   rows.sort((a, b) => {
     const c = a.teo.localeCompare(b.teo);
     if (c !== 0) return orderBy === "asc" ? c : -c;
-    return a.metric_key.localeCompare(b.metric_key);
+    const k = a.metric_key.localeCompare(b.metric_key);
+    if (k !== 0) return k;
+    return (symbolPos.get(a.symbol) ?? 0) - (symbolPos.get(b.symbol) ?? 0);
   });
 
   const result: ReadHistorySliceResult = {
