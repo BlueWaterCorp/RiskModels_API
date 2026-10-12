@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { appOrigin } from "@/lib/oauth/server";
+import { protectedResourceMetadata } from "@/lib/oauth/protected-resource";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +15,5 @@ export const dynamic = "force-dynamic";
  * continue to work unchanged.
  */
 export async function GET() {
-  const base = await appOrigin();
-  return NextResponse.json(
-    {
-      resource: `${base}/api/mcp/sse`,
-      authorization_servers: [base],
-      bearer_methods_supported: ["header"],
-      resource_documentation: `${base}/docs/agent-integration`,
-    },
-    { headers: { "Cache-Control": "public, max-age=300" } },
-  );
+  return protectedResourceMetadata("/api/mcp/sse");
 }

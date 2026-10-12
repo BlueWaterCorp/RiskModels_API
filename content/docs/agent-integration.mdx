@@ -204,11 +204,19 @@ ChatGPT supports custom remote MCP servers, but the UI is hidden until **Develop
 
 1. **Settings → Apps & Connectors → Advanced settings** → enable **Developer mode** (Plus / Pro / Business / Enterprise / Edu; web only).
 2. **Apps & Connectors → Create** (button appears after step 1).
-3. **Connector URL:** `https://riskmodels.app/api/mcp/sse`
+3. **Connector URL:** `https://riskmodels.app/api/mcp/openai`
 4. Choose **OAuth** (not a static API key). Complete sign-in at riskmodels.app when prompted.
-5. Enable the tools you want (e.g. `riskmodels_decompose`, `riskmodels_get_lstar`, `riskmodels_analyze_portfolio`).
+5. Enable the tools you want (e.g. `riskmodels_decompose`, `riskmodels_get_residual_returns`, `riskmodels_analyze_portfolio`).
 
-Machine-readable discovery: [`/.well-known/mcp.json`](/.well-known/mcp.json) · OAuth metadata: [`/.well-known/oauth-protected-resource`](/.well-known/oauth-protected-resource).
+Machine-readable discovery: [`/.well-known/mcp.json`](/.well-known/mcp.json) · OAuth metadata: [`/.well-known/oauth-protected-resource/api/mcp/openai`](/.well-known/oauth-protected-resource/api/mcp/openai).
+
+**OpenAI tool surface.** `https://riskmodels.app/api/mcp/openai` uses the same sign-in, API keys, billing and tool handlers as `https://riskmodels.app/api/mcp/sse`. Its tool list differs:
+
+- No generic REST reader (`riskmodels_call_endpoint`). Six explicit read-only tools cover the GET routes it was used for: `riskmodels_get_peers`, `riskmodels_search_funds`, `riskmodels_get_fund_snapshot`, `riskmodels_get_fund_holdings`, `riskmodels_get_macro_factor_returns` and `riskmodels_get_sector_etf_returns`.
+- `riskmodels_get_lstar` and `riskmodels_batch_lstar` are named `riskmodels_get_residual_returns` and `riskmodels_get_residual_returns_batch` (same inputs and output).
+- The catalog tools are named `riskmodels_docs_list_endpoints`, `riskmodels_docs_get_capability` and `riskmodels_docs_get_schema`; they return documentation and do not call any endpoint.
+
+Every tool on both endpoints is annotated read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`). Claude, Cursor, Grok and the other clients on this page use `/api/mcp/sse`.
 
 **Not the same as ChatGPT Finances.** The Schwab / Finances connector only sees brokerage holdings. RiskModels is a separate MCP app for factor decomposition and hedge ratios.
 
