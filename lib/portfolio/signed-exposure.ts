@@ -145,20 +145,28 @@ const EXCLUSION_DETAIL: Record<ExclusionReason, string> = {
   lstar_level_incomplete: "The name's L* level is missing a hedge leg or residual share, so it is left out under hedge_level lstar. A fixed hedge_level (l1, l2 or l3) may include it.",
 };
 
+/** First date ERM3 L* levels are served (lib/dal/served-history.ts, product "lstar"). */
+export const LSTAR_SERVED_FROM = "2013-01-01";
+
 /**
  * The level a name is hedged and measured at. Under "lstar" that is its own
- * `lstar_level`. There is no fallback: every level uses the same estimation
- * window, so a name without an L* (too little history) has no L1 either
- * (checked 2026-10-08: 350 of 350 such names had no L1 data). Such names are
- * excluded and reported.
+ * `lstar_level`. A name with no L* value falls back to L3 when its L3 hedge
+ * legs and residual share are present: L* is served from 2013-01-01, while L3
+ * is served from 2011-12-07, so as_of dates in between (and any name whose L*
+ * alone is missing) use L3 and are reported (`lstar_unavailable_l3_fallback`).
+ * A name with neither has too little history (every level uses the same
+ * estimation window; checked 2026-10-08: 350 of 350 names without L* had no
+ * L1 data) and is excluded and reported.
  */
 export function resolveLevel(
   s: StockInput,
   basis: Basis,
-): { level: Level | null; reason: ExclusionReason | null } {
+): { level: Level | null; reason: ExclusionReason | null; l3Fallback?: true } {
   if (basis !== "lstar") return { level: basis, reason: null };
   const ls = s.metrics.lstar_level;
-  if (!finite(ls) || ls < 1 || ls > 3) return { level: null, reason: "no_lstar" };
+  if (!finite(ls) || ls < 1 || ls > 3) {
+    return levelUsable(s, "l3") ? { level: "l3", reason: null, l3Fallback: true } : { level: null, reason: "no_lstar" };
+  }
   const level = `l${Math.round(ls)}` as Level;
   return levelUsable(s, level) ? { level, reason: null } : { level: null, reason: "lstar_level_incomplete" };
 }
@@ -258,8 +266,10 @@ export function computeSignedExposure(input: ExposureInput) {
   const levelOf = new Map<string, Level>();
   const levelCounts: Record<Level, number> = { l1: 0, l2: 0, l3: 0 };
   const lstarExcluded: Array<{ ticker: string; value_usd: number; reason: ExclusionReason; detail: string }> = [];
+  const l3Fallback: string[] = [];
   for (const s of stocks) {
-    const { level, reason } = resolveLevel(s, basis);
+    const { level, reason, l3Fallback: fellBack } = resolveLevel(s, basis);
+    if (fellBack) l3Fallback.push(...s.tickers);
     if (level) {
       levelOf.set(s.symbol, level);
       levelCounts[level] += 1;
@@ -429,6 +439,14 @@ export function computeSignedExposure(input: ExposureInput) {
   }
 
   const warnings: ExposureWarning[] = [];
+  if (l3Fallback.length) {
+    const n = l3Fallback.length;
+    warnings.push({
+      code: "lstar_unavailable_l3_fallback",
+      message: `L* hedge levels are published from ${LSTAR_SERVED_FROM}. ${n} ${n === 1 ? "name has" : "names have"} no L* level at this date and ${n === 1 ? "uses" : "use"} L3 instead (counted under l3 in names_by_level).`,
+      tickers: l3Fallback,
+    });
+  }
   if (hedgeAddedVariance.length) {
     warnings.push({
       code: "hedge_added_variance",

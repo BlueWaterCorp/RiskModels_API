@@ -49,7 +49,7 @@ POST /api/portfolio/exposure
 | `positions` | `{ticker, value}[]` | yes | 1 to 1000 rows. `value` is the signed dollar market value, negative for a short, non-zero. Stocks and ETFs. |
 | `hedge_level` | string | no | `lstar` (default), `l1`, `l2` or `l3`. The level each name is hedged and measured at. |
 | `lookback_days` | integer | no | Trading days in the ETF covariance window, 60 to 756. Default 252, the ERM3 estimation window. |
-| `as_of` | date | no | Past model date, `YYYY-MM-DD`, 2006-01-01 or later. Omit for the latest. Same price. |
+| `as_of` | date | no | Past model date, `YYYY-MM-DD`, 2011-12-07 or later. Omit for the latest. Same price. |
 
 Repeated tickers, and tickers that map to one model security (some share classes), are netted into one position before any variance is computed; a `share_class_netted` warning names them. Tickers that do not match directly are retried under alternative notations (`BRK.B` / `BRK-B`).
 
@@ -87,7 +87,7 @@ Positions submitted, gross, net, long and short dollars, and the count of modell
 
 ### Hedge level: L\* by default
 
-With `hedge_level: "lstar"` each name is hedged and measured at its own L\* level (`lstar_level`, 1 to 3). L\* stops above a layer that adds no explanatory value for that name. There is no fallback: a name without an L\*, or whose L\* level lacks data, is excluded from hedges and risk and listed in `coverage.excluded_from_lstar`. Every level uses the same estimation window, so such a name has no L1 either. `l1`, `l2` and `l3` force one level for every name.
+With `hedge_level: "lstar"` each name is hedged and measured at its own L\* level (`lstar_level`, 1 to 3). L\* stops above a layer that adds no explanatory value for that name. L\* levels are published from 2013-01-01: a name with no L\* at the model date (every name for an `as_of` before 2013) is hedged and measured at L3, counted under `l3` in `names_by_level`, and listed in an `lstar_unavailable_l3_fallback` warning. A name with neither an L\* nor complete L3 data (too little history), or whose L\* level lacks data, is excluded from hedges and risk and listed in `coverage.excluded_from_lstar`. `l1`, `l2` and `l3` force one level for every name.
 
 ### `risk`: systematic and residual
 
@@ -131,6 +131,7 @@ Each warning is `{code, message, tickers}`. Report them with the result.
 | `hedge_added_variance` | For these names the model's hedge at their level added variance over the window (residual share above 1). Their residual variance is larger than their unhedged variance and is used as is. |
 | `residual_share_extreme` | Residual share above 2: the hedge more than doubled variance. Used as is; check these names before relying on the residual total. |
 | `residual_share_floored` | Residual share below 0; the name's residual variance is taken as 0. |
+| `lstar_unavailable_l3_fallback` | L\* hedge levels are published from 2013-01-01. These names have no L\* level at the model date and are hedged and measured at L3 instead (counted under `l3` in `names_by_level`). |
 | `ticker_retry_limit` | More than 100 tickers did not match directly. Only the first 100 are retried under alternative notations; the rest are reported as `symbol_not_found`. |
 
 ## Residual shares
@@ -154,7 +155,7 @@ The endpoint uses such a share as is. The name's residual variance is larger tha
 
 ## Past dates (`as_of`)
 
-`as_of` (a real calendar date, `YYYY-MM-DD`, 2006-01-01 or later) computes the same output at a past model date from the point-in-time model history. For each name the newest row in the ten calendar days up to `as_of` is used; `snapshot_teo` is the date most names share, and the covariance window ends on it. L1 beta at past dates is −`l1_mkt_hr`, which equals the L1 beta exactly (L1 has one factor, SPY). Same price as a latest call.
+`as_of` (a real calendar date, `YYYY-MM-DD`, 2011-12-07 or later) computes the same output at a past model date from the point-in-time model history. Model history is served from the first date whose full estimation window is covered: hedge ratios from 2010-12-08, residual shares and `stock_var` from 2011-12-07, L\* levels from 2013-01-01. An earlier `as_of` returns 422 with `history_available_from: "2011-12-07"` and is not charged. From 2011-12-07 to 2012-12-31, `hedge_level: "lstar"` uses L3 for every name (`lstar_unavailable_l3_fallback`). For each name the newest row in the ten calendar days up to `as_of` is used; `snapshot_teo` is the date most names share, and the covariance window ends on it. L1 beta at past dates is −`l1_mkt_hr`, which equals the L1 beta exactly (L1 has one factor, SPY). Same price as a latest call.
 
 For a series of past dates, the [history feeds](#history-feeds) are usually the better route.
 

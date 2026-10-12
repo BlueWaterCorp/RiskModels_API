@@ -307,7 +307,11 @@ export const PortfolioExposureRequestSchema = z.object({
   lookback_days: z.coerce.number().int().min(60).max(756).default(252),
   /** "lstar" (default): each name at its own L* level. l1/l2/l3: one level for every name. */
   hedge_level: z.enum(["lstar", "l1", "l2", "l3"]).default("lstar"),
-  /** Past model date (YYYY-MM-DD). Omitted: latest. Each name uses its newest row on or before it. */
+  /**
+   * Past model date (YYYY-MM-DD). Omitted: latest. Each name uses its newest row on or before it.
+   * Earliest supported: 2011-12-07 (EXPOSURE_AS_OF_EARLIEST). An earlier, well-formed date is a
+   * 422 from the route that names that date, not a 400 here.
+   */
   as_of: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of must be YYYY-MM-DD")
@@ -315,7 +319,6 @@ export const PortfolioExposureRequestSchema = z.object({
       const t = new Date(`${d}T00:00:00Z`);
       return !Number.isNaN(t.getTime()) && t.toISOString().startsWith(d);
     }, "as_of must be a real calendar date")
-    .refine((d) => d >= "2006-01-01", "as_of must be on or after 2006-01-01")
     .refine((d) => d <= new Date().toISOString().slice(0, 10), "as_of cannot be in the future")
     .optional(),
 });

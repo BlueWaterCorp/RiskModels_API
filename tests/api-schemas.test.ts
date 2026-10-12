@@ -274,4 +274,8 @@ describe("PortfolioExposureRequestSchema", () => {
     }
     expect(PortfolioExposureRequestSchema.safeParse({ ...base, as_of: "2024-02-29" }).success).toBe(true);
   });
+
+  it("leaves the earliest-date check to the route (422 naming 2011-12-07), not a 400", () => {
+    expect(PortfolioExposureRequestSchema.safeParse({ ...base, as_of: "2008-09-30" }).success).toBe(true);
+  });
 });

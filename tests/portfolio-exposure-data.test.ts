@@ -62,15 +62,19 @@ vi.mock("@/lib/dal/risk-engine-v3", () => ({
       );
     }
     // Historical read (as_of): two dates for NVDA and AMD, newest after the requested date.
+    // Like the real reader, lstar_level is clamped to its 2013-01-01 served floor.
     if (opts.startDate !== opts.endDate) {
+      if (keys.includes("lstar_level") && String(opts.endDate) < "2013-01-01") return [];
       const row = (symbol: string, teo: string, key: string, value: number) => ({
         symbol, teo, periodicity: "daily", metric_key: key, metric_value: value,
       });
       const out = [];
       for (const [sym, hr] of [["S-NVDA", -1.5], ["S-AMD", -2.2]] as const) {
-        for (const teo of ["2024-06-27", "2024-06-28", "2024-07-01"]) {
+        for (const teo of ["2012-06-28", "2012-06-29", "2024-06-27", "2024-06-28", "2024-07-01"]) {
           const m = fullMetrics({ l1_mkt_hr: teo === "2024-06-28" ? hr : -9 });
-          for (const [k, v] of Object.entries(m)) if (k !== "l1_mkt_beta" && v != null) out.push(row(sym, teo, k, v as number));
+          for (const [k, v] of Object.entries(m)) {
+            if (k !== "l1_mkt_beta" && v != null && keys.includes(k)) out.push(row(sym, teo, k, v as number));
+          }
         }
       }
       return out.filter((r) => r.teo <= String(opts.endDate) && r.teo >= String(opts.startDate));
@@ -82,7 +86,11 @@ vi.mock("@/lib/dal/risk-engine-v3", () => ({
   }),
 }));
 
-import { computePortfolioExposure } from "@/lib/portfolio/signed-exposure-data";
+import {
+  EXPOSURE_AS_OF_EARLIEST,
+  asOfBeforeEarliest,
+  computePortfolioExposure,
+} from "@/lib/portfolio/signed-exposure-data";
 
 describe("computePortfolioExposure (loader)", () => {
   beforeEach(() => {
@@ -220,11 +228,47 @@ describe("computePortfolioExposure (loader)", () => {
     expect(out.as_of.snapshot_teo).toBe("2024-06-28");
     expect(out.beta.stock_beta_usd).toBeCloseTo(100_000 * 1.5 + -50_000 * 2.2, 2);
 
+    // Two reads over the same window: the model keys, and lstar_level on its own
+    // (its 2013-01-01 served floor must not clamp the model read).
     const stockReads = historyCalls.filter((c) => !c.keys.includes("returns_gross"));
-    expect(stockReads).toHaveLength(1);
+    expect(stockReads).toHaveLength(2);
     expect(stockReads[0]!.keys).not.toContain("l1_mkt_beta");
-    expect(stockReads[0]!.opts.endDate).toBe("2024-06-30");
+    expect(stockReads[0]!.keys).not.toContain("lstar_level");
+    expect(stockReads[1]!.keys).toEqual(["lstar_level"]);
+    for (const r of stockReads) {
+      expect(r.opts.startDate).toBe("2024-06-20");
+      expect(r.opts.endDate).toBe("2024-06-30");
+    }
     const covRead = historyCalls.find((c) => c.keys.includes("returns_gross"))!;
     expect(covRead.opts.endDate).toBe("2024-06-28");
+  });
+
+  it("before 2013 (no L* served) hedges every name at L3 and warns", async () => {
+    const book = [
+      { ticker: "NVDA", value: 100_000 },
+      { ticker: "AMD", value: -50_000 },
+    ];
+    const out: any = await computePortfolioExposure(book, { lookbackDays: 252, asOf: "2012-06-30" });
+    expect(out.error).toBeUndefined();
+    expect(out.as_of.snapshot_teo).toBe("2012-06-29");
+    expect(out.hedges.lstar.names_by_level).toEqual({ l1: 0, l2: 0, l3: 2 });
+    expect(out.coverage.excluded_from_lstar).toEqual([]);
+    const w = out.warnings.find((x: any) => x.code === "lstar_unavailable_l3_fallback");
+    expect(w.tickers).toEqual(["NVDA", "AMD"]);
+    expect(w.message).toMatch(/^L\* hedge levels are published from 2013-01-01\. 2 names have no L\* level/);
+    // Same hedge as an explicit l3 request at that date.
+    const l3: any = await computePortfolioExposure(book, { lookbackDays: 252, asOf: "2012-06-30", basis: "l3" });
+    expect(out.hedges.lstar.stock_hedge_trade_usd).toEqual(l3.hedges.l3.stock_hedge_trade_usd);
+    expect(l3.warnings.map((x: any) => x.code)).not.toContain("lstar_unavailable_l3_fallback");
+  });
+
+  it("names the earliest supported as_of (2011-12-07) for earlier dates", () => {
+    expect(EXPOSURE_AS_OF_EARLIEST).toBe("2011-12-07");
+    expect(asOfBeforeEarliest(undefined)).toBeNull();
+    expect(asOfBeforeEarliest("2011-12-07")).toBeNull();
+    const err = asOfBeforeEarliest("2011-06-30")!;
+    expect(err.history_available_from).toBe("2011-12-07");
+    expect(err.as_of).toBe("2011-06-30");
+    expect(err.detail).toMatch(/^The earliest supported as_of is 2011-12-07\. Model history is served from the first date whose full estimation window is covered/);
   });
 });

@@ -13,6 +13,7 @@ import {
   type SymbolRegistryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { SERVED_HISTORY_START, servedHistoryStartForKeys } from "@/lib/dal/served-history";
 import {
   MARKET_ETF,
   computeSignedExposure,
@@ -54,6 +55,34 @@ const STOCK_KEYS: V3MetricKey[] = [
  * (verified 2026-10-08 against ds_erm3_betas at four dates, 311/311 exact).
  */
 const ZARR_KEYS: V3MetricKey[] = STOCK_KEYS.filter((k) => k !== "l1_mkt_beta");
+/**
+ * as_of reads: the Zarr reader clamps a request to the latest served-history
+ * floor across its keys, and `lstar_level` is served from 2013-01-01 while the
+ * hedge ratios and residual shares start earlier. L* is therefore read on its
+ * own so it cannot empty the model read; names without it fall back to L3.
+ */
+const AS_OF_MODEL_KEYS: V3MetricKey[] = ZARR_KEYS.filter((k) => k !== "lstar_level");
+const AS_OF_LSTAR_KEYS: V3MetricKey[] = ["lstar_level"];
+
+/**
+ * Earliest supported as_of: the first date every model key (hedge ratios from
+ * 2010-12-08, explained-risk / residual shares and stock_var from 2011-12-07)
+ * is served, i.e. whose full estimation window is covered (lib/dal/served-history.ts).
+ */
+export const EXPOSURE_AS_OF_EARLIEST = servedHistoryStartForKeys(AS_OF_MODEL_KEYS);
+
+/** 422 body for an as_of before EXPOSURE_AS_OF_EARLIEST; null otherwise. */
+export function asOfBeforeEarliest(asOf: string | undefined) {
+  if (!asOf || asOf >= EXPOSURE_AS_OF_EARLIEST) return null;
+  const { hedge_ratio, explained_risk, lstar } = SERVED_HISTORY_START;
+  return {
+    error: "as_of before earliest supported date",
+    message: `as_of=${asOf} is before ${EXPOSURE_AS_OF_EARLIEST}, the earliest date this endpoint supports.`,
+    detail: `The earliest supported as_of is ${EXPOSURE_AS_OF_EARLIEST}. Model history is served from the first date whose full estimation window is covered: hedge ratios from ${hedge_ratio}, residual shares and stock variance from ${explained_risk}. Before ${lstar}, names under hedge_level lstar use L3 (L* levels are served from ${lstar}).`,
+    as_of: asOf,
+    history_available_from: EXPOSURE_AS_OF_EARLIEST,
+  };
+}
 
 function withL1Beta(m: Record<string, number | null>): Record<string, number | null> {
   const hr = m.l1_mkt_hr;
@@ -263,11 +292,16 @@ export async function computePortfolioExposure(
     // One read for the whole book, not IN_CHUNK batches: the reader fetches
     // and decodes each Zarr chunk (64 symbols × full history) once per call,
     // so batching by 200 names re-read most chunks once per batch.
-    const rows = await fetchBatchHistory(symbols, ZARR_KEYS, {
-      periodicity: "daily",
+    const window = {
+      periodicity: "daily" as const,
       startDate: isoMinusDays(opts.asOf, AS_OF_SEARCH_DAYS),
       endDate: opts.asOf,
-    });
+    };
+    const [modelRows, lstarRows] = await Promise.all([
+      fetchBatchHistory(symbols, AS_OF_MODEL_KEYS, window),
+      fetchBatchHistory(symbols, AS_OF_LSTAR_KEYS, window),
+    ]);
+    const rows = [...modelRows, ...lstarRows];
     const bySym = new Map<string, Map<string, Record<string, number | null>>>();
     for (const r of rows) {
       const teo = r.teo.slice(0, 10);

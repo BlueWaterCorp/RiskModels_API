@@ -429,7 +429,7 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
           { name: 'positions', in: 'body', type: 'array', required: true, description: 'Positions as [{ticker, value}]: signed dollar market value, negative for a short, non-zero. Max 1000.' },
           { name: 'hedge_level', in: 'body', type: 'string', required: false, description: 'lstar (each name at its own L* level) | l1 | l2 | l3.', default: 'lstar' },
           { name: 'lookback_days', in: 'body', type: 'integer', required: false, description: 'Trading days in the ETF covariance window (60–756). 252 matches the ERM3 estimation window.', default: '252' },
-          { name: 'as_of', in: 'body', type: 'string', required: false, description: 'Past model date YYYY-MM-DD (2006-01-01 or later). Omit for the latest. Same price.' },
+          { name: 'as_of', in: 'body', type: 'string', required: false, description: 'Past model date YYYY-MM-DD (2011-12-07 or later; earlier dates return 422). Omit for the latest. Same price. Before 2013-01-01, hedge_level lstar uses L3 for every name.' },
         ],
         requestBody: {
           contentType: 'application/json',
