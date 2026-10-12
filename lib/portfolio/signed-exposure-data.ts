@@ -260,31 +260,31 @@ export async function computePortfolioExposure(
   const symbols = [...stocksBySymbol.keys()];
   const latest = new Map<string, { teo: string; metrics: Record<string, number | null> }>();
   if (opts.asOf) {
-    const start = isoMinusDays(opts.asOf, AS_OF_SEARCH_DAYS);
-    for (const part of chunks(symbols, IN_CHUNK)) {
-      const rows = await fetchBatchHistory(part, ZARR_KEYS, {
-        periodicity: "daily",
-        startDate: start,
-        endDate: opts.asOf,
+    // One read for the whole book, not IN_CHUNK batches: the reader fetches
+    // and decodes each Zarr chunk (64 symbols × full history) once per call,
+    // so batching by 200 names re-read most chunks once per batch.
+    const rows = await fetchBatchHistory(symbols, ZARR_KEYS, {
+      periodicity: "daily",
+      startDate: isoMinusDays(opts.asOf, AS_OF_SEARCH_DAYS),
+      endDate: opts.asOf,
+    });
+    const bySym = new Map<string, Map<string, Record<string, number | null>>>();
+    for (const r of rows) {
+      const teo = r.teo.slice(0, 10);
+      if (teo > opts.asOf) continue;
+      const byTeo = bySym.get(r.symbol) ?? new Map<string, Record<string, number | null>>();
+      const m = byTeo.get(teo) ?? {};
+      m[r.metric_key] = r.metric_value;
+      byTeo.set(teo, m);
+      bySym.set(r.symbol, byTeo);
+    }
+    for (const [sym, byTeo] of bySym) {
+      const teos = [...byTeo.keys()].sort().reverse();
+      const teo = teos.find((t) => {
+        const m = byTeo.get(t)!;
+        return typeof m.l1_mkt_hr === "number" && Number.isFinite(m.l1_mkt_hr);
       });
-      const bySym = new Map<string, Map<string, Record<string, number | null>>>();
-      for (const r of rows) {
-        const teo = r.teo.slice(0, 10);
-        if (teo > opts.asOf) continue;
-        const byTeo = bySym.get(r.symbol) ?? new Map<string, Record<string, number | null>>();
-        const m = byTeo.get(teo) ?? {};
-        m[r.metric_key] = r.metric_value;
-        byTeo.set(teo, m);
-        bySym.set(r.symbol, byTeo);
-      }
-      for (const [sym, byTeo] of bySym) {
-        const teos = [...byTeo.keys()].sort().reverse();
-        const teo = teos.find((t) => {
-          const m = byTeo.get(t)!;
-          return typeof m.l1_mkt_hr === "number" && Number.isFinite(m.l1_mkt_hr);
-        });
-        if (teo) latest.set(sym, { teo, metrics: withL1Beta(byTeo.get(teo)!) });
-      }
+      if (teo) latest.set(sym, { teo, metrics: withL1Beta(byTeo.get(teo)!) });
     }
   } else {
     for (const part of chunks(symbols, IN_CHUNK)) {
