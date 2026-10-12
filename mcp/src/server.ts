@@ -21,6 +21,7 @@ import {
 import { z } from "zod";
 import {
   createRiskModelsSdk,
+  READ_ONLY_TOOL_ANNOTATIONS,
   withAnnotationTitles,
   registerRiskModelsPrompts,
   registerRiskModelsTools,
@@ -381,6 +382,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "riskmodels_get_openapi_spec",
     {
       title: "Get RiskModels OpenAPI Spec",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: GET_OPENAPI_SPEC_DESCRIPTION,
       inputSchema: z.object({}),
     },
@@ -401,6 +403,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "riskmodels_list_endpoints",
     {
       title: "List RiskModels API Endpoints",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: LIST_ENDPOINTS_DESCRIPTION,
       inputSchema: z.object({}).optional(),
     },
@@ -424,6 +427,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "riskmodels_get_capability",
     {
       title: "Get RiskModels Capability Details",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: GET_CAPABILITY_DESCRIPTION,
       inputSchema: z.object({
         id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
@@ -446,6 +450,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "riskmodels_get_schema",
     {
       title: "Get RiskModels Response Schema",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: GET_SCHEMA_DESCRIPTION,
       inputSchema: z.object({
         path: z.string().describe("Schema path or filename (e.g. ticker-returns-v2.json or /schemas/ticker-returns-v2.json)"),
@@ -469,6 +474,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "get_l3_decomposition",
     {
       title: "L3 Hierarchical Risk Decomposition",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Daily EOD hierarchical orthogonal decomposition for a single ticker: market → sector → subsector → residual. Returns parallel time-series arrays plus hedge ratios. Historical data from GCP zarr; latest snapshot from Supabase. Data freshness: daily after US market close (see _data_as_of).",
       inputSchema: z.object({
@@ -510,6 +516,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "get_metrics",
     {
       title: "Latest Risk Metrics Snapshot",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Latest daily EOD risk metrics for a ticker from the Supabase _latest table: L1/L2/L3 hedge ratios (SPY, sector ETF, subsector ETF), explained-risk fractions, daily volatility, price close, market cap. Single-row snapshot. Data freshness: daily after US market close.",
       inputSchema: z.object({
@@ -536,6 +543,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "get_fundamentals",
     {
       title: "PIT Quarterly Fundamentals",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Point-in-time quarterly fundamentals for a ticker: TTM ROE/ROA/FCF margin, capital-return ratios, leverage, long-window ERM3 valuation betas, strict reported-data cost_of_debt/wacc, and separately labeled cost_of_debt_imputed/wacc_imputed when the PIT-lagged high-quality-market proxy is available. The proxy uses the period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread; it is not issuer-specific. Also returns equity-charge economic_profit, an equity-bridge decomposition, and SEC-sourced raw line items in sec_facts. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical only; no forecasts or analyst fields. Per-symbol per-call only — no batch.",
       inputSchema: z.object({
@@ -609,6 +617,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "get_portfolio_risk_snapshot",
     {
       title: "Portfolio Risk Snapshot",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Bundled portfolio risk report for up to 100 positions: variance decomposition (market / sector / subsector / residual / systematic), portfolio 23-day volatility, and optional diversification analytics with sector/subsector ETF correlation matrices. Returns JSON by default. Response is cached per-user per-portfolio for 1 hour.",
       inputSchema: z.object({
@@ -664,6 +673,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
     "post_snapshot",
     {
       title: "Canonical Portfolio Snapshot",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Run a canonical risk snapshot on a portfolio (1–100 positions): L3 variance decomposition (market / sector / subsector / residual / systematic), L3 hedge ratios per position, frozen-weight daily return attribution (gross + market / sector / subsector strips + residual), cumulative return and drawdown over the lookback window, and a risk_summary with dominant drivers, concentration flags, and top exposures. This is the canonical RiskModels public surface — same response shape across UI, CLI, SDK, and agents. Provide either weight or shares for every position (do not mix). Bills as portfolio-risk-snapshot ($1.25 per request).",
       inputSchema: z.object({
