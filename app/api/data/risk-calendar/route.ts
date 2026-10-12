@@ -1,58 +1,31 @@
-import { NextResponse, type NextRequest } from "next/server";
-import {
-  getRiskCalendar,
-  type RiskCalendarEventType,
-} from "@/lib/risk/risk-calendar-service";
+import { NextResponse } from "next/server";
+import { RISK_CALENDAR_RETIRED_BODY } from "@/lib/api/retired-endpoints";
 
 export const dynamic = "force-dynamic";
 
-const VALID_TYPES: RiskCalendarEventType[] = [
-  "earnings",
-  "ex_dividend",
-  "macro",
-  "filing_deadline",
-];
-
 /**
- * GET /api/data/risk-calendar
+ * GET /api/data/risk-calendar — RETIRED.
  *
- * Risk Calendar v1 (T.6) — portfolio-relevant events: earnings, ex-dividend
- * dates, macro releases (CPI / FOMC / payrolls), and SEC filing deadlines.
- * Backed by the `risk_events` table (ERM3 publish_risk_events asset) unioned
- * with `filing_calendar` at this layer.
- *
- * Optional filters:
- *   ?from=YYYY-MM-DD          — event_date >= from (default: today)
- *   ?to=YYYY-MM-DD            — event_date <= to (default: today + 30d)
- *   ?tickers=NVDA,AAPL        — scope ticker events to a portfolio
- *                                (macro + filing events always included);
- *                                adds a per-ticker `coverage` report
- *   ?types=earnings,macro     — restrict event types
+ * The Risk Calendar (T.6: earnings, ex-dividend, macro and filing-deadline
+ * events from the `risk_events` table) was retired by product decision. The
+ * route stays so existing callers get a documented, permanent answer instead
+ * of a generic 404: HTTP 410 Gone with error code `risk_calendar_retired`.
+ * The chat tool `get_risk_calendar` and lib/risk/risk-calendar-service.ts are
+ * removed. Filing deadlines remain available at GET /api/data/filing-calendar.
  */
-export async function GET(request: NextRequest) {
-  const sp = request.nextUrl.searchParams;
-  const tickersParam = sp.get("tickers");
-  const typesParam = sp.get("types");
+/** Same headers for GET and HEAD (a HEAD is a GET without the body). */
+const RETIRED_HEADERS = {
+  "Cache-Control": "public, max-age=3600",
+  "Content-Type": "application/json",
+} as const;
 
-  const types = typesParam
-    ? (typesParam
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t): t is RiskCalendarEventType =>
-          (VALID_TYPES as string[]).includes(t),
-        ) satisfies RiskCalendarEventType[])
-    : undefined;
+export async function GET() {
+  return NextResponse.json(RISK_CALENDAR_RETIRED_BODY, {
+    status: 410,
+    headers: RETIRED_HEADERS,
+  });
+}
 
-  try {
-    const result = await getRiskCalendar({
-      from: sp.get("from") ?? undefined,
-      to: sp.get("to") ?? undefined,
-      tickers: tickersParam ? tickersParam.split(",") : undefined,
-      types,
-    });
-    return NextResponse.json(result);
-  } catch (err) {
-    console.error("[data/risk-calendar] Error:", err);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
-  }
+export async function HEAD() {
+  return new NextResponse(null, { status: 410, headers: RETIRED_HEADERS });
 }
