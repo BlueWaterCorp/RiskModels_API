@@ -37,6 +37,13 @@ import {
   LIST_ENDPOINTS_DESCRIPTION,
   MCP_SERVER_INSTRUCTIONS,
 } from "@/lib/mcp/activation";
+import {
+  OPENAI_FIRST_LIVE_PROMPT,
+  OPENAI_MCP_SERVER_INSTRUCTIONS,
+  applyOpenAiSurface,
+  registerOpenAiOnlyTools,
+  type McpSurface,
+} from "@/lib/mcp/openai-surface";
 
 const DATA_DIR = join(process.cwd(), "mcp", "data");
 
@@ -45,6 +52,13 @@ export type McpServerOptions = {
   apiKey: string;
   /** API base URL (defaults to `https://riskmodels.app`). */
   apiBase?: string;
+  /**
+   * Tool surface. "default" (`/api/mcp/sse`) is the Anthropic-directory
+   * surface and must stay unchanged. "openai" (`/api/mcp/openai`) drops the
+   * generic GET reader, adds explicit read-only tools and renames the Lstar
+   * and catalog tools — see lib/mcp/openai-surface.ts.
+   */
+  surface?: McpSurface;
 };
 
 type MeterEnvelope = {
@@ -170,18 +184,22 @@ function loadText(relativePath: string): string | null {
  * Caller supplies authenticated user credentials via `opts`.
  */
 export function createMcpServer(opts: McpServerOptions): McpServer {
+  const openai = opts.surface === "openai";
   const server = new McpServer(
     {
       name: "riskmodels-api",
       version: "1.0.0",
     },
-    { instructions: MCP_SERVER_INSTRUCTIONS },
+    { instructions: openai ? OPENAI_MCP_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS },
   );
   const sdk = createRiskModelsSdk({
     apiKey: opts.apiKey,
     apiBase: opts.apiBase || "https://riskmodels.app",
   });
   withAnnotationTitles(server);
+  // Outer wrapper: renames/excludes first, then withAnnotationTitles copies
+  // the (overridden) title into annotations.title.
+  if (openai) applyOpenAiSurface(server);
 
   // --- Resources ---
 
@@ -309,7 +327,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   );
 
   registerRiskModelsWhitepaperResources(server, DATA_DIR);
-  registerRiskModelsPrompts(server, FIRST_LIVE_PROMPT_MCP);
+  registerRiskModelsPrompts(server, openai ? OPENAI_FIRST_LIVE_PROMPT : FIRST_LIVE_PROMPT_MCP);
 
   // --- Tools ---
 
@@ -320,6 +338,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   // Hosted-only: the render tool needs GCP Cloud Run auth, so it lives outside
   // lib/mcp/tools/ and is not compiled into the public stdio package.
   registerRiskModelsRenderTool(server);
+  if (openai) registerOpenAiOnlyTools(sdk, server);
 
   server.registerTool(
     "riskmodels_list_endpoints",
