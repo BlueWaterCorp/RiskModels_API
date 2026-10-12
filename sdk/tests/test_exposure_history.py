@@ -149,3 +149,25 @@ def test_load_pack_combines_yearly_files() -> None:
         bufs.append(buf.getvalue())
     pack = load_pack([bufs[0], bufs[1]], bufs[2])
     assert pack.teos == ["2023-12-29", "2024-01-02"]
+
+
+def test_load_pack_reraises_served_history_warnings() -> None:
+    pack = _pack()
+    b1, b2 = io.BytesIO(), io.BytesIO()
+    pack.names.to_parquet(b1)
+    pack.cov.to_parquet(b2)
+    meta = {
+        "history_available_from": {"l1_mkt_hr": "2010-12-08", "l3_res_er": "2011-12-07", "lstar_level": "2013-01-01"},
+        "warnings": [
+            {"code": "before_served_history", "available_from": "2013-01-01", "columns": ["lstar_level"],
+             "message": "lstar_level served from 2013-01-01; null before."},
+        ],
+    }
+    with pytest.warns(UserWarning, match="lstar_level served from 2013-01-01"):
+        again = load_pack(b1.getvalue(), b2.getvalue(), meta)
+    assert again.history_available_from["lstar_level"] == "2013-01-01"
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        quiet = load_pack(b1.getvalue(), b2.getvalue(), {"warnings": []})
+    assert quiet.history_available_from == {}

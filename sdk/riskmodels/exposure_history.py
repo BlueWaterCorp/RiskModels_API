@@ -19,6 +19,15 @@ by a shared fixture (``tests/fixtures/signed_exposure_parity.json``):
 - default basis ``"lstar"`` (each name at its own L* level, no fallback);
   ``"l1"`` / ``"l2"`` / ``"l3"`` force one level;
 - volatility annualised with √252.
+
+History start: model history is served from the first date whose full estimation
+window is covered — hedge ratios and ``l1_mkt_beta`` from 2010-12-08, explained-risk
+and residual shares and ``stock_var`` from 2011-12-07, ``lstar_level`` from
+2013-01-01. Nothing earlier is delivered, and each column is null before its own
+date (:attr:`ExposureHistoryPack.history_available_from`). With the default
+``basis="lstar"`` every name is excluded before 2013-01-01 (no L* level yet), and
+residual risk is missing before 2011-12-07; for 2010-12-08 to 2012 use
+``basis="l3"`` (or ``"l1"`` / ``"l2"``).
 """
 
 from __future__ import annotations
@@ -241,6 +250,11 @@ class ExposureHistoryPack:
     _cov_cache: dict = field(default_factory=dict, repr=False)
 
     @property
+    def history_available_from(self) -> dict[str, str]:
+        """First date each column is served (column → ``YYYY-MM-DD``), as reported by the API."""
+        return dict(self.meta.get("history_available_from") or {})
+
+    @property
     def teos(self) -> list[str]:
         return sorted(self.names["teo"].unique().tolist()) if not self.names.empty else []
 
@@ -347,7 +361,15 @@ def _book_at(dated: dict[str | None, dict[str, float]], teo: str) -> dict[str, f
 
 
 def load_pack(names_bytes: bytes | list[bytes], cov_bytes: bytes, meta: dict | None = None) -> ExposureHistoryPack:
-    """Build a pack from the Parquet payloads (daily names arrive as one file per year)."""
+    """Build a pack from the Parquet payloads (daily names arrive as one file per year).
+
+    Re-raises the API's ``warnings`` (e.g. ``before_served_history`` when ``start`` precedes
+    a column's first served date) as Python warnings.
+    """
+    for w in (meta or {}).get("warnings") or []:
+        msg = w.get("message") if isinstance(w, Mapping) else str(w)
+        if msg:
+            warnings.warn(f"exposure_history: {msg}", stacklevel=3)
     parts = names_bytes if isinstance(names_bytes, list) else [names_bytes]
     frames = [pd.read_parquet(io.BytesIO(b)) for b in parts]
     names = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()

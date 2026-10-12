@@ -19,7 +19,9 @@ import {
   EXPOSURE_PANEL_VARS,
   type DailyExposureHistory,
   type ExposurePanelSlice,
+  type ExposurePanelVar,
 } from "@/lib/dal/zarr-reader";
+import { SERVED_HISTORY_START, servedProductForKey } from "@/lib/dal/served-history";
 const parquet = require("parquetjs-lite"); // eslint-disable-line
 
 export const MARKET_ETF = "SPY";
@@ -35,6 +37,83 @@ export const NAME_COLUMNS = [
 ] as const;
 
 export const COV_COLUMNS = ["teo", "etf_i", "etf_j", "cov"] as const;
+
+/**
+ * Earliest date each delivered model column is served from
+ * (lib/dal/served-history.ts): hedge ratios and l1_mkt_beta 2010-12-08,
+ * explained-risk / residual shares and stock_var 2011-12-07, lstar_level
+ * 2013-01-01. Values dated earlier are withheld (null), never served.
+ */
+export const EXPOSURE_FIELD_START: Readonly<Record<ExposurePanelVar | "l1_mkt_beta", string>> = (() => {
+  const latest = Object.values(SERVED_HISTORY_START).reduce((a, b) => (b > a ? b : a));
+  const out = {} as Record<ExposurePanelVar | "l1_mkt_beta", string>;
+  for (const v of EXPOSURE_PANEL_VARS) {
+    const p = servedProductForKey(v);
+    // An unmapped column takes the latest floor rather than none.
+    out[v] = p ? SERVED_HISTORY_START[p] : latest;
+  }
+  out.l1_mkt_beta = out.l1_mkt_hr; // derived from l1_mkt_hr
+  return out;
+})();
+
+/** First date any row is served (the earliest column floor). Requests that start earlier are clamped here. */
+export const EXPOSURE_HISTORY_START: string = Object.values(EXPOSURE_FIELD_START).reduce((a, b) => (b < a ? b : a));
+
+/**
+ * Withhold every value dated before its column's served start, in place
+ * (null in month-end slices, NaN in daily typed arrays). Rows left with no
+ * value are then skipped by the table builders.
+ */
+export function maskBeforeServedStart(
+  teos: readonly string[],
+  bySymbol: Map<string, Partial<Record<ExposurePanelVar, Array<number | null> | Float32Array>>>,
+): void {
+  const cut = {} as Record<ExposurePanelVar, number>;
+  for (const v of EXPOSURE_PANEL_VARS) {
+    const floor = EXPOSURE_FIELD_START[v];
+    let k = 0;
+    while (k < teos.length && teos[k]! < floor) k++;
+    cut[v] = k;
+  }
+  for (const cols of bySymbol.values()) {
+    for (const v of EXPOSURE_PANEL_VARS) {
+      const c = cols[v];
+      const k = cut[v];
+      if (!c || k === 0) continue;
+      if (c instanceof Float32Array) c.fill(NaN, 0, k);
+      else c.fill(null, 0, k);
+    }
+  }
+}
+
+export interface ServedStartWarning {
+  code: "before_served_history";
+  /** First date these columns are served. */
+  available_from: string;
+  columns: string[];
+  message: string;
+}
+
+/**
+ * Warnings for a requested start that precedes served history, one per column
+ * floor later than the start (ascending). Empty when the start is absent or on
+ * or after every column's floor.
+ */
+export function servedStartWarnings(requestedStart: string | undefined): ServedStartWarning[] {
+  if (!requestedStart) return [];
+  const byFloor = new Map<string, string[]>();
+  for (const [col, floor] of Object.entries(EXPOSURE_FIELD_START)) {
+    if (floor > requestedStart) (byFloor.get(floor) ?? byFloor.set(floor, []).get(floor)!).push(col);
+  }
+  return [...byFloor.keys()].sort().map((floor) => {
+    const columns = byFloor.get(floor)!;
+    const message =
+      floor === EXPOSURE_HISTORY_START
+        ? `start ${requestedStart} precedes served model history: no rows before ${floor}.`
+        : `${columns.join(", ")} served from ${floor}; null before.`;
+    return { code: "before_served_history", available_from: floor, columns, message };
+  });
+}
 
 const STRING_COLUMNS = new Set(["teo", "ticker", "symbol", "sector_etf", "subsector_etf", "etf_i", "etf_j"]);
 

@@ -1809,6 +1809,14 @@ class RiskModelsClient:
             pack = client.exposure_history(["NVDA", "AMD", "SPY"])
             series = pack.exposure({"2024-06-28": {"NVDA": 100_000, "AMD": -50_000}})
 
+        History starts where the full estimation window is covered: hedge ratios from
+        2010-12-08, explained-risk / residual shares and ``stock_var`` from 2011-12-07,
+        ``lstar_level`` from 2013-01-01 (null before; nothing earlier is served). ``start``
+        defaults to 2010-12-08 and an earlier ``start`` is moved up to it; the API then
+        returns ``before_served_history`` warnings, re-raised here as Python warnings.
+        ``pack.history_available_from`` lists each column's first date. The default L*
+        basis excludes every name before 2013-01-01; use ``basis="l3"`` for earlier dates.
+
         Priced per call by names delivered: month-end $1.25 up to 25, $5.00 above 25;
         ``frequency="daily"`` $2.50 up to 25, $10.00 above 25.
 

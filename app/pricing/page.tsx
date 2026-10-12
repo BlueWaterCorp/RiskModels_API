@@ -404,7 +404,7 @@ export default function PricingPage() {
                 "Full access to all ~3,000 US equities",
                 "41-factor ERM3 (Equity Risk Model v3) risk decompositions",
                 "Hedge ratios at L1 / L2 / L3",
-                "Historical data back to 2006",
+                "Model history: hedge ratios from Dec 2010, residual risk from Dec 2011, L* from 2013",
                 "REST API + CLI access",
                 "TypeScript, Python, cURL examples",
                 "OpenAPI 3.0 spec",

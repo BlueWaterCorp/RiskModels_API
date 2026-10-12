@@ -463,12 +463,12 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         sidebarLabel: 'Exposure history (month-end)',
         summary: 'Exposure history feed: month-end model history for a list of names (join locally)',
         description:
-          "Send tickers only, no position values, and receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history since 2006 (names: hedge ratios at L1/L2/L3, explained-risk and residual shares, stock_var, lstar_level, l1_mkt_beta, sector and subsector ETF) and the ETF covariance over the 252 trading days ending each month-end (cov). Holdings never leave the client: the Python SDK (client.exposure_history(tickers).exposure(holdings_by_date)) joins the feed with dated holdings locally and returns the same quantities as /portfolio/exposure at each month-end. The ETF-to-sector mapping is the current registry. Derived data only: no prices, market caps or return series. Cost: $1.25/call up to 25 names delivered, $5.00 above 25; 422 responses are not charged.",
+          "Send tickers only, no position values, and receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history (names: hedge ratios at L1/L2/L3, explained-risk and residual shares, stock_var, lstar_level, l1_mkt_beta, sector and subsector ETF) and the ETF covariance over the 252 trading days ending each month-end (cov). Model history starts where the full estimation window is covered: hedge ratios and l1_mkt_beta from 2010-12-08, explained-risk and residual shares and stock_var from 2011-12-07, lstar_level from 2013-01-01 (null before; nothing earlier is served). history_available_from gives each column's first date; warnings (before_served_history) appear when start is earlier. Holdings never leave the client: the Python SDK (client.exposure_history(tickers).exposure(holdings_by_date)) joins the feed with dated holdings locally and returns the same quantities as /portfolio/exposure at each month-end. The ETF-to-sector mapping is the current registry. Derived data only: no prices, market caps or return series. Cost: $1.25/call up to 25 names delivered, $5.00 above 25; 422 responses are not charged.",
         operationId: 'postPortfolioExposureHistory',
         tag: 'Risk Metrics',
         params: [
           { name: 'tickers', in: 'body', type: 'array', required: true, description: 'Stocks and ETFs, max 1000. No values.' },
-          { name: 'start', in: 'body', type: 'string', required: false, description: 'First month-end YYYY-MM-DD. Default 2006.' },
+          { name: 'start', in: 'body', type: 'string', required: false, description: 'First month-end YYYY-MM-DD. Default and earliest: 2010-12-08 (an earlier start is moved up to it).' },
           { name: 'end', in: 'body', type: 'string', required: false, description: 'Last month-end YYYY-MM-DD. Default latest.' },
         ],
         requestBody: {
@@ -488,12 +488,12 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         sidebarLabel: 'Exposure history (daily)',
         summary: 'Exposure history feed, daily: every trading day for a list of names (join locally)',
         description:
-          "Daily version of /portfolio/exposure/history: the same columns for every trading day since 2006 (or start), delivered as one Parquet file per calendar year (files.names.parts). The ETF covariance stays month-end; each day uses the latest month-end on or before it (the Python SDK does this: client.exposure_history(tickers, frequency=\"daily\")). Tickers only; holdings never leave the client. Derived data only. Cost: $2.50/call up to 25 names delivered, $10.00 above 25; 422 responses are not charged.",
+          "Daily version of /portfolio/exposure/history: the same columns and start dates for every trading day from 2010-12-08 (or start), delivered as one Parquet file per calendar year (files.names.parts). The ETF covariance stays month-end; each day uses the latest month-end on or before it (the Python SDK does this: client.exposure_history(tickers, frequency=\"daily\")). Tickers only; holdings never leave the client. Derived data only. Cost: $2.50/call up to 25 names delivered, $10.00 above 25; 422 responses are not charged.",
         operationId: 'postPortfolioExposureHistoryDaily',
         tag: 'Risk Metrics',
         params: [
           { name: 'tickers', in: 'body', type: 'array', required: true, description: 'Stocks and ETFs, max 1000. No values.' },
-          { name: 'start', in: 'body', type: 'string', required: false, description: 'First day YYYY-MM-DD. Default 2006-01-01.' },
+          { name: 'start', in: 'body', type: 'string', required: false, description: 'First day YYYY-MM-DD. Default and earliest: 2010-12-08 (an earlier start is moved up to it).' },
           { name: 'end', in: 'body', type: 'string', required: false, description: 'Last day YYYY-MM-DD. Default latest.' },
         ],
         requestBody: {

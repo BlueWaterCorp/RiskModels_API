@@ -1,8 +1,14 @@
 # Changelog
 
+## 2026-10-12 — Exposure history feeds follow the served-history start
+
+- `POST /portfolio/exposure/history` and `/history/daily` served every column from 2006, contrary to the served-history policy (`lib/dal/served-history.ts`). They now read from 2010-12-08 and withhold each column before its own start: hedge ratios and `l1_mkt_beta` 2010-12-08, explained-risk / residual shares and `stock_var` 2011-12-07, `lstar_level` 2013-01-01 (`maskBeforeServedStart`). Default `start` is 2010-12-08 (was 2006-01-01 on the daily feed).
+- Responses add `history_available_from` (first date per column) and `warnings` (`before_served_history`, one per later start date) when the requested `start` is earlier. The cache key includes the floors, so files written with pre-floor rows are not reused.
+- Docs, OpenAPI, capabilities, llms.txt, pricing copy and the SDK docstrings state these dates instead of "since 2006".
+
 ## 2026-10-08 — Daily exposure history
 
-- New `POST /portfolio/exposure/history/daily`: every trading day since 2006 for up to 1000 names, read straight from the ERM3 stores (no extra stored data), delivered as one Parquet file per year plus the month-end ETF covariance. Full history for 1000 names: ~18 s to read, ~51 s to write.
+- New `POST /portfolio/exposure/history/daily`: every trading day for up to 1000 names, read straight from the ERM3 stores (no extra stored data), delivered as one Parquet file per year plus the month-end ETF covariance. Full history for 1000 names: ~18 s to read, ~51 s to write.
 - `readDailyExposureHistory` reads each symbol chunk once per variable into typed arrays, 16 at a time (76 s → 7 s for 25 names), instead of one object per cell.
 - SDK: `client.exposure_history(tickers, frequency="daily")` downloads and combines the yearly files; each day uses the latest covariance month-end on or before it.
 - Priced at $2.50 up to 25 names delivered, $10.00 above (2x the month-end feed).
@@ -22,7 +28,7 @@
 
 ## 2026-10-08 — Exposure history as a model data feed
 
-- New `POST /portfolio/exposure/history`: send tickers only (no values) and receive signed URLs to two Parquet files — each name's month-end ERM3 history since 2006 (hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta`) and the ETF covariance at each month-end. Holdings never leave the client.
+- New `POST /portfolio/exposure/history`: send tickers only (no values) and receive signed URLs to two Parquet files — each name's month-end ERM3 history (hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta`) and the ETF covariance at each month-end. Holdings never leave the client.
 - Python SDK: `client.exposure_history(tickers)` downloads the feed; `pack.exposure(holdings_by_date)` joins it with dated holdings locally and returns the same quantities as `/portfolio/exposure` at each month-end (L* default). The port is pinned to the TypeScript by a shared parity fixture.
 - Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.
 - Served from a precomputed month-end panel, because the daily stores are chunked by full history. The endpoint returns 503 until the panel is published.
