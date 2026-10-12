@@ -11,6 +11,18 @@ in the repository.
 
 ---
 
+## October 2026 — exposure history feeds follow the served-history start
+
+`POST /api/portfolio/exposure/history` and `/history/daily` now serve model history from the same
+start dates as every other model-history route: hedge ratios and `l1_mkt_beta` from 2010-12-08,
+explained-risk and residual shares and `stock_var` from 2011-12-07, `lstar_level` from 2013-01-01.
+Earlier values are no longer delivered (they were estimated on a partial window). The default
+`start` is 2010-12-08 and an earlier `start` is moved up to it. Responses carry
+`history_available_from` (first date per column) and `warnings` (`before_served_history`) when
+`start` is earlier than a column's first date.
+
+---
+
 ## October 2026 — long/short portfolio exposure
 
 **New: `POST /api/portfolio/exposure`.** Send a signed book of dollar positions (shorts
@@ -22,7 +34,7 @@ model date. {'$'}0.25 per call up to 25 names modelled, {'$'}1.00 above.
 
 **New: exposure history feeds.** `POST /api/portfolio/exposure/history` (month-end) and
 `POST /api/portfolio/exposure/history/daily` take tickers only and return Parquet files with each
-name's model history since 2006 and the ETF covariance at each month-end. Holdings stay on the
+name's model history and the ETF covariance at each month-end. Holdings stay on the
 client; `client.exposure_history(...)` in `riskmodels-py` joins them locally. {'$'}1.25 / {'$'}5.00
 (month-end) and {'$'}2.50 / {'$'}10.00 (daily), split at 25 names delivered.
 

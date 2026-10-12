@@ -229,10 +229,14 @@ The RiskModels MCP server exposes this endpoint as `riskmodels_portfolio_exposur
 
 The response carries signed URLs (valid one hour) to Parquet files:
 
-- `names`: each name's ERM3 history since 2006: hedge ratios at L1, L2 and L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta` (= −`l1_mkt_hr`), sector and subsector ETF. Month-end rows for `/history` (the current month uses its latest model day); one file per calendar year for `/history/daily`.
+- `names`: each name's ERM3 history: hedge ratios at L1, L2 and L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta` (= −`l1_mkt_hr`), sector and subsector ETF. Month-end rows for `/history` (the current month uses its latest model day); one file per calendar year for `/history/daily`.
 - `cov`: the ETF covariance over the 252 trading days ending each month-end. The daily feed also uses month-end covariance; each day takes the latest month-end on or before it.
 
-Both take `tickers` (1 to 1000, stocks and ETFs), and optional `start` and `end` dates. Names with no rows in range are listed in `dropped` (`no_data_in_range`; also `symbol_not_found`, `etf_without_covariance`). The data is derived only: no prices, market caps or return series. The ETF-to-sector mapping is the current registry.
+Both take `tickers` (1 to 1000, stocks and ETFs), and optional `start` and `end` dates.
+
+History starts where the model's estimation window is fully covered, as for `as_of` above: hedge ratios and `l1_mkt_beta` from 2010-12-08, explained-risk and residual shares and `stock_var` from 2011-12-07, `lstar_level` from 2013-01-01. Rows start at 2010-12-08 (month-end: 2010-12-31), and a column is null before its own start date. Nothing earlier is served. That is also the default `start`; an earlier `start` is moved up to it. The response lists each column's first date in `history_available_from`, and when `start` is earlier than a column's first date, `warnings` has one `before_served_history` entry per date (`available_from`, `columns`, `message`). With the SDK's default L\* basis every name is excluded before 2013-01-01 (no L\* level yet), and residual risk is missing before 2011-12-07; for 2010-12-08 to 2012 use `basis="l3"` (or `l1`/`l2`) and expect residual risk from 2011-12-07.
+
+Names with no rows in range are listed in `dropped` (`no_data_in_range`; also `symbol_not_found`, `etf_without_covariance`). The data is derived only: no prices, market caps or return series. The ETF-to-sector mapping is the current registry.
 
 The Python SDK (`riskmodels-py`) downloads the feed and joins it with dated holdings locally, returning the same quantities as `/portfolio/exposure` at each date (L\* by default):
 

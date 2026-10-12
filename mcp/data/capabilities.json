@@ -1961,7 +1961,7 @@
   {
     "id": "portfolio-exposure-history",
     "name": "Exposure History Feed",
-    "description": "Model data feed for long/short books: month-end ERM3 history since 2006 for up to 1000 names (hedge ratios at L1/L2/L3, explained-risk and residual shares, stock_var, L* level, L1 beta) plus the ETF covariance (252 trading days) at each month-end, delivered as two Parquet files via signed URLs. Takes tickers only — no position values — so holdings never leave the client; the SDK joins the feed with dated holdings locally and returns the same blocks as /portfolio/exposure at each month-end. Derived data only. Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.",
+    "description": "Model data feed for long/short books: month-end ERM3 history for up to 1000 names (hedge ratios at L1/L2/L3, explained-risk and residual shares, stock_var, L* level, L1 beta) plus the ETF covariance (252 trading days) at each month-end, delivered as two Parquet files via signed URLs. Model history starts where the full estimation window is covered: hedge ratios and l1_mkt_beta from 2010-12-08, explained-risk and residual shares and stock_var from 2011-12-07, lstar_level from 2013-01-01 (null before; nothing earlier is served). history_available_from gives each column's first date; warnings (before_served_history) appear when start is earlier. Takes tickers only — no position values — so holdings never leave the client; the SDK joins the feed with dated holdings locally and returns the same blocks as /portfolio/exposure at each month-end. Derived data only. Priced per call by names delivered: $1.25 up to 25, $5.00 above 25.",
     "endpoint": "/api/portfolio/exposure/history",
     "method": "POST",
     "parameters": {
@@ -2022,7 +2022,7 @@
   {
     "id": "portfolio-exposure-history-daily",
     "name": "Exposure History Feed (daily)",
-    "description": "Daily version of the exposure history feed: every trading day since 2006 for up to 1000 names (same columns as /portfolio/exposure/history), read straight from the ERM3 stores and delivered as one Parquet file per calendar year plus the month-end ETF covariance, via signed URLs. Tickers only — holdings never leave the client; the SDK joins locally using the latest covariance month-end on or before each day. Derived data only.",
+    "description": "Daily version of the exposure history feed: every trading day from 2010-12-08 for up to 1000 names (same columns and start dates as /portfolio/exposure/history: explained-risk and residual shares from 2011-12-07, lstar_level from 2013-01-01), read straight from the ERM3 stores and delivered as one Parquet file per calendar year plus the month-end ETF covariance, via signed URLs. Tickers only — holdings never leave the client; the SDK joins locally using the latest covariance month-end on or before each day. Derived data only.",
     "endpoint": "/api/portfolio/exposure/history/daily",
     "method": "POST",
     "parameters": {
@@ -2037,7 +2037,7 @@
       "start": {
         "type": "string",
         "required": false,
-        "description": "First day YYYY-MM-DD. Default 2006-01-01."
+        "description": "First day YYYY-MM-DD. Default and earliest: 2010-12-08 (an earlier start is moved up to it)."
       },
       "end": {
         "type": "string",

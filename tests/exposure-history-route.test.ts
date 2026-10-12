@@ -27,12 +27,13 @@ vi.mock("@/lib/portfolio/signed-exposure-data", () => ({
   resolveAll: vi.fn(async (ts: string[]) => new Map(ts.filter((t) => registry[t]).map((t) => [t, registry[t]]))),
 }));
 
+const panelCalls: Array<Record<string, unknown>> = [];
 const empty = () => Object.fromEntries(EXPOSURE_PANEL_VARS.map((v) => [v, [null, null]]));
 vi.mock("@/lib/dal/zarr-reader", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
   return {
     ...actual,
-    readExposureMonthEndPanel: vi.fn(async () => ({
+    readExposureMonthEndPanel: vi.fn(async (p: Record<string, unknown>) => (panelCalls.push(p), {
       teos: ["2026-08-31", "2026-09-30"],
       etfs: ["SPY", "XLK", "SMH"],
       cov: [new Float32Array(9).fill(1e-4), new Float32Array(9).fill(2e-4)],
@@ -76,6 +77,7 @@ describe("POST /api/portfolio/exposure/history", () => {
     billed.count = null;
     sets.clear();
     failWrite.on = false;
+    panelCalls.length = 0;
     vi.mocked(writeExposureHistorySet).mockClear();
   });
 
@@ -120,5 +122,30 @@ describe("POST /api/portfolio/exposure/history", () => {
   it("rejects an empty or oversized ticker list", async () => {
     expect((await call({ tickers: [] })).status).toBe(400);
     expect((await call({ tickers: Array.from({ length: 1001 }, (_, i) => `T${i}`) })).status).toBe(400);
+  });
+
+  it("reads from the served-history start and says so when the requested start is earlier", async () => {
+    const { status, body } = await call({ tickers: ["NVDA"], start: "2006-01-01" });
+    expect(status).toBe(200);
+    expect(panelCalls[0]!.start).toBe("2010-12-08");
+    expect(body.history_available_from).toMatchObject({
+      l1_mkt_hr: "2010-12-08",
+      l3_res_er: "2011-12-07",
+      lstar_level: "2013-01-01",
+    });
+    expect(body.warnings.map((w: any) => [w.code, w.available_from])).toEqual([
+      ["before_served_history", "2010-12-08"],
+      ["before_served_history", "2011-12-07"],
+      ["before_served_history", "2013-01-01"],
+    ]);
+  });
+
+  it("defaults to the served-history start without warnings, and keeps a later start", async () => {
+    const a = await call({ tickers: ["NVDA"] });
+    expect(panelCalls[0]!.start).toBe("2010-12-08");
+    expect(a.body.warnings).toEqual([]);
+    const b = await call({ tickers: ["NVDA"], start: "2015-01-01" });
+    expect(panelCalls[1]!.start).toBe("2015-01-01");
+    expect(b.body.warnings).toEqual([]);
   });
 });

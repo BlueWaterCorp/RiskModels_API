@@ -9,8 +9,14 @@
  * barely moves day to day, and the SDK uses the latest month-end on or before
  * each day.
  *
- * Measured 2026-10-08: reading full daily history (2006 → today) takes ~7 s for
- * 25 names and ~19 s for 1000; writing Parquet dominates for large books.
+ * History follows the served-history policy (lib/dal/served-history.ts), as on
+ * the month-end feed: rows start 2010-12-08 (hedge ratios); explained-risk
+ * shares and stock_var are null before 2011-12-07, lstar_level before
+ * 2013-01-01 (`history_available_from`, `warnings`).
+ *
+ * Measured 2026-10-08: reading full daily history (2006 → today, before the
+ * served-history floor) took ~7 s for 25 names and ~19 s for 1000; writing
+ * Parquet dominates for large books.
  */
 
 import { createHash } from "crypto";
@@ -22,14 +28,19 @@ import { readDailyExposureHistory, readExposureMonthEndPanel } from "@/lib/dal/z
 import { ExposureHistoryRequestSchema } from "@/lib/api/schemas";
 import {
   COV_COLUMNS,
+  EXPOSURE_FIELD_START,
+  EXPOSURE_HISTORY_START,
   NAME_COLUMNS,
   buildDailyNameRows,
   buildHistoryTables,
   dailyCoverage,
   dailyYears,
+  maskBeforeServedStart,
   resolveHistoryNames,
+  servedStartWarnings,
   toParquet,
 } from "@/lib/portfolio/exposure-history";
+import { clampStart } from "@/lib/dal/served-history";
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
 import {
   EXPOSURE_HISTORY_URL_TTL_SECONDS,
@@ -43,7 +54,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const URL_TTL_SECONDS = EXPOSURE_HISTORY_URL_TTL_SECONDS;
-const DEFAULT_START = "2006-01-01";
 
 async function getItemCount(req: NextRequest): Promise<number | undefined> {
   try {
@@ -84,7 +94,9 @@ export const POST = withBilling(
       );
     }
     const { tickers, end } = validation.data;
-    const start = validation.data.start ?? DEFAULT_START;
+    // Default and earliest start: the served-history start (per-column floors applied below).
+    const start = clampStart(validation.data.start, EXPOSURE_HISTORY_START)!;
+    const warnings = servedStartWarnings(validation.data.start);
 
     try {
       const fetchStart = performance.now();
@@ -100,6 +112,7 @@ export const POST = withBilling(
           { status: 503, headers },
         );
       }
+      maskBeforeServedStart(daily.teos, daily.bySymbol);
 
       const { delivered, noData } = dailyCoverage(daily, names);
       const bySymbol = new Map(names.map((n) => [n.symbol, n]));
@@ -115,7 +128,12 @@ export const POST = withBilling(
       const billable = delivered.length + etfsDelivered.length;
       if (billable === 0) {
         return NextResponse.json(
-          { error: "No data", message: "None of the requested tickers has model history in range.", dropped },
+          {
+            error: "No data",
+            message: "None of the requested tickers has model history in range.",
+            dropped,
+            history_available_from: EXPOSURE_FIELD_START,
+          },
           { status: 422, headers },
         );
       }
@@ -131,6 +149,8 @@ export const POST = withBilling(
             end: end ?? null,
             last: daily.teos[daily.teos.length - 1] ?? null,
             built: panel.attrs.built_utc ?? null,
+            // Sets written before the served-history floors applied hold pre-floor rows.
+            served: EXPOSURE_FIELD_START,
           }),
         )
         .digest("hex")
@@ -191,6 +211,8 @@ export const POST = withBilling(
           names_delivered: delivered.length,
           etfs_in_covariance: cov.covEtfs,
           dropped,
+          history_available_from: EXPOSURE_FIELD_START,
+          warnings,
           notes: [
             "Derived data only: no prices, market caps or return series.",
             "l1_mkt_beta equals -l1_mkt_hr exactly (L1 has one factor, SPY).",

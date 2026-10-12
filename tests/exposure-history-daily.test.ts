@@ -87,6 +87,7 @@ vi.mock("@/lib/supabase/storage", () => ({
 }));
 
 import { POST } from "@/app/api/portfolio/exposure/history/daily/route";
+import { readDailyExposureHistory } from "@/lib/dal/zarr-reader";
 
 async function call(body: unknown) {
   const res = await (POST as unknown as (r: Request) => Promise<Response>)(
@@ -134,5 +135,18 @@ describe("POST /api/portfolio/exposure/history/daily", () => {
     const again = await call({ tickers: ["NVDA"] });
     expect(again.body.files.cached).toBe(false);
     expect(again.body.files.names.parts.map((p: any) => p.year)).toEqual(["2023", "2024"]);
+  });
+
+  it("clamps the read to the served-history start and reports it", async () => {
+    vi.mocked(readDailyExposureHistory).mockClear();
+    const early = await call({ tickers: ["NVDA"], start: "2006-01-01" });
+    expect(vi.mocked(readDailyExposureHistory).mock.calls[0]![0].start).toBe("2010-12-08");
+    expect(panelCalls[0]!.start).toBe("2010-11-01");
+    expect(early.body.history_available_from.lstar_level).toBe("2013-01-01");
+    expect(early.body.warnings.map((w: any) => w.available_from)).toEqual(["2010-12-08", "2011-12-07", "2013-01-01"]);
+
+    const dflt = await call({ tickers: ["NVDA"] });
+    expect(vi.mocked(readDailyExposureHistory).mock.calls[1]![0].start).toBe("2010-12-08");
+    expect(dflt.body.warnings).toEqual([]);
   });
 });

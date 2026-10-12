@@ -44,7 +44,7 @@ commercial restriction on customers, not a licence limit on us.
 
 ## Pricing
 
-| Names requested | Full month-end history since 2006 | Full daily history since 2006 |
+| Names requested | Full month-end history | Full daily history |
 |---|---|---|
 | up to 25 | $1.25 | $2.50 |
 | over 25 | $5.00 | $10.00 |
@@ -71,6 +71,9 @@ ETF Zarr stores and writes
 - `teo` is the last trading day of each calendar month present in the hedge
   store, from 2006. Values are taken **at** that day (no forward fill). The
   current month uses its latest model day until the month closes.
+- The panel stores months from 2006, but the routes serve only from the
+  served-history start (`lib/dal/served-history.ts`; see "Served history"
+  below).
 - `l1_mkt_beta` is not stored: it equals `−l1_mkt_hr` exactly (L1 has one
   factor, SPY; verified 311/311 against `ds_erm3_betas`).
 - Chunks are `{teo: all, symbol: 1024}` and `{teo: all, etf: all, etf_j: all}`,
@@ -83,7 +86,7 @@ ETF Zarr stores and writes
 `POST /api/portfolio/exposure/history`
 
 ```json
-{ "tickers": ["NVDA", "AMD", "SPY"], "start": "2006-01-31", "end": null }
+{ "tickers": ["NVDA", "AMD", "SPY"], "start": "2012-01-31", "end": null }
 ```
 
 - Up to 1000 tickers. ETFs are allowed; they get no per-name rows but stay in
@@ -96,6 +99,30 @@ ETF Zarr stores and writes
   toward the price tier.
 - ETF-to-sector mapping is today's registry, not point-in-time (stated in the
   response).
+
+### Served history
+
+Both feeds apply the same served-history floors as every other model-history
+route (`SERVED_HISTORY_START` in `lib/dal/served-history.ts`; a product is
+served from the first date whose whole estimation window is covered):
+
+| Columns | First date served |
+|---|---|
+| `l1_mkt_hr` … `l3_sub_hr`, `l1_mkt_beta` | 2010-12-08 |
+| `l1_res_er` … `l3_sub_er`, `stock_var` | 2011-12-07 |
+| `lstar_level` | 2013-01-01 |
+
+- The read starts at 2010-12-08 (`EXPOSURE_HISTORY_START`); that is also the
+  default `start`, and an earlier `start` is moved up to it.
+- `maskBeforeServedStart` then nulls each column before its own floor; a row
+  with no value left is not delivered. The covariance has no floor of its own
+  (the daily feed still reads the month-end before its first day).
+- Responses carry `history_available_from` (column → first date) and, when the
+  requested `start` precedes a floor, `warnings`: one
+  `{code: "before_served_history", available_from, columns, message}` per
+  later floor.
+- With the SDK's default L* basis every name is excluded before 2013-01-01,
+  and residual risk is missing before 2011-12-07.
 
 ### Storage and cleanup
 
@@ -205,7 +232,7 @@ fetching full history for a set of names is the access they are built for, and
 the cost grows with names, not dates. Each needed symbol chunk is read once per
 variable, 16 at a time, into typed arrays (`readDailyExposureHistory`).
 
-| Full daily history since 2006 | Read | Parquet write | Output |
+| Full daily history (2006 → today, measured before the served-history floor) | Read | Parquet write | Output |
 |---|---|---|---|
 | 25 names | 7 s | 1 s | 2.4 MB |
 | 1000 names | 18 s | 51 s | 95.5 MB in yearly files |

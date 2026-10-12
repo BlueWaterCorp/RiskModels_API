@@ -8611,16 +8611,17 @@ paths:
     post:
       summary: Exposure history feed, daily — every trading day for a list of names (join locally)
       description: >
-        Daily version of `POST /portfolio/exposure/history`: the same columns for every trading
-        day since 2006 (or `start`), read directly from the ERM3 hedge-weights and returns stores.
+        Daily version of `POST /portfolio/exposure/history`: the same columns, with the same start
+        dates, for every trading day from 2010-12-08 (or `start`), read directly from the ERM3
+        hedge-weights and returns stores.
         Names are delivered as one Parquet file per calendar year (`files.names.parts`); the ETF
         covariance stays month-end, and each day should use the latest month-end on or before it
         (the Python SDK does this: `client.exposure_history(tickers, frequency="daily")`).
         Tickers only; holdings never leave the client. Derived data only.
 
 
-        Large requests take longer: measured 2026-10-08, full history for 1000 names read in ~18 s
-        and wrote ~95 MB of Parquet in ~51 s. Identical requests reuse the stored files.
+        Large requests take longer: measured 2026-10-08 on history back to 2006 (before the
+        served-history start applied), 1000 names read in ~18 s and wrote ~95 MB of Parquet in ~51 s. Identical requests reuse the stored files.
 
 
         **Billing:** per successful call, by names delivered: **$2.50** up to 25, **$10.00** above 25.
@@ -8649,11 +8650,11 @@ paths:
                   minItems: 1
                   maxItems: 1000
                   items: { type: string }
-                start: { type: string, format: date, description: "First day. Default 2006-01-01." }
+                start: { type: string, format: date, description: "First day. Default and earliest: 2010-12-08 (an earlier start is moved up to it)." }
                 end: { type: string, format: date, description: "Last day. Default latest." }
       responses:
         "200":
-          description: Signed Parquet URLs (names per year, month-end covariance) plus coverage.
+          description: Signed Parquet URLs (names per year, month-end covariance) plus coverage, `history_available_from` and `warnings` (same shape as `/portfolio/exposure/history`).
         "400":
           description: Invalid request.
         "422":
@@ -8665,8 +8666,8 @@ paths:
       summary: Exposure history feed — month-end model history for a list of names (join locally)
       description: >
         Model data feed for long/short books. Send a list of tickers — no position values — and
-        receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history since
-        2006 (`names`: hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`,
+        receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history
+        (`names`: hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`,
         `lstar_level`, `l1_mkt_beta` = −`l1_mkt_hr`, sector and subsector ETF) and the ETF covariance
         over the 252 trading days ending each month-end (`cov`, upper triangle). Holdings never leave
         the client: the Python SDK (`client.exposure_history(...).exposure(holdings_by_date)`) joins
@@ -8675,6 +8676,16 @@ paths:
 
 
         Each row is the last trading day of its month; the current month uses its latest model day.
+
+
+        **History start.** Model history is served from the first date whose full estimation window
+        is covered: hedge ratios and `l1_mkt_beta` from 2010-12-08, explained-risk and residual
+        shares and `stock_var` from 2011-12-07, `lstar_level` from 2013-01-01. Rows start at the
+        first month-end on or after 2010-12-08 (2010-12-31); each column is null before its own
+        start date and nothing earlier is served. That is the default `start`; an earlier `start`
+        is moved up to it. `history_available_from` gives each column's first date, and `warnings`
+        has one `before_served_history` entry per start date later than the requested `start`.
+        The same applies to `/portfolio/exposure/history/daily`.
         Names with no model rows in range are dropped as `no_data_in_range`; ETFs stay in the
         covariance universe. The ETF-to-sector mapping is today's registry, not point-in-time.
         Derived data only: no prices, market caps or return series.
@@ -8712,7 +8723,7 @@ paths:
                 start:
                   type: string
                   format: date
-                  description: First month-end to include. Default 2006.
+                  description: First month-end to include. Default and earliest 2010-12-08 (an earlier start is moved up to it).
                 end:
                   type: string
                   format: date
@@ -8750,6 +8761,28 @@ paths:
                         reason:
                           type: string
                           enum: [symbol_not_found, no_data_in_range, etf_without_covariance]
+                  history_available_from:
+                    type: object
+                    description: First date each column is served (column → YYYY-MM-DD); null before it.
+                    additionalProperties: { type: string, format: date }
+                    example:
+                      l1_mkt_hr: "2010-12-08"
+                      l1_mkt_beta: "2010-12-08"
+                      l3_res_er: "2011-12-07"
+                      stock_var: "2011-12-07"
+                      lstar_level: "2013-01-01"
+                  warnings:
+                    type: array
+                    description: One entry per column start date later than the requested `start`; empty otherwise.
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string, enum: [before_served_history] }
+                        available_from: { type: string, format: date }
+                        columns:
+                          type: array
+                          items: { type: string }
+                        message: { type: string }
         "400":
           description: Invalid request (empty or more than 1000 tickers, bad date).
         "422":
