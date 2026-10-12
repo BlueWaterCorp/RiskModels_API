@@ -118,6 +118,19 @@ function promptText(text: string): McpPromptResult {
 }
 
 /**
+ * MCP tool annotations for every RiskModels tool. All tools only read model
+ * data (POST routes compute, they do not persist), none modify or delete
+ * user data, and all reach the live RiskModels API (open world). Emitted as
+ * explicit booleans because directory reviews (OpenAI, Anthropic) reject
+ * omitted hints.
+ */
+export const READ_ONLY_TOOL_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  openWorldHint: true,
+} as const;
+
+/**
  * Copy each tool's `title` into `annotations.title`, the field the MCP
  * directory reads for the listing name. Must run before any registerTool.
  */
@@ -228,7 +241,7 @@ export function registerRiskModelsTools(
     "riskmodels_decompose",
     {
       title: "RiskModels Single-Stock Decomposition",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Decomposes one US stock's risk into additive market, sector, subsector and residual layers at L3 (POST /decompose): explained-risk share, hedge ratio and hedge ETF for each layer, with chart-ready data and a plain-English summary. Input: ticker.",
       inputSchema: {
@@ -248,7 +261,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_returns",
     {
       title: "RiskModels Stock Total Returns",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Daily dividend-adjusted total return series for one US stock or ETF (GET /ticker-returns), with each day's L3 market, sector and subsector hedge ratios and explained-risk shares. Inputs: ticker; years of history (1-15, default 1). History is point-in-time.",
       inputSchema: {
@@ -275,7 +288,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_return_attribution",
     {
       title: "RiskModels Return Attribution (factor vs residual)",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Daily return attribution for one stock (GET /returns-decomposition): each day's gross return split into additive market, sector and subsector factor returns and the residual (stock-specific) return. include_lstar adds the residual series at each day's Lstar level.",
       inputSchema: {
@@ -317,7 +330,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_lstar",
     {
       title: "RiskModels Lstar Recommended Hedge Level",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Recommended hedge depth (L1, L2 or L3) for one stock by date (GET /lstar), with the hedge ratios at that depth and the daily residual return series. Without threshold the level is the one ERM3 publishes; with threshold it is the simplest level whose marginal explained risk exceeds the threshold. $0.02 per request.",
       inputSchema: {
@@ -362,7 +375,7 @@ export function registerRiskModelsTools(
     "riskmodels_batch_lstar",
     {
       title: "RiskModels Batch Lstar Residual Returns",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Lstar levels, hedge ratios and daily residual returns for 1-100 tickers in one request (POST /batch/lstar), using the same level rule as GET /lstar. Output as JSON, Parquet or CSV. $0.015 per ticker plus $0.0075 per extra year, minimum $0.03 per call.",
       inputSchema: {
@@ -405,7 +418,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_hedge_levels",
     {
       title: "RiskModels L1/L2/L3 hedge_levels",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "L1, L2 and L3 hedge snapshots for one stock (GET /metrics/{ticker}): hedge ratios, explained-risk shares and hedge ETFs at each depth. Input: ticker.",
       inputSchema: {
@@ -425,7 +438,7 @@ export function registerRiskModelsTools(
     "riskmodels_compare",
     {
       title: "RiskModels Multi-Ticker Comparison",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Compares 2-100 tickers across market, sector, subsector and residual risk layers: explained-risk shares and hedge ratios for each ticker, with chart-ready data.",
       inputSchema: {
@@ -445,7 +458,7 @@ export function registerRiskModelsTools(
     "riskmodels_hedge_position",
     {
       title: "RiskModels Position Hedge",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "ETF hedge notionals for a dollar position in one stock: the stock's hedge ratios at each level scaled to the dollar amount. Inputs: ticker, dollars.",
       inputSchema: {
@@ -466,7 +479,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_my_positions",
     {
       title: "RiskModels linked brokerage positions",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Reads the caller's linked brokerage positions (Alpaca Connect, Connect Trade or Plaid) from their default riskmodels.net portfolio: ticker, quantity, market value and weight of each position, has_shorts, and the same book in three shapes: for_analysis (positive weights), for_hedge (positive dollar values) and for_exposure (signed dollars, short < 0). Read-only; it does not place orders. Returns an empty book when no brokerage is linked. No inputs.",
       inputSchema: {},
@@ -498,7 +511,7 @@ export function registerRiskModelsTools(
     "riskmodels_analyze_portfolio",
     {
       title: "RiskModels Portfolio hedge_levels aggregate",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Holdings-weighted L1, L2 and L3 hedge levels for a long-only book of up to 100 names (POST /batch/analyze), with per-ticker detail. Positions: ticker with a positive weight or dollar amount; short positions are not accepted.",
       inputSchema: {
@@ -529,7 +542,7 @@ export function registerRiskModelsTools(
     "riskmodels_hedge_portfolio",
     {
       title: "RiskModels Portfolio ETF hedge notionals",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "ETF hedge notionals for a long-only book of up to 100 names: each name's hedge ratios at the chosen level (L1, L2 or L3; default L3) scaled by its dollar value and summed by ETF. Dollar values must be positive.",
       inputSchema: {
@@ -569,7 +582,7 @@ export function registerRiskModelsTools(
     "riskmodels_portfolio_exposure",
     {
       title: "RiskModels Long/Short Portfolio Exposure",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Exposure of a signed long/short book of 1-1000 positions (POST /portfolio/exposure). Positions are { ticker, value } in signed dollars (short < 0), netted by security and not rescaled. Returns beta-dollars by sector, the ETF trades that neutralise the book at L1, L2 and L3, systematic and residual dollar risk at hedge_level (default lstar: each name at its own L* level), coverage (positions not modelled, with reasons) and warnings. $0.25 per call up to 25 modelled names, $1.00 above.",
       inputSchema: {
@@ -627,7 +640,7 @@ export function registerRiskModelsTools(
     "riskmodels_portfolio_decompose",
     {
       title: "RiskModels Portfolio Decomposition",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Risk decomposition of a long-only weighted portfolio of up to 100 names into market, sector, subsector and residual layers. Positions: ticker with a positive weight or dollar amount.",
       inputSchema: {
@@ -657,7 +670,7 @@ export function registerRiskModelsTools(
     "riskmodels_whitepaper_example",
     {
       title: "RiskModels Live White-Paper Example",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Runs one of four fixed examples from the RiskModels white paper on live data (aapl-vs-nvda, aapl-nvda-crwd, nvda-10000-hedge, portfolio-decomposition) and returns the chapter text with the live results.",
       inputSchema: {
@@ -681,7 +694,7 @@ export function registerRiskModelsTools(
     "riskmodels_search_tickers",
     {
       title: "RiskModels Ticker Search",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Looks up RiskModels tickers by symbol or company-name fragment (GET /tickers). mag7=true returns the seven largest US technology names. Free.",
       inputSchema: {
@@ -707,7 +720,7 @@ export function registerRiskModelsTools(
     "riskmodels_search_filers",
     {
       title: "RiskModels 13F Filer Search",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Looks up 13F filers by name fragment (GET /13f/filers/search) and returns each match's bw_filer_id. Free.",
       inputSchema: {
@@ -730,7 +743,7 @@ export function registerRiskModelsTools(
     "riskmodels_search_etfs",
     {
       title: "RiskModels ETF Search",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Looks up ETFs in the RiskModels universe by symbol or name fragment (GET /data/etf/search). Free.",
       inputSchema: {
@@ -756,7 +769,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_rankings",
     {
       title: "RiskModels Cross-Sectional Rankings",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "One stock's percentile rank within its universe, sector or subsector cohort for a metric and window (GET /rankings/{ticker}). Metrics: subsector_residual, sector_residual, gross_return, mkt_cap, er_l1, er_l2, er_l3. Windows: 1d, 21d, 63d, 252d.",
       inputSchema: {
@@ -788,7 +801,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_cohorts",
     {
       title: "RiskModels Cohort Statistics",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Cross-sectional residual statistics for SPY and the 11 GICS sector SPDR cohorts: one date (GET /cohorts) or a date range when series=true (GET /cohorts/series). Default variables: residual_mean, residual_sd, mean_pairwise_corr, n_names, n_effective; more on request. ERM3 residuals are fitted without an intercept, so residual_mean is not zero. link_fit_resid_sd is the residual standard deviation of the 252-day link regression, a fit-quality measure rather than a standard error. Subsector cohorts are not available.",
       inputSchema: {
@@ -838,7 +851,7 @@ export function registerRiskModelsTools(
     "riskmodels_decompose_selection_vs_drift",
     {
       title: "RiskModels Selection vs Drift",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Splits a book's realized residual return over a date window into selection (from holding names that beat their cohort's average residual) and drift (from net exposure to the cohort average) (POST /cohorts/pnl-decomposition). The two sum exactly to the total. Weights are held constant over the window and are not normalized; a short is a negative weight. Positions that cannot be mapped to a cohort are listed in coverage.dropped. Historical attribution only.",
       inputSchema: {
@@ -889,7 +902,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_fundamentals",
     {
       title: "RiskModels PIT Quarterly Fundamentals",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Point-in-time quarterly fundamentals for one stock (GET /fundamentals/{ticker}): TTM profitability and capital-return ratios, leverage, ERM3 valuation betas, cost_of_debt and wacc from reported data, separately labelled cost_of_debt_imputed and wacc_imputed from a market proxy (10-year Treasury plus a high-quality corporate spread, not issuer-specific), economic profit, an equity-bridge decomposition and SEC line items (sec_facts). A quarter is included only if it was filed on or before as_of. grid=true adds an ERP x Treasury-tenor table of cost of equity, wacc, wacc_imputed and economic profit for the latest period. Historical data only.",
       inputSchema: {
@@ -934,7 +947,7 @@ export function registerRiskModelsTools(
     "riskmodels_screen_rankings",
     {
       title: "RiskModels Rankings Screen",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Ranks the full universe for one metric, cohort and window (POST /rankings/screen) and returns the names that pass optional percentile, decile and sector filters. Metrics, cohorts and windows are the same as GET /rankings/{ticker}.",
       inputSchema: {
@@ -970,7 +983,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_macro_correlation",
     {
       title: "RiskModels Macro Factor Correlation",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Correlation of one stock's returns with macro factors such as rates and volatility (POST /correlation), Pearson or Spearman over a rolling window. Uses the L3 residual return by default.",
       inputSchema: {
@@ -999,7 +1012,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_residual_signal",
     {
       title: "RiskModels Residual Mean-Reversion Signal",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Aggregates the L3 residual mean-reversion signal across a basket of 1-100 tickers (POST /signals/residual-reversion/basket), with optional weights and a minimum signal-quality quintile.",
       inputSchema: {
@@ -1034,7 +1047,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_filer_snapshot",
     {
       title: "RiskModels 13F Filer Snapshot",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Snapshot of one 13F filer (GET /13f/filers/{bw_filer_id}/snapshot): registry details, latest metrics and concentration. Accepts a bw_filer_id or a composite entity id (BW-SYNTH-*).",
       inputSchema: {
@@ -1056,7 +1069,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_filer_holdings",
     {
       title: "RiskModels 13F Filer Holdings",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Largest current holdings of one 13F filer (GET /13f/filers/{bw_filer_id}/holdings). The response also identifies the source filing: accession_number, filing_type (13F-HR original, 13F-HR/A amendment, 13F-NT notice) and amendment_type (ORIGINAL, RESTATEMENT, NEW_HOLDINGS or UNKNOWN). These are null on panels published before filing vintages were stored; a null amendment_type means unclassified. Accepts a bw_filer_id or a composite entity id (BW-SYNTH-*).",
       inputSchema: {
@@ -1083,7 +1096,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_etf",
     {
       title: "RiskModels ETF Metrics",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Latest metrics for one ETF (GET /data/etf/{ticker}): registry metadata and portfolio surface.",
       inputSchema: {
@@ -1105,7 +1118,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_etf_holdings",
     {
       title: "RiskModels ETF Holdings",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description: "Largest current holdings of one ETF (GET /data/etf/{ticker}/holdings).",
       inputSchema: {
         ticker: z.string().min(1).describe("ETF ticker, e.g. SMH"),
@@ -1129,7 +1142,7 @@ export function registerRiskModelsTools(
     "riskmodels_get_benchmark_fit",
     {
       title: "RiskModels Benchmark Fit (active weights)",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Compares a fund, 13F filer or ETF portfolio with a benchmark at a common date (GET /data/benchmark-fit): active share, active-weight RMS (a coarse tracking-error proxy), overlap, and the largest over- and underweights. Benchmarks: ff_own (free-float-cap weights of the subject's own holdings), the large and small style cells (cell_large-value, cell_large-blend, cell_large-growth, cell_small-value, cell_small-blend, cell_small-growth), or all (every available benchmark for the subject). $0.005 per call.",
       inputSchema: {
@@ -1174,7 +1187,7 @@ export function registerRiskModelsTools(
     "riskmodels_call_endpoint",
     {
       title: "RiskModels REST Catalog Reader (GET)",
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
         "Read-only GET request to a RiskModels REST endpoint in the published catalog, for data without a dedicated tool (for example /industry-panel or /funds/{bw_fund_id}/holdings). Inputs: path relative to /api, and optional query parameters. Only GET endpoints are reachable; SQL, Plaid and chat endpoints are excluded. Billing follows the endpoint's REST price. API reference: https://riskmodels.app/docs/api",
       inputSchema: {

@@ -17,7 +17,7 @@ import {
  * - get_benchmark_fit offers only benchmarks that are live.
  */
 
-type Registered = { title?: string; description?: string; annotations?: { title?: string; readOnlyHint?: boolean }; inputSchema?: { shape?: Record<string, unknown> } };
+type Registered = { title?: string; description?: string; annotations?: { title?: string; readOnlyHint?: boolean; destructiveHint?: boolean; openWorldHint?: boolean }; inputSchema?: { shape?: Record<string, unknown> } };
 
 function hostedTools(): Record<string, Registered> {
   const server = createMcpServer({ apiKey: "rm_agent_live_test" });
@@ -40,10 +40,12 @@ describe("MCP directory compliance", () => {
     }
   });
 
-  it("every tool carries annotations.title and readOnlyHint", () => {
+  it("every tool carries annotations.title and explicit readOnly/destructive/openWorld hints", () => {
     for (const [name, t] of Object.entries(tools)) {
       expect(t.annotations?.title, name).toBeTruthy();
       expect(t.annotations?.readOnlyHint, name).toBe(true);
+      expect(t.annotations?.destructiveHint, name).toBe(false);
+      expect(t.annotations?.openWorldHint, name).toBe(true);
     }
   });
 
