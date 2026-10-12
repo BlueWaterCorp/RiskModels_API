@@ -34,9 +34,6 @@ const EXPECTED_OPENAI_TOOLS = [
   "riskmodels_compare",
   "riskmodels_decompose",
   "riskmodels_decompose_selection_vs_drift",
-  "riskmodels_docs_get_capability",
-  "riskmodels_docs_get_schema",
-  "riskmodels_docs_list_endpoints",
   "riskmodels_get_benchmark_fit",
   "riskmodels_get_cohorts",
   "riskmodels_get_etf",
@@ -79,7 +76,7 @@ describe("MCP OpenAI surface", () => {
     expect([...names].sort()).toEqual([...EXPECTED_OPENAI_TOOLS].sort());
   });
 
-  it("leaves out the generic REST reader and the Lstar / catalog names", () => {
+  it("leaves out the generic REST reader, the catalog tools and the Lstar names", () => {
     for (const gone of [
       "riskmodels_call_endpoint",
       "riskmodels_get_lstar",
@@ -119,16 +116,6 @@ describe("MCP OpenAI surface", () => {
       expect(t.description, name).toMatch(/residual/i);
       expect(t.description, name).toMatch(/recommended hedge depth/i);
       expect(t.description!.split(/GET \/lstar|POST \/batch\/lstar/).join(""), name).not.toMatch(/lstar/i);
-    }
-  });
-
-  it("documentation tools say they are documentation only", () => {
-    for (const name of [
-      "riskmodels_docs_list_endpoints",
-      "riskmodels_docs_get_capability",
-      "riskmodels_docs_get_schema",
-    ]) {
-      expect(openai[name]!.description, name).toMatch(/^Documentation only: .*does not call or execute any endpoint/);
     }
   });
 
@@ -185,5 +172,8 @@ describe("MCP OpenAI surface", () => {
     expect(def).toContain("riskmodels_batch_lstar");
     expect(def).not.toContain("riskmodels_get_residual_returns");
     expect(def).not.toContain("riskmodels_get_peers");
+    for (const n of ["riskmodels_list_endpoints", "riskmodels_get_capability", "riskmodels_get_schema"]) {
+      expect(def).toContain(n);
+    }
   });
 });

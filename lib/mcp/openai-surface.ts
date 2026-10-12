@@ -9,8 +9,9 @@
  *    the generic reader used to reach;
  *  - the Lstar tools are renamed to describe what they return (residual
  *    returns and the recommended hedge depth);
- *  - the catalog tools are renamed `riskmodels_docs_*` and say they return
- *    documentation only;
+ *  - the catalog tools (list_endpoints, get_capability, get_schema) are not
+ *    registered: they described REST routes reachable only through the
+ *    generic reader;
  *  - the server instructions and first-call prompt name only tools that exist
  *    on this surface.
  *
@@ -32,7 +33,12 @@ export type McpSurface = "default" | "openai";
 export const OPENAI_MCP_PATH = "/api/mcp/openai";
 
 /** Tools registered by the shared code that the OpenAI surface leaves out. */
-export const OPENAI_EXCLUDED_TOOLS: ReadonlySet<string> = new Set(["riskmodels_call_endpoint"]);
+export const OPENAI_EXCLUDED_TOOLS: ReadonlySet<string> = new Set([
+  "riskmodels_call_endpoint",
+  "riskmodels_list_endpoints",
+  "riskmodels_get_capability",
+  "riskmodels_get_schema",
+]);
 
 type ToolOverride = { name: string; title?: string; description?: string };
 
@@ -57,24 +63,6 @@ export const OPENAI_TOOL_OVERRIDES: Readonly<Record<string, ToolOverride>> = {
     title: "RiskModels Residual Returns and Recommended Hedge Depth (Batch)",
     description:
       "Daily residual (stock-specific) returns, recommended hedge depth (L1, L2 or L3) and the hedge ratios at that depth for 1-100 tickers in one request (POST /batch/lstar), using the same depth rule as the single-ticker residual-returns tool. The POST computes and returns data; it does not modify account data. Output as JSON, Parquet or CSV. $0.015 per ticker plus $0.0075 per extra year, minimum $0.03 per call.",
-  },
-  riskmodels_list_endpoints: {
-    name: "riskmodels_docs_list_endpoints",
-    title: "RiskModels API Documentation: Endpoint List",
-    description:
-      "Documentation only: lists the RiskModels REST catalog (capability id, HTTP method, path and a one-line description for each endpoint) from a static file. This tool does not call or execute any endpoint and returns no market data. Free. API reference: https://riskmodels.app/docs/api",
-  },
-  riskmodels_get_capability: {
-    name: "riskmodels_docs_get_capability",
-    title: "RiskModels API Documentation: Capability Details",
-    description:
-      "Documentation only: returns one REST capability's definition by id (parameters, pricing and examples) from a static file. This tool does not call or execute any endpoint and returns no market data. Free. API reference: https://riskmodels.app/docs/api",
-  },
-  riskmodels_get_schema: {
-    name: "riskmodels_docs_get_schema",
-    title: "RiskModels API Documentation: Response Schema",
-    description:
-      "Documentation only: returns the JSON response schema for one REST endpoint by schema filename (for example ticker-returns-v2.json) from a static file. This tool does not call or execute any endpoint and returns no market data. Free. API reference: https://riskmodels.app/docs/api",
   },
 };
 
@@ -109,7 +97,7 @@ export function applyOpenAiSurface(server: { registerTool: (...a: any[]) => unkn
 
 export const OPENAI_MCP_SERVER_INSTRUCTIONS = `RiskModels returns US-equity factor risk from the ERM3 model: market, sector, subsector and residual risk decomposition; residual (stock-specific) returns with the recommended hedge depth; ETF hedge ratios and hedge notionals; long-only and long/short portfolio exposure; cross-sectional rankings, peer groups and cohort statistics; 13F filer, mutual fund and ETF holdings; macro factor and sector ETF returns; and point-in-time quarterly fundamentals.
 
-All data is end-of-day and historical. Every tool is read-only: tools do not forecast, do not place orders and do not modify account data. Tools that call billed REST endpoints charge the connected RiskModels account; each such tool's description states its price. The documentation tools (riskmodels_docs_list_endpoints, riskmodels_docs_get_capability, riskmodels_docs_get_schema) read a static catalog, do not call any endpoint and return no market data.
+All data is end-of-day and historical. Every tool is read-only: tools do not forecast, do not place orders and do not modify account data. Tools that call billed REST endpoints charge the connected RiskModels account; each such tool's description states its price.
 
 API reference: https://riskmodels.app/docs/api`;
 
