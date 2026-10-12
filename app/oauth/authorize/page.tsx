@@ -7,26 +7,20 @@
  *  2. If the user has no `.app` Supabase session, send them to `.app`'s own
  *     sign-in (`/get-key`) with this authorize URL as `?next=` so they return
  *     here after login. `.net` is never involved.
- *  3. Render a minimal consent screen; "Allow" POSTs to
- *     /api/oauth/authorize/decision, which mints the single-use auth code and
- *     redirects back to the client's redirect_uri.
+ *  3. Render a minimal consent screen that names the signed-in account;
+ *     "Allow" POSTs to /api/oauth/authorize/decision, which mints the
+ *     single-use auth code and redirects back to the client's redirect_uri.
+ *     "Use a different account" POSTs to /api/oauth/authorize/switch-account,
+ *     which signs this browser out and returns to step 2 with every original
+ *     authorize parameter, so the flow comes back here for the new account.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getClient, redirectUriRegistered, OAUTH_SCOPE } from "@/lib/oauth/server";
+import { AUTHORIZE_PARAMS, signInPathFor } from "@/lib/oauth/authorize-return";
 
 export const dynamic = "force-dynamic";
-
-const AUTHORIZE_PARAMS = [
-  "response_type",
-  "client_id",
-  "redirect_uri",
-  "code_challenge",
-  "code_challenge_method",
-  "scope",
-  "state",
-] as const;
 
 function str(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -89,12 +83,7 @@ export default async function AuthorizePage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    const qs = new URLSearchParams();
-    for (const k of AUTHORIZE_PARAMS) {
-      const v = str(sp[k]);
-      if (v) qs.set(k, v);
-    }
-    redirect(`/get-key?next=${encodeURIComponent(`/oauth/authorize?${qs.toString()}`)}`);
+    redirect(signInPathFor(sp));
   }
 
   // 3. Consent screen — plain server-rendered form, no client JS needed.
@@ -109,9 +98,34 @@ export default async function AuthorizePage({
           It will be able to <strong className="text-zinc-200">read your risk data</strong> through RiskModels and
           <strong className="text-zinc-200"> bill your account</strong> for metered calls, on your behalf.
         </p>
+        <div
+          data-testid="oauth-signed-in-as"
+          className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2.5"
+        >
+          <p className="min-w-0 text-sm text-zinc-400">
+            Signed in as{" "}
+            <strong className="break-all font-medium text-zinc-100">{user.email ?? user.id}</strong>
+          </p>
+          <form method="POST" action="/api/oauth/authorize/switch-account" className="shrink-0">
+            {AUTHORIZE_PARAMS.map((k) => {
+              const v = str(sp[k]);
+              return v ? <input key={k} type="hidden" name={k} value={v} /> : null;
+            })}
+            <button
+              type="submit"
+              data-testid="oauth-switch-account"
+              className="text-xs font-medium text-sky-400 hover:text-sky-300 hover:underline"
+            >
+              Use a different account
+            </button>
+          </form>
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          The connection will use this account&apos;s data, positions and billing. If this is not the account you
+          meant, switch before you allow.
+        </p>
         <ul className="mt-4 text-sm text-zinc-400 space-y-1">
           <li>• Scope: <code className="text-zinc-300">{scope}</code></li>
-          <li>• Signed in as <span className="text-zinc-300">{user.email ?? user.id}</span></li>
         </ul>
 
         <div className="mt-4 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2">

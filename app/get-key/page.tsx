@@ -12,6 +12,7 @@ import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/goog
 import { gtmAnalytics } from '@/lib/posthog-client';
 import { WORKFLOWS, AGENT_CLIENTS, WORKFLOW_LABELS, parseWorkflow, parseAgentClient, type SetupWorkflow, type AgentClient } from '@/emails/engagement-content';
 import { FIRST_LIVE_PROMPT_MCP } from '@/lib/mcp/activation';
+import { isAuthorizeReturn } from '@/lib/oauth/authorize-return';
 
 const MCP_CONNECTOR_URL = 'https://riskmodels.app/api/mcp/sse';
 const MCP_INSTALL_CMD = 'npx -y riskmodels@latest install';
@@ -400,9 +401,15 @@ function GetKeyPage() {
   /** Google — same Supabase provider as Risk_Models (`riskmodels_net` auth-context). Enable in Supabase → Authentication → Providers. */
   const signInWithGoogle = async () => {
     setAuthError('');
+    // In the OAuth connector flow, always show Google's account chooser so a
+    // user switching accounts is not signed straight back into the last one.
+    const chooseAccount = isAuthorizeReturn(searchParams.get('next'));
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: oauthRedirectTo() },
+      options: {
+        redirectTo: oauthRedirectTo(),
+        ...(chooseAccount ? { queryParams: { prompt: 'select_account' } } : {}),
+      },
     });
   };
 
