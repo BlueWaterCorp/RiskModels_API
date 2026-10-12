@@ -203,6 +203,88 @@ const getFundamentalsArgs = z.object({
   rf_tenor: z.enum(["3m", "1y", "2y", "5y", "10y", "30y"]).default("10y"),
 });
 
+/** True when the raw tool args carried an ERP (before the zod default fills 0.05). */
+function erpWasSupplied(rawArgs: unknown): boolean {
+  const erp = (rawArgs as { erp?: unknown } | null)?.erp;
+  return erp !== undefined && erp !== null && erp !== "";
+}
+
+/** Fraction → "4.48%" (two decimals); null/non-finite → null. */
+export function formatPct(v: number | null | undefined): string | null {
+  return typeof v === "number" && Number.isFinite(v) ? `${(v * 100).toFixed(2)}%` : null;
+}
+
+type SanitizedFundamentalsRow = ReturnType<typeof sanitizeFundamentalsRow>;
+
+/**
+ * The cost-of-capital inputs that are choices, not data, stated as such so
+ * the answer can name them. ERP and tax rate are request parameters; rf is
+ * the point-in-time Treasury yield at the chosen tenor; beta_market is the
+ * model's long-window valuation beta.
+ */
+export function buildCostOfCapitalAssumptions(params: {
+  erp: number;
+  erpSupplied: boolean;
+  taxRate: number;
+  rfTenor: string;
+  latestRow: SanitizedFundamentalsRow | undefined;
+}) {
+  const { erp, erpSupplied, taxRate, rfTenor, latestRow } = params;
+  return {
+    note:
+      "These are assumptions of the cost-of-capital calculation, not reported data. State them whenever you quote cost_of_equity, cost_of_debt or WACC.",
+    erp: {
+      value: erp,
+      pct: formatPct(erp),
+      basis: erpSupplied
+        ? "assumption supplied with the request"
+        : "default assumption (0.05) used because no ERP was supplied; no ERP opinion is stored",
+    },
+    risk_free_rate: {
+      tenor: rfTenor,
+      value: latestRow?.rf_rate ?? null,
+      pct: formatPct(latestRow?.rf_rate),
+      basis: `point-in-time ${rfTenor} US Treasury yield at period end (tenor is an assumption of the request)`,
+    },
+    tax_rate: {
+      value: taxRate,
+      pct: formatPct(taxRate),
+      basis: "assumed rate for the WACC debt tax shield",
+    },
+    beta: "beta_market: long-window ERM3 valuation beta (model estimate, not reported data)",
+    weights: "book-value weights (balance-sheet equity and SEC total debt), not market-value weights",
+  };
+}
+
+/** Latest visible row's cost-of-capital fields as percent strings (fractions stay in rows[]). */
+export function summarizeLatestCostOfCapital(row: SanitizedFundamentalsRow | undefined) {
+  if (!row) return null;
+  return {
+    period_end_date: row.period_end_date,
+    filed_date: row.filed_date,
+    cost_of_equity: formatPct(row.cost_of_equity),
+    cost_of_debt: formatPct(row.cost_of_debt),
+    cost_of_debt_imputed: formatPct(row.cost_of_debt_imputed),
+    wacc: formatPct(row.wacc),
+    wacc_imputed: formatPct(row.wacc_imputed),
+    rf_rate: formatPct(row.rf_rate),
+    beta_market: row.beta_market,
+  };
+}
+
+/**
+ * Provenance of the served fields. sec_facts entries are SEC EDGAR XBRL
+ * values; everything else is derived by RiskModels from them.
+ */
+export const FUNDAMENTALS_PROVENANCE = {
+  sec_facts:
+    "SEC EDGAR XBRL filings: each sec_facts entry is a raw SEC-reported value; its `source` (us_gaap or ifrs) is the SEC taxonomy it was filed under. As originally reported, not restated.",
+  derived:
+    "Ratios, betas, cost_of_equity, cost_of_debt, WACC and economic_profit are RiskModels derivations, not SEC-reported figures.",
+  cost_of_debt_imputed:
+    "Treasury HQM high-quality corporate (A/AA/AAA) market proxy, PIT-lagged; not issuer-specific and not SEC-reported.",
+} as const;
+
 /**
  * PIT quarterly fundamentals via the same DAL + licensing gate as
  * GET /api/fundamentals — every row passes sanitizeFundamentalsRow, so raw
@@ -210,7 +292,10 @@ const getFundamentalsArgs = z.object({
  * the endpoint's full disclosures block (context economy); the semantics are
  * identical.
  */
-async function execGetFundamentals(args: z.infer<typeof getFundamentalsArgs>) {
+async function execGetFundamentals(
+  args: z.infer<typeof getFundamentalsArgs>,
+  erpSupplied: boolean,
+) {
   const asOf = args.as_of ?? new Date().toISOString().slice(0, 10);
   const result = await getFundamentalsForTicker(args.ticker, {
     asOf,
@@ -225,21 +310,57 @@ async function execGetFundamentals(args: z.infer<typeof getFundamentalsArgs>) {
   const rows = result.rows.map((row) =>
     sanitizeFundamentalsRow(row as unknown as Record<string, unknown>),
   );
-  return {
+  return shapeFundamentalsToolResult({
     ticker: result.ticker,
+    asOf,
+    rows,
+    erp: args.erp,
+    erpSupplied,
+    taxRate: 0.21,
+    rfTenor: args.rf_tenor,
+  });
+}
+
+/** Pure shaping of the get_fundamentals tool payload (unit-tested). */
+export function shapeFundamentalsToolResult(params: {
+  ticker: string;
+  asOf: string;
+  rows: SanitizedFundamentalsRow[];
+  erp: number;
+  erpSupplied: boolean;
+  taxRate: number;
+  rfTenor: string;
+}) {
+  const { ticker, asOf, rows, erp, erpSupplied, taxRate, rfTenor } = params;
+  // Latest = max period_end_date (the DAL returns ascending; don't rely on it).
+  const latest = rows.reduce<SanitizedFundamentalsRow | undefined>(
+    (best, r) => (!best || r.period_end_date > best.period_end_date ? r : best),
+    undefined,
+  );
+  return {
+    ticker,
     as_of: asOf,
-    parameters: { erp: args.erp, tax_rate: 0.21, rf_tenor: args.rf_tenor },
+    parameters: { erp, tax_rate: taxRate, rf_tenor: rfTenor },
+    assumptions: buildCostOfCapitalAssumptions({
+      erp,
+      erpSupplied,
+      taxRate,
+      rfTenor,
+      latestRow: latest,
+    }),
+    latest_cost_of_capital: summarizeLatestCostOfCapital(latest),
+    provenance: FUNDAMENTALS_PROVENANCE,
     rows,
     usage_notes: {
       realized_only:
         "Realized historical data only — no forecasts, targets, or buy/sell signals.",
       point_in_time: `Rows visible only where filed_date <= ${asOf}; filed_date_source 'approx' = period_end + 45 days.`,
       sec_facts:
-        "sec_facts carries raw line items ONLY where the serving cell is SEC XBRL; a concept absent for a period means vendor-sourced or unreported there, NOT zero. As-originally-reported, not restated.",
+        "sec_facts carries raw line items ONLY where the serving cell is SEC EDGAR XBRL; a concept absent for a period means vendor-sourced or unreported there, NOT zero. When asked which values are SEC-sourced, name sec_facts and say they come from SEC filings. As-originally-reported, not restated.",
       ratios:
         "Capital-return ratios are TTM on a cash-dividend basis; null when trailing-4-quarter net income <= 0 (not meaningful, not zero).",
       cost_of_capital:
-        "ERP is a request parameter that defaults to 0.05 when omitted; no ERP opinion is stored. beta_market is the long-window valuation beta, not the short-half-life hedging beta. Strict reported-data cost_of_debt/wacc remain null when interest expense cannot form Kd; any cost_of_debt_imputed/wacc_imputed is a separate PIT-lagged high-quality-market proxy and must be labeled with its provenance. Both WACC fields use book weights. economic_profit = (roe_ttm - cost_of_equity) * total_equity (equity-charge form), not textbook NOPAT minus WACC times invested capital.",
+        "State the assumptions block (ERP, risk-free tenor and rate, tax rate) as assumptions whenever you quote cost of capital, and quote rates as percents (latest_cost_of_capital). ERP defaults to 0.05 when omitted; no ERP opinion is stored. beta_market is the long-window valuation beta, not the short-half-life hedging beta. Strict reported-data cost_of_debt/wacc remain null when interest expense cannot form Kd; any cost_of_debt_imputed/wacc_imputed is a separate PIT-lagged high-quality-market proxy and must be labeled with its provenance. Both WACC fields use book weights. economic_profit = (roe_ttm - cost_of_equity) * total_equity (equity-charge form), not textbook NOPAT minus WACC times invested capital.",
     },
   };
 }
@@ -1038,7 +1159,8 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     ),
     capabilityId: "fundamentals",
     argSchema: getFundamentalsArgs,
-    executor: async (a) => execGetFundamentals(getFundamentalsArgs.parse(a)),
+    executor: async (a) =>
+      execGetFundamentals(getFundamentalsArgs.parse(a), erpWasSupplied(a)),
   },
   {
     name: "get_hedge_basket",

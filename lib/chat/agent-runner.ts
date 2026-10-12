@@ -179,6 +179,8 @@ interface StreamedRound {
   toolCalls: ChatCompletionMessageToolCall[];
   usage: CompletionUsage | null;
   model: string;
+  /** Provider finish_reason from the last chunk that carried one ("stop", "length", "tool_calls"). */
+  finishReason: string | null;
 }
 
 /**
@@ -208,6 +210,7 @@ async function streamOneOpenAIRound(
   let model = "";
   let usage: CompletionUsage | null = null;
   let sawToolCalls = false;
+  let finishReason: string | null = null;
   const toolAcc = new Map<number, { id: string; name: string; args: string }>();
 
   for await (const chunk of stream) {
@@ -216,6 +219,7 @@ async function streamOneOpenAIRound(
     const chunkUsage =
       chunk.usage ?? (choice as { usage?: CompletionUsage } | undefined)?.usage;
     if (chunkUsage) usage = chunkUsage;
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
     const delta = choice?.delta;
     if (!delta) continue;
 
@@ -252,6 +256,7 @@ async function streamOneOpenAIRound(
     toolCalls,
     usage,
     model,
+    finishReason,
   };
 }
 
@@ -326,27 +331,23 @@ async function runOpenAIChatAgent(
   const toolCallResults: ToolCallResult[] = [];
   let finalContent = "";
   let finalModel = model;
+  /** finish_reason of the most recent provider round. */
+  let lastFinishReason: string | null = null;
+  /** True when the loop ran out of rounds right after executing tool calls. */
+  let endedOnToolResults = false;
 
-  for (let round = 0; round < maxToolRounds; round++) {
-    if (signal?.aborted) throw new AgentAbortError();
-    emit?.({ type: "status", round, message: roundStatusMessage(round) });
-
-    const requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
-      {
-        model,
-        messages,
-        tools,
-        tool_choice: "auto",
-        ...(omitParallelToolCalls
-          ? {}
-          : parallelOpenAI
-            ? { parallel_tool_calls: true }
-            : { parallel_tool_calls: false }),
-        ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
-      };
-
-    let toolCalls: ChatCompletionMessageToolCall[] | undefined;
-
+  /**
+   * One provider round-trip (streamed when `emit` is present). Accumulates
+   * usage, pushes the assistant message onto `messages`, and returns the
+   * tool calls (if any), the text content and the finish reason.
+   */
+  const providerRound = async (
+    requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  ): Promise<{
+    toolCalls: ChatCompletionMessageToolCall[] | undefined;
+    content: string;
+    finishReason: string | null;
+  } | null> => {
     if (emit) {
       let streamed: StreamedRound;
       try {
@@ -364,45 +365,71 @@ async function runOpenAIChatAgent(
       if (streamed.model) finalModel = streamed.model;
 
       messages.push(streamed.message);
-      toolCalls = streamed.toolCalls.length > 0 ? streamed.toolCalls : undefined;
-      if (!toolCalls) {
-        finalContent =
-          typeof streamed.message.content === "string"
-            ? streamed.message.content
-            : "";
-        break;
-      }
-    } else {
-      let completion;
-      try {
-        completion = await openai.chat.completions.create(
-          requestParams,
-          signal ? { signal } : undefined,
-        );
-      } catch (e) {
-        if (signal?.aborted) throw new AgentAbortError();
-        const msg = e instanceof Error ? e.message : "OpenAI request failed";
-        throw new AgentUpstreamError(msg);
-      }
+      return {
+        toolCalls: streamed.toolCalls.length > 0 ? streamed.toolCalls : undefined,
+        content:
+          typeof streamed.message.content === "string" ? streamed.message.content : "",
+        finishReason: streamed.finishReason,
+      };
+    }
 
-      if (completion.usage) {
-        totalUsage.prompt_tokens += completion.usage.prompt_tokens;
-        totalUsage.completion_tokens += completion.usage.completion_tokens;
-        totalUsage.total_tokens += completion.usage.total_tokens;
-      }
-      finalModel = completion.model;
+    let completion;
+    try {
+      completion = await openai.chat.completions.create(
+        requestParams,
+        signal ? { signal } : undefined,
+      );
+    } catch (e) {
+      if (signal?.aborted) throw new AgentAbortError();
+      const msg = e instanceof Error ? e.message : "OpenAI request failed";
+      throw new AgentUpstreamError(msg);
+    }
 
-      const choice = completion.choices[0];
-      if (!choice) break;
+    if (completion.usage) {
+      totalUsage.prompt_tokens += completion.usage.prompt_tokens;
+      totalUsage.completion_tokens += completion.usage.completion_tokens;
+      totalUsage.total_tokens += completion.usage.total_tokens;
+    }
+    finalModel = completion.model;
 
-      const assistantMessage = choice.message;
-      messages.push(assistantMessage);
+    const choice = completion.choices[0];
+    if (!choice) return null;
 
-      toolCalls = assistantMessage.tool_calls;
-      if (!toolCalls?.length) {
-        finalContent = assistantMessage.content ?? "";
-        break;
-      }
+    const assistantMessage = choice.message;
+    messages.push(assistantMessage);
+    return {
+      toolCalls: assistantMessage.tool_calls?.length ? assistantMessage.tool_calls : undefined,
+      content: assistantMessage.content ?? "",
+      finishReason: choice.finish_reason ?? null,
+    };
+  };
+
+  for (let round = 0; round < maxToolRounds; round++) {
+    if (signal?.aborted) throw new AgentAbortError();
+    emit?.({ type: "status", round, message: roundStatusMessage(round) });
+    endedOnToolResults = false;
+
+    const requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
+      {
+        model,
+        messages,
+        tools,
+        tool_choice: "auto",
+        ...(omitParallelToolCalls
+          ? {}
+          : parallelOpenAI
+            ? { parallel_tool_calls: true }
+            : { parallel_tool_calls: false }),
+        ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
+      };
+
+    const out = await providerRound(requestParams);
+    if (!out) break;
+    lastFinishReason = out.finishReason;
+    const toolCalls = out.toolCalls;
+    if (!toolCalls) {
+      finalContent = out.content;
+      break;
     }
 
     if (emit) {
@@ -450,6 +477,41 @@ async function runOpenAIChatAgent(
         content: JSON.stringify(r?.result ?? { error: "No result" }),
       });
     }
+    endedOnToolResults = true;
+  }
+
+  // Synthesis fallback. Two shapes leave the user with an empty answer:
+  //   (a) the round cap is reached right after tool results were appended, so
+  //       the model never got a turn to read them;
+  //   (b) a reasoning model (e.g. kimi-k3) spends the whole max_tokens budget
+  //       on reasoning and stops with finish_reason "length" and no content.
+  // In both cases run ONE more round with tools disabled (tool_choice "none")
+  // and a doubled budget, so the answer is written from the data already
+  // fetched. No extra tool executes, so no extra billing.
+  if (
+    finalContent.trim().length === 0 &&
+    (endedOnToolResults || lastFinishReason === "length")
+  ) {
+    if (signal?.aborted) throw new AgentAbortError();
+    // Drop a content-less, tool-less assistant turn (case b) so the
+    // transcript does not end on an empty assistant message.
+    const last = messages[messages.length - 1];
+    if (
+      last?.role === "assistant" &&
+      !("tool_calls" in last && last.tool_calls?.length) &&
+      !(typeof last.content === "string" && last.content.length > 0)
+    ) {
+      messages.pop();
+    }
+    emit?.({ type: "status", round: maxToolRounds, message: "Writing the answer" });
+    const out = await providerRound({
+      model,
+      messages,
+      tools,
+      tool_choice: "none",
+      ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens * 2 } : {}),
+    });
+    if (out && !out.toolCalls) finalContent = out.content;
   }
 
   return {

@@ -25,7 +25,9 @@ import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
  *     ticker — except get_fundamentals, which is full-universe in the
  *     demo (traction-first: PIT fundamentals are the acquisition surface;
  *     marginal cost is a GCS zarr read bounded by the per-IP cap).
- *   - Caps tool rounds at 2 and max_tokens at ~700 to bound LLM spend.
+ *   - Caps tool rounds at 2 and max_tokens per round at 2500 to bound LLM
+ *     spend. The budget includes reasoning tokens on thinking models
+ *     (kimi-k3 spends ~700 before writing a word), so 700 left answers empty.
  *   - Per-IP throttle: MAX_MSGS_PER_HOUR per IP, Redis-backed (Upstash) so
  *     the cap is global rather than per-instance, degrading to a per-instance
  *     in-memory ceiling if Redis is unavailable. See checkRateLimit below.
@@ -35,6 +37,8 @@ import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
  */
 
 export const dynamic = "force-dynamic";
+// Two tool rounds plus synthesis on a reasoning model take ~55s; match /api/chat.
+export const maxDuration = 120;
 
 const MAG7_ALLOWLIST = new Set([
   "AAPL",
@@ -58,7 +62,11 @@ const ALLOWED_TOOLS = [
 // Model + client come from resolveAgentBackend() (Moonshot/Kimi when
 // MOONSHOT_API_KEY is set, else Claude/OpenAI) — shared with /api/chat.
 const LANDING_MAX_ROUNDS = 2;
-const LANDING_MAX_TOKENS = 700;
+// Per-round completion budget. Reasoning models count thinking against
+// max_tokens: at 700, kimi-k3 stopped with finish_reason "length" and an
+// empty answer on most cost-of-capital questions (post-deploy eval red since
+// 2026-09-08). The runner's synthesis round gets twice this.
+const LANDING_MAX_TOKENS = 2500;
 const MAX_MSGS_PER_HOUR = 10;
 const WINDOW_MS = 60 * 60 * 1000;
 

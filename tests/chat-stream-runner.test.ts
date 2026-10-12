@@ -250,3 +250,108 @@ describe("encodeSseEvent", () => {
     ).toBe('event: status\ndata: {"round":0,"message":"Analyzing request"}\n\n');
   });
 });
+
+describe("runChatAgent — synthesis fallback (empty answers)", () => {
+  const toolCompletion = {
+    model: "kimi-test",
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    choices: [
+      {
+        finish_reason: "tool_calls",
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "get_fundamentals", arguments: '{"ticker":"AAPL"}' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const answer = {
+    model: "kimi-test",
+    usage: { prompt_tokens: 20, completion_tokens: 30, total_tokens: 50 },
+    choices: [
+      {
+        finish_reason: "stop",
+        message: { role: "assistant", content: "Cost of equity is 10.03% (ERP assumption 5.00%)." },
+      },
+    ],
+  };
+
+  it("reasoning model exhausts max_tokens with no content → one tools-off round with doubled budget", async () => {
+    // kimi-k3 shape: finish_reason "length", content empty, reasoning only.
+    const lengthStop = {
+      model: "kimi-test",
+      usage: { prompt_tokens: 20, completion_tokens: 700, total_tokens: 720 },
+      choices: [
+        {
+          finish_reason: "length",
+          message: { role: "assistant", content: "", reasoning_content: "thinking..." },
+        },
+      ],
+    };
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(toolCompletion)
+      .mockResolvedValueOnce(lengthStop)
+      .mockResolvedValueOnce(answer);
+    vi.mocked(executeToolCalls).mockResolvedValue([TOOL_RESULT]);
+
+    const result = await runChatAgent({
+      ...BASE_OPTS,
+      openai: fakeOpenAI(create),
+      maxToolRounds: 2,
+      maxCompletionTokens: 700,
+    });
+
+    expect(result.finalContent).toMatch(/10\.03%/);
+    expect(create).toHaveBeenCalledTimes(3);
+    const synth = create.mock.calls[2][0];
+    expect(synth.tool_choice).toBe("none");
+    expect(synth.max_tokens).toBe(1400);
+    // The empty assistant turn was dropped before the synthesis round (the
+    // mock holds the live array, so the synthesis answer is appended after it).
+    const msgs = synth.messages as Array<{ role: string; reasoning_content?: string }>;
+    expect(msgs.some((m) => m.reasoning_content === "thinking...")).toBe(false);
+    expect(msgs[msgs.length - 2]!.role).toBe("tool");
+    expect(vi.mocked(executeToolCalls)).toHaveBeenCalledTimes(1);
+    expect(result.usage.completion_tokens).toBe(5 + 700 + 30);
+  });
+
+  it("round cap reached right after tool results → answer is still written, no extra tool runs", async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(toolCompletion)
+      .mockResolvedValueOnce(toolCompletion)
+      .mockResolvedValueOnce(answer);
+    vi.mocked(executeToolCalls).mockResolvedValue([TOOL_RESULT]);
+
+    const result = await runChatAgent({
+      ...BASE_OPTS,
+      openai: fakeOpenAI(create),
+      maxToolRounds: 2,
+    });
+
+    expect(result.finalContent).toMatch(/assumption/);
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(create.mock.calls[2][0].tool_choice).toBe("none");
+    expect(vi.mocked(executeToolCalls)).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not add a round when the model answered normally", async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(toolCompletion)
+      .mockResolvedValueOnce(answer);
+    vi.mocked(executeToolCalls).mockResolvedValue([TOOL_RESULT]);
+
+    const result = await runChatAgent({ ...BASE_OPTS, openai: fakeOpenAI(create), maxToolRounds: 2 });
+    expect(result.finalContent).toMatch(/10\.03%/);
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+});
