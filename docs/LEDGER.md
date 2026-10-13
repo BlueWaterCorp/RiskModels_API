@@ -10,4 +10,7 @@ appending a line here and cutting the row, rather than marking it ✅ in place.
 
 Process: `BWMACRO/docs/architecture/BACKLOG_LEDGER_CHECKLIST_PROCESS.md`.
 
+## 2026-10
+- 2026-10-13 · Backlog migration · CLOSED: repo ids RMAPI-n introduced; 13 item(s) moved in from the archived master (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`), each naming its master row. · migration PR
+
 ## 2026-09
