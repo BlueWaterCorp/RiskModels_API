@@ -23,9 +23,8 @@ describe("getBenchReadiness", () => {
     }
   });
 
-  it("marks the hollow / shallow static benches development", () => {
-    expect(getBenchReadiness("BW-BENCH-SPY").status).toBe("development");
-    expect(getBenchReadiness("BW-BENCH-SPY").notes).toMatch(/trailing teos hollow/);
+  it("marks SPY live and the hollow / shallow static benches development", () => {
+    expect(getBenchReadiness("BW-BENCH-SPY").status).toBe("live");
     expect(getBenchReadiness("BW-BENCH-EQ70-30").status).toBe("development");
     expect(getBenchReadiness("BW-BENCH-EQ-LARGE-VALUE-60-40").status).toBe("development");
     expect(getBenchReadiness("BW-BENCH-EQ-LARGE-VALUE-60-40").min_teos).toBeGreaterThan(1);

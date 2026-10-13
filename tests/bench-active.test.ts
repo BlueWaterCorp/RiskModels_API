@@ -138,30 +138,28 @@ describe("buildFfOwnBenchWeights", () => {
 
 
 describe("planBenchActiveFanOut (readiness gate)", () => {
-  it("omits development benches with reason under_development", () => {
-    // Real registry: SPY is development (hollow trailing teos), ff_own +
+  it("fans out to SPY, ff_own and the live style cell", () => {
+    // Real registry: SPY (IVV→SPY splice, 2026-10-13), ff_own and
     // large-blend are live.
     const plan = planBenchActiveFanOut("large-blend");
-    expect(plan.live.map((i) => i.label)).toEqual(["ff_own", "cell_large-blend"]);
-    expect(plan.omitted).toEqual([{ benchmark: "SPY", reason: "under_development" }]);
+    expect(plan.live.map((i) => i.label)).toEqual(["SPY", "ff_own", "cell_large-blend"]);
+    expect(plan.omitted).toEqual([]);
   });
 
   it("omits mid cells (Mid-Cap naming mismatch) while keeping ff_own", () => {
     const plan = planBenchActiveFanOut("mid-blend");
-    expect(plan.live.map((i) => i.label)).toEqual(["ff_own"]);
+    expect(plan.live.map((i) => i.label)).toEqual(["SPY", "ff_own"]);
     expect(plan.omitted).toEqual([
-      { benchmark: "SPY", reason: "under_development" },
       { benchmark: "cell_mid-blend", reason: "under_development" },
     ]);
   });
 
   it("omits cell_* entirely when the subject has no declared style cell", () => {
     const plan = planBenchActiveFanOut(null);
-    expect(plan.live.map((i) => i.label)).toEqual(["ff_own"]);
+    expect(plan.live.map((i) => i.label)).toEqual(["SPY", "ff_own"]);
     expect(plan.omitted).toContainEqual({
       benchmark: "cell_*",
       reason: "no declared style cell for this subject",
     });
-    expect(plan.omitted).toContainEqual({ benchmark: "SPY", reason: "under_development" });
   });
 });

@@ -43,7 +43,11 @@ describe("benchmark-catalog (committed mirror)", () => {
     const spy = getBenchmarkContext("BW-BENCH-SPY");
     expect(spy).not.toBeNull();
     expect(spy!.benchmark_kind).toBe("index_proxy");
-    expect(spy!.proxy?.ref).toBe("IVV");
+    expect(spy!.proxy?.ref).toBe("SPY");
+    expect(spy!.proxy?.segments?.map((g) => [g.ref, g.start])).toEqual([
+      ["IVV", null],
+      ["SPY", "2024-01-02"],
+    ]);
     expect(spy!.aliases).toContain("SPY");
     const blend = getBenchmarkContext("BW-BENCH-EQ70-30");
     expect(blend!.benchmark_kind).toBe("blend");
