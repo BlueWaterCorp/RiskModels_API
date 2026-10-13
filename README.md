@@ -20,6 +20,48 @@ This repository is the **authoritative public API reference** for the [RiskModel
 
 ---
 
+## Use in Cursor (Agent Plugin)
+
+This repository is an [Agent Plugins](https://agent-plugins.org) package: `plugin.json` and `mcp.json` at the repository root. The plugin connects Cursor to the hosted RiskModels MCP server. It contains no code that runs on your machine and no credentials.
+
+| File | What it declares |
+|------|------------------|
+| [`plugin.json`](./plugin.json) | Plugin `riskmodels` 1.0.0, Apache-2.0 |
+| [`mcp.json`](./mcp.json) | One server, `riskmodels`: Streamable HTTP at `https://riskmodels.app/api/mcp/openai` |
+
+### Install
+
+1. In Cursor, open the Marketplace and search for **RiskModels**.
+2. Install it for your user or for the current project.
+3. Cursor adds the `riskmodels` MCP server. Its tools appear once you sign in.
+
+### Sign in
+
+The server uses OAuth 2.1 with PKCE. Cursor handles the flow, and nothing goes in the plugin files:
+
+1. When Cursor first connects to the `riskmodels` server, the server asks for sign-in and Cursor opens a browser at riskmodels.app.
+2. Sign in with Google or an email link, or choose **Sign in with a password instead**.
+3. The consent screen shows **Signed in as &lt;email&gt;**. If that is the wrong account, click **Use a different account** first, then **Allow**.
+4. Cursor stores the token. The tools are read-only: they return data and never place orders or change your account.
+
+### Pricing and account
+
+- A RiskModels account is required. New accounts start with **$20 of prepaid credit**. A payment method is collected at signup for verification and is not charged until you top up.
+- Usage is pay-as-you-go and billed per tool call against that balance. Most single-stock calls cost **$0.005**; fundamentals cost $0.02, and a full portfolio exposure report costs $0.25. Rates and plans: [riskmodels.app/pricing](https://riskmodels.app/pricing).
+- Optional: link a brokerage account (Alpaca, Connect Trade or Plaid) in [riskmodels.net](https://riskmodels.net) **Settings**, and `riskmodels_get_my_positions` reads that book.
+
+### Example: NVDA
+
+Ask in Cursor's agent chat:
+
+> Decompose NVDA's risk with RiskModels and give me the ETF hedge for a $100,000 position.
+
+The agent calls `riskmodels_decompose` for the market / sector / subsector / stock-specific split of NVDA's variance and the hedge ratio at each level. Then it calls `riskmodels_hedge_position` to turn those ratios into dollar trades in SPY and the sector and subsector ETFs. The numbers are live model output as of the latest trading day.
+
+The Claude plugin ([`claude-plugin/`](./claude-plugin/)) and the local developer MCP server ([`.cursor/mcp.json`](./.cursor/mcp.json), [`mcp/`](./mcp/)) are separate and unchanged.
+
+---
+
 ## 🚀 Quick Links
 
 - **Python SDK — AOM quickstart (Google Colab):** [Open notebook](https://colab.research.google.com/github/BlueWaterCorp/RiskModels_API/blob/main/sdk/notebooks/riskmodels_aom_colab.ipynb) · source: [`sdk/notebooks/riskmodels_aom_colab.ipynb`](sdk/notebooks/riskmodels_aom_colab.ipynb)

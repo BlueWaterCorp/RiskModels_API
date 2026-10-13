@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "riskmodels",
+  "version": "1.0.0",
+  "description": "Equity and portfolio risk decomposition for US stocks: split a ticker or a book into market, sector, subsector and stock-specific risk, get the ETF hedge ratio for each layer, and pull point-in-time fundamentals and cost of capital. Live data from the RiskModels API over a hosted MCP server.",
+  "author": {
+    "name": "Blue Water Macro Corp",
+    "url": "https://riskmodels.app"
+  },
+  "homepage": "https://riskmodels.app",
+  "repository": "https://github.com/BlueWaterCorp/RiskModels_API",
+  "license": "Apache-2.0",
+  "keywords": [
+    "finance",
+    "equity-risk",
+    "factor-model",
+    "portfolio",
+    "hedging",
+    "etf",
+    "fundamentals",
+    "mcp"
+  ]
+}
