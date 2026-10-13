@@ -50,8 +50,9 @@ export const BENCHMARK_READINESS_REGISTRY: readonly BenchRegistryEntry[] = [
   // --- static bw_bench_id surfaces ---
   {
     id: "BW-BENCH-SPY",
-    status: "development",
-    notes: WRITER_STALENESS_NOTE,
+    status: "live",
+    notes:
+      "verified 2026-10-13: IVV→SPY splice rebuilt (Funds_DAG #236), 2005-12-31..2026-10-09, 494 names at the latest teo, no hollow trailing teos",
   },
   {
     id: "BW-BENCH-EQ70-30",

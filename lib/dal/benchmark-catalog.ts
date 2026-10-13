@@ -32,7 +32,12 @@ export interface BenchmarkContextRecord {
   methodology: string;
   rebalance_schedule: string;
   observation_mode: string;        // reality | knowledge | system
-  proxy: { source_kind: string; ref: string } | null;
+  proxy: {
+    source_kind: string;
+    ref: string;
+    /** Spliced proxies: each segment's source applies from `start` (null = earliest). */
+    segments?: { source_kind: string; ref: string; start: string | null }[];
+  } | null;
   components: BenchmarkComponentRecord[];
   benchmark_context_version: string;
   notes: string;

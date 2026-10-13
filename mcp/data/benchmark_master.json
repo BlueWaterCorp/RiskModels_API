@@ -44,7 +44,7 @@
     },
     "BW-BENCH-SPY": {
       "bw_bench_id": "BW-BENCH-SPY",
-      "name": "S&P 500 (proxy: iShares Core S&P 500 ETF, IVV)",
+      "name": "S&P 500 (proxy: SPDR S&P 500 ETF Trust SPY from 2024; iShares Core S&P 500 ETF IVV before)",
       "benchmark_kind": "index_proxy",
       "aliases": [
         "SPY",
@@ -53,16 +53,28 @@
         "SPX",
         "IVV"
       ],
-      "methodology": "Float-adjusted market-cap-weighted S&P 500 constituents, proxied by iShares Core S&P 500 ETF (IVV)'s published daily holdings. The benchmark surface = IVV's in-ERM3 holdings renormalized to weights summing to 1 (cash / non-ERM3 lines dropped, as for any portfolio surface).",
-      "rebalance_schedule": "S&P 500 reconstitution is quarterly (effective the 3rd Friday of Mar/Jun/Sep/Dec) plus ad-hoc index changes; the surface tracks IVV's daily-published holdings, so per-teo weights move with IVV (which itself tracks the index ~daily).",
+      "methodology": "Float-adjusted market-cap-weighted S&P 500 constituents. From 2024-01-02 the surface is SPDR S&P 500 ETF Trust (SPY)'s published daily holdings; before that it is iShares Core S&P 500 ETF (IVV)'s holdings (sponsor CSV where cached, N-PORT / N-Q month-end anchors otherwise). At each teo the in-ERM3 holdings are renormalized to weights summing to 1 (cash / non-ERM3 lines dropped, as for any portfolio surface).",
+      "rebalance_schedule": "S&P 500 reconstitution is quarterly (effective the 3rd Friday of Mar/Jun/Sep/Dec) plus ad-hoc index changes; from 2024 the surface tracks SPY's daily-published holdings (daily teos); before 2024 it is month-end IVV anchors.",
       "observation_mode": "reality",
       "proxy": {
         "source_kind": "etf",
-        "ref": "IVV"
+        "ref": "SPY",
+        "segments": [
+          {
+            "source_kind": "etf",
+            "ref": "IVV",
+            "start": null
+          },
+          {
+            "source_kind": "etf",
+            "ref": "SPY",
+            "start": "2024-01-02"
+          }
+        ]
       },
       "components": [],
       "benchmark_context_version": "benchmark-context/1.0",
-      "notes": "v1 proxies the index via IVV; a direct S&P-constituent feed would be a follow-on."
+      "notes": "Spliced proxy (IVV before 2024-01-02, SPY from then on). On 2026-05-11/12, the only days both sponsor files are cached, the two in-ERM3 weight vectors have 495 names each, 490 in common, L1 distance 0.017; the 5+5 differences are identifier-resolution misses (SPY rows resolve by CUSIP, IVV rows by ticker), not index differences."
     }
   }
 }
