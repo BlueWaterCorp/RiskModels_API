@@ -1071,6 +1071,10 @@ export async function readFundBookShape(bwFundId: string): Promise<FundBookShape
 // return per-level lists of { etf, hr } dropping NaN entries.
 // ---------------------------------------------------------------------------
 
+/** How many trailing all-empty ds_hr teos to walk back over (ds_ph's
+ * trailing forward-fill cap is a few month-ends). */
+const MAX_EMPTY_TAIL_TEOS = 24;
+
 /** Read all symbols at one teo from a (teo, symbol) float var. */
 async function readFloatRowAtTeo(
   grp: Group<Readable>,
@@ -1104,6 +1108,12 @@ export interface HedgeLeg {
 
 export interface FundHedgeSnapshot {
   teo: string;
+  /**
+   * Report date of the filed holdings behind `teo`'s weights. ds_ph
+   * forward-fills a filing onto later month-ends, so this can be months
+   * older than `teo`. Null on stores written before the coord existed.
+   */
+  holdings_teo: string | null;
   L1: HedgeLeg[];
   L2: HedgeLeg[];
   L3: HedgeLeg[];
@@ -1116,7 +1126,7 @@ export interface FundHedgeSnapshot {
 export async function readFundHedgeLatest(
   bwFundId: string,
 ): Promise<FundHedgeSnapshot | null> {
-  const ck = generateCacheKey("funds_zarr", "fund_hedge_latest", { fund: bwFundId });
+  const ck = generateCacheKey("funds_zarr", "fund_hedge_latest_v2", { fund: bwFundId });
   return withZarrCache(ck, () => computeFundHedgeLatest(bwFundId), {
     emptyValue: null,
   });
@@ -1134,14 +1144,32 @@ async function computeFundHedgeLatest(
   const symbols = await readSymbolStrings(grp);
   if (!symbols || symbols.length === 0) return null;
 
-  const teoIdx = teos.length - 1;
+  // Serve the latest teo that carries a hedge. Trailing teos past ds_ph's
+  // forward-fill cap have no book: NaN in current stores, an exact 0.0 in
+  // stores written before Funds_DAG stopped zero-filling them (VFMF served
+  // L1 SPY = 0 at a future month-end). A row with no finite non-zero leg is
+  // treated as empty.
+  const isEmpty = (row: (number | null)[] | null) =>
+    !row || row.every((v) => v == null || v === 0);
+  let teoIdx = -1;
+  let l1: (number | null)[] | null = null;
+  let l2: (number | null)[] | null = null;
+  let l3: (number | null)[] | null = null;
+  for (let i = teos.length - 1; i >= Math.max(0, teos.length - MAX_EMPTY_TAIL_TEOS); i--) {
+    [l1, l2, l3] = await Promise.all([
+      readFloatRowAtTeo(grp, "L1_HR", i, symbols.length),
+      readFloatRowAtTeo(grp, "L2_HR", i, symbols.length),
+      readFloatRowAtTeo(grp, "L3_HR", i, symbols.length),
+    ]);
+    if (!(isEmpty(l1) && isEmpty(l2) && isEmpty(l3))) {
+      teoIdx = i;
+      break;
+    }
+  }
+  if (teoIdx < 0) return null;
   const teo = teos[teoIdx]!;
-
-  const [l1, l2, l3] = await Promise.all([
-    readFloatRowAtTeo(grp, "L1_HR", teoIdx, symbols.length),
-    readFloatRowAtTeo(grp, "L2_HR", teoIdx, symbols.length),
-    readFloatRowAtTeo(grp, "L3_HR", teoIdx, symbols.length),
-  ]);
+  const holdingsTeos = await readDatetimeVarStrings(grp, "holdings_teo");
+  const holdings_teo = holdingsTeos?.[teoIdx] || null;
 
   const symbolNames = symbols;
   function pack(row: (number | null)[] | null): HedgeLeg[] {
@@ -1156,6 +1184,7 @@ async function computeFundHedgeLatest(
 
   const out: FundHedgeSnapshot = {
     teo,
+    holdings_teo,
     L1: pack(l1),
     L2: pack(l2),
     L3: pack(l3),
@@ -2503,7 +2532,7 @@ async function computeFilerReturnsDecomposition(
 export async function readFilerHedgeLatest(
   bwFilerId: string,
 ): Promise<FundHedgeSnapshot | null> {
-  const ck = generateCacheKey("funds_zarr", "filer_hedge_latest", { filer: bwFilerId });
+  const ck = generateCacheKey("funds_zarr", "filer_hedge_latest_v2", { filer: bwFilerId });
   return withZarrCache(ck, () => computeFilerHedgeLatest(bwFilerId), {
     emptyValue: null,
   });
@@ -2521,14 +2550,32 @@ async function computeFilerHedgeLatest(
   const symbols = await readSymbolStrings(grp);
   if (!symbols || symbols.length === 0) return null;
 
-  const teoIdx = teos.length - 1;
+  // Serve the latest teo that carries a hedge. Trailing teos past ds_ph's
+  // forward-fill cap have no book: NaN in current stores, an exact 0.0 in
+  // stores written before Funds_DAG stopped zero-filling them (VFMF served
+  // L1 SPY = 0 at a future month-end). A row with no finite non-zero leg is
+  // treated as empty.
+  const isEmpty = (row: (number | null)[] | null) =>
+    !row || row.every((v) => v == null || v === 0);
+  let teoIdx = -1;
+  let l1: (number | null)[] | null = null;
+  let l2: (number | null)[] | null = null;
+  let l3: (number | null)[] | null = null;
+  for (let i = teos.length - 1; i >= Math.max(0, teos.length - MAX_EMPTY_TAIL_TEOS); i--) {
+    [l1, l2, l3] = await Promise.all([
+      readFloatRowAtTeo(grp, "L1_HR", i, symbols.length),
+      readFloatRowAtTeo(grp, "L2_HR", i, symbols.length),
+      readFloatRowAtTeo(grp, "L3_HR", i, symbols.length),
+    ]);
+    if (!(isEmpty(l1) && isEmpty(l2) && isEmpty(l3))) {
+      teoIdx = i;
+      break;
+    }
+  }
+  if (teoIdx < 0) return null;
   const teo = teos[teoIdx]!;
-
-  const [l1, l2, l3] = await Promise.all([
-    readFloatRowAtTeo(grp, "L1_HR", teoIdx, symbols.length),
-    readFloatRowAtTeo(grp, "L2_HR", teoIdx, symbols.length),
-    readFloatRowAtTeo(grp, "L3_HR", teoIdx, symbols.length),
-  ]);
+  const holdingsTeos = await readDatetimeVarStrings(grp, "holdings_teo");
+  const holdings_teo = holdingsTeos?.[teoIdx] || null;
 
   const symbolNames = symbols;
   function pack(row: (number | null)[] | null): HedgeLeg[] {
@@ -2543,6 +2590,7 @@ async function computeFilerHedgeLatest(
 
   const out: FundHedgeSnapshot = {
     teo,
+    holdings_teo,
     L1: pack(l1),
     L2: pack(l2),
     L3: pack(l3),

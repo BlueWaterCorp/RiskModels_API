@@ -47,6 +47,7 @@ const FUND = {
 
 const SNAPSHOT = {
   teo: "2026-04-30",
+  holdings_teo: "2026-03-31",
   L1: [{ etf: "SPY", hr: 0.85 }],
   L2: [{ etf: "XLK", hr: 0.32 }, { etf: "XLF", hr: 0.18 }],
   L3: [{ etf: "SMH", hr: 0.15 }],
@@ -78,7 +79,9 @@ describe("GET /api/funds/[bw_fund_id]/hedge", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Data-As-Of")).toBe("2026-04-30");
     expect(res.headers.get("X-Data-Filing-Date")).toBe("2026-07-14");
+    expect(res.headers.get("X-Holdings-As-Of")).toBe("2026-03-31");
     const body = await res.json();
+    expect(body.holdings_teo).toBe("2026-03-31");
     expect(body.bw_fund_id).toBe("BW-FUND-X");
     expect(body.teo).toBe("2026-04-30");
     expect(body.L1).toEqual([{ etf: "SPY", hr: 0.85 }]);
