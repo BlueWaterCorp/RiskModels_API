@@ -4105,8 +4105,9 @@ components:
           description: >
             Report date of the filed holdings behind `teo`'s weights. Holdings
             are carried forward onto later month-ends between filings, so this
-            can be months before `teo`. Hedge ratios are per covered dollar
-            (weights renormalized over holdings in the hedge universe).
+            can be months before `teo`. Hedge ratios are per dollar of the
+            fund's ERM3-universe book (holdings outside the ERM3 universe are
+            excluded; a holding without a hedge ratio counts as unhedged).
         L1:
           type: array
           items: { $ref: "#/components/schemas/FundHedgeLeg" }
