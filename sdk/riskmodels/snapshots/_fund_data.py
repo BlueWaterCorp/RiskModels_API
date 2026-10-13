@@ -1436,6 +1436,28 @@ def get_data_for_f1(
                 else:
                     hr_sel = int(hr_le.max())
 
+        # Skip trailing rows with no hedge: teos past ds_ph's forward-fill
+        # cap are NaN (or an exact 0.0 in stores written before Funds_DAG
+        # stopped zero-filling them — VFMF read L1 SPY = 0).
+        if hr_sym is not None:
+            levels = [k for k in ("L1_HR", "L2_HR", "L3_HR") if k in hr_keys]
+            n_teo = len(np.asarray(hr[levels[0]][:, 0])) if levels else 0
+            idx = hr_sel if hr_sel >= 0 else n_teo + hr_sel
+            floor = max(0, idx - 24)
+
+            def _row_empty(i: int) -> bool:
+                for k in levels:
+                    row = np.asarray(hr[k][i, :], dtype=float)
+                    if np.any(np.isfinite(row) & (row != 0)):
+                        return False
+                return True
+
+            while idx > floor and _row_empty(idx):
+                idx -= 1
+            if levels and _row_empty(idx):
+                hr_sym = None
+            hr_sel = idx
+
         def _top_beta(arr, prefer: str | None = None) -> tuple[str, float] | None:
             if hr_sym is None:
                 return None

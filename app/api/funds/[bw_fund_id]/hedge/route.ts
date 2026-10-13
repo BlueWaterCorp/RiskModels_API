@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
  *
  * Latest L1/L2/L3 hedge ratios for a fund. Reads `L{1,2,3}_HR (teo, symbol)`
  * from Slice 7's per-fund `ds_hr.zarr` at the latest teo, drops NaN entries,
- * returns per-level ETF lists. Most ETFs only have a non-NaN HR at the level
+ * returns per-level ETF lists. Trailing teos with no hedge (past ds_ph's
+ * forward-fill cap) are skipped; `holdings_teo` is the report date of the
+ * filed holdings behind the weights, which can be months before `teo`.
+ * Most ETFs only have a non-NaN HR at the level
  * where they were the matched factor ETF — empty levels are still emitted as
  * empty arrays for consistent shape.
  */
@@ -42,6 +45,9 @@ export const GET = withBilling(
     }
 
     const headers = new Headers({ "X-Data-As-Of": snapshot.teo });
+    if (snapshot.holdings_teo) {
+      headers.set("X-Holdings-As-Of", snapshot.holdings_teo);
+    }
     if (fund.latest_filing_date) {
       headers.set("X-Data-Filing-Date", fund.latest_filing_date);
     }

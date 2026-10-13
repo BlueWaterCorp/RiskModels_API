@@ -4092,7 +4092,21 @@ components:
         ticker: { type: string, nullable: true }
         fund_name: { type: string, nullable: true }
         equity_style_9box: { type: string, nullable: true }
-        teo: { type: string, format: date }
+        teo:
+          type: string
+          format: date
+          description: >
+            Latest teo that carries a hedge. Trailing teos with no book (past
+            the holdings forward-fill cap) are skipped.
+        holdings_teo:
+          type: string
+          format: date
+          nullable: true
+          description: >
+            Report date of the filed holdings behind `teo`'s weights. Holdings
+            are carried forward onto later month-ends between filings, so this
+            can be months before `teo`. Hedge ratios are per covered dollar
+            (weights renormalized over holdings in the hedge universe).
         L1:
           type: array
           items: { $ref: "#/components/schemas/FundHedgeLeg" }
@@ -12335,6 +12349,8 @@ paths:
             X-Data-As-Of:
               schema: { type: string, format: date }
             X-Data-Filing-Date:
+              schema: { type: string, format: date }
+            X-Holdings-As-Of:
               schema: { type: string, format: date }
             X-API-Cost-USD:
               schema: { type: string }

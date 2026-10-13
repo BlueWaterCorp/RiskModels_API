@@ -238,6 +238,22 @@ def test_latest_path_unchanged_without_as_of(fund_zarrs):
     assert [t[0] for t in fd.layer_returns_series] == _PT_TEOS
 
 
+def test_latest_path_skips_trailing_rows_with_no_hedge(fund_zarrs):
+    # ds_hr rows past ds_ph's forward-fill cap: NaN in current stores, an
+    # exact 0.0 in stores written before Funds_DAG stopped zero-filling them.
+    hr = fund_zarrs["ds_hr.zarr"]
+    teos = list(_HR_TEOS) + ["2026-09-30", "2026-10-31"]
+    hr._arrays["teo"] = _teo_arr(teos)
+    for k, tail in (("L1_HR", [[0.0, np.nan], [np.nan, np.nan]]),
+                    ("L2_HR", [[np.nan, 0.0], [np.nan, np.nan]]),
+                    ("L3_HR", [[np.nan, np.nan], [np.nan, np.nan]])):
+        hr._arrays[k] = _FakeArr(np.vstack([hr[k]._d, np.array(tail)]))
+
+    fd = get_data_for_f1("BW-FUND-ASOF", enrich=False)
+
+    assert fd.hedge_ratios["l1_spy"] == pytest.approx(1.1)
+
+
 def test_as_of_at_or_beyond_latest_serves_full_payload(fund_zarrs):
     # Nothing is truncated anywhere → not a historical read: the echo is
     # present but no degradation applies (the current-model overlay is
