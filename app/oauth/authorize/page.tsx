@@ -17,7 +17,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getClient, redirectUriRegistered, OAUTH_SCOPE } from "@/lib/oauth/server";
+import { appOrigin, getClient, redirectUriRegistered, OAUTH_SCOPE } from "@/lib/oauth/server";
 import { AUTHORIZE_PARAMS, signInPathFor } from "@/lib/oauth/authorize-return";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +26,14 @@ function str(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-function redirectClientError(redirectUri: string, state: string, error: string, desc?: string): never {
+// Error responses carry `iss` (RFC 9207) like the success redirect in
+// /api/oauth/authorize/decision.
+async function redirectClientError(redirectUri: string, state: string, error: string, desc?: string): Promise<never> {
   const u = new URL(redirectUri);
   u.searchParams.set("error", error);
   if (desc) u.searchParams.set("error_description", desc);
   if (state) u.searchParams.set("state", state);
+  u.searchParams.set("iss", await appOrigin());
   redirect(u.toString());
 }
 
@@ -72,9 +75,9 @@ export default async function AuthorizePage({
   }
 
   // From here errors are safe to return to the (validated) client redirect_uri.
-  if (responseType !== "code") redirectClientError(redirectUri, state, "unsupported_response_type");
+  if (responseType !== "code") await redirectClientError(redirectUri, state, "unsupported_response_type");
   if (!codeChallenge || codeChallengeMethod !== "S256") {
-    redirectClientError(redirectUri, state, "invalid_request", "PKCE S256 code_challenge is required");
+    await redirectClientError(redirectUri, state, "invalid_request", "PKCE S256 code_challenge is required");
   }
 
   // 2. Require a signed-in .app user; otherwise bounce to .app's own sign-in.

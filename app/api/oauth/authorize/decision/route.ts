@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureStarterCredits } from "@/lib/agent/billing";
 import {
+  appOrigin,
   getClient,
   redirectUriRegistered,
   sha256,
@@ -21,9 +22,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function redirectTo(redirectUri: string, params: Record<string, string>): NextResponse {
+// Every authorization response carries `iss` (RFC 9207), equal to the
+// `issuer` in /.well-known/oauth-authorization-server (both from appOrigin()).
+// Gemini CLI rejects a callback without it ("Missing issuer parameter in
+// response"); clients that do not check it ignore the extra parameter.
+async function redirectTo(redirectUri: string, params: Record<string, string>): Promise<NextResponse> {
   const u = new URL(redirectUri);
   for (const [k, v] of Object.entries(params)) if (v) u.searchParams.set(k, v);
+  u.searchParams.set("iss", await appOrigin());
   return NextResponse.redirect(u.toString(), { status: 303 });
 }
 
@@ -60,10 +66,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (decision !== "approve") {
-    return redirectTo(redirectUri, { error: "access_denied", state });
+    return await redirectTo(redirectUri, { error: "access_denied", state });
   }
   if (!codeChallenge || codeChallengeMethod !== "S256") {
-    return redirectTo(redirectUri, { error: "invalid_request", error_description: "PKCE S256 required", state });
+    return await redirectTo(redirectUri, { error: "invalid_request", error_description: "PKCE S256 required", state });
   }
 
   // User identity comes from the session cookie, never the form.
@@ -109,5 +115,5 @@ export async function POST(req: NextRequest) {
     return new NextResponse("server_error", { status: 500 });
   }
 
-  return redirectTo(redirectUri, { code, state });
+  return await redirectTo(redirectUri, { code, state });
 }

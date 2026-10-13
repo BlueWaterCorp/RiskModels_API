@@ -30,6 +30,7 @@ export async function GET() {
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
       scopes_supported: ["mcp:read"],
+      authorization_response_iss_parameter_supported: true,
     },
     { headers: { "Cache-Control": "public, max-age=300" } },
   );
