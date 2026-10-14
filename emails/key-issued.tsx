@@ -628,7 +628,7 @@ export const KeyIssuedEmail = ({
             <br />
             <br />
             • <strong>Data freshness.</strong> US equities, daily EOD, posted shortly after market close (~17:30
-            ET). History back to 2006.
+            ET). Hedge-ratio history from 2010-12-08.
             <br />
             <br />
             • <strong>Billing.</strong> Per-request, from $0.005 per call. Every response carries an{" "}

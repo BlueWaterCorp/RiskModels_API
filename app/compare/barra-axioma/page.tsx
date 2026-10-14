@@ -81,7 +81,7 @@ const DOES = [
   },
   {
     h: "Broad, deep coverage",
-    p: "About 3,000 US equities with daily history back to 2006 — single stocks, funds, portfolios, and disclosed 13F books.",
+    p: "About 3,000 US equities with daily hedge-ratio history from 2010-12-08 — single stocks, funds, portfolios, and disclosed 13F books.",
   },
   {
     h: "Published methodology",

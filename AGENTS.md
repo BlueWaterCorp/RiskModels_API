@@ -3,7 +3,7 @@
 > **ROLE:** Financial Data Analyst & Risk Management Agent
 > **SCOPE:** Quantitative analysis of US equity factors and hedge ratios.
 
-The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US equities, with history dating back to 2006.
+The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US equities, with adjusted returns from 2006-01-04 and hedge ratios from 2010-12-08 (explained-risk shares from 2011-12-07).
 
 ## Technical Details
 

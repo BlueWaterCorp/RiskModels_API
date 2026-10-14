@@ -4,7 +4,7 @@ NPM package: `@riskmodels/mcp`
 
 Release note: publish **`@riskmodels/sdk`** to npm first, then **`@riskmodels/mcp`**. In this monorepo, `mcp/package.json` uses `"@riskmodels/sdk": "file:../packages/riskmodels-sdk"` so `cd mcp && npm ci && npm run build` works without publishing; **before `npm publish` of `@riskmodels/mcp`**, replace that dependency with a semver range (e.g. `^0.1.1`) after `@riskmodels/sdk` is live on the registry.
 
-**Decompose** a US stock into market, sector, subsector, and residual risk &mdash; with SPY / sector / subsector **ETF hedge ratios**. One call, daily history since 2006.
+**Decompose** a US stock into market, sector, subsector, and residual risk &mdash; with SPY / sector / subsector **ETF hedge ratios**. One call, daily hedge-ratio history from 2010-12-08.
 
 MCP server that exposes **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), and any other [MCP](https://modelcontextprotocol.io) client. Two classes of tools:
 

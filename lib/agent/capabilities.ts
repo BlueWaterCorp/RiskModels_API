@@ -1849,7 +1849,7 @@ export const CAPABILITIES: Capability[] = [
         description: "Tickers (stocks and ETFs), max 1000. No values.",
         items: { type: "string" },
       },
-      start: { type: "string", required: false, description: "First month-end YYYY-MM-DD. Default: 2006." },
+      start: { type: "string", required: false, description: "First month-end YYYY-MM-DD. Default: 2010-12-08 (the first served hedge-ratio date); an earlier start is moved up to it." },
       end: { type: "string", required: false, description: "Last month-end YYYY-MM-DD. Default: latest." },
     },
     pricing: {
