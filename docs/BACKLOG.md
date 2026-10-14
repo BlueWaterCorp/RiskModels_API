@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-14`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-15`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -85,3 +85,30 @@ From the archived master, row H.207 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_20
 
 **Impact:** MATERIAL · RiskModels API defects found by @nijataliyev03 in the 13F attribution study (RiskModels_API PR #373, closed unmerged 2026-10-03). Source: `research/portfolio_timeseries/DATA_ISSUES.md` on branch `feat/13f-attribution-toolkit` (kept as archive). Credit the finder in each fix PR. Endpoint defects: (1) `get_filer_portfolio` terminal row carries a forward return over an open-ended window, not one quarter; (2) stub rows … **Needs:** engineering.
 From the archived master, row H.307 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: H.307: 2026-10-06 (researcher API enhancements 1–2): (1)(2)(3)(4)(7)(8) addressed in RiskModels_API #398 (per-row original_filing_date / ….
+
+## RMAPI-14 · ETF coverage: say what each ETF supports and why, and stop billing empty responses (2026-10-14)
+
+**Impact:** MATERIAL · ETF answers contradict each other today:
+- `/data/etf/search` finds EFA, but `/portfolio/exposure` drops it as `symbol_not_found`.
+- `/data/etf/{ticker}` returns 404 for any fund without holdings.
+- `/ticker-returns?ticker=HYG` returns 0 rows, still bills $0.005 (request `req_mv8frd0k_vut3r8`), and tells the caller to retry and contact support.
+A client lost 28 ETFs ($90k of gross) from a 576-position book with no explanation (review of 2026-10-13).
+
+**Needs:** engineering, after the 2026-10-14 publish; data side is ERM3-68. Model: one ETF universe with three capabilities, any combination per fund:
+- `cascade`: SPY, sectors and subsectors;
+- `priced`: daily returns, covariance and beta to SPY;
+- `holdings`: look-through and benchmark-fit.
+Each fund also has a `factor_role`: market, sector, subsector, style, `macro:<factor>`, or none.
+
+Work:
+- **Reason codes.** Use `etf_outside_priced_universe` and `etf_no_return_history_in_window` in place of `symbol_not_found` for known funds, each with `see: /data/etf/{ticker}`. Keep `symbol_not_found` for tickers on no list. Use the same shape in `coverage.etfs_excluded_from_covariance`.
+- **`/data/etf/{ticker}`** returns 200 for every known fund, with `capabilities` (cascade, priced, priced_from, holdings, holdings_as_of, factor_role) and `identifiers` (bw_sym_id, bw_etf_id, figi, cik, ticker).
+- **`GET /data/etf/universe`** is free: a static JSON generated at sync time from the register, the catalog and the store's symbol list, filterable by capability. `/data/etf/search` and `/tickers` search the same union and return the capability flags.
+- **No billing for empty responses.** `/ticker-returns` calls `setBillableItemCount(0)` when `data` is empty, and the warning names the reason.
+- **Beta per ETF held.** `/portfolio/exposure` reports `beta_to_spy` for each ETF held, from the covariance window.
+- **MCP and docs.**
+  - Add one sentence on the three capabilities to `riskmodels_search_etfs`, `riskmodels_get_returns`, `riskmodels_get_etf` and `riskmodels_portfolio_exposure`.
+  - Add a `docs/ETF_COVERAGE.md` page and an `llms.txt` entry with the lists, counts and reason codes.
+  - Fix the stale "~100 ETFs" comment in `lib/dal/zarr-reader.ts`.
+
+Review: Fable, 2026-10-14 (ETF strategy review).
