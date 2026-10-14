@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-15`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-16`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -112,3 +112,22 @@ Work:
   - Fix the stale "~100 ETFs" comment in `lib/dal/zarr-reader.ts`.
 
 Review: Fable, 2026-10-14 (ETF strategy review).
+
+## RMAPI-15 · `/portfolio/exposure` follow-ups from the Nand Capital review (2026-10-14)
+
+**Impact:** IMPROVEMENT · A client's review of `/portfolio/exposure` (2026-10-13; reply sent 2026-10-14 promising these) found gaps that make users rebuild numbers themselves:
+- The `beta` field uses each stock's L1 beta, while `hedges` and `risk` use L* or L3 exposures. On the reviewed book that gives +$149k versus +$320k.
+- There are no scenario inputs.
+- `top_contributors` is fixed at 15.
+- Two docs inconsistencies.
+
+**Needs:** engineering, plus one DECISION, after the 2026-10-14 publish.
+- **Market beta on the risk basis.** Add a field with the beta implied by the exposure vector and covariance, x′Σe_SPY/σ²_SPY. Keep the L1 field, and label both.
+- **Scenario inputs.** Return each ETF's beta to SPY, and per-name rows: level, L1 beta, hedge ratios, residual volatility. A built-in `scenarios` block (an S&P move, a sector against the market, gaps in the top residual names) comes later.
+- **`top_contributors`.** Make the length a parameter, with an option for the full list.
+- **Docs.**
+  - `as_of` reaches back to 2011-12-07; the announcement email wrongly said 2006.
+  - Label the units of `X-Balance-Remaining` (50,000 per dollar).
+- **DECISION (Conrad).** Should a tolerance apply to the `hedge_added_variance` warning? It flags 60 names with residual shares between 1.0001 and 1.042. Values stay uncapped and still sum to one; only the warning changes.
+
+Report each item to the client as it ships. ETF coverage from the same review is RMAPI-14 and ERM3-68.
