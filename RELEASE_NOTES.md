@@ -1,6 +1,6 @@
 # RiskModels API v3 — ERM3 Hierarchical Factor Model
 
-The RiskModels API provides institutional-grade equity risk analysis, including factor decompositions and ETF-executable hedge ratios for ~3,000 US equities with history back to 2006. The API is AI-agent ready with a built-in MCP server.
+The RiskModels API provides institutional-grade equity risk analysis, including factor decompositions and ETF-executable hedge ratios for ~3,000 US equities with hedge-ratio history from 2010-12-08. The API is AI-agent ready with a built-in MCP server.
 
 Visit the Developer Portal at [riskmodels.app](https://riskmodels.app).
 

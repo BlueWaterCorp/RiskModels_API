@@ -55,7 +55,7 @@ const DISCOVERY: LinkCard[] = [
 const TRUST: { title: string; body: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
   {
     title: 'Point-in-time & reproducible',
-    body: 'Decompositions are deterministic and replayable back to 2006-01-04. Every response carries model_version, data_as_of, and factor_set_id so any number can be cited and re-derived.',
+    body: 'Decompositions are deterministic and replayable back to 2011-12-07 (hedge ratios from 2010-12-08). Every response carries model_version, data_as_of, and factor_set_id so any number can be cited and re-derived.',
     icon: GitBranch,
   },
   {

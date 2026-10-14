@@ -1,6 +1,6 @@
 RiskModels provides clean dividend-adjusted total returns, factor risk decomposition, return attribution, and ETF-executable hedge ratios for US equities — over REST, a typed SDK, and a built-in MCP server. The dataset is **simulation-grade**: it covers on the order of **16,000 US stocks** across the full historical panel, while **at each month end** the model’s headline universe is the **largest ~3,000 by market cap**—the set the API surfaces for everyday returns, risk, and hedging.
 
-**Post-regression outputs** (hedge ratios, explained-risk decompositions, and related L1–L3 series) are on **daily history from 2007 through present**; **split- and dividend-adjusted returns** (the inputs to the rolling regressions) begin **2006-01-04**. The API is AI-agent ready, including a built-in Model Context Protocol (MCP) server for seamless integration with LLMs.
+**Post-regression outputs** (hedge ratios, explained-risk decompositions, and related L1–L3 series) are served from the first date whose full estimation window is covered: **hedge ratios from 2010-12-08**, **explained-risk shares and stock variance from 2011-12-07**, **L\* residual levels from 2013-01-01**. **Split- and dividend-adjusted returns** (the inputs to the rolling regressions) begin **2006-01-04**. The API is AI-agent ready, including a built-in Model Context Protocol (MCP) server for seamless integration with LLMs.
 
 # RiskModels API Developer Portal
 
@@ -93,10 +93,10 @@ The RiskModels API provides institutional-grade equity risk analysis:
 
 - **Daily factor decompositions** — market, sector, subsector explained-risk fractions for the headline **~3,000** largest US stocks by market cap (month-end universe)
 - **Hedge ratios** — dollar-denominated ETF hedge amounts (L1/L2/L3) designed to remain executable with liquid raw ETFs
-- **Historical time series** — split- and dividend-adjusted returns (2006–present) plus rolling hedge ratios and ER (**2007–present**; factor outputs need a full regression window)
+- **Historical time series** — split- and dividend-adjusted returns (2006-01-04–present) plus rolling hedge ratios (**2010-12-08–present**) and ER (**2011-12-07–present**; factor outputs need a full regression window)
 - **AI-agent ready** — OAuth2, per-request billing, machine-readable manifests
 
-**Data coverage:** **~16,000** US stocks in the historical panel; **~3,000** largest by market cap at each **month end** for headline outputs. Updated daily. **Factor outputs (HR/ER):** **2007** through present. **Adjusted return series:** **2006-01-04** through present.
+**Data coverage:** **~16,000** US stocks in the historical panel; **~3,000** largest by market cap at each **month end** for headline outputs. Updated daily. **Hedge ratios:** **2010-12-08** through present. **Explained risk:** **2011-12-07** through present. **L\* levels:** **2013-01-01** through present. **Adjusted return series:** **2006-01-04** through present.
 
 ---
 

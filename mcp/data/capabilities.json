@@ -1976,7 +1976,7 @@
       "start": {
         "type": "string",
         "required": false,
-        "description": "First month-end YYYY-MM-DD. Default: 2006."
+        "description": "First month-end YYYY-MM-DD. Default: 2010-12-08 (the first served hedge-ratio date); an earlier start is moved up to it."
       },
       "end": {
         "type": "string",
