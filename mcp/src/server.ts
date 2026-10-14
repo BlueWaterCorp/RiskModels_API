@@ -37,7 +37,12 @@ import {
 } from "../../lib/mcp/activation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, "..", "data");
+// tsc nests output under dist/mcp/src because the server imports ../../lib, so
+// data/ is one level up from src/ but three levels up from the compiled file.
+const DATA_DIR =
+  [join(__dirname, "..", "data"), join(__dirname, "..", "..", "..", "data")].find((d) =>
+    existsSync(join(d, "capabilities.json")),
+  ) ?? join(__dirname, "..", "data");
 
 const DEFAULT_API_BASE = "https://riskmodels.app";
 const CLI_CONFIG_PATH = join(homedir(), ".config", "riskmodels", "config.json");
