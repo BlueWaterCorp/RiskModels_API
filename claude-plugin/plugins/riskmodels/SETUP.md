@@ -21,24 +21,28 @@ No API key paste. Claude opens a browser sign-in once.
 If this plugin's bundled MCP is also enabled, you may see a duplicate server —
 disable one. One connection is enough.
 
-## Claude Code CLI fallback: Bearer API key
+## Claude Code CLI
 
-Claude Code plugins have no OAuth prompt today. Set a key **before** install:
-
-```bash
-export RISKMODELS_API_KEY="rm_agent_live_..."
-```
-
-Get a key (free tier; usage billed per call): https://riskmodels.app/get-key
-
-Then:
+The plugin connects to the hosted MCP with OAuth; no API key is stored by the plugin.
 
 ```bash
 claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
 claude plugin install riskmodels@riskmodels
 ```
 
-The plugin's `mcpServers` entry sends `Authorization: Bearer ${RISKMODELS_API_KEY}`.
+Then run `/mcp`, select **riskmodels**, choose **Authenticate**, and sign in at
+riskmodels.app in the browser. New accounts start with free credits; usage is billed
+per call (https://riskmodels.app/pricing).
+
+Prefer an API key for scripts or headless runs? Add the server yourself instead of
+using the plugin's connection:
+
+```bash
+claude mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse \
+  --header "Authorization: Bearer rm_agent_live_..."
+```
+
+Get a key at https://riskmodels.app/get-key.
 
 ### Marketplace source mismatch
 

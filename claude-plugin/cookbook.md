@@ -7,7 +7,7 @@ is computed locally, and no figure is invented. The concrete numbers shown are a
 snapshot (NVDA, `data_as_of 2026-07-09`) — run it yourself and you will get the current
 values.
 
-Prerequisite: `export RISKMODELS_API_KEY=...` (see the README). Then either drive the
+Prerequisite: the plugin installed and connected (OAuth sign-in; see the README). Then either drive the
 steps with the individual skills, or ask the `riskmodels-analyst` agent the whole question
 and let it fan the calls out.
 

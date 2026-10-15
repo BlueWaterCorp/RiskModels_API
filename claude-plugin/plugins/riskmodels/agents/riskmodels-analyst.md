@@ -90,7 +90,7 @@ the conclusion and collapse the rows.
   Never invent figures. Fan out independent tool calls in one turn.
 - If given a company name or ambiguous symbol, call `riskmodels_search` first.
 - If a tool fails, quote its error and suggestion; do not guess. Tell the user how to
-  fix it (try another ticker, top up balance, set the API key).
+  fix it (try another ticker, top up balance, reconnect via /mcp).
 - Never promise "raw fundamentals" panel-wide — raw line items appear per cell only
   where SEC-sourced. Ask for ERP or use the grid; always state the request assumption used.
 - Keep it realized/historical: no forecasts, targets, or recommendations.
