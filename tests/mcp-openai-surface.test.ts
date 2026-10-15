@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createMcpServer } from "@/lib/mcp/server";
-import { FIRST_LIVE_PROMPT_MCP, MCP_SERVER_INSTRUCTIONS } from "@/lib/mcp/activation";
+import { createMcpServer, stripPriceSentence } from "@/lib/mcp/server";
+import {
+  FIRST_LIVE_PROMPT_MCP,
+  MCP_SERVER_INSTRUCTIONS,
+  OPENAI_MCP_SERVER_INSTRUCTIONS,
+} from "@/lib/mcp/activation";
 import { RISKMODELS_TOOL_NAMES, registerRiskModelsPrompts } from "@/lib/mcp/tools/riskmodels-tools";
 
 /**
@@ -32,12 +36,13 @@ describe("MCP OpenAI surface", () => {
   const openai = server("openai");
   const sse = server("default");
 
-  it("registers the same tools as /api/mcp/sse, with identical metadata", () => {
+  it("registers the same tools as /api/mcp/sse, with identical metadata except the per-call price sentence", () => {
     expect(Object.keys(openai._registeredTools).sort()).toEqual(Object.keys(sse._registeredTools).sort());
     for (const [name, t] of Object.entries(openai._registeredTools)) {
       const d = sse._registeredTools[name]!;
       expect(t.title, name).toBe(d.title);
-      expect(t.description, name).toBe(d.description);
+      // OpenAI surface: same text minus the trailing per-call price sentence.
+      expect(t.description, name).toBe(stripPriceSentence(d.description ?? ""));
       expect(t.annotations, name).toEqual(d.annotations);
       expect(Object.keys(t.inputSchema?.shape ?? {}), name).toEqual(Object.keys(d.inputSchema?.shape ?? {}));
     }
@@ -45,7 +50,7 @@ describe("MCP OpenAI surface", () => {
 
   it("registers the same prompts and instructions", () => {
     expect(Object.keys(openai._registeredPrompts)).toEqual(Object.keys(sse._registeredPrompts));
-    expect(openai.server._instructions).toBe(MCP_SERVER_INSTRUCTIONS);
+    expect(openai.server._instructions).toBe(OPENAI_MCP_SERVER_INSTRUCTIONS);
     expect(sse.server._instructions).toBe(MCP_SERVER_INSTRUCTIONS);
   });
 

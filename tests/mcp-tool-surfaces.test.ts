@@ -72,6 +72,22 @@ describe("MCP tool set 2.0 surfaces", () => {
     expect([...HOSTED_ONLY_TOOL_NAMES]).toEqual(["riskmodels_render_artifact"]);
   });
 
+  it("the OpenAI surface states prices in its instructions, not in tool descriptions", () => {
+    type T = { description?: string; annotations?: unknown; inputSchema?: { shape?: Record<string, unknown> } };
+    const tools = (s: unknown) => (s as { _registeredTools: Record<string, T> })._registeredTools;
+    const openai = tools(createHostedServer({ apiKey: "k", surface: "openai" }));
+    const sse = tools(createHostedServer({ apiKey: "k", surface: "default" }));
+    let priced = 0;
+    for (const name of HOSTED_TOOLS) {
+      expect(openai[name]!.description, name).not.toMatch(/Price:/);
+      if (/Price:/.test(sse[name]!.description ?? "")) priced++;
+      expect(sse[name]!.description!.startsWith(openai[name]!.description!), name).toBe(true);
+      expect(openai[name]!.annotations, name).toEqual(sse[name]!.annotations);
+      expect(Object.keys(openai[name]!.inputSchema?.shape ?? {}), name).toEqual(Object.keys(sse[name]!.inputSchema?.shape ?? {}));
+    }
+    expect(priced).toBeGreaterThan(20);
+  });
+
   it("npm and hosted servers share titles, descriptions and input schemas", () => {
     type T = { title?: string; description?: string; inputSchema?: { shape?: Record<string, unknown> } };
     const npm = (createNpmServer({ apiKey: "k", apiBase: "https://riskmodels.test" }) as unknown as {
