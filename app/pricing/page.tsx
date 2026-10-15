@@ -248,7 +248,7 @@ const faqs: PricingFaqItem[] = [
   },
   {
     q: "Is my API data encrypted?",
-    a: "Yes. API keys are SHA-256 hashed with timing-safe verification. Any sensitive user data you submit is encrypted per-portfolio with unique Data Encryption Keys (DEKs) wrapped by GCP KMS — the same zero-knowledge standard used across the RiskModels platform.",
+    a: "Yes, in transit (TLS) and at rest. API keys and connector tokens are stored only as SHA-256 hashes, checked with timing-safe comparison. Holdings you send to the API are used to compute the response and are not stored in our database; some responses are cached for up to 24 hours. Portfolios you save in your RiskModels account are encrypted per portfolio with data keys wrapped by Google Cloud KMS. Details are in the privacy policy at /privacy.",
   },
   {
     q: "What is the difference between hedge ratios (*_hr) and betas (l*_mkt_beta, l*_sec_beta, l*_sub_beta)?",
