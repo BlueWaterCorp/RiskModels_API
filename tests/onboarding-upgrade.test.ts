@@ -236,7 +236,6 @@ describe("RiskModels MCP live-paper tools", () => {
     registerRiskModelsTools(sdk as any, server as any);
 
     expect([...tools.keys()]).toEqual([...RISKMODELS_TOOL_NAMES]);
-    expect(tools.size).toBe(25);
     // riskmodels_render_artifact is hosted-only — registered separately via
     // registerRiskModelsRenderTool (needs GCP Cloud Run auth), intentionally
     // NOT in the shared/stdio tool set.

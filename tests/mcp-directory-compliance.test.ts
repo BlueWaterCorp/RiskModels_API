@@ -6,7 +6,8 @@ import { BENCHMARK_READINESS_REGISTRY } from "@/lib/benchmark-registry";
 import { LIVE_FIT_BENCHMARKS, errorResult } from "@/lib/mcp/tools/riskmodels-tools";
 
 /**
- * MCP directory rules for every surface (tool set 2.0):
+ * MCP directory rules for every surface (tool set 2.0; the exact tool list per
+ * surface is pinned in mcp-tool-surfaces.test.ts):
  * - each description starts "Use when …", says "Not for … (use <tool>)",
  *   and states a price; the only tool names it carries are those
  *   "(use riskmodels_…)" cross-references, and each names a tool that exists
@@ -40,10 +41,6 @@ const STEERING =
   /\briskmodels_[a-z_]+\b|\bget_(l3_decomposition|metrics|portfolio_risk_snapshot)\b|render the|prefer\b|\balways\b|\bnever\b|tell the user|use this|\bcall (riskmodels|this)|\bskip this\b|first\b.*\bbefore\b/i;
 
 describe.each(SURFACES)("MCP directory compliance (%s)", (_surface, tools) => {
-  it("registers 26 hosted / 25 npm tools", () => {
-    expect(Object.keys(tools)).toHaveLength(_surface === "hosted" ? 26 : 25);
-  });
-
   it("descriptions follow Use when / Not for / price", () => {
     for (const [name, t] of Object.entries(tools)) {
       const d = t.description ?? "";

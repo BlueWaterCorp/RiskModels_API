@@ -11,9 +11,9 @@ import { RiskModelsClient } from "../packages/riskmodels-sdk/src/client";
 
 /**
  * MCP tool set 2.0: one registry for all three surfaces.
- * - npm stdio (`mcp/src/server.ts`): the 25 shared tools;
+ * - npm stdio (`mcp/src/server.ts`): the 24 shared tools;
  * - hosted `/api/mcp/sse` and `/api/mcp/openai` (`lib/mcp/server.ts`): the
- *   same 25 plus riskmodels_render_artifact.
+ *   same 24 plus riskmodels_render_artifact.
  * The routing test drives every shared tool through a real RiskModelsClient
  * with a stubbed fetch and pins the REST method + path each one calls.
  */
@@ -39,7 +39,6 @@ const NPM_TOOLS = [
   "riskmodels_get_residual_signal",
   "riskmodels_get_return_attribution",
   "riskmodels_get_returns",
-  "riskmodels_get_risk_history",
   "riskmodels_get_stock_snapshot",
   "riskmodels_portfolio_exposure",
   "riskmodels_screen_rankings",
@@ -53,17 +52,19 @@ function toolNames(server: unknown): string[] {
 }
 
 describe("MCP tool set 2.0 surfaces", () => {
-  it("npm stdio server registers exactly the 25 shared tools", () => {
-    const server = createNpmServer({ apiKey: "rm_agent_live_test", apiBase: "https://riskmodels.test" });
-    expect(toolNames(server)).toEqual(NPM_TOOLS);
+  // One table: each surface's exact sorted tool list. The npm row loads the
+  // stdio factory from mcp/src/server.ts, so CI covers the published package.
+  it.each([
+    ["npm stdio (mcp/src/server.ts)", () => createNpmServer({ apiKey: "rm_agent_live_test", apiBase: "https://riskmodels.test" }), NPM_TOOLS],
+    ["hosted /api/mcp/sse", () => createHostedServer({ apiKey: "rm_agent_live_test", surface: "default" }), HOSTED_TOOLS],
+    ["hosted /api/mcp/openai", () => createHostedServer({ apiKey: "rm_agent_live_test", surface: "openai" }), HOSTED_TOOLS],
+  ] as const)("%s registers exactly its pinned tool list", (_surface, make, expected) => {
+    expect(toolNames(make())).toEqual([...expected]);
   });
 
-  it("hosted /api/mcp/sse registers the 25 shared tools plus the render tool", () => {
-    expect(toolNames(createHostedServer({ apiKey: "rm_agent_live_test", surface: "default" }))).toEqual(HOSTED_TOOLS);
-  });
-
-  it("hosted /api/mcp/openai registers the same 26 tools", () => {
-    expect(toolNames(createHostedServer({ apiKey: "rm_agent_live_test", surface: "openai" }))).toEqual(HOSTED_TOOLS);
+  it("pinned counts: 24 npm, 25 hosted", () => {
+    expect(NPM_TOOLS).toHaveLength(24);
+    expect(HOSTED_TOOLS).toHaveLength(25);
   });
 
   it("the exported name lists match the registrations", () => {
@@ -90,7 +91,7 @@ describe("MCP tool set 2.0 surfaces", () => {
 
 type Call = { method: string; path: string; query: Record<string, string>; body?: unknown };
 
-function harness(failPaths: string[] = []) {
+function harness() {
   const calls: Call[] = [];
   const stubFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
@@ -100,9 +101,6 @@ function harness(failPaths: string[] = []) {
       query: Object.fromEntries(url.searchParams.entries()),
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
     });
-    if (failPaths.includes(calls[calls.length - 1]!.path)) {
-      return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
-    }
     return new Response(JSON.stringify({ ticker: "NVDA", results: {}, positions: [] }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -141,9 +139,6 @@ describe("MCP tool routing (method + REST path)", () => {
 
   it("single-stock tools", async () => {
     expect(routes(await r("riskmodels_get_stock_snapshot", { ticker: "nvda" }))).toEqual(["GET /metrics/NVDA"]);
-    expect(
-      routes(await r("riskmodels_get_stock_snapshot", { ticker: "nvda", include: ["rankings", "peers", "fundamentals"] })),
-    ).toEqual(["GET /metrics/NVDA", "GET /rankings/NVDA", "GET /peers", "GET /fundamentals/NVDA"]);
 
     const dec = await r("riskmodels_decompose", { ticker: "nvda" });
     expect(routes(dec)).toEqual(["POST /decompose"]);
@@ -158,10 +153,6 @@ describe("MCP tool routing (method + REST path)", () => {
 
     expect(routes(await r("riskmodels_get_returns", { ticker: "AAPL", years: 2 }))).toEqual(["GET /ticker-returns"]);
 
-    const hist = await r("riskmodels_get_risk_history", { ticker: "nvda" });
-    expect(routes(hist)).toEqual(["GET /l3-decomposition"]);
-    expect(hist[0]!.query).toEqual({ ticker: "NVDA", market_factor_etf: "SPY", years: "1" });
-
     expect(routes(await r("riskmodels_get_return_attribution", { ticker: "AAPL", include_lstar: true }))).toEqual([
       "GET /returns-decomposition",
     ]);
@@ -174,18 +165,14 @@ describe("MCP tool routing (method + REST path)", () => {
     ]);
   });
 
-  it("residual returns: one ticker uses GET /lstar, several (or csv/parquet) use POST /batch/lstar", async () => {
-    const one = await r("riskmodels_get_residual_returns", { tickers: ["nvda"], years: 2, axis: "industry" });
+  it("residual returns: one ticker uses GET /lstar, 2-100 use POST /batch/lstar", async () => {
+    const one = await r("riskmodels_get_residual_returns", { tickers: ["nvda"], years: 2 });
     expect(routes(one)).toEqual(["GET /lstar"]);
-    expect(one[0]!.query).toEqual({ ticker: "NVDA", years: "2", axis: "industry" });
+    expect(one[0]!.query).toEqual({ ticker: "NVDA", years: "2" });
 
     const many = await r("riskmodels_get_residual_returns", { tickers: ["aapl", "msft"], years: 3 });
     expect(routes(many)).toEqual(["POST /batch/lstar"]);
     expect(many[0]!.body).toEqual({ tickers: ["AAPL", "MSFT"], years: 3 });
-
-    const csv = await r("riskmodels_get_residual_returns", { tickers: ["nvda"], format: "csv" });
-    expect(routes(csv)).toEqual(["POST /batch/lstar"]);
-    expect(csv[0]!.body).toEqual({ tickers: ["NVDA"], format: "csv" });
   });
 
   it("portfolio tools", async () => {
@@ -207,12 +194,6 @@ describe("MCP tool routing (method + REST path)", () => {
     // Same request body either way: the hedge view is computed from the same response.
     expect(dollars[0]!.body).toEqual(weights[0]!.body);
     expect(weights[0]!.body).toEqual({ tickers: ["AAPL", "NVDA"], metrics: ["hedge_ratios"], years: 1, format: "json" });
-    const withIndex = await r("riskmodels_analyze_portfolio", {
-      positions: [{ ticker: "aapl", dollars: 100 }],
-      include: ["risk_index"],
-    });
-    expect(routes(withIndex)).toEqual(["POST /batch/analyze", "POST /portfolio/risk-index"]);
-    expect(withIndex[1]!.body).toEqual({ positions: [{ ticker: "AAPL", weight: 100 }] });
 
     const snap = await r("riskmodels_get_portfolio_risk_snapshot", {
       positions: [
@@ -220,25 +201,25 @@ describe("MCP tool routing (method + REST path)", () => {
         { ticker: "NVDA", dollars: 35 },
       ],
     });
-    expect(routes(snap)).toEqual(["POST /portfolio/risk-snapshot"]);
+    expect(routes(snap)).toEqual(["POST /snapshot"]);
     expect(snap[0]!.body).toEqual({
-      format: "json",
-      positions: [
+      type: "portfolio",
+      portfolio: [
         { ticker: "AAPL", weight: 0.4 },
         { ticker: "NVDA", weight: 35 },
       ],
+      lookback_days: 252,
     });
-
-    const withReturns = await r("riskmodels_get_portfolio_risk_snapshot", {
+    const shares = await r("riskmodels_get_portfolio_risk_snapshot", {
       positions: [{ ticker: "AAPL", shares: 10 }],
-      include_returns: true,
+      lookback_days: 504,
       benchmark: "SPY",
     });
-    expect(routes(withReturns)).toEqual(["POST /snapshot"]);
-    expect(withReturns[0]!.body).toEqual({
+    expect(routes(shares)).toEqual(["POST /snapshot"]);
+    expect(shares[0]!.body).toEqual({
       type: "portfolio",
       portfolio: [{ ticker: "AAPL", shares: 10 }],
-      lookback_days: 252,
+      lookback_days: 504,
       benchmark: "SPY",
     });
 
@@ -253,9 +234,9 @@ describe("MCP tool routing (method + REST path)", () => {
     expect(routes(await r("riskmodels_get_my_positions", {}))).toEqual(["GET portal:/api/positions"]);
   });
 
-  it("rejects shares outside the return-attribution view", async () => {
+  it("rejects a position with both a weight and shares", async () => {
     const h = handlers.get("riskmodels_get_portfolio_risk_snapshot")!;
-    expect((await h({ positions: [{ ticker: "AAPL", shares: 10 }] })).isError).toBe(true);
+    expect((await h({ positions: [{ ticker: "AAPL", weight: 1, shares: 10 }] })).isError).toBe(true);
   });
 
   it("cross-section tools", async () => {
@@ -300,35 +281,6 @@ describe("MCP tool routing (method + REST path)", () => {
     expect(routes(fund)).toEqual(["GET /funds/snapshot/BW-FUND-S000019457", "GET /funds/BW-FUND-S000019457/holdings"]);
     expect(fund[1]!.query).toEqual({ limit: "50" });
 
-    expect(
-      routes(
-        await r("riskmodels_get_fund", {
-          bw_fund_id: "BW-FUND-S000019457",
-          include: ["hedge", "nav_history", "portfolio_history", "metrics"],
-        }),
-      ),
-    ).toEqual([
-      "GET /funds/snapshot/BW-FUND-S000019457",
-      "GET /funds/BW-FUND-S000019457/hedge",
-      "GET /funds/BW-FUND-S000019457/nav",
-      "GET /funds/BW-FUND-S000019457/portfolio",
-      "GET /funds/BW-FUND-S000019457",
-    ]);
-    expect(
-      routes(
-        await r("riskmodels_get_filer", {
-          bw_filer_id: "BW-FILER-CIK0001067983",
-          include: ["holdings", "concentration", "portfolio_history", "metrics"],
-        }),
-      ),
-    ).toEqual([
-      "GET /13f/filers/BW-FILER-CIK0001067983/snapshot",
-      "GET /13f/filers/BW-FILER-CIK0001067983/holdings",
-      "GET /13f/filers/BW-FILER-CIK0001067983/concentration",
-      "GET /13f/filers/BW-FILER-CIK0001067983/portfolio",
-      "GET /13f/filers/BW-FILER-CIK0001067983",
-    ]);
-
     expect(routes(await r("riskmodels_get_etf", { ticker: "smh" }))).toEqual(["GET /data/etf/SMH"]);
     expect(routes(await r("riskmodels_get_etf", { ticker: "smh", holdings_top: 5 }))).toEqual([
       "GET /data/etf/SMH",
@@ -347,20 +299,6 @@ describe("MCP tool routing (method + REST path)", () => {
     expect(routes(await r("riskmodels_get_factor_returns", { kind: "sector_etf", sleeve: "sector" }))).toEqual([
       "GET /etf/factor-returns",
     ]);
-  });
-
-  it("a failed include is reported in errors without failing the call", async () => {
-    const h = harness(["/funds/BW-FUND-X/nav"]);
-    const result = await h.handlers.get("riskmodels_get_fund")!({
-      bw_fund_id: "BW-FUND-X",
-      include: ["hedge", "nav_history"],
-    });
-    expect(result.isError).toBeFalsy();
-    const payload = JSON.parse(result.content[0]!.text!);
-    expect(payload.snapshot).toBeDefined();
-    expect(payload.hedge).toBeDefined();
-    expect(payload.nav_history).toBeUndefined();
-    expect(payload.errors.nav_history).toContain("500");
   });
 
   it("every shared tool was routed above", () => {

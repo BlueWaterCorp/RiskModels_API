@@ -167,7 +167,6 @@ export const RISKMODELS_TOOL_NAMES = [
   "riskmodels_decompose",
   "riskmodels_compare",
   "riskmodels_get_returns",
-  "riskmodels_get_risk_history",
   "riskmodels_get_return_attribution",
   "riskmodels_get_residual_returns",
   "riskmodels_get_residual_signal",
@@ -204,36 +203,6 @@ function setIf(target: Record<string, unknown>, key: string, value: unknown): vo
 
 function upper(ticker: string): string {
   return ticker.trim().toUpperCase();
-}
-
-/**
- * `include` convention: each requested value is one extra REST call whose
- * result is returned under a key of the same name. A failed include does not
- * fail the call; its message goes into `errors[name]`. New data reaches an
- * existing tool as a new include value, not as a new tool.
- */
-async function withIncludes(
-  base: Record<string, unknown>,
-  fetchers: Array<[string, () => Promise<unknown>]>,
-): Promise<Record<string, unknown>> {
-  const out: Record<string, unknown> = { ...base };
-  const errors: Record<string, string> = {};
-  for (const [name, fetchOne] of fetchers) {
-    try {
-      out[name] = await fetchOne();
-    } catch (error) {
-      errors[name] = error instanceof Error ? error.message : String(error);
-    }
-  }
-  if (Object.keys(errors).length > 0) out.errors = errors;
-  return out;
-}
-
-function includeParam<T extends readonly [string, ...string[]]>(values: T, what: string, example: string) {
-  return z
-    .array(z.enum(values))
-    .optional()
-    .describe(`Extra blocks to add, each one more REST call returned under its own key: ${what}. e.g. ${example} (default none)`);
 }
 
 const tickerParam = (example = "NVDA") =>
@@ -285,30 +254,14 @@ export function registerRiskModelsTools(
       title: "RiskModels Stock Risk Snapshot",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you need one US stock's latest risk numbers: hedge ratios to SPY and to its sector and subsector ETFs, explained-risk shares by layer, volatility, closing price and market cap. Not for a layer-by-layer decomposition or the ETF hedge of a dollar position (use riskmodels_decompose), several stocks at once (use riskmodels_compare) or daily history (use riskmodels_get_risk_history). Returns the latest row of GET /metrics/{ticker}, including the hedge_levels block with hedge ratios, explained risk and hedge ETFs at L1, L2 and L3. include adds blocks under keys of the same name: rankings (GET /rankings/{ticker}, default metric and window), peers (GET /peers), fundamentals (GET /fundamentals/{ticker}, latest 8 quarters); a failed block is reported in errors without failing the call. " +
+        "Use when you need one US stock's latest risk numbers: hedge ratios to SPY and to its sector and subsector ETFs, explained-risk shares by layer, volatility, closing price and market cap. Not for a layer-by-layer decomposition or the ETF hedge of a dollar position (use riskmodels_decompose), several stocks at once (use riskmodels_compare) or daily history (use riskmodels_get_returns). Returns the latest row of GET /metrics/{ticker}, including the hedge_levels block with hedge ratios, explained risk and hedge ETFs at L1, L2 and L3. " +
         EOD +
-        " Price: $0.005 per call, plus $0.005 for rankings, $0.005 for peers and $0.02 for fundamentals.",
+        " Price: $0.005 per call.",
       inputSchema: {
         ticker: tickerParam("NVDA"),
-        include: includeParam(
-          ["rankings", "peers", "fundamentals"] as const,
-          "rankings, peers, fundamentals",
-          '["rankings","peers"]',
-        ),
       },
     },
-    async ({ ticker, include }) =>
-      run(async () => {
-        const t = encodeURIComponent(upper(ticker));
-        const base = await sdk.call("GET", `/metrics/${t}`);
-        const wanted = new Set<string>(include ?? []);
-        if (wanted.size === 0) return base;
-        const fetchers: Array<[string, () => Promise<unknown>]> = [];
-        if (wanted.has("rankings")) fetchers.push(["rankings", () => sdk.call("GET", `/rankings/${t}`)]);
-        if (wanted.has("peers")) fetchers.push(["peers", () => sdk.call("GET", "/peers", { query: { ticker: upper(ticker) } })]);
-        if (wanted.has("fundamentals")) fetchers.push(["fundamentals", () => sdk.call("GET", `/fundamentals/${t}`)]);
-        return withIncludes(base, fetchers);
-      }),
+    async ({ ticker }) => run(() => sdk.call("GET", `/metrics/${encodeURIComponent(upper(ticker))}`)),
   );
 
   server.registerTool(
@@ -379,42 +332,6 @@ export function registerRiskModelsTools(
   );
 
   server.registerTool(
-    "riskmodels_get_risk_history",
-    {
-      title: "RiskModels Daily Risk Decomposition History",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Use when you need the daily history of one stock's market, sector, subsector and residual risk, optionally measured against a market factor ETF other than SPY. Not for the latest values only (use riskmodels_get_stock_snapshot) or return series (use riskmodels_get_returns). Returns, from GET /l3-decomposition, parallel daily time series of the four layers with the hedge ratios. " +
-        EOD +
-        " Price: $0.04 per call.",
-      inputSchema: {
-        ticker: tickerParam("NVDA"),
-        market_factor_etf: z
-          .string()
-          .optional()
-          .describe("ETF ticker used as the L1 market factor, e.g. QQQ (default SPY)"),
-        years: z
-          .number()
-          .int()
-          .min(1)
-          .max(15)
-          .optional()
-          .describe("Years of daily history, integer 1-15, e.g. 5 (default 1)"),
-      },
-    },
-    async ({ ticker, market_factor_etf, years }) =>
-      run(() =>
-        sdk.call("GET", "/l3-decomposition", {
-          query: {
-            ticker: upper(ticker),
-            market_factor_etf: market_factor_etf || "SPY",
-            years: years ?? 1,
-          },
-        }),
-      ),
-  );
-
-  server.registerTool(
     "riskmodels_get_return_attribution",
     {
       title: "RiskModels Return Attribution (factor vs residual)",
@@ -462,9 +379,9 @@ export function registerRiskModelsTools(
       title: "RiskModels Residual Returns and Recommended Hedge Depth",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you need daily residual (stock-specific) returns and the recommended hedge depth (L1 market, L2 sector or L3 subsector) for 1-100 stocks. Not for the full factor split of each day's return (use riskmodels_get_return_attribution) or a mean-reversion signal on a basket (use riskmodels_get_residual_signal). Returns, per ticker, the recommended depth by date, the hedge ratios at that depth and the daily residual return series. One ticker with the default format is served by GET /lstar; 2-100 tickers, or format csv or parquet, by POST /batch/lstar. Without threshold the depth is the one ERM3 publishes; with threshold it is the simplest depth whose marginal explained risk exceeds the threshold. " +
+        "Use when you need daily residual (stock-specific) returns and the recommended hedge depth (L1 market, L2 sector or L3 subsector) for 1-100 stocks. Not for the full factor split of each day's return (use riskmodels_get_return_attribution) or a mean-reversion signal on a basket (use riskmodels_get_residual_signal). Returns, per ticker, the recommended depth by date, the hedge ratios at that depth and the daily residual return series. One ticker is served by GET /lstar; 2-100 tickers by POST /batch/lstar. Without threshold the depth is the one ERM3 publishes; with threshold it is the simplest depth whose marginal explained risk exceeds the threshold. " +
         EOD +
-        " Price: one ticker $0.02 plus $0.01 per year beyond the first; 2-100 tickers $0.015 per ticker plus $0.0075 per ticker per year beyond the first, minimum $0.03.",
+        " Price: one ticker $0.02 plus $0.01 per year beyond the first; 2-100 tickers $0.015 per ticker plus $0.0075 per ticker per year beyond the first, minimum $0.03 per call.",
       inputSchema: {
         tickers: z
           .array(z.string().min(1))
@@ -488,24 +405,15 @@ export function registerRiskModelsTools(
           .describe(
             "Marginal explained-risk threshold, a fraction, e.g. 0.01. Omit for the depth ERM3 publishes",
           ),
-        axis: z
-          .enum(["industry"])
-          .optional()
-          .describe("Cascade axis, single-ticker requests only: industry, e.g. industry (the only value; default industry)"),
-        format: z
-          .enum(["json", "parquet", "csv"])
-          .optional()
-          .describe("Response format, e.g. csv (default json). csv and parquet use the batch route"),
       },
     },
-    async ({ tickers, years, market_factor_etf, threshold, axis, format }) =>
+    async ({ tickers, years, market_factor_etf, threshold }) =>
       run(() => {
         const list = (tickers as string[]).map(upper);
-        if (list.length === 1 && format === undefined) {
+        if (list.length === 1) {
           const query: Query = { ticker: list[0]! };
           setIf(query, "years", years);
           setIf(query, "market_factor_etf", market_factor_etf);
-          setIf(query, "axis", axis);
           setIf(query, "threshold", threshold);
           return sdk.call("GET", "/lstar", { query });
         }
@@ -513,7 +421,6 @@ export function registerRiskModelsTools(
         setIf(body, "years", years);
         setIf(body, "market_factor_etf", market_factor_etf);
         setIf(body, "threshold", threshold);
-        setIf(body, "format", format);
         return sdk.call("POST", "/batch/lstar", { body });
       }),
   );
@@ -663,9 +570,9 @@ export function registerRiskModelsTools(
       title: "RiskModels Portfolio Hedge Levels and ETF Hedge",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you have a long-only book of up to 100 names and want its holdings-weighted L1, L2 and L3 hedge ratios, or the ETF hedge notionals for dollar positions. Not for books with shorts or more than 100 names (use riskmodels_portfolio_exposure) or a variance decomposition of the book (use riskmodels_get_portfolio_risk_snapshot). Returns, from POST /batch/analyze, portfolio hedge levels at L1, L2 and L3 with per-ticker detail; when every position is given in dollars it also returns the ETF hedge notionals at the chosen level, by ticker and summed by ETF. include adds risk_index (POST /portfolio/risk-index: holdings-weighted market, sector, subsector and residual variance shares with per-ticker detail) under a key of the same name; a failed block is reported in errors without failing the call. " +
+        "Use when you have a long-only book of up to 100 names and want its holdings-weighted L1, L2 and L3 hedge ratios, or the ETF hedge notionals for dollar positions. Not for books with shorts or more than 100 names (use riskmodels_portfolio_exposure) or a variance decomposition with return attribution (use riskmodels_get_portfolio_risk_snapshot). Returns, from POST /batch/analyze, portfolio hedge levels at L1, L2 and L3 with per-ticker detail. Only when every position is given in dollars does it also return the ETF hedge notionals at hedge_level (set by level, default L3), by ticker and summed by ETF; with weights, level is ignored. " +
         EOD +
-        " Price: $0.015 per position, minimum $0.03 per call, plus $0.15 for risk_index.",
+        " Price: $0.015 per position, minimum $0.03 per call.",
       inputSchema: {
         positions: z
           .array(
@@ -683,7 +590,7 @@ export function registerRiskModelsTools(
         level: z
           .enum(["L1", "L2", "L3"])
           .optional()
-          .describe("Hedge depth for the ETF notionals when positions are in dollars, e.g. L2 (default L3)"),
+          .describe("Hedge depth for the ETF notionals, used only when every position is in dollars, e.g. L2 (default L3)"),
         years: z
           .number()
           .int()
@@ -691,27 +598,19 @@ export function registerRiskModelsTools(
           .max(30)
           .optional()
           .describe("Lookback window in years, integer 1-30, e.g. 2 (default 1)"),
-        include: includeParam(["risk_index"] as const, "risk_index", '["risk_index"]'),
       },
     },
-    async ({ positions, level, years, include }) =>
-      run(async () => {
+    async ({ positions, level, years }) =>
+      run(() => {
         const rows = positions as PositionInput[];
         const allDollars = rows.every((p) => p.dollars !== undefined && p.weight === undefined);
-        const base = allDollars
-          ? await sdk.hedgePortfolio(
-              rows.map((p) => ({ ticker: p.ticker, dollars: p.dollars as number })),
-              { level, years },
-            )
-          : await sdk.analyzePortfolio(rows, { years });
-        if (!(include ?? []).includes("risk_index")) return base;
-        const riskIndexBody: Record<string, unknown> = {
-          positions: rows.map((p) => ({ ticker: upper(p.ticker), weight: (p.weight ?? p.dollars) as number })),
-        };
-        setIf(riskIndexBody, "years", years);
-        return withIncludes(base as unknown as Record<string, unknown>, [
-          ["risk_index", () => sdk.call("POST", "/portfolio/risk-index", { body: riskIndexBody })],
-        ]);
+        if (allDollars) {
+          return sdk.hedgePortfolio(
+            rows.map((p) => ({ ticker: p.ticker, dollars: p.dollars as number })),
+            { level, years },
+          );
+        }
+        return sdk.analyzePortfolio(rows, { years });
       }),
   );
 
@@ -721,7 +620,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Portfolio Risk Snapshot",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want a long-only portfolio's risk decomposed into market, sector, subsector and residual variance, with optional diversification analytics or return attribution. Not for long/short books (use riskmodels_portfolio_exposure) or hedge ratios and ETF notionals (use riskmodels_analyze_portfolio). Returns, from POST /portfolio/risk-snapshot, the variance decomposition, 23-day volatility and, with include_diversification, sector and subsector ETF correlation analytics; results are cached for one hour per user and portfolio. With include_returns=true the request goes to POST /snapshot instead and returns the L3 variance decomposition, per-position L3 hedge ratios, frozen-weight daily return attribution, cumulative return, drawdown and a risk summary over lookback_days. " +
+        "Use when you want a long-only portfolio's risk decomposed into market, sector, subsector and residual variance, with diversification analytics and return attribution. Not for long/short books (use riskmodels_portfolio_exposure) or ETF hedge notionals (use riskmodels_analyze_portfolio). Returns, from POST /snapshot (the canonical portfolio snapshot), the L3 variance decomposition, per-position L3 hedge ratios, diversification analytics with sector and subsector ETF correlations, frozen-weight daily return attribution, cumulative return and drawdown over lookback_days, and a risk summary with dominant drivers and concentration flags. " +
         EOD +
         " Price: $1.25 per call.",
       inputSchema: {
@@ -735,7 +634,7 @@ export function registerRiskModelsTools(
                 .number()
                 .positive()
                 .optional()
-                .describe("Share count, include_returns=true only, converted at the latest close, e.g. 120"),
+                .describe("Share count, converted to a weight at the latest close, e.g. 120"),
             }),
           )
           .min(1)
@@ -743,69 +642,28 @@ export function registerRiskModelsTools(
           .describe(
             'Long positions, each with one of weight, dollars or shares (shares on every position or none), e.g. [{"ticker":"AAPL","weight":0.4},{"ticker":"NVDA","weight":0.35},{"ticker":"CRWD","weight":0.25}]',
           ),
-        include_diversification: z
-          .boolean()
-          .optional()
-          .describe("true adds diversification analytics and ETF correlation matrices (slower), e.g. true (default false)"),
-        window_days: z
-          .number()
-          .int()
-          .min(20)
-          .max(2000)
-          .optional()
-          .describe("Rolling window for diversification in trading days, integer 20-2000, e.g. 126 (default 252)"),
-        as_of_date: isoDate("Snapshot date override (risk view only)", "2026-06-30"),
-        title: z.string().max(200).optional().describe('Report title, up to 200 characters, e.g. "Core tech sleeve" (default "Portfolio")'),
-        include_returns: z
-          .boolean()
-          .optional()
-          .describe("true returns the canonical snapshot with return attribution, cumulative return and drawdown (POST /snapshot), e.g. true (default false)"),
         lookback_days: z
           .number()
           .int()
           .min(20)
           .max(2000)
           .optional()
-          .describe("Trading days of return history, include_returns=true only, integer 20-2000, e.g. 504 (default 252)"),
-        benchmark: z
-          .string()
-          .optional()
-          .describe("Benchmark ticker, include_returns=true only, e.g. SPY"),
+          .describe("Trading days of history for returns, attribution and the diversification window, integer 20-2000, e.g. 504 (default 252)"),
+        benchmark: z.string().optional().describe("Benchmark ticker, e.g. SPY"),
       },
     },
-    async ({ positions, include_diversification, window_days, as_of_date, title, include_returns, lookback_days, benchmark }) => {
-      const rows = positions as Array<{ ticker: string; weight?: number; dollars?: number; shares?: number }>;
-      if (include_returns) {
-        const portfolio: Array<Record<string, unknown>> = [];
-        for (const p of rows) {
-          const w = p.weight ?? p.dollars;
-          if ((w !== undefined) === (p.shares !== undefined)) {
-            return toolErrorResult({
-              error: `Position ${p.ticker} needs exactly one of weight, dollars or shares.`,
-            });
-          }
-          portfolio.push(p.shares !== undefined ? { ticker: upper(p.ticker), shares: p.shares } : { ticker: upper(p.ticker), weight: w });
-        }
-        const body: Record<string, unknown> = { type: "portfolio", portfolio, lookback_days: lookback_days ?? 252 };
-        setIf(body, "benchmark", benchmark);
-        return run(() => sdk.call("POST", "/snapshot", { body }));
-      }
-      const out: Array<{ ticker: string; weight: number }> = [];
-      for (const p of rows) {
+    async ({ positions, lookback_days, benchmark }) => {
+      const portfolio: Array<Record<string, unknown>> = [];
+      for (const p of positions as Array<{ ticker: string; weight?: number; dollars?: number; shares?: number }>) {
         const w = p.weight ?? p.dollars;
-        if (w === undefined || p.shares !== undefined) {
-          return toolErrorResult({
-            error: `Position ${p.ticker} needs a positive weight or dollars value (shares are accepted only with include_returns=true).`,
-          });
+        if ((w !== undefined) === (p.shares !== undefined)) {
+          return toolErrorResult({ error: `Position ${p.ticker} needs exactly one of weight, dollars or shares.` });
         }
-        out.push({ ticker: upper(p.ticker), weight: w });
+        portfolio.push(p.shares !== undefined ? { ticker: upper(p.ticker), shares: p.shares } : { ticker: upper(p.ticker), weight: w });
       }
-      const body: Record<string, unknown> = { format: "json", positions: out };
-      setIf(body, "title", title);
-      setIf(body, "as_of_date", as_of_date);
-      if (include_diversification) body.include_diversification = true;
-      setIf(body, "window_days", window_days);
-      return run(() => sdk.call("POST", "/portfolio/risk-snapshot", { body }));
+      const body: Record<string, unknown> = { type: "portfolio", portfolio, lookback_days: lookback_days ?? 252 };
+      setIf(body, "benchmark", benchmark);
+      return run(() => sdk.call("POST", "/snapshot", { body }));
     },
   );
 
@@ -1168,43 +1026,25 @@ export function registerRiskModelsTools(
       title: "RiskModels 13F Filer",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want a 13F filer's profile, latest metrics and concentration, and optionally its holdings, metric history or concentration history. Not for finding the bw_filer_id (use riskmodels_search) or comparing the book with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot } from GET /13f/filers/{bw_filer_id}/snapshot (registry details, latest metrics, concentration). include adds blocks under keys of the same name: holdings (GET /13f/filers/{bw_filer_id}/holdings: largest holdings with the source filing's accession_number, filing_type and amendment_type, null on panels published before filing vintages were stored), concentration (GET /13f/filers/{bw_filer_id}/concentration: concentration history), portfolio_history (GET /13f/filers/{bw_filer_id}/portfolio: portfolio metrics by filing period), metrics (GET /13f/filers/{bw_filer_id}: latest portfolio metrics); a failed block is reported in errors without failing the call. Holdings follow the latest 13F filing; metrics use end-of-day prices. Price: $0.05, plus $0.02 per include value.",
+        "Use when you want a 13F filer's profile, latest metrics and concentration, and optionally its largest holdings. Not for finding the bw_filer_id (use riskmodels_search) or comparing the book with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot, holdings }: snapshot from GET /13f/filers/{bw_filer_id}/snapshot (registry details, latest metrics, concentration); holdings, only when holdings_top is set, from GET /13f/filers/{bw_filer_id}/holdings with the source filing's accession_number, filing_type (13F-HR, 13F-HR/A, 13F-NT) and amendment_type (ORIGINAL, RESTATEMENT, NEW_HOLDINGS or UNKNOWN; null on panels published before filing vintages were stored). Holdings follow the latest 13F filing; metrics use end-of-day prices. Price: $0.05, plus $0.02 when holdings are requested.",
       inputSchema: {
         bw_filer_id: BW_FILER_ID,
-        include: includeParam(
-          ["holdings", "concentration", "portfolio_history", "metrics"] as const,
-          "holdings, concentration, portfolio_history, metrics",
-          '["holdings","concentration"]',
-        ),
         holdings_top: z
           .number()
           .int()
           .min(1)
           .max(200)
           .optional()
-          .describe("Number of holdings in the holdings block, integer 1-200, e.g. 25 (default 25); setting it also adds holdings"),
+          .describe("Also return the largest N holdings, integer 1-200, e.g. 25 (default: no holdings)"),
       },
     },
-    async ({ bw_filer_id, include, holdings_top }) =>
+    async ({ bw_filer_id, holdings_top }) =>
       run(async () => {
         const id = encodeURIComponent(bw_filer_id.trim());
         const snapshot = await sdk.call("GET", `/13f/filers/${id}/snapshot`);
-        const wanted = new Set<string>(include ?? []);
-        if (holdings_top !== undefined) wanted.add("holdings");
-        const fetchers: Array<[string, () => Promise<unknown>]> = [];
-        if (wanted.has("holdings")) {
-          const query: Query = {};
-          setIf(query, "top", holdings_top);
-          fetchers.push(["holdings", () => sdk.call("GET", `/13f/filers/${id}/holdings`, { query })]);
-        }
-        if (wanted.has("concentration")) {
-          fetchers.push(["concentration", () => sdk.call("GET", `/13f/filers/${id}/concentration`)]);
-        }
-        if (wanted.has("portfolio_history")) {
-          fetchers.push(["portfolio_history", () => sdk.call("GET", `/13f/filers/${id}/portfolio`)]);
-        }
-        if (wanted.has("metrics")) fetchers.push(["metrics", () => sdk.call("GET", `/13f/filers/${id}`)]);
-        return withIncludes({ snapshot }, fetchers);
+        if (holdings_top === undefined) return { snapshot };
+        const holdings = await sdk.call("GET", `/13f/filers/${id}/holdings`, { query: { top: holdings_top } });
+        return { snapshot, holdings };
       }),
   );
 
@@ -1214,44 +1054,25 @@ export function registerRiskModelsTools(
       title: "RiskModels Mutual Fund",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want a US mutual fund's profile, return decomposition, hedge ratios and style-box ranks, and optionally its holdings, look-through hedge, NAV or portfolio history. Not for finding the bw_fund_id (use riskmodels_search) or comparing the fund with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot } from GET /funds/snapshot/{bw_fund_id} (registry details, latest return decomposition and diagnostics, top 25 holdings, L1/L2/L3 ETF hedge ratios, a 12-month portfolio time series and the fund's rank within its style box on each ranked metric). include adds blocks under keys of the same name: holdings (GET /funds/{bw_fund_id}/holdings: latest filed SEC N-PORT report, ranked by absolute market value, signed weights, long/short/net/gross totals), hedge (GET /funds/{bw_fund_id}/hedge: L1/L2/L3 ETF hedge ratios from holdings look-through), nav_history (GET /funds/{bw_fund_id}/nav), portfolio_history (GET /funds/{bw_fund_id}/portfolio: portfolio metrics by report date), metrics (GET /funds/{bw_fund_id}: latest fund metrics); a failed block is reported in errors without failing the call. Holdings follow the latest N-PORT filing; metrics use end-of-day prices. Price: $0.05, plus $0.02 per include value.",
+        "Use when you want a US mutual fund's profile, return decomposition, hedge ratios and style-box ranks, and optionally its full holdings. Not for finding the bw_fund_id (use riskmodels_search) or comparing the fund with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot, holdings }: snapshot from GET /funds/snapshot/{bw_fund_id} (registry details, latest return decomposition and diagnostics, top 25 holdings, L1/L2/L3 ETF hedge ratios, a 12-month portfolio time series and the fund's rank within its style box on each ranked metric); holdings, only when holdings_limit is set, from GET /funds/{bw_fund_id}/holdings (latest filed SEC N-PORT report, ranked by absolute market value, signed weights, long/short/net/gross totals and ticker coverage). Holdings follow the latest N-PORT filing; metrics use end-of-day prices. Price: $0.05, plus $0.02 when holdings are requested.",
       inputSchema: {
         bw_fund_id: z.string().min(1).describe("Fund id, e.g. BW-FUND-S000019457"),
-        include: includeParam(
-          ["holdings", "hedge", "nav_history", "portfolio_history", "metrics"] as const,
-          "holdings, hedge, nav_history, portfolio_history, metrics",
-          '["holdings","hedge"]',
-        ),
         holdings_limit: z
           .number()
           .int()
           .min(1)
           .max(5000)
           .optional()
-          .describe(
-            "Number of holdings in the holdings block, integer 1-5000, e.g. 100; 5000 returns the whole book (default 25); setting it also adds holdings",
-          ),
+          .describe("Also return up to N holdings, integer 1-5000, e.g. 100; 5000 returns the whole book (default: no holdings)"),
       },
     },
-    async ({ bw_fund_id, include, holdings_limit }) =>
+    async ({ bw_fund_id, holdings_limit }) =>
       run(async () => {
         const id = encodeURIComponent(bw_fund_id.trim());
         const snapshot = await sdk.call("GET", `/funds/snapshot/${id}`);
-        const wanted = new Set<string>(include ?? []);
-        if (holdings_limit !== undefined) wanted.add("holdings");
-        const fetchers: Array<[string, () => Promise<unknown>]> = [];
-        if (wanted.has("holdings")) {
-          const query: Query = {};
-          setIf(query, "limit", holdings_limit);
-          fetchers.push(["holdings", () => sdk.call("GET", `/funds/${id}/holdings`, { query })]);
-        }
-        if (wanted.has("hedge")) fetchers.push(["hedge", () => sdk.call("GET", `/funds/${id}/hedge`)]);
-        if (wanted.has("nav_history")) fetchers.push(["nav_history", () => sdk.call("GET", `/funds/${id}/nav`)]);
-        if (wanted.has("portfolio_history")) {
-          fetchers.push(["portfolio_history", () => sdk.call("GET", `/funds/${id}/portfolio`)]);
-        }
-        if (wanted.has("metrics")) fetchers.push(["metrics", () => sdk.call("GET", `/funds/${id}`)]);
-        return withIncludes({ snapshot }, fetchers);
+        if (holdings_limit === undefined) return { snapshot };
+        const holdings = await sdk.call("GET", `/funds/${id}/holdings`, { query: { limit: holdings_limit } });
+        return { snapshot, holdings };
       }),
   );
 
