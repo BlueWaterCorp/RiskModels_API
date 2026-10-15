@@ -1,4 +1,5 @@
 import posthog from 'posthog-js';
+import { getConsent, inConsentRegion } from '@/lib/consent';
 
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
 
@@ -16,6 +17,8 @@ export function initPostHog() {
       capture_pageview: false,
       capture_pageleave: true,
       autocapture: true,
+      // EEA/UK/CH visitors stay opted out until they accept in the consent banner.
+      opt_out_capturing_by_default: inConsentRegion() && getConsent() !== 'granted',
     });
   }
 }
