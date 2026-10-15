@@ -20,7 +20,7 @@ This is the portfolio-ingestion side of the docs. If you want the risk-engine si
 
 **For API-only users:** They must first connect via the web app (riskmodels.net). After that, they can use the API with their Bearer token to fetch holdings without any further Plaid UI.
 
-**Security note:** Stored portfolio data uses **GCP KMS-backed envelope encryption**. Plaid access tokens are encrypted at rest and used server-side only.
+**Security note:** Plaid access tokens are encrypted at rest (AES-256-GCM) and used server-side only. Holdings are fetched from Plaid when you request them and are not stored. Portfolios you save in your RiskModels account use **GCP KMS-backed envelope encryption**.
 
 ---
 
@@ -41,7 +41,7 @@ Plaid Link is a hosted UI that Plaid provides. Users must go through it at least
 6. **App exchanges it:** `POST /api/plaid/exchange-public-token` with `{ public_token }`.
 7. **Server stores** the encrypted access token in `plaid_items` for that user.
 
-The result is that connected holdings can be retrieved through the API without exposing Plaid credentials to the client, while stored portfolio data remains protected with KMS-backed envelope encryption.
+The result is that connected holdings can be retrieved through the API without exposing Plaid credentials to the client, and the holdings themselves are never stored.
 
 ### Endpoints Used
 
