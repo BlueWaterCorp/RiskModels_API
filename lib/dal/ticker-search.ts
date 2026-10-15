@@ -8,7 +8,7 @@ import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export type TickerSearchRow = {
-  /** FactSet-style symbol when available; otherwise same as ticker */
+  /** Internal BW symbol when available; otherwise same as ticker */
   symbol: string;
   ticker: string;
   name?: string;

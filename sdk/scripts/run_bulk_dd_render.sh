@@ -5,14 +5,14 @@
 # Override with BWMACRO_ROOT=/path/to/BWMACRO and/or PYTHON=/path/to/python.
 #
 # Example (from RiskModels_API root):
-#   export ERM3_ZARR_ROOT=/Volumes/ext_2t/factset/processed
+#   export ERM3_ZARR_ROOT=/path/to/erm3/processed
 #   ./sdk/scripts/run_bulk_dd_render.sh \
 #       --out-dir /Volumes/ext_2t/Stock_Snapshots \
 #       --limit 1000 --upload-mode batch --resume --force --workers 8
 #
 # One-liner using BWMACRO .venv (run from RiskModels_API repo root; assumes
 # sibling BWMACRO clone per docs/SUBMODULES.md):
-#   export ERM3_ZARR_ROOT=/Volumes/ext_2t/factset/processed && \
+#   export ERM3_ZARR_ROOT=/path/to/erm3/processed && \
 #     mkdir -p /Volumes/ext_2t/Stock_Snapshots && \
 #     PYTHONPATH=sdk ../BWMACRO/.venv/bin/python sdk/scripts/bulk_dd_render.py \
 #       --out-dir /Volumes/ext_2t/Stock_Snapshots --limit 1000 \

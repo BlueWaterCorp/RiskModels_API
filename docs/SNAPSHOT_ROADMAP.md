@@ -143,7 +143,7 @@ All constants live in `_theme.py` (THEME singleton). Charts import from `_charts
 
 | Context | Use | Example |
 |:---|:---|:---|
-| Internal keys, DB joins, API params | `symbol` (FactSet ID) | `NVDA-US` |
+| Internal keys, DB joins, API params | `symbol` (internal BW symbol) | `NVDA-US` |
 | Chart labels, PDF titles, legends | `ticker` | `NVDA` |
 | Peer resolution | `subsector_etf` from `symbols` table (default) | `SMH` |
 
