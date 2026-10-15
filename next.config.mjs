@@ -32,11 +32,10 @@ const nextConfig = {
         destination: '/installation',
         permanent: true,
       },
-      // Anthropic Connectors / plugin directory forms need a stable privacy URL on .app;
-      // the canonical policy page lives on riskmodels.net.
+      // Directory listings expect /terms; the terms and disclosures live at /legal.
       {
-        source: '/privacy',
-        destination: 'https://riskmodels.net/privacy',
+        source: '/terms',
+        destination: '/legal',
         permanent: false,
       },
     ];
