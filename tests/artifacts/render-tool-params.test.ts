@@ -64,7 +64,7 @@ function captureRenderTool() {
       schema = config.inputSchema;
       handler = fn;
     },
-  } as never);
+  } as never, { apiKey: "rm_agent_live_test", apiBase: "https://riskmodels.test" });
   if (!handler) throw new Error("render tool did not register");
   return { handler: handler as (a: Record<string, unknown>) => Promise<unknown>, schema };
 }

@@ -22,7 +22,7 @@ function handler() {
   registerRiskModelsRenderTool({
     registerResource: () => {},
     registerTool: (_name, _config, callback) => { captured = callback; },
-  } as McpLikeServer);
+  } as McpLikeServer, { apiKey: "rm_agent_live_test", apiBase: "https://riskmodels.test" });
   return captured;
 }
 
@@ -32,7 +32,17 @@ function textPayload(result: McpToolResult) {
   return JSON.parse(content.text);
 }
 
-beforeEach(() => { vi.mocked(renderArtifact).mockReset(); });
+// The tool now POSTs to the billed REST route; bridge that call to the mocked
+// render-client so these tests keep pinning the MCP envelope.
+beforeEach(() => {
+  vi.mocked(renderArtifact).mockReset();
+  vi.stubGlobal("fetch", vi.fn(async (url: unknown, init: RequestInit) => {
+    expect(String(url)).toBe("https://riskmodels.test/api/artifacts/render");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer rm_agent_live_test");
+    const result = await renderArtifact(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify(result), { status: result.ok ? 200 : result.status || 502 });
+  }));
+});
 
 describe("registry PNG delivery through MCP", () => {
   it("delivers original PNG bytes as an image with the resolved date, settings and receipt", async () => {
