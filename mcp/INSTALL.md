@@ -36,7 +36,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 }
 ```
 
-Restart Claude Desktop. In a new conversation you should see the RiskModels tools listed — try "Run `get_l3_decomposition` for NVDA."
+Restart Claude Desktop. In a new conversation you should see the RiskModels tools listed — try "Run `riskmodels_get_returns` for NVDA."
 
 ---
 
@@ -109,8 +109,7 @@ Once the server is wired up, ask the assistant:
 
 You should see:
 
-- **Discovery** — `riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`
-- **Data** — `get_metrics`, `get_l3_decomposition`, `get_portfolio_risk_snapshot`
+- 24 `riskmodels_*` tools (25 on the hosted connector, which adds `riskmodels_render_artifact`), for example `riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_analyze_portfolio` and `riskmodels_search`. The full list and the 1.x → 2.0 migration table are in [README.md](./README.md#tool-set-20).
 
 Then:
 
@@ -128,4 +127,4 @@ Every data-tool response includes a meter envelope (`_cost_usd`, `_remaining_dai
 | `RISKMODELS_API_KEY not found` in tool response | Run `riskmodels config init` or set the env var in the MCP client config. |
 | `API 401` in tool response | Key is invalid or revoked. `riskmodels config init` to mint a fresh one. |
 | `API 429` in tool response | Hit the per-minute rate limit. Default is 60/min; scoped MCP keys are tighter. Wait or ask an admin to bump. |
-| `get_l3_decomposition` returns `Symbol not found` | Ticker is not in the RiskModels universe. Try `riskmodels_get_capability { id: "tickers" }` for the universe endpoint. |
+| `riskmodels_get_returns` returns `Symbol not found` | Ticker is not in the RiskModels universe. Look it up with `riskmodels_search { q: "..." }`. |

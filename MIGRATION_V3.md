@@ -117,12 +117,7 @@ curl -X GET https://riskmodels.app/api/plaid/holdings \
 
 **Hosted MCP tools:** Discover with `tools/list` on your session (names depend on deployment).
 
-**Local `mcp/` package (this repo)** exposes discovery tools only:
-- `riskmodels_list_endpoints` - List API capabilities
-- `riskmodels_get_capability` - Get detailed capability info
-- `riskmodels_get_schema` - Fetch JSON schemas
-
-Portfolio and decomposition workflows use **REST** (`/api/batch/analyze`, `/api/l3-decomposition`, etc.) or **`riskmodels-py`**, not extra MCP tools in `mcp/`.
+**Local `mcp/` package (this repo):** since `@riskmodels/mcp` 2.0.0 the local and hosted servers share one tool registry (24 tools locally, 25 hosted). The former catalog tools (`riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`) are MCP resources now (`riskmodels:///capabilities`, `riskmodels:///schemas/{path}`). See [`mcp/README.md`](./mcp/README.md#tool-set-20).
 
 **Use Case:** AI agents in Cursor, Claude Desktop, Zed, etc.
 

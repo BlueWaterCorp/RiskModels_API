@@ -74,7 +74,7 @@ cd RiskModels_API/mcp
 npm publish --dry-run
 
 # Check output for:
-# - Correct version (1.0.4)
+# - Correct version (2.0.0)
 # - Correct name (@riskmodels/mcp)
 # - Correct mcpName in metadata
 # - Files included (dist/, README.md, etc.)
@@ -98,7 +98,8 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
   | RISKMODELS_API_KEY=... npx riskmodels-mcp
-# Expect a tools/list result, not a SyntaxError.
+# Expect a tools/list result with 24 tools (tool set 2.0), not a SyntaxError.
+# The sorted list is pinned in tests/mcp-tool-surfaces.test.ts.
 ```
 
 ---
@@ -114,7 +115,7 @@ npm publish
 # Verify on npm
 npm view @riskmodels/mcp version mcpName dependencies
 # Should show:
-# - version: 1.0.4
+# - version: 2.0.0
 # - mcpName: io.github.BlueWaterCorp/riskmodels
 # - dependencies.@riskmodels/sdk: ^0.1.2
 ```
@@ -211,7 +212,7 @@ npx @riskmodels/mcp
 - [ ] `npm run build` succeeds cleanly
 - [ ] `npm publish --dry-run` shows correct files, no file: deps
 - [ ] `npm publish` succeeds
-- [ ] `npm view @riskmodels/mcp version` shows 1.0.4
+- [ ] `npm view @riskmodels/mcp version` shows 2.0.0
 - [ ] `server.json` has `packages[]` block added
 - [ ] `mcp-publisher publish` succeeds
 - [ ] Registry shows both remote and package options

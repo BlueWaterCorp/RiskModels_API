@@ -422,7 +422,7 @@ const scenarioE: Scenario = {
   id: 'mcp',
   label: 'MCP Agent',
   titleBarLabel: 'riskmodels.app/api/mcp/sse — JSON-RPC 2.0 tool call',
-  contextBadge: 'SSE · tool: riskmodels_get_capability',
+  contextBadge: 'SSE · tool: riskmodels_get_returns',
   command: 'curl -N -H "Authorization: Bearer rm_agent_live_..." https://riskmodels.app/api/mcp/sse',
   lines: [
     {
@@ -436,20 +436,20 @@ const scenarioE: Scenario = {
     { id: 2, delayMs: 650, content: <span>&nbsp;</span> },
     {
       id: 3, delayMs: 800,
-      content: <span><span style={{ color: C.mcp_fwd }}>→ tool_call: </span><span style={{ color: C.bright }}>riskmodels_get_capability</span></span>,
+      content: <span><span style={{ color: C.mcp_fwd }}>→ tool_call: </span><span style={{ color: C.bright }}>riskmodels_get_returns</span></span>,
     },
     {
       id: 4, delayMs: 1000,
-      content: <span>&nbsp;&nbsp;<span style={{ color: C.dim }}>{'{'} </span><span style={{ color: C.key }}>&quot;id&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.str }}>&quot;ticker-returns&quot;</span><span style={{ color: C.dim }}> {'}'}</span></span>,
+      content: <span>&nbsp;&nbsp;<span style={{ color: C.dim }}>{'{'} </span><span style={{ color: C.key }}>&quot;ticker&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.str }}>&quot;NVDA&quot;</span><span style={{ color: C.dim }}>, </span><span style={{ color: C.key }}>&quot;years&quot;</span><span style={{ color: C.dim }}>: </span><span style={{ color: C.num }}>1</span><span style={{ color: C.dim }}> {'}'}</span></span>,
     },
     { id: 5, delayMs: 1200, content: <span>&nbsp;</span> },
     {
       id: 6, delayMs: 1350,
-      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>Returning capability metadata for ticker-returns (then call REST /api/ticker-returns for rows).</span></>,
+      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>Calling REST /api/ticker-returns with the session key (billed at the REST price).</span></>,
     },
     {
       id: 7, delayMs: 1800,
-      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>Example: GET https://riskmodels.app/api/ticker-returns?ticker=NVDA&amp;years=1</span></>,
+      content: <><span style={{ color: C.info }}>[MCP]</span> <span style={{ color: C.muted }}>GET https://riskmodels.app/api/ticker-returns?ticker=NVDA&amp;years=1</span></>,
     },
     { id: 8, delayMs: 2100, content: <span>&nbsp;</span> },
     {

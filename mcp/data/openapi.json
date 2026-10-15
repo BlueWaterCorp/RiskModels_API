@@ -4229,21 +4229,33 @@
           "name": {
             "type": "string",
             "enum": [
-              "riskmodels_list_endpoints",
-              "riskmodels_get_capability",
-              "riskmodels_get_schema",
-              "riskmodels_decompose",
-              "riskmodels_compare",
-              "riskmodels_get_hedge_levels",
-              "riskmodels_get_my_positions",
               "riskmodels_analyze_portfolio",
-              "riskmodels_hedge_portfolio",
-              "get_l3_decomposition",
-              "get_metrics",
-              "get_portfolio_risk_snapshot",
-              "post_snapshot"
+              "riskmodels_compare",
+              "riskmodels_decompose",
+              "riskmodels_decompose_selection_vs_drift",
+              "riskmodels_get_benchmark_fit",
+              "riskmodels_get_cohorts",
+              "riskmodels_get_etf",
+              "riskmodels_get_factor_returns",
+              "riskmodels_get_filer",
+              "riskmodels_get_fund",
+              "riskmodels_get_fundamentals",
+              "riskmodels_get_macro_correlation",
+              "riskmodels_get_my_positions",
+              "riskmodels_get_peers",
+              "riskmodels_get_portfolio_risk_snapshot",
+              "riskmodels_get_rankings",
+              "riskmodels_get_residual_returns",
+              "riskmodels_get_residual_signal",
+              "riskmodels_get_return_attribution",
+              "riskmodels_get_returns",
+              "riskmodels_get_stock_snapshot",
+              "riskmodels_portfolio_exposure",
+              "riskmodels_render_artifact",
+              "riskmodels_screen_rankings",
+              "riskmodels_search"
             ],
-            "description": "Representative MCP tool names for this deployment (hosted Streamable HTTP and stdio share the RiskModels subset;\nhosted adds live REST-backed tools).\n\nStdio/SDK-oriented tools (`registerRiskModelsTools`):\n- `riskmodels_decompose` — POST /decompose: L3 four-layer `exposure` + `hedge` map. For comparing L1/L2/L3\n  standalone solutions, prefer `riskmodels_get_hedge_levels` or read `hedge_levels` when present on decompose metrics.\n- `riskmodels_get_hedge_levels` — GET /metrics/{ticker} narrowed to the canonical `hedge_levels` block.\n- `riskmodels_get_my_positions` — reads the linked brokerage book (Alpaca Connect, Connect Trade, or Plaid)\n  from riskmodels.net `GET /api/positions` with the caller's key. Returns `for_analysis` and `for_hedge`\n  for the long-only portfolio tools, `for_exposure` (signed dollars) and `has_shorts`. Does not place orders.\n- `riskmodels_compare` / `riskmodels_analyze_portfolio` — POST /batch/analyze for multiple tickers; portfolio path\n  renormalizes weights and surfaces aggregated `portfolio_hedge_levels` in the MCP wrapper output.\n- `riskmodels_hedge_portfolio` — Uses batch `/batch/analyze` per-ticker `hedge_levels` at the chosen cascade level and\n  scales to `notional_usd` positions (sums hedge notionals across ETFs).\n- `riskmodels_portfolio_exposure` — POST /portfolio/exposure for a signed long/short book (short < 0, up to 1000\n  names). Use when any position is short or the book has more than 100 names.\n- `riskmodels_list_endpoints` / `riskmodels_get_capability` / `riskmodels_get_schema` — discovery.\n\nHosted-only tools (`mcp/src/server.ts`):\n- `get_l3_decomposition`, `get_metrics`, `get_portfolio_risk_snapshot`, `post_snapshot` — proxied REST with billing headers surfaced in the MCP JSON envelope.\n"
+            "description": "MCP tool names (tool set 2.0, `@riskmodels/mcp` 2.0.0). One registry (`registerRiskModelsTools`) serves all\nthree surfaces: the npm stdio server registers 24 tools; the hosted endpoints `/api/mcp/sse` and\n`/api/mcp/openai` register the same 24 plus `riskmodels_render_artifact` (25). Every tool is read-only and\ncalls an existing REST route, billed at that route's price; each description states when to use the tool,\nwhat it returns, data freshness and price. The REST catalog, response schemas and this spec are MCP\nresources (`riskmodels:///capabilities`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi`).\nTool-to-route table and the 1.x migration table: mcp/README.md (Tool set 2.0).\n"
           },
           "description": {
             "type": "string"
@@ -6264,7 +6276,7 @@
     "/mcp/sse": {
       "get": {
         "summary": "MCP Streamable HTTP Connection",
-        "description": "Model Context Protocol endpoint using the Streamable HTTP transport (successor to the legacy SSE+companion-POST pattern). A single URL handles both `GET` (optional server→client event stream) and `POST` (client→server JSON-RPC 2.0 messages).\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.\n\n**Connection:**\n- Transport: Streamable HTTP (stateless mode)\n- Authentication: `Authorization: Bearer <key>` (preferred) or\n  `?api_key=<key>` query param (for `EventSource`, which can't set\n  custom headers).\n\n- Tool-call billing: charged per-invocation on the underlying REST\n  endpoint (e.g. `get_metrics` bills the same as `GET /metrics/{ticker}`).\n\n- **POST requests:** send `Accept: application/json, text/event-stream` (required by some MCP clients;\n  omitting it can yield **406 Not Acceptable**).\n\n\n**Usage — mcp-remote proxy:**\n```json\n{\n  \"mcpServers\": {\n    \"riskmodels\": {\n      \"command\": \"npx\",\n      \"args\": [\"mcp-remote\", \"https://riskmodels.app/api/mcp/sse\"],\n      \"env\": { \"AUTHORIZATION\": \"Bearer rm_agent_live_...\" }\n    }\n  }\n}\n```\n",
+        "description": "Model Context Protocol endpoint using the Streamable HTTP transport (successor to the legacy SSE+companion-POST pattern). A single URL handles both `GET` (optional server→client event stream) and `POST` (client→server JSON-RPC 2.0 messages).\n\n**Discovery:** The MCP server manifest is published at `https://riskmodels.app/.well-known/mcp.json` for automated client discovery.\n\n**Connection:**\n- Transport: Streamable HTTP (stateless mode)\n- Authentication: `Authorization: Bearer <key>` (preferred) or\n  `?api_key=<key>` query param (for `EventSource`, which can't set\n  custom headers).\n\n- Tool-call billing: charged per-invocation on the underlying REST\n  endpoint (e.g. `riskmodels_get_stock_snapshot` bills the same as `GET /metrics/{ticker}`).\n\n- **POST requests:** send `Accept: application/json, text/event-stream` (required by some MCP clients;\n  omitting it can yield **406 Not Acceptable**).\n\n\n**Usage — mcp-remote proxy:**\n```json\n{\n  \"mcpServers\": {\n    \"riskmodels\": {\n      \"command\": \"npx\",\n      \"args\": [\"mcp-remote\", \"https://riskmodels.app/api/mcp/sse\"],\n      \"env\": { \"AUTHORIZATION\": \"Bearer rm_agent_live_...\" }\n    }\n  }\n}\n```\n",
         "operationId": "mcpServerSSE",
         "tags": [
           "MCP"
@@ -6389,9 +6401,9 @@
                 "jsonrpc": "2.0",
                 "method": "tools/call",
                 "params": {
-                  "name": "riskmodels_get_capability",
+                  "name": "riskmodels_get_stock_snapshot",
                   "arguments": {
-                    "id": "ticker-returns"
+                    "ticker": "NVDA"
                   }
                 },
                 "id": 1

@@ -6,14 +6,81 @@ Release note: publish **`@riskmodels/sdk`** to npm first, then **`@riskmodels/mc
 
 **Decompose** a US stock into market, sector, subsector, and residual risk &mdash; with SPY / sector / subsector **ETF hedge ratios**. One call, daily hedge-ratio history from 2010-12-08.
 
-MCP server that exposes **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), and any other [MCP](https://modelcontextprotocol.io) client. Two classes of tools:
+MCP server that exposes the **RiskModels API** inside [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), [Zed](https://zed.dev), ChatGPT and any other [MCP](https://modelcontextprotocol.io) client.
 
-- **Data tools** — fetch daily EOD risk decomposition, metrics snapshots, and portfolio risk reports (API key / OAuth required). **Start here** after connect: `riskmodels_compare` / `riskmodels_decompose`.
-- **Discovery tools** — list endpoints, read capabilities, fetch response schemas (local, unbilled). Use only when implementing a client. They do not return live numbers.
+## Tool set 2.0
 
-The server also sends MCP `instructions` on initialize: answer ticker questions from data tools, not training data. Prompt `first_live_call` is the loaded AAPL vs NVDA first message.
+Version 2.0.0 ships one tool registry (`registerRiskModelsTools` in `lib/mcp/tools/riskmodels-tools.ts`) shared by all three MCP surfaces:
 
-Data tools return the same numbers the REST API and CLI return — GCP zarr for historical time series, Supabase `security_history_latest` for the latest snapshot. Data freshness: daily after US market close.
+| Surface | Tools |
+|---|---|
+| npm stdio (`npx -y @riskmodels/mcp`) | 24 |
+| Hosted `https://riskmodels.app/api/mcp/sse` (Claude) | 25 (the 24 + `riskmodels_render_artifact`) |
+| Hosted `https://riskmodels.app/api/mcp/openai` (ChatGPT, Cursor plugin, Gemini) | 25 (same as `/sse`) |
+
+Every tool is read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`). Each description says when to use the tool, which tool to use instead, what it returns, data freshness (end-of-day) and its price. All tools call existing REST routes and bill at the REST price; the MCP layer adds no charge.
+
+| Tool | REST route(s) | Price |
+|---|---|---|
+| `riskmodels_get_stock_snapshot` | `GET /metrics/{ticker}` | $0.005 |
+| `riskmodels_decompose` | `POST /decompose` (optional `dollars` adds ETF hedge notionals) | $0.005 |
+| `riskmodels_compare` | `POST /batch/analyze` (2-100 tickers) | $0.015/ticker, min $0.03 |
+| `riskmodels_get_returns` | `GET /ticker-returns` (daily returns with daily L3 hedge ratios and explained risk) | $0.02 + $0.01/extra year |
+| `riskmodels_get_return_attribution` | `GET /returns-decomposition` | $0.04 + $0.01/extra year |
+| `riskmodels_get_residual_returns` | `GET /lstar` (1 ticker) or `POST /batch/lstar` (2-100) | 1 ticker: $0.02 + $0.01/extra year; 2-100: $0.015/ticker + $0.0075/ticker/extra year, min $0.03 |
+| `riskmodels_get_residual_signal` | `POST /signals/residual-reversion/basket` | $0.02 |
+| `riskmodels_get_macro_correlation` | `POST /correlation` | $0.01 |
+| `riskmodels_get_fundamentals` | `GET /fundamentals/{ticker}` | $0.02 |
+| `riskmodels_analyze_portfolio` | `POST /batch/analyze` (ETF hedge notionals at `level` only when every position is in dollars) | $0.015/position, min $0.03 |
+| `riskmodels_get_portfolio_risk_snapshot` | `POST /snapshot` (variance decomposition, diversification, return attribution, drawdown) | $1.25 |
+| `riskmodels_portfolio_exposure` | `POST /portfolio/exposure` (long/short, up to 1000 names) | $0.25 up to 25 names, $1.00 above |
+| `riskmodels_decompose_selection_vs_drift` | `POST /cohorts/pnl-decomposition` | $0.25 |
+| `riskmodels_get_my_positions` | riskmodels.net `GET /api/positions` (linked brokerage book) | Free |
+| `riskmodels_get_rankings` | `GET /rankings/{ticker}` | $0.005 |
+| `riskmodels_screen_rankings` | `POST /rankings/screen` | $0.25 |
+| `riskmodels_get_cohorts` | `GET /cohorts` or `GET /cohorts/series` | $0.04 / $0.15 |
+| `riskmodels_get_peers` | `GET /peers` | $0.005 |
+| `riskmodels_search` | `GET /tickers`, `/data/etf/search`, `/funds/search`, `/13f/filers/search` by `type` | Free |
+| `riskmodels_get_filer` | `GET /13f/filers/{id}/snapshot` (+ `/holdings` when `holdings_top` is set) | $0.05 (+$0.02) |
+| `riskmodels_get_fund` | `GET /funds/snapshot/{id}` (+ `/funds/{id}/holdings` when `holdings_limit` is set) | $0.05 (+$0.02) |
+| `riskmodels_get_etf` | `GET /data/etf/{ticker}` (+ `/holdings` when `holdings_top` is set) | Free |
+| `riskmodels_get_benchmark_fit` | `GET /data/benchmark-fit` | $0.02 |
+| `riskmodels_get_factor_returns` | `GET /macro-factors` (`kind=macro`) or `GET /etf/factor-returns` (`kind=sector_etf`) | $0.005 macro / $0.02 sector ETF |
+| `riskmodels_render_artifact` (hosted only) | render service | $0.25 list price |
+
+### Migration from 1.x
+
+Tool names removed in 2.0.0 and their replacements. Unless noted, merged tools call the same REST routes with the same request bodies as the tools they replace.
+
+| 1.x tool | 2.0 tool | Notes |
+|---|---|---|
+| `get_metrics` | `riskmodels_get_stock_snapshot` | Same `GET /metrics/{ticker}`; returns the raw payload with `api_call` metadata instead of the `_cost_usd`-style meter fields |
+| `riskmodels_get_hedge_levels` | `riskmodels_get_stock_snapshot` | `hedge_levels` is a block of the same response |
+| `riskmodels_hedge_position` | `riskmodels_decompose` with `dollars` | Same `POST /decompose` |
+| `get_l3_decomposition` | `riskmodels_get_returns` or `riskmodels_get_return_attribution` | Removed. `GET /ticker-returns` carries the daily L3 hedge ratios and explained risk; `GET /returns-decomposition` splits each day's return into factor and residual parts. The REST route `GET /l3-decomposition` is unchanged |
+| `riskmodels_get_lstar` | `riskmodels_get_residual_returns` with one ticker | Same `GET /lstar`; input is `tickers: ["NVDA"]`; `axis` dropped (industry is the only value) |
+| `riskmodels_batch_lstar`, `riskmodels_get_residual_returns_batch` (OpenAI) | `riskmodels_get_residual_returns` with 2-100 tickers | Same `POST /batch/lstar`; `format` dropped (JSON only through MCP; CSV/Parquet stay on the REST route) |
+| `get_fundamentals` (npm only) | `riskmodels_get_fundamentals` | Same route and params |
+| `riskmodels_hedge_portfolio` | `riskmodels_analyze_portfolio` with dollar positions | Same `POST /batch/analyze`; `level` selects the hedge depth |
+| `post_snapshot` (npm only) | `riskmodels_get_portfolio_risk_snapshot` | Same `POST /snapshot` body (`portfolio` → `positions`, `lookback_days`, `benchmark`) |
+| `riskmodels_portfolio_decompose`, `get_portfolio_risk_snapshot` | `riskmodels_get_portfolio_risk_snapshot` | Now `POST /snapshot`, the canonical superset of `POST /portfolio/risk-snapshot` (same $1.25; includes the diversification analytics, with the window set by `lookback_days`). `title`, `as_of_date` and `window_days` are not offered |
+| `riskmodels_search_tickers` | `riskmodels_search` (`type: "stock"`) | `search` is now `q` |
+| `riskmodels_search_etfs` | `riskmodels_search` (`type: "etf"`) | |
+| `riskmodels_search_filers` | `riskmodels_search` (`type: "filer"`) | |
+| `riskmodels_search_funds` (OpenAI) | `riskmodels_search` (`type: "fund"`) | Now on every surface |
+| `riskmodels_get_filer_snapshot` | `riskmodels_get_filer` | Response is `{ snapshot }` |
+| `riskmodels_get_filer_holdings` | `riskmodels_get_filer` with `holdings_top` | Response is `{ snapshot, holdings }`; also charges the $0.05 snapshot |
+| `riskmodels_get_fund_snapshot` (OpenAI) | `riskmodels_get_fund` | Now on every surface |
+| `riskmodels_get_fund_holdings` (OpenAI) | `riskmodels_get_fund` with `holdings_limit` | Also charges the $0.05 snapshot |
+| `riskmodels_get_etf_holdings` | `riskmodels_get_etf` with `holdings_top` | Response is `{ snapshot, holdings }` |
+| `riskmodels_get_macro_factor_returns` (OpenAI) | `riskmodels_get_factor_returns` (`kind: "macro"`) | Now on every surface |
+| `riskmodels_get_sector_etf_returns` (OpenAI) | `riskmodels_get_factor_returns` (`kind: "sector_etf"`) | Now on every surface |
+| `riskmodels_get_peers` (OpenAI) | `riskmodels_get_peers` | Now on every surface |
+| `riskmodels_call_endpoint` | removed | The fund, peer and factor routes it reached now have explicit tools |
+| `riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`, `riskmodels_get_openapi_spec` | removed | Use the resources `riskmodels:///capabilities`, `riskmodels:///schemas/list`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi` |
+| `riskmodels_whitepaper_example` | removed | The `follow_whitepaper` prompt and white-paper resources remain and run the regular tools |
+
+The server sends MCP `instructions` on initialize (one text for every surface). Prompt `first_live_call` is the AAPL vs NVDA first message.
 
 ---
 
@@ -32,59 +99,19 @@ Data tools return the same numbers the REST API and CLI return — GCP zarr for 
 | `riskmodels://whitepaper/chapter/03-hedging` | Short markdown chapter for hedge-ratio scaling. |
 | `riskmodels://examples/aapl-nvda-crwd` | Short markdown example for a three-name comparison. |
 
-## Discovery tools (no auth)
-
-| Tool | Description |
-|------|-------------|
-| `riskmodels_list_endpoints` | Catalog of REST capabilities. Skip for stock/portfolio questions — call `riskmodels_decompose` / `riskmodels_compare` instead. |
-| `riskmodels_get_capability` | Get full capability by id (parameters, pricing, examples). |
-| `riskmodels_get_schema` | Get JSON schema by path (e.g. `ticker-returns-v2.json`). |
-
-## Data tools (API key required)
-
-| Tool | Wraps | What it returns |
-|------|-------|-----------------|
-| `get_l3_decomposition` | `GET /api/l3-decomposition` | Daily EOD hierarchical decomposition (market → sector → subsector → residual) with parallel time-series arrays + L3 hedge ratios. |
-| `get_metrics` | `GET /api/metrics/{ticker}` | Latest snapshot from the `_latest` table: L1/L2/L3 hedge ratios, ER fractions, volatility, close price, market cap. |
-| `get_portfolio_risk_snapshot` | `POST /api/portfolio/risk-snapshot` | Portfolio variance decomposition (up to 100 positions), optional diversification analytics, Redis-cached per user/portfolio for 1h. |
-| `riskmodels_decompose` | `POST /api/decompose` via `@riskmodels/sdk` | Single-stock four-bet decomposition with `chart_data`, `suggested_chart`, `plain_english`, and `api_call`. |
-| `riskmodels_netpare` | `POST /api/batch/analyze` via `@riskmodels/sdk` | Multi-ticker four-layer comparison. Clients should prefer grouped bar charts. |
-| `riskmodels_hedge_position` | `POST /api/decompose` via `@riskmodels/sdk` | Scales hedge ratios to ETF notionals for a dollar stock position. |
-| `riskmodels_portfolio_decompose` | `POST /api/portfolio/risk-snapshot` via `@riskmodels/sdk` | Portfolio-level market / sector / subsector / residual decomposition. |
-| `riskmodels_whitepaper_example` | `@riskmodels/sdk.whitepaperExample()` | Chapter text plus the live SDK/API example result. |
-
 ## Prompts
 
 | Prompt | Description |
 |--------|-------------|
-| `follow_whitepaper` | Reads the short white-paper resources, then runs the live examples in sequence. |
-| `reproduce_aapl_nvda` | Compares AAPL and NVDA and asks the client to render grouped `chart_data`. |
-| `hedge_single_position` | Scales hedge ratios to a chosen ticker and dollar position. |
-| `explain_my_portfolio` | Collects user holdings and calls `riskmodels_portfolio_decompose`. |
+| `first_live_call` | Compares AAPL and NVDA with `riskmodels_compare`, then `riskmodels_decompose` on each. |
+| `follow_whitepaper` | Reads the white-paper resources, then runs the four live examples with `riskmodels_compare`, `riskmodels_decompose` and `riskmodels_get_portfolio_risk_snapshot`. |
+| `reproduce_aapl_nvda` | Same as `first_live_call`. |
+| `hedge_single_position` | `riskmodels_decompose` with a ticker and dollar position. |
+| `explain_my_portfolio` | Reads the linked book with `riskmodels_get_my_positions`, then `riskmodels_analyze_portfolio` or `riskmodels_portfolio_exposure`. |
 
-Whenever a tool response includes `chart_data`, clients should render the `suggested_chart` and explain the result in plain English.
+The hosted `riskmodels_render_artifact` returns an MCP `image` content block for `format: "png"` (`data` holds the base64 PNG; `mimeType` is `image/png`) with provenance text (`resolved_as_of`, `receipt_id`). JSON, SVG and Plotly figure formats are unchanged. It is not part of the stdio package.
 
-The hosted server also exposes `riskmodels_render_artifact`. Request `format: "png"`
-to display the original registry chart. The result contains provenance text and an
-MCP `image` content block (`data` holds the base64 PNG; `mimeType` is `image/png`).
-Display that image directly, retaining `resolved_as_of`, source and `receipt_id`.
-The text no longer duplicates PNG bytes in `artifact.base64`; use the image block.
-Request JSON separately when exact numerical values are needed. JSON, SVG export
-and Plotly figure response shapes are unchanged. This hosted-only tool is not
-part of the standalone stdio server and does not itself change chart styling.
-
-Every data-tool response includes a meter envelope so agents can self-throttle:
-
-```json
-{
-  ...actual data...,
-  "_cost_usd": 0.003,
-  "_remaining_daily_usd": 4.997,
-  "_rate_limit_remaining": 59,
-  "_data_as_of": "2026-04-15",
-  "_data_source": "zarr"
-}
-```
+Every data-tool response carries `api_call` metadata (method, path, redacted curl, `data_as_of`, `request_id`, `cost_usd` when the API returns it).
 
 ### Credentials
 
@@ -103,7 +130,7 @@ Base URL resolution: `RISKMODELS_API_BASE` env → `apiBaseUrl` in CLI config �
 
 ## Python SDK on PyPI
 
-This MCP server exposes **discovery** (capabilities, schemas, OpenAPI). For live **`/metrics`**, **`/batch/analyze`**, **`/l3-decomposition`**, and other data routes, call the REST API or install **`riskmodels-py`** from [PyPI](https://pypi.org/project/riskmodels-py/) ([`sdk/README.md`](../sdk/README.md)).
+For Python workflows outside MCP, call the REST API directly or install **`riskmodels-py`** from [PyPI](https://pypi.org/project/riskmodels-py/) ([`sdk/README.md`](../sdk/README.md)).
 
 ---
 
@@ -115,7 +142,7 @@ npm install
 npm run build
 ```
 
-This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.js` (relative to the **RiskModels_API** workspace root). After `cd mcp && npm ci && npm run build`, open **RiskModels_API** as a folder in Cursor (or add it in a multi-root workspace), then **restart Cursor** or reload MCP so **`riskmodels_list_endpoints`** appears.
+This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.js` (relative to the **RiskModels_API** workspace root). After `cd mcp && npm ci && npm run build`, open **RiskModels_API** as a folder in Cursor (or add it in a multi-root workspace), then **restart Cursor** or reload MCP so **`riskmodels_compare`** appears.
 
 ### Claude Desktop / `npx` (common mistakes)
 
@@ -189,7 +216,7 @@ Paste into Claude Desktop / Cursor via the `mcp-remote` proxy:
 }
 ```
 
-Tool calls bill per-invocation at the downstream REST endpoint (e.g. `get_metrics` costs the same as `GET /metrics/{ticker}`). Discovery tools (`riskmodels_list_endpoints`, etc.) are free.
+Tool calls bill per-invocation at the downstream REST endpoint (e.g. `riskmodels_get_stock_snapshot` costs the same as `GET /metrics/{ticker}`). Search tools and MCP resources are free.
 
 Stdio remains available for local dev or air-gapped use (see below).
 

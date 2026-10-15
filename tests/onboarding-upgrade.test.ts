@@ -13,7 +13,7 @@ import {
   removeJsonMcpConfig,
 } from "../cli/src/lib/mcp-config-writer";
 import { normalizeCompareResult, normalizeDecomposeResult, normalizeHedgePositionResult } from "../packages/riskmodels-sdk/src/normalize";
-import { registerRiskModelsTools, registerRiskModelsPrompts } from "../lib/mcp/tools/riskmodels-tools";
+import { RISKMODELS_TOOL_NAMES, registerRiskModelsTools, registerRiskModelsPrompts } from "../lib/mcp/tools/riskmodels-tools";
 
 const apiCall = {
   method: "POST" as const,
@@ -227,49 +227,15 @@ describe("RiskModels MCP live-paper tools", () => {
         plain_english: "NVDA is primarily a market bet.",
         api_call: apiCall,
       }),
-      getHedgeLevels: async () => ({}),
       compare: async () => ({}),
       hedgePosition: async () => ({}),
       analyzePortfolio: async () => ({}),
       hedgePortfolio: async () => ({}),
-      portfolioDecompose: async () => ({}),
-      whitepaperExample: async () => ({}),
     };
 
     registerRiskModelsTools(sdk as any, server as any);
 
-    expect([...tools.keys()]).toEqual([
-      "riskmodels_decompose",
-      "riskmodels_get_returns",
-      "riskmodels_get_return_attribution",
-      "riskmodels_get_lstar",
-      "riskmodels_batch_lstar",
-      "riskmodels_get_hedge_levels",
-      "riskmodels_compare",
-      "riskmodels_hedge_position",
-      "riskmodels_get_my_positions",
-      "riskmodels_analyze_portfolio",
-      "riskmodels_hedge_portfolio",
-      "riskmodels_portfolio_exposure",
-      "riskmodels_portfolio_decompose",
-      "riskmodels_whitepaper_example",
-      "riskmodels_search_tickers",
-      "riskmodels_search_filers",
-      "riskmodels_search_etfs",
-      "riskmodels_get_rankings",
-      "riskmodels_get_cohorts",
-      "riskmodels_decompose_selection_vs_drift",
-      "riskmodels_get_fundamentals",
-      "riskmodels_screen_rankings",
-      "riskmodels_get_macro_correlation",
-      "riskmodels_get_residual_signal",
-      "riskmodels_get_filer_snapshot",
-      "riskmodels_get_filer_holdings",
-      "riskmodels_get_etf",
-      "riskmodels_get_etf_holdings",
-      "riskmodels_get_benchmark_fit",
-      "riskmodels_call_endpoint",
-    ]);
+    expect([...tools.keys()]).toEqual([...RISKMODELS_TOOL_NAMES]);
     // riskmodels_render_artifact is hosted-only — registered separately via
     // registerRiskModelsRenderTool (needs GCP Cloud Run auth), intentionally
     // NOT in the shared/stdio tool set.
@@ -278,52 +244,6 @@ describe("RiskModels MCP live-paper tools", () => {
     const payload = JSON.parse(result?.content[0].text ?? "{}");
     expect(payload.chart_instruction).toBeUndefined();
     expect(payload.chart_data).toHaveLength(1);
-  });
-
-  it("passthrough allowlists registered capabilities and is traversal-safe", async () => {
-    const tools = new Map<string, (args: any) => Promise<{ content: Array<{ type: "text"; text: string }> }>>();
-    const server = {
-      registerTool: (name: string, _c: any, h: any) => tools.set(name, h),
-      registerResource: () => undefined,
-    };
-    const calls: Array<{ method: string; path: string }> = [];
-    const sdk = {
-      decompose: async () => ({}),
-      getHedgeLevels: async () => ({}),
-      compare: async () => ({}),
-      hedgePosition: async () => ({}),
-      analyzePortfolio: async () => ({}),
-      hedgePortfolio: async () => ({}),
-      portfolioDecompose: async () => ({}),
-      whitepaperExample: async () => ({}),
-      getReturns: async () => ({}),
-      getReturnAttribution: async () => ({}),
-      call: async (method: string, path: string) => {
-        calls.push({ method, path });
-        return { ok: true };
-      },
-    };
-    registerRiskModelsTools(sdk as any, server as any, {
-      capabilities: [
-        { id: "rankings", method: "GET", endpoint: "/api/rankings/{ticker}" },
-        { id: "cli-query", method: "POST", endpoint: "/api/cli/query" }, // blocked → excluded from allowlist
-      ],
-    });
-    const passthrough = tools.get("riskmodels_call_endpoint")!;
-
-    // Allowed registered GET capability dispatches with the normalized path.
-    await passthrough({ path: "/api/rankings/NVDA" });
-    expect(calls).toEqual([{ method: "GET", path: "/rankings/NVDA" }]);
-
-    // Blocked capability rejected — even via path traversal that would normalize
-    // to it downstream (the bug this guards against).
-    for (const p of ["/cli/query", "/x/../cli/query", "/api/x/%2e%2e/cli/query", "/internal/secret"]) {
-      const r = await passthrough({ path: p });
-      expect((r as { isError?: boolean }).isError).toBe(true);
-      expect(r.content[0].text).toContain("is not a catalog endpoint");
-    }
-    // Only the single allowed call ever dispatched.
-    expect(calls).toHaveLength(1);
   });
 
   it("registers first_live_call as the first MCP prompt", () => {
@@ -340,6 +260,6 @@ describe("RiskModels MCP live-paper tools", () => {
     const body = prompts.get("first_live_call")!().messages[0].content.text;
     expect(body).toContain("riskmodels_compare");
     expect(body).toContain("riskmodels_decompose");
-    expect(body).toContain("Do not call riskmodels_list_endpoints");
+    expect(body).not.toMatch(/riskmodels_list_endpoints|riskmodels_get_capability|riskmodels_get_schema/);
   });
 });

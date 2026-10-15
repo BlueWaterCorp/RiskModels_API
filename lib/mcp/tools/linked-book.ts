@@ -44,7 +44,7 @@ export type LinkedBook = {
 };
 
 const SHORT_REASON =
-  "short position; riskmodels_analyze_portfolio and riskmodels_hedge_portfolio take long positions only. Pass for_exposure to riskmodels_portfolio_exposure for the signed book.";
+  "short position; riskmodels_analyze_portfolio and riskmodels_get_portfolio_risk_snapshot take long positions only. Pass for_exposure to riskmodels_portfolio_exposure for the signed book.";
 
 export function portalPositionsUrl(portalBase?: string): string {
   const base = (portalBase || process.env.RISKMODELS_NET_URL || "https://riskmodels.net").replace(

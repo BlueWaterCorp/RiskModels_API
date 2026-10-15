@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-15 — MCP tool set 2.0 (`@riskmodels/mcp` 2.0.0)
+
+- One tool registry (`registerRiskModelsTools`) for the npm stdio server and both hosted surfaces. npm registers 24 tools; `/api/mcp/sse` and `/api/mcp/openai` register the same 24 plus `riskmodels_render_artifact` (25). Before: npm 39, `/sse` 37, `/openai` 39, hand-copied and drifting.
+- Merged tools: `get_metrics` + `riskmodels_get_hedge_levels` → `riskmodels_get_stock_snapshot`; `riskmodels_hedge_position` → `riskmodels_decompose` with `dollars`; `riskmodels_get_lstar` + `riskmodels_batch_lstar` → `riskmodels_get_residual_returns` (1 ticker `GET /lstar`, 2-100 `POST /batch/lstar`); `riskmodels_hedge_portfolio` → `riskmodels_analyze_portfolio` with dollar positions; `riskmodels_portfolio_decompose` + `get_portfolio_risk_snapshot` + `post_snapshot` → `riskmodels_get_portfolio_risk_snapshot` on `POST /snapshot` (the canonical superset, same $1.25); four search tools → `riskmodels_search`; filer, fund and ETF snapshot/holdings pairs → `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`; macro and sector ETF returns → `riskmodels_get_factor_returns`.
+- `riskmodels_get_peers`, fund tools and factor returns, previously OpenAI-only, are on every surface. Removed: `get_l3_decomposition` (use `riskmodels_get_returns` or `riskmodels_get_return_attribution`; the REST route is unchanged), `riskmodels_call_endpoint`, the catalog tools (`riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`, `riskmodels_get_openapi_spec`; the catalog stays as MCP resources) and `riskmodels_whitepaper_example` (the prompt and resources stay).
+- Descriptions follow one shape (when to use, what to use instead, returns, freshness, price). Price text fixes: benchmark fit is $0.02 (was stated $0.005); residual returns state the per-extra-year charge.
+- One server-instructions text and first prompt for every surface. Migration table: `mcp/README.md` and `/docs/agent-integration`.
+
 ## 2026-10-12 — Exposure history feeds follow the served-history start
 
 - `POST /portfolio/exposure/history` and `/history/daily` served every column from 2006, contrary to the served-history policy (`lib/dal/served-history.ts`). They now read from 2010-12-08 and withhold each column before its own start: hedge ratios and `l1_mkt_beta` 2010-12-08, explained-risk / residual shares and `stock_var` 2011-12-07, `lstar_level` 2013-01-01 (`maskBeforeServedStart`). Default `start` is 2010-12-08 (was 2006-01-01 on the daily feed).

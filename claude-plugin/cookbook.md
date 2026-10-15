@@ -49,7 +49,7 @@ full table, including parallel `wacc_imputed` cells.
 
 > `/risk-decompose NVDA`
 
-Calls `riskmodels_get_hedge_levels` (and/or `get_metrics`). The cascade deepens
+Calls `riskmodels_get_stock_snapshot` (its `hedge_levels` block). The cascade deepens
 market-only → +sector → +subsector. Live snapshot:
 
 | Level | market ER | sector ER | subsector ER | residual ER | ETF legs |
@@ -66,7 +66,7 @@ of NVDA's risk is idiosyncratic and not hedgeable with ETFs.
 
 > `/portfolio-hedge NVDA:1.0`
 
-Calls `riskmodels_hedge_position` / `riskmodels_hedge_portfolio` to scale the L3 ETF hedge
+Calls `riskmodels_decompose` with `dollars` (or `riskmodels_analyze_portfolio` with dollar positions) to scale the L3 ETF hedge
 ratios to a dollar position. Report each leg as what it **would mechanically neutralize**,
 e.g. "$0.94 of SPY per $1 of position neutralizes the market leg" (live `l3_mkt_hr` ≈
 −0.94), with the XLK and SMH legs alongside. The negative market ratio is **not** "short

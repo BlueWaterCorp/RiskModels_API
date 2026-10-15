@@ -17,16 +17,15 @@ MCP — it calls live tools and reports their outputs. It computes nothing itsel
 
 ## What to call
 
-Resolve the symbol first if the user gave a company name (`riskmodels_search_tickers`),
+Resolve the symbol first if the user gave a company name (`riskmodels_search`),
 then:
 
-- **`riskmodels_get_hedge_levels`** — the L1/L2/L3 hedge snapshots side by side
-  (hedge ratios + explained-risk fractions + the ETF legs at each depth). Best for
-  "how does the decomposition deepen from market-only to subsector?"
+- **`riskmodels_get_stock_snapshot`** — the latest snapshot (hedge ratios, ER fractions,
+  vol, close) with the L1/L2/L3 `hedge_levels` block side by side (hedge ratios +
+  explained-risk fractions + the ETF legs at each depth). Best for "how does the
+  decomposition deepen from market-only to subsector?" and for the current numbers.
 - **`riskmodels_decompose`** — the L3 four-bet decomposition (market / sector /
   subsector / residual) for one name. Best for "what is driving this stock's risk?"
-- **`get_metrics`** — the latest snapshot (hedge ratios, ER fractions, vol, close)
-  when the user just wants the current numbers.
 
 Fan out independent calls in one turn.
 

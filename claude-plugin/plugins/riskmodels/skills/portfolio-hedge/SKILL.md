@@ -22,25 +22,24 @@ itself.
   pasted tickers. Pass `for_analysis` and `for_hedge` to the long-only portfolio tools
   below; when `has_shorts` is true or the book has more than 100 names, pass
   `for_exposure` to `riskmodels_portfolio_exposure`. This server does not place orders.
-- **`riskmodels_hedge_position`** — one ticker: scale the L-level ETF hedge ratios to
-  a dollar position.
-- **`riskmodels_hedge_portfolio`** — a weighted book: hedge ratios at the chosen
-  cascade level (L1/L2/L3), scaled by notionals and aggregated into ETF USD hedge legs.
-- **`riskmodels_analyze_portfolio`** — holdings-weighted L1/L2/L3 hedge-level
-  aggregate when the user wants the whole-book view across depths.
+- **`riskmodels_decompose`** with `dollars` — one ticker: scale the L-level ETF hedge
+  ratios to a dollar position.
+- **`riskmodels_analyze_portfolio`** — a long-only book: holdings-weighted L1/L2/L3
+  hedge-level aggregate; with dollar positions it also scales the hedge ratios at the
+  chosen cascade level (`level` L1/L2/L3) into ETF USD hedge legs.
 - **`riskmodels_portfolio_exposure`** — a signed long/short book (dollar values,
   short < 0, up to 1000 names): beta-dollars by sector, the ETF trades that neutralise
   the book at L1/L2/L3, and the systematic vs residual risk split. Use it whenever any
-  position is short or the book has more than 100 names; `riskmodels_hedge_portfolio`
-  and `riskmodels_analyze_portfolio` take long positions only (up to 100). Report any
+  position is short or the book has more than 100 names; `riskmodels_analyze_portfolio`
+  takes long positions only (up to 100). Report any
   `coverage.dropped` names or `warnings` to the user.
-- **`riskmodels_get_lstar`** / **`riskmodels_batch_lstar`** — dispatch the simplest
+- **`riskmodels_get_residual_returns`** (1-100 tickers) — dispatch the simplest
   cascade level that clears the marginal-ER threshold for a name (or basket) and
   return the residual-return series after that hedge.
 
 For an ETF or 13F filer named instead of pasted tickers, resolve real holdings first
-(`riskmodels_search_etfs` → `riskmodels_get_etf_holdings`, or `riskmodels_search_filers`
-→ `riskmodels_get_filer_holdings`) and treat the result as the portfolio. Never
+(`riskmodels_search` → `riskmodels_get_etf` with `holdings_top`, or
+`riskmodels_get_filer` with `holdings_top` / `riskmodels_get_fund` with `holdings_limit`) and treat the result as the portfolio. Never
 fabricate or approximate holdings — if no tool covers the portfolio, say so and ask
 the user to paste the positions.
 

@@ -1,10 +1,9 @@
 /**
  * The as-of listing must be reachable from every discovery surface, not just
- * served: `riskmodels_list_endpoints` reads `mcp/data/capabilities.json`, the
- * passthrough allow-list is derived from the same file, and the capability
- * document is what a client reads before forming a render. Before this, the
- * route was named in error text and absent from all three, so the MCP
- * passthrough refused it as "not an invocable capability".
+ * served: the MCP `riskmodels:///capabilities` resource serves
+ * `mcp/data/capabilities.json`, and the capability document is what a client
+ * reads before forming a render. Before this, the route was named in error
+ * text and absent from both.
  */
 
 import { readFileSync } from "node:fs";
@@ -20,7 +19,6 @@ import {
   PRERENDERED_SUBJECT_KINDS,
   STORE_RESOLVED_LATEST_KINDS,
 } from "@/lib/artifacts/render-client";
-import { buildPassthroughAllowlist, normalizeApiPath } from "@/lib/mcp/tools/riskmodels-tools";
 
 const servedCapabilities = JSON.parse(
   readFileSync(join(process.cwd(), "mcp", "data", "capabilities.json"), "utf8"),
@@ -37,7 +35,7 @@ describe("artifact-as-of capability", () => {
     expect(cap!.parameters.subject_id.required).toBe(true);
   });
 
-  it("is present in the served capabilities.json so list_endpoints advertises it", () => {
+  it("is present in the served capabilities.json the MCP capabilities resource serves", () => {
     // The served file is generated from the registry (npm run build:capabilities);
     // a registry entry that never reached it would be advertised nowhere.
     const served = servedCapabilities.find((c) => c.id === "artifact-as-of");
@@ -45,29 +43,10 @@ describe("artifact-as-of capability", () => {
     expect(served!.method).toBe("GET");
     expect(served!.endpoint).toBe("/artifacts/as-of");
   });
-
-  it("is dispatchable through the MCP passthrough allow-list", () => {
-    const allowlist = buildPassthroughAllowlist(servedCapabilities);
-    for (const raw of [
-      "/artifacts/as-of",
-      "/api/artifacts/as-of",
-      "/artifacts/as-of?slug=risk_dna_stacked&subject_id=BW-COHORT-RES-MAG7",
-    ]) {
-      const norm = normalizeApiPath(raw);
-      expect(
-        allowlist.some((a) => a.method === "GET" && a.re.test(norm)),
-        `${raw} should be an invocable capability`,
-      ).toBe(true);
-    }
-    // POST is not a registered method for it.
-    expect(
-      allowlist.some((a) => a.method === "POST" && a.re.test("/artifacts/as-of")),
-    ).toBe(false);
-  });
 });
 
 describe("artifact-capability capability", () => {
-  it("is registered as a free GET so list_endpoints advertises /artifacts/capability", () => {
+  it("is registered as a free GET so the catalog advertises /artifacts/capability", () => {
     const cap = CAPABILITIES.find((c) => c.id === "artifact-capability");
     expect(cap).toBeDefined();
     expect(cap!.method).toBe("GET");
@@ -77,12 +56,11 @@ describe("artifact-capability capability", () => {
     expect(cap!.pricing.billing_code).toBe("artifact_capability");
   });
 
-  it("is present in the served capabilities.json and dispatchable through the passthrough", () => {
+  it("is present in the served capabilities.json", () => {
     const served = servedCapabilities.find((c) => c.id === "artifact-capability");
     expect(served).toBeDefined();
-    const allowlist = buildPassthroughAllowlist(servedCapabilities);
-    const norm = normalizeApiPath("/api/artifacts/capability?subject_kind=cohort");
-    expect(allowlist.some((a) => a.method === "GET" && a.re.test(norm))).toBe(true);
+    expect(served!.method).toBe("GET");
+    expect(served!.endpoint).toBe("/artifacts/capability");
   });
 });
 
