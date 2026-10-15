@@ -36,15 +36,15 @@ See **[plugins/riskmodels/SETUP.md](./plugins/riskmodels/SETUP.md)** for the ful
 Then install this plugin for skills/commands/agent (one MCP connection — disable
 duplicates).
 
-### Claude Code CLI — Bearer key
+### Claude Code CLI — OAuth
 
 ```bash
-export RISKMODELS_API_KEY="rm_agent_live_..."
 claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
 claude plugin install riskmodels@riskmodels
 ```
 
-Get a key: **https://riskmodels.app/get-key**.
+Then `/mcp` → **riskmodels** → **Authenticate** and sign in at riskmodels.app. For
+key-based setups (scripts, headless), see [SETUP.md](./plugins/riskmodels/SETUP.md).
 
 ### Slash commands
 
