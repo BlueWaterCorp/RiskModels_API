@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-14`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-17`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -85,3 +85,63 @@ From the archived master, row H.207 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_20
 
 **Impact:** MATERIAL · RiskModels API defects found by @nijataliyev03 in the 13F attribution study (RiskModels_API PR #373, closed unmerged 2026-10-03). Source: `research/portfolio_timeseries/DATA_ISSUES.md` on branch `feat/13f-attribution-toolkit` (kept as archive). Credit the finder in each fix PR. Endpoint defects: (1) `get_filer_portfolio` terminal row carries a forward return over an open-ended window, not one quarter; (2) stub rows … **Needs:** engineering.
 From the archived master, row H.307 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: H.307: 2026-10-06 (researcher API enhancements 1–2): (1)(2)(3)(4)(7)(8) addressed in RiskModels_API #398 (per-row original_filing_date / ….
+
+## RMAPI-14 · ETF coverage: say what each ETF supports and why, and stop billing empty responses (2026-10-14)
+
+**Impact:** MATERIAL · ETF answers contradict each other today:
+- `/data/etf/search` finds EFA, but `/portfolio/exposure` drops it as `symbol_not_found`.
+- `/data/etf/{ticker}` returns 404 for any fund without holdings.
+- `/ticker-returns?ticker=HYG` returns 0 rows, still bills $0.005 (request `req_mv8frd0k_vut3r8`), and tells the caller to retry and contact support.
+A client lost 28 ETFs ($90k of gross) from a 576-position book with no explanation (review of 2026-10-13).
+
+**Needs:** engineering, after the 2026-10-14 publish; data side is ERM3-68. Model: one ETF universe with three capabilities, any combination per fund:
+- `cascade`: SPY, sectors and subsectors;
+- `priced`: daily returns, covariance and beta to SPY;
+- `holdings`: look-through and benchmark-fit.
+Each fund also has a `factor_role`: market, sector, subsector, style, `macro:<factor>`, or none.
+
+Work:
+- **Reason codes.** Use `etf_outside_priced_universe` and `etf_no_return_history_in_window` in place of `symbol_not_found` for known funds, each with `see: /data/etf/{ticker}`. Keep `symbol_not_found` for tickers on no list. Use the same shape in `coverage.etfs_excluded_from_covariance`.
+- **`/data/etf/{ticker}`** returns 200 for every known fund, with `capabilities` (cascade, priced, priced_from, holdings, holdings_as_of, factor_role) and `identifiers` (bw_sym_id, bw_etf_id, figi, cik, ticker).
+- **`GET /data/etf/universe`** is free: a static JSON generated at sync time from the register, the catalog and the store's symbol list, filterable by capability. `/data/etf/search` and `/tickers` search the same union and return the capability flags.
+- **No billing for empty responses.** `/ticker-returns` calls `setBillableItemCount(0)` when `data` is empty, and the warning names the reason.
+- **Beta per ETF held.** `/portfolio/exposure` reports `beta_to_spy` for each ETF held, from the covariance window.
+- **MCP and docs.**
+  - Add one sentence on the three capabilities to `riskmodels_search_etfs`, `riskmodels_get_returns`, `riskmodels_get_etf` and `riskmodels_portfolio_exposure`.
+  - Add a `docs/ETF_COVERAGE.md` page and an `llms.txt` entry with the lists, counts and reason codes.
+  - Fix the stale "~100 ETFs" comment in `lib/dal/zarr-reader.ts`.
+
+Review: Fable, 2026-10-14 (ETF strategy review).
+
+## RMAPI-15 · `/portfolio/exposure` follow-ups from the Nand Capital review (2026-10-14)
+
+**Impact:** IMPROVEMENT · A client's review of `/portfolio/exposure` (2026-10-13; reply sent 2026-10-14 promising these) found gaps that make users rebuild numbers themselves:
+- The `beta` field uses each stock's L1 beta, while `hedges` and `risk` use L* or L3 exposures. On the reviewed book that gives +$149k versus +$320k.
+- There are no scenario inputs.
+- `top_contributors` is fixed at 15.
+- Two docs inconsistencies.
+
+**Needs:** engineering, plus one DECISION, after the 2026-10-14 publish.
+- **Market beta on the risk basis.** Add a field with the beta implied by the exposure vector and covariance, x′Σe_SPY/σ²_SPY. Keep the L1 field, and label both.
+- **Scenario inputs.** Return each ETF's beta to SPY, and per-name rows: level, L1 beta, hedge ratios, residual volatility. A built-in `scenarios` block (an S&P move, a sector against the market, gaps in the top residual names) comes later.
+- **`top_contributors`.** Make the length a parameter, with an option for the full list.
+- **Docs.**
+  - `as_of` reaches back to 2011-12-07; the announcement email wrongly said 2006.
+  - Label the units of `X-Balance-Remaining` (50,000 per dollar).
+- **DECISION (Conrad).** Should a tolerance apply to the `hedge_added_variance` warning? It flags 60 names with residual shares between 1.0001 and 1.042. Values stay uncapped and still sum to one; only the warning changes.
+
+Report each item to the client as it ships. ETF coverage from the same review is RMAPI-14 and ERM3-68.
+
+## RMAPI-16 · Cohort fundamentals in the API: free hedge-basket block, priced endpoints on request (2026-10-14)
+
+**Impact:** IMPROVEMENT · The hedge and exposure endpoints tell a user which ETF basket offsets a name but nothing about that basket's fundamentals, so "is this name's margin move company-specific or cohort-wide?" needs another vendor. Positioned as an enhancement of current offerings, not a standalone product.
+
+**Needs:** engineering, after ERM3-69 builds the store. Plan agreed 2026-10-14 (operator, after GPT and Fable reviews). Serve the SEC-only plane only; the all-source plane never leaves ERM3 (its dollar sums over thin cohorts would nearly expose single vendor values).
+1. **Free embedded block** in `/hedge-basket` and `/portfolio/exposure`: the name's sector and subsector cohort fundamentals at the latest teo (TTM margins, growth, yields, reported share, contributor count). No surcharge: `PricingModel` has no add-on mechanism, and the block is the retention surface. Not added to `/metrics` ($0.005 call).
+2. **Static sample** (12 public cohorts) from the store for clients; log who asks for history or subsectors.
+3. **Dedicated endpoints, only when a client asks:**
+   - `GET /cohorts/fundamentals`: one-teo cross-section of the 12 public cohorts, $0.04 (same as `/cohorts`); `as_of` limited to the trailing 24 months so month-end loops cannot rebuild history cheaply.
+   - `GET /cohorts/fundamentals/series`: one cohort over a range, $0.15 base with `size_tiers` (e.g. $1.00 above 3 cohorts or 60 months), mirroring exposure's tiering.
+   - Subsector cohorts: no dedicated endpoints until asked (the `/cohorts` contract treats the subsector slate as proprietary; the embedded block already serves a name's own subsector).
+   - Roster / metric catalogue free.
+4. **Disclosures:** yields divide SEC-filed flows by market cap served under the existing derived-data terms; say so in the field descriptions. Earnings surprise is not served.
