@@ -2,7 +2,7 @@
 
 ## Claude Code quick path
 
-Before adding SDK methods, HTTP clients, or MCP tools: run the **RiskModels API discovery** workflow — [`.cursor/skills/riskmodels-api-discovery/SKILL.md`](.cursor/skills/riskmodels-api-discovery/SKILL.md) (MCP `riskmodels_list_endpoints` / `riskmodels_get_schema` / `riskmodels_get_openapi_spec` when available; else [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml) and [mcp/data/openapi.json](./mcp/data/openapi.json)).
+Before adding SDK methods, HTTP clients, or MCP tools: run the **RiskModels API discovery** workflow — [`.cursor/skills/riskmodels-api-discovery/SKILL.md`](.cursor/skills/riskmodels-api-discovery/SKILL.md) (MCP resources `riskmodels:///capabilities`, `riskmodels:///schemas/list`, `riskmodels:///openapi` when the server is connected; else [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml) and [mcp/data/openapi.json](./mcp/data/openapi.json)).
 
 | Doc | Use |
 |-----|-----|
@@ -126,7 +126,7 @@ See `SUPABASE_TABLES.md` for full schema. Source of truth is `Risk_Models` repo.
 Before building any API client or adding new HTTP/SDK calls:
 1. Check `OPENAPI_SPEC.yaml` and `mcp/data/openapi.json`
 2. Read `SUPABASE_TABLES.md` and `SEMANTIC_ALIASES.md`
-3. If MCP tools available: `riskmodels_list_endpoints` → `riskmodels_get_capability`
+3. If the RiskModels MCP server is connected: read the resources `riskmodels:///capabilities` → `riskmodels:///schemas/{path}` (the catalog tools were removed in tool set 2.0)
 
 ## Key Directories
 ```
