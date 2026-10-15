@@ -90,7 +90,7 @@ function mcpRenderArtifact(): Surface {
       }
       captured = { description: config.description, fields };
     },
-  } as never);
+  } as never, { apiKey: "rm_agent_live_test", apiBase: "https://riskmodels.test" });
   if (!captured) throw new Error("render tool did not register");
   const { description, fields } = captured as {
     description?: string;

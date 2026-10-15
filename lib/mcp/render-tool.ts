@@ -1,8 +1,9 @@
 import { CHART_WIDGET_PNG_META_KEY, CHART_WIDGET_URI, registerChartWidget } from "@/lib/mcp/chart-widget";
 import { z } from "zod";
 import {
-  renderArtifact,
   WIRED_ARTIFACT_RENDER_MATRIX,
+  type ArtifactRenderParams,
+  type ArtifactRenderResult,
 } from "@/lib/artifacts/render-client";
 import {
   artifactRenderParamsSchema,
@@ -21,13 +22,45 @@ import {
  * Hosted-only MCP tool — deliberately kept OUT of `lib/mcp/tools/`.
  *
  * The standalone stdio build (`mcp/tsconfig.json` includes
- * `../lib/mcp/tools/**`) must NOT compile this file: `render-client` →
+ * `../lib/mcp/tools/** POST /api/artifacts/render with the caller's API key (billed route). */
+export async function renderViaApi(
+  opts: { apiKey: string; apiBase?: string },
+  body: ArtifactRenderParams,
+): Promise<ArtifactRenderResult> {
+  const base = (opts.apiBase || "https://riskmodels.app").replace(/\/+$/, "");
+  const res = await fetch(`${base}/api/artifacts/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.apiKey}` },
+    body: JSON.stringify(body),
+  });
+  let json: Record<string, unknown> | null = null;
+  try {
+    json = (await res.json()) as Record<string, unknown>;
+  } catch {
+    json = null;
+  }
+  if (res.ok && json && json.ok === true) return json as unknown as ArtifactRenderResult;
+  return {
+    ok: false,
+    status: res.status,
+    error:
+      (json && typeof json.error === "string" && json.error) ||
+      (json && typeof json.message === "string" && json.message) ||
+      `Render request failed (HTTP ${res.status})`,
+    detail: json?.detail ?? (json && !json.ok ? json : undefined),
+  };
+}
+
+/**`) must NOT compile this file: `render-client` →
  * `gcp-id-token` authenticates to GCP Cloud Run, which a public
  * `npx @riskmodels/mcp` user has no credentials for. So `riskmodels_render_artifact`
  * is registered only by the hosted server (`lib/mcp/server.ts`); the stdio
  * server (`mcp/src/server.ts`) never imports this module.
  */
-export function registerRiskModelsRenderTool(server: McpLikeServer): void {
+export function registerRiskModelsRenderTool(
+  server: McpLikeServer,
+  opts: { apiKey: string; apiBase?: string },
+): void {
   registerChartWidget(server);
   server.registerTool(
     "riskmodels_render_artifact",
@@ -91,7 +124,9 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
     },
     async ({ slug, version, subject_id, as_of, format, subject_payload, params }) => {
       try {
-        const result = await renderArtifact({
+        // Billed like every other tool: the caller's key goes to the REST
+        // route, which charges artifact-render ($0.25) on success.
+        const result = await renderViaApi(opts, {
           slug,
           version,
           subject_id,

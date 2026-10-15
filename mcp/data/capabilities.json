@@ -2161,8 +2161,8 @@
   {
     "id": "artifact-render",
     "name": "Artifact registry render",
-    "description": "Deterministic render-once artifact from the intelligence registry (stock / fund / filer / client_portfolio). Invokes render-svc `POST /artifacts/render`; product alias `GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`. Stock O.6: l3_explained_risk_hbar, hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked. Returns JSON or PNG/SVG (base64). Chat: `render_artifact`; MCP: `riskmodels_render_artifact`.",
-    "endpoint": "/artifacts/render",
+    "description": "Deterministic render-once artifact from the intelligence registry (stock / fund / filer / client_portfolio). Billed proxy to render-svc (`POST /api/artifacts/render`); product alias `GET /api/snapshot/{entity_kind}/{id}/panels/{slug}`. Stock O.6: l3_explained_risk_hbar, hedge_notionals_hbar, hedge_depth_retained, watchlist_er_stacked. Returns JSON or PNG/SVG (base64). Chat: `render_artifact`; MCP: `riskmodels_render_artifact`.",
+    "endpoint": "/api/artifacts/render",
     "method": "POST",
     "parameters": {
       "slug": {

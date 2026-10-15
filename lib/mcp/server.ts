@@ -247,7 +247,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
 
   const toolHost = opts.surface === "openai" ? withoutPriceSentences(server) : server;
   registerRiskModelsTools(sdk, toolHost, { apiKey: opts.apiKey });
-  registerRiskModelsRenderTool(toolHost);
+  registerRiskModelsRenderTool(toolHost, { apiKey: opts.apiKey, apiBase: opts.apiBase });
 
   return server;
 }
