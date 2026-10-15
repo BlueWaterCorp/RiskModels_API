@@ -14,6 +14,7 @@ import {
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 import { SERVED_HISTORY_START, servedHistoryStartForKeys } from "@/lib/dal/served-history";
+import { isKnownEtf, isRegisteredEtf } from "@/lib/dal/etf-register";
 import {
   MARKET_ETF,
   computeSignedExposure,
@@ -107,6 +108,7 @@ export interface DroppedPosition {
   value_usd: number;
   reason:
     | "symbol_not_found"
+    | "etf_outside_priced_universe"
     | "no_risk_metrics"
     | "not_at_snapshot_teo"
     | "no_data_at_as_of"
@@ -114,11 +116,44 @@ export interface DroppedPosition {
   teo?: string | null;
   /** Plain-English explanation of `reason`, for people reading the response. */
   detail?: string;
+  /** For ETF reasons: the endpoint that describes what the fund supports. */
+  see?: string;
+}
+
+export type EtfExclusionReason = "etf_outside_priced_universe" | "etf_no_return_history_in_window";
+
+export interface EtfExclusion {
+  ticker: string;
+  reason: EtfExclusionReason;
+  detail: string;
+  see: string;
+}
+
+const etfSee = (ticker: string) => `/api/data/etf/${encodeURIComponent(ticker)}`;
+
+const ETF_EXCLUSION_DETAIL: Record<EtfExclusionReason, string> = {
+  etf_outside_priced_universe:
+    "A known ETF, but not in the priced ETF universe: there are no daily returns for it in the model store, so it has no covariance or beta to SPY.",
+  etf_no_return_history_in_window:
+    "A priced ETF, but its daily returns do not cover every day of the covariance window (for example, it started trading inside the window), so it is left out of the covariance.",
+};
+
+/**
+ * Why an ETF is not in the covariance. No returns at all: on the ERM3 register
+ * (priced) means the gap is the window (e.g. as_of before the fund's start);
+ * otherwise the fund is outside the priced universe. Some returns but gaps: the window.
+ */
+export function etfExclusion(ticker: string, hasAnyReturns: boolean): EtfExclusion {
+  const reason: EtfExclusionReason =
+    hasAnyReturns || isRegisteredEtf(ticker) ? "etf_no_return_history_in_window" : "etf_outside_priced_universe";
+  return { ticker, reason, detail: ETF_EXCLUSION_DETAIL[reason], see: etfSee(ticker) };
 }
 
 /** One sentence per drop reason; `not_at_snapshot_teo` names both dates. */
 export function dropDetail(d: DroppedPosition, snapshotTeo: string | null): string {
   switch (d.reason) {
+    case "etf_outside_priced_universe":
+      return ETF_EXCLUSION_DETAIL.etf_outside_priced_universe + " It is left out of the book.";
     case "symbol_not_found":
       return "Ticker not found in the RiskModels universe. Check the notation (e.g. BRK.B) and that it is a covered US stock or ETF.";
     case "no_risk_metrics":
@@ -237,7 +272,13 @@ export function buildEtfCovariance(
 
 export async function computePortfolioExposure(
   positions: ExposurePosition[],
-  opts: { lookbackDays: number; basis?: Basis; asOf?: string },
+  opts: {
+    lookbackDays: number;
+    basis?: Basis;
+    asOf?: string;
+    topContributors?: number | "all";
+    includePositions?: boolean;
+  },
 ) {
   const inputGross = positions.reduce((a, p) => a + Math.abs(p.value), 0);
   const tickers = [...new Set(positions.map((p) => p.ticker.toUpperCase()))];
@@ -257,7 +298,13 @@ export async function computePortfolioExposure(
     const row = registry.get(t);
     if (!row) {
       if (!dropped.some((d) => d.ticker === t)) {
-        dropped.push({ ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "symbol_not_found" });
+        // A fund on the ETF catalog or the ERM3 register that the symbol
+        // registry cannot price is named as such, not as an unknown ticker.
+        dropped.push(
+          isKnownEtf(t)
+            ? { ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "etf_outside_priced_universe", see: etfSee(t) }
+            : { ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "symbol_not_found" },
+        );
       }
       continue;
     }
@@ -443,6 +490,8 @@ export async function computePortfolioExposure(
     inputGrossUsd: inputGross,
     cov,
     basis: opts.basis ?? "lstar",
+    topContributors: opts.topContributors,
+    includePositions: opts.includePositions,
   });
 
   const warnings: ExposureWarning[] = [...result.warnings];
@@ -497,7 +546,9 @@ export async function computePortfolioExposure(
     coverage: {
       ...result.coverage,
       dropped: explain(dropped, snapshotTeo),
-      etfs_excluded_from_covariance: [...new Set([...excluded, ...noReturns])].sort(),
+      etfs_excluded_from_covariance: [...new Set([...excluded, ...noReturns])]
+        .sort()
+        .map((e) => etfExclusion(e, returnsByEtf.has(e))),
     },
     warnings,
   };

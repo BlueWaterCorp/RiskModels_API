@@ -11,6 +11,8 @@ appending a line here and cutting the row, rather than marking it ✅ in place.
 Process: `BWMACRO/docs/architecture/BACKLOG_LEDGER_CHECKLIST_PROCESS.md`.
 
 ## 2026-10
+- 2026-10-15 · RMAPI-15 · CLOSED: `/portfolio/exposure` adds `beta.risk_basis` (xᵀΣe_SPY/σ²_SPY beside the labelled L1 beta), `scenario_inputs` (ETF beta_to_spy and vol; per-name rows with `include_positions`), a `top_contributors` length parameter (1-1000 or "all"), the `hedge_added_variance` warning threshold 1.02 (owner decision 2026-10-15), and docs for the 2011-12-07 as_of floor and `X-Balance-Remaining` units (50,000 per USD). · PR api/exposure-followups
+- 2026-10-15 · RMAPI-14 · PARTIAL: `/portfolio/exposure` reason codes `etf_outside_priced_universe` / `etf_no_return_history_in_window` with `see` (dropped and `etfs_excluded_from_covariance`), ERM3 register mirrored to `mcp/data/etf_register.json`, and `beta_to_spy` per ETF held; the rest stays open. · PR api/exposure-followups
 - 2026-10-13 · Backlog migration · CLOSED: repo ids RMAPI-n introduced; 13 item(s) moved in from the archived master (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`), each naming its master row. · migration PR
 
 ## 2026-09

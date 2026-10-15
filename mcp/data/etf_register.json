@@ -1,0 +1,419 @@
+{
+ "schema_version": "etf-register/1.0",
+ "source": "ERM3 erm3/shared/etf_register.py (ETF_HIERARCHY + ETF_METADATA proxies)",
+ "generated_by": "scripts/export_etf_register_json.py",
+ "n_entries": 137,
+ "etfs": {
+  "AGG": {
+   "role": "macro:fixed_income"
+  },
+  "AIRR": {
+   "role": "subsector"
+  },
+  "AMLP": {
+   "role": "subsector"
+  },
+  "AOA": {
+   "role": "macro:allocation"
+  },
+  "AOK": {
+   "role": "macro:allocation"
+  },
+  "AOM": {
+   "role": "macro:allocation"
+  },
+  "AOR": {
+   "role": "macro:allocation"
+  },
+  "BIL": {
+   "role": "macro:fixed_income"
+  },
+  "BITO": {
+   "role": "macro:crypto"
+  },
+  "BNO": {
+   "role": "macro:commodities"
+  },
+  "CARZ": {
+   "role": "subsector"
+  },
+  "CEW": {
+   "role": "macro:currency"
+  },
+  "CYB": {
+   "role": "macro:currency"
+  },
+  "DBC": {
+   "role": "macro:commodities"
+  },
+  "DIA": {
+   "role": "broad_market"
+  },
+  "EEM": {
+   "role": "macro:equity_macro"
+  },
+  "EVX": {
+   "role": "subsector"
+  },
+  "FDN": {
+   "role": "subsector"
+  },
+  "FIW": {
+   "role": "subsector"
+  },
+  "FXB": {
+   "role": "macro:currency"
+  },
+  "FXE": {
+   "role": "macro:currency"
+  },
+  "FXY": {
+   "role": "macro:currency"
+  },
+  "FXZ": {
+   "role": "subsector"
+  },
+  "GGME": {
+   "role": "subsector"
+  },
+  "GLD": {
+   "role": "macro:commodities"
+  },
+  "HYG": {
+   "role": "macro:fixed_income"
+  },
+  "IAI": {
+   "role": "subsector"
+  },
+  "IDGT": {
+   "role": "subsector"
+  },
+  "IEF": {
+   "role": "macro:fixed_income"
+  },
+  "IGV": {
+   "role": "subsector"
+  },
+  "IHF": {
+   "role": "subsector"
+  },
+  "IHI": {
+   "role": "subsector"
+  },
+  "IJH": {
+   "role": "broad_market"
+  },
+  "IJR": {
+   "role": "broad_market"
+  },
+  "ITB": {
+   "role": "subsector"
+  },
+  "ITOT": {
+   "role": "broad_market"
+  },
+  "IVV": {
+   "role": "broad_market"
+  },
+  "IWB": {
+   "role": "broad_market"
+  },
+  "IWD": {
+   "role": "broad_market"
+  },
+  "IWF": {
+   "role": "style"
+  },
+  "IWM": {
+   "role": "style"
+  },
+  "IWN": {
+   "role": "broad_market"
+  },
+  "IWO": {
+   "role": "broad_market"
+  },
+  "IWP": {
+   "role": "broad_market"
+  },
+  "IWR": {
+   "role": "broad_market"
+  },
+  "IWS": {
+   "role": "broad_market"
+  },
+  "IYE": {
+   "role": "subsector"
+  },
+  "IYG": {
+   "role": "subsector"
+  },
+  "IYJ": {
+   "role": "subsector"
+  },
+  "IYK": {
+   "role": "subsector"
+  },
+  "IYM": {
+   "role": "subsector"
+  },
+  "IYT": {
+   "role": "subsector"
+  },
+  "IYW": {
+   "role": "subsector"
+  },
+  "KBE": {
+   "role": "subsector"
+  },
+  "KBWB": {
+   "role": "subsector"
+  },
+  "KBWY": {
+   "role": "subsector"
+  },
+  "KCE": {
+   "role": "subsector"
+  },
+  "KIE": {
+   "role": "subsector"
+  },
+  "KRE": {
+   "role": "subsector"
+  },
+  "LQD": {
+   "role": "macro:fixed_income"
+  },
+  "MDY": {
+   "role": "broad_market"
+  },
+  "MOAT": {
+   "role": "style"
+  },
+  "MTUM": {
+   "role": "style"
+  },
+  "NETL": {
+   "role": "subsector"
+  },
+  "PAVE": {
+   "role": "macro:real_assets"
+  },
+  "PBJ": {
+   "role": "subsector"
+  },
+  "PBW": {
+   "role": "subsector"
+  },
+  "PEJ": {
+   "role": "subsector"
+  },
+  "PPA": {
+   "role": "subsector"
+  },
+  "QQQ": {
+   "role": "broad_market"
+  },
+  "QUAL": {
+   "role": "style"
+  },
+  "REM": {
+   "role": "subsector"
+  },
+  "REZ": {
+   "role": "subsector"
+  },
+  "RSP": {
+   "role": "broad_market"
+  },
+  "RSPF": {
+   "role": "subsector"
+  },
+  "RSPS": {
+   "role": "subsector"
+  },
+  "RSPT": {
+   "role": "subsector"
+  },
+  "SCHD": {
+   "role": "style"
+  },
+  "SHY": {
+   "role": "macro:fixed_income"
+  },
+  "SKYY": {
+   "role": "subsector"
+  },
+  "SLV": {
+   "role": "macro:commodities"
+  },
+  "SMH": {
+   "role": "subsector"
+  },
+  "SOXX": {
+   "role": "subsector"
+  },
+  "SPLG": {
+   "role": "broad_market"
+  },
+  "SPMD": {
+   "role": "broad_market"
+  },
+  "SPSM": {
+   "role": "broad_market"
+  },
+  "SPY": {
+   "role": "market"
+  },
+  "SPYG": {
+   "role": "broad_market"
+  },
+  "SPYV": {
+   "role": "broad_market"
+  },
+  "TIP": {
+   "role": "macro:fixed_income"
+  },
+  "TLT": {
+   "role": "macro:fixed_income"
+  },
+  "UNG": {
+   "role": "macro:commodities"
+  },
+  "USMV": {
+   "role": "style"
+  },
+  "USO": {
+   "role": "macro:commodities"
+  },
+  "UTG": {
+   "role": "subsector"
+  },
+  "UUP": {
+   "role": "macro:currency"
+  },
+  "VB": {
+   "role": "broad_market"
+  },
+  "VGIT": {
+   "role": "macro:fixed_income"
+  },
+  "VLUE": {
+   "role": "style"
+  },
+  "VNQ": {
+   "role": "subsector"
+  },
+  "VO": {
+   "role": "broad_market"
+  },
+  "VOO": {
+   "role": "broad_market"
+  },
+  "VOX": {
+   "role": "subsector"
+  },
+  "VPU": {
+   "role": "subsector"
+  },
+  "VT": {
+   "role": "macro:equity_macro"
+  },
+  "VTI": {
+   "role": "broad_market"
+  },
+  "VTV": {
+   "role": "style"
+  },
+  "VUG": {
+   "role": "style"
+  },
+  "VV": {
+   "role": "broad_market"
+  },
+  "VXF": {
+   "role": "broad_market"
+  },
+  "VXX": {
+   "role": "macro:volatility_macro"
+  },
+  "WOOD": {
+   "role": "subsector"
+  },
+  "XAR": {
+   "role": "subsector"
+  },
+  "XBI": {
+   "role": "subsector"
+  },
+  "XES": {
+   "role": "subsector"
+  },
+  "XHB": {
+   "role": "subsector"
+  },
+  "XHE": {
+   "role": "subsector"
+  },
+  "XHS": {
+   "role": "subsector"
+  },
+  "XLB": {
+   "role": "sector"
+  },
+  "XLC": {
+   "role": "sector"
+  },
+  "XLE": {
+   "role": "sector"
+  },
+  "XLF": {
+   "role": "sector"
+  },
+  "XLI": {
+   "role": "sector"
+  },
+  "XLK": {
+   "role": "sector"
+  },
+  "XLP": {
+   "role": "sector"
+  },
+  "XLRE": {
+   "role": "sector"
+  },
+  "XLU": {
+   "role": "sector"
+  },
+  "XLV": {
+   "role": "sector"
+  },
+  "XLY": {
+   "role": "sector"
+  },
+  "XME": {
+   "role": "subsector"
+  },
+  "XOP": {
+   "role": "subsector"
+  },
+  "XPH": {
+   "role": "subsector"
+  },
+  "XRT": {
+   "role": "subsector"
+  },
+  "XSD": {
+   "role": "subsector"
+  },
+  "XSW": {
+   "role": "subsector"
+  },
+  "XTH": {
+   "role": "subsector"
+  },
+  "XTN": {
+   "role": "subsector"
+  }
+ }
+}

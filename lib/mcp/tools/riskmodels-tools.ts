@@ -754,7 +754,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Long/Short Portfolio Exposure",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when a book has short positions or more than 100 names, or when you want its beta-dollars and the ETF trades that neutralise it. Not for long-only books of up to 100 names given as weights (use riskmodels_analyze_portfolio). Returns, from POST /portfolio/exposure, beta-dollars by sector, the ETF trades that neutralise the book at L1, L2 and L3, systematic and residual dollar risk at hedge_level (default lstar: each name at its own recommended depth), coverage (positions not modelled, with reasons) and warnings. Positions are netted by security and not rescaled. " +
+        "Use when a book has short positions or more than 100 names, or when you want its beta-dollars and the ETF trades that neutralise it. Not for long-only books of up to 100 names given as weights (use riskmodels_analyze_portfolio). Returns, from POST /portfolio/exposure, L1 beta-dollars by sector plus the market beta on the risk basis (beta.risk_basis: the exposure vector times the ETF covariance), the ETF trades that neutralise the book at L1, L2 and L3, systematic and residual dollar risk at hedge_level (default lstar: each name at its own recommended depth), scenario inputs (each ETF's beta to SPY; per-name level, L1 beta, hedge ratios and residual volatility with include_positions), coverage (positions not modelled, with reasons; a known ETF it cannot price is etf_outside_priced_universe or etf_no_return_history_in_window, not symbol_not_found) and warnings. Positions are netted by security and not rescaled. " +
         EOD +
         " Price: $0.25 per call up to 25 modelled names, $1.00 above.",
       inputSchema: {
@@ -787,9 +787,17 @@ export function registerRiskModelsTools(
           "Past model date, 2011-12-07 or later; before 2013-01-01 lstar uses L3 (default latest)",
           "2024-12-31",
         ),
+        top_contributors: z
+          .union([z.literal("all"), z.number().int().min(1).max(1000)])
+          .optional()
+          .describe('Names listed in risk.residual.top_contributors, integer 1-1000 or "all", e.g. 50 (default 15)'),
+        include_positions: z
+          .boolean()
+          .optional()
+          .describe("Add per-name scenario rows (level, L1 beta, hedge ratios, residual volatility), e.g. true (default false)"),
       },
     },
-    async ({ positions, hedge_level, lookback_days, as_of }) =>
+    async ({ positions, hedge_level, lookback_days, as_of, top_contributors, include_positions }) =>
       run(() => {
         const body: Record<string, unknown> = {
           positions: (positions as Array<{ ticker: string; value: number }>).map((row) => ({
@@ -800,6 +808,8 @@ export function registerRiskModelsTools(
         setIf(body, "hedge_level", hedge_level);
         setIf(body, "lookback_days", lookback_days);
         setIf(body, "as_of", as_of);
+        setIf(body, "top_contributors", top_contributors);
+        setIf(body, "include_positions", include_positions);
         return sdk.call("POST", "/portfolio/exposure", { body });
       }),
   );

@@ -307,6 +307,15 @@ export const PortfolioExposureRequestSchema = z.object({
   lookback_days: z.coerce.number().int().min(60).max(756).default(252),
   /** "lstar" (default): each name at its own L* level. l1/l2/l3: one level for every name. */
   hedge_level: z.enum(["lstar", "l1", "l2", "l3"]).default("lstar"),
+  /** Length of risk.residual.top_contributors: 1-1000, or "all" for every name. Default 15. */
+  top_contributors: z
+    .union([
+      z.literal("all"),
+      z.number().int("top_contributors must be an integer").min(1).max(1000, 'top_contributors must be 1-1000 or "all"'),
+    ])
+    .default(15),
+  /** Add per-name scenario rows (scenario_inputs.positions). Off by default: books go to 1000 names. */
+  include_positions: z.boolean().default(false),
   /**
    * Past model date (YYYY-MM-DD). Omitted: latest. Each name uses its newest row on or before it.
    * Earliest supported: 2011-12-07 (EXPOSURE_AS_OF_EARLIEST). An earlier, well-formed date is a

@@ -7,10 +7,11 @@ description: POST /api/portfolio/exposure takes a signed book of dollar position
 
 `POST /api/portfolio/exposure` measures a long/short book as it is held: signed dollar market values, shorts negative, up to **1000 positions**, with ETFs allowed alongside stocks. It returns:
 
-- **Beta-dollars** at L1 (market), split by sector ETF.
+- **Beta-dollars** at L1 (market), split by sector ETF, and the **market beta on the risk basis** (the exposure vector times the ETF covariance).
 - **ETF hedge trades** at the book's L\* level and at L1, L2 and L3.
 - A **risk split** into systematic and residual variance, in dollars.
 - **Coverage** of the submitted gross by each calculation, with every dropped name and its reason.
+- **Scenario inputs**: each ETF's beta to SPY and volatility, and on request per-name rows (level, L1 beta, hedge ratios, residual volatility).
 - **Warnings**, machine-readable, for anything that changes how the result should be read.
 
 Two companion feeds, `POST /api/portfolio/exposure/history` (month-end) and `POST /api/portfolio/exposure/history/daily`, deliver the model inputs behind these numbers for past dates. They take tickers only, so holdings stay on your side. See [History feeds](#history-feeds).
@@ -50,12 +51,14 @@ POST /api/portfolio/exposure
 | `hedge_level` | string | no | `lstar` (default), `l1`, `l2` or `l3`. The level each name is hedged and measured at. |
 | `lookback_days` | integer | no | Trading days in the ETF covariance window, 60 to 756. Default 252, the ERM3 estimation window. |
 | `as_of` | date | no | Past model date, `YYYY-MM-DD`, 2011-12-07 or later. Omit for the latest. Same price. |
+| `top_contributors` | integer or `"all"` | no | Length of `risk.residual.top_contributors`, 1 to 1000, or `"all"` for every name. Default 15. |
+| `include_positions` | boolean | no | Add per-name rows to `scenario_inputs.positions`. Default false (books go to 1000 names). |
 
 Repeated tickers, and tickers that map to one model security (some share classes), are netted into one position before any variance is computed; a `share_class_netted` warning names them. Tickers that do not match directly are retried under alternative notations (`BRK.B` / `BRK-B`).
 
 ## Reading the response
 
-The response has seven blocks: `as_of`, `book`, `beta`, `hedges`, `risk`, `coverage` and `warnings`.
+The response has eight blocks: `as_of`, `book`, `beta`, `hedges`, `risk`, `scenario_inputs`, `coverage` and `warnings`.
 
 ### `as_of`: one model date
 
@@ -67,10 +70,13 @@ Positions submitted, gross, net, long and short dollars, and the count of modell
 
 ### `beta`: beta-dollars
 
-- `stock_beta_usd`: Σ value × ERM3 L1 market beta over the stocks.
+Two market betas are reported, labelled by `method`:
+
+- `stock_beta_usd`: Σ value × ERM3 L1 market beta over the stocks (`method: "l1_market_beta"`), whatever `hedge_level` is.
 - `direct_etf_beta_usd`: the ETFs held, each measured against SPY over the covariance window (SPY = 1). `direct_etf_betas` lists each one.
 - `total_beta_usd` and `total_beta_pct_of_gross`.
 - `by_sector_usd`: stock beta-dollars grouped by sector ETF.
+- `risk_basis`: the market beta on the risk basis (`method: "exposure_covariance_beta"`), xᵀΣe_SPY / σ²_SPY, where `x` is the same exposure vector the risk split uses (each name at its `hedge_level`, plus ETFs held) and `Σ` the ETF covariance. `beta_usd` is in SPY-equivalent dollars; `beta_pct_of_gross` divides it by submitted gross; `by_layer_usd` splits it into market, sector, subsector and direct_etf legs; `gross_covered` is the share of gross in `x`. It differs from the L1 figure when sector and subsector legs carry market beta of their own, and equals it under `hedge_level: "l1"`. Null when no covariance with SPY could be built.
 
 ### `hedges`: ETF trades per level
 
@@ -94,7 +100,7 @@ With `hedge_level: "lstar"` each name is hedged and measured at its own L\* leve
 Both parts are daily variances in dollars squared, with daily and annual volatility (annualised with √252), computed at `hedge_level`.
 
 - **Systematic** = `xᵀΣx`. `x` is the book's raw-ETF exposure (minus the stock hedge, plus ETFs held) and `Σ` is the sample covariance of daily ETF returns over `lookback_days` ending on `snapshot_teo`. `exposure_usd` lists `x`. `layer_contributions` (market, sector, subsector, direct_etf) are `x_Lᵀ Σ x`: they sum to the systematic variance and can be negative. They are hedge-leg contributions, not ERM3's orthogonal explained-risk shares.
-- **Residual** = Σ value² × `stock_var` × max(`lK_res_er`, 0), where K is each name's level. This is a **diagonal approximation**: it ignores residual covariance across names. It is an approximation, not a bound. `top_contributors` ranks names by their share of residual variance; `hedge_added_variance` lists names whose residual share exceeds 1 (see [Residual shares](#residual-shares)).
+- **Residual** = Σ value² × `stock_var` × max(`lK_res_er`, 0), where K is each name's level. This is a **diagonal approximation**: it ignores residual covariance across names. It is an approximation, not a bound. `top_contributors` ranks names by their share of residual variance (15 by default; set the `top_contributors` request field up to 1000 or `"all"`); `hedge_added_variance` lists names whose residual share exceeds 1.02 (see [Residual shares](#residual-shares)).
 - **Total** = systematic + residual, with `systematic_share` and `residual_share`. `risk` is null when no ETF covariance could be built.
 
 ### `risk.reconciliation`: why a gap is expected
@@ -103,6 +109,13 @@ For each name at its level K, the response compares two estimates of the name's 
 
 The two use different estimators: end-of-window hedge ratios against a sample covariance, versus the model's time-varying, decay-weighted betas. A gap is therefore expected. Large values say the two views disagree for some names, and the systematic figure should be read with that in mind.
 
+### `scenario_inputs`
+
+Inputs for your own scenarios; no scenarios are computed for you.
+
+- `etfs`: one row per ETF in the covariance, held or used as a hedge leg: `beta_to_spy` (cov(ETF, SPY) / var(SPY) over the covariance window, SPY = 1), `annual_vol`, `held_usd`, `hedge_leg` and `in_covariance`. An ETF held without covariance has `beta_to_spy: null`.
+- `positions` (only with `include_positions: true`): one row per modelled stock with the `level` used, `l1_beta`, `hedge_ratios` (ETF → hr at that level), `residual_share`, `residual_vol_annual` = √(252 × `stock_var` × max(residual share, 0)) and `residual_vol_annual_usd`. Names excluded from L\* have `level: null` and an `excluded_reason`.
+
 ### `coverage`
 
 - `input_gross_usd`, `modelled_stock_gross_usd`, `direct_etf_gross_usd`.
@@ -110,11 +123,12 @@ The two use different estimators: end-of-window hedge ratios against a sample co
 - `dropped`: each removed position with `ticker`, `value_usd`, a `reason` code and `detail`, one plain-English sentence explaining it. A 422 response carries the same `dropped` list.
 - `excluded_from_lstar`: names with no L\* (`no_lstar`) or whose L\* level is incomplete (`lstar_level_incomplete`), each with a `detail` sentence.
 - `residual_flagged`: names left out of the residual because their `stock_var` is negative.
-- `etfs_without_covariance`, `etfs_excluded_from_covariance`.
+- `etfs_without_covariance`, and `etfs_excluded_from_covariance`: each ETF left out of the covariance with `ticker`, `reason` (`etf_outside_priced_universe` or `etf_no_return_history_in_window`), `detail` and `see` (`/api/data/etf/{ticker}`).
 
 | `dropped` reason | Meaning |
 | --- | --- |
-| `symbol_not_found` | The ticker did not resolve, including under alternative notations. With `as_of`, also names delisted since that date (tickers resolve against today's registry). |
+| `symbol_not_found` | The ticker is on no list: it did not resolve, including under alternative notations, and is not a known ETF. With `as_of`, also names delisted since that date (tickers resolve against today's registry). |
+| `etf_outside_priced_universe` | A known ETF (in the ETF catalog or the ERM3 ETF register) with no daily returns in the model store, so it cannot be priced. `see` points to `/api/data/etf/{ticker}`. |
 | `insufficient_history` | ERM3 estimates a name only after at least 126 trading days of returns within a 252-day window. Newer listings are excluded from every calculation. |
 | `no_risk_metrics` | The name resolved but has no risk metrics at the model date. |
 | `not_at_snapshot_teo` | The name's latest row is on a different date from the book's common model date; `teo` gives its own date. |
@@ -128,7 +142,7 @@ Each warning is `{code, message, tickers}`. Report them with the result.
 | --- | --- |
 | `share_class_netted` | These tickers map to one model security and were netted into one position. A long in one and a short in the other shows only the net value, with no spread risk between them. |
 | `not_at_snapshot_teo` | These names have no row on the common model date and are left out. `coverage.dropped` gives each name's own date. |
-| `hedge_added_variance` | For these names the model's hedge at their level added variance over the window (residual share above 1). Their residual variance is larger than their unhedged variance and is used as is. |
+| `hedge_added_variance` | For these names the model's hedge at their level added variance over the window (residual share above 1.02). Their residual variance is larger than their unhedged variance and is used as is. Shares between 1 and 1.02 are used the same way but do not warn. |
 | `residual_share_extreme` | Residual share above 2: the hedge more than doubled variance. Used as is; check these names before relying on the residual total. |
 | `residual_share_floored` | Residual share below 0; the name's residual variance is taken as 0. |
 | `lstar_unavailable_l3_fallback` | L\* hedge levels are published from 2013-01-01. These names have no L\* level at the model date and are hedged and measured at L3 instead (counted under `l3` in `names_by_level`). |
@@ -143,7 +157,7 @@ ERM3's explained-risk shares at a level (market, sector, subsector, residual) **
 
 For example, BRK.B has had an L1 residual share of 1.052: over the window, hedging its market exposure with SPY left slightly more variance than holding the stock unhedged.
 
-The endpoint uses such a share as is. The name's residual variance is larger than its unhedged variance; it is listed in `risk.residual.hedge_added_variance` and raises a `hedge_added_variance` warning. A residual share above 2 also raises `residual_share_extreme`. A residual share below 0 is taken as 0 in the variance term and raises `residual_share_floored`. The shares themselves are never altered.
+The endpoint uses such a share as is. The name's residual variance is larger than its unhedged variance. Above 1.02 (a 0.02 tolerance, so shares a hair over 1 stay quiet) it is listed in `risk.residual.hedge_added_variance` and raises a `hedge_added_variance` warning. A residual share above 2 also raises `residual_share_extreme`. A residual share below 0 is taken as 0 in the variance term and raises `residual_share_floored`. The shares themselves are never altered.
 
 ## Limitations
 
@@ -168,7 +182,7 @@ Per successful call, by book size:
 | up to 25 | {'$'}0.25 |
 | more than 25 | {'$'}1.00 |
 
-The tier counts names actually modelled (stocks plus ETFs held), so dropped tickers never raise the charge. The balance check before the call uses the tier for the number of distinct tickers submitted, so a book of more than 25 tickers needs {'$'}1.00 of balance even if fewer names end up modelled. Latest and `as_of` cost the same. A request in which no stock has risk metrics and no ETF held has return history returns 422 and is not charged. The charge is returned in the `X-API-Cost-USD` header.
+The tier counts names actually modelled (stocks plus ETFs held), so dropped tickers never raise the charge. The balance check before the call uses the tier for the number of distinct tickers submitted, so a book of more than 25 tickers needs {'$'}1.00 of balance even if fewer names end up modelled. Latest and `as_of` cost the same. A request in which no stock has risk metrics and no ETF held has return history returns 422 and is not charged. The charge is returned in the `X-API-Cost-USD` header, in US dollars. `X-Balance-Remaining` gives the prepaid balance left in billing units of 50,000 per US dollar (1 unit = {'$'}0.00002), or `unlimited` on a licensed key.
 
 ## Examples
 

@@ -17,6 +17,10 @@ const registry: Record<string, Record<string, unknown>> = {
   XLK: { symbol: "E-XLK", ticker: "XLK", asset_type: "etf", sector_etf: null, subsector_etf: null },
   SMH: { symbol: "E-SMH", ticker: "SMH", asset_type: "etf", sector_etf: null, subsector_etf: null },
   XLF: { symbol: "E-XLF", ticker: "XLF", asset_type: "etf", sector_etf: null, subsector_etf: null },
+  // On the ERM3 register (priced), but its returns start inside the window.
+  HYG: { symbol: "E-HYG", ticker: "HYG", asset_type: "etf", sector_etf: null, subsector_etf: null },
+  // In the ETF catalog only: resolves, but the store has no returns for it.
+  EWJ: { symbol: "E-EWJ", ticker: "EWJ", asset_type: "etf", sector_etf: null, subsector_etf: null },
 };
 
 const fullMetrics = (over: Record<string, number | null> = {}) => ({
@@ -54,8 +58,8 @@ vi.mock("@/lib/dal/risk-engine-v3", () => ({
     // The real DAL serves nothing when any key is outside Zarr (isZarrHistoryPath).
     if (keys.some((k) => ["l1_mkt_beta", "l2_sec_beta", "l3_sub_beta"].includes(k))) return [];
     if (keys.includes("returns_gross")) {
-      return symbols.flatMap((s, k) =>
-        days.map((d, i) => ({
+      return symbols.filter((s) => s !== "E-EWJ").flatMap((s, k) =>
+        days.filter((_, i) => s !== "E-HYG" || i >= 200).map((d, i) => ({
           symbol: s, teo: d, periodicity: "daily", metric_key: "returns_gross",
           metric_value: Math.sin(i * (k + 1)) / 100,
         })),
@@ -270,5 +274,48 @@ describe("computePortfolioExposure (loader)", () => {
     expect(err.history_available_from).toBe("2011-12-07");
     expect(err.as_of).toBe("2011-06-30");
     expect(err.detail).toMatch(/^The earliest supported as_of is 2011-12-07\. Model history is served from the first date whose full estimation window is covered/);
+  });
+
+  it("names known ETFs it cannot price instead of symbol_not_found, with a pointer to /data/etf", async () => {
+    const out: any = await computePortfolioExposure(
+      [
+        { ticker: "NVDA", value: 100_000 },
+        { ticker: "EFA", value: 30_000 }, // ETF catalog, not in the symbol registry
+        { ticker: "NOPE", value: 5_000 }, // on no list
+        { ticker: "HYG", value: 20_000 }, // priced, gaps in the window
+        { ticker: "EWJ", value: 10_000 }, // resolves, no returns in the store
+      ],
+      { lookbackDays: 252 },
+    );
+    const efa = out.coverage.dropped.find((d: any) => d.ticker === "EFA");
+    expect(efa).toMatchObject({ value_usd: 30_000, reason: "etf_outside_priced_universe", see: "/api/data/etf/EFA" });
+    expect(efa.detail).toMatch(/not in the priced ETF universe/);
+    const nope = out.coverage.dropped.find((d: any) => d.ticker === "NOPE");
+    expect(nope.reason).toBe("symbol_not_found");
+    expect(nope.see).toBeUndefined();
+
+    const excluded = Object.fromEntries(out.coverage.etfs_excluded_from_covariance.map((e: any) => [e.ticker, e]));
+    expect(excluded.HYG).toMatchObject({ reason: "etf_no_return_history_in_window", see: "/api/data/etf/HYG" });
+    expect(excluded.EWJ).toMatchObject({ reason: "etf_outside_priced_universe", see: "/api/data/etf/EWJ" });
+    expect(excluded.HYG.detail).toMatch(/do not cover every day/);
+    // ETFs held directly get a beta_to_spy row; without covariance it is null.
+    const etfs = Object.fromEntries(out.scenario_inputs.etfs.map((e: any) => [e.ticker, e]));
+    expect(etfs.HYG).toMatchObject({ beta_to_spy: null, held_usd: 20_000, in_covariance: false });
+    expect(etfs.SPY.beta_to_spy).toBe(1);
+    expect(typeof etfs.SMH.beta_to_spy).toBe("number");
+  });
+
+  it("passes top_contributors and include_positions through", async () => {
+    const book = [
+      { ticker: "NVDA", value: 100_000 },
+      { ticker: "AMD", value: -50_000 },
+    ];
+    const one: any = await computePortfolioExposure(book, { lookbackDays: 252, topContributors: 1, includePositions: true });
+    expect(one.risk.residual.top_contributors).toHaveLength(1);
+    expect(one.scenario_inputs.positions.map((p: any) => p.ticker)).toEqual(["NVDA", "AMD"]);
+    expect(one.beta.risk_basis.beta_usd).toEqual(expect.any(Number));
+    const dflt: any = await computePortfolioExposure(book, { lookbackDays: 252 });
+    expect(dflt.risk.residual.top_contributors).toHaveLength(2);
+    expect(dflt.scenario_inputs.positions).toBeUndefined();
   });
 });
