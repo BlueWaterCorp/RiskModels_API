@@ -6,7 +6,7 @@ then overlays text (headers, insights, chips, footer) via Pillow.
 
 This eliminates all Plotly annotation coordinate guessing and gives
 absolute control over layout — the same approach used by production
-report generators (Bloomberg PORT, FactSet, MSCI).
+institutional risk-report generators.
 
 Usage
 -----

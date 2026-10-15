@@ -73,7 +73,7 @@ FONT = "Inter (fallback: Liberation Sans → DejaVu → Arial)"
 The P1/DD waterfall uses **geometric (sequential compounding) attribution** — bars are telescoping differences between cumulative products at each ERM3 hierarchy level, summing exactly to compound gross. See `ENGINE_METHOD_NOTES.md` §6.
 
 ### Identity Rules
-- **`symbol`** (FactSet ID) = internal join key. Never expose to users.
+- **`symbol`** (internal BW symbol) = internal join key. Never expose to users.
 - **`ticker`** = human-facing label on charts, axes, legends, PDF titles.
 - Resolution: `resolveSymbolByTicker()` in `lib/dal/risk-engine-v3.ts`.
 

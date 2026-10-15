@@ -1941,7 +1941,7 @@ components:
       properties:
         industry_code:
           type: integer
-          description: EODHD 4-digit industry code (FactSet fs_industry_code).
+          description: BW industry id (`bw_industry_id`, 101-159). Stores built before the taxonomy switch carry a legacy 4-digit industry code.
         level:
           type: string
           enum: [market, sector, subsector]
