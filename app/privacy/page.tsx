@@ -125,7 +125,7 @@ const sections: Section[] = [
         text: 'Revoke API keys in your account at any time. Removing RiskModels from an AI client stops its access; ask us if you also want its sign-in revoked on our side.',
       },
       { label: 'Brokerage connections', text: 'Disconnect through your account or the Plaid Portal.' },
-      { label: 'Cookies', text: 'Block or delete cookies in your browser settings; the API and connector do not need them.' },
+      { label: 'Cookies', text: 'Visitors in the EEA, UK and Switzerland choose whether to allow analytics and advertising cookies in a banner; until they accept, those tags run without cookies. Anyone can block or delete cookies in their browser settings; the API and connector do not need them.' },
     ],
   },
   {

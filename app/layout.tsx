@@ -10,6 +10,7 @@ import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
 import { GoogleTagManager, GoogleTagManagerNoScript } from '@/components/GoogleTagManager';
 import { PostHogProvider } from '@/components/posthog-provider';
+import { ConsentBanner } from '@/components/ConsentBanner';
 import { UTMTracker } from '@/components/UTMTracker';
 import { CANONICAL_SITE_URL } from '@/lib/constants';
 
@@ -116,6 +117,7 @@ export default async function RootLayout({
             </div>
             <ChatBubble />
             <UTMTracker />
+            <ConsentBanner />
           </PostHogProvider>
         </Suspense>
       </body>
