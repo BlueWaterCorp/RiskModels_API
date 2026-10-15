@@ -135,7 +135,7 @@ class PeerGroupProxy:
     target_ticker : str
         The stock we're analyzing (human-facing ticker, not symbol).
     target_symbol : str
-        FactSet symbol for the target (internal key).
+        Internal BW symbol for the target (internal key).
     sector_etf : str
         The ETF that defines this peer group (e.g. "XLK", "SMH").
     group_by : str
