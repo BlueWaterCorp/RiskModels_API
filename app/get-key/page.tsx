@@ -153,6 +153,10 @@ function GetKeyPage() {
   // Inline rename state
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTyped, setDeleteTyped] = useState('');
+  const [deleteState, setDeleteState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [renameSaving, setRenameSaving] = useState(false);
 
   // Stripe flow — matches redirect query params from /api/stripe/setup-success
@@ -411,6 +415,25 @@ function GetKeyPage() {
         ...(chooseAccount ? { queryParams: { prompt: 'select_account' } } : {}),
       },
     });
+  };
+
+  const requestAccountDeletion = async () => {
+    setDeleteState('sending');
+    setDeleteError(null);
+    try {
+      const res = await fetch('/api/account/delete-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || 'The request failed. Email service@riskmodels.app to finish it.');
+      setDeleteState('done');
+      await supabase.auth.signOut();
+    } catch (e) {
+      setDeleteState('error');
+      setDeleteError(e instanceof Error ? e.message : 'The request failed. Email service@riskmodels.app to finish it.');
+    }
   };
 
   const signOut = async () => {
@@ -1218,6 +1241,42 @@ function GetKeyPage() {
             </p>
           </div>
         )}
+
+        {/* Delete account */}
+        <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <h2 className="text-sm font-semibold text-zinc-200">Delete account</h2>
+          {deleteState === 'done' ? (
+            <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+              Request received. Your keys and connector sign-ins are revoked, auto top-up is off, and we will delete your account data within 30 days. A confirmation is on its way to your inbox.
+            </p>
+          ) : !deleteOpen ? (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <p className="text-xs text-zinc-500 flex-1 min-w-0">
+                Revokes every key and connector sign-in now, then deletes your account data within 30 days. Billing records are kept as the law requires.
+              </p>
+              <button onClick={() => setDeleteOpen(true)} className="text-xs font-medium text-red-400 border border-red-800/50 rounded-lg px-3 py-1.5 hover:bg-red-950/40 transition-colors">
+                Delete account…
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <label htmlFor="delete-confirm" className="block text-xs text-zinc-400">
+                Type <code className="font-mono text-zinc-200">DELETE</code> to confirm. This can’t be undone once the data is erased.
+              </label>
+              <input id="delete-confirm" value={deleteTyped} onChange={(e) => setDeleteTyped(e.target.value)} autoComplete="off"
+                className="w-full max-w-xs text-sm text-zinc-100 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 focus:outline-none focus:border-red-500" />
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={requestAccountDeletion} disabled={deleteTyped !== 'DELETE' || deleteState === 'sending'}
+                  className="text-xs font-semibold text-white bg-red-700 rounded-lg px-3 py-1.5 disabled:opacity-40 hover:bg-red-600 transition-colors">
+                  {deleteState === 'sending' ? 'Sending…' : 'Delete my account'}
+                </button>
+                <button onClick={() => { setDeleteOpen(false); setDeleteTyped(''); setDeleteState('idle'); setDeleteError(null); }}
+                  className="text-xs text-zinc-400 hover:text-zinc-200">Cancel</button>
+              </div>
+              {deleteError && <p className="text-red-400 text-xs">{deleteError}</p>}
+            </div>
+          )}
+        </div>
 
       </div>
     </div>
