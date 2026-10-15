@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-16`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-17`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -131,3 +131,17 @@ Review: Fable, 2026-10-14 (ETF strategy review).
 - **DECISION (Conrad).** Should a tolerance apply to the `hedge_added_variance` warning? It flags 60 names with residual shares between 1.0001 and 1.042. Values stay uncapped and still sum to one; only the warning changes.
 
 Report each item to the client as it ships. ETF coverage from the same review is RMAPI-14 and ERM3-68.
+
+## RMAPI-16 · Cohort fundamentals in the API: free hedge-basket block, priced endpoints on request (2026-10-14)
+
+**Impact:** IMPROVEMENT · The hedge and exposure endpoints tell a user which ETF basket offsets a name but nothing about that basket's fundamentals, so "is this name's margin move company-specific or cohort-wide?" needs another vendor. Positioned as an enhancement of current offerings, not a standalone product.
+
+**Needs:** engineering, after ERM3-69 builds the store. Plan agreed 2026-10-14 (operator, after GPT and Fable reviews). Serve the SEC-only plane only; the all-source plane never leaves ERM3 (its dollar sums over thin cohorts would nearly expose single vendor values).
+1. **Free embedded block** in `/hedge-basket` and `/portfolio/exposure`: the name's sector and subsector cohort fundamentals at the latest teo (TTM margins, growth, yields, reported share, contributor count). No surcharge: `PricingModel` has no add-on mechanism, and the block is the retention surface. Not added to `/metrics` ($0.005 call).
+2. **Static sample** (12 public cohorts) from the store for clients; log who asks for history or subsectors.
+3. **Dedicated endpoints, only when a client asks:**
+   - `GET /cohorts/fundamentals`: one-teo cross-section of the 12 public cohorts, $0.04 (same as `/cohorts`); `as_of` limited to the trailing 24 months so month-end loops cannot rebuild history cheaply.
+   - `GET /cohorts/fundamentals/series`: one cohort over a range, $0.15 base with `size_tiers` (e.g. $1.00 above 3 cohorts or 60 months), mirroring exposure's tiering.
+   - Subsector cohorts: no dedicated endpoints until asked (the `/cohorts` contract treats the subsector slate as proprietary; the embedded block already serves a name's own subsector).
+   - Roster / metric catalogue free.
+4. **Disclosures:** yields divide SEC-filed flows by market cap served under the existing derived-data terms; say so in the field descriptions. Earnings surprise is not served.
