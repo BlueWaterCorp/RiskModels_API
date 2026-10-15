@@ -18,21 +18,21 @@ Apply **before** implementing or refactoring:
 - Example scripts under `examples/python/` or `packages/riskmodels/examples/`
 - Anything that embeds paths, JSON bodies, or query params for the public API
 
-**Do not use this skill to answer a stock or portfolio question.** Catalog tools (`riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`, `riskmodels_get_openapi_spec`) are for wiring a client. Live numbers come from `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, or the matching REST routes. After an MCP OAuth connect, call a data tool first — listing endpoints does not count as activation.
+**Do not use this skill to answer a stock or portfolio question.** The catalog resources (`riskmodels:///capabilities`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi`) are for wiring a client. Live numbers come from the MCP tools (`riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, …) or the matching REST routes. After an MCP OAuth connect, call a data tool first — reading the catalog does not count as activation.
 
 ## Discovery order (mandatory for client work)
 
-### 1. MCP tools (if connected)
+### 1. MCP resources (if connected)
 
-Use the **RiskModels MCP server** tools exposed in Cursor (names may be prefixed depending on server config; canonical names from `mcp/README.md`):
+Since `@riskmodels/mcp` 2.0.0 the catalog is served as **MCP resources**, not tools (the tool list is in `mcp/README.md`):
 
-| Step | Tool | Purpose |
-|------|------|--------|
-| 1 | **`riskmodels_list_endpoints`** | Latest index of capabilities: ids, HTTP method, path, short description, cost hints. **No arguments.** Run this first so you are not working from an outdated mental model. |
-| 2 | **`riskmodels_get_capability`** | Full detail for one capability id (parameters, pricing, examples). Input: `{ "id": "<capability-id>" }`. |
-| 3 | **`riskmodels_get_schema`** | JSON response schema for an endpoint path. Input: `{ "path": "/portfolio/risk-snapshot" }` (shape per tool schema). |
+| Step | Resource | Purpose |
+|------|----------|--------|
+| 1 | **`riskmodels:///capabilities`** | Latest index of capabilities: ids, HTTP method, path, parameters, pricing, examples. Read this first so you are not working from an outdated mental model. |
+| 2 | **`riskmodels:///schemas/list`** / **`riskmodels:///schemas/{path}`** | JSON response schema for an endpoint (e.g. `ticker-returns-v2.json`). |
+| 3 | **`riskmodels:///openapi`** | Full OpenAPI 3 spec. |
 
-Treat the output of these tools as the **provisioning schema** for what the API exposes and how it bills—prefer them over remembered URLs when the server is available.
+Treat these resources as the **provisioning schema** for what the API exposes and how it bills—prefer them over remembered URLs when the server is available. Without MCP, read `mcp/data/capabilities.json` directly.
 
 ### 2. Repo sources (always)
 

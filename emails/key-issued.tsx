@@ -300,9 +300,9 @@ export const KeyIssuedEmail = ({
             Path A — &quot;I use an AI coding agent&quot;
           </Heading>
           <Text style={paragraph}>
-            Your agent gets <strong>6 new tools</strong> it can call: latest risk metrics, L3 hierarchical
-            decomposition, portfolio risk snapshot, and three discovery tools. Ask in English; it picks the
-            tool.
+            Your agent gets <strong>24 read-only tools</strong> it can call: stock risk snapshots, L3
+            decomposition and ETF hedges, daily returns with L3 hedge ratios, factor and residual returns, portfolio risk and exposure, rankings, fund and 13F
+            holdings, and fundamentals. Ask in English; it picks the tool.
           </Text>
           <Text style={paragraph}>
             <strong>Fastest path (recommended):</strong> run the shipped MCP installer so configs are merged

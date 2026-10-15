@@ -6,7 +6,7 @@ Reference agent that uses **RiskModels as the risk substrate** — L3 variance d
 
 | Surface | Tool / entry |
 |--------|----------------|
-| **MCP** (Cursor, Claude Desktop, Codex) | `riskmodels_render_artifact`, `riskmodels_decompose`, `riskmodels_portfolio_decompose`, … |
+| **MCP** (Cursor, Claude Desktop, Codex) | `riskmodels_render_artifact`, `riskmodels_decompose`, `riskmodels_get_portfolio_risk_snapshot`, … |
 | **Hosted MCP** | `https://riskmodels.app/api/mcp/sse` + Bearer key |
 | **Chat on riskmodels.app** | Same tools via the API Risk Analyst (`render_artifact`, `get_risk_metrics`, …) |
 | **Python SDK** | `riskmodels-py` — see [`../python/ai_risk_analyst.py`](../python/ai_risk_analyst.py) |

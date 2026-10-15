@@ -56,7 +56,7 @@ Ask in Cursor's agent chat:
 
 > Decompose NVDA's risk with RiskModels and give me the ETF hedge for a $100,000 position.
 
-The agent calls `riskmodels_decompose` for the market / sector / subsector / stock-specific split of NVDA's variance and the hedge ratio at each level. Then it calls `riskmodels_hedge_position` to turn those ratios into dollar trades in SPY and the sector and subsector ETFs. The numbers are live model output as of the latest trading day.
+The agent calls `riskmodels_decompose` for the market / sector / subsector / stock-specific split of NVDA's variance and the hedge ratio at each level. Then it calls `riskmodels_decompose` again with a dollar amount to turn those ratios into dollar trades in SPY and the sector and subsector ETFs. The numbers are live model output as of the latest trading day.
 
 The Claude plugin ([`claude-plugin/`](./claude-plugin/)) and the local developer MCP server ([`.cursor/mcp.json`](./.cursor/mcp.json), [`mcp/`](./mcp/)) are separate and unchanged.
 
@@ -189,14 +189,11 @@ RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelco
 - **Authentication:** Bearer token (API key or OAuth2 JWT)
 - **Discovery:** `https://riskmodels.app/.well-known/mcp.json` (see [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml))
 
-**Local MCP server (`mcp/` in this repo)** — stdio transport for Cursor / Claude Desktop / Zed: discovers capabilities, schemas, OpenAPI, and SDK-backed live-paper risk tools. **Tools shipped here include:**
+**Local MCP server (`mcp/` in this repo, `@riskmodels/mcp` 2.0.0)** — stdio transport for Cursor / Claude Desktop / Zed. Tool set 2.0 is one registry shared with the hosted endpoints: 24 tools locally, 25 hosted (adds `riskmodels_render_artifact`):
 
-- `riskmodels_list_endpoints` — List API capabilities (id, method, endpoint, short description)
-- `riskmodels_get_capability` — Full capability record by id (parameters, pricing, examples)
-- `riskmodels_get_schema` — JSON Schema for a response type (e.g. `ticker-returns-v2.json`)
-- `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_hedge_position`, `riskmodels_portfolio_decompose`, `riskmodels_whitepaper_example` — Agent-ready SDK outputs with `chart_data`, `suggested_chart`, and plain-English summaries
+`riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_get_return_attribution`, `riskmodels_get_residual_returns`, `riskmodels_get_residual_signal`, `riskmodels_get_macro_correlation`, `riskmodels_get_fundamentals`, `riskmodels_analyze_portfolio`, `riskmodels_get_portfolio_risk_snapshot`, `riskmodels_portfolio_exposure`, `riskmodels_decompose_selection_vs_drift`, `riskmodels_get_my_positions`, `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_cohorts`, `riskmodels_get_peers`, `riskmodels_search`, `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`, `riskmodels_get_benchmark_fit`, `riskmodels_get_factor_returns`.
 
-For live risk data and portfolio math, call the **REST API** (e.g. `GET /api/metrics/{ticker}`, `POST /api/batch/analyze`, `GET /api/l3-decomposition`), the **Python SDK** (`riskmodels-py`), or the listed MCP tools.
+The REST catalog, response schemas and OpenAPI spec are MCP resources (`riskmodels:///capabilities`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi`). Tool list, prices and the 1.x → 2.0 migration table: [`mcp/README.md`](./mcp/README.md#tool-set-20). Outside MCP, call the **REST API** or the **Python SDK** (`riskmodels-py`).
 
 See [mcp/README.md](./mcp/README.md) for install and config.
 

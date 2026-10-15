@@ -17,7 +17,7 @@ description: Build agents on RiskModels L3 risk data via MCP and the artifact re
 |------|------|
 | Single-name L3 snapshot | `riskmodels_decompose` or chat `get_risk_metrics` |
 | Compare names | `riskmodels_compare` |
-| Weighted portfolio | `riskmodels_portfolio_decompose` / `compute_portfolio_risk_index` |
+| Weighted portfolio | `riskmodels_get_portfolio_risk_snapshot` / `compute_portfolio_risk_index` |
 | Deterministic chart/table JSON | `riskmodels_render_artifact` |
 | Resolve fund | `search_funds` → `BW-FUND-…` |
 | Resolve 13F filer | `search_filers` → `BW-FILER-…` |

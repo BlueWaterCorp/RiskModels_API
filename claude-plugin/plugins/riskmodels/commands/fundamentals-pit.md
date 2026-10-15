@@ -7,7 +7,7 @@ argument-hint: "<ticker e.g. AAPL> [as_of YYYY-MM-DD]"
 
 Pull point-in-time fundamentals for `$ARGUMENTS` using the **fundamentals-pit** skill.
 
-1. Resolve the ticker if needed (`riskmodels_search_tickers`).
+1. Resolve the ticker if needed (`riskmodels_search`).
 2. Call `riskmodels_get_fundamentals` with `ticker` and optional `as_of` / `periods`.
 3. Report ratios, CAPM layer fields if present, and `sec_facts` only where SEC-sourced. Do not call the panel "raw fundamentals."
 

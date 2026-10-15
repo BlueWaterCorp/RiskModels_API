@@ -132,8 +132,8 @@ build-time link** to the API, so it rots silently when tools are renamed or resp
 When MCP tool names, capability ids, or a documented response shape change (fundamentals,
 decompose, hedge, rankings, lstar, residual-signal), **before each plugin release**:
 
-1. Diff the referenced tool ids against **live** `riskmodels_list_endpoints` and the MCP tool
-   surface (not repo source — E.29's lesson: served ≠ source).
+1. Diff the referenced tool ids against the **live** MCP `tools/list` (tool set 2.0: 25 hosted
+   tools, pinned in `tests/mcp-tool-surfaces.test.ts`) (not repo source — E.29's lesson: served ≠ source).
 2. Update SSOT under `RiskModels_API/claude-plugin/plugins/riskmodels/skills/*/SKILL.md`,
    `agents/riskmodels-analyst.md`, `commands/*.md`, `cookbook.md`, and `README.md` for any
    renamed tool / changed shape. Keep skills thin (wrappers + prompts; no logic that can drift).

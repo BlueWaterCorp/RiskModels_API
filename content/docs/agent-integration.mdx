@@ -30,8 +30,8 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
       </div>
       <p className="text-xs text-zinc-400 mt-3">After Connect, paste this so the agent pulls live numbers (not the catalog):</p>
       <div className="flex items-start justify-between gap-3 bg-zinc-950 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-xs text-zinc-200 mt-2">
-        <span className="leading-snug">Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data. Do not call riskmodels_list_endpoints unless I ask which REST routes exist.</span>
-        <CopyInline value={'Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data. Do not call riskmodels_list_endpoints unless I ask which REST routes exist.'} />
+        <span className="leading-snug">Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data.</span>
+        <CopyInline value={'Call riskmodels_compare with tickers ["AAPL","NVDA"]. Then call riskmodels_decompose on AAPL and on NVDA. Quote residual explained-risk and the L3 hedge ratios from the tool results. Do not answer from training data.'} />
       </div>
       <p className="text-xs text-zinc-600 mt-2">Prefer a terminal, or need Codex / VS Code? <code className="text-zinc-500">npx -y riskmodels@latest install</code> wires every client in one command.</p>
     </div>
@@ -171,10 +171,11 @@ Paste this into **Project Settings → Rules for AI** (or save as `.cursorrules`
 ```
 You are a RiskModels Analyst. Your goal is to help me perform quant research.
 
-1. Use the RiskModels MCP server for discovery: `riskmodels_list_endpoints`,
-   `riskmodels_get_capability`, `riskmodels_get_schema` (see mcp/README.md).
-2. For live data (metrics, batch portfolio, L3 series), call the REST API or use
-   `riskmodels-py` — the repo MCP server does not expose separate portfolio/decomposition tools.
+1. Use the RiskModels MCP tools for live data (see mcp/README.md): for example
+   `riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_get_returns`,
+   `riskmodels_analyze_portfolio`. The REST catalog and schemas are MCP resources
+   (riskmodels:///capabilities, riskmodels:///schemas/{path}).
+2. Outside MCP, call the REST API or use `riskmodels-py`.
 3. When asked to "graph the residuals," fetch L3 decomposition or returns via
    GET /api/l3-decomposition or GET /api/ticker-returns (or the Python SDK) and plot
    explained-risk or residual columns per SEMANTIC_ALIASES.md.
@@ -210,13 +211,33 @@ ChatGPT supports custom remote MCP servers, but the UI is hidden until **Develop
 
 Machine-readable discovery: [`/.well-known/mcp.json`](/.well-known/mcp.json) · OAuth metadata: [`/.well-known/oauth-protected-resource/api/mcp/openai`](/.well-known/oauth-protected-resource/api/mcp/openai).
 
-**OpenAI tool surface.** `https://riskmodels.app/api/mcp/openai` uses the same sign-in, API keys, billing and tool handlers as `https://riskmodels.app/api/mcp/sse`. Its tool list differs:
+<h3 id="mcp-tool-set-2">Tool set 2.0</h3>
 
-- No generic REST reader (`riskmodels_call_endpoint`). Six explicit read-only tools cover the GET routes it was used for: `riskmodels_get_peers`, `riskmodels_search_funds`, `riskmodels_get_fund_snapshot`, `riskmodels_get_fund_holdings`, `riskmodels_get_macro_factor_returns` and `riskmodels_get_sector_etf_returns`.
-- `riskmodels_get_lstar` and `riskmodels_batch_lstar` are named `riskmodels_get_residual_returns` and `riskmodels_get_residual_returns_batch` (same inputs and output).
-- No REST catalog tools (`riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`). The REST reference stays at [/docs/api](/docs/api).
+`https://riskmodels.app/api/mcp/openai` and `https://riskmodels.app/api/mcp/sse` use the same sign-in, API keys, billing, tools, prompts and server instructions. Both serve 25 tools; the npm package `@riskmodels/mcp` 2.0.0 serves the same tools except `riskmodels_render_artifact` (24). Claude, Cursor, Grok and the other clients on this page use `/api/mcp/sse`; ChatGPT, the Cursor Agent Plugin and Gemini use `/api/mcp/openai`.
 
-Every tool on both endpoints is annotated read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`). Claude, Cursor, Grok and the other clients on this page use `/api/mcp/sse`.
+Tools: `riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_get_return_attribution`, `riskmodels_get_residual_returns`, `riskmodels_get_residual_signal`, `riskmodels_get_macro_correlation`, `riskmodels_get_fundamentals`, `riskmodels_analyze_portfolio`, `riskmodels_get_portfolio_risk_snapshot`, `riskmodels_portfolio_exposure`, `riskmodels_decompose_selection_vs_drift`, `riskmodels_get_my_positions`, `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_cohorts`, `riskmodels_get_peers`, `riskmodels_search`, `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`, `riskmodels_get_benchmark_fit`, `riskmodels_get_factor_returns`, and on the hosted endpoints `riskmodels_render_artifact`. Each description states when to use the tool, what to use instead, what it returns, data freshness (end-of-day) and price. Every tool is annotated read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`).
+
+**Migration from 1.x.** Unless noted, merged tools call the same REST routes with the same request bodies.
+
+| 1.x tool | 2.0 tool |
+|---|---|
+| `get_metrics`, `riskmodels_get_hedge_levels` | `riskmodels_get_stock_snapshot` |
+| `riskmodels_hedge_position` | `riskmodels_decompose` with `dollars` |
+| `get_l3_decomposition` | removed; `riskmodels_get_returns` (daily L3 hedge ratios and explained risk) or `riskmodels_get_return_attribution` (factor and residual returns) |
+| `riskmodels_get_lstar`, `riskmodels_batch_lstar`, `riskmodels_get_residual_returns_batch` | `riskmodels_get_residual_returns` (one ticker: `GET /lstar`; 2-100: `POST /batch/lstar`) |
+| `get_fundamentals` (npm) | `riskmodels_get_fundamentals` |
+| `riskmodels_hedge_portfolio` | `riskmodels_analyze_portfolio` with dollar positions |
+| `riskmodels_portfolio_decompose`, `get_portfolio_risk_snapshot`, `post_snapshot` (npm) | `riskmodels_get_portfolio_risk_snapshot` (`POST /snapshot`, the canonical superset; same $1.25) |
+| `riskmodels_search_tickers`, `riskmodels_search_etfs`, `riskmodels_search_filers`, `riskmodels_search_funds` | `riskmodels_search` with `type` stock, etf, filer or fund |
+| `riskmodels_get_filer_snapshot`, `riskmodels_get_filer_holdings` | `riskmodels_get_filer` (`holdings_top` adds holdings) |
+| `riskmodels_get_fund_snapshot`, `riskmodels_get_fund_holdings` | `riskmodels_get_fund` (`holdings_limit` adds holdings) |
+| `riskmodels_get_etf_holdings` | `riskmodels_get_etf` with `holdings_top` |
+| `riskmodels_get_macro_factor_returns`, `riskmodels_get_sector_etf_returns` | `riskmodels_get_factor_returns` with `kind` macro or sector_etf |
+| `riskmodels_call_endpoint` | removed; its fund, peer and factor routes have explicit tools |
+| `riskmodels_list_endpoints`, `riskmodels_get_capability`, `riskmodels_get_schema`, `riskmodels_get_openapi_spec` | removed; MCP resources `riskmodels:///capabilities`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi` and [/docs/api](/docs/api) |
+| `riskmodels_whitepaper_example` | removed; the `follow_whitepaper` prompt runs the regular tools |
+
+The full table with notes is in [`mcp/README.md`](https://github.com/BlueWaterCorp/RiskModels_API/blob/main/mcp/README.md#tool-set-20).
 
 **Not the same as ChatGPT Finances.** The Schwab / Finances connector only sees brokerage holdings. RiskModels is a separate MCP app for factor decomposition and hedge ratios.
 
@@ -232,7 +253,7 @@ Example tickers ChatGPT may already see: `VTI`, `GOOG`, `MS`, `AMZN`, `IEMG`, `N
 
 <h3 id="claude-alpaca">Claude + a linked brokerage book</h3>
 
-Connect Alpaca, Connect Trade, or Plaid in Settings, then use the RiskModels connector alone. `riskmodels_get_my_positions` reads the synced book; `riskmodels_analyze_portfolio` and `riskmodels_hedge_portfolio` decompose it and size the ETF legs. RiskModels does not place orders. Alpaca's own MCP server is an optional extra for clients who want order entry in the same chat. Setup is on [Alpaca + RiskModels](/docs/alpaca).
+Connect Alpaca, Connect Trade, or Plaid in Settings, then use the RiskModels connector alone. `riskmodels_get_my_positions` reads the synced book; `riskmodels_analyze_portfolio` decomposes it and, with dollar positions, sizes the ETF legs. RiskModels does not place orders. Alpaca's own MCP server is an optional extra for clients who want order entry in the same chat. Setup is on [Alpaca + RiskModels](/docs/alpaca).
 
 <h3 id="grok-mcp">Grok (Connectors)</h3>
 
@@ -331,13 +352,13 @@ RiskModels is one specialized link in an agent's tool chain. Outputs are stable 
 
    The response `hedge` object is `{ ETF: ratio }` — e.g. `{ "SPY": 0.85, "XLK": 0.15 }`. Those ETF tickers and ratios are the join key to the next step.
 
-2. **Scale to a dollar position.** Feed the same ticker + your notional to `riskmodels_hedge_position` (MCP) or `POST /api/hedge-basket/{ticker}` to turn ratios into share/dollar legs.
+2. **Scale to a dollar position.** Feed the same ticker + your notional to `riskmodels_decompose` with `dollars` (MCP) or `POST /api/hedge-basket/{ticker}` to turn ratios into share/dollar legs.
 
 3. **Roll up to a portfolio.** `riskmodels_get_my_positions` reads a book already synced from Alpaca, Connect Trade, or Plaid. Pass that book to `POST /api/portfolio/risk-snapshot` for variance decomposition across names. RiskModels returns the ETF legs and does not place orders. A client who wants order entry in the same chat can add the broker's own MCP; see [Alpaca + RiskModels](/docs/alpaca).
 
 **Why this chains cleanly:**
 
-- **Stable schemas.** Every response shape is published at [`/openapi.json`](/openapi.json) and the per-response JSON schemas (`riskmodels_get_schema` / `riskmodels:///schemas/{path}`). Validate before wiring a downstream call.
+- **Stable schemas.** Every response shape is published at [`/openapi.json`](/openapi.json) and the per-response JSON schemas (MCP resource `riskmodels:///schemas/{path}`). Validate before wiring a downstream call.
 - **Citeable outputs.** `_metadata.model_version` + `data_as_of` and `_agent.request_id` travel with each result, so a downstream tool (or an auditor) can trace exactly which inputs produced an action.
 - **Idempotent steps.** Send an `Idempotency-Key` on POSTs so a retried chain step never double-charges or double-acts.
 - **Cost & latency in-band.** `_agent.cost_usd` and `_agent.latency_ms` let an orchestrating agent budget a multi-call plan before running it.

@@ -318,17 +318,11 @@ for line in response.iter_lines():
 
 ### Available MCP Tools
 
-After connecting, use JSON-RPC **`tools/list`** to discover tools exposed by **that** session. Names and behavior can differ between the **hosted** MCP endpoint and the **local** stdio server in this repo’s [`mcp/`](../mcp/).
+After connecting, use JSON-RPC **`tools/list`** to list the tools. Tool set 2.0 is one registry: the local stdio server in [`mcp/`](../mcp/) (`@riskmodels/mcp` 2.0.0) serves 24 tools and the hosted endpoints (`/api/mcp/sse`, `/api/mcp/openai`) serve the same 24 plus `riskmodels_render_artifact`:
 
-**Local `mcp/` (this repository)** exposes discovery-only tools:
+`riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_get_return_attribution`, `riskmodels_get_residual_returns`, `riskmodels_get_residual_signal`, `riskmodels_get_macro_correlation`, `riskmodels_get_fundamentals`, `riskmodels_analyze_portfolio`, `riskmodels_get_portfolio_risk_snapshot`, `riskmodels_portfolio_exposure`, `riskmodels_decompose_selection_vs_drift`, `riskmodels_get_my_positions`, `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_cohorts`, `riskmodels_get_peers`, `riskmodels_search`, `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`, `riskmodels_get_benchmark_fit`, `riskmodels_get_factor_returns`.
 
-| Tool | Description |
-|------|-------------|
-| `riskmodels_list_endpoints` | List API capabilities (id, method, endpoint, short description) |
-| `riskmodels_get_capability` | Full capability record by id |
-| `riskmodels_get_schema` | JSON Schema for a response path / filename |
-
-Portfolio analysis, hedging, and L3 decomposition are **REST/SDK** concerns (e.g. `POST /api/batch/analyze`, `GET /api/l3-decomposition`, `riskmodels-py`), not implemented as separate MCP tools in `mcp/`.
+The REST catalog and response schemas are MCP resources (`riskmodels:///capabilities`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi`). The full table and the 1.x → 2.0 migration table are in [`mcp/README.md`](../mcp/README.md#tool-set-20).
 
 ### Example: Calling a Tool
 
@@ -337,9 +331,9 @@ Portfolio analysis, hedging, and L3 decomposition are **REST/SDK** concerns (e.g
   "jsonrpc": "2.0",
   "method": "tools/call",
   "params": {
-    "name": "riskmodels_get_capability",
+    "name": "riskmodels_get_stock_snapshot",
     "arguments": {
-      "id": "risk-decomposition"
+      "ticker": "NVDA"
     }
   },
   "id": 1

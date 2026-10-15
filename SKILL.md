@@ -9,8 +9,8 @@ You are an expert at using the `riskmodels` npm package and the associated MCP s
 
 **Before building any API client or adding new HTTP/SDK calls**, follow the project skill **[RiskModels API discovery](.cursor/skills/riskmodels-api-discovery/SKILL.md)**:
 
-1. Call MCP **`riskmodels_list_endpoints`** first for the latest endpoint and provisioning index (no inputs).
-2. Then **`riskmodels_get_capability`** / **`riskmodels_get_schema`** for the endpoints you use.
+1. Read the MCP resource **`riskmodels:///capabilities`** for the latest endpoint and provisioning index.
+2. Then **`riskmodels:///schemas/list`** / **`riskmodels:///schemas/{path}`** for the response schemas you use.
 3. If MCP is disabled, read **`OPENAPI_SPEC.yaml`** and **`mcp/data/openapi.json`** in this repo.
 
 **Cursor:** For reliable dynamic MCP tool registration, enable the **Nightly** update channel locally (Settings → Beta → Update channel). The agent cannot enable this for you.
@@ -22,8 +22,8 @@ Use **`RISKMODELS_API_KEY=… npx -y riskmodels@latest install`** (optional `--d
 
 ## Instructions for Research Requests
 When a user asks to "graph," "analyze," or "compare" tickers:
-1. **Discovery:** Use MCP tools **`riskmodels_list_endpoints`** (first), then **`riskmodels_get_capability`** / **`riskmodels_get_schema`**, to confirm endpoint ids and parameters.
-2. **Fetch Data:** Load L1/L2/L3 or returns via the **REST API** or **`riskmodels-py`** (e.g. `GET /api/l3-decomposition`, `GET /api/ticker-returns`, or `RiskModelsClient` methods) — the bundled `mcp` does not implement a separate decomposition tool.
+1. **Discovery:** Read the MCP resources **`riskmodels:///capabilities`** and **`riskmodels:///schemas/{path}`** to confirm endpoint ids and parameters.
+2. **Fetch Data:** Load L1/L2/L3 or returns with the MCP tools (`riskmodels_get_returns`, `riskmodels_get_return_attribution`), the **REST API** or **`riskmodels-py`** (e.g. `GET /api/l3-decomposition`, `GET /api/ticker-returns`).
 3. **Normalize:** Always convert ISO date strings to datetime objects.
 4. **Graphing:** Use `matplotlib` or `plotly`.
    - Primary Y-axis: Returns or Residuals.

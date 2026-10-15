@@ -43,7 +43,7 @@ export async function GET() {
     llms_txt: `${base}/llms.txt`,
     first_prompt: FIRST_LIVE_PROMPT_MCP,
     after_connect:
-      "Paste first_prompt into the chat. Call data tools (riskmodels_compare / riskmodels_decompose). Do not start with list_endpoints.",
+      "Paste first_prompt into the chat. Call data tools (riskmodels_compare / riskmodels_decompose). The REST catalog is the riskmodels:///capabilities resource.",
     client_setup: {
       claude_desktop_cursor:
         "Settings → Connectors → Add custom connector → paste MCP URL → OAuth sign-in (leave client id/secret blank)",

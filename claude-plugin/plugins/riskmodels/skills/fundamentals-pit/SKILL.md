@@ -21,7 +21,7 @@ RiskModels MCP; it reports tool outputs and computes nothing itself.
 
 ## What to call
 
-Resolve a company name to a ticker first (`riskmodels_search_tickers`), then:
+Resolve a company name to a ticker first (`riskmodels_search`), then:
 
 - **`riskmodels_get_fundamentals`** — the one tool. Params: `ticker`, `as_of`
   (PIT date, default today), `periods` (quarterly rows, most recent last). Set
