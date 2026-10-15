@@ -24,3 +24,10 @@ export const MCP_SERVER_INSTRUCTIONS = `RiskModels returns US-equity factor risk
 All data is end-of-day and historical. Every tool is read-only: tools do not forecast, do not place orders and do not modify account data. Tools that call billed REST endpoints charge the connected RiskModels account; each tool's description states its price. The REST catalog, response schemas and OpenAPI specification are MCP resources (riskmodels:///capabilities, riskmodels:///schemas/list, riskmodels:///openapi).
 
 API reference: https://riskmodels.app/docs/api`;
+
+/** OpenAI surface: prices are stated here once instead of in each tool description. */
+export const OPENAI_MCP_SERVER_INSTRUCTIONS = `RiskModels returns US-equity factor risk from the ERM3 model: market, sector, subsector and residual risk decomposition; residual (stock-specific) returns with the recommended hedge depth; ETF hedge ratios and hedge notionals; long-only and long/short portfolio exposure; cross-sectional rankings, peer groups and cohort statistics; 13F filer, mutual fund and ETF holdings; macro factor and sector ETF returns; and point-in-time quarterly fundamentals.
+
+All data is end-of-day and historical. Every tool is read-only: tools do not forecast, do not place orders and do not modify account data. Usage of billed REST endpoints is metered against the connected account's prepaid API credits at the per-call prices published at https://riskmodels.app/pricing; calls change no data. The REST catalog, response schemas and OpenAPI specification are MCP resources (riskmodels:///capabilities, riskmodels:///schemas/list, riskmodels:///openapi).
+
+API reference: https://riskmodels.app/docs/api`;

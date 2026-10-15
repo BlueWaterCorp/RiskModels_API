@@ -27,7 +27,11 @@ import {
   registerRiskModelsWhitepaperResources,
 } from "@/lib/mcp/tools/riskmodels-tools";
 import { registerRiskModelsRenderTool } from "@/lib/mcp/render-tool";
-import { FIRST_LIVE_PROMPT_MCP, MCP_SERVER_INSTRUCTIONS } from "@/lib/mcp/activation";
+import {
+  FIRST_LIVE_PROMPT_MCP,
+  MCP_SERVER_INSTRUCTIONS,
+  OPENAI_MCP_SERVER_INSTRUCTIONS,
+} from "@/lib/mcp/activation";
 import type { McpSurface } from "@/lib/mcp/openai-surface";
 
 const DATA_DIR = join(process.cwd(), "mcp", "data");
@@ -43,6 +47,35 @@ export type McpServerOptions = {
    */
   surface?: McpSurface;
 };
+
+/**
+ * The OpenAI surface (/api/mcp/openai: ChatGPT, Gemini CLI, Cursor) states
+ * prices once, in its server instructions, not per tool: OpenAI's tool scan
+ * reads a per-call price in a read-only tool's description as a side effect
+ * (2026-10-15). Strips the trailing "Price: …" sentence from each description;
+ * everything else, including annotations and schemas, is unchanged.
+ */
+export function stripPriceSentence(description: string): string {
+  return description.replace(/\s*Price: [^]*$/, "");
+}
+
+function withoutPriceSentences(server: McpServer): McpServer {
+  return new Proxy(server, {
+    get(target, prop, receiver) {
+      if (prop === "registerTool") {
+        return (name: string, config: { description?: string }, cb: unknown) =>
+          (target.registerTool as (...args: unknown[]) => unknown).call(
+            target,
+            name,
+            config.description ? { ...config, description: stripPriceSentence(config.description) } : config,
+            cb,
+          );
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
 
 function loadJson<T>(relativePath: string): T | null {
   const p = join(DATA_DIR, relativePath);
@@ -74,7 +107,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       name: "riskmodels-api",
       version: "2.0.1",
     },
-    { instructions: MCP_SERVER_INSTRUCTIONS },
+    { instructions: opts.surface === "openai" ? OPENAI_MCP_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS },
   );
   const sdk = createRiskModelsSdk({
     apiKey: opts.apiKey,
@@ -212,8 +245,9 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
 
   // --- Tools: the shared 2.0 registry, then the hosted-only render tool ---
 
-  registerRiskModelsTools(sdk, server, { apiKey: opts.apiKey });
-  registerRiskModelsRenderTool(server);
+  const toolHost = opts.surface === "openai" ? withoutPriceSentences(server) : server;
+  registerRiskModelsTools(sdk, toolHost, { apiKey: opts.apiKey });
+  registerRiskModelsRenderTool(toolHost);
 
   return server;
 }
