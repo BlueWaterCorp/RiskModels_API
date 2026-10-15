@@ -215,6 +215,87 @@ const isoDate = (what: string, example = "2026-06-30") =>
     .optional()
     .describe(`${what}, format YYYY-MM-DD, e.g. ${example}`);
 
+/** One GET an entity tool makes, with its list price (capability registry). */
+type EntityLeg = { path: string; query?: Query; usd: number };
+
+/** A failed include call: the HTTP status and reason the SDK error carries. */
+export function includeFailure(error: unknown): { ok: false; status: number | null; error: string } {
+  const message = error instanceof Error ? error.message : String(error);
+  const m = /^RiskModels API (?:HTTP (\d{3}): ([^]*)|request failed with HTTP (\d{3}))$/.exec(message);
+  if (!m) return { ok: false, status: null, error: message };
+  return { ok: false, status: Number(m[1] ?? m[3]), error: m[2] ?? message };
+}
+
+/** Months of history the *_history and concentration include values request by default. */
+export const INCLUDE_HISTORY_MONTHS = 24;
+
+/** start_date (YYYY-MM-DD, UTC) `months` months before `now`, the lower bound of a history include. */
+export function historyStartDate(months: number, now: Date = new Date()): string {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate()))
+    .toISOString()
+    .slice(0, 10);
+}
+
+const usd = (x: number) => Math.round(x * 10000) / 10000;
+
+/**
+ * Snapshot and holdings run in order; either failing fails the tool and no
+ * include fires. Includes then run together (Promise.allSettled): a failed
+ * include becomes { ok: false, status, error } and leaves the result a success.
+ * billing sums the list prices of the calls that succeeded (failed REST calls
+ * are not charged).
+ */
+async function entityWithIncludes(
+  sdk: Pick<RiskModelsClient, "call">,
+  base: { snapshot?: EntityLeg; holdings?: EntityLeg },
+  includes: Record<string, EntityLeg>,
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  let baseUsd = 0;
+  for (const key of ["snapshot", "holdings"] as const) {
+    const leg = base[key];
+    if (!leg) continue;
+    out[key] = await sdk.call("GET", leg.path, leg.query ? { query: leg.query } : {});
+    baseUsd += leg.usd;
+  }
+  const names = Object.keys(includes);
+  const settled = await Promise.allSettled(
+    names.map((n) => sdk.call("GET", includes[n]!.path, includes[n]!.query ? { query: includes[n]!.query } : {})),
+  );
+  const blocks: Record<string, unknown> = {};
+  const includesUsd: Record<string, number> = {};
+  settled.forEach((s, i) => {
+    const n = names[i]!;
+    blocks[n] = s.status === "fulfilled" ? s.value : includeFailure(s.reason);
+    includesUsd[n] = s.status === "fulfilled" ? includes[n]!.usd : 0;
+  });
+  out.includes = blocks;
+  out.billing = {
+    base_usd: usd(baseUsd),
+    includes_usd: includesUsd,
+    total_usd: usd(baseUsd + Object.values(includesUsd).reduce((a, b) => a + b, 0)),
+  };
+  return out;
+}
+
+const SNAPSHOT_PARAM = (what: string) =>
+  z
+    .boolean()
+    .optional()
+    .describe(
+      `Also fetch the ${what} snapshot, e.g. false for holdings only (default true; false needs holdings or an include value)`,
+    );
+
+const HISTORY_MONTHS_PARAM = z
+  .number()
+  .int()
+  .min(1)
+  .max(60)
+  .optional()
+  .describe(
+    `Months of history for the history and concentration include values, integer 1-60, e.g. 36 (default ${INCLUDE_HISTORY_MONTHS})`,
+  );
+
 type SdkSubset = Pick<
   RiskModelsClient,
   | "decompose"
@@ -1020,15 +1101,18 @@ export function registerRiskModelsTools(
     .min(1)
     .describe("bw_filer_id, e.g. BW-FILER-CIK0001067983, or a composite entity id BW-SYNTH-…");
 
+  const FILER_INCLUDES = ["concentration", "portfolio_history", "metrics"] as const;
+
   server.registerTool(
     "riskmodels_get_filer",
     {
       title: "RiskModels 13F Filer",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want a 13F filer's profile, latest metrics and concentration, and optionally its largest holdings. Not for finding the bw_filer_id (use riskmodels_search) or comparing the book with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot, holdings }: snapshot from GET /13f/filers/{bw_filer_id}/snapshot (registry details, latest metrics, concentration); holdings, only when holdings_top is set, from GET /13f/filers/{bw_filer_id}/holdings with the source filing's accession_number, filing_type (13F-HR, 13F-HR/A, 13F-NT) and amendment_type (ORIGINAL, RESTATEMENT, NEW_HOLDINGS or UNKNOWN; null on panels published before filing vintages were stored). Holdings follow the latest 13F filing; metrics use end-of-day prices. Price: $0.05, plus $0.02 when holdings are requested.",
+        "Use when you want a 13F filer's profile, latest metrics and concentration, and optionally its largest holdings, a concentration summary, its quarterly portfolio history or its latest metrics row. Not for finding the bw_filer_id (use riskmodels_search) or comparing the book with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot, holdings, includes, billing }: snapshot from GET /13f/filers/{bw_filer_id}/snapshot (registry details, latest metrics, concentration), omitted when snapshot is false; holdings, only when holdings_top is set, from GET /13f/filers/{bw_filer_id}/holdings with the source filing's accession_number, filing_type (13F-HR, 13F-HR/A, 13F-NT) and amendment_type (ORIGINAL, RESTATEMENT, NEW_HOLDINGS or UNKNOWN; null on panels published before filing vintages were stored); includes, one block per include value, each the route's own response with its own date fields (end_teo or report_date) or { ok: false, status, error } when that call failed; billing, the list price of each call that succeeded (base_usd, includes_usd, total_usd). Holdings follow the latest 13F filing; metrics use end-of-day prices. Price: $0.05 for the snapshot, plus $0.02 for holdings and $0.02 per include value.",
       inputSchema: {
         bw_filer_id: BW_FILER_ID,
+        snapshot: SNAPSHOT_PARAM("filer"),
         holdings_top: z
           .number()
           .int()
@@ -1036,17 +1120,49 @@ export function registerRiskModelsTools(
           .max(200)
           .optional()
           .describe("Also return the largest N holdings, integer 1-200, e.g. 25 (default: no holdings)"),
+        include: z
+          .array(z.enum(FILER_INCLUDES))
+          .min(1)
+          .max(FILER_INCLUDES.length)
+          .optional()
+          .describe(
+            'Extra data, one GET per value: "concentration" ($0.02): median and latest effective N, top-5 and top-10 weight share and weight HHI over the history window, GET /13f/filers/{bw_filer_id}/concentration; "portfolio_history" ($0.02): quarter-end diagnostics, AUM and style attribution over the history window, GET /13f/filers/{bw_filer_id}/portfolio; "metrics" ($0.02): latest metrics row (diagnostics, AUM, ERM3 coverage, 9-box style attribution), GET /13f/filers/{bw_filer_id}. The window is the last history_months months (default 24), e.g. ["concentration","metrics"]',
+          ),
+        history_months: HISTORY_MONTHS_PARAM,
       },
     },
-    async ({ bw_filer_id, holdings_top }) =>
-      run(async () => {
-        const id = encodeURIComponent(bw_filer_id.trim());
-        const snapshot = await sdk.call("GET", `/13f/filers/${id}/snapshot`);
-        if (holdings_top === undefined) return { snapshot };
-        const holdings = await sdk.call("GET", `/13f/filers/${id}/holdings`, { query: { top: holdings_top } });
-        return { snapshot, holdings };
-      }),
+    async ({ bw_filer_id, snapshot = true, holdings_top, include, history_months }) => {
+      const wanted = [...new Set<string>(include ?? [])];
+      if (!snapshot && holdings_top === undefined && wanted.length === 0) {
+        return toolErrorResult({
+          error: "snapshot=false needs holdings_top or at least one include value (concentration, portfolio_history, metrics).",
+        });
+      }
+      const id = encodeURIComponent(bw_filer_id.trim());
+      const window: Query = { start_date: historyStartDate(history_months ?? INCLUDE_HISTORY_MONTHS) };
+      const legs: Record<string, EntityLeg> = {
+        concentration: { path: `/13f/filers/${id}/concentration`, query: window, usd: 0.02 },
+        portfolio_history: { path: `/13f/filers/${id}/portfolio`, query: window, usd: 0.02 },
+        metrics: { path: `/13f/filers/${id}`, usd: 0.02 },
+      };
+      return run(() =>
+        entityWithIncludes(
+          sdk,
+          {
+            snapshot: snapshot ? { path: `/13f/filers/${id}/snapshot`, usd: 0.05 } : undefined,
+            // The route reads `limit` (top-N, max 1000).
+            holdings:
+              holdings_top === undefined
+                ? undefined
+                : { path: `/13f/filers/${id}/holdings`, query: { limit: holdings_top }, usd: 0.02 },
+          },
+          Object.fromEntries(wanted.map((n) => [n, legs[n]!])),
+        ),
+      );
+    },
   );
+
+  const FUND_INCLUDES = ["hedge", "nav_history", "portfolio_history", "metrics"] as const;
 
   server.registerTool(
     "riskmodels_get_fund",
@@ -1054,9 +1170,10 @@ export function registerRiskModelsTools(
       title: "RiskModels Mutual Fund",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want a US mutual fund's profile, return decomposition, hedge ratios and style-box ranks, and optionally its full holdings. Not for finding the bw_fund_id (use riskmodels_search) or comparing the fund with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot, holdings }: snapshot from GET /funds/snapshot/{bw_fund_id} (registry details, latest return decomposition and diagnostics, top 25 holdings, L1/L2/L3 ETF hedge ratios, a 12-month portfolio time series and the fund's rank within its style box on each ranked metric); holdings, only when holdings_limit is set, from GET /funds/{bw_fund_id}/holdings (latest filed SEC N-PORT report, ranked by absolute market value, signed weights, long/short/net/gross totals and ticker coverage). Holdings follow the latest N-PORT filing; metrics use end-of-day prices. Price: $0.05, plus $0.02 when holdings are requested.",
+        "Use when you want a US mutual fund's profile, return decomposition, hedge ratios and style-box ranks, and optionally its full holdings, latest ETF hedge ratios, NAV history, portfolio return history or latest metrics row. Not for finding the bw_fund_id (use riskmodels_search) or comparing the fund with a benchmark (use riskmodels_get_benchmark_fit). Returns { snapshot, holdings, includes, billing }: snapshot from GET /funds/snapshot/{bw_fund_id} (registry details, latest return decomposition and diagnostics, top 25 holdings, L1/L2/L3 ETF hedge ratios, a 12-month portfolio time series and the fund's rank within its style box on each ranked metric), omitted when snapshot is false; holdings, only when holdings_limit is set, from GET /funds/{bw_fund_id}/holdings (latest filed SEC N-PORT report, ranked by absolute market value, signed weights, long/short/net/gross totals and ticker coverage); includes, one block per include value, each the route's own response with its own date fields (teo, end_teo or report_date) or { ok: false, status, error } when that call failed; billing, the list price of each call that succeeded (base_usd, includes_usd, total_usd). Holdings follow the latest N-PORT filing; metrics use end-of-day prices. Price: $0.05 for the snapshot, plus $0.02 for holdings and $0.02 per include value.",
       inputSchema: {
         bw_fund_id: z.string().min(1).describe("Fund id, e.g. BW-FUND-S000019457"),
+        snapshot: SNAPSHOT_PARAM("fund"),
         holdings_limit: z
           .number()
           .int()
@@ -1064,16 +1181,46 @@ export function registerRiskModelsTools(
           .max(5000)
           .optional()
           .describe("Also return up to N holdings, integer 1-5000, e.g. 100; 5000 returns the whole book (default: no holdings)"),
+        include: z
+          .array(z.enum(FUND_INCLUDES))
+          .min(1)
+          .max(FUND_INCLUDES.length)
+          .optional()
+          .describe(
+            'Extra data, one GET per value: "hedge" ($0.02): latest L1/L2/L3 ETF hedge ratios from the holdings look-through, with teo and the holdings report date behind them, GET /funds/{bw_fund_id}/hedge; "nav_history" ($0.02): month-end NAV close and monthly NAV return over the history window, GET /funds/{bw_fund_id}/nav; "portfolio_history" ($0.02): month-end portfolio return components and diagnostics over the history window, GET /funds/{bw_fund_id}/portfolio; "metrics" ($0.02): latest return decomposition and diagnostics, GET /funds/{bw_fund_id}. The window is the last history_months months (default 24), e.g. ["hedge","nav_history"]',
+          ),
+        history_months: HISTORY_MONTHS_PARAM,
       },
     },
-    async ({ bw_fund_id, holdings_limit }) =>
-      run(async () => {
-        const id = encodeURIComponent(bw_fund_id.trim());
-        const snapshot = await sdk.call("GET", `/funds/snapshot/${id}`);
-        if (holdings_limit === undefined) return { snapshot };
-        const holdings = await sdk.call("GET", `/funds/${id}/holdings`, { query: { limit: holdings_limit } });
-        return { snapshot, holdings };
-      }),
+    async ({ bw_fund_id, snapshot = true, holdings_limit, include, history_months }) => {
+      const wanted = [...new Set<string>(include ?? [])];
+      if (!snapshot && holdings_limit === undefined && wanted.length === 0) {
+        return toolErrorResult({
+          error: "snapshot=false needs holdings_limit or at least one include value (hedge, nav_history, portfolio_history, metrics).",
+        });
+      }
+      const id = encodeURIComponent(bw_fund_id.trim());
+      const window: Query = { start_date: historyStartDate(history_months ?? INCLUDE_HISTORY_MONTHS) };
+      const legs: Record<string, EntityLeg> = {
+        hedge: { path: `/funds/${id}/hedge`, usd: 0.02 },
+        nav_history: { path: `/funds/${id}/nav`, query: window, usd: 0.02 },
+        portfolio_history: { path: `/funds/${id}/portfolio`, query: window, usd: 0.02 },
+        metrics: { path: `/funds/${id}`, usd: 0.02 },
+      };
+      return run(() =>
+        entityWithIncludes(
+          sdk,
+          {
+            snapshot: snapshot ? { path: `/funds/snapshot/${id}`, usd: 0.05 } : undefined,
+            holdings:
+              holdings_limit === undefined
+                ? undefined
+                : { path: `/funds/${id}/holdings`, query: { limit: holdings_limit }, usd: 0.02 },
+          },
+          Object.fromEntries(wanted.map((n) => [n, legs[n]!])),
+        ),
+      );
+    },
   );
 
   server.registerTool(
@@ -1082,9 +1229,13 @@ export function registerRiskModelsTools(
       title: "RiskModels ETF",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want one ETF's registry metadata and portfolio surface, and optionally its largest holdings. Not for finding an ETF ticker (use riskmodels_search) or the ETF's daily returns (use riskmodels_get_returns). Returns { snapshot, holdings }: snapshot from GET /data/etf/{ticker}; holdings, only when holdings_top is set, from GET /data/etf/{ticker}/holdings. Holdings follow the latest published holdings file; registry refreshed end-of-day. Free (no per-call charge).",
+        "Use when you want one ETF's registry metadata and portfolio surface, and optionally its largest holdings. Not for finding an ETF ticker (use riskmodels_search) or the ETF's daily returns (use riskmodels_get_returns). Returns { snapshot, holdings }: snapshot from GET /data/etf/{ticker}, omitted when snapshot is false; holdings, only when holdings_top is set, from GET /data/etf/{ticker}/holdings. Holdings follow the latest published holdings file; registry refreshed end-of-day. Free (no per-call charge).",
       inputSchema: {
         ticker: z.string().min(1).describe("ETF ticker symbol, case-insensitive, e.g. SMH"),
+        snapshot: z
+          .boolean()
+          .optional()
+          .describe("Also fetch the ETF snapshot, e.g. false for holdings only (default true; false needs holdings_top)"),
         holdings_top: z
           .number()
           .int()
@@ -1094,14 +1245,20 @@ export function registerRiskModelsTools(
           .describe("Also return the largest N holdings, integer 1-200, e.g. 25 (default: no holdings)"),
       },
     },
-    async ({ ticker, holdings_top }) =>
-      run(async () => {
+    async ({ ticker, snapshot = true, holdings_top }) => {
+      if (!snapshot && holdings_top === undefined) {
+        return toolErrorResult({ error: "snapshot=false needs holdings_top." });
+      }
+      return run(async () => {
         const t = encodeURIComponent(upper(ticker));
-        const snapshot = await sdk.call("GET", `/data/etf/${t}`);
-        if (holdings_top === undefined) return { snapshot };
-        const holdings = await sdk.call("GET", `/data/etf/${t}/holdings`, { query: { top: holdings_top } });
-        return { snapshot, holdings };
-      }),
+        const out: Record<string, unknown> = {};
+        if (snapshot) out.snapshot = await sdk.call("GET", `/data/etf/${t}`);
+        if (holdings_top !== undefined) {
+          out.holdings = await sdk.call("GET", `/data/etf/${t}/holdings`, { query: { top: holdings_top } });
+        }
+        return out;
+      });
+    },
   );
 
   server.registerTool(

@@ -41,12 +41,31 @@ Every tool is read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWo
 | `riskmodels_get_cohorts` | `GET /cohorts` or `GET /cohorts/series` | $0.04 / $0.15 |
 | `riskmodels_get_peers` | `GET /peers` | $0.005 |
 | `riskmodels_search` | `GET /tickers`, `/data/etf/search`, `/funds/search`, `/13f/filers/search` by `type` | Free |
-| `riskmodels_get_filer` | `GET /13f/filers/{id}/snapshot` (+ `/holdings` when `holdings_top` is set) | $0.05 (+$0.02) |
-| `riskmodels_get_fund` | `GET /funds/snapshot/{id}` (+ `/funds/{id}/holdings` when `holdings_limit` is set) | $0.05 (+$0.02) |
-| `riskmodels_get_etf` | `GET /data/etf/{ticker}` (+ `/holdings` when `holdings_top` is set) | Free |
+| `riskmodels_get_filer` | `GET /13f/filers/{id}/snapshot` (+ `/holdings` when `holdings_top` is set; + one GET per `include` value, see below) | $0.05 snapshot (+$0.02 holdings, +$0.02 per include) |
+| `riskmodels_get_fund` | `GET /funds/snapshot/{id}` (+ `/funds/{id}/holdings` when `holdings_limit` is set; + one GET per `include` value, see below) | $0.05 snapshot (+$0.02 holdings, +$0.02 per include) |
+| `riskmodels_get_etf` | `GET /data/etf/{ticker}` (+ `/holdings` when `holdings_top` is set; `snapshot: false` for holdings only) | Free |
 | `riskmodels_get_benchmark_fit` | `GET /data/benchmark-fit` | $0.02 |
 | `riskmodels_get_factor_returns` | `GET /macro-factors` (`kind=macro`) or `GET /etf/factor-returns` (`kind=sector_etf`) | $0.005 macro / $0.02 sector ETF |
 | `riskmodels_render_artifact` (hosted only) | render service | $0.25 list price |
+
+### Include values
+
+New data arrives as include values, not new tools. An entity tool takes an optional `include` array; each value triggers one extra GET to an existing REST route, billed at that route's price.
+
+| Tool | `include` value | REST route | Price |
+|---|---|---|---|
+| `riskmodels_get_fund` | `hedge` | `GET /funds/{id}/hedge` (latest L1/L2/L3 ETF hedge ratios from the holdings look-through) | $0.02 |
+| `riskmodels_get_fund` | `nav_history` | `GET /funds/{id}/nav?start_date=…` | $0.02 |
+| `riskmodels_get_fund` | `portfolio_history` | `GET /funds/{id}/portfolio?start_date=…` | $0.02 |
+| `riskmodels_get_fund` | `metrics` | `GET /funds/{id}` | $0.02 |
+| `riskmodels_get_filer` | `concentration` | `GET /13f/filers/{id}/concentration?start_date=…` | $0.02 |
+| `riskmodels_get_filer` | `portfolio_history` | `GET /13f/filers/{id}/portfolio?start_date=…` | $0.02 |
+| `riskmodels_get_filer` | `metrics` | `GET /13f/filers/{id}` | $0.02 |
+
+- History and concentration values cover the last `history_months` months (default 24, max 60); the MCP layer does not request an unbounded panel.
+- Holdings stay on `holdings_limit` (fund) and `holdings_top` (filer, ETF). `snapshot: false` skips the snapshot call so a caller pays only for holdings or include values; with `snapshot: false` and neither holdings nor an include value the tool returns an error.
+- Response: `{ snapshot?, holdings?, includes: { <value>: data | { ok: false, status, error } }, billing: { base_usd, includes_usd, total_usd } }`. Each include block is the route's own response, with its own date fields (`teo`, `end_teo` or `report_date`). `billing` sums the list prices of calls that succeeded; failed REST calls are not charged.
+- A failed snapshot or holdings call is a tool error and no include fires. Includes run in parallel; a failed include is reported in its block and does not flag the result as an error.
 
 ### Migration from 1.x
 
