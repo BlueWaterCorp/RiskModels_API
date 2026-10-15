@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-15 — `@riskmodels/mcp` 2.0.1
+
+- 2.0.0 was published with a local-path SDK dependency and failed to start for every installer; it is deprecated. 2.0.1 depends on the published `@riskmodels/sdk` ^0.1.4 and is otherwise identical.
+- `npm publish` now runs `scripts/check-publish-deps.mjs` (prepublishOnly) and refuses to publish while any dependency uses `file:`, `link:` or `workspace:`.
+
 ## 2026-10-15 — MCP tool set 2.0 (`@riskmodels/mcp` 2.0.0)
 
 - One tool registry (`registerRiskModelsTools`) for the npm stdio server and both hosted surfaces. npm registers 24 tools; `/api/mcp/sse` and `/api/mcp/openai` register the same 24 plus `riskmodels_render_artifact` (25). Before: npm 39, `/sse` 37, `/openai` 39, hand-copied and drifting.
