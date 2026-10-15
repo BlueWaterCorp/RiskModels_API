@@ -5,9 +5,13 @@
  * resources and tools registered. Callers attach a transport (stdio,
  * Streamable HTTP, etc.) separately.
  *
- * Keep this file free of transport imports so both the stdio binary and
- * a future hosted route (Next.js `/api/mcp/sse` or a Node sidecar) can
- * import the same factory.
+ * Keep this file free of transport imports so the stdio binary and any
+ * other transport can import the same factory.
+ *
+ * Tools come from the shared registry `registerRiskModelsTools`
+ * (lib/mcp/tools/riskmodels-tools.ts), the same one the hosted server
+ * (`lib/mcp/server.ts`) uses. The hosted server also registers
+ * `riskmodels_render_artifact`, which needs GCP auth and is not in this package.
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -18,23 +22,14 @@ import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import {
   createRiskModelsSdk,
-  READ_ONLY_TOOL_ANNOTATIONS,
   withAnnotationTitles,
   registerRiskModelsPrompts,
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
 } from "../../lib/mcp/tools/riskmodels-tools.js";
-import {
-  FIRST_LIVE_PROMPT_MCP,
-  GET_CAPABILITY_DESCRIPTION,
-  GET_OPENAPI_SPEC_DESCRIPTION,
-  GET_SCHEMA_DESCRIPTION,
-  LIST_ENDPOINTS_DESCRIPTION,
-  MCP_SERVER_INSTRUCTIONS,
-} from "../../lib/mcp/activation.js";
+import { FIRST_LIVE_PROMPT_MCP, MCP_SERVER_INSTRUCTIONS } from "../../lib/mcp/activation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // tsc nests output under dist/mcp/src because the server imports ../../lib, so
@@ -91,113 +86,6 @@ function resolveCredentials(opts: McpServerOptions = {}): {
   return { apiKey, apiBase };
 }
 
-type MeterEnvelope = {
-  _cost_usd?: number;
-  _balance_remaining_usd?: number;
-  _monthly_spend_cap_usd?: number;
-  _current_monthly_spend_usd?: number;
-  _rate_limit_remaining?: number;
-  _data_as_of?: string;
-  _data_source?: string;
-  _latency_ms?: number;
-  _request_id?: string;
-  _pricing_tier?: string;
-};
-
-const TOKEN_PRICE_USD = 0.00002;
-
-function extractMeter(headers: Headers): MeterEnvelope {
-  const parseNum = (h: string | null) => (h == null ? undefined : Number(h));
-  const balanceTokens = parseNum(headers.get("X-Balance-Remaining"));
-  const balanceUsd =
-    balanceTokens !== undefined && !Number.isNaN(balanceTokens)
-      ? +(balanceTokens * TOKEN_PRICE_USD).toFixed(4)
-      : undefined;
-  return {
-    _cost_usd: parseNum(headers.get("X-API-Cost-USD")),
-    _balance_remaining_usd: balanceUsd,
-    _monthly_spend_cap_usd: parseNum(headers.get("X-Monthly-Spend-Cap-USD")),
-    _current_monthly_spend_usd: parseNum(headers.get("X-Current-Monthly-Spend-USD")),
-    _rate_limit_remaining: parseNum(headers.get("X-RateLimit-Remaining")),
-    _data_as_of: headers.get("X-Data-As-Of") || undefined,
-    _latency_ms: parseNum(headers.get("X-Data-Fetch-Latency-Ms")),
-    _request_id: headers.get("X-Request-ID") || undefined,
-    _pricing_tier: headers.get("X-Pricing-Tier") || undefined,
-  };
-}
-
-async function apiCall(
-  opts: McpServerOptions,
-  method: "GET" | "POST",
-  path: string,
-  init: { query?: Record<string, string>; body?: unknown } = {},
-): Promise<{ status: number; data: unknown; meter: MeterEnvelope; error?: string }> {
-  const { apiKey, apiBase } = resolveCredentials(opts);
-  if (!apiKey) {
-    return {
-      status: 0,
-      data: null,
-      meter: {},
-      error:
-        "RiskModels API key not found. Set RISKMODELS_API_KEY in the MCP client env, or run `riskmodels config init` to store it at ~/.config/riskmodels/config.json.",
-    };
-  }
-  const url = new URL(`${apiBase}/api${path}`);
-  if (init.query) {
-    for (const [k, v] of Object.entries(init.query)) {
-      if (v != null) url.searchParams.set(k, v);
-    }
-  }
-  try {
-    const res = await fetch(url.toString(), {
-      method,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: init.body ? JSON.stringify(init.body) : undefined,
-    });
-    const meter = extractMeter(res.headers);
-    let data: unknown = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = { error: "Non-JSON response", status: res.status };
-    }
-    return { status: res.status, data, meter };
-  } catch (e) {
-    return {
-      status: 0,
-      data: null,
-      meter: {},
-      error: `Network error calling RiskModels API: ${(e as Error).message}`,
-    };
-  }
-}
-
-function wrapWithMeter(data: unknown, meter: MeterEnvelope): string {
-  if (data && typeof data === "object" && !Array.isArray(data)) {
-    const record = data as Record<string, unknown>;
-    const metaFromBody = record._metadata as
-      | { data_as_of?: string; data_source?: string }
-      | undefined;
-    const envelope: MeterEnvelope = {
-      ...meter,
-      _data_as_of: meter._data_as_of || metaFromBody?.data_as_of,
-      _data_source: metaFromBody?.data_source,
-    };
-    const clean: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(envelope)) {
-      if (v !== undefined && v !== null && !Number.isNaN(v as number)) {
-        clean[k] = v;
-      }
-    }
-    return JSON.stringify({ ...record, ...clean }, null, 2);
-  }
-  return JSON.stringify({ data, ...meter }, null, 2);
-}
-
 function loadJson<T>(relativePath: string): T | null {
   const p = join(DATA_DIR, relativePath);
   if (!existsSync(p)) return null;
@@ -228,7 +116,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   const server = new McpServer(
     {
       name: "riskmodels-api",
-      version: "1.0.0",
+      version: "2.0.0",
     },
     { instructions: MCP_SERVER_INSTRUCTIONS },
   );
@@ -376,368 +264,9 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   registerRiskModelsWhitepaperResources(server, DATA_DIR);
   registerRiskModelsPrompts(server, FIRST_LIVE_PROMPT_MCP);
 
-  // --- Tools (data tools first; catalog tools last so a fresh connect does not start there) ---
+  // --- Tools: the shared 2.0 registry (hosted adds riskmodels_render_artifact) ---
 
-  registerRiskModelsTools(sdk, server, {
-    capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
-    apiKey: credentials.apiKey,
-  });
-
-  server.registerTool(
-    "riskmodels_get_openapi_spec",
-    {
-      title: "Get RiskModels OpenAPI Spec",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: GET_OPENAPI_SPEC_DESCRIPTION,
-      inputSchema: z.object({}),
-    },
-    async () => {
-      const json = loadJson<unknown>("openapi.json");
-      if (json) {
-        return { content: [{ type: "text", text: JSON.stringify(json, null, 2) }] };
-      }
-      const yaml = loadText("openapi.yaml");
-      if (yaml) {
-        return { content: [{ type: "text", text: yaml }] };
-      }
-      return { content: [{ type: "text", text: JSON.stringify({ error: "OpenAPI spec not found in mcp/data/" }) }], isError: true };
-    }
-  );
-
-  server.registerTool(
-    "riskmodels_list_endpoints",
-    {
-      title: "List RiskModels API Endpoints",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: LIST_ENDPOINTS_DESCRIPTION,
-      inputSchema: z.object({}).optional(),
-    },
-    async () => {
-      const capabilities = loadJson<Array<{ id: string; name: string; method: string; endpoint: string; description: string }>>("capabilities.json");
-      if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "capabilities.json not found" }) }], isError: true };
-      }
-      const list = capabilities.map((c) => ({
-        id: c.id,
-        name: c.name,
-        method: c.method,
-        endpoint: c.endpoint,
-        description: (c.description || "").slice(0, 80),
-      }));
-      return { content: [{ type: "text", text: JSON.stringify(list, null, 2) }] };
-    }
-  );
-
-  server.registerTool(
-    "riskmodels_get_capability",
-    {
-      title: "Get RiskModels Capability Details",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: GET_CAPABILITY_DESCRIPTION,
-      inputSchema: z.object({
-        id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
-      }),
-    },
-    async ({ id }) => {
-      const capabilities = loadJson<Array<{ id: string; [k: string]: unknown }>>("capabilities.json");
-      if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "Capabilities not loaded" }) }], isError: true };
-      }
-      const cap = capabilities.find((c) => c.id === id);
-      if (!cap) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Unknown capability: ${id}`, available: capabilities.map((c) => c.id) }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: JSON.stringify(cap, null, 2) }] };
-    }
-  );
-
-  server.registerTool(
-    "riskmodels_get_schema",
-    {
-      title: "Get RiskModels Response Schema",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: GET_SCHEMA_DESCRIPTION,
-      inputSchema: z.object({
-        path: z.string().describe("Schema path or filename (e.g. ticker-returns-v2.json or /schemas/ticker-returns-v2.json)"),
-      }),
-    },
-    async ({ path: pathArg }) => {
-      const pathSeg = pathArg.replace(/^\/schemas\//, "");
-      const filename = pathSeg.endsWith(".json") ? pathSeg : `${pathSeg}.json`;
-      const data = loadJson<unknown>(join("schemas", filename));
-      if (!data) {
-        const paths = loadJson<string[]>("schema-paths.json") || [];
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Schema not found: ${filename}`, available: paths }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  // --- Live data tools (require API key via env or ~/.config/riskmodels/config.json) ---
-
-  server.registerTool(
-    "get_l3_decomposition",
-    {
-      title: "L3 Hierarchical Risk Decomposition",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Daily EOD hierarchical orthogonal decomposition for a single ticker: market → sector → subsector → residual. Returns parallel time-series arrays plus hedge ratios. Historical data from GCP zarr; latest snapshot from Supabase. Data freshness: daily after US market close (see _data_as_of).",
-      inputSchema: z.object({
-        ticker: z.string().describe("Stock ticker symbol, e.g. NVDA, AAPL"),
-        market_factor_etf: z
-          .string()
-          .optional()
-          .default("SPY")
-          .describe("Market factor ETF for L1 (default SPY)"),
-        years: z
-          .number()
-          .int()
-          .min(1)
-          .max(15)
-          .optional()
-          .default(1)
-          .describe("Years of daily history to return (1–15)"),
-      }),
-    },
-    async ({ ticker, market_factor_etf, years }) => {
-      const { status, data, meter, error } = await apiCall(opts, "GET", "/l3-decomposition", {
-        query: {
-          ticker,
-          market_factor_etf: market_factor_etf || "SPY",
-          years: String(years ?? 1),
-        },
-      });
-      if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      }
-      if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
-
-  server.registerTool(
-    "get_metrics",
-    {
-      title: "Latest Risk Metrics Snapshot",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Latest daily EOD risk metrics for a ticker from the Supabase _latest table: L1/L2/L3 hedge ratios (SPY, sector ETF, subsector ETF), explained-risk fractions, daily volatility, price close, market cap. Single-row snapshot. Data freshness: daily after US market close.",
-      inputSchema: z.object({
-        ticker: z.string().describe("Stock ticker symbol, e.g. NVDA, AAPL"),
-      }),
-    },
-    async ({ ticker }) => {
-      const { status, data, meter, error } = await apiCall(
-        opts,
-        "GET",
-        `/metrics/${encodeURIComponent(ticker.toUpperCase())}`,
-      );
-      if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      }
-      if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
-
-  server.registerTool(
-    "get_fundamentals",
-    {
-      title: "PIT Quarterly Fundamentals",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Point-in-time quarterly fundamentals for a ticker: TTM ROE/ROA/FCF margin, capital-return ratios, leverage, long-window ERM3 valuation betas, strict reported-data cost_of_debt/wacc, and separately labeled cost_of_debt_imputed/wacc_imputed when the PIT-lagged high-quality-market proxy is available. The proxy uses the period-end 10-year Treasury plus a monthly HQMCB10YR-minus-GS10 spread; it is not issuer-specific. Also returns equity-charge economic_profit, an equity-bridge decomposition, and SEC-sourced raw line items in sec_facts. Rows are visible iff filed_date <= as_of (never 'latest'). Realized historical only; no forecasts or analyst fields. Per-symbol per-call only — no batch.",
-      inputSchema: z.object({
-        ticker: z.string().describe("Stock ticker symbol, e.g. AAPL, NVDA"),
-        as_of: z
-          .string()
-          .optional()
-          .describe("PIT date YYYY-MM-DD; rows visible iff filed_date <= as_of. Default: today."),
-        periods: z
-          .number()
-          .int()
-          .min(1)
-          .max(40)
-          .optional()
-          .describe("Quarterly rows returned (default 8, max 40)."),
-        erp: z
-          .number()
-          .optional()
-          .describe("Equity risk premium request parameter for the cost-of-capital layer (default 0.05 when omitted)."),
-        tax_rate: z
-          .number()
-          .optional()
-          .describe("Tax rate for the WACC debt shield (default 0.21)."),
-        rf_tenor: z
-          .enum(["3m", "1y", "2y", "5y", "10y", "30y"])
-          .optional()
-          .describe(
-            "Treasury constant-maturity tenor backing rf_rate (default 10y — the valuation convention). Pair a short tenor with a bill-basis ERP or cost of capital is understated.",
-          ),
-        grid: z
-          .boolean()
-          .optional()
-          .describe("If true, include the latest-period ERP x rf-tenor sensitivity grid with strict and imputed WACC fields."),
-        erp_grid: z
-          .string()
-          .optional()
-          .describe('Comma-separated ERP values for the grid, e.g. "0.03,0.04,0.05,0.06,0.07".'),
-        rf_tenor_grid: z
-          .string()
-          .optional()
-          .describe('Comma-separated tenor subset for the grid, e.g. "1y,10y,30y".'),
-      }),
-    },
-    async ({ ticker, as_of, periods, erp, tax_rate, rf_tenor, grid, erp_grid, rf_tenor_grid }) => {
-      const query: Record<string, string> = {};
-      if (as_of) query.as_of = as_of;
-      if (periods !== undefined) query.periods = String(periods);
-      if (erp !== undefined) query.erp = String(erp);
-      if (tax_rate !== undefined) query.tax_rate = String(tax_rate);
-      if (rf_tenor !== undefined) query.rf_tenor = rf_tenor;
-      if (grid !== undefined) query.grid = String(grid);
-      if (erp_grid !== undefined) query.erp_grid = erp_grid;
-      if (rf_tenor_grid !== undefined) query.rf_tenor_grid = rf_tenor_grid;
-      const { status, data, meter, error } = await apiCall(
-        opts,
-        "GET",
-        `/fundamentals/${encodeURIComponent(ticker.toUpperCase())}`,
-        { query },
-      );
-      if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      }
-      if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
-
-  server.registerTool(
-    "get_portfolio_risk_snapshot",
-    {
-      title: "Portfolio Risk Snapshot",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Bundled portfolio risk report for up to 100 positions: variance decomposition (market / sector / subsector / residual / systematic), portfolio 23-day volatility, and optional diversification analytics with sector/subsector ETF correlation matrices. Returns JSON by default. Response is cached per-user per-portfolio for 1 hour.",
-      inputSchema: z.object({
-        positions: z
-          .array(
-            z.object({
-              ticker: z.string(),
-              weight: z.number().positive(),
-            }),
-          )
-          .min(1)
-          .max(100)
-          .describe("Positions as { ticker, weight } pairs. Weights need not sum to 1."),
-        title: z.string().max(200).optional(),
-        as_of_date: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional()
-          .describe("YYYY-MM-DD override for the snapshot date"),
-        include_diversification: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe("Include diversification metrics (adds latency)"),
-        window_days: z
-          .number()
-          .int()
-          .min(20)
-          .max(2000)
-          .optional()
-          .default(252)
-          .describe("Rolling window in trading days for diversification"),
-      }),
-    },
-    async ({ positions, title, as_of_date, include_diversification, window_days }) => {
-      const body: Record<string, unknown> = { positions, format: "json" };
-      if (title) body.title = title;
-      if (as_of_date) body.as_of_date = as_of_date;
-      if (include_diversification) body.include_diversification = include_diversification;
-      if (window_days) body.window_days = window_days;
-      const { status, data, meter, error } = await apiCall(opts, "POST", "/portfolio/risk-snapshot", { body });
-      if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      }
-      if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
-
-  server.registerTool(
-    "post_snapshot",
-    {
-      title: "Canonical Portfolio Snapshot",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Run a canonical risk snapshot on a portfolio (1–100 positions): L3 variance decomposition (market / sector / subsector / residual / systematic), L3 hedge ratios per position, frozen-weight daily return attribution (gross + market / sector / subsector strips + residual), cumulative return and drawdown over the lookback window, and a risk_summary with dominant drivers, concentration flags, and top exposures. This is the canonical RiskModels public surface — same response shape across UI, CLI, SDK, and agents. Provide either weight or shares for every position (do not mix). Bills as portfolio-risk-snapshot ($1.25 per request).",
-      inputSchema: z.object({
-        portfolio: z
-          .array(
-            z
-              .object({
-                ticker: z.string().describe("US equity ticker, e.g. NVDA, AAPL, SPY"),
-                weight: z
-                  .number()
-                  .positive()
-                  .optional()
-                  .describe("Positive weight or dollar amount; server normalizes to sum to 1"),
-                shares: z
-                  .number()
-                  .positive()
-                  .optional()
-                  .describe("Share count; converted to weights via latest price_close"),
-              })
-              .refine((p) => (p.weight != null) !== (p.shares != null), {
-                message: "Each position must have exactly one of weight or shares",
-              }),
-          )
-          .min(1)
-          .max(100)
-          .describe(
-            "Portfolio positions. Use weights for every position OR shares for every position — do not mix.",
-          ),
-        lookback_days: z
-          .number()
-          .int()
-          .min(20)
-          .max(2000)
-          .optional()
-          .default(252)
-          .describe("Trading days of history for return curves and attribution series (default 252)"),
-        benchmark: z
-          .string()
-          .optional()
-          .describe("Optional benchmark ticker (reserved for comparison views)"),
-      }),
-    },
-    async ({ portfolio, lookback_days, benchmark }) => {
-      const body: Record<string, unknown> = {
-        type: "portfolio",
-        portfolio,
-        lookback_days,
-      };
-      if (benchmark) body.benchmark = benchmark;
-      const { status, data, meter, error } = await apiCall(opts, "POST", "/snapshot", { body });
-      if (error) {
-        return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      }
-      if (status >= 400) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
+  registerRiskModelsTools(sdk, server, { apiKey: credentials.apiKey });
 
   return server;
 }

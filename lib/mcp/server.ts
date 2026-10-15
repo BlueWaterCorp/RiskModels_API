@@ -1,17 +1,16 @@
 /**
  * RiskModels MCP server factory — hosted-transport variant.
  *
- * Parallel to `mcp/src/server.ts` (the stdio binary). They register identical
- * tools; this copy accepts `apiKey` / `apiBase` directly because the hosted
- * Next.js route has already authenticated the request and passes the user's
- * credentials in. No env/CLI-config resolution.
+ * Serves both hosted surfaces (`/api/mcp/sse` and `/api/mcp/openai`) with the
+ * same tools, resources, prompts and instructions. Tools come from the shared
+ * registry `registerRiskModelsTools` (lib/mcp/tools/riskmodels-tools.ts), the
+ * same one the npm stdio server (`mcp/src/server.ts`) uses, plus the
+ * hosted-only `riskmodels_render_artifact` from `registerRiskModelsRenderTool`
+ * (needs GCP Cloud Run auth, so it is not in the stdio package).
  *
- * SOURCE OF TRUTH REMINDER: if you change tool schemas or handler logic,
- * mirror the edit to `mcp/src/server.ts` so the stdio binary stays in sync.
- * The shared list is 8 SDK-backed tools from `registerRiskModelsTools` + 5
- * resources. The hosted server ALSO registers `riskmodels_render_artifact` via
- * `registerRiskModelsRenderTool` — that one is hosted-only (needs GCP Cloud Run
- * auth) and is intentionally NOT in the stdio binary.
+ * This copy accepts `apiKey` / `apiBase` directly because the hosted Next.js
+ * route has already authenticated the request. No env/CLI-config resolution.
+ * Resource code is mirrored in `mcp/src/server.ts`; keep the two in step.
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -20,30 +19,16 @@ import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import {
   createRiskModelsSdk,
   withAnnotationTitles,
-  READ_ONLY_TOOL_ANNOTATIONS,
   registerRiskModelsPrompts,
   registerRiskModelsTools,
   registerRiskModelsWhitepaperResources,
 } from "@/lib/mcp/tools/riskmodels-tools";
 import { registerRiskModelsRenderTool } from "@/lib/mcp/render-tool";
-import {
-  FIRST_LIVE_PROMPT_MCP,
-  GET_CAPABILITY_DESCRIPTION,
-  GET_SCHEMA_DESCRIPTION,
-  LIST_ENDPOINTS_DESCRIPTION,
-  MCP_SERVER_INSTRUCTIONS,
-} from "@/lib/mcp/activation";
-import {
-  OPENAI_FIRST_LIVE_PROMPT,
-  OPENAI_MCP_SERVER_INSTRUCTIONS,
-  applyOpenAiSurface,
-  registerOpenAiOnlyTools,
-  type McpSurface,
-} from "@/lib/mcp/openai-surface";
+import { FIRST_LIVE_PROMPT_MCP, MCP_SERVER_INSTRUCTIONS } from "@/lib/mcp/activation";
+import type { McpSurface } from "@/lib/mcp/openai-surface";
 
 const DATA_DIR = join(process.cwd(), "mcp", "data");
 
@@ -53,111 +38,11 @@ export type McpServerOptions = {
   /** API base URL (defaults to `https://riskmodels.app`). */
   apiBase?: string;
   /**
-   * Tool surface. "default" (`/api/mcp/sse`) is the Anthropic-directory
-   * surface and must stay unchanged. "openai" (`/api/mcp/openai`) drops the
-   * generic GET reader, adds explicit read-only tools and renames the Lstar
-   * and catalog tools — see lib/mcp/openai-surface.ts.
+   * Hosted surface ("default" = `/api/mcp/sse`, "openai" = `/api/mcp/openai`).
+   * Both register the same tools since tool set 2.0; kept for callers and logs.
    */
   surface?: McpSurface;
 };
-
-type MeterEnvelope = {
-  _cost_usd?: number;
-  _balance_remaining_usd?: number;
-  _monthly_spend_cap_usd?: number;
-  _current_monthly_spend_usd?: number;
-  _rate_limit_remaining?: number;
-  _data_as_of?: string;
-  _data_source?: string;
-  _latency_ms?: number;
-  _request_id?: string;
-  _pricing_tier?: string;
-};
-
-const TOKEN_PRICE_USD = 0.00002;
-
-function extractMeter(headers: Headers): MeterEnvelope {
-  const parseNum = (h: string | null) => (h == null ? undefined : Number(h));
-  const balanceTokens = parseNum(headers.get("X-Balance-Remaining"));
-  const balanceUsd =
-    balanceTokens !== undefined && !Number.isNaN(balanceTokens)
-      ? +(balanceTokens * TOKEN_PRICE_USD).toFixed(4)
-      : undefined;
-  return {
-    _cost_usd: parseNum(headers.get("X-API-Cost-USD")),
-    _balance_remaining_usd: balanceUsd,
-    _monthly_spend_cap_usd: parseNum(headers.get("X-Monthly-Spend-Cap-USD")),
-    _current_monthly_spend_usd: parseNum(headers.get("X-Current-Monthly-Spend-USD")),
-    _rate_limit_remaining: parseNum(headers.get("X-RateLimit-Remaining")),
-    _data_as_of: headers.get("X-Data-As-Of") || undefined,
-    _latency_ms: parseNum(headers.get("X-Data-Fetch-Latency-Ms")),
-    _request_id: headers.get("X-Request-ID") || undefined,
-    _pricing_tier: headers.get("X-Pricing-Tier") || undefined,
-  };
-}
-
-async function apiCall(
-  opts: McpServerOptions,
-  method: "GET" | "POST",
-  path: string,
-  init: { query?: Record<string, string>; body?: unknown } = {},
-): Promise<{ status: number; data: unknown; meter: MeterEnvelope; error?: string }> {
-  const apiBase = (opts.apiBase || "https://riskmodels.app").replace(/\/$/, "");
-  const url = new URL(`${apiBase}/api${path}`);
-  if (init.query) {
-    for (const [k, v] of Object.entries(init.query)) {
-      if (v != null) url.searchParams.set(k, v);
-    }
-  }
-  try {
-    const res = await fetch(url.toString(), {
-      method,
-      headers: {
-        Authorization: `Bearer ${opts.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: init.body ? JSON.stringify(init.body) : undefined,
-    });
-    const meter = extractMeter(res.headers);
-    let data: unknown = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = { error: "Non-JSON response", status: res.status };
-    }
-    return { status: res.status, data, meter };
-  } catch (e) {
-    return {
-      status: 0,
-      data: null,
-      meter: {},
-      error: `Network error calling RiskModels API: ${(e as Error).message}`,
-    };
-  }
-}
-
-function wrapWithMeter(data: unknown, meter: MeterEnvelope): string {
-  if (data && typeof data === "object" && !Array.isArray(data)) {
-    const record = data as Record<string, unknown>;
-    const metaFromBody = record._metadata as
-      | { data_as_of?: string; data_source?: string }
-      | undefined;
-    const envelope: MeterEnvelope = {
-      ...meter,
-      _data_as_of: meter._data_as_of || metaFromBody?.data_as_of,
-      _data_source: metaFromBody?.data_source,
-    };
-    const clean: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(envelope)) {
-      if (v !== undefined && v !== null && !Number.isNaN(v as number)) {
-        clean[k] = v;
-      }
-    }
-    return JSON.stringify({ ...record, ...clean }, null, 2);
-  }
-  return JSON.stringify({ data, ...meter }, null, 2);
-}
 
 function loadJson<T>(relativePath: string): T | null {
   const p = join(DATA_DIR, relativePath);
@@ -184,22 +69,18 @@ function loadText(relativePath: string): string | null {
  * Caller supplies authenticated user credentials via `opts`.
  */
 export function createMcpServer(opts: McpServerOptions): McpServer {
-  const openai = opts.surface === "openai";
   const server = new McpServer(
     {
       name: "riskmodels-api",
-      version: "1.0.0",
+      version: "2.0.0",
     },
-    { instructions: openai ? OPENAI_MCP_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS },
+    { instructions: MCP_SERVER_INSTRUCTIONS },
   );
   const sdk = createRiskModelsSdk({
     apiKey: opts.apiKey,
     apiBase: opts.apiBase || "https://riskmodels.app",
   });
   withAnnotationTitles(server);
-  // Outer wrapper: renames/excludes first, then withAnnotationTitles copies
-  // the (overridden) title into annotations.title.
-  if (openai) applyOpenAiSurface(server);
 
   // --- Resources ---
 
@@ -327,174 +208,12 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   );
 
   registerRiskModelsWhitepaperResources(server, DATA_DIR);
-  registerRiskModelsPrompts(server, openai ? OPENAI_FIRST_LIVE_PROMPT : FIRST_LIVE_PROMPT_MCP);
+  registerRiskModelsPrompts(server, FIRST_LIVE_PROMPT_MCP);
 
-  // --- Tools ---
+  // --- Tools: the shared 2.0 registry, then the hosted-only render tool ---
 
-  registerRiskModelsTools(sdk, server, {
-    capabilities: loadJson<Array<{ method?: string; endpoint?: string }>>("capabilities.json") ?? [],
-    apiKey: opts.apiKey,
-  });
-  // Hosted-only: the render tool needs GCP Cloud Run auth, so it lives outside
-  // lib/mcp/tools/ and is not compiled into the public stdio package.
+  registerRiskModelsTools(sdk, server, { apiKey: opts.apiKey });
   registerRiskModelsRenderTool(server);
-  if (openai) registerOpenAiOnlyTools(sdk, server);
-
-  server.registerTool(
-    "riskmodels_list_endpoints",
-    {
-      title: "List RiskModels API Endpoints",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: LIST_ENDPOINTS_DESCRIPTION,
-    },
-    async () => {
-      const capabilities = loadJson<Array<{ id: string; name: string; method: string; endpoint: string; description: string }>>("capabilities.json");
-      if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "capabilities.json not found" }) }], isError: true };
-      }
-      const list = capabilities.map((c) => ({
-        id: c.id,
-        name: c.name,
-        method: c.method,
-        endpoint: c.endpoint,
-        description: (c.description || "").slice(0, 80),
-      }));
-      return { content: [{ type: "text", text: JSON.stringify(list, null, 2) }] };
-    }
-  );
-
-  server.registerTool(
-    "riskmodels_get_capability",
-    {
-      title: "Get RiskModels Capability Details",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: GET_CAPABILITY_DESCRIPTION,
-      inputSchema: {
-        id: z.string().describe("Capability id (e.g. ticker-returns, risk-decomposition)"),
-      },
-    },
-    async ({ id }) => {
-      const capabilities = loadJson<Array<{ id: string; [k: string]: unknown }>>("capabilities.json");
-      if (!capabilities) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: "Capabilities not loaded" }) }], isError: true };
-      }
-      const cap = capabilities.find((c) => c.id === id);
-      if (!cap) {
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Unknown capability: ${id}`, available: capabilities.map((c) => c.id) }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: JSON.stringify(cap, null, 2) }] };
-    }
-  );
-
-  server.registerTool(
-    "riskmodels_get_schema",
-    {
-      title: "Get RiskModels Response Schema",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description: GET_SCHEMA_DESCRIPTION,
-      inputSchema: {
-        path: z.string().describe("Schema path or filename"),
-      },
-    },
-    async ({ path: pathArg }) => {
-      const pathSeg = pathArg.replace(/^\/schemas\//, "");
-      const filename = pathSeg.endsWith(".json") ? pathSeg : `${pathSeg}.json`;
-      const data = loadJson<unknown>(join("schemas", filename));
-      if (!data) {
-        const paths = loadJson<string[]>("schema-paths.json") || [];
-        return { content: [{ type: "text", text: JSON.stringify({ error: `Schema not found: ${filename}`, available: paths }) }], isError: true };
-      }
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  // --- Live data tools ---
-
-  server.registerTool(
-    "get_l3_decomposition",
-    {
-      title: "L3 Hierarchical Risk Decomposition",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Daily hierarchical risk decomposition for one ticker (GET /l3-decomposition): market, sector, subsector and residual as parallel daily time series, plus hedge ratios. Inputs: ticker; market factor ETF (default SPY); years of history (1-15, default 1). Updated daily after the US close.",
-      inputSchema: {
-        ticker: z.string().describe("Stock ticker symbol, e.g. NVDA, AAPL"),
-        market_factor_etf: z.string().optional().default("SPY"),
-        years: z.number().int().min(1).max(15).optional().default(1),
-      },
-    },
-    async ({ ticker, market_factor_etf, years }) => {
-      const { status, data, meter, error } = await apiCall(opts, "GET", "/l3-decomposition", {
-        query: {
-          ticker,
-          market_factor_etf: market_factor_etf || "SPY",
-          years: String(years ?? 1),
-        },
-      });
-      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
-
-  server.registerTool(
-    "get_metrics",
-    {
-      title: "Latest Risk Metrics Snapshot",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Latest end-of-day risk metrics for one ticker (GET /metrics/{ticker}): L1, L2 and L3 hedge ratios to SPY and the sector and subsector ETFs, explained-risk shares, daily volatility, closing price and market cap.",
-      inputSchema: {
-        ticker: z.string().describe("Stock ticker symbol, e.g. NVDA, AAPL"),
-      },
-    },
-    async ({ ticker }) => {
-      const { status, data, meter, error } = await apiCall(
-        opts,
-        "GET",
-        `/metrics/${encodeURIComponent(ticker.toUpperCase())}`,
-      );
-      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
-
-  server.registerTool(
-    "get_portfolio_risk_snapshot",
-    {
-      title: "Portfolio Risk Snapshot",
-      annotations: READ_ONLY_TOOL_ANNOTATIONS,
-      description:
-        "Risk report for a long-only portfolio of up to 100 positions with positive weights (POST /portfolio/risk-snapshot): variance decomposition into market, sector, subsector and residual, 23-day volatility, and optional diversification analytics. Results are cached for one hour per user and portfolio.",
-      inputSchema: {
-        positions: z
-          .array(
-            z.object({
-              ticker: z.string(),
-              weight: z.number().positive(),
-            }),
-          )
-          .min(1)
-          .max(100),
-        title: z.string().max(200).optional(),
-        as_of_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        include_diversification: z.boolean().optional().default(false),
-        window_days: z.number().int().min(20).max(2000).optional().default(252),
-      },
-    },
-    async ({ positions, title, as_of_date, include_diversification, window_days }) => {
-      const body: Record<string, unknown> = { positions, format: "json" };
-      if (title) body.title = title;
-      if (as_of_date) body.as_of_date = as_of_date;
-      if (include_diversification) body.include_diversification = include_diversification;
-      if (window_days) body.window_days = window_days;
-      const { status, data, meter, error } = await apiCall(opts, "POST", "/portfolio/risk-snapshot", { body });
-      if (error) return { content: [{ type: "text", text: JSON.stringify({ error }) }], isError: true };
-      if (status >= 400) return { content: [{ type: "text", text: JSON.stringify({ error: `API ${status}`, detail: data }) }], isError: true };
-      return { content: [{ type: "text", text: wrapWithMeter(data, meter) }] };
-    },
-  );
 
   return server;
 }

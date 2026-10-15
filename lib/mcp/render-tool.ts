@@ -34,7 +34,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
     {
       title: "RiskModels Artifact Registry Render",
       description:
-        "Renders a chart or table from the RiskModels artifact registry for a stock (BW-STOCK-{TICKER}), a watchlist of up to 12 tickers (BW-STOCK-WATCHLIST with subject_payload.tickers), a mutual fund (BW-FUND-…), a 13F filer (BW-FILER-…) or a client portfolio (BW-PORTFOLIO-… with subject_payload.positions). format json returns the chart's data, table and narrative; png returns the rendered image as MCP image content with its resolved date and receipt id; svg returns a base64 SVG; figure returns a Plotly figure spec (Plotly-backed slugs only). risk_comparison puts several tickers on one shared risk-composition axis. A watchlist is resolved to ONE shared date (the oldest latest close in the set, or an explicit as_of), returned as resolved_as_of; tickers with no data on that date are listed in as_of_alignment.excluded. cumulative_return_paths accepts params.window (3m, 6m, 1y, 2y or max; default 1y); its fitted factor paths are not ETF returns.",
+        "Use when you want a ready-made chart or table from the RiskModels artifact registry for a stock (BW-STOCK-{TICKER}), a watchlist of up to 12 tickers (BW-STOCK-WATCHLIST with subject_payload.tickers), a mutual fund (BW-FUND-…), a 13F filer (BW-FILER-…) or a client portfolio (BW-PORTFOLIO-… with subject_payload.positions). Not for the underlying numbers alone (use riskmodels_get_stock_snapshot, riskmodels_get_fund or riskmodels_get_filer). format json returns the chart's data, table and narrative; png returns the rendered image as MCP image content with its resolved date and receipt id; svg returns a base64 SVG; figure returns a Plotly figure spec (Plotly-backed slugs only). risk_comparison puts several tickers on one shared risk-composition axis. A watchlist is resolved to ONE shared date (the oldest latest close in the set, or an explicit as_of), returned as resolved_as_of; tickers with no data on that date are listed in as_of_alignment.excluded. cumulative_return_paths accepts params.window (3m, 6m, 1y, 2y or max; default 1y); its fitted factor paths are not ETF returns. Built from end-of-day data; resolved_as_of gives the date used. Price: $0.25 per render (artifact-render list price).",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       _meta: {
         ui: { resourceUri: CHART_WIDGET_URI },
@@ -47,12 +47,12 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .string()
           .min(1)
           .describe(
-            "Artifact slug — stock subjects: l3_explained_risk_hbar, " +
+            "Artifact slug, e.g. l3_explained_risk_hbar. Stock subjects: l3_explained_risk_hbar, " +
               "hedge_notionals_hbar, hedge_depth_retained, risk_comparison, watchlist_er_stacked, cumulative_return_paths; " +
               "fund/filer subjects: top_holdings_erm_stacked, entity_header, " +
               "risk_summary_panel",
           ),
-        version: z.string().optional().describe("Version tag, default v1"),
+        version: z.string().optional().describe("Artifact version tag, e.g. v1 (default v1)"),
         subject_id: z
           .string()
           .min(1)
@@ -65,7 +65,7 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .string()
           .optional()
           .describe(
-            "YYYY-MM-DD or latest. Cohort subjects (BW-COHORT-*) resolve latest to " +
+            "Date YYYY-MM-DD or latest, e.g. 2026-06-30 (default latest). Cohort subjects (BW-COHORT-*) resolve latest to " +
               "the newest pre-rendered vintage; filers need an explicit filing period " +
               "end; GET /api/artifacts/as-of?slug=&subject_id= lists the dates that exist.",
           ),
@@ -73,14 +73,14 @@ export function registerRiskModelsRenderTool(server: McpLikeServer): void {
           .enum(["json", "png", "svg", "figure"])
           .optional()
           .describe(
-            "Output format, default json. 'png' = original chart as MCP image content with provenance. 'figure' = Plotly figure spec for " +
+            "Output format, e.g. png (default json). 'png' = original chart as MCP image content with provenance. 'figure' = Plotly figure spec for " +
               "client-side rendering (Plotly-backed slugs only).",
           ),
         subject_payload: z
           .record(z.string(), z.unknown())
           .optional()
           .describe(
-            "Required for BW-STOCK-WATCHLIST: { tickers: [\"BAC\", \"IBM\"] } — " +
+            "Subject data object, e.g. { tickers: [\"BAC\", \"IBM\"] }. Required for BW-STOCK-WATCHLIST: { tickers: [\"BAC\", \"IBM\"] } — " +
               "1 to 12 US equity tickers. Required for BW-PORTFOLIO-*: " +
               "{ positions: [{ ticker, weight }] }",
           ),
