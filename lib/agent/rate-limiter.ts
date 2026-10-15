@@ -5,8 +5,17 @@
  * Uses a sliding window counter pattern with 1-minute windows.
  */
 
+import crypto from "crypto";
 import { env } from "@/lib/env";
 import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
+
+/**
+ * Rate-limit identifier for an API key or token: a SHA-256 digest, so the
+ * plaintext credential never becomes a Redis key name.
+ */
+export function rateLimitKeyId(secret: string): string {
+  return "k:" + crypto.createHash("sha256").update(secret).digest("hex").slice(0, 32);
+}
 
 interface RateLimitResult {
   allowed: boolean;
