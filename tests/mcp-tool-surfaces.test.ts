@@ -4,7 +4,10 @@ import { createMcpServer as createHostedServer } from "@/lib/mcp/server";
 import { createMcpServer as createNpmServer } from "../mcp/src/server";
 import {
   HOSTED_ONLY_TOOL_NAMES,
+  INCLUDE_HISTORY_MONTHS,
   RISKMODELS_TOOL_NAMES,
+  historyStartDate,
+  includeFailure,
   registerRiskModelsTools,
 } from "@/lib/mcp/tools/riskmodels-tools";
 import { RiskModelsClient } from "../packages/riskmodels-sdk/src/client";
@@ -107,17 +110,26 @@ describe("MCP tool set 2.0 surfaces", () => {
 
 type Call = { method: string; path: string; query: Record<string, string>; body?: unknown };
 
-function harness() {
+/** `fail` maps a REST path to the HTTP status and error body that path answers with. */
+function harness(fail: Record<string, [number, string]> = {}) {
   const calls: Call[] = [];
   const stubFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
+    const path = url.origin === "https://portal.test" ? `portal:${url.pathname}` : url.pathname.replace(/^\/api/, "");
     calls.push({
       method: (init?.method ?? "GET").toUpperCase(),
-      path: url.origin === "https://portal.test" ? `portal:${url.pathname}` : url.pathname.replace(/^\/api/, ""),
+      path,
       query: Object.fromEntries(url.searchParams.entries()),
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
     });
-    return new Response(JSON.stringify({ ticker: "NVDA", results: {}, positions: [] }), {
+    const failure = fail[path];
+    if (failure) {
+      return new Response(JSON.stringify({ error: failure[1] }), {
+        status: failure[0],
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ ticker: "NVDA", results: {}, positions: [], end_teo: "2026-09-30" }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -140,7 +152,7 @@ function harness() {
     expect(result.isError, `${tool} ${result.content[0]?.text ?? ""}`).toBeFalsy();
     return calls.slice(before);
   };
-  return { run, handlers };
+  return { run, handlers, calls };
 }
 
 const routes = (cs: Call[]) => cs.map((c) => `${c.method} ${c.path}`);
@@ -288,7 +300,8 @@ describe("MCP tool routing (method + REST path)", () => {
       "GET /13f/filers/BW-FILER-CIK0001067983/snapshot",
       "GET /13f/filers/BW-FILER-CIK0001067983/holdings",
     ]);
-    expect(filer[1]!.query).toEqual({ top: "10" });
+    // The holdings route reads `limit`; holdings_top maps onto it.
+    expect(filer[1]!.query).toEqual({ limit: "10" });
 
     expect(routes(await r("riskmodels_get_fund", { bw_fund_id: "BW-FUND-S000019457" }))).toEqual([
       "GET /funds/snapshot/BW-FUND-S000019457",
@@ -308,6 +321,72 @@ describe("MCP tool routing (method + REST path)", () => {
     ).toEqual(["GET /data/benchmark-fit"]);
   });
 
+  it("each fund include value adds one GET after the snapshot", async () => {
+    const id = "BW-FUND-S000019457";
+    const cases: Array<[string, string, boolean]> = [
+      ["hedge", `GET /funds/${id}/hedge`, false],
+      ["nav_history", `GET /funds/${id}/nav`, true],
+      ["portfolio_history", `GET /funds/${id}/portfolio`, true],
+      ["metrics", `GET /funds/${id}`, false],
+    ];
+    for (const [value, route, windowed] of cases) {
+      const calls = await r("riskmodels_get_fund", { bw_fund_id: id, include: [value] });
+      expect(routes(calls), value).toEqual([`GET /funds/snapshot/${id}`, route]);
+      if (windowed) {
+        expect(Object.keys(calls[1]!.query), value).toEqual(["start_date"]);
+        expect(calls[1]!.query.start_date, value).toBe(historyStartDate(INCLUDE_HISTORY_MONTHS));
+      } else {
+        expect(calls[1]!.query, value).toEqual({});
+      }
+    }
+    const months = await r("riskmodels_get_fund", { bw_fund_id: id, include: ["nav_history"], history_months: 6 });
+    expect(months[1]!.query).toEqual({ start_date: historyStartDate(6) });
+  });
+
+  it("each filer include value adds one GET after the snapshot", async () => {
+    const id = "BW-FILER-CIK0001067983";
+    const cases: Array<[string, string, boolean]> = [
+      ["concentration", `GET /13f/filers/${id}/concentration`, true],
+      ["portfolio_history", `GET /13f/filers/${id}/portfolio`, true],
+      ["metrics", `GET /13f/filers/${id}`, false],
+    ];
+    for (const [value, route, windowed] of cases) {
+      const calls = await r("riskmodels_get_filer", { bw_filer_id: id, include: [value] });
+      expect(routes(calls), value).toEqual([`GET /13f/filers/${id}/snapshot`, route]);
+      expect(calls[1]!.query, value).toEqual(windowed ? { start_date: historyStartDate(INCLUDE_HISTORY_MONTHS) } : {});
+    }
+  });
+
+  it("snapshot=false fetches only holdings and include values", async () => {
+    const fund = await r("riskmodels_get_fund", {
+      bw_fund_id: "BW-FUND-S000019457",
+      snapshot: false,
+      holdings_limit: 5000,
+    });
+    expect(routes(fund)).toEqual(["GET /funds/BW-FUND-S000019457/holdings"]);
+    expect(
+      routes(await r("riskmodels_get_fund", { bw_fund_id: "BW-FUND-S000019457", snapshot: false, include: ["hedge"] })),
+    ).toEqual(["GET /funds/BW-FUND-S000019457/hedge"]);
+    expect(
+      routes(
+        await r("riskmodels_get_filer", { bw_filer_id: "BW-FILER-CIK0001067983", snapshot: false, holdings_top: 20 }),
+      ),
+    ).toEqual(["GET /13f/filers/BW-FILER-CIK0001067983/holdings"]);
+    expect(routes(await r("riskmodels_get_etf", { ticker: "smh", snapshot: false, holdings_top: 5 }))).toEqual([
+      "GET /data/etf/SMH/holdings",
+    ]);
+
+    for (const [tool, args] of [
+      ["riskmodels_get_fund", { bw_fund_id: "BW-FUND-S000019457", snapshot: false }],
+      ["riskmodels_get_filer", { bw_filer_id: "BW-FILER-CIK0001067983", snapshot: false }],
+      ["riskmodels_get_etf", { ticker: "smh", snapshot: false }],
+    ] as const) {
+      const res = await handlers.get(tool)!(args);
+      expect(res.isError, tool).toBe(true);
+      expect(JSON.parse(res.content[0]!.text!).error, tool).toMatch(/snapshot=false needs/);
+    }
+  });
+
   it("factor returns dispatch by kind", async () => {
     expect(routes(await r("riskmodels_get_factor_returns", { kind: "macro", factors: "oil" }))).toEqual([
       "GET /macro-factors",
@@ -319,5 +398,68 @@ describe("MCP tool routing (method + REST path)", () => {
 
   it("every shared tool was routed above", () => {
     expect([...exercised].sort()).toEqual(NPM_TOOLS);
+  });
+});
+
+describe("entity include values: response shape and billing", () => {
+  const parse = (res: { content: Array<{ text?: string }> }) => JSON.parse(res.content[0]!.text!);
+  const FUND = "BW-FUND-S000019457";
+
+  it("a failed include is reported in its block; the result stays a success and bills only what succeeded", async () => {
+    const { handlers } = harness({ [`/funds/${FUND}/nav`]: [404, "No NAV history for fund"] });
+    const res = await handlers.get("riskmodels_get_fund")!({
+      bw_fund_id: FUND,
+      holdings_limit: 25,
+      include: ["hedge", "nav_history", "hedge"],
+    });
+    expect(res.isError).toBeFalsy();
+    const body = parse(res);
+    expect(Object.keys(body)).toEqual(["snapshot", "holdings", "includes", "billing"]);
+    expect(Object.keys(body.includes)).toEqual(["hedge", "nav_history"]);
+    expect(body.includes.hedge.end_teo).toBe("2026-09-30");
+    expect(body.includes.nav_history).toEqual({ ok: false, status: 404, error: "No NAV history for fund" });
+    expect(body.billing).toEqual({ base_usd: 0.07, includes_usd: { hedge: 0.02, nav_history: 0 }, total_usd: 0.09 });
+  });
+
+  it("every include ok: billing totals the snapshot plus each include", async () => {
+    const { handlers } = harness();
+    const body = parse(
+      await handlers.get("riskmodels_get_filer")!({
+        bw_filer_id: "BW-FILER-CIK0001067983",
+        include: ["concentration", "portfolio_history", "metrics"],
+      }),
+    );
+    expect(body.holdings).toBeUndefined();
+    expect(body.billing).toEqual({
+      base_usd: 0.05,
+      includes_usd: { concentration: 0.02, portfolio_history: 0.02, metrics: 0.02 },
+      total_usd: 0.11,
+    });
+    const bare = parse(await handlers.get("riskmodels_get_fund")!({ bw_fund_id: FUND }));
+    expect(bare.includes).toEqual({});
+    expect(bare.billing).toEqual({ base_usd: 0.05, includes_usd: {}, total_usd: 0.05 });
+  });
+
+  it("a failed snapshot is a tool error and fires no include", async () => {
+    const { handlers, calls } = harness({ [`/funds/snapshot/${FUND}`]: [404, "Fund not found"] });
+    const res = await handlers.get("riskmodels_get_fund")!({ bw_fund_id: FUND, include: ["hedge", "metrics"] });
+    expect(res.isError).toBe(true);
+    expect(parse(res).error).toContain("HTTP 404");
+    expect(routes(calls)).toEqual([`GET /funds/snapshot/${FUND}`]);
+  });
+
+  it("includeFailure parses the SDK error; historyStartDate counts back whole months", () => {
+    expect(includeFailure(new Error("RiskModels API HTTP 503: upstream timeout"))).toEqual({
+      ok: false,
+      status: 503,
+      error: "upstream timeout",
+    });
+    expect(includeFailure(new Error("RiskModels API request failed with HTTP 500"))).toEqual({
+      ok: false,
+      status: 500,
+      error: "RiskModels API request failed with HTTP 500",
+    });
+    expect(includeFailure(new Error("fetch failed"))).toEqual({ ok: false, status: null, error: "fetch failed" });
+    expect(historyStartDate(24, new Date("2026-10-15T12:00:00Z"))).toBe("2024-10-15");
   });
 });
