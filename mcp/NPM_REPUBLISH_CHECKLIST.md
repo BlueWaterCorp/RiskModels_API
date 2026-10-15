@@ -56,11 +56,11 @@ cd RiskModels_API/mcp
 
 # Temporarily swap file: dependency to published range
 # DO NOT COMMIT THIS CHANGE
-npm pkg set 'dependencies.@riskmodels/sdk=^0.1.2'
+npm pkg set 'dependencies.@riskmodels/sdk=^0.1.4'   # prepublishOnly refuses file: deps
 
 # Verify
 npm pkg get dependencies.@riskmodels/sdk
-# Should show: ^0.1.2 (not file:...)
+# Should show: ^0.1.4 (not file:...)
 ```
 
 ---
@@ -74,7 +74,7 @@ cd RiskModels_API/mcp
 npm publish --dry-run
 
 # Check output for:
-# - Correct version (2.0.0)
+# - Correct version (2.0.1)
 # - Correct name (@riskmodels/mcp)
 # - Correct mcpName in metadata
 # - Files included (dist/, README.md, etc.)
@@ -115,7 +115,7 @@ npm publish
 # Verify on npm
 npm view @riskmodels/mcp version mcpName dependencies
 # Should show:
-# - version: 2.0.0
+# - version: 2.0.1
 # - mcpName: io.github.BlueWaterCorp/riskmodels
 # - dependencies.@riskmodels/sdk: ^0.1.2
 ```
@@ -212,7 +212,7 @@ npx @riskmodels/mcp
 - [ ] `npm run build` succeeds cleanly
 - [ ] `npm publish --dry-run` shows correct files, no file: deps
 - [ ] `npm publish` succeeds
-- [ ] `npm view @riskmodels/mcp version` shows 2.0.0
+- [ ] `npm view @riskmodels/mcp version` shows 2.0.1
 - [ ] `server.json` has `packages[]` block added
 - [ ] `mcp-publisher publish` succeeds
 - [ ] Registry shows both remote and package options

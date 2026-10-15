@@ -116,7 +116,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   const server = new McpServer(
     {
       name: "riskmodels-api",
-      version: "2.0.0",
+      version: "2.0.1",
     },
     { instructions: MCP_SERVER_INSTRUCTIONS },
   );
