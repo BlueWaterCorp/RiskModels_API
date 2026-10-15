@@ -39,6 +39,7 @@ import { Redis } from "@upstash/redis";
 import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 import { checkFreeTierLimit, incrementFreeTierUsage } from "./free-tier";
 import { checkMemoryRateLimit } from "@/lib/ratelimit/memory-fallback";
+import { rateLimitKeyId } from "./rate-limiter";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getIdempotentResponse,
@@ -645,7 +646,7 @@ export function withBilling(
       if (apiKey && apiKeyRateLimit && apiKeyRateLimit > 0) {
         const limiter = getRatelimiter(apiKeyRateLimit);
         if (limiter) {
-          const rl = await tryRatelimit(limiter, apiKey);
+          const rl = await tryRatelimit(limiter, rateLimitKeyId(apiKey));
           rateLimitResult = rl;
           if (rl && !rl.success) {
             const { limit, remaining, reset } = rl;

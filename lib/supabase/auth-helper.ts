@@ -42,9 +42,9 @@ export async function authenticateRequest(request: Request): Promise<{ user: Use
         }
         if (validation.valid && validation.userId) {
           // Check rate limit for this API key
-          const { checkRateLimit, getRateLimitForKey } = await import('@/lib/agent/rate-limiter');
+          const { checkRateLimit, getRateLimitForKey, rateLimitKeyId } = await import('@/lib/agent/rate-limiter');
           const rateLimit = getRateLimitForKey(validation.scopes);
-          const rateLimitResult = await checkRateLimit(token, rateLimit);
+          const rateLimitResult = await checkRateLimit(rateLimitKeyId(token), rateLimit);
           
           if (!rateLimitResult.allowed) {
             return { 
