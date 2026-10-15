@@ -1538,6 +1538,31 @@
             "type": "boolean",
             "description": "`true` when the most-recent-holder check could not read its evidence (security master, registry or daily index outage) and the previous answer was returned unchecked; a later request may answer a different security. Absent otherwise.\n"
           },
+          "_metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Lineage block (model_version, data_as_of, factor_set_id, range, history_row_count, ...). When `data` is empty the response is not billed and carries `data_warning`, `data_warning_code` and, for ETFs, `see`.\n",
+            "properties": {
+              "data_warning": {
+                "type": "string",
+                "description": "Human-readable reason the series is empty."
+              },
+              "data_warning_code": {
+                "type": "string",
+                "enum": [
+                  "etf_outside_priced_universe",
+                  "etf_no_return_history_in_window",
+                  "no_return_history_in_window"
+                ],
+                "description": "`etf_outside_priced_universe` — a known ETF with no daily return series (see `/data/etf/{ticker}` capabilities); `etf_no_return_history_in_window` — priced ETF with no rows in the requested window; `no_return_history_in_window` — a stock with no rows in the window.\n"
+              },
+              "see": {
+                "type": "string",
+                "example": "/api/data/etf/HYG",
+                "description": "ETFs only — the endpoint that lists the fund's capabilities."
+              }
+            }
+          },
           "periodicity": {
             "type": "string",
             "example": "daily"
@@ -3922,6 +3947,90 @@
                 }
               }
             }
+          }
+        }
+      },
+      "EtfCapabilities": {
+        "type": "object",
+        "description": "What the API can do with an ETF. Three capabilities, any combination per fund (docs/ETF_COVERAGE.md).",
+        "properties": {
+          "cascade": {
+            "type": "boolean",
+            "description": "Hedge leg in the ERM3 SPY / sector / subsector cascade."
+          },
+          "priced": {
+            "type": "boolean",
+            "description": "Daily returns in the ETF return store: /ticker-returns, covariance, beta to SPY."
+          },
+          "priced_from": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "First date with a daily return."
+          },
+          "holdings": {
+            "type": "boolean",
+            "description": "Look-through holdings: /data/etf/{ticker}/holdings, benchmark fit."
+          },
+          "holdings_as_of": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Latest holdings report date (/data/etf/{ticker} only; null in lists)."
+          },
+          "factor_role": {
+            "type": "string",
+            "description": "market, sector, subsector, style, macro:<factor> or none.",
+            "example": "sector"
+          }
+        }
+      },
+      "EtfIdentifiers": {
+        "type": "object",
+        "description": "Open identifiers only (FIGI, CIK, BW ids); null where unknown.",
+        "properties": {
+          "bw_sym_id": {
+            "type": "string",
+            "nullable": true,
+            "example": "BW-BBG000BDTBL9"
+          },
+          "bw_etf_id": {
+            "type": "string",
+            "nullable": true,
+            "example": "BW-ETF-SPY"
+          },
+          "figi": {
+            "type": "string",
+            "nullable": true,
+            "example": "BBG000BDTBL9"
+          },
+          "cik": {
+            "type": "string",
+            "nullable": true,
+            "description": "10-digit zero-padded SEC CIK."
+          },
+          "ticker": {
+            "type": "string",
+            "example": "SPY"
+          }
+        }
+      },
+      "EtfUniverseRow": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "example": "SPY"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/EtfCapabilities"
+          },
+          "identifiers": {
+            "$ref": "#/components/schemas/EtfIdentifiers"
           }
         }
       },
@@ -8330,7 +8439,7 @@
     "/ticker-returns": {
       "get": {
         "summary": "Daily returns time series with rolling hedge ratios (stocks and ETFs)",
-        "description": "Returns a daily time series of gross returns (`returns_gross`) and, for stocks, V3 rolling hedge ratios and explained-risk fields per day: `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er`. Up to 15 years per request. **ETFs are supported**: requests for ETF tickers (e.g. `SPY`, `XLK`) return `date`, `returns_gross`, and `price_close` sourced from `ds_etf.zarr`; L1/L2/L3 columns are `null` because ETFs are not factor-decomposed. The response includes `asset_type` (\"stock\" or \"etf\") so clients can branch cleanly. For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent` block; billing is applied server-side. Cost: $0.02 for 1 year + $0.01 per extra year (up to 15).\n",
+        "description": "Returns a daily time series of gross returns (`returns_gross`) and, for stocks, V3 rolling hedge ratios and explained-risk fields per day: `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr`, `l3_mkt_er`, `l3_sec_er`, `l3_sub_er`, `l3_res_er`. Up to 15 years per request. **ETFs are supported**: requests for ETF tickers (e.g. `SPY`, `XLK`) return `date`, `returns_gross`, and `price_close` sourced from `ds_etf.zarr`; L1/L2/L3 columns are `null` because ETFs are not factor-decomposed. The response includes `asset_type` (\"stock\" or \"etf\") so clients can branch cleanly. For the full L1/L2/L3 **snapshot** (all six HR names on the latest day), use `GET /metrics/{ticker}` (`metrics` object). Response does not include a top-level `_agent` block; billing is applied server-side. Cost: $0.02 for 1 year + $0.01 per extra year (up to 15). A response with no rows is not billed; `_metadata.data_warning_code` names the reason (`etf_outside_priced_universe`, `etf_no_return_history_in_window` or `no_return_history_in_window`). Only ETFs with the `priced` capability return rows — see `GET /data/etf/universe`.\n",
         "operationId": "getTickerReturns",
         "tags": [
           "Risk Metrics"
@@ -16331,7 +16440,7 @@
     "/data/etf/search": {
       "get": {
         "summary": "ETF search & discovery (free)",
-        "description": "Free discovery endpoint for ETFs in the canonical universe. Substring + prefix search over ticker / name in the committed catalog (`mcp/data/etf_master.json`). Symmetric to `/api/data/funds/search` and `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).\n\nRanking (higher = better): 100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-boundary prefix; 30 name substring. Public read; soft gateway auth.\n",
+        "description": "Free discovery endpoint for ETFs. Substring + prefix search over ticker / name across the ETF universe: the holdings catalog (`mcp/data/etf_master.json`) plus the priced and cascade funds listed by `/data/etf/universe`. Each hit carries `capabilities`. Symmetric to `/api/data/funds/search` and `/api/13f/filers/search`. Empty `q` returns the universe (capped at `limit`).\n\nRanking (higher = better): 100 exact ticker; 70 ticker prefix; 50 ticker substring; 40 name word-boundary prefix; 30 name substring. Public read; soft gateway auth.\n",
         "operationId": "searchEtfs",
         "tags": [
           "Funds Data Plane"
@@ -16394,18 +16503,24 @@
                         "properties": {
                           "bw_etf_id": {
                             "type": "string",
-                            "example": "BW-ETF-IVV"
+                            "nullable": true,
+                            "example": "BW-ETF-IVV",
+                            "description": "Null for funds without holdings."
                           },
                           "ticker": {
                             "type": "string",
                             "example": "IVV"
                           },
                           "name": {
-                            "type": "string"
+                            "type": "string",
+                            "nullable": true
                           },
                           "score": {
                             "type": "integer",
                             "description": "Match score (higher = better)."
+                          },
+                          "capabilities": {
+                            "$ref": "#/components/schemas/EtfCapabilities"
                           }
                         }
                       }
@@ -16418,10 +16533,154 @@
         }
       }
     },
+    "/data/etf/universe": {
+      "get": {
+        "summary": "ETF universe with capabilities (free)",
+        "description": "Every ETF the API knows, with three capabilities, any combination per fund: `cascade` (SPY, sector and subsector ETFs the ERM3 cascade hedges with), `priced` (daily returns, covariance and beta to SPY, from `priced_from`) and `holdings` (look-through holdings and benchmark fit), plus `factor_role` and identifiers (FIGI, CIK and BW ids only). Built from the holdings catalog, the ETF return store's symbol list and the weekly hedge snapshot's cascade ETFs; cached for an hour. `holdings_as_of` is null in this list — read it from `/data/etf/{ticker}`. Free public read; per-IP data-gateway rate limit. See docs/ETF_COVERAGE.md.\n",
+        "operationId": "getEtfUniverse",
+        "tags": [
+          "Funds Data Plane"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "x-pricing": {
+          "capability_id": "etf-universe",
+          "tier": "baseline",
+          "model": "per_request",
+          "cost_usd": 0,
+          "currency": "USD",
+          "billing_code": "etf_universe_v1"
+        },
+        "parameters": [
+          {
+            "name": "cascade",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Keep only funds with (true) or without (false) the cascade capability."
+          },
+          {
+            "name": "priced",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Keep only funds with (true) or without (false) daily returns."
+          },
+          {
+            "name": "holdings",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Keep only funds with (true) or without (false) look-through holdings."
+          },
+          {
+            "name": "factor_role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "sector"
+            },
+            "description": "market, sector, subsector, style, macro (matches any macro:<factor>) or none."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The filtered universe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "n_results": {
+                      "type": "integer"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "example": 211
+                        },
+                        "cascade": {
+                          "type": "integer",
+                          "example": 56
+                        },
+                        "priced": {
+                          "type": "integer",
+                          "example": 128
+                        },
+                        "holdings": {
+                          "type": "integer",
+                          "example": 148
+                        }
+                      }
+                    },
+                    "filters": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "sources": {
+                      "type": "object",
+                      "description": "Which inputs were readable for this build (false = that capability may be under-reported).",
+                      "properties": {
+                        "catalog": {
+                          "type": "boolean"
+                        },
+                        "priced_store": {
+                          "type": "boolean"
+                        },
+                        "cascade_store": {
+                          "type": "boolean"
+                        },
+                        "register": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "reason_codes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "etf_outside_priced_universe",
+                        "etf_no_return_history_in_window",
+                        "symbol_not_found"
+                      ]
+                    },
+                    "built_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EtfUniverseRow"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/data/etf/{ticker}": {
       "get": {
-        "summary": "ETF base metrics (canonical PortfolioSurface)",
-        "description": "Latest knowledge-mode metrics for a single ETF — registry-level metadata (`portfolio_id`, `ticker`, `source_kind`, `teo_frequency`, `sponsor`) + the latest aggregate metrics from the canonical PortfolioSurface zarr (`aum_reported`, `aum_erm3`, `coverage_pct`, `n_total_holdings`, `report_date`, `availability_date`).\n\nSymmetric to `/api/data/funds/{bw_fund_id}` and `/api/13f/filers/{bw_filer_id}` — closes the \"base entity metrics\" parity gap for the ETF surface. MASTER_BACKLOG L.6 / D.9.\n\nBitemporal lineage on response headers — never collapsed: `X-Data-As-Of` (= `report_date`) and `X-Data-Availability` (= `availability_date`). No per-holding rows — call `/api/data/etf/{ticker}/holdings` for those.\n",
+        "summary": "ETF capabilities, identifiers and base metrics",
+        "description": "One ETF: `capabilities` (cascade, priced, priced_from, holdings, holdings_as_of, factor_role) and `identifiers` (bw_sym_id, bw_etf_id, figi, cik, ticker; null where unknown) for every known fund — the holdings catalog, the priced ETF return store, the cascade lists, or an ETF row in the symbol registry. 404 with `code: symbol_not_found` only when the ticker is on none of them.\n\nFunds with holdings also carry the latest knowledge-mode metrics — registry-level metadata (`portfolio_id`, `source_kind`, `teo_frequency`, `sponsor`) and the latest aggregate metrics from the canonical PortfolioSurface zarr (`aum_reported`, `aum_erm3`, `coverage_pct`, `n_total_holdings`, `report_date`, `availability_date`). Bitemporal lineage on response headers — never collapsed: `X-Data-As-Of` (= `report_date`) and `X-Data-Availability` (= `availability_date`). No per-holding rows — call `/api/data/etf/{ticker}/holdings` for those.\n",
         "operationId": "getEtfMetricsDataPlane",
         "tags": [
           "Funds Data Plane"
@@ -16445,35 +16704,51 @@
         ],
         "responses": {
           "200": {
-            "description": "ETF latest metrics block.",
+            "description": "ETF capabilities and identifiers; for funds with holdings, also the latest metrics block.\n",
             "headers": {
               "X-Data-As-Of": {
                 "schema": {
                   "type": "string",
                   "format": "date"
                 },
-                "description": "report_date — the sponsor's \"Fund Holdings as of\" date."
+                "description": "report_date — the sponsor's \"Fund Holdings as of\" date (holdings funds only)."
               },
               "X-Data-Availability": {
                 "schema": {
                   "type": "string",
                   "format": "date"
                 },
-                "description": "availability_date — when that holdings file was first observed."
+                "description": "availability_date — when that holdings file was first observed (holdings funds only)."
               }
             },
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "ticker",
+                    "capabilities",
+                    "identifiers"
+                  ],
                   "properties": {
-                    "portfolio_id": {
-                      "type": "string",
-                      "example": "BW-ETF-IVV"
-                    },
                     "ticker": {
                       "type": "string",
                       "example": "IVV"
+                    },
+                    "name": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "capabilities": {
+                      "$ref": "#/components/schemas/EtfCapabilities"
+                    },
+                    "identifiers": {
+                      "$ref": "#/components/schemas/EtfIdentifiers"
+                    },
+                    "portfolio_id": {
+                      "type": "string",
+                      "example": "BW-ETF-IVV",
+                      "description": "Holdings funds only."
                     },
                     "source_kind": {
                       "type": "string",
@@ -16523,11 +16798,26 @@
             }
           },
           "404": {
-            "description": "ETF not found or no holdings available.",
+            "description": "Ticker is on no ETF list (`code` = symbol_not_found).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "ETF not found"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "symbol_not_found"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

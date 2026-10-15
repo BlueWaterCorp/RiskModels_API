@@ -395,9 +395,9 @@ export function registerRiskModelsTools(
       title: "RiskModels Stock Total Returns",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you need the daily dividend-adjusted total returns of one US stock or ETF over 1-15 years. Not for returns split into factor and residual parts (use riskmodels_get_return_attribution) or residual returns at the recommended hedge depth (use riskmodels_get_residual_returns). Returns, from GET /ticker-returns, the daily return series (decimal, 0.01 = 1%) with each day's L3 market, sector and subsector hedge ratios and explained-risk shares; history is point-in-time. " +
+        "Use when you need the daily dividend-adjusted total returns of one US stock or ETF over 1-15 years. Not for returns split into factor and residual parts (use riskmodels_get_return_attribution) or residual returns at the recommended hedge depth (use riskmodels_get_residual_returns). Returns, from GET /ticker-returns, the daily return series (decimal, 0.01 = 1%) with each day's L3 market, sector and subsector hedge ratios and explained-risk shares; history is point-in-time. ETFs have three capabilities, any combination per fund: cascade (SPY, sector and subsector hedge legs), priced (daily returns, covariance, beta to SPY) and holdings (look-through); only priced ETFs return rows, and an empty response says why (etf_outside_priced_universe or etf_no_return_history_in_window) and is not billed. " +
         EOD +
-        " Price: $0.02 per call plus $0.01 per year of history beyond the first.",
+        " Price: $0.02 per call plus $0.01 per year of history beyond the first; $0 when no rows return.",
       inputSchema: {
         ticker: tickerParam("AAPL"),
         years: z
@@ -1042,7 +1042,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Search",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you need to resolve a name or fragment to an identifier: a stock ticker, an ETF ticker, a mutual fund's bw_fund_id or a 13F filer's bw_filer_id. Not for data about the match (use riskmodels_get_stock_snapshot, riskmodels_get_etf, riskmodels_get_fund or riskmodels_get_filer). Returns matches from GET /tickers (type stock), GET /data/etf/search (etf), GET /funds/search (fund: bw_fund_id, ticker, name, style box, asset class, total assets) or GET /13f/filers/search (filer: bw_filer_id). Registry refreshed end-of-day. Free.",
+        "Use when you need to resolve a name or fragment to an identifier: a stock ticker, an ETF ticker, a mutual fund's bw_fund_id or a 13F filer's bw_filer_id. Not for data about the match (use riskmodels_get_stock_snapshot, riskmodels_get_etf, riskmodels_get_fund or riskmodels_get_filer). Returns matches from GET /tickers (type stock), GET /data/etf/search (etf: each hit carries capabilities cascade, priced and holdings, i.e. hedge leg, daily returns and look-through holdings), GET /funds/search (fund: bw_fund_id, ticker, name, style box, asset class, total assets) or GET /13f/filers/search (filer: bw_filer_id). Registry refreshed end-of-day. Free.",
       inputSchema: {
         type: z
           .enum(["stock", "etf", "fund", "filer"])
@@ -1239,7 +1239,7 @@ export function registerRiskModelsTools(
       title: "RiskModels ETF",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want one ETF's registry metadata and portfolio surface, and optionally its largest holdings. Not for finding an ETF ticker (use riskmodels_search) or the ETF's daily returns (use riskmodels_get_returns). Returns { snapshot, holdings }: snapshot from GET /data/etf/{ticker}, omitted when snapshot is false; holdings, only when holdings_top is set, from GET /data/etf/{ticker}/holdings. Holdings follow the latest published holdings file; registry refreshed end-of-day. Free (no per-call charge).",
+        "Use when you want one ETF's registry metadata and portfolio surface, and optionally its largest holdings. Not for finding an ETF ticker (use riskmodels_search) or the ETF's daily returns (use riskmodels_get_returns). Returns { snapshot, holdings }: snapshot from GET /data/etf/{ticker} (every known fund, with capabilities cascade = hedge leg in the SPY/sector/subsector cascade, priced = daily returns and beta to SPY since priced_from, holdings = look-through as of holdings_as_of, plus factor_role and FIGI/CIK/BW identifiers), omitted when snapshot is false; holdings, only when holdings_top is set, from GET /data/etf/{ticker}/holdings. Holdings follow the latest published holdings file; registry refreshed end-of-day. Free (no per-call charge).",
       inputSchema: {
         ticker: z.string().min(1).describe("ETF ticker symbol, case-insensitive, e.g. SMH"),
         snapshot: z

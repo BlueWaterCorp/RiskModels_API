@@ -61,6 +61,10 @@ export type HistoryMetadataExtras = {
   history_row_count?: number;
   /** Human-readable note when history is empty or partially missing. */
   data_warning?: string;
+  /** Machine-readable reason for `data_warning` (e.g. etf_outside_priced_universe). */
+  data_warning_code?: string;
+  /** Endpoint that explains the reason (e.g. /api/data/etf/HYG). */
+  see?: string;
   /**
    * Override the global factor universe with the factors actually used for
    * this response (e.g. for a single ticker the L3 factors are
@@ -122,6 +126,12 @@ export function buildMetadataBody(
   }
   if (extras?.data_warning) {
     body.data_warning = extras.data_warning;
+  }
+  if (extras?.data_warning_code) {
+    body.data_warning_code = extras.data_warning_code;
+  }
+  if (extras?.see) {
+    body.see = extras.see;
   }
   return body;
 }
