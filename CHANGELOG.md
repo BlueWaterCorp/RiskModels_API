@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-15 — `/portfolio/exposure`: risk-basis beta, scenario inputs, `top_contributors`, ETF reason codes
+
+- `beta.risk_basis`: the market beta implied by the exposure vector the risk split uses and the ETF covariance, xᵀΣe_SPY / σ²_SPY, in SPY-equivalent dollars (`beta_usd`), as a share of gross, and by layer. The existing fields stay ERM3 L1 betas and are labelled `method: "l1_market_beta"`; the two agree under `hedge_level: "l1"`.
+- `scenario_inputs`: every ETF in the covariance, held or used as a hedge leg, with `beta_to_spy` and `annual_vol` over the covariance window. New request flag `include_positions` adds per-name rows: level used, L1 beta, hedge ratios, residual share and residual volatility. No built-in scenarios yet.
+- New request field `top_contributors`: length of `risk.residual.top_contributors`, 1 to 1000 or `"all"` (default 15).
+- A known ETF that cannot be priced is no longer `symbol_not_found`: dropped as `etf_outside_priced_universe`, and in `coverage.etfs_excluded_from_covariance` (now objects: `ticker`, `reason`, `detail`, `see`) as `etf_outside_priced_universe` or `etf_no_return_history_in_window`, each with `see: /api/data/etf/{ticker}`. Known means the ETF catalog or the ERM3 register, mirrored to `mcp/data/etf_register.json` by `scripts/export_etf_register_json.py`.
+- `hedge_added_variance` now warns only for residual shares above 1.02 (was any share above 1). Values are used uncapped as before. The Python SDK port follows.
+- Docs: `X-Balance-Remaining` is in billing units of 50,000 per US dollar. The 2026-10-08 entry below said `as_of` reached back to 2006; the earliest supported date is 2011-12-07.
+
 ## 2026-10-15 — `@riskmodels/mcp` 2.0.1
 
 - 2.0.0 was published with a local-path SDK dependency and failed to start for every installer; it is deprecated. 2.0.1 depends on the published `@riskmodels/sdk` ^0.1.4 and is otherwise identical.
@@ -55,7 +64,7 @@
 
 ## 2026-10-08 — `/portfolio/exposure`: `as_of` history, L1 fallback, Zarr fill-in fix
 
-- New `as_of` (YYYY-MM-DD, 2006-01-01 or later): the same output at a past model date, read from Zarr. Each name uses its newest row on or before `as_of`; the ETF covariance ends on the resulting snapshot date. Same price as a latest call. Names with no model data on that date (e.g. not yet listed) are dropped as `no_data_at_as_of`.
+- New `as_of` (YYYY-MM-DD; earliest supported date 2011-12-07, corrected 2026-10-15 from "2006-01-01"): the same output at a past model date, read from Zarr. Each name uses its newest row on or before `as_of`; the ETF covariance ends on the resulting snapshot date. Same price as a latest call. Names with no model data on that date (e.g. not yet listed) are dropped as `no_data_at_as_of`.
 - L1 beta at past dates is `-l1_mkt_hr`. At L1 the only factor is SPY, so the hedge ratio is exactly `-beta`: verified against `ds_erm3_betas` at 2012-06-29, 2020-03-31, 2024-12-31 and 2026-09-30 (311 of 311 name-dates exact).
 - No L* fallback: names without an L*, or whose L* level lacks data, are excluded from hedges and risk and listed in `coverage.excluded_from_lstar`. Every level uses the same estimation window, so such names have no L1 either (all 350 on 2026-10-07). A name whose model row is entirely empty is dropped as `insufficient_history`: ERM3 needs at least 126 trading days within its 252-day window. The spec documents this.
 - Fix: the Zarr fill-in for empty L2/L3 sector and subsector legs and missing `lstar_level` never ran, because it requested `l1_mkt_beta`, which Zarr does not serve, so the whole read returned nothing. It now requests only Zarr keys and derives the L1 beta.

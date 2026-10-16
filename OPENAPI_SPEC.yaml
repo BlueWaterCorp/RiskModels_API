@@ -8817,7 +8817,19 @@ paths:
 
         **Returns**
         - `beta`: L1 beta-dollars (stock sleeve, ETFs held in the book, total, by sector ETF). Stock
-          betas are ERM3 L1 market betas; ETFs held are measured against SPY over the covariance window.
+          betas are ERM3 L1 market betas whatever `hedge_level` is (`method: l1_market_beta`); ETFs held
+          are measured against SPY over the covariance window. `beta.risk_basis` is the market beta on
+          the risk basis: xᵀΣe_SPY / σ²_SPY, where x is the same exposure vector the risk split uses
+          (at `hedge_level`) and Σ the ETF covariance. It gives `beta_usd`, `beta_pct_of_gross`,
+          `by_layer_usd` (market, sector, subsector, direct_etf) and `gross_covered`. The two betas
+          differ when L2/L3 sector and subsector legs carry market beta of their own; under
+          `hedge_level: l1` they agree. Null when no covariance with SPY could be built.
+        - `scenario_inputs`: `etfs`, one row per ETF in the covariance, held or used as a hedge leg:
+          `beta_to_spy` (cov(ETF, SPY) / var(SPY) over the covariance window, SPY = 1), `annual_vol`,
+          `held_usd`, `hedge_leg`, `in_covariance`. With `include_positions: true`, also `positions`:
+          one row per modelled stock with the `level` used, `l1_beta`, `hedge_ratios` (ETF → hr at
+          that level), `residual_share`, `residual_vol_annual` (√(252·stock_var·max(res, 0))) and
+          `residual_vol_annual_usd`. No built-in scenarios: apply your own moves to these inputs.
         - `hedges.lstar|l1|l2|l3`: per ETF, `stock_hedge_trade_usd` = Σ value × hr (hr = ETF dollars per
           $1 long stock, negative = short), `direct_etf_exposure_usd` (the book's own ETF holdings),
           and `total_neutralizing_trade_usd` = stock hedge − direct holdings.
@@ -8828,14 +8840,21 @@ paths:
           where K is each name's level under `hedge_level`: a diagonal approximation that ignores
           residual covariance across names (including common size/value exposure, which stays in the
           residual); it is an approximation, not a bound. Volatility is annualised with √252.
+          `risk.residual.top_contributors` lists the names with the largest residual variance;
+          its length is the `top_contributors` request field (default 15, up to 1000 or `"all"`).
         - `risk.reconciliation`: per name at its level K, the relative gap between the
           covariance-implied systematic variance and the model's own split, stock_var·(1 − lK_res_er).
           The two use different estimators (end-of-window hedge ratios against a sample covariance,
           versus the model's time-varying, decay-weighted betas), so a gap is expected; large values
           say the two views disagree for that name.
         - `coverage`: share of submitted gross used by each calculation, dropped positions
-          (`symbol_not_found`, `insufficient_history`, `no_risk_metrics`, `not_at_snapshot_teo`,
-          `no_data_at_as_of`), names excluded from L*, and ETFs without covariance.
+          (`symbol_not_found`, `etf_outside_priced_universe`, `insufficient_history`, `no_risk_metrics`,
+          `not_at_snapshot_teo`, `no_data_at_as_of`), names excluded from L*, and ETFs without covariance.
+          A known ETF (in the ETF catalog or the ERM3 register) that cannot be priced is never
+          `symbol_not_found`: it is `etf_outside_priced_universe` (no returns in the store) or, in
+          `etfs_excluded_from_covariance`, `etf_no_return_history_in_window` (priced, but its returns
+          do not cover the window), each with `see: /api/data/etf/{ticker}`. `symbol_not_found` is kept
+          for tickers on no list.
         - `warnings`: machine-readable `{code, message, tickers}` for anything that changes how the
           result should be read: `share_class_netted`, `not_at_snapshot_teo`, `hedge_added_variance`,
           `residual_share_extreme`, `residual_share_floored`, `lstar_unavailable_l3_fallback`,
@@ -8846,8 +8865,9 @@ paths:
         residual) always sum to 1. Each is the variance the held hedge removed over the estimation
         window, so a share can be negative when a hedge leg added variance, and the residual share
         can then exceed 1. That is used as is: the name's residual variance is larger than its
-        unhedged variance, and it is listed in `risk.residual.hedge_added_variance` with a
-        `hedge_added_variance` warning. A residual share above 2 is still used and also raises
+        unhedged variance. A residual share above 1.02 (a 0.02 tolerance, so shares a hair over 1 do
+        not warn) is listed in `risk.residual.hedge_added_variance` with a `hedge_added_variance`
+        warning. A residual share above 2 is still used and also raises
         `residual_share_extreme`. A residual share below 0 is taken as 0 in the variance term
         (`residual_share_floored`). The shares themselves are never altered.
 
@@ -8901,6 +8921,9 @@ paths:
         tickers submitted, so a book of more than 25 tickers needs $1.00 of balance even if fewer
         names end up modelled. Latest and `as_of` cost the same. A request in which no stock has
         risk metrics and no ETF held has return history returns 422 and is not charged.
+        `X-API-Cost-USD` gives the charge in US dollars; `X-Balance-Remaining` gives the prepaid
+        balance left in billing units of 50,000 per US dollar (1 unit = $0.00002), or `unlimited`
+        on a licensed key.
       operationId: postPortfolioExposure
       tags: [Risk Metrics]
       x-pricing:
@@ -8948,6 +8971,16 @@ paths:
                   type: string
                   format: date
                   description: Past model date (YYYY-MM-DD, 2011-12-07 or later; earlier dates return 422). Omit for the latest. Same price. Before 2013-01-01, hedge_level lstar uses L3 for every name.
+                top_contributors:
+                  oneOf:
+                    - { type: integer, minimum: 1, maximum: 1000 }
+                    - { type: string, enum: [all] }
+                  default: 15
+                  description: Length of `risk.residual.top_contributors`, 1 to 1000, or `"all"` for every name.
+                include_positions:
+                  type: boolean
+                  default: false
+                  description: Add per-name rows to `scenario_inputs.positions` (level, L1 beta, hedge ratios, residual volatility). Off by default because books go to 1000 names.
             example:
               positions:
                 - { ticker: DOCN, value: 219558 }
@@ -8959,6 +8992,10 @@ paths:
           headers:
             X-API-Cost-USD:
               schema: { type: string }
+              description: Charge for this call in US dollars.
+            X-Balance-Remaining:
+              schema: { type: string }
+              description: Prepaid balance left, in billing units of 50,000 per US dollar (1 unit = $0.00002); `unlimited` on a licensed key.
           content:
             application/json:
               schema:
@@ -8994,7 +9031,21 @@ paths:
                       total_beta_usd: { type: number }
                       total_beta_pct_of_gross: { type: number, nullable: true }
                       by_sector_usd: { type: object, additionalProperties: { type: number } }
-                      direct_etf_betas: { type: object, additionalProperties: { type: number, nullable: true } }
+                      direct_etf_betas: { type: object, additionalProperties: { type: number, nullable: true }, description: "Beta to SPY of each ETF held, over the covariance window." }
+                      method: { type: string, enum: [l1_market_beta], description: "The stock beta fields above use each stock's ERM3 L1 market beta." }
+                      note: { type: string }
+                      risk_basis:
+                        type: object
+                        nullable: true
+                        description: Market beta on the risk basis, xᵀΣe_SPY / σ²_SPY of the exposure vector at hedge_level. Null without a covariance including SPY.
+                        properties:
+                          basis: { type: string, enum: [lstar, l1, l2, l3] }
+                          beta_usd: { type: number, description: "SPY-equivalent dollars." }
+                          beta_pct_of_gross: { type: number, nullable: true, description: "beta_usd / submitted gross." }
+                          by_layer_usd: { type: object, additionalProperties: { type: number }, description: "market, sector, subsector, direct_etf; sums to beta_usd." }
+                          gross_covered: { type: number, nullable: true, description: "Share of submitted gross in the exposure vector." }
+                          method: { type: string, enum: [exposure_covariance_beta] }
+                          note: { type: string }
                   hedges:
                     type: object
                     description: Keys lstar, l1, l2, l3; each holds stock_hedge_trade_usd, direct_etf_exposure_usd, total_neutralizing_trade_usd (ETF → USD) and stock_gross_covered_usd. `lstar` also carries names_by_level.
@@ -9010,13 +9061,50 @@ paths:
                         description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, exposure_usd (ETF → USD), layer_contributions (market, sector, subsector, direct_etf → daily_variance_usd2, share_of_systematic).
                       residual:
                         type: object
-                        description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, method, level_basis, top_contributors, and hedge_added_variance (ticker, level, residual_share) for names whose residual share exceeds 1.
+                        description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, method, level_basis, top_contributors (ticker, value_usd, share_of_residual; length set by the top_contributors request field), and hedge_added_variance (ticker, level, residual_share) for names whose residual share exceeds 1.02.
                       total:
                         type: object
                         description: daily_variance_usd2, daily_vol_usd, annual_vol_usd, systematic_share, residual_share.
                       reconciliation:
                         type: object
                         description: names, median_relative_error, p90_relative_error.
+                  scenario_inputs:
+                    type: object
+                    properties:
+                      covariance_start: { type: string, format: date, nullable: true }
+                      covariance_end: { type: string, format: date, nullable: true }
+                      covariance_effective_n: { type: integer }
+                      etfs:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ticker: { type: string }
+                            beta_to_spy: { type: number, nullable: true, description: "cov(ETF, SPY) / var(SPY) over the covariance window; null when the ETF is not in the covariance." }
+                            annual_vol: { type: number, nullable: true, description: "√(252 × daily variance) over the covariance window, as a fraction." }
+                            held_usd: { type: number, description: "The book's own position in this ETF (0 if none)." }
+                            hedge_leg: { type: boolean, description: "Used by at least one name's hedge at its level." }
+                            in_covariance: { type: boolean }
+                      positions_included: { type: boolean }
+                      positions:
+                        type: array
+                        description: Only when include_positions is true. One row per modelled stock.
+                        items:
+                          type: object
+                          properties:
+                            ticker: { type: string }
+                            tickers: { type: array, items: { type: string }, description: "Tickers netted into this security." }
+                            value_usd: { type: number }
+                            sector_etf: { type: string, nullable: true }
+                            subsector_etf: { type: string, nullable: true }
+                            level: { type: string, nullable: true, enum: [l1, l2, l3], description: "Level used under hedge_level; null when excluded." }
+                            excluded_reason: { type: string, nullable: true, enum: [no_lstar, lstar_level_incomplete] }
+                            l1_beta: { type: number, nullable: true }
+                            hedge_ratios: { type: object, nullable: true, additionalProperties: { type: number }, description: "ETF → hr at the level used (ETF dollars per $1 long stock)." }
+                            residual_share: { type: number, nullable: true }
+                            residual_vol_annual: { type: number, nullable: true, description: "√(252 × stock_var × max(residual_share, 0)), as a fraction." }
+                            residual_vol_annual_usd: { type: number, nullable: true }
+                      note: { type: string }
                   coverage:
                     type: object
                     properties:
@@ -9033,9 +9121,10 @@ paths:
                           properties:
                             ticker: { type: string }
                             value_usd: { type: number }
-                            reason: { type: string, enum: [symbol_not_found, no_risk_metrics, not_at_snapshot_teo, no_data_at_as_of, insufficient_history] }
+                            reason: { type: string, enum: [symbol_not_found, etf_outside_priced_universe, no_risk_metrics, not_at_snapshot_teo, no_data_at_as_of, insufficient_history] }
                             teo: { type: string, nullable: true, description: For not_at_snapshot_teo, the name's own model date. }
                             detail: { type: string, description: One plain-English sentence explaining the reason. }
+                            see: { type: string, description: "For etf_outside_priced_universe, /api/data/etf/{ticker}." }
                       excluded_from_lstar:
                         type: array
                         items:
@@ -9050,7 +9139,16 @@ paths:
                         description: Names left out of the residual because their stock_var is negative.
                         items: { type: object, properties: { ticker: { type: string }, reason: { type: string } } }
                       etfs_without_covariance: { type: array, items: { type: string } }
-                      etfs_excluded_from_covariance: { type: array, items: { type: string } }
+                      etfs_excluded_from_covariance:
+                        type: array
+                        description: ETFs (held or hedge legs) left out of the covariance, each with a reason.
+                        items:
+                          type: object
+                          properties:
+                            ticker: { type: string }
+                            reason: { type: string, enum: [etf_outside_priced_universe, etf_no_return_history_in_window] }
+                            detail: { type: string }
+                            see: { type: string, description: "/api/data/etf/{ticker}" }
                   warnings:
                     type: array
                     items:

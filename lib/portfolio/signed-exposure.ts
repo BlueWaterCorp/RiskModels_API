@@ -26,6 +26,8 @@
  *       — a diagonal approximation: it ignores residual covariance across
  *         names, including common size/value exposure. Not a bound.
  *
+ *   market beta, risk basis    = xᵀ Σ e_SPY / σ²_SPY    (beta.risk_basis; beta.total_beta_usd stays L1)
+ *
  * lK_res_er is ERM3's residual share: 1 minus the variance the held (time-
  * varying) hedge removed over the window. The shares at a level sum to 1, but
  * one can be negative when a hedge leg added variance, so the residual share
@@ -41,8 +43,15 @@ export type Layer = "market" | "sector" | "subsector";
 export const MARKET_ETF = "SPY";
 export const TRADING_DAYS = 252;
 
-/** Residual share above 1 by more than this: the hedge added variance. */
-const HEDGE_ADDED_EPS = 1e-6;
+/**
+ * Residual share above this: listed in `risk.residual.hedge_added_variance` and
+ * warned as `hedge_added_variance`. Owner decision (Conrad, 2026-10-15,
+ * RMAPI-15): warn only above 1.02, a 0.02 tolerance above 1.0, so shares a hair
+ * over 1 (60 names between 1.0001 and 1.042 on the reviewed book) do not raise
+ * the warning. Values stay uncapped and still sum to one; only the warning
+ * threshold changes. Mirrored in sdk/riskmodels/exposure_history.py.
+ */
+export const HEDGE_ADDED_VARIANCE_WARN_THRESHOLD = 1.02;
 /** Residual share above this is used but reported as a data-quality warning. */
 const RES_ER_EXTREME = 2;
 
@@ -85,8 +94,13 @@ export interface ExposureInput {
   cov: EtfCovariance | null;
   /** Default "lstar": each name at its own L* level. */
   basis?: Basis;
-  topContributors?: number;
+  /** Length of risk.residual.top_contributors (default 15); "all" lists every name. */
+  topContributors?: number | "all";
+  /** Add per-name rows to scenario_inputs.positions (off by default: books go to 1000 names). */
+  includePositions?: boolean;
 }
+
+export const DEFAULT_TOP_CONTRIBUTORS = 15;
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -328,7 +342,7 @@ export function computeSignedExposure(input: ExposureInput) {
       continue;
     }
     if (res < 0) floored.push(label);
-    if (res > 1 + HEDGE_ADDED_EPS) hedgeAddedVariance.push({ ticker: label, level, residual_share: round(res, 4) });
+    if (res > HEDGE_ADDED_VARIANCE_WARN_THRESHOLD) hedgeAddedVariance.push({ ticker: label, level, residual_share: round(res, 4) });
     if (res > RES_ER_EXTREME) extreme.push(label);
     const v = s.value * s.value * sv * Math.max(res, 0);
     residVar += v;
@@ -336,6 +350,14 @@ export function computeSignedExposure(input: ExposureInput) {
     residOk.add(s.symbol);
     residByName.push({ ticker: label, value: s.value, var: v });
   }
+
+  let riskBasisBeta: {
+    basis: Basis;
+    beta_usd: number;
+    beta_pct_of_gross: number | null;
+    by_layer_usd: Record<string, number>;
+    gross_covered: number | null;
+  } | null = null;
 
   if (cov && cov.etfs.length > 0) {
     const n = cov.etfs.length;
@@ -390,6 +412,23 @@ export function computeSignedExposure(input: ExposureInput) {
       for (let i = 0; i < n; i++) x[i] += xLayer[layer][i]!;
     }
     const sysVar = quadForm(x, cov.S, x);
+
+    // Market beta on the risk basis: x' Σ e_SPY / σ²_SPY, the SPY-equivalent
+    // dollars of the same exposure vector the risk split uses.
+    const varSpy = spyIdx !== undefined ? cov.S[spyIdx]![spyIdx]! : 0;
+    if (spyIdx !== undefined && varSpy > 0) {
+      const betaOf = (v: number[]) => v.reduce((a, vi, i) => a + vi * cov.S[i]![spyIdx]!, 0) / varSpy;
+      const betaUsd = betaOf(x);
+      riskBasisBeta = {
+        basis,
+        beta_usd: round(betaUsd),
+        beta_pct_of_gross: gross > 0 ? round(betaUsd / gross, 4) : null,
+        by_layer_usd: Object.fromEntries(
+          (Object.keys(xLayer) as Array<keyof typeof xLayer>).map((layer) => [layer, round(betaOf(xLayer[layer]))]),
+        ),
+        gross_covered: null as number | null,
+      };
+    }
     const sysDefined = sysVar > 1e-12;
     const contributions = Object.fromEntries(
       (Object.keys(xLayer) as Array<keyof typeof xLayer>).map((layer) => {
@@ -417,7 +456,7 @@ export function computeSignedExposure(input: ExposureInput) {
         hedge_added_variance: hedgeAddedVariance,
         top_contributors: residByName
           .sort((a, b) => b.var - a.var)
-          .slice(0, input.topContributors ?? 15)
+          .slice(0, input.topContributors === "all" ? undefined : (input.topContributors ?? DEFAULT_TOP_CONTRIBUTORS))
           .map((r) => ({
             ticker: r.ticker,
             value_usd: round(r.value),
@@ -438,6 +477,63 @@ export function computeSignedExposure(input: ExposureInput) {
     };
   }
 
+  if (riskBasisBeta) riskBasisBeta.gross_covered = share(systematicCovered);
+
+  // ---- 4. scenario inputs ----------------------------------------------------------
+  const spyVar = cov && spyIdx !== undefined ? cov.S[spyIdx]![spyIdx]! : 0;
+  const hedgeLegEtfs = new Set<string>();
+  for (const s of stocks) {
+    const level = levelOf.get(s.symbol);
+    const legs = level ? stockLegs(s, level) : null;
+    for (const [etf] of legs ?? []) hedgeLegEtfs.add(etf);
+  }
+  const etfRows = new Map<string, { ticker: string; beta_to_spy: number | null; annual_vol: number | null; held_usd: number; hedge_leg: boolean; in_covariance: boolean }>();
+  for (const etf of [...(cov?.etfs ?? []), ...directEtfs.map((d) => d.ticker), ...hedgeLegEtfs]) {
+    if (etfRows.has(etf)) continue;
+    const i = covIdx.get(etf);
+    const inCov = i !== undefined && !!cov;
+    etfRows.set(etf, {
+      ticker: etf,
+      beta_to_spy: inCov && spyVar > 0 ? round(cov!.S[i]![spyIdx!]! / spyVar, 4) : null,
+      annual_vol: inCov ? round(Math.sqrt(Math.max(cov!.S[i]![i]!, 0) * TRADING_DAYS), 4) : null,
+      held_usd: round(directExposure[etf] ?? 0),
+      hedge_leg: hedgeLegEtfs.has(etf),
+      in_covariance: inCov,
+    });
+  }
+  const scenarioInputs: Record<string, unknown> = {
+    covariance_start: cov?.start ?? null,
+    covariance_end: cov?.end ?? null,
+    covariance_effective_n: cov?.effective_n ?? 0,
+    etfs: [...etfRows.values()],
+    positions_included: input.includePositions === true,
+    note: "beta_to_spy = cov(ETF, SPY) / var(SPY) and annual_vol = √(252·var) over the covariance window (SPY = 1). held_usd is the book's own position; hedge_leg marks ETFs used by a name's hedge at its level. Per-name rows (scenario_inputs.positions) are returned only when include_positions is true.",
+  };
+  if (input.includePositions) {
+    scenarioInputs.positions = stocks.map((s) => {
+      const level = levelOf.get(s.symbol) ?? null;
+      const legs = level ? stockLegs(s, level) : null;
+      const res = level ? s.metrics[resKey(level)] : null;
+      const sv = s.metrics.stock_var;
+      const resVol = finite(sv) && sv >= 0 && finite(res) ? Math.sqrt(sv * Math.max(res, 0) * TRADING_DAYS) : null;
+      const excluded = lstarExcluded.find((e) => e.ticker === (s.tickers[0] ?? s.symbol));
+      return {
+        ticker: s.tickers[0] ?? s.symbol,
+        tickers: s.tickers,
+        value_usd: round(s.value),
+        sector_etf: s.sector_etf,
+        subsector_etf: s.subsector_etf,
+        level,
+        excluded_reason: excluded?.reason ?? null,
+        l1_beta: finite(s.metrics.l1_mkt_beta) ? round(s.metrics.l1_mkt_beta, 4) : null,
+        hedge_ratios: legs ? Object.fromEntries(legs.map(([etf, , hr]) => [etf, round(hr, 4)])) : null,
+        residual_share: finite(res) ? round(res, 4) : null,
+        residual_vol_annual: resVol === null ? null : round(resVol, 4),
+        residual_vol_annual_usd: resVol === null ? null : round(Math.abs(s.value) * resVol),
+      };
+    });
+  }
+
   const warnings: ExposureWarning[] = [];
   if (l3Fallback.length) {
     const n = l3Fallback.length;
@@ -450,7 +546,7 @@ export function computeSignedExposure(input: ExposureInput) {
   if (hedgeAddedVariance.length) {
     warnings.push({
       code: "hedge_added_variance",
-      message: "For these names the model's hedge at their level added variance over the window (residual share above 1). Their residual risk is larger than their unhedged variance and is used as is.",
+      message: `For these names the model's hedge at their level added variance over the window (residual share above ${HEDGE_ADDED_VARIANCE_WARN_THRESHOLD}). Their residual risk is larger than their unhedged variance and is used as is.`,
       tickers: hedgeAddedVariance.map((h) => h.ticker),
     });
   }
@@ -479,10 +575,19 @@ export function computeSignedExposure(input: ExposureInput) {
       total_beta_pct_of_gross: gross > 0 ? round((stockBeta + directBeta) / gross, 4) : null,
       by_sector_usd: roundMap(betaBySector),
       direct_etf_betas: directBetas,
-      note: "Stock betas are ERM3 L1 market betas; direct ETF betas are measured against SPY over the covariance window (SPY = 1).",
+      method: "l1_market_beta",
+      note: "stock_beta_usd and total_beta_usd use each stock's ERM3 L1 market beta, whatever hedge_level is; direct ETF betas are measured against SPY over the covariance window (SPY = 1). risk_basis is the market beta of the exposure vector the risk split uses (hedge_level and the ETF covariance): xᵀΣe_SPY / σ²_SPY. The two differ when a name's L2/L3 sector and subsector legs carry market beta of their own.",
+      risk_basis: riskBasisBeta
+        ? {
+            ...riskBasisBeta,
+            method: "exposure_covariance_beta",
+            note: "Σ_e x_e·cov(e, SPY)/var(SPY), x = the book's raw-ETF exposure at hedge_level (minus the stock hedge legs, plus ETFs held). by_layer_usd splits it by market, sector, subsector and direct_etf legs; gross_covered is the share of submitted gross in x (same as coverage.by_calculation.systematic). Null when no covariance with SPY could be built.",
+          }
+        : null,
     },
     hedges,
     risk,
+    scenario_inputs: scenarioInputs,
     coverage: {
       input_gross_usd: round(gross),
       modelled_stock_gross_usd: round(stockGross),

@@ -14,8 +14,8 @@ by a shared fixture (``tests/fixtures/signed_exposure_parity.json``):
 - systematic daily variance ``xᵀΣx``; layer contributions ``x_Lᵀ Σ x`` sum to it;
 - residual daily variance ``Σ v²·stock_var·max(lK_res_er, 0)`` at each name's
   level K — a diagonal approximation that ignores residual covariance across
-  names. A residual share above 1 (the hedge added variance) is used as is and
-  reported in ``hedge_added_variance``;
+  names. A residual share above 1 (the hedge added variance) is used as is;
+  one above 1.02 is reported in ``hedge_added_variance``;
 - default basis ``"lstar"`` (each name at its own L* level, no fallback);
   ``"l1"`` / ``"l2"`` / ``"l3"`` force one level;
 - volatility annualised with √252.
@@ -45,7 +45,10 @@ Basis = Literal["lstar", "l1", "l2", "l3"]
 LEVELS = ("l1", "l2", "l3")
 MARKET_ETF = "SPY"
 TRADING_DAYS = 252
-HEDGE_ADDED_EPS = 1e-6
+# Residual share above this is reported in ``hedge_added_variance``. Owner decision
+# (2026-10-15, RMAPI-15): a 0.02 tolerance above 1.0; values stay uncapped.
+# Mirrors HEDGE_ADDED_VARIANCE_WARN_THRESHOLD in lib/portfolio/signed-exposure.ts.
+HEDGE_ADDED_VARIANCE_WARN_THRESHOLD = 1.02
 
 
 def _finite(v: Any) -> bool:
@@ -161,7 +164,7 @@ def compute_signed_exposure(
         if sv < 0:
             flagged.append({"ticker": s["ticker"], "reason": "negative stock_var"})
             continue
-        if res > 1 + HEDGE_ADDED_EPS:
+        if res > HEDGE_ADDED_VARIANCE_WARN_THRESHOLD:
             hedge_added.append({"ticker": s["ticker"], "level": lv, "residual_share": round(float(res), 4)})
         v = s["value"] ** 2 * float(sv) * max(float(res), 0.0)
         resid += v

@@ -58,7 +58,7 @@ export const POST = withBilling(
       );
     }
 
-    const { positions, lookback_days, hedge_level, as_of } = validation.data;
+    const { positions, lookback_days, hedge_level, as_of, top_contributors, include_positions } = validation.data;
 
     const earliestErr = asOfBeforeEarliest(as_of);
     if (earliestErr) {
@@ -72,6 +72,8 @@ export const POST = withBilling(
         lookbackDays: lookback_days,
         basis: hedge_level,
         asOf: as_of,
+        topContributors: top_contributors,
+        includePositions: include_positions,
       });
 
       if ("error" in result) {

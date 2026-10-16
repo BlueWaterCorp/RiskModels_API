@@ -1778,7 +1778,7 @@ export const CAPABILITIES: Capability[] = [
     id: "portfolio-exposure",
     name: "Long/Short Portfolio Exposure",
     description:
-      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector, the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and a risk split at hedge_level (default lstar: each name at its own L* level, 1–3). Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·max(lK_res_er, 0) at each name's level, a diagonal approximation that ignores residual covariance across names (including common size/value). A residual share above 1 means the hedge added variance over the window; it is used as is and flagged. Positions are netted by security and never normalised; ETF-only books are valid. Every name is read at one common model date. Report the response's warnings (share-class netting, names not at the model date, hedge_added_variance) and coverage.dropped with the result. Use this instead of /portfolio/risk-index for books with shorts. Priced per successful call by book size: $0.25 up to 25 names, $1.00 above 25 (counting names actually modelled).",
+      "Signed long/short book (dollar values, short < 0, up to 1000 positions): L1 beta-dollars by sector and the market beta on the risk basis (beta.risk_basis = xᵀΣe_SPY/σ²_SPY of the exposure vector the risk split uses), the ETF hedge trades that neutralise the book at L1/L2/L3 (stock hedge, the book's own ETF holdings, and the total neutralising trade reported separately), and a risk split at hedge_level (default lstar: each name at its own L* level, 1–3). Systematic risk = the book's raw-ETF exposure × the sample covariance of daily ETF returns over lookback_days ending on the model date; residual risk = Σ value²·stock_var·max(lK_res_er, 0) at each name's level, a diagonal approximation that ignores residual covariance across names (including common size/value). A residual share above 1 means the hedge added variance over the window; it is used as is, and flagged above 1.02. scenario_inputs gives each ETF's beta to SPY and volatility over the covariance window, plus per-name rows (level, L1 beta, hedge ratios, residual volatility) when include_positions is true. A known ETF that cannot be priced is reported as etf_outside_priced_universe or etf_no_return_history_in_window (with see: /api/data/etf/{ticker}), not symbol_not_found. Positions are netted by security and never normalised; ETF-only books are valid. Every name is read at one common model date. Report the response's warnings (share-class netting, names not at the model date, hedge_added_variance) and coverage.dropped with the result. Use this instead of /portfolio/risk-index for books with shorts. Priced per successful call by book size: $0.25 up to 25 names, $1.00 above 25 (counting names actually modelled).",
     endpoint: "/api/portfolio/exposure",
     method: "POST",
     parameters: {
@@ -1811,6 +1811,18 @@ export const CAPABILITIES: Capability[] = [
         description: "lstar (default): each name at its own L* level. l1 / l2 / l3: one level for every name.",
         enum: ["lstar", "l1", "l2", "l3"],
         default: "lstar",
+      },
+      top_contributors: {
+        type: "integer",
+        required: false,
+        description: "Names listed in risk.residual.top_contributors: an integer 1–1000, or the string \"all\" for every name. Default 15.",
+        default: 15,
+      },
+      include_positions: {
+        type: "boolean",
+        required: false,
+        description: "Add per-name rows to scenario_inputs.positions (level, L1 beta, hedge ratios, residual volatility). Default false.",
+        default: false,
       },
     },
     pricing: {

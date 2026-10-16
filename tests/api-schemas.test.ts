@@ -278,4 +278,16 @@ describe("PortfolioExposureRequestSchema", () => {
   it("leaves the earliest-date check to the route (422 naming 2011-12-07), not a 400", () => {
     expect(PortfolioExposureRequestSchema.safeParse({ ...base, as_of: "2008-09-30" }).success).toBe(true);
   });
+
+  it("top_contributors defaults to 15 and takes 1-1000 or \"all\"; include_positions defaults to false", () => {
+    const d = PortfolioExposureRequestSchema.parse(base);
+    expect(d.top_contributors).toBe(15);
+    expect(d.include_positions).toBe(false);
+    expect(PortfolioExposureRequestSchema.parse({ ...base, top_contributors: "all" }).top_contributors).toBe("all");
+    expect(PortfolioExposureRequestSchema.parse({ ...base, top_contributors: 1000 }).top_contributors).toBe(1000);
+    for (const top_contributors of [0, 1001, 2.5, "ten"]) {
+      expect(PortfolioExposureRequestSchema.safeParse({ ...base, top_contributors }).success).toBe(false);
+    }
+    expect(PortfolioExposureRequestSchema.parse({ ...base, include_positions: true }).include_positions).toBe(true);
+  });
 });

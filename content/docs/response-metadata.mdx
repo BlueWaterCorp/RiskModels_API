@@ -33,7 +33,8 @@ These fields are **omitted from Parquet and CSV** bodies — use the same **`X-R
 | Header | When to use it |
 | --- | --- |
 | `X-Risk-Model-Version`, `X-Data-As-Of`, `X-Factor-Set-Id`, `X-Universe-Size` | Reproducibility and support tickets alongside `_metadata`. |
-| `X-API-Cost-USD`, `X-API-Billing-Code`, `X-Cache-Status` | Cost attribution; cached responses bill **0** when documented. |
+| `X-API-Cost-USD`, `X-API-Billing-Code`, `X-Cache-Status` | Cost attribution in US dollars; cached responses bill **0** when documented. |
+| `X-Balance-Remaining` | Prepaid balance left, in billing units of **50,000 per US dollar** (1 unit = {'$'}0.00002); `unlimited` on a licensed key. |
 | `X-Request-ID`, `X-Response-Latency-Ms` | Latency debugging and correlation with server logs. |
 | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` | Client-side throttling (see [Authentication](/docs/authentication)). |
 

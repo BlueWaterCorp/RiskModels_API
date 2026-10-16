@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  HEDGE_ADDED_VARIANCE_WARN_THRESHOLD,
   computeSignedExposure,
   type EtfCovariance,
   type StockInput,
@@ -370,4 +371,148 @@ describe("L* basis (default)", () => {
     expect(out.coverage.excluded_from_lstar).toEqual([]);
     expect(out.coverage.by_calculation.hedge_l3).toBeCloseTo(1, 4);
   });
+});
+
+describe("hedge_added_variance warning threshold (owner decision 2026-10-15)", () => {
+  const run = (res: number) =>
+    computeSignedExposure({
+      stocks: [stock("BRK", 10_000, { ...NVDA, l1_res_er: res, lstar_level: 1 })],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+    });
+
+  it("is 1.02", () => {
+    expect(HEDGE_ADDED_VARIANCE_WARN_THRESHOLD).toBe(1.02);
+  });
+
+  it.each([1.0001, 1.02])("no warning at a residual share of %s, and the share is still used as is", (res) => {
+    const r = run(res);
+    expect(r.warnings.map((w) => w.code)).not.toContain("hedge_added_variance");
+    expect((r.risk as any).residual.hedge_added_variance).toEqual([]);
+    expect((r.risk as any).residual.daily_variance_usd2).toBeCloseTo(10_000 ** 2 * 9e-4 * res, 4);
+  });
+
+  it("warns at a residual share of 1.021", () => {
+    const r = run(1.021);
+    expect(r.warnings.map((w) => w.code)).toEqual(["hedge_added_variance"]);
+    expect((r.risk as any).residual.hedge_added_variance).toEqual([{ ticker: "BRK", level: "l1", residual_share: 1.021 }]);
+  });
+});
+
+describe("market beta on the risk basis", () => {
+  const varSpy = COV.S[0]![0]!;
+  const betaOf = (x: number[]) => x.reduce((a, xi, i) => a + xi * COV.S[i]![0]!, 0) / varSpy;
+
+  it("is xᵀΣe_SPY/σ²_SPY of the exposure vector, kept apart from the L1 beta", () => {
+    const book = [stock("NVDA", 100_000, NVDA), stock("AMD", -60_000, AMD)];
+    const out = computeSignedExposure({
+      stocks: book,
+      directEtfs: [{ ticker: "XLK", value: 20_000 }],
+      inputGrossUsd: 180_000,
+      cov: COV,
+    });
+    const x = [
+      -(100_000 * -0.5 - 60_000 * -0.6),
+      -(100_000 * -0.4 - 60_000 * -0.3) + 20_000,
+      -(100_000 * -0.7 - 60_000 * -0.9),
+    ];
+    const rb = out.beta.risk_basis!;
+    expect(rb.beta_usd).toBeCloseTo(betaOf(x), 1);
+    expect(rb.beta_pct_of_gross).toBeCloseTo(betaOf(x) / 180_000, 4);
+    expect(rb.basis).toBe("lstar");
+    expect(rb.gross_covered).toBe(1);
+    const layers = rb.by_layer_usd as Record<string, number>;
+    expect(layers.market! + layers.sector! + layers.subsector! + layers.direct_etf!).toBeCloseTo(rb.beta_usd, 0);
+    expect(layers.direct_etf).toBeCloseTo((20_000 * COV.S[1]![0]!) / varSpy, 1);
+    // The L1 field is unchanged and labelled.
+    expect(out.beta.method).toBe("l1_market_beta");
+    expect(out.beta.stock_beta_usd).toBeCloseTo(100_000 * 1.8 - 60_000 * 2.0, 2);
+    expect(rb.beta_usd).not.toBeCloseTo(out.beta.total_beta_usd, 0);
+  });
+
+  it("equals the L1 beta-dollars under hedge_level l1 (L1 has one factor, SPY)", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("NVDA", 100_000, NVDA), stock("AMD", -60_000, AMD)],
+      directEtfs: [],
+      inputGrossUsd: 160_000,
+      cov: COV,
+      basis: "l1",
+    });
+    expect(out.beta.risk_basis!.beta_usd).toBeCloseTo(out.beta.total_beta_usd, 2);
+  });
+
+  it("is null without a covariance", () => {
+    const out = computeSignedExposure({ stocks: [stock("NVDA", 1_000, NVDA)], directEtfs: [], inputGrossUsd: 1_000, cov: null });
+    expect(out.beta.risk_basis).toBeNull();
+  });
+});
+
+describe("scenario inputs", () => {
+  const book = [stock("NVDA", 100_000, NVDA), stock("AMD", -60_000, AMD)];
+
+  it("gives each ETF's beta to SPY, volatility, holding and hedge-leg flag", () => {
+    const out = computeSignedExposure({
+      stocks: book,
+      directEtfs: [{ ticker: "XLK", value: 20_000 }, { ticker: "EFA", value: 5_000 }],
+      inputGrossUsd: 185_000,
+      cov: COV,
+    });
+    const si = out.scenario_inputs as any;
+    const byTicker = Object.fromEntries(si.etfs.map((e: any) => [e.ticker, e]));
+    expect(byTicker.SPY.beta_to_spy).toBe(1);
+    expect(byTicker.XLK.beta_to_spy).toBeCloseTo(1.1, 4);
+    expect(byTicker.SMH.beta_to_spy).toBeCloseTo(1.3, 4);
+    expect(byTicker.SMH.annual_vol).toBeCloseTo(Math.sqrt(3.0e-4 * 252), 4);
+    expect(byTicker.XLK).toMatchObject({ held_usd: 20_000, hedge_leg: true, in_covariance: true });
+    // An ETF held without covariance is listed with no beta.
+    expect(byTicker.EFA).toMatchObject({ beta_to_spy: null, annual_vol: null, held_usd: 5_000, hedge_leg: false, in_covariance: false });
+    // Matches the existing direct_etf_betas for ETFs held.
+    expect(out.beta.direct_etf_betas.XLK).toBe(byTicker.XLK.beta_to_spy);
+    expect(si.positions_included).toBe(false);
+    expect(si.positions).toBeUndefined();
+  });
+
+  it("adds per-name rows only when include_positions is set", () => {
+    const out = computeSignedExposure({ stocks: book, directEtfs: [], inputGrossUsd: 160_000, cov: COV, includePositions: true });
+    const rows = (out.scenario_inputs as any).positions;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({
+      ticker: "NVDA",
+      tickers: ["NVDA"],
+      value_usd: 100_000,
+      sector_etf: "XLK",
+      subsector_etf: "SMH",
+      level: "l3",
+      excluded_reason: null,
+      l1_beta: 1.8,
+      hedge_ratios: { SPY: -0.5, XLK: -0.4, SMH: -0.7 },
+      residual_share: 0.4,
+      residual_vol_annual: Number(Math.sqrt(9e-4 * 0.4 * 252).toFixed(4)),
+      residual_vol_annual_usd: Math.round(100_000 * Math.sqrt(9e-4 * 0.4 * 252) * 100) / 100,
+    });
+  });
+
+  it("per-name rows carry the level used and an exclusion reason", () => {
+    const out = computeSignedExposure({
+      stocks: [stock("NOL", 10_000, { ...NVDA, lstar_level: null, l3_res_er: null })],
+      directEtfs: [],
+      inputGrossUsd: 10_000,
+      cov: COV,
+      includePositions: true,
+    });
+    const row = (out.scenario_inputs as any).positions[0];
+    expect(row).toMatchObject({ level: null, excluded_reason: "no_lstar", hedge_ratios: null, residual_vol_annual: null });
+  });
+});
+
+describe("top_contributors length", () => {
+  const many = Array.from({ length: 20 }, (_, i) => stock(`N${i}`, 1_000 * (i + 1), NVDA));
+  const run = (topContributors?: number | "all") =>
+    (computeSignedExposure({ stocks: many, directEtfs: [], inputGrossUsd: 210_000, cov: COV, topContributors }).risk as any)
+      .residual.top_contributors;
+
+  it("defaults to 15", () => expect(run()).toHaveLength(15));
+  it("takes a number", () => expect(run(3).map((r: any) => r.ticker)).toEqual(["N19", "N18", "N17"]));
+  it('"all" lists every name', () => expect(run("all")).toHaveLength(20));
 });

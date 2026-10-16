@@ -100,37 +100,16 @@ A client lost 28 ETFs ($90k of gross) from a 576-position book with no explanati
 - `holdings`: look-through and benchmark-fit.
 Each fund also has a `factor_role`: market, sector, subsector, style, `macro:<factor>`, or none.
 
-Work:
-- **Reason codes.** Use `etf_outside_priced_universe` and `etf_no_return_history_in_window` in place of `symbol_not_found` for known funds, each with `see: /data/etf/{ticker}`. Keep `symbol_not_found` for tickers on no list. Use the same shape in `coverage.etfs_excluded_from_covariance`.
+Work (the `/portfolio/exposure` reason codes and per-ETF `beta_to_spy` shipped 2026-10-15, see LEDGER):
 - **`/data/etf/{ticker}`** returns 200 for every known fund, with `capabilities` (cascade, priced, priced_from, holdings, holdings_as_of, factor_role) and `identifiers` (bw_sym_id, bw_etf_id, figi, cik, ticker).
 - **`GET /data/etf/universe`** is free: a static JSON generated at sync time from the register, the catalog and the store's symbol list, filterable by capability. `/data/etf/search` and `/tickers` search the same union and return the capability flags.
 - **No billing for empty responses.** `/ticker-returns` calls `setBillableItemCount(0)` when `data` is empty, and the warning names the reason.
-- **Beta per ETF held.** `/portfolio/exposure` reports `beta_to_spy` for each ETF held, from the covariance window.
 - **MCP and docs.**
   - Add one sentence on the three capabilities to `riskmodels_search_etfs`, `riskmodels_get_returns`, `riskmodels_get_etf` and `riskmodels_portfolio_exposure`.
   - Add a `docs/ETF_COVERAGE.md` page and an `llms.txt` entry with the lists, counts and reason codes.
   - Fix the stale "~100 ETFs" comment in `lib/dal/zarr-reader.ts`.
 
 Review: Fable, 2026-10-14 (ETF strategy review).
-
-## RMAPI-15 · `/portfolio/exposure` follow-ups from the Nand Capital review (2026-10-14)
-
-**Impact:** IMPROVEMENT · A client's review of `/portfolio/exposure` (2026-10-13; reply sent 2026-10-14 promising these) found gaps that make users rebuild numbers themselves:
-- The `beta` field uses each stock's L1 beta, while `hedges` and `risk` use L* or L3 exposures. On the reviewed book that gives +$149k versus +$320k.
-- There are no scenario inputs.
-- `top_contributors` is fixed at 15.
-- Two docs inconsistencies.
-
-**Needs:** engineering, plus one DECISION, after the 2026-10-14 publish.
-- **Market beta on the risk basis.** Add a field with the beta implied by the exposure vector and covariance, x′Σe_SPY/σ²_SPY. Keep the L1 field, and label both.
-- **Scenario inputs.** Return each ETF's beta to SPY, and per-name rows: level, L1 beta, hedge ratios, residual volatility. A built-in `scenarios` block (an S&P move, a sector against the market, gaps in the top residual names) comes later.
-- **`top_contributors`.** Make the length a parameter, with an option for the full list.
-- **Docs.**
-  - `as_of` reaches back to 2011-12-07; the announcement email wrongly said 2006.
-  - Label the units of `X-Balance-Remaining` (50,000 per dollar).
-- **DECISION (Conrad).** Should a tolerance apply to the `hedge_added_variance` warning? It flags 60 names with residual shares between 1.0001 and 1.042. Values stay uncapped and still sum to one; only the warning changes.
-
-Report each item to the client as it ships. ETF coverage from the same review is RMAPI-14 and ERM3-68.
 
 ## RMAPI-16 · Cohort fundamentals in the API: free hedge-basket block, priced endpoints on request (2026-10-14)
 
