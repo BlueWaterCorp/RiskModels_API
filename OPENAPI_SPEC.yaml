@@ -11530,7 +11530,7 @@ paths:
                   counts:
                     type: object
                     properties:
-                      total: { type: integer, example: 211 }
+                      total: { type: integer, example: 220 }
                       cascade: { type: integer, example: 56 }
                       priced: { type: integer, example: 128 }
                       holdings: { type: integer, example: 148 }

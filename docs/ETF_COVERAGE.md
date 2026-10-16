@@ -31,17 +31,19 @@ a licensed identifier is withheld.
 
 ## Counts
 
-From the 2026-10-14 builds of the ETF return store, the weekly hedge snapshot
-and the committed holdings catalog (`mcp/data/etf_master.json`):
+From the 2026-10-14 builds of the ETF return store, the weekly hedge snapshot,
+the committed holdings catalog (`mcp/data/etf_master.json`) and the register
+mirror (`mcp/data/etf_register.json`, 137 funds):
 
 | Set | Funds |
 |:--|--:|
-| Universe (union) | 211 |
+| Universe (union) | 220 |
 | `cascade` | 56 (SPY, 11 sector, 44 subsector) |
 | `priced` | 128 |
 | `holdings` | 148 |
 | `priced` and `holdings` | 65 |
 | `holdings` only | 83 |
+| `factor_role` `style` / `macro:<factor>` | 10 / 31 |
 
 Every cascade fund is priced. The counts move when ERM3 adds funds to the
 register (ERM3-68). `GET /api/data/etf/universe` returns the current `counts`.

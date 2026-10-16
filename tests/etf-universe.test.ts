@@ -65,14 +65,18 @@ describe("buildEtfUniverse", () => {
       ticker: "SPY",
     });
 
-    // LQD: priced only.
-    expect(by.get("LQD")!.capabilities).toMatchObject({ cascade: false, priced: true, holdings: false, factor_role: "none" });
+    // LQD: priced only; macro role from the committed register mirror.
+    expect(by.get("LQD")!.capabilities).toMatchObject({ cascade: false, priced: true, holdings: false, factor_role: "macro:fixed_income" });
     // EFA: holdings only (the review's symbol_not_found case).
     expect(by.get("EFA")!.capabilities).toMatchObject({ cascade: false, priced: false, priced_from: null, holdings: true });
     // XLF: cascade + holdings, not in the mocked store.
     expect(by.get("XLF")!.capabilities).toMatchObject({ cascade: true, priced: false, factor_role: "sector" });
     // SMH: subsector role from the cascade store.
     expect(by.get("SMH")!.capabilities.factor_role).toBe("subsector");
+    // Register adds style roles; its cascade roles yield to the live store, so a
+    // register subsector fund the store does not hedge with stays "none".
+    expect(by.get("MTUM")!.capabilities.factor_role).toBe("style");
+    expect(by.get("AIRR")!.capabilities).toMatchObject({ cascade: false, factor_role: "none" });
     // Opaque BW id: served, no FIGI.
     expect(by.get("CYB")!.identifiers).toMatchObject({ bw_sym_id: "BW-SQHR1KFHT4MQ9", figi: null });
     // Licensed-shape id withheld.

@@ -122,7 +122,7 @@ describe("GET /api/data/etf/{ticker}", () => {
         priced_from: null,
         holdings: false,
         holdings_as_of: null,
-        factor_role: "none",
+        factor_role: "macro:fixed_income",
       },
       identifiers: { bw_sym_id: null, bw_etf_id: null, figi: null, cik: null, ticker: "HYG" },
     });

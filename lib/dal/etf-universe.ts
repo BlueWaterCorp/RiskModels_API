@@ -125,11 +125,19 @@ function loadRegister(): RegisterRow[] | null {
       const o = parsed as Record<string, unknown>;
       const inner = o.etfs ?? o.entries ?? o.rows;
       if (Array.isArray(inner)) raw = inner;
-      else if (inner && typeof inner === "object") raw = Object.values(inner as Record<string, unknown>);
+      // Keyed shape (etf-register/1.0): { etfs: { TICKER: { role } } }.
+      else if (inner && typeof inner === "object")
+        raw = Object.entries(inner as Record<string, unknown>).map(([k, v]) =>
+          v && typeof v === "object" ? { ticker: k, ...(v as object) } : null,
+        );
     }
     return raw
       .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
-      .map((r) => ({ ...(r as object), ticker: String(r.ticker ?? "").trim().toUpperCase() }) as RegisterRow)
+      .map((r) => ({
+        ...(r as object),
+        ticker: String(r.ticker ?? "").trim().toUpperCase(),
+        factor_role: (r.factor_role ?? r.role ?? null) as string | null,
+      }) as RegisterRow)
       .filter((r) => r.ticker);
   } catch {
     return null;
@@ -218,7 +226,10 @@ export async function buildEtfUniverse(): Promise<EtfUniverse> {
     const role = normalizeRole(g.factor_role);
     // Cascade roles come from the live model store; the register adds style
     // and macro roles, and fills cascade roles only when the store had none.
-    if (role && (r.capabilities.factor_role === "none" || !cascade)) r.capabilities.factor_role = role;
+    const cascadeRole = role === "market" || role === "sector" || role === "subsector";
+    if (role && (cascade ? !cascadeRole && r.capabilities.factor_role === "none" : true)) {
+      r.capabilities.factor_role = role;
+    }
     if (g.cascade === true && !cascade) r.capabilities.cascade = true;
     if (!r.identifiers.bw_sym_id) r.identifiers.bw_sym_id = safeBwSymId(g.bw_sym_id ?? null);
     if (g.cik != null && String(g.cik).trim()) r.identifiers.cik = String(g.cik).trim().padStart(10, "0");
