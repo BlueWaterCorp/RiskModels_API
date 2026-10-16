@@ -11,12 +11,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/dal/funds-zarr-reader", () => ({
   readEtfHoldingsTopN: vi.fn(),
 }));
+vi.mock("@/lib/dal/symbols-batch", () => ({
+  resolveSymIdsToTickers: vi.fn(),
+}));
 
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/data/etf/[ticker]/holdings/route";
 import { readEtfHoldingsTopN } from "@/lib/dal/funds-zarr-reader";
+import { resolveSymIdsToTickers } from "@/lib/dal/symbols-batch";
 
 const mockRead = readEtfHoldingsTopN as unknown as ReturnType<typeof vi.fn>;
+const mockResolve = resolveSymIdsToTickers as unknown as ReturnType<typeof vi.fn>;
 
 function req(url: string) {
   return new NextRequest(url);
@@ -42,7 +47,13 @@ const SNAPSHOT = {
 };
 
 describe("GET /api/data/etf/:ticker/holdings", () => {
-  beforeEach(() => mockRead.mockReset());
+  beforeEach(() => {
+    mockRead.mockReset();
+    mockResolve.mockReset();
+    mockResolve.mockResolvedValue(
+      new Map([["BW-US5949181045", { ticker: "MSFT", name: "Microsoft Corp, Inc." }]]),
+    );
+  });
 
   it("returns 200 with the canonical surface snapshot + bitemporal headers", async () => {
     mockRead.mockResolvedValue(SNAPSHOT);
@@ -77,5 +88,51 @@ describe("GET /api/data/etf/:ticker/holdings", () => {
       params: Promise.resolve({ ticker: "ZZZZ" }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it("adds ticker and name to each holding (null when unresolved)", async () => {
+    mockRead.mockResolvedValue(SNAPSHOT);
+    const res = await GET(req("http://x/api/data/etf/IVV/holdings"), {
+      params: Promise.resolve({ ticker: "IVV" }),
+    });
+    const body = await res.json();
+    expect(body.holdings[0]).toMatchObject({ bw_sym_id: "BW-US5949181045", ticker: "MSFT" });
+    expect(body.holdings[1].ticker).toBeNull();
+    expect(body.holdings[1].name).toBeNull();
+  });
+
+  it("still returns holdings when ticker resolution fails", async () => {
+    mockRead.mockResolvedValue(SNAPSHOT);
+    mockResolve.mockRejectedValue(new Error("db down"));
+    const res = await GET(req("http://x/api/data/etf/IVV/holdings"), {
+      params: Promise.resolve({ ticker: "IVV" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.holdings).toHaveLength(2);
+    expect(body.holdings[0].ticker).toBeNull();
+  });
+
+  it("returns CSV with dated filename and quoted names when format=csv", async () => {
+    mockRead.mockResolvedValue(SNAPSHOT);
+    const res = await GET(req("http://x/api/data/etf/IVV/holdings?format=csv"), {
+      params: Promise.resolve({ ticker: "IVV" }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/csv");
+    expect(res.headers.get("Content-Disposition")).toContain("ivv_holdings_2025-01-10.csv");
+    expect(res.headers.get("X-Data-As-Of")).toBe("2025-01-10");
+    const lines = (await res.text()).trim().split("\n");
+    expect(lines[0]).toBe("rank,bw_sym_id,ticker,name,weight,adj_mv");
+    expect(lines[1]).toBe('1,BW-US5949181045,MSFT,"Microsoft Corp, Inc.",0.2505,250000000');
+    expect(lines[2]).toBe("2,BW-US0378331005,,,0.2204,220000000");
+  });
+
+  it("rejects an unknown format", async () => {
+    const res = await GET(req("http://x/api/data/etf/IVV/holdings?format=xml"), {
+      params: Promise.resolve({ ticker: "IVV" }),
+    });
+    expect(res.status).toBe(400);
+    expect(mockRead).not.toHaveBeenCalled();
   });
 });

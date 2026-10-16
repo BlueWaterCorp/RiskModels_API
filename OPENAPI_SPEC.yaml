@@ -11636,8 +11636,10 @@ paths:
         Top-N current holdings of an ETF, read from its canonical
         `PortfolioSurface` zarr (Funds_DAG `etf_holdings_zarr` — `source_kind=etf`,
         `teo_frequency=daily`). Only the in-ERM3 sleeve is materialized, so every
-        holding carries a `bw_sym_id` (resolve to ticker/name via
-        `POST /api/data/symbols/batch` with `{"symbols": [...]}`). `report_date` (the sponsor's "Fund Holdings
+        holding carries a `bw_sym_id` plus its current `ticker` and `name` (null
+        when the id does not resolve; `POST /api/data/symbols/batch` with
+        `{"symbols": [...]}` does the same lookup). `format=csv` returns the rows
+        as a CSV download. `report_date` (the sponsor's "Fund Holdings
         as of" date) and `availability_date` (when that file was first observed)
         are surfaced distinctly — never collapsed — and also as headers
         `X-Data-As-Of` (= `report_date`) and `X-Data-Availability`
@@ -11660,6 +11662,12 @@ paths:
         - name: top
           in: query
           schema: { type: integer, minimum: 1, maximum: 1000, default: 25 }
+        - name: format
+          in: query
+          description: >
+            `json` (default) or `csv`. CSV columns: rank, bw_sym_id, ticker, name,
+            weight, adj_mv; the filename carries the ETF and `report_date`.
+          schema: { type: string, enum: [json, csv], default: json }
       responses:
         "200":
           description: ETF holdings snapshot.
@@ -11696,8 +11704,20 @@ paths:
                       type: object
                       properties:
                         bw_sym_id: { type: string }
+                        ticker: { type: string, nullable: true, description: "Current ticker for bw_sym_id; null when unresolved." }
+                        name: { type: string, nullable: true }
                         adj_mv: { type: number }
                         weight: { type: number, nullable: true }
+            text/csv:
+              schema:
+                type: string
+                example: "rank,bw_sym_id,ticker,name,weight,adj_mv\n1,BW-BBG000BPH459,MSFT,Microsoft Corp,0.0712,48000000000\n"
+        "400":
+          description: Unknown `format` value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: ETF not found or no holdings available.
           content:
