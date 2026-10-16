@@ -28,7 +28,7 @@ export function zarrDailyBasename(): string {
   return "ds_daily.zarr";
 }
 
-/** ETF store — disjoint roster from ds_daily (~100 ETFs with their own symbol IDs). */
+/** ETF store — the priced ETF universe, disjoint from ds_daily (128 funds on the 2026-10-14 build), with its own symbol IDs. */
 export function zarrEtfBasename(): string {
   return "ds_etf.zarr";
 }

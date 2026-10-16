@@ -888,11 +888,14 @@ export async function readHistorySlice(
   const returnsSymMap = returnsGrp ? await readSymbolIndexMap(returnsGrp) : null;
   const levelMaps = returnsGrp ? await readLevelIndexMap(returnsGrp) : null;
 
-  // ETF store. Disjoint from ds_daily — ~100 ETFs with their own CUSIP-based // licensed-id-ok: comment explains internal bw_sym_id derivation; no CUSIP value exposed
-  // bw_sym_ids (e.g. SPY = BW-US78462F1030). Always opened because the
+  // ETF store. Disjoint from ds_daily — the priced ETF universe (128 funds on
+  // the 2026-10-14 build; the count moves with the ERM3 register, so read
+  // `readEtfStoreIndex()` or GET /api/data/etf/universe rather than trusting
+  // a number here). Its symbol axis carries its own bw_sym_ids (mostly
+  // FIGI-based, e.g. SPY = BW-BBG000BDTBL9). Always opened because the
   // caller's symbol list can contain a mix of stocks and ETFs and we can't
   // tell which is which upfront without a Supabase round-trip. The store is
-  // small (100 symbols) so the cost of an unneeded open is negligible.
+  // small (~130 symbols) so the cost of an unneeded open is negligible.
   // ETFs don't decompose into factor exposures, so hedge/returns roles are
   // skipped for ETF symbols — the existing per-store symMap guards enforce
   // that automatically.
@@ -2379,6 +2382,99 @@ export async function readEtfFactorReturnsSnapshot(params: {
   }
 
   return { teo: teoStr, rows };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ETF coverage inputs (RMAPI-14 — /api/data/etf/universe, /api/data/etf/{ticker})
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One fund on the ds_etf symbol axis — the "priced" capability. */
+export interface EtfStoreEntry {
+  ticker: string;
+  /** Internal symbol id on the ETF store's axis (FIGI-based or opaque BW id). */
+  bw_sym_id: string;
+  /** First teo with a non-null daily return (what /ticker-returns serves). */
+  priced_from: string | null;
+  /** Last teo with a non-null daily return. */
+  priced_through: string | null;
+}
+
+/**
+ * Symbol list of the ETF return store with each fund's return-history span.
+ * One read of the `return` variable (teo × ~130 symbols); callers cache.
+ * Returns null when the store is unreachable — never throws.
+ */
+export async function readEtfStoreIndex(): Promise<EtfStoreEntry[] | null> {
+  const grp = await openZarrGroup(zarrEtfBasename());
+  if (!grp) return null;
+  const [teos, symbols, tickers] = await Promise.all([
+    readTeoStrings(grp),
+    readStringCoord(grp, "symbol"),
+    readTickerByIndex(grp),
+  ]);
+  if (!teos?.length || !symbols?.length) return null;
+
+  const nT = teos.length;
+  const nS = symbols.length;
+  const first: (number | null)[] = new Array(nS).fill(null);
+  const last: (number | null)[] = new Array(nS).fill(null);
+  try {
+    const arr = await open.v2(grp.resolve("return"), { kind: "array" });
+    const ch = await get(arr, null);
+    const d = ch?.data as ArrayLike<number> | undefined;
+    if (d && d.length === nT * nS) {
+      // Row-major (teo, symbol).
+      for (let t = 0; t < nT; t++) {
+        const base = t * nS;
+        for (let i = 0; i < nS; i++) {
+          if (Number.isFinite(d[base + i])) {
+            if (first[i] === null) first[i] = t;
+            last[i] = t;
+          }
+        }
+      }
+    }
+  } catch {
+    // Span unknown — membership on the axis still holds.
+  }
+
+  return symbols.map((sym, i) => ({
+    ticker: (tickers?.[i] || sym).trim().toUpperCase(),
+    bw_sym_id: sym,
+    priced_from: first[i] !== null ? teos[first[i]!]! : null,
+    priced_through: last[i] !== null ? teos[last[i]!]! : null,
+  }));
+}
+
+/** ETFs the ERM3 cascade hedges with: the market ETF, sector and subsector ETFs. */
+export interface CascadeEtfSets {
+  market: string | null;
+  sectors: string[];
+  subsectors: string[];
+}
+
+/**
+ * Cascade ETF sets as the model uses them this week: the distinct
+ * `sector_etf` / `subsector_etf` coords of the weekly hedge snapshot plus its
+ * `market_etf` attr. Two small string-coord reads. Null when the store is
+ * unreachable — callers fall back to the public market + sector list.
+ */
+export async function readCascadeEtfSets(): Promise<CascadeEtfSets | null> {
+  const grp = await openZarrGroup(zarrWeeklyHedgeBasename());
+  if (!grp) return null;
+  const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+  const [sectorEtf, subsectorEtf] = await Promise.all([
+    readStringCoord(grp, "sector_etf"),
+    readStringCoord(grp, "subsector_etf"),
+  ]);
+  if (!sectorEtf?.length && !subsectorEtf?.length) return null;
+  const market = (attrString(attrs, "market_etf") ?? "SPY").trim().toUpperCase() || "SPY";
+  const norm = (xs: string[] | null) =>
+    [...new Set((xs ?? []).map((x) => x.trim().toUpperCase()).filter(Boolean))];
+  const sectors = norm(sectorEtf).filter((t) => t !== market);
+  const sectorSet = new Set(sectors);
+  const subsectors = norm(subsectorEtf).filter((t) => t !== market && !sectorSet.has(t));
+  return { market, sectors: sectors.sort(), subsectors: subsectors.sort() };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

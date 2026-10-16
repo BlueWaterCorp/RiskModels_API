@@ -13,9 +13,9 @@ import {
   buildAgentBody,
   buildMetadataBody,
   buildEtag,
-  EMPTY_HISTORY_DATA_WARNING,
   maybe304,
 } from "@/lib/dal/response-headers";
+import { classifyEmptyEtfReturns, ETF_REASON_CODES } from "@/lib/dal/etf-universe";
 import { formatResponse, parseFormat } from "@/lib/api/format-response";
 import { TickerReturnsRequestSchema } from "@/lib/api/schemas";
 import {
@@ -184,6 +184,30 @@ export const GET = withBilling(
       return base;
     });
 
+    // No billing for empty responses (RMAPI-14): zero rows cost nothing, and
+    // the warning names the reason instead of asking the caller to retry.
+    let emptyWarning: { data_warning: string; data_warning_code: string; see?: string } | null = null;
+    if (data.length === 0) {
+      context.setBillableItemCount?.(0);
+      if (isEtf) {
+        const code = await classifyEmptyEtfReturns(symbolRecord.ticker || ticker);
+        const t = (symbolRecord.ticker || ticker).toUpperCase();
+        emptyWarning = {
+          data_warning_code: code,
+          data_warning:
+            code === ETF_REASON_CODES.outside_priced
+              ? `${t} is outside the priced ETF universe: the API has no daily return series for it. See /api/data/etf/${t} for what is available. Not billed.`
+              : `${t} is in the priced ETF universe but has no daily returns in the requested window (${startDateStr} to latest). See /api/data/etf/${t} for priced_from. Not billed.`,
+          see: `/api/data/etf/${t}`,
+        };
+      } else {
+        emptyWarning = {
+          data_warning_code: "no_return_history_in_window",
+          data_warning: `No return history for this symbol in the requested window (${startDateStr} to latest). Not billed.`,
+        };
+      }
+    }
+
     const ext = format === "parquet" ? "parquet" : format === "csv" ? "csv" : "json";
     const filename = `${ticker}_returns_${years}y.${ext}`;
     const fetchLatency = Math.round(performance.now() - fetchStart);
@@ -227,7 +251,7 @@ export const GET = withBilling(
           data_source: dataSource,
           range: histRange[0] && histRange[1] ? histRange : undefined,
           history_row_count: data.length,
-          ...(data.length === 0 ? { data_warning: EMPTY_HISTORY_DATA_WARNING } : {}),
+          ...(emptyWarning ?? {}),
           ...(restrictedSource ? RESTRICTED_SOURCE_NOTE : {}),
         }),
         _agent: buildAgentBody({
@@ -239,5 +263,6 @@ export const GET = withBilling(
     addMetadataHeaders(response, metadata);
     return response;
   },
-  { capabilityId: "ticker-returns" },
+  // itemCount: 1 exposes setBillableItemCount so an empty response settles at $0.
+  { capabilityId: "ticker-returns", itemCount: 1 },
 );

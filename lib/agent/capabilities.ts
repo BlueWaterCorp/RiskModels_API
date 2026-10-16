@@ -133,7 +133,7 @@ export const CAPABILITIES: Capability[] = [
     name: "Get Ticker Returns",
     description:
       "Retrieve daily returns with L1/L2/L3 hedge ratios and risk decomposition for any stock ticker. " +
-      "Priced at $0.02 for 1 year plus $0.01 per additional year (years 1–15).",
+      "Priced at $0.02 for 1 year plus $0.01 per additional year (years 1–15). A response with no rows is not billed; its _metadata.data_warning_code names the reason (ETFs: etf_outside_priced_universe or etf_no_return_history_in_window, see /api/data/etf/universe).",
     endpoint: "/api/ticker-returns",
     method: "GET",
     parameters: {
@@ -2323,7 +2323,7 @@ export const CAPABILITIES: Capability[] = [
     name: "ETF Search & Discovery",
     description:
       "Free public read through the data gateway (no API key required; rate-limited per IP, 120/min by default). " +
-      "Substring and prefix search over the ETF catalog by ticker or name; returns rows to chain into the ETF metadata, holdings and portfolio routes. Empty q returns the catalog, capped at limit.",
+      "Substring and prefix search over the ETF universe (holdings catalog plus priced and cascade funds) by ticker or name; each hit carries capabilities (cascade, priced, priced_from, holdings, factor_role) to chain into the ETF metadata, holdings, portfolio and returns routes. Empty q returns the universe, capped at limit.",
     endpoint: "/api/data/etf/search",
     method: "GET",
     parameters: {
@@ -2359,11 +2359,61 @@ export const CAPABILITIES: Capability[] = [
     tags: ["etf", "search", "discovery", "free"],
   },
   {
+    id: "etf-universe",
+    name: "ETF Universe & Capabilities",
+    description:
+      "Free public read through the data gateway (no API key required; rate-limited per IP, 120/min by default). " +
+      "Every ETF the API knows with three capabilities, any combination per fund: cascade (SPY, sector and subsector hedge legs), priced (daily returns, covariance, beta to SPY; priced_from) and holdings (look-through, benchmark fit), plus factor_role and FIGI/CIK/BW identifiers. Filter with cascade, priced, holdings (true/false) and factor_role. Lists the reason codes etf_outside_priced_universe, etf_no_return_history_in_window and symbol_not_found.",
+    endpoint: "/api/data/etf/universe",
+    method: "GET",
+    parameters: {
+      cascade: {
+        type: "boolean",
+        required: false,
+        description: "Keep only funds with (true) or without (false) the cascade capability.",
+      },
+      priced: {
+        type: "boolean",
+        required: false,
+        description: "Keep only funds with (true) or without (false) daily returns.",
+      },
+      holdings: {
+        type: "boolean",
+        required: false,
+        description: "Keep only funds with (true) or without (false) look-through holdings.",
+      },
+      factor_role: {
+        type: "string",
+        required: false,
+        description: "market, sector, subsector, style, macro (any macro:<factor>) or none.",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.0,
+      currency: "USD",
+      billing_code: "etf_universe_v1",
+    },
+    performance: {
+      avg_latency_ms: 150,
+      p95_latency_ms: 1500,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "daily",
+      sources: ["etf_master", "ds_etf", "weekly_hedge_snapshot"],
+    },
+    tags: ["etf", "universe", "discovery", "free"],
+  },
+  {
     id: "etf-metadata",
     name: "ETF Registry Metadata",
     description:
       "Free public read through the data gateway (no API key required; rate-limited per IP, 120/min by default). " +
-      "One ETF's registry row and portfolio-surface summary. 404 when the ETF is not in the catalog.",
+      "One ETF's capabilities (cascade, priced, priced_from, holdings, holdings_as_of, factor_role), identifiers (bw_sym_id, bw_etf_id, FIGI, CIK, ticker) and, for funds with holdings, its registry row and portfolio-surface summary. 200 for every known fund; 404 (symbol_not_found) only when the ticker is on no list.",
     endpoint: "/api/data/etf/{ticker}",
     method: "GET",
     parameters: {
