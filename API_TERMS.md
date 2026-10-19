@@ -1,8 +1,8 @@
 # RiskModels API Terms of Service
 
 **Effective Date:** March 8, 2026  
-**Version:** 1.0.0  
-**Last Updated:** March 8, 2026
+**Version:** 1.1.0  
+**Last Updated:** October 19, 2026
 
 ---
 
@@ -146,6 +146,16 @@ When displaying Content in user-facing applications, you should include attribut
 or
 
 > "Powered by RiskModels"
+
+## 15. Server-Side Use and Caching
+
+**Organization keys.** An organization may hold one API Key on its own servers and use Content to serve its own end users, who need not hold RiskModels accounts. This is not sharing or transferring an API Key under Section 4, provided the key is never disclosed to end users or placed in a browser, mobile app or other client-side code.
+
+**Caching.** You may store Content you have retrieved and serve it to your end users from your own systems, inside your own applications, reports and AI assistants, for as long as your license under Section 3 is in effect. Content reflects end-of-day data; refreshing it after each US market close keeps it current.
+
+**What remains restricted.** Caching does not permit making Content available to third parties as a data feed, database, bulk download or API, including a public or partner API you operate. That requires a separate written redistribution agreement under Section 4. Redistribution licenses for platforms are available on request at service@riskmodels.app.
+
+**Attribution and termination.** Section 14 applies to cached Content shown to users. Section 11 applies to cached Content when your license ends.
 
 ---
 
