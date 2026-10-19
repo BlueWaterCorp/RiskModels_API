@@ -15,7 +15,8 @@ import { RiskModelsClient } from "../packages/riskmodels-sdk/src/client";
 /**
  * MCP tool set 2.0: one registry for all three surfaces.
  * - npm stdio (`mcp/src/server.ts`): the 24 shared tools;
- * - hosted `/api/mcp/sse` and `/api/mcp/openai` (`lib/mcp/server.ts`): the
+ * - hosted `/api/mcp/sse`, `/api/mcp/openai`, and `/api/mcp`
+ *   (`lib/mcp/server.ts`): the
  *   same 24 plus riskmodels_render_artifact.
  * The routing test drives every shared tool through a real RiskModelsClient
  * with a stubbed fetch and pins the REST method + path each one calls.
@@ -62,6 +63,7 @@ describe("MCP tool set 2.0 surfaces", () => {
     ["npm stdio (mcp/src/server.ts)", () => createNpmServer({ apiKey: "rm_agent_live_test", apiBase: "https://riskmodels.test" }), NPM_TOOLS],
     ["hosted /api/mcp/sse", () => createHostedServer({ apiKey: "rm_agent_live_test", surface: "default" }), HOSTED_TOOLS],
     ["hosted /api/mcp/openai", () => createHostedServer({ apiKey: "rm_agent_live_test", surface: "openai" }), HOSTED_TOOLS],
+    ["hosted /api/mcp", () => createHostedServer({ apiKey: "rm_agent_live_test", surface: "openai" }), HOSTED_TOOLS],
   ] as const)("%s registers exactly its pinned tool list", (_surface, make, expected) => {
     expect(toolNames(make())).toEqual([...expected]);
   });

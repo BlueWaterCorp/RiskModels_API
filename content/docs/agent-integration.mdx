@@ -213,7 +213,7 @@ Machine-readable discovery: [`/.well-known/mcp.json`](/.well-known/mcp.json) · 
 
 <h3 id="mcp-tool-set-2">Tool set 2.0</h3>
 
-`https://riskmodels.app/api/mcp/openai` and `https://riskmodels.app/api/mcp/sse` use the same sign-in, API keys, billing, tools, prompts and server instructions. Both serve 26 tools; the npm package `@riskmodels/mcp` serves the same tools except `riskmodels_render_artifact` (the published 2.0.0 predates `riskmodels_resolve_security_identity` and serves 24). Claude, Cursor, Grok and the other clients on this page use `/api/mcp/sse`; ChatGPT, the Cursor Agent Plugin and Gemini use `/api/mcp/openai`.
+`https://riskmodels.app/api/mcp`, `https://riskmodels.app/api/mcp/openai`, and `https://riskmodels.app/api/mcp/sse` use the same sign-in, API keys, billing, tools, prompts and server instructions. All three serve 26 tools; the npm package `@riskmodels/mcp` serves the same tools except `riskmodels_render_artifact` (the published 2.0.0 predates `riskmodels_resolve_security_identity` and serves 24). Claude, Cursor, Grok and the other clients on this page use `/api/mcp/sse`; ChatGPT, the Cursor Agent Plugin and Gemini use `/api/mcp/openai`. Clients that require a conventional bare MCP path can use `/api/mcp`; the named endpoints remain stable.
 
 Tools: `riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_get_return_attribution`, `riskmodels_get_residual_returns`, `riskmodels_get_residual_signal`, `riskmodels_get_macro_correlation`, `riskmodels_get_fundamentals`, `riskmodels_analyze_portfolio`, `riskmodels_get_portfolio_risk_snapshot`, `riskmodels_portfolio_exposure`, `riskmodels_decompose_selection_vs_drift`, `riskmodels_get_my_positions`, `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_cohorts`, `riskmodels_get_peers`, `riskmodels_search`, `riskmodels_resolve_security_identity`, `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`, `riskmodels_get_benchmark_fit`, `riskmodels_get_factor_returns`, and on the hosted endpoints `riskmodels_render_artifact`. Each description states when to use the tool, what to use instead, what it returns, data freshness (end-of-day) and price. Every tool is annotated read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`).
 
@@ -275,7 +275,7 @@ Google exposes **three different surfaces** — pick the one you actually use:
 **Gemini CLI / Antigravity (terminal)** — MCP lives in the CLI, not the consumer web app:
 
 ```bash
-gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse
+gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp
 ```
 
 Start a session and run `/mcp auth riskmodels` to complete OAuth in the browser. Alternatively add to `~/.gemini/settings.json` under `mcpServers` with `httpUrl` pointing at the URL above. Google is migrating free-tier CLI users toward **Antigravity** — the same Streamable HTTP URL and OAuth pattern apply there.
@@ -284,7 +284,7 @@ Start a session and run `/mcp auth riskmodels` to complete OAuth in the browser.
 
 | Field | RiskModels value |
 | --- | --- |
-| MCP Server URL | `https://riskmodels.app/api/mcp/sse` |
+| MCP Server URL | `https://riskmodels.app/api/mcp` |
 | Authorization URL | `https://riskmodels.app/oauth/authorize` |
 | Token URL | `https://riskmodels.app/api/oauth/token` |
 | Scopes | `mcp:read` |

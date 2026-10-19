@@ -1,7 +1,7 @@
 /**
  * Shared Streamable HTTP handler for the hosted MCP routes.
  *
- * `/api/mcp/sse` (default surface, Anthropic directory) and `/api/mcp/openai`
+ * `/api/mcp/sse` (default surface), `/api/mcp/openai`, and `/api/mcp`
  * (OpenAI surface) authenticate and dispatch identically; only the tool
  * surface and the OAuth protected-resource metadata URL differ.
  *
