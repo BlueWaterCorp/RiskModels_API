@@ -172,6 +172,27 @@ describe("GET /api/identity/resolve", () => {
   });
 });
 
+describe("GET /api/identity/resolve: dated tickers", () => {
+  beforeEach(() => {
+    _resetIdentityCache();
+    aliasRows = [];
+    masterRows = [];
+  });
+
+  it("FB held in 2015 shows the 2015 ticker, with today's as current_ticker", async () => {
+    masterRows = [{ bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null, ticker: "META", company_name: "Meta Platforms Inc" }];
+    const { body } = await call("identifier=FB&as_of=2015-06-01");
+    expect(body.result.holdings[0]).toMatchObject({ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB", current_ticker: "META" });
+  });
+
+  it("the same security as of today shows today's ticker and no current_ticker", async () => {
+    masterRows = [{ bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null, ticker: "META", company_name: "Meta Platforms Inc" }];
+    const { body } = await call("identifier=FB&acquired_on=2015-06-01&as_of=2026-10-16");
+    expect(body.result.holdings[0].ticker).toBe("META");
+    expect(body.result.holdings[0].current_ticker).toBeUndefined();
+  });
+});
+
 describe("GET /api/identity/resolve: reviewed events outrank aliases", () => {
   beforeEach(() => {
     _resetIdentityCache();
