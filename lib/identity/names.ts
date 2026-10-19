@@ -34,3 +34,19 @@ export function groupNames(rows: NameRow[]): Map<string, NameRow[]> {
   for (const r of rows) out.set(r.bw_sym_id, [...(out.get(r.bw_sym_id) ?? []), r]);
   return out;
 }
+
+export type TickerSpan = { bw_sym_id: string; ticker: string; start: string | null; end: string | null };
+
+/**
+ * The ticker a security traded under on a date: a reviewed event window first, else a dated ticker alias
+ * (undated aliases say nothing about the date). Null when neither names exactly one ticker; callers then
+ * fall back to today's ticker.
+ */
+export function tickerOn(reviewed: TickerSpan[], aliases: TickerSpan[], id: string, date: string): string | null {
+  const covers = (s: TickerSpan) => s.bw_sym_id === id && (s.start == null || s.start <= date) && (s.end == null || date < s.end);
+  const one = (spans: TickerSpan[]) => {
+    const t = [...new Set(spans.filter(covers).map((s) => s.ticker))];
+    return t.length === 1 ? t[0] : null;
+  };
+  return one(reviewed) ?? one(aliases.filter((a) => a.start != null || a.end != null));
+}

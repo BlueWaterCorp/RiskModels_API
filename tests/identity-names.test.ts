@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nameOn, type NameRow } from "@/lib/identity/names";
+import { nameOn, tickerOn, type NameRow } from "@/lib/identity/names";
 
 const meta: NameRow[] = [
   { bw_sym_id: "M", kind: "issuer_legal", name: "Facebook Inc", valid_from: "2005-05-06", valid_to: "2021-10-28", source: "edgar" },
@@ -27,5 +27,24 @@ describe("nameOn", () => {
     expect(nameOn(b, "2020-01-01")?.name).toBe("Example Corp Class B");
     expect(nameOn(b, "2005-01-01")).toBeNull();
     expect(nameOn(undefined, "2020-01-01")).toBeNull();
+  });
+});
+
+describe("tickerOn", () => {
+  const reviewed = [
+    { bw_sym_id: "M", ticker: "FB", start: null, end: "2022-06-09" },
+    { bw_sym_id: "M", ticker: "META", start: "2022-06-09", end: null },
+  ];
+  it("uses the reviewed window covering the date", () => {
+    expect(tickerOn(reviewed, [], "M", "2015-06-01")).toBe("FB");
+    expect(tickerOn(reviewed, [], "M", "2022-06-09")).toBe("META");
+  });
+  it("falls back to a dated alias, ignores undated ones, and gives up on conflicts", () => {
+    expect(tickerOn([], [{ bw_sym_id: "X", ticker: "OLD", start: "2001-01-01", end: "2010-01-01" }], "X", "2005-01-03")).toBe("OLD");
+    expect(tickerOn([], [{ bw_sym_id: "X", ticker: "ANY", start: null, end: null }], "X", "2005-01-03")).toBeNull();
+    expect(tickerOn([], [
+      { bw_sym_id: "X", ticker: "A", start: "2001-01-01", end: null },
+      { bw_sym_id: "X", ticker: "B", start: "2002-01-01", end: null },
+    ], "X", "2005-01-03")).toBeNull();
   });
 });
