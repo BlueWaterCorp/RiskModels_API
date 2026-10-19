@@ -1,0 +1,1372 @@
+{
+ "generated_by": "ERM3 scripts/symbology/export_identity_parity_fixture.py",
+ "generated_on": "2026-10-19",
+ "events": [
+  {
+   "event_id": "BBBY-CANCEL-20230929",
+   "event_type": "bankruptcy_cancellation",
+   "effective_date": "2023-09-29",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 1.03",
+   "source_accession": "0001193125-23-247428",
+   "citation": "https://www.sec.gov/Archives/edgar/data/886158/000119312523247428/d579010d8k.htm",
+   "evidence": "Confirmed plan effective 2023-09-29; common stock cancelled without consideration and with no value. Nasdaq suspended trading 2023-05-03 (8-K 0001193125-23-115523). Overstock bought brand and IP assets only (closed 2023-06-28): no equity continuity.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "BBBY-NXH-20260817",
+   "event_type": "ticker_change",
+   "effective_date": "2026-08-17",
+   "legal_effective_date": "2026-08-14",
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 5.03",
+   "source_accession": "0001140361-26-033194",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1130713/000114036126033194/ef20080088_8k.htm",
+   "evidence": "Bed Bath & Beyond, Inc. renamed Neighborhood Intelligence, Inc. effective 2026-08-14; NYSE trading ended at the 2026-08-14 close and Nasdaq trading as NXH began at the 2026-08-17 open.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "BYON-BBBY-20250829",
+   "event_type": "ticker_change",
+   "effective_date": "2025-08-29",
+   "legal_effective_date": "2025-08-18",
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 5.03",
+   "source_accession": "0001140361-25-032363",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1130713/000114036125032363/ef20054350_8k.htm",
+   "evidence": "Beyond, Inc. renamed Bed Bath & Beyond, Inc. effective 2025-08-18; ticker BYON to BBBY from the 2025-08-29 open. A different legal entity from the cancelled Bed Bath & Beyond Inc.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "DWAC-DJT-20240325",
+   "event_type": "spac_merger_continuation",
+   "effective_date": "2024-03-25",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 2.01",
+   "source_accession": "0001140361-24-016719",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1849635/000114036124016719/ef20025342_8k.htm",
+   "evidence": "Digital World (surviving registrant) renamed Trump Media & Technology Group Corp.; outstanding Class A shares were redesignated as its common stock (redesignation, so one-for-one; no ratio stated). DJT traded on Nasdaq from 2024-03-26.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "GE-GEHC-20230103",
+   "event_type": "spin_off",
+   "effective_date": "2023-01-03",
+   "legal_effective_date": null,
+   "record_date": "2022-12-16",
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 2.01",
+   "source_accession": "0001193125-23-001157",
+   "citation": "https://www.sec.gov/Archives/edgar/data/40545/000119312523001157/d431727d8k.htm",
+   "evidence": "GE holders kept GE and received one GE HealthCare share per three GE shares held on 2022-12-16 (distribution 2023-01-03 5:00 p.m.; cash in lieu of fractions); GEHC traded on Nasdaq from 2023-01-04.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "GE-GEV-20240402",
+   "event_type": "spin_off",
+   "effective_date": "2024-04-02",
+   "legal_effective_date": null,
+   "record_date": "2024-03-19",
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 2.01",
+   "source_accession": "0001193125-24-084038",
+   "citation": "https://www.sec.gov/Archives/edgar/data/40545/000119312524084038/d792336d8k.htm",
+   "evidence": "GE holders kept GE and received one GE Vernova share per four GE shares held on 2024-03-19 (distribution 2024-04-02 12:10 a.m.; cash in lieu of fractions); GEV traded on NYSE from 2024-04-02.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "GE-RSPLIT-20210730",
+   "event_type": "reverse_split",
+   "effective_date": "2021-07-30",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 3.03",
+   "source_accession": "0001206774-21-001925",
+   "citation": "https://www.sec.gov/Archives/edgar/data/40545/000120677421001925/ge3936671-8k.htm",
+   "evidence": "One-for-eight reverse stock split effective 2021-07-30; split-adjusted trading from 2021-08-02. Fractional-share treatment not verified.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "IXHL-ADS-COMMON-20231128",
+   "event_type": "ads_to_common_redomiciliation",
+   "effective_date": "2023-11-28",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-18",
+   "source_form": "8-K",
+   "source_accession": "0001213900-23-091083",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1873875/000121390023091083/ea189032-8k_incannex.htm",
+   "evidence": "Each ADS represented 25 Australian ordinary shares and 100 Australian ordinary shares became one Delaware common share",
+   "review_status": "accepted",
+   "reviewer": "Conrad identity benchmark 2026-10-18",
+   "reviewed_on": "2026-10-18",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "META-FB-20220609",
+   "event_type": "ticker_change",
+   "effective_date": "2022-06-09",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-18",
+   "source_form": "8-K",
+   "source_accession": "0001326801-22-000070",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1326801/000132680122000070/may312022-exhibit991.htm",
+   "evidence": "Ticker changed from FB to META without a share exchange",
+   "review_status": "accepted",
+   "reviewer": "Conrad identity benchmark 2026-10-18",
+   "reviewed_on": "2026-10-18",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "NEXN-ADR-ORD-20250218",
+   "event_type": "adr_to_ordinary",
+   "effective_date": "2025-02-18",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-18",
+   "source_form": "6-K",
+   "source_accession": "0001178913-25-000524",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1849396/000117891325000524/exhibit_99-1.htm",
+   "evidence": "Two pre-split ordinary shares per ADR and a coordinated two-for-one reverse split produce one new ordinary share per ADR",
+   "review_status": "accepted",
+   "reviewer": "Conrad identity benchmark 2026-10-18",
+   "reviewed_on": "2026-10-18",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "OIIM-ORD-ADS-20051128",
+   "event_type": "ordinary_to_ads",
+   "effective_date": "2005-11-28",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-18",
+   "source_form": "20-F",
+   "source_accession": "0001171843-22-002617",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1095348/000117184322002617/oiim20211231_20f.htm",
+   "evidence": "A 50-for-one ordinary-share split and one ADS per 50 post-split ordinary shares produce one ADS per pre-split ordinary share",
+   "review_status": "accepted",
+   "reviewer": "Conrad identity benchmark 2026-10-18",
+   "reviewed_on": "2026-10-18",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "OSTK-BYON-20231106",
+   "event_type": "ticker_change",
+   "effective_date": "2023-11-06",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 5.03",
+   "source_accession": "0001140361-23-051490",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1130713/000114036123051490/ef20013966_8k.htm",
+   "evidence": "Overstock.com, Inc. renamed Beyond, Inc. effective 2023-11-06 and moved from Nasdaq (OSTK) to NYSE (BYON).",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "SOS-ADS-ORD-20250908",
+   "event_type": "ads_to_ordinary",
+   "effective_date": "2025-09-08",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-18",
+   "source_form": "6-K",
+   "source_accession": "0001213900-25-081728",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1346610/000121390025081728/ea025503901ex99-1_soslimited.htm",
+   "evidence": "Each ADS was mandatorily exchanged for one post-consolidation Class A ordinary share",
+   "review_status": "accepted",
+   "reviewer": "Conrad identity benchmark 2026-10-18",
+   "reviewed_on": "2026-10-18",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "SPCK-SPCX-20260407",
+   "event_type": "ticker_change",
+   "effective_date": "2026-04-07",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-18",
+   "source_form": "497",
+   "source_accession": "0001999371-26-007611",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1719812/000199937126007611/cist-497_040226.htm",
+   "evidence": "ETF ticker changed from SPCX to SPCK before SpaceX began using SPCX; no equity continuity with SpaceX",
+   "review_status": "accepted",
+   "reviewer": "Conrad identity benchmark 2026-10-18",
+   "reviewed_on": "2026-10-18",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "T-WBD-20220408",
+   "event_type": "distribution",
+   "effective_date": "2022-04-08",
+   "legal_effective_date": null,
+   "record_date": "2022-04-05",
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 2.01",
+   "source_accession": "0001193125-22-101751",
+   "citation": "https://www.sec.gov/Archives/edgar/data/732717/000119312522101751/d315217d8k.htm",
+   "evidence": "AT&T holders kept T and received 1 Spinco share per T share (record 2022-04-05), each converted into 0.241917 WBD (cash in lieu of fractions, WBD 8-K 0001193125-22-103051); WBD traded on Nasdaq from 2022-04-11.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  },
+  {
+   "event_id": "TWTR-CASH-20221027",
+   "event_type": "cash_merger",
+   "effective_date": "2022-10-27",
+   "legal_effective_date": null,
+   "record_date": null,
+   "ex_date": null,
+   "announced_date": null,
+   "knowledge_date": "2026-10-19",
+   "source_form": "8-K 2.01",
+   "source_accession": "0001193125-22-272772",
+   "citation": "https://www.sec.gov/Archives/edgar/data/1418091/000119312522272772/d411753d8k.htm",
+   "evidence": "Each share cancelled and converted into the right to receive $54.20 in cash; Twitter became a wholly owned subsidiary; NYSE trading suspended before the 2022-10-28 open. No listed successor equity.",
+   "review_status": "accepted",
+   "reviewer": "Claude (filing research and recompute) and GPT-5.6 via Codex (independent filing check) on Conrad's delegation, 2026-10-19",
+   "reviewed_on": "2026-10-19",
+   "supersedes_event_id": null
+  }
+ ],
+ "legs": [
+  {
+   "event_id": "OIIM-ORD-ADS-20051128",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-SADGGC2A3BAWC",
+   "ticker": "OIIM",
+   "instrument": "O2Micro International Limited Nasdaq ordinary share",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "OIIM-ORD-ADS-20051128",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-SADGGC2A3BAWC",
+   "ticker": "OIIM",
+   "instrument": "O2Micro International Limited ADS",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "GE-RSPLIT-20210730",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BK6MB5",
+   "ticker": "GE",
+   "instrument": "General Electric common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "GE-RSPLIT-20210730",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BK6MB5",
+   "ticker": "GE",
+   "instrument": "General Electric common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "8",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "unknown"
+  },
+  {
+   "event_id": "T-WBD-20220408",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BSJK37",
+   "ticker": "T",
+   "instrument": "AT&T Inc. common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "T-WBD-20220408",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BSJK37",
+   "ticker": "T",
+   "instrument": "AT&T Inc. common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "T-WBD-20220408",
+   "leg": 2,
+   "role": "output",
+   "outcome": "new_security",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG011386VF4",
+   "ticker": "WBD",
+   "instrument": "Warner Bros. Discovery Series A common stock",
+   "ratio_numerator": "241917",
+   "ratio_denominator": "1000000",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "cash_in_lieu"
+  },
+  {
+   "event_id": "META-FB-20220609",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000MM2P62",
+   "ticker": "FB",
+   "instrument": "Facebook Inc. Class A common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "META-FB-20220609",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000MM2P62",
+   "ticker": "META",
+   "instrument": "Meta Platforms Inc. Class A common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "TWTR-CASH-20221027",
+   "leg": 0,
+   "role": "input",
+   "outcome": "cash",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG005KDKQN2",
+   "ticker": "TWTR",
+   "instrument": "Twitter Inc. common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "TWTR-CASH-20221027",
+   "leg": 1,
+   "role": "output",
+   "outcome": "cash",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": null,
+   "ticker": "",
+   "instrument": "",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": "54.20",
+   "currency": "USD",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "GE-GEHC-20230103",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BK6MB5",
+   "ticker": "GE",
+   "instrument": "General Electric common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "GE-GEHC-20230103",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BK6MB5",
+   "ticker": "GE",
+   "instrument": "General Electric common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "GE-GEHC-20230103",
+   "leg": 2,
+   "role": "output",
+   "outcome": "new_security",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG01BFR8YV1",
+   "ticker": "GEHC",
+   "instrument": "GE HealthCare Technologies common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "3",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "cash_in_lieu"
+  },
+  {
+   "event_id": "BBBY-CANCEL-20230929",
+   "leg": 0,
+   "role": "input",
+   "outcome": "cancelled",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG0087LHFY9",
+   "ticker": "BBBY",
+   "instrument": "Bed Bath & Beyond Inc. common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "BBBY-CANCEL-20230929",
+   "leg": 1,
+   "role": "output",
+   "outcome": "cancelled",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": null,
+   "ticker": "",
+   "instrument": "",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "OSTK-BYON-20231106",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BF7BV7",
+   "ticker": "OSTK",
+   "instrument": "Overstock.com common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "OSTK-BYON-20231106",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BF7BV7",
+   "ticker": "BYON",
+   "instrument": "Beyond, Inc. common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "IXHL-ADS-COMMON-20231128",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG0125CL1D2",
+   "ticker": "IXHL",
+   "instrument": "Incannex Healthcare Limited ADS",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "IXHL-ADS-COMMON-20231128",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG0125CL1D2",
+   "ticker": "IXHL",
+   "instrument": "Incannex Healthcare Inc. Delaware common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "4",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "DWAC-DJT-20240325",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG011744HH0",
+   "ticker": "DWAC",
+   "instrument": "Digital World Acquisition Corp. Class A common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "DWAC-DJT-20240325",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG011744HH0",
+   "ticker": "DJT",
+   "instrument": "Trump Media & Technology Group common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "GE-GEV-20240402",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BK6MB5",
+   "ticker": "GE",
+   "instrument": "GE Aerospace common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "GE-GEV-20240402",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BK6MB5",
+   "ticker": "GE",
+   "instrument": "GE Aerospace common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "GE-GEV-20240402",
+   "leg": 2,
+   "role": "output",
+   "outcome": "new_security",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG013G17W31",
+   "ticker": "GEV",
+   "instrument": "GE Vernova common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "4",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "cash_in_lieu"
+  },
+  {
+   "event_id": "NEXN-ADR-ORD-20250218",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG0116Y22N3",
+   "ticker": "NEXN",
+   "instrument": "Nexxen International Ltd. ADR",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "NEXN-ADR-ORD-20250218",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG0116Y22N3",
+   "ticker": "NEXN",
+   "instrument": "Nexxen International Ltd. ordinary share",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "BYON-BBBY-20250829",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BF7BV7",
+   "ticker": "BYON",
+   "instrument": "Beyond, Inc. common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "BYON-BBBY-20250829",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BF7BV7",
+   "ticker": "BBBY",
+   "instrument": "Bed Bath & Beyond, Inc. common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "SOS-ADS-ORD-20250908",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG00GCTC8Y9",
+   "ticker": "SOS",
+   "instrument": "SOS Limited American depositary share",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "SOS-ADS-ORD-20250908",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG00GCTC8Y9",
+   "ticker": "SOS",
+   "instrument": "SOS Limited Class A ordinary share",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "SPCK-SPCX-20260407",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG00YJ8L8T5",
+   "ticker": "SPCX",
+   "instrument": "The SPAC and New Issue ETF",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "SPCK-SPCX-20260407",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG00YJ8L8T5",
+   "ticker": "SPCK",
+   "instrument": "The SPAC and New Issue ETF",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  },
+  {
+   "event_id": "BBBY-NXH-20260817",
+   "leg": 0,
+   "role": "input",
+   "outcome": "continues",
+   "input_leg": null,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BF7BV7",
+   "ticker": "BBBY",
+   "instrument": "Bed Bath & Beyond, Inc. common stock",
+   "ratio_numerator": null,
+   "ratio_denominator": null,
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": ""
+  },
+  {
+   "event_id": "BBBY-NXH-20260817",
+   "leg": 1,
+   "role": "output",
+   "outcome": "continues",
+   "input_leg": 0,
+   "package": "",
+   "bw_sym_id": "BW-BBG000BF7BV7",
+   "ticker": "NXH",
+   "instrument": "Neighborhood Intelligence, Inc. common stock",
+   "ratio_numerator": "1",
+   "ratio_denominator": "1",
+   "cash_per_unit": null,
+   "currency": "",
+   "fractional_treatment": "not_applicable"
+  }
+ ],
+ "carry": [
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BSJK37",
+    "quantity": "100",
+    "acquired_on": "2021-01-04",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BSJK37",
+      "ticker": "T",
+      "quantity": "100"
+     },
+     {
+      "bw_sym_id": "BW-BBG011386VF4",
+      "ticker": "WBD",
+      "quantity": "24"
+     }
+    ],
+    "cash": [
+     {
+      "event_id": "T-WBD-20220408",
+      "currency": "",
+      "amount": null,
+      "in_lieu_of_units": "0.1917",
+      "in_lieu_of": "BW-BBG011386VF4"
+     }
+    ],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "T-WBD-20220408"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BSJK37",
+    "quantity": "100",
+    "acquired_on": "2021-01-04",
+    "as_of": "2026-10-18",
+    "fractions": "exact"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BSJK37",
+      "ticker": "T",
+      "quantity": "100"
+     },
+     {
+      "bw_sym_id": "BW-BBG011386VF4",
+      "ticker": "WBD",
+      "quantity": "24.1917"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "T-WBD-20220408"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BSJK37",
+    "quantity": "100",
+    "acquired_on": "2021-01-04",
+    "as_of": "2026-10-18",
+    "known_as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BSJK37",
+      "ticker": "",
+      "quantity": "100"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BK6MB5",
+    "quantity": "800",
+    "acquired_on": "2020-01-02",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BK6MB5",
+      "ticker": "GE",
+      "quantity": "100"
+     },
+     {
+      "bw_sym_id": "BW-BBG013G17W31",
+      "ticker": "GEV",
+      "quantity": "25"
+     },
+     {
+      "bw_sym_id": "BW-BBG01BFR8YV1",
+      "ticker": "GEHC",
+      "quantity": "33"
+     }
+    ],
+    "cash": [
+     {
+      "event_id": "GE-GEHC-20230103",
+      "currency": "",
+      "amount": null,
+      "in_lieu_of_units": "0.33333333333333333333333333",
+      "in_lieu_of": "BW-BBG01BFR8YV1"
+     }
+    ],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "GE-RSPLIT-20210730",
+     "GE-GEHC-20230103",
+     "GE-GEV-20240402"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BK6MB5",
+    "quantity": "800",
+    "acquired_on": "2020-01-02",
+    "as_of": "2026-10-18",
+    "fractions": "exact"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BK6MB5",
+      "ticker": "GE",
+      "quantity": "100"
+     },
+     {
+      "bw_sym_id": "BW-BBG013G17W31",
+      "ticker": "GEV",
+      "quantity": "25"
+     },
+     {
+      "bw_sym_id": "BW-BBG01BFR8YV1",
+      "ticker": "GEHC",
+      "quantity": "33.33333333333333333333333333"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "GE-RSPLIT-20210730",
+     "GE-GEHC-20230103",
+     "GE-GEV-20240402"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BK6MB5",
+    "quantity": "100",
+    "acquired_on": "2022-12-20",
+    "as_of": "2023-06-01"
+   },
+   "expected": {
+    "status": "unknown",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BK6MB5",
+      "ticker": "",
+      "quantity": "100"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [],
+    "unresolved_count": 1
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BK6MB5",
+    "quantity": "100",
+    "acquired_on": "2023-06-01",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BK6MB5",
+      "ticker": "GE",
+      "quantity": "100"
+     },
+     {
+      "bw_sym_id": "BW-BBG013G17W31",
+      "ticker": "GEV",
+      "quantity": "25"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "GE-GEV-20240402"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG005KDKQN2",
+    "quantity": "100",
+    "acquired_on": "2020-01-02",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "cashed_out",
+    "holdings": [],
+    "cash": [
+     {
+      "event_id": "TWTR-CASH-20221027",
+      "currency": "USD",
+      "amount": "5420",
+      "in_lieu_of_units": null,
+      "in_lieu_of": null
+     }
+    ],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "TWTR-CASH-20221027"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG0087LHFY9",
+    "quantity": "100",
+    "acquired_on": "2020-01-02",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "cancelled",
+    "holdings": [],
+    "cash": [],
+    "cancelled_by": [
+     "BBBY-CANCEL-20230929"
+    ],
+    "applied_event_ids": [
+     "BBBY-CANCEL-20230929"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000BF7BV7",
+    "quantity": "100",
+    "acquired_on": "2023-01-03",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000BF7BV7",
+      "ticker": "NXH",
+      "quantity": "100"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "OSTK-BYON-20231106",
+     "BYON-BBBY-20250829",
+     "BBBY-NXH-20260817"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG011744HH0",
+    "quantity": "100",
+    "acquired_on": "2023-01-03",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG011744HH0",
+      "ticker": "DJT",
+      "quantity": "100"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "DWAC-DJT-20240325"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG0125CL1D2",
+    "quantity": "100",
+    "acquired_on": "2023-11-01",
+    "as_of": "2023-11-30"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG0125CL1D2",
+      "ticker": "IXHL",
+      "quantity": "25"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "IXHL-ADS-COMMON-20231128"
+    ],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG0125CL1D2",
+    "quantity": "100",
+    "acquired_on": "2023-11-28",
+    "as_of": "2023-11-30"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG0125CL1D2",
+      "ticker": "",
+      "quantity": "100"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [],
+    "unresolved_count": 0
+   }
+  },
+  {
+   "query": {
+    "bw_sym_id": "BW-BBG000MM2P62",
+    "quantity": "100",
+    "acquired_on": "2015-06-01",
+    "as_of": "2026-10-18"
+   },
+   "expected": {
+    "status": "held",
+    "holdings": [
+     {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "ticker": "META",
+      "quantity": "100"
+     }
+    ],
+    "cash": [],
+    "cancelled_by": [],
+    "applied_event_ids": [
+     "META-FB-20220609"
+    ],
+    "unresolved_count": 0
+   }
+  }
+ ],
+ "ownership": [
+  {
+   "query": {
+    "ticker": "BBBY",
+    "held_on": "2020-01-02"
+   },
+   "expected": {
+    "status": "before_first_event",
+    "bw_sym_id": "BW-BBG0087LHFY9",
+    "candidates": [
+     "BW-BBG0087LHFY9"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "BBBY",
+    "held_on": "2024-06-03"
+   },
+   "expected": {
+    "status": "none",
+    "bw_sym_id": null,
+    "candidates": []
+   }
+  },
+  {
+   "query": {
+    "ticker": "BBBY",
+    "held_on": "2026-01-05"
+   },
+   "expected": {
+    "status": "reviewed",
+    "bw_sym_id": "BW-BBG000BF7BV7",
+    "candidates": [
+     "BW-BBG000BF7BV7"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "BBBY",
+    "held_on": "2026-09-01"
+   },
+   "expected": {
+    "status": "none",
+    "bw_sym_id": null,
+    "candidates": []
+   }
+  },
+  {
+   "query": {
+    "ticker": "SPCX",
+    "held_on": "2026-03-31"
+   },
+   "expected": {
+    "status": "before_first_event",
+    "bw_sym_id": "BW-BBG00YJ8L8T5",
+    "candidates": [
+     "BW-BBG00YJ8L8T5"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "FB",
+    "held_on": "2015-06-01"
+   },
+   "expected": {
+    "status": "before_first_event",
+    "bw_sym_id": "BW-BBG000MM2P62",
+    "candidates": [
+     "BW-BBG000MM2P62"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "GE",
+    "held_on": "1900-01-01"
+   },
+   "expected": {
+    "status": "before_first_event",
+    "bw_sym_id": "BW-BBG000BK6MB5",
+    "candidates": [
+     "BW-BBG000BK6MB5"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "NXH",
+    "held_on": "2026-10-18"
+   },
+   "expected": {
+    "status": "reviewed",
+    "bw_sym_id": "BW-BBG000BF7BV7",
+    "candidates": [
+     "BW-BBG000BF7BV7"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "WBD",
+    "held_on": "2023-01-03"
+   },
+   "expected": {
+    "status": "reviewed",
+    "bw_sym_id": "BW-BBG011386VF4",
+    "candidates": [
+     "BW-BBG011386VF4"
+    ]
+   }
+  },
+  {
+   "query": {
+    "ticker": "ZZZZ",
+    "held_on": "2020-01-02"
+   },
+   "expected": {
+    "status": "none",
+    "bw_sym_id": null,
+    "candidates": []
+   }
+  }
+ ]
+}

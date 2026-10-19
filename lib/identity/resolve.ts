@@ -1,0 +1,255 @@
+/**
+ * Point-in-time security identity and corporate-action resolution (identity plan Stage 1.5).
+ *
+ * 1. Identity: which security an identifier meant on `held_on` (= `acquired_on`, else `as_of`).
+ *    Reviewed event windows first; then dated ticker aliases (`security_aliases`); then, only for
+ *    a date within the last week, today's holder of the ticker. An answer that rests on aliases
+ *    or today's holder is `inferred`, never `reviewed`.
+ * 2. Carry: apply the reviewed events between `acquired_on` and `as_of` (lib/identity/security-events.ts).
+ * 3. Coverage: `reviewed` only when the identity came from reviewed events and every security in
+ *    the answer appears in reviewed events; `unknown` when the identity is ambiguous or unavailable.
+ */
+import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
+import {
+  applyEvents,
+  buildEvents,
+  effectiveEvents,
+  fracToString,
+  historicalTickerOwner,
+  isExact,
+  parseDecimal,
+  type EventResolution,
+  type EventRow,
+  type LegRow,
+  type SecurityEvent,
+} from "@/lib/identity/security-events";
+
+export const IDENTITY_SCHEMA_VERSION = "identity-resolve/1";
+const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER", "LEGACY_TICKER"];
+const CACHE_MS = 10 * 60 * 1000;
+
+let cache: { at: number; events: SecurityEvent[] } | null = null;
+
+export function _resetIdentityCache(): void {
+  cache = null;
+}
+
+export async function loadEvents(): Promise<SecurityEvent[]> {
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache.events;
+  const admin = createAdminClient();
+  const [ev, lg] = await Promise.all([
+    admin.from("security_events").select("*"),
+    admin.from("security_event_legs").select("*"),
+  ]);
+  if (ev.error || lg.error) throw new Error(`security_events read failed: ${(ev.error ?? lg.error)?.message}`);
+  const events = buildEvents((ev.data ?? []) as EventRow[], (lg.data ?? []) as LegRow[]);
+  cache = { at: Date.now(), events };
+  return events;
+}
+
+export type ResolveRequest = {
+  identifier: string;
+  identifier_type: "ticker" | "bw_sym_id";
+  as_of: string;
+  acquired_on: string | null;
+  quantity: string;
+  known_as_of: string | null;
+  fractions: "apply" | "exact";
+  elections: Record<string, string>;
+};
+
+type IdentitySource = "bw_sym_id" | "reviewed_event_window" | "reviewed_event_before_first" | "ticker_alias_window" | "current_holder";
+
+async function aliasCandidates(ticker: string, heldOn: string): Promise<string[]> {
+  const { data, error } = await createAdminClient()
+    .from("security_aliases")
+    .select("bw_sym_id, valid_from, valid_to")
+    .eq("alias_value", ticker)
+    .in("alias_type", TICKER_ALIAS_TYPES);
+  if (error) throw new Error(`security_aliases read failed: ${error.message}`);
+  const rows = (data ?? []) as Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }>;
+  return [
+    ...new Set(
+      rows
+        .filter((r) => (!r.valid_from || r.valid_from <= heldOn) && (!r.valid_to || heldOn < r.valid_to))
+        .map((r) => r.bw_sym_id),
+    ),
+  ].sort();
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+}
+
+async function resolveIdentity(
+  req: ResolveRequest,
+  events: SecurityEvent[],
+  heldOn: string,
+): Promise<{ status: "resolved" | "ambiguous" | "unavailable"; bw_sym_id: string | null; source: IdentitySource | null; candidates: string[] }> {
+  if (req.identifier_type === "bw_sym_id") {
+    return { status: "resolved", bw_sym_id: req.identifier, source: "bw_sym_id", candidates: [req.identifier] };
+  }
+  const ticker = req.identifier.trim().toUpperCase();
+  const own = historicalTickerOwner(events, ticker, heldOn, req.known_as_of);
+  if (own.status === "reviewed") return { status: "resolved", bw_sym_id: own.bw_sym_id, source: "reviewed_event_window", candidates: own.candidates };
+  if (own.status === "ambiguous") return { status: "ambiguous", bw_sym_id: null, source: null, candidates: own.candidates };
+  const aliases = await aliasCandidates(ticker, heldOn);
+  if (own.status === "before_first_event") {
+    const others = aliases.filter((a) => a !== own.bw_sym_id);
+    if (!others.length) return { status: "resolved", bw_sym_id: own.bw_sym_id, source: "reviewed_event_before_first", candidates: [own.bw_sym_id!] };
+    return { status: "ambiguous", bw_sym_id: null, source: null, candidates: [...new Set([own.bw_sym_id!, ...aliases])].sort() };
+  }
+  if (aliases.length === 1) return { status: "resolved", bw_sym_id: aliases[0], source: "ticker_alias_window", candidates: aliases };
+  if (aliases.length > 1) return { status: "ambiguous", bw_sym_id: null, source: null, candidates: aliases };
+  const today = new Date().toISOString().slice(0, 10);
+  if (daysBetween(heldOn, today) <= 7) {
+    const holder = await resolveSymbolByTicker(ticker);
+    const id = holder?.symbol;
+    if (id) return { status: "resolved", bw_sym_id: id, source: "current_holder", candidates: [id] };
+  }
+  return { status: "unavailable", bw_sym_id: null, source: null, candidates: [] };
+}
+
+async function describe(ids: string[]): Promise<Map<string, { ticker: string | null; name: string | null }>> {
+  const out = new Map<string, { ticker: string | null; name: string | null }>();
+  if (!ids.length) return out;
+  const { data } = await createAdminClient().from("symbols").select("symbol, ticker, name").in("symbol", ids);
+  for (const r of (data ?? []) as Array<{ symbol: string; ticker: string | null; name: string | null }>) {
+    out.set(r.symbol, { ticker: r.ticker, name: r.name });
+  }
+  return out;
+}
+
+const num = (f: { n: bigint; d: bigint }) => fracToString(f);
+
+export async function resolveSecurityIdentity(req: ResolveRequest) {
+  const events = await loadEvents();
+  const heldOn = req.acquired_on ?? req.as_of;
+  const identity = await resolveIdentity(req, events, heldOn);
+  const reviewedIds = new Set(
+    effectiveEvents(events, req.known_as_of).flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.bw_sym_id).filter(Boolean) as string[]),
+  );
+
+  let carry: EventResolution | null = null;
+  if (identity.status === "resolved" && req.acquired_on) {
+    carry = applyEvents(events, {
+      bw_sym_id: identity.bw_sym_id!,
+      quantity: parseDecimal(req.quantity),
+      acquired_on: req.acquired_on,
+      as_of: req.as_of,
+      ticker: req.identifier_type === "ticker" ? req.identifier : "",
+      known_as_of: req.known_as_of,
+      elections: req.elections,
+      fractions: req.fractions,
+    });
+  }
+
+  const resultIds = carry ? carry.holdings.map((h) => h.bw_sym_id) : identity.bw_sym_id ? [identity.bw_sym_id] : [];
+  const names = await describe([...new Set([...resultIds, ...identity.candidates])]);
+  const byId = new Map(events.map((e) => [e.event_id, e]));
+  const applied = (carry?.applied_event_ids ?? []).map((id) => byId.get(id)!).filter(Boolean);
+
+  const eventSourced = identity.source === "reviewed_event_window" || identity.source === "reviewed_event_before_first";
+  const coverage =
+    identity.status !== "resolved" || carry?.status === "unknown"
+      ? "unknown"
+      : eventSourced && resultIds.every((id) => reviewedIds.has(id))
+        ? "reviewed"
+        : "inferred";
+
+  const holdings = carry
+    ? carry.holdings.map((h) => ({
+        bw_sym_id: h.bw_sym_id,
+        ticker: names.get(h.bw_sym_id)?.ticker ?? h.ticker ?? null,
+        name: names.get(h.bw_sym_id)?.name ?? null,
+        quantity: num(h.quantity),
+        quantity_exact: isExact(h.quantity),
+      }))
+    : identity.bw_sym_id
+      ? [{ bw_sym_id: identity.bw_sym_id, ticker: names.get(identity.bw_sym_id)?.ticker ?? null, name: names.get(identity.bw_sym_id)?.name ?? null, quantity: req.quantity, quantity_exact: true }]
+      : [];
+
+  const status =
+    identity.status !== "resolved" ? identity.status : carry && carry.unresolved.length ? "unsupported" : "resolved";
+
+  return {
+    schema_version: IDENTITY_SCHEMA_VERSION,
+    request: req,
+    status,
+    coverage,
+    identity: {
+      status: identity.status,
+      source: identity.source,
+      bw_sym_id: identity.bw_sym_id,
+      held_on: heldOn,
+      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ticker: names.get(id)?.ticker ?? null, name: names.get(id)?.name ?? null })),
+    },
+    result: {
+      outcome: carry?.status ?? (identity.status === "resolved" ? "held" : "unknown"),
+      holdings,
+      cash: (carry?.cash ?? []).map((c) => ({
+        event_id: c.event_id,
+        currency: c.currency || null,
+        amount: c.amount ? num(c.amount) : null,
+        in_lieu_of_units: c.in_lieu_of_units ? num(c.in_lieu_of_units) : null,
+        in_lieu_of: c.in_lieu_of,
+      })),
+      no_equity_successor: carry ? carry.holdings.length === 0 && (carry.cash.length > 0 || carry.cancelled_by.length > 0) : false,
+      cancelled_by: carry?.cancelled_by ?? [],
+      unresolved: carry?.unresolved ?? [],
+      fractional_notes: carry?.fractional_notes ?? [],
+    },
+    events: applied.map((e) => ({
+      event_id: e.event_id,
+      event_type: e.event_type,
+      effective_date: e.effective_date,
+      legal_effective_date: e.legal_effective_date,
+      record_date: e.record_date,
+      ex_date: e.ex_date,
+      knowledge_date: e.knowledge_date,
+      inputs: e.inputs.map((l) => ({ bw_sym_id: l.bw_sym_id, ticker: l.ticker, instrument: l.instrument })),
+      outputs: e.outputs.map((o) => ({
+        outcome: o.outcome,
+        bw_sym_id: o.bw_sym_id,
+        ticker: o.ticker || null,
+        ratio: o.ratio ? num(o.ratio) : null,
+        cash_per_unit: o.cash_per_unit ? num(o.cash_per_unit) : null,
+        currency: o.currency || null,
+        fractional_treatment: o.fractional_treatment || null,
+        package: o.package || null,
+      })),
+      source: { form: e.source_form, accession: e.source_accession, url: e.citation },
+      evidence: e.evidence,
+    })),
+    explanation: explain(req, identity, carry, applied, coverage),
+  };
+}
+
+function explain(
+  req: ResolveRequest,
+  identity: { status: string; source: IdentitySource | null; bw_sym_id: string | null; candidates: string[] },
+  carry: EventResolution | null,
+  applied: SecurityEvent[],
+  coverage: string,
+): string {
+  const who = `${req.identifier} on ${req.acquired_on ?? req.as_of}`;
+  if (identity.status === "ambiguous") return `${who} matches more than one security (${identity.candidates.join(", ")}); supply bw_sym_id.`;
+  if (identity.status === "unavailable") return `No reviewed or dated record says which security ${who} was. Not guessed.`;
+  const src = {
+    bw_sym_id: "given directly",
+    reviewed_event_window: "from reviewed corporate-action events",
+    reviewed_event_before_first: "from reviewed events (date precedes the first reviewed event)",
+    ticker_alias_window: "from dated ticker aliases (not reviewed)",
+    current_holder: "from today's holder of the ticker (not reviewed)",
+  }[identity.source!];
+  let s = `${who} is ${identity.bw_sym_id}, ${src}.`;
+  if (carry) {
+    if (!applied.length) s += ` No reviewed corporate action through ${req.as_of}.`;
+    else s += ` Applied: ${applied.map((e) => `${e.event_type} ${e.effective_date} (${e.event_id})`).join("; ")}.`;
+    if (carry.status === "cashed_out") s += " Converted to cash; no equity successor.";
+    if (carry.status === "cancelled") s += " Cancelled with no consideration; no equity successor.";
+    if (carry.unresolved.length) s += ` Unresolved: ${carry.unresolved.join("; ")}.`;
+  }
+  return `${s} Coverage: ${coverage}.`;
+}
