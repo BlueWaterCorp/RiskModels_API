@@ -1,0 +1,50 @@
+---
+title: Platform Integration
+description: Use RiskModels from your own servers with one organization key, cache the results, and serve them to your users
+---
+
+# Platform Integration (server-side)
+
+This page is for fintech platforms, brokers, robo-advisers, competition and education products, and data apps that want RiskModels numbers inside their own product. It covers the setup where your servers call RiskModels and your users never see a RiskModels sign-in.
+
+For AI assistants used by one person (Claude, ChatGPT, Cursor, Gemini) see [Agent integration](/docs/agent-integration); the MCP server there is built for one person signing in with their own account.
+
+## How it works
+
+1. **One organization key.** Create one API key for your organization and keep it on your servers, for example in the service that already holds your other market-data vendor keys. Your end users do not need RiskModels accounts. The key must never reach a browser, a mobile app or any client-side code.
+2. **Call the REST API from your backend.** Every MCP tool has a REST equivalent ([API reference](/docs/api), [OpenAPI](/openapi.json)). Typical calls for a platform:
+   - `POST /api/portfolio/exposure`: a book's market, sector, subsector and stock-specific exposure, long or short, up to 1,000 names.
+   - `POST /api/decompose`: one stock's risk split with ETF hedge ratios.
+   - `GET /api/metrics/{ticker}`: latest metrics for one stock.
+   - `GET /api/identity/resolve`: which security a ticker meant on a date and what a holding became (free).
+3. **Cache, then serve your users from your cache.** The data is end-of-day, so one response per security (or per book) per trading day is enough. Refresh after each US market close.
+4. **Show the attribution.** Wherever a screen, statement or PDF shows RiskModels numbers, show "Powered by RiskModels" or "Risk data provided by RiskModels".
+
+## What the terms let you cache
+
+Under the [API terms](https://riskmodels.net/terms/api), the licence lets you integrate the API into your applications and AI agents and use its output in your analyses, reports and products. In practice:
+
+| You may | You may not, without a separate written agreement |
+|---|---|
+| Store the responses you retrieve, keyed however suits you, for example by security and date | Offer RiskModels numbers to third parties as a feed, database, bulk download or API, including a public or partner API you run |
+| Serve cached numbers to your own users inside your product: screens, alerts, statements, PDFs, your own AI assistant's answers | Resell RiskModels output as a standalone data product |
+| Keep the history you have fetched for as long as your licence is active | Train models on RiskModels output to replicate or compete with our risk models |
+| Use one organization key on your servers for all your users | Give the key to users or embed it in client code |
+
+When you stop using the API, delete the cached output (API terms, section 11).
+
+## Redistribution licence for platforms
+
+If you want to carry RiskModels numbers through your own data API, signals product or partner feed, we offer a redistribution licence for platforms, with attribution. Contact service@riskmodels.app with the surfaces you have in mind.
+
+## Cost
+
+Pricing is per call (see [pricing](/pricing)), so caching sets your cost. Fetching only the stocks and books your users actually hold, once a day, can cost a few dollars a day. Re-fetching the whole universe every day costs much more and is rarely needed.
+
+## Checklist
+
+- One organization key, held server-side, rotated if exposed.
+- Results cached per security or book per trading day, refreshed after the US close.
+- "Powered by RiskModels" shown wherever the numbers appear.
+- No RiskModels numbers in feeds or APIs you offer to others unless you have a redistribution licence.
+- US equities and ETFs only; end-of-day, not intraday.
