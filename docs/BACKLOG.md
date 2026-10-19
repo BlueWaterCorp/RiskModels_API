@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-17`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-27`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -124,3 +124,43 @@ Review: Fable, 2026-10-14 (ETF strategy review).
    - Subsector cohorts: no dedicated endpoints until asked (the `/cohorts` contract treats the subsector slate as proprietary; the embedded block already serves a name's own subsector).
    - Roster / metric catalogue free.
 4. **Disclosures:** yields divide SEC-filed flows by market cap served under the existing derived-data terms; say so in the field descriptions. Earnings surprise is not served.
+
+## RMAPI-17 · Filer hedge endpoint opens the wrong store (2026-10-18)
+
+**Impact:** MATERIAL · `computeFilerHedgeLatest` (`lib/dal/funds-zarr-reader.ts:2544`) opens `ds_hr.zarr` for a filer. The pipeline writes filer hedge to `ds_hedge`, so the endpoint reads a store the current build does not refresh. **Needs:** engineering + Funds_DAG (FDAG-90 publishes the store); then point the reader at it and add a test that opens the published name.
+
+## RMAPI-18 · Filer holdings weight denominator reads variables that are absent (2026-10-18)
+
+**Impact:** MATERIAL · The filer holdings reader (`lib/dal/funds-zarr-reader.ts:1910`) reads `total_aum_usd` and `aum_in_erm3` from the holdings store. Neither variable is present, so the weight denominator is always the sum of positive positions in the returned book. A response gives no indication of which denominator was used. **Needs:** engineering. Read the denominator from the filing-vintage store, return its basis in the response, and test with a book that has non-positive positions.
+
+## RMAPI-19 · Filer holdings `as_of` uses the filing date and an amendment hides the original book (2026-10-18)
+
+**Impact:** MATERIAL · `as_of` selects the latest quarter by `filing_date` (`lib/dal/funds-zarr-reader.ts:1893`). The pipeline's knowledge clock is acceptance time with the next-session rule, so a book accepted after the close is visible one session early. An amendment filed for a quarter replaces the original book in the same slot, so a caller asking for a date between the two filings gets the amended book. **Needs:** engineering. Select on acceptance time with the next-session rule and serve the original and amended books as separate vintages (depends on the vintage store).
+
+## RMAPI-20 · One documented weight basis for funds and filers (2026-10-18)
+
+**Impact:** IMPROVEMENT · Fund and filer holdings responses compute `weight` against different denominators (net assets, reported AUM, sum of positive positions) and the docs do not name the basis. Weights from the two routes are not comparable. **Needs:** engineering. Define one `weight_basis` enum, return it on every holdings and exposure response, and document each value in the OpenAPI schema.
+
+## RMAPI-21 · Fund holdings may label a forward-filled month as the report date (2026-10-18; unconfirmed)
+
+**Impact:** MATERIAL · Unconfirmed. The fund book is forward-filled across months without a filing. If the response labels a filled month with `report_date` equal to that month, a caller reads a stale book as a fresh disclosure. **Needs:** engineering. First step is a read of one fund with a gap between filings to confirm or reject the label; then expose the date of the book actually used.
+
+## RMAPI-22 · Free `/api/data/funds/*` routes return fields that are metered elsewhere (2026-10-18)
+
+**Impact:** MATERIAL · The routes under `/api/data/funds/*` are free and return fields that the metered fund routes charge for. A caller can obtain the metered content through the free route. **Needs:** engineering, then DECISION on which fields the free tier keeps. Slim the payload to the free-tier field set or put the routes behind the same authentication and metering as the paid routes; add a test that compares the free and metered field lists.
+
+## RMAPI-23 · A response field name carries a third-party brand (2026-10-18)
+
+**Impact:** HYGIENE · One category field in the fund responses is named after a third-party brand. The name appears in the public schema and SDK. **Needs:** engineering. Rename it to a neutral name, keep the old name as a deprecated alias for one release, and update the OpenAPI schema and SDK types.
+
+## RMAPI-24 · Stale route documentation: filer portfolio, fund NAV, filer snapshot (2026-10-18)
+
+**Impact:** HYGIENE · The route docs for the filer portfolio, the fund NAV series and the filer snapshot describe fields and clocks that the handlers no longer return. **Needs:** engineering. Regenerate the three pages from the OpenAPI schema and add a drift check to CI.
+
+## RMAPI-25 · Filer-search MCP tool missing on the hosted server (2026-10-18)
+
+**Impact:** IMPROVEMENT · `riskmodels_search_filers` is in the plugin tool list and the REST route `/13f/filers/search` exists, but the hosted MCP server does not register the tool. Clients that rely on the server cannot resolve a filer name to an identifier. **Needs:** engineering. Register the tool on the server and extend the list-endpoints drift guard to compare the server's tool list with the plugin's.
+
+## RMAPI-26 · Panel endpoints, holders of a security, entity history (2026-10-18)
+
+**Impact:** IMPROVEMENT · Three read paths do not exist: a panel read (many entities, one date range, one request), holders of a security at a date, and an entity's history of names and identifiers. Research clients call the per-entity routes in a loop. **Needs:** engineering, after RMAPI-17 to RMAPI-19. Specify the three routes together so they share the weight basis (RMAPI-20) and the acceptance-time clock (RMAPI-19).
