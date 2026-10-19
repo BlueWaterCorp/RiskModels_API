@@ -185,13 +185,14 @@ Charts below are **generated from live API data** (`get_rankings` + MAG7 L3 batc
 RiskModels includes a first-class [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, enabling AI agents to directly query risk data and perform factor analysis.
 
 **MCP Connection (hosted API):**
-- **Endpoint (Streamable HTTP, POST):** `https://riskmodels.app/api/mcp/sse`
+- **Endpoint (Streamable HTTP, POST):** `https://riskmodels.app/api/mcp`
+- **Named endpoints:** `/api/mcp/openai` and `/api/mcp/sse` remain supported
 - **Authentication:** Bearer token (API key or OAuth2 JWT)
 - **Discovery:** `https://riskmodels.app/.well-known/mcp.json` (see [OPENAPI_SPEC.yaml](./OPENAPI_SPEC.yaml))
 
-**Local MCP server (`mcp/` in this repo, `@riskmodels/mcp` 2.0.0)** — stdio transport for Cursor / Claude Desktop / Zed. Tool set 2.0 is one registry shared with the hosted endpoints: 24 tools locally, 25 hosted (adds `riskmodels_render_artifact`):
+**Local MCP server (`mcp/` in this repo, `@riskmodels/mcp` 2.0.0)** — stdio transport for Cursor / Claude Desktop / Zed. Tool set 2.0 is one registry shared with the hosted endpoints: 25 tools locally, 26 hosted (adds `riskmodels_render_artifact`):
 
-`riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_get_return_attribution`, `riskmodels_get_residual_returns`, `riskmodels_get_residual_signal`, `riskmodels_get_macro_correlation`, `riskmodels_get_fundamentals`, `riskmodels_analyze_portfolio`, `riskmodels_get_portfolio_risk_snapshot`, `riskmodels_portfolio_exposure`, `riskmodels_decompose_selection_vs_drift`, `riskmodels_get_my_positions`, `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_cohorts`, `riskmodels_get_peers`, `riskmodels_search`, `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`, `riskmodels_get_benchmark_fit`, `riskmodels_get_factor_returns`.
+`riskmodels_get_stock_snapshot`, `riskmodels_decompose`, `riskmodels_compare`, `riskmodels_get_returns`, `riskmodels_get_return_attribution`, `riskmodels_get_residual_returns`, `riskmodels_get_residual_signal`, `riskmodels_get_macro_correlation`, `riskmodels_get_fundamentals`, `riskmodels_analyze_portfolio`, `riskmodels_get_portfolio_risk_snapshot`, `riskmodels_portfolio_exposure`, `riskmodels_decompose_selection_vs_drift`, `riskmodels_get_my_positions`, `riskmodels_get_rankings`, `riskmodels_screen_rankings`, `riskmodels_get_cohorts`, `riskmodels_get_peers`, `riskmodels_search`, `riskmodels_resolve_security_identity`, `riskmodels_get_filer`, `riskmodels_get_fund`, `riskmodels_get_etf`, `riskmodels_get_benchmark_fit`, `riskmodels_get_factor_returns`.
 
 The REST catalog, response schemas and OpenAPI spec are MCP resources (`riskmodels:///capabilities`, `riskmodels:///schemas/{path}`, `riskmodels:///openapi`). Tool list, prices and the 1.x → 2.0 migration table: [`mcp/README.md`](./mcp/README.md#tool-set-20). Outside MCP, call the **REST API** or the **Python SDK** (`riskmodels-py`).
 

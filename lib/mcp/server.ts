@@ -1,8 +1,9 @@
 /**
  * RiskModels MCP server factory — hosted-transport variant.
  *
- * Serves both hosted surfaces (`/api/mcp/sse` and `/api/mcp/openai`) with the
- * same tools, resources, prompts and instructions. Tools come from the shared
+ * Serves all hosted routes (`/api/mcp/sse`, `/api/mcp/openai`, and the
+ * conventional `/api/mcp` alias) with the same tools, resources, prompts and
+ * instructions. Tools come from the shared
  * registry `registerRiskModelsTools` (lib/mcp/tools/riskmodels-tools.ts), the
  * same one the npm stdio server (`mcp/src/server.ts`) uses, plus the
  * hosted-only `riskmodels_render_artifact` from `registerRiskModelsRenderTool`
@@ -43,14 +44,16 @@ export type McpServerOptions = {
   /** API base URL (defaults to `https://riskmodels.app`). */
   apiBase?: string;
   /**
-   * Hosted surface ("default" = `/api/mcp/sse`, "openai" = `/api/mcp/openai`).
+   * Hosted surface ("default" = `/api/mcp/sse`, "openai" = `/api/mcp/openai`
+   * and its `/api/mcp` alias).
    * Both register the same tools since tool set 2.0; kept for callers and logs.
    */
   surface?: McpSurface;
 };
 
 /**
- * The OpenAI surface (/api/mcp/openai: ChatGPT, Gemini CLI, Cursor) states
+ * The OpenAI surface (`/api/mcp/openai` and `/api/mcp`: ChatGPT, Gemini CLI,
+ * Cursor) states
  * prices once, in its server instructions, not per tool: OpenAI's tool scan
  * reads a per-call price in a read-only tool's description as a side effect
  * (2026-10-15). Strips the trailing "Price: …" sentence from each description;
