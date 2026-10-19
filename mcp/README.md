@@ -14,9 +14,9 @@ Version 2.0.0 ships one tool registry (`registerRiskModelsTools` in `lib/mcp/too
 
 | Surface | Tools |
 |---|---|
-| npm stdio (`npx -y @riskmodels/mcp`) | 24 |
-| Hosted `https://riskmodels.app/api/mcp/sse` (Claude) | 25 (the 24 + `riskmodels_render_artifact`) |
-| Hosted `https://riskmodels.app/api/mcp/openai` (ChatGPT, Cursor plugin, Gemini) | 25 (same as `/sse`) |
+| npm stdio (`npx -y @riskmodels/mcp`) | 25 (published 2.0.0: 24, before `riskmodels_resolve_security_identity`) |
+| Hosted `https://riskmodels.app/api/mcp/sse` (Claude) | 26 (the 25 + `riskmodels_render_artifact`) |
+| Hosted `https://riskmodels.app/api/mcp/openai` (ChatGPT, Cursor plugin, Gemini) | 26 (same as `/sse`) |
 
 Every tool is read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`). Each description says when to use the tool, which tool to use instead, what it returns, data freshness (end-of-day) and its price. All tools call existing REST routes and bill at the REST price; the MCP layer adds no charge.
 
@@ -41,6 +41,7 @@ Every tool is read-only (`readOnlyHint: true`, `destructiveHint: false`, `openWo
 | `riskmodels_get_cohorts` | `GET /cohorts` or `GET /cohorts/series` | $0.04 / $0.15 |
 | `riskmodels_get_peers` | `GET /peers` | $0.005 |
 | `riskmodels_search` | `GET /tickers`, `/data/etf/search`, `/funds/search`, `/13f/filers/search` by `type` | Free |
+| `riskmodels_resolve_security_identity` | `GET /identity/resolve` (point-in-time identity and corporate-action carry, SEC-cited, coverage-labelled) | Free |
 | `riskmodels_get_filer` | `GET /13f/filers/{id}/snapshot` (+ `/holdings` when `holdings_top` is set; + one GET per `include` value, see below) | $0.05 snapshot (+$0.02 holdings, +$0.02 per include) |
 | `riskmodels_get_fund` | `GET /funds/snapshot/{id}` (+ `/funds/{id}/holdings` when `holdings_limit` is set; + one GET per `include` value, see below) | $0.05 snapshot (+$0.02 holdings, +$0.02 per include) |
 | `riskmodels_get_etf` | `GET /data/etf/{ticker}` (+ `/holdings` when `holdings_top` is set; `snapshot: false` for holdings only) | Free |
@@ -66,6 +67,30 @@ New data arrives as include values, not new tools. An entity tool takes an optio
 - Holdings stay on `holdings_limit` (fund) and `holdings_top` (filer, ETF). `snapshot: false` skips the snapshot call so a caller pays only for holdings or include values; with `snapshot: false` and neither holdings nor an include value the tool returns an error.
 - Response: `{ snapshot?, holdings?, includes: { <value>: data | { ok: false, status, error } }, billing: { base_usd, includes_usd, total_usd } }`. Each include block is the route's own response, with its own date fields (`teo`, `end_teo` or `report_date`). `billing` sums the list prices of calls that succeeded; failed REST calls are not charged.
 - A failed snapshot or holdings call is a tool error and no include fires. Includes run in parallel; a failed include is reported in its block and does not flag the result as an error.
+
+### Security identity examples
+
+`riskmodels_resolve_security_identity` (REST `GET /api/identity/resolve`, free) answers two questions without guessing. Results are from riskmodels.app on 2026-10-19.
+
+**Point-in-time lookup: which security a ticker meant on a date.**
+
+| Request | Answer | Coverage |
+|---|---|---|
+| `identifier=FB&as_of=2026-10-16` | ProShares ETF `BW-BBG01VRMNFB1`. Meta's use of FB ended 2022-06-09. | inferred |
+| `identifier=BBBY&as_of=2026-01-05` | The Overstock line, renamed Bed Bath & Beyond, Inc., which took BBBY on 2025-08-29 | reviewed |
+| `identifier=ZZZZ&as_of=2015-01-02` | `unavailable`, not guessed | unknown |
+
+**Portfolio-history lookup: what a holding became.**
+
+| Request | Answer | Coverage |
+|---|---|---|
+| `identifier=FB&acquired_on=2015-06-01&as_of=2026-10-18` | 100 META | reviewed |
+| `identifier=T&acquired_on=2021-01-04&as_of=2026-10-18` | 100 T + 24 WBD + cash in lieu of 0.1917 WBD (2022-04-08 distribution) | reviewed |
+| `identifier=GE&acquired_on=2020-01-02&quantity=800` | 100 GE (2021 one-for-eight reverse split) + 33 GEHC + 25 GEV + cash in lieu | reviewed |
+| `identifier=TWTR&acquired_on=2020-01-02` | $5,420 cash, `no_equity_successor: true` | reviewed |
+| `identifier=BBBY&acquired_on=2020-01-02` | Cancelled 2023-09-29 with no consideration, `no_equity_successor: true`; never the brand buyer | reviewed |
+
+Every applied event in the response carries its SEC filing link. A purchase between a record date and the distribution, with no seeded ex-date, returns `unsupported` rather than an assumed entitlement.
 
 ### Migration from 1.x
 
