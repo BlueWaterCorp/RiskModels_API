@@ -265,6 +265,7 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
         bw_sym_id: h.bw_sym_id,
         ticker: names.get(h.bw_sym_id)?.ticker ?? h.ticker ?? null,
         name: names.get(h.bw_sym_id)?.name ?? null,
+        instrument: h.instrument || null,
         quantity: num(h.quantity),
         quantity_exact: isExact(h.quantity),
       }))
@@ -317,6 +318,8 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
         outcome: o.outcome,
         bw_sym_id: o.bw_sym_id,
         ticker: o.ticker || null,
+        instrument: o.instrument || null,
+        instrument_changed: instrumentChanged(e, o),
         ratio: o.ratio ? num(o.ratio) : null,
         cash_per_unit: o.cash_per_unit ? num(o.cash_per_unit) : null,
         currency: o.currency || null,
@@ -328,6 +331,14 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
     })),
     explanation: explain(req, identity, carry, applied, coverage),
   };
+}
+
+// A continuing output whose instrument differs from its input leg's (e.g. ADS -> ordinary share): the
+// RiskModels id and ticker continue, but the listed instrument and its identifiers changed.
+function instrumentChanged(e: SecurityEvent, o: SecurityEvent["outputs"][number]): boolean {
+  if (o.outcome !== "continues" || !o.instrument) return false;
+  const src = e.inputs.find((l) => l.leg === o.input_leg) ?? (e.inputs.length === 1 ? e.inputs[0] : undefined);
+  return !!src?.instrument && src.instrument.trim().toLowerCase() !== o.instrument.trim().toLowerCase();
 }
 
 function explain(
@@ -353,6 +364,11 @@ function explain(
   if (carry) {
     if (!applied.length) s += ` No reviewed corporate action through ${req.as_of}.`;
     else s += ` Applied: ${applied.map((e) => `${e.event_type} ${e.effective_date} (${e.event_id})`).join("; ")}.`;
+    const changed = applied.flatMap((e) => e.outputs.filter((o) => instrumentChanged(e, o)).map((o) => {
+      const src = e.inputs.find((l) => l.leg === o.input_leg) ?? e.inputs[0];
+      return `${e.event_id}: ${src.instrument} became ${o.instrument} (same RiskModels id ${o.bw_sym_id}; the listed instrument and its identifiers changed)`;
+    }));
+    if (changed.length) s += ` Instrument change: ${changed.join("; ")}.`;
     if (carry.status === "cashed_out") s += " Converted to cash; no equity successor.";
     if (carry.status === "cancelled") s += " Cancelled with no consideration; no equity successor.";
     if (carry.unresolved.length) s += ` Unresolved: ${carry.unresolved.join("; ")}.`;

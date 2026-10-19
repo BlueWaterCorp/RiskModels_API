@@ -80,6 +80,19 @@ describe("GET /api/identity/resolve", () => {
     expect(body.events[0].event_type).toBe("distribution");
   });
 
+  it("SOS ADS to ordinary: same id continues, but the instrument change is explicit", async () => {
+    const { body } = await call("identifier=SOS&acquired_on=2025-01-02&as_of=2026-10-18");
+    const out = body.events.find((e: { event_id: string }) => e.event_id === "SOS-ADS-ORD-20250908").outputs[0];
+    expect(out).toMatchObject({ bw_sym_id: "BW-BBG00GCTC8Y9", instrument: "SOS Limited Class A ordinary share", instrument_changed: true });
+    expect(body.result.holdings[0].instrument).toBe("SOS Limited Class A ordinary share");
+    expect(body.explanation).toMatch(/American depositary share became SOS Limited Class A ordinary share/);
+  });
+
+  it("a plain cash-out output is not an instrument change", async () => {
+    const { body } = await call("identifier=TWTR&acquired_on=2020-01-02&as_of=2026-10-18");
+    expect(body.events.flatMap((e: { outputs: { instrument_changed: boolean }[] }) => e.outputs).every((o: { instrument_changed: boolean }) => !o.instrument_changed)).toBe(true);
+  });
+
   it("2026 BBBY is the Overstock line, by reviewed window", async () => {
     const { body } = await call("identifier=BBBY&as_of=2026-01-05");
     expect(body.identity).toMatchObject({ bw_sym_id: "BW-BBG000BF7BV7", source: "reviewed_event_window" });
