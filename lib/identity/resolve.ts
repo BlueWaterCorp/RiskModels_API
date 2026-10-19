@@ -61,7 +61,28 @@ export type ResolveRequest = {
 
 type IdentitySource = "bw_sym_id" | "reviewed_event_window" | "reviewed_event_before_first" | "ticker_alias_window" | "current_holder";
 
-async function aliasCandidates(ticker: string, heldOn: string): Promise<string[]> {
+type MasterRow = { bw_sym_id: string; cik: string | null; merged_into: string | null };
+
+async function masterRows(ids: string[]): Promise<Map<string, MasterRow>> {
+  const out = new Map<string, MasterRow>();
+  if (!ids.length) return out;
+  const { data, error } = await createAdminClient()
+    .from("security_master")
+    .select("bw_sym_id, cik, merged_into")
+    .in("bw_sym_id", ids);
+  if (error) throw new Error(`security_master read failed: ${error.message}`);
+  for (const r of (data ?? []) as MasterRow[]) out.set(r.bw_sym_id, r);
+  return out;
+}
+
+/**
+ * Dated ticker aliases on `heldOn`. Aliases whose id is not in the security master (orphans left by
+ * the legacy symbol map) are dropped and reported; merged ids are followed to their survivor.
+ */
+async function aliasCandidates(
+  ticker: string,
+  heldOn: string,
+): Promise<{ ids: string[]; excluded: Array<{ bw_sym_id: string; reason: string }>; master: Map<string, MasterRow> }> {
   const { data, error } = await createAdminClient()
     .from("security_aliases")
     .select("bw_sym_id, valid_from, valid_to")
@@ -69,46 +90,77 @@ async function aliasCandidates(ticker: string, heldOn: string): Promise<string[]
     .in("alias_type", TICKER_ALIAS_TYPES);
   if (error) throw new Error(`security_aliases read failed: ${error.message}`);
   const rows = (data ?? []) as Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }>;
-  return [
+  const raw = [
     ...new Set(
       rows
         .filter((r) => (!r.valid_from || r.valid_from <= heldOn) && (!r.valid_to || heldOn < r.valid_to))
         .map((r) => r.bw_sym_id),
     ),
-  ].sort();
+  ];
+  const master = await masterRows(raw);
+  const excluded: Array<{ bw_sym_id: string; reason: string }> = [];
+  const ids = new Set<string>();
+  for (const id of raw) {
+    const m = master.get(id);
+    if (!m) excluded.push({ bw_sym_id: id, reason: "alias id not in the security master" });
+    else if (m.merged_into) {
+      excluded.push({ bw_sym_id: id, reason: `merged into ${m.merged_into}` });
+      ids.add(m.merged_into);
+    } else ids.add(id);
+  }
+  const extra = await masterRows([...ids].filter((i) => !master.has(i)));
+  for (const [k, v] of extra) master.set(k, v);
+  return { ids: [...ids].sort(), excluded, master };
 }
 
 function daysBetween(a: string, b: string): number {
   return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 }
 
-async function resolveIdentity(
-  req: ResolveRequest,
-  events: SecurityEvent[],
-  heldOn: string,
-): Promise<{ status: "resolved" | "ambiguous" | "unavailable"; bw_sym_id: string | null; source: IdentitySource | null; candidates: string[] }> {
+type IdentityAnswer = {
+  status: "resolved" | "ambiguous" | "unavailable";
+  bw_sym_id: string | null;
+  source: IdentitySource | null;
+  candidates: string[];
+  duplicate_records: string[];
+  excluded_candidates: Array<{ bw_sym_id: string; reason: string }>;
+};
+
+async function resolveIdentity(req: ResolveRequest, events: SecurityEvent[], heldOn: string): Promise<IdentityAnswer> {
+  const base = { duplicate_records: [] as string[], excluded_candidates: [] as Array<{ bw_sym_id: string; reason: string }> };
   if (req.identifier_type === "bw_sym_id") {
-    return { status: "resolved", bw_sym_id: req.identifier, source: "bw_sym_id", candidates: [req.identifier] };
+    return { ...base, status: "resolved", bw_sym_id: req.identifier, source: "bw_sym_id", candidates: [req.identifier] };
   }
   const ticker = req.identifier.trim().toUpperCase();
   const own = historicalTickerOwner(events, ticker, heldOn, req.known_as_of);
-  if (own.status === "reviewed") return { status: "resolved", bw_sym_id: own.bw_sym_id, source: "reviewed_event_window", candidates: own.candidates };
-  if (own.status === "ambiguous") return { status: "ambiguous", bw_sym_id: null, source: null, candidates: own.candidates };
-  const aliases = await aliasCandidates(ticker, heldOn);
-  if (own.status === "before_first_event") {
-    const others = aliases.filter((a) => a !== own.bw_sym_id);
-    if (!others.length) return { status: "resolved", bw_sym_id: own.bw_sym_id, source: "reviewed_event_before_first", candidates: [own.bw_sym_id!] };
-    return { status: "ambiguous", bw_sym_id: null, source: null, candidates: [...new Set([own.bw_sym_id!, ...aliases])].sort() };
+  if (own.status === "reviewed") {
+    return { ...base, status: "resolved", bw_sym_id: own.bw_sym_id, source: "reviewed_event_window", candidates: own.candidates };
   }
-  if (aliases.length === 1) return { status: "resolved", bw_sym_id: aliases[0], source: "ticker_alias_window", candidates: aliases };
-  if (aliases.length > 1) return { status: "ambiguous", bw_sym_id: null, source: null, candidates: aliases };
+  if (own.status === "ambiguous") return { ...base, status: "ambiguous", bw_sym_id: null, source: null, candidates: own.candidates };
+  const al = await aliasCandidates(ticker, heldOn);
+  base.excluded_candidates = al.excluded;
+  if (own.status === "before_first_event") {
+    const chosen = own.bw_sym_id!;
+    const others = al.ids.filter((a) => a !== chosen);
+    if (!others.length) {
+      return { ...base, status: "resolved", bw_sym_id: chosen, source: "reviewed_event_before_first", candidates: [chosen] };
+    }
+    // Duplicate records of the same issuer (same CIK) as the reviewed id: the reviewed id stands.
+    const cik = (await masterRows([chosen])).get(chosen)?.cik ?? al.master.get(chosen)?.cik ?? null;
+    if (cik && others.every((o) => al.master.get(o)?.cik === cik)) {
+      return { ...base, status: "resolved", bw_sym_id: chosen, source: "reviewed_event_before_first", candidates: [chosen], duplicate_records: others };
+    }
+    return { ...base, status: "ambiguous", bw_sym_id: null, source: null, candidates: [...new Set([chosen, ...al.ids])].sort() };
+  }
+  if (al.ids.length === 1) return { ...base, status: "resolved", bw_sym_id: al.ids[0], source: "ticker_alias_window", candidates: al.ids };
+  if (al.ids.length > 1) return { ...base, status: "ambiguous", bw_sym_id: null, source: null, candidates: al.ids };
   const today = new Date().toISOString().slice(0, 10);
   if (daysBetween(heldOn, today) <= 7) {
     const holder = await resolveSymbolByTicker(ticker);
     const id = holder?.symbol;
-    if (id) return { status: "resolved", bw_sym_id: id, source: "current_holder", candidates: [id] };
+    if (id) return { ...base, status: "resolved", bw_sym_id: id, source: "current_holder", candidates: [id] };
   }
-  return { status: "unavailable", bw_sym_id: null, source: null, candidates: [] };
+  return { ...base, status: "unavailable", bw_sym_id: null, source: null, candidates: [] };
 }
 
 async function describe(ids: string[]): Promise<Map<string, { ticker: string | null; name: string | null }>> {
@@ -184,6 +236,8 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
       bw_sym_id: identity.bw_sym_id,
       held_on: heldOn,
       candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ticker: names.get(id)?.ticker ?? null, name: names.get(id)?.name ?? null })),
+      duplicate_records: identity.duplicate_records,
+      excluded_candidates: identity.excluded_candidates,
     },
     result: {
       outcome: carry?.status ?? (identity.status === "resolved" ? "held" : "unknown"),
@@ -228,7 +282,7 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
 
 function explain(
   req: ResolveRequest,
-  identity: { status: string; source: IdentitySource | null; bw_sym_id: string | null; candidates: string[] },
+  identity: IdentityAnswer,
   carry: EventResolution | null,
   applied: SecurityEvent[],
   coverage: string,
@@ -244,6 +298,7 @@ function explain(
     current_holder: "from today's holder of the ticker (not reviewed)",
   }[identity.source!];
   let s = `${who} is ${identity.bw_sym_id}, ${src}.`;
+  if (identity.duplicate_records.length) s += ` Duplicate records of the same issuer: ${identity.duplicate_records.join(", ")}.`;
   if (carry) {
     if (!applied.length) s += ` No reviewed corporate action through ${req.as_of}.`;
     else s += ` Applied: ${applied.map((e) => `${e.event_type} ${e.effective_date} (${e.event_id})`).join("; ")}.`;

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
 let aliasRows: Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }> = [];
+let masterRows: Array<{ bw_sym_id: string; cik: string | null; merged_into: string | null }> = [];
 
 function query(rows: unknown[]) {
   const q: Record<string, unknown> = {
@@ -25,7 +26,8 @@ vi.mock("@/lib/supabase/admin", () => ({
         table === "security_events" ? fx.events
           : table === "security_event_legs" ? fx.legs
             : table === "security_aliases" ? aliasRows
-              : [],
+              : table === "security_master" ? masterRows
+                : [],
       ),
   }),
 }));
@@ -44,6 +46,7 @@ describe("GET /api/identity/resolve", () => {
   beforeEach(() => {
     _resetIdentityCache();
     aliasRows = [];
+    masterRows = [];
   });
 
   it("BBBY held in 2020 is the original company, cancelled with no equity successor", async () => {
@@ -94,6 +97,10 @@ describe("GET /api/identity/resolve", () => {
       { bw_sym_id: "BW-A", valid_from: null, valid_to: null },
       { bw_sym_id: "BW-B", valid_from: "2010-01-01", valid_to: null },
     ];
+    masterRows = [
+      { bw_sym_id: "BW-A", cik: "1", merged_into: null },
+      { bw_sym_id: "BW-B", cik: "2", merged_into: null },
+    ];
     const { body } = await call("identifier=QQQQ&as_of=2015-01-02");
     expect(body.status).toBe("ambiguous");
     expect(body.identity.candidates.map((c: { bw_sym_id: string }) => c.bw_sym_id)).toEqual(["BW-A", "BW-B"]);
@@ -109,5 +116,42 @@ describe("GET /api/identity/resolve", () => {
     expect((await call("identifier=T&as_of=2026-13-40")).status).toBe(400);
     expect((await call("identifier=T&acquired_on=2026-10-18&as_of=2021-01-04")).status).toBe(400);
     expect((await call("as_of=2021-01-04")).status).toBe(400);
+  });
+
+  it("drops alias ids missing from the security master and reports them (live AAPL shape)", async () => {
+    aliasRows = [
+      { bw_sym_id: "BW-BBG000B9XRY4", valid_from: "2000-01-01", valid_to: null },
+      { bw_sym_id: "BW-SY1T29J3RVQWY", valid_from: "2006-01-03", valid_to: null },
+    ];
+    masterRows = [{ bw_sym_id: "BW-BBG000B9XRY4", cik: "0000320193", merged_into: null }];
+    const { body } = await call("identifier=AAPL&as_of=2020-01-02");
+    expect(body.identity).toMatchObject({ status: "resolved", bw_sym_id: "BW-BBG000B9XRY4", source: "ticker_alias_window" });
+    expect(body.identity.excluded_candidates).toEqual([{ bw_sym_id: "BW-SY1T29J3RVQWY", reason: "alias id not in the security master" }]);
+    expect(body.coverage).toBe("inferred");
+  });
+
+  it("follows a merged alias id to its survivor", async () => {
+    aliasRows = [{ bw_sym_id: "BW-DUP", valid_from: null, valid_to: null }];
+    masterRows = [
+      { bw_sym_id: "BW-DUP", cik: "9", merged_into: "BW-SURV" },
+      { bw_sym_id: "BW-SURV", cik: "9", merged_into: null },
+    ];
+    const { body } = await call("identifier=QQQQ&as_of=2015-01-02");
+    expect(body.identity.bw_sym_id).toBe("BW-SURV");
+  });
+
+  it("same-issuer duplicate records do not make a reviewed id ambiguous (live BBBY shape)", async () => {
+    aliasRows = [
+      { bw_sym_id: "BW-BBG0087LHFY9", valid_from: null, valid_to: "2023-07-10" },
+      { bw_sym_id: "BW-C0000886158", valid_from: null, valid_to: "2023-07-10" },
+    ];
+    masterRows = [
+      { bw_sym_id: "BW-BBG0087LHFY9", cik: "0000886158", merged_into: null },
+      { bw_sym_id: "BW-C0000886158", cik: "0000886158", merged_into: null },
+    ];
+    const { body } = await call("identifier=BBBY&acquired_on=2020-01-02&as_of=2026-10-18");
+    expect(body.identity).toMatchObject({ status: "resolved", bw_sym_id: "BW-BBG0087LHFY9", duplicate_records: ["BW-C0000886158"] });
+    expect(body.result.outcome).toBe("cancelled");
+    expect(body.coverage).toBe("reviewed");
   });
 });
