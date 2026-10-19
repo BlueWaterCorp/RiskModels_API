@@ -10,6 +10,7 @@
  *    the answer appears in reviewed events; `unknown` when the identity is ambiguous or unavailable.
  */
 import { createAdminClient } from "@/lib/supabase/admin";
+import { groupNames, nameOn, type NameRow } from "@/lib/identity/names";
 import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 import {
   applyEvents,
@@ -81,6 +82,16 @@ async function masterRows(ids: string[]): Promise<Map<string, MasterRow>> {
   if (error) throw new Error(`security_master read failed: ${error.message}`);
   for (const r of (data ?? []) as MasterRow[]) out.set(r.bw_sym_id, r);
   return out;
+}
+
+// Dated names (issuer legal name, share class, fund name) for ids; empty when the table is absent or unreadable.
+async function datedNames(ids: string[]): Promise<Map<string, NameRow[]>> {
+  if (!ids.length) return new Map();
+  const { data, error } = await createAdminClient()
+    .from("security_name_history")
+    .select("bw_sym_id, kind, name, valid_from, valid_to, source")
+    .in("bw_sym_id", ids);
+  return error ? new Map() : groupNames((data ?? []) as NameRow[]);
 }
 
 /**
@@ -248,7 +259,18 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
   }
 
   const resultIds = carry ? carry.holdings.map((h) => h.bw_sym_id) : identity.bw_sym_id ? [identity.bw_sym_id] : [];
-  const names = await describe([...new Set([...resultIds, ...identity.candidates])]);
+  const nameIds = [...new Set([...resultIds, ...identity.candidates])];
+  const [names, dated] = await Promise.all([describe(nameIds), datedNames(nameIds)]);
+  // The name a security carried on a date, falling back to today's name; current_name only when it differs.
+  const label = (id: string, on: string) => {
+    const d = nameOn(dated.get(id), on);
+    const current = names.get(id)?.name ?? null;
+    return {
+      name: d?.name ?? current,
+      ...(d?.share_class ? { share_class: d.share_class } : {}),
+      ...(d && current && current !== d.name ? { current_name: current } : {}),
+    };
+  };
   const byId = new Map(events.map((e) => [e.event_id, e]));
   const applied = (carry?.applied_event_ids ?? []).map((id) => byId.get(id)!).filter(Boolean);
 
@@ -264,13 +286,13 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
     ? carry.holdings.map((h) => ({
         bw_sym_id: h.bw_sym_id,
         ticker: names.get(h.bw_sym_id)?.ticker ?? h.ticker ?? null,
-        name: names.get(h.bw_sym_id)?.name ?? null,
+        ...label(h.bw_sym_id, req.as_of),
         instrument: h.instrument || null,
         quantity: num(h.quantity),
         quantity_exact: isExact(h.quantity),
       }))
     : identity.bw_sym_id
-      ? [{ bw_sym_id: identity.bw_sym_id, ticker: names.get(identity.bw_sym_id)?.ticker ?? null, name: names.get(identity.bw_sym_id)?.name ?? null, quantity: req.quantity, quantity_exact: true }]
+      ? [{ bw_sym_id: identity.bw_sym_id, ticker: names.get(identity.bw_sym_id)?.ticker ?? null, ...label(identity.bw_sym_id, req.as_of), quantity: req.quantity, quantity_exact: true }]
       : [];
 
   const status =
@@ -285,8 +307,9 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
       status: identity.status,
       source: identity.source,
       bw_sym_id: identity.bw_sym_id,
+      ...(identity.bw_sym_id ? label(identity.bw_sym_id, heldOn) : {}),
       held_on: heldOn,
-      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ticker: names.get(id)?.ticker ?? null, name: names.get(id)?.name ?? null })),
+      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ticker: names.get(id)?.ticker ?? null, ...label(id, heldOn) })),
       duplicate_records: identity.duplicate_records,
       excluded_candidates: identity.excluded_candidates,
     },

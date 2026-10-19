@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
 let aliasRows: Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }> = [];
 let masterRows: Array<{ bw_sym_id: string; cik: string | null; merged_into: string | null; ticker?: string; company_name?: string }> = [];
+let nameRows: Array<Record<string, unknown>> = [];
 
 function query(rows: unknown[]) {
   const q: Record<string, unknown> = {
@@ -27,6 +28,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           : table === "security_event_legs" ? fx.legs
             : table === "security_aliases" ? aliasRows
               : table === "security_master" ? masterRows
+                : table === "security_name_history" ? nameRows
                 : [],
       ),
   }),
@@ -47,6 +49,7 @@ describe("GET /api/identity/resolve", () => {
     _resetIdentityCache();
     aliasRows = [];
     masterRows = [];
+    nameRows = [];
   });
 
   it("BBBY held in 2020 is the original company, cancelled with no equity successor", async () => {
@@ -180,6 +183,18 @@ describe("GET /api/identity/resolve: reviewed events outrank aliases", () => {
     const { body } = await call("identifier=FB&as_of=2024-06-03");
     expect(body.identity.bw_sym_id).not.toBe("BW-BBG000MM2P62");
     expect(body.identity.excluded_candidates[0].reason).toMatch(/2022-06-09/);
+  });
+
+  it("names a holding as of the date, with share class, and keeps today's name separately", async () => {
+    aliasRows = [{ bw_sym_id: "BW-BBG000MM2P62", valid_from: "2012-05-18", valid_to: null }];
+    masterRows = [{ bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null, company_name: "Meta Platforms, Inc." }];
+    nameRows = [
+      { bw_sym_id: "BW-BBG000MM2P62", kind: "issuer_legal", name: "Facebook Inc", valid_from: "2005-05-06", valid_to: "2021-10-28", source: "edgar" },
+      { bw_sym_id: "BW-BBG000MM2P62", kind: "issuer_legal", name: "Meta Platforms, Inc.", valid_from: "2021-10-28", valid_to: null, source: "edgar" },
+      { bw_sym_id: "BW-BBG000MM2P62", kind: "share_class", name: "Class A", valid_from: null, valid_to: null, source: "figi" },
+    ];
+    const { body } = await call("identifier=FB&as_of=2015-06-01");
+    expect(body.identity).toMatchObject({ bw_sym_id: "BW-BBG000MM2P62", name: "Facebook Inc Class A", share_class: "Class A", current_name: "Meta Platforms, Inc." });
   });
 
   it("today's FB is the security-master row that now carries the ticker (the ETF)", async () => {
