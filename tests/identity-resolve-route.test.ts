@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
 let aliasRows: Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }> = [];
-let masterRows: Array<{ bw_sym_id: string; cik: string | null; merged_into: string | null }> = [];
+let masterRows: Array<{ bw_sym_id: string; cik: string | null; merged_into: string | null; ticker?: string; company_name?: string }> = [];
 
 function query(rows: unknown[]) {
   const q: Record<string, unknown> = {
@@ -173,10 +173,11 @@ describe("GET /api/identity/resolve: reviewed events outrank aliases", () => {
     aliasRows = [{ bw_sym_id: "BW-BBG000MM2P62", valid_from: "2012-05-18", valid_to: null }];
     masterRows = [
       { bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null },
-      { bw_sym_id: "BW-BBG01VRMNFB1", cik: null, merged_into: null },
+      { bw_sym_id: "BW-BBG01VRMNFB1", cik: null, merged_into: null, ticker: "FB", company_name: "PROSHARES TR" },
     ];
     const { body } = await call("identifier=FB&as_of=2026-10-16");
     expect(body.identity).toMatchObject({ bw_sym_id: "BW-BBG01VRMNFB1", source: "security_master_ticker" });
+    expect(body.result.holdings[0]).toMatchObject({ ticker: "FB", name: "PROSHARES TR" });
     expect(body.coverage).toBe("inferred");
   });
 });

@@ -208,6 +208,18 @@ async function describe(ids: string[]): Promise<Map<string, { ticker: string | n
   for (const r of (data ?? []) as Array<{ symbol: string; ticker: string | null; name: string | null }>) {
     out.set(r.symbol, { ticker: r.ticker, name: r.name });
   }
+  // Ids outside the modelled registry (the ETF on FB, delisted lines): name them from the security master.
+  const missing = ids.filter((id) => !out.get(id)?.name);
+  if (missing.length) {
+    const { data: sm } = await createAdminClient()
+      .from("security_master")
+      .select("bw_sym_id, ticker, company_name")
+      .in("bw_sym_id", missing);
+    for (const r of (sm ?? []) as Array<{ bw_sym_id: string; ticker: string | null; company_name: string | null }>) {
+      const prev = out.get(r.bw_sym_id);
+      out.set(r.bw_sym_id, { ticker: prev?.ticker ?? r.ticker, name: prev?.name ?? r.company_name });
+    }
+  }
   return out;
 }
 
