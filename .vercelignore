@@ -1,0 +1,3 @@
+# Local-only symlink to the BWMACRO checkout (render-svc Docker context). A CLI deploy uploads it as a
+# dangling link and the build fails stat()ing it.
+bwmacro-src
