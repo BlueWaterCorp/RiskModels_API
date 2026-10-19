@@ -27,6 +27,7 @@ import {
   registerRiskModelsWhitepaperResources,
 } from "@/lib/mcp/tools/riskmodels-tools";
 import { registerRiskModelsRenderTool } from "@/lib/mcp/render-tool";
+import { installRemovedToolGuidance } from "@/lib/mcp/removed-tools";
 import {
   FIRST_LIVE_PROMPT_MCP,
   MCP_SERVER_INSTRUCTIONS,
@@ -248,6 +249,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   const toolHost = opts.surface === "openai" ? withoutPriceSentences(server) : server;
   registerRiskModelsTools(sdk, toolHost, { apiKey: opts.apiKey });
   registerRiskModelsRenderTool(toolHost, { apiKey: opts.apiKey, apiBase: opts.apiBase });
+  installRemovedToolGuidance(server);
 
   return server;
 }
