@@ -94,6 +94,19 @@ async function datedNames(ids: string[]): Promise<Map<string, NameRow[]>> {
   return error ? new Map() : groupNames((data ?? []) as NameRow[]);
 }
 
+type Listing = { listed_on: string | null; listed_on_or_before: string | null; basis: string };
+
+/** Listing dates (empty on a read error: the answer then simply carries none). */
+async function listings(ids: string[]): Promise<Map<string, Listing>> {
+  if (!ids.length) return new Map();
+  const { data, error } = await createAdminClient()
+    .from("security_listing")
+    .select("bw_sym_id, listed_on, listed_on_or_before, basis")
+    .in("bw_sym_id", ids);
+  if (error) return new Map();
+  return new Map(((data ?? []) as Array<Listing & { bw_sym_id: string }>).map(({ bw_sym_id, ...l }) => [bw_sym_id, l]));
+}
+
 /** Ticker aliases of these ids, as spans (empty on a read error: callers fall back to today's ticker). */
 async function aliasSpans(ids: string[]): Promise<TickerSpan[]> {
   if (!ids.length) return [];
@@ -273,7 +286,15 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
 
   const resultIds = carry ? carry.holdings.map((h) => h.bw_sym_id) : identity.bw_sym_id ? [identity.bw_sym_id] : [];
   const nameIds = [...new Set([...resultIds, ...identity.candidates])];
-  const [names, dated, aliases] = await Promise.all([describe(nameIds), datedNames(nameIds), aliasSpans(nameIds)]);
+  const [names, dated, aliases, listed] = await Promise.all([
+    describe(nameIds), datedNames(nameIds), aliasSpans(nameIds), listings(nameIds),
+  ]);
+  // First trading date (listed_on), or a lower bound when the security trades from the start of the price data.
+  const listing = (id: string) => {
+    const l = listed.get(id);
+    if (!l) return {};
+    return l.listed_on ? { listed_on: l.listed_on, listed_on_basis: "first_trading_date" } : { listed_on_or_before: l.listed_on_or_before };
+  };
   const reviewedSpans: TickerSpan[] = tickerWindows(events, req.known_as_of);
   // The ticker a security traded under on a date, falling back to today's; current_ticker only when it differs.
   const tick = (id: string, on: string, fallback: string | null = null) => {
@@ -289,6 +310,7 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
       name: d?.name ?? current,
       ...(d?.share_class ? { share_class: d.share_class } : {}),
       ...(d && current && current !== d.name ? { current_name: current } : {}),
+      ...listing(id),
     };
   };
   const byId = new Map(events.map((e) => [e.event_id, e]));

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
 let aliasRows: Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }> = [];
+let listingRows: Array<{ bw_sym_id: string; listed_on: string | null; listed_on_or_before: string | null; basis: string }> = [];
 let masterRows: Array<{ bw_sym_id: string; cik: string | null; merged_into: string | null; ticker?: string; company_name?: string }> = [];
 let nameRows: Array<Record<string, unknown>> = [];
 
@@ -28,6 +29,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           : table === "security_event_legs" ? fx.legs
             : table === "security_aliases" ? aliasRows
               : table === "security_master" ? masterRows
+                : table === "security_listing" ? listingRows
                 : table === "security_name_history" ? nameRows
                 : [],
       ),
@@ -169,6 +171,30 @@ describe("GET /api/identity/resolve", () => {
     expect(body.identity).toMatchObject({ status: "resolved", bw_sym_id: "BW-BBG0087LHFY9", duplicate_records: ["BW-C0000886158"] });
     expect(body.result.outcome).toBe("cancelled");
     expect(body.coverage).toBe("reviewed");
+  });
+});
+
+describe("GET /api/identity/resolve: listing dates", () => {
+  beforeEach(() => {
+    _resetIdentityCache();
+    aliasRows = [];
+    masterRows = [];
+    listingRows = [];
+  });
+
+  it("today's FB carries the ETF's first trading date; a pre-data security only a lower bound", async () => {
+    masterRows = [{ bw_sym_id: "BW-BBG01VRMNFB1", cik: null, merged_into: null, ticker: "FB", company_name: "PROSHARES TR" }];
+    listingRows = [
+      { bw_sym_id: "BW-BBG01VRMNFB1", listed_on: "2025-06-26", listed_on_or_before: null, basis: "first_price_bar" },
+      { bw_sym_id: "BW-BBG000BK6MB5", listed_on: null, listed_on_or_before: "2000-01-03", basis: "before_data_start" },
+    ];
+    const { body } = await call("identifier=FB&as_of=2026-10-16");
+    expect(body.identity).toMatchObject({ listed_on: "2025-06-26", listed_on_basis: "first_trading_date" });
+    expect(body.result.holdings[0].listed_on).toBe("2025-06-26");
+    const ge = await call("identifier=GE&acquired_on=2022-12-01&as_of=2022-12-02");
+    const geHolding = ge.body.result.holdings.find((h: { bw_sym_id: string }) => h.bw_sym_id === "BW-BBG000BK6MB5");
+    expect(geHolding).toMatchObject({ listed_on_or_before: "2000-01-03" });
+    expect(geHolding.listed_on).toBeUndefined();
   });
 });
 
