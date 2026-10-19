@@ -44,6 +44,7 @@ const NPM_TOOLS = [
   "riskmodels_get_returns",
   "riskmodels_get_stock_snapshot",
   "riskmodels_portfolio_exposure",
+  "riskmodels_resolve_security_identity",
   "riskmodels_screen_rankings",
   "riskmodels_search",
 ];
@@ -65,9 +66,9 @@ describe("MCP tool set 2.0 surfaces", () => {
     expect(toolNames(make())).toEqual([...expected]);
   });
 
-  it("pinned counts: 24 npm, 25 hosted", () => {
-    expect(NPM_TOOLS).toHaveLength(24);
-    expect(HOSTED_TOOLS).toHaveLength(25);
+  it("pinned counts: 25 npm, 26 hosted", () => {
+    expect(NPM_TOOLS).toHaveLength(25);
+    expect(HOSTED_TOOLS).toHaveLength(26);
   });
 
   it("the exported name lists match the registrations", () => {
@@ -289,6 +290,17 @@ describe("MCP tool routing (method + REST path)", () => {
       "GET /13f/filers/search",
     ]);
     expect((await handlers.get("riskmodels_search")!({ type: "filer" })).isError).toBe(true);
+  });
+
+  it("identity resolve passes its query through", async () => {
+    const calls = await r("riskmodels_resolve_security_identity", {
+      identifier: "BBBY",
+      acquired_on: "2020-01-02",
+      as_of: "2026-10-18",
+      quantity: "100",
+    });
+    expect(routes(calls)).toEqual(["GET /identity/resolve"]);
+    expect(calls[0]!.query).toEqual({ identifier: "BBBY", acquired_on: "2020-01-02", as_of: "2026-10-18", quantity: "100" });
   });
 
   it("entity tools add the holdings route only when asked", async () => {

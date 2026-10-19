@@ -10099,6 +10099,127 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /identity/resolve:
+    get:
+      summary: Point-in-time security identity and corporate-action carry
+      description: >
+        Which security an identifier meant on a date, and what a holding of it became by `as_of`
+        through reviewed corporate actions: ticker changes and reuse, ADR conversions with their
+        ratios, splits, spin-offs and distributions, cash mergers and bankruptcy cancellations.
+        Identity comes from reviewed event windows first, then dated ticker aliases, then the
+        security master's current ticker, then (for a date within seven days) today's holder; a
+        candidate contradicted by a reviewed event window is excluded. An identifier that cannot
+        be placed returns `unavailable` or `ambiguous` rather than a guess. Every applied event
+        carries its SEC filing. Free while reviewed coverage is limited. No API key; rate limited
+        to 60 requests per IP per minute.
+      operationId: resolveSecurityIdentity
+      tags: [Utility]
+      x-pricing:
+        capability_id: identity-resolve
+        tier: baseline
+        model: per_request
+        cost_usd: 0
+        currency: USD
+        billing_code: identity_resolve_v1
+      security: []
+      parameters:
+        - name: identifier
+          in: query
+          required: true
+          schema: { type: string, maxLength: 40 }
+          description: Ticker as written on the record, or a bw_sym_id.
+          example: BBBY
+        - name: as_of
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Date to carry the holding to (default today); the identification date when `acquired_on` is absent.
+          example: "2026-10-18"
+        - name: acquired_on
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Date the position was acquired. Set it to carry the holding through corporate actions.
+          example: "2020-01-02"
+        - name: quantity
+          in: query
+          required: false
+          schema: { type: string, pattern: '^\d+(\.\d+)?$', default: "100" }
+          description: Units held on `acquired_on`, as an exact decimal string.
+          example: "100"
+        - name: identifier_type
+          in: query
+          required: false
+          schema: { type: string, enum: [ticker, bw_sym_id] }
+          description: How to read `identifier` (default bw_sym_id when it starts with BW-, else ticker).
+        - name: known_as_of
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Reproduce the answer as it stood on this date, ignoring events learned later.
+        - name: fractions
+          in: query
+          required: false
+          schema: { type: string, enum: [apply, exact], default: apply }
+          description: "`apply` honours cash in lieu and rounding; `exact` returns the raw entitlement."
+      responses:
+        "200":
+          description: Identity and carried holding.
+          headers:
+            X-Identity-Status:
+              schema: { type: string, enum: [resolved, ambiguous, unavailable, unsupported] }
+            X-Identity-Coverage:
+              schema: { type: string, enum: [reviewed, inferred, unknown] }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema_version: { type: string, example: identity-resolve/1 }
+                  status:
+                    type: string
+                    enum: [resolved, ambiguous, unavailable, unsupported]
+                    description: "`unsupported`: the identity resolved but the carry cannot be completed (for example a purchase between record date and distribution with no ex-date, or an election not given)."
+                  coverage:
+                    type: string
+                    enum: [reviewed, inferred, unknown]
+                    description: "`reviewed` only when the identity came from reviewed events and every security in the answer appears in reviewed events."
+                  identity:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [resolved, ambiguous, unavailable] }
+                      source:
+                        type: string
+                        nullable: true
+                        enum: [bw_sym_id, reviewed_event_window, reviewed_event_before_first, ticker_alias_window, security_master_ticker, current_holder]
+                      bw_sym_id: { type: string, nullable: true }
+                      held_on: { type: string, format: date }
+                      candidates: { type: array, items: { type: object } }
+                      duplicate_records: { type: array, items: { type: string } }
+                      excluded_candidates: { type: array, items: { type: object } }
+                  result:
+                    type: object
+                    properties:
+                      outcome: { type: string, enum: [held, cashed_out, cancelled, unknown, none] }
+                      holdings: { type: array, items: { type: object } }
+                      cash: { type: array, items: { type: object } }
+                      no_equity_successor: { type: boolean }
+                      cancelled_by: { type: array, items: { type: string } }
+                      unresolved: { type: array, items: { type: string } }
+                  events:
+                    type: array
+                    description: Applied corporate-action events with dates, outputs and SEC source.
+                    items: { type: object }
+                  explanation: { type: string }
+        "400":
+          description: Invalid parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Identity data unavailable.
+
   /tickers:
     get:
       summary: Ticker universe search

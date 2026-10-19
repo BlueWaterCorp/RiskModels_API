@@ -634,6 +634,42 @@ export const CAPABILITIES: Capability[] = [
     tags: ["search", "tickers", "metadata"],
   },
   {
+    id: "identity-resolve",
+    name: "Security Identity",
+    description:
+      "Point-in-time security identity and the carry of a holding through reviewed corporate actions (ticker reuse and changes, ADR conversions, splits, spin-offs and distributions, cash mergers, cancellations), with SEC-cited events, coverage labels and no guessing.",
+    endpoint: "/api/identity/resolve",
+    method: "GET",
+    parameters: {
+      identifier: { type: "string", required: true, description: "Ticker as written on the record, or a bw_sym_id" },
+      as_of: { type: "string", required: false, description: "YYYY-MM-DD date to carry the holding to (default today)" },
+      acquired_on: { type: "string", required: false, description: "YYYY-MM-DD acquisition date; carries the holding forward" },
+      quantity: { type: "string", required: false, description: "Units held on acquired_on (default 100)", default: "100" },
+      identifier_type: { type: "string", required: false, description: "ticker or bw_sym_id" },
+      known_as_of: { type: "string", required: false, description: "YYYY-MM-DD: reproduce the answer as known on this date" },
+      fractions: { type: "string", required: false, description: "apply (default) or exact", default: "apply" },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0,
+      currency: "USD",
+      billing_code: "identity_resolve_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 900,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 120,
+    },
+    confidence: {
+      data_quality_score: 0.95,
+      update_frequency: "on review",
+      sources: ["security_events", "security_aliases", "security_master"],
+    },
+    tags: ["identity", "corporate-actions", "tickers", "point-in-time"],
+  },
+  {
     id: "health-status",
     name: "Health Status",
     description: "Real-time health status of all API services and capabilities",

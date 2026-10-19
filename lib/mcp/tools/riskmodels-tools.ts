@@ -182,6 +182,7 @@ export const RISKMODELS_TOOL_NAMES = [
   "riskmodels_get_cohorts",
   "riskmodels_get_peers",
   "riskmodels_search",
+  "riskmodels_resolve_security_identity",
   "riskmodels_get_filer",
   "riskmodels_get_fund",
   "riskmodels_get_etf",
@@ -1103,6 +1104,49 @@ export function registerRiskModelsTools(
       setIf(query, "q", q);
       setIf(query, "limit", limit);
       return run(() => sdk.call("GET", "/data/etf/search", { query }));
+    },
+  );
+
+  server.registerTool(
+    "riskmodels_resolve_security_identity",
+    {
+      title: "RiskModels Security Identity",
+      annotations: READ_ONLY_TOOL_ANNOTATIONS,
+      description:
+        "Use when a ticker or holding must be pinned to the security it meant on a past date, or carried forward to what it became: a reused ticker (FB today is an ETF, not Meta; BBBY in 2020 and 2026 are different companies), a ticker change, an ADR conversion with its ratio, a split, a spin-off or distribution that adds a second security, a cash merger with no equity successor, or a bankruptcy cancellation. Not for current risk or returns (use riskmodels_get_stock_snapshot or riskmodels_decompose) and not for name search (use riskmodels_search). Returns, from GET /identity/resolve, status (resolved, ambiguous, unavailable or unsupported), coverage (reviewed only when every step comes from SEC-cited reviewed corporate-action events; inferred when it rests on ticker aliases or the security master; unknown otherwise), the identity with candidates and any duplicate or excluded records, the resulting holdings with exact quantities, cash including cash in lieu of fractional shares, no_equity_successor, every applied event with its dates and SEC filing link, and an explanation. An identifier it cannot place returns unavailable or ambiguous rather than a guess. Reviewed coverage is limited and growing. Free.",
+      inputSchema: {
+        identifier: z
+          .string()
+          .min(1)
+          .max(40)
+          .describe('Ticker as written on the record, or a bw_sym_id, e.g. "BBBY" or "BW-BBG000BSJK37"'),
+        as_of: isoDate("Date to carry the holding to, or to identify the ticker on when acquired_on is absent", "2026-10-16"),
+        acquired_on: isoDate("Date the position was acquired; set it to carry the holding forward through corporate actions", "2020-01-02"),
+        quantity: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional()
+          .describe('Units held on acquired_on, decimal string, e.g. "100" (default 100)'),
+        identifier_type: z
+          .enum(["ticker", "bw_sym_id"])
+          .optional()
+          .describe("How to read identifier, e.g. ticker (default: bw_sym_id when it starts with BW-)"),
+        known_as_of: isoDate("Reproduce the answer as it stood on this date, ignoring events learned later", "2026-10-18"),
+        fractions: z
+          .enum(["apply", "exact"])
+          .optional()
+          .describe("apply honours cash in lieu and rounding; exact returns the raw entitlement, e.g. exact (default apply)"),
+      },
+    },
+    async ({ identifier, as_of, acquired_on, quantity, identifier_type, known_as_of, fractions }) => {
+      const query: Query = { identifier: identifier.trim() };
+      setIf(query, "as_of", as_of);
+      setIf(query, "acquired_on", acquired_on);
+      setIf(query, "quantity", quantity);
+      setIf(query, "identifier_type", identifier_type);
+      setIf(query, "known_as_of", known_as_of);
+      setIf(query, "fractions", fractions);
+      return run(() => sdk.call("GET", "/identity/resolve", { query }));
     },
   );
 

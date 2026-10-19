@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { withBilling, type BillingContext } from "@/lib/agent/billing-middleware";
 import { resolveSecurityIdentity, type ResolveRequest } from "@/lib/identity/resolve";
 
 export const dynamic = "force-dynamic";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const rpm = Number.parseInt(process.env.IDENTITY_RESOLVE_IP_RPM ?? "60", 10);
+const effectiveRpm = Number.isFinite(rpm) && rpm > 0 ? rpm : 60;
 const QTY = /^\d+(\.\d+)?$/;
 
 /**
@@ -17,8 +20,11 @@ const QTY = /^\d+(\.\d+)?$/;
  * (YYYY-MM-DD, optional: carry a holding from that date), quantity (default 100),
  * identifier_type (ticker | bw_sym_id, default inferred), known_as_of (reproduce an earlier
  * answer), fractions (apply | exact), election.<event_id>=<package>.
+ *
+ * AUTH: none. `skipBilling: true` makes it public; it is throttled per caller IP
+ * (IDENTITY_RESOLVE_IP_RPM, default 60 per minute), as documented in OPENAPI_SPEC.yaml.
  */
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest, _context: BillingContext) {
   const p = request.nextUrl.searchParams;
   const identifier = (p.get("identifier") ?? "").trim();
   if (!identifier || identifier.length > 40) {
@@ -74,3 +80,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withBilling(handler, {
+  capabilityId: "identity-resolve",
+  skipBilling: true,
+  publicIpRateLimitPerMinute: effectiveRpm,
+});
