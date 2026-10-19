@@ -56,6 +56,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
     items: [
       { href: '/for-agents', label: 'For agents' },
       { href: '/docs/agent-integration', label: 'Agent integration' },
+      { href: '/docs/platform-integration', label: 'Platform integration (server-side)' },
       { href: '/llms.txt', label: 'llms.txt', external: true },
     ],
   },
