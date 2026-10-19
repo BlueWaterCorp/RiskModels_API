@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const base = getAppUrl().replace(/\/$/, "");
+  const rootUrl = `${base}/api/mcp`;
   const sseUrl = `${base}/api/mcp/sse`;
   const payload = {
     mcpServers: {
@@ -16,15 +17,15 @@ export async function GET() {
         name: "RiskModels API",
         description:
           "Clean dividend-adjusted US equity total returns, factor risk decomposition, return attribution, and ETF hedge ratios.",
-        url: sseUrl,
+        url: rootUrl,
         transport: "streamable-http",
         auth: [
           {
             type: "oauth2",
-            protected_resource: `${base}/.well-known/oauth-protected-resource`,
+            protected_resource: `${base}/.well-known/oauth-protected-resource/api/mcp`,
             authorization_server: `${base}/.well-known/oauth-authorization-server`,
             scopes: ["mcp:read"],
-            note: "Preferred for Claude Desktop, Cursor, and ChatGPT Developer Mode connectors",
+            note: "Conventional Streamable HTTP route for Gemini, ChatGPT, Cursor, and other MCP clients",
           },
           {
             type: "bearer",
@@ -54,11 +55,13 @@ export async function GET() {
       grok:
         "grok.com/connectors → New Connector → Custom → paste MCP URL → OAuth sign-in (web, iOS, Android)",
       gemini_consumer_web:
-        "No custom MCP UI — use llms.txt + REST in chat, or get-key for full universe",
+        "Outside Spark custom apps, use llms.txt + REST in chat, or get-key for full universe",
+      gemini_spark:
+        "Connected Apps → Custom apps for Spark → Add a custom app → https://riskmodels.app/api/mcp → OAuth sign-in",
       gemini_cli:
-        "gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse then /mcp auth riskmodels",
+        "gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp then /mcp auth riskmodels; the RiskModels Gemini extension configures the same route",
       gemini_enterprise:
-        "Google Cloud admin: Custom MCP Server data store; Streamable HTTP URL + OAuth (Client ID/Secret may need POST /api/oauth/register)",
+        "Google Cloud admin: Custom MCP Server data store at https://riskmodels.app/api/mcp; Streamable HTTP + OAuth (Client ID/Secret may need POST /api/oauth/register)",
       cli: "RISKMODELS_API_KEY=… npx -y riskmodels@latest install",
     },
     plugin: {
@@ -74,7 +77,9 @@ export async function GET() {
     privacy_canonical_url: "https://riskmodels.net/privacy",
     _documentation: {
       note: "Use POST on the MCP Streamable HTTP endpoint with Accept: application/json, text/event-stream",
-      sse_post: sseUrl,
+      streamable_http_post: rootUrl,
+      named_sse_post: sseUrl,
+      named_openai_post: `${base}/api/mcp/openai`,
       chatgpt_finances_note:
         "ChatGPT Finances/Schwab is a separate connector. Combine holdings from Finances with RiskModels REST or add this MCP server via Developer Mode.",
     },

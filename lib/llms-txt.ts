@@ -30,19 +30,20 @@ Discovery documents (this file, \`/openapi.json\`, \`/.well-known/mcp.json\`) ne
 
 ## Hosted MCP
 
-Two Streamable HTTP endpoints serve the same 26 tools, prompts and billing; sign-in is OAuth 2.0 + PKCE at riskmodels.app, or a Bearer key.
+Three Streamable HTTP routes serve the same 26 tools, prompts and billing. \`/api/mcp\` is the conventional client-neutral route; the named \`/api/mcp/openai\` and \`/api/mcp/sse\` routes remain supported. Sign-in is OAuth 2.0 + PKCE at riskmodels.app, or a Bearer key.
 
 | Client | Endpoint | Setup |
 |---|---|---|
 | Claude Desktop, Claude web, Cursor (connector) | \`https://riskmodels.app/api/mcp/sse\` | Settings → Connectors → Add custom connector; OAuth client fields left blank |
 | Grok (web, iOS, Android) | \`https://riskmodels.app/api/mcp/sse\` | grok.com/connectors → New Connector → Custom |
 | ChatGPT (Plus and above, web, Developer Mode) | \`https://riskmodels.app/api/mcp/openai\` | Settings → Apps & Connectors → Advanced settings → Developer mode, then Create; OAuth |
-| Gemini CLI | \`https://riskmodels.app/api/mcp/openai\` | Extension: https://github.com/BlueWaterCorp/riskmodels-gemini-extension |
+| Gemini Spark custom apps | \`https://riskmodels.app/api/mcp\` | Connected Apps → Custom apps for Spark → Add a custom app; OAuth |
+| Gemini CLI | \`https://riskmodels.app/api/mcp\` | \`gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp\`, or install https://github.com/BlueWaterCorp/riskmodels-gemini-extension |
 | Cursor Agent Plugin | \`https://riskmodels.app/api/mcp/openai\` | Cursor plugin marketplace |
 | Claude Code / Cowork plugin (skills, slash commands, analyst agent) | \`https://riskmodels.app/api/mcp/sse\` | \`claude plugin marketplace add BlueWaterCorp/riskmodels-plugin\` then \`claude plugin install riskmodels@riskmodels\` |
-| Gemini Enterprise | either endpoint | Admin registers a Custom MCP data store (Streamable HTTP + OAuth) |
+| Gemini Enterprise | \`https://riskmodels.app/api/mcp\` | Admin registers a Custom MCP data store (Streamable HTTP + OAuth) |
 
-Gemini consumer web has no custom MCP setting; it can use this file and the REST API directly. The ChatGPT MCP app is separate from ChatGPT's built-in Finances (Schwab) connector; holdings from Finances can be sent to \`POST /api/portfolio/risk-snapshot\` as weights.
+Gemini consumer web outside Spark custom apps has no generic custom MCP setting; it can use this file and the REST API directly. The ChatGPT MCP app is separate from ChatGPT's built-in Finances (Schwab) connector; holdings from Finances can be sent to \`POST /api/portfolio/risk-snapshot\` as weights.
 
 A typical first check after connecting is \`riskmodels_compare\` on AAPL and NVDA followed by \`riskmodels_decompose\` on each; over REST, \`GET /api/metrics/AAPL\`. The answers carry residual explained risk and the L3 hedge ratios with their data date. Setup guide for every client: https://riskmodels.app/docs/agent-integration
 
