@@ -155,3 +155,28 @@ describe("GET /api/identity/resolve", () => {
     expect(body.coverage).toBe("reviewed");
   });
 });
+
+describe("GET /api/identity/resolve: reviewed events outrank aliases", () => {
+  beforeEach(() => {
+    _resetIdentityCache();
+  });
+
+  it("today's FB is not Meta even when an undated alias says so (live shape)", async () => {
+    aliasRows = [{ bw_sym_id: "BW-BBG000MM2P62", valid_from: "2012-05-18", valid_to: null }];
+    masterRows = [{ bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null }];
+    const { body } = await call("identifier=FB&as_of=2024-06-03");
+    expect(body.identity.bw_sym_id).not.toBe("BW-BBG000MM2P62");
+    expect(body.identity.excluded_candidates[0].reason).toMatch(/2022-06-09/);
+  });
+
+  it("today's FB is the security-master row that now carries the ticker (the ETF)", async () => {
+    aliasRows = [{ bw_sym_id: "BW-BBG000MM2P62", valid_from: "2012-05-18", valid_to: null }];
+    masterRows = [
+      { bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null },
+      { bw_sym_id: "BW-BBG01VRMNFB1", cik: null, merged_into: null },
+    ];
+    const { body } = await call("identifier=FB&as_of=2026-10-16");
+    expect(body.identity).toMatchObject({ bw_sym_id: "BW-BBG01VRMNFB1", source: "security_master_ticker" });
+    expect(body.coverage).toBe("inferred");
+  });
+});

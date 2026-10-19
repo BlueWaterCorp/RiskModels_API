@@ -18,11 +18,13 @@ import {
   fracToString,
   historicalTickerOwner,
   isExact,
+  tickerWindows,
   parseDecimal,
   type EventResolution,
   type EventRow,
   type LegRow,
   type SecurityEvent,
+  type TickerWindow,
 } from "@/lib/identity/security-events";
 
 export const IDENTITY_SCHEMA_VERSION = "identity-resolve/1";
@@ -59,7 +61,13 @@ export type ResolveRequest = {
   elections: Record<string, string>;
 };
 
-type IdentitySource = "bw_sym_id" | "reviewed_event_window" | "reviewed_event_before_first" | "ticker_alias_window" | "current_holder";
+type IdentitySource =
+  | "bw_sym_id"
+  | "reviewed_event_window"
+  | "reviewed_event_before_first"
+  | "ticker_alias_window"
+  | "security_master_ticker"
+  | "current_holder";
 
 type MasterRow = { bw_sym_id: string; cik: string | null; merged_into: string | null };
 
@@ -113,6 +121,12 @@ async function aliasCandidates(
   return { ids: [...ids].sort(), excluded, master };
 }
 
+/** True when reviewed events give this security windows for the ticker and none covers heldOn. */
+function contradictedBy(windows: TickerWindow[], id: string, heldOn: string): boolean {
+  const mine = windows.filter((w) => w.bw_sym_id === id);
+  return mine.length > 0 && !mine.some((w) => (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end));
+}
+
 function daysBetween(a: string, b: string): number {
   return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 }
@@ -138,6 +152,15 @@ async function resolveIdentity(req: ResolveRequest, events: SecurityEvent[], hel
   }
   if (own.status === "ambiguous") return { ...base, status: "ambiguous", bw_sym_id: null, source: null, candidates: own.candidates };
   const al = await aliasCandidates(ticker, heldOn);
+  // Reviewed events outrank aliases: a security whose reviewed use of this ticker does not cover
+  // heldOn (FB left Meta on 2022-06-09) cannot be the holder, whatever an undated alias says.
+  const windows = tickerWindows(events, req.known_as_of).filter((w) => w.ticker === ticker);
+  const contradicted = al.ids.filter((id) => contradictedBy(windows, id, heldOn));
+  for (const id of contradicted) {
+    const ends = windows.filter((w) => w.bw_sym_id === id && w.end).map((w) => w.end).join(", ");
+    al.excluded.push({ bw_sym_id: id, reason: `reviewed events end this security's use of ${ticker} (${ends})` });
+  }
+  al.ids = al.ids.filter((id) => !contradicted.includes(id));
   base.excluded_candidates = al.excluded;
   if (own.status === "before_first_event") {
     const chosen = own.bw_sym_id!;
@@ -154,11 +177,26 @@ async function resolveIdentity(req: ResolveRequest, events: SecurityEvent[], hel
   }
   if (al.ids.length === 1) return { ...base, status: "resolved", bw_sym_id: al.ids[0], source: "ticker_alias_window", candidates: al.ids };
   if (al.ids.length > 1) return { ...base, status: "ambiguous", bw_sym_id: null, source: null, candidates: al.ids };
+  // Security-master rows whose own ticker and validity cover heldOn (the ETF that took FB in 2025).
+  const { data: smRows, error: smErr } = await createAdminClient()
+    .from("security_master")
+    .select("bw_sym_id, valid_from, valid_to, merged_into")
+    .eq("ticker", ticker);
+  if (smErr) throw new Error(`security_master read failed: ${smErr.message}`);
+  const sm = ((smRows ?? []) as Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null; merged_into: string | null }>)
+    .filter((r) => !r.merged_into && (!r.valid_from || r.valid_from <= heldOn) && (!r.valid_to || heldOn < r.valid_to))
+    .map((r) => r.bw_sym_id)
+    .filter((id) => !contradictedBy(windows, id, heldOn));
+  const smIds = [...new Set(sm)].sort();
+  if (smIds.length === 1) return { ...base, status: "resolved", bw_sym_id: smIds[0], source: "security_master_ticker", candidates: smIds };
+  if (smIds.length > 1) return { ...base, status: "ambiguous", bw_sym_id: null, source: null, candidates: smIds };
   const today = new Date().toISOString().slice(0, 10);
   if (daysBetween(heldOn, today) <= 7) {
     const holder = await resolveSymbolByTicker(ticker);
     const id = holder?.symbol;
-    if (id) return { ...base, status: "resolved", bw_sym_id: id, source: "current_holder", candidates: [id] };
+    if (id && !contradictedBy(windows, id, heldOn)) {
+      return { ...base, status: "resolved", bw_sym_id: id, source: "current_holder", candidates: [id] };
+    }
   }
   return { ...base, status: "unavailable", bw_sym_id: null, source: null, candidates: [] };
 }
@@ -295,6 +333,7 @@ function explain(
     reviewed_event_window: "from reviewed corporate-action events",
     reviewed_event_before_first: "from reviewed events (date precedes the first reviewed event)",
     ticker_alias_window: "from dated ticker aliases (not reviewed)",
+    security_master_ticker: "from the security master's current ticker and validity (not reviewed)",
     current_holder: "from today's holder of the ticker (not reviewed)",
   }[identity.source!];
   let s = `${who} is ${identity.bw_sym_id}, ${src}.`;
