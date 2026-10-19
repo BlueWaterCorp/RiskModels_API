@@ -639,7 +639,7 @@
     },
     "confidence": {
       "data_quality_score": 0.95,
-      "update_frequency": "on review",
+      "update_frequency": "daily",
       "sources": [
         "security_events",
         "security_aliases",

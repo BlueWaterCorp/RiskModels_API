@@ -664,7 +664,7 @@ export const CAPABILITIES: Capability[] = [
     },
     confidence: {
       data_quality_score: 0.95,
-      update_frequency: "on review",
+      update_frequency: "daily",
       sources: ["security_events", "security_aliases", "security_master"],
     },
     tags: ["identity", "corporate-actions", "tickers", "point-in-time"],
