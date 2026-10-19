@@ -4,7 +4,6 @@
  */
 
 import { WALKTHROUGH_MAG7_TICKERS } from "@/lib/landing/walkthrough-chart-data";
-import { FIRST_LIVE_PROMPT_MCP, FIRST_LIVE_PROMPT_REST } from "@/lib/mcp/activation";
 
 function mag7BulletList(): string {
   return WALKTHROUGH_MAG7_TICKERS.map((t) => `- ${t}`).join("\n");
@@ -14,140 +13,119 @@ function buildLlmsTxtBase(): string {
   const mag7Csv = WALKTHROUGH_MAG7_TICKERS.join(", ");
   return `# RiskModels (riskmodels.app)
 
-RiskModels is an agent-friendly US equity risk API: hierarchical (L3) variance decomposition,
-ETF hedge ratios, metrics, portfolio snapshots, and a hosted MCP surface.
+RiskModels is a US equity risk API from Blue Water Macro Corp. Its ERM3 model splits each stock's risk into market, sector, subsector and stock-specific (residual) layers and gives an ETF hedge ratio for each market layer. It covers about 3,000 US stocks plus ETFs, end of day, with history from 2010–2011. The same data is available over REST, a Python SDK (riskmodels-py) and a hosted MCP server.
 
-**No sign-in yet?** If this host publishes a shared demo key, you will find it under **Public sample API key** below — use it as \`RISKMODELS_API_KEY\` / \`Authorization: Bearer …\` for MAG7 examples. That path is meant for browser agents that cannot run \`POST /api/auth/provision-free\`.
+This file is reference documentation: endpoints, access, pricing, terms and field notes.
 
-## If a human asks you to set up RiskModels
+## Access options
 
-You are an AI assistant reading this because someone pointed you at riskmodels.app. There are two distinct requests — handle the one they made:
+| Use | How | Key |
+|---|---|---|
+| Try it without an account | Public sample key below (Magnificent 7 only, derived analytics only), or \`POST /api/auth/provision-free\` | Sample or free key |
+| Full universe, personal | Free key at https://riskmodels.app/get-key (browser, no terminal) | Personal key |
+| An AI assistant used by one person | Hosted MCP with OAuth sign-in (table below) | Sign-in per person |
+| A platform serving its own users | REST from the platform's servers with one organization key, cached per security per trading day: https://riskmodels.app/docs/platform-integration | Organization key |
 
-**1. "Set it up for this chat" / "help me analyze …"** — set yourself up now, in this conversation, with no install:
-- Discovery docs (this file, the OpenAPI spec, and /.well-known/mcp.json) are free and need no key.
-- For live data on the Magnificent 7, use the **Public sample API key** below (if present) as \`Authorization: Bearer …\`. If you can make HTTP POSTs, you may self-provision a free key: \`POST /api/auth/provision-free\`. For the full ~3,000-name universe, tell the human to grab a free key at https://riskmodels.app/get-key (browser, no terminal).
-- Make one real call to confirm the connection: GET /api/metrics/AAPL (or POST /api/decompose with ticker AAPL). Quote residual explained-risk and the L3 hedge ratios from the JSON. Then tell the human what you can analyze. **Do not tell a human to open a terminal for this case. Do not start with a capability catalog.**
+Discovery documents (this file, \`/openapi.json\`, \`/.well-known/mcp.json\`) need no key.
 
-**2. "Help me set it up" / "add this to my Claude/Cursor/ChatGPT/Grok/Gemini"** — they want RiskModels available permanently. You cannot edit their app's config yourself, so relay these steps:
-- **Claude Desktop / Cursor (recommended — no terminal, no API key):** **Settings → Connectors → Add custom connector**, paste \`https://riskmodels.app/api/mcp/sse\`, leave OAuth Client ID / Secret blank, **Add → Connect**. They sign in at riskmodels.app once (OAuth 2.0 + PKCE). After Connect, they should paste this into the chat (do not start with list_endpoints):
+## Hosted MCP
 
-  ${FIRST_LIVE_PROMPT_MCP}
-- **Claude Code / Cowork plugin (skills + slash commands + analyst agent):** marketplace install (free). Prefer OAuth connector for data (above) **or** set \`RISKMODELS_API_KEY\` for the Claude Code CLI Bearer path — keep **one** MCP connection (do not double-register).
+Two Streamable HTTP endpoints serve the same 26 tools, prompts and billing; sign-in is OAuth 2.0 + PKCE at riskmodels.app, or a Bearer key.
 
-  claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
-  claude plugin install riskmodels@riskmodels
+| Client | Endpoint | Setup |
+|---|---|---|
+| Claude Desktop, Claude web, Cursor (connector) | \`https://riskmodels.app/api/mcp/sse\` | Settings → Connectors → Add custom connector; OAuth client fields left blank |
+| Grok (web, iOS, Android) | \`https://riskmodels.app/api/mcp/sse\` | grok.com/connectors → New Connector → Custom |
+| ChatGPT (Plus and above, web, Developer Mode) | \`https://riskmodels.app/api/mcp/openai\` | Settings → Apps & Connectors → Advanced settings → Developer mode, then Create; OAuth |
+| Gemini CLI | \`https://riskmodels.app/api/mcp/openai\` | Extension: https://github.com/BlueWaterCorp/riskmodels-gemini-extension |
+| Cursor Agent Plugin | \`https://riskmodels.app/api/mcp/openai\` | Cursor plugin marketplace |
+| Claude Code / Cowork plugin (skills, slash commands, analyst agent) | \`https://riskmodels.app/api/mcp/sse\` | \`claude plugin marketplace add BlueWaterCorp/riskmodels-plugin\` then \`claude plugin install riskmodels@riskmodels\` |
+| Gemini Enterprise | either endpoint | Admin registers a Custom MCP data store (Streamable HTTP + OAuth) |
 
-  Then: \`/risk-decompose AAPL\`, \`/fundamentals-pit NVDA\`, \`/cost-of-capital MSFT 0.05 10y\`. Setup: \`https://github.com/BlueWaterCorp/riskmodels-plugin\` · \`plugins/riskmodels/SETUP.md\`. Submit/status for the Claude plugin directory: \`https://platform.claude.com/plugins/submit\`.
-- **ChatGPT (Plus+ on web — Developer Mode):** **Settings → Apps & Connectors → Advanced settings → enable Developer mode**, then **Apps & Connectors → Create**, paste \`https://riskmodels.app/api/mcp/sse\`, choose **OAuth**, sign in at riskmodels.app. This is **not** the built-in Finances / Schwab connector. Guide: \`https://riskmodels.app/docs/agent-integration#chatgpt-mcp\`.
-- **Grok (web / iOS / Android):** **grok.com/connectors → New Connector → Custom**, paste \`https://riskmodels.app/api/mcp/sse\`, OAuth sign-in at riskmodels.app. No Developer Mode. Guide: \`https://riskmodels.app/docs/agent-integration#grok-mcp\`.
-- **Gemini consumer web (gemini.google.com):** no custom MCP UI — use case 1 (\`/llms.txt\` + REST in this chat). **Gemini CLI / Antigravity:** \`gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse\` then \`/mcp auth riskmodels\`. **Gemini Enterprise:** admin registers Custom MCP data store in Google Cloud (Streamable HTTP + OAuth; may need pre-registered Client ID/Secret). Guide: \`https://riskmodels.app/docs/agent-integration#gemini\`.
-- **ChatGPT + Schwab holdings without MCP:** If they already connected Finances, keep that for positions; paste tickers here and use case 1 (REST via this file) or \`POST /api/portfolio/risk-snapshot\` with weights.
-- **Developer alternatives (terminal):** \`npm install -g riskmodels@latest\` then \`riskmodels install\`, or \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with \`AUTHORIZATION=Bearer <key>\`.
+Gemini consumer web has no custom MCP setting; it can use this file and the REST API directly. The ChatGPT MCP app is separate from ChatGPT's built-in Finances (Schwab) connector; holdings from Finances can be sent to \`POST /api/portfolio/risk-snapshot\` as weights.
+
+A typical first check after connecting is \`riskmodels_compare\` on AAPL and NVDA followed by \`riskmodels_decompose\` on each; over REST, \`GET /api/metrics/AAPL\`. The answers carry residual explained risk and the L3 hedge ratios with their data date. Setup guide for every client: https://riskmodels.app/docs/agent-integration
+
+## Security identity (free)
+
+\`GET /api/identity/resolve\` (MCP: \`riskmodels_resolve_security_identity\`) says which security a ticker meant on a date and what a holding became through reviewed corporate actions: ticker reuse and changes, ADR conversions with ratios, splits, spin-offs and distributions, cash mergers and cancellations. Each answer has a status (resolved, ambiguous, unavailable, unsupported), a coverage label (reviewed, inferred, unknown) and the SEC filing for each applied event; an identifier it cannot place comes back unavailable or ambiguous rather than guessed. Example: \`/api/identity/resolve?identifier=FB&acquired_on=2015-06-01&as_of=2026-10-18\` returns 100 META; \`identifier=FB&as_of=2026-10-16\` returns the ETF that holds FB today.
 
 ## Magnificent 7 (MAG7)
 
-These seven US equities are the usual demo / smoke-test set (landing charts, optional public sample key, \`mag7=true\` on tickers):
+These seven US equities are the usual demo and smoke-test set (landing charts, the public sample key, \`mag7=true\` on tickers):
 
 ${mag7BulletList()}
 
-One-line form: **${mag7Csv}**. For Alphabet use **GOOG** in examples; **GOOGL** aliases to the same name in the API. The public JSON from \`GET /api/tickers?mag7=true\` may list **GOOGL**; both work with \`GET /api/metrics/{ticker}\` and related routes.
+One-line form: **${mag7Csv}**. Examples use **GOOG** for Alphabet; **GOOGL** aliases to the same name in the API. \`GET /api/tickers?mag7=true\` may list **GOOGL**; both work with \`GET /api/metrics/{ticker}\` and related routes.
 
-## Developer setup — CLI (human runs once in a terminal)
+## Developer setup (terminal)
 
-This is the developer path for case 2 above; non-technical humans should prefer the no-terminal connector.
+- Node.js LTS (https://nodejs.org) and an API key (https://riskmodels.app/get-key).
+- \`RISKMODELS_API_KEY=… npx -y riskmodels@latest install\` (\`--dry-run\` first is optional). The installer stores the key in ~/.config/riskmodels/config.json and adds the RiskModels MCP server to supported clients (Cursor, Claude Desktop, Codex and others).
+- Claude Code keeps its own MCP store. MCP only: \`claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp\`. With the plugin, its bundled connection is enough; a second registration of the same server is redundant. \`claude mcp list\` and \`claude plugin list\` show what is registered.
+- Proxy form: \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with \`AUTHORIZATION=Bearer <key>\`.
+- Python SDK (PyPI \`riskmodels-py\`): https://riskmodels.app/installation
 
-- Install Node.js LTS (https://nodejs.org).
-- Get an API key: https://riskmodels.app/get-key
-- Run (pins the CLI so \`npx\` does not use a stale cache):
+## Reference links
 
-  RISKMODELS_API_KEY=… npx -y riskmodels@latest install
-
-  Optional: add --dry-run first. The installer stores the key in ~/.config/riskmodels/config.json
-  and merges the RiskModels MCP server into supported clients (Cursor, Claude Desktop, Codex, etc.).
-
-## Claude Code (terminal \`claude\`) vs Claude Desktop
-
-\`riskmodels install\` updates Claude Desktop and Cursor configs. The **Claude Code** CLI uses a
-separate MCP store **and** can install the workflow plugin (skills / commands / analyst):
-
-  claude plugin marketplace add BlueWaterCorp/riskmodels-plugin
-  claude plugin install riskmodels@riskmodels
-
-For MCP-only (no plugin skills), after \`riskmodels install\` register:
-
-  claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp
-
-Or use the hosted URL with OAuth / \`mcp-remote\` + Bearer. Prefer **one** connection — if the
-plugin's bundled MCP is enabled, skip a second \`claude mcp add\` for the same server.
-
-Then restart \`claude\` and check \`claude mcp list\` / \`claude plugin list\`.
-
-## Where to integrate without a local install
-
-- **MCP discovery manifest:** https://riskmodels.app/.well-known/mcp.json (public JSON — paste URL into Claude/Cursor/Grok/ChatGPT connectors, or Gemini Enterprise admin console)
-- **Claude Code / Cowork plugin marketplace:** https://github.com/BlueWaterCorp/riskmodels-plugin (\`claude plugin marketplace add BlueWaterCorp/riskmodels-plugin\`)
-- **Agent integration guide:** https://riskmodels.app/docs/agent-integration (ChatGPT Developer Mode, Grok Connectors, Gemini CLI/Enterprise, Claude plugin, Finances + holdings workflow)
-- Hosted MCP (Streamable HTTP): https://riskmodels.app/api/mcp/sse — Bearer token, OAuth connector (Claude/Cursor/ChatGPT), or \`mcp-remote\` proxy. The MCP endpoint authenticates every call (including initialize); data tools bill per underlying REST route.
-- Privacy: https://riskmodels.app/privacy (redirects to https://riskmodels.net/privacy)
 - OpenAPI: https://riskmodels.app/openapi.json (or /api-reference in the portal)
-- Python SDK (PyPI): riskmodels-py — see https://riskmodels.app/installation
+- MCP discovery manifest: https://riskmodels.app/.well-known/mcp.json
+- Pricing (per call; free discovery and identity routes): https://riskmodels.app/pricing
+- Platform integration (server-side, caching, redistribution licence): https://riskmodels.app/docs/platform-integration
+- Privacy: https://riskmodels.app/privacy (redirects to https://riskmodels.net/privacy)
+- API terms (attribution "Powered by RiskModels"; no resale or redistribution as a feed without a written agreement): https://riskmodels.net/terms/api
+- The hosted MCP endpoint authenticates every call, including initialize; data tools bill per underlying REST route.
 
 ## Panel / batch endpoints — when one call beats many
 
 The decomposition routes that work across the universe (or many tickers) in a single call:
 
 - **\`GET /api/returns-decomposition?ticker=…&years=…&include_lstar=true\`** — daily gross + L1/L2/L3 factor / combined-factor / residual return series for one ticker, all in one response. Replaces six \`?metrics=l1_cfr,l1_rr,...\` round-trips. Add \`include_lstar=true\` for the Lstar-dispatched residual + level. **$0.04/call + $0.01/extra year.**
-- **\`GET /api/industry-panel?level=subsector&min_peers=20\`** — Vasicek peer-β cross-section by EODHD industry × cascade level: \`beta_mean\`, \`beta_variance\`, \`n_companies\`, \`total_log_mcap_weight\`. Default \`by=level\` is one row per (industry, level). \`by=fact\` is one row per (industry, fact). Multi-fact cells are historical (last L3 day 2021-06-22); latest teo is \`n_facts=1\`. One teo per call (latest by default). **$0.04/call.**
+- **\`GET /api/industry-panel?level=subsector&min_peers=20\`** — Vasicek peer-β cross-section by industry × cascade level: \`beta_mean\`, \`beta_variance\`, \`n_companies\`, \`total_log_mcap_weight\`. Default \`by=level\` is one row per (industry, level). \`by=fact\` is one row per (industry, fact). Multi-fact cells are historical (last L3 day 2021-06-22); latest teo is \`n_facts=1\`. One teo per call (latest by default). **$0.04/call.**
 - **\`POST /api/rankings/screen\`** with \`{metric, cohort, window, min_percentile|decile|sector_filter, limit}\` — server-side rank filter over the full ds_rankings cross-section at one teo. Returns up to 500 rows sorted by \`rank_ordinal\` (1 = best). The stat-arb cross-section in one call — replaces N per-ticker \`/rankings\` calls. **$0.25/call.**
 - **\`POST /api/batch/lstar\`** with \`{tickers: [...], years}\` — per-ticker daily Lstar history for up to 100 tickers in one call. Companion to \`lstar_rr\` in MetricsV3 (single-name latest); use this when you need history across a panel. **$0.015/ticker, min $0.03/call** (25% cheaper than repeated \`GET /lstar\`).
-- **\`POST /api/signals/residual-reversion/basket\`** with \`{tickers: [...], weights?, signal_quality_min_quintile?}\` — aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket of up to 500 tickers. Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Equal-weight default; optional quality gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Trust the zarr — tickers not in \`ds_erm3_residual_signal\` are silently dropped and surfaced via \`coverage.missing_tickers\`. **$0.02/call.**
-- **\`GET /api/universe/{name}/members\`** — active membership of a named universe (\`uni_mc_3000\` etc.) at one teo (latest by default). Active = monthly universe_mask AND daily validity gate. Use this to align your screen / panel / book against the canonical universe without a local SDK cache. Response carries members + counts breakdown + a \`mask_as_of\` month-end stamp. **$0.02/call.**
+- **\`POST /api/signals/residual-reversion/basket\`** with \`{tickers: [...], weights?, signal_quality_min_quintile?}\` — aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket of up to 500 tickers. Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Equal-weight default; optional quality gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Tickers not in \`ds_erm3_residual_signal\` are silently dropped and surfaced via \`coverage.missing_tickers\`. **$0.02/call.**
+- **\`GET /api/universe/{name}/members\`** — active membership of a named universe (\`uni_mc_3000\` etc.) at one teo (latest by default). Active = monthly universe_mask AND daily validity gate. It aligns a screen, panel or book with the canonical universe without a local SDK cache. Response carries members + counts breakdown + a \`mask_as_of\` month-end stamp. **$0.02/call.**
 - **\`GET /api/etf/factor-returns\`** — one-teo snapshot of close + trailing 1d / 21d / 63d / 252d total returns for **SPY + the 11 GICS sector SPDR ETFs** (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public-scope only; tickers outside that set return 400. Pairs with \`industry-panel\` for the daily market + sector index read alongside aggregate stock-level industry βs. **$0.02/call.**
 - **\`GET /api/data/etf/universe\`** — every ETF the API knows, with three capabilities, any combination per fund: \`cascade\` (SPY, the 11 sector and the subsector ETFs the ERM3 cascade hedges with), \`priced\` (daily returns, covariance and beta to SPY, from \`priced_from\`) and \`holdings\` (look-through holdings and benchmark fit), plus \`factor_role\` and FIGI / CIK / BW identifiers. Filter with \`?cascade=\`, \`?priced=\`, \`?holdings=\` (true/false) and \`?factor_role=\`. On the 2026-10-14 build: 220 funds, 56 cascade, 128 priced, 148 with holdings; 10 style and 31 macro roles. \`GET /api/data/etf/{ticker}\` returns the same block for one fund (200 for every known fund) and \`/api/data/etf/search\` carries it on each hit. Reason codes: \`etf_outside_priced_universe\` (known fund, no daily returns), \`etf_no_return_history_in_window\` (priced, but no rows in the window), \`symbol_not_found\` (on no list). \`/api/ticker-returns\` does not bill a response with no rows and names the reason in \`_metadata.data_warning_code\`. **Free** (data-gateway per-IP rate limit). Guide: https://github.com/BlueWaterCorp/RiskModels_API/blob/main/docs/ETF_COVERAGE.md
 - **\`GET /api/cohorts\`** and **\`GET /api/cohorts/series\`** — cross-sectional residual statistics by cohort (SPY + the 11 GICS sector SPDRs) from \`ds_erm3_cohorts\`: \`residual_mean\`, \`residual_sd\`, \`residual_skew\`, \`residual_p10/p90\`, \`mean_pairwise_corr\`, \`n_names\`, \`n_effective\`, \`weight_top1\`, \`membership_churn\`, \`linked_beta\` (+link_fit_resid_sd/r2/roll63), \`cohort_factor_return\`, \`cohort_residual_return\`, \`cohort_ER\`, \`factor_source\`. \`linked_beta_se\` is a CONDITIONAL, homoskedastic model SE — understated for daily returns and unreliable in partial windows (early history); not a total-uncertainty measure. Cross-section **$0.04/call**, series **$0.15/call**; \`GET /api/cohorts/roster\` is free discovery.
 
-  **Residuals are not zero-mean.** ERM3 regressions are fitted *without an intercept*, deliberately, so each stock's residual retains its alpha — the cross-sectional mean is **not zero**. Before building any relative-ranking signal, subtract \`residual_mean\` at the level your residual is defined against (sector residuals demean within sector cohorts). Never quote a drift figure without its window; the sign is not stable across the sample.
+  **Residuals are not zero-mean.** ERM3 regressions are fitted *without an intercept*, deliberately, so each stock's residual retains its alpha — the cross-sectional mean is **not zero**. A relative-ranking signal needs \`residual_mean\` subtracted at the level the residual is defined against (sector residuals demean within sector cohorts). A drift figure is meaningful only with its window; the sign is not stable across the sample.
 
-  \`residual_sd\` is cross-sectional dispersion — how much there is to select from in a cohort. Treat it as a conditioning / allocation input, **not** an alpha source: it multiplies skill and cannot create it. Always read it alongside \`mean_pairwise_corr\`. Filter thin cohorts with \`min_names\`, and prefer \`n_effective\` (inverse-Herfindahl breadth) over \`n_names\` for anything breadth-related.
-- **\`POST /api/cohorts/pnl-decomposition\`** with \`{positions: [{ticker, weight}], level, start_date, end_date}\` — splits a book's realized residual return into **selection** (what it earned holding names that beat their cohort average) and **drift** (what it earned purely from net exposure to that average). The two sum to the total exactly — an identity, not a fitted attribution — so it answers *"was I paid for stock-picking, or for being net long the average stock?"*. Weights are constant over the window and are **not** normalized; rescaling them changes the drift term. Unresolvable names come back in \`coverage.dropped\` — report those, never present the total as if the whole book were covered. **$0.25/call.**
-- **\`POST /api/portfolio/exposure\`** with \`{positions: [{ticker, value}], hedge_level?, as_of?, top_contributors?, include_positions?}\` — signed long/short book as dollar market values (short < 0, up to 1000 positions, ETFs allowed), **never normalised**. Returns L1 beta-dollars by sector, ETF hedge trades at L*/L1/L2/L3 (\`hr\` = ETF dollars per $1 long stock; \`total_neutralizing_trade_usd\` = stock hedge − ETFs already held), a systematic (xᵀΣx) and diagonal residual risk split, the market beta on that risk basis (\`beta.risk_basis\`, xᵀΣe_SPY/σ²_SPY; the L1 \`total_beta_usd\` is kept), \`scenario_inputs\` (each ETF's \`beta_to_spy\`; per-name level, L1 beta, hedge ratios and residual vol with \`include_positions: true\`), \`coverage\` (a known ETF it cannot price is \`etf_outside_priced_universe\` or \`etf_no_return_history_in_window\` with \`see\`, not \`symbol_not_found\`) and \`warnings\`. \`as_of\` reaches back to 2011-12-07. **Use it for any book with a short** (or more than 100 names) instead of \`/portfolio/risk-index\`, which takes positive weights. Always report \`warnings\` (e.g. \`hedge_added_variance\`, \`share_class_netted\`, \`not_at_snapshot_teo\`) and \`coverage.dropped\` with the result; never present the totals as covering the whole book when names were dropped. **$0.25/call up to 25 names modelled, $1.00 above.** History without sending holdings: \`POST /api/portfolio/exposure/history\` (month-end, $1.25 / $5.00) and \`/history/daily\` ($2.50 / $10.00) take tickers only; the Python SDK joins locally. Their history starts 2010-12-08 for hedge ratios, 2011-12-07 for explained-risk/residual shares and \`stock_var\`, 2013-01-01 for \`lstar_level\` (nothing earlier is served; see \`history_available_from\` and \`warnings\`). Guide: https://riskmodels.app/docs/long-short-exposure
+  \`residual_sd\` is cross-sectional dispersion — how much there is to select from in a cohort. It is a conditioning / allocation input, **not** an alpha source: it multiplies skill and cannot create it. It reads best alongside \`mean_pairwise_corr\`; \`min_names\` filters thin cohorts, and \`n_effective\` (inverse-Herfindahl breadth) is the better breadth measure than \`n_names\`.
+- **\`POST /api/cohorts/pnl-decomposition\`** with \`{positions: [{ticker, weight}], level, start_date, end_date}\` — splits a book's realized residual return into **selection** (what it earned holding names that beat their cohort average) and **drift** (what it earned purely from net exposure to that average). The two sum to the total exactly — an identity, not a fitted attribution — so it answers *"was I paid for stock-picking, or for being net long the average stock?"*. Weights are constant over the window and are **not** normalized; rescaling them changes the drift term. Unresolvable names come back in \`coverage.dropped\`; the total covers only the resolved names. **$0.25/call.**
+- **\`POST /api/portfolio/exposure\`** with \`{positions: [{ticker, value}], hedge_level?, as_of?, top_contributors?, include_positions?}\` — signed long/short book as dollar market values (short < 0, up to 1000 positions, ETFs allowed), **never normalised**. Returns L1 beta-dollars by sector, ETF hedge trades at L*/L1/L2/L3 (\`hr\` = ETF dollars per $1 long stock; \`total_neutralizing_trade_usd\` = stock hedge − ETFs already held), a systematic (xᵀΣx) and diagonal residual risk split, the market beta on that risk basis (\`beta.risk_basis\`, xᵀΣe_SPY/σ²_SPY; the L1 \`total_beta_usd\` is kept), \`scenario_inputs\` (each ETF's \`beta_to_spy\`; per-name level, L1 beta, hedge ratios and residual vol with \`include_positions: true\`), \`coverage\` (a known ETF it cannot price is \`etf_outside_priced_universe\` or \`etf_no_return_history_in_window\` with \`see\`, not \`symbol_not_found\`) and \`warnings\`. \`as_of\` reaches back to 2011-12-07. It is the route for any book with a short (or more than 100 names); \`/portfolio/risk-index\` takes positive weights only. \`warnings\` (e.g. \`hedge_added_variance\`, \`share_class_netted\`, \`not_at_snapshot_teo\`) and \`coverage.dropped\` qualify the result; totals cover only the modelled names. **$0.25/call up to 25 names modelled, $1.00 above.** History without sending holdings: \`POST /api/portfolio/exposure/history\` (month-end, $1.25 / $5.00) and \`/history/daily\` ($2.50 / $10.00) take tickers only; the Python SDK joins locally. Their history starts 2010-12-08 for hedge ratios, 2011-12-07 for explained-risk/residual shares and \`stock_var\`, 2013-01-01 for \`lstar_level\` (nothing earlier is served; see \`history_available_from\` and \`warnings\`). Guide: https://riskmodels.app/docs/long-short-exposure
 
-**Routing rules:**
-- "Show me the residual / decomposition for X" → \`get_returns_decomposition\` (or \`get_metrics\` if user just wants latest snapshot).
-- "Which industries are dispersed / rotating in β?" → \`get_industry_panel\`.
-- "What did the market / sectors do today / this month / YTD?" → \`get_etf_factor_returns\` (SPY + 11 GICS sectors). Pair with \`get_industry_panel\` when you want index-level moves plus stock-level industry β state.
-- "Find me names where the residual is X / which stocks are in decile 1" → \`screen_rankings\`.
-- "Where is there most opportunity to pick stocks / which sector is most dispersed?" → \`get_cohorts\` (\`residual_sd\` with \`mean_pairwise_corr\` and \`n_effective\`). Describe it as where selection opportunity sits, never as a prediction of returns.
-- "Should I demean my residuals / is the residual mean zero?" → No. Fetch \`residual_mean\` from \`get_cohort_series\` at the matching level and subtract. This is the single most consequential thing to get right about ERM3 residuals.
-- "Is my performance stock-picking or just being long the market / the average stock?" → \`decompose_selection_vs_drift\`. Report both components and the coverage gaps; describe it as realized attribution, never as a forecast or a verdict on skill going forward.
-- "What is the beta / hedge / risk of my long/short book?" (any short position) → \`POST /api/portfolio/exposure\` with signed dollar values. Report \`warnings\` and \`coverage.dropped\` alongside the numbers.
+**Which endpoint answers which question:**
+- "Show me the residual / decomposition for X" → \`GET /api/returns-decomposition\` (latest snapshot only: \`GET /api/metrics/{ticker}\`).
+- "Which industries are dispersed / rotating in β?" → \`GET /api/industry-panel\`.
+- "What did the market / sectors do today / this month / YTD?" → \`GET /api/etf/factor-returns\` (SPY + 11 GICS sectors), alongside \`GET /api/industry-panel\` for stock-level industry β state.
+- "Find me names where the residual is X / which stocks are in decile 1" → \`POST /api/rankings/screen\`.
+- "Where is there most opportunity to pick stocks / which sector is most dispersed?" → \`GET /api/cohorts\` (\`residual_sd\` with \`mean_pairwise_corr\` and \`n_effective\`). It measures where selection opportunity sits; it is not a return forecast.
+- "Should I demean my residuals / is the residual mean zero?" → No. \`residual_mean\` from \`GET /api/cohorts/series\` at the matching level is the value to subtract. This is the most consequential detail of ERM3 residuals.
+- "Is my performance stock-picking or just being long the market / the average stock?" → \`POST /api/cohorts/pnl-decomposition\`. Both components and the coverage gaps belong in the answer; it is realized attribution, not a forecast or a verdict on skill.
+- "What is the beta / hedge / risk of my long/short book?" (any short position) → \`POST /api/portfolio/exposure\` with signed dollar values; \`warnings\` and \`coverage.dropped\` qualify the numbers.
 - "Can I get returns / beta / holdings for this ETF?" or an ETF came back empty → \`GET /api/data/etf/{ticker}\` (or \`/api/data/etf/universe\`) and read \`capabilities\` before calling a priced route.
-- "Give me the Lstar history for these 30 tickers" → \`batch_lstar\` (not 30 separate \`get_lstar\` calls).
-- "What's AAPL's ROE / WACC / economic profit / cost of capital / payout / revenue?" → \`get_fundamentals\` (PIT quarterly; derived analytics + raw SEC-sourced line items in \`sec_facts\`; never forecasts or analyst fields).
+- "Give me the Lstar history for these 30 tickers" → \`POST /api/batch/lstar\` (one call instead of 30 \`GET /api/lstar\` calls).
+- "What's AAPL's ROE / WACC / economic profit / cost of capital / payout / revenue?" → \`GET /api/fundamentals/{ticker}\` (PIT quarterly; derived analytics + raw SEC-sourced line items in \`sec_facts\`; no forecasts or analyst fields).
 
 ## Fundamentals — PIT quarterly, derived analytics + SEC-sourced raw
 
 - **\`GET /api/fundamentals/{ticker}?periods=N&as_of=YYYY-MM-DD\`** — point-in-time quarterly fundamentals for one ticker: TTM profitability and capital-return ratios, \`leverage_ratio\`, long-window ERM3 valuation betas, strict reported-data \`cost_of_debt\` / \`wacc\`, parallel \`cost_of_debt_imputed\` / \`wacc_imputed\` when the PIT-lagged high-quality-market proxy is available, equity-charge \`economic_profit\`, six-tenor \`rf_rate\`, and the equity-bridge residual + inputs mask. The proxy uses the period-end 10-year Treasury plus a monthly \`HQMCB10YR - GS10\` spread and is not issuer-specific; provenance and the lagged reference month are returned. \`sec_facts\` carries **raw line items per cell where the serving value is SEC XBRL**; vendor-sourced cells are not exposed as raw. \`erp\` is a request parameter (default 0.05 when omitted), tenor is selected with \`?rf_tenor=\` (default 10y), and \`?grid=true\` returns the latest-period ERP×tenor sensitivity table with strict and imputed WACC fields. Rows are visible **iff \`filed_date <= as_of\`** — never "latest". **Realized historical only** — no forecasts, analyst targets, or buy/sell signals. \`market_cap\` is a current snapshot, not per-quarter PIT. Per-symbol, per-call (no batch variant). **$0.02/call.** Guide: https://riskmodels.app/docs/fundamentals
 
-## Residual-return routing (\`lstar_rr\` vs \`l3_rr\`)
+## Residual-return fields (\`lstar_rr\` vs \`l3_rr\`)
 
-When the user asks for "the residual", "the idiosyncratic return", or "what's left after hedging",
-prefer **\`lstar_rr\`** over **\`l3_rr\`**. \`lstar_rr\` is the residual at the cascade level the
+For "the residual", "the idiosyncratic return", or "what's left after hedging",
+**\`lstar_rr\`** is usually the better field than **\`l3_rr\`**. \`lstar_rr\` is the residual at the cascade level the
 model actually dispatched to (L1/L2/L3 picked at the canonical 1% marginal-ER threshold);
 **\`l3_rr\`** is the fixed L3-subsector residual regardless of whether subsector hedging is
 statistically warranted. For names where **\`lstar_level\`** is 1 or 2, \`l3_rr\` overstates
 the cleanness of the residual because it subtracts a layer the model would not have prescribed.
-Show \`lstar_level\` (1=L1 / 2=L2 / 3=L3 / null=no rec) alongside \`lstar_rr\` so the reader
-sees which depth was assumed. For a custom threshold use \`GET /api/lstar?threshold=…\` instead.
+\`lstar_level\` (1=L1 / 2=L2 / 3=L3 / null=no rec) shows which depth \`lstar_rr\` assumed. For a custom threshold use \`GET /api/lstar?threshold=…\` instead.
 
-## Agent prompts
+## Keys in chats
 
-After setup, the first message must name a live call. Do not answer from training data. Do not start with a capability catalog.
-
-- MCP (connector already connected): ${FIRST_LIVE_PROMPT_MCP}
-- REST (this chat, no MCP): ${FIRST_LIVE_PROMPT_REST}
-- Do not paste **private** API keys into LLM chats; use env vars or local config. When this file
-  includes a **Public sample API key** section, that token is intentionally published for agents.
+Private API keys belong in environment variables or local config, not in chat messages. The **Public sample API key** section, when present, is a key published on purpose for documentation and agent smoke tests.
 
 Canonical site: https://riskmodels.app  |  Terms: https://riskmodels.net/terms/api
 `;

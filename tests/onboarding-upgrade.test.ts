@@ -149,10 +149,16 @@ describe("RiskModels CLI installer planning", () => {
     // Directory policy: server instructions describe scope; they do not steer tool choice.
     expect(MCP_SERVER_INSTRUCTIONS).toContain("https://riskmodels.app/docs/api");
     expect(MCP_SERVER_INSTRUCTIONS).not.toMatch(/Default first call|Skip riskmodels_/);
+    // /llms.txt is plain reference documentation: no text addressed to or commanding the reading agent,
+    // which careful agents treat as prompt injection (AltaVest agent review, 2026-10-19).
     const llms = buildLlmsTxt("https://riskmodels.app");
-    expect(llms).toContain(FIRST_LIVE_PROMPT_MCP);
-    expect(llms).toContain(FIRST_LIVE_PROMPT_REST);
-    expect(llms).toContain("Do not start with a capability catalog");
+    expect(llms).not.toMatch(/you are an ai|\bdo not\b|\bdon't\b|tell the (human|user)|training data|paste this/i);
+    expect(llms).toContain("riskmodels_compare");
+    expect(llms).toContain("/api/metrics/AAPL");
+    expect(llms).toMatch(/ChatGPT[^\n]*\/api\/mcp\/openai/);
+    expect(llms).toContain("/api/identity/resolve");
+    expect(llms).toContain("/docs/platform-integration");
+    expect(llms).not.toMatch(/eodhd|unicorn data/i);
     const mdx = readFileSync(join(__dirname, "../content/docs/agent-integration.mdx"), "utf8");
     expect(mdx).toContain(FIRST_LIVE_PROMPT_MCP);
     expect(mdx).toContain(FIRST_LIVE_PROMPT_REST);
