@@ -779,7 +779,7 @@ function GetKeyPage() {
         {/* MCP first — OAuth connector, no card. Matches how most external accounts already arrive. */}
         <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
           <h2 className="text-sm font-semibold text-zinc-200 mb-1 flex items-center gap-2">
-            <Bot size={14} /> Connect Claude, Cursor, or Smithery
+            <Bot size={14} /> Connect Claude, Cursor, or another MCP client
           </h2>
           <p className="text-xs text-zinc-500 mb-3 leading-relaxed">
             Add a custom connector, sign in once, done. No API key and no card.
