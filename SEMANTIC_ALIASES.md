@@ -10,14 +10,18 @@ Unit: **`dollar_ratio`** — dollar notional of the factor ETF to trade per $1 o
 
 To compute hedge notional: `hedge_notional_usd = position_size_usd × hr_field`
 
-| Field | Description | Typical Range |
+| Field | Description | Usual sign |
 |---|---|---|
-| `l1_market_hr` | SPY ratio for the L1 (market-only) hedge — 1 trade required | 0.4 – 1.5 |
-| `l2_market_hr` | SPY component of the L2 (market + sector) hedge | 0.3 – 1.2 |
-| `l2_sector_hr` | Sector ETF component of the L2 hedge | 0.1 – 0.6 |
-| `l3_market_hr` | SPY component of the L3 (full, three-ETF) hedge | 0.2 – 1.1 |
-| `l3_sector_hr` | Sector ETF component of the L3 hedge | 0.1 – 0.5 |
-| `l3_subsector_hr` | Subsector ETF component of the L3 hedge | -0.3 – 0.4 |
+| `l1_market_hr` | SPY ratio for the L1 (market-only) hedge — 1 trade required | negative (short SPY); equals −market beta |
+| `l2_market_hr` | SPY component of the L2 (market + sector) hedge | either; it nets the sector ETF's own market exposure, so it is not −market beta |
+| `l2_sector_hr` | Sector ETF component of the L2 hedge | negative (short the sector ETF); equals −sector beta |
+| `l3_market_hr` | SPY component of the L3 (full, three-ETF) hedge | either |
+| `l3_sector_hr` | Sector ETF component of the L3 hedge | either |
+| `l3_subsector_hr` | Subsector ETF component of the L3 hedge | either |
+
+HRs apply to the ETFs' raw daily returns. The stored residual is the P&L of $1 long plus the hedge legs:
+`residual_L2 = gross + l2_market_hr × r_SPY + l2_sector_hr × r_sectorETF` (same-day HRs; they are refit at each
+week's close and held through the next week).
 
 ### `POST /decompose` — agent-friendly semantic wrapper
 
@@ -140,9 +144,9 @@ Omit `factors` to use **all 18** canonical keys. **`null` in `correlations`** me
 | Value | Stock series |
 |---|---|
 | `gross` | Daily gross stock return (`returns_gross`). |
-| `l1` | Residual vs **market only**: gross return minus `l1_market_hr` × SPY daily return. |
-| `l2` | Residual vs **market + sector**: gross return minus (`l2_market_hr` × SPY return + `l2_sector_hr` × sector ETF return). Requires a **sector ETF** on the symbol; otherwise **400**. |
-| `l3_residual` | Residual after **L3** hedge replication: gross return minus (`l3_market_hr` × SPY + `l3_sector_hr` × sector ETF + `l3_subsector_hr` × subsector ETF). Requires **sector and subsector** ETFs on the symbol; otherwise **400**. |
+| `l1` | Residual vs **market only**: gross return plus `l1_market_hr` × SPY daily return (HRs are negative hedge notionals). |
+| `l2` | Residual vs **market + sector**: gross return plus (`l2_market_hr` × SPY return + `l2_sector_hr` × sector ETF return). Requires a **sector ETF** on the symbol; otherwise **400**. |
+| `l3_residual` | Residual after **L3** hedge replication: gross return plus (`l3_market_hr` × SPY + `l3_sector_hr` × sector ETF + `l3_subsector_hr` × subsector ETF). Requires **sector and subsector** ETFs on the symbol; otherwise **400**. |
 
 ### Response fields (success)
 
