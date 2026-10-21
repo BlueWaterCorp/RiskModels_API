@@ -3372,7 +3372,7 @@ async function computeSurfacePortfolioSeries(
 //                       latest teo ≤ the subject's teo.
 //   - all             — fan-out: SPY + ff_own + the subject's declared style
 //                       cell (funds: public.funds.equity_style_9box; 13F
-//                       filers: filers_latest.dominant_9box) when resolvable.
+//                       filers: filer_portfolios_latest.dominant_9box) when resolvable.
 // All three custom kinds share the one canonical fit kernel (fitWeightVectors)
 // with the static path.
 // ===========================================================================
@@ -3664,7 +3664,7 @@ export async function readStyleCellWeightVector(
 /**
  * The subject's declared style cell for the `all` fan-out: funds →
  * public.funds.equity_style_9box; 13F filers/synths →
- * filers_latest.dominant_9box. ETF/benchmark subjects have no declared cell —
+ * filer_portfolios_latest.dominant_9box. ETF/benchmark subjects have no declared cell —
  * null (the fan-out then serves SPY + ff_own only). Best-effort: any lookup
  * failure is null, never an error.
  */
@@ -3685,11 +3685,14 @@ export async function resolveSubjectStyleCell(
       raw = (data as { equity_style_9box?: string | null } | null)?.equity_style_9box ?? null;
     } else if (id.startsWith("BW-FILER-") || id.startsWith("BW-SYNTH-")) {
       const { data, error } = await admin
-        .from("filers_latest")
+        .from("filer_portfolios_latest")
         .select("dominant_9box")
         .eq("bw_filer_id", id)
         .maybeSingle();
-      if (error) return null;
+      if (error) {
+        console.warn(`[resolveSubjectStyleCell] filer_portfolios_latest lookup failed for ${id}: ${error.message}`);
+        return null;
+      }
       raw = (data as { dominant_9box?: string | null } | null)?.dominant_9box ?? null;
     } else {
       return null;

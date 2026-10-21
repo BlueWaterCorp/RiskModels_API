@@ -168,7 +168,3 @@ Review: Fable, 2026-10-14 (ETF strategy review).
 ## RMAPI-27 · Filer search lists retired filers beside their live twins (2026-10-20)
 
 **Impact:** MATERIAL · Funds_DAG filer rebuild 4 (2026-10-20) kept 720 retired rows in `filers` with status `no_13f_book`, among them hand-typed duplicates of pension plans (CalPERS BW-FILER-CIK0000776606 beside live 0000919079; SWIB 0000706669 beside 0000854157). `searchFilers` (`lib/dal/filers-engine.ts:213`) queries `filers` with no status filter, so those names show twice and the retired row has no book. **Needs:** engineering: exclude `status = 'no_13f_book'` from search (keep direct id lookup working), with a test on a real retired row.
-
-## RMAPI-28 · Filer 9-box style reads a table PostgREST does not expose (2026-10-20)
-
-**Impact:** MATERIAL · The style lookup for BW-FILER and BW-SYNTH ids (`lib/dal/funds-zarr-reader.ts:3688`) reads `filers_latest.dominant_9box`. `filers_latest` returns 404 through PostgREST (checked by the Funds_DAG session, 2026-10-20), and the error path returns null, so filers silently get no 9-box. **Needs:** engineering + Funds_DAG: find where `dominant_9box` lives now (`filer_portfolios_latest` or `ds_style.zarr`, published from tonight), point the reader at it, and log instead of swallowing the error.
