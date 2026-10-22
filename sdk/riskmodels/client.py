@@ -3180,6 +3180,7 @@ class RiskModelsClient:
             params["subsector_etf"] = f"eq.{subsector_etf}"
         if not ticker and (sector_etf or subsector_etf):
             params["asset_type"] = "eq.stock"
+            params["ticker"] = "not.like.*#*"
         symbol_rows = _postgrest_get_all(f"{sb_url}/rest/v1/symbols", params, headers)
 
         cap_rows: list[dict[str, Any]] = []

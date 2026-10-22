@@ -23,6 +23,7 @@ type Row = Record<string, unknown>;
 const SYMBOLS: Row[] = [
   { ticker: "AAPL", name: "Apple Inc.", sector_etf: "XLK", subsector_etf: "RSPT", metadata: { is_delisted: false } },
   { ticker: "AMZN", name: "Amazon.com, Inc.", sector_etf: "XLY", subsector_etf: "XRT", metadata: { is_delisted: false } },
+  { ticker: "GOOG", name: "Alphabet Inc. Class C", sector_etf: "XLC", subsector_etf: "FDN", metadata: { is_delisted: false } },
   { ticker: "META", name: "Meta Platforms Inc Class A", sector_etf: "XLC", subsector_etf: "FDN", metadata: { is_delisted: false } },
   { ticker: "MSFT", name: "Microsoft Corporation", sector_etf: "XLK", subsector_etf: "IGV", metadata: { is_delisted: false } },
   { ticker: "NVDA", name: "NVIDIA Corporation", sector_etf: "XLK", subsector_etf: "SMH", metadata: { is_delisted: false } },
@@ -105,13 +106,14 @@ beforeEach(() => {
 
 describe("tickerMetadataEntry", () => {
   it("reads the symbols columns and omits missing values", () => {
-    expect(tickerMetadataEntry(SYMBOLS[8] as never)).toEqual({
+    const pay = SYMBOLS.find((row) => row.ticker === "PAY");
+    expect(tickerMetadataEntry(pay as never)).toEqual({
       name: "Paymentus Holdings, Inc Class A",
       sector: undefined,
       sector_etf: "XLF",
       subsector_etf: "IYG",
     });
-    const gld = tickerMetadataEntry(SYMBOLS[11] as never);
+    const gld = tickerMetadataEntry(SYMBOLS.find((row) => row.ticker === "GLD") as never);
     expect(gld.name).toBe("GLD");
     expect(JSON.parse(JSON.stringify(gld))).toEqual({ name: "GLD" });
   });
@@ -144,6 +146,12 @@ describe("GET /api/tickers?include_metadata=true", () => {
     const res = await GET(new NextRequest("http://test/api/tickers?mag7=true&include_metadata=true"));
     const body = await res.json();
     expect(mirrorReads).toBe(0);
+    expect(body.tickers).toEqual(["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "TSLA"]);
+    expect(Object.keys(body.metadata).sort()).toEqual([...body.tickers].sort());
+    for (const ticker of body.tickers) {
+      expect(body.metadata[ticker]).toBeDefined();
+      expect(body.metadata[ticker].name).toBeTruthy();
+    }
     expect(body.metadata.NVDA).toEqual({
       name: "NVIDIA Corporation",
       sector_etf: "XLK",

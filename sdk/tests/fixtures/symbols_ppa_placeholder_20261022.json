@@ -1,0 +1,72 @@
+{
+  "_source": "Live read 2026-10-22: BKSY, three ordinary PPA peers, and the PPA registry placeholder with their latest daily market caps. Internal join keys are replaced by opaque keys; all other values are as read.",
+  "symbols": [
+    {
+      "symbol": "ppa-sym-001",
+      "ticker": "BA",
+      "name": "Boeing Company",
+      "sector_etf": "XLI",
+      "subsector_etf": "PPA",
+      "asset_type": "stock"
+    },
+    {
+      "symbol": "ppa-sym-002",
+      "ticker": "BKSY",
+      "name": "BlackSky Technology Inc Class A",
+      "sector_etf": "XLI",
+      "subsector_etf": "PPA",
+      "asset_type": "stock"
+    },
+    {
+      "symbol": "ppa-sym-003",
+      "ticker": "LMT",
+      "name": "Lockheed Martin Corporation",
+      "sector_etf": "XLI",
+      "subsector_etf": "PPA",
+      "asset_type": "stock"
+    },
+    {
+      "symbol": "ppa-sym-004",
+      "ticker": "RTX",
+      "name": "RTX Corporation",
+      "sector_etf": "XLI",
+      "subsector_etf": "PPA",
+      "asset_type": "stock"
+    },
+    {
+      "symbol": "ppa-sym-005",
+      "ticker": "SPCX#1",
+      "name": null,
+      "sector_etf": "XLI",
+      "subsector_etf": "PPA",
+      "asset_type": "stock"
+    }
+  ],
+  "security_history_latest": [
+    {
+      "symbol": "ppa-sym-001",
+      "market_cap": 151574773760,
+      "periodicity": "daily"
+    },
+    {
+      "symbol": "ppa-sym-002",
+      "market_cap": 637907456,
+      "periodicity": "daily"
+    },
+    {
+      "symbol": "ppa-sym-003",
+      "market_cap": 127453962240,
+      "periodicity": "daily"
+    },
+    {
+      "symbol": "ppa-sym-004",
+      "market_cap": 261476532224,
+      "periodicity": "daily"
+    },
+    {
+      "symbol": "ppa-sym-005",
+      "market_cap": 292965056512,
+      "periodicity": "daily"
+    }
+  ]
+}

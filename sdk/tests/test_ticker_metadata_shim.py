@@ -25,6 +25,9 @@ from riskmodels.peer_group import PeerGroupProxy
 FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "symbols_xlu_labels_20261022.json").read_text()
 )
+PPA_FIXTURE = json.loads(
+    (Path(__file__).parent / "fixtures" / "symbols_ppa_placeholder_20261022.json").read_text()
+)
 SYMBOLS = FIXTURE["symbols"]
 LATEST = FIXTURE["security_history_latest"]
 BY_TICKER = {r["ticker"]: r for r in SYMBOLS}
@@ -49,16 +52,20 @@ def requests(monkeypatch) -> list[tuple[str, dict[str, str]]]:
         table = url.rsplit("/", 1)[-1]
         seen.append((table, dict(params)))
         if table == "symbols":
-            rows = list(SYMBOLS)
+            rows = list(SYMBOLS) + list(PPA_FIXTURE["symbols"])
             for col in ("ticker", "sector_etf", "subsector_etf", "asset_type"):
                 if col in params:
-                    want = params[col].removeprefix("eq.")
-                    rows = [r for r in rows if r.get(col) == want]
+                    if params[col] == "not.like.*#*":
+                        rows = [r for r in rows if "#" not in str(r.get(col, ""))]
+                    else:
+                        want = params[col].removeprefix("eq.")
+                        rows = [r for r in rows if r.get(col) == want]
             rows.sort(key=lambda r: r["symbol"])
             cols = params["select"].split(",")
         elif table == "security_history_latest":
             keys = {k.strip('"') for k in params["symbol"][len("in.(") : -1].split(",")}
-            rows = [r for r in LATEST if r["symbol"] in keys and r["periodicity"] == "daily"]
+            cap_rows = list(LATEST) + list(PPA_FIXTURE["security_history_latest"])
+            rows = [r for r in cap_rows if r["symbol"] in keys and r["periodicity"] == "daily"]
             cols = params["select"].split(",")
         else:
             raise AssertionError(f"unexpected table {table}")
@@ -98,7 +105,9 @@ def test_unknown_ticker_is_empty(requests):
 
 def test_peer_query_is_stocks_ordered_by_cap_with_limit(requests):
     df = _Client().get_ticker_metadata(subsector_etf="PBW", limit=5)
-    assert [p for t, p in requests if t == "symbols"][0]["asset_type"] == "eq.stock"
+    params = [p for t, p in requests if t == "symbols"][0]
+    assert params["asset_type"] == "eq.stock"
+    assert params["ticker"] == "not.like.*#*"
     expected = sorted(
         (r["ticker"] for r in SYMBOLS if r["subsector_etf"] == "PBW" and CAP_BY_TICKER[r["ticker"]] is not None),
         key=lambda t: -CAP_BY_TICKER[t],
@@ -147,6 +156,14 @@ def test_peer_group_cap_weights_from_registry(requests):
     total = sum(CAP_BY_TICKER[t] for t in peers)
     for t in peers:
         assert pg.weights[t] == pytest.approx(CAP_BY_TICKER[t] / total)
+
+
+def test_bksy_ppa_peer_group_excludes_registry_placeholders(requests):
+    pg = PeerGroupProxy.from_ticker(_Client(), "BKSY")
+    assert pg.group_by == "subsector_etf"
+    assert pg.sector_etf == "PPA"
+    assert pg.n_peers == 3
+    assert all("#" not in ticker for ticker in pg.peer_tickers)
 
 
 def test_peer_group_broadens_to_sector(requests):

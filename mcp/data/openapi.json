@@ -14733,7 +14733,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "Return only MAG7 tickers (AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA)."
+            "description": "Return only MAG7 tickers (AAPL, MSFT, NVDA, GOOG, AMZN, META, TSLA)."
           },
           {
             "name": "include_metadata",
@@ -14822,7 +14822,8 @@
                             "type": "string"
                           },
                           "subsector_etf": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "A plain ETF ticker, not a list."
                           }
                         }
                       }

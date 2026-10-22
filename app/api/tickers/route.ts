@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
         const mag7Tickers = [
           "AAPL",
           "MSFT",
-          "GOOGL",
+          "GOOG",
           "AMZN",
           "NVDA",
           "META",
