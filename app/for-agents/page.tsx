@@ -116,8 +116,8 @@ export default function ForAgentsPage() {
           <h2 className="text-2xl font-semibold text-white">Why call us instead of reasoning</h2>
           <p className="mt-3 text-sm leading-relaxed text-zinc-400">
             A general model approximating a factor decomposition from training data is slow, expensive, and
-            unauditable. A single RiskModels call returns the exact, current four-layer attribution and the ETF
-            hedge map — with a model version and data date you can cite. Live processing latency and service
+            unauditable. A single RiskModels call returns model-estimated four-layer attribution and ETF
+            hedge weights — with a model version and data date you can cite. Live processing latency and service
             health are published at{' '}
             <Link className="font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200" href="/api/health">
               /api/health

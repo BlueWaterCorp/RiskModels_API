@@ -734,8 +734,8 @@ export default function PricingPage() {
         <h2 className="text-xl font-bold text-white mb-1">Desk, Firm, and Production</h2>
         <p className="text-sm text-zinc-400 mb-5 max-w-3xl leading-snug">
           Annual licenses for teams that need a named contact, onboarding, and version-stability
-          guarantees. Pay-as-you-go remains the research funnel; these tiers are the procurement
-          path for a risk-model budget line.
+          commitments. Compare the scope below, and contact us to specify the usage rights,
+          support response times, and service commitments your team needs in its agreement.
         </p>
         <div className="grid gap-3 lg:grid-cols-3">
           {[
@@ -808,9 +808,10 @@ export default function PricingPage() {
           ))}
         </div>
         <p className="mt-4 text-xs text-zinc-500 max-w-3xl leading-snug">
-          Each license includes SLA terms, a named support contact, onboarding, and a deprecation
-          policy. Those are what the annual fee buys. Custom manager scorecards and private-data
-          onboarding are scoped separately.
+          Each license includes a named support contact, onboarding, and deprecation provisions.
+          Availability SLAs are listed for Firm and Production; model-version pinning is listed
+          for Production. Exact service levels and usage rights are defined in the signed agreement.
+          Custom manager scorecards and private-data onboarding are scoped separately.
         </p>
       </section>
 
