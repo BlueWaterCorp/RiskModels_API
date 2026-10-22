@@ -32,10 +32,10 @@ export default function WorkedExampleHero() {
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
-            Worked example — MSFT
+            Historical worked example — MSFT
           </p>
           <h2 className="mt-3 text-balance text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Per $1 long MSFT, ERM3 returns three hedge ratios you can trade.
+            Per $1 long MSFT, see three model-derived ETF hedge weights.
           </h2>
         </div>
 
@@ -61,7 +61,7 @@ export default function WorkedExampleHero() {
                   }`}
                 >
                   +{row.er}% explained risk
-                  {row.dominant ? ' · dominant' : ''}
+                  {row.dominant ? ' · largest ETF weight' : ''}
                 </p>
               </div>
             ))}
@@ -71,10 +71,10 @@ export default function WorkedExampleHero() {
             <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-baseline sm:justify-between">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-                  What&rsquo;s left — the bet
+                  What remains — model residual
                 </p>
                 <p className="mt-1 text-sm leading-snug text-zinc-300">
-                  MSFT&rsquo;s stock-specific return. Not hedgeable with ETFs.
+                  Return remaining after the modeled SPY, XLK, and IGV exposures.
                 </p>
               </div>
               <p className="font-mono text-3xl font-semibold text-white tabular-nums sm:text-[2.25rem]">
@@ -86,10 +86,16 @@ export default function WorkedExampleHero() {
         </div>
 
         <p className="mt-5 text-center font-mono text-[11px] text-zinc-500">
-          Example output from the ERM3 API as of {SNAPSHOT_DATE} · single call, no extrapolation ·{' '}
+          Historical ERM3 API example as of {SNAPSHOT_DATE} · not live estimates ·{' '}
           <Link href="/ticker/MSFT" className="text-emerald-400 underline-offset-2 hover:underline">
-            today&rsquo;s MSFT hedge
+            Get the latest MSFT estimates
           </Link>
+        </p>
+        <p className="mx-auto mt-3 max-w-3xl text-center text-xs leading-relaxed text-zinc-400">
+          Explained-risk shares describe the model&rsquo;s historical variance decomposition, not
+          expected returns or guaranteed future risk reduction. The displayed shares total 99%;
+          the original unrounded values, model version, and estimation window are not retained
+          with this illustrative snapshot. Residual exposure may still relate to other ETFs or factors.
         </p>
 
         <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
