@@ -174,15 +174,15 @@ One call to `fetch_stock_context()` produces everything a stock-level snapshot n
 - 1× `GET /ticker-returns` → stock daily history with L3 decomposition
 - 2× `GET /ticker-returns` → sector + subsector ETF daily returns
 
-Company name is resolved from the `ticker_metadata` Supabase table. Vol is derived from `stock_var` when `vol_23d` is not directly available: `vol = √(stock_var × 252)`.
+Company name is resolved from the `symbols` registry (`client.get_ticker_metadata()`). Vol is derived from `stock_var` when `vol_23d` is not directly available: `vol = √(stock_var × 252)`.
 
 ### `PeerGroupProxy` (`peer_group.py`)
 
 Bridges single stock → synthetic peer portfolio:
 
-1. Queries `ticker_metadata` via Supabase REST for the target's `subsector_etf`
-2. Queries same table for all tickers with matching `subsector_etf`, ordered by market cap
-3. Cap-weights using `market_cap` from the same table (zero extra API calls for weighting)
+1. Reads the target's `subsector_etf` from the `symbols` registry via Supabase REST (`client.get_ticker_metadata()`)
+2. Reads all stocks with matching `subsector_etf`, ordered by the latest daily market cap from `security_history_latest`
+3. Cap-weights using that `market_cap` (zero extra API calls for weighting)
 4. `compare()` calls `analyze_portfolio()` on the peer weights → `PeerComparison`
 
 The `PeerComparison` dataclass holds: target metrics, peer portfolio aggregation, selection spread (target − peer avg residual ER), per-ticker detail DataFrame.

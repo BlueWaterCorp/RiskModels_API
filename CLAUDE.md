@@ -80,7 +80,7 @@ The P1/DD waterfall uses **geometric (sequential compounding) attribution** — 
 ## PeerGroupProxy (Intermediary Object)
 **Location:** `sdk/riskmodels/peer_group.py`
 
-Bridges a single stock to a synthetic portfolio of its **subsector** peers. Uses Supabase `ticker_metadata` table directly (via `client.get_ticker_metadata()`) — zero extra API calls for peer discovery and cap-weighting.
+Bridges a single stock to a synthetic portfolio of its **subsector** peers. Uses the Supabase `symbols` registry plus `security_history_latest.market_cap` (via `client.get_ticker_metadata()`) — zero extra API calls for peer discovery and cap-weighting.
 
 ```python
 from riskmodels.peer_group import PeerGroupProxy
@@ -91,7 +91,7 @@ comparison.selection_spread                        # → target - peer avg resid
 ```
 
 **Key details:**
-- `from_ticker()` queries `ticker_metadata` for target's subsector_etf, then queries all matching peers ordered by market_cap. Cap-weights from the same table — one Supabase call, no batch-analyze needed.
+- `from_ticker()` reads the target's subsector_etf from `symbols`, then all stocks with that subsector ordered by the latest daily market_cap (`security_history_latest`). Cap-weights come from the same read — no batch-analyze needed.
 - DB value for subsector_etf is source of truth; `sector_etf_override` is fallback only.
 - Falls back from subsector_etf → sector_etf if too few peers.
 - Vol derived from `stock_var` when `vol_23d` unavailable: `sqrt(stock_var × 252)`.
@@ -113,8 +113,8 @@ render_XX_to_pdf(data, path)    → Path         # pure Matplotlib, no network
 When the Supabase schema changes, only `get_data` is touched. Renderers stay stable. The JSON file is the boundary between them.
 
 ## Data Contract (V3)
-- **`ticker_metadata`** — authoritative for sector/subsector mappings, company names, market caps. Used by PeerGroupProxy.
-- **`symbols`** — identity registry (symbol PK, ticker, sector_etf, subsector_etf)
+- **`symbols`** — identity registry and authoritative labels (symbol PK, ticker, name, sector_etf, subsector_etf). Used by PeerGroupProxy and `/api/tickers` metadata.
+- **`ticker_metadata`** — legacy, no writer, drifted from the model; no longer read by the SDK or `/api/tickers`.
 - **`security_history`** — long-form temporal (symbol, teo, periodicity, metric_key → value)
 - **`security_history_latest`** — materialized latest metrics per symbol
 - **`erm3_landing_chart_cache`** — pre-computed cumulative returns

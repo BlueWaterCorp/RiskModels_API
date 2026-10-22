@@ -1,45 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCorsHeaders } from "@/lib/cors";
-import { searchTickers } from "@/lib/dal/ticker-search";
+import {
+  searchTickers,
+  SYMBOL_LABEL_COLUMNS,
+  tickerMetadataEntry,
+  type SymbolLabelRow,
+  type TickerMetadataEntry,
+} from "@/lib/dal/ticker-search";
 import { fetchTradingCalendar } from "@/lib/dal/risk-engine-v3";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
-
-// Enrich metadata with company_name from security_master when symbols lacks it
-async function enrichMetadataFromSecurityMaster(
-  metadataMap: Record<string, { name: string; sector?: string; sector_etf?: string; subsector_etf?: string }>,
-  tickers: string[],
-): Promise<Record<string, { name: string; sector?: string; sector_etf?: string; subsector_etf?: string }>> {
-  const needEnrich = tickers.filter(
-    (t) => metadataMap[t] && metadataMap[t].name === t,
-  );
-  if (needEnrich.length === 0) return metadataMap;
-  try {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from("security_master")
-      .select("ticker, company_name, sector_etf, subsector_etfs")
-      .in("ticker", needEnrich)
-      .is("valid_to", null);
-    if (data) {
-      const updated = { ...metadataMap };
-      (data as any[]).forEach((r) => {
-        if (r.company_name && updated[r.ticker]) {
-          updated[r.ticker] = {
-            ...updated[r.ticker],
-            name: r.company_name,
-            sector_etf: r.sector_etf ?? updated[r.ticker].sector_etf,
-            subsector_etf: r.subsector_etfs ?? updated[r.ticker].subsector_etf,
-          };
-        }
-      });
-      return updated;
-    }
-  } catch (_) {
-    // Ignore
-  }
-  return metadataMap;
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -133,24 +103,12 @@ export async function GET(request: NextRequest) {
         if (includeMetadata) {
           const { data: metadata, error: metaError } = await createAdminClient()
             .from("symbols")
-            .select("ticker, metadata")
+            .select(SYMBOL_LABEL_COLUMNS)
             .in("ticker", mag7Tickers);
 
           if (!metaError && metadata) {
-            let metadataMap = Object.fromEntries(
-              (metadata as any[]).map((m) => [
-                m.ticker,
-                {
-                  name: m.metadata?.company_name || m.ticker,
-                  sector: m.metadata?.sector || m.metadata?.gics_sector_name,
-                  sector_etf: m.metadata?.sector_etf,
-                  subsector_etf: m.metadata?.subsector_etf,
-                },
-              ]),
-            );
-            metadataMap = await enrichMetadataFromSecurityMaster(
-              metadataMap,
-              mag7Tickers,
+            const metadataMap = Object.fromEntries(
+              (metadata as SymbolLabelRow[]).map((m) => [m.ticker, tickerMetadataEntry(m)]),
             );
 
             return NextResponse.json(
@@ -203,31 +161,21 @@ export async function GET(request: NextRequest) {
       if (includeMetadata && tickers.length > 0) {
         // Fetch metadata in batches to avoid query size limits
         const batchSize = 1000;
-        let metadataMap: Record<string, any> = {};
+        const metadataMap: Record<string, TickerMetadataEntry> = {};
 
         for (let i = 0; i < tickers.length; i += batchSize) {
           const batch = tickers.slice(i, i + batchSize);
           const { data: metadata, error: metaError } = await createAdminClient()
             .from("symbols")
-            .select("ticker, metadata")
+            .select(SYMBOL_LABEL_COLUMNS)
             .in("ticker", batch);
 
           if (!metaError && metadata) {
-            (metadata as any[]).forEach((m) => {
-              metadataMap[m.ticker] = {
-                name: m.metadata?.company_name || m.ticker,
-                sector: m.metadata?.sector || m.metadata?.gics_sector_name,
-                sector_etf: m.metadata?.sector_etf,
-                subsector_etf: m.metadata?.subsector_etf,
-              };
+            (metadata as SymbolLabelRow[]).forEach((m) => {
+              metadataMap[m.ticker] = tickerMetadataEntry(m);
             });
           }
         }
-
-        metadataMap = await enrichMetadataFromSecurityMaster(
-          metadataMap,
-          tickers,
-        );
 
         return NextResponse.json(
           { tickers, metadata: metadataMap },

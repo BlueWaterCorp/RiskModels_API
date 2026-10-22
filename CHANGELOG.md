@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-22 — Ticker labels come from the `symbols` registry
+
+- `GET /api/tickers?include_metadata=true` (full list and `mag7=true`): `name`, `sector_etf` and `subsector_etf` now come from each ticker's own `symbols` row. They were looked up in the security-master mirror by ticker, so tickers with more than one open mirror row (warrants, second identities) got whichever row came last, and `subsector_etf` was a bracketed list string such as `["SMH"]` instead of the ETF ticker the spec declares. It is now a plain ticker (`SMH`). Names are the registry's display names (`NVIDIA Corporation`, was `NVIDIA CORP`). The response shape is unchanged; missing values are still omitted.
+- `GET /api/tickers?search=` and the chat `search_tickers` tool: company-name queries now match `symbols.name` (the old filter read a metadata key no row carries), and `name` / `sector` come from the same row.
+- Python SDK `get_ticker_metadata()` no longer reads the legacy `ticker_metadata` table, which has no writer and lacked 656 of the 3,405 registry tickers. It reads `symbols` plus the latest daily `market_cap` from `security_history_latest`, with the same columns, filters and ordering. Sector and subsector queries return stocks only. `PeerGroupProxy.from_ticker` now resolves every registry ticker and uses the model's sector and subsector assignments.
+
 ## 2026-10-15 — `/portfolio/exposure`: risk-basis beta, scenario inputs, `top_contributors`, ETF reason codes
 
 - `beta.risk_basis`: the market beta implied by the exposure vector the risk split uses and the ETF covariance, xᵀΣe_SPY / σ²_SPY, in SPY-equivalent dollars (`beta_usd`), as a share of gross, and by layer. The existing fields stay ERM3 L1 betas and are labelled `method: "l1_market_beta"`; the two agree under `hedge_level: "l1"`.
