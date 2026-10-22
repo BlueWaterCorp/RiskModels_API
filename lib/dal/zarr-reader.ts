@@ -1795,7 +1795,7 @@ export interface ReadIndustryPanelResult {
   panel_key: IndustryPanelKey;
 }
 
-// Industry dimension name. Current stores use `bw_industry_id` (101-159); stores built before
+// Industry dimension name. Current stores use `bw_industry_id` (101-160); stores built before
 // the taxonomy switch used the older name, read only until those vintages age out.
 const INDUSTRY_DIM_NAMES = ["bw_industry_id", "fs_industry_code"] as const;
 

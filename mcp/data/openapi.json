@@ -2182,7 +2182,7 @@
         "properties": {
           "industry_code": {
             "type": "integer",
-            "description": "BW industry id (`bw_industry_id`, 101-159). Stores built before the taxonomy switch carry a legacy 4-digit industry code."
+            "description": "BW industry id (`bw_industry_id`, 101-160). Stores built before the taxonomy switch carry a legacy 4-digit industry code."
           },
           "level": {
             "type": "string",
