@@ -23,6 +23,7 @@ import { buildRiskSnapshotPdf } from "@/lib/portfolio/risk-snapshot-pdf";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { getCorsHeaders } from "@/lib/cors";
+import { transitionPositions, type PositionTransition } from "@/lib/identity/transition-positions";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +49,28 @@ function snapshotCacheKey(
 }
 
 async function buildSnapshotResponse(
-  validation: PortfolioRiskSnapshotRequest,
+  request: PortfolioRiskSnapshotRequest,
   context: BillingContext,
   origin: string | null,
 ): Promise<NextResponse> {
+  // ERM3-73: a book dated as_of_date is read as of that date and carried to today's model data through
+  // reviewed corporate-action events (a reused ticker, an ADS that became an ordinary share).
+  let validation = request;
+  let transitions: PositionTransition[] = [];
+  if (request.as_of_date) {
+    const t = await transitionPositions(request.positions, {
+      heldOn: request.as_of_date,
+      asOf: new Date().toISOString().slice(0, 10),
+    });
+    validation = { ...request, positions: t.positions };
+    transitions = t.transitions;
+    if (!t.positions.length) {
+      return NextResponse.json(
+        { error: "No valid positions", message: "Every position became cash or was cancelled after as_of_date", transitions },
+        { status: 400, headers: getCorsHeaders(origin) },
+      );
+    }
+  }
   const core = await runPortfolioRiskComputation(validation.positions, {
     timeSeries: false,
     years: 1,
@@ -175,6 +194,7 @@ async function buildSnapshotResponse(
     per_ticker: core.perTicker,
     summary: core.summary,
     ...(core.errorsList.length ? { errors: core.errorsList } : {}),
+    ...(transitions.length ? { transitions } : {}),
     _agent: { cost_usd: context.costUsd, request_id: context.requestId },
     _metadata: buildMetadataBody(metadata),
   };

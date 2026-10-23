@@ -150,6 +150,46 @@ components:
         selects the tabular format.
 
   schemas:
+    PositionTransition:
+      type: object
+      description: How reviewed corporate-action events moved one submitted ticker between the date the book was recorded and the model date.
+      properties:
+        submitted_ticker: { type: string }
+        held_on: { type: string, format: date }
+        as_of: { type: string, format: date }
+        status:
+          type: string
+          enum: [rewritten, carried, dropped, unsupported, unresolved]
+          description: "`rewritten`: priced under another ticker. `carried`: same ticker, events applied (e.g. ADS to ordinary share). `dropped`: became cash or was cancelled. `unsupported`: became several securities or an unknown outcome; left as submitted. `unresolved`: identity on held_on ambiguous or unavailable; left as submitted."
+        identity_source: { type: string, nullable: true }
+        source_bw_sym_id: { type: string, nullable: true }
+        bw_sym_id: { type: string, nullable: true, description: The security priced, when one. }
+        ticker: { type: string, nullable: true, description: The ticker the position is priced under. }
+        outcome: { type: string }
+        event_ids: { type: array, items: { type: string } }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              event_id: { type: string }
+              event_type: { type: string }
+              effective_date: { type: string, format: date }
+              from_bw_sym_id: { type: string }
+              from_ticker: { type: string }
+              from_instrument: { type: string, nullable: true }
+              outcome: { type: string }
+              to_bw_sym_id: { type: string, nullable: true }
+              to_ticker: { type: string, nullable: true }
+              to_instrument: { type: string, nullable: true }
+              ratio: { type: string, nullable: true, description: "Exact output units per input unit as numerator/denominator, e.g. 1/4." }
+              source:
+                type: object
+                properties:
+                  form: { type: string }
+                  accession: { type: string, nullable: true }
+                  url: { type: string }
+        detail: { type: string }
     AgentMeta:
       type: object
       description: Per-request billing and telemetry metadata appended to metered responses.
@@ -8961,6 +9001,19 @@ paths:
         beta exactly (L1 has one factor, SPY). Tickers resolve against today's registry, so names
         delisted since `as_of` are dropped as `symbol_not_found`, and names with no model data in
         that window (e.g. not yet listed) as `no_data_at_as_of`. Same price as a latest call.
+
+
+        **Dated books.** With `as_of` or `positions_as_of`, each ticker that appears in a reviewed
+        corporate-action event is read as of `positions_as_of` (default `as_of`) and carried to
+        `as_of` through those events before it is priced, so a reused ticker is not priced as its
+        later owner (SPCX held on 2026-03-31 is the ETF that trades as SPCK, not SpaceX). Every
+        such position is listed in `transitions` with its event ids, exact `numerator/denominator`
+        ratios and SEC sources. A position that became cash or was cancelled is removed from the book;
+        one that became several securities (a spin-off) is left as submitted and marked
+        `unsupported`, because a dollar value cannot be split without prices. Tickers in no reviewed
+        event are priced exactly as without the dates.
+
+
         The earliest supported `as_of` is 2011-12-07: model history is served from the first date
         whose full estimation window is covered (hedge ratios from 2010-12-08, residual shares and
         stock_var from 2011-12-07, L* levels from 2013-01-01). An earlier `as_of` returns 422 with
@@ -9028,6 +9081,10 @@ paths:
                   type: string
                   format: date
                   description: Past model date (YYYY-MM-DD, 2011-12-07 or later; earlier dates return 422). Omit for the latest. Same price. Before 2013-01-01, hedge_level lstar uses L3 for every name.
+                positions_as_of:
+                  type: string
+                  format: date
+                  description: Date the book was recorded (YYYY-MM-DD), on or before `as_of`. Tickers are read as of this date and carried to `as_of` (today when `as_of` is omitted) through reviewed corporate-action events; see `transitions`. Omitted with `as_of` given, the book is read as of `as_of`.
                 top_contributors:
                   oneOf:
                     - { type: integer, minimum: 1, maximum: 1000 }
@@ -9058,6 +9115,10 @@ paths:
               schema:
                 type: object
                 properties:
+                  transitions:
+                    type: array
+                    description: Present when `as_of` or `positions_as_of` is sent. One entry per submitted ticker that reviewed corporate-action events moved, rewrote, removed or could not carry.
+                    items: { $ref: '#/components/schemas/PositionTransition' }
                   as_of:
                     type: object
                     properties:
@@ -9435,7 +9496,7 @@ paths:
                 as_of_date:
                   type: string
                   format: date
-                  description: Optional label date (YYYY-MM-DD); data is still latest available from V3.
+                  description: Optional date the book was recorded (YYYY-MM-DD). Data is still the latest available; tickers that appear in reviewed corporate-action events are read as of this date and carried to today before pricing, and the JSON response lists them in `transitions` (same shape as POST /portfolio/exposure).
                 format:
                   type: string
                   enum: [pdf, json, png]

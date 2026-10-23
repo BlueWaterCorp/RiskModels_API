@@ -330,6 +330,23 @@ export const PortfolioExposureRequestSchema = z.object({
     }, "as_of must be a real calendar date")
     .refine((d) => d <= new Date().toISOString().slice(0, 10), "as_of cannot be in the future")
     .optional(),
+  /**
+   * Date the book was recorded (YYYY-MM-DD), when it differs from as_of. Tickers are read as of this
+   * date and carried to as_of through reviewed corporate-action events (see `transitions` in the
+   * response). Omitted with as_of given: the book is read as of as_of.
+   */
+  positions_as_of: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "positions_as_of must be YYYY-MM-DD")
+    .refine((d) => {
+      const t = new Date(`${d}T00:00:00Z`);
+      return !Number.isNaN(t.getTime()) && t.toISOString().startsWith(d);
+    }, "positions_as_of must be a real calendar date")
+    .refine((d) => d <= new Date().toISOString().slice(0, 10), "positions_as_of cannot be in the future")
+    .optional(),
+}).refine((r) => !r.positions_as_of || !r.as_of || r.positions_as_of <= r.as_of, {
+  message: "positions_as_of must be on or before as_of",
+  path: ["positions_as_of"],
 });
 
 /**

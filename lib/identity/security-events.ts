@@ -208,7 +208,28 @@ export type CashProceeds = {
   in_lieu_of_units: Frac | null;
   in_lieu_of: string | null;
 };
+/** One applied output leg: which security became which, by which event, at the exact ratio (`n/d`). */
+export type TransitionStep = {
+  event_id: string;
+  event_type: string;
+  effective_date: string;
+  from_bw_sym_id: string;
+  from_ticker: string;
+  from_instrument: string;
+  outcome: Leg["outcome"];
+  to_bw_sym_id: string | null;
+  to_ticker: string;
+  to_instrument: string;
+  ratio: string | null;
+  quantity_in: Frac;
+  quantity_out: Frac | null;
+};
+
+/** An exact fraction as `numerator/denominator` (reduced); never a rounded decimal. */
+export const fracToRatio = (a: Frac): string => `${a.n}/${a.d}`;
+
 export type EventResolution = {
+  steps?: TransitionStep[];
   holdings: Holding[];
   cash: CashProceeds[];
   cancelled_by: string[];
@@ -246,6 +267,7 @@ export function applyEvents(
   const unresolved: string[] = [];
   const applied: string[] = [];
   const notes: string[] = [];
+  const steps: TransitionStep[] = [];
   for (const e of effectiveEvents(events, opts.known_as_of)) {
     if (e.effective_date > as_of) continue;
     for (const src of e.inputs) {
@@ -272,6 +294,22 @@ export function applyEvents(
       held.delete(src.bw_sym_id!);
       applied.push(e.event_id);
       for (const o of outs) {
+        const step: TransitionStep = {
+          event_id: e.event_id,
+          event_type: e.event_type,
+          effective_date: e.effective_date,
+          from_bw_sym_id: source.bw_sym_id,
+          from_ticker: source.ticker || src.ticker,
+          from_instrument: source.instrument || src.instrument,
+          outcome: o.outcome,
+          to_bw_sym_id: o.bw_sym_id,
+          to_ticker: o.ticker,
+          to_instrument: o.instrument,
+          ratio: o.ratio ? fracToRatio(o.ratio) : null,
+          quantity_in: source.quantity,
+          quantity_out: null,
+        };
+        steps.push(step);
         if (o.outcome === "continues" || o.outcome === "new_security") {
           let q = mul(source.quantity, o.ratio!);
           if (fractions === "apply" && (o.fractional_treatment === "cash_in_lieu" || o.fractional_treatment === "rounded_down")) {
@@ -291,6 +329,7 @@ export function applyEvents(
             instrument: o.instrument,
             quantity: prev ? add(prev.quantity, q) : q,
           });
+          step.quantity_out = q;
         } else if (o.outcome === "cash") {
           cash.push({ event_id: e.event_id, currency: o.currency, amount: mul(source.quantity, o.cash_per_unit!), in_lieu_of_units: null, in_lieu_of: null });
         } else if (o.outcome === "cancelled") cancelled.push(e.event_id);
@@ -303,7 +342,7 @@ export function applyEvents(
     .sort((a, b) => Number(a.bw_sym_id !== bw_sym_id) - Number(b.bw_sym_id !== bw_sym_id) || cmp(a.bw_sym_id, b.bw_sym_id));
   const status =
     unknown.length || unresolved.length ? "unknown" : holdings.length ? "held" : cash.length ? "cashed_out" : cancelled.length ? "cancelled" : "none";
-  return { holdings, cash, cancelled_by: cancelled, unknown_by: unknown, applied_event_ids: applied, fractional_notes: notes, unresolved, status };
+  return { holdings, cash, cancelled_by: cancelled, unknown_by: unknown, applied_event_ids: applied, fractional_notes: notes, unresolved, status, steps };
 }
 
 export type TickerWindow = { ticker: string; bw_sym_id: string; start: string | null; end: string | null };
