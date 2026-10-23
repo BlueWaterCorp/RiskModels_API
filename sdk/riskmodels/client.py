@@ -3104,7 +3104,7 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lin, kind="tickers_universe")
         return df
 
-    # --- Supabase ticker_metadata (sector/peer discovery) ---
+    # --- Ticker metadata (sector/peer discovery) ---
 
     def get_ticker_metadata(
         self,
@@ -3117,33 +3117,47 @@ class RiskModelsClient:
         limit: int = 500,
         as_dataframe: bool = True,
     ) -> pd.DataFrame | list[dict[str, Any]]:
-        """Query the ``ticker_metadata`` Supabase table directly.
+        """Ticker labels and market caps for sector/peer discovery.
 
-        This is the authoritative source for sector/subsector mappings,
-        company names, and market caps.  Used by :class:`PeerGroupProxy`
-        to discover sector peers without expensive batch-analyze calls.
+        Compatibility shim with the columns of the legacy ``ticker_metadata``
+        table, which is no longer read (it has no writer and drifted from the
+        model). Rows come from one ``symbols`` read (ticker, symbol, name,
+        sector_etf, subsector_etf) joined on ``symbol`` to the latest daily
+        ``market_cap`` in ``security_history_latest``. Used by
+        :class:`PeerGroupProxy` to discover peers without batch-analyze calls.
+
+        Sector or subsector queries return stocks only, as the legacy table
+        did; an exact ``ticker`` query returns the registry row whatever its
+        asset type.
 
         Parameters
         ----------
         ticker        : Exact ticker filter (e.g. ``"NVDA"``).
         sector_etf    : Filter rows where ``sector_etf`` matches (e.g. ``"XLK"``).
         subsector_etf : Filter rows where ``subsector_etf`` matches (e.g. ``"SOXX"``).
-        columns       : PostgREST ``select`` clause.
-        order         : PostgREST ``order`` clause.
+        columns       : Comma-separated output columns, from ``ticker``,
+                        ``symbol``, ``company_name``, ``market_cap``,
+                        ``sector_etf``, ``subsector_etf``.
+        order         : PostgREST-style ``column.asc|desc[.nullsfirst|.nullslast]``
+                        on one of those columns.
         limit         : Max rows.
         as_dataframe  : Return a DataFrame (default) or list of dicts.
 
         Returns
         -------
-        DataFrame or list[dict] with the requested metadata.
+        DataFrame or list[dict] with the requested columns.
 
         Raises
         ------
         ValueError
-            If ``SUPABASE_URL`` or ``SUPABASE_SERVICE_ROLE_KEY`` are not set.
+            If ``SUPABASE_URL`` or ``SUPABASE_SERVICE_ROLE_KEY`` are not set,
+            or ``columns`` / ``order`` name an unsupported column.
         """
         from .env import load_repo_dotenv
         load_repo_dotenv()
+
+        out_cols = _ticker_metadata_columns(columns)
+        order_spec = _ticker_metadata_order(order)
 
         sb_url = os.environ.get("SUPABASE_URL", "").strip().strip('"').strip("'").rstrip("/")
         sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip().strip('"').strip("'")
@@ -3152,36 +3166,43 @@ class RiskModelsClient:
                 "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to use get_ticker_metadata(). "
                 "These are typically in .env.local alongside RISKMODELS_API_KEY."
             )
-
-        params: dict[str, str] = {
-            "select": columns,
-            "order": order,
-            "limit": str(limit),
-        }
-        if ticker:
-            params["ticker"] = f"eq.{ticker}"
-        if sector_etf:
-            params["sector_etf"] = f"eq.{sector_etf}"
-        if subsector_etf:
-            params["subsector_etf"] = f"eq.{subsector_etf}"
-
         headers = {
             "apikey": sb_key,
             "Authorization": f"Bearer {sb_key}",
         }
 
-        r = httpx.get(
-            f"{sb_url}/rest/v1/ticker_metadata",
-            params=params,
-            headers=headers,
-            timeout=15,
-        )
-        r.raise_for_status()
-        rows = r.json()
+        params: dict[str, str] = {"select": _SYMBOLS_LABEL_SELECT, "order": "symbol.asc"}
+        if ticker:
+            params["ticker"] = f"eq.{ticker.strip().upper()}"
+        if sector_etf:
+            params["sector_etf"] = f"eq.{sector_etf}"
+        if subsector_etf:
+            params["subsector_etf"] = f"eq.{subsector_etf}"
+        if not ticker and (sector_etf or subsector_etf):
+            params["asset_type"] = "eq.stock"
+            params["ticker"] = "not.like.*#*"
+        symbol_rows = _postgrest_get_all(f"{sb_url}/rest/v1/symbols", params, headers)
 
+        cap_rows: list[dict[str, Any]] = []
+        symbols = [str(r["symbol"]) for r in symbol_rows if r.get("symbol")]
+        if symbols and ("market_cap" in out_cols or order_spec[0] == "market_cap"):
+            for i in range(0, len(symbols), _CAP_CHUNK):
+                chunk = symbols[i : i + _CAP_CHUNK]
+                cap_rows.extend(
+                    _postgrest_get_all(
+                        f"{sb_url}/rest/v1/security_history_latest",
+                        {
+                            "select": "symbol,market_cap",
+                            "periodicity": "eq.daily",
+                            "symbol": "in.(" + ",".join(f'"{s}"' for s in chunk) + ")",
+                        },
+                        headers,
+                    )
+                )
+
+        rows = _ticker_metadata_rows(symbol_rows, cap_rows, out_cols, order_spec, limit)
         if as_dataframe:
-            df = pd.DataFrame(rows) if rows else pd.DataFrame()
-            return df
+            return pd.DataFrame(rows, columns=out_cols) if rows else pd.DataFrame()
         return rows
 
     # --- Visual Refinement (MatPlotAgent Pattern) ---
@@ -3261,3 +3282,92 @@ class RiskModelsClient:
     analyze = analyze_portfolio
     get_cube = get_dataset
     get_panel = get_dataset
+
+
+# --- get_ticker_metadata shim helpers (symbols + security_history_latest) ---
+
+_SYMBOLS_LABEL_SELECT = "symbol,ticker,name,sector_etf,subsector_etf"
+_TICKER_METADATA_COLUMNS = (
+    "ticker",
+    "symbol",
+    "company_name",
+    "market_cap",
+    "sector_etf",
+    "subsector_etf",
+)
+_CAP_CHUNK = 150  # symbols per security_history_latest request (URL length)
+_PAGE = 1000  # PostgREST max rows per response
+
+
+def _ticker_metadata_columns(columns: str) -> list[str]:
+    cols = [c.strip() for c in columns.split(",") if c.strip()]
+    unknown = [c for c in cols if c not in _TICKER_METADATA_COLUMNS]
+    if unknown or not cols:
+        raise ValueError(
+            f"get_ticker_metadata(): unsupported columns {unknown or columns!r}; "
+            f"choose from {', '.join(_TICKER_METADATA_COLUMNS)}"
+        )
+    return cols
+
+
+def _ticker_metadata_order(order: str) -> tuple[str, bool, bool]:
+    """Parse ``col.asc|desc[.nullsfirst|.nullslast]`` → (col, descending, nulls_last)."""
+    parts = [p.strip() for p in (order or "").split(",")[0].split(".") if p.strip()]
+    col = parts[0] if parts else "market_cap"
+    if col not in _TICKER_METADATA_COLUMNS:
+        raise ValueError(
+            f"get_ticker_metadata(): unsupported order column {col!r}; "
+            f"choose from {', '.join(_TICKER_METADATA_COLUMNS)}"
+        )
+    descending = "desc" in parts[1:]
+    # PostgREST default: NULLS LAST for asc, NULLS FIRST for desc.
+    nulls_last = "nullslast" in parts[1:] or ("nullsfirst" not in parts[1:] and not descending)
+    return col, descending, nulls_last
+
+
+def _ticker_metadata_rows(
+    symbol_rows: list[dict[str, Any]],
+    cap_rows: list[dict[str, Any]],
+    out_cols: list[str],
+    order_spec: tuple[str, bool, bool],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Join ``symbols`` rows to market caps on ``symbol``; sort, cap, project."""
+    caps: dict[str, Any] = {}
+    for r in cap_rows:
+        if r.get("symbol") is not None:
+            caps[str(r["symbol"])] = r.get("market_cap")
+    joined = [
+        {
+            "ticker": r.get("ticker"),
+            "symbol": r.get("symbol"),
+            "company_name": r.get("name"),
+            "market_cap": caps.get(str(r.get("symbol"))),
+            "sector_etf": r.get("sector_etf"),
+            "subsector_etf": r.get("subsector_etf"),
+        }
+        for r in symbol_rows
+    ]
+    col, descending, nulls_last = order_spec
+    present = [r for r in joined if r[col] is not None]
+    missing = [r for r in joined if r[col] is None]
+    present.sort(key=lambda r: r[col], reverse=descending)
+    ordered = present + missing if nulls_last else missing + present
+    return [{c: r[c] for c in out_cols} for r in ordered[: max(int(limit), 0)]]
+
+
+def _postgrest_get_all(
+    url: str, params: dict[str, str], headers: dict[str, str]
+) -> list[dict[str, Any]]:
+    """GET every row of a PostgREST query, one page of ``_PAGE`` rows at a time."""
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        page_params = {**params, "limit": str(_PAGE), "offset": str(offset)}
+        r = httpx.get(url, params=page_params, headers=headers, timeout=15)
+        r.raise_for_status()
+        page = r.json()
+        rows.extend(page)
+        if len(page) < _PAGE:
+            return rows
+        offset += _PAGE
