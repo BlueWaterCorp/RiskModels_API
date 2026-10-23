@@ -62,7 +62,7 @@ export type ResolveRequest = {
   elections: Record<string, string>;
 };
 
-type IdentitySource =
+export type IdentitySource =
   | "bw_sym_id"
   | "reviewed_event_window"
   | "reviewed_event_before_first"
@@ -168,7 +168,7 @@ function daysBetween(a: string, b: string): number {
   return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 }
 
-type IdentityAnswer = {
+export type IdentityAnswer = {
   status: "resolved" | "ambiguous" | "unavailable";
   bw_sym_id: string | null;
   source: IdentitySource | null;
@@ -177,7 +177,7 @@ type IdentityAnswer = {
   excluded_candidates: Array<{ bw_sym_id: string; reason: string }>;
 };
 
-async function resolveIdentity(req: ResolveRequest, events: SecurityEvent[], heldOn: string): Promise<IdentityAnswer> {
+export async function resolveIdentity(req: ResolveRequest, events: SecurityEvent[], heldOn: string): Promise<IdentityAnswer> {
   const base = { duplicate_records: [] as string[], excluded_candidates: [] as Array<{ bw_sym_id: string; reason: string }> };
   if (req.identifier_type === "bw_sym_id") {
     return { ...base, status: "resolved", bw_sym_id: req.identifier, source: "bw_sym_id", candidates: [req.identifier] };
@@ -238,7 +238,7 @@ async function resolveIdentity(req: ResolveRequest, events: SecurityEvent[], hel
   return { ...base, status: "unavailable", bw_sym_id: null, source: null, candidates: [] };
 }
 
-async function describe(ids: string[]): Promise<Map<string, { ticker: string | null; name: string | null }>> {
+export async function describe(ids: string[]): Promise<Map<string, { ticker: string | null; name: string | null }>> {
   const out = new Map<string, { ticker: string | null; name: string | null }>();
   if (!ids.length) return out;
   const { data } = await createAdminClient().from("symbols").select("symbol, ticker, name").in("symbol", ids);

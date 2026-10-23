@@ -18,6 +18,7 @@ import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-header
 import { PortfolioExposureRequestSchema } from "@/lib/api/schemas";
 import { asOfBeforeEarliest, computePortfolioExposure } from "@/lib/portfolio/signed-exposure-data";
 import { getCorsHeaders } from "@/lib/cors";
+import { transitionPositions, type PositionTransition } from "@/lib/identity/transition-positions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,7 +59,8 @@ export const POST = withBilling(
       );
     }
 
-    const { positions, lookback_days, hedge_level, as_of, top_contributors, include_positions } = validation.data;
+    const { positions: submitted, lookback_days, hedge_level, as_of, positions_as_of, top_contributors, include_positions } =
+      validation.data;
 
     const earliestErr = asOfBeforeEarliest(as_of);
     if (earliestErr) {
@@ -68,6 +70,30 @@ export const POST = withBilling(
 
     try {
       const fetchStart = performance.now();
+      // ERM3-73: a dated book is read as of the date it was recorded and carried to the model date through
+      // reviewed corporate-action events. Without either date the book is today's and passes through.
+      let positions = submitted;
+      let transitions: PositionTransition[] | undefined;
+      if (as_of || positions_as_of) {
+        const t = await transitionPositions(submitted, {
+          heldOn: positions_as_of ?? as_of!,
+          asOf: as_of ?? new Date().toISOString().slice(0, 10),
+        });
+        positions = t.positions;
+        transitions = t.transitions;
+        if (!positions.length) {
+          // Every position became cash or was cancelled before as_of: nothing to model, so not billed.
+          return NextResponse.json(
+            {
+              error: "No modelled positions",
+              message: "Every submitted position became cash or was cancelled by as_of; see transitions.",
+              dropped: [],
+              transitions,
+            },
+            { status: 422, headers: getCorsHeaders(origin) },
+          );
+        }
+      }
       const result = await computePortfolioExposure(positions, {
         lookbackDays: lookback_days,
         basis: hedge_level,
@@ -84,6 +110,7 @@ export const POST = withBilling(
             message:
               "None of the submitted positions could be modelled: no stock has risk metrics at the model date and no ETF held has return history. Each entry in dropped gives the ticker's reason and a one-line detail.",
             dropped: result.dropped,
+            ...(transitions ? { transitions } : {}),
           },
           { status: 422, headers: getCorsHeaders(origin) },
         );
@@ -98,6 +125,7 @@ export const POST = withBilling(
       const response = NextResponse.json(
         {
           ...result,
+          ...(transitions ? { transitions } : {}),
           _metadata: buildMetadataBody(metadata, { data_source: "zarr" }),
           _agent: {
             cost_usd: context.costUsd,

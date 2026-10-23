@@ -32,6 +32,8 @@ export interface SnapshotReportData {
     position_count: number;
   };
   per_ticker: SnapshotTickerRow[];
+  /** Short notes printed above the footer, e.g. positions carried through corporate-action events. */
+  footnotes?: string[];
   _metadata: {
     generated_at: string;
     lineage: string;
