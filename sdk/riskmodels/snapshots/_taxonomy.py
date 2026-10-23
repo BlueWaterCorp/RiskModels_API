@@ -1,7 +1,7 @@
 """Sector and industry taxonomy used by the stock stores (ids, codes, names, hedge ETFs).
 
-Store variables: ``bw_sector_id`` (71-81) and ``bw_industry_id`` (101-159). Generated from
-the model taxonomy, definitions version ``bw_taxonomy_v1_20260925``. Values outside the
+Store variables: ``bw_sector_id`` (71-81) and ``bw_industry_id`` (101-160). Generated from
+the model taxonomy, definitions version ``bw_taxonomy_v1_20261022``. Values outside the
 ranges are unclassified (-1 / 0 sentinels) and map to None.
 
 Stores published before the switch carry ``bw_sector_code`` (1-11, same order and sector
@@ -11,7 +11,7 @@ readers work against both vintages during the cutover.
 """
 from __future__ import annotations
 
-TAXONOMY_DEFINITIONS_VERSION = "bw_taxonomy_v1_20260925"
+TAXONOMY_DEFINITIONS_VERSION = "bw_taxonomy_v1_20261022"
 
 SECTOR_VAR = "bw_sector_id"
 INDUSTRY_VAR = "bw_industry_id"
@@ -57,6 +57,7 @@ INDUSTRIES: dict[int, tuple[str, str, int, str]] = {
     116: ('INDU.SVC', 'Outsourced services sold to companies', 73, 'IYJ'),
     117: ('INDU.WST', 'Waste and remediation operators', 73, 'EVX'),
     118: ('INDU.TRN', 'Freight, passenger and logistics carriers', 73, 'IYT'),
+    160: ('INDU.REN', 'Solar and other renewable-power equipment makers and installers', 73, 'PBW'),
     119: ('CONS.VEH', 'Vehicle and vehicle-parts makers', 74, 'CARZ'),
     120: ('CONS.HOM', 'New-house builders', 74, 'ITB'),
     121: ('CONS.DUR', 'Furniture, appliance and leisure-goods makers', 74, 'XHB'),
@@ -141,13 +142,13 @@ def industry_name(industry_id) -> str | None:
 def clean_ids(values, *, kind: str):
     """Float array of ids with sentinels and out-of-range values set to NaN.
 
-    ``kind`` is ``"sector"`` (71-81) or ``"industry"`` (101-159). A value from an older store
+    ``kind`` is ``"sector"`` (71-81) or ``"industry"`` (101-160). A value from an older store
     numbering falls outside both ranges and reads as unclassified.
     """
     import numpy as np
 
     a = np.asarray(values, dtype=float).copy()
-    lo, hi = (71, 81) if kind == "sector" else (101, 159)
+    lo, hi = (71, 81) if kind == "sector" else (101, 160)
     a[~(np.isfinite(a) & (a >= lo) & (a <= hi))] = np.nan
     return a
 
@@ -183,7 +184,7 @@ def sector_ids(values, *, legacy: bool):
 def industry_keys(values, *, legacy: bool):
     """Float array of industry grouping keys; unclassified NaN.
 
-    New stores: ids 101-159. Older stores: the stored positive code, usable only as a peer
+    New stores: ids 101-160. Older stores: the stored positive code, usable only as a peer
     grouping key (it has no id in this table).
     """
     import numpy as np

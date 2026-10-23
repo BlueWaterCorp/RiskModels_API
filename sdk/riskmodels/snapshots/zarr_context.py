@@ -130,7 +130,7 @@ def _resolve_company_name_local(ticker: str) -> str:
 
     return _TICKER_TO_NAME.get(ticker.upper(), ticker)
 
-# Sector ids (71-81) -> sector ETF / display name; industry ids (101-159) -> primary
+# Sector ids (71-81) -> sector ETF / display name; industry ids (101-160) -> primary
 # subsector ETF. SDK-local table (``_taxonomy``) so the SDK needs no model-repo import.
 from riskmodels.snapshots._taxonomy import (  # noqa: E402
     SECTOR_ID_TO_ETF as BW_SECTOR_TO_ETF,
@@ -213,7 +213,7 @@ def _subsector_etf(
     *,
     legacy: bool = False,
 ) -> str | None:
-    """Industry id (101-159) -> primary subsector ETF.
+    """Industry id (101-160) -> primary subsector ETF.
 
     ``legacy=True`` reads an industry code from a store published before the switch; its ETF
     comes from the model repo at ``erm3_root`` when importable, else None.
