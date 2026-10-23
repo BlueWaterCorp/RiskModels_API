@@ -271,6 +271,14 @@ export default function RenderSnapshotPage() {
         <PositionsTable rows={data.per_ticker} />
       </div>
 
+      {data.footnotes?.length ? (
+        <div style={{ position: "absolute", bottom: 52, left: 40, right: 40, fontSize: 7, color: "#6b7280" }}>
+          {data.footnotes.map((f, i) => (
+            <div key={i}>{f}</div>
+          ))}
+        </div>
+      ) : null}
+
       {/* Footer */}
       <div
         style={{

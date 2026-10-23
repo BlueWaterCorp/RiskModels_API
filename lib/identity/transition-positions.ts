@@ -144,3 +144,22 @@ export async function transitionPositions<T extends { ticker: string }>(
   return { positions: out, transitions: [...plan.values()].map((v) => v.transition) };
 }
 
+
+/** One printed line per transition, for the PDF / PNG footnote (the JSON carries the full `transitions`). */
+export function transitionFootnotes(transitions: PositionTransition[]): string[] {
+  if (!transitions.length) return [];
+  const lines = transitions.map((t) => {
+    const ev = t.event_ids.length ? ` (${t.event_ids.join(", ")})` : "";
+    switch (t.status) {
+      case "rewritten":
+        return `${t.submitted_ticker} held on ${t.held_on} is priced as ${t.ticker}${ev}.`;
+      case "carried":
+        return `${t.submitted_ticker} held on ${t.held_on} carried through${ev}.`;
+      case "dropped":
+        return `${t.submitted_ticker} held on ${t.held_on} removed: ${t.outcome === "cashed_out" ? "converted to cash" : "cancelled"}${ev}.`;
+      default:
+        return `${t.submitted_ticker} held on ${t.held_on} left as submitted (${t.status}).`;
+    }
+  });
+  return [`Positions recorded on ${transitions[0].held_on}, carried to today's data through reviewed corporate-action events:`, ...lines];
+}

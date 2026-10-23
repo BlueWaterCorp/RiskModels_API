@@ -150,6 +150,18 @@ export function computePortfolioLstarAttribution(
   return { market, sector, subsector, residual, weight_covered: weightCovered, dropped_count: droppedCount };
 }
 
+/** Sum weights of positions naming the same ticker (trimmed, upper-cased), keeping first-seen order. */
+export function netPositionsByTicker(
+  positions: { ticker: string; weight: number }[],
+): { ticker: string; weight: number }[] {
+  const out = new Map<string, number>();
+  for (const p of positions) {
+    const t = p.ticker.trim().toUpperCase();
+    out.set(t, (out.get(t) ?? 0) + p.weight);
+  }
+  return [...out].map(([ticker, weight]) => ({ ticker, weight }));
+}
+
 export function normalizeWeights(
   positions: { ticker: string; weight: number }[],
 ): { ticker: string; weight: number }[] {
@@ -256,7 +268,10 @@ export async function runPortfolioRiskComputation(
     return { status: "syncing" };
   }
 
-  const normalized = normalizeWeights(positions);
+  // Net weights per ticker first: two submitted positions can name one ticker, most often after a dated book
+  // is carried through reviewed events (FB and META recorded on 2021-12-31 both price as META). A Map keyed
+  // by ticker would otherwise keep only the last weight. The exposure route nets the same way.
+  const normalized = normalizeWeights(netPositionsByTicker(positions));
   const weightMap = new Map(normalized.map((p) => [p.ticker, p.weight]));
   const tickers = normalized.map((p) => p.ticker);
 

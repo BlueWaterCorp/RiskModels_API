@@ -5,6 +5,12 @@ import { DEFAULT_MACRO_FACTORS, normalizeMacroFactorKeys } from "@/lib/risk/macr
  * Common schema for ticker symbols.
  * Normalizes input: trims whitespace and converts to uppercase.
  */
+/** True for a YYYY-MM-DD string naming a real calendar date (2026-02-30 is not). */
+export function isCalendarDate(d: string): boolean {
+  const t = new Date(`${d}T00:00:00Z`);
+  return !Number.isNaN(t.getTime()) && t.toISOString().startsWith(d);
+}
+
 export const TickerSchema = z
   .string()
   .min(1, "Ticker is required")
@@ -749,9 +755,22 @@ export const PortfolioRiskSnapshotRequestSchema = z.object({
     .min(1, "At least one position is required")
     .max(100, "Maximum 100 positions"),
   title: z.string().max(200).optional(),
+  /** Display label printed on the report ("As of …"). It never changes which data or tickers are used. */
   as_of_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "as_of_date must be YYYY-MM-DD")
+    .refine(isCalendarDate, "as_of_date must be a real calendar date")
+    .optional(),
+  /**
+   * Date the book was recorded (YYYY-MM-DD), same meaning as on POST /portfolio/exposure. Tickers are
+   * read as of this date and carried to today's model data through reviewed corporate-action events
+   * (see `transitions` in the response). Omitted: the book is today's and passes through.
+   */
+  positions_as_of: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "positions_as_of must be YYYY-MM-DD")
+    .refine(isCalendarDate, "positions_as_of must be a real calendar date")
+    .refine((d) => d <= new Date().toISOString().slice(0, 10), "positions_as_of cannot be in the future")
     .optional(),
   format: z.enum(["pdf", "png", "json"]).default("json"),
   include_diversification: z.boolean().optional().default(false),

@@ -13548,7 +13548,12 @@
                   "as_of_date": {
                     "type": "string",
                     "format": "date",
-                    "description": "Optional date the book was recorded (YYYY-MM-DD). Data is still the latest available; tickers that appear in reviewed corporate-action events are read as of this date and carried to today before pricing, and the JSON response lists them in `transitions` (same shape as POST /portfolio/exposure)."
+                    "description": "Optional report label printed as \"As of\" (YYYY-MM-DD, a real calendar date). It does not change the data or the tickers used."
+                  },
+                  "positions_as_of": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Optional date the book was recorded (YYYY-MM-DD, not in the future), same meaning as on POST /portfolio/exposure. Data is still the latest available; tickers that appear in reviewed corporate-action events are read as of this date and carried to today before pricing. Positions that become the same ticker are netted. The JSON response lists them in `transitions`; the PDF and PNG print them as a footnote."
                   },
                   "format": {
                     "type": "string",

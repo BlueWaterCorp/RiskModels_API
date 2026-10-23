@@ -16,14 +16,14 @@ import {
   PortfolioRiskSnapshotRequestSchema,
   type PortfolioRiskSnapshotRequest,
 } from "@/lib/api/schemas";
-import { runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
+import { netPositionsByTicker, runPortfolioRiskComputation } from "@/lib/portfolio/portfolio-risk-core";
 import { computeDiversificationMetrics, type DiversificationTickerMetrics } from "@/lib/portfolio/portfolio-diversification";
 import { fetchEtfCorrelationMatrices } from "@/lib/portfolio/portfolio-diversification-etf-returns";
 import { buildRiskSnapshotPdf } from "@/lib/portfolio/risk-snapshot-pdf";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { getCorsHeaders } from "@/lib/cors";
-import { transitionPositions, type PositionTransition } from "@/lib/identity/transition-positions";
+import { transitionFootnotes, transitionPositions, type PositionTransition } from "@/lib/identity/transition-positions";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,7 @@ function snapshotCacheKey(
     positions: PortfolioRiskSnapshotRequest["positions"];
     title?: string;
     as_of_date?: string;
+    positions_as_of?: string;
     format: string;
     include_diversification?: boolean;
     window_days?: number;
@@ -53,20 +54,21 @@ async function buildSnapshotResponse(
   context: BillingContext,
   origin: string | null,
 ): Promise<NextResponse> {
-  // ERM3-73: a book dated as_of_date is read as of that date and carried to today's model data through
-  // reviewed corporate-action events (a reused ticker, an ADS that became an ordinary share).
+  // ERM3-73: a book recorded on positions_as_of is read as of that date and carried to today's model data
+  // through reviewed corporate-action events (a reused ticker, an ADS that became an ordinary share).
+  // as_of_date is only the printed label and never triggers this step.
   let validation = request;
   let transitions: PositionTransition[] = [];
-  if (request.as_of_date) {
+  if (request.positions_as_of) {
     const t = await transitionPositions(request.positions, {
-      heldOn: request.as_of_date,
+      heldOn: request.positions_as_of,
       asOf: new Date().toISOString().slice(0, 10),
     });
     validation = { ...request, positions: t.positions };
     transitions = t.transitions;
     if (!t.positions.length) {
       return NextResponse.json(
-        { error: "No valid positions", message: "Every position became cash or was cancelled after as_of_date", transitions },
+        { error: "No valid positions", message: "Every position became cash or was cancelled after positions_as_of", transitions },
         { status: 400, headers: getCorsHeaders(origin) },
       );
     }
@@ -103,6 +105,7 @@ async function buildSnapshotResponse(
   const asOf =
     validation.as_of_date ?? (teoLabel || new Date().toISOString().split("T")[0]);
   const title = validation.title ?? "Portfolio";
+  const footnotes = transitionFootnotes(transitions);
 
   const portfolioRiskIndex: Record<string, unknown> = {
     variance_decomposition: {
@@ -164,10 +167,7 @@ async function buildSnapshotResponse(
       validation.window_days,
     );
 
-    const normalizedPositions = validation.positions.map((p) => ({
-      ticker: p.ticker.trim().toUpperCase(),
-      weight: p.weight,
-    }));
+    const normalizedPositions = netPositionsByTicker(validation.positions);
     const totalWeight = normalizedPositions.reduce((s, p) => s + p.weight, 0);
     const normPositions = normalizedPositions.map((p) => ({
       ...p,
@@ -232,6 +232,7 @@ async function buildSnapshotResponse(
       title,
       asOfLabel: String(asOf),
       data: core,
+      footnotes,
     });
     const baseUrl =
       process.env.PLAYWRIGHT_BASE_URL ??
@@ -256,6 +257,7 @@ async function buildSnapshotResponse(
     title,
     asOfLabel: String(asOf),
     data: core,
+    footnotes,
   });
 
   const res = new NextResponse(Buffer.from(pdfBytes), {
@@ -308,6 +310,7 @@ export async function POST(request: NextRequest) {
     positions: pre.data.positions,
     title: pre.data.title,
     as_of_date: pre.data.as_of_date,
+    positions_as_of: pre.data.positions_as_of,
     format: pre.data.format,
     include_diversification: pre.data.include_diversification,
     window_days: pre.data.window_days,

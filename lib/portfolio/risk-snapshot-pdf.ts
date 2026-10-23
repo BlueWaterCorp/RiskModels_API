@@ -67,8 +67,10 @@ export async function buildRiskSnapshotPdfBytes(params: {
   asOfLabel: string;
   data: PortfolioRiskComputationOk;
   peerBar?: PeerVarianceBar | null;
+  footnotes?: string[];
 }): Promise<Uint8Array> {
   const { asOfLabel, data, peerBar } = params;
+  const notes = (params.footnotes ?? []).slice(0, 6);
   const doc = await PDFDocument.create();
   const M = 48;
 
@@ -83,7 +85,7 @@ export async function buildRiskSnapshotPdfBytes(params: {
   const nRows = Math.min(tickers.length, 20);
   const peerMembers = isSingle && peerBar?.membersLine ? 22 : 0;
   const peerExtra = isSingle && peerBar ? 58 + peerMembers : 0;
-  const height = 300 + peerExtra + (isSingle ? 116 : 0) + nRows * 16 + 96;
+  const height = 300 + peerExtra + (isSingle ? 116 : 0) + nRows * 16 + 96 + notes.length * 10;
   const width = 612;
   const page = doc.addPage([width, height]);
   const CW = width - M * 2;
@@ -311,7 +313,7 @@ export async function buildRiskSnapshotPdfBytes(params: {
   });
   y -= 18;
   for (const t of tickers) {
-    if (y < 96) {
+    if (y < 96 + notes.length * 10) {
       text(`… ${tickers.length - tickers.indexOf(t)} more positions`, M, y, 8, sans, COL.inkFaint);
       break;
     }
@@ -333,6 +335,12 @@ export async function buildRiskSnapshotPdfBytes(params: {
     page.drawLine({ start: { x: M, y: y - 5 }, end: { x: width - M, y: y - 5 }, thickness: 0.4, color: COL.fig });
     y -= 16;
   }
+
+  // ---- Footnotes (e.g. positions carried through corporate-action events) ----
+  notes.forEach((n, i) => {
+    const s = n.length > 130 ? `${n.slice(0, 127)}...` : n;
+    text(s, M, 74 + (notes.length - 1 - i) * 10, 7, sans, COL.inkMuted);
+  });
 
   // ---- Footer --------------------------------------------------------------
   rule(64);
@@ -357,6 +365,7 @@ export function toReportData(params: {
   title: string;
   asOfLabel: string;
   data: PortfolioRiskComputationOk;
+  footnotes?: string[];
 }): SnapshotReportData {
   const { title, asOfLabel, data } = params;
 
@@ -394,6 +403,7 @@ export function toReportData(params: {
       position_count: data.summary.resolved,
     },
     per_ticker: perTicker,
+    ...(params.footnotes?.length ? { footnotes: params.footnotes } : {}),
     _metadata: {
       generated_at: new Date().toISOString(),
       lineage: "ERM3 V3 security_history",
@@ -411,6 +421,7 @@ export async function buildRiskSnapshotPdf(params: {
   asOfLabel: string;
   data: PortfolioRiskComputationOk;
   peerBar?: PeerVarianceBar | null;
+  footnotes?: string[];
 }): Promise<Uint8Array> {
   if (process.env.PLAYWRIGHT_PDF_ENABLED === "true") {
     const { renderSnapshotPdf } = await import("./playwright-pdf-worker");
