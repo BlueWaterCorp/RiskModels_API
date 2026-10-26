@@ -1,5 +1,5 @@
 /**
- * H.147: `linked_beta_se` was never a standard error; the store now writes
+ * H.147: `linked_beta_se` was renamed; the store now writes
  * `link_fit_resid_sd` and keeps the old name as a deprecated alias. Either
  * public name must resolve to the new plane first and fall back to the old
  * one on vintages that predate the rename.

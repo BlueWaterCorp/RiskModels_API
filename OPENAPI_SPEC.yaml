@@ -2416,10 +2416,16 @@ components:
           type: number
           nullable: true
           description: >
-            Residual standard deviation of the 252-day link regression (cohort
-            factor on its parent), in daily-return units. A fit-quality /
-            dispersion measure — NOT a standard error of `linked_beta`; do not
-            build confidence intervals from it.
+            Classical OLS standard error of `linked_beta`: the slope SE of the
+            rolling 252-day link regression of the cohort factor on its
+            orthogonalized parent (`min_periods` 126),
+            sqrt(SSE / ((n - 2) * Sxx)), with n, SSE and Sxx taken on the
+            window's common sample of dates where both series are observed
+            (n - 2 residual degrees of freedom, n between 126 and 252).
+            Homoskedastic and conditional on the realized parent series, so it
+            does not include parent-construction or beta-drift uncertainty.
+            Held at the prior week-end fit within each week, like
+            `linked_beta`. The field name is unchanged.
         linked_beta_r2:
           type: number
           nullable: true
