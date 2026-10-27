@@ -16,6 +16,8 @@ RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run 
 RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install
 ```
 
+`install` registers the MCP server and then installs the five playbook skills from `BlueWaterCorp/riskmodels-plugin` for each detected client (`--no-skills` skips that step). Skills alone, when the server is already connected: `npx skills add BlueWaterCorp/riskmodels-plugin`.
+
 Local development can run the same flow with:
 
 ```bash
@@ -51,7 +53,7 @@ Config file: `~/.config/riskmodels/config.json`
 | Command | Description |
 |--------|-------------|
 | `riskmodels config init \| set \| list` | API key, `apiBaseUrl`, or Supabase (direct) |
-| `riskmodels install` | Detect Claude, Cursor, Codex, and VS Code MCP targets, store the API key in shared config, merge MCP configs with backups, and run a connection test. |
+| `riskmodels install` | Detect Claude, Cursor, Codex, and VS Code MCP targets, store the API key in shared config, merge MCP configs with backups, install the five playbook skills for each detected client, and run a connection test. `--no-skills` registers the server only. |
 | `riskmodels status` | Show shared config and MCP client detection status. |
 | `riskmodels doctor` | Local install-readiness diagnostics: Node, npx, API credentials, and client detection. |
 | `riskmodels uninstall` | Remove only the `riskmodels` MCP server block from supported client configs, with backups. |
@@ -102,4 +104,4 @@ Publishing (`npm publish`, version bumps, npm login / tokens) is **not** documen
 
 **Rule of thumb:** run publish commands only from **`cli/`**; the repo root package is the Next.js portal, not this CLI.
 
-The legacy `riskmodels-cli` npm package remains a backward-compatible published artifact. New releases from this directory target the unscoped `riskmodels` package; use `npx -y riskmodels@latest install` for a deterministic one-shot MCP setup.
+The legacy `riskmodels-cli` npm package remains a backward-compatible published artifact. New releases from this directory target the unscoped `riskmodels` package; use `npx -y riskmodels@latest install` for MCP registration plus the five skills (`--no-skills` for the server only).

@@ -6,6 +6,7 @@ import type { ClientDetection } from "./mcp-config-paths.js";
 import { configPath } from "./config.js";
 import { formatCliVersionLabel } from "./cli-version.js";
 import { abbreviatePath } from "./path-display.js";
+import type { SkillsInstallResult } from "./install-skills.js";
 
 const BULLET = "•";
 
@@ -59,6 +60,7 @@ export function printInstallSuccessHuman(opts: {
   hadErrors: boolean;
   /** When Claude CLI is detected, suggest native `claude mcp` as an alternative. */
   showClaudeCodeMcpTip?: boolean;
+  skills?: SkillsInstallResult;
 }): void {
   const {
     isFirstInstall,
@@ -68,6 +70,7 @@ export function printInstallSuccessHuman(opts: {
     firstPrompt,
     hadErrors,
     showClaudeCodeMcpTip,
+    skills,
   } = opts;
 
   if (isFirstInstall) {
@@ -139,6 +142,19 @@ export function printInstallSuccessHuman(opts: {
     );
   }
 
+  if (skills) {
+    logLine("");
+    if (skills.skipped) {
+      logLine(`${chalk.bold("Skills:")} ${chalk.dim(skills.reason ?? "skipped")}`);
+    } else if (skills.ok) {
+      logLine(`${chalk.bold("Skills:")} installed for ${skills.agents.join(", ")}`);
+    } else {
+      logLine(`${chalk.bold("Skills:")} ${chalk.red("FAILED")} ${chalk.dim(`(${skills.agents.join(", ")})`)}`);
+      if (skills.error) logLine(chalk.dim(`  ${skills.error}`));
+      logLine(chalk.dim("  MCP config was still written. Rerun, or: npx skills add BlueWaterCorp/riskmodels-plugin"));
+    }
+  }
+
   if (showClaudeCodeMcpTip) {
     logLine("");
     logLine("Claude Code users: you can also run");
@@ -170,6 +186,7 @@ export function printInstallDryRunHuman(opts: {
   plans: InstallPlan[];
   willStoreSharedKey?: boolean;
   firstPrompt: string;
+  skills?: SkillsInstallResult;
 }): void {
   logLine("");
   logLine(chalk.bold("Dry run — planned RiskModels MCP install"));
@@ -191,6 +208,15 @@ export function printInstallDryRunHuman(opts: {
     logLine(chalk.dim(API_KEY_EMAIL_HINT));
   }
   logLine("");
+  if (opts.skills) {
+    if (opts.skills.skipped) {
+      logLine(chalk.dim(`Skills: skipped (${opts.skills.reason ?? "skipped"}).`));
+    } else {
+      logLine(chalk.bold("Skills that would be installed:"));
+      logLine(chalk.dim(`  npx ${opts.skills.args.join(" ")}`));
+    }
+    logLine("");
+  }
   logLine(chalk.dim("Rerun without --dry-run after you are happy with this plan."));
   logLine("");
   logLine(`${chalk.bold("First prompt to paste into your AI client:")} "${opts.firstPrompt}"`);

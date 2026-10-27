@@ -30,6 +30,7 @@ import {
 import { apiRootFromUserBase } from "../lib/api-url.js";
 import { apiFetchOptionalAuth } from "../lib/api-client.js";
 import { warnIfGlobalJsonBeforeSubcommand } from "../lib/global-json-hint.js";
+import { planSkillsInstall, runSkillsInstall } from "../lib/install-skills.js";
 
 type InstallOptions = {
   client?: string;
@@ -41,6 +42,8 @@ type InstallOptions = {
   remote?: boolean;
   local?: boolean;
   json?: boolean;
+  /** Commander maps `--no-skills` onto this. Default true; false when the flag is passed. */
+  skills?: boolean;
 };
 
 function envApiKey(): string | undefined {
@@ -101,6 +104,7 @@ export function installCommand(): Command {
     .option("--local", "Use the local stdio server (npx @riskmodels/mcp) instead of the hosted endpoint")
     .option("--embed-key", "Local stdio only: embed the API key in MCP config env (not recommended)")
     .option("--json", "Structured JSON instead of formatted text (matches historical output shape)")
+    .option("--no-skills", "Register the MCP server only; do not install the five playbook skills")
     .action(async (opts: InstallOptions, cmd: Command) => {
       const json = opts.json || (cmd.optsWithGlobals() as { json?: boolean }).json || false;
       let clients;
@@ -131,6 +135,7 @@ export function installCommand(): Command {
       }
 
       const detections = await detectClients(clients);
+      const skillsPlan = planSkillsInstall(detections, opts.skills === false);
       const plans = buildInstallPlans(detections, { apiKey, embedKey: opts.embedKey, transport });
       const existingConfig = await loadConfig();
 
@@ -148,6 +153,7 @@ export function installCommand(): Command {
           embeddedInMcpConfig: transport === "remote" ? !!apiKey : !!opts.embedKey,
         },
         clients: plans,
+        skills: skillsPlan,
         firstPrompt: firstPrompt(),
         nextStep: dryRun
           ? "Review this plan, then rerun without --dry-run to write configs with backups."
@@ -163,6 +169,7 @@ export function installCommand(): Command {
             plans,
             willStoreSharedKey: !!apiKey && source !== configPath(),
             firstPrompt: firstPrompt(),
+            skills: skillsPlan,
           });
         }
         return;
@@ -204,11 +211,13 @@ export function installCommand(): Command {
         }),
       );
       const test = await connectionTest(existingConfig?.apiBaseUrl);
+      const skills = runSkillsInstall(skillsPlan, json);
       const result = {
         ...output,
         sharedConfigWrite,
         writes,
         connectionTest: test,
+        skills,
       };
 
       if (json) {
@@ -221,12 +230,13 @@ export function installCommand(): Command {
           sharedConfigWrite,
           connectionTest: test,
           firstPrompt: firstPrompt(),
-          hadErrors: writes.some((w) => w.action === "error") || !test.ok,
+          hadErrors: writes.some((w) => w.action === "error") || !test.ok || !skills.ok,
+          skills,
           showClaudeCodeMcpTip:
             transport === "local" && detections.some((d) => d.client === "claude" && d.commandAvailable),
         });
       }
-      if (writes.some((write) => write.action === "error") || !test.ok) {
+      if (writes.some((write) => write.action === "error") || !test.ok || !skills.ok) {
         process.exitCode = 1;
         return;
       }

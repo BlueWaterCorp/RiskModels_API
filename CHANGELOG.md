@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-27 — npm CLI `riskmodels` 3.1.0
+
+- `riskmodels install` registers the MCP server, then runs `npx skills add BlueWaterCorp/riskmodels-plugin` for each detected client (Claude Code, Cursor, Codex, GitHub Copilot). `--no-skills` registers the server only. The five playbooks stay in that git repo; the npm package does not vendor them.
+
 ## 2026-10-15 — `/portfolio/exposure`: risk-basis beta, scenario inputs, `top_contributors`, ETF reason codes
 
 - `beta.risk_basis`: the market beta implied by the exposure vector the risk split uses and the ETF covariance, xᵀΣe_SPY / σ²_SPY, in SPY-equivalent dollars (`beta_usd`), as a share of gross, and by layer. The existing fields stay ERM3 L1 betas and are labelled `method: "l1_market_beta"`; the two agree under `hedge_level: "l1"`.

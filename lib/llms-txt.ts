@@ -62,8 +62,9 @@ One-line form: **${mag7Csv}**. Examples use **GOOG** for Alphabet; **GOOGL** ali
 ## Developer setup (terminal)
 
 - Node.js LTS (https://nodejs.org) and an API key (https://riskmodels.app/get-key).
-- \`RISKMODELS_API_KEY=… npx -y riskmodels@latest install\` (\`--dry-run\` first is optional). The installer stores the key in ~/.config/riskmodels/config.json and adds the RiskModels MCP server to supported clients (Cursor, Claude Desktop, Codex and others).
-- Claude Code keeps its own MCP store. MCP only: \`claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp\`. With the plugin, its bundled connection is enough; a second registration of the same server is redundant. \`claude mcp list\` and \`claude plugin list\` show what is registered.
+- \`RISKMODELS_API_KEY=… npx -y riskmodels@latest install\` (\`--dry-run\` first is optional; \`--no-skills\` registers the server only). The installer stores the key in ~/.config/riskmodels/config.json, adds the RiskModels MCP server to supported clients (Cursor, Claude Desktop, Codex and others), and installs the five playbook skills for each client it found, plus GitHub Copilot when VS Code is present.
+- Skills only, when MCP is already connected: \`npx skills add BlueWaterCorp/riskmodels-plugin\`.
+- Claude Code keeps its own MCP store. \`riskmodels install\` registers that MCP connection and installs the five skills; the Claude plugin still supplies slash commands and the analyst agent. MCP only: \`claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp\`. With the plugin, its bundled connection is enough; a second registration of the same server is redundant. \`claude mcp list\` and \`claude plugin list\` show what is registered.
 - Proxy form: \`npx -y mcp-remote https://riskmodels.app/api/mcp/sse\` with \`AUTHORIZATION=Bearer <key>\`.
 - Python SDK (PyPI \`riskmodels-py\`): https://riskmodels.app/installation
 
