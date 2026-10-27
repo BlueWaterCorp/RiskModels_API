@@ -6042,7 +6042,7 @@ paths:
 
         Returns the simplified four-layer ERM3 exposure for a single ticker:
         `market`, `sector`, `subsector`, and `residual`. Each tradable layer
-        (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`;
+        (market / sector / subsector) maps to a hedge ETF from the `symbols` registry (BW taxonomy);
         `residual` is stock-specific and not tradable. The response also includes
         a top-level `hedge` map of ETF → dollar ratio. Each value is the layer
         hedge ratio itself: the ETF dollar position per $1 long stock, negative
@@ -10328,7 +10328,10 @@ paths:
           required: false
           schema:
             type: boolean
-          description: Include sector, sector ETF, and subsector ETF per ticker.
+          description: >
+            Include name, sector, sector ETF, and subsector ETF per ticker. The ETF labels are the
+            BW taxonomy's, from the symbols registry: the same sector and subsector ETFs the model's
+            L2 / L3 hedges use (`GET /peers` and `POST /decompose` read the same labels).
       responses:
         "200":
           description: Ticker list or search results.
@@ -10400,8 +10403,14 @@ paths:
                           type: string
                         sector_etf:
                           type: string
+                          description: Hedge ETF of the security's BW sector (e.g. `XLK`). Absent when unclassified.
+                          example: XLK
                         subsector_etf:
                           type: string
+                          description: >
+                            Primary hedge ETF of the security's BW industry, a bare ticker (e.g. `SMH`).
+                            Absent when unclassified.
+                          example: SMH
 
   /estimate:
     post:

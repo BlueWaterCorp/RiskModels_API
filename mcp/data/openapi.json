@@ -8411,7 +8411,7 @@
     "/decompose": {
       "post": {
         "summary": "(internal/legacy) Decompose a position into four additive bets with hedge ratios",
-        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from `ticker_metadata`; `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio. Each value is the layer hedge ratio itself: the ETF dollar position per $1 long stock, negative = short the ETF. A stock with positive market beta carries a negative market `hr` (e.g. `l1_mkt_hr` ≈ -`l1_mkt_beta`), so the hedge shorts SPY.\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "**Per Snapshot Architecture v3, prefer `POST /snapshot` with `type: \"ticker\"` for new clients.** This endpoint remains callable as an internal building block.\nReturns the simplified four-layer ERM3 exposure for a single ticker: `market`, `sector`, `subsector`, and `residual`. Each tradable layer (market / sector / subsector) maps to a hedge ETF from the `symbols` registry (BW taxonomy); `residual` is stock-specific and not tradable. The response also includes a top-level `hedge` map of ETF → dollar ratio. Each value is the layer hedge ratio itself: the ETF dollar position per $1 long stock, negative = short the ETF. A stock with positive market beta carries a negative market `hr` (e.g. `l1_mkt_hr` ≈ -`l1_mkt_beta`), so the hedge shorts SPY.\n\nThe response also carries `style` and `stock_specific`: a diagnostic FF2 (SMB + HML) split of `exposure.residual` into a non-tradable style share and the doubly-cleaned stock-selection residual, on the `hedge_levels` basis. See `POST /v4/decompose` for the same split expressed as named blocks.\n\nSame billing profile as `GET /metrics/{ticker}` — this is a thin semantic wrapper that flattens the L3 metrics into an agent-friendly shape. For the full L1/L2/L3 snapshot (all six HR names), use `GET /metrics/{ticker}`.\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.005 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "decomposePosition",
         "tags": [
           "Risk Metrics"
@@ -14881,7 +14881,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "Include sector, sector ETF, and subsector ETF per ticker."
+            "description": "Include name, sector, sector ETF, and subsector ETF per ticker. The ETF labels are the BW taxonomy's, from the symbols registry: the same sector and subsector ETFs the model's L2 / L3 hedges use (`GET /peers` and `POST /decompose` read the same labels).\n"
           }
         ],
         "responses": {
@@ -14958,10 +14958,14 @@
                             "type": "string"
                           },
                           "sector_etf": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Hedge ETF of the security's BW sector (e.g. `XLK`). Absent when unclassified.",
+                            "example": "XLK"
                           },
                           "subsector_etf": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Primary hedge ETF of the security's BW industry, a bare ticker (e.g. `SMH`). Absent when unclassified.\n",
+                            "example": "SMH"
                           }
                         }
                       }

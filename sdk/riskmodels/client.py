@@ -3104,7 +3104,10 @@ class RiskModelsClient:
         attach_sdk_metadata(df, lin, kind="tickers_universe")
         return df
 
-    # --- Supabase ticker_metadata (sector/peer discovery) ---
+    # --- Supabase symbols registry (sector/peer discovery) ---
+
+    #: Columns :meth:`get_ticker_metadata` can return.
+    TICKER_METADATA_COLUMNS = ("ticker", "symbol", "company_name", "market_cap", "sector_etf", "subsector_etf")
 
     def get_ticker_metadata(
         self,
@@ -3117,30 +3120,32 @@ class RiskModelsClient:
         limit: int = 500,
         as_dataframe: bool = True,
     ) -> pd.DataFrame | list[dict[str, Any]]:
-        """Query the ``ticker_metadata`` Supabase table directly.
+        """Sector / subsector labels, names and latest market caps, read from Supabase directly.
 
-        This is the authoritative source for sector/subsector mappings,
-        company names, and market caps.  Used by :class:`PeerGroupProxy`
-        to discover sector peers without expensive batch-analyze calls.
+        Labels and names come from the ``symbols`` registry: ``sector_etf`` is the hedge ETF of the
+        security's BW sector and ``subsector_etf`` the primary hedge ETF of its BW industry, the
+        ETFs the model's L2 / L3 hedges use (ERM3-41). ``market_cap`` is the latest daily value in
+        ``security_history_latest``. This is the same source as ``GET /peers``; the legacy
+        ``ticker_metadata`` table (not refreshed since 2026-01) is no longer read.
+
+        Used by :class:`PeerGroupProxy` to discover peers without batch-analyze calls.
 
         Parameters
         ----------
         ticker        : Exact ticker filter (e.g. ``"NVDA"``).
         sector_etf    : Filter rows where ``sector_etf`` matches (e.g. ``"XLK"``).
-        subsector_etf : Filter rows where ``subsector_etf`` matches (e.g. ``"SOXX"``).
-        columns       : PostgREST ``select`` clause.
-        order         : PostgREST ``order`` clause.
-        limit         : Max rows.
+        subsector_etf : Filter rows where ``subsector_etf`` matches (e.g. ``"SMH"``).
+        columns       : Comma-separated subset of :attr:`TICKER_METADATA_COLUMNS` (``"*"`` = all).
+        order         : ``"market_cap.desc.nullslast"`` (default) or ``"market_cap.asc.nullslast"``;
+                        anything else leaves registry order.
+        limit         : Max rows (applied after ordering).
         as_dataframe  : Return a DataFrame (default) or list of dicts.
-
-        Returns
-        -------
-        DataFrame or list[dict] with the requested metadata.
 
         Raises
         ------
         ValueError
-            If ``SUPABASE_URL`` or ``SUPABASE_SERVICE_ROLE_KEY`` are not set.
+            If ``SUPABASE_URL`` or ``SUPABASE_SERVICE_ROLE_KEY`` are not set, or ``columns``
+            names a column this method does not return.
         """
         from .env import load_repo_dotenv
         load_repo_dotenv()
@@ -3153,35 +3158,82 @@ class RiskModelsClient:
                 "These are typically in .env.local alongside RISKMODELS_API_KEY."
             )
 
-        params: dict[str, str] = {
-            "select": columns,
-            "order": order,
-            "limit": str(limit),
+        wanted = [c.strip() for c in columns.split(",") if c.strip()]
+        if wanted == ["*"]:
+            wanted = list(self.TICKER_METADATA_COLUMNS)
+        unknown = [c for c in wanted if c not in self.TICKER_METADATA_COLUMNS]
+        if unknown:
+            raise ValueError(
+                f"get_ticker_metadata: unsupported column(s) {unknown}; "
+                f"available: {list(self.TICKER_METADATA_COLUMNS)}"
+            )
+
+        headers = {"apikey": sb_key, "Authorization": f"Bearer {sb_key}"}
+
+        def _get(table: str, params: dict[str, str]) -> list[dict[str, Any]]:
+            rows: list[dict[str, Any]] = []
+            offset = 0
+            while True:
+                r = httpx.get(
+                    f"{sb_url}/rest/v1/{table}",
+                    params={**params, "limit": "1000", "offset": str(offset)},
+                    headers=headers,
+                    timeout=15,
+                )
+                r.raise_for_status()
+                page = r.json()
+                rows.extend(page)
+                if len(page) < 1000:
+                    return rows
+                offset += 1000
+
+        sym_params: dict[str, str] = {
+            "select": "symbol,ticker,name,sector_etf,subsector_etf",
+            "order": "symbol.asc",
         }
         if ticker:
-            params["ticker"] = f"eq.{ticker}"
+            sym_params["ticker"] = f"eq.{ticker}"
         if sector_etf:
-            params["sector_etf"] = f"eq.{sector_etf}"
+            sym_params["sector_etf"] = f"eq.{sector_etf}"
         if subsector_etf:
-            params["subsector_etf"] = f"eq.{subsector_etf}"
+            sym_params["subsector_etf"] = f"eq.{subsector_etf}"
+        registry = _get("symbols", sym_params)
 
-        headers = {
-            "apikey": sb_key,
-            "Authorization": f"Bearer {sb_key}",
-        }
+        caps: dict[str, Any] = {}
+        if "market_cap" in wanted or (order.startswith("market_cap") and len(registry) > 1):
+            ids = [str(r["symbol"]) for r in registry if r.get("symbol")]
+            for i in range(0, len(ids), 150):
+                for row in _get(
+                    "security_history_latest",
+                    {
+                        "select": "symbol,market_cap",
+                        "periodicity": "eq.daily",
+                        "symbol": "in.(" + ",".join(f'"{x}"' for x in ids[i : i + 150]) + ")",
+                    },
+                ):
+                    caps[str(row["symbol"])] = row.get("market_cap")
 
-        r = httpx.get(
-            f"{sb_url}/rest/v1/ticker_metadata",
-            params=params,
-            headers=headers,
-            timeout=15,
-        )
-        r.raise_for_status()
-        rows = r.json()
+        rows = [
+            {
+                "ticker": r.get("ticker"),
+                "symbol": r.get("symbol"),
+                "company_name": r.get("name"),
+                "market_cap": caps.get(str(r.get("symbol"))),
+                "sector_etf": r.get("sector_etf"),
+                "subsector_etf": r.get("subsector_etf"),
+            }
+            for r in registry
+        ]
+        if order.startswith("market_cap"):
+            desc = ".desc" in order
+            with_cap = [r for r in rows if r["market_cap"] is not None]
+            no_cap = [r for r in rows if r["market_cap"] is None]
+            with_cap.sort(key=lambda r: float(r["market_cap"]), reverse=desc)
+            rows = with_cap + no_cap
+        rows = [{c: r[c] for c in wanted} for r in rows[: max(int(limit), 0)]]
 
         if as_dataframe:
-            df = pd.DataFrame(rows) if rows else pd.DataFrame()
-            return df
+            return pd.DataFrame(rows, columns=wanted) if rows else pd.DataFrame()
         return rows
 
     # --- Visual Refinement (MatPlotAgent Pattern) ---

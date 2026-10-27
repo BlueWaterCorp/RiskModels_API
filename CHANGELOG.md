@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-27 — One sector label set (ERM3-41)
+
+- `GET /tickers?include_metadata=true`: `sector_etf` / `subsector_etf` now come from the `symbols` registry, the BW taxonomy labels the model's L2 / L3 hedges and `GET /peers` use. They came from the security master's SIC crosswalk, which disagreed with the registry on 243 live names (e.g. DIS XLY → XLC, V and MA XLI → XLF, KLAC XLV → XLK). `subsector_etf` is a bare ticker (`"SMH"`), no longer a JSON list in a string (`"[\"SMH\"]"`); `name` prefers the registry name.
+- Python SDK: `get_ticker_metadata()` and `PeerGroupProxy` read `symbols` plus the latest `market_cap` from `security_history_latest` instead of the legacy `ticker_metadata` table (frozen since 2026-01), so peer cohorts match the model's hedges. `columns` accepts `ticker, symbol, company_name, market_cap, sector_etf, subsector_etf` (or `*`).
+
 ## 2026-10-27 — npm CLI `riskmodels` 3.1.0
 
 - `riskmodels install` registers the MCP server, then runs `npx skills add BlueWaterCorp/riskmodels-plugin` for each detected client (Claude Code, Cursor, Codex, GitHub Copilot). `--no-skills` registers the server only. The five playbooks stay in that git repo; the npm package does not vendor them.
