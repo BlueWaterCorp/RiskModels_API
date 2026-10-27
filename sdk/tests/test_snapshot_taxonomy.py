@@ -9,8 +9,23 @@ from riskmodels.snapshots.zarr_context import _sector_etf, _sector_name, _subsec
 
 def test_ranges_and_sizes():
     assert set(T.SECTORS) == set(range(71, 82))
-    assert len(T.INDUSTRIES) == 59 and all(101 <= k <= 159 for k in T.INDUSTRIES)
+    assert set(T.INDUSTRIES) == set(range(101, 161))
     assert all(v[2] in T.SECTORS for v in T.INDUSTRIES.values())
+
+
+def test_renewable_equipment_industry_matches_model_taxonomy():
+    assert T.TAXONOMY_DEFINITIONS_VERSION == "bw_taxonomy_v1_20261022"
+    assert T.INDUSTRIES[160] == (
+        "INDU.REN",
+        "Solar and other renewable-power equipment makers and installers",
+        73,
+        "PBW",
+    )
+    assert T.clean_ids(np.array([160]), kind="industry").tolist() == [160.0]
+    assert T.SECTORS[T.INDUSTRIES[160][2]][0] == "INDU"
+    assert T.industry_code(160) == "INDU.REN"
+    assert T.industry_name(160) == "Solar and other renewable-power equipment makers and installers"
+    assert _subsector_etf(160) == "PBW"
 
 
 def test_lookups():
