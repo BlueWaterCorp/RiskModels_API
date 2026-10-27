@@ -133,7 +133,7 @@ def _safe_etf_returns(
 
 
 def _resolve_company_name(ticker: str, client: Any = None) -> str:
-    """Best-effort company name from ticker_metadata.
+    """Best-effort company name from the symbols registry (get_ticker_metadata).
 
     Falls back to the ticker itself if anything goes wrong.
     """

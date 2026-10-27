@@ -10322,7 +10322,7 @@ paths:
           required: false
           schema:
             type: boolean
-          description: Return only MAG7 tickers (AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA).
+          description: Return only MAG7 tickers (AAPL, MSFT, NVDA, GOOG, AMZN, META, TSLA).
         - name: include_metadata
           in: query
           required: false
@@ -10402,6 +10402,7 @@ paths:
                           type: string
                         subsector_etf:
                           type: string
+                          description: A plain ETF ticker, not a list.
 
   /estimate:
     post:

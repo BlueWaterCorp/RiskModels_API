@@ -93,7 +93,7 @@ The following tables were used prior to V3 and may still exist for backward comp
 
 | Table | Superseded by |
 |-------|---------------|
-| `ticker_metadata` | `symbols` |
+| `ticker_metadata` | `symbols` (labels) + `security_history_latest.market_cap`. No writer; the SDK's `get_ticker_metadata()` reads the replacements since 2026-10-22. |
 | `ticker_factor_metrics` | `security_history_latest` |
 | `erm3_ticker_returns`, `erm3_l3_decomposition` | `security_history` |
 | `erm3_time_index` | `trading_calendar` |

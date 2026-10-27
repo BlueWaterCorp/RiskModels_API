@@ -1,0 +1,1320 @@
+{
+ "_source": "Live Supabase read 2026-10-22: every symbols row with sector_etf XLU, and its latest daily security_history_latest market_cap. The internal symbol key is replaced by an opaque sym-NNN key (join keys only); all other values are as read.",
+ "symbols": [
+  {
+   "symbol": "sym-001",
+   "ticker": "AEE",
+   "name": "Ameren Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-002",
+   "ticker": "AEP",
+   "name": "American Electric Power Company, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-003",
+   "ticker": "AES",
+   "name": "AES Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-004",
+   "ticker": "AQN",
+   "name": "Algonquin Power & Utilities Corp.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-005",
+   "ticker": "ATO",
+   "name": "Atmos Energy Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-006",
+   "ticker": "AVA",
+   "name": "Avista Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-007",
+   "ticker": "AWK",
+   "name": "American Water Works Company, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-008",
+   "ticker": "AWR",
+   "name": "American States Water Company",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-009",
+   "ticker": "AXIA-P",
+   "name": "AXIA Energia S.A.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-010",
+   "ticker": "BEP",
+   "name": "Brookfield Renewable Partners LP",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-011",
+   "ticker": "BEPC",
+   "name": "Brookfield Renewable Holdings Corporation Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-012",
+   "ticker": "BESS",
+   "name": "Bimergen Energy Corp",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-013",
+   "ticker": "BIPC",
+   "name": "Brookfield Infrastructure Corporation Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-014",
+   "ticker": "BKH",
+   "name": "Black Hills Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-015",
+   "ticker": "CEG",
+   "name": "Constellation Energy Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-016",
+   "ticker": "CEPU",
+   "name": "CENTRAL PUERTO S.A.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-017",
+   "ticker": "CIG",
+   "name": "ENERGY CO OF MINAS GERAIS",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-018",
+   "ticker": "CLNE",
+   "name": "Clean Energy Fuels Corp.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-019",
+   "ticker": "CMS",
+   "name": "CMS Energy Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-020",
+   "ticker": "CNP",
+   "name": "CenterPoint Energy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-021",
+   "ticker": "CPK",
+   "name": "Chesapeake Utilities Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-022",
+   "ticker": "CQP",
+   "name": "Cheniere Energy Partners, L.P.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-023",
+   "ticker": "CSIQ",
+   "name": "Canadian Solar Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-024",
+   "ticker": "CTRI",
+   "name": "Centuri Holdings, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-025",
+   "ticker": "CWEN",
+   "name": "Clearway Energy, Inc. Class C",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-026",
+   "ticker": "CWT",
+   "name": "California Water Service Group",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-027",
+   "ticker": "D",
+   "name": "Dominion Energy Inc",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-028",
+   "ticker": "DTE",
+   "name": "DTE Energy Company",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-029",
+   "ticker": "DUK",
+   "name": "Duke Energy Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-030",
+   "ticker": "ED",
+   "name": "Consolidated Edison, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-031",
+   "ticker": "EDN",
+   "name": "EDENOR",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-032",
+   "ticker": "EE",
+   "name": "Excelerate Energy, Inc. Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-033",
+   "ticker": "EIX",
+   "name": "Edison International",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-034",
+   "ticker": "ELPC",
+   "name": "ENERGY CO OF PARANA",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-035",
+   "ticker": "EMA",
+   "name": "Emera Incorporated",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-036",
+   "ticker": "ENIC",
+   "name": "Enel Chile S.A.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-037",
+   "ticker": "ENLT",
+   "name": "Enlight Renewable Energy Ltd",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-038",
+   "ticker": "ES",
+   "name": "Eversource Energy",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-039",
+   "ticker": "ETR",
+   "name": "Entergy Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-040",
+   "ticker": "EVRG",
+   "name": "Evergy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-041",
+   "ticker": "EXC",
+   "name": "Exelon Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-042",
+   "ticker": "FE",
+   "name": "FirstEnergy Corp.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-043",
+   "ticker": "FSLR",
+   "name": "First Solar, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-044",
+   "ticker": "FTS",
+   "name": "Fortis Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-045",
+   "ticker": "GFUZ",
+   "name": "GENERAL FUSION GROUP LTD",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-046",
+   "ticker": "GNE",
+   "name": "Genie Energy Ltd. Class B",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-047",
+   "ticker": "HE",
+   "name": "Hawaiian Electric Industries, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-048",
+   "ticker": "HNRG",
+   "name": "Hallador Energy Co",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-049",
+   "ticker": "HTO",
+   "name": "H2O America",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-050",
+   "ticker": "IDA",
+   "name": "IDACORP, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-051",
+   "ticker": "JKS",
+   "name": "JinkoSolar Holding Co., Ltd.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-052",
+   "ticker": "KEN",
+   "name": "Kenon Holdings Ltd.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-053",
+   "ticker": "KEP",
+   "name": "KOREA ELECTRIC POWER CORP",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-054",
+   "ticker": "LNG",
+   "name": "Cheniere Energy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-055",
+   "ticker": "LNT",
+   "name": "Alliant Energy Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-056",
+   "ticker": "MGEE",
+   "name": "MGE Energy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-057",
+   "ticker": "MSEX",
+   "name": "Middlesex Water Company",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-058",
+   "ticker": "NEE",
+   "name": "NextEra Energy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-059",
+   "ticker": "NEE-P-V",
+   "name": null,
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-060",
+   "ticker": "NEXT",
+   "name": "NextDecade Corp.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-061",
+   "ticker": "NFG",
+   "name": "National Fuel Gas Company",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-062",
+   "ticker": "NI",
+   "name": "NiSource Inc",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-063",
+   "ticker": "NJR",
+   "name": "New Jersey Resources Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-064",
+   "ticker": "NNE",
+   "name": "Nano Nuclear Energy Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-065",
+   "ticker": "NRG",
+   "name": "NRG Energy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-066",
+   "ticker": "NWE",
+   "name": "NorthWestern Energy Group, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-067",
+   "ticker": "NWN",
+   "name": "Northwest Natural Holding Co.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-068",
+   "ticker": "OGE",
+   "name": "OGE Energy Corp.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-069",
+   "ticker": "OGS",
+   "name": "ONE Gas, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-070",
+   "ticker": "OKE",
+   "name": "ONEOK, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-071",
+   "ticker": "OKLO",
+   "name": "Oklo Inc. Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-072",
+   "ticker": "OPTT",
+   "name": "Ocean Power Technologies, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-073",
+   "ticker": "ORA",
+   "name": "Ormat Technologies, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-074",
+   "ticker": "OTTR",
+   "name": "Otter Tail Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-075",
+   "ticker": "PAM",
+   "name": "Pampa Energy Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-076",
+   "ticker": "PCG",
+   "name": "PG&E Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-077",
+   "ticker": "PEG",
+   "name": "Public Service Enterprise Group Inc",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-078",
+   "ticker": "PNW",
+   "name": "Pinnacle West Capital Corp",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-079",
+   "ticker": "POR",
+   "name": "Portland General Electric Company",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-080",
+   "ticker": "PPL",
+   "name": "PPL Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-081",
+   "ticker": "RNW",
+   "name": "ReNew Energy Global plc Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-082",
+   "ticker": "RUN",
+   "name": "Sunrun Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-083",
+   "ticker": "SBS",
+   "name": "COMPANHIA DE SANEAMENTO BASICO DO ESTADO DE SAO PAULO-SABESP",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-084",
+   "ticker": "SEDG",
+   "name": "SolarEdge Technologies, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-085",
+   "ticker": "SHLS",
+   "name": "Shoals Technologies Group, Inc. Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-086",
+   "ticker": "SO",
+   "name": "Southern Company",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-087",
+   "ticker": "SR",
+   "name": "Spire Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-088",
+   "ticker": "SRE",
+   "name": "Sempra",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-089",
+   "ticker": "SWX",
+   "name": "Southwest Gas Holdings, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-090",
+   "ticker": "TAC",
+   "name": "TransAlta Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-091",
+   "ticker": "TLN",
+   "name": "Talen Energy Corp",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-092",
+   "ticker": "TXNM",
+   "name": "TXNM Energy, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-093",
+   "ticker": "UGI",
+   "name": "UGI Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-094",
+   "ticker": "UGP",
+   "name": "ULTRAPAR HOLDINGS INC",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-095",
+   "ticker": "UTL",
+   "name": "Unitil Corporation",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-096",
+   "ticker": "VG",
+   "name": "Venture Global, Inc. Class A",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-097",
+   "ticker": "VST",
+   "name": "Vistra Corp.",
+   "sector_etf": "XLU",
+   "subsector_etf": "PBW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-098",
+   "ticker": "WEC",
+   "name": "WEC Energy Group Inc",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-099",
+   "ticker": "WTRG",
+   "name": "Essential Utilities, Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "FIW",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-100",
+   "ticker": "XEL",
+   "name": "Xcel Energy Inc.",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  },
+  {
+   "symbol": "sym-101",
+   "ticker": "XIFR",
+   "name": "XPLR Infrastructure, LP",
+   "sector_etf": "XLU",
+   "subsector_etf": "VPU",
+   "asset_type": "stock"
+  }
+ ],
+ "security_history_latest": [
+  {
+   "symbol": "sym-001",
+   "periodicity": "daily",
+   "market_cap": 29463017472
+  },
+  {
+   "symbol": "sym-002",
+   "periodicity": "daily",
+   "market_cap": 69313527808
+  },
+  {
+   "symbol": "sym-003",
+   "periodicity": "daily",
+   "market_cap": 10675674112
+  },
+  {
+   "symbol": "sym-004",
+   "periodicity": "daily",
+   "market_cap": 4079945984
+  },
+  {
+   "symbol": "sym-005",
+   "periodicity": "daily",
+   "market_cap": 27867011072
+  },
+  {
+   "symbol": "sym-006",
+   "periodicity": "daily",
+   "market_cap": 3050994688
+  },
+  {
+   "symbol": "sym-007",
+   "periodicity": "daily",
+   "market_cap": 26316003328
+  },
+  {
+   "symbol": "sym-008",
+   "periodicity": "daily",
+   "market_cap": 3219284480
+  },
+  {
+   "symbol": "sym-009",
+   "periodicity": "daily",
+   "market_cap": null
+  },
+  {
+   "symbol": "sym-010",
+   "periodicity": "daily",
+   "market_cap": 8370521600
+  },
+  {
+   "symbol": "sym-011",
+   "periodicity": "daily",
+   "market_cap": 5385193472
+  },
+  {
+   "symbol": "sym-012",
+   "periodicity": "daily",
+   "market_cap": 10310115328
+  },
+  {
+   "symbol": "sym-013",
+   "periodicity": "daily",
+   "market_cap": 4882087424
+  },
+  {
+   "symbol": "sym-014",
+   "periodicity": "daily",
+   "market_cap": 5979900928
+  },
+  {
+   "symbol": "sym-015",
+   "periodicity": "daily",
+   "market_cap": 98007875584
+  },
+  {
+   "symbol": "sym-016",
+   "periodicity": "daily",
+   "market_cap": 1842258432
+  },
+  {
+   "symbol": "sym-017",
+   "periodicity": "daily",
+   "market_cap": 6522354688
+  },
+  {
+   "symbol": "sym-018",
+   "periodicity": "daily",
+   "market_cap": 297303264
+  },
+  {
+   "symbol": "sym-019",
+   "periodicity": "daily",
+   "market_cap": 21045356544
+  },
+  {
+   "symbol": "sym-020",
+   "periodicity": "daily",
+   "market_cap": 26375862272
+  },
+  {
+   "symbol": "sym-021",
+   "periodicity": "daily",
+   "market_cap": 3118698496
+  },
+  {
+   "symbol": "sym-022",
+   "periodicity": "daily",
+   "market_cap": 30863290368
+  },
+  {
+   "symbol": "sym-023",
+   "periodicity": "daily",
+   "market_cap": 666648128
+  },
+  {
+   "symbol": "sym-024",
+   "periodicity": "daily",
+   "market_cap": 1995713024
+  },
+  {
+   "symbol": "sym-025",
+   "periodicity": "daily",
+   "market_cap": 6486969856
+  },
+  {
+   "symbol": "sym-026",
+   "periodicity": "daily",
+   "market_cap": 2747851264
+  },
+  {
+   "symbol": "sym-027",
+   "periodicity": "daily",
+   "market_cap": 54788071424
+  },
+  {
+   "symbol": "sym-028",
+   "periodicity": "daily",
+   "market_cap": 26970869760
+  },
+  {
+   "symbol": "sym-029",
+   "periodicity": "daily",
+   "market_cap": 93881262080
+  },
+  {
+   "symbol": "sym-030",
+   "periodicity": "daily",
+   "market_cap": 41208991744
+  },
+  {
+   "symbol": "sym-031",
+   "periodicity": "daily",
+   "market_cap": 790519488
+  },
+  {
+   "symbol": "sym-032",
+   "periodicity": "daily",
+   "market_cap": 3744537600
+  },
+  {
+   "symbol": "sym-033",
+   "periodicity": "daily",
+   "market_cap": 22006366208
+  },
+  {
+   "symbol": "sym-034",
+   "periodicity": "daily",
+   "market_cap": 1380000000
+  },
+  {
+   "symbol": "sym-035",
+   "periodicity": "daily",
+   "market_cap": 14409953280
+  },
+  {
+   "symbol": "sym-036",
+   "periodicity": "daily",
+   "market_cap": 6114323968
+  },
+  {
+   "symbol": "sym-037",
+   "periodicity": "daily",
+   "market_cap": 9491178496
+  },
+  {
+   "symbol": "sym-038",
+   "periodicity": "daily",
+   "market_cap": 24663937024
+  },
+  {
+   "symbol": "sym-039",
+   "periodicity": "daily",
+   "market_cap": 48566824960
+  },
+  {
+   "symbol": "sym-040",
+   "periodicity": "daily",
+   "market_cap": 19167158272
+  },
+  {
+   "symbol": "sym-041",
+   "periodicity": "daily",
+   "market_cap": 44049108992
+  },
+  {
+   "symbol": "sym-042",
+   "periodicity": "daily",
+   "market_cap": 26324402176
+  },
+  {
+   "symbol": "sym-043",
+   "periodicity": "daily",
+   "market_cap": 18784933888
+  },
+  {
+   "symbol": "sym-044",
+   "periodicity": "daily",
+   "market_cap": 28395823104
+  },
+  {
+   "symbol": "sym-045",
+   "periodicity": "daily",
+   "market_cap": 505326240
+  },
+  {
+   "symbol": "sym-046",
+   "periodicity": "daily",
+   "market_cap": 431905024
+  },
+  {
+   "symbol": "sym-047",
+   "periodicity": "daily",
+   "market_cap": 1505382656
+  },
+  {
+   "symbol": "sym-048",
+   "periodicity": "daily",
+   "market_cap": 539661376
+  },
+  {
+   "symbol": "sym-049",
+   "periodicity": "daily",
+   "market_cap": 2022939392
+  },
+  {
+   "symbol": "sym-050",
+   "periodicity": "daily",
+   "market_cap": 7602927104
+  },
+  {
+   "symbol": "sym-051",
+   "periodicity": "daily",
+   "market_cap": 106416288
+  },
+  {
+   "symbol": "sym-052",
+   "periodicity": "daily",
+   "market_cap": 3482938624
+  },
+  {
+   "symbol": "sym-053",
+   "periodicity": "daily",
+   "market_cap": 10729999360
+  },
+  {
+   "symbol": "sym-054",
+   "periodicity": "daily",
+   "market_cap": 59558834176
+  },
+  {
+   "symbol": "sym-055",
+   "periodicity": "daily",
+   "market_cap": 17663565824
+  },
+  {
+   "symbol": "sym-056",
+   "periodicity": "daily",
+   "market_cap": 2646598656
+  },
+  {
+   "symbol": "sym-057",
+   "periodicity": "daily",
+   "market_cap": 996284544
+  },
+  {
+   "symbol": "sym-058",
+   "periodicity": "daily",
+   "market_cap": 163526918144
+  },
+  {
+   "symbol": "sym-059",
+   "periodicity": "daily",
+   "market_cap": null
+  },
+  {
+   "symbol": "sym-060",
+   "periodicity": "daily",
+   "market_cap": 1603250048
+  },
+  {
+   "symbol": "sym-061",
+   "periodicity": "daily",
+   "market_cap": 7536626688
+  },
+  {
+   "symbol": "sym-062",
+   "periodicity": "daily",
+   "market_cap": 20607893504
+  },
+  {
+   "symbol": "sym-063",
+   "periodicity": "daily",
+   "market_cap": 5254905856
+  },
+  {
+   "symbol": "sym-064",
+   "periodicity": "daily",
+   "market_cap": 694270336
+  },
+  {
+   "symbol": "sym-065",
+   "periodicity": "daily",
+   "market_cap": 21233735680
+  },
+  {
+   "symbol": "sym-066",
+   "periodicity": "daily",
+   "market_cap": 4680411648
+  },
+  {
+   "symbol": "sym-067",
+   "periodicity": "daily",
+   "market_cap": 2053504384
+  },
+  {
+   "symbol": "sym-068",
+   "periodicity": "daily",
+   "market_cap": 9895649280
+  },
+  {
+   "symbol": "sym-069",
+   "periodicity": "daily",
+   "market_cap": 4741668864
+  },
+  {
+   "symbol": "sym-070",
+   "periodicity": "daily",
+   "market_cap": 58668462080
+  },
+  {
+   "symbol": "sym-071",
+   "periodicity": "daily",
+   "market_cap": 4821355008
+  },
+  {
+   "symbol": "sym-072",
+   "periodicity": "daily",
+   "market_cap": 131285208
+  },
+  {
+   "symbol": "sym-073",
+   "periodicity": "daily",
+   "market_cap": 5496859136
+  },
+  {
+   "symbol": "sym-074",
+   "periodicity": "daily",
+   "market_cap": 3766587392
+  },
+  {
+   "symbol": "sym-075",
+   "periodicity": "daily",
+   "market_cap": 4237620224
+  },
+  {
+   "symbol": "sym-076",
+   "periodicity": "daily",
+   "market_cap": 28959252480
+  },
+  {
+   "symbol": "sym-077",
+   "periodicity": "daily",
+   "market_cap": 35380822016
+  },
+  {
+   "symbol": "sym-078",
+   "periodicity": "daily",
+   "market_cap": 12594962432
+  },
+  {
+   "symbol": "sym-079",
+   "periodicity": "daily",
+   "market_cap": 5082819072
+  },
+  {
+   "symbol": "sym-080",
+   "periodicity": "daily",
+   "market_cap": 26010316800
+  },
+  {
+   "symbol": "sym-081",
+   "periodicity": "daily",
+   "market_cap": 687000000
+  },
+  {
+   "symbol": "sym-082",
+   "periodicity": "daily",
+   "market_cap": 1794601472
+  },
+  {
+   "symbol": "sym-083",
+   "periodicity": "daily",
+   "market_cap": 22126934016
+  },
+  {
+   "symbol": "sym-084",
+   "periodicity": "daily",
+   "market_cap": 2018546944
+  },
+  {
+   "symbol": "sym-085",
+   "periodicity": "daily",
+   "market_cap": 1338826112
+  },
+  {
+   "symbol": "sym-086",
+   "periodicity": "daily",
+   "market_cap": 101896749056
+  },
+  {
+   "symbol": "sym-087",
+   "periodicity": "daily",
+   "market_cap": 4876341248
+  },
+  {
+   "symbol": "sym-088",
+   "periodicity": "daily",
+   "market_cap": 54554238976
+  },
+  {
+   "symbol": "sym-089",
+   "periodicity": "daily",
+   "market_cap": 6399239680
+  },
+  {
+   "symbol": "sym-090",
+   "periodicity": "daily",
+   "market_cap": 3958211584
+  },
+  {
+   "symbol": "sym-091",
+   "periodicity": "daily",
+   "market_cap": 17224697856
+  },
+  {
+   "symbol": "sym-092",
+   "periodicity": "daily",
+   "market_cap": 5450039808
+  },
+  {
+   "symbol": "sym-093",
+   "periodicity": "daily",
+   "market_cap": 8267021824
+  },
+  {
+   "symbol": "sym-094",
+   "periodicity": "daily",
+   "market_cap": 8517593088
+  },
+  {
+   "symbol": "sym-095",
+   "periodicity": "daily",
+   "market_cap": 963896960
+  },
+  {
+   "symbol": "sym-096",
+   "periodicity": "daily",
+   "market_cap": 32126195712
+  },
+  {
+   "symbol": "sym-097",
+   "periodicity": "daily",
+   "market_cap": 52406079488
+  },
+  {
+   "symbol": "sym-098",
+   "periodicity": "daily",
+   "market_cap": 35341234176
+  },
+  {
+   "symbol": "sym-099",
+   "periodicity": "daily",
+   "market_cap": 11553783808
+  },
+  {
+   "symbol": "sym-100",
+   "periodicity": "daily",
+   "market_cap": 47923216384
+  },
+  {
+   "symbol": "sym-101",
+   "periodicity": "daily",
+   "market_cap": 929660032
+  }
+ ]
+}

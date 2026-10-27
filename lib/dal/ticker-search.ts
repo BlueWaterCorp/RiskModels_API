@@ -1,6 +1,12 @@
 /**
  * Ticker / company name search for chat tools and API reuse.
  * Mirrors GET /api/tickers?search= logic (symbols + security_master fallback).
+ *
+ * Labels (name, sector ETF, subsector ETF) come from the `symbols` registry's
+ * own columns, keyed by the registry row. They are never looked up in the
+ * security_master mirror by ticker: a ticker can have several open mirror rows
+ * (warrants, second identities), and which one a ticker match returns depends
+ * on row order.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -56,37 +62,40 @@ async function mostRecentHolderRow(upperSearch: string): Promise<TickerSearchRow
   }
 }
 
-async function enrichFromSecurityMaster(
-  rows: TickerSearchRow[],
-): Promise<TickerSearchRow[]> {
-  const need = rows.filter((r) => !r.name || r.name === r.ticker);
-  if (need.length === 0) return rows;
-  const tickers = need.map((r) => r.ticker);
-  try {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from("security_master")
-      .select("ticker, company_name, sector_etf")
-      .in("ticker", tickers)
-      .is("valid_to", null);
-    if (!data?.length) return rows;
-    const byTicker = new Map(
-      (data as { ticker: string; company_name: string | null; sector_etf: string | null }[]).map(
-        (r) => [r.ticker.toUpperCase(), r],
-      ),
-    );
-    return rows.map((r) => {
-      const sm = byTicker.get(r.ticker.toUpperCase());
-      if (!sm) return r;
-      return {
-        ...r,
-        name: sm.company_name || r.name || r.ticker,
-        sector: sm.sector_etf ?? r.sector,
-      };
-    });
-  } catch {
-    return rows;
-  }
+/** `symbols` columns read for labels. */
+export const SYMBOL_LABEL_COLUMNS = "ticker, name, sector_etf, subsector_etf, metadata";
+
+export type SymbolLabelRow = {
+  ticker: string;
+  name?: string | null;
+  sector_etf?: string | null;
+  subsector_etf?: string | null;
+  metadata?: {
+    sector?: string | null;
+    gics_sector_name?: string | null;
+    is_delisted?: boolean;
+  } | null;
+};
+
+/** One entry of GET /api/tickers?include_metadata=true `metadata`. */
+export type TickerMetadataEntry = {
+  name: string;
+  sector?: string;
+  sector_etf?: string;
+  subsector_etf?: string;
+};
+
+/**
+ * Metadata entry for one `symbols` row. Missing values are omitted (not
+ * null), and a missing name falls back to the ticker.
+ */
+export function tickerMetadataEntry(row: SymbolLabelRow): TickerMetadataEntry {
+  return {
+    name: row.name || row.ticker,
+    sector: row.metadata?.sector || row.metadata?.gics_sector_name || undefined,
+    sector_etf: row.sector_etf || undefined,
+    subsector_etf: row.subsector_etf || undefined,
+  };
 }
 
 /**
@@ -105,25 +114,20 @@ export async function searchTickers(
 
   const { data: metadataMatches, error: metadataError } = await admin
     .from("symbols")
-    .select("ticker, metadata")
-    .or(`ticker.ilike.%${upperSearch}%,metadata->>company_name.ilike.%${upperSearch}%`)
+    .select(SYMBOL_LABEL_COLUMNS)
+    .or(`ticker.ilike.%${upperSearch}%,name.ilike.%${upperSearch}%`)
     .limit(10);
 
   if (!metadataError && metadataMatches && metadataMatches.length > 0) {
-    const rows: TickerSearchRow[] = (metadataMatches as {
-      ticker: string;
-      metadata?: { company_name?: string; sector?: string; gics_sector_name?: string };
-    }[]).map((m) => ({
+    const matches = metadataMatches as SymbolLabelRow[];
+    const rows: TickerSearchRow[] = matches.map((m) => ({
       symbol: m.ticker,
       ticker: m.ticker,
-      name: includeMetadata
-        ? m.metadata?.company_name || m.ticker
-        : undefined,
-      sector: includeMetadata
-        ? m.metadata?.sector || m.metadata?.gics_sector_name
-        : undefined,
+      name: includeMetadata ? m.name || m.ticker : undefined,
+      // `sector` here has always carried the sector ETF.
+      sector: includeMetadata ? m.sector_etf || undefined : undefined,
     }));
-    const exactLive = (metadataMatches as { ticker: string; metadata?: { is_delisted?: boolean } }[]).some(
+    const exactLive = matches.some(
       (m) => m.ticker.toUpperCase() === upperSearch && m.metadata?.is_delisted !== true,
     );
     if (!exactLive) {
@@ -133,10 +137,10 @@ export async function searchTickers(
       const holder = await mostRecentHolderRow(upperSearch);
       if (holder) {
         const rest = rows.filter((r) => r.ticker.toUpperCase() !== upperSearch);
-        return enrichFromSecurityMaster([holder, ...rest].slice(0, 10));
+        return [holder, ...rest].slice(0, 10);
       }
     }
-    return enrichFromSecurityMaster(rows);
+    return rows;
   }
 
   const holder = await mostRecentHolderRow(upperSearch);
