@@ -770,7 +770,7 @@ export const CAPABILITIES: Capability[] = [
     confidence: {
       data_quality_score: 0.98,
       update_frequency: "daily",
-      sources: ["security_history", "symbols", "ticker_metadata"],
+      sources: ["security_history", "symbols"],
     },
     tags: ["decompose", "hedge", "exposure", "agent"],
   },

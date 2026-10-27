@@ -93,7 +93,7 @@ The following tables were used prior to V3 and may still exist for backward comp
 
 | Table | Superseded by |
 |-------|---------------|
-| `ticker_metadata` | `symbols` |
+| `ticker_metadata` (frozen since 2026-01; the SDK no longer reads it) | `symbols` (sector / subsector ETF labels), `security_history_latest` (market cap) |
 | `ticker_factor_metrics` | `security_history_latest` |
 | `erm3_ticker_returns`, `erm3_l3_decomposition` | `security_history` |
 | `erm3_time_index` | `trading_calendar` |

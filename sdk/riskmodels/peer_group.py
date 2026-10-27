@@ -188,7 +188,7 @@ class PeerGroupProxy:
         sector_etf_override: str | None = None,
         max_peers: int = 50,
     ) -> "PeerGroupProxy":
-        """Build a peer group from the Supabase ``ticker_metadata`` table.
+        """Build a peer group from the Supabase ``symbols`` registry (BW taxonomy labels).
 
         Default is ``subsector_etf`` (e.g. SOXX for semiconductors) because
         sector-level peers (e.g. all of XLK) are too broad to isolate
@@ -196,9 +196,9 @@ class PeerGroupProxy:
         when subsector has too few peers.
 
         Steps:
-        1. Query ticker_metadata for the target → resolve symbol + sector
-        2. Query ticker_metadata for all rows matching the same sector ETF
-        3. Cap-weight by market_cap (from the same table — no extra API calls)
+        1. Query the symbols registry for the target → resolve symbol + sector
+        2. Query the registry for all rows matching the same sector ETF
+        3. Cap-weight by the latest market_cap (security_history_latest — no API calls)
 
         This replaces the old approach that used ``search_tickers()`` (which
         didn't return sector metadata) and individual ``get_metrics()`` calls
@@ -206,18 +206,18 @@ class PeerGroupProxy:
         """
         ticker = ticker.upper()
 
-        # Step 1: Resolve target from ticker_metadata
+        # Step 1: Resolve target from the symbols registry
         target_df = client.get_ticker_metadata(ticker=ticker)
         if target_df.empty:
             raise ValueError(
-                f"Ticker '{ticker}' not found in ticker_metadata table"
+                f"Ticker '{ticker}' not found in the symbols registry"
             )
         target_row = target_df.iloc[0].to_dict()
         target_ticker = str(target_row.get("ticker", ticker)).upper()
         target_symbol = str(target_row.get("symbol", ticker))
 
         # Step 2: Determine which sector ETF to group by
-        # Prefer the DB's own value (ticker_metadata is the source of truth).
+        # Prefer the registry value (the BW taxonomy label the model hedges on).
         # The override is used only if the DB has no value for the requested field.
         sector_val = target_row.get(group_by) or sector_etf_override
         if not sector_val and group_by == "subsector_etf":
@@ -231,7 +231,7 @@ class PeerGroupProxy:
                 )
         if not sector_val:
             raise ValueError(
-                f"Cannot build peer group: {ticker} has no {group_by} in ticker_metadata. "
+                f"Cannot build peer group: {ticker} has no {group_by} in the symbols registry. "
                 f"Available fields: {sorted(target_row.keys())}"
             )
         sector_val = str(sector_val)
@@ -285,7 +285,7 @@ class PeerGroupProxy:
                 stacklevel=2,
             )
 
-        # Step 4: Cap-weight using market_cap from ticker_metadata (no extra API calls)
+        # Step 4: Cap-weight using the latest market_cap (no extra API calls)
         if weighting == "market_cap" and "market_cap" in peers_df.columns:
             cap_rows = peers_df[
                 peers_df["ticker"].str.upper().isin(all_peer_tickers)
