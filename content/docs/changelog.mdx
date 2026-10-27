@@ -11,6 +11,12 @@ in the repository.
 
 ---
 
+## October 2026 — `riskmodels` CLI 3.1.0 installs the playbook skills
+
+`npx -y riskmodels@latest install` registers the MCP server and then installs the five playbook skills (risk-decompose, portfolio-hedge, residual-screen, fundamentals-pit, cost-of-capital) for each client it finds. `--no-skills` registers the server only. Skills alone, when MCP is already connected: `npx skills add BlueWaterCorp/riskmodels-plugin`.
+
+---
+
 ## October 2026 — exposure history feeds follow the served-history start
 
 `POST /api/portfolio/exposure/history` and `/history/daily` now serve model history from the same

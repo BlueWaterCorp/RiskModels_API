@@ -16,7 +16,7 @@ Reference agent that uses **RiskModels as the risk substrate** — L3 variance d
 ```bash
 export RISKMODELS_API_KEY=rm_agent_…   # https://riskmodels.app/get-key
 npx -y riskmodels@latest install
-# Claude Code also: claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp
+# MCP plus the five skills. Server only: add --no-skills
 ```
 
 Agent discovery: [https://riskmodels.app/llms.txt](https://riskmodels.app/llms.txt)

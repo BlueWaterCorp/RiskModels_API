@@ -45,7 +45,7 @@ const MCP_CURSOR_JSON = `{
   }
 }`;
 
-/** One-shot installer merges stdio MCP (`npx -y @riskmodels/mcp`) into detected clients — same as public quickstart. */
+/** One-shot installer registers MCP and the five playbook skills — same as public quickstart. */
 const PATH_A_INSTALLER = `# Node.js LTS required (macOS/Homebrew: brew install node; otherwise https://nodejs.org)
 
 RISKMODELS_API_KEY=rm_agent_live_... npx -y riskmodels@latest install --dry-run   # optional: inspect plan
@@ -305,8 +305,8 @@ export const KeyIssuedEmail = ({
             holdings, and fundamentals. Ask in English; it picks the tool.
           </Text>
           <Text style={paragraph}>
-            <strong>Fastest path (recommended):</strong> run the shipped MCP installer so configs are merged
-            with backups (same as{" "}
+            <strong>Fastest path (recommended):</strong> run the installer. It merges MCP configs
+            with backups and installs the five playbook skills (same as{" "}
             <Link href={`${BASE_URL}/quickstart`} style={link}>
               Quickstart
             </Link>
@@ -339,18 +339,19 @@ export const KeyIssuedEmail = ({
 
           <Text style={h3}>Claude Code (CLI)</Text>
           <Text style={paragraph}>
-            <code style={inlineCode}>riskmodels install</code> merges MCP into <strong>Claude Desktop</strong> and
-            Cursor — not into the <strong>Claude Code</strong> terminal app (<code style={inlineCode}>claude</code>
-            ). Register RiskModels for Claude Code separately (your key is already in{" "}
-            <code style={inlineCode}>~/.config/riskmodels/config.json</code> after install):
-          </Text>
-          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.claudeCodeStdio} />
-          <Text style={paragraph}>
-            Restart <code style={inlineCode}>claude</code>, then run <code style={inlineCode}>claude mcp list</code>{" "}
-            — <code style={inlineCode}>riskmodels</code> should show connected. If it shows failed, use the hosted
-            transport instead:
+            When <code style={inlineCode}>claude</code> is on PATH,{" "}
+            <code style={inlineCode}>riskmodels install</code> registers the hosted MCP server with Claude
+            Code and installs the five skills. Claude Desktop and Cursor are written in the same run. If{" "}
+            <code style={inlineCode}>claude</code> was not found, register the hosted server yourself (the key
+            is already in <code style={inlineCode}>~/.config/riskmodels/config.json</code>):
           </Text>
           <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.claudeCodeRemote} />
+          <Text style={paragraph}>
+            Restart <code style={inlineCode}>claude</code>, then run <code style={inlineCode}>claude mcp list</code>{" "}
+            — <code style={inlineCode}>riskmodels</code> should show connected. A local stdio server, instead of
+            the hosted endpoint:
+          </Text>
+          <CodeBlock theme={emailCodeTheme} language="bash" code={snippets.claudeCodeStdio} />
 
           <Text style={h3}>Codex / Windsurf / Zed</Text>
           <Text style={paragraph}>

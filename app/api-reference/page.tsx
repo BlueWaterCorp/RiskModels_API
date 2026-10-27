@@ -595,7 +595,7 @@ df = client.ticker_returns("NVDA", years=3)`}</pre>
                     </div>
 
                     <div className="text-[11px] text-zinc-500">
-                      CLI: <code>npx -y riskmodels@latest install</code> wires MCP + config. SDK renames fields (l3_mkt_hr → l3_market_hr) with semantic metadata.
+                      CLI: <code>npx -y riskmodels@latest install</code> registers MCP and the five playbook skills. SDK renames fields (l3_mkt_hr → l3_market_hr) with semantic metadata.
                     </div>
                   </div>
                 </div>

@@ -23,7 +23,7 @@ Authorization: Bearer rm_agent_live_<random>_<checksum>
 2. Go to Settings → API Keys
 3. Click "Generate Key" and copy the token
 
-**Option A2 — Developer portal (riskmodels.app):** Keys and usage are also available at [riskmodels.app/get-key](https://riskmodels.app/get-key). After you have a key, the MCP installer is: `RISKMODELS_API_KEY=… npx -y riskmodels@latest install` (see [Quickstart](https://riskmodels.app/quickstart)).
+**Option A2 — Developer portal (riskmodels.app):** Keys and usage are also available at [riskmodels.app/get-key](https://riskmodels.app/get-key). After you have a key, `RISKMODELS_API_KEY=… npx -y riskmodels@latest install` registers MCP and installs the five playbook skills (see [Quickstart](https://riskmodels.app/quickstart)).
 
 **Option B — API provisioning endpoint (for AI agents):**
 ```bash

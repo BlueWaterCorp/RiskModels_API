@@ -804,6 +804,10 @@ function GetKeyPage() {
           <p className="text-xs text-zinc-500 leading-relaxed">
             CLI (needs a key from Generate below):{' '}
             <code className="font-mono text-zinc-400">RISKMODELS_API_KEY=… {MCP_INSTALL_CMD}</code>
+            . That registers the MCP server and installs the five playbook skills.{' '}
+            <code className="font-mono text-zinc-400">--no-skills</code> registers the server only.
+            Skills alone:{' '}
+            <code className="font-mono text-zinc-400">npx skills add BlueWaterCorp/riskmodels-plugin</code>
             . OpenBB Workspace uses the same generated key as{' '}
             <code className="font-mono text-zinc-400">X-API-KEY</code> at{' '}
             <code className="font-mono text-zinc-400">https://riskmodels.app/openbb</code>.

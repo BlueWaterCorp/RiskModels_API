@@ -191,7 +191,7 @@ This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.j
 ### Claude Desktop / `npx` (common mistakes)
 
 - **There is no `mcp` subcommand on the npm package.** The CLI binary is **`riskmodels`**. Do **not** run `npx -y riskmodels-cli mcp` — that legacy package does not provide the new installer flow.
-- **Preferred (deterministic):** pin the CLI package so `npx` does not resolve a stale cache — e.g. `RISKMODELS_API_KEY=... npx -y riskmodels@latest install` (writes MCP configs via `riskmodels install`). Same flow as [Quickstart](https://riskmodels.app/quickstart).
+- **Preferred (deterministic):** pin the CLI package so `npx` does not resolve a stale cache — e.g. `RISKMODELS_API_KEY=... npx -y riskmodels@latest install`. That writes MCP configs and installs the five playbook skills (`--no-skills` skips the skills). Same flow as [Quickstart](https://riskmodels.app/quickstart). Skills alone: `npx skills add BlueWaterCorp/riskmodels-plugin`.
 - **Use one of these:**
   - **`npx -y @riskmodels/mcp`** — stdio MCP package merged into configs by `npx -y riskmodels@latest install` / global `riskmodels install`.
   - **`riskmodels mcp-config`** — prints a ready-to-paste `mcpServers` block for Claude Desktop (`--client claude-desktop`) or Cursor. Use **`riskmodels mcp-config --embed-key`** only if you want the key in the JSON env block.
@@ -200,15 +200,16 @@ This repo includes **`.cursor/mcp.json`** pointing at `node` + `mcp/dist/index.j
 
 ### Claude Code (`claude` CLI)
 
-The **`riskmodels install`** command merges MCP into **Claude Desktop** (`claude_desktop_config.json`) and **Cursor** — not into **Claude Code** (the `claude` terminal application), which maintains its own MCP configuration.
+When the `claude` command is on PATH, **`riskmodels install`** registers the hosted endpoint with Claude Code (`claude mcp add --transport http`, user scope) and installs the five skills. It also writes **Claude Desktop** and **Cursor**. Claude Code does not read `claude_desktop_config.json`.
 
-After you have run `riskmodels install` and have a key in `~/.config/riskmodels/config.json`, register the stdio server for Claude Code:
+If `claude` was not found, register the hosted server after the key is in `~/.config/riskmodels/config.json`:
 
 ```bash
-claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp
+API=$(jq -r '.apiKey' ~/.config/riskmodels/config.json)
+claude mcp add --scope user --transport http --header "Authorization: Bearer $API" riskmodels https://riskmodels.app/api/mcp/sse
 ```
 
-Restart **`claude`**, then run **`claude mcp list`** — `riskmodels` should show as connected. If it does not, use the **hosted** `mcp-remote` transport with `AUTHORIZATION=Bearer <key>` (same JSON pattern as in the “Hosted endpoint” section below).
+Restart **`claude`**, then run **`claude mcp list`** — `riskmodels` should show as connected. A local stdio server instead of the hosted endpoint: `claude mcp add --scope user --transport stdio riskmodels -- npx -y @riskmodels/mcp`.
 
 ### ChatGPT (Developer Mode)
 

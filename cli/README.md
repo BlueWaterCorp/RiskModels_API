@@ -78,7 +78,7 @@ Global flag: `--json` for machine-readable output on supported commands.
 
 ### MCP installer safety
 
-`riskmodels install --dry-run` detects supported clients, prints target config paths, redacts secrets, and shows the exact `npx -y @riskmodels/mcp` server entry it will merge. `riskmodels install` performs the write with timestamped backups.
+`riskmodels install --dry-run` detects supported clients, prints target config paths, redacts secrets, shows the MCP server entry it will merge, and prints the `npx skills add` command. `riskmodels install` performs the write with timestamped backups and installs the skills.
 
 Default credential policy:
 

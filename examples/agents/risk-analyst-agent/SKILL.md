@@ -8,7 +8,7 @@ description: Build agents on RiskModels L3 risk data via MCP and the artifact re
 ## Discovery
 
 1. Read https://riskmodels.app/llms.txt
-2. Install MCP: `RISKMODELS_API_KEY=… npx -y riskmodels@latest install`
+2. Install MCP and the five skills: `RISKMODELS_API_KEY=… npx -y riskmodels@latest install`
 3. Prefer MCP tools `riskmodels_*` over inventing REST paths
 
 ## Core tools

@@ -74,7 +74,14 @@ riskmodels doctor   # verify key + API reachability`,
     id: 'agent',
     title: 'Agent',
     icon: Bot,
-    setup: { kind: 'caption', text: 'Use in Claude / Cursor.' },
+    setup: {
+      kind: 'code',
+      code: `RISKMODELS_API_KEY=… npx -y riskmodels@latest install
+# MCP plus the five skills. Server only: add --no-skills
+# Skills alone: npx skills add BlueWaterCorp/riskmodels-plugin`,
+      language: 'bash',
+      filename: 'install',
+    },
     firstActionLabel: 'Ask',
     firstActionCode: '"Explain NVDA risk"',
     firstActionLanguage: 'text',
