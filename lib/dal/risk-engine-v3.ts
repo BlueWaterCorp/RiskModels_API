@@ -25,6 +25,7 @@ import {
   readSymbolRankSnapshot,
 } from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
+import { isSupersededByActiveRename } from "@/lib/dal/etf-renames";
 import {
   findMostRecentHolders,
   type ExtraHolderCandidate,
@@ -438,7 +439,9 @@ async function resolveAliasesToCanonicalSymbols(
  */
 export function isDeadSymbolRow(row: Record<string, unknown> | null | undefined): boolean {
   const metadata = (row?.metadata as Record<string, unknown> | undefined) ?? {};
-  return metadata.is_delisted === true;
+  // A fund's old published row after a coordinated rename (ERM3-68) is retired, not delisted: dead only while
+  // that rename's flag is on, so the old ticker resolves through the alias to the fund's live row.
+  return metadata.is_delisted === true || isSupersededByActiveRename(metadata);
 }
 
 /**
