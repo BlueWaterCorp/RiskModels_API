@@ -11,6 +11,7 @@
 
 import registerJson from "@/mcp/data/etf_register.json";
 import { lookupEtfTicker } from "@/lib/dal/etf-catalog";
+import { etfRenamePartners } from "@/lib/dal/etf-renames";
 
 interface EtfRegisterDoc {
   etfs: Record<string, { role: string }>;
@@ -20,7 +21,14 @@ const REGISTER = (registerJson as EtfRegisterDoc).etfs ?? {};
 
 /** Factor role in the ERM3 register (market, sector, subsector, style, macro:<cat>, broad_market, proxy), or null. */
 export function etfRegisterRole(ticker: string): string | null {
-  return REGISTER[(ticker ?? "").trim().toUpperCase()]?.role ?? null;
+  const t = (ticker ?? "").trim().toUpperCase();
+  const own = REGISTER[t]?.role;
+  if (own) return own;
+  // ERM3-68: the other ticker of an active coordinated rename (the mirror may list either one)
+  for (const p of etfRenamePartners(t)) {
+    if (REGISTER[p]?.role) return REGISTER[p].role;
+  }
+  return null;
 }
 
 /** True when ERM3 prices this ETF (it is on the register). */

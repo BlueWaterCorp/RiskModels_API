@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { etfRenamePartners } from "@/lib/dal/etf-renames";
 
 export interface EtfEntryRecord {
   bw_etf_id: string;
@@ -77,7 +78,13 @@ export function lookupEtfTicker(input: string): string | null {
   const cat = _load();
   const key = (input ?? "").trim().toLowerCase();
   if (!key) return null;
-  return cat.aliases[key] ?? null;
+  if (cat.aliases[key]) return cat.aliases[key];
+  // ERM3-68: one fund, two tickers. The holdings id stays the old one (BW-ETF-SPLG) after the rename.
+  for (const p of etfRenamePartners(key)) {
+    const hit = cat.aliases[p.toLowerCase()];
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** Read the full entry record for a `bw_etf_id`, or null. */
