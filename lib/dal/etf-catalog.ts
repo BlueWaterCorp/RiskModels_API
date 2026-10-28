@@ -157,21 +157,24 @@ export function searchEtfs(query: string, limit = 25): EtfSearchHit[] {
   }
 
   const hits: EtfSearchHit[] = [];
+  // ERM3-68: an active rename's other ticker scores like the entry's own (empty while the flag is off).
+  const tickerScore = (ticker: string): number =>
+    ticker === q ? 100 : ticker.startsWith(q) ? 70 : ticker.includes(q) ? 50 : 0;
   for (const e of all) {
     const ticker = e.ticker.toLowerCase();
     const name = e.name.toLowerCase();
 
-    let score = 0;
-    if (ticker === q) score = 100;
-    else if (ticker.startsWith(q)) score = 70;
-    else if (ticker.includes(q)) score = 50;
-    else if (
-      name === q ||
-      name.startsWith(`${q} `) ||
-      name.split(/[\s&-]+/).some((w) => w === q || w.startsWith(q))
-    )
-      score = 40;
-    else if (name.includes(q)) score = 30;
+    let score = tickerScore(ticker);
+    for (const p of etfRenamePartners(ticker)) score = Math.max(score, tickerScore(p.toLowerCase()));
+    if (score === 0) {
+      if (
+        name === q ||
+        name.startsWith(`${q} `) ||
+        name.split(/[\s&-]+/).some((w) => w === q || w.startsWith(q))
+      )
+        score = 40;
+      else if (name.includes(q)) score = 30;
+    }
 
     if (score > 0) hits.push({ ...e, score });
   }

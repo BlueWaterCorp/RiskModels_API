@@ -60,6 +60,9 @@ describe("ETF rename flag (default off)", () => {
     expect(lookupEtfTicker("SPYM")).toBe("BW-ETF-SPLG");
     expect(lookupEtfTicker("SPLG")).toBe("BW-ETF-SPLG");
     expect(getEtfEntry("BW-ETF-SPLG")?.ticker).toBe("SPYM");
+    // search finds the fund under either ticker
+    expect(searchEtfs("SPLG")[0]).toMatchObject({ bw_etf_id: "BW-ETF-SPLG", ticker: "SPYM", score: 100 });
+    expect(searchEtfs("SPYM")[0]).toMatchObject({ bw_etf_id: "BW-ETF-SPLG", score: 100 });
   });
 
   it("hides only the renamed fund's new ticker while off", () => {

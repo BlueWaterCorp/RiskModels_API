@@ -38,6 +38,13 @@ export function etfRenamePartners(ticker: string, env: Env = process.env): strin
   return out;
 }
 
+/** The ticker a fund trades under now: the new ticker of an active rename, else the input (upper-cased). */
+export function etfCurrentTicker(ticker: string, env: Env = process.env): string {
+  const t = (ticker ?? "").trim().toUpperCase();
+  for (const r of ETF_RENAMES) if (r.old === t && isEtfRenameActive(r.key, env)) return r.new;
+  return t;
+}
+
 /** True when ERM3 stamped this `symbols` row superseded by a rename that is active here. */
 export function isSupersededByActiveRename(
   metadata: Record<string, unknown> | undefined,
