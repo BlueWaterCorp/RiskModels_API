@@ -726,6 +726,36 @@ components:
         symbol:
           type: string
           description: Canonical symbol key in V3 registry.
+        resolved_via:
+          type: string
+          enum: [most_recent_holder, share_class_sibling]
+          description: >
+            Present only when the modelled registry has no live row for the requested ticker.
+            `share_class_sibling`: another share class of the same company answers it (e.g.
+            `GOOGL` answered with `GOOG`'s series, named in `modelled_ticker`); risk and hedge
+            ratios are the sibling's and price fields are withheld. `most_recent_holder`: the
+            security that holds or most recently held the ticker answers. Same rule as
+            `GET /ticker-returns`.
+        requested_ticker:
+          type: string
+          description: "With `resolved_via: share_class_sibling`: the ticker requested (e.g. `GOOGL`)."
+        modelled_ticker:
+          type: string
+          nullable: true
+          description: "With `resolved_via`: the answering security's own ticker when it differs from the request (e.g. `GOOG`)."
+        share_class:
+          type: string
+          nullable: true
+          description: "With `share_class_sibling`: the requested class letter, when known (e.g. `A` for `BRK-A`)."
+        modelled_share_class:
+          type: string
+          nullable: true
+          description: "With `share_class_sibling`: the answering class letter, when known."
+        price_withheld:
+          type: boolean
+          description: >
+            With `resolved_via: share_class_sibling`: `true`; price-bearing fields (`price_close`,
+            `market_cap`) are null because the sibling's price is not the requested class's price.
         data_as_of:
           type: string
           format: date
@@ -1263,6 +1293,36 @@ components:
         ticker:
           type: string
           example: NVDA
+        resolved_via:
+          type: string
+          enum: [most_recent_holder, share_class_sibling]
+          description: >
+            Present only when the modelled registry has no live row for the requested ticker.
+            `share_class_sibling`: another share class of the same company answers it (e.g.
+            `GOOGL` answered with `GOOG`'s series, named in `modelled_ticker`); risk and hedge
+            ratios are the sibling's and price fields are withheld. `most_recent_holder`: the
+            security that holds or most recently held the ticker answers. Same rule as
+            `GET /ticker-returns`.
+        requested_ticker:
+          type: string
+          description: "With `resolved_via: share_class_sibling`: the ticker requested (e.g. `GOOGL`)."
+        modelled_ticker:
+          type: string
+          nullable: true
+          description: "With `resolved_via`: the answering security's own ticker when it differs from the request (e.g. `GOOG`)."
+        share_class:
+          type: string
+          nullable: true
+          description: "With `share_class_sibling`: the requested class letter, when known (e.g. `A` for `BRK-A`)."
+        modelled_share_class:
+          type: string
+          nullable: true
+          description: "With `share_class_sibling`: the answering class letter, when known."
+        price_withheld:
+          type: boolean
+          description: >
+            With `resolved_via: share_class_sibling`: `true`; price-bearing fields (`price_close`,
+            `market_cap`) are null because the sibling's price is not the requested class's price.
         teo:
           type: string
           format: date
@@ -1437,15 +1497,30 @@ components:
             `null` because ETFs are not factor-decomposed.
         resolved_via:
           type: string
-          enum: [most_recent_holder]
+          enum: [most_recent_holder, share_class_sibling]
           description: >
-            Present only when the modelled registry has no live row for the requested ticker and the
+            `share_class_sibling`: the requested share class has no modelled series and another
+            class of the same company answers it (e.g. `GOOGL` answered with `GOOG`'s series,
+            named in `modelled_ticker`); returns and hedge ratios are the sibling's and
+            `price_close` is omitted (`price_withheld: true`).
+            `most_recent_holder`:
+            present only when the modelled registry has no live row for the requested ticker and the
             most-recent-holder check chose the answer: the security that holds the ticker today (it
             may have a registry row under another ticker, then disclosed in `modelled_ticker`) or,
             failing that, the one that held it most recently (e.g. the delisted `CTRA`). Tickers with a live registry row,
             including recycled ones, resolve to today's company and omit this field, as do
             answers unchanged from earlier releases (an alias rename such as `FB` → META, or a
             delisted registry row) unless a live holder of the ticker that the API can serve exists.
+        requested_ticker:
+          type: string
+          description: >
+            With `resolved_via: share_class_sibling`: the ticker requested (e.g. `GOOGL`).
+        price_withheld:
+          type: boolean
+          description: >
+            With `resolved_via: share_class_sibling`: `true`; price-bearing fields (close,
+            market cap) are omitted or null because the sibling's price is not the requested
+            class's price.
         modelled_ticker:
           type: string
           nullable: true
@@ -1731,11 +1806,15 @@ components:
             no ERM3 decomposition (ETFs, including the hedge instruments). Failed tickers are not billed.
         resolved_via:
           type: string
-          enum: [most_recent_holder]
+          enum: [most_recent_holder, share_class_sibling]
           description: >
             Present only when the modelled registry has no live row for the ticker and the position
-            was answered by the security that holds or most recently held it. Same rule as
-            `GET /ticker-returns`.
+            was answered by the security that holds or most recently held it
+            (`most_recent_holder`), or by a sibling share class of the same company
+            (`share_class_sibling`, e.g. `GOOGL` → `GOOG`). Same rule as `GET /ticker-returns`.
+        price_withheld:
+          type: boolean
+          description: "With `resolved_via: share_class_sibling`: `true`; no price field is served."
         modelled_ticker:
           type: string
           nullable: true
@@ -6227,11 +6306,16 @@ paths:
             X-Ticker-Resolved-Via:
               schema:
                 type: string
-                enum: [most_recent_holder]
+                enum: [most_recent_holder, share_class_sibling]
               description: >
                 Sent only when JSON `resolved_via` would be present (the modelled registry has no live
                 row for the ticker; the series belongs to the security that holds or most recently
-                held it). Same value as JSON `resolved_via`.
+                held it, or to a sibling share class). Same value as JSON `resolved_via`.
+            X-Ticker-Price-Withheld:
+              schema:
+                type: string
+                enum: ["true"]
+              description: "Sent with `X-Ticker-Resolved-Via: share_class_sibling`; mirrors JSON `price_withheld`."
             X-Ticker-Delisted:
               schema:
                 type: string
@@ -10391,11 +10475,13 @@ paths:
                     example: NVDA
                   resolved_via:
                     type: string
-                    enum: [most_recent_holder]
+                    enum: [most_recent_holder, share_class_sibling]
                     description: >
                       With `search`, present only when the modelled registry has no live row for
                       the searched ticker and it resolves to the security that holds or most
-                      recently held it (e.g. the delisted `CTRA`). Same rule as `GET /ticker-returns`.
+                      recently held it (e.g. the delisted `CTRA`), or to a sibling share class of
+                      the same company (`share_class_sibling`, e.g. `GOOGL` → `GOOG`). Same rule
+                      as `GET /ticker-returns`.
                   modelled_ticker:
                     type: string
                     nullable: true

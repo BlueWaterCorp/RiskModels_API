@@ -5,7 +5,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
-import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
+import { resolutionDisclosure, type ResolutionDisclosure } from "@/lib/dal/resolution-disclosure";
 
 export type TickerSearchRow = {
   /** Internal BW symbol when available; otherwise same as ticker */
@@ -13,19 +13,12 @@ export type TickerSearchRow = {
   ticker: string;
   name?: string;
   sector?: string;
-  /**
-   * Set when no live security holds the ticker and the match is its most
-   * recent (possibly delisted) holder — same disclosure as /ticker-returns.
-   */
-  resolved_via?: "most_recent_holder";
-  /** With resolved_via: the answering security's own ticker when it differs. */
-  modelled_ticker?: string | null;
-  delisted?: boolean;
-  /** The ticker now belongs to a security the API cannot serve (FB). */
-  ticker_reassigned?: boolean;
-  current_holder?: { symbol: string; name: string | null };
-  resolution_degraded?: boolean;
-};
+} & ResolutionDisclosure;
+// Disclosure (ResolutionDisclosure): set when no live security holds the
+// ticker and the match is its most recent (possibly delisted) holder, or a
+// sibling share class of the same company answers it (GOOGL → GOOG) — same
+// disclosure as /ticker-returns. `ticker_reassigned`: the ticker now belongs
+// to a security the API cannot serve (FB).
 
 /**
  * Ticker-shaped query (no spaces, 2-10 chars of A-Z / 0-9 / . / -). One-
@@ -36,8 +29,9 @@ const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.-]{1,9}$/;
 /**
  * Exact-ticker match from the shared DAL resolver's most-recent-holder pass
  * (delisted names such as CTRA that the live `symbols` mirror no longer
- * carries). Null for ordinary tickers, which the symbols queries already
- * answer, and for non-ticker-shaped queries.
+ * carries) or its share-class sibling seam (GOOGL, answered by GOOG). Null
+ * for ordinary tickers, which the symbols queries already answer, and for
+ * non-ticker-shaped queries.
  */
 async function mostRecentHolderRow(upperSearch: string): Promise<TickerSearchRow | null> {
   if (!TICKER_SHAPE.test(upperSearch)) return null;

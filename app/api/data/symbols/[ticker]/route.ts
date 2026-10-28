@@ -141,6 +141,10 @@ export async function GET(
     latest_metrics: data.latest_metrics,
     latest_vol: data.latest_vol,
     latest_teo: data.latest_teo,
+    // ERM3-88: the same resolved_via flag the other disclosing routes carry.
+    ...(resolution.projected
+      ? { resolved_via: "share_class_sibling" as const, price_withheld: true }
+      : {}),
     ...holderFlags,
   };
 

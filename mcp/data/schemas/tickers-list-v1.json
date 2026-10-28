@@ -32,9 +32,10 @@
     "resolved_via": {
       "type": "string",
       "enum": [
-        "most_recent_holder"
+        "most_recent_holder",
+        "share_class_sibling"
       ],
-      "description": "With search: present only when the modelled registry has no live row for the searched ticker and it resolves to the security that holds or most recently held it (e.g. delisted CTRA)."
+      "description": "With search: present only when the modelled registry has no live row for the searched ticker and it resolves to the security that holds or most recently held it (most_recent_holder, e.g. delisted CTRA) or to a sibling share class of the same company (share_class_sibling, e.g. GOOGL answered by GOOG)."
     },
     "modelled_ticker": {
       "type": [

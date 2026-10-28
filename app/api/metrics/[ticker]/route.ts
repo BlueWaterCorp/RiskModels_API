@@ -8,6 +8,11 @@ import {
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
+import {
+  isShareClassSibling,
+  resolutionDisclosure,
+  resolutionDisclosureHeaders,
+} from "@/lib/dal/resolution-disclosure";
 import { MetricsRequestSchema } from "@/lib/api/schemas";
 import {
   getDataLicenseMode,
@@ -255,14 +260,18 @@ export const GET = withBilling(
     // B(e)(1) (the published shared demo key is not an authenticated
     // environment): the raw latest-day close and market cap scalars are
     // withheld (nulled); every derived metric below is unaffected.
+    // ERM3-88: a share-class sibling answer (GOOGL served from GOOG) does not
+    // present the sibling's close or market cap as the requested class's own.
     const rawScalarsPermitted =
       !isRestrictedSourceSymbol(symbolRecord.symbol) &&
+      !isShareClassSibling(symbolRecord) &&
       getDataLicenseMode() !== "license_free" &&
       context.rawFieldsPermitted;
 
     const formattedData = {
       symbol: symbolRecord.symbol,
       ticker: symbolRecord.ticker,
+      ...resolutionDisclosure(symbolRecord),
       teo: latestData.teo,
       periodicity: "daily",
       ...(isRestrictedSourceSymbol(symbolRecord.symbol)
@@ -341,7 +350,10 @@ export const GET = withBilling(
         rows,
         format,
         filename: `${ticker}_metrics.csv`,
-        extraHeaders: getCorsHeaders(origin) as Record<string, string>,
+        extraHeaders: {
+          ...(getCorsHeaders(origin) as Record<string, string>),
+          ...resolutionDisclosureHeaders(symbolRecord),
+        },
       });
     }
 
@@ -369,6 +381,7 @@ export const GET = withBilling(
     const response = NextResponse.json(responseBody, {
       headers: {
         ...getCorsHeaders(origin),
+        ...resolutionDisclosureHeaders(symbolRecord),
         "Content-Type": "application/json",
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         "X-Data-Fetch-Latency-Ms": String(fetchLatency),
