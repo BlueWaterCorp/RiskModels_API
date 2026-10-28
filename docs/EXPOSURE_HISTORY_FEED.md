@@ -99,6 +99,18 @@ ETF Zarr stores and writes
   toward the price tier.
 - ETF-to-sector mapping is today's registry, not point-in-time (stated in the
   response).
+- Tickers are resolved point in time (ERM3-73). A ticker that appears in a
+  reviewed corporate-action event comes with `ticker_windows`: holding-date
+  ranges (`held_from` inclusive, `held_to` exclusive), each naming the security
+  a holding dated inside it is priced as (`priced_as`, `bw_sym_id`). They are
+  built by `heldTickerWindows` (`lib/identity/transition-positions.ts`), which
+  cuts each ticker's timeline at its reviewed event dates and at its alias and
+  security-master validity edges and resolves each piece with the step that
+  `POST /portfolio/exposure` uses for `positions_as_of`. The securities the
+  windows name are delivered too (`window_targets`, not billed beyond the
+  tickers submitted). Example: SPCX → the ETF (now SPCK) before 2026-04-07,
+  today's SPCX (SpaceX) after; FB → Meta before 2022-06-09. Tickers in no
+  reviewed event get no windows.
 
 ### Served history
 
@@ -222,6 +234,14 @@ port of `lib/portfolio/signed-exposure.ts` (L* default, `l1`/`l2`/`l3`
 override, no L* fallback, diagonal residual approximation, √252
 annualisation) and is tested against the TypeScript implementation on the
 same inputs.
+
+Each dated holding is resolved through the `ticker_windows` window that covers
+the book's date (`pack.window_for(ticker, held_on)`): a rewritten or carried
+holding joins the `names` row of its `bw_sym_id` (or `priced_as`, or the ETF
+covariance for an ETF), holdings that resolve to the same security are netted,
+and a dropped one (cash or cancellation) leaves the book. Per-date detail lists
+them in `transitions` and `dropped_by_event`. An undated book is today's book
+and uses today's registry.
 
 ## Daily history
 

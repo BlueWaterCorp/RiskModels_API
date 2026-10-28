@@ -171,3 +171,77 @@ def test_load_pack_reraises_served_history_warnings() -> None:
         warnings.simplefilter("error")
         quiet = load_pack(b1.getvalue(), b2.getvalue(), {"warnings": []})
     assert quiet.history_available_from == {}
+
+
+# ---- ERM3-73: point-in-time ticker resolution by holding date -------------------------------
+# Windows are the API's output for the reviewed fixtures (regenerated and pinned by
+# tests/exposure-history-pit.test.ts). SPCX was an ETF until 2026-04-07 (now SPCK) and is SpaceX
+# today; FB was Meta until 2022-06-09.
+WINDOWS = json.loads((Path(__file__).parent / "fixtures" / "ticker_windows_erm3_73.json").read_text())["ticker_windows"]
+META_ID, SPACEX_ID = "BW-BBG000MM2P62", "BW-BBG000NQF3Z5"
+PIT_TEOS = ("2021-12-31", "2026-03-31", "2026-09-30")
+
+
+def _pit_pack() -> ExposureHistoryPack:
+    rows = [
+        {"teo": t, "ticker": "META", "symbol": META_ID, "sector_etf": "XLC", "subsector_etf": None,
+         "l1_mkt_beta": 1.2, "l1_mkt_hr": -1.2, "l1_res_er": 0.5, "stock_var": 4e-4, "lstar_level": 1.0}
+        for t in PIT_TEOS
+    ]
+    # Today's SPCX (SpaceX) has model history only at the last month-end.
+    rows.append({"teo": "2026-09-30", "ticker": "SPCX", "symbol": SPACEX_ID, "sector_etf": "XLI", "subsector_etf": None,
+                 "l1_mkt_beta": 1.4, "l1_mkt_hr": -1.4, "l1_res_er": 0.7, "stock_var": 9e-4, "lstar_level": 1.0})
+    cov = []
+    for t in PIT_TEOS:
+        cov += [
+            {"teo": t, "etf_i": "SPY", "etf_j": "SPY", "cov": 1e-4},
+            {"teo": t, "etf_i": "SPCK", "etf_j": "SPY", "cov": 0.5e-4},
+            {"teo": t, "etf_i": "SPCK", "etf_j": "SPCK", "cov": 2e-4},
+        ]
+    return ExposureHistoryPack(names=pd.DataFrame(rows), cov=pd.DataFrame(cov), meta={"ticker_windows": WINDOWS})
+
+
+def test_spcx_held_before_the_rename_joins_the_etf_not_spacex() -> None:
+    series = _pit_pack().exposure({"2026-03-31": {"SPCX": 10_000}})
+    assert series["teo"].tolist() == ["2026-03-31", "2026-09-30"]
+    for teo in ("2026-03-31", "2026-09-30"):
+        d = series.attrs["detail"][teo]
+        assert d["stock_beta_usd"] == 0.0  # SpaceX's row is never used
+        assert d["direct_etf_beta_usd"] == pytest.approx(10_000 * 0.5)  # SPCK beta = 0.5e-4 / 1e-4
+        assert d["not_in_feed"] == []
+        assert d["transitions"] == [{
+            "ticker": "SPCX", "held_on": "2026-03-31", "priced_as": "SPCK", "bw_sym_id": "BW-BBG00YJ8L8T5",
+            "status": "rewritten", "event_ids": ["SPCK-SPCX-20260407"],
+        }]
+
+
+def test_spcx_held_after_the_rename_joins_todays_holder() -> None:
+    series = _pit_pack().exposure({"2026-09-30": {"SPCX": 10_000}})
+    d = series.attrs["detail"]["2026-09-30"]
+    assert d["stock_beta_usd"] == pytest.approx(10_000 * 1.4)
+    assert d["transitions"] == []
+
+
+def test_fb_and_meta_held_in_2021_net_into_one_meta_name() -> None:
+    series = _pit_pack().exposure({"2021-12-31": {"FB": 6_000, "META": 4_000}})
+    d = series.attrs["detail"]["2021-12-31"]
+    assert d["stock_beta_usd"] == pytest.approx(10_000 * 1.2)
+    # One name: residual variance is (6k + 4k)^2, not 6k^2 + 4k^2.
+    assert d["residual_daily_variance"] == pytest.approx(10_000**2 * 4e-4 * 0.5)
+    assert [t["ticker"] for t in d["transitions"]] == ["FB"]
+
+
+def test_undated_book_is_todays_book_and_uses_todays_registry() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        series = _pit_pack().exposure({"SPCX": 10_000})
+    detail = series.attrs["detail"]
+    assert detail["2026-03-31"]["not_in_feed"] == ["SPCX"]  # SpaceX has no row then
+    assert detail["2026-09-30"]["stock_beta_usd"] == pytest.approx(10_000 * 1.4)
+
+
+def test_window_for_uses_inclusive_start_and_exclusive_end() -> None:
+    pack = _pit_pack()
+    assert pack.window_for("spcx", "2026-04-06")["priced_as"] == "SPCK"
+    assert pack.window_for("SPCX", "2026-04-07")["priced_as"] == "SPCX"
+    assert pack.window_for("AAPL", "2020-01-02") is None

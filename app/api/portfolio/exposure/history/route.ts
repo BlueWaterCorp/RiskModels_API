@@ -12,6 +12,14 @@
  * before 2013-01-01. The response states this in `history_available_from`
  * and, when the requested start is earlier, in `warnings`.
  *
+ * Tickers resolve point in time (ERM3-73): a ticker that appears in a reviewed
+ * corporate-action event gets `ticker_windows` (holding-date ranges, each naming
+ * the security a holding dated inside it is priced as), built by the same step
+ * as POST /portfolio/exposure with positions_as_of. The securities the windows
+ * name are delivered too (`window_targets`), so the SDK joins a past SPCX
+ * holding to the ETF (now SPCK), not to SpaceX. Other tickers resolve through
+ * today's registry.
+ *
  * Everything delivered is derived data (lib/portfolio/exposure-history.ts holds
  * the column allowlist). Priced per call by names delivered: $1.25 up to 25,
  * $5.00 above.
@@ -33,7 +41,9 @@ import {
   maskBeforeServedStart,
   servedStartWarnings,
   toParquet,
-  type HistoryName,
+  historyTickerWindows,
+  resolveHistoryNames,
+  TICKER_RESOLUTION_NOTE,
 } from "@/lib/portfolio/exposure-history";
 import { clampStart } from "@/lib/dal/served-history";
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
@@ -89,32 +99,11 @@ export const POST = withBilling(
 
     try {
       const fetchStart = performance.now();
-      const upper = [...new Set(tickers.map((t) => t.toUpperCase()))];
-      const registry = await resolveAll(upper);
-
-      const dropped: Array<{ ticker: string; reason: string }> = [];
-      const bySymbol = new Map<string, HistoryName>();
-      const directEtfs: string[] = [];
-      for (const t of upper) {
-        const row = registry.get(t);
-        if (!row) {
-          dropped.push({ ticker: t, reason: "symbol_not_found" });
-          continue;
-        }
-        if ((row.asset_type ?? "").toLowerCase() === "etf") {
-          directEtfs.push(row.ticker.toUpperCase());
-          continue;
-        }
-        const cur = bySymbol.get(row.symbol) ?? {
-          symbol: row.symbol,
-          tickers: [],
-          sector_etf: row.sector_etf ?? null,
-          subsector_etf: row.subsector_etf ?? null,
-        };
-        cur.tickers.push(t);
-        bySymbol.set(row.symbol, cur);
-      }
-      const names = [...bySymbol.values()];
+      // Point in time (ERM3-73): tickers in reviewed events get dated windows; the SDK joins each
+      // holding through the window covering its own date. Window targets are delivered too.
+      const { windows: tickerWindows, targets: windowTargets } = await historyTickerWindows(tickers);
+      const { names, directEtfs, dropped, targets } = await resolveHistoryNames(tickers, resolveAll, windowTargets);
+      const bySymbol = new Map(names.map((n) => [n.symbol, n]));
 
       const slice = await readExposureMonthEndPanel({
         symbols: names.map((n) => n.symbol),
@@ -150,7 +139,8 @@ export const POST = withBilling(
           { status: 422, headers },
         );
       }
-      context.setBillableItemCount?.(delivered);
+      // Names delivered only as window targets are not billed beyond the tickers submitted.
+      context.setBillableItemCount?.(Math.min(delivered, new Set(tickers.map((t) => t.toUpperCase())).size));
 
       // Same request on the same panel build → same files; reuse them.
       const cacheKey = createHash("sha256")
@@ -204,6 +194,7 @@ export const POST = withBilling(
             panel_built_utc: slice.attrs.built_utc ?? null,
             source_last_teo: slice.attrs.source_last_teo ?? null,
             etf_mapping: "current symbol registry (not point-in-time)",
+            ticker_resolution: TICKER_RESOLUTION_NOTE,
           },
           files: {
             names: { url: namesUrl, format: "parquet", rows: tables.names.length, columns: NAME_COLUMNS },
@@ -219,6 +210,8 @@ export const POST = withBilling(
           },
           names_delivered: tables.delivered.length,
           etfs_in_covariance: tables.covEtfs,
+          ticker_windows: tickerWindows,
+          window_targets: targets,
           dropped,
           history_available_from: EXPOSURE_FIELD_START,
           warnings,
@@ -226,6 +219,7 @@ export const POST = withBilling(
             "Derived data only: no prices, market caps or return series.",
             "l1_mkt_beta equals -l1_mkt_hr exactly (L1 has one factor, SPY).",
             "Join locally with dated holdings via the SDK (client.exposure_history). A fixed book applied to past dates has look-back bias.",
+            "A holding of a ticker listed in ticker_windows joins the security its window names for the holding's own date (priced_as / bw_sym_id), not today's holder of the ticker.",
           ],
           _metadata: buildMetadataBody(metadata, { data_source: "zarr" }),
           _agent: { cost_usd: context.costUsd, request_id: context.requestId, latency_ms: latency },

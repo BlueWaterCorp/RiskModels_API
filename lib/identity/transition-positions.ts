@@ -16,7 +16,8 @@
  * or was cancelled is dropped and reported.
  */
 import { describe, loadEvents, resolveIdentity, type IdentitySource } from "@/lib/identity/resolve";
-import { applyEvents, effectiveEvents, fracToRatio, fracToString, parseDecimal } from "@/lib/identity/security-events";
+import { applyEvents, effectiveEvents, fracToRatio, fracToString, parseDecimal, tickerWindows } from "@/lib/identity/security-events";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type TransitionStepOut = {
   event_id: string;
@@ -162,4 +163,109 @@ export function transitionFootnotes(transitions: PositionTransition[]): string[]
     }
   });
   return [`Positions recorded on ${transitions[0].held_on}, carried to today's data through reviewed corporate-action events:`, ...lines];
+}
+
+/**
+ * How a submitted ticker is priced for holdings dated inside one window (ERM3-73, exposure history).
+ * `held_from` is inclusive and `held_to` exclusive; null means open-ended. A holding dated d of
+ * `ticker` takes the window with held_from <= d < held_to.
+ */
+export type HeldTickerWindow = {
+  ticker: string;
+  held_from: string | null;
+  held_to: string | null;
+  /** unchanged: today's registry holder of `ticker` is the security held then. Others as in PositionTransition. */
+  status: "unchanged" | PositionTransition["status"];
+  /** Ticker under which today's registry (and the feed) carries the security; null when dropped. */
+  priced_as: string | null;
+  /** Security priced (the `symbol` column of the names file when it is a modelled stock); null when unchanged, dropped or left as submitted. */
+  bw_sym_id: string | null;
+  outcome: string;
+  event_ids: string[];
+};
+
+const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER", "LEGACY_TICKER"];
+
+/** Dates at which the alias and security-master evidence for `ticker` changes (empty on a read error). */
+async function evidenceDates(ticker: string): Promise<string[]> {
+  const admin = createAdminClient();
+  const [al, sm] = await Promise.all([
+    admin.from("security_aliases").select("valid_from, valid_to").eq("alias_value", ticker).in("alias_type", TICKER_ALIAS_TYPES),
+    admin.from("security_master").select("valid_from, valid_to").eq("ticker", ticker),
+  ]);
+  const rows = [...((al.error ? [] : al.data) ?? []), ...((sm.error ? [] : sm.data) ?? [])] as Array<{ valid_from: string | null; valid_to: string | null }>;
+  return rows.flatMap((r) => [r.valid_from, r.valid_to]).filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)).map((d) => d.slice(0, 10));
+}
+
+function dayBefore(d: string): string {
+  const t = new Date(`${d}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - 1);
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * Point-in-time ticker windows for the tickers-only history feed. For each submitted ticker that
+ * appears in a reviewed event, the timeline is cut at every reviewed event date and ticker window
+ * edge, and at every alias / security-master validity edge for that ticker; each piece is resolved
+ * with `transitionPositions` (the same step as POST /portfolio/exposure with positions_as_of) and
+ * adjacent pieces with the same answer are merged. Tickers in no reviewed event get no windows and
+ * resolve through today's registry, exactly as before.
+ */
+export async function heldTickerWindows(
+  tickers: string[],
+  opts: { asOf: string; knownAsOf?: string | null },
+): Promise<HeldTickerWindow[]> {
+  const events = await loadEvents();
+  const eff = effectiveEvents(events, opts.knownAsOf ?? null);
+  const datesByTicker = new Map<string, Set<string>>();
+  for (const e of eff) {
+    for (const l of [...e.inputs, ...e.outputs]) {
+      if (!l.ticker) continue;
+      const s = datesByTicker.get(l.ticker) ?? new Set<string>();
+      s.add(e.effective_date);
+      datesByTicker.set(l.ticker, s);
+    }
+  }
+  for (const w of tickerWindows(events, opts.knownAsOf ?? null)) {
+    const s = datesByTicker.get(w.ticker);
+    if (!s) continue;
+    if (w.start) s.add(w.start);
+    if (w.end) s.add(w.end);
+  }
+  const out: HeldTickerWindow[] = [];
+  for (const t of [...new Set(tickers.map((x) => x.trim().toUpperCase()))].sort()) {
+    const reviewed = datesByTicker.get(t);
+    if (!reviewed) continue;
+    const cuts = [...new Set([...reviewed, ...(await evidenceDates(t))])].filter((d) => d <= opts.asOf).sort();
+    const pieces: Array<[string | null, string | null]> = [];
+    if (!cuts.length) pieces.push([null, null]);
+    else {
+      pieces.push([null, cuts[0]]);
+      for (let i = 0; i < cuts.length; i++) pieces.push([cuts[i], cuts[i + 1] ?? null]);
+    }
+    let prev: HeldTickerWindow | null = null;
+    for (const [from, to] of pieces) {
+      const heldOn = from ?? (to ? dayBefore(to) : opts.asOf);
+      const r = await transitionPositions([{ ticker: t }], { heldOn, asOf: opts.asOf, knownAsOf: opts.knownAsOf });
+      const tr = r.transitions[0];
+      const w: HeldTickerWindow = tr
+        ? {
+            ticker: t, held_from: from, held_to: to, status: tr.status,
+            priced_as: tr.status === "dropped" ? null : tr.ticker ?? t,
+            bw_sym_id: tr.status === "rewritten" || tr.status === "carried" ? tr.bw_sym_id : null,
+            outcome: tr.outcome, event_ids: tr.event_ids,
+          }
+        : { ticker: t, held_from: from, held_to: to, status: "unchanged", priced_as: t, bw_sym_id: null, outcome: "unchanged", event_ids: [] };
+      if (
+        prev && prev.status === w.status && prev.priced_as === w.priced_as && prev.bw_sym_id === w.bw_sym_id &&
+        prev.event_ids.join() === w.event_ids.join()
+      ) {
+        prev.held_to = to;
+        continue;
+      }
+      out.push(w);
+      prev = w;
+    }
+  }
+  return out;
 }

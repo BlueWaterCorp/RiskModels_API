@@ -1,0 +1,158 @@
+{
+  "generated_by": "tests/exposure-history-pit.test.ts",
+  "as_of": "2026-10-27",
+  "ticker_windows": [
+    {
+      "ticker": "FB",
+      "held_from": null,
+      "held_to": "2022-06-09",
+      "status": "rewritten",
+      "priced_as": "META",
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "outcome": "held",
+      "event_ids": [
+        "META-FB-20220609"
+      ]
+    },
+    {
+      "ticker": "FB",
+      "held_from": "2022-06-09",
+      "held_to": null,
+      "status": "unresolved",
+      "priced_as": "FB",
+      "bw_sym_id": null,
+      "outcome": "unavailable",
+      "event_ids": []
+    },
+    {
+      "ticker": "IXHL",
+      "held_from": null,
+      "held_to": "2023-11-28",
+      "status": "carried",
+      "priced_as": "IXHL",
+      "bw_sym_id": "BW-BBG0125CL1D2",
+      "outcome": "held",
+      "event_ids": [
+        "IXHL-ADS-COMMON-20231128"
+      ]
+    },
+    {
+      "ticker": "IXHL",
+      "held_from": "2023-11-28",
+      "held_to": null,
+      "status": "unchanged",
+      "priced_as": "IXHL",
+      "bw_sym_id": null,
+      "outcome": "unchanged",
+      "event_ids": []
+    },
+    {
+      "ticker": "META",
+      "held_from": null,
+      "held_to": "2022-06-09",
+      "status": "unresolved",
+      "priced_as": "META",
+      "bw_sym_id": null,
+      "outcome": "unavailable",
+      "event_ids": []
+    },
+    {
+      "ticker": "META",
+      "held_from": "2022-06-09",
+      "held_to": null,
+      "status": "unchanged",
+      "priced_as": "META",
+      "bw_sym_id": null,
+      "outcome": "unchanged",
+      "event_ids": []
+    },
+    {
+      "ticker": "NEXN",
+      "held_from": null,
+      "held_to": "2025-02-18",
+      "status": "carried",
+      "priced_as": "NEXN",
+      "bw_sym_id": "BW-BBG0116Y22N3",
+      "outcome": "held",
+      "event_ids": [
+        "NEXN-ADR-ORD-20250218-V2"
+      ]
+    },
+    {
+      "ticker": "NEXN",
+      "held_from": "2025-02-18",
+      "held_to": null,
+      "status": "unchanged",
+      "priced_as": "NEXN",
+      "bw_sym_id": null,
+      "outcome": "unchanged",
+      "event_ids": []
+    },
+    {
+      "ticker": "OIIM",
+      "held_from": null,
+      "held_to": "2005-11-28",
+      "status": "carried",
+      "priced_as": "OIIM",
+      "bw_sym_id": "BW-SADGGC2A3BAWC",
+      "outcome": "held",
+      "event_ids": [
+        "OIIM-ORD-ADS-20051128-V2"
+      ]
+    },
+    {
+      "ticker": "OIIM",
+      "held_from": "2005-11-28",
+      "held_to": null,
+      "status": "unchanged",
+      "priced_as": "OIIM",
+      "bw_sym_id": null,
+      "outcome": "unchanged",
+      "event_ids": []
+    },
+    {
+      "ticker": "SOS",
+      "held_from": null,
+      "held_to": "2025-09-08",
+      "status": "carried",
+      "priced_as": "SOS",
+      "bw_sym_id": "BW-BBG00GCTC8Y9",
+      "outcome": "held",
+      "event_ids": [
+        "SOS-ADS-ORD-20250908"
+      ]
+    },
+    {
+      "ticker": "SOS",
+      "held_from": "2025-09-08",
+      "held_to": null,
+      "status": "unchanged",
+      "priced_as": "SOS",
+      "bw_sym_id": null,
+      "outcome": "unchanged",
+      "event_ids": []
+    },
+    {
+      "ticker": "SPCX",
+      "held_from": null,
+      "held_to": "2026-04-07",
+      "status": "rewritten",
+      "priced_as": "SPCK",
+      "bw_sym_id": "BW-BBG00YJ8L8T5",
+      "outcome": "held",
+      "event_ids": [
+        "SPCK-SPCX-20260407"
+      ]
+    },
+    {
+      "ticker": "SPCX",
+      "held_from": "2026-04-07",
+      "held_to": null,
+      "status": "unresolved",
+      "priced_as": "SPCX",
+      "bw_sym_id": null,
+      "outcome": "unavailable",
+      "event_ids": []
+    }
+  ]
+}

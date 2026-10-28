@@ -48,6 +48,13 @@ vi.mock("@/lib/agent/billing-middleware", () => ({
       return handler(req, ctx);
     },
 }));
+// No reviewed corporate-action events: every ticker resolves through today's registry (ERM3-73 windows empty).
+vi.mock("@/lib/supabase/admin", () => {
+  const q: Record<string, unknown> = {};
+  for (const m of ["select", "eq", "in"]) q[m] = () => q;
+  q.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(res);
+  return { createAdminClient: () => ({ from: () => q }) };
+});
 vi.mock("@/lib/dal/risk-metadata", () => ({ getRiskMetadata: async () => ({}) }));
 vi.mock("@/lib/dal/response-headers", () => ({ addMetadataHeaders: () => undefined, buildMetadataBody: () => ({}) }));
 vi.mock("@/lib/portfolio/signed-exposure-data", () => ({
