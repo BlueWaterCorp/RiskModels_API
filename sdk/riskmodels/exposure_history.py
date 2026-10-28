@@ -258,6 +258,24 @@ class ExposureHistoryPack:
         return dict(self.meta.get("history_available_from") or {})
 
     @property
+    def ticker_windows(self) -> list[dict]:
+        """Point-in-time ticker windows from the API (ERM3-73): for tickers in reviewed
+        corporate-action events, which security a holding dated in each window is priced as."""
+        return list(self.meta.get("ticker_windows") or [])
+
+    def window_for(self, ticker: str, held_on: str) -> dict | None:
+        """The window covering a holding of ``ticker`` dated ``held_on`` (``held_from`` inclusive,
+        ``held_to`` exclusive), or None when the ticker has no windows (today's registry applies)."""
+        t = str(ticker).upper()
+        for w in self.ticker_windows:
+            if w.get("ticker") != t:
+                continue
+            lo, hi = w.get("held_from"), w.get("held_to")
+            if (lo is None or lo <= held_on) and (hi is None or held_on < hi):
+                return w
+        return None
+
+    @property
     def teos(self) -> list[str]:
         return sorted(self.names["teo"].unique().tolist()) if not self.names.empty else []
 
@@ -300,30 +318,61 @@ class ExposureHistoryPack:
             )
         etf_universe = set(self.cov["etf_i"]) | set(self.cov["etf_j"])
         by_teo = {t: g.set_index("ticker") for t, g in self.names.groupby("teo", sort=True)}
+        by_teo_sym = (
+            {t: g.set_index("symbol") for t, g in self.names.groupby("teo", sort=True)}
+            if "symbol" in self.names.columns else {}
+        )
         rows, detail = [], {}
         for teo in self.teos:
-            book = _book_at(dated, teo)
+            book_date, book = _book_at(dated, teo)
             if book is None:
                 continue
             panel = by_teo[teo]
-            gross = float(sum(abs(v) for v in book.values()))
-            stocks, direct, missing = [], {}, []
+            panel_sym = by_teo_sym.get(teo)
+            # Point in time (ERM3-73): a dated holding is resolved as of its own date (the book's
+            # date). An undated book is today's book, so today's registry applies to it.
+            held_on = book_date
+            netted: dict[str, tuple[str, Any, float]] = {}
+            direct, missing, transitions, dropped = {}, [], [], []
             for t, v in book.items():
-                if t in panel.index:
-                    r = panel.loc[t]
-                    stocks.append({
-                        "ticker": t, "value": float(v),
-                        "sector_etf": r.get("sector_etf"), "subsector_etf": r.get("subsector_etf"),
-                        "metrics": {k: (None if pd.isna(x) else float(x)) for k, x in r.items()
-                                    if k not in ("teo", "symbol", "sector_etf", "subsector_etf")},
-                    })
-                elif t in etf_universe:
-                    direct[t] = direct.get(t, 0.0) + float(v)
+                w = self.window_for(t, held_on) if held_on else None
+                if w is not None and w.get("status") == "dropped":
+                    dropped.append({"ticker": t, "held_on": held_on, "value_usd": float(v),
+                                    "outcome": w.get("outcome"), "event_ids": list(w.get("event_ids") or [])})
+                    continue
+                label, sym = t, None
+                if w is not None and w.get("status") in ("rewritten", "carried"):
+                    label, sym = w.get("priced_as") or t, w.get("bw_sym_id")
+                    transitions.append({"ticker": t, "held_on": held_on, "priced_as": label, "bw_sym_id": sym,
+                                        "status": w["status"], "event_ids": list(w.get("event_ids") or [])})
+                r, key = None, None
+                if sym and panel_sym is not None and sym in panel_sym.index:
+                    r, key = panel_sym.loc[sym], str(sym)
+                elif label in panel.index:
+                    r = panel.loc[label]
+                    key = str(r.get("symbol", label))
+                if r is not None:
+                    prev = netted.get(key)
+                    netted[key] = (prev[0] if prev else label, r, (prev[2] if prev else 0.0) + float(v))
+                elif label in etf_universe:
+                    direct[label] = direct.get(label, 0.0) + float(v)
                 else:
                     missing.append(t)
+            gross = float(sum(abs(v) for t, v in book.items() if t not in {d["ticker"] for d in dropped}))
+            stocks = [
+                {
+                    "ticker": label, "value": val,
+                    "sector_etf": r.get("sector_etf"), "subsector_etf": r.get("subsector_etf"),
+                    "metrics": {k: (None if pd.isna(x) else float(x)) for k, x in r.items()
+                                if k not in ("teo", "ticker", "symbol", "sector_etf", "subsector_etf")},
+                }
+                for label, r, val in netted.values()
+            ]
             etfs, S = self.covariance_at(teo)
             res = compute_signed_exposure(stocks, direct, gross, etfs, S, basis)
             res["not_in_feed"] = missing
+            res["transitions"] = transitions
+            res["dropped_by_event"] = dropped
             detail[teo] = res
             rows.append({
                 "teo": teo, "gross_usd": gross,
@@ -356,11 +405,15 @@ def _normalize_holdings(h: Any) -> dict[str | None, dict[str, float]]:
     raise TypeError("holdings must be {ticker: value}, {date: {ticker: value}} or a DataFrame(date, ticker, value)")
 
 
-def _book_at(dated: dict[str | None, dict[str, float]], teo: str) -> dict[str, float] | None:
+def _book_at(dated: dict[str | None, dict[str, float]], teo: str) -> tuple[str | None, dict[str, float] | None]:
+    """(holdings date, book) in force at ``teo``; the date is None for an undated book."""
     if None in dated:
-        return dated[None]
+        return None, dated[None]
     eligible = [d for d in dated if d is not None and d <= teo]
-    return dated[max(eligible)] if eligible else None
+    if not eligible:
+        return None, None
+    d = max(eligible)
+    return d, dated[d]
 
 
 def load_pack(names_bytes: bytes | list[bytes], cov_bytes: bytes, meta: dict | None = None) -> ExposureHistoryPack:

@@ -788,6 +788,10 @@ export function registerRiskModelsTools(
           "Past model date, 2011-12-07 or later; before 2013-01-01 lstar uses L3 (default latest)",
           "2024-12-31",
         ),
+        positions_as_of: isoDate(
+          "Date the book was recorded, on or before as_of; tickers are read as of this date and carried to as_of (today when as_of is omitted) through reviewed corporate-action events, each move listed in transitions (default: as_of)",
+          "2026-03-31",
+        ),
         top_contributors: z
           .union([z.literal("all"), z.number().int().min(1).max(1000)])
           .optional()
@@ -798,7 +802,7 @@ export function registerRiskModelsTools(
           .describe("Add per-name scenario rows (level, L1 beta, hedge ratios, residual volatility), e.g. true (default false)"),
       },
     },
-    async ({ positions, hedge_level, lookback_days, as_of, top_contributors, include_positions }) =>
+    async ({ positions, hedge_level, lookback_days, as_of, positions_as_of, top_contributors, include_positions }) =>
       run(() => {
         const body: Record<string, unknown> = {
           positions: (positions as Array<{ ticker: string; value: number }>).map((row) => ({
@@ -809,6 +813,7 @@ export function registerRiskModelsTools(
         setIf(body, "hedge_level", hedge_level);
         setIf(body, "lookback_days", lookback_days);
         setIf(body, "as_of", as_of);
+        setIf(body, "positions_as_of", positions_as_of);
         setIf(body, "top_contributors", top_contributors);
         setIf(body, "include_positions", include_positions);
         return sdk.call("POST", "/portfolio/exposure", { body });

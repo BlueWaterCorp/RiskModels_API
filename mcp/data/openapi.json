@@ -12366,7 +12366,7 @@
         },
         "responses": {
           "200": {
-            "description": "Signed Parquet URLs (names per year, month-end covariance) plus coverage, `history_available_from` and `warnings` (same shape as `/portfolio/exposure/history`)."
+            "description": "Signed Parquet URLs (names per year, month-end covariance) plus coverage, `ticker_windows`, `window_targets`, `history_available_from` and `warnings` (same shape as `/portfolio/exposure/history`)."
           },
           "400": {
             "description": "Invalid request."
@@ -12383,7 +12383,7 @@
     "/portfolio/exposure/history": {
       "post": {
         "summary": "Exposure history feed — month-end model history for a list of names (join locally)",
-        "description": "Model data feed for long/short books. Send a list of tickers — no position values — and receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history (`names`: hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta` = −`l1_mkt_hr`, sector and subsector ETF) and the ETF covariance over the 252 trading days ending each month-end (`cov`, upper triangle). Holdings never leave the client: the Python SDK (`client.exposure_history(...).exposure(holdings_by_date)`) joins the feed with dated holdings locally and returns the same quantities as `POST /portfolio/exposure` at each month-end.\n\nEach row is the last trading day of its month; the current month uses its latest model day.\n\n**History start.** Model history is served from the first date whose full estimation window is covered: hedge ratios and `l1_mkt_beta` from 2010-12-08, explained-risk and residual shares and `stock_var` from 2011-12-07, `lstar_level` from 2013-01-01. Rows start at the first month-end on or after 2010-12-08 (2010-12-31); each column is null before its own start date and nothing earlier is served. That is the default `start`; an earlier `start` is moved up to it. `history_available_from` gives each column's first date, and `warnings` has one `before_served_history` entry per start date later than the requested `start`. The same applies to `/portfolio/exposure/history/daily`. Names with no model rows in range are dropped as `no_data_in_range`; ETFs stay in the covariance universe. The ETF-to-sector mapping is today's registry, not point-in-time. Derived data only: no prices, market caps or return series.\n\n**Billing:** per successful call, by names delivered (stocks with rows plus ETFs in the covariance): **$1.25** up to 25, **$5.00** above 25. A request with nothing to deliver returns 422 and is not charged. Identical requests on the same panel build reuse the stored files.\n",
+        "description": "Model data feed for long/short books. Send a list of tickers — no position values — and receive signed URLs (1 hour) to two Parquet files: each name's month-end ERM3 history (`names`: hedge ratios at L1/L2/L3, explained-risk and residual shares, `stock_var`, `lstar_level`, `l1_mkt_beta` = −`l1_mkt_hr`, sector and subsector ETF) and the ETF covariance over the 252 trading days ending each month-end (`cov`, upper triangle). Holdings never leave the client: the Python SDK (`client.exposure_history(...).exposure(holdings_by_date)`) joins the feed with dated holdings locally and returns the same quantities as `POST /portfolio/exposure` at each month-end.\n\nEach row is the last trading day of its month; the current month uses its latest model day.\n\n**History start.** Model history is served from the first date whose full estimation window is covered: hedge ratios and `l1_mkt_beta` from 2010-12-08, explained-risk and residual shares and `stock_var` from 2011-12-07, `lstar_level` from 2013-01-01. Rows start at the first month-end on or after 2010-12-08 (2010-12-31); each column is null before its own start date and nothing earlier is served. That is the default `start`; an earlier `start` is moved up to it. `history_available_from` gives each column's first date, and `warnings` has one `before_served_history` entry per start date later than the requested `start`. The same applies to `/portfolio/exposure/history/daily`. Names with no model rows in range are dropped as `no_data_in_range`; ETFs stay in the covariance universe. The ETF-to-sector mapping is today's registry, not point-in-time. Derived data only: no prices, market caps or return series.\n\n**Point-in-time tickers.** A ticker that appears in a reviewed corporate-action event is returned with `ticker_windows`: holding-date ranges (`held_from` inclusive, `held_to` exclusive, null open-ended), each naming the security a holding dated inside it is priced as (`priced_as`, `bw_sym_id`). They come from the same step as `POST /portfolio/exposure` with `positions_as_of`. The securities the windows name are delivered too (`window_targets`), so a holding of SPCX dated before 2026-04-07 joins the ETF now listed as SPCK, not SpaceX, and FB dated before 2022-06-09 joins Meta. The SDK applies the windows by each holding's date; an undated book is today's book and uses today's registry. Tickers in no reviewed event get no windows. Spin-offs are reported `unsupported` and left as submitted. The same applies to `/portfolio/exposure/history/daily`.\n\n**Billing:** per successful call, by names delivered (stocks with rows plus ETFs in the covariance), at most the number of distinct tickers submitted (window targets are not billed beyond it): **$1.25** up to 25, **$5.00** above 25. A request with nothing to deliver returns 422 and is not charged. Identical requests on the same panel build reuse the stored files.\n",
         "operationId": "postPortfolioExposureHistory",
         "tags": [
           "Risk Metrics"
@@ -12461,7 +12461,7 @@
                   "properties": {
                     "as_of": {
                       "type": "object",
-                      "description": "first_teo, last_teo, months, frequency, panel_built_utc, source_last_teo."
+                      "description": "first_teo, last_teo, months, frequency, panel_built_utc, source_last_teo, etf_mapping, ticker_resolution."
                     },
                     "files": {
                       "type": "object",
@@ -12476,6 +12476,80 @@
                         "type": "string"
                       }
                     },
+                    "ticker_windows": {
+                      "type": "array",
+                      "description": "Point-in-time windows for submitted tickers that appear in reviewed corporate-action events (empty when none do). A holding of `ticker` dated d uses the window with held_from <= d < held_to.\n",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ticker": {
+                            "type": "string"
+                          },
+                          "held_from": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "held_to": {
+                            "type": "string",
+                            "format": "date",
+                            "nullable": true
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "unchanged",
+                              "rewritten",
+                              "carried",
+                              "dropped",
+                              "unsupported",
+                              "unresolved"
+                            ],
+                            "description": "unchanged — today's holder of the ticker; rewritten — priced under another ticker; carried — same ticker, events applied; dropped — converted to cash or cancelled; unsupported (spin-off) and unresolved — left as submitted."
+                          },
+                          "priced_as": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Ticker the feed carries the security under; null when dropped."
+                          },
+                          "bw_sym_id": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Security priced (the `symbol` column of `names` for a modelled stock), for rewritten and carried windows."
+                          },
+                          "outcome": {
+                            "type": "string"
+                          },
+                          "event_ids": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "example": [
+                        {
+                          "ticker": "SPCX",
+                          "held_from": null,
+                          "held_to": "2026-04-07",
+                          "status": "rewritten",
+                          "priced_as": "SPCK",
+                          "bw_sym_id": "BW-BBG00YJ8L8T5",
+                          "outcome": "held",
+                          "event_ids": [
+                            "SPCK-SPCX-20260407"
+                          ]
+                        }
+                      ]
+                    },
+                    "window_targets": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Tickers delivered because a window prices past holdings under them, beyond the tickers submitted."
+                    },
                     "dropped": {
                       "type": "array",
                       "items": {
@@ -12489,7 +12563,8 @@
                             "enum": [
                               "symbol_not_found",
                               "no_data_in_range",
-                              "etf_without_covariance"
+                              "etf_without_covariance",
+                              "window_target_not_found"
                             ]
                           }
                         }

@@ -22,6 +22,7 @@ import {
   type ExposurePanelVar,
 } from "@/lib/dal/zarr-reader";
 import { SERVED_HISTORY_START, servedProductForKey } from "@/lib/dal/served-history";
+import { heldTickerWindows, type HeldTickerWindow } from "@/lib/identity/transition-positions";
 const parquet = require("parquetjs-lite"); // eslint-disable-line
 
 export const MARKET_ETF = "SPY";
@@ -294,12 +295,20 @@ export async function toParquet(
   }
 }
 
-/** Resolve requested tickers into modelled names (netted by symbol), ETFs held, and drops. */
+/**
+ * Resolve requested tickers into modelled names (netted by symbol), ETFs held, and drops.
+ * `windowTargets`: tickers that point-in-time ticker windows price past holdings under
+ * (heldTickerWindows, e.g. SPCK for SPCX held before 2026-04-07); delivered alongside the
+ * submitted tickers so the SDK can join them, and listed in `targets`.
+ */
 export async function resolveHistoryNames(
   tickers: string[],
   resolve: (t: string[]) => Promise<Map<string, { symbol: string; ticker: string; asset_type: string | null; sector_etf: string | null; subsector_etf: string | null }>>,
-): Promise<{ names: HistoryName[]; directEtfs: string[]; dropped: Array<{ ticker: string; reason: string }> }> {
-  const upper = [...new Set(tickers.map((t) => t.toUpperCase()))];
+  windowTargets: string[] = [],
+): Promise<{ names: HistoryName[]; directEtfs: string[]; dropped: Array<{ ticker: string; reason: string }>; targets: string[] }> {
+  const submitted = [...new Set(tickers.map((t) => t.toUpperCase()))];
+  const targets = [...new Set(windowTargets.map((t) => t.toUpperCase()))].filter((t) => !submitted.includes(t));
+  const upper = [...submitted, ...targets];
   const registry = await resolve(upper);
   const dropped: Array<{ ticker: string; reason: string }> = [];
   const bySymbol = new Map<string, HistoryName>();
@@ -307,11 +316,11 @@ export async function resolveHistoryNames(
   for (const t of upper) {
     const row = registry.get(t);
     if (!row) {
-      dropped.push({ ticker: t, reason: "symbol_not_found" });
+      dropped.push({ ticker: t, reason: targets.includes(t) ? "window_target_not_found" : "symbol_not_found" });
       continue;
     }
     if ((row.asset_type ?? "").toLowerCase() === "etf") {
-      directEtfs.push(row.ticker.toUpperCase());
+      if (!directEtfs.includes(row.ticker.toUpperCase())) directEtfs.push(row.ticker.toUpperCase());
       continue;
     }
     const cur = bySymbol.get(row.symbol) ?? {
@@ -323,5 +332,33 @@ export async function resolveHistoryNames(
     cur.tickers.push(t);
     bySymbol.set(row.symbol, cur);
   }
-  return { names: [...bySymbol.values()], directEtfs, dropped };
+  return { names: [...bySymbol.values()], directEtfs, dropped, targets };
 }
+
+export const TICKER_RESOLUTION_NOTE =
+  "Point in time by holding date for tickers in reviewed corporate-action events (ticker_windows); other tickers resolve through the current registry.";
+
+/**
+ * ERM3-73: dated ticker windows for the submitted tickers (lib/identity/transition-positions.ts
+ * heldTickerWindows, as of today), and the tickers they price past holdings under that the feed
+ * must also deliver.
+ */
+export async function historyTickerWindows(
+  tickers: string[],
+  asOf: string = new Date().toISOString().slice(0, 10),
+): Promise<{ windows: HeldTickerWindow[]; targets: string[]; unavailable: boolean }> {
+  let windows: HeldTickerWindow[];
+  try {
+    windows = await heldTickerWindows(tickers, { asOf });
+  } catch (err) {
+    // Fail open: the reviewed events are an overlay. Without them the feed resolves through today's
+    // registry, as before ERM3-73, and says so. loadEvents caches only successful reads.
+    console.error("[exposure-history] point-in-time ticker windows unavailable:", err);
+    return { windows: [], targets: [], unavailable: true };
+  }
+  const targets = [...new Set(windows.flatMap((w) => (w.priced_as && w.priced_as !== w.ticker ? [w.priced_as] : [])))];
+  return { windows, targets, unavailable: false };
+}
+
+export const TICKER_WINDOWS_UNAVAILABLE_NOTE =
+  "Point-in-time ticker windows were unavailable for this call: every ticker resolved through today's registry and ticker_windows is empty.";

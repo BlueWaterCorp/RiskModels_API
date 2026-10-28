@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-27 — Exposure history feeds resolve tickers by holding date (ERM3-73)
+
+- `POST /portfolio/exposure/history` and `/daily`: a ticker that appears in a reviewed corporate-action event now comes with `ticker_windows` (holding-date ranges, `held_from` inclusive and `held_to` exclusive, each naming the security a holding dated inside it is priced as: `priced_as`, `bw_sym_id`, `status`, `event_ids`). The windows come from the same step as `POST /portfolio/exposure` with `positions_as_of`. The securities they name are delivered too and listed in `window_targets`; billing stays at most the number of distinct tickers submitted. New drop reason `window_target_not_found`; `as_of.ticker_resolution` states the rule. Tickers in no reviewed event are unchanged.
+- Python SDK: `ExposureHistoryPack.exposure` resolves each dated holding through the window covering the book's date, so SPCX held before 2026-04-07 joins the ETF now listed as SPCK rather than SpaceX, and FB held before 2022-06-09 joins Meta. Holdings that resolve to the same security are netted. An undated book is treated as today's book and uses today's registry. Per-date detail adds `transitions` and `dropped_by_event`; new `pack.ticker_windows` and `pack.window_for(ticker, held_on)`.
+- MCP `riskmodels_portfolio_exposure` accepts `positions_as_of` and passes it to `POST /portfolio/exposure`.
+- Spin-offs stay `unsupported` (left as submitted).
+
 ## 2026-10-27 — npm CLI `riskmodels` 3.1.0
 
 - `riskmodels install` registers the MCP server, then runs `npx skills add BlueWaterCorp/riskmodels-plugin` for each detected client (Claude Code, Cursor, Codex, GitHub Copilot). `--no-skills` registers the server only. The five playbooks stay in that git repo; the npm package does not vendor them.

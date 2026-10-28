@@ -14,6 +14,9 @@
  * shares and stock_var are null before 2011-12-07, lstar_level before
  * 2013-01-01 (`history_available_from`, `warnings`).
  *
+ * Tickers resolve point in time through `ticker_windows`, as on the month-end
+ * feed (ERM3-73).
+ *
  * Measured 2026-10-08: reading full daily history (2006 → today, before the
  * served-history floor) took ~7 s for 25 names and ~19 s for 1000; writing
  * Parquet dominates for large books.
@@ -36,7 +39,10 @@ import {
   dailyCoverage,
   dailyYears,
   maskBeforeServedStart,
+  historyTickerWindows,
   resolveHistoryNames,
+  TICKER_RESOLUTION_NOTE,
+  TICKER_WINDOWS_UNAVAILABLE_NOTE,
   servedStartWarnings,
   toParquet,
 } from "@/lib/portfolio/exposure-history";
@@ -100,7 +106,9 @@ export const POST = withBilling(
 
     try {
       const fetchStart = performance.now();
-      const { names, directEtfs, dropped } = await resolveHistoryNames(tickers, resolveAll);
+      // Point in time (ERM3-73): see the month-end route.
+      const { windows: tickerWindows, targets: windowTargets, unavailable: windowsUnavailable } = await historyTickerWindows(tickers);
+      const { names, directEtfs, dropped, targets } = await resolveHistoryNames(tickers, resolveAll, windowTargets);
 
       const [daily, panel] = await Promise.all([
         readDailyExposureHistory({ symbols: names.map((n) => n.symbol), start, end }),
@@ -137,7 +145,7 @@ export const POST = withBilling(
           { status: 422, headers },
         );
       }
-      context.setBillableItemCount?.(billable);
+      context.setBillableItemCount?.(Math.min(billable, new Set(tickers.map((t) => t.toUpperCase())).size));
 
       const cacheKey = createHash("sha256")
         .update(
@@ -147,6 +155,8 @@ export const POST = withBilling(
             e: [...directEtfs].sort(),
             start,
             end: end ?? null,
+            // A set built without the reviewed events is never served to a call that has them.
+            ...(windowsUnavailable ? { pit: "unavailable" } : {}),
             last: daily.teos[daily.teos.length - 1] ?? null,
             built: panel.attrs.built_utc ?? null,
             // Sets written before the served-history floors applied hold pre-floor rows.
@@ -195,6 +205,7 @@ export const POST = withBilling(
             covariance_frequency: "month_end",
             note: "Use the latest covariance month-end on or before each day (the SDK does this).",
             etf_mapping: "current symbol registry (not point-in-time)",
+            ticker_resolution: TICKER_RESOLUTION_NOTE,
           },
           files: {
             names: { format: "parquet", columns: NAME_COLUMNS, parts },
@@ -210,10 +221,13 @@ export const POST = withBilling(
           },
           names_delivered: delivered.length,
           etfs_in_covariance: cov.covEtfs,
+          ticker_windows: tickerWindows,
+          window_targets: targets,
           dropped,
           history_available_from: EXPOSURE_FIELD_START,
           warnings,
           notes: [
+            ...(windowsUnavailable ? [TICKER_WINDOWS_UNAVAILABLE_NOTE] : []),
             "Derived data only: no prices, market caps or return series.",
             "l1_mkt_beta equals -l1_mkt_hr exactly (L1 has one factor, SPY).",
             "Join locally with dated holdings via the SDK (client.exposure_history(..., frequency='daily')).",

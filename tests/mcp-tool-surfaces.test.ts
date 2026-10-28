@@ -257,6 +257,12 @@ describe("MCP tool routing (method + REST path)", () => {
     expect(
       routes(await r("riskmodels_portfolio_exposure", { positions: [{ ticker: "tsla", value: -5000 }] })),
     ).toEqual(["POST /portfolio/exposure"]);
+    // ERM3-73: a dated book reaches the route's transition step.
+    const dated = await r("riskmodels_portfolio_exposure", {
+      positions: [{ ticker: "spcx", value: 10000 }],
+      positions_as_of: "2026-03-31",
+    });
+    expect(dated[0]!.body).toEqual({ positions: [{ ticker: "SPCX", value: 10000 }], positions_as_of: "2026-03-31" });
     expect(
       routes(
         await r("riskmodels_decompose_selection_vs_drift", { positions: [{ ticker: "MSFT", weight: 0.1 }] }),
