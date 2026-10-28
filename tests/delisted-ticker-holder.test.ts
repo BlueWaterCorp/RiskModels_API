@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
@@ -818,6 +818,104 @@ describe("adversarial holder cases (Grok reviews, 2026-10-10)", () => {
     for (let i = 0; i < 50; i++) SYMBOLS.push(sym(`BW-A${String(i).padStart(2, "0")}`, "MANY", { dead: true }));
     SYMBOLS.push(sym("BW-Z-LIVE", "MANY"));
     expect((await both("MANY"))?.symbol).toBe("BW-Z-LIVE");
+  });
+
+  describe("coordinated rename SPLG -> SPYM (ERM3-68)", () => {
+    // Production shape after the ERM3 cutover (2026-10-28): the serial row ds_etf published for SPLG is stamped
+    // superseded_by the fund's master row, which carries SPYM; security_aliases keeps SPLG on the master id,
+    // closed on the rename date. The master is not a live holder of SPLG, so before this fix both resolvers kept
+    // the dead serial row as the previous answer (delisted: true).
+    const SERIAL = "BW-SP7AMAMMMRW42";
+    const MASTER = "BW-BBG000KMT5K3";
+    function cutover(opts: { masterDead?: boolean; masterRow?: boolean } = {}) {
+      SYMBOLS.push({
+        symbol: SERIAL,
+        ticker: "SPLG",
+        name: null,
+        asset_type: "etf",
+        sector_etf: null,
+        subsector_etf: null,
+        is_adr: null,
+        metadata: {
+          priced: false,
+          last_return_teo: "2025-10-24",
+          superseded_by: MASTER,
+          renamed_to: "SPYM",
+          renamed_on: "2025-10-31",
+        },
+      });
+      if (opts.masterRow !== false) {
+        SYMBOLS.push({
+          ...sym(MASTER, "SPYM", { dead: opts.masterDead }),
+          asset_type: "etf",
+          sector_etf: null,
+        });
+      }
+      SECURITY_MASTER.push(sm(MASTER, "SPYM"));
+      ALIASES.push({
+        bw_sym_id: MASTER,
+        alias_type: "TICKER",
+        alias_value: "SPLG",
+        valid_from: "2017-10-16",
+        valid_to: "2025-10-31",
+        confidence_score: 0.95,
+      });
+    }
+    afterEach(() => {
+      delete process.env.RM_ETF_RENAME_SPLG_SPYM;
+    });
+
+    it("flag on: SPLG answers with the superseded_by row, labelled SPLG, modelled as SPYM", async () => {
+      cutover();
+      process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+      const single = await both("SPLG");
+      expect(single).toMatchObject({ symbol: MASTER, ticker: "SPLG", modelled_ticker: "SPYM" });
+      expect(single?.delisted).toBeUndefined();
+      expect(single?.resolved_via).toBeUndefined();
+      const batch = (await resolveSymbolsByTickers(["SPLG", "SPYM"])).get("SPLG");
+      expect(batch?.modelled_ticker).toBe("SPYM");
+      expect((await both("SPYM"))).toMatchObject({ symbol: MASTER, ticker: "SPYM", modelled_ticker: null });
+    });
+
+    it("flag off: unchanged, SPLG stays on the serial row", async () => {
+      cutover();
+      const rec = await both("SPLG");
+      expect(rec).toMatchObject({ symbol: SERIAL, ticker: "SPLG", modelled_ticker: null });
+      expect(rec?.delisted).toBeUndefined();
+    });
+
+    it("flag on, superseded_by target dead or absent: unchanged (dead serial row, delisted)", async () => {
+      cutover({ masterDead: true });
+      process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+      expect(await both("SPLG")).toMatchObject({ symbol: SERIAL, delisted: true });
+      resetFixtures();
+      cutover({ masterRow: false });
+      process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+      expect((await both("SPLG"))?.symbol).toBe(SERIAL);
+    });
+
+    it("flag on, target read fails: falls back to the previous answer, never a guess", async () => {
+      cutover();
+      process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+      SYM_FAIL_KEYS = new Set([MASTER]);
+      expect((await resolveSymbolByTicker("SPLG"))?.symbol).toBe(SERIAL);
+      expect((await resolveSymbolsByTickers(["SPLG"])).get("SPLG")?.symbol).toBe(SERIAL);
+    });
+
+    it("FB -> META resolves exactly as before with the rename flag on (production alias rows)", async () => {
+      process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+      SYMBOLS.push(sym("BW-BBG000MM2P62", "META", { name: "Meta Platforms" }));
+      SECURITY_MASTER.push(sm("BW-BBG000MM2P62", "META"));
+      ALIASES.push(
+        { ...alias("BW-BBG000MM2P62", "FB", "EODHD_TICKER", "2022-06-09"), confidence_score: 0.95 },
+        { ...alias("BW-BBG000MM2P62", "FB", "TICKER", "2022-06-09"), confidence_score: 0.95 },
+      );
+      DAILY!.META = ["BW-BBG000MM2P62"];
+      const rec = await both("FB");
+      expect(rec).toMatchObject({ symbol: "BW-BBG000MM2P62", ticker: "FB", modelled_ticker: null });
+      expect(rec?.resolved_via).toBeUndefined();
+      expect(rec?.delisted).toBeUndefined();
+    });
   });
 });
 
