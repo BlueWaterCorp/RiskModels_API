@@ -108,6 +108,7 @@
     "spsm": "BW-ETF-SPSM",
     "spy": "BW-ETF-SPY",
     "spyg": "BW-ETF-SPYG",
+    "spym": "BW-ETF-SPLG",
     "spyv": "BW-ETF-SPYV",
     "tchi": "BW-ETF-TCHI",
     "thd": "BW-ETF-THD",
@@ -659,7 +660,7 @@
     },
     "BW-ETF-SPLG": {
       "bw_etf_id": "BW-ETF-SPLG",
-      "ticker": "SPLG",
+      "ticker": "SPYM",
       "name": "SPDR Portfolio S&P 500 ETF"
     },
     "BW-ETF-SPMD": {

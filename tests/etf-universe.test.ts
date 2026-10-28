@@ -38,6 +38,7 @@ import {
 } from "@/lib/dal/etf-universe";
 
 beforeEach(() => {
+  delete process.env.RM_ETF_RENAME_SPLG_SPYM;
   _resetEtfUniverseCache();
   readEtfStoreIndex.mockClear();
   readCascadeEtfSets.mockReset();
@@ -130,5 +131,43 @@ describe("classifyEmptyEtfReturns", () => {
     expect(await classifyEmptyEtfReturns("HYG")).toBe("etf_outside_priced_universe");
     expect(await classifyEmptyEtfReturns("SPY")).toBe("etf_no_return_history_in_window");
     expect((await getEtfUniverseRow("spy"))!.ticker).toBe("SPY");
+  });
+});
+
+describe("ERM3-68 SPLG -> SPYM in the universe", () => {
+  // Store and register still carry SPLG (old serial) and SPYM (fund row) on cutover night; ids are production ones.
+  const renameRows = [
+    { ticker: "SPLG", bw_sym_id: "BW-SP7AMAMMMRW42", priced_from: "2005-11-15", priced_through: "2025-10-24" },
+    { ticker: "SPYM", bw_sym_id: "BW-BBG000KMT5K3", priced_from: "2005-11-15", priced_through: "2026-10-13" },
+  ];
+
+  it("keeps one row per ticker while the flag is off", async () => {
+    readEtfStoreIndex.mockImplementationOnce(async () => [...storeRows, ...renameRows]);
+    const u = await buildEtfUniverse();
+    const splg = u.rows.find((r) => r.ticker === "SPLG")!;
+    expect(splg.identifiers.bw_etf_id).toBe("BW-ETF-SPLG");
+    expect(splg.identifiers.bw_sym_id).toBe("BW-SP7AMAMMMRW42");
+    expect(u.rows.find((r) => r.ticker === "SPYM")!.identifiers.bw_etf_id).toBeNull();
+  });
+
+  it("merges both tickers into one SPYM row while the flag is on", async () => {
+    process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+    const { _reloadEtfCatalog } = await import("@/lib/dal/etf-catalog");
+    _reloadEtfCatalog();
+    for (const order of [renameRows, [...renameRows].reverse()]) {
+      _resetEtfUniverseCache();
+      readEtfStoreIndex.mockImplementationOnce(async () => [...storeRows, ...order]);
+      const u = await buildEtfUniverse();
+      const hits = u.rows.filter((r) => r.identifiers.bw_etf_id === "BW-ETF-SPLG");
+      expect(hits).toHaveLength(1);
+      expect(u.rows.some((r) => r.ticker === "SPLG")).toBe(false);
+      expect(hits[0]).toMatchObject({
+        ticker: "SPYM",
+        capabilities: { priced: true, holdings: true },
+        identifiers: { bw_sym_id: "BW-BBG000KMT5K3", ticker: "SPYM" },
+      });
+    }
+    delete process.env.RM_ETF_RENAME_SPLG_SPYM;
+    _reloadEtfCatalog();
   });
 });

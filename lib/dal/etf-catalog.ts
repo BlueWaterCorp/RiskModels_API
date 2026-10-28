@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { etfRenamePartners } from "@/lib/dal/etf-renames";
+import { ETF_RENAMES, etfRenamePartners, isEtfRenameActive } from "@/lib/dal/etf-renames";
 
 export interface EtfEntryRecord {
   bw_etf_id: string;
@@ -40,12 +40,39 @@ const EMPTY: EtfCatalog = {
 };
 
 let _cached: EtfCatalog | null = null;
+let _view: { sig: string; raw: EtfCatalog; cat: EtfCatalog } | null = null;
 
 function _path(): string {
   return join(process.cwd(), "mcp", "data", "etf_master.json");
 }
 
+/**
+ * ERM3-68: the mirror may already carry a rename's new ticker (Funds_DAG keeps the fund id and swaps the ticker,
+ * adding the new ticker's alias). While that rename's flag is off, the catalog reads exactly as it did before the
+ * rename: the new ticker's alias is hidden and the entry shows the old ticker. Renames that are on, and every
+ * other ticker, pass through untouched.
+ */
 function _load(): EtfCatalog {
+  const raw = _loadRaw();
+  const inactive = ETF_RENAMES.filter((r) => !isEtfRenameActive(r.key));
+  const sig = inactive.map((r) => r.key).join(",");
+  if (_view && _view.sig === sig && _view.raw === raw) return _view.cat;
+  let cat = raw;
+  for (const r of inactive) {
+    const newKey = r.new.toLowerCase();
+    const id = cat.aliases[newKey];
+    if (!id || cat.aliases[r.old.toLowerCase()] !== id) continue;
+    const aliases = { ...cat.aliases };
+    delete aliases[newKey];
+    const entries = { ...cat.entries };
+    if (entries[id]?.ticker.toUpperCase() === r.new) entries[id] = { ...entries[id], ticker: r.old };
+    cat = { ...cat, aliases, entries };
+  }
+  _view = { sig, raw, cat };
+  return cat;
+}
+
+function _loadRaw(): EtfCatalog {
   if (_cached) return _cached;
   const p = _path();
   if (!existsSync(p)) {
@@ -70,6 +97,7 @@ function _load(): EtfCatalog {
 /** Test seam: reload the cached catalog from disk. */
 export function _reloadEtfCatalog(): EtfCatalog {
   _cached = null;
+  _view = null;
   return _load();
 }
 
@@ -129,21 +157,24 @@ export function searchEtfs(query: string, limit = 25): EtfSearchHit[] {
   }
 
   const hits: EtfSearchHit[] = [];
+  // ERM3-68: an active rename's other ticker scores like the entry's own (empty while the flag is off).
+  const tickerScore = (ticker: string): number =>
+    ticker === q ? 100 : ticker.startsWith(q) ? 70 : ticker.includes(q) ? 50 : 0;
   for (const e of all) {
     const ticker = e.ticker.toLowerCase();
     const name = e.name.toLowerCase();
 
-    let score = 0;
-    if (ticker === q) score = 100;
-    else if (ticker.startsWith(q)) score = 70;
-    else if (ticker.includes(q)) score = 50;
-    else if (
-      name === q ||
-      name.startsWith(`${q} `) ||
-      name.split(/[\s&-]+/).some((w) => w === q || w.startsWith(q))
-    )
-      score = 40;
-    else if (name.includes(q)) score = 30;
+    let score = tickerScore(ticker);
+    for (const p of etfRenamePartners(ticker)) score = Math.max(score, tickerScore(p.toLowerCase()));
+    if (score === 0) {
+      if (
+        name === q ||
+        name.startsWith(`${q} `) ||
+        name.split(/[\s&-]+/).some((w) => w === q || w.startsWith(q))
+      )
+        score = 40;
+      else if (name.includes(q)) score = 30;
+    }
 
     if (score > 0) hits.push({ ...e, score });
   }

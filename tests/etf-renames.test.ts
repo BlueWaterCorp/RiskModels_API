@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { isDeadSymbolRow, pickLiveRow } from "@/lib/dal/risk-engine-v3";
-import { _reloadEtfCatalog, lookupEtfTicker } from "@/lib/dal/etf-catalog";
+import {
+  _reloadEtfCatalog,
+  getEtfEntry,
+  listEtfEntries,
+  lookupEtfTicker,
+  searchEtfs,
+} from "@/lib/dal/etf-catalog";
 import { etfRegisterRole } from "@/lib/dal/etf-register";
 import { etfRenamePartners, isSupersededByActiveRename } from "@/lib/dal/etf-renames";
 
@@ -36,6 +42,11 @@ describe("ETF rename flag (default off)", () => {
     expect(etfRegisterRole("SPYM")).toBeNull();
     expect(lookupEtfTicker("SPLG")).toBe("BW-ETF-SPLG");
     expect(lookupEtfTicker("SPYM")).toBeNull();
+    // the mirror already carries Funds_DAG's rename (spym alias, ticker SPYM); off, it reads as before
+    expect(getEtfEntry("BW-ETF-SPLG")?.ticker).toBe("SPLG");
+    expect(searchEtfs("SPYM")).toEqual([]);
+    expect(searchEtfs("SPLG")[0]?.bw_etf_id).toBe("BW-ETF-SPLG");
+    expect(listEtfEntries().some((e) => e.ticker === "SPYM")).toBe(false);
   });
 
   it("retires the superseded row and links both tickers while on", () => {
@@ -48,6 +59,18 @@ describe("ETF rename flag (default off)", () => {
     expect(etfRegisterRole("SPYM")).toBe("broad_market");
     expect(lookupEtfTicker("SPYM")).toBe("BW-ETF-SPLG");
     expect(lookupEtfTicker("SPLG")).toBe("BW-ETF-SPLG");
+    expect(getEtfEntry("BW-ETF-SPLG")?.ticker).toBe("SPYM");
+    // search finds the fund under either ticker
+    expect(searchEtfs("SPLG")[0]).toMatchObject({ bw_etf_id: "BW-ETF-SPLG", ticker: "SPYM", score: 100 });
+    expect(searchEtfs("SPYM")[0]).toMatchObject({ bw_etf_id: "BW-ETF-SPLG", score: 100 });
+  });
+
+  it("hides only the renamed fund's new ticker while off", () => {
+    const off = listEtfEntries();
+    process.env.RM_ETF_RENAME_SPLG_SPYM = "1";
+    const on = listEtfEntries();
+    const changed = on.filter((e, i) => e.ticker !== off[i]?.ticker || e.bw_etf_id !== off[i]?.bw_etf_id);
+    expect(changed.map((e) => e.bw_etf_id)).toEqual(["BW-ETF-SPLG"]);
   });
 
   it("ignores a superseded stamp for a rename it does not know", () => {

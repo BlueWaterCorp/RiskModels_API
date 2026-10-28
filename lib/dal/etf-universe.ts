@@ -25,6 +25,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { listEtfEntries } from "@/lib/dal/etf-catalog";
+import { etfCurrentTicker } from "@/lib/dal/etf-renames";
 import { readCascadeEtfSets, readEtfStoreIndex } from "@/lib/dal/zarr-reader";
 import { ETF_FACTOR_REGISTRY } from "@/lib/risk/etf-factor-classification";
 
@@ -170,8 +171,10 @@ export async function buildEtfUniverse(): Promise<EtfUniverse> {
   const subsectors = new Set(cascade?.subsectors ?? []);
 
   const byTicker = new Map<string, EtfUniverseRow>();
+  // ERM3-68: both tickers of an active rename share one row, labelled with the current ticker
+  // (identity while the flag is off).
   const row = (ticker: string): EtfUniverseRow => {
-    const t = ticker.trim().toUpperCase();
+    const t = etfCurrentTicker(ticker);
     let r = byTicker.get(t);
     if (!r) {
       r = {
@@ -201,6 +204,8 @@ export async function buildEtfUniverse(): Promise<EtfUniverse> {
 
   for (const s of store ?? []) {
     const r = row(s.ticker);
+    // A renamed fund's old-ticker store row never overrides its current-ticker one.
+    if (r.capabilities.priced && s.ticker.trim().toUpperCase() !== r.ticker) continue;
     r.capabilities.priced = true;
     r.capabilities.priced_from = s.priced_from;
     r.identifiers.bw_sym_id = safeBwSymId(s.bw_sym_id);
@@ -216,7 +221,7 @@ export async function buildEtfUniverse(): Promise<EtfUniverse> {
   for (const t of subsectors) markCascade(t, "subsector");
   // Public names for the market + sector funds when no other source has one.
   for (const e of ETF_FACTOR_REGISTRY) {
-    const r = byTicker.get(e.ticker);
+    const r = byTicker.get(etfCurrentTicker(e.ticker));
     if (r && !r.name) r.name = e.name;
   }
 
