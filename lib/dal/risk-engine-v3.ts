@@ -18,6 +18,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveTicker, type TickerResolution } from "@/lib/ticker-aliases";
+import type { ResolvedVia } from "@/lib/dal/resolution-disclosure";
 import {
   readHistorySlice,
   readLatestRankSnapshot,
@@ -171,11 +172,16 @@ export interface SymbolRegistryRow {
   /** Share class actually modelled, when a projection applied. */
   modelled_share_class: string | null;
   /**
-   * Set only when no live `symbols` row held the ticker and the
-   * most-recent-holder pass (lib/dal/ticker-holder) chose and built the
-   * answer. Absent on ordinary resolutions and on answers kept from before.
+   * `most_recent_holder`: set only when no live `symbols` row held the ticker
+   * and the most-recent-holder pass (lib/dal/ticker-holder) chose and built
+   * the answer.
+   * `share_class_sibling` (ERM3-88): the requested class has no registry row
+   * and a sibling class of the same company answers it (GOOGL → GOOG). Risk,
+   * hedges and returns are the sibling's; its price fields must not be
+   * presented as the requested class's own (routes withhold them).
+   * Absent on ordinary resolutions and on answers kept from before.
    */
-  resolved_via?: "most_recent_holder";
+  resolved_via?: ResolvedVia;
   /**
    * One definition everywhere: true when the answering security is closed in
    * security_master or flagged delisted in the registry (`symbols`); false
@@ -569,6 +575,7 @@ function registryRowFromSecurityMaster(
 }
 
 const MOST_RECENT_HOLDER = "most_recent_holder" as const;
+const SHARE_CLASS_SIBLING = "share_class_sibling" as const;
 
 /** main's answer before the holder pass: the row, and whether the registry flags it dead. */
 interface PreviousAnswer {
@@ -869,6 +876,7 @@ export async function resolveSymbolByTicker(
           modelled_ticker: result.ticker,
           share_class: resolution.requestedClass,
           modelled_share_class: resolution.modelledClass,
+          resolved_via: SHARE_CLASS_SIBLING,
         };
       }
     }
@@ -1098,6 +1106,7 @@ export async function resolveSymbolsByTickers(
               modelled_ticker: normalized.ticker,
               share_class: res.requestedClass,
               modelled_share_class: res.modelledClass,
+              resolved_via: SHARE_CLASS_SIBLING,
             });
           } else {
             result.set(requested, { ...normalized, ticker: requested });

@@ -23,7 +23,11 @@ import {
   isRestrictedSourceSymbol,
   RESTRICTED_SOURCE_NOTE,
 } from "@/lib/data-license";
-import { resolutionDisclosure, resolutionDisclosureHeaders } from "@/lib/dal/resolution-disclosure";
+import {
+  isShareClassSibling,
+  resolutionDisclosure,
+  resolutionDisclosureHeaders,
+} from "@/lib/dal/resolution-disclosure";
 
 export const runtime = "nodejs";
 
@@ -78,8 +82,13 @@ export const GET = withBilling(
     // authenticated environment. returns_gross is Derived and still serves.
     const restrictedSource = isRestrictedSourceSymbol(symbolRecord.symbol);
     const serveReturns = !restrictedSource;
+    // ERM3-88: a share-class sibling answer (GOOGL served from GOOG) carries
+    // the sibling's returns and hedges, never its close as the requested
+    // class's price — price_close is withheld (resolutionDisclosure sets
+    // price_withheld).
     const servePrice =
       !restrictedSource &&
+      !isShareClassSibling(symbolRecord) &&
       getDataLicenseMode() !== "license_free" &&
       context.rawFieldsPermitted;
 

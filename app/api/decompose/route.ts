@@ -8,6 +8,7 @@ import {
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
+import { resolutionDisclosure, resolutionDisclosureHeaders } from "@/lib/dal/resolution-disclosure";
 import {
   addMetadataHeaders,
   buildMetadataBody,
@@ -269,6 +270,8 @@ export const POST = withBilling(
       const responseBody = {
         ticker: symbolRecord.ticker,
         symbol: symbolRecord.symbol,
+        // ERM3-88 / G.35: a sibling share class's series is disclosed.
+        ...resolutionDisclosure(symbolRecord),
         data_as_of: metadata.data_as_of,
         teo: latestData.teo,
         // Historical read: echo the requested date, the SERVED row's teo as
@@ -318,6 +321,7 @@ export const POST = withBilling(
       const response = NextResponse.json(responseBody, {
         headers: {
           ...corsHeaders,
+          ...resolutionDisclosureHeaders(symbolRecord),
           "Content-Type": "application/json",
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         },

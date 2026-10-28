@@ -10,9 +10,26 @@
     "resolved_via": {
       "type": "string",
       "enum": [
-        "most_recent_holder"
+        "most_recent_holder",
+        "share_class_sibling"
       ],
-      "description": "Present only when the modelled registry has no live row for the requested ticker and the most-recent-holder check chose the answer: the security that holds the ticker today (possibly under another registry ticker) or the one that held it most recently (e.g. delisted CTRA). Omitted for live registry rows and for answers unchanged from earlier releases."
+      "description": "share_class_sibling: the requested share class has no modelled series and another class of the same company answers it (e.g. GOOGL answered with GOOG's series, named in modelled_ticker); returns and hedge ratios are the sibling's and price_close is omitted (price_withheld: true). most_recent_holder: present only when the modelled registry has no live row for the requested ticker and the most-recent-holder check chose the answer: the security that holds the ticker today (possibly under another registry ticker) or the one that held it most recently (e.g. delisted CTRA). Omitted for live registry rows and for answers unchanged from earlier releases."
+    },
+    "requested_ticker": {
+      "type": "string",
+      "description": "With resolved_via share_class_sibling: the ticker requested (e.g. GOOGL)."
+    },
+    "price_withheld": {
+      "type": "boolean",
+      "description": "With resolved_via share_class_sibling: true; price_close is omitted because the sibling's price is not the requested class's price."
+    },
+    "share_class": {
+      "type": ["string", "null"],
+      "description": "With share_class_sibling: the requested class letter, when known."
+    },
+    "modelled_share_class": {
+      "type": ["string", "null"],
+      "description": "With share_class_sibling: the answering class letter, when known."
     },
     "modelled_ticker": {
       "type": [

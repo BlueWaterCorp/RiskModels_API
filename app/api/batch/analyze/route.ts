@@ -22,7 +22,7 @@ import {
   type HedgeLevelsBlock,
 } from "@/lib/risk/hedge-levels";
 import { DEFAULT_USER_SEGMENT } from "@/lib/dal/hedge-recommendation";
-import { resolutionDisclosure } from "@/lib/dal/resolution-disclosure";
+import { resolutionDisclosure, type ResolvedVia } from "@/lib/dal/resolution-disclosure";
 
 function getSupabase() {
   return createAdminClient();
@@ -84,11 +84,15 @@ interface PositionAnalysis {
   /** Share class of the modelled ticker, when projected. */
   modelled_share_class?: string | null;
   /**
-   * Present only when no live registry row carries the ticker and the
-   * position was answered by the security that holds or most recently held
-   * it (see GET /ticker-returns `resolved_via`).
+   * Present only when no live registry row carries the ticker:
+   * `most_recent_holder` — answered by the security that holds or most
+   * recently held it; `share_class_sibling` — answered by a sibling share
+   * class of the same company (GOOGL → GOOG). See GET /ticker-returns
+   * `resolved_via`.
    */
-  resolved_via?: "most_recent_holder";
+  resolved_via?: ResolvedVia;
+  /** With `share_class_sibling`: price fields are not served. */
+  price_withheld?: boolean;
   /** Closed in security_master or flagged delisted in the registry. */
   delisted?: boolean;
   /** The ticker now belongs to a security the API cannot serve. */
