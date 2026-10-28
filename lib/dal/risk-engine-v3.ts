@@ -463,6 +463,40 @@ export function pickLiveRow<T extends Record<string, unknown>>(rows: T[]): T | n
 }
 
 /**
+ * Coordinated rename (ERM3-68): the registry row among `rows` that ERM3 stamped superseded by a rename active here
+ * (lowest bw_sym_id first), or null. Its `metadata.superseded_by` names the fund's live row under the new ticker.
+ */
+function supersededByActiveRenameRow(rows: Record<string, unknown>[]): Record<string, unknown> | null {
+  const hits = rows
+    .filter((r) => isSupersededByActiveRename(r.metadata as Record<string, unknown> | undefined))
+    .sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
+  return hits[0] ?? null;
+}
+
+function supersededById(row: Record<string, unknown>): string {
+  return String((row.metadata as Record<string, unknown>).superseded_by);
+}
+
+/**
+ * The answer for an old ticker whose registry row was superseded by an active rename: the superseded_by row, live,
+ * labelled with the requested ticker and disclosing the ticker it is modelled under (SPLG -> SPYM). Null when the
+ * target row is missing or dead, so resolution continues exactly as before.
+ */
+function renamedTargetAnswer(
+  requested: string,
+  target: Record<string, unknown> | null | undefined,
+): SymbolRegistryRow | null {
+  if (!target || isDeadSymbolRow(target)) return null;
+  const row = normalizeSymbolRow(target);
+  if (!row) return null;
+  return {
+    ...row,
+    ticker: requested,
+    modelled_ticker: row.ticker.toUpperCase() !== requested ? row.ticker : null,
+  };
+}
+
+/**
  * Normalize symbol row: fall back to metadata JSONB for name/sector_etf when top-level columns are null.
  */
 function normalizeSymbolRow(row: Record<string, unknown> | null): SymbolRegistryRow | null {
@@ -793,6 +827,26 @@ export async function resolveSymbolByTicker(
   // may stand in for it (fail closed; the next request retries).
   if (directReadFailed) return null;
 
+  // 1b. Coordinated rename (ERM3-68): the old ticker's row is superseded by an active rename. Its superseded_by
+  // row answers when it is live (the alias leads to that row too, but the dead direct row would otherwise stay
+  // the previous answer because the fund no longer holds the old ticker). A missing, dead or unreadable target
+  // leaves resolution unchanged.
+  const renamed = supersededByActiveRenameRow(directRows);
+  if (renamed) {
+    try {
+      const { data, error } = await createAdminClient()
+        .from("symbols")
+        .select(SYMBOL_ROW_COLUMNS)
+        .eq("symbol", supersededById(renamed))
+        .maybeSingle();
+      if (error) console.error(`[V3 DAL] Error reading rename target for ${upper}:`, error);
+      const answer = error ? null : renamedTargetAnswer(upper, data as Record<string, unknown> | null);
+      if (answer) return answer;
+    } catch (err) {
+      console.error(`[V3 DAL] Error reading rename target for ${upper}:`, err);
+    }
+  }
+
   if (!direct) {
     // 2. Route notation aliases and share-class projections through the
     // single resolveTicker seam (C.13). Notation (BRK.B → BRK-B) is the same
@@ -968,6 +1022,25 @@ export async function resolveSymbolsByTickers(
         continue;
       }
       result.set(requestedKey, normalized);
+    }
+
+    // Coordinated rename (same rule as resolveSymbolByTicker step 1b): a ticker whose registry row is superseded
+    // by an active rename answers with the live superseded_by row. Unread, missing or dead targets change nothing.
+    const renameTargets = new Map<string, string>();
+    for (const [t, rows] of deadRowsByTicker) {
+      const renamed = supersededByActiveRenameRow(rows);
+      if (renamed) renameTargets.set(t, supersededById(renamed));
+    }
+    if (renameTargets.size > 0) {
+      const targetRead = await readSymbolRowsChecked("symbol", [...new Set(renameTargets.values())]);
+      const targetsById = new Map(targetRead.rows.map((r) => [String(r.symbol), r]));
+      for (const [t, id] of renameTargets) {
+        const answer = renamedTargetAnswer(t, targetsById.get(id));
+        if (!answer) continue;
+        result.set(t, answer);
+        deadDirect.delete(t);
+        deadRowsByTicker.delete(t);
+      }
     }
 
     // Seam fallback for missing tickers (C.13): notation aliases and
